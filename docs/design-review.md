@@ -22,7 +22,7 @@
 | LLM 連携 | `claude -p --output-format json` を subprocess で起動する | 暫定 | 次スライスで実装。`LLMProvider` trait はこの時点で導入する（Claude／Codex の 2 実装が確実に必要になる境界のため）。 |
 | Vector search | `sqlite-vec` | 保留 | embedding スライスで検証する。`SearchIndex` 境界の裏に隠す。 |
 | Embedding model | — | 保留 | ローカル（fastembed／ONNX、多言語 e5 系）か API かは、日英混在検索の精度を測ってから決める。 |
-| Node | Volta で 22 に固定（`package.json` の `volta`） | 決定 | Vite 8 は Node 20.19 以上が必要。 |
+| ツール管理 | mise（`mise.toml` で Node / Rust を固定し、`mise run dev` / `mise run test` を提供する） | 決定 | Vite 8 は Node 20.19 以上が必要。パッケージマネージャは npm。 |
 
 ### 抽象化の方針（§18 への回答）
 

@@ -1,0 +1,11 @@
+[tools]
+node = "24"
+rust = "1.99.1"
+
+[tasks.dev]
+description = "Run the desktop app with hot reload"
+run = "npm run tauri dev"
+
+[tasks.test]
+description = "Rust tests and frontend typecheck"
+run = ["cargo test --workspace", "npm run build"]
