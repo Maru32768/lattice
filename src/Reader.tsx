@@ -104,8 +104,10 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onFavorite, onTag }: {
   view: ArticleView;
+  onFavorite: () => void;
+  onTag: (name: string, add: boolean) => void;
   onPage: () => void;
   onLink: (href: string) => void;
   mode: LanguageMode;
@@ -127,6 +129,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
   const job = view.jobs.find((j) => j.type === "translate");
 
   // Hover shows the other language; clicking that tooltip flips the block (as in the page view).
+  const [newTag, setNewTag] = useState("");
   const [tip, setTip] = useState<{ id: number; text: string; translated: boolean; x: number; y: number } | null>(null);
   const timers = useRef({ show: 0, hide: 0 });
 
@@ -163,6 +166,15 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           {a.published_at && <span>{a.published_at.slice(0, 10)}</span>}
           <button onClick={onPage}>ページ表示</button>
           <button onClick={onToggleRead}>{a.read_status === "read" ? "未読に戻す" : "既読にする"}</button>
+          <button onClick={onFavorite} aria-pressed={a.favorite} title="お気に入り">{a.favorite ? "★" : "☆"}</button>
+        </div>
+        <div className="tags">
+          {a.tags.map((t) => (
+            <span key={t} className="tag">#{t}<button onClick={() => onTag(t, false)} aria-label={`タグ ${t} を外す`}>×</button></span>
+          ))}
+          <form onSubmit={(e) => { e.preventDefault(); if (newTag.trim()) { onTag(newTag, true); setNewTag(""); } }}>
+            <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="タグを追加" aria-label="タグを追加" />
+          </form>
         </div>
         {!failed && (
           <div className="toolbar">

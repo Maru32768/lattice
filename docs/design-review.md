@@ -174,4 +174,4 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 
 ### 未実装（意図的）
 
-要約、Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
+要約、Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。

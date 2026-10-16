@@ -173,7 +173,7 @@ mod tests {
         // Different URL whose canonical points at the first article collapses into it.
         let (id2, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
         assert_eq!(store_fetched(&s, id2, &page(BODY)).unwrap(), id);
-        assert_eq!(s.list_articles().unwrap().len(), 1);
+        assert_eq!(s.list_articles(&crate::store::ArticleFilter::All).unwrap().len(), 1);
     }
 
     #[test]

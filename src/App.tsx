@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleRow, type ArticleView, type SearchHit, type SearchResult } from "./api";
+import { api, browser, type ArticleFilter, type ArticleRow, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
@@ -12,6 +12,10 @@ type Main = "empty" | "browser" | "reader" | "results" | "import";
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
+  const [filter, setFilter] = useState<ArticleFilter>({ kind: "all" });
+  const [tags, setTags] = useState<TagCount[]>([]);
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
   const [main, setMain] = useState<Main>("empty");
   const [error, setError] = useState<string | null>(null);
   const [dbPath, setDbPath] = useState("");
@@ -20,7 +24,7 @@ export default function App() {
   const [address, setAddress] = useState("");
   const [target, setTarget] = useState<BrowseTarget | null>(null);
   const [page, setPage] = useState<PageState | null>(null);
-  const [savedId, setSavedId] = useState<number | null>(null);
+  const [saved, setSaved] = useState<ArticleRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [overlay, setOverlay] = useState<OverlaySettings>({ enabled: false, percent: 70 });
 
@@ -35,7 +39,9 @@ export default function App() {
   const [searched, setSearched] = useState<{ query: string; result: SearchResult } | null>(null);
 
   const fail = (e: unknown) => setError(String(e));
-  const refresh = () => api.listArticles().then(setArticles).catch(fail);
+  const refresh = () =>
+    Promise.all([api.listArticles(filterRef.current).then(setArticles), api.listTags().then(setTags)]).catch(fail);
+  const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
   // Background jobs (bulk import fetches) report every article; coalesce list reloads.
   const refreshTimer = useRef(0);
   const refreshSoon = () => {
@@ -48,7 +54,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    refresh();
     api.dbPath().then(setDbPath);
     const subs = [
       listen<number>("article-changed", (e) => {
@@ -57,7 +62,7 @@ export default function App() {
       }),
       listen<{ url: string; loading: boolean }>("browser-page", (e) => {
         setPage((p) => ({ url: e.payload.url, loading: e.payload.loading, title: p?.url === e.payload.url ? p.title : "" }));
-        if (!e.payload.loading) api.articleForUrl(e.payload.url).then(setSavedId).catch(() => setSavedId(null));
+        if (!e.payload.loading) refreshSaved(e.payload.url);
       }),
       listen<string>("browser-title", (e) => setPage((p) => (p ? { ...p, title: e.payload } : p))),
     ];
@@ -81,8 +86,8 @@ export default function App() {
     if (!page) return;
     setSaving(true);
     try {
-      setSavedId(await api.saveUrl(page.url));
-      await refresh();
+      await api.saveUrl(page.url);
+      await Promise.all([refresh(), refreshSaved(page.url)]);
     } catch (e) {
       fail(e);
     } finally {
@@ -115,6 +120,26 @@ export default function App() {
     if (a) openPage(a.original_url, hit.text);
   }
 
+  useEffect(() => { refresh(); }, [filter]);
+
+  async function toggleFavorite(a: ArticleRow) {
+    try {
+      await api.setFavorite(a.id, !a.favorite);
+      await Promise.all([refresh(), page && refreshSaved(page.url), viewId.current === a.id && loadView(a.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function editTag(a: ArticleRow, name: string, add: boolean) {
+    try {
+      await (add ? api.addTag(a.id, name) : api.removeTag(a.id, name));
+      await Promise.all([refresh(), loadView(a.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function toggleRead() {
     if (!view) return;
     const a = view.article;
@@ -142,7 +167,10 @@ export default function App() {
     }
   }
 
-  const currentArticleId = main === "reader" ? view?.article.id : savedId;
+  const currentArticleId = main === "reader" ? view?.article.id : saved?.id;
+  const filterButton = (f: ArticleFilter, label: string) => (
+    <button className={JSON.stringify(f) === JSON.stringify(filter) ? "on" : ""} onClick={() => setFilter(f)}>{label}</button>
+  );
 
   return (
     <div className="app">
@@ -156,13 +184,22 @@ export default function App() {
           <button type="submit" disabled={!query.trim()}>検索</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
+        <nav className="filters" aria-label="記事の絞り込み">
+          {filterButton({ kind: "all" }, "最近追加")}
+          {filterButton({ kind: "unread" }, "未読")}
+          {filterButton({ kind: "favorites" }, "お気に入り")}
+          {tags.map((t) => (
+            <span key={t.name}>{filterButton({ kind: "tag", name: t.name }, `#${t.name} ${t.count}`)}</span>
+          ))}
+        </nav>
         <ul className="list">
           {articles.map((a) => (
             <li key={a.id}>
               <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url)}>
-                <span className="title">{a.title ?? a.original_url}</span>
+                <span className="title">{a.favorite && <span className="star" aria-label="お気に入り">★ </span>}{a.title ?? a.original_url}</span>
                 <span className="sub">
                   {a.domain}
+                  {a.tags.map((t) => ` #${t}`).join("")}
                   {a.fetch_status === "pending" && " · 取得中…"}
                   {(a.fetch_status === "failed" || a.extraction_status === "failed") && <em> · 失敗</em>}
                 </span>
@@ -176,13 +213,15 @@ export default function App() {
       <main className={main === "browser" ? "has-browser" : ""}>
         {main !== "results" && searched && <button className="back" onClick={() => setMain("results")}>← 検索結果に戻る</button>}
         {main === "browser" && target && (
-          <BrowserView target={target} page={page} savedId={savedId} saving={saving} overlay={overlay}
-            onOverlay={changeOverlay} onSave={saveCurrent} onReader={() => savedId != null && showReader(savedId)} onError={fail} />
+          <BrowserView target={target} page={page} saved={saved} saving={saving} overlay={overlay}
+            onOverlay={changeOverlay} onSave={saveCurrent} onReader={() => saved && showReader(saved.id)}
+            onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
         )}
         {main === "reader" && view && (
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
             onPage={() => openPage(view.article.original_url)} onLink={(href) => openPage(href)}
-            onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle} />
+            onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle}
+            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { browser, type Bounds } from "./api";
+import { browser, type ArticleRow, type Bounds } from "./api";
 
 let lastOpened: BrowseTarget | null = null;
 
@@ -26,15 +26,16 @@ export interface OverlaySettings {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, savedId, saving, overlay, onOverlay, onSave, onReader, onError }: {
+export function BrowserView({ target, page, saved, saving, overlay, onOverlay, onSave, onReader, onFavorite, onError }: {
   target: BrowseTarget;
   page: PageState | null;
-  savedId: number | null;
+  saved: ArticleRow | null;
   saving: boolean;
   overlay: OverlaySettings;
   onOverlay: (o: OverlaySettings) => void;
   onSave: () => void;
   onReader: () => void;
+  onFavorite: () => void;
   onError: (e: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -87,8 +88,12 @@ export function BrowserView({ target, page, savedId, saving, overlay, onOverlay,
                 onChange={(e) => onOverlay({ ...overlay, percent: Number(e.target.value) })} />
             </label>
           )}
-          {savedId != null
-            ? <><span className="saved">Index 済み</span><button onClick={onReader}>リーダー表示</button></>
+          {saved
+            ? <>
+                <button onClick={onFavorite} aria-pressed={saved.favorite} title="お気に入り">{saved.favorite ? "★" : "☆"}</button>
+                <span className="saved">Index 済み</span>
+                <button onClick={onReader}>リーダー表示</button>
+              </>
             : <button onClick={onSave} disabled={saving || !page || page.loading}>{saving ? "追加中…" : "Index に追加"}</button>}
         </div>
       </div>

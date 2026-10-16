@@ -53,6 +53,15 @@ export interface ArticleRow {
   extraction_status: "pending" | "ok" | "failed";
   last_error: string | null;
   read_status: "unread" | "read";
+  favorite: boolean;
+  tags: string[];
+}
+
+export type ArticleFilter = { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string };
+
+export interface TagCount {
+  name: string;
+  count: number;
 }
 
 export interface ArticleView {
@@ -93,14 +102,18 @@ export interface Bounds {
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
-  listArticles: () => invoke<ArticleRow[]>("list_articles"),
+  listArticles: (filter: ArticleFilter) => invoke<ArticleRow[]>("list_articles", { filter }),
+  listTags: () => invoke<TagCount[]>("list_tags"),
+  setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
+  addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
+  removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
-  articleForUrl: (url: string) => invoke<number | null>("article_for_url", { url }),
+  articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
 };
 
 /** The in-app browser (a native child webview positioned over a placeholder element). */

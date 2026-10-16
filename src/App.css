@@ -144,3 +144,12 @@ main.has-browser .back { margin: 8px 12px 0; }
 .import button { padding: 4px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .import .file { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 .error-text { color: var(--error); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; font-size: 12px; }
+.filters button { padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg); }
+.filters button.on { background: var(--accent); border-color: var(--accent); color: var(--bg); }
+.item .star { color: #c89211; }
+.reader .tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: -16px 0 24px; font-size: 13px; }
+.reader .tag { display: inline-flex; gap: 2px; align-items: center; padding: 1px 4px 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); }
+.reader .tag button { border: 0; background: none; padding: 0 4px; color: var(--muted); }
+.reader .tags input { font: inherit; padding: 2px 8px; border: 1px dashed var(--border); border-radius: 999px; background: var(--bg); color: var(--text); width: 9em; }

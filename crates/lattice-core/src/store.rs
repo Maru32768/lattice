@@ -182,6 +182,18 @@ CREATE TRIGGER translations_fts_ad AFTER DELETE ON segment_translations BEGIN
 END;
 INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
 CREATE INDEX blocks_text_hash ON blocks(text_hash);
+"#, r#"
+CREATE TABLE tags (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE article_tags (
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    tag_id     INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (article_id, tag_id)
+);
+CREATE INDEX article_tags_tag ON article_tags(tag_id);
+CREATE INDEX articles_inbox ON articles(read_status, favorite, saved_at);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -231,6 +243,24 @@ pub struct ArticleRow {
     pub extraction_status: String,
     pub last_error: Option<String>,
     pub read_status: String,
+    pub favorite: bool,
+    pub tags: Vec<String>,
+}
+
+/// Inbox views (§12). "Recently added" is `All`, which is already newest first.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ArticleFilter {
+    All,
+    Unread,
+    Favorites,
+    Tag { name: String },
+}
+
+#[derive(Debug, Serialize)]
+pub struct TagCount {
+    pub name: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -308,7 +338,8 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
     })
 }
 
-const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status";
+const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
+    (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name))";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     Ok(ArticleRow {
@@ -326,6 +357,8 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         extraction_status: r.get(11)?,
         last_error: r.get(12)?,
         read_status: r.get(13)?,
+        favorite: r.get(14)?,
+        tags: from_json_col(r, 15, str::to_string)?,
     })
 }
 
@@ -375,6 +408,10 @@ impl Store {
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic mid-transaction rolls back via Drop, so the connection is still usable.
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn article_row(&self, id: i64) -> Result<Option<ArticleRow>> {
+        self.conn().query_row(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE id = ?1"), [id], article_row).optional()
     }
 
     pub fn article_url(&self, id: i64) -> Result<Option<String>> {
@@ -514,10 +551,61 @@ impl Store {
         .transpose()
     }
 
-    pub fn list_articles(&self) -> Result<Vec<ArticleRow>> {
+    pub fn list_articles(&self, filter: &ArticleFilter) -> Result<Vec<ArticleRow>> {
+        let (cond, tag) = match filter {
+            ArticleFilter::All => ("1", ""),
+            ArticleFilter::Unread => ("read_status = 'unread'", ""),
+            ArticleFilter::Favorites => ("favorite = 1", ""),
+            ArticleFilter::Tag { name } => (
+                "EXISTS (SELECT 1 FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id AND t.name = ?1)",
+                name.as_str(),
+            ),
+        };
         let c = self.conn();
-        let mut st = c.prepare(&format!("SELECT {ARTICLE_COLS} FROM articles ORDER BY saved_at DESC, id DESC"))?;
-        st.query_map([], article_row)?.collect()
+        let mut st = c.prepare(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE {cond} ORDER BY saved_at DESC, id DESC"))?;
+        let rows = if tag.is_empty() { st.query_map([], article_row)? } else { st.query_map([tag], article_row)? };
+        rows.collect()
+    }
+
+    pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {
+        self.conn().execute("UPDATE articles SET favorite = ?2 WHERE id = ?1", params![id, favorite])?;
+        Ok(())
+    }
+
+    /// Tag names are trimmed and matched case-insensitively; empty names are ignored.
+    pub fn add_tag(&self, article_id: i64, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Ok(());
+        }
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        tx.execute("INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING", [name])?;
+        tx.execute(
+            "INSERT OR IGNORE INTO article_tags (article_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2",
+            params![article_id, name],
+        )?;
+        tx.commit()
+    }
+
+    /// Unused tags are deleted so the tag list only shows tags in use.
+    pub fn remove_tag(&self, article_id: i64, name: &str) -> Result<()> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM article_tags WHERE article_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
+            params![article_id, name.trim()],
+        )?;
+        tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM article_tags)", [])?;
+        tx.commit()
+    }
+
+    pub fn list_tags(&self) -> Result<Vec<TagCount>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT t.name, count(*) FROM tags t JOIN article_tags x ON x.tag_id = t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
+        )?;
+        st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? }))?.collect()
     }
 
     pub fn get_article(&self, id: i64, target_language: &str) -> Result<Option<ArticleView>> {
@@ -859,5 +947,29 @@ mod tests {
         assert_eq!(s.lexical_search("スナップショット", 10).unwrap(), [1]);
         let cached = s.cached_segments(&[hash.clone()], "ja").unwrap();
         assert_eq!(cached[&hash], [Unit { source: "Snapshot isolation".into(), translation: "スナップショット分離".into() }]);
+    }
+
+    #[test]
+    fn inbox_filters_and_tags() {
+        let s = Store::open_in_memory().unwrap();
+        for u in ["https://a.dev/1", "https://a.dev/2", "https://a.dev/3"] {
+            s.upsert_pending(u, u, "a.dev").unwrap();
+        }
+        s.set_read_status(1, true).unwrap();
+        s.set_favorite(2, true).unwrap();
+        s.add_tag(2, " Database ").unwrap();
+        s.add_tag(3, "database").unwrap(); // same tag, case-insensitive
+        s.add_tag(3, "Linux").unwrap();
+        s.add_tag(3, "  ").unwrap();
+        let ids = |f: ArticleFilter| s.list_articles(&f).unwrap().iter().map(|a| a.id).collect::<Vec<_>>();
+        assert_eq!(ids(ArticleFilter::All), [3, 2, 1]);
+        assert_eq!(ids(ArticleFilter::Unread), [3, 2]);
+        assert_eq!(ids(ArticleFilter::Favorites), [2]);
+        assert_eq!(ids(ArticleFilter::Tag { name: "DATABASE".into() }), [3, 2]);
+        let a3 = s.list_articles(&ArticleFilter::All).unwrap().remove(0);
+        assert_eq!(a3.tags, ["Database", "Linux"]);
+        assert_eq!(s.list_tags().unwrap().iter().map(|t| (t.name.as_str(), t.count)).collect::<Vec<_>>(), [("Database", 2), ("Linux", 1)]);
+        s.remove_tag(3, "Linux").unwrap();
+        assert_eq!(s.list_tags().unwrap().len(), 1, "unused tag removed");
     }
 }

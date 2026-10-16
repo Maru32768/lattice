@@ -10,7 +10,7 @@ use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
-use lattice_core::store::{ArticleRow, ArticleView, Store};
+use lattice_core::store::{ArticleFilter, ArticleRow, ArticleView, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::translate;
 use tauri::{Emitter, Manager, State, Webview};
@@ -59,8 +59,28 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
 }
 
 #[tauri::command]
-fn list_articles(app: State<'_, App>) -> Result<Vec<ArticleRow>, String> {
-    app.store.list_articles().map_err(err)
+fn list_articles(app: State<'_, App>, filter: ArticleFilter) -> Result<Vec<ArticleRow>, String> {
+    app.store.list_articles(&filter).map_err(err)
+}
+
+#[tauri::command]
+fn list_tags(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
+    app.store.list_tags().map_err(err)
+}
+
+#[tauri::command]
+fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), String> {
+    app.store.set_favorite(id, favorite).map_err(err)
+}
+
+#[tauri::command]
+fn add_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
+    app.store.add_tag(id, &name).map_err(err)
+}
+
+#[tauri::command]
+fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
+    app.store.remove_tag(id, &name).map_err(err)
 }
 
 #[tauri::command]
@@ -69,9 +89,12 @@ fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, Stri
 }
 
 #[tauri::command]
-fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<i64>, String> {
+fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow>, String> {
     let Ok(norm) = normalize(&url) else { return Ok(None) };
-    app.store.find_article_by_url(norm.as_str()).map_err(err)
+    match app.store.find_article_by_url(norm.as_str()).map_err(err)? {
+        Some(id) => app.store.article_row(id).map_err(err),
+        None => Ok(None),
+    }
 }
 
 /// Translation for the page overlay: cached units where available, the LLM for the rest.
@@ -176,6 +199,10 @@ pub fn run() {
             save_url,
             import_urls,
             list_articles,
+            list_tags,
+            set_favorite,
+            add_tag,
+            remove_tag,
             get_article,
             article_for_url,
             translate_article,
