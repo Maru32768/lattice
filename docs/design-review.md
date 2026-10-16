@@ -41,7 +41,7 @@
 ### 指摘と変更
 
 1. **生 HTML の snapshot が欠けている（重要）。** §1「URL 切れに耐える」と `extraction_version` による再抽出を両立するには、取得した HTML を保持しておく必要がある。→ `snapshots` テーブルを追加した。再抽出はネットワークなしで行える。
-   - 規模の見積もり: 1 記事あたり HTML は 100KB〜1MB なので、10^5 記事では数十 GB になりうる。bulk import の前に zstd 圧縮を入れる（コード中に `shortcut:` で記録済み）。
+   - 規模の見積もり: 1 記事あたり HTML は 100KB〜1MB なので、10^5 記事では数十 GB になりうる。→ migration 4 で deflate 圧縮した（pure Rust の flate2。技術記事の HTML ならおおよそ 1/5〜1/8 になる）。それ以前の行は無圧縮（`encoding = 'identity'`）のまま読める。
 2. **`extraction_status` が Article の定義にない。** §6 では必要とされている。→ `fetch_status` と `extraction_status`（`pending` / `ok` / `failed`）を追加した。失敗した記事も行として残し、同じ URL を再保存すると再試行になる。
 3. **§2.3 の線形状態遷移（DISCOVERED→…→ENRICHED）は採用しない。** 翻訳・要約・embedding は互いに独立していて、しかも block 単位で部分的に完了する。単一の status 列では「翻訳 60% 完了、要約は失敗」を表せない。→ Article が持つのは取り込みの状態（fetch / extraction）だけにする。LLM 系の進捗は `processing_jobs` と派生テーブルの有無から導く。
 4. **block にインライン構造がない。** `original_text` だけでは link と inline code（`pg_visibility` など、技術記事で重要なもの）が失われる。→ `text`（plain text。検索・翻訳・hash の単位）と `inlines`（JSON。`text` / `code` / `link` の run）に分けた。emphasis は今は text に潰す。
@@ -162,4 +162,4 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 
 ### 未実装（意図的）
 
-要約、Codex adapter、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、FTS、bulk import、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、snapshot の圧縮、`<meta charset>` の判定、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
+要約、Codex adapter、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、bulk import、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。

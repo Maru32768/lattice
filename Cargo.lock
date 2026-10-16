@@ -2478,6 +2478,7 @@ dependencies = [
  "dom_smoothie",
  "encoding_rs",
  "fastembed",
+ "flate2",
  "reqwest 0.13.5",
  "rusqlite",
  "serde",

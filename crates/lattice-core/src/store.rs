@@ -130,7 +130,46 @@ CREATE TABLE embeddings (
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     PRIMARY KEY (block_id, model)
 );
+"#, r#"
+-- Snapshots get compressed (raw HTML is 100KB-1MB per article). Existing rows stay as-is.
+CREATE TABLE snapshots_v2 (
+    id           INTEGER PRIMARY KEY,
+    article_id   INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    fetched_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    final_url    TEXT NOT NULL,
+    http_status  INTEGER NOT NULL,
+    content_type TEXT,
+    encoding     TEXT NOT NULL CHECK (encoding IN ('identity', 'deflate')),
+    body         BLOB NOT NULL
+);
+INSERT INTO snapshots_v2 (id, article_id, fetched_at, final_url, http_status, content_type, encoding, body)
+    SELECT id, article_id, fetched_at, final_url, http_status, content_type, 'identity', CAST(html AS BLOB) FROM snapshots;
+DROP TABLE snapshots;
+ALTER TABLE snapshots_v2 RENAME TO snapshots;
+CREATE INDEX snapshots_article ON snapshots(article_id);
 "#];
+
+fn deflate(s: &str) -> Vec<u8> {
+    use std::io::Write;
+    let mut e = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    e.write_all(s.as_bytes()).expect("writing to a Vec cannot fail");
+    e.finish().expect("writing to a Vec cannot fail")
+}
+
+fn inflate(encoding: &str, body: &[u8]) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut out = String::new();
+    match encoding {
+        "deflate" => flate2::read::DeflateDecoder::new(body).read_to_string(&mut out).map(|_| out),
+        _ => String::from_utf8(body.to_vec()).map_err(std::io::Error::other),
+    }
+}
+
+/// The newest stored HTML of an article, for re-extraction without the network.
+pub struct Snapshot {
+    pub final_url: String,
+    pub html: String,
+}
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
 const MAX_ATTEMPTS: i64 = 5;
@@ -359,8 +398,9 @@ impl Store {
             }
         }
         tx.execute(
-            "INSERT INTO snapshots (article_id, final_url, http_status, content_type, html) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, fetched.final_url, fetched.status, fetched.content_type, fetched.html],
+            "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body)
+             VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
+            params![id, fetched.final_url, fetched.status, fetched.content_type, deflate(&fetched.html)],
         )?;
         match extracted {
             Err(e) => {
@@ -410,6 +450,23 @@ impl Store {
         }
         tx.commit()?;
         Ok(id)
+    }
+
+    pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
+        let row: Option<(String, String, Vec<u8>)> = self
+            .conn()
+            .query_row(
+                "SELECT final_url, encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1",
+                [article_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        row.map(|(final_url, enc, body)| {
+            let html = inflate(&enc, &body)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Blob, Box::new(e)))?;
+            Ok(Snapshot { final_url, html })
+        })
+        .transpose()
     }
 
     pub fn list_articles(&self) -> Result<Vec<ArticleRow>> {
@@ -692,5 +749,28 @@ impl Store {
             params![id, if read { "read" } else { "unread" }],
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Migration 4 rewrites the snapshots table; pre-existing raw HTML must survive it.
+    #[test]
+    fn snapshot_migration_keeps_old_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..3] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        conn.execute_batch(
+            "INSERT INTO articles (original_url, normalized_url, domain) VALUES ('u', 'u', 'd');
+             INSERT INTO snapshots (article_id, final_url, http_status, html) VALUES (1, 'https://x/', 200, '<p>日本語</p>');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let snap = s.latest_snapshot(1).unwrap().unwrap();
+        assert_eq!((snap.final_url.as_str(), snap.html.as_str()), ("https://x/", "<p>日本語</p>"));
     }
 }

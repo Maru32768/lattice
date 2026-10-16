@@ -61,6 +61,7 @@ mod tests {
         assert_eq!(v.article.canonical_url.as_deref(), Some("https://example.com/post"));
         assert_eq!(v.blocks.len(), 2);
         assert_eq!(v.blocks[1].heading_id, Some(v.blocks[0].id));
+        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html, page(BODY).html, "snapshot round-trips through deflate");
 
         // Same URL again: already extracted, nothing to do.
         assert_eq!(s.upsert_pending("https://example.com/post#x", "https://example.com/post", "example.com").unwrap(), (id, false));
