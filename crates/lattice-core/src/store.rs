@@ -1,6 +1,7 @@
 //! SQLite store. Concrete on purpose: SQLite is the system of record, not a swappable detail.
 //! Swappable parts (search index, vectors) get their own boundary when they arrive.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -11,6 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ir::{ArticleIr, Block, Inline};
+use crate::segments::{Unit, plain_text};
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[r#"
@@ -147,6 +149,39 @@ INSERT INTO snapshots_v2 (id, article_id, fetched_at, final_url, http_status, co
 DROP TABLE snapshots;
 ALTER TABLE snapshots_v2 RENAME TO snapshots;
 CREATE INDEX snapshots_article ON snapshots(article_id);
+"#, r#"
+-- Translations become a cache keyed by the paragraph's plain-text hash (= blocks.text_hash),
+-- holding reading units [{source, translation}] as HTML. Shared by the live page overlay,
+-- the reader and search; independent of articles, so it also survives re-extraction.
+CREATE TABLE segment_translations (
+    id              INTEGER PRIMARY KEY,
+    source_hash     TEXT NOT NULL,
+    target_language TEXT NOT NULL,
+    units           TEXT NOT NULL,
+    text            TEXT NOT NULL,   -- plain translated text, for search and the reader view
+    provider        TEXT NOT NULL,
+    model           TEXT,
+    prompt_version  TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX segment_translations_hash ON segment_translations(source_hash, target_language);
+INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version, created_at)
+    SELECT t.source_hash, t.target_language, json_array(json_object('source', b.text, 'translation', t.text)),
+           t.text, t.provider, t.model, t.prompt_version, t.created_at
+    FROM translations t JOIN blocks b ON b.id = t.block_id ORDER BY t.id;
+DROP TRIGGER translations_fts_ai;
+DROP TRIGGER translations_fts_ad;
+DROP TABLE translations_fts;
+DROP TABLE translations;
+CREATE VIRTUAL TABLE translations_fts USING fts5(text, content='segment_translations', content_rowid='id', tokenize='trigram');
+CREATE TRIGGER translations_fts_ai AFTER INSERT ON segment_translations BEGIN
+    INSERT INTO translations_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER translations_fts_ad AFTER DELETE ON segment_translations BEGIN
+    INSERT INTO translations_fts(translations_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
+INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
+CREATE INDEX blocks_text_hash ON blocks(text_hash);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -257,11 +292,6 @@ pub struct HitDetail {
     pub translation: Option<String>,
 }
 
-pub struct NewTranslation<'a> {
-    pub block_id: i64,
-    pub source_hash: &'a str,
-    pub text: &'a str,
-}
 
 const JOB_COLS: &str = "id, type, article_id, params, status, attempt_count, last_error, next_run_at";
 
@@ -411,9 +441,9 @@ impl Store {
                 )?;
             }
             Ok(ir) => {
-                // shortcut: blocks are replaced wholesale. Safe today because only never-extracted
-                // articles get here (so no translations exist); a re-extract command must reuse ids
-                // of blocks whose text_hash matches, or their translations cascade away.
+                // shortcut: blocks are replaced wholesale (translations are keyed by text hash, so they
+                // survive); a re-extract command should reuse ids of unchanged blocks so search
+                // results and embeddings keep pointing at them.
                 tx.execute("DELETE FROM blocks WHERE article_id = ?1", [id])?;
                 let mut heading: Option<i64> = None;
                 {
@@ -485,9 +515,9 @@ impl Store {
         };
         let mut st = c.prepare(
             "SELECT b.id, b.ordinal, b.heading_id, b.kind, b.text, b.inlines, b.attrs,
-                    (SELECT t.text FROM translations t
-                     WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash
-                     ORDER BY t.id DESC LIMIT 1)
+                    (SELECT st.text FROM segment_translations st
+                     WHERE st.source_hash = b.text_hash AND st.target_language = ?2
+                     ORDER BY st.id DESC LIMIT 1)
              FROM blocks b WHERE b.article_id = ?1 ORDER BY b.ordinal",
         )?;
         let blocks = st
@@ -517,8 +547,8 @@ impl Store {
         let mut st = c.prepare(
             "SELECT b.id, b.kind, b.text, b.text_hash, b.inlines FROM blocks b
              WHERE b.article_id = ?1 AND NOT EXISTS (
-                 SELECT 1 FROM translations t
-                 WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash)
+                 SELECT 1 FROM segment_translations st
+                 WHERE st.source_hash = b.text_hash AND st.target_language = ?2)
              ORDER BY b.ordinal",
         )?;
         let rows = st.query_map(params![article_id, target_language], |r| {
@@ -533,23 +563,39 @@ impl Store {
         rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
     }
 
-    pub fn insert_translations(
+    /// Newest cached reading units per source hash.
+    pub fn cached_segments(&self, hashes: &[String], target_language: &str) -> Result<HashMap<String, Vec<Unit>>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT source_hash, units FROM segment_translations
+             WHERE source_hash IN (SELECT value FROM json_each(?1)) AND target_language = ?2 ORDER BY id",
+        )?;
+        let mut out = HashMap::new();
+        for row in st.query_map(params![json(&hashes), target_language], |r| Ok((r.get::<_, String>(0)?, opt_json_col::<Vec<Unit>>(r, 1)?)))? {
+            let (hash, units) = row?;
+            out.insert(hash, units); // later rows win: newest translation
+        }
+        Ok(out)
+    }
+
+    pub fn insert_segments(
         &self,
         target_language: &str,
         provider: &str,
         model: Option<&str>,
         prompt_version: &str,
-        items: &[NewTranslation],
+        items: &[(&str, &[Unit])],
     ) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         {
             let mut ins = tx.prepare(
-                "INSERT INTO translations (block_id, target_language, text, source_hash, provider, model, prompt_version)
+                "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )?;
-            for t in items {
-                ins.execute(params![t.block_id, target_language, t.text, t.source_hash, provider, model, prompt_version])?;
+            for (hash, units) in items {
+                let text = plain_text(&units.iter().map(|u| u.translation.as_str()).collect::<String>());
+                ins.execute(params![hash, target_language, json(units), text, provider, model, prompt_version])?;
             }
         }
         tx.commit()
@@ -699,7 +745,9 @@ impl Store {
             "SELECT block_id FROM (
                  SELECT rowid AS block_id, {r1} AS r FROM blocks_fts {w1}
                  UNION ALL
-                 SELECT tr.block_id, {r2} AS r FROM translations_fts JOIN translations tr ON tr.id = translations_fts.rowid {w2}
+                 SELECT b.id, {r2} AS r FROM translations_fts
+                     JOIN segment_translations st ON st.id = translations_fts.rowid
+                     JOIN blocks b ON b.text_hash = st.source_hash {w2}
              ) GROUP BY block_id ORDER BY min(r), block_id DESC LIMIT {limit}",
             r1 = rank.replace("{t}", "blocks_fts"),
             r2 = rank.replace("{t}", "translations_fts"),
@@ -716,9 +764,9 @@ impl Store {
         let c = self.conn();
         let mut st = c.prepare(
             "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text,
-                    (SELECT t.text FROM translations t
-                     WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash
-                     ORDER BY t.id DESC LIMIT 1)
+                    (SELECT st.text FROM segment_translations st
+                     WHERE st.source_hash = b.text_hash AND st.target_language = ?2
+                     ORDER BY st.id DESC LIMIT 1)
              FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id
              WHERE b.id IN (SELECT value FROM json_each(?1))",
         )?;
@@ -772,5 +820,29 @@ mod tests {
         let s = Store::init(conn).unwrap();
         let snap = s.latest_snapshot(1).unwrap().unwrap();
         assert_eq!((snap.final_url.as_str(), snap.html.as_str()), ("https://x/", "<p>日本語</p>"));
+    }
+
+    /// Migration 5 moves block translations into the hash-keyed segment cache.
+    #[test]
+    fn translation_migration_keeps_rows_searchable() {
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..4] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 4).unwrap();
+        let hash = sha256_hex("Snapshot isolation");
+        conn.execute_batch(&format!(
+            "INSERT INTO articles (original_url, normalized_url, domain, extraction_status) VALUES ('u', 'u', 'd', 'ok');
+             INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES (1, 0, 'paragraph', 'Snapshot isolation', '{hash}');
+             INSERT INTO translations (block_id, target_language, text, source_hash, provider, prompt_version)
+                 VALUES (1, 'ja', 'スナップショット分離', '{hash}', 'claude-cli', 'translate-v1');"
+        ))
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let v = s.get_article(1, "ja").unwrap().unwrap();
+        assert_eq!(v.blocks[0].translation.as_deref(), Some("スナップショット分離"));
+        assert_eq!(s.lexical_search("スナップショット", 10).unwrap(), [1]);
+        let cached = s.cached_segments(&[hash.clone()], "ja").unwrap();
+        assert_eq!(cached[&hash], [Unit { source: "Snapshot isolation".into(), translation: "スナップショット分離".into() }]);
     }
 }

@@ -85,13 +85,11 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Mutex;
-
     use super::*;
+    use crate::embed::Purpose;
     use crate::fetch::Fetched;
     use crate::ingest::store_fetched;
-    use crate::embed::Purpose;
-    use crate::llm::{Item, LlmError, Output};
+    use crate::segments::tests::Fake;
 
     struct NoEmbed;
     impl EmbeddingProvider for NoEmbed {
@@ -103,42 +101,14 @@ mod tests {
         }
     }
 
-    /// Uppercases text; drops ids listed in `drop`; fails when `fail` is set.
-    struct Fake {
-        fail: bool,
-        drop: Vec<i64>,
-        calls: Mutex<Vec<Vec<Item>>>,
-    }
-
-    impl LlmProvider for Fake {
-        fn name(&self) -> &str {
-            "fake"
-        }
-        async fn translate(&self, items: &[Item], _: &str) -> Result<Output, LlmError> {
-            self.calls.lock().unwrap().push(items.to_vec());
-            if self.fail {
-                return Err(LlmError::Failed("usage limit reached".into()));
-            }
-            let items = items
-                .iter()
-                .filter(|i| !self.drop.contains(&i.id))
-                .map(|i| Item { id: i.id, text: i.text.to_uppercase() })
-                .chain([Item { id: 999_999, text: "injected".into() }])
-                .collect();
-            Ok(Output { items, model: Some("fake-1".into()) })
-        }
-    }
-
-    fn fake(fail: bool, drop: Vec<i64>) -> Providers<Fake, NoEmbed> {
-        Providers { llm: Fake { fail, drop, calls: Mutex::new(Vec::new()) }, embedder: NoEmbed }
+    fn with(llm: Fake) -> Providers<Fake, NoEmbed> {
+        Providers { llm, embedder: NoEmbed }
     }
 
     fn setup() -> (Store, i64) {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
-        let html = "<html><body><article><h2>Intro</h2>\
-            <p>Snapshot isolation permits <code>write skew</code>, which serializable snapshot isolation prevents at commit time.</p>\
-            <pre><code>SELECT 1;</code></pre></article></body></html>";
+        let html = "<html><body><article><h2>Intro</h2>            <p>Snapshot isolation permits <code>write skew</code>, which serializable snapshot isolation prevents at commit time.</p>            <p>スナップショット分離について日本語で書かれた段落です。</p>            <pre><code>SELECT 1;</code></pre></article></body></html>";
         let f = Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html: html.into() };
         store_fetched(&s, id, &f).unwrap();
         (s, id)
@@ -148,17 +118,18 @@ mod tests {
     async fn translates_prose_blocks_and_is_idempotent() {
         let (s, id) = setup();
         translate::enqueue(&s, id, "ja").unwrap();
-        let p = fake(false, vec![]);
+        let p = with(Fake::new());
         assert!(run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap());
         assert!(!run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap(), "queue drained");
 
-        let sent = p.llm.calls.lock().unwrap()[0].clone();
-        assert_eq!(sent.len(), 2, "code block is not sent");
-        assert!(sent[1].text.contains("`write skew`"), "inline code is backticked: {}", sent[1].text);
+        let sent: Vec<serde_json::Value> = serde_json::from_str(&p.llm.calls.lock().unwrap()[0]).unwrap();
+        assert_eq!(sent.len(), 2, "code and Japanese blocks are not sent");
+        assert!(sent[1]["html"].as_str().unwrap().contains("<code>write skew</code>"), "{sent:?}");
 
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert_eq!(v.blocks[0].translation.as_deref(), Some("INTRO"));
-        assert_eq!(v.blocks[2].translation, None);
+        assert!(v.blocks[1].translation.as_deref().unwrap().starts_with("SNAPSHOT ISOLATION PERMITS WRITE SKEW"));
+        assert_eq!(v.blocks[3].translation, None);
         assert_eq!(v.jobs[0].status, "succeeded");
 
         // Re-enqueue: nothing left to translate, provider is not called again.
@@ -168,27 +139,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failure_backs_off_and_partial_output_retries_only_missing() {
+    async fn failure_backs_off_and_manual_retry_resumes() {
         let (s, id) = setup();
         translate::enqueue(&s, id, "ja").unwrap();
-        run_next(&s, &fake(true, vec![]), LLM_JOBS, &|_| {}).await.unwrap();
+        run_next(&s, &with(Fake { fail: true, ..Fake::new() }), LLM_JOBS, &|_| {}).await.unwrap();
         let job = &s.get_article(id, "ja").unwrap().unwrap().jobs[0];
         assert_eq!((job.status.as_str(), job.attempt_count), ("pending", 1));
         assert!(job.next_run_at.is_some() && job.last_error.as_deref() == Some("provider failed: usage limit reached"));
-        assert!(!run_next(&s, &fake(false, vec![]), LLM_JOBS, &|_| {}).await.unwrap(), "not ready until backoff elapses");
-
-        // Manual retry resets the backoff; provider drops the heading.
-        translate::enqueue(&s, id, "ja").unwrap();
-        let heading = s.get_article(id, "ja").unwrap().unwrap().blocks[0].id;
-        run_next(&s, &fake(false, vec![heading]), LLM_JOBS, &|_| {}).await.unwrap();
-        let v = s.get_article(id, "ja").unwrap().unwrap();
-        assert_eq!(v.jobs[0].status, "pending");
-        assert!(v.blocks[1].translation.is_some() && v.blocks[0].translation.is_none());
+        assert!(!run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap(), "not ready until backoff elapses");
 
         translate::enqueue(&s, id, "ja").unwrap();
-        let p = fake(false, vec![]);
-        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
-        assert_eq!(p.llm.calls.lock().unwrap()[0].iter().map(|i| i.id).collect::<Vec<_>>(), [heading]);
+        run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().jobs[0].status, "succeeded");
     }
 

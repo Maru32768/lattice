@@ -121,7 +121,7 @@ mod tests {
     use super::*;
     use crate::fetch::Fetched;
     use crate::ingest::store_fetched;
-    use crate::store::NewTranslation;
+    use crate::segments::Unit;
 
     #[test]
     fn rrf_prefers_agreement() {
@@ -188,7 +188,8 @@ mod tests {
         // A Japanese query matches the stored translation lexically, including a 2-char term via LIKE.
         let b = &s.get_article(id, "ja").unwrap().unwrap().blocks[1];
         let p = (b.id, crate::store::sha256_hex(&b.block.text));
-        s.insert_translations("ja", "fake", None, "v", &[NewTranslation { block_id: p.0, source_hash: &p.1, text: "可視性情報はヒープに保持される" }]).unwrap();
+        let units = [Unit { source: "x".into(), translation: "可視性情報は<b>ヒープ</b>に保持される".into() }];
+        s.insert_segments("ja", "fake", None, "v", &[(p.1.as_str(), &units[..])]).unwrap();
         for q in ["可視性情報", "ヒープ", "可視性 保持"] {
             let r = search(&s, &Offline, q, "ja", 10).await.unwrap();
             assert_eq!(r.hits.first().map(|h| h.detail.block_id), Some(p.0), "query {q}");

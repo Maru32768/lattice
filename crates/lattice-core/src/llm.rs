@@ -1,19 +1,14 @@
-//! Provider boundary. Domain code sees only these types; CLI/API specifics live in adapters
-//! (`claude.rs`). Methods are added per capability as slices need them (summarize, classify...).
+//! Provider boundary. Domain code builds prompts and validates results; adapters
+//! (`claude.rs`, later Codex / API providers) only move JSON in and out.
 
 use std::future::Future;
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Item {
-    pub id: i64,
-    pub text: String,
-}
+use serde_json::Value;
 
 #[derive(Debug, Clone)]
-pub struct Output {
-    pub items: Vec<Item>,
+pub struct Completion {
+    /// Output conforming to the requested JSON schema.
+    pub value: Value,
     /// Model that actually answered, when the provider reports it.
     pub model: Option<String>,
 }
@@ -32,6 +27,6 @@ pub trait LlmProvider: Send + Sync + 'static {
     /// Stable identifier recorded with derived data, e.g. "claude-cli".
     fn name(&self) -> &str;
 
-    /// Translate each item's text into `target_language` (BCP 47), preserving `backticked` code.
-    fn translate(&self, items: &[Item], target_language: &str) -> impl Future<Output = Result<Output, LlmError>> + Send;
+    /// One structured completion: `system` instructions, untrusted `input`, output per `schema`.
+    fn complete_json(&self, system: &str, input: &str, schema: &Value) -> impl Future<Output = Result<Completion, LlmError>> + Send;
 }
