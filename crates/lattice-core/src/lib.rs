@@ -1,6 +1,10 @@
+pub mod claude;
 pub mod extract;
 pub mod fetch;
 pub mod ingest;
 pub mod ir;
+pub mod jobs;
+pub mod llm;
 pub mod store;
+pub mod translate;
 pub mod url_norm;

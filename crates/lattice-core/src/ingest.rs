@@ -56,7 +56,7 @@ mod tests {
         assert!(needs);
         assert_eq!(store_fetched(&s, id, &page(BODY)).unwrap(), id);
 
-        let v = s.get_article(id).unwrap().unwrap();
+        let v = s.get_article(id, "ja").unwrap().unwrap();
         assert_eq!(v.article.extraction_status, "ok");
         assert_eq!(v.article.canonical_url.as_deref(), Some("https://example.com/post"));
         assert_eq!(v.blocks.len(), 2);
@@ -76,7 +76,7 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
         store_fetched(&s, id, &page("")).unwrap();
-        let a = s.get_article(id).unwrap().unwrap().article;
+        let a = s.get_article(id, "ja").unwrap().unwrap().article;
         assert_eq!((a.fetch_status.as_str(), a.extraction_status.as_str()), ("ok", "failed"));
         assert!(s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap().1);
     }

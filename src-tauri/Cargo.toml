@@ -21,5 +21,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 lattice-core = { version = "0.1.0", path = "../crates/lattice-core" }
+tokio = { version = "1.53.3", features = ["sync"] }
 
 

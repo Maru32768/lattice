@@ -7,5 +7,5 @@ description = "Run the desktop app with hot reload"
 run = "npm run tauri dev"
 
 [tasks.test]
-description = "Rust tests and frontend typecheck"
-run = ["cargo test --workspace", "npm run build"]
+description = "Rust tests, frontend tests and typecheck"
+run = ["cargo test --workspace", "npm test", "npm run build"]

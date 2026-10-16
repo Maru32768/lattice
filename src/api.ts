@@ -24,6 +24,18 @@ export interface Block {
     src?: string;
     rows?: string[][];
   };
+  translation: string | null;
+}
+
+export interface JobRow {
+  id: number;
+  type: string;
+  article_id: number | null;
+  params: string | null;
+  status: "pending" | "running" | "succeeded" | "failed";
+  attempt_count: number;
+  last_error: string | null;
+  next_run_at: string | null;
 }
 
 export interface ArticleRow {
@@ -46,12 +58,14 @@ export interface ArticleRow {
 export interface ArticleView {
   article: ArticleRow;
   blocks: Block[];
+  jobs: JobRow[];
 }
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
   listArticles: () => invoke<ArticleRow[]>("list_articles"),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
+  translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
 };

@@ -19,7 +19,8 @@
 | 本文抽出 | `dom_smoothie`（Mozilla Readability.js の Rust 移植） | 決定 | 抽出を WebView の JS で行うと untrusted HTML を UI プロセスで扱うことになるため Rust 側で行う。抽出後の HTML は `dom_query` で走査して block 化する。 |
 | HTTP | `reqwest` + native-tls | 決定 | Windows では SChannel を使う。rustls/aws-lc は Windows でビルド依存が増えるため避けた。body は 20MB を上限にする。 |
 | DB アクセス | `rusqlite`（ORM なし） | 決定 | `PRAGMA user_version` による append-only migration。 |
-| LLM 連携 | `claude -p --output-format json` を subprocess で起動する | 暫定 | 次スライスで実装。`LLMProvider` trait はこの時点で導入する（Claude／Codex の 2 実装が確実に必要になる境界のため）。 |
+| LLM 連携 | `claude -p --output-format json --json-schema` を subprocess で起動する | 決定 | ユーザーの既存の CLI ログインを使う。記事本文は untrusted なので、`--tools ""`、`--strict-mcp-config`、`--setting-sources ""` で tool・MCP・設定をすべて無効にし、空の一時ディレクトリで実行する。`LLMProvider` trait は `llm.rs`（テスト用 fake と合わせて実装が 2 つある）。 |
+| Job runner | SQLite の `processing_jobs` を、アプリ内の単一の tokio task が直列に処理する | 決定 | 起動時に `running` を `pending` に戻す。失敗時は指数 backoff（2, 4, 8… 分）、5 回で `failed`。手動の再実行で backoff を解除する。 |
 | Vector search | `sqlite-vec` | 保留 | embedding スライスで検証する。`SearchIndex` 境界の裏に隠す。 |
 | Embedding model | — | 保留 | ローカル（fastembed／ONNX、多言語 e5 系）か API かは、日英混在検索の精度を測ってから決める。 |
 | ツール管理 | mise（`mise.toml` で Node / Rust を固定し、`mise run dev` / `mise run test` を提供する） | 決定 | Vite 8 は Node 20.19 以上が必要。パッケージマネージャは npm。 |
@@ -29,7 +30,7 @@
 §18 が挙げる 6 つの interface のうち、**今 trait にするのは 0 個**。
 
 - `ArticleFetcher` / `ContentExtractor` / `ArticleRepository`: 現時点で実装は 1 つだけ。モジュール境界（`fetch.rs` / `extract.rs` / `store.rs`）で十分で、関数シグネチャはすでに差し替えやすい形になっている。
-- `LLMProvider`: Claude／Codex の実装を入れるときに trait にする。
+- `LLMProvider`: 翻訳スライスで trait にした（`llm.rs`）。
 - `SearchIndex` / `EmbeddingProvider`: semantic search スライスで導入する。
 
 §18 の「交換可能性が実際に必要な境界だけ抽象化する」を、「2 つ目の実装が現れた時点で抽象化する」と解釈した。
@@ -57,7 +58,7 @@
     - **job の粒度は article 単位にする。** block 単位で CLI を起動すると、1 記事 100 プロセスになり現実的でない。結果は block 単位で保存する。
 11. **FTS の tokenizer。** `unicode61` は日本語を分かち書きできない。`trigram` は日英両方で部分一致でき、`pg_visibility` のような識別子にも強い。その代わり 3 文字未満のクエリ（「索引」など）は LIKE にフォールバックさせる必要がある。→ 検索スライスで `trigram` を第一候補として検証する。原文 block だけでなく翻訳文も index し、日本語で英語記事を検索できるようにする。
 
-### 次スライス以降で追加するスキーマ（案）
+### 追加スキーマ（translations / processing_jobs は migration 2 で実装済み。summaries と FTS は未実装）
 
 ```sql
 CREATE TABLE translations (
@@ -90,13 +91,29 @@ CREATE TABLE processing_jobs (
 CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid='id', tokenize='trigram');
 ```
 
-## 3. Mixed mode / translation ratio の実装方針（次スライス）
+## 3. 翻訳 slice（実装済み）
 
-- 表示言語の選択は**純粋関数**にする: `(blocks, translations, ratio) -> Set<block_id>`。DB に状態を持たせない（§UC4「表示のみ切り替え」）。
-- 初期の規則: 翻訳済みの prose block のうち、先頭から一定の間隔で `ratio` に相当する割合を選ぶ（偏らないように Bresenham 風に配分する）。
-- block ごとのクリック toggle は React の state に持つ（記事を切り替えたらリセットする）。
+```
+「日本語に翻訳」→ processing_jobs（記事単位、dedup_key で冪等）→ worker
+ → 未翻訳の prose block を最大 40 件・6000 文字ずつ Claude CLI へ → batch ごとに translations へ保存
+ → `article-changed` event → Reader が再読込（翻訳は batch ごとに順次表示される）
+```
 
-## 4. Vertical slice（実装済み）
+| 対象 | ファイル |
+|---|---|
+| Provider 境界 | `crates/lattice-core/src/llm.rs` |
+| Claude CLI adapter | `crates/lattice-core/src/claude.rs` |
+| 翻訳 job | `crates/lattice-core/src/translate.rs` |
+| Job runner | `crates/lattice-core/src/jobs.rs` |
+| 表示言語の選択 | `src/mixed.ts`（テストは `src/mixed.test.ts`） |
+
+- **途中で失敗しても失われない。** batch ごとに commit するので、usage limit で止まっても、再試行で送るのは未翻訳の block だけになる。返ってきた ID は送った batch の中のものだけを受け付ける（モデルが他の block に書き込めないようにするため）。
+- **inline code を保護する。** 送信時に `inlines` の code を backtick で囲み、訳文の backtick を Reader で `<code>` に戻す。訳文の link は失われる（原文に toggle すれば辿れる）。
+- **表示言語の選択は純粋関数。** `translatedBlockIds(blocks, mode, percent)` は DB に状態を持たない（§UC4）。Mixed mode では、翻訳済みの block 数を基準に `percent` を均等に配分する（先頭に偏らない）。block ごとのクリック toggle（Enter キーでも可）は Reader の state で、記事を切り替えるとリセットされる。
+- **翻訳の鮮度。** 表示するのは、`source_hash = blocks.text_hash` を満たす最新の翻訳だけ。原文が変わった block は未翻訳として扱われる。
+- **翻訳対象。** heading / paragraph / list_item / blockquote / caption。code・table・image は対象外。
+
+## 4. 取り込み slice（実装済み）
 
 ```
 URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限・タイムアウトあり）
@@ -123,4 +140,4 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 
 ### 未実装（意図的）
 
-翻訳、要約、LLM 連携、FTS、bulk import、tags／favorite の UI、re-extract コマンド、画像の保存、snapshot の圧縮、`<meta charset>` の判定。
+要約、Codex adapter、モデル選択などの設定 UI（今は CLI の既定モデル）、FTS、bulk import、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、snapshot の圧縮、`<meta charset>` の判定、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。

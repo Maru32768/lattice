@@ -1,14 +1,23 @@
+import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { ArticleView, Block, Inline } from "./api";
+import type { ArticleView, Block, Inline, JobRow } from "./api";
+import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the system browser instead of navigating this WebView.
 function open(e: React.MouseEvent, href: string) {
   e.preventDefault();
+  e.stopPropagation();
   openUrl(href);
 }
 
-function Inlines({ block }: { block: Block }) {
+/** Mirrors translate.rs KINDS. */
+const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
+
+function Inlines({ block, translated }: { block: Block; translated: boolean }) {
+  if (translated && block.translation != null) {
+    return <>{splitBackticks(block.translation).map((s, n) => (s.code ? <code key={n}>{s.v}</code> : s.v))}</>;
+  }
   if (!block.inlines) return <>{block.text}</>;
   return (
     <>
@@ -21,22 +30,23 @@ function Inlines({ block }: { block: Block }) {
   );
 }
 
-function BlockView({ block, marker }: { block: Block; marker?: string }) {
+function BlockView({ block, marker, translated }: { block: Block; marker?: string; translated: boolean }) {
   const a = block.attrs;
+  const body = <Inlines block={block} translated={translated} />;
   switch (block.kind) {
     case "heading": {
       const H = `h${Math.min(Math.max((a.level ?? 2), 2), 6)}` as "h2";
-      return <H><Inlines block={block} /></H>;
+      return <H>{body}</H>;
     }
     case "list_item":
       return (
         <div className="li" style={{ marginLeft: `${(a.depth ?? 0) * 1.5}em` }}>
           <span className="marker">{marker}</span>
-          <span><Inlines block={block} /></span>
+          <span>{body}</span>
         </div>
       );
     case "blockquote":
-      return <blockquote><Inlines block={block} /></blockquote>;
+      return <blockquote>{body}</blockquote>;
     case "code":
       return <pre data-lang={a.lang}><code>{block.text}</code></pre>;
     case "table":
@@ -55,9 +65,9 @@ function BlockView({ block, marker }: { block: Block; marker?: string }) {
         </figure>
       );
     case "caption":
-      return <p className="caption"><Inlines block={block} /></p>;
+      return <p className="caption">{body}</p>;
     default:
-      return <p><Inlines block={block} /></p>;
+      return <p>{body}</p>;
   }
 }
 
@@ -76,14 +86,53 @@ function listMarkers(blocks: Block[]): (string | undefined)[] {
   });
 }
 
-export function Reader({ view, onToggleRead, onRetry }: {
+function TranslationStatus({ job, done, total, onTranslate }: {
+  job?: JobRow; done: number; total: number; onTranslate: () => void;
+}) {
+  const progress = `${done}/${total}`;
+  if (!job) return <button onClick={onTranslate} disabled={total === 0}>日本語に翻訳</button>;
+  if (job.status === "running") return <span className="status">翻訳中… {progress}</span>;
+  if (job.status === "pending" && !job.last_error) return <span className="status">翻訳待ち… {progress}</span>;
+  if (job.status === "succeeded" && done >= total) return <span className="status">翻訳済み {progress}</span>;
+  const retryAt = job.status === "pending" && job.next_run_at
+    ? `（${new Date(job.next_run_at).toLocaleTimeString()} に自動再試行）` : "";
+  return (
+    <span className="status error-text" title={job.last_error ?? ""}>
+      翻訳 {progress}{job.last_error && `・失敗${retryAt}: ${job.last_error}`}
+      <button onClick={onTranslate}>{job.last_error ? "再試行" : "続きを翻訳"}</button>
+    </span>
+  );
+}
+
+export function Reader({ view, mode, percent, onMode, onPercent, onToggleRead, onRetry, onTranslate }: {
   view: ArticleView;
+  mode: LanguageMode;
+  percent: number;
+  onMode: (m: LanguageMode) => void;
+  onPercent: (p: number) => void;
   onToggleRead: () => void;
   onRetry: () => void;
+  onTranslate: () => void;
 }) {
   const { article: a, blocks } = view;
+  // Per-block click overrides on top of the mode; App remounts Reader per article.
+  const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
+  const selected = translatedBlockIds(blocks, mode, percent);
+  const total = blocks.filter((b) => TRANSLATABLE.has(b.kind)).length;
+  const done = blocks.filter((b) => b.translation != null).length;
+  const job = view.jobs.find((j) => j.type === "translate");
+
+  function flip(id: number) {
+    if (window.getSelection()?.toString()) return; // selecting text is not a toggle
+    setFlipped((s) => {
+      const n = new Set(s);
+      if (!n.delete(id)) n.add(id);
+      return n;
+    });
+  }
+
   return (
     <article className="reader">
       <header>
@@ -95,6 +144,24 @@ export function Reader({ view, onToggleRead, onRetry }: {
           <a href={a.original_url} onClick={(e) => open(e, a.original_url)}>原文URL</a>
           <button onClick={onToggleRead}>{a.read_status === "read" ? "未読に戻す" : "既読にする"}</button>
         </div>
+        {!failed && (
+          <div className="toolbar">
+            <div className="segmented" role="radiogroup" aria-label="表示言語">
+              {([["original", "原文"], ["translated", "翻訳"], ["mixed", "混在"]] as const).map(([m, label]) => (
+                <button key={m} role="radio" aria-checked={mode === m} className={mode === m ? "on" : ""}
+                  onClick={() => { onMode(m); setFlipped(new Set()); }}>{label}</button>
+              ))}
+            </div>
+            {mode === "mixed" && (
+              <label className="ratio">
+                日本語 {percent}%
+                <input type="range" min={0} max={100} step={10} value={percent}
+                  onChange={(e) => onPercent(Number(e.target.value))} />
+              </label>
+            )}
+            <TranslationStatus job={job} done={done} total={total} onTranslate={onTranslate} />
+          </div>
+        )}
       </header>
       {failed && (
         <div className="error">
@@ -102,11 +169,19 @@ export function Reader({ view, onToggleRead, onRetry }: {
           <button onClick={onRetry}>再試行</button>
         </div>
       )}
-      {blocks.map((b, i) => (
-        <div key={b.id} id={`b-${b.id}`} className={`block ${b.kind}`}>
-          <BlockView block={b} marker={markers[i]} />
-        </div>
-      ))}
+      {blocks.map((b, i) => {
+        const translated = selected.has(b.id) !== flipped.has(b.id) && b.translation != null;
+        return (
+          <div key={b.id} id={`b-${b.id}`}
+            className={`block ${b.kind}${b.translation != null ? " has-translation" : ""}${translated ? " translated" : ""}`}
+            onClick={b.translation != null ? () => flip(b.id) : undefined}
+            tabIndex={b.translation != null ? 0 : undefined}
+            onKeyDown={b.translation != null ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) flip(b.id); } : undefined}
+            title={b.translation != null ? "クリックで原文／訳文を切替" : undefined}>
+            <BlockView block={b} marker={markers[i]} translated={translated} />
+          </div>
+        );
+      })}
     </article>
   );
 }

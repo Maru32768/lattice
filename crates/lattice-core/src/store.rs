@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
-use crate::ir::{ArticleIr, Block};
+use crate::ir::{ArticleIr, Block, Inline};
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[r#"
@@ -63,7 +63,42 @@ CREATE TABLE blocks (
     heading_id  INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
     UNIQUE (article_id, ordinal)
 );
+"#, r#"
+-- Derived data: several translations per block may coexist; readers pick the newest
+-- whose source_hash still matches blocks.text_hash.
+CREATE TABLE translations (
+    id              INTEGER PRIMARY KEY,
+    block_id        INTEGER NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+    target_language TEXT NOT NULL,
+    text            TEXT NOT NULL,
+    source_hash     TEXT NOT NULL,
+    provider        TEXT NOT NULL,
+    model           TEXT,
+    prompt_version  TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX translations_block ON translations(block_id, target_language);
+
+CREATE TABLE processing_jobs (
+    id            INTEGER PRIMARY KEY,
+    type          TEXT NOT NULL,
+    article_id    INTEGER REFERENCES articles(id) ON DELETE CASCADE,
+    params        TEXT,
+    dedup_key     TEXT NOT NULL UNIQUE,
+    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','succeeded','failed')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT,
+    next_run_at   TEXT,
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    started_at    TEXT,
+    completed_at  TEXT
+);
+CREATE INDEX processing_jobs_ready ON processing_jobs(status, next_run_at);
+CREATE INDEX processing_jobs_article ON processing_jobs(article_id);
 "#];
+
+/// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
+const MAX_ATTEMPTS: i64 = 5;
 
 pub type Result<T> = rusqlite::Result<T>;
 
@@ -96,12 +131,59 @@ pub struct StoredBlock {
     pub heading_id: Option<i64>,
     #[serde(flatten)]
     pub block: Block,
+    /// Current translation in the requested language, if any.
+    pub translation: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct JobRow {
+    pub id: i64,
+    #[serde(rename = "type")]
+    pub job_type: String,
+    pub article_id: Option<i64>,
+    pub params: Option<String>,
+    pub status: String,
+    pub attempt_count: i64,
+    pub last_error: Option<String>,
+    pub next_run_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ArticleView {
     pub article: ArticleRow,
     pub blocks: Vec<StoredBlock>,
+    pub jobs: Vec<JobRow>,
+}
+
+/// A block awaiting translation, as handed to the LLM.
+#[derive(Debug, Clone)]
+pub struct PendingBlock {
+    pub id: i64,
+    pub kind: String,
+    pub text: String,
+    pub text_hash: String,
+    pub inlines: Vec<Inline>,
+}
+
+pub struct NewTranslation<'a> {
+    pub block_id: i64,
+    pub source_hash: &'a str,
+    pub text: &'a str,
+}
+
+const JOB_COLS: &str = "id, type, article_id, params, status, attempt_count, last_error, next_run_at";
+
+fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
+    Ok(JobRow {
+        id: r.get(0)?,
+        job_type: r.get(1)?,
+        article_id: r.get(2)?,
+        params: r.get(3)?,
+        status: r.get(4)?,
+        attempt_count: r.get(5)?,
+        last_error: r.get(6)?,
+        next_run_at: r.get(7)?,
+    })
 }
 
 const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status";
@@ -131,6 +213,20 @@ pub fn sha256_hex(s: &str) -> String {
 
 fn json<T: Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("IR types always serialize")
+}
+
+fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
+    let s: String = r.get(i)?;
+    serde_json::from_str(&wrap(&s))
+        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e)))
+}
+
+/// NULL JSON columns decode to the type's default.
+fn opt_json_col<T: serde::de::DeserializeOwned + Default>(r: &rusqlite::Row, i: usize) -> Result<T> {
+    match r.get::<_, Option<String>>(i)? {
+        None => Ok(T::default()),
+        Some(_) => from_json_col(r, i, str::to_string),
+    }
 }
 
 impl Store {
@@ -222,8 +318,9 @@ impl Store {
                 )?;
             }
             Ok(ir) => {
-                // shortcut: blocks are replaced wholesale; once translations reference block ids,
-                // re-extraction must reuse ids of blocks whose text_hash matches.
+                // shortcut: blocks are replaced wholesale. Safe today because only never-extracted
+                // articles get here (so no translations exist); a re-extract command must reuse ids
+                // of blocks whose text_hash matches, or their translations cascade away.
                 tx.execute("DELETE FROM blocks WHERE article_id = ?1", [id])?;
                 let mut heading: Option<i64> = None;
                 {
@@ -268,7 +365,7 @@ impl Store {
         st.query_map([], article_row)?.collect()
     }
 
-    pub fn get_article(&self, id: i64) -> Result<Option<ArticleView>> {
+    pub fn get_article(&self, id: i64, target_language: &str) -> Result<Option<ArticleView>> {
         let c = self.conn();
         let Some(article) = c
             .query_row(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE id = ?1"), [id], article_row)
@@ -277,27 +374,131 @@ impl Store {
             return Ok(None);
         };
         let mut st = c.prepare(
-            "SELECT id, ordinal, heading_id, kind, text, inlines, attrs FROM blocks WHERE article_id = ?1 ORDER BY ordinal",
+            "SELECT b.id, b.ordinal, b.heading_id, b.kind, b.text, b.inlines, b.attrs,
+                    (SELECT t.text FROM translations t
+                     WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash
+                     ORDER BY t.id DESC LIMIT 1)
+             FROM blocks b WHERE b.article_id = ?1 ORDER BY b.ordinal",
         )?;
         let blocks = st
-            .query_map([id], |r| {
-                let from_json = |i: usize| -> Result<Option<String>> { r.get(i) };
-                let kind: String = r.get(3)?;
-                let parse_err = |e: serde_json::Error| rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(e));
+            .query_map(params![id, target_language], |r| {
                 Ok(StoredBlock {
                     id: r.get(0)?,
                     ordinal: r.get(1)?,
                     heading_id: r.get(2)?,
                     block: Block {
-                        kind: serde_json::from_value(serde_json::Value::String(kind)).map_err(parse_err)?,
+                        kind: from_json_col(r, 3, |s| format!("\"{s}\""))?,
                         text: r.get(4)?,
-                        inlines: from_json(5)?.map(|s| serde_json::from_str(&s)).transpose().map_err(parse_err)?.unwrap_or_default(),
-                        attrs: from_json(6)?.map(|s| serde_json::from_str(&s)).transpose().map_err(parse_err)?.unwrap_or_default(),
+                        inlines: opt_json_col(r, 5)?,
+                        attrs: opt_json_col(r, 6)?,
                     },
+                    translation: r.get(7)?,
                 })
             })?
             .collect::<Result<_>>()?;
-        Ok(Some(ArticleView { article, blocks }))
+        let mut st = c.prepare(&format!("SELECT {JOB_COLS} FROM processing_jobs WHERE article_id = ?1 ORDER BY id"))?;
+        let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
+        Ok(Some(ArticleView { article, blocks, jobs }))
+    }
+
+    /// Translatable blocks of an article lacking a current translation in `target_language`.
+    pub fn untranslated_blocks(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<Vec<PendingBlock>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT b.id, b.kind, b.text, b.text_hash, b.inlines FROM blocks b
+             WHERE b.article_id = ?1 AND NOT EXISTS (
+                 SELECT 1 FROM translations t
+                 WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash)
+             ORDER BY b.ordinal",
+        )?;
+        let rows = st.query_map(params![article_id, target_language], |r| {
+            Ok(PendingBlock {
+                id: r.get(0)?,
+                kind: r.get(1)?,
+                text: r.get(2)?,
+                text_hash: r.get(3)?,
+                inlines: opt_json_col(r, 4)?,
+            })
+        })?;
+        rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
+    }
+
+    pub fn insert_translations(
+        &self,
+        target_language: &str,
+        provider: &str,
+        model: Option<&str>,
+        prompt_version: &str,
+        items: &[NewTranslation],
+    ) -> Result<()> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        {
+            let mut ins = tx.prepare(
+                "INSERT INTO translations (block_id, target_language, text, source_hash, provider, model, prompt_version)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            )?;
+            for t in items {
+                ins.execute(params![t.block_id, target_language, t.text, t.source_hash, provider, model, prompt_version])?;
+            }
+        }
+        tx.commit()
+    }
+
+    /// Idempotent: an existing job with the same key is reset to pending (unless running).
+    pub fn enqueue_job(&self, job_type: &str, article_id: i64, params: &str, dedup_key: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO processing_jobs (type, article_id, params, dedup_key) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', next_run_at = NULL
+             WHERE status != 'running'",
+            params![job_type, article_id, params, dedup_key],
+        )?;
+        Ok(())
+    }
+
+    /// Crash recovery: anything left `running` by a previous process gets picked up again.
+    pub fn recover_running_jobs(&self) -> Result<usize> {
+        self.conn().execute("UPDATE processing_jobs SET status = 'pending' WHERE status = 'running'", [])
+    }
+
+    pub fn claim_next_job(&self) -> Result<Option<JobRow>> {
+        self.conn()
+            .query_row(
+                &format!(
+                    "UPDATE processing_jobs
+                     SET status = 'running', attempt_count = attempt_count + 1,
+                         started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                     WHERE id = (SELECT id FROM processing_jobs
+                                 WHERE status = 'pending'
+                                   AND (next_run_at IS NULL OR next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                                 ORDER BY id LIMIT 1)
+                     RETURNING {JOB_COLS}"
+                ),
+                [],
+                job_row,
+            )
+            .optional()
+    }
+
+    /// Failures retry with exponential backoff (2, 4, 8, ... minutes) until MAX_ATTEMPTS.
+    pub fn finish_job(&self, id: i64, error: Option<&str>) -> Result<()> {
+        let c = self.conn();
+        match error {
+            None => c.execute(
+                "UPDATE processing_jobs SET status = 'succeeded', last_error = NULL, next_run_at = NULL,
+                 completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+                [id],
+            )?,
+            Some(e) => c.execute(
+                "UPDATE processing_jobs SET last_error = ?2,
+                 status = CASE WHEN attempt_count >= ?3 THEN 'failed' ELSE 'pending' END,
+                 next_run_at = strftime('%Y-%m-%dT%H:%M:%fZ','now', '+' || (1 << attempt_count) || ' minutes'),
+                 completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                 WHERE id = ?1",
+                params![id, e, MAX_ATTEMPTS],
+            )?,
+        };
+        Ok(())
     }
 
     pub fn set_read_status(&self, id: i64, read: bool) -> Result<()> {
