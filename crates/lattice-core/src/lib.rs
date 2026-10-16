@@ -9,5 +9,6 @@ pub mod llm;
 pub mod search;
 pub mod segments;
 pub mod store;
+pub mod summarize;
 pub mod translate;
 pub mod url_norm;

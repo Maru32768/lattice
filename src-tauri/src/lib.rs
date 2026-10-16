@@ -12,7 +12,7 @@ use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleView, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
-use lattice_core::translate;
+use lattice_core::{summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -141,6 +141,13 @@ async fn overlay_translate(
 }
 
 #[tauri::command]
+fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
+    summarize::enqueue(&app.store, id)?;
+    app.wake_llm.notify_one();
+    Ok(())
+}
+
+#[tauri::command]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     translate::enqueue(&app.store, id, translate::TARGET_LANGUAGE)?;
     app.wake_llm.notify_one();
@@ -206,6 +213,7 @@ pub fn run() {
             get_article,
             article_for_url,
             translate_article,
+            summarize_article,
             search_blocks,
             set_read,
             db_path,

@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "get_article",
     "article_for_url",
     "translate_article",
+    "summarize_article",
     "search_blocks",
     "set_read",
     "db_path",

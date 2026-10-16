@@ -157,6 +157,16 @@ export default function App() {
     }
   }
 
+  async function summarizeArticle() {
+    if (!view) return;
+    try {
+      await api.summarizeArticle(view.article.id);
+      await loadView(view.article.id);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function retryArticle() {
     if (!view) return;
     try {
@@ -220,7 +230,7 @@ export default function App() {
         {main === "reader" && view && (
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
             onPage={() => openPage(view.article.original_url)} onLink={(href) => openPage(href)}
-            onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle}
+            onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
             onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}

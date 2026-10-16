@@ -292,6 +292,9 @@ pub(crate) mod tests {
             if self.fail {
                 return Err(LlmError::Failed("usage limit reached".into()));
             }
+            if system.contains("You summarize technical articles") {
+                return Ok(Completion { value: json!({"summary": "要約です。", "key_points": ["要点"]}), model: None });
+            }
             if system.contains("ONE long HTML unit") {
                 let (a, b) = input.split_at(input.len() / 2);
                 let s = |p: &str| json!({"source": p, "translation": p.to_uppercase()});

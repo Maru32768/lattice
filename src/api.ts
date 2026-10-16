@@ -68,6 +68,7 @@ export interface ArticleView {
   article: ArticleRow;
   blocks: Block[];
   jobs: JobRow[];
+  summary: { text: string; created_at: string; stale: boolean } | null;
 }
 
 export interface SearchHit {
@@ -109,6 +110,7 @@ export const api = {
   removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
+  summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),

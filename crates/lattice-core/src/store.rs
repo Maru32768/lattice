@@ -194,6 +194,19 @@ CREATE TABLE article_tags (
 );
 CREATE INDEX article_tags_tag ON article_tags(tag_id);
 CREATE INDEX articles_inbox ON articles(read_status, favorite, saved_at);
+"#, r#"
+CREATE TABLE summaries (
+    id             INTEGER PRIMARY KEY,
+    article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    type           TEXT NOT NULL,
+    text           TEXT NOT NULL,
+    source_hash    TEXT NOT NULL,   -- articles.content_hash when generated
+    provider       TEXT NOT NULL,
+    model          TEXT,
+    prompt_version TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX summaries_article ON summaries(article_id, type);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -288,10 +301,26 @@ pub struct JobRow {
 }
 
 #[derive(Debug, Serialize)]
+pub struct SummaryView {
+    pub text: String,
+    pub created_at: String,
+    /// The article was re-extracted with different content since this summary was made.
+    pub stale: bool,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ArticleView {
     pub article: ArticleRow,
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
+    pub summary: Option<SummaryView>,
+}
+
+pub struct SummarySource {
+    pub title: String,
+    pub content_hash: String,
+    /// (kind, text) of headings and prose blocks in order.
+    pub blocks: Vec<(String, String)>,
 }
 
 /// A block awaiting translation, as handed to the LLM.
@@ -408,6 +437,43 @@ impl Store {
     fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic mid-transaction rolls back via Drop, so the connection is still usable.
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn summary_source(&self, article_id: i64) -> Result<Option<SummarySource>> {
+        let c = self.conn();
+        let Some((title, content_hash)) = c
+            .query_row(
+                "SELECT coalesce(title, original_url), content_hash FROM articles WHERE id = ?1 AND extraction_status = 'ok'",
+                [article_id],
+                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+            )
+            .optional()?
+        else {
+            return Ok(None);
+        };
+        let mut st = c.prepare(
+            "SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal",
+        )?;
+        let blocks = st.query_map(params![article_id, json(&crate::ir::PROSE_KINDS)], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
+        Ok(Some(SummarySource { title, content_hash, blocks }))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_summary(
+        &self,
+        article_id: i64,
+        kind: &str,
+        text: &str,
+        source_hash: &str,
+        provider: &str,
+        model: Option<&str>,
+        prompt_version: &str,
+    ) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO summaries (article_id, type, text, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![article_id, kind, text, source_hash, provider, model, prompt_version],
+        )?;
+        Ok(())
     }
 
     pub fn article_row(&self, id: i64) -> Result<Option<ArticleRow>> {
@@ -641,7 +707,15 @@ impl Store {
             .collect::<Result<_>>()?;
         let mut st = c.prepare(&format!("SELECT {JOB_COLS} FROM processing_jobs WHERE article_id = ?1 ORDER BY id"))?;
         let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
-        Ok(Some(ArticleView { article, blocks, jobs }))
+        let summary = c
+            .query_row(
+                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id
+                 WHERE s.article_id = ?1 AND s.type = 'normal' ORDER BY s.id DESC LIMIT 1",
+                [id],
+                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
+            )
+            .optional()?;
+        Ok(Some(ArticleView { article, blocks, jobs, summary }))
     }
 
     /// Translatable blocks of an article lacking a current translation in `target_language`.

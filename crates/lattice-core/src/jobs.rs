@@ -13,9 +13,9 @@ use crate::fetch::HttpClient;
 use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::store::{JobRow, Store};
-use crate::translate;
+use crate::{summarize, translate};
 
-pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE];
+pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE];
 
@@ -83,6 +83,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             let target = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
             translate::run(store, &p.llm, article_id, target, progress).await
         }
+        summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
         ingest::JOB_TYPE => {
             // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.
@@ -161,6 +162,21 @@ mod tests {
         translate::enqueue(&s, id, "ja").unwrap();
         run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().jobs[0].status, "succeeded");
+    }
+
+    #[tokio::test]
+    async fn summarizes_and_marks_stale_after_content_change() {
+        let (s, id) = setup();
+        crate::summarize::enqueue(&s, id).unwrap();
+        let p = with(Fake::new());
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        let input = p.llm.calls.lock().unwrap()[0].clone();
+        assert!(input.contains("## Intro") && input.contains("write skew") && !input.contains("SELECT 1"), "{input}");
+        let v = s.get_article(id, "ja").unwrap().unwrap();
+        let sum = v.summary.unwrap();
+        assert_eq!((sum.text.as_str(), sum.stale), ("要約です。\n\n・要点", false));
+        s.exec_for_test(&format!("UPDATE articles SET content_hash = 'changed' WHERE id = {id}"));
+        assert!(s.get_article(id, "ja").unwrap().unwrap().summary.unwrap().stale);
     }
 
     #[test]

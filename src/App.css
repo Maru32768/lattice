@@ -153,3 +153,7 @@ main.has-browser .back { margin: 8px 12px 0; }
 .reader .tag { display: inline-flex; gap: 2px; align-items: center; padding: 1px 4px 1px 8px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); }
 .reader .tag button { border: 0; background: none; padding: 0 4px; color: var(--muted); }
 .reader .tags input { font: inherit; padding: 2px 8px; border: 1px dashed var(--border); border-radius: 999px; background: var(--bg); color: var(--text); width: 9em; }
+
+.reader .summary { margin: 0 0 32px; padding: 14px 18px; border-radius: 8px; background: var(--panel); font-size: 15px; }
+.reader .summary-text { margin: 0 0 10px; white-space: pre-wrap; line-height: 1.7; }
+.reader .summary-actions { display: flex; gap: 12px; align-items: center; font-size: 13px; }

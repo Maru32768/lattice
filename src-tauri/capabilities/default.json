@@ -15,6 +15,7 @@
     "allow-get-article",
     "allow-article-for-url",
     "allow-translate-article",
+    "allow-summarize-article",
     "allow-search-blocks",
     "allow-set-read",
     "allow-db-path",

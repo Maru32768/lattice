@@ -86,6 +86,23 @@ function listMarkers(blocks: Block[]): (string | undefined)[] {
   });
 }
 
+function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => void }) {
+  const job = view.jobs.find((j) => j.type === "summarize");
+  const busy = job?.status === "running" || (job?.status === "pending" && !job.last_error);
+  const failed = job && job.last_error && !busy && job.status !== "succeeded";
+  return (
+    <section className="summary" aria-label="要約">
+      {view.summary && <p className="summary-text">{view.summary.text}</p>}
+      <div className="summary-actions">
+        {busy ? <span className="status">要約を作成中…</span>
+          : <button onClick={onSummarize}>{view.summary ? "要約を作り直す" : "要約を作成"}</button>}
+        {view.summary?.stale && <span className="status">本文が更新されています</span>}
+        {failed && <span className="status error-text" title={job.last_error ?? ""}>失敗: {job.last_error}</span>}
+      </div>
+    </section>
+  );
+}
+
 function TranslationStatus({ job, done, total, onTranslate }: {
   job?: JobRow; done: number; total: number; onTranslate: () => void;
 }) {
@@ -104,8 +121,9 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onFavorite, onTag }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onSummarize, onFavorite, onTag }: {
   view: ArticleView;
+  onSummarize: () => void;
   onFavorite: () => void;
   onTag: (name: string, add: boolean) => void;
   onPage: () => void;
@@ -195,6 +213,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           </div>
         )}
       </header>
+      {!failed && <Summary view={view} onSummarize={onSummarize} />}
       {failed && (
         <div className="error">
           {a.fetch_status === "failed" ? "取得" : "本文抽出"}に失敗しました: {a.last_error}

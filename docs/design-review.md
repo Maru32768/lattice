@@ -59,7 +59,7 @@
     - **job の粒度は article 単位にする。** block 単位で CLI を起動すると、1 記事 100 プロセスになり現実的でない。結果は block 単位で保存する。
 11. **FTS の tokenizer。** `unicode61` は日本語を分かち書きできない。`trigram` は日英両方で部分一致でき、`pg_visibility` のような識別子にも強い。その代わり 3 文字未満のクエリ（「索引」など）は LIKE にフォールバックさせる必要がある。→ `trigram` を採用した（migration 3）。原文 block と翻訳文の両方を index する。
 
-### 追加スキーマ（translations / processing_jobs は migration 2 で実装済み。summaries は未実装。FTS と embeddings は migration 3）
+### 追加スキーマ（translations / processing_jobs は migration 2 で実装済み。FTS と embeddings は migration 3、summaries は migration 7）
 
 ```sql
 CREATE TABLE translations (
@@ -174,4 +174,4 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 
 ### 未実装（意図的）
 
-要約、Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
+Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
