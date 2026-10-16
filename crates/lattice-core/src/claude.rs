@@ -5,6 +5,7 @@
 //! produce a bad translation.
 
 use std::process::Stdio;
+use std::sync::RwLock;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -15,13 +16,24 @@ use crate::llm::{Completion, LlmError, LlmProvider};
 
 pub struct ClaudeCli {
     pub program: String,
-    pub model: Option<String>,
+    /// `--model` value (alias like "sonnet" or a full id); None uses the CLI's default.
+    model: RwLock<Option<String>>,
     pub timeout: Duration,
 }
 
 impl Default for ClaudeCli {
     fn default() -> Self {
-        Self { program: "claude".into(), model: None, timeout: Duration::from_secs(600) }
+        Self { program: "claude".into(), model: RwLock::new(None), timeout: Duration::from_secs(600) }
+    }
+}
+
+impl ClaudeCli {
+    pub fn set_model(&self, model: Option<String>) {
+        *self.model.write().unwrap_or_else(|e| e.into_inner()) = model.filter(|m| !m.trim().is_empty());
+    }
+
+    pub fn model(&self) -> Option<String> {
+        self.model.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 }
 
@@ -31,8 +43,8 @@ impl ClaudeCli {
         cmd.args(["-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config"])
             .args(["--tools", "", "--setting-sources", ""])
             .args(["--system-prompt", system, "--json-schema", &schema.to_string()]);
-        if let Some(m) = &self.model {
-            cmd.args(["--model", m]);
+        if let Some(m) = self.model() {
+            cmd.args(["--model", &m]);
         }
         cmd.current_dir(std::env::temp_dir())
             .stdin(Stdio::piped())

@@ -207,6 +207,11 @@ CREATE TABLE summaries (
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX summaries_article ON summaries(article_id, type);
+"#, r#"
+CREATE TABLE settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -473,6 +478,25 @@ impl Store {
             "INSERT INTO summaries (article_id, type, text, source_hash, provider, model, prompt_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             params![article_id, kind, text, source_hash, provider, model, prompt_version],
         )?;
+        Ok(())
+    }
+
+    pub fn setting(&self, key: &str) -> Result<Option<String>> {
+        self.conn().query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional()
+    }
+
+    pub fn set_setting(&self, key: &str, value: Option<&str>) -> Result<()> {
+        let c = self.conn();
+        match value {
+            Some(v) => c.execute("INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2", [key, v])?,
+            None => c.execute("DELETE FROM settings WHERE key = ?1", [key])?,
+        };
+        Ok(())
+    }
+
+    /// Consistent single-file copy of the whole database (safe while the app is running).
+    pub fn backup_to(&self, path: &Path) -> Result<()> {
+        self.conn().execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
         Ok(())
     }
 
@@ -1045,5 +1069,27 @@ mod tests {
         assert_eq!(s.list_tags().unwrap().iter().map(|t| (t.name.as_str(), t.count)).collect::<Vec<_>>(), [("Database", 2), ("Linux", 1)]);
         s.remove_tag(3, "Linux").unwrap();
         assert_eq!(s.list_tags().unwrap().len(), 1, "unused tag removed");
+    }
+
+    #[test]
+    fn settings_and_backup() {
+        let s = Store::open_in_memory().unwrap();
+        assert_eq!(s.setting("claude_model").unwrap(), None);
+        s.set_setting("claude_model", Some("sonnet")).unwrap();
+        s.set_setting("claude_model", Some("haiku")).unwrap();
+        assert_eq!(s.setting("claude_model").unwrap().as_deref(), Some("haiku"));
+        s.set_setting("claude_model", None).unwrap();
+        assert_eq!(s.setting("claude_model").unwrap(), None);
+
+        s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        let dir = std::env::temp_dir().join(format!("lattice-backup-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("b.db");
+        let _ = std::fs::remove_file(&path);
+        s.backup_to(&path).unwrap();
+        let copy = Store::open(&path).unwrap();
+        assert_eq!(copy.list_articles(&ArticleFilter::All).unwrap().len(), 1);
+        drop(copy);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

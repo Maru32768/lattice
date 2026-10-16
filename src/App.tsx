@@ -5,10 +5,11 @@ import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } 
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
 import { ImportView } from "./ImportView";
+import { SettingsView } from "./SettingsView";
 import { SearchResults } from "./SearchResults";
 import "./App.css";
 
-type Main = "empty" | "browser" | "reader" | "results" | "import";
+type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings";
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -218,6 +219,7 @@ export default function App() {
           ))}
         </ul>
         <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
+        <button className="import-link" onClick={() => setMain("settings")}>設定・バックアップ…</button>
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
       </aside>
       <main className={main === "browser" ? "has-browser" : ""}>
@@ -235,6 +237,7 @@ export default function App() {
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}
+        {main === "settings" && <SettingsView />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>
     </div>

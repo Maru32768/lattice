@@ -94,6 +94,13 @@ export interface ImportSummary {
   invalid: number;
 }
 
+export interface Settings {
+  claude_model: string | null;
+  db_path: string;
+  log_dir: string;
+  backup_dir: string;
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -114,6 +121,9 @@ export const api = {
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
+  settings: () => invoke<Settings>("get_settings"),
+  setClaudeModel: (model: string | null) => invoke<void>("set_claude_model", { model }),
+  backup: () => invoke<string>("backup_db"),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
 };

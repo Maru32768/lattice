@@ -40,7 +40,7 @@ pub async fn run_worker<L: LlmProvider, E: EmbeddingProvider>(
         match run_next(&store, &providers, types, &on_change).await {
             Ok(true) => continue,
             Ok(false) => {}
-            Err(e) => eprintln!("job runner: {e}"),
+            Err(e) => log::error!("job runner: {e}"),
         }
         tokio::select! {
             _ = wake.notified() => {}
@@ -63,7 +63,7 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     on_change(article_id);
     let result = run_job(store, providers, &job, &|| on_change(article_id)).await;
     if let Err(e) = &result {
-        eprintln!("job {} ({}) article {article_id} attempt {} failed: {e}", job.id, job.job_type, job.attempt_count);
+        log::warn!("job {} ({}) article {article_id} attempt {} failed: {e}", job.id, job.job_type, job.attempt_count);
     }
     store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
     on_change(article_id);

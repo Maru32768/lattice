@@ -157,3 +157,12 @@ main.has-browser .back { margin: 8px 12px 0; }
 .reader .summary { margin: 0 0 32px; padding: 14px 18px; border-radius: 8px; background: var(--panel); font-size: 15px; }
 .reader .summary-text { margin: 0 0 10px; white-space: pre-wrap; line-height: 1.7; }
 .reader .summary-actions { display: flex; gap: 12px; align-items: center; font-size: 13px; }
+
+.settings { max-width: 52em; margin: 0 auto; padding: 32px; display: flex; flex-direction: column; gap: 20px; font-size: 14px; }
+.settings h2 { margin: 0; font-size: 1.2em; }
+.settings h3 { margin: 0 0 6px; font-size: 1em; }
+.settings .muted { color: var(--muted); font-size: 13px; margin: 4px 0; line-height: 1.6; }
+.settings .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.settings select, .settings input { font: inherit; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); }
+.settings button { padding: 4px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.settings code { font-size: 12px; word-break: break-all; }

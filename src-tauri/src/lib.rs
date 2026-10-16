@@ -134,7 +134,7 @@ async fn overlay_translate(
             }
         }
         if let Some(e) = t.error {
-            eprintln!("overlay translate: {e}");
+            log::warn!("overlay translate: {e}");
         }
     }
     Ok(hashes.iter().map(|h| cached.get(h).cloned()).collect())
@@ -169,16 +169,70 @@ fn db_path(app: State<'_, App>) -> String {
     app.db_path.clone()
 }
 
+const MODEL_SETTING: &str = "claude_model";
+
+#[derive(serde::Serialize)]
+struct Settings {
+    claude_model: Option<String>,
+    db_path: String,
+    log_dir: String,
+    backup_dir: String,
+}
+
+#[tauri::command]
+fn get_settings(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Settings, String> {
+    Ok(Settings {
+        claude_model: app.providers.llm.model(),
+        db_path: app.db_path.clone(),
+        log_dir: handle.path().app_log_dir().map_err(err)?.display().to_string(),
+        backup_dir: backup_dir(&handle)?.display().to_string(),
+    })
+}
+
+#[tauri::command]
+fn set_claude_model(app: State<'_, App>, model: Option<String>) -> Result<(), String> {
+    let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
+    app.store.set_setting(MODEL_SETTING, model.as_deref()).map_err(err)?;
+    app.providers.llm.set_model(model);
+    Ok(())
+}
+
+fn backup_dir(handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(handle.path().app_data_dir().map_err(err)?.join("backups"))
+}
+
+/// Writes a consistent copy of the database to app_data/backups and returns its path.
+#[tauri::command]
+fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
+    let dir = backup_dir(&handle)?;
+    std::fs::create_dir_all(&dir).map_err(err)?;
+    let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
+    let path = dir.join(format!("lattice-{secs}.db"));
+    app.store.backup_to(&path).map_err(err)?;
+    log::info!("backup written to {}", path.display());
+    Ok(path.display().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .level(log::LevelFilter::Info)
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("lattice".into()) }))
+                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
+                .build(),
+        )
         .manage(Browser::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             let path = dir.join("lattice.db");
             let store = Arc::new(Store::open(&path)?);
-            let providers = Arc::new(Providers { llm: ClaudeCli::default(), embedder: LocalE5::new(dir.join("models")), http: client() });
+            let llm = ClaudeCli::default();
+            llm.set_model(store.setting(MODEL_SETTING)?);
+            let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http: client() });
 
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
@@ -217,6 +271,9 @@ pub fn run() {
             search_blocks,
             set_read,
             db_path,
+            get_settings,
+            set_claude_model,
+            backup_db,
             overlay_translate,
             browser::browser_open,
             browser::browser_set_bounds,

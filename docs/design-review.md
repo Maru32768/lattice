@@ -163,6 +163,12 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - 各 URL を pending の記事として登録し、`ingest` job を投入する。job は 4 本の network runner が並列に処理する（翻訳や embedding とは別の runner）。
 - 取得や抽出に失敗した URL は記事側に記録し（一覧に「失敗」と表示）、全体の処理は止めない。取得に成功した記事には embed job を投入する。
 
+### 運用（設定・バックアップ・ログ）
+
+- **モデル選択。** 翻訳と要約に使う Claude のモデル（`--model`）を設定画面で選び、`settings` テーブルに保存する（migration 8）。既定は CLI の既定モデル。
+- **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。
+- **ログ（§25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
+
 ### セキュリティ境界
 
 - **アプリ UI（main webview）には記事の HTML を一切入れない。** Reader が受け取るのは IR（JSON）だけで、React の text node として描画する。
@@ -174,4 +180,4 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 
 ### 未実装（意図的）
 
-Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
+Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、re-extract コマンド（block ID の再利用も含む）、画像の保存。
