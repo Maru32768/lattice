@@ -1,3 +1,5 @@
+mod browser;
+
 use std::sync::Arc;
 
 use lattice_core::claude::ClaudeCli;
@@ -6,10 +8,19 @@ use lattice_core::fetch::{HttpClient, client};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
+use lattice_core::segments::{self, Unit};
+use lattice_core::url_norm::normalize;
 use lattice_core::store::{ArticleRow, ArticleView, Store};
 use lattice_core::{ingest, translate};
-use tauri::{Emitter, Manager, State};
-use tokio::sync::Notify;
+use tauri::{Emitter, Manager, State, Webview};
+use tokio::sync::{Notify, Semaphore};
+
+use browser::Browser;
+
+/// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
+const OVERLAY_LLM_CONCURRENCY: usize = 3;
+const OVERLAY_MAX_SNIPPETS: usize = 24;
+const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
 
 struct App {
     store: Arc<Store>,
@@ -17,6 +28,7 @@ struct App {
     providers: Arc<Providers<ClaudeCli, LocalE5>>,
     wake_llm: Arc<Notify>,
     wake_local: Arc<Notify>,
+    overlay_llm: Semaphore,
     db_path: String,
 }
 
@@ -44,6 +56,55 @@ fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, Stri
 }
 
 #[tauri::command]
+fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<i64>, String> {
+    let Ok(norm) = normalize(&url) else { return Ok(None) };
+    app.store.find_article_by_url(norm.as_str()).map_err(err)
+}
+
+/// Translation for the page overlay: cached units where available, the LLM for the rest.
+/// Snippets come from an untrusted page, so size and count are bounded.
+#[tauri::command]
+async fn overlay_translate(
+    app: State<'_, App>,
+    browser: State<'_, Browser>,
+    webview: Webview,
+    snippets: Vec<String>,
+) -> Result<Vec<Option<Vec<Unit>>>, String> {
+    browser::ensure_translation_allowed(&webview, &browser)?;
+    if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
+        return Err("request too large".into());
+    }
+    let target = translate::TARGET_LANGUAGE;
+    let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
+    let mut cached = app.store.cached_segments(&hashes, target).map_err(err)?;
+    let mut misses: Vec<usize> = Vec::new();
+    for (i, h) in hashes.iter().enumerate() {
+        if !cached.contains_key(h) && !misses.iter().any(|&j| hashes[j] == *h) {
+            misses.push(i);
+        }
+    }
+    if !misses.is_empty() {
+        let _permit = app.overlay_llm.acquire().await.map_err(err)?;
+        let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
+        let llm = &app.providers.llm;
+        let t = segments::translate_snippets(llm, &batch, translate::SOURCE_LANGUAGE, target).await;
+        let rows: Vec<(&str, &[Unit])> =
+            misses.iter().zip(&t.results).filter_map(|(&i, r)| r.as_deref().map(|u| (hashes[i].as_str(), u))).collect();
+        use lattice_core::llm::LlmProvider;
+        app.store.insert_segments(target, llm.name(), t.model.as_deref(), segments::PROMPT_VERSION, &rows).map_err(err)?;
+        for (&i, r) in misses.iter().zip(t.results) {
+            if let Some(units) = r {
+                cached.insert(hashes[i].clone(), units);
+            }
+        }
+        if let Some(e) = t.error {
+            eprintln!("overlay translate: {e}");
+        }
+    }
+    Ok(hashes.iter().map(|h| cached.get(h).cloned()).collect())
+}
+
+#[tauri::command]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     translate::enqueue(&app.store, id, translate::TARGET_LANGUAGE)?;
     app.wake_llm.notify_one();
@@ -68,7 +129,7 @@ fn db_path(app: State<'_, App>) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
+        .manage(Browser::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -88,11 +149,25 @@ pub fn run() {
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
 
-            app.manage(App { store, http: client(), providers, wake_llm, wake_local, db_path: path.display().to_string() });
+            app.manage(App { store, http: client(), providers, wake_llm, wake_local, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), db_path: path.display().to_string() });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            save_url, list_articles, get_article, translate_article, search_blocks, set_read, db_path
+            save_url,
+            list_articles,
+            get_article,
+            article_for_url,
+            translate_article,
+            search_blocks,
+            set_read,
+            db_path,
+            overlay_translate,
+            browser::browser_open,
+            browser::browser_set_bounds,
+            browser::browser_hide,
+            browser::browser_go,
+            browser::browser_set_translation,
+            browser::overlay_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

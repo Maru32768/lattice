@@ -377,6 +377,17 @@ impl Store {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// The saved article for a normalized URL (matching either its own or its canonical URL).
+    pub fn find_article_by_url(&self, normalized_url: &str) -> Result<Option<i64>> {
+        self.conn()
+            .query_row(
+                "SELECT id FROM articles WHERE normalized_url = ?1 OR canonical_url = ?1 ORDER BY id LIMIT 1",
+                [normalized_url],
+                |r| r.get(0),
+            )
+            .optional()
+    }
+
     /// Returns the article id and whether it still needs fetching/extraction.
     pub fn upsert_pending(&self, original_url: &str, normalized_url: &str, domain: &str) -> Result<(i64, bool)> {
         let c = self.conn();

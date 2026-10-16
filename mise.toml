@@ -8,4 +8,4 @@ run = "npm run tauri dev"
 
 [tasks.test]
 description = "Rust tests, frontend tests and typecheck"
-run = ["cargo test --workspace", "npm test", "npm run build"]
+run = ["npm run build:overlay", "cargo test --workspace", "npm test", "npm run build"]

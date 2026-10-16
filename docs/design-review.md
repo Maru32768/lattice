@@ -92,27 +92,31 @@ CREATE TABLE processing_jobs (
 CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid='id', tokenize='trigram');
 ```
 
-## 3. 翻訳 slice（実装済み）
+## 3. 翻訳 slice（実装済み。Mazelingo 方式）
+
+翻訳アルゴリズムと表示は Mazelingo（MIT, © 2026 Yeq6X）を移植した。移植したコードのファイル冒頭に出典を記載している。
 
 ```
-「日本語に翻訳」→ processing_jobs（記事単位、dedup_key で冪等）→ worker
- → 未翻訳の prose block を最大 40 件・6000 文字ずつ Claude CLI へ → batch ごとに translations へ保存
- → `article-changed` event → Reader が再読込（翻訳は batch ごとに順次表示される）
+末端 block の inline HTML 断片（属性は除去、a[href] は残す、画像などは ⟦n⟧）
+ → LLM: 断片を「読みの単位」（文。長い文は節）に分割し、単位ごとに HTML を保ったまま翻訳
+ → 1:1 で照合（重複・不正・範囲外は破棄）→ 欠けた断片は 1 件ずつ再試行
+ → 長すぎる単位（CJK は 45 字、それ以外は 140 字を超えるもの）は再分割を 1 回だけ依頼。連結すると元の HTML に完全に戻る場合だけ採用
+ → segment_translations（本文の正規化テキストの hash をキーとするキャッシュ）
 ```
 
 | 対象 | ファイル |
 |---|---|
-| Provider 境界 | `crates/lattice-core/src/llm.rs` |
+| 読みの単位での翻訳（prompt・照合・再試行・再分割） | `crates/lattice-core/src/segments.rs` |
+| Provider 境界（汎用の structured JSON 補完） | `crates/lattice-core/src/llm.rs` |
 | Claude CLI adapter | `crates/lattice-core/src/claude.rs` |
-| 翻訳 job | `crates/lattice-core/src/translate.rs` |
-| Job runner | `crates/lattice-core/src/jobs.rs` |
-| 表示言語の選択 | `src/mixed.ts`（テストは `src/mixed.test.ts`） |
+| 記事単位の翻訳 job（Reader 用の事前翻訳） | `crates/lattice-core/src/translate.rs`、`jobs.rs` |
+| ページ overlay | `src/overlay/`（`dom.ts`、`logic.ts`、`index.ts`） |
 
-- **途中で失敗しても失われない。** batch ごとに commit するので、usage limit で止まっても、再試行で送るのは未翻訳の block だけになる。返ってきた ID は送った batch の中のものだけを受け付ける（モデルが他の block に書き込めないようにするため）。
-- **inline code を保護する。** 送信時に `inlines` の code を backtick で囲み、訳文の backtick を Reader で `<code>` に戻す。訳文の link は失われる（原文に toggle すれば辿れる）。
-- **表示言語の選択は純粋関数。** `translatedBlockIds(blocks, mode, percent)` は DB に状態を持たない（§UC4）。Mixed mode では、翻訳済みの block 数を基準に `percent` を均等に配分する（先頭に偏らない）。block ごとのクリック toggle（Enter キーでも可）は Reader の state で、記事を切り替えるとリセットされる。
-- **翻訳の鮮度。** 表示するのは、`source_hash = blocks.text_hash` を満たす最新の翻訳だけ。原文が変わった block は未翻訳として扱われる。
-- **翻訳対象。** heading / paragraph / list_item / blockquote / caption。code・table・image は対象外。
+- **キャッシュは本文の hash 1 つで共有する。** hash は `segments::source_hash`（タグを除き、⟦n⟧ を除き、空白を正規化したテキストの sha256）で、`blocks.text_hash` と一致する。ページ上の overlay で訳した段落は、Index に追加した記事の Reader と全文検索にそのまま使われ、記事単位の翻訳 job の結果も overlay で使われる（実機で確認済み）。記事から独立しているので、再抽出しても訳は失われない。
+- **途中で失敗しても失われない。** batch ごとに保存するので、再試行で送るのは未翻訳の分だけになる。provider が全滅した batch は job を失敗させて backoff する。
+- **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
+- **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
+- **翻訳対象。** 英語の prose だけを訳す（日本語が優勢な block は送らない）。code / pre / nav / header / footer / aside、`translate="no"` は対象外。
 
 ## 4. 検索 slice（実装済み）
 
@@ -150,16 +154,18 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 | URL 正規化 | `crates/lattice-core/src/url_norm.rs` |
 | スキーマ・リポジトリ | `crates/lattice-core/src/store.rs` |
 | パイプライン | `crates/lattice-core/src/ingest.rs` |
-| Tauri commands | `src-tauri/src/lib.rs` |
+| Tauri commands・アプリ内ブラウザ | `src-tauri/src/lib.rs`、`src-tauri/src/browser.rs` |
 | Reader | `src/Reader.tsx` |
 
 ### セキュリティ境界
 
-- 記事 HTML は WebView に渡さない。UI が受け取るのは IR（JSON）だけで、React の text node として描画する。`dangerouslySetInnerHTML` は使わない。
-- link は http(s) のものだけを残す（`javascript:` などは text に落とす）。クリックするとシステムのブラウザで開き、WebView は遷移しない。
-- 厳格な CSP を設定する（`default-src 'self'`）。リモート画像は読み込まない（tracking 対策。画像の保存方式は §26.10 で保留）。
-- Tauri capability は `core:default` と `opener:default` のみ。
+- **アプリ UI（main webview）には記事の HTML を一切入れない。** Reader が受け取るのは IR（JSON）だけで、React の text node として描画する。
+- **元ページは別の child webview（`browser`）に表示する。** これはリモート origin なので、capability `browser-overlay` で許可しているのは `overlay_config` と `overlay_translate` の 2 つだけ（`build.rs` で全コマンドの permission を生成している）。ほかのコマンドはページ側から呼べないことを実機で確認した（例: `db_path not allowed on ... webview "browser"`）。app UI 用の capability は `webviews: ["main"]` かつ local origin に限定している。
+- `overlay_translate` は、ユーザーが翻訳を ON にしている間だけ、browser webview からの呼び出しにだけ応答する。件数（24 件まで）とサイズ（1 断片 20KB まで）にも上限がある。ページ側の script が呼べてしまう点は許容しており、その影響は LLM の使用量に限られる（CLI は tool なしで実行する）。
+- **LLM の出力は untrusted HTML として扱う。** overlay は sanitize（許可した inline タグ、http(s) の link、イベントハンドラの除去）してから差し込む。
+- **browser webview は http(s) 以外に遷移しない**（`on_navigation`）。新しいウィンドウを開くリンクは同じ webview で開く。
+- main webview の CSP は `default-src 'self'` で、Reader はリモート画像を読み込まない。
 
 ### 未実装（意図的）
 
-要約、Codex adapter、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、bulk import、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。
+要約、Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、検索の metadata filter、reranker、モデル選択などの設定 UI（今は CLI の既定モデル）、bulk import、tags／favorite の UI、re-extract コマンド（block ID の再利用も含む）、画像の保存、ファイルへのログ出力（今は stderr と `processing_jobs` の `last_error` / `attempt_count`）。

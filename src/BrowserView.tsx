@@ -1,0 +1,98 @@
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { browser, type Bounds } from "./api";
+
+let lastOpened: BrowseTarget | null = null;
+
+export interface BrowseTarget {
+  url: string;
+  /** Text of a block to scroll to after load (search-result jumps). */
+  focus?: string;
+  /** Bumped to force re-navigation to the same URL. */
+  seq: number;
+}
+
+export interface PageState {
+  url: string;
+  title: string;
+  loading: boolean;
+}
+
+export interface OverlaySettings {
+  enabled: boolean;
+  percent: number;
+}
+
+/**
+ * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
+ * box. Page content never enters this (app) webview.
+ */
+export function BrowserView({ target, page, savedId, saving, overlay, onOverlay, onSave, onReader, onError }: {
+  target: BrowseTarget;
+  page: PageState | null;
+  savedId: number | null;
+  saving: boolean;
+  overlay: OverlaySettings;
+  onOverlay: (o: OverlaySettings) => void;
+  onSave: () => void;
+  onReader: () => void;
+  onError: (e: string) => void;
+}) {
+  const host = useRef<HTMLDivElement>(null);
+  const bounds = (): Bounds => {
+    const r = host.current!.getBoundingClientRect();
+    return { x: r.left, y: r.top, width: r.width, height: r.height };
+  };
+
+  useLayoutEffect(() => {
+    // Open each target once: returning to the browser view (or a StrictMode re-run) must not
+    // reload the page, which would also cancel the first load and lose its scroll target.
+    if (target === lastOpened) return;
+    lastOpened = target;
+    browser.open(target.url, bounds(), target.focus).catch((e) => onError(String(e)));
+  }, [target]);
+
+  useEffect(() => {
+    const sync = () => browser.setBounds(bounds()).catch(() => {});
+    const ro = new ResizeObserver(sync);
+    ro.observe(host.current!);
+    window.addEventListener("resize", sync);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", sync);
+      browser.hide().catch(() => {});
+    };
+  }, []);
+
+  return (
+    <div className="browser">
+      <div className="browser-bar">
+        <div className="nav">
+          <button onClick={() => browser.go("back")} aria-label="戻る" title="戻る">←</button>
+          <button onClick={() => browser.go("forward")} aria-label="進む" title="進む">→</button>
+          <button onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み">⟳</button>
+        </div>
+        <div className="location" title={page?.url ?? target.url}>
+          <span className="page-title">{page?.loading ? "読み込み中…" : page?.title || page?.url || target.url}</span>
+          <span className="page-url">{page?.url ?? target.url}</span>
+        </div>
+        <div className="actions">
+          <button className={overlay.enabled ? "on" : ""} aria-pressed={overlay.enabled}
+            onClick={() => onOverlay({ ...overlay, enabled: !overlay.enabled })}>
+            {overlay.enabled ? "翻訳中" : "このページを翻訳"}
+          </button>
+          {overlay.enabled && (
+            <label className="ratio">
+              日本語 {overlay.percent}%
+              <input type="range" min={0} max={100} step={10} value={overlay.percent}
+                onChange={(e) => onOverlay({ ...overlay, percent: Number(e.target.value) })} />
+            </label>
+          )}
+          {savedId != null
+            ? <><span className="saved">Index 済み</span><button onClick={onReader}>リーダー表示</button></>
+            : <button onClick={onSave} disabled={saving || !page || page.loading}>{saving ? "追加中…" : "Index に追加"}</button>}
+        </div>
+      </div>
+      <div ref={host} className="browser-host" />
+    </div>
+  );
+}

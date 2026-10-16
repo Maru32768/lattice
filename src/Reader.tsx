@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { createContext, useContext, useRef, useState } from "react";
 import type { ArticleView, Block, Inline, JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
-// and links open in the system browser instead of navigating this WebView.
-function open(e: React.MouseEvent, href: string) {
-  e.preventDefault();
-  e.stopPropagation();
-  openUrl(href);
+// and links open in the in-app browser instead of navigating this (app) WebView.
+const OpenLink = createContext<(href: string) => void>(() => {});
+
+function Link({ href, children }: { href: string; children: React.ReactNode }) {
+  const openLink = useContext(OpenLink);
+  return <a href={href} title={href} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openLink(href); }}>{children}</a>;
 }
 
 /** Mirrors ir.rs PROSE_KINDS. */
@@ -23,7 +23,7 @@ function Inlines({ block, translated }: { block: Block; translated: boolean }) {
     <>
       {block.inlines.map((i: Inline, n) =>
         i.t === "code" ? <code key={n}>{i.v}</code>
-        : i.t === "link" ? <a key={n} href={i.href} title={i.href} onClick={(e) => open(e, i.href)}>{i.v}</a>
+        : i.t === "link" ? <Link key={n} href={i.href}>{i.v}</Link>
         : i.v,
       )}
     </>
@@ -61,7 +61,7 @@ function BlockView({ block, marker, translated }: { block: Block; marker?: strin
       // shortcut: remote images are not loaded (tracking, CSP); download into the store when image saving lands.
       return (
         <figure className="image">
-          <a href={a.src} onClick={(e) => open(e, a.src!)}>画像: {block.text || a.src}</a>
+          <Link href={a.src!}>画像: {block.text || a.src}</Link>
         </figure>
       );
     case "caption":
@@ -104,9 +104,10 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, focusBlock, onMode, onPercent, onToggleRead, onRetry, onTranslate }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate }: {
   view: ArticleView;
-  focusBlock: number | null;
+  onPage: () => void;
+  onLink: (href: string) => void;
   mode: LanguageMode;
   percent: number;
   onMode: (m: LanguageMode) => void;
@@ -125,13 +126,26 @@ export function Reader({ view, mode, percent, focusBlock, onMode, onPercent, onT
   const done = blocks.filter((b) => b.translation != null).length;
   const job = view.jobs.find((j) => j.type === "translate");
 
-  // Search-result jump: bring the matched block into view once it is rendered.
-  useEffect(() => {
-    if (focusBlock != null) document.getElementById(`b-${focusBlock}`)?.scrollIntoView({ block: "center" });
-  }, [focusBlock, view.article.id]);
+  // Hover shows the other language; clicking that tooltip flips the block (as in the page view).
+  const [tip, setTip] = useState<{ id: number; text: string; translated: boolean; x: number; y: number } | null>(null);
+  const timers = useRef({ show: 0, hide: 0 });
+
+  function hover(e: React.MouseEvent, b: Block, translated: boolean) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    clearTimeout(timers.current.show);
+    clearTimeout(timers.current.hide);
+    timers.current.show = window.setTimeout(() => {
+      setTip({ id: b.id, text: translated ? b.text : b.translation ?? "", translated, x, y: rect.top });
+    }, 300);
+  }
+
+  function leave() {
+    clearTimeout(timers.current.show);
+    timers.current.hide = window.setTimeout(() => setTip(null), 150);
+  }
 
   function flip(id: number) {
-    if (window.getSelection()?.toString()) return; // selecting text is not a toggle
     setFlipped((s) => {
       const n = new Set(s);
       if (!n.delete(id)) n.add(id);
@@ -147,7 +161,7 @@ export function Reader({ view, mode, percent, focusBlock, onMode, onPercent, onT
           <span>{a.site_name ?? a.domain}</span>
           {a.author && <span>{a.author}</span>}
           {a.published_at && <span>{a.published_at.slice(0, 10)}</span>}
-          <a href={a.original_url} onClick={(e) => open(e, a.original_url)}>原文URL</a>
+          <button onClick={onPage}>ページ表示</button>
           <button onClick={onToggleRead}>{a.read_status === "read" ? "未読に戻す" : "既読にする"}</button>
         </div>
         {!failed && (
@@ -175,19 +189,31 @@ export function Reader({ view, mode, percent, focusBlock, onMode, onPercent, onT
           <button onClick={onRetry}>再試行</button>
         </div>
       )}
-      {blocks.map((b, i) => {
-        const translated = selected.has(b.id) !== flipped.has(b.id) && b.translation != null;
-        return (
-          <div key={b.id} id={`b-${b.id}`}
-            className={`block ${b.kind}${b.translation != null ? " has-translation" : ""}${translated ? " translated" : ""}${b.id === focusBlock ? " focused" : ""}`}
-            onClick={b.translation != null ? () => flip(b.id) : undefined}
-            tabIndex={b.translation != null ? 0 : undefined}
-            onKeyDown={b.translation != null ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) flip(b.id); } : undefined}
-            title={b.translation != null ? "クリックで原文／訳文を切替" : undefined}>
-            <BlockView block={b} marker={markers[i]} translated={translated} />
-          </div>
-        );
-      })}
+      <OpenLink.Provider value={onLink}>
+        {blocks.map((b, i) => {
+          const has = b.translation != null;
+          const translated = selected.has(b.id) !== flipped.has(b.id) && has;
+          return (
+            <div key={b.id} id={`b-${b.id}`}
+              className={`block ${b.kind}${has ? " has-translation" : ""}${translated ? " translated" : ""}`}
+              onMouseEnter={has ? (e) => hover(e, b, translated) : undefined}
+              onMouseLeave={has ? leave : undefined}
+              tabIndex={has ? 0 : undefined}
+              onKeyDown={has ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) flip(b.id); } : undefined}
+              aria-description={has ? "Enter で原文／訳文を切替" : undefined}>
+              <BlockView block={b} marker={markers[i]} translated={translated} />
+            </div>
+          );
+        })}
+      </OpenLink.Provider>
+      {tip && (
+        <div className="reader-tip" role="tooltip" style={{ left: Math.max(8, tip.x - 24), top: tip.y }}
+          onMouseEnter={() => clearTimeout(timers.current.hide)} onMouseLeave={leave}
+          onClick={() => { flip(tip.id); setTip(null); }}>
+          {tip.text}
+          <span className="hint">{tip.translated ? "クリックで原文に切替" : "クリックで訳文に切替"}</span>
+        </div>
+      )}
     </article>
   );
 }

@@ -24,3 +24,6 @@ dist-ssr
 
 # Rust workspace
 /target/
+
+# Built overlay bundle (npm run build:overlay)
+/src-tauri/overlay-dist/

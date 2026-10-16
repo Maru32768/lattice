@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/remote-schema.json",
+  "identifier": "browser-overlay",
+  "description": "Remote pages in the in-app browser: only the translation overlay's two commands",
+  "webviews": ["browser"],
+  "remote": { "urls": ["https://*", "http://*"] },
+  "permissions": ["allow-overlay-config", "allow-overlay-translate"]
+}

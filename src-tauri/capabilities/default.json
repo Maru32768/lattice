@@ -1,10 +1,22 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "The app UI (local origin only)",
+  "webviews": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "allow-save-url",
+    "allow-list-articles",
+    "allow-get-article",
+    "allow-article-for-url",
+    "allow-translate-article",
+    "allow-search-blocks",
+    "allow-set-read",
+    "allow-db-path",
+    "allow-browser-open",
+    "allow-browser-set-bounds",
+    "allow-browser-hide",
+    "allow-browser-go",
+    "allow-browser-set-translation"
   ]
 }

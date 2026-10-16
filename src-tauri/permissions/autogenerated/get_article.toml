@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-article"
+description = "Enables the get_article command without any pre-configured scope."
+commands.allow = ["get_article"]
+
+[[permission]]
+identifier = "deny-get-article"
+description = "Denies the get_article command without any pre-configured scope."
+commands.deny = ["get_article"]

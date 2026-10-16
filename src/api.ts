@@ -77,6 +77,13 @@ export interface SearchResult {
   semantic_error: string | null;
 }
 
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
   listArticles: () => invoke<ArticleRow[]>("list_articles"),
@@ -85,4 +92,15 @@ export const api = {
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
+  articleForUrl: (url: string) => invoke<number | null>("article_for_url", { url }),
+};
+
+/** The in-app browser (a native child webview positioned over a placeholder element). */
+export const browser = {
+  open: (url: string, bounds: Bounds, focusText?: string) =>
+    invoke<void>("browser_open", { url, bounds, focusText: focusText ?? null }),
+  setBounds: (bounds: Bounds) => invoke<void>("browser_set_bounds", { bounds }),
+  hide: () => invoke<void>("browser_hide"),
+  go: (action: "back" | "forward" | "reload") => invoke<void>("browser_go", { action }),
+  setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
 };

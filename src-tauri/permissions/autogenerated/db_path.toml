@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-db-path"
+description = "Enables the db_path command without any pre-configured scope."
+commands.allow = ["db_path"]
+
+[[permission]]
+identifier = "deny-db-path"
+description = "Denies the db_path command without any pre-configured scope."
+commands.deny = ["db_path"]
