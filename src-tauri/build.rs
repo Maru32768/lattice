@@ -2,6 +2,7 @@
 // grant the app UI everything and remote pages only the two overlay commands.
 const COMMANDS: &[&str] = &[
     "save_url",
+    "import_urls",
     "list_articles",
     "get_article",
     "article_for_url",

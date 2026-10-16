@@ -377,6 +377,10 @@ impl Store {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    pub fn article_url(&self, id: i64) -> Result<Option<String>> {
+        self.conn().query_row("SELECT original_url FROM articles WHERE id = ?1", [id], |r| r.get(0)).optional()
+    }
+
     /// The saved article for a normalized URL (matching either its own or its canonical URL).
     pub fn find_article_by_url(&self, normalized_url: &str) -> Result<Option<i64>> {
         self.conn()

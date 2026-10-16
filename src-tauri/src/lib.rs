@@ -4,14 +4,15 @@ use std::sync::Arc;
 
 use lattice_core::claude::ClaudeCli;
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
-use lattice_core::fetch::{HttpClient, client};
+use lattice_core::fetch::client;
 use lattice_core::ir::PROSE_KINDS;
-use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, Providers};
+use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
 use lattice_core::store::{ArticleRow, ArticleView, Store};
-use lattice_core::{ingest, translate};
+use lattice_core::ingest::{self, ImportSummary};
+use lattice_core::translate;
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -21,13 +22,16 @@ use browser::Browser;
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
 const OVERLAY_MAX_SNIPPETS: usize = 24;
 const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
+/// Parallel fetchers for bulk import.
+// shortcut: no per-host politeness limit; add one if imports hammer a single site.
+const NET_WORKERS: usize = 4;
 
 struct App {
     store: Arc<Store>,
-    http: HttpClient,
     providers: Arc<Providers<ClaudeCli, LocalE5>>,
     wake_llm: Arc<Notify>,
     wake_local: Arc<Notify>,
+    wake_net: Vec<Arc<Notify>>,
     overlay_llm: Semaphore,
     db_path: String,
 }
@@ -38,11 +42,20 @@ fn err(e: impl ToString) -> String {
 
 #[tauri::command]
 async fn save_url(app: State<'_, App>, url: String) -> Result<i64, String> {
-    let id = ingest::save_url(&app.store, &app.http, &url).await?;
+    let id = ingest::save_url(&app.store, &app.providers.http, &url).await?;
     // Index every saved article; it is local and free, unlike translation.
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
     app.wake_local.notify_one();
     Ok(id)
+}
+
+/// Bulk import: any text containing URLs (list, bookmarks HTML, CSV, JSON). Fetching happens
+/// in the background; failures are recorded per article and never stop the rest.
+#[tauri::command]
+fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, String> {
+    let summary = ingest::enqueue_urls(&app.store, &ingest::extract_urls(&text))?;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -135,25 +148,33 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let path = dir.join("lattice.db");
             let store = Arc::new(Store::open(&path)?);
-            let providers = Arc::new(Providers { llm: ClaudeCli::default(), embedder: LocalE5::new(dir.join("models")) });
+            let providers = Arc::new(Providers { llm: ClaudeCli::default(), embedder: LocalE5::new(dir.join("models")), http: client() });
 
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
-            for (types, wake) in [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())] {
-                let handle = app.handle().clone();
+            let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
+            let runners = [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())]
+                .into_iter()
+                .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
+            for (types, wake) in runners {
+                let (handle, embedder_wake) = (app.handle().clone(), wake_local.clone());
                 let on_change = move |article_id: i64| {
                     let _ = handle.emit("article-changed", article_id);
+                    if types == NET_JOBS {
+                        embedder_wake.notify_one(); // a fetched article has just queued its embed job
+                    }
                 };
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
 
-            app.manage(App { store, http: client(), providers, wake_llm, wake_local, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), db_path: path.display().to_string() });
+            app.manage(App { store, providers, wake_llm, wake_local, wake_net, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), db_path: path.display().to_string() });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             save_url,
+            import_urls,
             list_articles,
             get_article,
             article_for_url,

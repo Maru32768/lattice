@@ -134,3 +134,13 @@ main.has-browser .back { margin: 8px 12px 0; }
 }
 .reader-tip:hover { background: var(--panel); }
 .reader-tip .hint { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); }
+
+.import-link { margin: 0; padding: 8px 12px; border: 0; border-top: 1px solid var(--border); background: none; text-align: left; color: var(--accent); font-size: 13px; }
+.import { max-width: 52em; margin: 0 auto; padding: 32px; display: flex; flex-direction: column; gap: 12px; }
+.import h2 { margin: 0; font-size: 1.2em; }
+.import .muted { color: var(--muted); font-size: 13px; margin: 0; line-height: 1.6; }
+.import textarea { font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); resize: vertical; }
+.import .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.import button { padding: 4px 14px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.import .file { font-size: 13px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.error-text { color: var(--error); }

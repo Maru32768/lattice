@@ -77,6 +77,13 @@ export interface SearchResult {
   semantic_error: string | null;
 }
 
+export interface ImportSummary {
+  found: number;
+  queued: number;
+  existing: number;
+  invalid: number;
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -92,6 +99,7 @@ export const api = {
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
+  importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<number | null>("article_for_url", { url }),
 };
 

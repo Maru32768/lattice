@@ -4,10 +4,11 @@ import { api, browser, type ArticleRow, type ArticleView, type SearchHit, type S
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
+import { ImportView } from "./ImportView";
 import { SearchResults } from "./SearchResults";
 import "./App.css";
 
-type Main = "empty" | "browser" | "reader" | "results";
+type Main = "empty" | "browser" | "reader" | "results" | "import";
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -35,6 +36,12 @@ export default function App() {
 
   const fail = (e: unknown) => setError(String(e));
   const refresh = () => api.listArticles().then(setArticles).catch(fail);
+  // Background jobs (bulk import fetches) report every article; coalesce list reloads.
+  const refreshTimer = useRef(0);
+  const refreshSoon = () => {
+    clearTimeout(refreshTimer.current);
+    refreshTimer.current = window.setTimeout(refresh, 500);
+  };
   const loadView = (id: number) => {
     viewId.current = id;
     return api.getArticle(id).then((v) => { if (viewId.current === id) setView(v); }).catch(fail);
@@ -46,6 +53,7 @@ export default function App() {
     const subs = [
       listen<number>("article-changed", (e) => {
         if (e.payload === viewId.current) loadView(e.payload);
+        refreshSoon();
       }),
       listen<{ url: string; loading: boolean }>("browser-page", (e) => {
         setPage((p) => ({ url: e.payload.url, loading: e.payload.loading, title: p?.url === e.payload.url ? p.title : "" }));
@@ -162,6 +170,7 @@ export default function App() {
             </li>
           ))}
         </ul>
+        <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
       </aside>
       <main className={main === "browser" ? "has-browser" : ""}>
@@ -176,6 +185,7 @@ export default function App() {
             onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
+        {main === "import" && <ImportView onImported={refresh} />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>
     </div>

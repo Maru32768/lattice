@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "allow-save-url",
+    "allow-import-urls",
     "allow-list-articles",
     "allow-get-article",
     "allow-article-for-url",

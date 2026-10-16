@@ -1,6 +1,7 @@
 //! In-process job runners. The queue lives in SQLite, so jobs survive crashes and restarts.
-//! Each runner drains a subset of job types serially: LLM jobs (rate-limited CLIs) and local
-//! jobs (embeddings) run on separate runners so a long translation queue never delays indexing.
+//! Each runner drains a subset of job types serially: LLM jobs (rate-limited CLIs), local jobs
+//! (embeddings) and network jobs (bulk-import fetches, several runners) run separately so a long
+//! translation queue never delays indexing or importing.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,12 +9,15 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use crate::embed::{self, EmbeddingProvider};
+use crate::fetch::HttpClient;
+use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::store::{JobRow, Store};
 use crate::translate;
 
 pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
+pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
 const IDLE_POLL: Duration = Duration::from_secs(30);
@@ -21,6 +25,7 @@ const IDLE_POLL: Duration = Duration::from_secs(30);
 pub struct Providers<L, E> {
     pub llm: L,
     pub embedder: E,
+    pub http: HttpClient,
 }
 
 /// Call `store.recover_running_jobs()` once before starting runners, not per runner.
@@ -79,6 +84,11 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             translate::run(store, &p.llm, article_id, target, progress).await
         }
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
+        ingest::JOB_TYPE => {
+            // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.
+            let id = ingest::process(store, &p.http, article_id).await?;
+            embed::enqueue(store, id, p.embedder.model_id())
+        }
         other => Err(format!("unknown job type: {other}")),
     }
 }
@@ -102,7 +112,7 @@ mod tests {
     }
 
     fn with(llm: Fake) -> Providers<Fake, NoEmbed> {
-        Providers { llm, embedder: NoEmbed }
+        Providers { llm, embedder: NoEmbed, http: crate::fetch::client() }
     }
 
     fn setup() -> (Store, i64) {

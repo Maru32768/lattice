@@ -6,6 +6,8 @@ use crate::fetch::{Fetched, fetch};
 use crate::store::Store;
 use crate::url_norm::normalize;
 
+pub const JOB_TYPE: &str = "ingest";
+
 pub async fn save_url(store: &Store, client: &reqwest::Client, url: &str) -> Result<i64, String> {
     let norm = normalize(url)?;
     let domain = norm.host_str().unwrap_or_default().to_string();
@@ -13,13 +15,83 @@ pub async fn save_url(store: &Store, client: &reqwest::Client, url: &str) -> Res
     if !needs_work {
         return Ok(id);
     }
-    match fetch(client, url.trim()).await {
+    fetch_into(store, client, id, url.trim()).await
+}
+
+/// Background half of bulk import: fetches an article registered by `enqueue_urls`.
+pub async fn process(store: &Store, client: &reqwest::Client, article_id: i64) -> Result<i64, String> {
+    let url = store.article_url(article_id).map_err(|e| e.to_string())?.ok_or("article no longer exists")?;
+    fetch_into(store, client, article_id, &url).await
+}
+
+async fn fetch_into(store: &Store, client: &reqwest::Client, id: i64, url: &str) -> Result<i64, String> {
+    match fetch(client, url).await {
         Ok(fetched) => store_fetched(store, id, &fetched),
         Err(e) => {
             store.record_fetch_failure(id, &e).map_err(|e| e.to_string())?;
             Ok(id)
         }
     }
+}
+
+#[derive(Debug, Default, PartialEq, serde::Serialize)]
+pub struct ImportSummary {
+    pub found: usize,
+    pub queued: usize,
+    pub existing: usize,
+    pub invalid: usize,
+}
+
+/// Registers every URL as a pending article and queues a fetch job for those not yet saved.
+/// Invalid URLs are counted, not fatal.
+pub fn enqueue_urls(store: &Store, urls: &[String]) -> Result<ImportSummary, String> {
+    let mut s = ImportSummary { found: urls.len(), ..Default::default() };
+    for url in urls {
+        let Ok(norm) = normalize(url) else {
+            s.invalid += 1;
+            continue;
+        };
+        let domain = norm.host_str().unwrap_or_default();
+        let (id, needs_work) = store.upsert_pending(url, norm.as_str(), domain).map_err(|e| e.to_string())?;
+        if needs_work {
+            store.enqueue_job(JOB_TYPE, id, "{}", &format!("{JOB_TYPE}:{id}")).map_err(|e| e.to_string())?;
+            s.queued += 1;
+        } else {
+            s.existing += 1;
+        }
+    }
+    Ok(s)
+}
+
+/// Pulls http(s) URLs out of any text: URL lists, bookmarks HTML, CSV, JSON, Markdown.
+/// Order is kept and duplicates (by normalized URL) dropped.
+pub fn extract_urls(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let mut rest = text;
+    while let Some(start) = ["https://", "http://"].iter().filter_map(|p| rest.find(p)).min() {
+        let tail = &rest[start..];
+        let end = tail
+            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | ',' | '|' | '{' | '}'))
+            .unwrap_or(tail.len());
+        let mut url = tail[..end].replace("&amp;", "&");
+        // Trailing punctuation belongs to the surrounding prose; a ')' only if unbalanced (Markdown links).
+        loop {
+            let unbalanced = url.ends_with(')') && url.matches('(').count() < url.matches(')').count();
+            if url.ends_with(['.', ';', ':', '!', '?', ']']) || unbalanced {
+                url.pop();
+            } else {
+                break;
+            }
+        }
+        if let Ok(norm) = normalize(&url) {
+            if seen.insert(norm.to_string()) {
+                out.push(url);
+            }
+        }
+        rest = &tail[end.max(1)..];
+    }
+    out
 }
 
 /// Network-free half of the pipeline, also used by tests.
@@ -37,6 +109,38 @@ pub fn store_fetched(store: &Store, id: i64, fetched: &Fetched) -> Result<i64, S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extracts_urls_from_any_format() {
+        let text = r#"https://a.dev/x?utm_source=feed
+            <DT><A HREF="https://b.dev/post?id=1&amp;p=2" ADD_DATE="1">B</A>
+            "c",https://c.dev/y,2024-01-01
+            {"url": "https://d.dev/z"} see [docs](https://e.dev/wiki/Rust_(lang)) and https://f.dev/end.
+            dup https://a.dev/x#frag ftp://nope.dev"#;
+        assert_eq!(
+            extract_urls(text),
+            [
+                "https://a.dev/x?utm_source=feed",
+                "https://b.dev/post?id=1&p=2",
+                "https://c.dev/y",
+                "https://d.dev/z",
+                "https://e.dev/wiki/Rust_(lang)",
+                "https://f.dev/end",
+            ]
+        );
+    }
+
+    #[test]
+    fn enqueue_counts_and_is_idempotent() {
+        let s = Store::open_in_memory().unwrap();
+        let urls: Vec<String> = ["https://a.dev/1", "https://a.dev/2", "notaurl"].map(String::from).to_vec();
+        assert_eq!(enqueue_urls(&s, &urls).unwrap(), ImportSummary { found: 3, queued: 2, existing: 0, invalid: 1 });
+        // Not yet fetched: queued again, but dedup_key keeps one job per article.
+        assert_eq!(enqueue_urls(&s, &urls[..1]).unwrap().queued, 1);
+        assert_eq!(s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap().article_id, Some(1));
+        assert_eq!(s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap().article_id, Some(2));
+        assert!(s.claim_next_job(&[JOB_TYPE]).unwrap().is_none());
+    }
 
     fn page(body: &str) -> Fetched {
         Fetched {
