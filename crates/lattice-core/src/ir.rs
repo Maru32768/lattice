@@ -84,3 +84,7 @@ pub struct ArticleIr {
     pub meta: ArticleMeta,
     pub blocks: Vec<Block>,
 }
+
+/// Prose block kinds: the unit for translation and semantic search. Code, tables and
+/// images stay in the original language and are only searched lexically.
+pub const PROSE_KINDS: &[&str] = &["heading", "paragraph", "list_item", "blockquote", "caption"];

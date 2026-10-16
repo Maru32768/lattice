@@ -95,6 +95,41 @@ CREATE TABLE processing_jobs (
 );
 CREATE INDEX processing_jobs_ready ON processing_jobs(status, next_run_at);
 CREATE INDEX processing_jobs_article ON processing_jobs(article_id);
+"#, r#"
+-- Lexical search. trigram tokenizes Japanese and identifiers like pg_visibility alike;
+-- terms under 3 characters fall back to LIKE (see lexical_search).
+CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid='id', tokenize='trigram');
+CREATE TRIGGER blocks_fts_ai AFTER INSERT ON blocks BEGIN
+    INSERT INTO blocks_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER blocks_fts_ad AFTER DELETE ON blocks BEGIN
+    INSERT INTO blocks_fts(blocks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
+CREATE TRIGGER blocks_fts_au AFTER UPDATE OF text ON blocks BEGIN
+    INSERT INTO blocks_fts(blocks_fts, rowid, text) VALUES ('delete', old.id, old.text);
+    INSERT INTO blocks_fts(rowid, text) VALUES (new.id, new.text);
+END;
+INSERT INTO blocks_fts(blocks_fts) VALUES ('rebuild');
+
+-- Translations are indexed too, so a Japanese query finds English articles lexically.
+CREATE VIRTUAL TABLE translations_fts USING fts5(text, content='translations', content_rowid='id', tokenize='trigram');
+CREATE TRIGGER translations_fts_ai AFTER INSERT ON translations BEGIN
+    INSERT INTO translations_fts(rowid, text) VALUES (new.id, new.text);
+END;
+CREATE TRIGGER translations_fts_ad AFTER DELETE ON translations BEGIN
+    INSERT INTO translations_fts(translations_fts, rowid, text) VALUES ('delete', old.id, old.text);
+END;
+INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
+
+-- One vector per (block, model): switching models re-embeds without losing the old index.
+CREATE TABLE embeddings (
+    block_id    INTEGER NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
+    model       TEXT NOT NULL,
+    vector      BLOB NOT NULL,   -- little-endian f32, L2-normalized
+    source_hash TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (block_id, model)
+);
 "#];
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
@@ -163,6 +198,24 @@ pub struct PendingBlock {
     pub text: String,
     pub text_hash: String,
     pub inlines: Vec<Inline>,
+}
+
+#[derive(Debug, Clone)]
+pub struct EmbedSource {
+    pub block_id: i64,
+    pub text_hash: String,
+    pub text: String,
+    pub heading: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HitDetail {
+    pub block_id: i64,
+    pub article_id: i64,
+    pub article_title: String,
+    pub heading: Option<String>,
+    pub text: String,
+    pub translation: Option<String>,
 }
 
 pub struct NewTranslation<'a> {
@@ -461,7 +514,8 @@ impl Store {
         self.conn().execute("UPDATE processing_jobs SET status = 'pending' WHERE status = 'running'", [])
     }
 
-    pub fn claim_next_job(&self) -> Result<Option<JobRow>> {
+    /// Claims the oldest ready job whose type is in `types`.
+    pub fn claim_next_job(&self, types: &[&str]) -> Result<Option<JobRow>> {
         self.conn()
             .query_row(
                 &format!(
@@ -470,11 +524,12 @@ impl Store {
                          started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
                      WHERE id = (SELECT id FROM processing_jobs
                                  WHERE status = 'pending'
+                                   AND type IN (SELECT value FROM json_each(?1))
                                    AND (next_run_at IS NULL OR next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
                                  ORDER BY id LIMIT 1)
                      RETURNING {JOB_COLS}"
                 ),
-                [],
+                [json(&types)],
                 job_row,
             )
             .optional()
@@ -499,6 +554,136 @@ impl Store {
             )?,
         };
         Ok(())
+    }
+
+    /// Blocks of `kinds` lacking a current embedding for `model`, with their section heading.
+    pub fn unembedded_blocks(&self, article_id: i64, model: &str, kinds: &[&str]) -> Result<Vec<EmbedSource>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT b.id, b.text_hash, b.text, h.text FROM blocks b LEFT JOIN blocks h ON h.id = b.heading_id
+             WHERE b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?3)) AND NOT EXISTS (
+                 SELECT 1 FROM embeddings e WHERE e.block_id = b.id AND e.model = ?2 AND e.source_hash = b.text_hash)
+             ORDER BY b.ordinal",
+        )?;
+        st.query_map(params![article_id, model, json(&kinds)], |r| {
+            Ok(EmbedSource { block_id: r.get(0)?, text_hash: r.get(1)?, text: r.get(2)?, heading: r.get(3)? })
+        })?
+        .collect()
+    }
+
+    pub fn upsert_embeddings(&self, model: &str, items: &[(&EmbedSource, &[f32])]) -> Result<()> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        {
+            let mut ins = tx.prepare(
+                "INSERT OR REPLACE INTO embeddings (block_id, model, vector, source_hash) VALUES (?1, ?2, ?3, ?4)",
+            )?;
+            for (src, v) in items {
+                let blob: Vec<u8> = v.iter().flat_map(|f| f.to_le_bytes()).collect();
+                ins.execute(params![src.block_id, model, blob, src.text_hash])?;
+            }
+        }
+        tx.commit()
+    }
+
+    /// Enqueues an embed job for every extracted article that has blocks missing a current
+    /// embedding for `model`. Cheap to call at startup; covers model switches and backfill.
+    pub fn enqueue_missing_embeddings(&self, job_type: &str, model: &str, kinds: &[&str]) -> Result<usize> {
+        self.conn().execute(
+            "INSERT INTO processing_jobs (type, article_id, params, dedup_key)
+             SELECT ?1, a.id, json_object('model', ?2), ?1 || ':' || a.id || ':' || ?2 FROM articles a
+             WHERE a.extraction_status = 'ok' AND EXISTS (
+                 SELECT 1 FROM blocks b WHERE b.article_id = a.id AND b.kind IN (SELECT value FROM json_each(?3))
+                 AND NOT EXISTS (SELECT 1 FROM embeddings e
+                                 WHERE e.block_id = b.id AND e.model = ?2 AND e.source_hash = b.text_hash))
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', next_run_at = NULL WHERE status = 'succeeded'",
+            params![job_type, model, json(&kinds)],
+        )
+    }
+
+    /// Calls `f` for every stored vector of `model`.
+    /// shortcut: brute-force scan, fine to ~10^5-10^6 blocks; move to sqlite-vec or an ANN index beyond that.
+    pub fn scan_embeddings(&self, model: &str, mut f: impl FnMut(i64, &[f32])) -> Result<()> {
+        let c = self.conn();
+        let mut st = c.prepare("SELECT block_id, vector FROM embeddings WHERE model = ?1")?;
+        let mut rows = st.query([model])?;
+        let mut buf = Vec::new();
+        while let Some(r) = rows.next()? {
+            let blob = r.get_ref(1)?.as_blob()?;
+            buf.clear();
+            buf.extend(blob.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])));
+            f(r.get(0)?, &buf);
+        }
+        Ok(())
+    }
+
+    /// Block ids ranked by FTS (best first), searching original text and translations.
+    /// Terms of 3+ characters use the trigram index; shorter ones (e.g. 「索引」) filter by LIKE.
+    pub fn lexical_search(&self, query: &str, limit: usize) -> Result<Vec<i64>> {
+        let terms: Vec<&str> = query.split_whitespace().collect();
+        if terms.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (long, short): (Vec<&str>, Vec<&str>) = terms.into_iter().partition(|t| t.chars().count() >= 3);
+        let mut args: Vec<String> = Vec::new();
+        let mut conds = Vec::new();
+        if !long.is_empty() {
+            // Quote every term so FTS5 syntax characters in user input are literal.
+            args.push(long.iter().map(|t| format!("\"{}\"", t.replace('"', "\"\""))).collect::<Vec<_>>().join(" "));
+            conds.push(format!("{{t}} MATCH ?{}", args.len()));
+        }
+        for t in &short {
+            args.push(format!("%{}%", t.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
+            conds.push(format!("{{t}}.text LIKE ?{} ESCAPE '\\'", args.len()));
+        }
+        let rank = if long.is_empty() { "0" } else { "bm25({t})" };
+        let branch = |t: &str| format!("WHERE {}", conds.join(" AND ")).replace("{t}", t);
+        let sql = format!(
+            "SELECT block_id FROM (
+                 SELECT rowid AS block_id, {r1} AS r FROM blocks_fts {w1}
+                 UNION ALL
+                 SELECT tr.block_id, {r2} AS r FROM translations_fts JOIN translations tr ON tr.id = translations_fts.rowid {w2}
+             ) GROUP BY block_id ORDER BY min(r), block_id DESC LIMIT {limit}",
+            r1 = rank.replace("{t}", "blocks_fts"),
+            r2 = rank.replace("{t}", "translations_fts"),
+            w1 = branch("blocks_fts"),
+            w2 = branch("translations_fts"),
+        );
+        let c = self.conn();
+        let mut st = c.prepare(&sql)?;
+        st.query_map(rusqlite::params_from_iter(args), |r| r.get(0))?.collect()
+    }
+
+    /// Display data for search hits, in the order of `block_ids`.
+    pub fn hit_details(&self, block_ids: &[i64], target_language: &str) -> Result<Vec<HitDetail>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text,
+                    (SELECT t.text FROM translations t
+                     WHERE t.block_id = b.id AND t.target_language = ?2 AND t.source_hash = b.text_hash
+                     ORDER BY t.id DESC LIMIT 1)
+             FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id
+             WHERE b.id IN (SELECT value FROM json_each(?1))",
+        )?;
+        let mut rows: Vec<HitDetail> = st
+            .query_map(params![json(&block_ids), target_language], |r| {
+                Ok(HitDetail {
+                    block_id: r.get(0)?,
+                    article_id: r.get(1)?,
+                    article_title: r.get(2)?,
+                    heading: r.get(3)?,
+                    text: r.get(4)?,
+                    translation: r.get(5)?,
+                })
+            })?
+            .collect::<Result<_>>()?;
+        rows.sort_by_key(|h| block_ids.iter().position(|&id| id == h.block_id));
+        Ok(rows)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn exec_for_test(&self, sql: &str) {
+        self.conn().execute_batch(sql).unwrap();
     }
 
     pub fn set_read_status(&self, id: i64, read: bool) -> Result<()> {

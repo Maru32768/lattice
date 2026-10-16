@@ -61,11 +61,28 @@ export interface ArticleView {
   jobs: JobRow[];
 }
 
+export interface SearchHit {
+  block_id: number;
+  article_id: number;
+  article_title: string;
+  heading: string | null;
+  text: string;
+  translation: string | null;
+  source: "lexical" | "semantic" | "both";
+  score: number;
+}
+
+export interface SearchResult {
+  hits: SearchHit[];
+  semantic_error: string | null;
+}
+
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
   listArticles: () => invoke<ArticleRow[]>("list_articles"),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
+  search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
 };

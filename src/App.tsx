@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type ArticleRow, type ArticleView } from "./api";
+import { api, type ArticleRow, type ArticleView, type SearchHit, type SearchResult } from "./api";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
+import { SearchResults } from "./SearchResults";
 import "./App.css";
 
 export default function App() {
@@ -14,6 +15,10 @@ export default function App() {
   const [dbPath, setDbPath] = useState("");
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
+  const [query, setQuery] = useState("");
+  const [searched, setSearched] = useState<{ query: string; result: SearchResult } | null>(null);
+  const [showResults, setShowResults] = useState(false);
+  const [focusBlock, setFocusBlock] = useState<number | null>(null);
   const currentId = useRef<number | null>(null);
 
   const refresh = () => api.listArticles().then(setArticles).catch((e) => setError(String(e)));
@@ -58,6 +63,28 @@ export default function App() {
     }
   }
 
+  async function search(q: string) {
+    setError(null);
+    try {
+      setSearched({ query: q, result: await api.search(q) });
+      setShowResults(true);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function openHit(hit: SearchHit) {
+    setFocusBlock(hit.block_id);
+    await select(hit.article_id);
+    setShowResults(false);
+  }
+
+  function openArticle(id: number) {
+    setFocusBlock(null);
+    setShowResults(false);
+    select(id);
+  }
+
   async function toggleRead() {
     if (!view) return;
     const a = view.article;
@@ -78,13 +105,23 @@ export default function App() {
           />
           <button type="submit" disabled={busy || !url.trim()}>{busy ? "保存中…" : "保存"}</button>
         </form>
+        <form role="search" onSubmit={(e) => { e.preventDefault(); if (query.trim()) search(query.trim()); }}>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="保存した記事を検索"
+            aria-label="検索語"
+          />
+          <button type="submit" disabled={!query.trim()}>検索</button>
+        </form>
         {error && <p className="error" role="alert">{error}</p>}
         <ul className="list">
           {articles.map((a) => (
             <li key={a.id}>
               <button
                 className={`item ${view?.article.id === a.id ? "active" : ""} ${a.read_status}`}
-                onClick={() => select(a.id)}
+                onClick={() => openArticle(a.id)}
               >
                 <span className="title">{a.title ?? a.original_url}</span>
                 <span className="sub">
@@ -98,9 +135,15 @@ export default function App() {
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
       </aside>
       <main>
-        {view
-          ? <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
-              onToggleRead={toggleRead} onRetry={() => save(view.article.original_url)} onTranslate={translate} />
+        {showResults && searched
+          ? <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />
+          : view
+          ? <>
+              {searched && <button className="back" onClick={() => setShowResults(true)}>← 検索結果に戻る</button>}
+              <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
+                focusBlock={focusBlock}
+                onToggleRead={toggleRead} onRetry={() => save(view.article.original_url)} onTranslate={translate} />
+            </>
           : <p className="empty">URLを保存すると、ここに本文が表示されます。</p>}
       </main>
     </div>

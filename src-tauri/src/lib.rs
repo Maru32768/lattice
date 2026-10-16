@@ -1,16 +1,22 @@
 use std::sync::Arc;
 
 use lattice_core::claude::ClaudeCli;
+use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
 use lattice_core::fetch::{HttpClient, client};
+use lattice_core::ir::PROSE_KINDS;
+use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, Providers};
+use lattice_core::search::{self, SearchResult};
 use lattice_core::store::{ArticleRow, ArticleView, Store};
-use lattice_core::{ingest, jobs, translate};
+use lattice_core::{ingest, translate};
 use tauri::{Emitter, Manager, State};
 use tokio::sync::Notify;
 
 struct App {
     store: Arc<Store>,
     http: HttpClient,
-    wake_worker: Arc<Notify>,
+    providers: Arc<Providers<ClaudeCli, LocalE5>>,
+    wake_llm: Arc<Notify>,
+    wake_local: Arc<Notify>,
     db_path: String,
 }
 
@@ -20,7 +26,11 @@ fn err(e: impl ToString) -> String {
 
 #[tauri::command]
 async fn save_url(app: State<'_, App>, url: String) -> Result<i64, String> {
-    ingest::save_url(&app.store, &app.http, &url).await
+    let id = ingest::save_url(&app.store, &app.http, &url).await?;
+    // Index every saved article; it is local and free, unlike translation.
+    embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
+    app.wake_local.notify_one();
+    Ok(id)
 }
 
 #[tauri::command]
@@ -36,8 +46,13 @@ fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, Stri
 #[tauri::command]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     translate::enqueue(&app.store, id, translate::TARGET_LANGUAGE)?;
-    app.wake_worker.notify_one();
+    app.wake_llm.notify_one();
     Ok(())
+}
+
+#[tauri::command]
+async fn search_blocks(app: State<'_, App>, query: String) -> Result<SearchResult, String> {
+    search::search(&app.store, &app.providers.embedder, &query, translate::TARGET_LANGUAGE, 30).await
 }
 
 #[tauri::command]
@@ -59,18 +74,26 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let path = dir.join("lattice.db");
             let store = Arc::new(Store::open(&path)?);
-            let wake_worker = Arc::new(Notify::new());
+            let providers = Arc::new(Providers { llm: ClaudeCli::default(), embedder: LocalE5::new(dir.join("models")) });
 
-            let handle = app.handle().clone();
-            let on_change = move |article_id: i64| {
-                let _ = handle.emit("article-changed", article_id);
-            };
-            tauri::async_runtime::spawn(jobs::run_worker(store.clone(), ClaudeCli::default(), wake_worker.clone(), on_change));
+            store.recover_running_jobs()?;
+            store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
 
-            app.manage(App { store, http: client(), wake_worker, db_path: path.display().to_string() });
+            let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+            for (types, wake) in [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())] {
+                let handle = app.handle().clone();
+                let on_change = move |article_id: i64| {
+                    let _ = handle.emit("article-changed", article_id);
+                };
+                tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
+            }
+
+            app.manage(App { store, http: client(), providers, wake_llm, wake_local, db_path: path.display().to_string() });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![save_url, list_articles, get_article, translate_article, set_read, db_path])
+        .invoke_handler(tauri::generate_handler![
+            save_url, list_articles, get_article, translate_article, search_blocks, set_read, db_path
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

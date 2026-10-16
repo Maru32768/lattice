@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { ArticleView, Block, Inline, JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
@@ -11,7 +11,7 @@ function open(e: React.MouseEvent, href: string) {
   openUrl(href);
 }
 
-/** Mirrors translate.rs KINDS. */
+/** Mirrors ir.rs PROSE_KINDS. */
 const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
 
 function Inlines({ block, translated }: { block: Block; translated: boolean }) {
@@ -104,8 +104,9 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onToggleRead, onRetry, onTranslate }: {
+export function Reader({ view, mode, percent, focusBlock, onMode, onPercent, onToggleRead, onRetry, onTranslate }: {
   view: ArticleView;
+  focusBlock: number | null;
   mode: LanguageMode;
   percent: number;
   onMode: (m: LanguageMode) => void;
@@ -123,6 +124,11 @@ export function Reader({ view, mode, percent, onMode, onPercent, onToggleRead, o
   const total = blocks.filter((b) => TRANSLATABLE.has(b.kind)).length;
   const done = blocks.filter((b) => b.translation != null).length;
   const job = view.jobs.find((j) => j.type === "translate");
+
+  // Search-result jump: bring the matched block into view once it is rendered.
+  useEffect(() => {
+    if (focusBlock != null) document.getElementById(`b-${focusBlock}`)?.scrollIntoView({ block: "center" });
+  }, [focusBlock, view.article.id]);
 
   function flip(id: number) {
     if (window.getSelection()?.toString()) return; // selecting text is not a toggle
@@ -173,7 +179,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onToggleRead, o
         const translated = selected.has(b.id) !== flipped.has(b.id) && b.translation != null;
         return (
           <div key={b.id} id={`b-${b.id}`}
-            className={`block ${b.kind}${b.translation != null ? " has-translation" : ""}${translated ? " translated" : ""}`}
+            className={`block ${b.kind}${b.translation != null ? " has-translation" : ""}${translated ? " translated" : ""}${b.id === focusBlock ? " focused" : ""}`}
             onClick={b.translation != null ? () => flip(b.id) : undefined}
             tabIndex={b.translation != null ? 0 : undefined}
             onKeyDown={b.translation != null ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) flip(b.id); } : undefined}

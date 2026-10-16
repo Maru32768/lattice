@@ -4,15 +4,13 @@
 
 use std::collections::HashMap;
 
-use crate::ir::Inline;
+use crate::ir::{Inline, PROSE_KINDS};
 use crate::llm::{Item, LlmProvider};
 use crate::store::{NewTranslation, PendingBlock, Store};
 
 pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
 pub const PROMPT_VERSION: &str = "translate-v1";
-/// Code, tables and images stay in the original language.
-const KINDS: &[&str] = &["heading", "paragraph", "list_item", "blockquote", "caption"];
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 40;
 
@@ -62,7 +60,7 @@ pub async fn run<P: LlmProvider>(
     target_language: &str,
     on_progress: &(dyn Fn() + Send + Sync),
 ) -> Result<(), String> {
-    let pending = store.untranslated_blocks(article_id, target_language, KINDS).map_err(|e| e.to_string())?;
+    let pending = store.untranslated_blocks(article_id, target_language, PROSE_KINDS).map_err(|e| e.to_string())?;
     let by_id: HashMap<i64, &PendingBlock> = pending.iter().map(|b| (b.id, b)).collect();
     let items = pending.iter().map(|b| Item { id: b.id, text: source_text(b) }).collect();
     let mut missing = 0;
