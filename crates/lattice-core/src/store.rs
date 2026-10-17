@@ -238,6 +238,8 @@ pub struct Snapshot {
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
 const MAX_ATTEMPTS: i64 = 5;
+/// Settings keys holding credentials (API keys, R2 secret). Never leave the machine in backups.
+pub const SECRET_PREFIX: &str = "secret.";
 
 pub type Result<T> = rusqlite::Result<T>;
 
@@ -495,9 +497,12 @@ impl Store {
     }
 
     /// Consistent single-file copy of the whole database (safe while the app is running).
+    /// Settings under `SECRET_PREFIX` (API keys) are removed from the copy.
     pub fn backup_to(&self, path: &Path) -> Result<()> {
         self.conn().execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
-        Ok(())
+        let copy = Connection::open(path)?;
+        copy.execute("DELETE FROM settings WHERE key LIKE ?1 || '%'", [SECRET_PREFIX])?;
+        copy.execute_batch("VACUUM")
     }
 
     pub fn article_row(&self, id: i64) -> Result<Option<ArticleRow>> {
@@ -1082,6 +1087,8 @@ mod tests {
         assert_eq!(s.setting("claude_model").unwrap(), None);
 
         s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.set_setting("secret.openai_api_key", Some("sk-test")).unwrap();
+        s.set_setting("claude_model", Some("haiku")).unwrap();
         let dir = std::env::temp_dir().join(format!("lattice-backup-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("b.db");
@@ -1089,6 +1096,9 @@ mod tests {
         s.backup_to(&path).unwrap();
         let copy = Store::open(&path).unwrap();
         assert_eq!(copy.list_articles(&ArticleFilter::All).unwrap().len(), 1);
+        assert_eq!(copy.setting("secret.openai_api_key").unwrap(), None, "secrets are not backed up");
+        assert_eq!(copy.setting("claude_model").unwrap().as_deref(), Some("haiku"));
+        assert_eq!(s.setting("secret.openai_api_key").unwrap().as_deref(), Some("sk-test"));
         drop(copy);
         std::fs::remove_dir_all(&dir).unwrap();
     }

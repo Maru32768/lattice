@@ -27,3 +27,6 @@ dist-ssr
 
 # Built overlay bundle (npm run build:overlay)
 /src-tauri/overlay-dist/
+
+# Local notes (not shared)
+/.local/
