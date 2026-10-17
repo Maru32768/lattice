@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
-import { Reader } from "./Reader";
+
 import { ImportView } from "./ImportView";
 import { SettingsView } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
@@ -14,7 +14,7 @@ import { groupArticles, type Group } from "./groups";
 import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
-import type { Focus } from "./Reader";
+import { Reader, TRANSLATABLE, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
@@ -379,6 +379,12 @@ export default function App() {
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles);
+  // Only the open article's job progress is known to the UI (the list has no per-article job data).
+  const tjob = view?.jobs.find((j) => j.type === "translate");
+  const translatingRow = view && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
+    id: view.article.id,
+    label: `翻訳中 ${view.blocks.filter((b) => b.translation != null).length}/${view.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length}`,
+  } : null;
   const docHits = search && doc?.kind === "reader" ? flatHits.filter((h) => h.article_id === doc.id) : [];
   const readerMatches = docHits.length > 0 && doc?.kind === "reader" ? {
     i: docHits.findIndex((h) => h.block_id === doc.focus?.block),
@@ -420,7 +426,7 @@ export default function App() {
         {screen === "library" && !(search && listOpen) && (listOpen
           ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
               all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
-              translating={null} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
+              translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
               onCollapse={() => setListOpen(false)} />
           : <ListRail label={[title, ...activeDims(facets).map(() => "…")].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
               count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
@@ -440,7 +446,9 @@ export default function App() {
               onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
           )}
           {screen === "library" && doc?.kind === "reader" && view && (
-            <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
+            <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+              focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
+              onAsk={() => openChat("article")}
               onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
               onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
               onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}

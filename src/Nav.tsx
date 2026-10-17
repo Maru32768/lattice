@@ -84,7 +84,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
       <button className={`nav-search${searching ? " on" : ""}`} onClick={onPalette}>
         <Icon name="search" />
         <span>{searching ? "検索中" : "検索・コマンド・URL"}</span>
-        <span className="kbds">{searching ? <Kbd>/</Kbd> : <><Kbd>Ctrl</Kbd><Kbd>K</Kbd></>}</span>
+        <span className="kbds">{searching ? <Kbd>/</Kbd> : <Kbd>Ctrl K</Kbd>}</span>
       </button>
 
       <div className="sec">ライブラリ</div>
