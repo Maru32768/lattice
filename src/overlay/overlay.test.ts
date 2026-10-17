@@ -10,10 +10,27 @@ Object.assign(globalThis, {
   Element: window.Element,
   HTMLElement: window.HTMLElement,
   DocumentFragment: window.DocumentFragment,
+  MutationObserver: window.MutationObserver,
 });
 
-const { locate, renderOriginal, renderVariant, tokenize, wrapRange } = await import("./dom.ts");
+const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
 const { assignTranslated, plainText, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
+
+test("settle waits for DOM mutations to stop, up to a cap", async () => {
+  const root = document.createElement("div");
+  const t0 = Date.now();
+  const tick = setInterval(() => root.append("x"), 10);
+  setTimeout(() => clearInterval(tick), 120);
+  await settle(root, 50, 1000);
+  const quietAfter = Date.now() - t0;
+  assert.ok(quietAfter >= 140 && quietAfter < 600, `waited ${quietAfter} ms`);
+
+  const busy = setInterval(() => root.append("y"), 10);
+  const t1 = Date.now();
+  await settle(root, 50, 150);
+  clearInterval(busy);
+  assert.ok(Date.now() - t1 < 400, "capped while the page keeps changing");
+});
 
 test("splitByLineBreaks splits on blank lines and after sentence ends only", () => {
   assert.deepEqual(splitByLineBreaks("One.\nTwo<br>three\n\nFour").parts, ["One.", "Two<br>three", "Four"]);

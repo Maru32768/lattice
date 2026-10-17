@@ -4,6 +4,7 @@ import { ModelSettings } from "./ModelSettings";
 import { R2BackupSection } from "./R2BackupSection";
 import { ClassifySettings } from "./ClassifySettings";
 import { TranslationSettings } from "./TranslationSettings";
+import { RenderSettings } from "./RenderSettings";
 
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -40,6 +41,7 @@ export function SettingsView() {
       <ModelSettings />
       <ClassifySettings />
       <TranslationSettings />
+      <RenderSettings />
       <div>
         <h3>バックアップ</h3>
         <div className="row"><button onClick={backup}>今すぐバックアップ</button><button onClick={exportJson}>JSON でエクスポート</button></div>

@@ -242,6 +242,16 @@ export default function App() {
     }
   }
 
+  async function renderArticle() {
+    if (!view) return;
+    try {
+      await api.renderArticle(view.article.id);
+      await loadView(view.article.id);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function reextractArticle() {
     if (!view) return;
     try {
@@ -321,7 +331,7 @@ export default function App() {
         {main === "reader" && view && (
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
             onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
-            onToggleRead={toggleRead} onRetry={retryArticle} onReextract={reextractArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
+            onToggleRead={toggleRead} onRetry={retryArticle} onReextract={reextractArticle} onRender={renderArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
             onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} onGenre={setGenre} onDifficulty={setDifficulty} onClassify={classifyArticle} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}

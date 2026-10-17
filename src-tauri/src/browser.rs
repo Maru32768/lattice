@@ -4,7 +4,9 @@
 //! Trust boundary: the page is remote and untrusted. Its webview gets only the capability in
 //! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot), translate calls are
 //! refused unless the user has switched translation on, and snapshots unless the app asked for one.
+//! The background renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -14,7 +16,8 @@ use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl};
 
 pub const LABEL: &str = "browser";
-const OVERLAY_JS: &str = include_str!("../overlay-dist/overlay.js");
+pub const RENDER_LABEL: &str = "renderer";
+pub(crate) const OVERLAY_JS: &str = include_str!("../overlay-dist/overlay.js");
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct OverlayConfig {
@@ -29,8 +32,33 @@ pub struct Browser {
     /// Serializes create-or-navigate so overlapping opens cannot create the webview twice.
     opening: tokio::sync::Mutex<()>,
     visibility: Mutex<Visibility>,
-    /// The one outstanding DOM snapshot request: (nonce, reply channel for (url, html)).
-    snapshot: Mutex<Option<(String, oneshot::Sender<(String, String)>)>>,
+    snapshots: Snapshots,
+}
+
+type SnapshotReply = oneshot::Sender<(String, String)>;
+
+/// Outstanding DOM snapshot requests, at most one per webview label: (nonce, reply channel for (url, html)).
+#[derive(Default)]
+struct Snapshots(Mutex<HashMap<String, (String, SnapshotReply)>>);
+
+impl Snapshots {
+    /// Replaces any older request for `label`, whose waiter then gets nothing.
+    fn begin(&self, label: &str) -> (String, oneshot::Receiver<(String, String)>) {
+        use std::hash::{BuildHasher, Hasher};
+        // Only pairs the reply with this request (the page can read it); unguessable is not needed.
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+        let nonce = format!("{:016x}", h.finish());
+        let (tx, rx) = oneshot::channel();
+        lock(&self.0).insert(label.to_string(), (nonce.clone(), tx));
+        (nonce, rx)
+    }
+
+    /// The reply channel, if `nonce` is the outstanding request of `label`.
+    fn take(&self, label: &str, nonce: &str) -> Option<SnapshotReply> {
+        let mut pending = lock(&self.0);
+        if pending.get(label).is_some_and(|(n, _)| n == nonce) { pending.remove(label).map(|(_, tx)| tx) } else { None }
+    }
 }
 
 /// The webview is on screen only while the UI shows the browser view and the page opened
@@ -49,7 +77,7 @@ impl Default for Browser {
             focus: Mutex::new(None),
             opening: tokio::sync::Mutex::new(()),
             visibility: Mutex::new(Visibility::default()),
-            snapshot: Mutex::new(None),
+            snapshots: Snapshots::default(),
         }
     }
 }
@@ -78,12 +106,12 @@ struct PageEvent {
     loading: bool,
 }
 
-fn http_url(s: &str) -> Result<Url, String> {
+pub(crate) fn http_url(s: &str) -> Result<Url, String> {
     let u = Url::parse(s.trim()).map_err(|e| format!("invalid URL: {e}"))?;
     matches!(u.scheme(), "http" | "https").then_some(u).ok_or_else(|| "only http(s) pages can be opened".into())
 }
 
-fn is_http(u: &Url) -> bool {
+pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
 }
 
@@ -92,7 +120,7 @@ fn place(wv: &Webview, b: &Bounds) -> tauri::Result<()> {
     wv.set_size(LogicalSize::new(b.width.max(1.0), b.height.max(1.0)))
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
@@ -166,25 +194,19 @@ const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 /// The current page's rendered DOM and the webview's own URL, from the overlay.
 /// None if the page does not answer in time (overlay missing, page busy or hostile).
 pub async fn snapshot(app: &AppHandle, browser: &Browser) -> Option<(String, String)> {
-    let wv = app.get_webview(LABEL)?;
-    let nonce = {
-        use std::hash::{BuildHasher, Hasher};
-        // Only pairs the reply with this request (the page can read it); unguessable is not needed.
-        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
-        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
-        format!("{:016x}", h.finish())
-    };
-    let (tx, rx) = oneshot::channel();
-    *lock(&browser.snapshot) = Some((nonce.clone(), tx));
+    snapshot_of(&app.get_webview(LABEL)?, browser, None, SNAPSHOT_TIMEOUT).await
+}
+
+/// `settle`: (quiet ms, max ms) the overlay waits for DOM mutations to stop before snapshotting.
+pub(crate) async fn snapshot_of(wv: &Webview, browser: &Browser, settle: Option<(u32, u32)>, timeout: Duration) -> Option<(String, String)> {
+    let (nonce, rx) = browser.snapshots.begin(wv.label());
     let arg = serde_json::to_string(&nonce).expect("string serializes");
-    let reply = match wv.eval(format!("window.__lattice&&window.__lattice.snapshot({arg})")) {
-        Ok(()) => tokio::time::timeout(SNAPSHOT_TIMEOUT, rx).await.ok().and_then(Result::ok),
+    let settle = settle.map_or("null".into(), |(quiet, max)| format!("{{quietMs:{quiet},maxMs:{max}}}"));
+    let reply = match wv.eval(format!("window.__lattice&&window.__lattice.snapshot({arg},{settle})")) {
+        Ok(()) => tokio::time::timeout(timeout, rx).await.ok().and_then(Result::ok),
         Err(_) => None,
     };
-    let mut pending = lock(&browser.snapshot);
-    if pending.as_ref().is_some_and(|(n, _)| *n == nonce) {
-        *pending = None;
-    }
+    browser.snapshots.take(wv.label(), &nonce);
     reply
 }
 
@@ -193,22 +215,13 @@ pub async fn snapshot(app: &AppHandle, browser: &Browser) -> Option<(String, Str
 /// webview rather than from the page.
 #[tauri::command]
 pub async fn overlay_snapshot(browser: State<'_, Browser>, webview: Webview, nonce: String, html: String) -> Result<(), String> {
-    if webview.label() != LABEL {
-        return Err("not the browser webview".into());
+    if ![LABEL, RENDER_LABEL].contains(&webview.label()) {
+        return Err("not an app webview".into());
     }
     if html.len() > lattice_core::fetch::MAX_BODY {
         return Err("snapshot too large".into());
     }
-    let tx = {
-        let mut pending = lock(&browser.snapshot);
-        match pending.take() {
-            Some((n, tx)) if n == nonce => tx,
-            other => {
-                *pending = other;
-                return Err("no snapshot was requested".into());
-            }
-        }
-    };
+    let tx = browser.snapshots.take(webview.label(), &nonce).ok_or("no snapshot was requested")?;
     let url = webview.url().map_err(|e| e.to_string())?;
     if !is_http(&url) {
         return Err("only http(s) pages can be saved".into());
@@ -241,9 +254,11 @@ pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>
 }
 
 /// Called by the overlay on every page load. Exposed to remote pages (read-only).
+/// Only the visible browser translates; the renderer's page stays as served.
 #[tauri::command]
-pub fn overlay_config(browser: State<'_, Browser>) -> OverlayConfig {
-    *lock(&browser.config)
+pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayConfig {
+    let cfg = *lock(&browser.config);
+    if webview.label() == LABEL { cfg } else { OverlayConfig { enabled: false, ..cfg } }
 }
 
 /// Guards overlay_translate: the caller must be the browser webview with translation on.
@@ -255,4 +270,22 @@ pub fn ensure_translation_allowed(webview: &Webview, browser: &Browser) -> Resul
         return Err("translation is off".into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_nonces_are_per_label_and_single_use() {
+        let s = Snapshots::default();
+        let (b, _rb) = s.begin(LABEL);
+        let (r, _rr) = s.begin(RENDER_LABEL);
+        assert!(s.take(LABEL, &r).is_none(), "another webview's nonce");
+        assert!(s.take(RENDER_LABEL, &r).is_some());
+        assert!(s.take(RENDER_LABEL, &r).is_none(), "used once");
+        let (b2, _rb2) = s.begin(LABEL);
+        assert!(s.take(LABEL, &b).is_none(), "superseded by a newer request");
+        assert!(s.take(LABEL, &b2).is_some());
+    }
 }
