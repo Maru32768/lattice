@@ -5,6 +5,7 @@ import { R2BackupSection } from "./R2BackupSection";
 import { ClassifySettings } from "./ClassifySettings";
 import { TranslationSettings } from "./TranslationSettings";
 import { RenderSettings } from "./RenderSettings";
+import { ImageSettings } from "./ImageSettings";
 
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -55,6 +56,7 @@ export function SettingsView() {
       <ClassifySettings />
       <TranslationSettings />
       <RenderSettings />
+      <ImageSettings />
       <div>
         <h3>バックアップ</h3>
         <div className="row"><button onClick={backup}>今すぐバックアップ</button><button onClick={exportJson}>JSON でエクスポート</button></div>
@@ -63,7 +65,7 @@ export function SettingsView() {
           <input id="backup-keep" type="number" min={1} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
           <button onClick={saveKeep}>保存</button>
         </div>
-        <p className="muted">保存先: <code>{settings?.backup_dir}</code>（バックアップを作るたびに、新しいものから指定した世代数だけ残して古い <code>lattice-*.db</code> を削除します。日数では消さないので、しばらく使わなくても消えません）<br />記事・訳・要約・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code><br />
+        <p className="muted">保存先: <code>{settings?.backup_dir}</code>（バックアップを作るたびに、新しいものから指定した世代数だけ残して古い <code>lattice-*.db</code> を削除します。日数では消さないので、しばらく使わなくても消えません）<br />記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code><br />
           JSON エクスポート（<code>exports</code> フォルダ、1 行 1 オブジェクトの gzip）には記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。</p>
       </div>
       <R2BackupSection />

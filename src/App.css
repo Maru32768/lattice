@@ -75,6 +75,7 @@ main { overflow-y: auto; }
 .reader td { border: 1px solid var(--border); padding: 4px 8px; vertical-align: top; }
 .reader .caption { font-size: 0.9em; color: var(--muted); text-align: center; }
 .reader .image { margin: 1em 0; font-size: 0.9em; }
+.reader .image img { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 .reader .error { padding: 12px; border: 1px solid var(--error); border-radius: 6px; margin-bottom: 24px; }
 
 .reader .toolbar { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; font-size: 14px; margin: -16px 0 32px; }

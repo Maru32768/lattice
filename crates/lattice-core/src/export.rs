@@ -1,8 +1,9 @@
 //! JSON export (§17): articles, their translations and summaries, and chat, in an open format,
 //! so none of it lives only in this database or at an LLM provider. One JSON object per line,
 //! gzip-compressed, written article by article: 10^5 articles never sit in memory at once.
-//! Left out: settings (API keys and other secrets), raw HTML snapshots, embeddings and jobs;
-//! the database backup has the snapshots and embeddings.
+//! Left out: settings (API keys and other secrets), raw HTML snapshots, image bytes, embeddings
+//! and jobs; the database backup has the snapshots, images and embeddings. Image blocks carry
+//! `image_hash` (sha256 of the stored bytes) when the image was saved.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,6 +28,7 @@ fn line(out: &mut impl Write, v: &Value) -> Result<(), String> {
 const BLOCKS: &str = "SELECT json_group_array(json_object(
         'ordinal', b.ordinal, 'kind', b.kind, 'text', b.text,
         'inlines', json(coalesce(b.inlines, '[]')), 'attrs', json(coalesce(b.attrs, '{}')),
+        'image_hash', (SELECT ai.hash FROM article_images ai WHERE ai.article_id = b.article_id AND ai.src = json_extract(b.attrs, '$.src')),
         'translations', json((SELECT json_group_array(json_object(
             'target_language', st.target_language, 'text', st.text, 'units', json(st.units),
             'provider', st.provider, 'model', st.model, 'prompt_version', st.prompt_version, 'created_at', st.created_at))

@@ -13,11 +13,11 @@ use crate::fetch::HttpClient;
 use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::store::{JobRow, Store};
-use crate::{classify, render, summarize, translate};
+use crate::{classify, images, render, summarize, translate};
 
 pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
-pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE];
+pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
 const IDLE_POLL: Duration = Duration::from_secs(30);
@@ -93,6 +93,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             render::enqueue_if_auto(store, id)?;
             embed::enqueue(store, id, p.embedder.model_id())
         }
+        images::JOB_TYPE => images::run(store, &p.http, article_id).await,
         other => Err(format!("unknown job type: {other}")),
     }
 }

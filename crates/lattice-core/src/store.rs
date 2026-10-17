@@ -295,6 +295,29 @@ CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_r
 ALTER TABLE articles ADD COLUMN difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 5);
 ALTER TABLE articles ADD COLUMN difficulty_source TEXT CHECK (difficulty_source IN ('auto', 'manual'));
 ALTER TABLE classifications ADD COLUMN difficulty INTEGER;
+"#, r#"
+-- Article images (§6), stored once per content hash (sha256 of the bytes) across articles.
+-- Raster formats only (sniffed): SVG can carry script and stays a link.
+CREATE TABLE images (
+    hash       TEXT PRIMARY KEY,
+    mime       TEXT NOT NULL,
+    bytes      BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+-- Every image URL an article's blocks reference, tried or stored. Keyed by URL, not block id:
+-- re-extraction matches image blocks by their alt text (often empty), so their ids can swap.
+CREATE TABLE article_images (
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    src        TEXT NOT NULL,
+    hash       TEXT,   -- NULL: not stored; error says why
+    error      TEXT,
+    PRIMARY KEY (article_id, src)
+);
+CREATE INDEX article_images_hash ON article_images(hash);
+-- Garbage collection: bytes go when their last mapping does (article deleted or image dropped).
+CREATE TRIGGER article_images_gc AFTER DELETE ON article_images WHEN old.hash IS NOT NULL BEGIN
+    DELETE FROM images WHERE hash = old.hash AND NOT EXISTS (SELECT 1 FROM article_images WHERE hash = old.hash);
+END;
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -1001,8 +1024,8 @@ impl Store {
         self.conn().execute("UPDATE processing_jobs SET status = 'pending' WHERE status = 'running'", [])
     }
 
-    /// Claims the oldest ready job whose type is in `types`. Ingest jobs are skipped while
-    /// another ingest job for the same host is running (one fetch per site at a time).
+    /// Claims the oldest ready job whose type is in `types`. Ingest and image jobs are skipped
+    /// while another one for an article of the same host is running (one fetch per site at a time).
     pub fn claim_next_job(&self, types: &[&str]) -> Result<Option<JobRow>> {
         self.conn()
             .query_row(
@@ -1014,15 +1037,15 @@ impl Store {
                                  WHERE j.status = 'pending'
                                    AND j.type IN (SELECT value FROM json_each(?1))
                                    AND (j.next_run_at IS NULL OR j.next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-                                   AND NOT (j.type = ?2 AND EXISTS (
+                                   AND NOT (j.type IN (?2, ?3) AND EXISTS (
                                        SELECT 1 FROM processing_jobs r
                                        JOIN articles ra ON ra.id = r.article_id
                                        JOIN articles ja ON ja.id = j.article_id
-                                       WHERE r.status = 'running' AND r.type = ?2 AND ra.domain = ja.domain))
+                                       WHERE r.status = 'running' AND r.type IN (?2, ?3) AND ra.domain = ja.domain))
                                  ORDER BY j.id LIMIT 1)
                      RETURNING {JOB_COLS}"
                 ),
-                params![json(&types), crate::ingest::JOB_TYPE],
+                params![json(&types), crate::ingest::JOB_TYPE, crate::images::JOB_TYPE],
                 job_row,
             )
             .optional()

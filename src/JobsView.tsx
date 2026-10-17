@@ -4,6 +4,7 @@ import { api, type JobIssue, type JobOverview, type JobState } from "./api";
 
 const TYPE_LABELS: Record<string, string> = {
   ingest: "取得",
+  images: "画像",
   embed: "検索 index",
   translate: "翻訳",
   summarize: "要約",

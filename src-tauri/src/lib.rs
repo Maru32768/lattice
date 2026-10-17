@@ -16,7 +16,7 @@ use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::{backup, classify, export, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, images, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -81,6 +81,7 @@ fn set_auto_render(app: State<'_, App>, on: bool) -> Result<(), String> {
 fn indexed(app: &App, id: i64) -> Result<i64, String> {
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
     app.wake_local.notify_one();
+    app.wake_net.iter().for_each(|w| w.notify_one()); // extraction has queued its images job
     classify::enqueue_if_auto(&app.store, id)?;
     app.wake_llm.notify_one();
     Ok(id)
@@ -115,6 +116,27 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
     let summary = ingest::enqueue_urls(&app.store, &ingest::extract_urls(&text))?;
     app.wake_net.iter().for_each(|w| w.notify_one());
     Ok(summary)
+}
+
+/// The stored image of an image block as a `data:` URL, or `None` (the Reader then shows a link).
+#[tauri::command(async)]
+fn article_image(app: State<'_, App>, block_id: i64) -> Result<Option<String>, String> {
+    images::data_url(&app.store, block_id)
+}
+
+#[tauri::command(async)]
+fn get_image_settings(app: State<'_, App>) -> Result<images::ImageSettings, String> {
+    images::settings(&app.store)
+}
+
+/// Switching saving on also queues the articles whose images were never tried.
+#[tauri::command(async)]
+fn set_image_settings(app: State<'_, App>, settings: images::ImageSettings) -> Result<(), String> {
+    images::set_settings(&app.store, settings)?;
+    if images::enqueue_missing(&app.store)? > 0 {
+        app.wake_net.iter().for_each(|w| w.notify_one());
+    }
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -493,6 +515,7 @@ pub fn run() {
 
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
+            images::enqueue_missing(&store)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
@@ -513,11 +536,12 @@ pub fn run() {
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
             // Rendering is heavy and needs the webview, so it has its own single runner here.
-            let (handle, embedder_wake, llm_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone());
+            let (handle, embedder_wake, llm_wake, net_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_net.clone());
             let on_render = move |article_id: i64| {
                 let _ = handle.emit("article-changed", article_id);
                 embedder_wake.notify_one();
                 llm_wake.notify_one();
+                net_wake.iter().for_each(|w| w.notify_one()); // the stored rendering has queued its images job
             };
             let embed_model = providers.embedder.model_id().to_string();
             tauri::async_runtime::spawn(renderer::run(app.handle().clone(), store.clone(), embed_model, wake_render.clone(), on_render));
@@ -543,6 +567,9 @@ pub fn run() {
             get_auto_render,
             set_auto_render,
             import_urls,
+            article_image,
+            get_image_settings,
+            set_image_settings,
             list_articles,
             list_tags,
             list_genres,

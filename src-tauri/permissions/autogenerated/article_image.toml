@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-article-image"
+description = "Enables the article_image command without any pre-configured scope."
+commands.allow = ["article_image"]
+
+[[permission]]
+identifier = "deny-article-image"
+description = "Denies the article_image command without any pre-configured scope."
+commands.deny = ["article_image"]

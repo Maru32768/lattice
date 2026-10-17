@@ -1,5 +1,5 @@
-import { createContext, useContext, useRef, useState } from "react";
-import type { ArticleView, Block, Inline, JobRow } from "./api";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { api, type ArticleView, type Block, type Inline, type JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { GenreField } from "./GenreField";
 import { DifficultyField } from "./DifficultyField";
@@ -32,7 +32,32 @@ function Inlines({ block, translated }: { block: Block; translated: boolean }) {
   );
 }
 
-function BlockView({ block, marker, translated }: { block: Block; marker?: string; translated: boolean }) {
+/** Stored copy only (as a data: URL, loaded when scrolled near); the app never loads remote images.
+ * `imagesJob` changes when the download job progresses, so a block still showing the link retries. */
+function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) {
+  const ref = useRef<HTMLElement>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || url) return;
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      api.articleImage(block.id).then(setUrl, () => {});
+    }, { rootMargin: "600px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [block.id, imagesJob, url]);
+  const src = block.attrs.src!;
+  return (
+    <figure className="image" ref={ref}>
+      {url ? <img src={url} alt={block.text} title={block.text || undefined} />
+        : <Link href={src}>画像: {block.text || src}</Link>}
+    </figure>
+  );
+}
+
+function BlockView({ block, marker, translated, imagesJob }: { block: Block; marker?: string; translated: boolean; imagesJob?: string }) {
   const a = block.attrs;
   const body = <Inlines block={block} translated={translated} />;
   switch (block.kind) {
@@ -60,12 +85,7 @@ function BlockView({ block, marker, translated }: { block: Block; marker?: strin
         </div>
       );
     case "image":
-      // shortcut: remote images are not loaded (tracking, CSP); download into the store when image saving lands.
-      return (
-        <figure className="image">
-          <Link href={a.src!}>画像: {block.text || a.src}</Link>
-        </figure>
-      );
+      return <ImageBlock block={block} imagesJob={imagesJob} />;
     case "caption":
       return <p className="caption">{body}</p>;
     default:
@@ -161,6 +181,8 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
   const total = blocks.filter((b) => TRANSLATABLE.has(b.kind)).length;
   const done = blocks.filter((b) => b.translation != null).length;
   const job = view.jobs.find((j) => j.type === "translate");
+  const images = view.jobs.find((j) => j.type === "images");
+  const imagesJob = images && `${images.status}:${images.attempt_count}`;
 
   // Hover shows the other language; clicking that tooltip flips the block (as in the page view).
   const [newTag, setNewTag] = useState("");
@@ -262,7 +284,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
               tabIndex={has ? 0 : undefined}
               onKeyDown={has ? (e) => { if (e.key === "Enter" && e.target === e.currentTarget) flip(b.id); } : undefined}
               aria-description={has ? "Enter で原文／訳文を切替" : undefined}>
-              <BlockView block={b} marker={markers[i]} translated={translated} />
+              <BlockView block={b} marker={markers[i]} translated={translated} imagesJob={imagesJob} />
             </div>
           );
         })}
