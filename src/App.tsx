@@ -344,7 +344,7 @@ export default function App() {
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}
         {main === "settings" && <SettingsView onChanged={refresh} />}
-        {main === "feeds" && <FeedsView onChanged={refreshSoon} />}
+        {main === "feeds" && <FeedsView articles={articles} onChanged={refreshSoon} onShowFeed={(id) => { setFilter({ kind: "feed", id }); setMain("empty"); }} />}
         {main === "jobs" && <JobsView />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>

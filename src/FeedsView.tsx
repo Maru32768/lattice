@@ -1,24 +1,40 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type FeedCandidate, type FeedRow } from "./api";
+import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
+import { relTime } from "./time";
+import "./manage.css";
+
+const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
+const bare = (url: string) => url.replace(/^https?:\/\//, "");
+const feedName = (f: FeedRow) => f.title ?? bare(f.url);
 
 /** RSS / Atom subscriptions. Polling runs in the background every 30 minutes and at startup. */
-export function FeedsView({ onChanged }: { onChanged: () => void }) {
+export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
+  articles: ArticleRow[];
+  onChanged: () => void;
+  onShowFeed: (id: number) => void;
+  initialUrl?: string;
+}) {
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl ?? "");
   const [candidates, setCandidates] = useState<FeedCandidate[]>([]);
+  const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [onlyErrors, setOnlyErrors] = useState(false);
+  const [query, setQuery] = useState("");
+  const [confirming, setConfirming] = useState<number | null>(null);
 
   const load = () => api.listFeeds().then(setFeeds).catch((e) => setError(String(e)));
   useEffect(() => {
     load();
+    if (initialUrl?.trim()) detect(initialUrl);
     const sub = listen("feeds-changed", () => { load(); onChanged(); });
     return () => { sub.then((f) => f()); };
   }, []);
 
-  async function run(task: () => Promise<string>) {
+  async function run(task: () => Promise<string | null>) {
     setBusy(true);
     setError(null);
     setStatus(null);
@@ -33,26 +49,27 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
     }
   }
 
-  const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
   // A site or article URL works too: the backend finds the feeds it links.
-  const add = () => run(async () => {
+  const detect = (u: string) => run(async () => {
     setCandidates([]);
-    const found = await api.discoverFeeds(url.trim());
+    const found = await api.discoverFeeds(u.trim());
     if (found.length === 0) throw "フィードが見つかりませんでした（ページにフィードへのリンクがなく、/feed などにもありません）";
-    if (found.length > 1) {
-      setCandidates(found);
-      return `フィードが ${found.length} 件見つかりました。登録するものを選んでください。`;
-    }
-    await api.addFeed(found[0].url);
-    setUrl("");
-    return found[0].url === url.trim() ? ADDED : `${found[0].title ?? found[0].url} を${ADDED}`;
+    setCandidates(found);
+    setPicked(found[0].url);
+    return null;
   });
 
-  const subscribe = (c: FeedCandidate) => run(async () => {
-    await api.addFeed(c.url);
-    setCandidates((cs) => cs.filter((x) => x.url !== c.url));
-    return `${c.title ?? c.url} を${ADDED}`;
-  });
+  const subscribe = () => {
+    const c = candidates.find((x) => x.url === picked);
+    if (c) run(async () => {
+      await api.addFeed(c.url);
+      const rest = candidates.filter((x) => x.url !== c.url);
+      setCandidates(rest);
+      setPicked(rest[0]?.url ?? null);
+      if (rest.length === 0) setUrl("");
+      return `${c.title ?? c.url} を${ADDED}`;
+    });
+  };
 
   // OPML: subscriptions are the outline elements' xmlUrl attributes.
   const importOpml = (file: File | undefined) => file && run(async () => {
@@ -74,6 +91,7 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
   const refreshAll = () => run(async () => `更新しました（${await api.refreshFeeds()} 件を取得キューに追加）`);
 
   async function remove(f: FeedRow) {
+    setConfirming(null);
     try {
       await api.removeFeed(f.id);
     } catch (e) {
@@ -83,50 +101,104 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
     onChanged();
   }
 
+  const unread = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const a of articles) if (a.feed_id != null && a.read_status === "unread") m.set(a.feed_id, (m.get(a.feed_id) ?? 0) + 1);
+    return m;
+  }, [articles]);
+  const newest = feeds.flatMap((f) => (f.last_fetched_at ? [f.last_fetched_at] : [])).sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? null;
+  const errorCount = feeds.filter((f) => f.last_error).length;
+  const needle = query.trim().toLowerCase();
+  const shown = feeds.filter((f) => (!onlyErrors || f.last_error)
+    && (!needle || `${f.title ?? ""} ${f.url} ${f.site_url ?? ""}`.toLowerCase().includes(needle)));
+
   return (
-    <section className="import feeds">
-      <h2>フィード（RSS / Atom）</h2>
-      <p className="muted">登録すると最新 20 件を取り込み、以降は 30 分ごと（と起動時）に新着だけを取り込みます。サイトや記事の URL を入れると、そのページのフィードを探します。フィードを削除しても記事は残ります（「手動追加」に移ります）。</p>
-      <form className="row" onSubmit={(e) => { e.preventDefault(); if (url.trim()) add(); }}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/ またはフィードの URL" aria-label="サイトまたはフィードの URL" />
-        <button type="submit" disabled={busy || !url.trim()}>登録</button>
-        <button type="button" onClick={refreshAll} disabled={busy || feeds.length === 0}>すべて更新</button>
-        <label className="file">
-          OPML を読み込む
-          <input type="file" accept=".opml,.xml" disabled={busy} onChange={(e) => importOpml(e.target.files?.[0])} />
-        </label>
-      </form>
-      {status && <p role="status" className="muted">{status}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-      {candidates.length > 0 && (
-        <ul className="feed-list" aria-label="見つかったフィード">
-          {candidates.map((c) => (
-            <li key={c.url}>
-              <div className="feed-main">
-                <strong>{c.title ?? c.url}</strong>
-                <span className="muted">{c.url}</span>
-              </div>
-              <button onClick={() => subscribe(c)} disabled={busy} aria-label={`${c.title ?? c.url} を登録`}>登録</button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <ul className="feed-list">
-        {feeds.map((f) => (
-          <li key={f.id}>
-            <div className="feed-main">
-              <strong>{f.title ?? f.url}</strong>
-              <span className="muted">{f.url}</span>
-              <span className="muted">
-                記事 {f.article_count} 件
-                {f.last_fetched_at && `・最終取得 ${new Date(f.last_fetched_at).toLocaleString()}`}
-              </span>
-              {f.last_error && <span className="error-text">エラー: {f.last_error}</span>}
-            </div>
-            <button onClick={() => remove(f)} aria-label={`${f.title ?? f.url} を削除`}>削除</button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <main className="manage">
+      <div className="wrap">
+        <header className="head">
+          <div>
+            <h1>フィードを管理</h1>
+            <p className="sub">{feeds.length} 件 · 最終巡回 {relTime(newest)} · 起動時と 30 分ごとに新着のみ取得</p>
+          </div>
+          <div className="acts">
+            <label className="btn lg">
+              <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M4 19h16" /></svg>
+              OPML を読み込む
+              <input type="file" className="vh" accept=".opml,.xml" disabled={busy} onChange={(e) => importOpml(e.target.files?.[0])} />
+            </label>
+            <button className="btn lg" onClick={refreshAll} disabled={busy || feeds.length === 0}>
+              <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12a7 7 0 1 1-2.1-5" /><path d="M19 4v4h-4" /></svg>
+              すべて更新
+            </button>
+          </div>
+        </header>
+
+        <form className="card add" aria-label="フィードを追加" onSubmit={(e) => { e.preventDefault(); if (url.trim()) detect(url); }}>
+          <label htmlFor="feed-url">サイトまたは記事の URL からフィードを検出</label>
+          <div className="line">
+            <input id="feed-url" className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/ またはフィードの URL" spellCheck={false} />
+            <button type="submit" className="btn pri lg" disabled={busy || !url.trim()}>検出</button>
+          </div>
+          {candidates.length > 0 && (
+            <fieldset className="cands">
+              <legend>候補が {candidates.length} 件見つかりました</legend>
+              {candidates.map((c) => (
+                <label key={c.url}>
+                  <input type="radio" name="feed-candidate" checked={picked === c.url} onChange={() => setPicked(c.url)} />
+                  <span>{c.title ?? bare(c.url)}</span>
+                  {c.title && <span className="fs">{bare(c.url)}</span>}
+                </label>
+              ))}
+              <div><button type="button" className="btn sm pri" onClick={subscribe} disabled={busy || !picked}>登録して最新 20 件を取り込む</button></div>
+            </fieldset>
+          )}
+        </form>
+        {status && <p role="status" className="msg muted">{status}</p>}
+        {error && <p role="alert" className="msg error-text">{error}</p>}
+
+        <div className="filter">
+          <button className={`btn sm${onlyErrors ? "" : " on"}`} aria-pressed={!onlyErrors} onClick={() => setOnlyErrors(false)}>すべて {feeds.length}</button>
+          <button className={`btn sm${onlyErrors ? " on" : ""}`} aria-pressed={onlyErrors} onClick={() => setOnlyErrors(true)}>エラー {errorCount}</button>
+          <label htmlFor="feed-filter" className="vh">フィードを絞り込む</label>
+          <input id="feed-filter" className="input sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="名前・ドメインで絞り込む" />
+        </div>
+
+        <div className="card scroll">
+          <table className="tbl">
+            <thead><tr><th>フィード</th><th>状態</th><th>最終更新</th><th className="num">未読 / 記事</th><th><span className="vh">操作</span></th></tr></thead>
+            <tbody>
+              {shown.length === 0 && <tr><td colSpan={5} className="muted">{feeds.length === 0 ? "フィードはまだありません。" : "一致するフィードはありません。"}</td></tr>}
+              {shown.map((f) => confirming === f.id ? (
+                <tr key={f.id} className="confirm">
+                  <td colSpan={5}>
+                    <div className="confirm-line">
+                      <div>
+                        <div className="fn">{feedName(f)} を削除しますか？</div>
+                        <div className="muted">記事 {f.article_count} 件は削除されず「手動追加」に移ります。タグ・訳文・要約も残ります。</div>
+                      </div>
+                      <div className="acts">
+                        <button className="btn sm" onClick={() => setConfirming(null)}>キャンセル</button>
+                        <button className="btn sm danger" onClick={() => remove(f)}>フィードを削除</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={f.id} className={f.last_error ? "err" : undefined}>
+                  <td><div className="fn">{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
+                  <td>{f.last_error ? <span className="st err"><i />{f.last_error}</span> : <span className="st"><i />正常</span>}</td>
+                  <td className="num when">{relTime(f.last_fetched_at)}</td>
+                  <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>
+                  <td className="row-acts">
+                    <button className="btn sm ghost" onClick={() => onShowFeed(f.id)} aria-label={`${feedName(f)} の記事を見る`}>記事を見る →</button>
+                    <button className="btn sm ghost" onClick={() => setConfirming(f.id)} aria-label={`${feedName(f)} を削除`}>削除</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
   );
 }
