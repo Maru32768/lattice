@@ -40,6 +40,7 @@ pub async fn search<E: EmbeddingProvider>(
     store: &Store,
     embedder: &E,
     query: &str,
+    articles: Option<&[i64]>,
     target_language: &str,
     limit: usize,
 ) -> Result<SearchResult, String> {
@@ -47,8 +48,8 @@ pub async fn search<E: EmbeddingProvider>(
     if query.is_empty() {
         return Ok(SearchResult { hits: Vec::new(), semantic_error: None });
     }
-    let lexical = store.lexical_search(query, CANDIDATES).map_err(|e| e.to_string())?;
-    let (semantic, semantic_error) = match semantic_search(store, embedder, query).await {
+    let lexical = store.lexical_search(query, articles, CANDIDATES).map_err(|e| e.to_string())?;
+    let (semantic, semantic_error) = match semantic_search(store, embedder, query, articles).await {
         Ok(ids) => (ids, None),
         Err(e) => (Vec::new(), Some(e)),
     };
@@ -66,12 +67,12 @@ pub async fn search<E: EmbeddingProvider>(
     Ok(SearchResult { hits, semantic_error })
 }
 
-async fn semantic_search<E: EmbeddingProvider>(store: &Store, embedder: &E, query: &str) -> Result<Vec<i64>, String> {
+async fn semantic_search<E: EmbeddingProvider>(store: &Store, embedder: &E, query: &str, articles: Option<&[i64]>) -> Result<Vec<i64>, String> {
     let q = embedder.embed(vec![query.to_string()], Purpose::Query).await?.pop().ok_or("no query vector")?;
     // Min-heap of the best CANDIDATES by dot product (vectors are normalized, so = cosine).
     let mut top: BinaryHeap<Reverse<(Ordered, i64)>> = BinaryHeap::new();
     store
-        .scan_embeddings(embedder.model_id(), |id, v| {
+        .scan_embeddings(embedder.model_id(), articles, |id, v| {
             if v.len() != q.len() {
                 return;
             }
@@ -117,7 +118,7 @@ fn fuse(lexical: &[i64], semantic: &[i64], limit: usize) -> Vec<(i64, MatchSourc
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::fetch::Fetched;
     use crate::ingest::store_fetched;
@@ -132,7 +133,7 @@ mod tests {
     }
 
     /// Bag-of-letters vectors: texts sharing letters are "semantically" close.
-    struct Letters;
+    pub struct Letters;
     impl EmbeddingProvider for Letters {
         fn model_id(&self) -> &str {
             "letters"
@@ -178,11 +179,11 @@ mod tests {
         crate::embed::run(&s, &Letters, id).await.unwrap();
 
         // Exact identifier, case-insensitive, also inside code blocks.
-        let r = search(&s, &Letters, "epollet", "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "epollet", None, "ja", 10).await.unwrap();
         assert!(r.hits[0].detail.text.contains("EPOLLET"));
         assert_eq!(r.hits[0].detail.heading.as_deref(), Some("Visibility"));
         assert_eq!(r.hits[0].detail.article_title, "MVCC notes");
-        let r = search(&s, &Letters, "pg_visibility_map", "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "pg_visibility_map", None, "ja", 10).await.unwrap();
         assert!(r.hits.iter().any(|h| h.detail.text.starts_with("SELECT") && h.source != MatchSource::Semantic));
 
         // A Japanese query matches the stored translation lexically, including a 2-char term via LIKE.
@@ -191,24 +192,24 @@ mod tests {
         let units = [Unit { source: "x".into(), translation: "可視性情報は<b>ヒープ</b>に保持される".into() }];
         s.insert_segments("ja", "fake", None, "v", &[(p.1.as_str(), &units[..])]).unwrap();
         for q in ["可視性情報", "ヒープ", "可視性 保持"] {
-            let r = search(&s, &Offline, q, "ja", 10).await.unwrap();
+            let r = search(&s, &Offline, q, None, "ja", 10).await.unwrap();
             assert_eq!(r.hits.first().map(|h| h.detail.block_id), Some(p.0), "query {q}");
             assert_eq!(r.hits[0].detail.translation.as_deref(), Some("可視性情報はヒープに保持される"));
         }
 
         // Semantic-only match, and graceful degradation when the embedder is unavailable.
-        let r = search(&s, &Letters, "tuple heap visibility", "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "tuple heap visibility", None, "ja", 10).await.unwrap();
         assert!(r.hits.iter().any(|h| h.source != MatchSource::Lexical));
-        let r = search(&s, &Offline, "EPOLLET", "ja", 10).await.unwrap();
+        let r = search(&s, &Offline, "EPOLLET", None, "ja", 10).await.unwrap();
         assert_eq!(r.semantic_error.as_deref(), Some("model not downloaded"));
         assert_eq!(r.hits.len(), 1);
 
         // FTS syntax in user input is literal, not an error.
-        assert!(search(&s, &Offline, "\"unbalanced OR (", "ja", 10).await.is_ok());
+        assert!(search(&s, &Offline, "\"unbalanced OR (", None, "ja", 10).await.is_ok());
 
         // Deleting an article removes its blocks and translations from the index.
         s.exec_for_test(&format!("DELETE FROM articles WHERE id = {id}"));
-        assert!(search(&s, &Offline, "EPOLLET", "ja", 10).await.unwrap().hits.is_empty());
-        assert!(search(&s, &Offline, "可視性情報", "ja", 10).await.unwrap().hits.is_empty());
+        assert!(search(&s, &Offline, "EPOLLET", None, "ja", 10).await.unwrap().hits.is_empty());
+        assert!(search(&s, &Offline, "可視性情報", None, "ja", 10).await.unwrap().hits.is_empty());
     }
 }

@@ -87,6 +87,38 @@ export interface SearchResult {
   semantic_error: string | null;
 }
 
+/** Mirrors chat.rs. New article filters (genre, feed) become chat scopes automatically. */
+export type ChatScope = { kind: "article"; id: number } | { kind: "filter"; filter: ArticleFilter };
+
+export interface Citation {
+  n: number;
+  block_id: number;
+  article_id: number;
+  url: string;
+  title: string;
+  heading: string | null;
+  text: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  thread_id: number;
+  question: string;
+  answer: string;
+  citations: Citation[];
+  scope: ChatScope;
+  mode: "full" | "retrieval" | "none";
+  provider: string | null;
+  model: string | null;
+  created_at: string;
+}
+
+export interface ChatThread {
+  id: number;
+  title: string;
+  updated_at: string;
+}
+
 export interface ImportSummary {
   found: number;
   queued: number;
@@ -119,6 +151,11 @@ export const api = {
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
   search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
+  chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>
+    invoke<ChatMessage>("chat_ask", { threadId, question, scope }),
+  chatThreads: () => invoke<ChatThread[]>("chat_threads"),
+  chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
+  chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
   settings: () => invoke<Settings>("get_settings"),

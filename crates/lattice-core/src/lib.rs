@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod claude;
 pub mod embed;
 pub mod extract;

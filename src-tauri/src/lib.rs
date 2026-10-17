@@ -12,6 +12,7 @@ use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleView, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
+use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::{summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
@@ -20,6 +21,8 @@ use browser::Browser;
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
+/// Chat questions in flight at once; also outside the job queue so they never wait behind it.
+const CHAT_LLM_CONCURRENCY: usize = 2;
 const OVERLAY_MAX_SNIPPETS: usize = 24;
 const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
 /// Parallel fetchers for bulk import.
@@ -33,6 +36,7 @@ struct App {
     wake_local: Arc<Notify>,
     wake_net: Vec<Arc<Notify>>,
     overlay_llm: Semaphore,
+    chat_llm: Semaphore,
     db_path: String,
 }
 
@@ -156,7 +160,28 @@ fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn search_blocks(app: State<'_, App>, query: String) -> Result<SearchResult, String> {
-    search::search(&app.store, &app.providers.embedder, &query, translate::TARGET_LANGUAGE, 30).await
+    search::search(&app.store, &app.providers.embedder, &query, None, translate::TARGET_LANGUAGE, 30).await
+}
+
+#[tauri::command]
+async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope) -> Result<ChatMessage, String> {
+    let _permit = app.chat_llm.acquire().await.map_err(err)?;
+    chat::ask(&app.store, &app.providers.llm, &app.providers.embedder, thread_id, &question, scope).await
+}
+
+#[tauri::command]
+fn chat_threads(app: State<'_, App>) -> Result<Vec<ChatThread>, String> {
+    app.store.chat_threads().map_err(err)
+}
+
+#[tauri::command]
+fn chat_messages(app: State<'_, App>, thread_id: i64) -> Result<Vec<ChatMessage>, String> {
+    app.store.chat_messages(thread_id).map_err(err)
+}
+
+#[tauri::command]
+fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String> {
+    app.store.delete_chat_thread(thread_id).map_err(err)
 }
 
 #[tauri::command]
@@ -253,7 +278,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
 
-            app.manage(App { store, providers, wake_llm, wake_local, wake_net, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), db_path: path.display().to_string() });
+            app.manage(App { store, providers, wake_llm, wake_local, wake_net, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY), db_path: path.display().to_string() });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -269,6 +294,10 @@ pub fn run() {
             translate_article,
             summarize_article,
             search_blocks,
+            chat_ask,
+            chat_threads,
+            chat_messages,
+            chat_delete_thread,
             set_read,
             db_path,
             get_settings,

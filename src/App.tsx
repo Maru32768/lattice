@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleFilter, type ArticleRow, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
+import { api, browser, type ArticleFilter, type Citation, type ArticleRow, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
 import { ImportView } from "./ImportView";
 import { SettingsView } from "./SettingsView";
 import { SearchResults } from "./SearchResults";
+import { ChatPane } from "./ChatPane";
 import "./App.css";
 
 type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings";
@@ -38,6 +39,7 @@ export default function App() {
   // Search
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState<{ query: string; result: SearchResult } | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const fail = (e: unknown) => setError(String(e));
   const refresh = () =>
@@ -121,6 +123,20 @@ export default function App() {
     if (a) openPage(a.original_url, hit.text);
   }
 
+  /** Chat citation: jump inside the Reader when it shows that article, else open the page at the block. */
+  function openCitation(c: Citation) {
+    const el = main === "reader" && view?.article.id === c.article_id ? document.getElementById(`b-${c.block_id}`) : null;
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("focused");
+      window.setTimeout(() => el.classList.remove("focused"), 2000);
+    } else if (c.url) {
+      openPage(c.url, c.text);
+    } else {
+      setError("引用元の記事は削除されています");
+    }
+  }
+
   useEffect(() => { refresh(); }, [filter]);
 
   async function toggleFavorite(a: ArticleRow) {
@@ -179,12 +195,13 @@ export default function App() {
   }
 
   const currentArticleId = main === "reader" ? view?.article.id : saved?.id;
+  const chatArticle = main === "reader" && view ? view.article : main === "browser" ? saved : null;
   const filterButton = (f: ArticleFilter, label: string) => (
     <button className={JSON.stringify(f) === JSON.stringify(filter) ? "on" : ""} onClick={() => setFilter(f)}>{label}</button>
   );
 
   return (
-    <div className="app">
+    <div className={`app${chatOpen ? " with-chat" : ""}`}>
       <aside className="sidebar">
         <form onSubmit={openAddress}>
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="URL を開く" aria-label="URL" />
@@ -218,6 +235,9 @@ export default function App() {
             </li>
           ))}
         </ul>
+        <button className="import-link" onClick={() => setChatOpen((o) => !o)} aria-pressed={chatOpen}>
+          {chatOpen ? "対話ペインを閉じる" : "記事に質問する（対話）…"}
+        </button>
         <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
         <button className="import-link" onClick={() => setMain("settings")}>設定・バックアップ…</button>
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
@@ -240,6 +260,10 @@ export default function App() {
         {main === "settings" && <SettingsView />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>
+      {chatOpen && (
+        <ChatPane article={chatArticle && { id: chatArticle.id, title: chatArticle.title ?? chatArticle.original_url }}
+          tags={tags} onCite={openCitation} onClose={() => setChatOpen(false)} />
+      )}
     </div>
   );
 }

@@ -212,6 +212,29 @@ CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+"#, r#"
+-- Chat over saved articles (F9). Scope and citations are JSON; citations copy the cited
+-- block's title/heading/text so old answers still render after re-extraction or deletion.
+CREATE TABLE chat_threads (
+    id         INTEGER PRIMARY KEY,
+    title      TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE chat_messages (
+    id             INTEGER PRIMARY KEY,
+    thread_id      INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+    question       TEXT NOT NULL,
+    answer         TEXT NOT NULL,
+    citations      TEXT NOT NULL,
+    scope          TEXT NOT NULL,
+    mode           TEXT NOT NULL CHECK (mode IN ('full', 'retrieval', 'none')),
+    provider       TEXT,
+    model          TEXT,
+    prompt_version TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX chat_messages_thread ON chat_messages(thread_id);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -268,7 +291,7 @@ pub struct ArticleRow {
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArticleFilter {
     All,
@@ -441,7 +464,7 @@ impl Store {
         Ok(Self { conn: Mutex::new(conn) })
     }
 
-    fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic mid-transaction rolls back via Drop, so the connection is still usable.
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -910,12 +933,24 @@ impl Store {
         )
     }
 
-    /// Calls `f` for every stored vector of `model`.
+    /// Calls `f` for every stored vector of `model`, only for blocks of `articles` when given.
     /// shortcut: brute-force scan, fine to ~10^5-10^6 blocks; move to sqlite-vec or an ANN index beyond that.
-    pub fn scan_embeddings(&self, model: &str, mut f: impl FnMut(i64, &[f32])) -> Result<()> {
+    pub fn scan_embeddings(&self, model: &str, articles: Option<&[i64]>, mut f: impl FnMut(i64, &[f32])) -> Result<()> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT block_id, vector FROM embeddings WHERE model = ?1")?;
-        let mut rows = st.query([model])?;
+        let mut st;
+        let mut rows = match articles {
+            None => {
+                st = c.prepare("SELECT block_id, vector FROM embeddings WHERE model = ?1")?;
+                st.query([model])?
+            }
+            Some(ids) => {
+                st = c.prepare(
+                    "SELECT e.block_id, e.vector FROM blocks b JOIN embeddings e ON e.block_id = b.id AND e.model = ?1
+                     WHERE b.article_id IN (SELECT value FROM json_each(?2))",
+                )?;
+                st.query(params![model, json(&ids)])?
+            }
+        };
         let mut buf = Vec::new();
         while let Some(r) = rows.next()? {
             let blob = r.get_ref(1)?.as_blob()?;
@@ -928,7 +963,8 @@ impl Store {
 
     /// Block ids ranked by FTS (best first), searching original text and translations.
     /// Terms of 3+ characters use the trigram index; shorter ones (e.g. 「索引」) filter by LIKE.
-    pub fn lexical_search(&self, query: &str, limit: usize) -> Result<Vec<i64>> {
+    /// `articles` restricts hits to blocks of those articles (metadata filter).
+    pub fn lexical_search(&self, query: &str, articles: Option<&[i64]>, limit: usize) -> Result<Vec<i64>> {
         let terms: Vec<&str> = query.split_whitespace().collect();
         if terms.is_empty() {
             return Ok(Vec::new());
@@ -945,6 +981,13 @@ impl Store {
             args.push(format!("%{}%", t.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")));
             conds.push(format!("{{t}}.text LIKE ?{} ESCAPE '\\'", args.len()));
         }
+        let scope = match articles {
+            None => String::new(),
+            Some(ids) => {
+                args.push(json(&ids));
+                format!("WHERE block_id IN (SELECT id FROM blocks WHERE article_id IN (SELECT value FROM json_each(?{})))", args.len())
+            }
+        };
         let rank = if long.is_empty() { "0" } else { "bm25({t})" };
         let branch = |t: &str| format!("WHERE {}", conds.join(" AND ")).replace("{t}", t);
         let sql = format!(
@@ -954,7 +997,7 @@ impl Store {
                  SELECT b.id, {r2} AS r FROM translations_fts
                      JOIN segment_translations st ON st.id = translations_fts.rowid
                      JOIN blocks b ON b.text_hash = st.source_hash {w2}
-             ) GROUP BY block_id ORDER BY min(r), block_id DESC LIMIT {limit}",
+             ) {scope} GROUP BY block_id ORDER BY min(r), block_id DESC LIMIT {limit}",
             r1 = rank.replace("{t}", "blocks_fts"),
             r2 = rank.replace("{t}", "translations_fts"),
             w1 = branch("blocks_fts"),
@@ -1047,7 +1090,7 @@ mod tests {
         let s = Store::init(conn).unwrap();
         let v = s.get_article(1, "ja").unwrap().unwrap();
         assert_eq!(v.blocks[0].translation.as_deref(), Some("スナップショット分離"));
-        assert_eq!(s.lexical_search("スナップショット", 10).unwrap(), [1]);
+        assert_eq!(s.lexical_search("スナップショット", None, 10).unwrap(), [1]);
         let cached = s.cached_segments(&[hash.clone()], "ja").unwrap();
         assert_eq!(cached[&hash], [Unit { source: "Snapshot isolation".into(), translation: "スナップショット分離".into() }]);
     }
