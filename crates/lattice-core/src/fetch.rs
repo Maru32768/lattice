@@ -35,7 +35,7 @@ pub fn client() -> reqwest::Client {
 }
 
 /// Names go through `PublicDns`; IP literals skip DNS and are checked here.
-pub(crate) fn check_public(url: &str) -> Result<(), String> {
+pub fn check_public(url: &str) -> Result<(), String> {
     let u = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
     if public_host(&u) { Ok(()) } else { Err("refusing to fetch a private address".into()) }
 }

@@ -76,7 +76,9 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
     // shortcut: pages may still play audio while hidden; mute through the WebView2 COM API if that bothers.
     let builder = WebviewBuilder::new(RENDER_LABEL, WebviewUrl::External(url))
         .initialization_script(OVERLAY_JS)
-        .on_navigation(is_http)
+        // No user is watching this webview: keep its page navigations (redirects, JS) off private hosts.
+        // shortcut: only literal IPs and localhost are refused, and subresource requests are not filtered.
+        .on_navigation(|u| is_http(u) && u.host_str() != Some("localhost") && lattice_core::fetch::check_public(u.as_str()).is_ok())
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_page_load(move |_, p| {
             if matches!(p.event(), PageLoadEvent::Finished) {
