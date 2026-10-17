@@ -212,6 +212,51 @@ CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+"#, r#"
+-- Genres (§11 topic): one per article. genre_source 'manual' pins the user's choice against auto runs.
+CREATE TABLE genres (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+INSERT INTO genres (name) VALUES ('Database'), ('Distributed Systems'), ('Linux'), ('Networking'),
+    ('Programming Languages'), ('Security'), ('Web'), ('AI/ML'), ('DevOps'), ('Hardware'), ('Career'), ('Other');
+ALTER TABLE articles ADD COLUMN genre_id INTEGER REFERENCES genres(id) ON DELETE SET NULL;
+ALTER TABLE articles ADD COLUMN genre_source TEXT CHECK (genre_source IN ('auto', 'manual'));
+CREATE INDEX articles_genre ON articles(genre_id);
+CREATE INDEX articles_published_at ON articles(published_at);
+-- Derived data: every auto classification, as summaries keep theirs.
+CREATE TABLE classifications (
+    id             INTEGER PRIMARY KEY,
+    article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    genre          TEXT NOT NULL,
+    tags           TEXT NOT NULL,   -- JSON array
+    provider       TEXT NOT NULL,
+    model          TEXT,
+    prompt_version TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX classifications_article ON classifications(article_id);
+"#, r#"
+CREATE TABLE feeds (
+    id              INTEGER PRIMARY KEY,
+    url             TEXT NOT NULL UNIQUE,
+    title           TEXT,
+    site_url        TEXT,
+    etag            TEXT,
+    last_modified   TEXT,
+    last_fetched_at TEXT,   -- last successful fetch
+    last_error      TEXT,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+-- Every entry URL a feed has listed, imported or not: only unseen entries get imported.
+CREATE TABLE feed_items (
+    feed_id        INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+    normalized_url TEXT NOT NULL,
+    PRIMARY KEY (feed_id, normalized_url)
+);
+-- Removing a feed keeps its articles (they fall back to manually added).
+ALTER TABLE articles ADD COLUMN feed_id INTEGER REFERENCES feeds(id) ON DELETE SET NULL;
+CREATE INDEX articles_feed ON articles(feed_id);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -265,6 +310,11 @@ pub struct ArticleRow {
     pub read_status: String,
     pub favorite: bool,
     pub tags: Vec<String>,
+    pub genre: Option<String>,
+    /// The user chose the genre; auto classification leaves it alone.
+    pub genre_manual: bool,
+    pub feed_id: Option<i64>,
+    pub feed_title: Option<String>,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -275,6 +325,16 @@ pub enum ArticleFilter {
     Unread,
     Favorites,
     Tag { name: String },
+}
+
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArticleSort {
+    #[default]
+    SavedDesc,
+    SavedAsc,
+    /// Articles without a published date come last.
+    PublishedDesc,
 }
 
 #[derive(Debug, Serialize)]
@@ -375,7 +435,9 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 }
 
 const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
-    (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name))";
+    (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
+    (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
+    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     Ok(ArticleRow {
@@ -395,6 +457,10 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         read_status: r.get(13)?,
         favorite: r.get(14)?,
         tags: from_json_col(r, 15, str::to_string)?,
+        genre: r.get(16)?,
+        genre_manual: r.get(17)?,
+        feed_id: r.get(18)?,
+        feed_title: r.get(19)?,
     })
 }
 
@@ -441,7 +507,7 @@ impl Store {
         Ok(Self { conn: Mutex::new(conn) })
     }
 
-    fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic mid-transaction rolls back via Drop, so the connection is still usable.
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -647,6 +713,16 @@ impl Store {
     }
 
     pub fn list_articles(&self, filter: &ArticleFilter) -> Result<Vec<ArticleRow>> {
+        self.list_articles_sorted(filter, ArticleSort::default())
+    }
+
+    pub fn list_articles_sorted(&self, filter: &ArticleFilter, sort: ArticleSort) -> Result<Vec<ArticleRow>> {
+        let order = match sort {
+            ArticleSort::SavedDesc => "saved_at DESC, id DESC",
+            ArticleSort::SavedAsc => "saved_at, id",
+            // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
+            ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
+        };
         let (cond, tag) = match filter {
             ArticleFilter::All => ("1", ""),
             ArticleFilter::Unread => ("read_status = 'unread'", ""),
@@ -657,7 +733,7 @@ impl Store {
             ),
         };
         let c = self.conn();
-        let mut st = c.prepare(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE {cond} ORDER BY saved_at DESC, id DESC"))?;
+        let mut st = c.prepare(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE {cond} ORDER BY {order}"))?;
         let rows = if tag.is_empty() { st.query_map([], article_row)? } else { st.query_map([tag], article_row)? };
         rows.collect()
     }
@@ -1074,6 +1150,19 @@ mod tests {
         assert_eq!(s.list_tags().unwrap().iter().map(|t| (t.name.as_str(), t.count)).collect::<Vec<_>>(), [("Database", 2), ("Linux", 1)]);
         s.remove_tag(3, "Linux").unwrap();
         assert_eq!(s.list_tags().unwrap().len(), 1, "unused tag removed");
+    }
+
+    #[test]
+    fn sorts_by_saved_and_published() {
+        let s = Store::open_in_memory().unwrap();
+        for u in ["https://a.dev/1", "https://a.dev/2", "https://a.dev/3"] {
+            s.upsert_pending(u, u, "a.dev").unwrap();
+        }
+        s.exec_for_test("UPDATE articles SET published_at = '2024-01-01' WHERE id = 1; UPDATE articles SET published_at = '2023-01-01' WHERE id = 3;");
+        let ids = |o| s.list_articles_sorted(&ArticleFilter::All, o).unwrap().iter().map(|a| a.id).collect::<Vec<_>>();
+        assert_eq!(ids(ArticleSort::SavedDesc), [3, 2, 1]);
+        assert_eq!(ids(ArticleSort::SavedAsc), [1, 2, 3]);
+        assert_eq!(ids(ArticleSort::PublishedDesc), [1, 3, 2], "undated last");
     }
 
     #[test]

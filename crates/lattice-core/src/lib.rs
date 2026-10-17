@@ -1,6 +1,8 @@
+pub mod classify;
 pub mod claude;
 pub mod embed;
 pub mod extract;
+pub mod feeds;
 pub mod fetch;
 pub mod ingest;
 pub mod ir;

@@ -181,3 +181,36 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 ### 未実装（意図的）
 
 Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、re-extract コマンド（block ID の再利用も含む）、画像の保存。
+
+## 6. 自動分類・RSS・一覧表示（実装済み。roadmap F5〜F8）
+
+```
+保存（save_url / ingest job）→ 自動分類が ON なら classify job
+classify job → 待機中の classify job を最大 20 件まとめて claim → 1 回の LLM 呼び出し → ジャンル 1 つ + タグ最大 3 つ
+feed 登録 / 30 分ごと / 起動時 / 「すべて更新」→ 未見の entry URL → ingest::enqueue_urls → ingest job（記事に feed_id を付ける）
+```
+
+| 対象 | ファイル |
+|---|---|
+| 分類 job（prompt・batch・手動ジャンルの保護） | `crates/lattice-core/src/classify.rs` |
+| RSS / Atom collector（`feed-rs` で解析、条件付き GET、poll） | `crates/lattice-core/src/feeds.rs` |
+| スキーマ（`genres`・`classifications`・`feeds`・`feed_items`、`articles.genre_id / genre_source / feed_id`）、並び順 | `crates/lattice-core/src/store.rs`（migration 9, 10） |
+| 一覧（一覧／フィード／ジャンルの切替、並び順） | `src/ArticleList.tsx`、`src/groups.ts` |
+| フィード管理・ジャンル編集・設定 | `src/FeedsView.tsx`、`src/GenreField.tsx`、`src/ClassifySettings.tsx` |
+
+- **ジャンルは記事に 1 つ。** 既定は Database / Distributed Systems / Linux / Networking / Programming Languages / Security / Web / AI/ML / DevOps / Hardware / Career / Other。prompt に既存のジャンル一覧を渡し、合うものがなければ新しいジャンルを作らせる。名前は大文字小文字を区別せずに照合するので、「database」は Database に統合される。
+- **手動の選択は上書きしない。** Reader で選ぶと `genre_source = 'manual'` になり、自動分類はジャンルを変えない（タグの追加だけ行う）。Reader の「自動分類」を押すと固定を外して分類し直す。空にすると未分類に戻る。
+- **タグは追加だけ。** 分類が提案したタグ（最大 3 つ）を付け、ユーザーのタグは消さない。
+- **batch。** job は記事単位のまま（状態・再試行・backoff は従来どおり）だが、1 回の実行で待機中の classify job を最大 20 件 claim して 1 回の CLI 呼び出しで分類し、それぞれの job を個別に完了させる。数千件の bulk import でも CLI の起動は 1/20 になる。入力は記事ごとにタイトル・ドメイン・要約（なければ冒頭の本文 1200 字）。
+- **派生データとして記録する。** 結果は毎回 `classifications` に provider / model / prompt_version 付きで残す。
+- **自動分類の設定**（`settings.auto_classify`、既定 ON）と「未分類をすべて分類」は設定画面にある。
+- **RSS の初回取り込みは最新 20 件。** 全記事を載せる feed を登録しても数百件を取り込まないようにする。残りは取り込み済みとして `feed_items` に記録し、以降の poll では新しく現れた entry だけを取り込む。entry は公開日時の新しい順に並べてから数える。
+- **poll は UI から独立している。** 起動時と 30 分ごとに全 feed を順に取得する（ETag / Last-Modified で条件付き GET）。失敗は feed ごとに `last_error` に記録し、他の feed は続行する。poll は URL を登録するだけで、記事の取得は既存の network runner が行う。
+- **登録時にすぐ取得する。** 新しく登録した URL が feed として読めなければ登録しない。OPML は `xmlUrl` 属性を抜き出して 1 件ずつ登録する。
+- **feed を削除しても記事は残す**（`feed_id` が NULL になり「手動追加」に入る）。
+- **一覧の表示モード。** 「一覧」（従来どおり）、「フィード」（手動追加 → 各 feed → その中でジャンル → 記事）、「ジャンル」（ジャンル → 記事、未分類は最後）。最近追加／未読／お気に入り／タグの絞り込みはそのまま効き、絞り込んだ結果をグループ化する（件数も絞り込み後）。記事は 1 回の query で取り、グループ化はクライアントで行う。開いたグループの記事だけを描画する。
+- **並び順。** 追加日時（新しい順／古い順）と公開日時（新しい順。日付のない記事は最後）。`articles_published_at` index を追加した。
+
+### 未実装（意図的）
+
+feed の自動検出（サイトの URL から `<link rel="alternate">` を探す）、feed 単位の取り込み件数・間隔の設定、ジャンルの改名・統合 UI、表示モードと並び順の保存（再起動で既定に戻る）、entry の日付で記事の `published_at` を補うこと。

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-feeds"
+description = "Enables the list_feeds command without any pre-configured scope."
+commands.allow = ["list_feeds"]
+
+[[permission]]
+identifier = "deny-list-feeds"
+description = "Denies the list_feeds command without any pre-configured scope."
+commands.deny = ["list_feeds"]

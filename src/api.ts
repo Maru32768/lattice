@@ -55,9 +55,25 @@ export interface ArticleRow {
   read_status: "unread" | "read";
   favorite: boolean;
   tags: string[];
+  genre: string | null;
+  genre_manual: boolean;
+  feed_id: number | null;
+  feed_title: string | null;
 }
 
 export type ArticleFilter = { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string };
+
+export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc";
+
+export interface FeedRow {
+  id: number;
+  url: string;
+  title: string | null;
+  site_url: string | null;
+  last_fetched_at: string | null;
+  last_error: string | null;
+  article_count: number;
+}
 
 export interface TagCount {
   name: string;
@@ -110,7 +126,7 @@ export interface Bounds {
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
-  listArticles: (filter: ArticleFilter) => invoke<ArticleRow[]>("list_articles", { filter }),
+  listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
   addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
@@ -126,6 +142,16 @@ export const api = {
   backup: () => invoke<string>("backup_db"),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
+  listGenres: () => invoke<TagCount[]>("list_genres"),
+  setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),
+  classifyArticle: (id: number) => invoke<void>("classify_article", { id }),
+  classifyUnclassified: () => invoke<number>("classify_unclassified"),
+  autoClassify: () => invoke<boolean>("get_auto_classify"),
+  setAutoClassify: (on: boolean) => invoke<void>("set_auto_classify", { on }),
+  listFeeds: () => invoke<FeedRow[]>("list_feeds"),
+  addFeed: (url: string) => invoke<number>("add_feed", { url }),
+  removeFeed: (id: number) => invoke<void>("remove_feed", { id }),
+  refreshFeeds: () => invoke<number>("refresh_feeds"),
 };
 
 /** The in-app browser (a native child webview positioned over a placeholder element). */

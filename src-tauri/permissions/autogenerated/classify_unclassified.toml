@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-classify-unclassified"
+description = "Enables the classify_unclassified command without any pre-configured scope."
+commands.allow = ["classify_unclassified"]
+
+[[permission]]
+identifier = "deny-classify-unclassified"
+description = "Denies the classify_unclassified command without any pre-configured scope."
+commands.deny = ["classify_unclassified"]

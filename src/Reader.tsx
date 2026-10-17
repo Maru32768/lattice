@@ -1,6 +1,7 @@
 import { createContext, useContext, useRef, useState } from "react";
 import type { ArticleView, Block, Inline, JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
+import { GenreField } from "./GenreField";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -121,8 +122,10 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onSummarize, onFavorite, onTag }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onSummarize, onFavorite, onTag, onGenre, onClassify }: {
   view: ArticleView;
+  onGenre: (name: string) => void;
+  onClassify: () => void;
   onSummarize: () => void;
   onFavorite: () => void;
   onTag: (name: string, add: boolean) => void;
@@ -194,6 +197,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
             <input value={newTag} onChange={(e) => setNewTag(e.target.value)} placeholder="タグを追加" aria-label="タグを追加" />
           </form>
         </div>
+        {!failed && <GenreField view={view} onGenre={onGenre} onClassify={onClassify} />}
         {!failed && (
           <div className="toolbar">
             <div className="segmented" role="radiogroup" aria-label="表示言語">

@@ -13,9 +13,9 @@ use crate::fetch::HttpClient;
 use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::store::{JobRow, Store};
-use crate::{summarize, translate};
+use crate::{classify, summarize, translate};
 
-pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE];
+pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE];
 
@@ -84,10 +84,12 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             translate::run(store, &p.llm, article_id, target, progress).await
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
+        classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
         ingest::JOB_TYPE => {
             // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.
             let id = ingest::process(store, &p.http, article_id).await?;
+            classify::enqueue_if_auto(store, id)?;
             embed::enqueue(store, id, p.embedder.model_id())
         }
         other => Err(format!("unknown job type: {other}")),

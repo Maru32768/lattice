@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleFilter, type ArticleRow, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
+import { api, browser, type ArticleFilter, type ArticleRow, type ArticleSort, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
 import { ImportView } from "./ImportView";
 import { SettingsView } from "./SettingsView";
+import { ArticleList } from "./ArticleList";
+import { FeedsView } from "./FeedsView";
 import { SearchResults } from "./SearchResults";
 import "./App.css";
 
-type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings";
+type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds";
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -17,6 +19,9 @@ export default function App() {
   const [tags, setTags] = useState<TagCount[]>([]);
   const filterRef = useRef(filter);
   filterRef.current = filter;
+  const [sort, setSort] = useState<ArticleSort>("saved_desc");
+  const sortRef = useRef(sort);
+  sortRef.current = sort;
   const [main, setMain] = useState<Main>("empty");
   const [error, setError] = useState<string | null>(null);
   const [dbPath, setDbPath] = useState("");
@@ -41,7 +46,7 @@ export default function App() {
 
   const fail = (e: unknown) => setError(String(e));
   const refresh = () =>
-    Promise.all([api.listArticles(filterRef.current).then(setArticles), api.listTags().then(setTags)]).catch(fail);
+    Promise.all([api.listArticles(filterRef.current, sortRef.current).then(setArticles), api.listTags().then(setTags)]).catch(fail);
   const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
   // Background jobs (bulk import fetches) report every article; coalesce list reloads.
   const refreshTimer = useRef(0);
@@ -121,7 +126,7 @@ export default function App() {
     if (a) openPage(a.original_url, hit.text);
   }
 
-  useEffect(() => { refresh(); }, [filter]);
+  useEffect(() => { refresh(); }, [filter, sort]);
 
   async function toggleFavorite(a: ArticleRow) {
     try {
@@ -136,6 +141,26 @@ export default function App() {
     try {
       await (add ? api.addTag(a.id, name) : api.removeTag(a.id, name));
       await Promise.all([refresh(), loadView(a.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function setGenre(name: string) {
+    if (!view) return;
+    try {
+      await api.setGenre(view.article.id, name);
+      await Promise.all([refresh(), loadView(view.article.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function classifyArticle() {
+    if (!view) return;
+    try {
+      await api.classifyArticle(view.article.id);
+      await loadView(view.article.id);
     } catch (e) {
       fail(e);
     }
@@ -203,8 +228,7 @@ export default function App() {
             <span key={t.name}>{filterButton({ kind: "tag", name: t.name }, `#${t.name} ${t.count}`)}</span>
           ))}
         </nav>
-        <ul className="list">
-          {articles.map((a) => (
+        <ArticleList articles={articles} sort={sort} onSort={setSort} renderItem={(a) => (
             <li key={a.id}>
               <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url)}>
                 <span className="title">{a.favorite && <span className="star" aria-label="お気に入り">★ </span>}{a.title ?? a.original_url}</span>
@@ -216,8 +240,8 @@ export default function App() {
                 </span>
               </button>
             </li>
-          ))}
-        </ul>
+          )} />
+        <button className="import-link" onClick={() => setMain("feeds")}>フィード（RSS）…</button>
         <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
         <button className="import-link" onClick={() => setMain("settings")}>設定・バックアップ…</button>
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
@@ -233,11 +257,13 @@ export default function App() {
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
             onPage={() => openPage(view.article.original_url)} onLink={(href) => openPage(href)}
             onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
-            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} />
+            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)}
+            onGenre={setGenre} onClassify={classifyArticle} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}
         {main === "settings" && <SettingsView />}
+        {main === "feeds" && <FeedsView onChanged={refreshSoon} />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>
     </div>

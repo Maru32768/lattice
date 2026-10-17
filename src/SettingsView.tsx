@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Settings } from "./api";
+import { ClassifySettings } from "./ClassifySettings";
 
 const PRESETS = [
   { value: "", label: "Claude CLI の既定" },
@@ -56,6 +57,7 @@ export function SettingsView() {
         </div>
         <p className="muted">Claude CLI の <code>--model</code> に渡します。大量に翻訳するなら Haiku か Sonnet がおすすめです。</p>
       </div>
+      <ClassifySettings />
       <div>
         <h3>バックアップ</h3>
         <div className="row"><button onClick={backup}>今すぐバックアップ</button></div>
