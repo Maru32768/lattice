@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-job-overview"
+description = "Enables the job_overview command without any pre-configured scope."
+commands.allow = ["job_overview"]
+
+[[permission]]
+identifier = "deny-job-overview"
+description = "Denies the job_overview command without any pre-configured scope."
+commands.deny = ["job_overview"]

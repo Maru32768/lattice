@@ -286,6 +286,9 @@ CREATE INDEX articles_feed ON articles(feed_id);
 ALTER TABLE articles ADD COLUMN text_length INTEGER;
 UPDATE articles SET text_length = (SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = articles.id)
     WHERE extraction_status = 'ok';
+"#, r#"
+-- Jobs view: counts per (status, type) and the backed-off list without touching table rows.
+CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_run_at);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {

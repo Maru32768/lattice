@@ -14,7 +14,8 @@ use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, S
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
-use lattice_core::{classify, r2, summarize, translate};
+use lattice_core::job_status::{self, JobOverview};
+use lattice_core::{classify, export, r2, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -353,6 +354,53 @@ fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, St
     Ok(path.display().to_string())
 }
 
+/// Wakes the runner for `job_type`, or every runner.
+fn wake(app: &App, job_type: Option<&str>) {
+    let is = |types: &[&str]| job_type.is_none_or(|t| types.contains(&t));
+    if is(LLM_JOBS) {
+        app.wake_llm.notify_one();
+    }
+    if is(LOCAL_JOBS) {
+        app.wake_local.notify_one();
+    }
+    if is(NET_JOBS) {
+        app.wake_net.iter().for_each(|w| w.notify_one());
+    }
+}
+
+#[tauri::command(async)]
+fn job_overview(app: State<'_, App>) -> Result<JobOverview, String> {
+    job_status::overview(&app.store)
+}
+
+#[tauri::command(async)]
+fn retry_job(app: State<'_, App>, id: i64) -> Result<bool, String> {
+    let t = job_status::retry(&app.store, id)?;
+    if let Some(t) = &t {
+        wake(&app, Some(t));
+    }
+    Ok(t.is_some())
+}
+
+#[tauri::command(async)]
+fn retry_failed_jobs(app: State<'_, App>, job_type: Option<String>) -> Result<usize, String> {
+    let n = job_status::retry_failed(&app.store, job_type.as_deref())?;
+    wake(&app, job_type.as_deref());
+    Ok(n)
+}
+
+#[tauri::command(async)]
+fn cancel_job(app: State<'_, App>, id: i64) -> Result<bool, String> {
+    job_status::cancel(&app.store, id)
+}
+
+/// Writes app_data/exports/lattice-export-<UTC>.jsonl.gz and returns its path.
+#[tauri::command(async)]
+fn export_json(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
+    let dir = handle.path().app_data_dir().map_err(err)?.join("exports");
+    Ok(export::export_file(&app.store, &dir)?.display().to_string())
+}
+
 #[tauri::command(async)]
 fn r2_status(app: State<'_, App>) -> Result<r2::R2Status, String> {
     r2::status(&app.store)
@@ -460,6 +508,11 @@ pub fn run() {
             r2_status,
             r2_save,
             r2_backup_now,
+            job_overview,
+            retry_job,
+            retry_failed_jobs,
+            cancel_job,
+            export_json,
             overlay_translate,
             browser::browser_open,
             browser::browser_set_bounds,

@@ -8,11 +8,12 @@ import { ImportView } from "./ImportView";
 import { SettingsView } from "./SettingsView";
 import { ArticleList } from "./ArticleList";
 import { FeedsView } from "./FeedsView";
+import { JobsView } from "./JobsView";
 import { SearchResults } from "./SearchResults";
 import { ChatPane } from "./ChatPane";
 import "./App.css";
 
-type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds";
+type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds" | "jobs";
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -277,6 +278,7 @@ export default function App() {
           {chatOpen ? "対話ペインを閉じる" : "記事に質問する（対話）…"}
         </button>
         <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
+        <button className="import-link" onClick={() => setMain("jobs")}>処理状況…</button>
         <button className="import-link" onClick={() => setMain("settings")}>設定・バックアップ…</button>
         <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
       </aside>
@@ -297,6 +299,7 @@ export default function App() {
         {main === "import" && <ImportView onImported={refresh} />}
         {main === "settings" && <SettingsView />}
         {main === "feeds" && <FeedsView onChanged={refreshSoon} />}
+        {main === "jobs" && <JobsView />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
       </main>
       {chatOpen && (
