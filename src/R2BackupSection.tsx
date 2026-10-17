@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { r2, type R2Settings, type R2Status } from "./api";
+import { SetRow, Switch } from "./SetRow";
 
 const time = (secs: number) => new Date(secs * 1000).toLocaleString("ja-JP");
 
@@ -67,43 +68,43 @@ export function R2BackupSection() {
     }
   }
 
-  if (!form) return error ? <p className="error-text" role="alert">{error}</p> : null;
+  if (!form) return error ? <p className="msg error-text" role="alert">{error}</p> : null;
   const edit = (patch: Partial<R2Settings>) => setForm({ ...form, ...patch });
+  const text = (id: string, key: "account_id" | "bucket" | "access_key_id", placeholder?: string) => (
+    <input id={id} className="input sm mono" value={form[key]} onChange={(e) => edit({ [key]: e.target.value })} placeholder={placeholder} spellCheck={false} />
+  );
   return (
-    <div>
-      <h3>Cloudflare R2 への自動バックアップ</h3>
-      <div className="fields">
-        <label htmlFor="r2-enabled">自動バックアップ</label>
-        <input id="r2-enabled" type="checkbox" checked={form.enabled} onChange={(e) => edit({ enabled: e.target.checked })} />
-        <label htmlFor="r2-account">Account ID</label>
-        <input id="r2-account" value={form.account_id} onChange={(e) => edit({ account_id: e.target.value })} spellCheck={false} />
-        <label htmlFor="r2-bucket">Bucket</label>
-        <input id="r2-bucket" value={form.bucket} onChange={(e) => edit({ bucket: e.target.value })} placeholder="lattice-backup" spellCheck={false} />
-        <label htmlFor="r2-key">Access Key ID</label>
-        <input id="r2-key" value={form.access_key_id} onChange={(e) => edit({ access_key_id: e.target.value })} spellCheck={false} />
-        <label htmlFor="r2-secret">Secret Access Key</label>
-        <div className="row">
-          <input id="r2-secret" type="password" value={form.secret_access_key ?? ""} onChange={(e) => edit({ secret_access_key: e.target.value })} placeholder={status?.has_secret ? "設定済み（変更するときだけ入力）" : "未設定"} autoComplete="off" />
-          <button onClick={clearSecret} disabled={!status?.has_secret || status.running}>削除</button>
-        </div>
-        <label htmlFor="r2-interval">間隔（時間）</label>
-        <input id="r2-interval" type="number" min={1} max={720} value={form.interval_hours} onChange={(e) => edit({ interval_hours: Number(e.target.value) })} />
-        <label htmlFor="r2-keep">残す世代数</label>
-        <input id="r2-keep" type="number" min={1} max={1000} value={form.keep_generations} onChange={(e) => edit({ keep_generations: Number(e.target.value) })} />
+    <>
+      <div className="grp">
+        <SetRow title="自動バックアップ" htmlFor="r2-enabled">
+          <Switch id="r2-enabled" checked={form.enabled} onChange={(on) => edit({ enabled: on })} />
+        </SetRow>
+        <SetRow title="Account ID" htmlFor="r2-account">{text("r2-account", "account_id")}</SetRow>
+        <SetRow title="Bucket" htmlFor="r2-bucket">{text("r2-bucket", "bucket", "lattice-backup")}</SetRow>
+        <SetRow title="Access Key ID" htmlFor="r2-key">{text("r2-key", "access_key_id")}</SetRow>
+        <SetRow title="Secret Access Key" htmlFor="r2-secret">
+          <input id="r2-secret" className="input sm" type="password" value={form.secret_access_key ?? ""} onChange={(e) => edit({ secret_access_key: e.target.value })} placeholder={status?.has_secret ? "設定済み（変更するときだけ入力）" : "未設定"} autoComplete="off" />
+          <button className="btn ghost" onClick={clearSecret} disabled={!status?.has_secret || status.running} aria-label="Secret Access Key を削除">削除</button>
+        </SetRow>
+        <SetRow title="間隔（時間）" htmlFor="r2-interval">
+          <input id="r2-interval" className="input sm num" type="number" min={1} max={720} value={form.interval_hours} onChange={(e) => edit({ interval_hours: Number(e.target.value) })} />
+        </SetRow>
+        <SetRow title="残す世代数" htmlFor="r2-keep">
+          <input id="r2-keep" className="input sm num" type="number" min={1} max={1000} value={form.keep_generations} onChange={(e) => edit({ keep_generations: Number(e.target.value) })} />
+        </SetRow>
       </div>
-      <div className="row">
-        <button onClick={save}>保存</button>
-        <button onClick={backupNow} disabled={status?.running}>今すぐ R2 にバックアップ</button>
+      <div className="btn-row">
+        <button className="btn pri" onClick={save}>保存</button>
+        <button className="btn" onClick={backupNow} disabled={status?.running}>今すぐ R2 にバックアップ</button>
       </div>
-      <p className="muted">
+      <p className="sec-d">
         {status?.running ? "バックアップ中…" : status?.last_success ? `最終バックアップ: ${time(status.last_success)}` : "まだ R2 にバックアップしていません"}
         {status?.last_key && <><br />最新のオブジェクト: <code>{status.last_key}</code></>}
-        <br />DB のコピー（API キーは除く）を gzip 圧縮してアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。
       </p>
-      {status?.last_error && <p className="error-text">前回の失敗: {status.last_error}</p>}
-      {status?.last_prune_error && <p className="error-text">警告: バックアップは成功しましたが、古い世代の削除に失敗しました: {status.last_prune_error}</p>}
-      {message && <p role="status">{message}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-    </div>
+      {status?.last_error && <p className="note err">前回の失敗: {status.last_error}</p>}
+      {status?.last_prune_error && <p className="note warn">警告: バックアップは成功しましたが、古い世代の削除に失敗しました: {status.last_prune_error}</p>}
+      {message && <p role="status" className="msg">{message}</p>}
+      {error && <p role="alert" className="msg error-text">{error}</p>}
+    </>
   );
 }

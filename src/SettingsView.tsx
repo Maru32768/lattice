@@ -1,82 +1,98 @@
-import { useEffect, useState } from "react";
-import { api, type Settings } from "./api";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { api, r2 } from "./api";
 import { ModelSettings } from "./ModelSettings";
-import { R2BackupSection } from "./R2BackupSection";
+import { TranslationSettings } from "./TranslationSettings";
 import { ClassifySettings } from "./ClassifySettings";
 import { GenreSettings } from "./GenreSettings";
-import { TranslationSettings } from "./TranslationSettings";
 import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
+import { BackupSection } from "./BackupSection";
+import { R2BackupSection } from "./R2BackupSection";
+import { ExportSection } from "./ExportSection";
+import { StorageSection } from "./StorageSection";
+import "./manage.css";
 
-export function SettingsView({ onChanged }: { onChanged: () => void }) {
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [keep, setKeep] = useState(30);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export type SettingsSection = "provider" | "translation" | "classify" | "genres" | "render" | "images" | "backup" | "r2" | "export" | "storage";
 
+const GROUPS = ["AI", "ライブラリ", "データ"] as const;
+
+const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: string; lead?: ReactNode }[] = [
+  { id: "provider", group: "AI", title: "AI プロバイダ", lead: "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。" },
+  { id: "translation", group: "AI", title: "翻訳", lead: "記事の翻訳とページ表示の翻訳の両方に効きます。" },
+  { id: "classify", group: "AI", title: "自動分類" },
+  { id: "genres", group: "ライブラリ", title: "ジャンル", lead: "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。" },
+  { id: "render", group: "ライブラリ", title: "取り込み・JS 描画" },
+  { id: "images", group: "ライブラリ", title: "画像" },
+  { id: "backup", group: "データ", title: "バックアップ", lead: "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。" },
+  { id: "r2", group: "データ", title: "クラウドバックアップ（R2）", lead: <>DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。</> },
+  { id: "export", group: "データ", title: "エクスポート" },
+  { id: "storage", group: "データ", title: "ログ・保存場所" },
+];
+
+function Body({ id, onChanged }: { id: SettingsSection; onChanged: () => void }) {
+  switch (id) {
+    case "provider": return <ModelSettings />;
+    case "translation": return <TranslationSettings />;
+    case "classify": return <ClassifySettings />;
+    case "genres": return <GenreSettings onChanged={onChanged} />;
+    case "render": return <RenderSettings />;
+    case "images": return <ImageSettings />;
+    case "backup": return <BackupSection />;
+    case "r2": return <R2BackupSection />;
+    case "export": return <ExportSection />;
+    case "storage": return <StorageSection />;
+  }
+}
+
+export function SettingsView({ initialSection = "provider", onBack, onFeeds, onChanged }: {
+  initialSection?: SettingsSection;
+  onBack: () => void;
+  onFeeds: () => void;
+  onChanged: () => void;
+}) {
+  const [section, setSection] = useState(initialSection);
+  const [badges, setBadges] = useState<Partial<Record<SettingsSection, ReactNode>>>({});
+
+  // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
-    api.settings().then((s) => { setSettings(s); setKeep(s.backup_keep); }).catch((e) => setError(String(e)));
-  }, []);
+    Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setBadges({
+      provider: llm.status === "fulfilled" ? `${llm.value.chain.length} 段` : null,
+      genres: genres.status === "fulfilled" ? genres.value.length : null,
+      r2: r2s.status === "fulfilled" && r2s.value.last_error ? <span className="error-text">エラー</span> : null,
+    }));
+  }, [section]);
 
-  async function backup() {
-    setError(null);
-    try {
-      const b = await api.backup();
-      setStatus(`バックアップを作成しました: ${b.path}`);
-      if (b.warning) setError(b.warning);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function saveKeep() {
-    setError(null);
-    try {
-      await api.setBackupKeep(keep);
-      setStatus(`ローカルのバックアップを新しい ${keep} 世代まで残します`);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  async function exportJson() {
-    setError(null);
-    setStatus("エクスポート中…");
-    try {
-      setStatus(`エクスポートしました: ${await api.exportJson()}`);
-    } catch (e) {
-      setStatus(null);
-      setError(String(e));
-    }
-  }
-
+  const current = SECTIONS.find((s) => s.id === section)!;
   return (
-    <section className="settings">
-      <h2>設定・バックアップ</h2>
-      <ModelSettings />
-      <ClassifySettings />
-      <GenreSettings onChanged={onChanged} />
-      <TranslationSettings />
-      <RenderSettings />
-      <ImageSettings />
-      <div>
-        <h3>バックアップ</h3>
-        <div className="row"><button onClick={backup}>今すぐバックアップ</button><button onClick={exportJson}>JSON でエクスポート</button></div>
-        <div className="row">
-          <label htmlFor="backup-keep">残す世代数</label>
-          <input id="backup-keep" type="number" min={1} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
-          <button onClick={saveKeep}>保存</button>
+    <div className="stg">
+      <nav aria-label="設定カテゴリ">
+        <button className="ni back" onClick={onBack}>
+          <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+          ライブラリに戻る<span className="kbd">Esc</span>
+        </button>
+        {GROUPS.map((g) => (
+          <Fragment key={g}>
+            <div className="sec">{g}</div>
+            {SECTIONS.filter((s) => s.group === g).map((s) => (
+              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={s.title} aria-current={s.id === section ? "page" : undefined} onClick={() => setSection(s.id)}>
+                <span className="label">{s.title}</span>
+                {badges[s.id] != null && <span className="n">{badges[s.id]}</span>}
+              </button>
+            ))}
+            {g === "ライブラリ" && <button className="ni" onClick={onFeeds}>フィード →</button>}
+          </Fragment>
+        ))}
+      </nav>
+      <main key={section}>
+        <div className="body">
+          <header>
+            <div className="cap">{current.group}</div>
+            <h1>{current.title}</h1>
+            {current.lead && <p className="lead">{current.lead}</p>}
+          </header>
+          <Body id={section} onChanged={onChanged} />
         </div>
-        <p className="muted">保存先: <code>{settings?.backup_dir}</code>（バックアップを作るたびに、新しいものから指定した世代数だけ残して古い <code>lattice-*.db</code> を削除します。日数では消さないので、しばらく使わなくても消えません）<br />記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code><br />
-          JSON エクスポート（<code>exports</code> フォルダ、1 行 1 オブジェクトの gzip）には記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。</p>
-      </div>
-      <R2BackupSection />
-      <div>
-        <h3>ログ</h3>
-        <p className="muted">取得や翻訳ジョブの失敗はログに記録されます: <code>{settings?.log_dir}</code></p>
-      </div>
-      {status && <p role="status">{status}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-    </section>
+      </main>
+    </div>
   );
 }

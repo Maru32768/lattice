@@ -5,19 +5,20 @@ import { BrowserView, overlayOf, type BrowseTarget, type PageLang, type PageStat
 import type { LanguageMode } from "./mixed";
 
 import { ImportView } from "./ImportView";
-import { SettingsView } from "./SettingsView";
+import { SettingsView, type SettingsSection } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
-import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
+import { NO_FACETS, activeDims, countBy, facetLabel, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, TRANSLATABLE, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
+import { Kbd } from "./Icon";
 import { Palette, type PaletteActions } from "./Palette";
 import "./App.css";
 
@@ -41,6 +42,21 @@ const IN_FIELDS = new Set<Action>(["palette", "escape"]);
 const keyOf = (e: KeyboardEvent) => `${e.ctrlKey || e.metaKey ? "ctrl+" : ""}${e.key.length === 1 ? e.key.toLowerCase() : e.key}`;
 
 const JOB_POLL_MS = 10_000;
+
+/** States board #8: an empty library. */
+function FirstRun({ onPaste, onFeeds, onImport, onSettings }: { onPaste: () => void; onFeeds: () => void; onImport: () => void; onSettings: () => void }) {
+  return (
+    <section className="first-run" aria-label="最初の記事を入れる">
+      <h1>最初の記事を入れる</h1>
+      <div className="first-cards">
+        <button className="btn" onClick={onPaste}><span className="h">URL を貼る</span><span className="muted"><Kbd>Ctrl</Kbd><Kbd>K</Kbd> に貼り付けて Index</span></button>
+        <button className="btn" onClick={onFeeds}><span className="h">フィードを登録</span><span className="muted">サイト URL か OPML</span></button>
+        <button className="btn" onClick={onImport}><span className="h">一括インポート</span><span className="muted">ブックマーク HTML・CSV・JSON・Markdown</span></button>
+      </div>
+      <p className="muted">翻訳・要約・分類には AI プロバイダが必要です — <button className="linkish" onClick={onSettings}>設定する</button>。取り込みと全文検索はなしで使えます。</p>
+    </section>
+  );
+}
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
@@ -66,7 +82,8 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
-  const [, setFeedsUrl] = useState<string | undefined>(undefined);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
+  const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
   const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
 
   // Search mode of the list pane
@@ -394,23 +411,22 @@ export default function App() {
   const nav = navOpen
     ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
-        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => setScreen("settings")}
+        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCollapse={() => setNavOpen(false)} />
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
-  if (screen === "settings") {
-    return (
-      <div className="app">
-        <SettingsView onChanged={refresh} />
-      </div>
-    );
-  }
 
   return (
     <CoverContext.Provider value={cover}>
       <div className="app">
-        {nav}
+        {screen === "settings"
+          ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
+          : nav}
+        {screen === "import" && <ImportView onImported={refresh} />}
+        {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
+          onShowFeed={(id) => setScope({ kind: "feed", id })} />}
+        {screen === "jobs" && <JobsView />}
         {screen === "library" && search && listOpen && (
           <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
             hits={hitGroups} sel={hitSel} onSel={setHitSel} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
@@ -422,24 +438,21 @@ export default function App() {
               all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
               translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
               onCollapse={() => setListOpen(false)} />
-          : <ListRail label={[title, ...activeDims(facets).map(() => "…")].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
+          : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
               count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
-        <main className="main">
+        {screen === "library" && <main className="main">
           {error && (
             <div className="banner" role="alert">
               <span className="grow">{error}</span>
               <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
             </div>
           )}
-          {screen === "import" && <ImportView onImported={refresh} />}
-          {screen === "feeds" && <FeedsView onChanged={refreshSoon} />}
-          {screen === "jobs" && <JobsView />}
-          {screen === "library" && doc?.kind === "page" && (
+          {doc?.kind === "page" && (
             <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} covered={covers > 0}
               onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
               onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
           )}
-          {screen === "library" && doc?.kind === "reader" && view && (
+          {doc?.kind === "reader" && view && (
             <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
               focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
               onAsk={() => openChat("article")}
@@ -452,8 +465,10 @@ export default function App() {
               onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
               onClassify={viewAct(api.classifyArticle)} />
           )}
-          {screen === "library" && !doc && loaded && <p className="doc-empty muted">{articles.length ? "記事を選んでください" : "記事はまだありません"}</p>}
-        </main>
+          {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
+            : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
+                onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
+        </main>}
         {palette != null && (
           <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
             onClose={() => setPalette(null)} />

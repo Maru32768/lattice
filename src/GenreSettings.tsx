@@ -32,29 +32,27 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
     const submit = () => changed && act(api.renameGenre(g.name, to),
       into ? `「${g.name}」を「${into.name}」に統合しました` : `「${g.name}」を「${to}」に変更しました`);
     return (
-      <li key={g.name}>
-        <form className="feed-main" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-          <span className="row">
-            <input list="genre-manage-options" value={drafts[g.name] ?? g.name} aria-label={`${g.name} の新しい名前`}
-              onChange={(e) => setDrafts((d) => ({ ...d, [g.name]: e.target.value }))} />
-            <span className="muted">{g.count} 件</span>
-          </span>
-          {into && <span className="muted">「{into.name}」に統合します（記事 {g.count} 件を移動）</span>}
-        </form>
-        <button onClick={submit} disabled={!changed}>{into ? "統合" : "名前を変更"}</button>
-        {g.count === 0 && <button onClick={() => act(api.deleteGenre(g.name), `「${g.name}」を削除しました`)} aria-label={`${g.name} を削除`}>削除</button>}
-      </li>
+      <form key={g.name} className="set" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <div className="h">
+          <input className="input sm" list="genre-manage-options" value={drafts[g.name] ?? g.name} aria-label={`${g.name} の新しい名前`}
+            onChange={(e) => setDrafts((d) => ({ ...d, [g.name]: e.target.value }))} />
+        </div>
+        <div className="d">{g.count} 件{into && ` · 「${into.name}」に統合します（記事 ${g.count} 件を移動）`}</div>
+        <div className="ctl">
+          <button type="submit" className="btn" disabled={!changed}>{into ? "統合" : "名前を変更"}</button>
+          {g.count === 0 && <button type="button" className="btn ghost" onClick={() => act(api.deleteGenre(g.name), `「${g.name}」を削除しました`)} aria-label={`${g.name} を削除`}>削除</button>}
+        </div>
+      </form>
     );
   }
 
   return (
-    <div>
-      <h3>ジャンル</h3>
-      <p className="muted">名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。</p>
+    <>
       <datalist id="genre-manage-options">{genres.map((g) => <option key={g.name} value={g.name} />)}</datalist>
-      <ul className="feed-list">{genres.map(row)}</ul>
-      {status && <p role="status">{status}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-    </div>
+      {genres.length === 0 && <p className="muted">ジャンルはまだありません。</p>}
+      <div className="grp">{genres.map(row)}</div>
+      {status && <p role="status" className="msg">{status}</p>}
+      {error && <p className="msg error-text" role="alert">{error}</p>}
+    </>
   );
 }
