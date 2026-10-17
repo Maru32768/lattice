@@ -42,7 +42,8 @@
 | relevance estimation | §3 UC7, §12 | 後 | 「High relevance」inbox に使う。 |
 | 要約の種類（short / detailed / key_points） | §4.4 | 後 | 今は normal だけ。 |
 | technical term を英語のまま残すモード | §8 | 進行中 | 翻訳 prompt の option にする。 |
-| Anthropic API / Local Model provider | §9 | 後 | F4 の adapter と同じ形で追加できる。 |
+| Anthropic API provider | §9 | 済 | `anthropic.rs`（design-review §6）。 |
+| Local Model provider | §9 | 後 | F4 の adapter と同じ形で追加できる。 |
 | F9 のスコープに genre / feed | F9 | 進行中 | |
 
 ### 検索

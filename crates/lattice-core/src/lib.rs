@@ -1,3 +1,4 @@
+pub mod anthropic;
 pub mod chain;
 pub mod chat;
 pub mod classify;

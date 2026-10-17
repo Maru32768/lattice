@@ -156,7 +156,7 @@ export interface Settings {
   backup_dir: string;
 }
 
-export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini";
+export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini" | "anthropic";
 
 export interface ChainEntry {
   kind: ProviderKind;
@@ -170,6 +170,7 @@ export interface LlmSettings {
   chain: ChainEntry[];
   openai_key: KeySource;
   gemini_key: KeySource;
+  anthropic_key: KeySource;
 }
 
 /** Mirrors lattice-core's job_status.rs. */
@@ -235,7 +236,7 @@ export const api = {
   settings: () => invoke<Settings>("get_settings"),
   llmSettings: () => invoke<LlmSettings>("get_llm_settings"),
   setLlmChain: (chain: ChainEntry[]) => invoke<void>("set_llm_chain", { chain }),
-  setApiKey: (kind: "openai" | "gemini", key: string | null) => invoke<void>("set_api_key", { kind, key }),
+  setApiKey: (kind: "openai" | "gemini" | "anthropic", key: string | null) => invoke<void>("set_api_key", { kind, key }),
   backup: () => invoke<string>("backup_db"),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),

@@ -11,7 +11,7 @@ use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
-use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, Store, TagCount};
+use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
@@ -267,12 +267,14 @@ async fn overlay_translate(
         let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
         let llm = &app.providers.llm;
         let t = segments::translate_snippets(llm, &batch, translate::SOURCE_LANGUAGE, target).await;
-        let rows: Vec<(&str, &[Unit])> =
-            misses.iter().zip(&t.results).filter_map(|(&i, r)| r.as_deref().map(|u| (hashes[i].as_str(), u))).collect();
-        use lattice_core::llm::LlmProvider;
-        app.store.insert_segments(target, t.provider.as_deref().unwrap_or(llm.name()), t.model.as_deref(), segments::PROMPT_VERSION, &rows).map_err(err)?;
+        let rows: Vec<SegmentRow> = misses
+            .iter()
+            .zip(&t.results)
+            .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
+            .collect();
+        app.store.insert_segments(target, segments::PROMPT_VERSION, &rows).map_err(err)?;
         for (&i, r) in misses.iter().zip(t.results) {
-            if let Some(units) = r {
+            if let Some((units, _)) = r {
                 cached.insert(hashes[i].clone(), units);
             }
         }
@@ -356,12 +358,18 @@ struct LlmSettings {
     chain: Vec<ChainEntry>,
     openai_key: Option<&'static str>,
     gemini_key: Option<&'static str>,
+    anthropic_key: Option<&'static str>,
 }
 
 #[tauri::command(async)]
 fn get_llm_settings(app: State<'_, App>) -> Result<LlmSettings, String> {
     let source = |k| chain::api_key(&app.store, k).map(|o| o.map(|(_, s)| s));
-    Ok(LlmSettings { chain: chain::load_config(&app.store)?, openai_key: source(ProviderKind::Openai)?, gemini_key: source(ProviderKind::Gemini)? })
+    Ok(LlmSettings {
+        chain: chain::load_config(&app.store)?,
+        openai_key: source(ProviderKind::Openai)?,
+        gemini_key: source(ProviderKind::Gemini)?,
+        anthropic_key: source(ProviderKind::Anthropic)?,
+    })
 }
 
 #[tauri::command(async)]

@@ -458,6 +458,9 @@ pub struct SummarySource {
     pub blocks: Vec<(String, String)>,
 }
 
+/// (source_hash, units, provider, model) of one cached translation.
+pub type SegmentRow<'a> = (&'a str, &'a [Unit], &'a str, Option<&'a str>);
+
 /// A block awaiting translation, as handed to the LLM.
 #[derive(Debug, Clone)]
 pub struct PendingBlock {
@@ -966,14 +969,7 @@ impl Store {
         Ok(out)
     }
 
-    pub fn insert_segments(
-        &self,
-        target_language: &str,
-        provider: &str,
-        model: Option<&str>,
-        prompt_version: &str,
-        items: &[(&str, &[Unit])],
-    ) -> Result<()> {
+    pub fn insert_segments(&self, target_language: &str, prompt_version: &str, items: &[SegmentRow]) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         {
@@ -981,7 +977,7 @@ impl Store {
                 "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )?;
-            for (hash, units) in items {
+            for (hash, units, provider, model) in items {
                 let text = plain_text(&units.iter().map(|u| u.translation.as_str()).collect::<String>());
                 ins.execute(params![hash, target_language, json(units), text, provider, model, prompt_version])?;
             }

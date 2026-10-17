@@ -206,7 +206,7 @@ JS で描画するページの Index 追加（今はサーバーから再取得�
 
 ```
 domain（segments / translate / summarize / overlay）→ LlmChain（LlmProvider）
- → 1 → 2 → 3 の順に試す: Claude CLI / Codex CLI / OpenAI API / Gemini API
+ → 1 → 2 → 3 の順に試す: Claude CLI / Codex CLI / OpenAI API / Gemini API / Anthropic API
  → 答えた provider と model を Completion に載せ、派生データの provider / model に記録
 ```
 
@@ -216,21 +216,23 @@ domain（segments / translate / summarize / overlay）→ LlmChain（LlmProvider
 | Codex CLI adapter（`codex exec --json --output-schema`） | `crates/lattice-core/src/codex.rs` |
 | OpenAI API adapter（Responses API、strict JSON schema） | `crates/lattice-core/src/openai.rs` |
 | Gemini API adapter（`generateContent`、`responseJsonSchema`） | `crates/lattice-core/src/gemini.rs` |
+| Anthropic API adapter（Messages API、`output_config.format` の JSON schema） | `crates/lattice-core/src/anthropic.rs` |
 | 共通（strict schema 変換、HTTP エラーの分類） | `crates/lattice-core/src/llm.rs` |
 | Tauri commands（`get_llm_settings` / `set_llm_chain` / `set_api_key`） | `src-tauri/src/lib.rs` |
 | 設定 UI | `src/ModelSettings.tsx` |
 
 - **Chain も `LlmProvider` を実装する。** domain 側は provider が 1 つでも chain でも同じコードで動く。`LlmProvider` は object-safe でないので、provider は enum（`AnyLlm`）で持つ。
 - **Fallback の条件。** どのエラー（`Unavailable` / `Failed` / `Malformed`）でも次の entry に進む。usage limit・認証・timeout など `Malformed` 以外で失敗した entry は 5 分間だけ順番を最後に回す（in-memory。全 entry が後回しなら設定順にすべて試す）。全滅したときは各 entry のエラーをつないで返し、job は従来どおり backoff する。
-- **記録する provider。** `Completion.provider` に実際に答えた provider（`claude-cli` / `codex-cli` / `openai-api` / `gemini-api`）を入れ、`segment_translations` / `summaries` に記録する。CLI が model を返さないとき（Codex）は設定した model を記録する。1 つの batch の中で再試行が別の provider に回った場合も、記録するのは最初に答えた provider だけ（従来の model と同じ扱い）。
+- **記録する provider。** `Completion.provider` に実際に答えた provider（`claude-cli` / `codex-cli` / `openai-api` / `gemini-api` / `anthropic-api`）を入れ、`segment_translations` / `summaries` に記録する。CLI が model を返さないとき（Codex）は設定した model を記録する。翻訳は snippet（= 行）ごとに、その snippet を返した呼び出し（batch か個別の再試行）の provider / model を記録する（`segments::Origin`）。fallback で再試行だけ別の entry が答えても、行ごとに正しい provider が残る。長い unit の re-split は行の provider を変えない（unit の分割と大半の訳は元の呼び出しのもの）。
+- **Anthropic API。** `x-api-key` と `anthropic-version: 2023-06-01` で `/v1/messages` を呼ぶ。非 streaming なので `max_tokens` は 16000。HTTP 401 / 403 / 429 / 529（overloaded）は `Unavailable` として次の entry へ進む（529 の扱いは他の API と共通の `post_json`）。`stop_reason` が `refusal` なら `Failed`、`max_tokens` なら `Malformed`。thinking block は読み飛ばし、text block の JSON だけを使う。
 - **設定。** `settings.llm_chain` に `[{kind, model}]` の JSON で保存する。未保存なら旧 `claude_model` を 1 つ目（Claude CLI）として読む。保存すると chain を作り直す（job runner は同じ `Arc` を共有したまま、`RwLock` の中身だけ差し替える）。
-- **API キー。** `secret.openai_api_key` / `secret.gemini_api_key` に保存し、バックアップからは除かれる（`backup_to`）。未設定なら環境変数 `OPENAI_API_KEY` / `GEMINI_API_KEY` を使う。UI に返すのはキーの有無と出所（保存／環境変数）だけ。キーがない entry は `Unavailable` になり次へ進む。
-- **Untrusted input（§25）。** どの adapter にも tool を渡さない。Codex は user config・rules・web search・shell などの tool feature をすべて無効にし、read-only sandbox・空の一時ディレクトリ・`--ephemeral` で動かす。指示は prompt 引数、記事テキストは stdin（`<stdin>` block）で渡す。API は structured output だけを使う。
-- **モデルの選択肢。** Claude は alias（haiku / sonnet / opus）、Codex は `~/.codex/models_cache.json` にある ID、OpenAI API は既定を `gpt-6-luna`、Gemini API は既定を `gemini-flash-latest` にした。どれも「その他」でモデル ID を直接入力できる（F2 の修正。選択状態を model 値と別に持つ）。
+- **API キー。** `secret.openai_api_key` / `secret.gemini_api_key` / `secret.anthropic_api_key` に保存し、バックアップからは除かれる（`backup_to`）。未設定なら環境変数 `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` を使う。UI に返すのはキーの有無と出所（保存／環境変数）だけ。キーがない entry は `Unavailable` になり次へ進む。
+- **Untrusted input（§25）。** どの adapter にも tool を渡さない。Codex は user config・rules・web search・shell などの tool feature をすべて無効にし、read-only sandbox・空の一時ディレクトリ・`--ephemeral` で動かす。指示は prompt 引数、記事テキストは stdin（`<stdin>` block）で渡す。API は structured output だけを使う（Anthropic は forced tool ではなく `output_config.format` の JSON schema。tools は送らない）。
+- **モデルの選択肢。** Claude は alias（haiku / sonnet / opus）、Codex は `~/.codex/models_cache.json` にある ID、OpenAI API は既定を `gpt-6-luna`、Gemini API は既定を `gemini-flash-latest`、Anthropic API は既定を `claude-opus-5-5`（選択肢に `claude-sonnet-5-5` / `claude-haiku-5-5`）にした。どれも「その他」でモデル ID を直接入力できる（F2 の修正。選択状態を model 値と別に持つ）。
 
 ### 未実装（意図的）
 
-API の usage（token 数）の記録、entry ごとの timeout 設定、chain の実機での疎通確認 UI。
+API の usage（token 数）の記録、entry ごとの timeout 設定、chain の実機での疎通確認 UI。Anthropic の server-side refusal fallback と effort 指定（refusal は chain の次の entry に任せる。effort はモデルの既定）、streaming。
 Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、re-extract コマンド（block ID の再利用も含む）、画像の保存。
 
 ## 7. 対話ペイン slice（F9、実装済み）

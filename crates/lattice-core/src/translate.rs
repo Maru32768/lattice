@@ -4,8 +4,8 @@
 
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
-use crate::segments::{self, PROMPT_VERSION, Unit, is_cjk_dominant, snippet_from_inlines};
-use crate::store::{PendingBlock, Store};
+use crate::segments::{self, PROMPT_VERSION, is_cjk_dominant, snippet_from_inlines};
+use crate::store::{PendingBlock, SegmentRow, Store};
 
 pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
@@ -68,10 +68,10 @@ pub async fn run<P: LlmProvider>(
     for batch in batches(pending) {
         let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
         let t = segments::translate_snippets(provider, &snippets, SOURCE_LANGUAGE, target_language).await;
-        let rows: Vec<(&str, &[Unit])> = batch
+        let rows: Vec<SegmentRow> = batch
             .iter()
             .zip(&t.results)
-            .filter_map(|(b, r)| r.as_deref().map(|units| (b.text_hash.as_str(), units)))
+            .filter_map(|(b, r)| r.as_ref().map(|(units, o)| (b.text_hash.as_str(), &units[..], o.provider.as_str(), o.model.as_deref())))
             .collect();
         missing += batch.len() - rows.len();
         if rows.is_empty() {
@@ -80,7 +80,7 @@ pub async fn run<P: LlmProvider>(
             }
         }
         store
-            .insert_segments(target_language, t.provider.as_deref().unwrap_or(provider.name()), t.model.as_deref(), PROMPT_VERSION, &rows)
+            .insert_segments(target_language, PROMPT_VERSION, &rows)
             .map_err(|e| e.to_string())?;
         on_progress();
     }

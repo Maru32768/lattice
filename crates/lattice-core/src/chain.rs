@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::anthropic::Anthropic;
 use crate::claude::ClaudeCli;
 use crate::codex::CodexCli;
 use crate::gemini::Gemini;
@@ -28,6 +29,7 @@ pub enum ProviderKind {
     CodexCli,
     Openai,
     Gemini,
+    Anthropic,
 }
 
 impl ProviderKind {
@@ -36,6 +38,7 @@ impl ProviderKind {
         match self {
             Self::Openai => Some((format!("{SECRET_PREFIX}openai_api_key"), "OPENAI_API_KEY")),
             Self::Gemini => Some((format!("{SECRET_PREFIX}gemini_api_key"), "GEMINI_API_KEY")),
+            Self::Anthropic => Some((format!("{SECRET_PREFIX}anthropic_api_key"), "ANTHROPIC_API_KEY")),
             Self::ClaudeCli | Self::CodexCli => None,
         }
     }
@@ -91,6 +94,7 @@ pub enum AnyLlm {
     Codex(CodexCli),
     OpenAi(OpenAi),
     Gemini(Gemini),
+    Anthropic(Anthropic),
 }
 
 impl LlmProvider for AnyLlm {
@@ -100,6 +104,7 @@ impl LlmProvider for AnyLlm {
             Self::Codex(p) => p.name(),
             Self::OpenAi(p) => p.name(),
             Self::Gemini(p) => p.name(),
+            Self::Anthropic(p) => p.name(),
         }
     }
 
@@ -109,6 +114,7 @@ impl LlmProvider for AnyLlm {
             Self::Codex(p) => p.complete_json(system, input, schema).await,
             Self::OpenAi(p) => p.complete_json(system, input, schema).await,
             Self::Gemini(p) => p.complete_json(system, input, schema).await,
+            Self::Anthropic(p) => p.complete_json(system, input, schema).await,
         }
     }
 }
@@ -129,6 +135,7 @@ pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
                 ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), ..CodexCli::default() }),
                 ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone())),
                 ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone())),
+                ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone())),
             };
             Ok((llm, model))
         })
@@ -238,6 +245,9 @@ mod tests {
         assert_eq!(api_key(&s, ProviderKind::Gemini).unwrap(), Some(("k".into(), "stored")));
         assert!(s.setting("secret.gemini_api_key").unwrap().is_some(), "stored as a secret so backups drop it");
         assert!(set_api_key(&s, ProviderKind::ClaudeCli, Some("x")).is_err());
+        set_api_key(&s, ProviderKind::Anthropic, Some("a")).unwrap();
+        assert!(s.setting("secret.anthropic_api_key").unwrap().is_some());
+        assert_eq!(serde_json::to_string(&ProviderKind::Anthropic).unwrap(), "\"anthropic\"");
         assert_eq!(load(&s).unwrap().len(), 2);
     }
 }

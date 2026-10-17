@@ -139,8 +139,8 @@ mod tests {
         let units = [Unit { source: "Intro".into(), translation: "旧訳".into() }];
         let newer = [Unit { source: "Intro".into(), translation: "はじめに".into() }];
         let hash = source_hash("Intro");
-        s.insert_segments("ja", "fake", None, "v1", &[(hash.as_str(), &units[..])]).unwrap();
-        s.insert_segments("ja", "fake", Some("m"), "v1", &[(hash.as_str(), &newer[..])]).unwrap();
+        s.insert_segments("ja", "v1", &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
+        s.insert_segments("ja", "v1", &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
         s.insert_summary(id, "normal", "要約", "old-hash", "fake", None, "s1").unwrap();
         s.set_setting(&format!("{SECRET_PREFIX}openai"), Some("sk-TOPSECRET")).unwrap();
         s.exec_for_test(&format!(
