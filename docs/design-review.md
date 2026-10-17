@@ -48,7 +48,7 @@
 5. **heading level と list の深さがない。** → `attrs` JSON に `level` / `ordered` / `depth` / `lang` / `src` / `rows` を持たせる。kind ごとに列を増やさずに済む。
 6. **`normalized_text` 列は不要。** 正規化は FTS の tokenizer と hash の計算時に行えば足りる。列として持つと、同じ内容のデータが 2 つになる。
 7. **`parent_heading` → `heading_id`（直前の heading block への FK）。** 検索結果の「Section」表示と block jump にそのまま使える。
-8. **block ID の安定性。** `id INTEGER PRIMARY KEY`（VACUUM で変わらない）と `text_hash` を持たせる。再抽出のときは `text_hash` が一致する block の id を再利用し、それ以外は新規にする。`translations` も `source_hash` を持つので、原文が変わったことを検出できる。ID 再利用は翻訳スライスで実装する（今は全置換。`shortcut:` で記録済み）。
+8. **block ID の安定性。** `id INTEGER PRIMARY KEY`（VACUUM で変わらない）と `text_hash` を持たせる。再抽出のときは `text_hash` が一致する block の id を再利用し、それ以外は新規にする。`translations` も `source_hash` を持つので、原文が変わったことを検出できる。ID 再利用は §6 で実装した（`store::replace_blocks`）。
    - 同期を入れるときは端末間で ID が衝突するため、`uid TEXT`（UUIDv7）列を追加する。今は入れない。
 9. **重複判定で `content_hash` を一意キーにしない。** paywall ページや「記事が見つかりません」ページは同じ hash になり、別々の記事が誤って統合される。→ `normalized_url` を UNIQUE にし、取得後に `canonical_url` で統合する。`content_hash` は index を張るだけで、参考情報として使う。
 10. **ProcessingJob に足りないもの。** 次スライスで以下を追加する。
@@ -172,7 +172,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 ### セキュリティ境界
 
 - **アプリ UI（main webview）には記事の HTML を一切入れない。** Reader が受け取るのは IR（JSON）だけで、React の text node として描画する。
-- **元ページは別の child webview（`browser`）に表示する。** これはリモート origin なので、capability `browser-overlay` で許可しているのは `overlay_config` と `overlay_translate` の 2 つだけ（`build.rs` で全コマンドの permission を生成している）。ほかのコマンドはページ側から呼べないことを実機で確認した（例: `db_path not allowed on ... webview "browser"`）。app UI 用の capability は `webviews: ["main"]` かつ local origin に限定している。
+- **元ページは別の child webview（`browser`）に表示する。** これはリモート origin なので、capability `browser-overlay` で許可しているのは `overlay_config`・`overlay_translate`・`overlay_snapshot` の 3 つだけ（`build.rs` で全コマンドの permission を生成している）。ほかのコマンドはページ側から呼べないことを実機で確認した（例: `db_path not allowed on ... webview "browser"`）。app UI 用の capability は `webviews: ["main"]` かつ local origin に限定している。
 - `overlay_translate` は、ユーザーが翻訳を ON にしている間だけ、browser webview からの呼び出しにだけ応答する。件数（24 件まで）とサイズ（1 断片 20KB まで）にも上限がある。ページ側の script が呼べてしまう点は許容しており、その影響は LLM の使用量に限られる（CLI は tool なしで実行する）。
 - **LLM の出力は untrusted HTML として扱う。** overlay は sanitize（許可した inline タグ、http(s) の link、イベントハンドラの除去）してから差し込む。
 - **browser webview は http(s) 以外に遷移しない**（`on_navigation`）。新しいウィンドウを開くリンクは同じ webview で開く。
@@ -181,3 +181,23 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 ### 未実装（意図的）
 
 Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、re-extract コマンド（block ID の再利用も含む）、画像の保存。
+
+## 6. 取り込みの改善（F1・F11・同一ホスト制限・再抽出）
+
+| 対象 | ファイル |
+|---|---|
+| store を触る command を main thread から外す | `src-tauri/src/lib.rs` |
+| 読み込み中の表示・即時の選択状態 | `src-tauri/src/browser.rs`（`Visibility`）、`src/App.tsx`、`src/BrowserView.tsx` |
+| 描画後の DOM の保存 | `src/overlay/index.ts`（`snapshot`）、`browser.rs`（`snapshot` / `overlay_snapshot`）、`ingest::save_rendered` |
+| 同一ホストの並列制限 | `Store::claim_next_job` |
+| 再抽出と block ID の再利用 | `ingest::reextract`、`store::replace_blocks`、`src/Reader.tsx` |
+
+§5「未実装（意図的）」のうち、JS で描画するページの Index 追加、bulk import の同一ホスト宛て並列数の制限、re-extract コマンド（block ID の再利用を含む）はこの節で実装した。
+
+- **記事一覧クリックで固まる（F1）の原因。** Tauri 2 では `async` でない command は main（UI）thread で実行される。`list_articles`・`get_article`・`article_for_url` などは同期 command で、store の唯一の `Mutex<Connection>` を取る。この lock は bulk import の 4 本の runner（snapshot の deflate と block の挿入を含む transaction）、embed runner、検索の `scan_embeddings`、`VACUUM INTO` も取るので、その間 main thread が待ち、ウィンドウ全体（ページの webview も）が止まっていた。→ store を触る command はすべて `async` か `#[tauri::command(async)]` にした（tokio の thread で lock を待つ）。`browser_hide` / `browser_set_bounds` は順序を保つために同期のまま（どちらも store を触らない）。`set_claude_model` は F3 の設定 UI で作り直されるので、この slice では触っていない。
+- **体感の原因（F1）。** クリックしてから新しいページの `ContentLoading` までイベントがなく、前のページが表示されたままだった。一覧の選択状態も、読み込み完了後の `article_for_url` で初めて変わっていた。→ クリックした行をその場で選択状態にする。アプリから開いたページは、読み込みが終わる（`NavigationCompleted`）まで webview を隠し、下の placeholder にスピナーを出す。webview を表示するかは `Visibility { wanted, loading }`（UI が browser view を表示しているか、開いたページが読み込み中か）で決める。ページ内のリンク遷移では隠さない。
+- **描画後の DOM の保存（F11）。** 「Index に追加」は `save_page` になった。Rust が nonce を作って browser webview で `window.__lattice.snapshot(nonce)` を eval し、overlay が `document.documentElement.outerHTML` を `overlay_snapshot` で返す。訳文を表示中の文は、取得の間だけ原文に戻す（訳文が本文として保存されないように）。`overlay_snapshot` は、呼び出し元が browser webview であること、未処理の要求の nonce と一致すること、サイズが 20MB（`fetch::MAX_BODY`）以下であることを確認する。URL はページの申告ではなく webview の現在の URL を使う。5 秒以内に返らなければ、従来どおりサーバーから取得する。snapshot は `content_type = 'text/html; source=webview'` で保存し、以降は通常の抽出・block 化と同じ経路を通る。
+  - nonce はページから読めるので秘密ではない（要求と応答の対応付けにだけ使う）。ページは自分の DOM を自由に書き換えられるので、偽の HTML を返されても影響はそのページの保存内容に限られる。要求していない保存は受け付けない。
+- **本文が短い記事の表示。** 抽出した文字数を `articles.text_length` に保存し（migration 9。既存行は blocks から backfill する）、300 文字未満を `thin` とする。一覧に「本文が短い」、Reader に案内を出し、ブラウザでは「描画後のページで保存」ボタンで保存し直せる。取得・抽出に失敗した記事も同じボタンで保存できる（bot を拒否するサイトにも使える）。bulk import 用に非表示の webview で描画することはしていない。
+- **同一ホストの並列制限。** `claim_next_job` は、同じ `articles.domain` の ingest job が running の間、そのホストの ingest job を飛ばして別ホストの job を取る。1 つの UPDATE 文なので runner 間で競合しない。ホストは正規化後の host そのもので、`www.` の有無は別ホストとして扱う。
+- **再抽出と block ID の再利用。** `reextract_article` は最新の snapshot から抽出し直す（ネットワークを使わず、snapshot を増やさず、canonical による記事の統合もしない）。`save_fetched` は blocks を全置換せず、`text_hash` が一致する旧 block の id を出現順に再利用する（重複テキストは順に対応付ける）。旧行を負の ordinal に退避してから並べ替えるので、`UNIQUE (article_id, ordinal)` に衝突しない。`heading_id` は新しい並びで付け直し、使われなかった旧 block は削除する（embedding は cascade で消える）。再利用した block の embedding と検索結果はそのまま有効。見出しだけが変わった block の embedding（見出しを前置している）は古いままになるが、本文の hash が同じなので再計算しない。

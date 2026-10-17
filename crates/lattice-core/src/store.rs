@@ -212,6 +212,12 @@ CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+"#, r#"
+-- Extracted text length (characters): flags pages whose server HTML has almost no content
+-- (JS-rendered), so the user can re-save them from the in-app browser.
+ALTER TABLE articles ADD COLUMN text_length INTEGER;
+UPDATE articles SET text_length = (SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = articles.id)
+    WHERE extraction_status = 'ok';
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -238,6 +244,8 @@ pub struct Snapshot {
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
 const MAX_ATTEMPTS: i64 = 5;
+/// Extractions shorter than this (characters) are flagged `thin`: likely rendered by JS.
+pub const THIN_TEXT_CHARS: i64 = 300;
 /// Settings keys holding credentials (API keys, R2 secret). Never leave the machine in backups.
 pub const SECRET_PREFIX: &str = "secret.";
 
@@ -265,6 +273,8 @@ pub struct ArticleRow {
     pub read_status: String,
     pub favorite: bool,
     pub tags: Vec<String>,
+    /// Extracted, but with almost no text: probably a JS-rendered page.
+    pub thin: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -375,7 +385,7 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 }
 
 const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
-    (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name))";
+    (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)), text_length";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     Ok(ArticleRow {
@@ -395,7 +405,52 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         read_status: r.get(13)?,
         favorite: r.get(14)?,
         tags: from_json_col(r, 15, str::to_string)?,
+        thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(16)?.unwrap_or(0) < THIN_TEXT_CHARS,
     })
+}
+
+/// Writes an article's blocks, reusing the id of each old block whose text is unchanged so
+/// embeddings and search hits keep pointing at it. Duplicate texts are matched in order.
+// shortcut: a reused block whose section heading changed keeps its old embedding (the heading is
+// part of the passage); key embeddings on heading + text if that shows up in search quality.
+fn replace_blocks(tx: &rusqlite::Transaction, article_id: i64, blocks: &[Block]) -> Result<()> {
+    let mut old: HashMap<String, std::collections::VecDeque<i64>> = HashMap::new();
+    {
+        let mut st = tx.prepare("SELECT id, text_hash FROM blocks WHERE article_id = ?1 ORDER BY ordinal")?;
+        for row in st.query_map([article_id], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))? {
+            let (id, hash) = row?;
+            old.entry(hash).or_default().push_back(id);
+        }
+    }
+    // Park old rows on negative ordinals so moved rows never collide on UNIQUE(article_id, ordinal).
+    tx.execute("UPDATE blocks SET ordinal = -1 - ordinal WHERE article_id = ?1", [article_id])?;
+    let mut ins = tx.prepare(
+        "INSERT INTO blocks (article_id, ordinal, kind, text, text_hash, inlines, attrs, heading_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+    )?;
+    let mut upd = tx.prepare("UPDATE blocks SET ordinal = ?2, kind = ?3, inlines = ?4, attrs = ?5, heading_id = ?6 WHERE id = ?1")?;
+    let mut heading: Option<i64> = None;
+    for (i, b) in blocks.iter().enumerate() {
+        let hash = sha256_hex(&b.text);
+        let inlines = (!b.inlines.is_empty()).then(|| json(&b.inlines));
+        let attrs = json(&b.attrs);
+        let attrs = (attrs != "{}").then_some(attrs);
+        let id = match old.get_mut(&hash).and_then(|ids| ids.pop_front()) {
+            Some(id) => {
+                upd.execute(params![id, i as i64, b.kind.as_str(), inlines, attrs, heading])?;
+                id
+            }
+            None => {
+                ins.execute(params![article_id, i as i64, b.kind.as_str(), b.text, hash, inlines, attrs, heading])?;
+                tx.last_insert_rowid()
+            }
+        };
+        if b.kind == crate::ir::BlockKind::Heading {
+            heading = Some(id);
+        }
+    }
+    tx.execute("DELETE FROM blocks WHERE article_id = ?1 AND ordinal < 0", [article_id])?;
+    Ok(())
 }
 
 pub fn sha256_hex(s: &str) -> String {
@@ -547,19 +602,20 @@ impl Store {
         Ok(())
     }
 
-    /// Persists the snapshot and its extraction outcome atomically.
-    /// Returns the surviving article id: if the canonical URL reveals an existing article,
-    /// this row is dropped in favour of it.
+    /// Persists the snapshot (`None` when re-extracting the stored one) and its extraction
+    /// outcome atomically. Returns the surviving article id: if a new fetch's canonical URL
+    /// reveals an existing article, this row is dropped in favour of it.
     pub fn save_fetched(
         &self,
         id: i64,
-        fetched: &Fetched,
+        snapshot: Option<&Fetched>,
         extracted: std::result::Result<ArticleIr, String>,
         canonical_normalized: Option<&str>,
     ) -> Result<i64> {
         let mut c = self.conn();
         let tx = c.transaction()?;
-        if let Some(canon) = canonical_normalized {
+        // Re-extraction never merges: it must not delete an article the user already has.
+        if let (Some(canon), Some(_)) = (canonical_normalized, snapshot) {
             let existing: Option<i64> = tx
                 .query_row(
                     "SELECT id FROM articles WHERE id != ?1 AND extraction_status = 'ok'
@@ -574,53 +630,34 @@ impl Store {
                 return Ok(existing);
             }
         }
-        tx.execute(
-            "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body)
-             VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
-            params![id, fetched.final_url, fetched.status, fetched.content_type, deflate(&fetched.html)],
-        )?;
+        if let Some(f) = snapshot {
+            tx.execute(
+                "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body)
+                 VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
+                params![id, f.final_url, f.status, f.content_type, deflate(&f.html)],
+            )?;
+            tx.execute(
+                "UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
+                [id],
+            )?;
+        }
         match extracted {
             Err(e) => {
-                tx.execute(
-                    "UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
-                     extraction_status = 'failed', last_error = ?2 WHERE id = ?1",
-                    params![id, e],
-                )?;
+                tx.execute("UPDATE articles SET extraction_status = 'failed', last_error = ?2 WHERE id = ?1", params![id, e])?;
             }
             Ok(ir) => {
-                // shortcut: blocks are replaced wholesale (translations are keyed by text hash, so they
-                // survive); a re-extract command should reuse ids of unchanged blocks so search
-                // results and embeddings keep pointing at them.
-                tx.execute("DELETE FROM blocks WHERE article_id = ?1", [id])?;
-                let mut heading: Option<i64> = None;
-                {
-                    let mut ins = tx.prepare(
-                        "INSERT INTO blocks (article_id, ordinal, kind, text, text_hash, inlines, attrs, heading_id)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                    )?;
-                    for (i, b) in ir.blocks.iter().enumerate() {
-                        let inlines = (!b.inlines.is_empty()).then(|| json(&b.inlines));
-                        let attrs = json(&b.attrs);
-                        let attrs = (attrs != "{}").then_some(attrs);
-                        ins.execute(params![
-                            id, i as i64, b.kind.as_str(), b.text, sha256_hex(&b.text), inlines, attrs, heading
-                        ])?;
-                        if b.kind == crate::ir::BlockKind::Heading {
-                            heading = Some(tx.last_insert_rowid());
-                        }
-                    }
-                }
+                replace_blocks(&tx, id, &ir.blocks)?;
                 let content: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+                let text_length: usize = ir.blocks.iter().map(|b| b.text.chars().count()).sum();
                 let m = &ir.meta;
                 tx.execute(
-                    "UPDATE articles SET fetch_status = 'ok', extraction_status = 'ok', last_error = NULL,
-                     fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'),
+                    "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
                      canonical_url = ?2, title = ?3, author = ?4, site_name = ?5, published_at = ?6,
-                     language = ?7, content_hash = ?8, extraction_version = ?9
+                     language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10
                      WHERE id = ?1",
                     params![
                         id, canonical_normalized, m.title, m.author, m.site_name, m.published_at,
-                        m.language, sha256_hex(&content.join("\n")), EXTRACTION_VERSION
+                        m.language, sha256_hex(&content.join("\n")), EXTRACTION_VERSION, text_length as i64
                     ],
                 )?;
             }
@@ -823,7 +860,8 @@ impl Store {
         self.conn().execute("UPDATE processing_jobs SET status = 'pending' WHERE status = 'running'", [])
     }
 
-    /// Claims the oldest ready job whose type is in `types`.
+    /// Claims the oldest ready job whose type is in `types`. Ingest jobs are skipped while
+    /// another ingest job for the same host is running (one fetch per site at a time).
     pub fn claim_next_job(&self, types: &[&str]) -> Result<Option<JobRow>> {
         self.conn()
             .query_row(
@@ -831,14 +869,19 @@ impl Store {
                     "UPDATE processing_jobs
                      SET status = 'running', attempt_count = attempt_count + 1,
                          started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                     WHERE id = (SELECT id FROM processing_jobs
-                                 WHERE status = 'pending'
-                                   AND type IN (SELECT value FROM json_each(?1))
-                                   AND (next_run_at IS NULL OR next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-                                 ORDER BY id LIMIT 1)
+                     WHERE id = (SELECT j.id FROM processing_jobs j
+                                 WHERE j.status = 'pending'
+                                   AND j.type IN (SELECT value FROM json_each(?1))
+                                   AND (j.next_run_at IS NULL OR j.next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                                   AND NOT (j.type = ?2 AND EXISTS (
+                                       SELECT 1 FROM processing_jobs r
+                                       JOIN articles ra ON ra.id = r.article_id
+                                       JOIN articles ja ON ja.id = j.article_id
+                                       WHERE r.status = 'running' AND r.type = ?2 AND ra.domain = ja.domain))
+                                 ORDER BY j.id LIMIT 1)
                      RETURNING {JOB_COLS}"
                 ),
-                [json(&types)],
+                params![json(&types), crate::ingest::JOB_TYPE],
                 job_row,
             )
             .optional()
@@ -1050,6 +1093,46 @@ mod tests {
         assert_eq!(s.lexical_search("スナップショット", 10).unwrap(), [1]);
         let cached = s.cached_segments(&[hash.clone()], "ja").unwrap();
         assert_eq!(cached[&hash], [Unit { source: "Snapshot isolation".into(), translation: "スナップショット分離".into() }]);
+    }
+
+    #[test]
+    fn re_extraction_reuses_ids_of_unchanged_blocks() {
+        use crate::ir::BlockKind::{Heading, Paragraph};
+        let b = |kind, text: &str| Block { kind, text: text.into(), inlines: vec![], attrs: Default::default() };
+        let ir = |blocks| Ok(ArticleIr { meta: Default::default(), blocks });
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        let f = Fetched { final_url: "https://a.dev/1".into(), status: 200, content_type: None, html: "<p>x</p>".into() };
+        let first = vec![b(Heading, "Alpha"), b(Paragraph, "first para"), b(Paragraph, "second para"), b(Heading, "Beta"), b(Paragraph, "third para")];
+        s.save_fetched(id, Some(&f), ir(first), None).unwrap();
+        let rows = || {
+            let v = s.get_article(id, "ja").unwrap().unwrap();
+            v.blocks.into_iter().map(|b| (b.block.text, b.id, b.heading_id)).collect::<Vec<_>>()
+        };
+        let old = rows();
+        let old_id = |t: &str| old.iter().find(|r| r.0 == t).unwrap().1;
+        let src = |t: &str| EmbedSource { block_id: old_id(t), text_hash: sha256_hex(t), text: t.into(), heading: None };
+        let (keep, gone) = (src("second para"), src("first para"));
+        s.upsert_embeddings("m", &[(&keep, &[1.0][..]), (&gone, &[1.0][..])]).unwrap();
+
+        // Alpha removed, first para edited, Beta moved to the top, third para unchanged.
+        let second = vec![b(Heading, "Beta"), b(Paragraph, "second para"), b(Paragraph, "first para, edited"), b(Paragraph, "third para")];
+        s.save_fetched(id, None, ir(second), None).unwrap();
+        let new = rows();
+        let beta = old_id("Beta");
+        assert_eq!(new[0], ("Beta".into(), beta, None));
+        assert_eq!(new[1], ("second para".into(), old_id("second para"), Some(beta)));
+        assert!(!old.iter().any(|r| r.1 == new[2].1), "edited block gets a new id");
+        assert_eq!(new[2].2, Some(beta));
+        assert_eq!(new[3], ("third para".into(), old_id("third para"), Some(beta)));
+
+        let mut vecs = Vec::new();
+        s.scan_embeddings("m", |bid, _| vecs.push(bid)).unwrap();
+        assert_eq!(vecs, [old_id("second para")], "embedding of the reused block survives, the dropped one cascades");
+        assert_eq!(s.lexical_search("edited", 10).unwrap(), [new[2].1]);
+        assert!(s.lexical_search("Alpha", 10).unwrap().is_empty());
+        let snaps: i64 = s.conn().query_row("SELECT count(*) FROM snapshots", [], |r| r.get(0)).unwrap();
+        assert_eq!(snaps, 1, "re-extraction stores no new snapshot");
     }
 
     #[test]

@@ -70,9 +70,12 @@ export default function App() {
     return () => { subs.forEach((s) => s.then((f) => f())); };
   }, []);
 
-  function openPage(url: string, focus?: string) {
+  /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
+  function openPage(url: string, focus?: string, article?: ArticleRow) {
     setError(null);
     setTarget((t) => ({ url, focus, seq: (t?.seq ?? 0) + 1 }));
+    setPage({ url, title: article?.title ?? "", loading: true });
+    setSaved(article ?? null);
     setMain("browser");
   }
 
@@ -87,7 +90,7 @@ export default function App() {
     if (!page) return;
     setSaving(true);
     try {
-      await api.saveUrl(page.url);
+      await api.savePage();
       await Promise.all([refresh(), refreshSaved(page.url)]);
     } catch (e) {
       fail(e);
@@ -118,7 +121,7 @@ export default function App() {
 
   function openHit(hit: SearchHit) {
     const a = articles.find((x) => x.id === hit.article_id);
-    if (a) openPage(a.original_url, hit.text);
+    if (a) openPage(a.original_url, hit.text, a);
   }
 
   useEffect(() => { refresh(); }, [filter]);
@@ -178,6 +181,16 @@ export default function App() {
     }
   }
 
+  async function reextractArticle() {
+    if (!view) return;
+    try {
+      await api.reextractArticle(view.article.id);
+      await Promise.all([refresh(), loadView(view.article.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   const currentArticleId = main === "reader" ? view?.article.id : saved?.id;
   const filterButton = (f: ArticleFilter, label: string) => (
     <button className={JSON.stringify(f) === JSON.stringify(filter) ? "on" : ""} onClick={() => setFilter(f)}>{label}</button>
@@ -206,13 +219,14 @@ export default function App() {
         <ul className="list">
           {articles.map((a) => (
             <li key={a.id}>
-              <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url)}>
+              <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url, undefined, a)}>
                 <span className="title">{a.favorite && <span className="star" aria-label="お気に入り">★ </span>}{a.title ?? a.original_url}</span>
                 <span className="sub">
                   {a.domain}
                   {a.tags.map((t) => ` #${t}`).join("")}
                   {a.fetch_status === "pending" && " · 取得中…"}
                   {(a.fetch_status === "failed" || a.extraction_status === "failed") && <em> · 失敗</em>}
+                  {a.thin && <em title="ページ表示で開いて「描画後のページで保存」できます"> · 本文が短い</em>}
                 </span>
               </button>
             </li>
@@ -231,8 +245,8 @@ export default function App() {
         )}
         {main === "reader" && view && (
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
-            onPage={() => openPage(view.article.original_url)} onLink={(href) => openPage(href)}
-            onToggleRead={toggleRead} onRetry={retryArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
+            onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
+            onToggleRead={toggleRead} onRetry={retryArticle} onReextract={reextractArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
             onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}

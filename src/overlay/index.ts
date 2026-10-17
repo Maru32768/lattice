@@ -28,7 +28,7 @@ type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 declare global {
   interface Window {
-    __lattice?: { configure(c: Partial<Config>): void; scrollToText(text: string): boolean };
+    __lattice?: { configure(c: Partial<Config>): void; scrollToText(text: string): boolean; snapshot(nonce: string): void };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
 }
@@ -354,8 +354,17 @@ function scrollToText(text: string): boolean {
   return true;
 }
 
+/** Sends the rendered DOM to the app ("Index に追加"), with every sentence in its original language. */
+function snapshot(nonce: string) {
+  const shown = Array.from(document.querySelectorAll<SentenceSpan>(`span.${SENTENCE}[data-shown='t']`));
+  shown.forEach(renderOriginal);
+  const html = `<!DOCTYPE html>${document.documentElement.outerHTML}`;
+  shown.forEach(render);
+  invoke("overlay_snapshot", { nonce, html }).catch((e) => console.warn("[lattice] snapshot failed", e));
+}
+
 if (window.top === window && !window.__lattice) {
-  window.__lattice = { configure, scrollToText };
+  window.__lattice = { configure, scrollToText, snapshot };
   const boot = () =>
     invoke("overlay_config")
       .then((c) => configure(c as Config))

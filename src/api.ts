@@ -55,6 +55,8 @@ export interface ArticleRow {
   read_status: "unread" | "read";
   favorite: boolean;
   tags: string[];
+  /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
+  thin: boolean;
 }
 
 export type ArticleFilter = { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string };
@@ -110,6 +112,9 @@ export interface Bounds {
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
+  /** Saves the page shown in the in-app browser, as rendered. */
+  savePage: () => invoke<number>("save_page"),
+  reextractArticle: (id: number) => invoke<number>("reextract_article", { id }),
   listArticles: (filter: ArticleFilter) => invoke<ArticleRow[]>("list_articles", { filter }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),

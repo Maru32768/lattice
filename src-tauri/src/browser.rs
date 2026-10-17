@@ -2,12 +2,14 @@
 //! page and runs the translation overlay. Links navigate in place; pop-ups open here too.
 //!
 //! Trust boundary: the page is remote and untrusted. Its webview gets only the capability in
-//! `capabilities/browser.json` (overlay_config / overlay_translate), and translate calls are
-//! refused unless the user has switched translation on.
+//! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot), translate calls are
+//! refused unless the user has switched translation on, and snapshots unless the app asked for one.
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl};
 
@@ -26,6 +28,18 @@ pub struct Browser {
     focus: Mutex<Option<String>>,
     /// Serializes create-or-navigate so overlapping opens cannot create the webview twice.
     opening: tokio::sync::Mutex<()>,
+    visibility: Mutex<Visibility>,
+    /// The one outstanding DOM snapshot request: (nonce, reply channel for (url, html)).
+    snapshot: Mutex<Option<(String, oneshot::Sender<(String, String)>)>>,
+}
+
+/// The webview is on screen only while the UI shows the browser view and the page opened
+/// from the app has loaded; until then the placeholder underneath shows a loading state
+/// instead of the previous page.
+#[derive(Default)]
+struct Visibility {
+    wanted: bool,
+    loading: bool,
 }
 
 impl Default for Browser {
@@ -34,8 +48,20 @@ impl Default for Browser {
             config: Mutex::new(OverlayConfig { enabled: false, percent: 70 }),
             focus: Mutex::new(None),
             opening: tokio::sync::Mutex::new(()),
+            visibility: Mutex::new(Visibility::default()),
+            snapshot: Mutex::new(None),
         }
     }
+}
+
+fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
+    let show = {
+        let mut v = lock(&browser.visibility);
+        f(&mut v);
+        v.wanted && !v.loading
+    };
+    // Lock released first: show/hide may wait on the main thread, which may want this lock.
+    if show { wv.show() } else { wv.hide() }
 }
 
 #[derive(Debug, Deserialize)]
@@ -79,9 +105,9 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
     let _opening = browser.opening.lock().await;
     *lock(&browser.focus) = focus_text.filter(|t| !t.trim().is_empty());
     if let Some(wv) = app.get_webview(LABEL) {
+        update_visibility(&wv, &browser, |v| *v = Visibility { wanted: true, loading: true }).map_err(|e| e.to_string())?;
         wv.navigate(url).map_err(|e| e.to_string())?;
-        place(&wv, &bounds).map_err(|e| e.to_string())?;
-        return wv.show().map_err(|e| e.to_string());
+        return place(&wv, &bounds).map_err(|e| e.to_string());
     }
     let window = app.get_window("main").ok_or("main window missing")?;
     let popup_target = app.clone();
@@ -101,7 +127,9 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
             let loading = matches!(p.event(), PageLoadEvent::Started);
             let _ = wv.app_handle().emit_to("main", "browser-page", PageEvent { url: p.url().to_string(), loading });
             if !loading {
-                if let Some(text) = lock(&wv.app_handle().state::<Browser>().focus).take() {
+                let browser = wv.app_handle().state::<Browser>();
+                let _ = update_visibility(&wv, &browser, |v| v.loading = false);
+                if let Some(text) = lock(&browser.focus).take() {
                     let arg = serde_json::to_string(&text).expect("string serializes");
                     let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({arg})"));
                 }
@@ -110,27 +138,83 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
         .on_document_title_changed(|wv, title| {
             let _ = wv.app_handle().emit_to("main", "browser-title", title);
         });
-    window
+    let wv = window
         .add_child(builder, LogicalPosition::new(bounds.x, bounds.y), LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)))
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    update_visibility(&wv, &browser, |v| *v = Visibility { wanted: true, loading: true }).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-/// Also shows the webview: the placeholder only exists while the browser view is on screen.
-pub fn browser_set_bounds(app: AppHandle, bounds: Bounds) -> Result<(), String> {
+/// Also shows the webview (once loaded): the placeholder only exists while the browser view is on screen.
+pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, bounds: Bounds) -> Result<(), String> {
     match app.get_webview(LABEL) {
-        Some(wv) => place(&wv, &bounds).and_then(|_| wv.show()).map_err(|e| e.to_string()),
+        Some(wv) => place(&wv, &bounds).and_then(|_| update_visibility(&wv, &browser, |v| v.wanted = true)).map_err(|e| e.to_string()),
         None => Ok(()),
     }
 }
 
 #[tauri::command]
-pub fn browser_hide(app: AppHandle) -> Result<(), String> {
+pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>) -> Result<(), String> {
     match app.get_webview(LABEL) {
-        Some(wv) => wv.hide().map_err(|e| e.to_string()),
+        Some(wv) => update_visibility(&wv, &browser, |v| v.wanted = false).map_err(|e| e.to_string()),
         None => Ok(()),
     }
+}
+
+const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The current page's rendered DOM and the webview's own URL, from the overlay.
+/// None if the page does not answer in time (overlay missing, page busy or hostile).
+pub async fn snapshot(app: &AppHandle, browser: &Browser) -> Option<(String, String)> {
+    let wv = app.get_webview(LABEL)?;
+    let nonce = {
+        use std::hash::{BuildHasher, Hasher};
+        // Only pairs the reply with this request (the page can read it); unguessable is not needed.
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+        format!("{:016x}", h.finish())
+    };
+    let (tx, rx) = oneshot::channel();
+    *lock(&browser.snapshot) = Some((nonce.clone(), tx));
+    let arg = serde_json::to_string(&nonce).expect("string serializes");
+    let reply = match wv.eval(format!("window.__lattice&&window.__lattice.snapshot({arg})")) {
+        Ok(()) => tokio::time::timeout(SNAPSHOT_TIMEOUT, rx).await.ok().and_then(Result::ok),
+        Err(_) => None,
+    };
+    let mut pending = lock(&browser.snapshot);
+    if pending.as_ref().is_some_and(|(n, _)| *n == nonce) {
+        *pending = None;
+    }
+    reply
+}
+
+/// Called by the overlay with the DOM it was asked for. Exposed to remote pages, so it only
+/// answers an outstanding request from the app, caps the size, and takes the URL from the
+/// webview rather than from the page.
+#[tauri::command]
+pub async fn overlay_snapshot(browser: State<'_, Browser>, webview: Webview, nonce: String, html: String) -> Result<(), String> {
+    if webview.label() != LABEL {
+        return Err("not the browser webview".into());
+    }
+    if html.len() > lattice_core::fetch::MAX_BODY {
+        return Err("snapshot too large".into());
+    }
+    let tx = {
+        let mut pending = lock(&browser.snapshot);
+        match pending.take() {
+            Some((n, tx)) if n == nonce => tx,
+            other => {
+                *pending = other;
+                return Err("no snapshot was requested".into());
+            }
+        }
+    };
+    let url = webview.url().map_err(|e| e.to_string())?;
+    if !is_http(&url) {
+        return Err("only http(s) pages can be saved".into());
+    }
+    let _ = tx.send((url.to_string(), html));
+    Ok(())
 }
 
 #[tauri::command]

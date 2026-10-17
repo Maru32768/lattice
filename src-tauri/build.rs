@@ -1,7 +1,9 @@
 // Every app command is listed so Tauri generates per-command permissions; capabilities then
-// grant the app UI everything and remote pages only the two overlay commands.
+// grant the app UI everything and remote pages only the overlay commands.
 const COMMANDS: &[&str] = &[
     "save_url",
+    "save_page",
+    "reextract_article",
     "import_urls",
     "list_articles",
     "list_tags",
@@ -25,6 +27,7 @@ const COMMANDS: &[&str] = &[
     "browser_set_translation",
     "overlay_config",
     "overlay_translate",
+    "overlay_snapshot",
 ];
 
 fn main() {

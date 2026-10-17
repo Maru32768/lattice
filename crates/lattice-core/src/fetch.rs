@@ -3,7 +3,7 @@ use std::time::Duration;
 pub use reqwest::Client as HttpClient;
 
 /// Web pages are untrusted: cap the body so a hostile server can't exhaust memory.
-const MAX_BODY: usize = 20 * 1024 * 1024;
+pub const MAX_BODY: usize = 20 * 1024 * 1024;
 
 pub struct Fetched {
     pub final_url: String,
