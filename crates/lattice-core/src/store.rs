@@ -1272,6 +1272,28 @@ mod tests {
         assert_eq!((snap.final_url.as_str(), snap.html.as_str()), ("https://x/", "<p>日本語</p>"));
     }
 
+    #[test]
+    fn upgrades_a_database_from_the_last_release_schema() {
+        // Version 8 is the schema shipped before the parallel feature branches were merged.
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..8] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.execute_batch(
+            "INSERT INTO articles (original_url, normalized_url, domain, extraction_status, fetch_status, title)
+                 VALUES ('https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'ok', 'WAL');
+             INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES (1, 0, 'paragraph', 'Write-ahead logging', 'h');
+             INSERT INTO settings (key, value) VALUES ('claude_model', 'sonnet');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let rows = s.list_articles(&ArticleFilter::All).unwrap();
+        assert_eq!((rows.len(), rows[0].thin, rows[0].genre.as_deref()), (1, true, None), "text_length backfilled");
+        assert_eq!(s.get_article(1, "ja").unwrap().unwrap().blocks.len(), 1);
+        assert_eq!(s.setting("claude_model").unwrap().as_deref(), Some("sonnet"));
+    }
+
     /// Migration 5 moves block translations into the hash-keyed segment cache.
     #[test]
     fn translation_migration_keeps_rows_searchable() {
