@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-chat-delete-thread"
+description = "Enables the chat_delete_thread command without any pre-configured scope."
+commands.allow = ["chat_delete_thread"]
+
+[[permission]]
+identifier = "deny-chat-delete-thread"
+description = "Denies the chat_delete_thread command without any pre-configured scope."
+commands.deny = ["chat_delete_thread"]
