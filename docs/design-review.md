@@ -166,7 +166,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 ### 運用（設定・バックアップ・ログ）
 
 - **モデル選択。** 翻訳と要約に使う provider とモデルを、最大 3 つの fallback として設定画面で選ぶ（§6）。`settings` テーブル（migration 8）に保存する。
-- **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。
+- **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。書き出しに成功したら、`lattice-<数字>.db` という名前の通常ファイルだけを対象に、新しい順に「残す世代数」（`backup.keep_generations`、既定 30、設定画面で変更）を超えた分を削除する（`crates/lattice-core/src/backup.rs`）。同じフォルダにある R2 の一時ファイル（`r2-upload-*`）などには触れない。削除に失敗してもバックアップ自体は成功として返し、警告を表示する。
 - **ログ（§25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
 
 ### R2 への自動バックアップ（F10）
@@ -177,16 +177,17 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 |---|---|
 | bucket・lifecycle（Terraform） | `infra/r2/`（手順と復元方法は `infra/r2/README.md`） |
 | アップロード・SigV4・設定・スケジューラ | `crates/lattice-core/src/r2.rs` |
-| Tauri commands（`r2_status` / `r2_save` / `r2_backup_now`） | `src-tauri/src/lib.rs` |
+| 世代の選択（ローカルと共通） | `crates/lattice-core/src/backup.rs` |
+| Tauri commands（`r2_status` / `r2_save` / `r2_clear_secret` / `r2_backup_now`） | `src-tauri/src/lib.rs` |
 | 設定画面 | `src/R2BackupSection.tsx` |
 
-- **流れ。** 専用の接続で `Store::backup_to`（`VACUUM INTO` → `secret.*` を削除）→ gzip → R2 にアップロード → 一時ファイルを削除。コピーは別接続で取るので、数 GB の DB でもアプリの store の lock を握らない。コピーと圧縮は `spawn_blocking` で行う。
+- **流れ。** 専用の接続で `Store::backup_to`（`VACUUM INTO` → `secret.*` を削除）→ gzip → R2 にアップロード → 一時ファイルを削除 → 古い世代を削除。コピーは別接続で取るので、数 GB の DB でもアプリの store の lock を握らない。コピーと圧縮は `spawn_blocking` で行う。
 - **アップロード。** S3 互換 API（`https://<account_id>.r2.cloudflarestorage.com`、path-style、region `auto`）。64 MiB 以下は 1 回の PUT、それより大きければ multipart upload（64 MiB の part を順に読み、ファイル全体はメモリに載せない）。失敗時は abort を試み、取り残しは lifecycle rule が 7 日で破棄する。
 - **SigV4 は手書き。** AWS SDK は入れない。HMAC-SHA256 も既存の `sha2` で数行で書いた。AWS の S3 ドキュメントのテストベクタ 3 件で検証している。
-- **object key。** `lattice/<端末名>/lattice-<UTC 時刻>.db.gz`。端末名は `COMPUTERNAME` / `HOSTNAME` から英数字だけを取る。複数台から同じ bucket に置ける。
-- **設定。** `settings` テーブルの `r2.*`（有効・Account ID・bucket・Access Key ID・間隔・最終成功時刻・最終エラー）と `secret.r2_secret_access_key`。UI には Secret の値を返さず `has_secret` だけを返す。Account ID（32 桁 hex）と bucket 名は URL に入るので保存時に検証する。
+- **object key。** `lattice/<端末名>/lattice-<UTC 時刻>.db.gz`。端末名は `COMPUTERNAME` / `HOSTNAME` から英数字だけを取る。複数台から同じ bucket に置ける。時刻は固定幅の `YYYYMMDDTHHMMSSZ` なので、key を文字列で並べると時系列順になる。
+- **設定。** `settings` テーブルの `r2.*`（有効・Account ID・bucket・Access Key ID・間隔・残す世代数・最終成功時刻・最終エラー・最終の世代削除エラー）と `secret.r2_secret_access_key`。Account ID・bucket・Access Key ID・Secret・間隔・世代数はすべて設定画面から変更できる。UI には Secret の値を返さず `has_secret` だけを返す。Secret は「削除」で消せ、消すと自動バックアップも無効にする（Secret なしでは動かないため）。Account ID（32 桁 hex）と bucket 名は URL に入るので保存時に検証する。
 - **スケジュール。** 起動時に spawn したタスクが 15 分ごとに確認し、最終成功から間隔（既定 24 時間）が過ぎていれば実行する。時刻は DB に保存するので再起動をまたいでも続く。失敗したら 1 時間は再試行しない。同時に 2 本は走らない（手動実行と重なったらエラーを返す）。
-- **保持期間。** アプリは削除しない。Terraform の lifecycle rule（`retention_days`、既定 60 日）で消す。
+- **保持は世代数。** 日数で消すと、しばらくアプリを動かさなかっただけで全部消えうる（ECR の lifecycle policy の「イメージ数」と同じ考え方を採った）。R2 の lifecycle rule は経過日数でしか消せないので、アプリが消す。アップロードに成功したあと、ListObjectsV2（SigV4、`continuation-token` でページを辿る）で `lattice/<端末名>/` を一覧し、`object_key` と同じ形の key だけを残して文字列の降順に並べ、今回の key を 1 世代目として数えたうえで「残す世代数」（`r2.keep_generations`、既定 30、最小 1）を超えた分を DeleteObject で 1 件ずつ消す（DeleteObjects は Content-MD5 が要るので使わない）。今回の key は時計がずれていても消さない。他の端末の prefix や別の名前のオブジェクトには触れない。一覧・削除に失敗してもバックアップは成功のままで、`r2.last_prune_error` に記録して設定画面に警告を出し、次回成功時に消える。XML は要素の切り出しを手で行い、文字参照の解決だけ既存の依存（feed-rs 経由で入っている `quick-xml`）の `unescape` を使う。lifecycle rule は止まった multipart upload の破棄（7 日）だけを残す。
 - **API キー。** アプリ用の R2 アクセスキーは dashboard で作る（Secret を Terraform の state に残さないため）。手順は `infra/r2/README.md`。
 
 ### セキュリティ境界

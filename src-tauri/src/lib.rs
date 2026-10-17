@@ -15,7 +15,7 @@ use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::{classify, export, r2, summarize, translate};
+use lattice_core::{backup, classify, export, r2, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -300,6 +300,7 @@ struct Settings {
     db_path: String,
     log_dir: String,
     backup_dir: String,
+    backup_keep: u64,
 }
 
 #[tauri::command]
@@ -308,6 +309,7 @@ fn get_settings(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Setting
         db_path: app.db_path.clone(),
         log_dir: handle.path().app_log_dir().map_err(err)?.display().to_string(),
         backup_dir: backup_dir(&handle)?.display().to_string(),
+        backup_keep: backup::keep_generations(&app.store)?,
     })
 }
 
@@ -343,16 +345,16 @@ fn backup_dir(handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(handle.path().app_data_dir().map_err(err)?.join("backups"))
 }
 
-/// Writes a consistent copy of the database to app_data/backups and returns its path.
+/// Writes a consistent copy of the database to app_data/backups and prunes old generations.
 #[tauri::command(async)]
-fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
-    let dir = backup_dir(&handle)?;
-    std::fs::create_dir_all(&dir).map_err(err)?;
+fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<backup::LocalBackup, String> {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
-    let path = dir.join(format!("lattice-{secs}.db"));
-    app.store.backup_to(&path).map_err(err)?;
-    log::info!("backup written to {}", path.display());
-    Ok(path.display().to_string())
+    backup::backup_local(&app.store, &backup_dir(&handle)?, secs)
+}
+
+#[tauri::command(async)]
+fn set_backup_keep(app: State<'_, App>, keep: u64) -> Result<(), String> {
+    backup::set_keep_generations(&app.store, keep)
 }
 
 /// Wakes the runner for `job_type`, or every runner.
@@ -410,6 +412,11 @@ fn r2_status(app: State<'_, App>) -> Result<r2::R2Status, String> {
 #[tauri::command(async)]
 fn r2_save(app: State<'_, App>, settings: r2::R2Settings) -> Result<(), String> {
     r2::save(&app.store, settings)
+}
+
+#[tauri::command(async)]
+fn r2_clear_secret(app: State<'_, App>) -> Result<(), String> {
+    r2::clear_secret(&app.store)
 }
 
 #[tauri::command]
@@ -506,8 +513,10 @@ pub fn run() {
             set_llm_chain,
             set_api_key,
             backup_db,
+            set_backup_keep,
             r2_status,
             r2_save,
+            r2_clear_secret,
             r2_backup_now,
             job_overview,
             retry_job,

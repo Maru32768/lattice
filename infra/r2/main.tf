@@ -11,13 +11,12 @@ resource "cloudflare_r2_bucket_lifecycle" "backup" {
   account_id  = var.account_id
   bucket_name = cloudflare_r2_bucket.backup.name
 
+  # No age-based expiry: the app keeps the newest N backups per device (generation count), so
+  # nothing disappears just because the app was not run for a while.
   rules = [{
-    id         = "expire-old-backups"
+    id         = "abort-stale-multipart-uploads"
     enabled    = true
     conditions = { prefix = "lattice/" }
-    delete_objects_transition = {
-      condition = { type = "Age", max_age = var.retention_days * 86400 }
-    }
     # Uploads interrupted mid-way (app closed during a multipart upload) would otherwise be billed forever.
     abort_multipart_uploads_transition = {
       condition = { type = "Age", max_age = 7 * 86400 }
