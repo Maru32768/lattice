@@ -14,7 +14,7 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::llm::{Completion, LlmError, LlmProvider};
+use crate::llm::{LlmError, LlmProvider};
 use crate::store::sha256_hex;
 
 pub const PROMPT_VERSION: &str = "segments-v2";
@@ -194,19 +194,26 @@ fn rejoins(units: &[Unit], source: &str) -> bool {
     units.iter().map(|u| u.source.as_str()).collect::<String>() == source
 }
 
+/// Which provider/model produced a snippet's units (the batch or retry call that answered it;
+/// a re-split of one long unit does not change it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Origin {
+    pub provider: String,
+    pub model: Option<String>,
+}
+
 pub struct Translated {
     /// One entry per input snippet; `None` when the provider never returned a valid result.
-    pub results: Vec<Option<Vec<Unit>>>,
-    pub model: Option<String>,
-    /// Provider that answered first (behind a chain, may differ from the one called).
-    pub provider: Option<String>,
+    /// Behind a chain, retries may be answered by a different entry than the batch call.
+    pub results: Vec<Option<(Vec<Unit>, Origin)>>,
     /// Last provider error, if any call failed (used to report usage limits etc.).
     pub error: Option<LlmError>,
 }
 
-async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expected: &[usize]) -> Result<(Vec<Option<Vec<Unit>>>, Completion), LlmError> {
+async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expected: &[usize]) -> Result<Vec<Option<(Vec<Unit>, Origin)>>, LlmError> {
     let c = provider.complete_json(system, &input.to_string(), &schema()).await?;
-    Ok((reconcile(&c.value, expected), c))
+    let origin = Origin { provider: c.provider, model: c.model };
+    Ok(reconcile(&c.value, expected).into_iter().map(|r| r.map(|u| (u, origin.clone()))).collect())
 }
 
 /// Translates snippets with one batch call, individual retries for anything missing, and a
@@ -215,10 +222,10 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
     let system = translation_prompt(from, to);
     let indexed = |idx: &[usize]| json!(idx.iter().map(|&i| json!({"i": i, "html": snippets[i]})).collect::<Vec<_>>());
     let all: Vec<usize> = (0..snippets.len()).collect();
-    let mut out = Translated { results: vec![None; snippets.len()], model: None, provider: None, error: None };
+    let mut out = Translated { results: vec![None; snippets.len()], error: None };
 
     match call(provider, &system, &indexed(&all), &all).await {
-        Ok((r, c)) => (out.results, out.model, out.provider) = (r, c.model, Some(c.provider)),
+        Ok(r) => out.results = r,
         Err(e) => out.error = Some(e),
     }
     let missing: Vec<usize> = all.iter().copied().filter(|&i| out.results[i].is_none()).collect();
@@ -231,19 +238,14 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
     .await;
     for (i, r) in retries {
         match r {
-            Ok((mut r, c)) => {
-                out.results[i] = r.pop().flatten();
-                if out.provider.is_none() {
-                    (out.model, out.provider) = (c.model, Some(c.provider));
-                }
-            }
+            Ok(mut r) => out.results[i] = r.pop().flatten(),
             Err(e) => out.error = Some(e),
         }
     }
 
     let resplit = resplit_prompt(from, to);
     for slot in out.results.iter_mut() {
-        let Some(units) = slot.take() else { continue };
+        let Some((units, origin)) = slot.take() else { continue };
         let parts = join_all(units.into_iter().map(|u| {
             let resplit = &resplit;
             async move {
@@ -260,7 +262,7 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
             }
         }))
         .await;
-        *slot = Some(parts.into_iter().flatten().collect());
+        *slot = Some((parts.into_iter().flatten().collect(), origin));
     }
     out
 }
@@ -288,8 +290,10 @@ pub fn snippet_from_inlines(text: &str, inlines: &[crate::ir::Inline]) -> String
 #[cfg(test)]
 pub(crate) mod tests {
     use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+    use crate::llm::Completion;
 
     /// Splits snippets at ". " and uppercases them; `drop` skips indices in batch calls,
     /// `dup` duplicates them, `fail` makes every call error.
@@ -397,17 +401,43 @@ pub(crate) mod tests {
         let snippets = vec!["One. Two.".to_string(), "Three.".to_string(), long.clone()];
         let p = Fake { drop: vec![1], ..Fake::new() };
         let t = translate_snippets(&p, &snippets, "en", "ja").await;
-        let r0 = t.results[0].as_ref().unwrap();
+        let r0 = &t.results[0].as_ref().unwrap().0;
         assert_eq!(r0.iter().map(|u| u.translation.as_str()).collect::<Vec<_>>(), ["ONE. ", "TWO."]);
-        assert_eq!(t.results[1].as_ref().unwrap()[0].translation, "THREE.", "missing index retried individually");
-        let r2 = t.results[2].as_ref().unwrap();
+        assert_eq!(t.results[1].as_ref().unwrap().0[0].translation, "THREE.", "missing index retried individually");
+        let r2 = &t.results[2].as_ref().unwrap().0;
         assert_eq!(r2.len(), 2, "long unit re-split");
         assert!(rejoins(r2, &long));
-        assert_eq!(t.model.as_deref(), Some("fake-1"));
+        assert_eq!(t.results[0].as_ref().unwrap().1, Origin { provider: "fake".into(), model: Some("fake-1".into()) });
         assert_eq!(p.calls.lock().unwrap().len(), 3, "batch + 1 retry + 1 resplit");
 
         let failing = Fake { fail: true, ..Fake::new() };
         let t = translate_snippets(&failing, &snippets, "en", "ja").await;
         assert!(t.results.iter().all(Option::is_none) && t.error.is_some());
+    }
+
+    /// Reports a different provider/model on every call, like a chain falling back.
+    struct Relabel(Fake, AtomicUsize);
+
+    impl LlmProvider for Relabel {
+        fn name(&self) -> &str {
+            "chain"
+        }
+        async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+            let n = self.1.fetch_add(1, Ordering::SeqCst);
+            let c = self.0.complete_json(system, input, schema).await?;
+            Ok(Completion { provider: format!("p{n}"), model: Some(format!("m{n}")), ..c })
+        }
+    }
+
+    #[tokio::test]
+    async fn origin_is_per_snippet() {
+        let snippets = vec!["One.".to_string(), "Two.".to_string(), format!("<b>{}</b>", "x".repeat(150))];
+        let p = Relabel(Fake { drop: vec![1], ..Fake::new() }, AtomicUsize::new(0));
+        let t = translate_snippets(&p, &snippets, "en", "ja").await;
+        let origin = |i: usize| t.results[i].as_ref().map(|(_, o)| (o.provider.as_str(), o.model.as_deref()));
+        assert_eq!(origin(0), Some(("p0", Some("m0"))), "batch call");
+        assert_eq!(origin(1), Some(("p1", Some("m1"))), "retry answered by another entry");
+        assert_eq!(origin(2), Some(("p0", Some("m0"))), "re-split (call p2) keeps the snippet's origin");
+        assert_eq!(p.1.load(Ordering::SeqCst), 3);
     }
 }

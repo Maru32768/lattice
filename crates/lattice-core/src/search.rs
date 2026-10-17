@@ -190,7 +190,7 @@ pub(crate) mod tests {
         let b = &s.get_article(id, "ja").unwrap().unwrap().blocks[1];
         let p = (b.id, crate::store::sha256_hex(&b.block.text));
         let units = [Unit { source: "x".into(), translation: "可視性情報は<b>ヒープ</b>に保持される".into() }];
-        s.insert_segments("ja", "fake", None, "v", &[(p.1.as_str(), &units[..])]).unwrap();
+        s.insert_segments("ja", "v", &[(p.1.as_str(), &units[..], "fake", None)]).unwrap();
         for q in ["可視性情報", "ヒープ", "可視性 保持"] {
             let r = search(&s, &Offline, q, None, "ja", 10).await.unwrap();
             assert_eq!(r.hits.first().map(|h| h.detail.block_id), Some(p.0), "query {q}");

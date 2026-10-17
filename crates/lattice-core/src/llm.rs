@@ -1,5 +1,5 @@
 //! Provider boundary. Domain code builds prompts and validates results; adapters
-//! (`claude.rs`, `codex.rs`, `openai.rs`, `gemini.rs`) only move JSON in and out; `chain.rs`
+//! (`claude.rs`, `codex.rs`, `openai.rs`, `gemini.rs`, `anthropic.rs`) only move JSON in and out; `chain.rs`
 //! falls back across them.
 
 use std::future::Future;
@@ -50,7 +50,8 @@ pub fn strict_schema(schema: &Value) -> Value {
     }
 }
 
-/// Sends an API request; rate limits and auth problems become `Unavailable` so a chain moves on.
+/// Sends an API request; rate limits, overload (Anthropic 529) and auth problems become
+/// `Unavailable` so a chain moves on.
 pub(crate) async fn post_json(req: reqwest::RequestBuilder, body: &Value) -> Result<Value, LlmError> {
     let req = req.header(reqwest::header::CONTENT_TYPE, "application/json").body(body.to_string());
     let resp = req.send().await.map_err(|e| LlmError::Failed(format!("request failed: {e}")))?;
@@ -63,7 +64,7 @@ pub(crate) async fn post_json(req: reqwest::RequestBuilder, body: &Value) -> Res
     let msg = v["error"]["message"].as_str().map(str::to_string).unwrap_or_else(|| body.chars().take(300).collect());
     let msg = format!("HTTP {status}: {msg}");
     Err(match status.as_u16() {
-        401 | 403 | 429 => LlmError::Unavailable(msg),
+        401 | 403 | 429 | 529 => LlmError::Unavailable(msg),
         _ => LlmError::Failed(msg),
     })
 }

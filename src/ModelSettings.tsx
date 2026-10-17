@@ -6,9 +6,10 @@ const PROVIDERS: { value: ProviderKind; label: string }[] = [
   { value: "codex_cli", label: "Codex CLI" },
   { value: "openai", label: "OpenAI API" },
   { value: "gemini", label: "Gemini API" },
+  { value: "anthropic", label: "Anthropic API" },
 ];
 
-// "" = the provider's default. API defaults mirror DEFAULT_MODEL in openai.rs / gemini.rs.
+// "" = the provider's default. API defaults mirror DEFAULT_MODEL in openai.rs / gemini.rs / anthropic.rs.
 const PRESETS: Record<ProviderKind, { value: string; label: string }[]> = {
   claude_cli: [
     { value: "", label: "CLI の既定" },
@@ -31,7 +32,14 @@ const PRESETS: Record<ProviderKind, { value: string; label: string }[]> = {
     { value: "", label: "既定（gemini-flash-latest）" },
     { value: "gemini-pro-latest", label: "gemini-pro-latest" },
   ],
+  anthropic: [
+    { value: "", label: "既定（claude-opus-5-5）" },
+    { value: "claude-sonnet-5-5", label: "claude-sonnet-5-5" },
+    { value: "claude-haiku-5-5", label: "claude-haiku-5-5（速い・安い）" },
+  ],
 };
+
+const KEY_LABELS = { openai: "OpenAI", gemini: "Gemini", anthropic: "Anthropic" } as const;
 
 const CUSTOM = "__custom";
 
@@ -60,7 +68,7 @@ function keyLabel(source: KeySource) {
 export function ModelSettings() {
   const [llm, setLlm] = useState<LlmSettings | null>(null);
   const [slots, setSlots] = useState<Slot[]>([EMPTY, EMPTY, EMPTY]);
-  const [keys, setKeys] = useState({ openai: "", gemini: "" });
+  const [keys, setKeys] = useState({ openai: "", gemini: "", anthropic: "" });
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,9 +131,9 @@ export function ModelSettings() {
       <p className="muted">Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルがおすすめです。</p>
 
       <h3>API キー</h3>
-      {(["openai", "gemini"] as const).map((kind) => {
+      {(["openai", "gemini", "anthropic"] as const).map((kind) => {
         const source = llm?.[`${kind}_key`] ?? null;
-        const label = kind === "openai" ? "OpenAI" : "Gemini";
+        const label = KEY_LABELS[kind];
         return (
           <div className="row" key={kind}>
             <span>{label}: {keyLabel(source)}</span>
@@ -147,7 +155,7 @@ export function ModelSettings() {
           </div>
         );
       })}
-      <p className="muted">キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 <code>OPENAI_API_KEY</code> / <code>GEMINI_API_KEY</code> を使います。</p>
+      <p className="muted">キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 <code>OPENAI_API_KEY</code> / <code>GEMINI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> を使います。</p>
       {status && <p role="status">{status}</p>}
       {error && <p className="error-text" role="alert">{error}</p>}
     </div>

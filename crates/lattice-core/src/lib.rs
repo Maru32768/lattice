@@ -1,3 +1,4 @@
+pub mod anthropic;
 pub mod backup;
 pub mod chain;
 pub mod chat;
