@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type FeedRow } from "./api";
+import { api, type FeedCandidate, type FeedRow } from "./api";
 
 /** RSS / Atom subscriptions. Polling runs in the background every 30 minutes and at startup. */
 export function FeedsView({ onChanged }: { onChanged: () => void }) {
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   const [url, setUrl] = useState("");
+  const [candidates, setCandidates] = useState<FeedCandidate[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,10 +33,25 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
     }
   }
 
+  const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
+  // A site or article URL works too: the backend finds the feeds it links.
   const add = () => run(async () => {
-    await api.addFeed(url.trim());
+    setCandidates([]);
+    const found = await api.discoverFeeds(url.trim());
+    if (found.length === 0) throw "フィードが見つかりませんでした（ページにフィードへのリンクがなく、/feed などにもありません）";
+    if (found.length > 1) {
+      setCandidates(found);
+      return `フィードが ${found.length} 件見つかりました。登録するものを選んでください。`;
+    }
+    await api.addFeed(found[0].url);
     setUrl("");
-    return "登録しました。新しい記事をバックグラウンドで取得します。";
+    return found[0].url === url.trim() ? ADDED : `${found[0].title ?? found[0].url} を${ADDED}`;
+  });
+
+  const subscribe = (c: FeedCandidate) => run(async () => {
+    await api.addFeed(c.url);
+    setCandidates((cs) => cs.filter((x) => x.url !== c.url));
+    return `${c.title ?? c.url} を${ADDED}`;
   });
 
   // OPML: subscriptions are the outline elements' xmlUrl attributes.
@@ -70,9 +86,9 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
   return (
     <section className="import feeds">
       <h2>フィード（RSS / Atom）</h2>
-      <p className="muted">登録すると最新 20 件を取り込み、以降は 30 分ごと（と起動時）に新着だけを取り込みます。フィードを削除しても記事は残ります（「手動追加」に移ります）。</p>
+      <p className="muted">登録すると最新 20 件を取り込み、以降は 30 分ごと（と起動時）に新着だけを取り込みます。サイトや記事の URL を入れると、そのページのフィードを探します。フィードを削除しても記事は残ります（「手動追加」に移ります）。</p>
       <form className="row" onSubmit={(e) => { e.preventDefault(); if (url.trim()) add(); }}>
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/feed.xml" aria-label="フィードの URL" />
+        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/ またはフィードの URL" aria-label="サイトまたはフィードの URL" />
         <button type="submit" disabled={busy || !url.trim()}>登録</button>
         <button type="button" onClick={refreshAll} disabled={busy || feeds.length === 0}>すべて更新</button>
         <label className="file">
@@ -82,6 +98,19 @@ export function FeedsView({ onChanged }: { onChanged: () => void }) {
       </form>
       {status && <p role="status" className="muted">{status}</p>}
       {error && <p className="error-text" role="alert">{error}</p>}
+      {candidates.length > 0 && (
+        <ul className="feed-list" aria-label="見つかったフィード">
+          {candidates.map((c) => (
+            <li key={c.url}>
+              <div className="feed-main">
+                <strong>{c.title ?? c.url}</strong>
+                <span className="muted">{c.url}</span>
+              </div>
+              <button onClick={() => subscribe(c)} disabled={busy} aria-label={`${c.title ?? c.url} を登録`}>登録</button>
+            </li>
+          ))}
+        </ul>
+      )}
       <ul className="feed-list">
         {feeds.map((f) => (
           <li key={f.id}>

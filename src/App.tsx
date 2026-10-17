@@ -25,6 +25,7 @@ export default function App() {
   const [genres, setGenres] = useState<TagCount[]>([]);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   const groups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
+  const sidebarGroups = useMemo(() => filterGroups(genres, feeds, []), [genres, feeds]); // tags have their own buttons
   const filterRef = useRef(filter);
   filterRef.current = filter;
   const [sort, setSort] = useState<ArticleSort>("saved_desc");
@@ -293,6 +294,12 @@ export default function App() {
           {filterButton({ kind: "all" }, "最近追加")}
           {filterButton({ kind: "unread" }, "未読")}
           {filterButton({ kind: "favorites" }, "お気に入り")}
+          <select className={filter.kind === "genre" || filter.kind === "feed" ? "on" : ""} aria-label="ジャンル・フィードで絞り込み"
+            value={filter.kind === "genre" || filter.kind === "feed" ? filterKey(filter) : ""}
+            onChange={(e) => setFilter(e.target.value ? parseFilterKey(e.target.value) : { kind: "all" })}>
+            <option value="">ジャンル・フィード…</option>
+            <FilterOptgroups groups={sidebarGroups} />
+          </select>
           {tags.map((t) => (
             <span key={t.name}>{filterButton({ kind: "tag", name: t.name }, `#${t.name} ${t.count}`)}</span>
           ))}
@@ -336,7 +343,7 @@ export default function App() {
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}
-        {main === "settings" && <SettingsView />}
+        {main === "settings" && <SettingsView onChanged={refresh} />}
         {main === "feeds" && <FeedsView onChanged={refreshSoon} />}
         {main === "jobs" && <JobsView />}
         {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}

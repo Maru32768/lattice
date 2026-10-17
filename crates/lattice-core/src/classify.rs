@@ -88,6 +88,37 @@ pub fn list_genres(store: &Store) -> Result<Vec<TagCount>, String> {
     st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? })).map_err(err)?.collect::<Result<_, _>>().map_err(err)
 }
 
+/// Renames a genre; renaming to another existing genre (case-insensitive) merges into it,
+/// moving its articles. Articles keep their manual/auto flag: a manual pick stays pinned.
+/// Future classification runs see the new name through `list_genres`.
+pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
+    let to = clean(to);
+    if to.is_empty() {
+        return Err("ジャンル名が空です".into());
+    }
+    let mut c = store.conn();
+    let tx = c.transaction().map_err(err)?;
+    let id_of = |name: &str| tx.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get::<_, i64>(0)).optional();
+    let from_id = id_of(from).map_err(err)?.ok_or_else(|| format!("ジャンル「{from}」がありません"))?;
+    match id_of(&to).map_err(err)? {
+        Some(to_id) if to_id != from_id => {
+            tx.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
+            tx.execute("DELETE FROM genres WHERE id = ?1", [from_id]).map_err(err)?;
+        }
+        _ => drop(tx.execute("UPDATE genres SET name = ?2 WHERE id = ?1", params![from_id, to]).map_err(err)?),
+    }
+    tx.commit().map_err(err)
+}
+
+/// Deletes a genre no article uses.
+pub fn delete_genre(store: &Store, name: &str) -> Result<(), String> {
+    let n = store
+        .conn()
+        .execute("DELETE FROM genres WHERE name = ?1 AND NOT EXISTS (SELECT 1 FROM articles WHERE genre_id = genres.id)", [name])
+        .map_err(err)?;
+    if n == 0 { Err(format!("ジャンル「{name}」は記事があるか、存在しません")) } else { Ok(()) }
+}
+
 /// The user's choice, pinned against auto runs. Empty clears the genre and unpins it.
 pub fn set_genre(store: &Store, article_id: i64, name: &str) -> Result<(), String> {
     let name = clean(name);
@@ -324,6 +355,42 @@ mod tests {
         set_difficulty(&s, ids[2], None).unwrap();
         let row = s.article_row(ids[2]).unwrap().unwrap();
         assert_eq!((row.genre, row.difficulty, row.difficulty_manual), (None, None, false));
+    }
+
+    #[tokio::test]
+    async fn renames_merges_and_deletes_genres() {
+        let s = Store::open_in_memory().unwrap();
+        let ids: Vec<i64> = (0..3).map(|n| saved(&s, n)).collect();
+        set_genre(&s, ids[0], "DB").unwrap();
+        set_genre(&s, ids[1], "Databases").unwrap();
+        apply(&s, ids[2], "Databases", &[], None, "fake", None).unwrap();
+        let count = |name: &str| list_genres(&s).unwrap().into_iter().find(|g| g.name == name).map(|g| g.count);
+
+        rename_genre(&s, "databases", "Storage  Engines").unwrap();
+        assert_eq!((count("Databases"), count("Storage Engines")), (None, Some(2)));
+        rename_genre(&s, "storage engines", "storage engines").unwrap();
+        assert_eq!(count("storage engines"), Some(2), "case-only rename");
+
+        rename_genre(&s, "DB", "Database").unwrap();
+        rename_genre(&s, "storage engines", "DATABASE").unwrap();
+        assert_eq!((count("DB"), count("storage engines"), count("Database")), (None, None, Some(3)), "merged into the existing genre");
+        let row = |id: i64| s.article_row(id).unwrap().unwrap();
+        assert_eq!((row(ids[0]).genre.as_deref(), row(ids[0]).genre_manual), (Some("Database"), true));
+        assert_eq!((row(ids[2]).genre.as_deref(), row(ids[2]).genre_manual), (Some("Database"), false), "auto stays auto");
+        assert!(rename_genre(&s, "Nope", "X").is_err());
+        assert!(rename_genre(&s, "Database", " ").is_err());
+
+        let fake = Fake::new();
+        enqueue(&s, ids[1]).unwrap();
+        let job = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();
+        run(&s, &fake, job.article_id.unwrap()).await.unwrap();
+        let sent: Value = serde_json::from_str(&fake.calls.lock().unwrap()[0]).unwrap();
+        let sent: Vec<&str> = sent["genres"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(sent.contains(&"Database") && !sent.contains(&"storage engines"), "{sent:?}");
+
+        assert!(delete_genre(&s, "Database").is_err(), "in use");
+        delete_genre(&s, "linux").unwrap();
+        assert_eq!(count("Linux"), None);
     }
 
     #[tokio::test]
