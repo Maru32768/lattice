@@ -212,6 +212,10 @@ export const api = {
   /** Saves the page shown in the in-app browser, as rendered. */
   savePage: () => invoke<number>("save_page"),
   reextractArticle: (id: number) => invoke<number>("reextract_article", { id }),
+  /** Re-saves the article from its page as rendered in a hidden webview (background job). */
+  renderArticle: (id: number) => invoke<void>("render_article", { id }),
+  autoRender: () => invoke<boolean>("get_auto_render"),
+  setAutoRender: (on: boolean) => invoke<void>("set_auto_render", { on }),
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),

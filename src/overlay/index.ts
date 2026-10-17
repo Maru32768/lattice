@@ -9,7 +9,7 @@
  * Runs inside untrusted pages: it only ever inserts sanitized HTML, and the backend only
  * honours its translate calls while the user has translation switched on.
  */
-import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, tokenize, wrapRange } from "./dom.ts";
+import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
 import { assignTranslated, isCjkDominant, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
 
 interface Unit {
@@ -28,7 +28,7 @@ type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 declare global {
   interface Window {
-    __lattice?: { configure(c: Partial<Config>): void; scrollToText(text: string): boolean; snapshot(nonce: string): void };
+    __lattice?: { configure(c: Partial<Config>): void; scrollToText(text: string): boolean; snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void> };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
 }
@@ -354,8 +354,12 @@ function scrollToText(text: string): boolean {
   return true;
 }
 
-/** Sends the rendered DOM to the app ("Index に追加"), with every sentence in its original language. */
-function snapshot(nonce: string) {
+/**
+ * Sends the rendered DOM to the app ("Index に追加", or the background renderer, which first
+ * lets the page finish rendering), with every sentence in its original language.
+ */
+async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null) {
+  if (wait) await settle(document.documentElement, wait.quietMs, wait.maxMs);
   const shown = Array.from(document.querySelectorAll<SentenceSpan>(`span.${SENTENCE}[data-shown='t']`));
   shown.forEach(renderOriginal);
   const html = `<!DOCTYPE html>${document.documentElement.outerHTML}`;

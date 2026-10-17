@@ -123,8 +123,17 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onTranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify }: {
+/** For pages whose server HTML had little text: re-saves the page as rendered in a hidden webview (background job). */
+function RenderAction({ view, onRender }: { view: ArticleView; onRender: () => void }) {
+  const job = view.jobs.find((j) => j.type === "render");
+  const busy = job?.status === "running" || (job?.status === "pending" && !job.last_error);
+  return busy ? <span className="status">描画して取り込み中…</span>
+    : <button onClick={onRender} title="裏の非表示ブラウザでページを描画し、その内容で保存し直します">描画して取り込み直す</button>;
+}
+
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify }: {
   view: ArticleView;
+  onRender: () => void;
   onGenre: (name: string) => void;
   onDifficulty: (level: number | null) => void;
   onClassify: () => void;
@@ -229,12 +238,15 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           {a.fetch_status === "failed" ? "取得" : "本文抽出"}に失敗しました: {a.last_error}
           <button onClick={onRetry}>再試行</button>
           {a.fetch_status === "ok" && <button onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出</button>}
+          {a.fetch_status === "ok" && <RenderAction view={view} onRender={onRender} />}
         </div>
       )}
       {a.thin && (
         <div className="notice">
           本文がほとんど抽出できませんでした（JavaScript で描画するページかもしれません）。
-          ページ表示で開き、読み込み後に「描画後のページで保存」を押すと保存し直せます。
+          「描画して取り込み直す」か、ページ表示で開いて読み込み後に「描画後のページで保存」を押すと保存し直せます。
+          {a.last_error && <> {a.last_error}。</>}
+          <RenderAction view={view} onRender={onRender} />
           <button onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出</button>
         </div>
       )}
