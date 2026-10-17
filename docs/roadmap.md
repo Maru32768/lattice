@@ -18,7 +18,7 @@
 | F8 | 追加日時ソート | 済 | 一覧の並び順を 追加日時（新しい順／古い順）・公開日時 から選べるようにする。 |
 | F9 | LLM との対話ペイン | 済 | NotebookLM のように、保存した記事を根拠に回答し、根拠の block を引用・ジャンプできる。スコープ（この記事／タグ／ジャンル／feed／全体）を指定する。全体のときは hybrid search で上位 block だけを渡す。 |
 | F10 | Cloudflare R2 への自動バックアップ | 済 | bucket などは `infra/` の Terraform で管理する。アプリは S3 互換 API で `VACUUM INTO` のコピーを圧縮してアップロードする。API キーはユーザーが後で設定する。 |
-| F11 | JS で描画するページの保存 | 一部済 | アプリ内ブラウザで開いているページは描画後の DOM を保存する（済）。bulk import / RSS の記事は非表示 webview で描画する（進行中）。 |
+| F11 | JS で描画するページの保存 | 済 | アプリ内ブラウザで開いているページは描画後の DOM を保存する（済）。bulk import / RSS の記事は非表示 webview で描画する（済）。 |
 
 ## 2. 要件定義の未実装項目
 
@@ -26,25 +26,25 @@
 
 | 項目 | 要件 | 状態 | 備考 |
 |---|---|---|---|
-| 検索の metadata filter | §6 UC6, §10 | 一部済 | core は済（記事 id で絞り込み）。genre / feed と検索ボックスの UI は進行中。domain・期間は未着手。 |
+| 検索の metadata filter | §6 UC6, §10 | 一部済 | 未読・お気に入り・タグ・ジャンル・feed は済。domain・期間は未着手。 |
 | 再抽出コマンドと block ID の再利用 | §4.2, §6 | 済 | snapshot から再抽出し、`text_hash` が一致する block の id を再利用する。 |
 | bulk import の同一ホスト宛て並列数の制限 | §15 | 済 | 同じホストへの同時取得を 1 本にする。 |
-| job の一覧と再実行 UI | §4.6, §25 Observability | 進行中 | 失敗した job（job・記事・エラー・試行回数・時刻）を一覧し、再実行できる。 |
-| エクスポート | §17 | 進行中 | 記事・訳・要約を JSON で書き出す。 |
-| 画像の保存 | §26-10 | 後 | 今は Reader でリモート画像を読み込まない。 |
+| job の一覧と再実行 UI | §4.6, §25 Observability | 済 | 失敗した job（job・記事・エラー・試行回数・時刻）を一覧し、再実行できる。 |
+| エクスポート | §17 | 済 | 記事・訳・要約を JSON で書き出す。 |
+| 画像の保存 | §26-10 | 済 | 今は Reader でリモート画像を読み込まない。 |
 
 ### LLM 処理
 
 | 項目 | 要件 | 状態 | 備考 |
 |---|---|---|---|
 | タグ付け | §3 UC7 | 済 | F5 の分類と同じ job でタグ候補も出す。 |
-| difficulty estimation | §3 UC7, §4.6 | 進行中 | Phase 3 の表示制御の入力になる。 |
+| difficulty estimation | §3 UC7, §4.6 | 済 | Phase 3 の表示制御の入力になる。 |
 | relevance estimation | §3 UC7, §12 | 後 | 「High relevance」inbox に使う。 |
 | 要約の種類（short / detailed / key_points） | §4.4 | 後 | 今は normal だけ。 |
-| technical term を英語のまま残すモード | §8 | 進行中 | 翻訳 prompt の option にする。 |
+| technical term を英語のまま残すモード | §8 | 済 | 翻訳 prompt の option にする。 |
 | Anthropic API provider | §9 | 済 | `anthropic.rs`（design-review §6）。 |
 | Local Model provider | §9 | 後 | F4 の adapter と同じ形で追加できる。 |
-| F9 のスコープに genre / feed | F9 | 進行中 | |
+| F9 のスコープに genre / feed | F9 | 済 | |
 
 ### 検索
 
