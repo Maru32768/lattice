@@ -84,7 +84,7 @@ fn first_line(s: &str) -> Option<&str> {
 fn parse_completion(v: &Value) -> Result<Completion, LlmError> {
     let value = v.get("structured_output").filter(|o| o.is_object()).cloned().ok_or_else(|| LlmError::Malformed("no structured_output".into()))?;
     let model = v["modelUsage"].as_object().and_then(|m| m.keys().next().cloned());
-    Ok(Completion { value, model })
+    Ok(Completion { value, model, provider: "claude-cli".into() })
 }
 
 impl LlmProvider for ClaudeCli {

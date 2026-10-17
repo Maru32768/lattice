@@ -95,10 +95,25 @@ export interface ImportSummary {
 }
 
 export interface Settings {
-  claude_model: string | null;
   db_path: string;
   log_dir: string;
   backup_dir: string;
+}
+
+export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini";
+
+export interface ChainEntry {
+  kind: ProviderKind;
+  model: string | null;
+}
+
+/** Where an API key comes from; the key itself never reaches the UI. */
+export type KeySource = "stored" | "env" | null;
+
+export interface LlmSettings {
+  chain: ChainEntry[];
+  openai_key: KeySource;
+  gemini_key: KeySource;
 }
 
 export interface Bounds {
@@ -122,7 +137,9 @@ export const api = {
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
   settings: () => invoke<Settings>("get_settings"),
-  setClaudeModel: (model: string | null) => invoke<void>("set_claude_model", { model }),
+  llmSettings: () => invoke<LlmSettings>("get_llm_settings"),
+  setLlmChain: (chain: ChainEntry[]) => invoke<void>("set_llm_chain", { chain }),
+  setApiKey: (kind: "openai" | "gemini", key: string | null) => invoke<void>("set_api_key", { kind, key }),
   backup: () => invoke<string>("backup_db"),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),

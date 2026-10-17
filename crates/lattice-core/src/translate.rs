@@ -65,7 +65,7 @@ pub async fn run<P: LlmProvider>(
             }
         }
         store
-            .insert_segments(target_language, provider.name(), t.model.as_deref(), PROMPT_VERSION, &rows)
+            .insert_segments(target_language, t.provider.as_deref().unwrap_or(provider.name()), t.model.as_deref(), PROMPT_VERSION, &rows)
             .map_err(|e| e.to_string())?;
         on_progress();
     }

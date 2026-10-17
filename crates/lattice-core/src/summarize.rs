@@ -68,7 +68,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
         .map_err(|e| e.to_string())?;
     let text = format_summary(&c.value).ok_or("malformed summary")?;
     store
-        .insert_summary(article_id, SUMMARY_TYPE, &text, &src.content_hash, provider.name(), c.model.as_deref(), PROMPT_VERSION)
+        .insert_summary(article_id, SUMMARY_TYPE, &text, &src.content_hash, &c.provider, c.model.as_deref(), PROMPT_VERSION)
         .map_err(|e| e.to_string())
 }
 
