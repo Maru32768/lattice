@@ -122,7 +122,7 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onTranslate, onSummarize, onFavorite, onTag, onGenre, onClassify }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onTranslate, onSummarize, onFavorite, onTag, onGenre, onClassify }: {
   view: ArticleView;
   onGenre: (name: string) => void;
   onClassify: () => void;
@@ -137,6 +137,8 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
   onPercent: (p: number) => void;
   onToggleRead: () => void;
   onRetry: () => void;
+  /** Re-runs extraction on the stored HTML (no network). */
+  onReextract: () => void;
   onTranslate: () => void;
 }) {
   const { article: a, blocks } = view;
@@ -188,6 +190,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           <button onClick={onPage}>ページ表示</button>
           <button onClick={onToggleRead}>{a.read_status === "read" ? "未読に戻す" : "既読にする"}</button>
           <button onClick={onFavorite} aria-pressed={a.favorite} title="お気に入り">{a.favorite ? "★" : "☆"}</button>
+          {!failed && !a.thin && <button onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出</button>}
         </div>
         <div className="tags">
           {a.tags.map((t) => (
@@ -222,6 +225,14 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
         <div className="error">
           {a.fetch_status === "failed" ? "取得" : "本文抽出"}に失敗しました: {a.last_error}
           <button onClick={onRetry}>再試行</button>
+          {a.fetch_status === "ok" && <button onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出</button>}
+        </div>
+      )}
+      {a.thin && (
+        <div className="notice">
+          本文がほとんど抽出できませんでした（JavaScript で描画するページかもしれません）。
+          ページ表示で開き、読み込み後に「描画後のページで保存」を押すと保存し直せます。
+          <button onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出</button>
         </div>
       )}
       <OpenLink.Provider value={onLink}>

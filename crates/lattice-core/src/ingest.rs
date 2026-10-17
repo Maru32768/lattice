@@ -96,14 +96,38 @@ pub fn extract_urls(text: &str) -> Vec<String> {
 
 /// Network-free half of the pipeline, also used by tests.
 pub fn store_fetched(store: &Store, id: i64, fetched: &Fetched) -> Result<i64, String> {
-    let extracted = extract(&fetched.html, &fetched.final_url).map_err(|e| e.to_string());
+    extract_into(store, id, &fetched.html, &fetched.final_url, Some(fetched))
+}
+
+/// Saves the DOM of a page as rendered in the in-app browser: JS-built pages have little or
+/// no content in their server HTML. Always re-extracts, since the user asked for this rendering.
+pub fn save_rendered(store: &Store, url: &str, html: String) -> Result<i64, String> {
+    let norm = normalize(url)?;
+    let domain = norm.host_str().unwrap_or_default().to_string();
+    let (id, _) = store.upsert_pending(url, norm.as_str(), &domain).map_err(|e| e.to_string())?;
+    let fetched = Fetched { final_url: url.to_string(), status: 200, content_type: Some(RENDERED_CONTENT_TYPE.into()), html };
+    store_fetched(store, id, &fetched)
+}
+
+/// Marks snapshots taken from the browser's DOM rather than fetched from the server.
+pub const RENDERED_CONTENT_TYPE: &str = "text/html; source=webview";
+
+/// Re-runs extraction on the newest stored snapshot: no network, and blocks whose text is
+/// unchanged keep their ids (and with them embeddings and search hits).
+pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
+    let snap = store.latest_snapshot(id).map_err(|e| e.to_string())?.ok_or("no stored snapshot to re-extract")?;
+    extract_into(store, id, &snap.html, &snap.final_url, None)
+}
+
+fn extract_into(store: &Store, id: i64, html: &str, url: &str, snapshot: Option<&Fetched>) -> Result<i64, String> {
+    let extracted = extract(html, url).map_err(|e| e.to_string());
     let canonical = extracted
         .as_ref()
         .ok()
         .and_then(|ir| ir.meta.canonical_url.as_deref())
         .and_then(|c| normalize(c).ok())
         .map(String::from);
-    store.save_fetched(id, fetched, extracted, canonical.as_deref()).map_err(|e| e.to_string())
+    store.save_fetched(id, snapshot, extracted, canonical.as_deref()).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -137,7 +161,9 @@ mod tests {
         assert_eq!(enqueue_urls(&s, &urls).unwrap(), ImportSummary { found: 3, queued: 2, existing: 0, invalid: 1 });
         // Not yet fetched: queued again, but dedup_key keeps one job per article.
         assert_eq!(enqueue_urls(&s, &urls[..1]).unwrap().queued, 1);
-        assert_eq!(s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap().article_id, Some(1));
+        let first = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();
+        assert_eq!(first.article_id, Some(1));
+        s.finish_job(first.id, None).unwrap();
         assert_eq!(s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap().article_id, Some(2));
         assert!(s.claim_next_job(&[JOB_TYPE]).unwrap().is_none());
     }
@@ -174,6 +200,40 @@ mod tests {
         let (id2, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
         assert_eq!(store_fetched(&s, id2, &page(BODY)).unwrap(), id);
         assert_eq!(s.list_articles(&crate::store::ArticleFilter::All).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn one_fetch_per_host_at_a_time() {
+        let s = Store::open_in_memory().unwrap();
+        let urls: Vec<String> = ["https://a.dev/1", "https://a.dev/2", "https://b.dev/1"].map(String::from).to_vec();
+        enqueue_urls(&s, &urls).unwrap();
+        let claim = || s.claim_next_job(&[JOB_TYPE]).unwrap().map(|j| (j.id, j.article_id.unwrap()));
+        let (first, a1) = claim().unwrap();
+        assert_eq!(a1, 1);
+        assert_eq!(claim().map(|j| j.1), Some(3), "a.dev/2 waits; b.dev goes ahead");
+        assert_eq!(claim(), None);
+        s.finish_job(first, None).unwrap();
+        assert_eq!(claim().map(|j| j.1), Some(2));
+    }
+
+    #[test]
+    fn rendered_save_replaces_thin_extraction_and_reextract_keeps_ids() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        // Server HTML of a JS app: only a loading stub.
+        store_fetched(&s, id, &page("<p>Loading the application, please wait for a moment.</p>")).unwrap();
+        assert!(s.article_row(id).unwrap().unwrap().thin);
+
+        let rendered = page(&BODY.repeat(3)).html;
+        assert_eq!(save_rendered(&s, "https://example.com/post", rendered.clone()).unwrap(), id);
+        let v = s.get_article(id, "ja").unwrap().unwrap();
+        assert!(!v.article.thin && v.blocks.len() > 1, "{:?}", v.blocks);
+        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html, rendered);
+
+        let ids: Vec<i64> = v.blocks.iter().map(|b| b.id).collect();
+        assert_eq!(reextract(&s, id).unwrap(), id);
+        let again: Vec<i64> = s.get_article(id, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
+        assert_eq!(again, ids, "unchanged blocks keep their ids");
     }
 
     #[test]

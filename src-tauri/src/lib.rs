@@ -26,8 +26,7 @@ const OVERLAY_LLM_CONCURRENCY: usize = 3;
 const CHAT_LLM_CONCURRENCY: usize = 2;
 const OVERLAY_MAX_SNIPPETS: usize = 24;
 const OVERLAY_MAX_SNIPPET_BYTES: usize = 20_000;
-/// Parallel fetchers for bulk import.
-// shortcut: no per-host politeness limit; add one if imports hammer a single site.
+/// Parallel fetchers for bulk import (at most one per host: see `Store::claim_next_job`).
 const NET_WORKERS: usize = 4;
 
 struct App {
@@ -45,10 +44,17 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
+// Commands that touch the store are async or `command(async)`: sync commands run on the main
+// (UI) thread, and waiting there for the store lock held by a background job freezes the window.
+
 #[tauri::command]
 async fn save_url(app: State<'_, App>, url: String) -> Result<i64, String> {
     let id = ingest::save_url(&app.store, &app.providers.http, &url).await?;
-    // Index every saved article; it is local and free, unlike translation.
+    indexed(&app, id)
+}
+
+/// Index every saved article; it is local and free, unlike translation.
+fn indexed(app: &App, id: i64) -> Result<i64, String> {
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
     app.wake_local.notify_one();
     classify::enqueue_if_auto(&app.store, id)?;
@@ -56,56 +62,78 @@ async fn save_url(app: State<'_, App>, url: String) -> Result<i64, String> {
     Ok(id)
 }
 
+/// "Index に追加" in the in-app browser: stores the page as rendered (JS-built pages have no
+/// content in their server HTML), or fetches it from the server if the page does not answer.
+#[tauri::command]
+async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle) -> Result<i64, String> {
+    let id = match browser::snapshot(&handle, &browser).await {
+        Some((url, html)) => ingest::save_rendered(&app.store, &url, html)?,
+        None => {
+            let wv = handle.get_webview(browser::LABEL).ok_or("the browser is not open")?;
+            log::info!("no DOM snapshot from the page; fetching from the server");
+            ingest::save_url(&app.store, &app.providers.http, wv.url().map_err(err)?.as_str()).await?
+        }
+    };
+    indexed(&app, id)
+}
+
+/// Re-runs extraction on the stored snapshot (no network).
+#[tauri::command(async)]
+fn reextract_article(app: State<'_, App>, id: i64) -> Result<i64, String> {
+    let id = ingest::reextract(&app.store, id)?;
+    indexed(&app, id)
+}
+
 /// Bulk import: any text containing URLs (list, bookmarks HTML, CSV, JSON). Fetching happens
 /// in the background; failures are recorded per article and never stop the rest.
-#[tauri::command]
+#[tauri::command(async)]
 fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, String> {
     let summary = ingest::enqueue_urls(&app.store, &ingest::extract_urls(&text))?;
     app.wake_net.iter().for_each(|w| w.notify_one());
     Ok(summary)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_articles(app: State<'_, App>, filter: ArticleFilter, sort: Option<ArticleSort>) -> Result<Vec<ArticleRow>, String> {
     app.store.list_articles_sorted(&filter, sort.unwrap_or_default()).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
     classify::list_genres(&app.store)
 }
 
 /// Manual choice; an empty name clears it.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     classify::set_genre(&app.store, id, &name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn classify_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     classify::enqueue_manual(&app.store, id)?;
     app.wake_llm.notify_one();
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn classify_unclassified(app: State<'_, App>) -> Result<usize, String> {
     let n = classify::enqueue_unclassified(&app.store)?;
     app.wake_llm.notify_one();
     Ok(n)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_auto_classify(app: State<'_, App>) -> Result<bool, String> {
     classify::auto_enabled(&app.store)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_auto_classify(app: State<'_, App>, on: bool) -> Result<(), String> {
     classify::set_auto(&app.store, on)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_feeds(app: State<'_, App>) -> Result<Vec<FeedRow>, String> {
     feeds::list(&app.store)
 }
@@ -126,7 +154,7 @@ async fn add_feed(app: State<'_, App>, url: String) -> Result<i64, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_feed(app: State<'_, App>, id: i64) -> Result<(), String> {
     feeds::remove(&app.store, id)
 }
@@ -138,32 +166,32 @@ async fn refresh_feeds(app: State<'_, App>) -> Result<usize, String> {
     Ok(n)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn list_tags(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
     app.store.list_tags().map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), String> {
     app.store.set_favorite(id, favorite).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn add_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     app.store.add_tag(id, &name).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     app.store.remove_tag(id, &name).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
     app.store.get_article(id, translate::TARGET_LANGUAGE).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow>, String> {
     let Ok(norm) = normalize(&url) else { return Ok(None) };
     match app.store.find_article_by_url(norm.as_str()).map_err(err)? {
@@ -215,14 +243,14 @@ async fn overlay_translate(
     Ok(hashes.iter().map(|h| cached.get(h).cloned()).collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     summarize::enqueue(&app.store, id)?;
     app.wake_llm.notify_one();
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     translate::enqueue(&app.store, id, translate::TARGET_LANGUAGE)?;
     app.wake_llm.notify_one();
@@ -240,22 +268,22 @@ async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String,
     chat::ask(&app.store, &app.providers.llm, &app.providers.embedder, thread_id, &question, scope).await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_threads(app: State<'_, App>) -> Result<Vec<ChatThread>, String> {
     app.store.chat_threads().map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_messages(app: State<'_, App>, thread_id: i64) -> Result<Vec<ChatMessage>, String> {
     app.store.chat_messages(thread_id).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String> {
     app.store.delete_chat_thread(thread_id).map_err(err)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_read(app: State<'_, App>, id: i64, read: bool) -> Result<(), String> {
     app.store.set_read_status(id, read).map_err(err)
 }
@@ -289,20 +317,20 @@ struct LlmSettings {
     gemini_key: Option<&'static str>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_llm_settings(app: State<'_, App>) -> Result<LlmSettings, String> {
     let source = |k| chain::api_key(&app.store, k).map(|o| o.map(|(_, s)| s));
     Ok(LlmSettings { chain: chain::load_config(&app.store)?, openai_key: source(ProviderKind::Openai)?, gemini_key: source(ProviderKind::Gemini)? })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_llm_chain(app: State<'_, App>, chain: Vec<ChainEntry>) -> Result<(), String> {
     chain::save_config(&app.store, chain)?;
     app.providers.llm.set(chain::load(&app.store)?);
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_api_key(app: State<'_, App>, kind: ProviderKind, key: Option<String>) -> Result<(), String> {
     chain::set_api_key(&app.store, kind, key.as_deref())?;
     app.providers.llm.set(chain::load(&app.store)?);
@@ -314,7 +342,7 @@ fn backup_dir(handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 /// Writes a consistent copy of the database to app_data/backups and returns its path.
-#[tauri::command]
+#[tauri::command(async)]
 fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
     let dir = backup_dir(&handle)?;
     std::fs::create_dir_all(&dir).map_err(err)?;
@@ -325,12 +353,12 @@ fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, St
     Ok(path.display().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn r2_status(app: State<'_, App>) -> Result<r2::R2Status, String> {
     r2::status(&app.store)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn r2_save(app: State<'_, App>, settings: r2::R2Settings) -> Result<(), String> {
     r2::save(&app.store, settings)
 }
@@ -395,6 +423,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             save_url,
+            save_page,
+            reextract_article,
             import_urls,
             list_articles,
             list_tags,
@@ -437,6 +467,7 @@ pub fn run() {
             browser::browser_go,
             browser::browser_set_translation,
             browser::overlay_config,
+            browser::overlay_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

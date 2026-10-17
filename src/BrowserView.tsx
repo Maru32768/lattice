@@ -92,12 +92,21 @@ export function BrowserView({ target, page, saved, saving, overlay, onOverlay, o
             ? <>
                 <button onClick={onFavorite} aria-pressed={saved.favorite} title="お気に入り">{saved.favorite ? "★" : "☆"}</button>
                 <span className="saved">Index 済み</span>
+                {(saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed") && (
+                  <button onClick={onSave} disabled={saving || !page || page.loading}
+                    title="本文を取得できなかった記事を、表示中のページから保存し直します">
+                    {saving ? "保存中…" : "描画後のページで保存"}
+                  </button>
+                )}
                 <button onClick={onReader}>リーダー表示</button>
               </>
             : <button onClick={onSave} disabled={saving || !page || page.loading}>{saving ? "追加中…" : "Index に追加"}</button>}
         </div>
       </div>
-      <div ref={host} className="browser-host" />
+      {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
+      <div ref={host} className="browser-host">
+        {page?.loading && <div className="browser-loading" role="status"><span className="spinner" aria-hidden="true" />読み込み中…</div>}
+      </div>
     </div>
   );
 }
