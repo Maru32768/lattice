@@ -30,3 +30,4 @@ dist-ssr
 
 # Local notes (not shared)
 /.local/
+/.claude/worktrees/
