@@ -22,6 +22,17 @@ export function SettingsView() {
     }
   }
 
+  async function exportJson() {
+    setError(null);
+    setStatus("エクスポート中…");
+    try {
+      setStatus(`エクスポートしました: ${await api.exportJson()}`);
+    } catch (e) {
+      setStatus(null);
+      setError(String(e));
+    }
+  }
+
   return (
     <section className="settings">
       <h2>設定・バックアップ</h2>
@@ -29,8 +40,9 @@ export function SettingsView() {
       <ClassifySettings />
       <div>
         <h3>バックアップ</h3>
-        <div className="row"><button onClick={backup}>今すぐバックアップ</button></div>
-        <p className="muted">保存先: <code>{settings?.backup_dir}</code><br />記事・訳・要約・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code></p>
+        <div className="row"><button onClick={backup}>今すぐバックアップ</button><button onClick={exportJson}>JSON でエクスポート</button></div>
+        <p className="muted">保存先: <code>{settings?.backup_dir}</code><br />記事・訳・要約・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code><br />
+          JSON エクスポート（<code>exports</code> フォルダ、1 行 1 オブジェクトの gzip）には記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。</p>
       </div>
       <R2BackupSection />
       <div>

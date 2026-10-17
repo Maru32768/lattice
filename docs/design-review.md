@@ -311,3 +311,25 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 - **本文が短い記事の表示。** 抽出した文字数を `articles.text_length` に保存し（migration 12。既存行は blocks から backfill する）、300 文字未満を `thin` とする。一覧に「本文が短い」、Reader に案内を出し、ブラウザでは「描画後のページで保存」ボタンで保存し直せる。取得・抽出に失敗した記事も同じボタンで保存できる（bot を拒否するサイトにも使える）。bulk import 用に非表示の webview で描画することはしていない。
 - **同一ホストの並列制限。** `claim_next_job` は、同じ `articles.domain` の ingest job が running の間、そのホストの ingest job を飛ばして別ホストの job を取る。1 つの UPDATE 文なので runner 間で競合しない。ホストは正規化後の host そのもので、`www.` の有無は別ホストとして扱う。
 - **再抽出と block ID の再利用。** `reextract_article` は最新の snapshot から抽出し直す（ネットワークを使わず、snapshot を増やさず、canonical による記事の統合もしない）。`save_fetched` は blocks を全置換せず、`text_hash` が一致する旧 block の id を出現順に再利用する（重複テキストは順に対応付ける）。旧行を負の ordinal に退避してから並べ替えるので、`UNIQUE (article_id, ordinal)` に衝突しない。`heading_id` は新しい並びで付け直し、使われなかった旧 block は削除する（embedding は cascade で消える）。再利用した block の embedding と検索結果はそのまま有効。見出しだけが変わった block の embedding（見出しを前置している）は古いままになるが、本文の hash が同じなので再計算しない。
+
+## 10. 処理状況と JSON エクスポート（§4.6・§17・§25）
+
+| 対象 | ファイル |
+|---|---|
+| ジョブの集計・一覧・再実行・取り消し | `crates/lattice-core/src/job_status.rs`、`src/JobsView.tsx` |
+| runner の起こし分け | `src-tauri/src/lib.rs`（`wake`） |
+| `(status, type, next_run_at)` index | `crates/lattice-core/src/store.rs`（migration 13） |
+| JSON エクスポート | `crates/lattice-core/src/export.rs`、`src/SettingsView.tsx` |
+
+- **状態は 4 つ。** 待機（pending で実行可能）、再試行待ち（pending で `next_run_at` が未来）、実行中、失敗（`MAX_ATTEMPTS` に達して自動再試行が止まったもの）。succeeded は数えない。集計は `(status, type, next_run_at)` の covering index だけで済み、表の行を読まない。一覧は失敗と再試行待ちを終了時刻の新しい順に 200 件まで返す（件数は集計の方にある）。
+- **再実行は enqueue と同じ操作。** `status = 'pending', next_run_at = NULL`（running は除く）で、`attempt_count` は残す。`Store::enqueue_job` が dedup key の既存 job に対して行うのと同じなので、再実行は 1 回だけ試し、失敗すればまた「失敗」に戻る（自動の backoff を最初からやり直さない）。種類から `LLM_JOBS` / `LOCAL_JOBS` / `NET_JOBS` を引いて該当する runner を起こす。「失敗をすべて再実行」（種類ごとにも可）は失敗と再試行待ちの両方を対象にする。
+- **classify の batch でも動く。** job は記事単位なので、再実行した job は通常どおり pending になり、次の classify 実行が最大 20 件をまとめて claim する（test で確認）。
+- **取り消しは job の削除。** pending と failed だけ消せる（running は終わるのを待つ）。dedup key ごと消えるので、後で同じ処理を頼めば新しい job ができる。ingest job を取り消すと記事は「取得中」のまま残る。
+- **画面の更新。** `article-changed`（runner が job ごとに送る）を 1 秒にまとめて読み直し、さらに表示中は 10 秒ごとに読み直す（backoff の期限切れはイベントにならないため）。
+- **エクスポートの形式。** `app_data/exports/lattice-export-<UTC>.jsonl.gz`。1 行 1 JSON の gzip で、1 行目が `{"format": "lattice-export/1", "exported_at"}`、続いて `feed`、`article`、`chat_thread` の行。記事はメタデータ（`ArticleRow` と同じ項目: タグ・ジャンル・`feed_id` を含む）、blocks（kind・text・inlines・attrs、block ごとに target language ごとの最新の訳を provider / model / prompt_version 付きで）、要約（履歴すべて、`stale` 付き）。対話は thread ごとに messages（引用・scope・provider を含む）。記事を 1 件ずつ読んで書くので、10^5 件でもメモリに載せない。書き終えてから rename するので、途中で失敗しても壊れたファイルは残らない。
+- **含めないもの。** settings 全体（API キー・R2 の secret のほか、LLM の設定も）、取得した HTML の snapshot、embedding、jobs、分類の履歴。snapshot と embedding は DB のバックアップにある。
+- **一貫性。** store の lock は記事ごとに取り直す（エクスポート中も UI と job が止まらない）。そのためエクスポート中に変わったデータは半端に入りうる。
+
+### 未実装（意図的）
+
+エクスポートからの import（復元は DB バックアップで行う）、一覧の種類での絞り込みとページング、succeeded の履歴表示、エクスポートの進捗表示と保存先の選択、エクスポートの自動実行。

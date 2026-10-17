@@ -166,6 +166,34 @@ export interface LlmSettings {
   gemini_key: KeySource;
 }
 
+/** Mirrors lattice-core's job_status.rs. */
+export type JobState = "pending" | "backoff" | "running" | "failed";
+
+export interface JobCount {
+  job_type: string;
+  state: JobState;
+  count: number;
+}
+
+export interface JobIssue {
+  id: number;
+  job_type: string;
+  article_id: number | null;
+  article_title: string | null;
+  status: "pending" | "failed";
+  attempt_count: number;
+  last_error: string | null;
+  next_run_at: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface JobOverview {
+  counts: JobCount[];
+  issues: JobIssue[];
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -211,6 +239,12 @@ export const api = {
   addFeed: (url: string) => invoke<number>("add_feed", { url }),
   removeFeed: (id: number) => invoke<void>("remove_feed", { id }),
   refreshFeeds: () => invoke<number>("refresh_feeds"),
+  jobOverview: () => invoke<JobOverview>("job_overview"),
+  retryJob: (id: number) => invoke<boolean>("retry_job", { id }),
+  retryFailedJobs: (jobType: string | null) => invoke<number>("retry_failed_jobs", { jobType }),
+  cancelJob: (id: number) => invoke<boolean>("cancel_job", { id }),
+  /** Writes a JSON-lines export and returns its path. */
+  exportJson: () => invoke<string>("export_json"),
 };
 
 /** The in-app browser (a native child webview positioned over a placeholder element). */
