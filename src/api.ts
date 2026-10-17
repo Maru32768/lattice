@@ -63,7 +63,10 @@ export interface ArticleRow {
   thin: boolean;
 }
 
-export type ArticleFilter = { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string };
+/** `genre` null: 未分類; `feed` null: 手動追加. */
+export type ArticleFilter =
+  | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
+  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null };
 
 export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc";
 
@@ -105,7 +108,7 @@ export interface SearchResult {
   semantic_error: string | null;
 }
 
-/** Mirrors chat.rs. New article filters (genre, feed) become chat scopes automatically. */
+/** Mirrors chat.rs. Every article filter is a chat scope. */
 export type ChatScope = { kind: "article"; id: number } | { kind: "filter"; filter: ArticleFilter };
 
 export interface Citation {
@@ -186,7 +189,7 @@ export const api = {
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
-  search: (query: string) => invoke<SearchResult>("search_blocks", { query }),
+  search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
   chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>
     invoke<ChatMessage>("chat_ask", { threadId, question, scope }),
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),

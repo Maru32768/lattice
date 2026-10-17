@@ -91,6 +91,7 @@ main { overflow-y: auto; }
 .reader .block.translated { box-shadow: -3px 0 0 var(--accent); }
 
 .sidebar form[role="search"] { padding-top: 0; }
+.sidebar form[role="search"] select { width: 6.5em; flex: none; font: inherit; font-size: 12px; padding: 2px 4px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
 .back { margin: 16px 0 0 32px; border: 0; background: none; color: var(--accent); padding: 0; }
 .reader .block.focused { background: var(--mark); border-radius: 4px; }
 

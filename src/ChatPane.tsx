@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type ChatMessage, type ChatScope, type ChatThread, type Citation, type TagCount } from "./api";
+import { api, type ChatMessage, type ChatScope, type ChatThread, type Citation } from "./api";
 import { splitCitations } from "./chat";
+import { type FilterGroup, parseFilterKey } from "./scopes";
+import { FilterOptgroups } from "./FilterOptgroups";
 
 const MODE_LABEL = { full: "記事全文から回答", retrieval: "検索で選んだ関連箇所から回答", none: "" } as const;
 
@@ -35,9 +37,9 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
 }
 
 /** Right-side chat over saved articles. `article` is the one open in the Reader or browser. */
-export function ChatPane({ article, tags, onCite, onClose }: {
+export function ChatPane({ article, groups, onCite, onClose }: {
   article: { id: number; title: string } | null;
-  tags: TagCount[];
+  groups: FilterGroup[];
   onCite: (c: Citation) => void;
   onClose: () => void;
 }) {
@@ -73,8 +75,7 @@ export function ChatPane({ article, tags, onCite, onClose }: {
 
   function scope(): ChatScope | null {
     if (scopeKey === "article") return article && { kind: "article", id: article.id };
-    if (scopeKey.startsWith("tag:")) return { kind: "filter", filter: { kind: "tag", name: scopeKey.slice(4) } };
-    return { kind: "filter", filter: { kind: "all" } };
+    return { kind: "filter", filter: scopeKey === "all" ? { kind: "all" } : parseFilterKey(scopeKey) };
   }
 
   async function ask(e: React.FormEvent) {
@@ -134,7 +135,7 @@ export function ChatPane({ article, tags, onCite, onClose }: {
           <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)}>
             <option value="article" disabled={!article}>この記事{article ? `（${article.title}）` : "（記事を開いていません）"}</option>
             <option value="all">全記事</option>
-            {tags.map((t) => <option key={t.name} value={`tag:${t.name}`}>#{t.name}（{t.count}件）</option>)}
+            <FilterOptgroups groups={groups} />
           </select>
         </label>
         <textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={3} placeholder="質問を入力（Ctrl+Enter で送信）"

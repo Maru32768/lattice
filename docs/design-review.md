@@ -311,3 +311,20 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 - **本文が短い記事の表示。** 抽出した文字数を `articles.text_length` に保存し（migration 12。既存行は blocks から backfill する）、300 文字未満を `thin` とする。一覧に「本文が短い」、Reader に案内を出し、ブラウザでは「描画後のページで保存」ボタンで保存し直せる。取得・抽出に失敗した記事も同じボタンで保存できる（bot を拒否するサイトにも使える）。bulk import 用に非表示の webview で描画することはしていない。
 - **同一ホストの並列制限。** `claim_next_job` は、同じ `articles.domain` の ingest job が running の間、そのホストの ingest job を飛ばして別ホストの job を取る。1 つの UPDATE 文なので runner 間で競合しない。ホストは正規化後の host そのもので、`www.` の有無は別ホストとして扱う。
 - **再抽出と block ID の再利用。** `reextract_article` は最新の snapshot から抽出し直す（ネットワークを使わず、snapshot を増やさず、canonical による記事の統合もしない）。`save_fetched` は blocks を全置換せず、`text_hash` が一致する旧 block の id を出現順に再利用する（重複テキストは順に対応付ける）。旧行を負の ordinal に退避してから並べ替えるので、`UNIQUE (article_id, ordinal)` に衝突しない。`heading_id` は新しい並びで付け直し、使われなかった旧 block は削除する（embedding は cascade で消える）。再利用した block の embedding と検索結果はそのまま有効。見出しだけが変わった block の embedding（見出しを前置している）は古いままになるが、本文の hash が同じなので再計算しない。
+
+## 10. ジャンル・フィードの範囲指定（対話・検索）
+
+| 対象 | ファイル |
+|---|---|
+| ジャンル・フィードの絞り込み、記事 ID だけの query | `store::ArticleFilter`（`Genre` / `Feed`）、`filter_cond`、`Store::article_ids` |
+| 対話の範囲 | `chat::Store::scope_articles`、`src/ChatPane.tsx` |
+| 検索の範囲 | `search_blocks`（`filter`）、`src/App.tsx` |
+| 範囲の選択肢 | `src/scopes.ts`、`src/FilterOptgroups.tsx` |
+
+- **絞り込みの種類。** `ArticleFilter` に `Genre { name }`（`null` は未分類）と `Feed { id }`（`null` は手動追加）を追加した。条件は `filter_cond` の 1 か所で組み立て、一覧（`list_articles_sorted`）と `article_ids` が共有する。ジャンル名は `genres.name` の `COLLATE NOCASE` で照合する。
+- **範囲は記事 ID の集合。** `article_ids` は `All` なら `None`（制限なし）を返すので、絞り込まない検索・対話は従来どおりの速い経路を通る。それ以外は `SELECT id` だけを取る（以前の対話は一覧と同じ全列を読んでいた）。集合が空なら、検索は 0 件、対話はモデルを呼ばずに「見つかりませんでした」と答える。
+- **選択肢。** 対話はこの記事／全記事／ジャンル／フィード／タグ、検索は全記事／未読／お気に入り／ジャンル／フィード／タグ。ジャンル・フィード・タグは `<optgroup>` に分ける。記事が 0 件のジャンル（初期ジャンル）は出さない。未分類と手動追加は件数を数えずに常に出す。`<select>` の値は filter の JSON。検索結果を表示中に範囲を変えると、同じ語で検索し直す。
+
+### 未実装（意図的）
+
+一覧で開いているグループ（フィード → ジャンルの組み合わせ）を範囲にすること（1 つの `ArticleFilter` では表せない。複合条件が必要になったら filter を AND の列にする）、範囲の選択の保存、サイドバーの絞り込みボタンへのジャンル・フィードの追加（表示モードのグループで代わりになる）。

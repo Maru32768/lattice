@@ -27,7 +27,7 @@ const MAX_QUESTION_CHARS: usize = 4_000;
 const NO_SOURCES: &str = "この範囲の保存済み記事には、質問に関係する箇所が見つかりませんでした。範囲を広げるか、質問の言い方を変えてみてください。";
 
 /// What a question may draw on. Every kind reduces to a set of article ids (`None` = all);
-/// new inbox filters (genre, feed) become scopes by extending `ArticleFilter`.
+/// every inbox filter (tag, genre, feed, ...) is a scope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Scope {
@@ -115,10 +115,7 @@ impl Store {
     pub fn scope_articles(&self, scope: &Scope) -> Result<Option<Vec<i64>>> {
         match scope {
             Scope::Article { id } => Ok(Some(vec![*id])),
-            Scope::Filter { filter: ArticleFilter::All } => Ok(None),
-            // shortcut: reuses the inbox query (full rows) to stay in sync with its filters; add an
-            // id-only query if scopes reach 10^4+ articles.
-            Scope::Filter { filter } => Ok(Some(self.list_articles(filter)?.into_iter().map(|a| a.id).collect())),
+            Scope::Filter { filter } => self.article_ids(filter),
         }
     }
 
