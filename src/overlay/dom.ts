@@ -124,6 +124,26 @@ function normalizeStream(tokens: Token[]): { text: string; chars: Char[] } {
 
 export const normalizeText = (s: string) => s.replace(/\s+/gu, " ").trim();
 
+/** Resolves once `root` has had no DOM mutations for `quietMs`, or after `maxMs` regardless (JS pages still rendering). */
+export function settle(root: Node, quietMs: number, maxMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    let quiet: ReturnType<typeof setTimeout> | undefined;
+    const done = () => {
+      observer.disconnect();
+      clearTimeout(quiet);
+      clearTimeout(cap);
+      resolve();
+    };
+    const observer = new MutationObserver(() => {
+      clearTimeout(quiet);
+      quiet = setTimeout(done, quietMs);
+    });
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+    quiet = setTimeout(done, quietMs);
+    const cap = setTimeout(done, maxMs);
+  });
+}
+
 export interface Located {
   start: Boundary;
   end: Boundary;

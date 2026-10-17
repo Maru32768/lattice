@@ -14,6 +14,7 @@ pub mod jobs;
 pub mod llm;
 pub mod openai;
 pub mod r2;
+pub mod render;
 pub mod search;
 pub mod segments;
 pub mod store;

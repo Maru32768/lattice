@@ -311,3 +311,26 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 - **本文が短い記事の表示。** 抽出した文字数を `articles.text_length` に保存し（migration 12。既存行は blocks から backfill する）、300 文字未満を `thin` とする。一覧に「本文が短い」、Reader に案内を出し、ブラウザでは「描画後のページで保存」ボタンで保存し直せる。取得・抽出に失敗した記事も同じボタンで保存できる（bot を拒否するサイトにも使える）。bulk import 用に非表示の webview で描画することはしていない。
 - **同一ホストの並列制限。** `claim_next_job` は、同じ `articles.domain` の ingest job が running の間、そのホストの ingest job を飛ばして別ホストの job を取る。1 つの UPDATE 文なので runner 間で競合しない。ホストは正規化後の host そのもので、`www.` の有無は別ホストとして扱う。
 - **再抽出と block ID の再利用。** `reextract_article` は最新の snapshot から抽出し直す（ネットワークを使わず、snapshot を増やさず、canonical による記事の統合もしない）。`save_fetched` は blocks を全置換せず、`text_hash` が一致する旧 block の id を出現順に再利用する（重複テキストは順に対応付ける）。旧行を負の ordinal に退避してから並べ替えるので、`UNIQUE (article_id, ordinal)` に衝突しない。`heading_id` は新しい並びで付け直し、使われなかった旧 block は削除する（embedding は cascade で消える）。再利用した block の embedding と検索結果はそのまま有効。見出しだけが変わった block の embedding（見出しを前置している）は古いままになるが、本文の hash が同じなので再計算しない。
+
+## 10. JS ページの裏描画（bulk import・RSS）
+
+| 対象 | ファイル |
+|---|---|
+| render job の投入・保存・失敗の記録 | `crates/lattice-core/src/render.rs`、`jobs.rs`（ingest の後） |
+| 非表示 webview の runner | `src-tauri/src/renderer.rs` |
+| label ごとの snapshot nonce | `browser.rs`（`Snapshots` / `snapshot_of` / `overlay_snapshot`） |
+| DOM が落ち着くまで待つ | `src/overlay/dom.ts`（`settle`）、`src/overlay/index.ts`（`snapshot`） |
+| 手動操作と設定 | `src/Reader.tsx`（`RenderAction`）、`src/RenderSettings.tsx` |
+
+§9 では、描画後の DOM を保存できるのはユーザーが開いたページだけだった。bulk import と RSS の記事はサーバーの HTML しか取得しないので、SPA の記事は `thin` のまま残っていた。
+
+- **いつ描画するか。** ingest job（bulk import と RSS）と `save_url` の後で、取得に成功し、抽出に失敗したか 300 文字未満の記事に `render` job を 1 件積む（dedup key は `render:{id}`）。設定「JS ページを自動で描画」（`settings.auto_render`、既定は on）で止められる。Reader の「描画して取り込み直す」は設定に関係なく job を積む。
+- **ループしない。** 自動投入は、記事の最新 snapshot がサーバーから取得したものである場合に限る。描画結果を保存すると最新 snapshot が `source=webview` になるので、描画結果がまだ短くても次の job は積まれない。描画の後に投入を判定する箇所もない。描画の試行は取得 1 回につき最大 1 回で、もう一度試すには再取得するか手動で操作する。
+- **runner。** render job は専用の runner が 1 件ずつ処理する（他の runner の job type には含めないので、取得・LLM・embed を止めない）。job ごとに main window の子 webview（label `renderer`）を新しく作り、終わったら閉じる。`on_navigation` は http(s) 以外を拒否するので、about:blank に戻すことはできない。作り直す方式にしたのはそのためで、前のページの DOM やスクリプトが次の job に残ることもない。webview はウィンドウのクライアント領域の外（-20000, -20000）に 1280×900 で置く。`hide()` を使わないのは、非表示のページでタイマーや描画が止まらないようにするため。webview の作成・eval・close は tokio の thread から行う（§9 の deadlock は main thread で webview を作る場合に起きる）。
+- **待ち方。** 読み込み完了（`PageLoadEvent::Finished`）を最大 12 秒待つ。その後 `window.__lattice.snapshot(nonce, {quietMs: 1500, maxMs: 6000})` を eval する。overlay は MutationObserver で DOM の変更が 1.5 秒止まるまで待ち（最大 6 秒）、`outerHTML` を返す。Rust 側の待ち時間は最大 8 秒で、1 件あたりの合計は約 20 秒に収まる。
+- **保存。** `render::finish` は、描画結果を通常の経路（`store_fetched`、`content_type = 'text/html; source=webview'`、block ID の再利用、canonical による統合）で保存し、embed と自動分類を積む。保存の前に一度抽出し、抽出に失敗した場合と、本文が現在より長くならない場合（cookie 同意画面だけ、など）は保存しない。そのため描画で記事が悪くなることはない。理由は記事の `last_error` に記録し（取得・抽出の状態は変えない）、Reader の案内に表示する。job は成功として終える（ストレージのエラーだけが job の失敗になり、再試行される）。
+- **セキュリティ。** `renderer` には browser と同じ `browser-overlay` capability だけを与える（overlay_config / overlay_translate / overlay_snapshot）。pop-up は拒否する。`overlay_config` は browser 以外には常に `enabled: false` を返し、`overlay_translate` は従来どおり browser webview 以外を拒否するので、裏のページから翻訳の LLM 呼び出しは起きない。snapshot の要求は webview の label ごとに 1 件まで（`Snapshots`）。応答を受け付けるのは、呼び出し元の label の未処理の要求で、nonce が一致する場合だけ。ユーザーが browser で行う「Index に追加」と裏の描画は互いの要求を上書きしない。cookie は browser と共有するので、ログインが必要なページはユーザーのセッションで描画される。
+
+### 未実装（意図的）
+
+裏で描画するページの音声のミュート（WebView2 の COM API が必要）、クライアント側リダイレクト（`location.href = …`）で読み込みが 2 回起きるページへの対応（最初の読み込み完了で待ち始めるので、DOM を取れずに失敗することがある）、描画の並列化。
