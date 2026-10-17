@@ -1,19 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type JobIssue, type JobOverview, type JobState } from "./api";
+import { relTime } from "./time";
+import "./manage.css";
 
-const TYPE_LABELS: Record<string, string> = {
-  ingest: "取得",
-  images: "画像",
-  embed: "検索 index",
-  translate: "翻訳",
-  summarize: "要約",
-  classify: "分類",
-};
-const STATES: [JobState, string][] = [["pending", "待機"], ["backoff", "再試行待ち"], ["running", "実行中"], ["failed", "失敗"]];
+// Pipeline order; a type the backend adds later still shows, after these.
+const TYPES: { type: string; label: string; hint?: string }[] = [
+  { type: "ingest", label: "取得" },
+  { type: "render", label: "描画", hint: "裏描画 · 最大約 20 秒/件" },
+  { type: "images", label: "画像" },
+  { type: "embed", label: "検索 index" },
+  { type: "translate", label: "翻訳" },
+  { type: "summarize", label: "要約" },
+  { type: "classify", label: "分類", hint: "最大 20 件を 1 呼び出しに" },
+];
+const STATES: { state: JobState; label: string; tone: string }[] = [
+  { state: "pending", label: "待機", tone: "" },
+  { state: "backoff", label: "再試行待ち", tone: "wait" },
+  { state: "running", label: "実行中", tone: "run" },
+  { state: "failed", label: "失敗", tone: "err" },
+];
+const MAX_ATTEMPTS = 5;
 const POLL_MS = 10_000;
 
-const typeLabel = (t: string) => TYPE_LABELS[t] ?? t;
+const typeLabel = (t: string) => TYPES.find((x) => x.type === t)?.label ?? t;
 const time = (s: string | null) => (s ? new Date(s).toLocaleString() : "—");
 
 /** Background jobs: counts per type and state, and the failed / backing-off ones with retry and cancel. */
@@ -21,6 +31,7 @@ export function JobsView() {
   const [data, setData] = useState<JobOverview | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [only, setOnly] = useState<string | null>(null);
 
   const load = () => api.jobOverview().then(setData).catch((e) => setError(String(e)));
   // Jobs report every article; coalesce reloads. The poll catches backoffs that expire silently.
@@ -55,58 +66,96 @@ export function JobsView() {
   const cancel = (j: JobIssue) => run(async () => ((await api.cancelJob(j.id)) ? "取り消しました" : "実行中か、既に完了したジョブです"));
 
   const counts = data?.counts ?? [];
-  const types = [...new Set(counts.map((c) => c.job_type))];
+  const issues = data?.issues ?? [];
+  const types = [...new Set([...TYPES.map((t) => t.type), ...counts.map((c) => c.job_type)])];
   const count = (t: string, s: JobState) => counts.find((c) => c.job_type === t && c.state === s)?.count ?? 0;
   const failing = (t: string) => count(t, "failed") + count(t, "backoff");
+  const issueTypes = [...new Set(issues.map((j) => j.job_type))];
+  // A type whose issues all got retried drops out of the filter row; fall back to すべて.
+  const active = only && issueTypes.includes(only) ? only : null;
+  const shown = active ? issues.filter((j) => j.job_type === active) : issues;
+  const filterButton = (type: string | null, label: string, n: number) => (
+    <button key={type ?? ""} className={`btn sm${active === type ? " on" : ""}`} aria-pressed={active === type} onClick={() => setOnly(type)}>{label} {n}</button>
+  );
 
   return (
-    <section className="import jobs">
-      <h2>処理状況</h2>
-      <p className="muted">取得・検索 index・翻訳・要約・分類のバックグラウンドジョブです。失敗したジョブは間隔を空けて自動で再試行し、5 回失敗すると止まります。「再実行」で待たずにすぐ実行します。</p>
-      {status && <p role="status" className="muted">{status}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-      {data && types.length === 0 && <p className="muted">処理中・失敗したジョブはありません。</p>}
-      {types.length > 0 && (
-        <table className="job-counts">
-          <thead>
-            <tr><th>種類</th>{STATES.map(([s, label]) => <th key={s}>{label}</th>)}<th /></tr>
-          </thead>
-          <tbody>
-            {types.map((t) => (
-              <tr key={t}>
-                <th scope="row">{typeLabel(t)}</th>
-                {STATES.map(([s]) => <td key={s} className={s === "failed" && count(t, s) ? "error-text" : ""}>{count(t, s)}</td>)}
-                <td>{failing(t) > 0 && <button onClick={() => retryAll(t)}>{typeLabel(t)}の失敗を再実行</button>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {data && data.issues.length > 0 && (
-        <>
-          <div className="row">
-            <h3>失敗・再試行待ち</h3>
-            <button onClick={() => retryAll(null)}>失敗をすべて再実行</button>
+    <main className="manage">
+      <div className="wrap wide">
+        <header className="head base">
+          <h1>処理状況</h1>
+          <span className="live">ライブ · イベント + 10 秒ごと</span>
+          <span className="aside">失敗は間隔を空けて自動再試行、{MAX_ATTEMPTS} 回で停止</span>
+        </header>
+        {status && <p role="status" className="msg muted">{status}</p>}
+        {error && <p role="alert" className="msg error-text">{error}</p>}
+
+        {data && (
+          <div className="card scroll">
+            <table className="tbl dense">
+              <thead>
+                <tr><th>種類</th>{STATES.map((s) => <th key={s.state} className="r">{s.label}</th>)}<th>補足</th><th><span className="vh">操作</span></th></tr>
+              </thead>
+              <tbody>
+                {types.map((t) => (
+                  <tr key={t}>
+                    <td><span className="ty" title={typeLabel(t)}>{t}</span></td>
+                    {STATES.map((s) => {
+                      const n = count(t, s.state);
+                      return <td key={s.state} className="r"><span className={`cnt ${n ? s.tone : "z"}`}>{n}</span></td>;
+                    })}
+                    <td className="hint">{TYPES.find((x) => x.type === t)?.hint}</td>
+                    <td className="r">{failing(t) > 0 && <button className="btn sm" onClick={() => retryAll(t)} aria-label={`${typeLabel(t)}の失敗を再実行`}>失敗を再実行</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <ul className="feed-list">
-            {data.issues.map((j) => (
-              <li key={j.id}>
-                <div className="feed-main">
-                  <strong>{j.article_title ?? `記事 ${j.article_id ?? "—"}`}</strong>
-                  <span className="muted">
-                    {typeLabel(j.job_type)}・{j.status === "failed" ? "失敗（自動再試行なし）" : `再試行待ち（${time(j.next_run_at)}）`}・試行 {j.attempt_count} 回
-                  </span>
-                  <span className="muted">作成 {time(j.created_at)}・開始 {time(j.started_at)}・終了 {time(j.completed_at)}</span>
-                  {j.last_error && <span className="error-text">エラー: {j.last_error}</span>}
-                </div>
-                <button onClick={() => retry(j)}>再実行</button>
-                <button onClick={() => cancel(j)}>取り消し</button>
-              </li>
-            ))}
-          </ul>
-          {types.reduce((n, t) => n + failing(t), 0) > data.issues.length && <p className="muted">新しい順に {data.issues.length} 件まで表示しています。</p>}
-        </>
-      )}
-    </section>
+        )}
+        {data && counts.length === 0 && <p className="msg muted">処理中・失敗したジョブはありません。</p>}
+
+        {issues.length > 0 && (
+          <>
+            <div className="issues-head">
+              <h2>失敗・再試行待ち</h2>
+              {filterButton(null, "すべて", issues.length)}
+              {issueTypes.map((t) => filterButton(t, t, issues.filter((j) => j.job_type === t).length))}
+              <span className="aside">{types.reduce((n, t) => n + failing(t), 0) > issues.length && `新しい順に ${issues.length} 件まで表示しています。`}</span>
+              <button className="btn sm" onClick={() => retryAll(null)}>失敗をすべて再実行</button>
+            </div>
+            <div className="card scroll">
+              <table className="tbl dense">
+                <thead><tr><th>種類</th><th>記事</th><th>エラー</th><th>試行</th><th>次回</th><th>状態</th><th><span className="vh">操作</span></th></tr></thead>
+                <tbody>
+                  {shown.map((j) => {
+                    const failed = j.status === "failed";
+                    return (
+                      <tr key={j.id}>
+                        <td><span className="ty" title={typeLabel(j.job_type)}>{j.job_type}</span></td>
+                        <td className="art" title={`作成 ${time(j.created_at)}・開始 ${time(j.started_at)}・終了 ${time(j.completed_at)}`}>
+                          {j.article_title ?? `記事 ${j.article_id ?? "—"}`}
+                        </td>
+                        <td>{j.last_error && <span className="er" title={j.last_error}>{j.last_error}</span>}</td>
+                        <td className="m">
+                          <span className="att" aria-hidden="true">
+                            {Array.from({ length: MAX_ATTEMPTS }, (_, i) => <i key={i} className={i < j.attempt_count ? "f" : undefined} />)}
+                          </span>
+                          {j.attempt_count}/{MAX_ATTEMPTS}
+                        </td>
+                        <td className={`m${failed ? " z" : ""}`}>{failed ? "—" : relTime(j.next_run_at)}</td>
+                        <td className={`state${failed ? "" : " wait"}`}>{failed ? "失敗" : "再試行待ち"}</td>
+                        <td className="r">
+                          <button className="btn sm" onClick={() => retry(j)}>{failed ? "再実行" : "今すぐ再実行"}</button>
+                          <button className="btn sm ghost" onClick={() => cancel(j)}>取り消し</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
