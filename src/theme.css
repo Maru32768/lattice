@@ -27,6 +27,7 @@
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  font-variant-ligatures: none; /* JetBrains Mono would join the slashes of URLs */
 }
 @media (prefers-color-scheme: dark) {
   :root {
