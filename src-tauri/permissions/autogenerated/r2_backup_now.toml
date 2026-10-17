@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-r2-backup-now"
+description = "Enables the r2_backup_now command without any pre-configured scope."
+commands.allow = ["r2_backup_now"]
+
+[[permission]]
+identifier = "deny-r2-backup-now"
+description = "Denies the r2_backup_now command without any pre-configured scope."
+commands.deny = ["r2_backup_now"]

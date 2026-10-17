@@ -6,6 +6,7 @@ pub mod ingest;
 pub mod ir;
 pub mod jobs;
 pub mod llm;
+pub mod r2;
 pub mod search;
 pub mod segments;
 pub mod store;

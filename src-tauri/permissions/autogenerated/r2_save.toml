@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-r2-save"
+description = "Enables the r2_save command without any pre-configured scope."
+commands.allow = ["r2_save"]
+
+[[permission]]
+identifier = "deny-r2-save"
+description = "Denies the r2_save command without any pre-configured scope."
+commands.deny = ["r2_save"]

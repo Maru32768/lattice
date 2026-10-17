@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Settings } from "./api";
+import { R2BackupSection } from "./R2BackupSection";
 
 const PRESETS = [
   { value: "", label: "Claude CLI の既定" },
@@ -61,6 +62,7 @@ export function SettingsView() {
         <div className="row"><button onClick={backup}>今すぐバックアップ</button></div>
         <p className="muted">保存先: <code>{settings?.backup_dir}</code><br />記事・訳・要約・検索 index など、すべてのデータは 1 つの SQLite ファイルにあります: <code>{settings?.db_path}</code></p>
       </div>
+      <R2BackupSection />
       <div>
         <h3>ログ</h3>
         <p className="muted">取得や翻訳ジョブの失敗はログに記録されます: <code>{settings?.log_dir}</code></p>

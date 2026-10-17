@@ -31,3 +31,10 @@ dist-ssr
 # Local notes (not shared)
 /.local/
 /.claude/worktrees/
+
+# Terraform (infra/): no state, plugins or real variable values in git
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example

@@ -1,0 +1,4 @@
+account_id     = "0123456789abcdef0123456789abcdef"
+bucket_name    = "lattice-backup"
+location       = "apac"
+retention_days = 60

@@ -12,7 +12,7 @@ use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleView, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
-use lattice_core::{summarize, translate};
+use lattice_core::{r2, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -213,6 +213,21 @@ fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, St
     Ok(path.display().to_string())
 }
 
+#[tauri::command]
+fn r2_status(app: State<'_, App>) -> Result<r2::R2Status, String> {
+    r2::status(&app.store)
+}
+
+#[tauri::command]
+fn r2_save(app: State<'_, App>, settings: r2::R2Settings) -> Result<(), String> {
+    r2::save(&app.store, settings)
+}
+
+#[tauri::command]
+async fn r2_backup_now(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
+    r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&handle)?).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -253,6 +268,8 @@ pub fn run() {
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
 
+            tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+
             app.manage(App { store, providers, wake_llm, wake_local, wake_net, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), db_path: path.display().to_string() });
             Ok(())
         })
@@ -274,6 +291,9 @@ pub fn run() {
             get_settings,
             set_claude_model,
             backup_db,
+            r2_status,
+            r2_save,
+            r2_backup_now,
             overlay_translate,
             browser::browser_open,
             browser::browser_set_bounds,

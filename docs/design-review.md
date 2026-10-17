@@ -169,6 +169,26 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。
 - **ログ（§25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
 
+### R2 への自動バックアップ（F10）
+
+§1 の表では Cloudflare を不採用としたが、バックアップ先としての R2 だけはユーザーの要望で採用した。ローカルの SQLite が system of record である点は変わらない（R2 には gzip 済みのコピーを置くだけで、読み戻しは手動）。
+
+| 対象 | ファイル |
+|---|---|
+| bucket・lifecycle（Terraform） | `infra/r2/`（手順と復元方法は `infra/r2/README.md`） |
+| アップロード・SigV4・設定・スケジューラ | `crates/lattice-core/src/r2.rs` |
+| Tauri commands（`r2_status` / `r2_save` / `r2_backup_now`） | `src-tauri/src/lib.rs` |
+| 設定画面 | `src/R2BackupSection.tsx` |
+
+- **流れ。** 専用の接続で `Store::backup_to`（`VACUUM INTO` → `secret.*` を削除）→ gzip → R2 にアップロード → 一時ファイルを削除。コピーは別接続で取るので、数 GB の DB でもアプリの store の lock を握らない。コピーと圧縮は `spawn_blocking` で行う。
+- **アップロード。** S3 互換 API（`https://<account_id>.r2.cloudflarestorage.com`、path-style、region `auto`）。64 MiB 以下は 1 回の PUT、それより大きければ multipart upload（64 MiB の part を順に読み、ファイル全体はメモリに載せない）。失敗時は abort を試み、取り残しは lifecycle rule が 7 日で破棄する。
+- **SigV4 は手書き。** AWS SDK は入れない。HMAC-SHA256 も既存の `sha2` で数行で書いた。AWS の S3 ドキュメントのテストベクタ 3 件で検証している。
+- **object key。** `lattice/<端末名>/lattice-<UTC 時刻>.db.gz`。端末名は `COMPUTERNAME` / `HOSTNAME` から英数字だけを取る。複数台から同じ bucket に置ける。
+- **設定。** `settings` テーブルの `r2.*`（有効・Account ID・bucket・Access Key ID・間隔・最終成功時刻・最終エラー）と `secret.r2_secret_access_key`。UI には Secret の値を返さず `has_secret` だけを返す。Account ID（32 桁 hex）と bucket 名は URL に入るので保存時に検証する。
+- **スケジュール。** 起動時に spawn したタスクが 15 分ごとに確認し、最終成功から間隔（既定 24 時間）が過ぎていれば実行する。時刻は DB に保存するので再起動をまたいでも続く。失敗したら 1 時間は再試行しない。同時に 2 本は走らない（手動実行と重なったらエラーを返す）。
+- **保持期間。** アプリは削除しない。Terraform の lifecycle rule（`retention_days`、既定 60 日）で消す。
+- **API キー。** アプリ用の R2 アクセスキーは dashboard で作る（Secret を Terraform の state に残さないため）。手順は `infra/r2/README.md`。
+
 ### セキュリティ境界
 
 - **アプリ UI（main webview）には記事の HTML を一切入れない。** Reader が受け取るのは IR（JSON）だけで、React の text node として描画する。

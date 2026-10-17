@@ -137,3 +137,34 @@ export const browser = {
   go: (action: "back" | "forward" | "reload") => invoke<void>("browser_go", { action }),
   setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
 };
+
+/** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */
+export interface R2Status {
+  enabled: boolean;
+  account_id: string;
+  bucket: string;
+  access_key_id: string;
+  interval_hours: number;
+  has_secret: boolean;
+  last_success: number | null;
+  last_key: string | null;
+  last_error: string | null;
+  running: boolean;
+}
+
+export interface R2Settings {
+  enabled: boolean;
+  account_id: string;
+  bucket: string;
+  access_key_id: string;
+  interval_hours: number;
+  /** null or empty keeps the stored secret. */
+  secret_access_key: string | null;
+}
+
+/** Automatic backup to Cloudflare R2. */
+export const r2 = {
+  status: () => invoke<R2Status>("r2_status"),
+  save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
+  backupNow: () => invoke<string>("r2_backup_now"),
+};

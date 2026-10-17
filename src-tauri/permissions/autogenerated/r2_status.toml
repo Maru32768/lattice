@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-r2-status"
+description = "Enables the r2_status command without any pre-configured scope."
+commands.allow = ["r2_status"]
+
+[[permission]]
+identifier = "deny-r2-status"
+description = "Denies the r2_status command without any pre-configured scope."
+commands.deny = ["r2_status"]
