@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type Settings } from "./api";
 import { ModelSettings } from "./ModelSettings";
 import { R2BackupSection } from "./R2BackupSection";
+import { ClassifySettings } from "./ClassifySettings";
 
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -25,6 +26,7 @@ export function SettingsView() {
     <section className="settings">
       <h2>設定・バックアップ</h2>
       <ModelSettings />
+      <ClassifySettings />
       <div>
         <h3>バックアップ</h3>
         <div className="row"><button onClick={backup}>今すぐバックアップ</button></div>

@@ -197,3 +197,29 @@ main.has-browser .back { margin: 8px 12px 0; }
 .chat-form textarea { resize: vertical; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
 .chat .chat-form button { align-self: flex-end; padding: 4px 14px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: var(--bg); }
 .chat-form button:disabled { opacity: 0.5; cursor: default; }
+
+.list-controls { display: flex; gap: 6px; align-items: center; padding: 0 12px 8px; font-size: 12px; }
+.list-controls .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.list-controls .segmented button { border: 0; padding: 2px 8px; background: var(--bg); }
+.list-controls .segmented button + button { border-left: 1px solid var(--border); }
+.list-controls .segmented button.on { background: var(--accent); color: var(--bg); }
+.list-controls select { flex: 1; min-width: 0; font: inherit; padding: 2px 4px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.group-head {
+  display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left;
+  padding: 6px 12px; border: 0; border-bottom: 1px solid var(--border); background: none; font-size: 13px; font-weight: 600;
+}
+.group-head .caret { color: var(--muted); width: 1em; }
+.group-head .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-head .count { color: var(--muted); font-weight: normal; font-size: 12px; }
+.group-body { list-style: none; margin: 0; padding: 0; }
+
+.reader .genre { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); margin: -20px 0 28px; }
+.reader .genre label { display: inline-flex; gap: 8px; align-items: center; }
+.reader .genre input { font: inherit; padding: 2px 8px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+
+.feeds form input:not([type="file"]) { flex: 1; min-width: 16em; font: inherit; padding: 4px 8px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.feed-list { list-style: none; margin: 0; padding: 0; }
+.feed-list li { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.feed-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
+.feed-list .muted { color: var(--muted); }
+.feed-list button { padding: 2px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }

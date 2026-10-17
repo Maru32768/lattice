@@ -1,9 +1,11 @@
 pub mod chain;
 pub mod chat;
+pub mod classify;
 pub mod claude;
 pub mod codex;
 pub mod embed;
 pub mod extract;
+pub mod feeds;
 pub mod fetch;
 pub mod gemini;
 pub mod ingest;

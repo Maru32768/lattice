@@ -298,6 +298,14 @@ pub(crate) mod tests {
             if system.contains("You summarize technical articles") {
                 return Ok(Completion { value: json!({"summary": "要約です。", "key_points": ["要点"]}), model: None, provider: "fake".into() });
             }
+            if system.contains("You classify technical articles") {
+                let v: Value = serde_json::from_str(input).unwrap();
+                let items: Vec<Value> = v["articles"].as_array().unwrap().iter()
+                    .map(|a| json!({"i": a["i"], "genre": "database", "tags": ["sql", " "]}))
+                    .chain([json!({"i": 99, "genre": "Injected", "tags": []})])
+                    .collect();
+                return Ok(Completion { value: json!({ "items": items }), model: Some("fake-1".into()), provider: "fake".into() });
+            }
             if system.contains("ONE long HTML unit") {
                 let (a, b) = input.split_at(input.len() / 2);
                 let s = |p: &str| json!({"source": p, "translation": p.to_uppercase()});

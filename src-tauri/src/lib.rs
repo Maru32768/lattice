@@ -10,10 +10,11 @@ use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::url_norm::normalize;
-use lattice_core::store::{ArticleFilter, ArticleRow, ArticleView, Store, TagCount};
+use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, Store, TagCount};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
-use lattice_core::{r2, summarize, translate};
+use lattice_core::feeds::{self, FeedRow};
+use lattice_core::{classify, r2, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -50,6 +51,8 @@ async fn save_url(app: State<'_, App>, url: String) -> Result<i64, String> {
     // Index every saved article; it is local and free, unlike translation.
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
     app.wake_local.notify_one();
+    classify::enqueue_if_auto(&app.store, id)?;
+    app.wake_llm.notify_one();
     Ok(id)
 }
 
@@ -63,8 +66,76 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
 }
 
 #[tauri::command]
-fn list_articles(app: State<'_, App>, filter: ArticleFilter) -> Result<Vec<ArticleRow>, String> {
-    app.store.list_articles(&filter).map_err(err)
+fn list_articles(app: State<'_, App>, filter: ArticleFilter, sort: Option<ArticleSort>) -> Result<Vec<ArticleRow>, String> {
+    app.store.list_articles_sorted(&filter, sort.unwrap_or_default()).map_err(err)
+}
+
+#[tauri::command]
+fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
+    classify::list_genres(&app.store)
+}
+
+/// Manual choice; an empty name clears it.
+#[tauri::command]
+fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
+    classify::set_genre(&app.store, id, &name)
+}
+
+#[tauri::command]
+fn classify_article(app: State<'_, App>, id: i64) -> Result<(), String> {
+    classify::enqueue_manual(&app.store, id)?;
+    app.wake_llm.notify_one();
+    Ok(())
+}
+
+#[tauri::command]
+fn classify_unclassified(app: State<'_, App>) -> Result<usize, String> {
+    let n = classify::enqueue_unclassified(&app.store)?;
+    app.wake_llm.notify_one();
+    Ok(n)
+}
+
+#[tauri::command]
+fn get_auto_classify(app: State<'_, App>) -> Result<bool, String> {
+    classify::auto_enabled(&app.store)
+}
+
+#[tauri::command]
+fn set_auto_classify(app: State<'_, App>, on: bool) -> Result<(), String> {
+    classify::set_auto(&app.store, on)
+}
+
+#[tauri::command]
+fn list_feeds(app: State<'_, App>) -> Result<Vec<FeedRow>, String> {
+    feeds::list(&app.store)
+}
+
+/// Subscribes and fetches right away; a new URL that is not a readable feed is not kept.
+#[tauri::command]
+async fn add_feed(app: State<'_, App>, url: String) -> Result<i64, String> {
+    let (id, created) = feeds::add(&app.store, &url)?;
+    match feeds::refresh(&app.store, &app.providers.http, id).await {
+        Err(e) if created => {
+            feeds::remove(&app.store, id)?;
+            Err(e)
+        }
+        _ => {
+            app.wake_net.iter().for_each(|w| w.notify_one());
+            Ok(id)
+        }
+    }
+}
+
+#[tauri::command]
+fn remove_feed(app: State<'_, App>, id: i64) -> Result<(), String> {
+    feeds::remove(&app.store, id)
+}
+
+#[tauri::command]
+async fn refresh_feeds(app: State<'_, App>) -> Result<usize, String> {
+    let n = feeds::refresh_all(&app.store, &app.providers.http).await;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    Ok(n)
 }
 
 #[tauri::command]
@@ -298,17 +369,26 @@ pub fn run() {
                 .into_iter()
                 .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
-                let (handle, embedder_wake) = (app.handle().clone(), wake_local.clone());
+                let (handle, embedder_wake, llm_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone());
                 let on_change = move |article_id: i64| {
                     let _ = handle.emit("article-changed", article_id);
                     if types == NET_JOBS {
                         embedder_wake.notify_one(); // a fetched article has just queued its embed job
+                        llm_wake.notify_one(); // ... and maybe its classify job
                     }
                 };
                 tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
             }
 
             tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+
+            let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
+            tauri::async_runtime::spawn(feeds::poll_forever(store.clone(), providers.http.clone(), move |queued| {
+                if queued > 0 {
+                    fetchers.iter().for_each(|w| w.notify_one());
+                }
+                let _ = handle.emit("feeds-changed", queued);
+            }));
 
             app.manage(App { store, providers, wake_llm, wake_local, wake_net, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY), db_path: path.display().to_string() });
             Ok(())
@@ -318,6 +398,16 @@ pub fn run() {
             import_urls,
             list_articles,
             list_tags,
+            list_genres,
+            set_genre,
+            classify_article,
+            classify_unclassified,
+            get_auto_classify,
+            set_auto_classify,
+            list_feeds,
+            add_feed,
+            remove_feed,
+            refresh_feeds,
             set_favorite,
             add_tag,
             remove_tag,

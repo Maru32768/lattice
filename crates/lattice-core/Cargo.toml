@@ -8,6 +8,7 @@ dom_query = "0.28.0"
 dom_smoothie = "0.18.2"
 encoding_rs = "0.8.42"
 fastembed = { version = "7.1.1", default-features = false, features = ["ort-download-binaries-native-tls", "hf-hub-native-tls"] }
+feed-rs = "3.0.0"
 flate2 = "1.1.10"
 futures = "0.3.34"
 log = "0.4.34"
