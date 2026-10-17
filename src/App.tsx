@@ -379,6 +379,8 @@ export default function App() {
       const t = e.target as HTMLElement;
       const inField = t.closest("input, textarea, select, [contenteditable='true']");
       if (inField && !IN_FIELDS.has(action)) return;
+      // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
+      if (inField && action === "escape") return (t as HTMLElement).blur();
       if ((e.ctrlKey || e.metaKey) && action !== "palette") return;
       // Plain keys on a focused button would also activate it; only Escape is shared.
       if (action !== "escape" || !inField) e.preventDefault();
