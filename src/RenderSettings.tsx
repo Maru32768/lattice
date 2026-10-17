@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SetRow, Switch } from "./SetRow";
 import { api } from "./api";
 
 export function RenderSettings() {
@@ -18,14 +19,12 @@ export function RenderSettings() {
   }
 
   return (
-    <div>
-      <h3>JS ページの描画</h3>
-      <label className="row">
-        <input type="checkbox" checked={on} onChange={(e) => toggle(e.target.checked)} />
-        JS ページを自動で描画
-      </label>
-      <p className="muted">一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。</p>
-      {error && <p className="error-text" role="alert">{error}</p>}
+    <div className="grp">
+      <SetRow title="JS ページを自動で描画" htmlFor="auto-render"
+        desc="一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。">
+        <Switch id="auto-render" checked={on} onChange={toggle} />
+      </SetRow>
+      {error && <p className="msg error-text" role="alert">{error}</p>}
     </div>
   );
 }

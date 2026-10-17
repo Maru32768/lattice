@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ChainEntry, type KeySource, type LlmSettings, type ProviderKind } from "./api";
+import { SetRow } from "./SetRow";
 
 const PROVIDERS: { value: ProviderKind; label: string }[] = [
   { value: "claude_cli", label: "Claude CLI" },
@@ -39,7 +40,7 @@ const PRESETS: Record<ProviderKind, { value: string; label: string }[]> = {
   ],
 };
 
-const KEY_LABELS = { openai: "OpenAI", gemini: "Gemini", anthropic: "Anthropic" } as const;
+const KEYS = { openai: ["OpenAI", "OPENAI_API_KEY"], gemini: ["Gemini", "GEMINI_API_KEY"], anthropic: ["Anthropic", "ANTHROPIC_API_KEY"] } as const;
 
 const CUSTOM = "__custom";
 
@@ -61,8 +62,14 @@ function toSlots(chain: ChainEntry[]): Slot[] {
   return slots;
 }
 
-function keyLabel(source: KeySource) {
-  return source === "stored" ? "設定済み" : source === "env" ? "環境変数から読み込み" : "未設定";
+function keyLabel(source: KeySource, env: string) {
+  return source === "stored" ? "DB に保存済み" : source === "env" ? `環境変数 ${env} から` : "未設定 · 環境変数なし";
+}
+
+function KeyPill({ kind, llm }: { kind: ProviderKind; llm: LlmSettings | null }) {
+  if (kind === "claude_cli" || kind === "codex_cli") return <span className="pill cli"><i />CLI ログインを使用</span>;
+  const source = llm?.[`${kind}_key`] ?? null;
+  return <span className={`pill${source ? "" : " off"}`}><i />キー: {source === "stored" ? "DB" : source === "env" ? "環境変数" : "未設定"}</span>;
 }
 
 export function ModelSettings() {
@@ -86,6 +93,8 @@ export function ModelSettings() {
     setSlots((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   }
 
+  const remove = (i: number) => setSlots((prev) => [...prev.filter((_, j) => j !== i), EMPTY]);
+
   async function run(action: () => Promise<unknown>, done: string) {
     setError(null);
     try {
@@ -100,64 +109,89 @@ export function ModelSettings() {
   const chain: ChainEntry[] = slots.flatMap((s) => (s.kind ? [{ kind: s.kind, model: s.model.trim() || null }] : []));
 
   return (
-    <div>
-      <h3>翻訳・要約に使うモデル</h3>
-      <p className="muted">上から順に使います。usage limit やエラーで失敗したら次のモデルに切り替えます（失敗したモデルは 5 分間後回し）。</p>
-      {slots.map((s, i) => (
-        <div className="row" key={i}>
-          <span>{i + 1}.</span>
-          <select value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false })} aria-label={`${i + 1} 番目の provider`}>
-            {i > 0 && <option value="">なし</option>}
-            {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
-          {s.kind && (
-            <select
-              value={s.custom ? CUSTOM : s.model}
-              onChange={(e) => update(i, e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false })}
-              aria-label={`${i + 1} 番目のモデル`}
-            >
-              {PRESETS[s.kind].map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-              <option value={CUSTOM}>その他（モデル ID を入力）</option>
+    <>
+      <section className="card" aria-label="Fallback chain">
+        <div className="chain-head">Fallback chain<span>最大 3 段</span></div>
+        {slots.map((s, i) => (
+          <div className="chain" key={i}>
+            <span aria-hidden="true" className="grip">⋮⋮</span>
+            <span className="k">{i + 1}</span>
+            <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false })} aria-label={`${i + 1} 段目のプロバイダ`}>
+              {i > 0 && <option value="">なし</option>}
+              {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
-          )}
-          {s.kind && s.custom && (
-            <input value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder="モデル ID" aria-label={`${i + 1} 番目のモデル ID`} />
-          )}
-        </div>
-      ))}
-      <div className="row">
-        <button onClick={() => run(() => api.setLlmChain(chain), "モデルを保存しました")}>保存</button>
-      </div>
-      <p className="muted">Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルがおすすめです。</p>
-
-      <h3>API キー</h3>
-      {(["openai", "gemini", "anthropic"] as const).map((kind) => {
-        const source = llm?.[`${kind}_key`] ?? null;
-        const label = KEY_LABELS[kind];
-        return (
-          <div className="row" key={kind}>
-            <span>{label}: {keyLabel(source)}</span>
-            <input
-              type="password"
-              value={keys[kind]}
-              onChange={(e) => setKeys((k) => ({ ...k, [kind]: e.target.value }))}
-              placeholder={`${label} API キー`}
-              aria-label={`${label} API キー`}
-              autoComplete="off"
-            />
-            <button
-              disabled={!keys[kind].trim()}
-              onClick={() => run(async () => { await api.setApiKey(kind, keys[kind]); setKeys((k) => ({ ...k, [kind]: "" })); }, `${label} API キーを保存しました`)}
-            >
-              保存
-            </button>
-            <button disabled={source !== "stored"} onClick={() => run(() => api.setApiKey(kind, null), `${label} API キーを削除しました`)}>クリア</button>
+            <span className="model">
+              {s.kind && (
+                <select
+                  className="select"
+                  value={s.custom ? CUSTOM : s.model}
+                  onChange={(e) => update(i, e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false })}
+                  aria-label={`${i + 1} 段目のモデル`}
+                >
+                  {PRESETS[s.kind].map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  <option value={CUSTOM}>その他（モデル ID を入力）</option>
+                </select>
+              )}
+              {s.kind && s.custom && (
+                <input className="input sm mono" value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder="モデル ID" aria-label={`${i + 1} 段目のモデル ID`} spellCheck={false} />
+              )}
+            </span>
+            <span>{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
+            <span>
+              {s.kind && (
+                <button className="btn ghost" onClick={() => remove(i)} disabled={chain.length <= 1} aria-label={`${i + 1} 段目を削除`}>削除</button>
+              )}
+            </span>
           </div>
-        );
-      })}
-      <p className="muted">キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 <code>OPENAI_API_KEY</code> / <code>GEMINI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> を使います。</p>
-      {status && <p role="status">{status}</p>}
-      {error && <p className="error-text" role="alert">{error}</p>}
-    </div>
+        ))}
+      </section>
+      <div className="btn-row">
+        <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), "モデルを保存しました")}>保存</button>
+        <span className="muted">Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルがおすすめです。</span>
+      </div>
+
+      <section aria-labelledby="api-keys">
+        <h2 id="api-keys">API キー</h2>
+        <p className="sec-d">キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 <code>OPENAI_API_KEY</code> / <code>GEMINI_API_KEY</code> / <code>ANTHROPIC_API_KEY</code> を使います。値は表示しません。</p>
+        <div className="grp">
+          {(["openai", "gemini", "anthropic"] as const).map((kind) => {
+            const source = llm?.[`${kind}_key`] ?? null;
+            const [label, env] = KEYS[kind];
+            return (
+              <SetRow key={kind} title={label} desc={keyLabel(source, env)}>
+                <input
+                  className="input sm"
+                  type="password"
+                  value={keys[kind]}
+                  onChange={(e) => setKeys((k) => ({ ...k, [kind]: e.target.value }))}
+                  placeholder={source === "stored" ? "新しいキーで置き換える" : `${label} API キー`}
+                  aria-label={`${label} API キー`}
+                  autoComplete="off"
+                />
+                <button
+                  className="btn"
+                  disabled={!keys[kind].trim()}
+                  onClick={() => run(async () => { await api.setApiKey(kind, keys[kind]); setKeys((k) => ({ ...k, [kind]: "" })); }, `${label} API キーを保存しました`)}
+                >
+                  保存
+                </button>
+                <button className="btn ghost" disabled={source !== "stored"} onClick={() => run(() => api.setApiKey(kind, null), `${label} API キーを削除しました`)} aria-label={`${label} API キーを削除`}>削除</button>
+              </SetRow>
+            );
+          })}
+        </div>
+      </section>
+
+      <section aria-labelledby="untrusted">
+        <h2 id="untrusted">記事本文の扱い</h2>
+        <div className="grp">
+          <SetRow title="本文は untrusted input として渡す" desc="どの adapter にも tool を渡さない。CLI は tool・MCP・設定を無効にし、空の作業ディレクトリで実行する。">
+            <span className="muted">常に有効</span>
+          </SetRow>
+        </div>
+      </section>
+      {status && <p role="status" className="msg">{status}</p>}
+      {error && <p role="alert" className="msg error-text">{error}</p>}
+    </>
   );
 }

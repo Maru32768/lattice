@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SetRow, Switch } from "./SetRow";
 import { api, type ImageSettings as Value } from "./api";
 
 export function ImageSettings() {
@@ -18,20 +19,17 @@ export function ImageSettings() {
   }
 
   return (
-    <div>
-      <h3>画像</h3>
-      <label className="row">
-        <input type="checkbox" checked={value.save} onChange={(e) => save({ ...value, save: e.target.checked })} />
-        画像を保存する
-      </label>
-      <label className="row">
-        1 枚あたりの上限
-        <input type="number" min={1} max={20} value={value.max_mb} style={{ width: "5em" }}
+    <div className="grp">
+      <SetRow title="画像を保存する" htmlFor="save-images"
+        desc="記事の画像（PNG・JPEG・GIF・WebP・AVIF）を取り込み後にダウンロードし、データベースに保存します。元の URL が消えても読めて、バックアップにも入ります。SVG は保存せずリンクのままにします。オフにしても保存済みの画像は消えません。">
+        <Switch id="save-images" checked={value.save} onChange={(on) => save({ ...value, save: on })} />
+      </SetRow>
+      <SetRow title="1 枚あたりの上限" htmlFor="image-max" desc="記事 1 件あたりは 30 MB まで。">
+        <input id="image-max" className="input sm num" type="number" min={1} max={20} value={value.max_mb}
           onChange={(e) => save({ ...value, max_mb: Number(e.target.value) })} />
-        MB
-      </label>
-      <p className="muted">記事の画像（PNG・JPEG・GIF・WebP・AVIF）を取り込み後にダウンロードし、データベースに保存します。元の URL が消えても読めて、バックアップにも入ります。SVG は保存せずリンクのままにします。記事 1 件あたり 30 MB まで。オフにしても保存済みの画像は消えません。</p>
-      {error && <p className="error-text" role="alert">{error}</p>}
+        <span className="muted">MB</span>
+      </SetRow>
+      {error && <p className="msg error-text" role="alert">{error}</p>}
     </div>
   );
 }
