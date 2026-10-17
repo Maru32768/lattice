@@ -196,7 +196,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - `overlay_translate` は、ユーザーが翻訳を ON にしている間だけ、browser webview からの呼び出しにだけ応答する。件数（24 件まで）とサイズ（1 断片 20KB まで）にも上限がある。ページ側の script が呼べてしまう点は許容しており、その影響は LLM の使用量に限られる（CLI は tool なしで実行する）。
 - **LLM の出力は untrusted HTML として扱う。** overlay は sanitize（許可した inline タグ、http(s) の link、イベントハンドラの除去）してから差し込む。
 - **browser webview は http(s) 以外に遷移しない**（`on_navigation`）。新しいウィンドウを開くリンクは同じ webview で開く。
-- main webview の CSP は `default-src 'self'` で、Reader はリモート画像を読み込まない。
+- main webview の CSP は `default-src 'self'` で、Reader はリモート画像を読み込まない（保存した画像は `data:` URL で表示する。§14）。
 
 ### 未実装（意図的）
 
@@ -399,3 +399,31 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 ### 未実装（意図的）
 
 裏で描画するページの音声のミュート（WebView2 の COM API が必要）、クライアント側リダイレクト（`location.href = …`）で読み込みが 2 回起きるページへの対応（最初の読み込み完了で待ち始めるので、DOM を取れずに失敗することがある）、描画の並列化。
+
+## 14. 画像の保存（§6・§1/§2.2 URL 切れ・§26-10）
+
+| 対象 | ファイル |
+|---|---|
+| ダウンロード・検証・保存・配信・設定 | `crates/lattice-core/src/images.rs` |
+| スキーマ（`images` / `article_images` / GC trigger） | `crates/lattice-core/src/store.rs`（migration 15） |
+| job の投入（抽出のたび） | `crates/lattice-core/src/ingest.rs`（`extract_into`） |
+| Tauri commands（`article_image` / `get_image_settings` / `set_image_settings`） | `src-tauri/src/lib.rs` |
+| 表示と設定 | `src/Reader.tsx`（`ImageBlock`）、`src/ImageSettings.tsx` |
+
+- **保存先は SQLite。** `images(hash, mime, bytes)` は中身の sha256 を主キーにし、記事をまたいで重複を除く。`article_images(article_id, src, hash, error)` は記事が参照する画像 URL ごとに 1 行で、保存できなかった理由も残す。1 ファイルのバックアップ（§17）と R2 にそのまま入る。
+- **block ID ではなく (記事, URL) で対応づける。** 再抽出では block を text（画像なら alt。空のことが多い）の hash で照合するので、画像 block の ID は入れ替わりうる。URL で引けば、ID の再利用とは関係なく対応が正しく保たれる。
+- **job。** 抽出のたび（取得・再抽出・描画後の保存・「描画後のページで保存」）に、画像 block か対応行がある記事へ `images` job を 1 件積む（dedup key `images:{id}`）。network runner（4 本）が処理し、1 記事の画像は 1 枚ずつ取得する。同一ホスト制限（§9）を ingest と共有し、同じドメインの記事の ingest / images job は同時に 1 本だけ走る。起動時と、設定をオンにしたときに、まだ試していない画像 URL を持つ記事の job を積む（バックフィル）。
+- **取得の制限。** http(s) のみ、`fetch::client()`（private address を拒否）を使い、Referer に記事の URL を付ける（hotlink を拒むサイトのため）。Content-Type は `image/*`・`application/octet-stream`・なしだけを受け付け、SVG は拒否する。1 枚の上限は設定（既定 5 MB、1〜20 MB）で、`Content-Length` と受信中の両方で確かめる。記事 1 件あたりは 30 MB まで。保存する形式は header ではなく magic number で判定する（PNG・JPEG・GIF・WebP・AVIF）。SVG は script を持てるので保存せず、Reader ではリンクのままにする。
+- **失敗。** 404・形式違い・サイズ超過・private address などは理由を記録し、再試行しない。timeout・5xx・429 は記録せずに job を失敗させるので、backoff 付きで再試行される（§4.6）。
+- **配信。** `article_image(block_id)` が `data:` URL を返す。main webview の CSP（`img-src 'self' data:`）は変えない。custom URI scheme（`lattice-img://`）は使わなかった。scheme は browser / renderer の webview（リモートのページ）からも引けるので、「この画像を保存しているか」がページ側から分かってしまう。command なら capability で main webview だけに限られる。Reader は IntersectionObserver で画面の近く（600px 以内）に来た画像だけを取りに行くので、画像の多い記事でも最初の表示は重くならない。base64 で 1.33 倍になるが、1 枚 5 MB までなら問題にならない。未保存の画像は従来どおりプレースホルダとリンクを表示し、job が進むと取り直す。
+- **GC。** `article_images` の行が消えると、trigger が、どの行からも参照されなくなった `images` の行を消す。記事の削除（canonical による統合を含む）は cascade で、再抽出で消えた画像は images job の最初に対応行を消すことで処理される。
+- **エクスポート。** JSON（§17）には bytes を入れず、画像 block に `image_hash` を付ける。bytes はバックアップにある。
+- **設定。** 「画像を保存する」（`settings.save_images`、既定は on）と「1 枚あたりの上限」（`settings.image_max_mb`）。オフにしても保存済みの画像は消さない。
+
+### DB サイズの見積もり
+
+技術記事の画像は 1 件あたり 3〜8 枚、1 枚 50〜300 KB（スクリーンショットの PNG は 1 MB 前後）が多い。1 記事あたり 0.5〜2 MB とすると、10^4 記事で 5〜20 GB、10^5 記事で 50〜200 GB になりうる。圧縮した snapshot（1 記事あたり数十〜百数十 KB）よりずっと大きく、DB の大半は画像になる。画像はすでに圧縮されているので、R2 へのバックアップの gzip もほとんど効かない。上限（1 枚 5 MB・1 記事 30 MB）と設定のオフで抑える。
+
+### 未実装（意図的）
+
+縮小・再エンコード（範囲外）、`srcset` / `<picture>` から適切な解像度を選ぶこと（今は抽出した `src` だけ）、遅延読み込み用の `data-src`、画像だけを消して容量を空ける操作、記事あたりの上限の設定化。

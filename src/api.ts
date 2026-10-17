@@ -150,6 +150,12 @@ export interface ImportSummary {
   invalid: number;
 }
 
+export interface ImageSettings {
+  save: boolean;
+  /** Per-image size cap in MB. */
+  max_mb: number;
+}
+
 export interface Settings {
   db_path: string;
   log_dir: string;
@@ -216,6 +222,10 @@ export const api = {
   renderArticle: (id: number) => invoke<void>("render_article", { id }),
   autoRender: () => invoke<boolean>("get_auto_render"),
   setAutoRender: (on: boolean) => invoke<void>("set_auto_render", { on }),
+  /** The stored image of an image block as a data: URL; null while not downloaded or not stored. */
+  articleImage: (blockId: number) => invoke<string | null>("article_image", { blockId }),
+  imageSettings: () => invoke<ImageSettings>("get_image_settings"),
+  setImageSettings: (settings: ImageSettings) => invoke<void>("set_image_settings", { settings }),
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),

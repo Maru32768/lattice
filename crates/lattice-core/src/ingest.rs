@@ -127,7 +127,9 @@ fn extract_into(store: &Store, id: i64, html: &str, url: &str, snapshot: Option<
         .and_then(|ir| ir.meta.canonical_url.as_deref())
         .and_then(|c| normalize(c).ok())
         .map(String::from);
-    store.save_fetched(id, snapshot, extracted, canonical.as_deref()).map_err(|e| e.to_string())
+    let id = store.save_fetched(id, snapshot, extracted, canonical.as_deref()).map_err(|e| e.to_string())?;
+    crate::images::enqueue(store, id)?;
+    Ok(id)
 }
 
 #[cfg(test)]
