@@ -2,7 +2,7 @@ mod browser;
 
 use std::sync::Arc;
 
-use lattice_core::claude::ClaudeCli;
+use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
 use lattice_core::fetch::client;
 use lattice_core::ir::PROSE_KINDS;
@@ -28,7 +28,7 @@ const NET_WORKERS: usize = 4;
 
 struct App {
     store: Arc<Store>,
-    providers: Arc<Providers<ClaudeCli, LocalE5>>,
+    providers: Arc<Providers<LlmChain, LocalE5>>,
     wake_llm: Arc<Notify>,
     wake_local: Arc<Notify>,
     wake_net: Vec<Arc<Notify>>,
@@ -127,7 +127,7 @@ async fn overlay_translate(
         let rows: Vec<(&str, &[Unit])> =
             misses.iter().zip(&t.results).filter_map(|(&i, r)| r.as_deref().map(|u| (hashes[i].as_str(), u))).collect();
         use lattice_core::llm::LlmProvider;
-        app.store.insert_segments(target, llm.name(), t.model.as_deref(), segments::PROMPT_VERSION, &rows).map_err(err)?;
+        app.store.insert_segments(target, t.provider.as_deref().unwrap_or(llm.name()), t.model.as_deref(), segments::PROMPT_VERSION, &rows).map_err(err)?;
         for (&i, r) in misses.iter().zip(t.results) {
             if let Some(units) = r {
                 cached.insert(hashes[i].clone(), units);
@@ -169,11 +169,8 @@ fn db_path(app: State<'_, App>) -> String {
     app.db_path.clone()
 }
 
-const MODEL_SETTING: &str = "claude_model";
-
 #[derive(serde::Serialize)]
 struct Settings {
-    claude_model: Option<String>,
     db_path: String,
     log_dir: String,
     backup_dir: String,
@@ -182,18 +179,37 @@ struct Settings {
 #[tauri::command]
 fn get_settings(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Settings, String> {
     Ok(Settings {
-        claude_model: app.providers.llm.model(),
         db_path: app.db_path.clone(),
         log_dir: handle.path().app_log_dir().map_err(err)?.display().to_string(),
         backup_dir: backup_dir(&handle)?.display().to_string(),
     })
 }
 
+/// Fallback chain plus where each API key comes from ("stored" / "env"); never the keys.
+#[derive(serde::Serialize)]
+struct LlmSettings {
+    chain: Vec<ChainEntry>,
+    openai_key: Option<&'static str>,
+    gemini_key: Option<&'static str>,
+}
+
 #[tauri::command]
-fn set_claude_model(app: State<'_, App>, model: Option<String>) -> Result<(), String> {
-    let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
-    app.store.set_setting(MODEL_SETTING, model.as_deref()).map_err(err)?;
-    app.providers.llm.set_model(model);
+fn get_llm_settings(app: State<'_, App>) -> Result<LlmSettings, String> {
+    let source = |k| chain::api_key(&app.store, k).map(|o| o.map(|(_, s)| s));
+    Ok(LlmSettings { chain: chain::load_config(&app.store)?, openai_key: source(ProviderKind::Openai)?, gemini_key: source(ProviderKind::Gemini)? })
+}
+
+#[tauri::command]
+fn set_llm_chain(app: State<'_, App>, chain: Vec<ChainEntry>) -> Result<(), String> {
+    chain::save_config(&app.store, chain)?;
+    app.providers.llm.set(chain::load(&app.store)?);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_api_key(app: State<'_, App>, kind: ProviderKind, key: Option<String>) -> Result<(), String> {
+    chain::set_api_key(&app.store, kind, key.as_deref())?;
+    app.providers.llm.set(chain::load(&app.store)?);
     Ok(())
 }
 
@@ -245,8 +261,7 @@ pub fn run() {
             std::fs::create_dir_all(&dir)?;
             let path = dir.join("lattice.db");
             let store = Arc::new(Store::open(&path)?);
-            let llm = ClaudeCli::default();
-            llm.set_model(store.setting(MODEL_SETTING)?);
+            let llm = LlmChain::new(chain::load(&store)?);
             let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http: client() });
 
             store.recover_running_jobs()?;
@@ -289,7 +304,9 @@ pub fn run() {
             set_read,
             db_path,
             get_settings,
-            set_claude_model,
+            get_llm_settings,
+            set_llm_chain,
+            set_api_key,
             backup_db,
             r2_status,
             r2_save,

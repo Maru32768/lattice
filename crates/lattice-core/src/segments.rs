@@ -14,7 +14,7 @@ use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::llm::{LlmError, LlmProvider};
+use crate::llm::{Completion, LlmError, LlmProvider};
 use crate::store::sha256_hex;
 
 pub const PROMPT_VERSION: &str = "segments-v1";
@@ -171,13 +171,15 @@ pub struct Translated {
     /// One entry per input snippet; `None` when the provider never returned a valid result.
     pub results: Vec<Option<Vec<Unit>>>,
     pub model: Option<String>,
+    /// Provider that answered first (behind a chain, may differ from the one called).
+    pub provider: Option<String>,
     /// Last provider error, if any call failed (used to report usage limits etc.).
     pub error: Option<LlmError>,
 }
 
-async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expected: &[usize]) -> Result<(Vec<Option<Vec<Unit>>>, Option<String>), LlmError> {
+async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expected: &[usize]) -> Result<(Vec<Option<Vec<Unit>>>, Completion), LlmError> {
     let c = provider.complete_json(system, &input.to_string(), &schema()).await?;
-    Ok((reconcile(&c.value, expected), c.model))
+    Ok((reconcile(&c.value, expected), c))
 }
 
 /// Translates snippets with one batch call, individual retries for anything missing, and a
@@ -186,10 +188,10 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
     let system = translation_prompt(from, to);
     let indexed = |idx: &[usize]| json!(idx.iter().map(|&i| json!({"i": i, "html": snippets[i]})).collect::<Vec<_>>());
     let all: Vec<usize> = (0..snippets.len()).collect();
-    let mut out = Translated { results: vec![None; snippets.len()], model: None, error: None };
+    let mut out = Translated { results: vec![None; snippets.len()], model: None, provider: None, error: None };
 
     match call(provider, &system, &indexed(&all), &all).await {
-        Ok((r, m)) => (out.results, out.model) = (r, m),
+        Ok((r, c)) => (out.results, out.model, out.provider) = (r, c.model, Some(c.provider)),
         Err(e) => out.error = Some(e),
     }
     let missing: Vec<usize> = all.iter().copied().filter(|&i| out.results[i].is_none()).collect();
@@ -202,9 +204,11 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
     .await;
     for (i, r) in retries {
         match r {
-            Ok((mut r, m)) => {
+            Ok((mut r, c)) => {
                 out.results[i] = r.pop().flatten();
-                out.model = out.model.or(m);
+                if out.provider.is_none() {
+                    (out.model, out.provider) = (c.model, Some(c.provider));
+                }
             }
             Err(e) => out.error = Some(e),
         }
@@ -259,7 +263,6 @@ pub(crate) mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::llm::Completion;
 
     /// Splits snippets at ". " and uppercases them; `drop` skips indices in batch calls,
     /// `dup` duplicates them, `fail` makes every call error.
@@ -293,12 +296,12 @@ pub(crate) mod tests {
                 return Err(LlmError::Failed("usage limit reached".into()));
             }
             if system.contains("You summarize technical articles") {
-                return Ok(Completion { value: json!({"summary": "要約です。", "key_points": ["要点"]}), model: None });
+                return Ok(Completion { value: json!({"summary": "要約です。", "key_points": ["要点"]}), model: None, provider: "fake".into() });
             }
             if system.contains("ONE long HTML unit") {
                 let (a, b) = input.split_at(input.len() / 2);
                 let s = |p: &str| json!({"source": p, "translation": p.to_uppercase()});
-                return Ok(Completion { value: json!({"blocks": [{"i": 0, "sentences": [s(a), s(b)]}]}), model: None });
+                return Ok(Completion { value: json!({"blocks": [{"i": 0, "sentences": [s(a), s(b)]}]}), model: None, provider: "fake".into() });
             }
             let items: Vec<Value> = serde_json::from_str(input).unwrap();
             let single = items.len() == 1;
@@ -308,7 +311,7 @@ pub(crate) mod tests {
                 .map(|it| json!({"i": it["i"], "sentences": split_units(it["html"].as_str().unwrap())}))
                 .chain([json!({"i": 99, "sentences": [{"source": "x", "translation": "injected"}]})])
                 .collect();
-            Ok(Completion { value: json!({ "blocks": blocks }), model: Some("fake-1".into()) })
+            Ok(Completion { value: json!({ "blocks": blocks }), model: Some("fake-1".into()), provider: "fake".into() })
         }
     }
 

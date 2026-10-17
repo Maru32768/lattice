@@ -1,11 +1,15 @@
+pub mod chain;
 pub mod claude;
+pub mod codex;
 pub mod embed;
 pub mod extract;
 pub mod fetch;
+pub mod gemini;
 pub mod ingest;
 pub mod ir;
 pub mod jobs;
 pub mod llm;
+pub mod openai;
 pub mod r2;
 pub mod search;
 pub mod segments;
