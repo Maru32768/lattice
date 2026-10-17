@@ -3,6 +3,7 @@ import { api, type Settings } from "./api";
 import { ModelSettings } from "./ModelSettings";
 import { R2BackupSection } from "./R2BackupSection";
 import { ClassifySettings } from "./ClassifySettings";
+import { TranslationSettings } from "./TranslationSettings";
 
 export function SettingsView() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -38,6 +39,7 @@ export function SettingsView() {
       <h2>設定・バックアップ</h2>
       <ModelSettings />
       <ClassifySettings />
+      <TranslationSettings />
       <div>
         <h3>バックアップ</h3>
         <div className="row"><button onClick={backup}>今すぐバックアップ</button><button onClick={exportJson}>JSON でエクスポート</button></div>

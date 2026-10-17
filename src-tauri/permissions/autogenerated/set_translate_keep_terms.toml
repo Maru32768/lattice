@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-translate-keep-terms"
+description = "Enables the set_translate_keep_terms command without any pre-configured scope."
+commands.allow = ["set_translate_keep_terms"]
+
+[[permission]]
+identifier = "deny-set-translate-keep-terms"
+description = "Denies the set_translate_keep_terms command without any pre-configured scope."
+commands.deny = ["set_translate_keep_terms"]

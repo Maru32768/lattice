@@ -350,3 +350,29 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 ### 未実装（意図的）
 
 一覧で開いているグループ（フィード → ジャンルの組み合わせ）を範囲にすること（1 つの `ArticleFilter` では表せない。複合条件が必要になったら filter を AND の列にする）、範囲の選択の保存、サイドバーの絞り込みボタンへのジャンル・フィードの追加（表示モードのグループで代わりになる）。
+
+## 12. 難易度推定と専門用語を残す翻訳（§3 UC7・§8）
+
+| 対象 | ファイル |
+|---|---|
+| 難易度（classify job の schema・prompt、手動指定） | `crates/lattice-core/src/classify.rs` |
+| スキーマ（`articles.difficulty / difficulty_source`、`classifications.difficulty`）、難易度順 | `crates/lattice-core/src/store.rs`（migration 14） |
+| 翻訳モード（prompt・cache key） | `crates/lattice-core/src/segments.rs`、`crates/lattice-core/src/translate.rs` |
+| Tauri commands（`set_difficulty` / `get_translate_keep_terms` / `set_translate_keep_terms`） | `src-tauri/src/lib.rs` |
+| UI | `src/DifficultyField.tsx`、`src/TranslationSettings.tsx`、`src/ArticleList.tsx`、`src/Reader.tsx` |
+
+- **難易度は classify job で一緒に出す。** §4.6 の `estimate_difficulty` を別 job にせず、分類と同じ入力（タイトル・ドメイン・要約か冒頭 1200 字）・同じ batch（最大 20 件で 1 回の LLM 呼び出し）で返させる。入力が同じなので、別 job にすると LLM 呼び出しが倍になるだけになる。prompt_version は `classify-v2`。
+- **尺度。** 1〜5 の整数（入門／初級／中級／上級／専門）。「その分野が専門ではない現役のソフトウェアエンジニア」にとっての難しさで判定させる。範囲外や欠落は保存しない（未判定のまま）。結果は `classifications.difficulty` にも provider / model 付きで残す。
+- **手動の指定はジャンルと同じく固定する。** Reader の meta 行の select で選ぶと `difficulty_source = 'manual'` になり、自動分類は上書きしない。「未判定」に戻すと固定も外れる。「自動分類」ボタンはジャンルと難易度の両方の固定を外して分類し直す。
+- **難易度がない記事も分類の対象にする。** 保存後の自動分類と「未分類をすべて分類」は、ジャンルか難易度のどちらかがない記事を queue に入れる。この slice より前に分類した記事も「未分類をすべて分類」で難易度が付く（ジャンルの固定とタグの追加だけの規則は従来どおり）。
+- **表示。** 一覧の各記事に小さな badge（上級・専門は accent 色）、並び順に「難易度順（やさしい順）」（未判定は最後）。難易度での絞り込みは入れていない。
+- **専門用語を英語のまま残す（既定 ON、`settings.translate_keep_terms`、OFF のときだけ `off` を保存）。** ON は「技術用語・略語・固有名詞は英語のまま、周りだけ訳す」、OFF は「定着した訳語があれば訳す（略語と製品名はそのまま）」を prompt に入れる。re-split の prompt にも同じ規則を入れる。prompt_version は `segments-v2`。
+- **cache はモードごとに分ける。** モードを `target_language` の値に含める: ON は従来どおり `ja`、OFF は `ja-x-translated-terms`（`segments::target_key`）。`segment_translations`・`get_article` の訳文 join・`hit_details`・`untranslated_blocks`・translate job の params と dedup key はこの値をそのまま使うので、SQL は変えていない。FTS は言語で絞らないので、両方の訳文が検索に効く。
+  - 既存の `ja` の行（segments-v1。prompt は「技術用語はエンジニアがわかる形で」）は ON の cache として使い続ける。全記事の再翻訳を避けるための判断で、v1 の訳文には訳語にした用語が混じりうる。
+  - job は queue に入れた時点のモードを params に持つので、実行前に設定を変えても混ざらない。
+  - 設定を切り替えると、Reader には新しいモードの訳文だけが出る（なければ未翻訳と表示され、「日本語に翻訳」で作る）。元に戻せば前の訳文が出る。ページ表示の overlay も次の翻訳要求から新しいモードを使う（表示中のページの訳文はそのまま）。
+- chat は訳文を使わないので `TARGET_LANGUAGE` のまま。
+
+### 未実装（意図的）
+
+難易度での絞り込み、ユーザーの習熟度に合わせた推定（Phase 3 の personalization でこの値を入力にする）、訳文の強制再生成（cache を無視して訳し直す）、用語集（ユーザー定義の「訳さない語」）。

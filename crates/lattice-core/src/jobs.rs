@@ -149,6 +149,18 @@ mod tests {
         translate::enqueue(&s, id, "ja").unwrap();
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(p.llm.calls.lock().unwrap().len(), 1);
+
+        // Translating terms too is a separate cache: translated again, the default rows stay.
+        assert_eq!(translate::target(&s).unwrap(), "ja");
+        translate::set_keep_terms(&s, false).unwrap();
+        let other = translate::target(&s).unwrap();
+        assert_ne!(other, "ja");
+        assert!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.is_none(), "modes do not share rows");
+        translate::enqueue(&s, id, &other).unwrap();
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        assert_eq!(p.llm.calls.lock().unwrap().len(), 2);
+        assert_eq!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
+        assert_eq!(s.cached_segments(&[crate::store::sha256_hex("Intro")], "ja").unwrap().len(), 1);
     }
 
     #[tokio::test]

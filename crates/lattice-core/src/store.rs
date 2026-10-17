@@ -289,6 +289,12 @@ UPDATE articles SET text_length = (SELECT coalesce(sum(length(text)), 0) FROM bl
 "#, r#"
 -- Jobs view: counts per (status, type) and the backed-off list without touching table rows.
 CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_run_at);
+"#, r#"
+-- Difficulty for a working software engineer, 1 (入門) to 5 (専門), from the classify job.
+-- difficulty_source 'manual' pins the user's choice against auto runs, as genre_source does.
+ALTER TABLE articles ADD COLUMN difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 5);
+ALTER TABLE articles ADD COLUMN difficulty_source TEXT CHECK (difficulty_source IN ('auto', 'manual'));
+ALTER TABLE classifications ADD COLUMN difficulty INTEGER;
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -347,6 +353,9 @@ pub struct ArticleRow {
     pub genre: Option<String>,
     /// The user chose the genre; auto classification leaves it alone.
     pub genre_manual: bool,
+    /// 1 (入門) to 5 (専門).
+    pub difficulty: Option<i64>,
+    pub difficulty_manual: bool,
     pub feed_id: Option<i64>,
     pub feed_title: Option<String>,
     /// Extracted, but with almost no text: probably a JS-rendered page.
@@ -392,6 +401,8 @@ pub enum ArticleSort {
     SavedAsc,
     /// Articles without a published date come last.
     PublishedDesc,
+    /// Easiest first; articles without a difficulty come last.
+    DifficultyAsc,
 }
 
 #[derive(Debug, Serialize)]
@@ -494,7 +505,7 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
-    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id), text_length";
+    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual'";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     Ok(ArticleRow {
@@ -516,6 +527,8 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         tags: from_json_col(r, 15, str::to_string)?,
         genre: r.get(16)?,
         genre_manual: r.get(17)?,
+        difficulty: r.get(21)?,
+        difficulty_manual: r.get(22)?,
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
         thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS,
@@ -806,6 +819,7 @@ impl Store {
             ArticleSort::SavedAsc => "saved_at, id",
             // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
+            ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();
@@ -1354,6 +1368,8 @@ mod tests {
         assert_eq!(ids(ArticleSort::SavedDesc), [3, 2, 1]);
         assert_eq!(ids(ArticleSort::SavedAsc), [1, 2, 3]);
         assert_eq!(ids(ArticleSort::PublishedDesc), [1, 3, 2], "undated last");
+        s.exec_for_test("UPDATE articles SET difficulty = 4 WHERE id = 1; UPDATE articles SET difficulty = 2 WHERE id = 2;");
+        assert_eq!(ids(ArticleSort::DifficultyAsc), [2, 1, 3], "unrated last");
     }
 
     #[test]

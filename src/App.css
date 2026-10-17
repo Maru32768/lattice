@@ -234,3 +234,7 @@ main.has-browser .back { margin: 8px 12px 0; }
 .job-counts th, .job-counts td { padding: 4px 12px; border-bottom: 1px solid var(--border); text-align: right; }
 .job-counts th[scope="row"], .job-counts thead th:first-child { text-align: left; }
 .jobs h3 { margin: 0; font-size: 1em; }
+.item .difficulty { display: inline-block; margin-right: 6px; padding: 0 5px; border: 1px solid var(--border); border-radius: 999px; font-size: 11px; }
+.item .difficulty.d4, .item .difficulty.d5 { border-color: var(--accent); color: var(--accent); }
+.reader .difficulty-field { display: inline-flex; gap: 6px; align-items: center; }
+.reader .difficulty-field select { font: inherit; padding: 1px 4px; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }

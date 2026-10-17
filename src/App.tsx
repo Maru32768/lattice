@@ -13,6 +13,7 @@ import { SearchResults } from "./SearchResults";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey, parseFilterKey } from "./scopes";
 import { FilterOptgroups } from "./FilterOptgroups";
+import { DifficultyBadge } from "./DifficultyField";
 import "./App.css";
 
 type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds" | "jobs";
@@ -183,6 +184,16 @@ export default function App() {
     }
   }
 
+  async function setDifficulty(level: number | null) {
+    if (!view) return;
+    try {
+      await api.setDifficulty(view.article.id, level);
+      await Promise.all([refresh(), loadView(view.article.id)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function classifyArticle() {
     if (!view) return;
     try {
@@ -280,6 +291,7 @@ export default function App() {
               <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url, undefined, a)}>
                 <span className="title">{a.favorite && <span className="star" aria-label="お気に入り">★ </span>}{a.title ?? a.original_url}</span>
                 <span className="sub">
+                  <DifficultyBadge article={a} />
                   {a.domain}
                   {a.tags.map((t) => ` #${t}`).join("")}
                   {a.fetch_status === "pending" && " · 取得中…"}
@@ -309,7 +321,7 @@ export default function App() {
           <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
             onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
             onToggleRead={toggleRead} onRetry={retryArticle} onReextract={reextractArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
-            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} onGenre={setGenre} onClassify={classifyArticle} />
+            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} onGenre={setGenre} onDifficulty={setDifficulty} onClassify={classifyArticle} />
         )}
         {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
         {main === "import" && <ImportView onImported={refresh} />}

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-difficulty"
+description = "Enables the set_difficulty command without any pre-configured scope."
+commands.allow = ["set_difficulty"]
+
+[[permission]]
+identifier = "deny-set-difficulty"
+description = "Denies the set_difficulty command without any pre-configured scope."
+commands.deny = ["set_difficulty"]

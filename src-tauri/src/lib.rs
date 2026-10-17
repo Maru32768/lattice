@@ -110,6 +110,12 @@ fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     classify::set_genre(&app.store, id, &name)
 }
 
+/// Manual choice (1-5), pinned against auto runs; `None` clears it.
+#[tauri::command(async)]
+fn set_difficulty(app: State<'_, App>, id: i64, level: Option<i64>) -> Result<(), String> {
+    classify::set_difficulty(&app.store, id, level)
+}
+
 #[tauri::command(async)]
 fn classify_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     classify::enqueue_manual(&app.store, id)?;
@@ -132,6 +138,16 @@ fn get_auto_classify(app: State<'_, App>) -> Result<bool, String> {
 #[tauri::command(async)]
 fn set_auto_classify(app: State<'_, App>, on: bool) -> Result<(), String> {
     classify::set_auto(&app.store, on)
+}
+
+#[tauri::command(async)]
+fn get_translate_keep_terms(app: State<'_, App>) -> Result<bool, String> {
+    translate::keep_terms(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String> {
+    translate::set_keep_terms(&app.store, on)
 }
 
 #[tauri::command(async)]
@@ -189,7 +205,7 @@ fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
-    app.store.get_article(id, translate::TARGET_LANGUAGE).map_err(err)
+    app.store.get_article(id, &translate::target(&app.store)?).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -214,7 +230,7 @@ async fn overlay_translate(
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
         return Err("request too large".into());
     }
-    let target = translate::TARGET_LANGUAGE;
+    let target = &translate::target(&app.store)?;
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut cached = app.store.cached_segments(&hashes, target).map_err(err)?;
     let mut misses: Vec<usize> = Vec::new();
@@ -253,7 +269,7 @@ fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
-    translate::enqueue(&app.store, id, translate::TARGET_LANGUAGE)?;
+    translate::enqueue(&app.store, id, &translate::target(&app.store)?)?;
     app.wake_llm.notify_one();
     Ok(())
 }
@@ -261,7 +277,7 @@ fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn search_blocks(app: State<'_, App>, query: String, filter: Option<ArticleFilter>) -> Result<SearchResult, String> {
     let articles = app.store.article_ids(&filter.unwrap_or(ArticleFilter::All)).map_err(err)?;
-    search::search(&app.store, &app.providers.embedder, &query, articles.as_deref(), translate::TARGET_LANGUAGE, 30).await
+    search::search(&app.store, &app.providers.embedder, &query, articles.as_deref(), &translate::target(&app.store)?, 30).await
 }
 
 #[tauri::command]
@@ -479,10 +495,13 @@ pub fn run() {
             list_tags,
             list_genres,
             set_genre,
+            set_difficulty,
             classify_article,
             classify_unclassified,
             get_auto_classify,
             set_auto_classify,
+            get_translate_keep_terms,
+            set_translate_keep_terms,
             list_feeds,
             add_feed,
             remove_feed,
