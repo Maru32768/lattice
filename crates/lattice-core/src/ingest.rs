@@ -237,6 +237,22 @@ mod tests {
     }
 
     #[test]
+    fn resaving_an_extracted_article_never_merges_it_away() {
+        let s = Store::open_in_memory().unwrap();
+        let (a, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        store_fetched(&s, a, &page(BODY)).unwrap();
+        let (b, _) = s.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap();
+        let no_canonical = page(BODY).html.replace(r#"<link rel="canonical" href="https://example.com/post?utm_source=feed">"#, "");
+        store_fetched(&s, b, &Fetched { final_url: "https://example.com/b".into(), html: no_canonical, ..page(BODY) }).unwrap();
+        s.add_tag(b, "keep").unwrap();
+        // The rendered DOM of b now reveals a canonical equal to a.
+        assert_eq!(save_rendered(&s, "https://example.com/b", page(&BODY.repeat(2)).html).unwrap(), b);
+        let all = s.list_articles(&crate::store::ArticleFilter::All).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all.iter().find(|x| x.id == b).unwrap().tags, ["keep"]);
+    }
+
+    #[test]
     fn extraction_failure_is_recorded_and_retryable() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();

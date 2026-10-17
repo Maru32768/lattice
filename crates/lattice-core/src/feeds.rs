@@ -210,6 +210,7 @@ fn mark_fetched(store: &Store, id: i64, p: Option<&Parsed>, etag: Option<&str>, 
 /// `Ok(None)` when the server answers 304 Not Modified.
 async fn fetch(client: &HttpClient, url: &str, etag: Option<&str>, modified: Option<&str>) -> Result<Option<(Vec<u8>, Option<String>, Option<String>)>, String> {
     use reqwest::header::{ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
+    crate::fetch::check_public(url)?;
     let mut req = client.get(url);
     if let Some(e) = etag {
         req = req.header(IF_NONE_MATCH, e);
@@ -217,7 +218,7 @@ async fn fetch(client: &HttpClient, url: &str, etag: Option<&str>, modified: Opt
     if let Some(m) = modified {
         req = req.header(IF_MODIFIED_SINCE, m);
     }
-    let mut resp = req.send().await.map_err(|e| format!("request failed: {e}"))?;
+    let mut resp = req.send().await.map_err(crate::fetch::request_error)?;
     if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
         return Ok(None);
     }

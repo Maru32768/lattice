@@ -56,13 +56,13 @@ impl ClaudeCli {
 
         let mut child = cmd.spawn().map_err(|e| LlmError::Unavailable(format!("{}: {e}", self.program)))?;
         let mut stdin = child.stdin.take().expect("stdin piped");
-        stdin.write_all(input.as_bytes()).await.map_err(|e| LlmError::Failed(e.to_string()))?;
-        drop(stdin);
-
-        let out = tokio::time::timeout(self.timeout, child.wait_with_output())
+        // The write shares the timeout: a CLI that stops reading would otherwise hang the worker.
+        let write = async move { stdin.write_all(input.as_bytes()).await };
+        let (written, out) = tokio::time::timeout(self.timeout, async { tokio::join!(write, child.wait_with_output()) })
             .await
-            .map_err(|_| LlmError::Failed(format!("timed out after {:?}", self.timeout)))?
-            .map_err(|e| LlmError::Failed(e.to_string()))?;
+            .map_err(|_| LlmError::Failed(format!("timed out after {:?}", self.timeout)))?;
+        written.map_err(|e| LlmError::Failed(e.to_string()))?;
+        let out = out.map_err(|e| LlmError::Failed(e.to_string()))?;
         let stdout = String::from_utf8_lossy(&out.stdout);
         let v: Value = serde_json::from_str(&stdout).map_err(|_| {
             let stderr = String::from_utf8_lossy(&out.stderr);

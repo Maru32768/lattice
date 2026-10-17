@@ -59,11 +59,12 @@ export default function App() {
     Promise.all([api.listArticles(filterRef.current, sortRef.current).then(setArticles), api.listTags().then(setTags),
       api.listGenres().then(setGenres), api.listFeeds().then(setFeeds)]).catch(fail);
   const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
-  // Background jobs (bulk import fetches) report every article; coalesce list reloads.
+  // Background jobs (bulk import fetches) report every article; throttle list reloads to one
+  // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
   const refreshTimer = useRef(0);
   const refreshSoon = () => {
-    clearTimeout(refreshTimer.current);
-    refreshTimer.current = window.setTimeout(refresh, 500);
+    if (refreshTimer.current) return;
+    refreshTimer.current = window.setTimeout(() => { refreshTimer.current = 0; refresh(); }, 500);
   };
   const loadView = (id: number) => {
     viewId.current = id;

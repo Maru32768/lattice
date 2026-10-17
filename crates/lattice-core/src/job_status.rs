@@ -89,12 +89,13 @@ pub fn overview(store: &Store) -> Result<JobOverview, String> {
 }
 
 /// Re-queues one job now, as `Store::enqueue_job` does for a dedup key (status pending, backoff
-/// cleared, attempts kept). Returns its type, to wake the right runner; None if running or gone.
+/// and error cleared, a fresh set of attempts). Returns its type, to wake the right runner; None if running or gone.
 pub fn retry(store: &Store, id: i64) -> Result<Option<String>, String> {
     store
         .conn()
         .query_row(
-            "UPDATE processing_jobs SET status = 'pending', next_run_at = NULL WHERE id = ?1 AND status != 'running' RETURNING type",
+            "UPDATE processing_jobs SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
+             WHERE id = ?1 AND status != 'running' RETURNING type",
             [id],
             |r| r.get(0),
         )
@@ -107,7 +108,7 @@ pub fn retry_failed(store: &Store, job_type: Option<&str>) -> Result<usize, Stri
     store
         .conn()
         .execute(
-            &format!("UPDATE processing_jobs AS j SET status = 'pending', next_run_at = NULL WHERE {ISSUE} AND (?1 IS NULL OR j.type = ?1)"),
+            &format!("UPDATE processing_jobs AS j SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL WHERE {ISSUE} AND (?1 IS NULL OR j.type = ?1)"),
             params![job_type],
         )
         .map_err(err)
@@ -166,6 +167,8 @@ mod tests {
         assert_eq!(retry(&s, o.issues[0].id).unwrap().as_deref(), Some("classify"));
         assert_eq!(retry_failed(&s, None).unwrap(), 2);
         assert!(overview(&s).unwrap().issues.is_empty());
+        let attempts: i64 = s.conn().query_row("SELECT sum(attempt_count) FROM processing_jobs WHERE type = 'classify'", [], |r| r.get(0)).unwrap();
+        assert_eq!(attempts, 0, "retried jobs get a full set of attempts");
 
         let ok = Providers { llm: Fake::new(), embedder: NoEmbed, http: crate::fetch::client() };
         assert!(run_next(&s, &ok, &[classify::JOB_TYPE], &|_| {}).await.unwrap());

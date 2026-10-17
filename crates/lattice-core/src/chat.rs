@@ -277,12 +277,13 @@ async fn retrieve<E: EmbeddingProvider>(
         }
         for h in r.hits.into_iter().filter(|h| seen.insert(h.detail.block_id)) {
             let d = h.detail;
-            out.push(Source { block_id: d.block_id, article_id: d.article_id, title: d.article_title, heading: d.heading, is_heading: false, text: d.text });
+            out.push((d.ordinal, Source { block_id: d.block_id, article_id: d.article_id, title: d.article_title, heading: d.heading, is_heading: false, text: d.text }));
         }
     }
-    // Reading order within each article reads better than rank order; ids grow with ordinal.
-    out.sort_by_key(|s| (s.article_id, s.block_id));
-    Ok(out)
+    // Reading order within each article reads better than rank order. Not block ids:
+    // re-extraction reuses ids of unchanged blocks at new positions.
+    out.sort_by_key(|(ordinal, s)| (s.article_id, *ordinal));
+    Ok(out.into_iter().map(|(_, s)| s).collect())
 }
 
 /// Prompt input and how many of `sources` (a prefix) fit in it; source `[n]` is `sources[n - 1]`.

@@ -484,6 +484,7 @@ pub struct HitDetail {
     pub heading: Option<String>,
     pub text: String,
     pub translation: Option<String>,
+    pub ordinal: i64,
 }
 
 
@@ -740,12 +741,14 @@ impl Store {
     ) -> Result<i64> {
         let mut c = self.conn();
         let tx = c.transaction()?;
-        // Re-extraction never merges: it must not delete an article the user already has.
+        // Only a not-yet-extracted row merges: re-extraction and re-saves (rendered or refetched)
+        // must not delete an article the user already has, with its tags, favorite and summaries.
         if let (Some(canon), Some(_)) = (canonical_normalized, snapshot) {
             let existing: Option<i64> = tx
                 .query_row(
                     "SELECT id FROM articles WHERE id != ?1 AND extraction_status = 'ok'
-                     AND (canonical_url = ?2 OR normalized_url = ?2) LIMIT 1",
+                     AND (canonical_url = ?2 OR normalized_url = ?2)
+                     AND (SELECT extraction_status FROM articles WHERE id = ?1) IS NOT 'ok' LIMIT 1",
                     params![id, canon],
                     |r| r.get(0),
                 )
@@ -990,7 +993,7 @@ impl Store {
     pub fn enqueue_job(&self, job_type: &str, article_id: i64, params: &str, dedup_key: &str) -> Result<()> {
         self.conn().execute(
             "INSERT INTO processing_jobs (type, article_id, params, dedup_key) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', next_run_at = NULL
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
              WHERE status != 'running'",
             params![job_type, article_id, params, dedup_key],
         )?;
@@ -1090,7 +1093,8 @@ impl Store {
                  SELECT 1 FROM blocks b WHERE b.article_id = a.id AND b.kind IN (SELECT value FROM json_each(?3))
                  AND NOT EXISTS (SELECT 1 FROM embeddings e
                                  WHERE e.block_id = b.id AND e.model = ?2 AND e.source_hash = b.text_hash))
-             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', next_run_at = NULL WHERE status = 'succeeded'",
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
+             WHERE status = 'succeeded'",
             params![job_type, model, json(&kinds)],
         )
     }
@@ -1098,29 +1102,39 @@ impl Store {
     /// Calls `f` for every stored vector of `model`, only for blocks of `articles` when given.
     /// shortcut: brute-force scan, fine to ~10^5-10^6 blocks; move to sqlite-vec or an ANN index beyond that.
     pub fn scan_embeddings(&self, model: &str, articles: Option<&[i64]>, mut f: impl FnMut(i64, &[f32])) -> Result<()> {
-        let c = self.conn();
-        let mut st;
-        let mut rows = match articles {
-            None => {
-                st = c.prepare("SELECT block_id, vector FROM embeddings WHERE model = ?1")?;
-                st.query([model])?
+        // Chunked by rowid and scored after the lock is released: a full scan must not stall
+        // every other store user (list, reader, job runners) for its whole duration.
+        const CHUNK: i64 = 2048;
+        let ids = articles.map(|a| json(&a));
+        let (mut after, mut buf) = (0i64, Vec::new());
+        loop {
+            let chunk: Vec<(i64, i64, Vec<u8>)> = {
+                let c = self.conn();
+                let row = |r: &rusqlite::Row| Ok((r.get(0)?, r.get(1)?, r.get(2)?));
+                match &ids {
+                    None => c
+                        .prepare_cached("SELECT rowid, block_id, vector FROM embeddings WHERE model = ?1 AND rowid > ?2 ORDER BY rowid LIMIT ?3")?
+                        .query_map(params![model, after, CHUNK], row)?
+                        .collect::<rusqlite::Result<_>>()?,
+                    Some(ids) => c
+                        .prepare_cached(
+                            "SELECT e.rowid, e.block_id, e.vector FROM blocks b JOIN embeddings e ON e.block_id = b.id AND e.model = ?1
+                             WHERE b.article_id IN (SELECT value FROM json_each(?4)) AND e.rowid > ?2 ORDER BY e.rowid LIMIT ?3",
+                        )?
+                        .query_map(params![model, after, CHUNK, ids], row)?
+                        .collect::<rusqlite::Result<_>>()?,
+                }
+            };
+            for (_, block_id, blob) in &chunk {
+                buf.clear();
+                buf.extend(blob.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])));
+                f(*block_id, &buf);
             }
-            Some(ids) => {
-                st = c.prepare(
-                    "SELECT e.block_id, e.vector FROM blocks b JOIN embeddings e ON e.block_id = b.id AND e.model = ?1
-                     WHERE b.article_id IN (SELECT value FROM json_each(?2))",
-                )?;
-                st.query(params![model, json(&ids)])?
+            match chunk.last() {
+                Some(&(rowid, ..)) if chunk.len() as i64 == CHUNK => after = rowid,
+                _ => return Ok(()),
             }
-        };
-        let mut buf = Vec::new();
-        while let Some(r) = rows.next()? {
-            let blob = r.get_ref(1)?.as_blob()?;
-            buf.clear();
-            buf.extend(blob.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])));
-            f(r.get(0)?, &buf);
         }
-        Ok(())
     }
 
     /// Block ids ranked by FTS (best first), searching original text and translations.
@@ -1177,7 +1191,7 @@ impl Store {
             "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text,
                     (SELECT st.text FROM segment_translations st
                      WHERE st.source_hash = b.text_hash AND st.target_language = ?2
-                     ORDER BY st.id DESC LIMIT 1)
+                     ORDER BY st.id DESC LIMIT 1), b.ordinal
              FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id
              WHERE b.id IN (SELECT value FROM json_each(?1))",
         )?;
@@ -1190,6 +1204,7 @@ impl Store {
                     heading: r.get(3)?,
                     text: r.get(4)?,
                     translation: r.get(5)?,
+                    ordinal: r.get(6)?,
                 })
             })?
             .collect::<Result<_>>()?;
@@ -1295,6 +1310,25 @@ mod tests {
         assert!(s.lexical_search("Alpha", None, 10).unwrap().is_empty());
         let snaps: i64 = s.conn().query_row("SELECT count(*) FROM snapshots", [], |r| r.get(0)).unwrap();
         assert_eq!(snaps, 1, "re-extraction stores no new snapshot");
+    }
+
+    #[test]
+    fn re_enqueue_gives_a_failed_job_fresh_attempts() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        s.exec_for_test("UPDATE processing_jobs SET status = 'failed', attempt_count = 5, last_error = 'boom'");
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        let job = s.claim_next_job(&["t"]).unwrap().unwrap();
+        assert_eq!((job.attempt_count, job.last_error), (1, None));
+        s.finish_job(job.id, Some("again")).unwrap();
+        let status: String = s.conn().query_row("SELECT status FROM processing_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(status, "pending", "retried with backoff, not failed at once");
+        // A running job is left alone.
+        s.exec_for_test("UPDATE processing_jobs SET status = 'running', attempt_count = 3");
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        let row: (String, i64) = s.conn().query_row("SELECT status, attempt_count FROM processing_jobs", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(row, ("running".into(), 3));
     }
 
     #[test]

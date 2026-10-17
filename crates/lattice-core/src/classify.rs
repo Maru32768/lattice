@@ -72,7 +72,8 @@ pub fn enqueue_unclassified(store: &Store) -> Result<usize, String> {
         .execute(
             "INSERT INTO processing_jobs (type, article_id, params, dedup_key)
              SELECT ?1, id, '{}', ?1 || ':' || id FROM articles WHERE extraction_status = 'ok' AND (genre_id IS NULL OR difficulty IS NULL)
-             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', next_run_at = NULL WHERE status != 'running'",
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
+             WHERE status != 'running'",
             [JOB_TYPE],
         )
         .map_err(err)
