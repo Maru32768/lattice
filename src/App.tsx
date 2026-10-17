@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
-import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
+import { BrowserView, overlayOf, type BrowseTarget, type PageLang, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
 import { ImportView } from "./ImportView";
@@ -80,7 +80,7 @@ export default function App() {
   const [page, setPage] = useState<PageState | null>(null);
   const [saved, setSaved] = useState<ArticleRow | null>(null);
   const [saving, setSaving] = useState(false);
-  const [overlay, setOverlay] = useState<OverlaySettings>({ enabled: false, percent: 70 });
+  const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
 
   // Reader
   const [view, setView] = useState<ArticleView | null>(null);
@@ -296,13 +296,14 @@ export default function App() {
     }
   }
 
-  function changeOverlay(o: OverlaySettings) {
-    setOverlay(o);
+  function setPageLang(l: PageLang) {
+    setPageLangState(l);
+    const o = overlayOf(l);
     browser.setTranslation(o.enabled, o.percent).catch(fail);
   }
 
   function nudgeRatio(delta: number) {
-    if (doc?.kind === "page") changeOverlay({ enabled: true, percent: Math.max(0, Math.min(100, overlay.percent + delta)) });
+    if (doc?.kind === "page") setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
     else {
       setMode("mixed");
       setPercent((p) => Math.max(0, Math.min(100, p + delta)));
@@ -315,7 +316,7 @@ export default function App() {
   }
 
   function setLang(m: LanguageMode, p?: number) {
-    if (doc?.kind === "page") changeOverlay({ enabled: m !== "original", percent: m === "translated" ? 100 : p ?? overlay.percent });
+    if (doc?.kind === "page") setPageLang({ mode: m, percent: p ?? pageLang.percent });
     else {
       setMode(m);
       if (p != null) setPercent(p);
@@ -441,8 +442,8 @@ export default function App() {
           {screen === "feeds" && <FeedsView onChanged={refreshSoon} />}
           {screen === "jobs" && <JobsView />}
           {screen === "library" && doc?.kind === "page" && (
-            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} overlay={overlay} covered={covers > 0}
-              onOverlay={changeOverlay} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} covered={covers > 0}
+              onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
               onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
           )}
           {screen === "library" && doc?.kind === "reader" && view && (

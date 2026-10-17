@@ -220,12 +220,13 @@ function ensureTip() {
   host.dataset.latticeUi = "1";
   const root = host.attachShadow({ mode: "closed" });
   root.innerHTML = `<style>
-    .tip{position:fixed;z-index:2147483647;max-width:min(36em,90vw);padding:8px 14px;border-radius:10px;
-      font:13px/1.55 system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#1f1d1a;background:#fff;
-      border:1px solid #dedad0;box-shadow:0 6px 24px rgba(0,0,0,.14);cursor:pointer;display:none}
-    .tip:hover{background:#f3f6fb}
-    .hint{display:block;margin-top:4px;font-size:11px;color:#6b665d}
-    @media (prefers-color-scheme: dark){.tip{color:#e8e4dc;background:#2b2a27;border-color:#3a3834}.tip:hover{background:#33322e}.hint{color:#9b958a}}
+    .tip{position:fixed;z-index:2147483647;max-width:min(420px,90vw);padding:10px 12px;border-radius:8px;
+      font:13px/1.6 "IBM Plex Sans JP",system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#45474C;background:#fff;
+      border:1px solid #D2CFC6;box-shadow:0 10px 30px rgba(30,28,24,.14);cursor:pointer;display:none;text-align:left}
+    .tip:hover{border-color:#B9B5AA}
+    .head{display:flex;gap:12px;margin-bottom:2px;font-size:11px;color:#67696E}
+    .head span:last-child{margin-left:auto}
+    @media (prefers-color-scheme: dark){.tip{color:#C3C1BB;background:#26272A;border-color:#3B3C40}.tip:hover{border-color:#55565B}.head{color:#9A9893}}
   </style><div class="tip" role="tooltip"></div>`;
   const box = root.querySelector<HTMLElement>(".tip")!;
   box.addEventListener("mouseenter", () => clearTimeout(hideTimer));
@@ -240,17 +241,19 @@ function ensureTip() {
   return tip;
 }
 
-function showTip(target: Element, text: string, hint: string, onClick: (() => void) | null, at?: { x: number; y: number }) {
+/** `label` / `hint`: the header line ("原文 … クリックで反転"); omitted when both are empty. */
+function showTip(target: Element, label: string, text: string, hint: string, onClick: (() => void) | null, at?: { x: number; y: number }) {
   const t = ensureTip();
   t.target = target;
   t.onClick = onClick;
-  t.box.textContent = text;
-  if (hint) {
-    const h = document.createElement("span");
-    h.className = "hint";
-    h.textContent = hint;
-    t.box.append(h);
+  t.box.textContent = "";
+  if (label || hint) {
+    const head = document.createElement("div");
+    head.className = "head";
+    for (const v of [label, hint]) head.append(Object.assign(document.createElement("span"), { textContent: v }));
+    t.box.append(head);
   }
+  t.box.append(text);
   t.box.style.display = "block";
   const r = target.getBoundingClientRect();
   const box = t.box.getBoundingClientRect();
@@ -284,7 +287,7 @@ function bindSentenceHover(span: SentenceSpan) {
       if (!state.config.enabled || !span.matches(":hover")) return;
       const translated = span.dataset.shown === "t";
       const other = translated ? span.dataset.source ?? "" : plainText(span.dataset.translation ?? "");
-      showTip(span, other, translated ? "クリックで原文に切替" : "クリックで訳文に切替", () => {
+      showTip(span, translated ? "原文" : "訳文", other, "クリックで反転", () => {
         span.dataset.manual = translated ? "o" : "t";
         render(span);
       }, at);
@@ -301,8 +304,8 @@ function bindBlockHover(el: HTMLElement) {
     const s = el.dataset.latticeBlock;
     if (!state.config.enabled || (s !== "translating" && s !== "failed")) return;
     clearTimeout(hideTimer);
-    if (s === "translating") showTip(el, "翻訳中…", "", null, { x: e.clientX, y: e.clientY });
-    else showTip(el, "翻訳に失敗しました", "クリックで再試行", () => {
+    if (s === "translating") showTip(el, "", "翻訳中…", "", null, { x: e.clientX, y: e.clientY });
+    else showTip(el, "", "翻訳に失敗しました", "クリックで再試行", () => {
       el.dataset.latticeBlock = "pending";
       enqueue(el);
     }, { x: e.clientX, y: e.clientY });
@@ -319,7 +322,8 @@ function start() {
   state.started = true;
   const style = document.createElement("style");
   style.dataset.latticeUi = "1";
-  style.textContent = `.${SENTENCE}{cursor:help;border-radius:2px}.${SENTENCE}:hover{background:rgba(47,93,138,.12)}
+  style.textContent = `.${SENTENCE}{cursor:help;border-radius:2px}.${SENTENCE}:hover{background:#F4EAD9}
+    .${SENTENCE}[data-shown='t']{text-decoration:underline dotted #B98A4A;text-underline-offset:4px;text-decoration-thickness:1px}
     .lattice-flash{outline:3px solid rgba(47,93,138,.55)!important;outline-offset:4px;transition:outline-color 1.5s}`;
   document.head?.append(style);
   processRoot(document.body);

@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { browser, type ArticleRow, type Bounds } from "./api";
+import type { LanguageMode } from "./mixed";
+import { LangSeg, ViewSeg } from "./Reader";
+import { Menu } from "./Popover";
+import { Icon } from "./Icon";
 
 let lastOpened: BrowseTarget | null = null;
 
@@ -17,33 +21,53 @@ export interface PageState {
   loading: boolean;
 }
 
-export interface OverlaySettings {
-  enabled: boolean;
+export interface PageLang {
+  mode: LanguageMode;
   percent: number;
+}
+
+/** The overlay's switch and ratio for a language choice: 原文 = off, 訳文 = 100 %. */
+export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", percent: l.mode === "translated" ? 100 : l.percent });
+
+/** https:// + host emphasized + the rest. */
+function UrlPill({ url }: { url: string }) {
+  const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url);
+  return (
+    <div className="url-pill" title={url}>
+      <span className="vh">URL: </span>
+      {m ? <>{m[1]}<b>{m[2]}</b>{m[3]}</> : url}
+    </div>
+  );
 }
 
 /**
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, overlay, covered, onOverlay, onSave, onReader, onFavorite, onError }: {
+export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onError }: {
   target: BrowseTarget;
-  /** An app overlay (palette, popover, menu) is open; the native webview would hide it, so hide the webview. */
-  covered: boolean;
   page: PageState | null;
   saved: ArticleRow | null;
   saving: boolean;
-  overlay: OverlaySettings;
-  onOverlay: (o: OverlaySettings) => void;
+  lang: PageLang;
+  /** An app overlay (palette, popover, menu) is open; the native webview would hide it, so hide the webview. */
+  covered: boolean;
+  onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
   onFavorite: () => void;
   onError: (e: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const bounds = (): Bounds => {
-    const r = host.current!.getBoundingClientRect();
-    return { x: r.left, y: r.top, width: r.width, height: r.height };
+  const bounds = (): Bounds | null => {
+    const r = host.current?.getBoundingClientRect();
+    return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+  };
+  const coveredRef = useRef(covered);
+  coveredRef.current = covered;
+  const sync = () => {
+    const b = bounds();
+    if (b && !coveredRef.current) browser.setBounds(b).catch(() => {}); // also re-shows it
   };
 
   useLayoutEffect(() => {
@@ -51,18 +75,15 @@ export function BrowserView({ target, page, saved, saving, overlay, covered, onO
     // reload the page, which would also cancel the first load and lose its scroll target.
     if (target === lastOpened) return;
     lastOpened = target;
-    browser.open(target.url, bounds(), target.focus).catch((e) => onError(String(e)));
+    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e)));
   }, [target]);
 
-  const coveredRef = useRef(covered);
-  coveredRef.current = covered;
   useEffect(() => {
     if (covered) browser.hide().catch(() => {});
-    else browser.setBounds(bounds()).catch(() => {}); // re-shows it
+    else sync();
   }, [covered]);
 
   useEffect(() => {
-    const sync = () => { if (!coveredRef.current) browser.setBounds(bounds()).catch(() => {}); };
     const ro = new ResizeObserver(sync);
     ro.observe(host.current!);
     window.addEventListener("resize", sync);
@@ -73,48 +94,38 @@ export function BrowserView({ target, page, saved, saving, overlay, covered, onO
     };
   }, []);
 
+  const url = page?.url ?? target.url;
+  const loading = !!page?.loading;
+  const resave = saved && (saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed");
   return (
-    <div className="browser">
-      <div className="browser-bar">
-        <div className="nav">
-          <button onClick={() => browser.go("back")} aria-label="戻る" title="戻る">←</button>
-          <button onClick={() => browser.go("forward")} aria-label="進む" title="進む">→</button>
-          <button onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み">⟳</button>
-        </div>
-        <div className="location" title={page?.url ?? target.url}>
-          <span className="page-title">{page?.loading ? "読み込み中…" : page?.title || page?.url || target.url}</span>
-          <span className="page-url">{page?.url ?? target.url}</span>
-        </div>
-        <div className="actions">
-          <button className={overlay.enabled ? "on" : ""} aria-pressed={overlay.enabled}
-            onClick={() => onOverlay({ ...overlay, enabled: !overlay.enabled })}>
-            {overlay.enabled ? "翻訳中" : "このページを翻訳"}
-          </button>
-          {overlay.enabled && (
-            <label className="ratio">
-              日本語 {overlay.percent}%
-              <input type="range" min={0} max={100} step={10} value={overlay.percent}
-                onChange={(e) => onOverlay({ ...overlay, percent: Number(e.target.value) })} />
-            </label>
-          )}
-          {saved
-            ? <>
-                <button onClick={onFavorite} aria-pressed={saved.favorite} title="お気に入り">{saved.favorite ? "★" : "☆"}</button>
-                <span className="saved">Index 済み</span>
-                {(saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed") && (
-                  <button onClick={onSave} disabled={saving || !page || page.loading}
-                    title="本文を取得できなかった記事を、表示中のページから保存し直します">
-                    {saving ? "保存中…" : "描画後のページで保存"}
-                  </button>
-                )}
-                <button onClick={onReader}>リーダー表示</button>
-              </>
-            : <button onClick={onSave} disabled={saving || !page || page.loading}>{saving ? "追加中…" : "Index に追加"}</button>}
-        </div>
+    <div className="doc">
+      <div className="docbar">
+        <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
+        <div className="vsep" />
+        <button className="ib" onClick={() => browser.go("back")} aria-label="戻る" title="戻る"><Icon name="left" /></button>
+        <button className="ib" onClick={() => browser.go("forward")} aria-label="進む" title="進む"><Icon name="right" /></button>
+        <button className="ib" onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
+        <UrlPill url={url} />
+        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label="このページを翻訳" />
+        {saved ? (
+          <>
+            <span className="indexed"><Icon name="check" />Index 済み</span>
+            <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label="お気に入り (s)" title="お気に入り (s)"><Icon name="star" /></button>
+            {resave && (
+              <Menu className="tb" label="その他（描画後のページで保存し直す）" align="right" trigger={<Icon name="more" />} items={[
+                { label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading },
+              ]} />
+            )}
+          </>
+        ) : (
+          <button className="tb pri" onClick={onSave} disabled={saving || !page || loading}
+            title="保存すると Reader・タグ・ジャンル・お気に入りが有効になります。取り込みは描画後の DOM を使います。"><Icon name="import" />{saving ? "追加中…" : "Index に追加"}</button>
+        )}
       </div>
+      <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? "読み込み中" : undefined}><b /></div>
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
-      <div ref={host} className="browser-host">
-        {page?.loading && <div className="browser-loading" role="status"><span className="spinner" aria-hidden="true" />読み込み中…</div>}
+      <div ref={host} className="page-host">
+        {loading && <span className="muted">読み込み中…</span>}
       </div>
     </div>
   );
