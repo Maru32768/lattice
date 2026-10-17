@@ -9,7 +9,7 @@ import { SettingsView } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
 import { ChatPane } from "./ChatPane";
-import { filterGroups } from "./scopes";
+import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
 import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
@@ -67,7 +67,7 @@ export default function App() {
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
   const [, setFeedsUrl] = useState<string | undefined>(undefined);
-  const [, setChatScope] = useState<{ key: string; seq: number } | null>(null);
+  const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
 
   // Search mode of the list pane
   const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
@@ -256,18 +256,11 @@ export default function App() {
     else if (doc?.kind === "page" && saved) openReader(saved.id);
   }
 
-  /** Chat citation: jump inside the Reader when it shows that article, else open the page at the block. */
+  /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
   function openCitation(c: Citation) {
-    const el = doc?.kind === "reader" && view?.article.id === c.article_id ? document.getElementById(`b-${c.block_id}`) : null;
-    if (el) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      el.classList.add("focused");
-      window.setTimeout(() => el.classList.remove("focused"), 2000);
-    } else if (c.url) {
-      openPage(c.url, c.text);
-    } else {
-      setError("引用元の記事は削除されています");
-    }
+    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: `[${c.n}] 引用元`, terms: [], tone: "cite" });
+    else if (c.url) openPage(c.url, c.text);
+    else setError("引用元の記事は削除されています");
   }
 
   // ---- article actions ----------------------------------------------------------------------
@@ -466,7 +459,8 @@ export default function App() {
             onClose={() => setPalette(null)} />
         )}
         {chatOpen && (
-          <ChatPane article={chatArticle} groups={chatGroups} onCite={openCitation} onClose={() => setChatOpen(false)} />
+          <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
+            current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
         )}
       </div>
     </CoverContext.Provider>
