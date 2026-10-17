@@ -7,6 +7,7 @@ const SORTS: [ArticleSort, string][] = [
   ["saved_desc", "追加日時（新しい順）"],
   ["saved_asc", "追加日時（古い順）"],
   ["published_desc", "公開日時（新しい順）"],
+  ["difficulty_asc", "難易度順（やさしい順）"],
 ];
 
 /** The sidebar list: flat, or grouped by feed → genre / by genre. Only open groups render their articles. */

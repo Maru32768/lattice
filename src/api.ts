@@ -57,6 +57,9 @@ export interface ArticleRow {
   tags: string[];
   genre: string | null;
   genre_manual: boolean;
+  /** 1 (入門) to 5 (専門); see DifficultyField.tsx. */
+  difficulty: number | null;
+  difficulty_manual: boolean;
   feed_id: number | null;
   feed_title: string | null;
   /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
@@ -65,7 +68,7 @@ export interface ArticleRow {
 
 export type ArticleFilter = { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string };
 
-export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc";
+export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc";
 
 export interface FeedRow {
   id: number;
@@ -203,6 +206,9 @@ export const api = {
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),
+  setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
+  translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
+  setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
   classifyArticle: (id: number) => invoke<void>("classify_article", { id }),
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),

@@ -10,8 +10,23 @@ use crate::store::{PendingBlock, Store};
 pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
 pub const SOURCE_LANGUAGE: &str = "en";
+/// "off" translates technical terms too; absent means keep them in English (§8).
+pub const KEEP_TERMS_SETTING: &str = "translate_keep_terms";
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
+
+pub fn keep_terms(store: &Store) -> Result<bool, String> {
+    Ok(store.setting(KEEP_TERMS_SETTING).map_err(|e| e.to_string())?.as_deref() != Some("off"))
+}
+
+pub fn set_keep_terms(store: &Store, on: bool) -> Result<(), String> {
+    store.set_setting(KEEP_TERMS_SETTING, (!on).then_some("off")).map_err(|e| e.to_string())
+}
+
+/// `TARGET_LANGUAGE` in the current term mode: the key for jobs, the cache and display.
+pub fn target(store: &Store) -> Result<String, String> {
+    Ok(segments::target_key(TARGET_LANGUAGE, keep_terms(store)?))
+}
 
 pub fn enqueue(store: &Store, article_id: i64, target_language: &str) -> Result<(), String> {
     let params = serde_json::json!({ "target_language": target_language }).to_string();

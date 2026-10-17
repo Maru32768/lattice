@@ -2,6 +2,7 @@ import { createContext, useContext, useRef, useState } from "react";
 import type { ArticleView, Block, Inline, JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { GenreField } from "./GenreField";
+import { DifficultyField } from "./DifficultyField";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -122,9 +123,10 @@ function TranslationStatus({ job, done, total, onTranslate }: {
   );
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onTranslate, onSummarize, onFavorite, onTag, onGenre, onClassify }: {
+export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onTranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify }: {
   view: ArticleView;
   onGenre: (name: string) => void;
+  onDifficulty: (level: number | null) => void;
   onClassify: () => void;
   onSummarize: () => void;
   onFavorite: () => void;
@@ -187,6 +189,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           <span>{a.site_name ?? a.domain}</span>
           {a.author && <span>{a.author}</span>}
           {a.published_at && <span>{a.published_at.slice(0, 10)}</span>}
+          {!failed && <DifficultyField article={a} onDifficulty={onDifficulty} />}
           <button onClick={onPage}>ページ表示</button>
           <button onClick={onToggleRead}>{a.read_status === "read" ? "未読に戻す" : "既読にする"}</button>
           <button onClick={onFavorite} aria-pressed={a.favorite} title="お気に入り">{a.favorite ? "★" : "☆"}</button>
