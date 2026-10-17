@@ -26,8 +26,10 @@ export interface OverlaySettings {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, overlay, onOverlay, onSave, onReader, onFavorite, onError }: {
+export function BrowserView({ target, page, saved, saving, overlay, covered, onOverlay, onSave, onReader, onFavorite, onError }: {
   target: BrowseTarget;
+  /** An app overlay (palette, popover, menu) is open; the native webview would hide it, so hide the webview. */
+  covered: boolean;
   page: PageState | null;
   saved: ArticleRow | null;
   saving: boolean;
@@ -52,8 +54,15 @@ export function BrowserView({ target, page, saved, saving, overlay, onOverlay, o
     browser.open(target.url, bounds(), target.focus).catch((e) => onError(String(e)));
   }, [target]);
 
+  const coveredRef = useRef(covered);
+  coveredRef.current = covered;
   useEffect(() => {
-    const sync = () => browser.setBounds(bounds()).catch(() => {});
+    if (covered) browser.hide().catch(() => {});
+    else browser.setBounds(bounds()).catch(() => {}); // re-shows it
+  }, [covered]);
+
+  useEffect(() => {
+    const sync = () => { if (!coveredRef.current) browser.setBounds(bounds()).catch(() => {}); };
     const ro = new ResizeObserver(sync);
     ro.observe(host.current!);
     window.addEventListener("resize", sync);

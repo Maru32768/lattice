@@ -1,6 +1,4 @@
-// Sidebar grouping. Articles arrive already filtered and sorted; grouping keeps that order.
-
-export type ListMode = "list" | "feed" | "genre";
+// List grouping (グループ: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
 
 interface Groupable {
   genre: string | null;
@@ -39,7 +37,7 @@ const byGenre = <A extends Groupable>(articles: A[]) =>
   ordered(groupBy(articles, (a) => [`g:${a.genre?.toLowerCase() ?? ""}`, a.genre ?? UNCLASSIFIED]), "g:", false);
 
 /** "feed": feeds (manual additions first) → genres → articles. "genre": genres → articles. */
-export function groupArticles<A extends Groupable>(articles: A[], mode: Exclude<ListMode, "list">): Group<A>[] {
+export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" | "genre"): Group<A>[] {
   if (mode === "genre") return byGenre(articles);
   const feeds = groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? MANUAL]);
   return ordered(feeds, "f:", true).map((f) => ({ ...f, children: byGenre(f.articles) }));

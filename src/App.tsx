@@ -1,64 +1,77 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleFilter, type Citation, type ArticleRow, type ArticleSort, type ArticleView, type FeedRow, type SearchHit, type SearchResult, type TagCount } from "./api";
+import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
 import { ImportView } from "./ImportView";
 import { SettingsView } from "./SettingsView";
-import { ArticleList } from "./ArticleList";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
-import { SearchResults } from "./SearchResults";
 import { ChatPane } from "./ChatPane";
-import { filterGroups, filterKey, parseFilterKey } from "./scopes";
-import { FilterOptgroups } from "./FilterOptgroups";
-import { DifficultyBadge } from "./DifficultyField";
+import { filterGroups } from "./scopes";
+import { groupArticles, type Group } from "./groups";
+import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, type Facets, type Scope } from "./library";
+import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
+import { ListPane, ListRail, type Grouping } from "./ListPane";
+import { CoverContext } from "./Popover";
 import "./App.css";
 
-type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds" | "jobs";
+type Doc = null | { kind: "reader"; id: number } | { kind: "page"; target: BrowseTarget };
+
+type Action = "palette" | "search" | "next" | "prev" | "favorite" | "read" | "focus" | "view" | "less" | "more" | "escape";
+const KEYS: Record<string, Action> = {
+  "ctrl+k": "palette", "/": "search", j: "next", k: "prev", s: "favorite", m: "read", f: "focus", v: "view", "[": "less", "]": "more", Escape: "escape",
+};
+/** Actions that still run while focus is in a text field. */
+const IN_FIELDS = new Set<Action>(["palette", "escape"]);
+const keyOf = (e: KeyboardEvent) => `${e.ctrlKey || e.metaKey ? "ctrl+" : ""}${e.key.length === 1 ? e.key.toLowerCase() : e.key}`;
+
+const JOB_POLL_MS = 10_000;
 
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
-  const [filter, setFilter] = useState<ArticleFilter>({ kind: "all" });
-  const [tags, setTags] = useState<TagCount[]>([]);
-  const [genres, setGenres] = useState<TagCount[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
-  const groups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
-  const sidebarGroups = useMemo(() => filterGroups(genres, feeds, []), [genres, feeds]); // tags have their own buttons
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
+  const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
+  const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
   const [sort, setSort] = useState<ArticleSort>("saved_desc");
   const sortRef = useRef(sort);
   sortRef.current = sort;
-  const [main, setMain] = useState<Main>("empty");
+  const [group, setGroup] = useState<Grouping>("none");
+  const [scope, setScopeState] = useState<Scope>({ kind: "all" });
+  const [facets, setFacets] = useState<Facets>(NO_FACETS);
+  const [screen, setScreen] = useState<Screen>("library");
+  const [doc, setDoc] = useState<Doc>(null);
+  const [navOpen, setNavOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [jobFailures, setJobFailures] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [dbPath, setDbPath] = useState("");
+  const [covers, setCovers] = useState(0);
+  const cover = useCallback((d: 1 | -1) => setCovers((c) => c + d), []);
+  const [now, setNow] = useState(() => Date.now());
 
-  // Browser
-  const [address, setAddress] = useState("");
-  const [target, setTarget] = useState<BrowseTarget | null>(null);
+  // Page (in-app browser)
   const [page, setPage] = useState<PageState | null>(null);
   const [saved, setSaved] = useState<ArticleRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [overlay, setOverlay] = useState<OverlaySettings>({ enabled: false, percent: 70 });
 
-  // Reader (extracted text of a saved article)
+  // Reader
   const [view, setView] = useState<ArticleView | null>(null);
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
   const viewId = useRef<number | null>(null);
 
-  // Search
-  const [query, setQuery] = useState("");
-  const [searchScope, setSearchScope] = useState("all");
-  const [searched, setSearched] = useState<{ query: string; result: SearchResult } | null>(null);
-  const [chatOpen, setChatOpen] = useState(false);
-
   const fail = (e: unknown) => setError(String(e));
-  const refresh = () =>
-    Promise.all([api.listArticles(filterRef.current, sortRef.current).then(setArticles), api.listTags().then(setTags),
-      api.listGenres().then(setGenres), api.listFeeds().then(setFeeds)]).catch(fail);
+  const refresh = () => {
+    setNow(Date.now());
+    return Promise.all([
+      api.listArticles({ kind: "all" }, sortRef.current).then((a) => { setArticles(a); setLoaded(true); }),
+      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres),
+    ]).catch(fail);
+  };
   const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
   // Background jobs (bulk import fetches) report every article; throttle list reloads to one
   // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
@@ -71,13 +84,20 @@ export default function App() {
     viewId.current = id;
     return api.getArticle(id).then((v) => { if (viewId.current === id) setView(v); }).catch(fail);
   };
+  const loadJobs = () => api.jobOverview()
+    .then((o) => setJobFailures(o.counts.filter((c) => c.state === "failed").reduce((n, c) => n + c.count, 0)))
+    .catch(() => {});
 
   useEffect(() => {
-    api.dbPath().then(setDbPath);
+    loadJobs();
+    const poll = window.setInterval(loadJobs, JOB_POLL_MS);
+    let jobTimer = 0;
     const subs = [
       listen<number>("article-changed", (e) => {
         if (e.payload === viewId.current) loadView(e.payload);
         refreshSoon();
+        clearTimeout(jobTimer);
+        jobTimer = window.setTimeout(loadJobs, 1000);
       }),
       listen<{ url: string; loading: boolean }>("browser-page", (e) => {
         setPage((p) => ({ url: e.payload.url, loading: e.payload.loading, title: p?.url === e.payload.url ? p.title : "" }));
@@ -85,24 +105,110 @@ export default function App() {
       }),
       listen<string>("browser-title", (e) => setPage((p) => (p ? { ...p, title: e.payload } : p))),
     ];
-    return () => { subs.forEach((s) => s.then((f) => f())); };
+    return () => {
+      clearInterval(poll);
+      clearTimeout(jobTimer);
+      subs.forEach((s) => s.then((f) => f()));
+    };
   }, []);
+  useEffect(() => { refresh(); }, [sort]);
+
+  // ---- derived library --------------------------------------------------------------------
+  const scoped = useMemo(() => articles.filter((a) => inScope(a, scope, now)), [articles, scope, now]);
+  const shown = useMemo(() => scoped.filter((a) => matches(a, facets)), [scoped, facets]);
+  const groups: Group<ArticleRow>[] = useMemo(
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group)), [shown, group]);
+  const order = useMemo(() => {
+    const flat = (g: Group<ArticleRow>): ArticleRow[] => (g.children ? g.children.flatMap(flat) : g.articles);
+    return groups.flatMap(flat);
+  }, [groups]);
+  const counts: NavCounts = useMemo(() => {
+    const unread = articles.filter((a) => a.read_status === "unread");
+    return {
+      recent: articles.filter((a) => inScope(a, { kind: "recent" }, now)).length,
+      unread: unread.length,
+      favorites: articles.filter((a) => a.favorite).length,
+      all: articles.length,
+      manual: articles.filter((a) => a.feed_id == null).length,
+      genres: [...countBy(articles, "genres")].sort((a, b) => (a[0] == null ? 1 : b[0] == null ? -1 : b[1] - a[1])),
+      feedUnread: countBy(unread, "feeds"),
+    };
+  }, [articles, now]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now) : []),
+    [shown.length, articles, scope, facets, now]);
+  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
+
+  const current: ArticleRow | null = doc?.kind === "reader" ? view?.article ?? null : doc?.kind === "page" ? saved : null;
+  const selectedId = current?.id ?? null;
+
+  // ---- navigation -------------------------------------------------------------------------
+  function setScope(s: Scope) {
+    setScopeState(s);
+    setFacets(NO_FACETS);
+    setScreen("library");
+  }
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
   function openPage(url: string, focus?: string, article?: ArticleRow) {
     setError(null);
-    setTarget((t) => ({ url, focus, seq: (t?.seq ?? 0) + 1 }));
+    setDoc((d) => ({ kind: "page", target: { url, focus, seq: (d?.kind === "page" ? d.target.seq : 0) + 1 } }));
     setPage({ url, title: article?.title ?? "", loading: true });
     setSaved(article ?? null);
-    setMain("browser");
+    setScreen("library");
   }
 
-  function openAddress(e: React.FormEvent) {
-    e.preventDefault();
-    const raw = address.trim();
-    if (!raw) return;
-    openPage(/^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`);
+  function openReader(id: number) {
+    setError(null);
+    loadView(id);
+    setDoc({ kind: "reader", id });
+    setScreen("library");
   }
+
+  /** Opens in the view the current document uses (Reader by default). */
+  function openArticle(a: ArticleRow) {
+    if (doc?.kind === "page") openPage(a.original_url, undefined, a);
+    else openReader(a.id);
+  }
+
+  function step(delta: 1 | -1) {
+    if (order.length === 0) return;
+    const i = order.findIndex((a) => a.id === selectedId);
+    const next = order[i < 0 ? (delta > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + delta))];
+    if (next && next.id !== selectedId) openArticle(next);
+    window.setTimeout(() => document.querySelector(`.row[data-id="${next.id}"]`)?.scrollIntoView({ block: "nearest" }));
+  }
+
+  function toggleView() {
+    if (doc?.kind === "reader" && view) openPage(view.article.original_url, undefined, view.article);
+    else if (doc?.kind === "page" && saved) openReader(saved.id);
+  }
+
+  /** Chat citation: jump inside the Reader when it shows that article, else open the page at the block. */
+  function openCitation(c: Citation) {
+    const el = doc?.kind === "reader" && view?.article.id === c.article_id ? document.getElementById(`b-${c.block_id}`) : null;
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.add("focused");
+      window.setTimeout(() => el.classList.remove("focused"), 2000);
+    } else if (c.url) {
+      openPage(c.url, c.text);
+    } else {
+      setError("引用元の記事は削除されています");
+    }
+  }
+
+  // ---- article actions ----------------------------------------------------------------------
+  async function act(task: () => Promise<unknown>, id?: number) {
+    try {
+      await task();
+      await Promise.all([refresh(), id != null && viewId.current === id && loadView(id), page && refreshSaved(page.url)]);
+    } catch (e) {
+      fail(e);
+    }
+  }
+  const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
+  const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
+  const viewAct = (task: (id: number) => Promise<unknown>) => () => view && act(() => task(view.article.id), view.article.id);
 
   async function saveCurrent() {
     if (!page) return;
@@ -122,236 +228,116 @@ export default function App() {
     browser.setTranslation(o.enabled, o.percent).catch(fail);
   }
 
-  async function showReader(id: number) {
-    await loadView(id);
-    setMain("reader");
-  }
-
-  async function search(q: string, scope = searchScope) {
-    setError(null);
-    try {
-      setSearched({ query: q, result: await api.search(q, scope === "all" ? undefined : parseFilterKey(scope)) });
-      setMain("results");
-    } catch (e) {
-      fail(e);
+  function nudgeRatio(delta: number) {
+    if (doc?.kind === "page") changeOverlay({ enabled: true, percent: Math.max(0, Math.min(100, overlay.percent + delta)) });
+    else {
+      setMode("mixed");
+      setPercent((p) => Math.max(0, Math.min(100, p + delta)));
     }
   }
 
-  function openHit(hit: SearchHit) {
-    const a = articles.find((x) => x.id === hit.article_id);
-    if (a) openPage(a.original_url, hit.text, a);
+  // ---- keyboard -----------------------------------------------------------------------------
+  const actions: Record<Action, () => void> = {
+    palette: () => {},
+    search: () => {},
+    next: () => step(1),
+    prev: () => step(-1),
+    favorite: () => current && toggleFavorite(current),
+    read: () => current && toggleRead(current),
+    focus: () => {
+      const collapse = navOpen || listOpen;
+      setNavOpen(!collapse);
+      setListOpen(!collapse);
+    },
+    view: toggleView,
+    less: () => nudgeRatio(-10),
+    more: () => nudgeRatio(10),
+    escape: () => {
+      if (screen !== "library") setScreen("library");
+      else setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
+    },
+  };
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.isComposing) return;
+      const action = KEYS[keyOf(e)];
+      if (!action) return;
+      const t = e.target as HTMLElement;
+      const inField = t.closest("input, textarea, select, [contenteditable='true']");
+      if (inField && !IN_FIELDS.has(action)) return;
+      if ((e.ctrlKey || e.metaKey) && action !== "palette") return;
+      // Plain keys on a focused button would also activate it; only Escape is shared.
+      if (action !== "escape" || !inField) e.preventDefault();
+      actionsRef.current[action]();
+    };
+    window.addEventListener("keydown", down);
+    return () => window.removeEventListener("keydown", down);
+  }, []);
+
+  // ---- render ---------------------------------------------------------------------------------
+  const title = scopeLabel(scope, articles);
+  const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
+  const nav = navOpen
+    ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
+        chatOpen={chatOpen} searching={false} recentSearches={[]} onScope={setScope} onScreen={setScreen} onPalette={() => {}}
+        onOpenUrl={() => {}} onChat={() => setChatOpen((o) => !o)} onRecent={() => {}} onGenres={() => setScreen("settings")}
+        onCollapse={() => setNavOpen(false)} />
+    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => {}}
+        onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
+
+  if (screen === "settings") {
+    return (
+      <div className="app">
+        <SettingsView onChanged={refresh} />
+      </div>
+    );
   }
-
-  /** Chat citation: jump inside the Reader when it shows that article, else open the page at the block. */
-  function openCitation(c: Citation) {
-    const el = main === "reader" && view?.article.id === c.article_id ? document.getElementById(`b-${c.block_id}`) : null;
-    if (el) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      el.classList.add("focused");
-      window.setTimeout(() => el.classList.remove("focused"), 2000);
-    } else if (c.url) {
-      openPage(c.url, c.text);
-    } else {
-      setError("引用元の記事は削除されています");
-    }
-  }
-
-  useEffect(() => { refresh(); }, [filter, sort]);
-
-  async function toggleFavorite(a: ArticleRow) {
-    try {
-      await api.setFavorite(a.id, !a.favorite);
-      await Promise.all([refresh(), page && refreshSaved(page.url), viewId.current === a.id && loadView(a.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function editTag(a: ArticleRow, name: string, add: boolean) {
-    try {
-      await (add ? api.addTag(a.id, name) : api.removeTag(a.id, name));
-      await Promise.all([refresh(), loadView(a.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function setGenre(name: string) {
-    if (!view) return;
-    try {
-      await api.setGenre(view.article.id, name);
-      await Promise.all([refresh(), loadView(view.article.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function setDifficulty(level: number | null) {
-    if (!view) return;
-    try {
-      await api.setDifficulty(view.article.id, level);
-      await Promise.all([refresh(), loadView(view.article.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function classifyArticle() {
-    if (!view) return;
-    try {
-      await api.classifyArticle(view.article.id);
-      await loadView(view.article.id);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function toggleRead() {
-    if (!view) return;
-    const a = view.article;
-    await api.setRead(a.id, a.read_status !== "read");
-    await Promise.all([refresh(), loadView(a.id)]);
-  }
-
-  async function translateArticle() {
-    if (!view) return;
-    try {
-      await api.translateArticle(view.article.id);
-      await loadView(view.article.id);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function summarizeArticle() {
-    if (!view) return;
-    try {
-      await api.summarizeArticle(view.article.id);
-      await loadView(view.article.id);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function retryArticle() {
-    if (!view) return;
-    try {
-      await api.saveUrl(view.article.original_url);
-      await Promise.all([refresh(), loadView(view.article.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function renderArticle() {
-    if (!view) return;
-    try {
-      await api.renderArticle(view.article.id);
-      await loadView(view.article.id);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  async function reextractArticle() {
-    if (!view) return;
-    try {
-      await api.reextractArticle(view.article.id);
-      await Promise.all([refresh(), loadView(view.article.id)]);
-    } catch (e) {
-      fail(e);
-    }
-  }
-
-  const currentArticleId = main === "reader" ? view?.article.id : saved?.id;
-  const chatArticle = main === "reader" && view ? view.article : main === "browser" ? saved : null;
-  const filterButton = (f: ArticleFilter, label: string) => (
-    <button className={JSON.stringify(f) === JSON.stringify(filter) ? "on" : ""} onClick={() => setFilter(f)}>{label}</button>
-  );
 
   return (
-    <div className={`app${chatOpen ? " with-chat" : ""}`}>
-      <aside className="sidebar">
-        <form onSubmit={openAddress}>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="URL を開く" aria-label="URL" />
-          <button type="submit" disabled={!address.trim()}>開く</button>
-        </form>
-        <form role="search" onSubmit={(e) => { e.preventDefault(); if (query.trim()) search(query.trim()); }}>
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="保存した記事を検索" aria-label="検索語" />
-          <select value={searchScope} aria-label="検索範囲" title="検索範囲" onChange={(e) => {
-            setSearchScope(e.target.value);
-            if (searched) search(searched.query, e.target.value);
-          }}>
-            <option value="all">全記事</option>
-            <option value={filterKey({ kind: "unread" })}>未読</option>
-            <option value={filterKey({ kind: "favorites" })}>お気に入り</option>
-            <FilterOptgroups groups={groups} />
-          </select>
-          <button type="submit" disabled={!query.trim()}>検索</button>
-        </form>
-        {error && <p className="error" role="alert">{error}</p>}
-        <nav className="filters" aria-label="記事の絞り込み">
-          {filterButton({ kind: "all" }, "最近追加")}
-          {filterButton({ kind: "unread" }, "未読")}
-          {filterButton({ kind: "favorites" }, "お気に入り")}
-          <select className={filter.kind === "genre" || filter.kind === "feed" ? "on" : ""} aria-label="ジャンル・フィードで絞り込み"
-            value={filter.kind === "genre" || filter.kind === "feed" ? filterKey(filter) : ""}
-            onChange={(e) => setFilter(e.target.value ? parseFilterKey(e.target.value) : { kind: "all" })}>
-            <option value="">ジャンル・フィード…</option>
-            <FilterOptgroups groups={sidebarGroups} />
-          </select>
-          {tags.map((t) => (
-            <span key={t.name}>{filterButton({ kind: "tag", name: t.name }, `#${t.name} ${t.count}`)}</span>
-          ))}
-        </nav>
-        <ArticleList articles={articles} sort={sort} onSort={setSort} renderItem={(a) => (
-            <li key={a.id}>
-              <button className={`item ${currentArticleId === a.id ? "active" : ""} ${a.read_status}`} onClick={() => openPage(a.original_url, undefined, a)}>
-                <span className="title">{a.favorite && <span className="star" aria-label="お気に入り">★ </span>}{a.title ?? a.original_url}</span>
-                <span className="sub">
-                  <DifficultyBadge article={a} />
-                  {a.domain}
-                  {a.tags.map((t) => ` #${t}`).join("")}
-                  {a.fetch_status === "pending" && " · 取得中…"}
-                  {(a.fetch_status === "failed" || a.extraction_status === "failed") && <em> · 失敗</em>}
-                  {a.thin && <em title="ページ表示で開いて「描画後のページで保存」できます"> · 本文が短い</em>}
-                </span>
-              </button>
-            </li>
-          )} />
-        <button className="import-link" onClick={() => setMain("feeds")}>フィード（RSS）…</button>
-        <button className="import-link" onClick={() => setChatOpen((o) => !o)} aria-pressed={chatOpen}>
-          {chatOpen ? "対話ペインを閉じる" : "記事に質問する（対話）…"}
-        </button>
-        <button className="import-link" onClick={() => setMain("import")}>一括インポート…</button>
-        <button className="import-link" onClick={() => setMain("jobs")}>処理状況…</button>
-        <button className="import-link" onClick={() => setMain("settings")}>設定・バックアップ…</button>
-        <footer className="dbpath" title={dbPath}>DB: {dbPath}</footer>
-      </aside>
-      <main className={main === "browser" ? "has-browser" : ""}>
-        {main !== "results" && searched && <button className="back" onClick={() => setMain("results")}>← 検索結果に戻る</button>}
-        {main === "browser" && target && (
-          <BrowserView target={target} page={page} saved={saved} saving={saving} overlay={overlay}
-            onOverlay={changeOverlay} onSave={saveCurrent} onReader={() => saved && showReader(saved.id)}
-            onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
+    <CoverContext.Provider value={cover}>
+      <div className="app">
+        {nav}
+        {screen === "library" && (listOpen
+          ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
+              all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
+              translating={null} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
+              onCollapse={() => setListOpen(false)} />
+          : <ListRail label={[title, ...activeDims(facets).map(() => "…")].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
+              count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
+        <main className="main">
+          {error && (
+            <div className="banner" role="alert">
+              <span className="grow">{error}</span>
+              <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
+            </div>
+          )}
+          {screen === "import" && <ImportView onImported={refresh} />}
+          {screen === "feeds" && <FeedsView onChanged={refreshSoon} />}
+          {screen === "jobs" && <JobsView />}
+          {screen === "library" && doc?.kind === "page" && (
+            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} overlay={overlay} covered={covers > 0}
+              onOverlay={changeOverlay} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+              onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
+          )}
+          {screen === "library" && doc?.kind === "reader" && view && (
+            <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
+              onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
+              onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
+              onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
+              onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
+              onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
+              onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
+              onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
+              onClassify={viewAct(api.classifyArticle)} />
+          )}
+          {screen === "library" && !doc && loaded && <p className="doc-empty muted">{articles.length ? "記事を選んでください" : "記事はまだありません"}</p>}
+        </main>
+        {chatOpen && (
+          <ChatPane article={chatArticle} groups={chatGroups} onCite={openCitation} onClose={() => setChatOpen(false)} />
         )}
-        {main === "reader" && view && (
-          <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
-            onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
-            onToggleRead={toggleRead} onRetry={retryArticle} onReextract={reextractArticle} onRender={renderArticle} onTranslate={translateArticle} onSummarize={summarizeArticle}
-            onFavorite={() => toggleFavorite(view.article)} onTag={(name, add) => editTag(view.article, name, add)} onGenre={setGenre} onDifficulty={setDifficulty} onClassify={classifyArticle} />
-        )}
-        {main === "results" && searched && <SearchResults query={searched.query} result={searched.result} onOpen={openHit} />}
-        {main === "import" && <ImportView onImported={refresh} />}
-        {main === "settings" && <SettingsView onChanged={refresh} />}
-        {main === "feeds" && <FeedsView onChanged={refreshSoon} />}
-        {main === "jobs" && <JobsView />}
-        {main === "empty" && <p className="empty">URL を開いてページを読み、「このページを翻訳」「Index に追加」で保存できます。</p>}
-      </main>
-      {chatOpen && (
-        <ChatPane article={chatArticle && { id: chatArticle.id, title: chatArticle.title ?? chatArticle.original_url }}
-          groups={groups} onCite={openCitation} onClose={() => setChatOpen(false)} />
-      )}
-    </div>
+      </div>
+    </CoverContext.Provider>
   );
 }
