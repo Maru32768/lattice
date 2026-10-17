@@ -16,7 +16,7 @@ export const SORTS: [ArticleSort, string][] = [
 ];
 const GROUPINGS: [Grouping, string][] = [["none", "なし"], ["feed", "ソース"], ["genre", "ジャンル"]];
 
-const mmdd = (s: string) => {
+export const mmdd = (s: string) => {
   const d = new Date(s);
   return Number.isNaN(d.getTime()) ? s.slice(5, 10).replace("-", "/") : `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 };

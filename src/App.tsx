@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow } from "./api";
+import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
@@ -11,14 +11,26 @@ import { JobsView } from "./JobsView";
 import { ChatPane } from "./ChatPane";
 import { filterGroups } from "./scopes";
 import { groupArticles, type Group } from "./groups";
-import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, type Facets, type Scope } from "./library";
+import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
+import { filterHits, groupHits, terms, type SearchMethod } from "./search";
+import { MATCH_LABEL, SearchPane } from "./SearchPane";
+import type { Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
 import { Palette, type PaletteActions } from "./Palette";
 import "./App.css";
 
-type Doc = null | { kind: "reader"; id: number } | { kind: "page"; target: BrowseTarget };
+type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"; target: BrowseTarget };
+
+const RECENT_KEY = "lattice.recentSearches";
+function loadRecent(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
 
 type Action = "palette" | "search" | "next" | "prev" | "favorite" | "read" | "focus" | "view" | "less" | "more" | "escape";
 const KEYS: Record<string, Action> = {
@@ -56,6 +68,13 @@ export default function App() {
   const [palette, setPalette] = useState<string | null>(null);
   const [, setFeedsUrl] = useState<string | undefined>(undefined);
   const [, setChatScope] = useState<{ key: string; seq: number } | null>(null);
+
+  // Search mode of the list pane
+  const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
+  const [method, setMethod] = useState<SearchMethod>("hybrid");
+  const [hitSel, setHitSel] = useState(0);
+  const [searchFocus, setSearchFocus] = useState(0);
+  const [recent, setRecent] = useState<string[]>(loadRecent);
 
   // Page (in-app browser)
   const [page, setPage] = useState<PageState | null>(null);
@@ -141,6 +160,13 @@ export default function App() {
   }, [articles, now]);
   const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now) : []),
     [shown.length, articles, scope, facets, now]);
+  const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
+  const hitGroups = useMemo(() => {
+    if (!search?.result) return [];
+    const ids = new Set(shown.map((a) => a.id));
+    return groupHits(filterHits(search.result.hits, method, ids));
+  }, [search, method, shown]);
+  const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
   const chatGroups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
 
   const current: ArticleRow | null = doc?.kind === "reader" ? view?.article ?? null : doc?.kind === "page" ? saved : null;
@@ -151,6 +177,48 @@ export default function App() {
     setScopeState(s);
     setFacets(NO_FACETS);
     setScreen("library");
+    if (search?.query) runSearch(search.query, s);
+  }
+
+  async function runSearch(q: string, s: Scope = scope) {
+    setScreen("library");
+    setListOpen(true);
+    setHitSel(0);
+    setSearch({ query: q, result: null, busy: true });
+    const next = [q, ...recent.filter((x) => x !== q)].slice(0, 5);
+    setRecent(next);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    } catch {
+      // Blocked storage: recent searches are simply not kept.
+    }
+    try {
+      const result = await api.search(q, toFilter(s));
+      setSearch((cur) => (cur?.query === q ? { query: q, result, busy: false } : cur));
+    } catch (e) {
+      fail(e);
+      setSearch((cur) => cur && { ...cur, busy: false });
+    }
+  }
+
+  function enterSearch() {
+    setScreen("library");
+    setListOpen(true);
+    setSearch((s) => s ?? { query: "", result: null, busy: false });
+    setSearchFocus((n) => n + 1);
+  }
+
+  function openHit(h: SearchHit, page = false) {
+    const a = articleById.get(h.article_id);
+    if (page && a) return openPage(a.original_url, h.text, a);
+    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" });
+  }
+
+  function stepHit(delta: 1 | -1) {
+    if (!flatHits.length) return;
+    const i = Math.max(0, Math.min(flatHits.length - 1, hitSel + delta));
+    setHitSel(i);
+    openHit(flatHits[i]);
   }
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
@@ -162,10 +230,10 @@ export default function App() {
     setScreen("library");
   }
 
-  function openReader(id: number) {
+  function openReader(id: number, focus?: Omit<Focus, "seq">) {
     setError(null);
-    loadView(id);
-    setDoc({ kind: "reader", id });
+    if (viewId.current !== id || !view) loadView(id);
+    setDoc((d) => ({ kind: "reader", id, focus: focus && { ...focus, seq: (d?.kind === "reader" ? d.focus?.seq ?? 0 : 0) + 1 } }));
     setScreen("library");
   }
 
@@ -261,7 +329,7 @@ export default function App() {
     page: (url) => openPage(url),
     index: (url) => act(async () => openReader(await api.saveUrl(url))),
     discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
-    search: () => {},
+    search: (q) => runSearch(q),
     screen: setScreen,
     chat: openChat,
     lang: setLang,
@@ -271,9 +339,9 @@ export default function App() {
   // ---- keyboard -----------------------------------------------------------------------------
   const actions: Record<Action, () => void> = {
     palette: () => setPalette((p) => (p == null ? "" : null)),
-    search: () => {},
-    next: () => step(1),
-    prev: () => step(-1),
+    search: enterSearch,
+    next: () => (search ? stepHit(1) : step(1)),
+    prev: () => (search ? stepHit(-1) : step(-1)),
     favorite: () => current && toggleFavorite(current),
     read: () => current && toggleRead(current),
     focus: () => {
@@ -286,6 +354,7 @@ export default function App() {
     more: () => nudgeRatio(10),
     escape: () => {
       if (screen !== "library") setScreen("library");
+      else if (search) setSearch(null);
       else setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
     },
   };
@@ -310,11 +379,22 @@ export default function App() {
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles);
+  const docHits = search && doc?.kind === "reader" ? flatHits.filter((h) => h.article_id === doc.id) : [];
+  const readerMatches = docHits.length > 0 && doc?.kind === "reader" ? {
+    i: docHits.findIndex((h) => h.block_id === doc.focus?.block),
+    n: docHits.length,
+    onStep: (d: 1 | -1) => {
+      const at = docHits.findIndex((h) => h.block_id === doc.focus?.block);
+      const h = docHits[Math.max(0, Math.min(docHits.length - 1, at + d))];
+      setHitSel(flatHits.indexOf(h));
+      openHit(h);
+    },
+  } : undefined;
   const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
   const nav = navOpen
     ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
-        chatOpen={chatOpen} searching={false} recentSearches={[]} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
-        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={() => {}} onGenres={() => setScreen("settings")}
+        chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
+        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => setScreen("settings")}
         onCollapse={() => setNavOpen(false)} />
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
@@ -331,7 +411,13 @@ export default function App() {
     <CoverContext.Provider value={cover}>
       <div className="app">
         {nav}
-        {screen === "library" && (listOpen
+        {screen === "library" && search && listOpen && (
+          <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
+            hits={hitGroups} sel={hitSel} onSel={setHitSel} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
+            scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
+            focusSeq={searchFocus} />
+        )}
+        {screen === "library" && !(search && listOpen) && (listOpen
           ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
               all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
               translating={null} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
@@ -354,7 +440,7 @@ export default function App() {
               onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
           )}
           {screen === "library" && doc?.kind === "reader" && view && (
-            <Reader key={view.article.id} view={view} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
+            <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onMode={setMode} onPercent={setPercent}
               onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
               onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
               onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}

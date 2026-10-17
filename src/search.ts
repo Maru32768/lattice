@@ -21,3 +21,24 @@ export function highlight(text: string, ts: string[]): { mark: boolean; v: strin
     .map((v, i) => ({ mark: i % 2 === 1, v }))
     .filter((s) => s.v !== "");
 }
+
+export type SearchMethod = "hybrid" | "lexical" | "semantic";
+
+/**
+ * The backend always runs hybrid search; the 全文 / 意味 choice filters hits by how they
+ * matched. `ids` limits hits to the articles currently in scope ∧ facets.
+ */
+export function filterHits<H extends { article_id: number; source: "lexical" | "semantic" | "both" }>(hits: H[], method: SearchMethod, ids: Set<number>): H[] {
+  return hits.filter((h) => ids.has(h.article_id) && (method === "hybrid" || h.source === "both" || h.source === method));
+}
+
+/** Hits grouped by article, in order of each article's best (first) hit. */
+export function groupHits<H extends { article_id: number }>(hits: H[]): { article_id: number; hits: H[] }[] {
+  const m = new Map<number, H[]>();
+  for (const h of hits) {
+    const g = m.get(h.article_id);
+    if (g) g.push(h);
+    else m.set(h.article_id, [h]);
+  }
+  return [...m].map(([article_id, hits]) => ({ article_id, hits }));
+}

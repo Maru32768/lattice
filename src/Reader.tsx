@@ -13,6 +13,15 @@ function Link({ href, children }: { href: string; children: React.ReactNode }) {
   return <a href={href} title={href} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openLink(href); }}>{children}</a>;
 }
 
+/** A block to scroll to and mark: a search hit or a chat citation. `seq` re-triggers the scroll. */
+export interface Focus {
+  block: number;
+  label: string;
+  terms: string[];
+  tone: "hit" | "cite";
+  seq: number;
+}
+
 /** Mirrors ir.rs PROSE_KINDS. */
 const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
 
@@ -151,8 +160,11 @@ function RenderAction({ view, onRender }: { view: ArticleView; onRender: () => v
     : <button onClick={onRender} title="裏の非表示ブラウザでページを描画し、その内容で保存し直します">描画して取り込み直す</button>;
 }
 
-export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify }: {
+export function Reader({ view, focus, matches, mode, percent, onMode, onPercent, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify }: {
   view: ArticleView;
+  focus?: Focus;
+  /** Search hits in this article: `i` of `n` is the focused one. */
+  matches?: { i: number; n: number; onStep: (d: 1 | -1) => void };
   onRender: () => void;
   onGenre: (name: string) => void;
   onDifficulty: (level: number | null) => void;
@@ -204,6 +216,10 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
     timers.current.hide = window.setTimeout(() => setTip(null), 150);
   }
 
+  useEffect(() => {
+    if (focus) document.getElementById(`b-${focus.block}`)?.scrollIntoView({ block: "center" });
+  }, [focus?.seq, blocks.length]);
+
   function flip(id: number) {
     setFlipped((s) => {
       const n = new Set(s);
@@ -251,6 +267,8 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
               </label>
             )}
             <TranslationStatus job={job} done={done} total={total} onTranslate={onTranslate} />
+            {matches && <span className="status">一致 {matches.i + 1} / {matches.n}
+              <button onClick={() => matches.onStep(-1)} aria-label="前の一致">↑</button><button onClick={() => matches.onStep(1)} aria-label="次の一致">↓</button></span>}
           </div>
         )}
       </header>
@@ -278,7 +296,7 @@ export function Reader({ view, mode, percent, onMode, onPercent, onPage, onLink,
           const translated = selected.has(b.id) !== flipped.has(b.id) && has;
           return (
             <div key={b.id} id={`b-${b.id}`}
-              className={`block ${b.kind}${has ? " has-translation" : ""}${translated ? " translated" : ""}`}
+              className={`block ${b.kind}${has ? " has-translation" : ""}${translated ? " translated" : ""}${focus?.block === b.id ? " focused" : ""}`}
               onMouseEnter={has ? (e) => hover(e, b, translated) : undefined}
               onMouseLeave={has ? leave : undefined}
               tabIndex={has ? 0 : undefined}
