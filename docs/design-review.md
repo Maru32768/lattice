@@ -333,3 +333,20 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 ### 未実装（意図的）
 
 エクスポートからの import（復元は DB バックアップで行う）、一覧の種類での絞り込みとページング、succeeded の履歴表示、エクスポートの進捗表示と保存先の選択、エクスポートの自動実行。
+
+## 11. ジャンル・フィードの範囲指定（対話・検索）
+
+| 対象 | ファイル |
+|---|---|
+| ジャンル・フィードの絞り込み、記事 ID だけの query | `store::ArticleFilter`（`Genre` / `Feed`）、`filter_cond`、`Store::article_ids` |
+| 対話の範囲 | `chat::Store::scope_articles`、`src/ChatPane.tsx` |
+| 検索の範囲 | `search_blocks`（`filter`）、`src/App.tsx` |
+| 範囲の選択肢 | `src/scopes.ts`、`src/FilterOptgroups.tsx` |
+
+- **絞り込みの種類。** `ArticleFilter` に `Genre { name }`（`null` は未分類）と `Feed { id }`（`null` は手動追加）を追加した。条件は `filter_cond` の 1 か所で組み立て、一覧（`list_articles_sorted`）と `article_ids` が共有する。ジャンル名は `genres.name` の `COLLATE NOCASE` で照合する。
+- **範囲は記事 ID の集合。** `article_ids` は `All` なら `None`（制限なし）を返すので、絞り込まない検索・対話は従来どおりの速い経路を通る。それ以外は `SELECT id` だけを取る（以前の対話は一覧と同じ全列を読んでいた）。集合が空なら、検索は 0 件、対話はモデルを呼ばずに「見つかりませんでした」と答える。
+- **選択肢。** 対話はこの記事／全記事／ジャンル／フィード／タグ、検索は全記事／未読／お気に入り／ジャンル／フィード／タグ。ジャンル・フィード・タグは `<optgroup>` に分ける。記事が 0 件のジャンル（初期ジャンル）は出さない。未分類と手動追加は件数を数えずに常に出す。`<select>` の値は filter の JSON。検索結果を表示中に範囲を変えると、同じ語で検索し直す。
+
+### 未実装（意図的）
+
+一覧で開いているグループ（フィード → ジャンルの組み合わせ）を範囲にすること（1 つの `ArticleFilter` では表せない。複合条件が必要になったら filter を AND の列にする）、範囲の選択の保存、サイドバーの絞り込みボタンへのジャンル・フィードの追加（表示モードのグループで代わりになる）。

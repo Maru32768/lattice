@@ -259,8 +259,9 @@ fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn search_blocks(app: State<'_, App>, query: String) -> Result<SearchResult, String> {
-    search::search(&app.store, &app.providers.embedder, &query, None, translate::TARGET_LANGUAGE, 30).await
+async fn search_blocks(app: State<'_, App>, query: String, filter: Option<ArticleFilter>) -> Result<SearchResult, String> {
+    let articles = app.store.article_ids(&filter.unwrap_or(ArticleFilter::All)).map_err(err)?;
+    search::search(&app.store, &app.providers.embedder, &query, articles.as_deref(), translate::TARGET_LANGUAGE, 30).await
 }
 
 #[tauri::command]

@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleFilter, type Citation, type ArticleRow, type ArticleSort, type ArticleView, type SearchHit, type SearchResult, type TagCount } from "./api";
+import { api, browser, type ArticleFilter, type Citation, type ArticleRow, type ArticleSort, type ArticleView, type FeedRow, type SearchHit, type SearchResult, type TagCount } from "./api";
 import { BrowserView, type BrowseTarget, type OverlaySettings, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 import { Reader } from "./Reader";
@@ -11,6 +11,8 @@ import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
 import { SearchResults } from "./SearchResults";
 import { ChatPane } from "./ChatPane";
+import { filterGroups, filterKey, parseFilterKey } from "./scopes";
+import { FilterOptgroups } from "./FilterOptgroups";
 import "./App.css";
 
 type Main = "empty" | "browser" | "reader" | "results" | "import" | "settings" | "feeds" | "jobs";
@@ -19,6 +21,9 @@ export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [filter, setFilter] = useState<ArticleFilter>({ kind: "all" });
   const [tags, setTags] = useState<TagCount[]>([]);
+  const [genres, setGenres] = useState<TagCount[]>([]);
+  const [feeds, setFeeds] = useState<FeedRow[]>([]);
+  const groups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
   const filterRef = useRef(filter);
   filterRef.current = filter;
   const [sort, setSort] = useState<ArticleSort>("saved_desc");
@@ -44,12 +49,14 @@ export default function App() {
 
   // Search
   const [query, setQuery] = useState("");
+  const [searchScope, setSearchScope] = useState("all");
   const [searched, setSearched] = useState<{ query: string; result: SearchResult } | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
 
   const fail = (e: unknown) => setError(String(e));
   const refresh = () =>
-    Promise.all([api.listArticles(filterRef.current, sortRef.current).then(setArticles), api.listTags().then(setTags)]).catch(fail);
+    Promise.all([api.listArticles(filterRef.current, sortRef.current).then(setArticles), api.listTags().then(setTags),
+      api.listGenres().then(setGenres), api.listFeeds().then(setFeeds)]).catch(fail);
   const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
   // Background jobs (bulk import fetches) report every article; coalesce list reloads.
   const refreshTimer = useRef(0);
@@ -117,10 +124,10 @@ export default function App() {
     setMain("reader");
   }
 
-  async function search(q: string) {
+  async function search(q: string, scope = searchScope) {
     setError(null);
     try {
-      setSearched({ query: q, result: await api.search(q) });
+      setSearched({ query: q, result: await api.search(q, scope === "all" ? undefined : parseFilterKey(scope)) });
       setMain("results");
     } catch (e) {
       fail(e);
@@ -248,6 +255,15 @@ export default function App() {
         </form>
         <form role="search" onSubmit={(e) => { e.preventDefault(); if (query.trim()) search(query.trim()); }}>
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="保存した記事を検索" aria-label="検索語" />
+          <select value={searchScope} aria-label="検索範囲" title="検索範囲" onChange={(e) => {
+            setSearchScope(e.target.value);
+            if (searched) search(searched.query, e.target.value);
+          }}>
+            <option value="all">全記事</option>
+            <option value={filterKey({ kind: "unread" })}>未読</option>
+            <option value={filterKey({ kind: "favorites" })}>お気に入り</option>
+            <FilterOptgroups groups={groups} />
+          </select>
           <button type="submit" disabled={!query.trim()}>検索</button>
         </form>
         {error && <p className="error" role="alert">{error}</p>}
@@ -304,7 +320,7 @@ export default function App() {
       </main>
       {chatOpen && (
         <ChatPane article={chatArticle && { id: chatArticle.id, title: chatArticle.title ?? chatArticle.original_url }}
-          tags={tags} onCite={openCitation} onClose={() => setChatOpen(false)} />
+          groups={groups} onCite={openCitation} onClose={() => setChatOpen(false)} />
       )}
     </div>
   );

@@ -361,6 +361,27 @@ pub enum ArticleFilter {
     Unread,
     Favorites,
     Tag { name: String },
+    /// `None`: 未分類.
+    Genre { name: Option<String> },
+    /// `None`: 手動追加 (not from a feed).
+    Feed { id: Option<i64> },
+}
+
+/// SQL condition on `articles` for `filter`, with its one parameter (`?1`) if any.
+fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types::Value>) {
+    match filter {
+        ArticleFilter::All => ("1", None),
+        ArticleFilter::Unread => ("read_status = 'unread'", None),
+        ArticleFilter::Favorites => ("favorite = 1", None),
+        ArticleFilter::Tag { name } => (
+            "EXISTS (SELECT 1 FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id AND t.name = ?1)",
+            Some(name.clone().into()),
+        ),
+        ArticleFilter::Genre { name: Some(n) } => ("genre_id = (SELECT id FROM genres WHERE name = ?1)", Some(n.clone().into())),
+        ArticleFilter::Genre { name: None } => ("genre_id IS NULL", None),
+        ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
+        ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
@@ -786,19 +807,24 @@ impl Store {
             // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
         };
-        let (cond, tag) = match filter {
-            ArticleFilter::All => ("1", ""),
-            ArticleFilter::Unread => ("read_status = 'unread'", ""),
-            ArticleFilter::Favorites => ("favorite = 1", ""),
-            ArticleFilter::Tag { name } => (
-                "EXISTS (SELECT 1 FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id AND t.name = ?1)",
-                name.as_str(),
-            ),
-        };
+        let (cond, arg) = filter_cond(filter);
         let c = self.conn();
         let mut st = c.prepare(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE {cond} ORDER BY {order}"))?;
-        let rows = if tag.is_empty() { st.query_map([], article_row)? } else { st.query_map([tag], article_row)? };
+        let rows = st.query_map(rusqlite::params_from_iter(arg), article_row)?;
         rows.collect()
+    }
+
+    /// Ids of the articles in `filter`, as a search/chat restriction: `None` for `All`, so
+    /// unfiltered search stays on its fast path.
+    pub fn article_ids(&self, filter: &ArticleFilter) -> Result<Option<Vec<i64>>> {
+        if *filter == ArticleFilter::All {
+            return Ok(None);
+        }
+        let (cond, arg) = filter_cond(filter);
+        let c = self.conn();
+        let mut st = c.prepare(&format!("SELECT id FROM articles WHERE {cond}"))?;
+        let ids = st.query_map(rusqlite::params_from_iter(arg), |r| r.get(0))?.collect::<Result<_>>()?;
+        Ok(Some(ids))
     }
 
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {
@@ -1279,6 +1305,42 @@ mod tests {
         assert_eq!(s.list_tags().unwrap().iter().map(|t| (t.name.as_str(), t.count)).collect::<Vec<_>>(), [("Database", 2), ("Linux", 1)]);
         s.remove_tag(3, "Linux").unwrap();
         assert_eq!(s.list_tags().unwrap().len(), 1, "unused tag removed");
+    }
+
+    #[test]
+    fn genre_and_feed_filters_restrict_lists_and_search() {
+        use std::collections::HashSet;
+        let s = Store::open_in_memory().unwrap();
+        for u in ["https://a.dev/1", "https://a.dev/2", "https://a.dev/3"] {
+            let (id, _) = s.upsert_pending(u, u, "a.dev").unwrap();
+            let f = Fetched { final_url: u.into(), status: 200, content_type: None, html: "<p>x</p>".into() };
+            let p = Block { kind: crate::ir::BlockKind::Paragraph, text: format!("checkpoint tuning {id}"), inlines: vec![], attrs: Default::default() };
+            s.save_fetched(id, Some(&f), Ok(ArticleIr { meta: Default::default(), blocks: vec![p] }), None).unwrap();
+        }
+        s.exec_for_test(
+            "INSERT INTO feeds (url) VALUES ('https://a.dev/feed');
+             UPDATE articles SET genre_id = (SELECT id FROM genres WHERE name = 'Database') WHERE id IN (1, 3);
+             UPDATE articles SET feed_id = 1 WHERE id = 2;",
+        );
+        let ids = |f: ArticleFilter| s.list_articles(&f).unwrap().iter().map(|a| a.id).collect::<Vec<_>>();
+        let set = |f: ArticleFilter| s.article_ids(&f).unwrap().map(|v| v.into_iter().collect::<HashSet<_>>());
+        let db = ArticleFilter::Genre { name: Some("database".into()) };
+        assert_eq!(ids(db.clone()), [3, 1], "genre names match case-insensitively");
+        assert_eq!(ids(ArticleFilter::Genre { name: None }), [2]);
+        assert_eq!(ids(ArticleFilter::Feed { id: Some(1) }), [2]);
+        assert_eq!(ids(ArticleFilter::Feed { id: None }), [3, 1]);
+        assert_eq!(set(db.clone()), Some(HashSet::from([1, 3])));
+        assert_eq!(set(ArticleFilter::Genre { name: Some("Linux".into()) }), Some(HashSet::new()));
+        assert_eq!(set(ArticleFilter::All), None, "unfiltered stays on the fast path");
+
+        let restricted = s.article_ids(&db).unwrap();
+        let hits = s.lexical_search("checkpoint", restricted.as_deref(), 10).unwrap();
+        let mut owners = s.hit_details(&hits, "ja").unwrap().into_iter().map(|h| h.article_id).collect::<Vec<_>>();
+        owners.sort();
+        assert_eq!(owners, [1, 3]);
+        assert_eq!(s.lexical_search("checkpoint", None, 10).unwrap().len(), 3);
+        let serde: ArticleFilter = serde_json::from_str(r#"{"kind":"feed","id":null}"#).unwrap();
+        assert_eq!(serde, ArticleFilter::Feed { id: None });
     }
 
     #[test]
