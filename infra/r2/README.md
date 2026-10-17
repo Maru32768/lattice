@@ -1,13 +1,15 @@
 # R2 バックアップ用 bucket（Terraform）
 
-Lattice の自動バックアップ先となる Cloudflare R2 bucket と、古いバックアップを消す lifecycle rule を管理する。
+Lattice の自動バックアップ先となる Cloudflare R2 bucket と、その lifecycle rule を管理する。
 
 | ファイル | 内容 |
 |---|---|
 | `versions.tf` | Cloudflare provider v5 |
-| `main.tf` | `cloudflare_r2_bucket`、`cloudflare_r2_bucket_lifecycle`（`lattice/` 以下を `retention_days` 日で削除、途中で止まった multipart upload を 7 日で破棄） |
-| `variables.tf` | `account_id`（必須）、`bucket_name`（既定 `lattice-backup`）、`location`（既定 `apac`）、`retention_days`（既定 60） |
+| `main.tf` | `cloudflare_r2_bucket`、`cloudflare_r2_bucket_lifecycle`（`lattice/` 以下で途中で止まった multipart upload を 7 日で破棄） |
+| `variables.tf` | `account_id`（必須）、`bucket_name`（既定 `lattice-backup`）、`location`（既定 `apac`） |
 | `outputs.tf` | `bucket`、`s3_endpoint` |
+
+**保持は世代数で行う。** 古いバックアップはアプリが消す。アップロードに成功するたびに、その端末の `lattice/<端末名>/` 以下を一覧し、新しいものから「残す世代数」（設定画面、既定 30）だけ残して残りを削除する。R2 の lifecycle rule は経過日数でしか消せないので使わない（しばらくアプリを動かさなかっただけでバックアップが全部消える、ということが起きない）。以前の版で作った bucket には日数で消す rule（`expire-old-backups`）が残っているので、`terraform apply` し直して外す。
 
 state と `*.tfvars` は git に入れない（`.gitignore` 済み）。backend は未設定なので state はローカルの `terraform.tfstate` になる。state には秘密情報は入らない（アプリ用のアクセスキーは Terraform では作らない）。
 
@@ -35,13 +37,13 @@ state と `*.tfvars` は git に入れない（`.gitignore` 済み）。backend 
 
 1. Cloudflare dashboard → **R2 Object Storage → Manage API tokens（API トークンの管理）→ Create API token**。
 2. 次のように設定する。
-   - Permissions: **Object Read & Write**
+   - Permissions: **Object Read & Write**（古い世代の一覧と削除にも使う）
    - Specify bucket(s): **Apply to specific buckets only** → `lattice-backup`（`bucket_name` の値）
    - TTL: 任意（期限を付けた場合は切れる前に作り直す）
 3. 作成後に表示される **Access Key ID** と **Secret Access Key** を控える。Secret はこの画面でしか表示されない。
 4. Lattice の 設定 → 「Cloudflare R2 への自動バックアップ」に、Account ID・Bucket・Access Key ID・Secret Access Key を入力し、「自動バックアップ」にチェックを入れて保存する。「今すぐ R2 にバックアップ」で動作を確認する。
 
-Secret はローカル DB の `settings` テーブル（`secret.r2_secret_access_key`）にだけ保存され、バックアップのコピーからは削除される。設定画面には「設定済みかどうか」しか表示しない。
+Account ID・Bucket・Access Key ID・Secret Access Key・間隔・残す世代数は、あとからも設定画面で変更できる。Secret はローカル DB の `settings` テーブル（`secret.r2_secret_access_key`）にだけ保存され、バックアップのコピーからは削除される。設定画面には「設定済みかどうか」しか表示しない。Secret の横の「削除」で消せる（消すと自動バックアップも無効になる）。
 
 ## 3. 復元
 

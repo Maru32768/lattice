@@ -154,6 +154,14 @@ export interface Settings {
   db_path: string;
   log_dir: string;
   backup_dir: string;
+  backup_keep: number;
+}
+
+/** Mirrors lattice-core's backup::LocalBackup. */
+export interface LocalBackup {
+  path: string;
+  /** The backup was written but deleting old generations failed. */
+  warning: string | null;
 }
 
 export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini";
@@ -236,7 +244,8 @@ export const api = {
   llmSettings: () => invoke<LlmSettings>("get_llm_settings"),
   setLlmChain: (chain: ChainEntry[]) => invoke<void>("set_llm_chain", { chain }),
   setApiKey: (kind: "openai" | "gemini", key: string | null) => invoke<void>("set_api_key", { kind, key }),
-  backup: () => invoke<string>("backup_db"),
+  backup: () => invoke<LocalBackup>("backup_db"),
+  setBackupKeep: (keep: number) => invoke<void>("set_backup_keep", { keep }),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
@@ -277,10 +286,13 @@ export interface R2Status {
   bucket: string;
   access_key_id: string;
   interval_hours: number;
+  keep_generations: number;
   has_secret: boolean;
   last_success: number | null;
   last_key: string | null;
   last_error: string | null;
+  /** The last upload succeeded but deleting old generations failed. */
+  last_prune_error: string | null;
   running: boolean;
 }
 
@@ -290,6 +302,7 @@ export interface R2Settings {
   bucket: string;
   access_key_id: string;
   interval_hours: number;
+  keep_generations: number;
   /** null or empty keeps the stored secret. */
   secret_access_key: string | null;
 }
@@ -298,5 +311,6 @@ export interface R2Settings {
 export const r2 = {
   status: () => invoke<R2Status>("r2_status"),
   save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
+  clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
 };

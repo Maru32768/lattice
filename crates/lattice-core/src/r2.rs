@@ -1,5 +1,6 @@
 //! Automatic backup to Cloudflare R2 through its S3-compatible API. Signs requests with AWS
-//! SigV4 by hand (no AWS SDK). The bucket and its retention are managed in `infra/r2`.
+//! SigV4 by hand (no AWS SDK). The bucket is managed in `infra/r2`; retention is by generation
+//! count, enforced here after each upload (R2 lifecycle rules can only expire by age).
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -10,6 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::backup;
 use crate::store::Store;
 
 pub const SECRET_KEY: &str = "secret.r2_secret_access_key";
@@ -22,6 +24,8 @@ const LAST_SUCCESS: &str = "r2.last_success";
 const LAST_ATTEMPT: &str = "r2.last_attempt";
 const LAST_KEY: &str = "r2.last_key";
 const LAST_ERROR: &str = "r2.last_error";
+const KEEP: &str = "r2.keep_generations";
+const LAST_PRUNE_ERROR: &str = "r2.last_prune_error";
 
 const DEFAULT_INTERVAL_HOURS: u64 = 24;
 const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
@@ -41,10 +45,13 @@ pub struct R2Status {
     pub bucket: String,
     pub access_key_id: String,
     pub interval_hours: u64,
+    pub keep_generations: u64,
     pub has_secret: bool,
     pub last_success: Option<u64>,
     pub last_key: Option<String>,
     pub last_error: Option<String>,
+    /// The last upload succeeded but deleting old generations failed.
+    pub last_prune_error: Option<String>,
     pub running: bool,
 }
 
@@ -55,6 +62,7 @@ pub struct R2Settings {
     pub bucket: String,
     pub access_key_id: String,
     pub interval_hours: u64,
+    pub keep_generations: u64,
     /// `None` or empty keeps the stored secret.
     pub secret_access_key: Option<String>,
 }
@@ -85,10 +93,12 @@ pub fn status(store: &Store) -> Result<R2Status, String> {
         bucket: get(store, BUCKET)?.unwrap_or_default(),
         access_key_id: get(store, ACCESS_KEY_ID)?.unwrap_or_default(),
         interval_hours: get_u64(store, INTERVAL_HOURS)?.unwrap_or(DEFAULT_INTERVAL_HOURS),
+        keep_generations: get_u64(store, KEEP)?.unwrap_or(backup::DEFAULT_KEEP),
         has_secret: get(store, SECRET_KEY)?.is_some(),
         last_success: get_u64(store, LAST_SUCCESS)?,
         last_key: get(store, LAST_KEY)?,
         last_error: get(store, LAST_ERROR)?,
+        last_prune_error: get(store, LAST_PRUNE_ERROR)?,
         running: RUNNING.load(Ordering::SeqCst),
     })
 }
@@ -123,6 +133,7 @@ pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
     if !(1..=24 * 30).contains(&s.interval_hours) {
         return Err("間隔は 1〜720 時間です".into());
     }
+    backup::check_keep(s.keep_generations)?;
     let has_secret = secret.is_some() || get(store, SECRET_KEY)?.is_some();
     if s.enabled && (account_id.is_empty() || bucket.is_empty() || key_id.is_empty() || !has_secret) {
         return Err("有効にするには Account ID・bucket・Access Key ID・Secret Access Key をすべて設定してください".into());
@@ -133,10 +144,17 @@ pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
     set(store, BUCKET, opt(bucket).as_deref())?;
     set(store, ACCESS_KEY_ID, opt(key_id).as_deref())?;
     set(store, INTERVAL_HOURS, Some(&s.interval_hours.to_string()))?;
+    set(store, KEEP, Some(&s.keep_generations.to_string()))?;
     if let Some(v) = secret {
         set(store, SECRET_KEY, Some(v))?;
     }
     Ok(())
+}
+
+/// Deletes the stored secret and turns automatic backup off (it cannot run without one).
+pub fn clear_secret(store: &Store) -> Result<(), String> {
+    set(store, SECRET_KEY, None)?;
+    set(store, ENABLED, None)
 }
 
 fn creds(store: &Store) -> Result<Creds, String> {
@@ -176,7 +194,9 @@ pub fn client() -> reqwest::Client {
         .expect("static client config")
 }
 
-/// Copies the database (secrets stripped), gzips it and uploads it. Returns the object key.
+/// Copies the database (secrets stripped), gzips it and uploads it, then deletes this device's
+/// objects beyond the newest `keep_generations`. Returns the object key. A failed deletion is
+/// recorded in `last_prune_error` but does not fail the backup.
 /// The copy reads through its own connection so app commands are not blocked meanwhile.
 pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, tmp_dir: &Path) -> Result<String, String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
@@ -185,9 +205,11 @@ pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, t
     let now = unix_now();
     let tmp = tmp_dir.join(format!("{TMP_PREFIX}{now}.db"));
     let gz = tmp_dir.join(format!("{TMP_PREFIX}{now}.db.gz"));
-    let key = object_key(&device_name(), now);
+    let prefix = device_prefix(&device_name());
+    let key = object_key(&prefix, now);
     let result = async {
         let c = creds(store)?;
+        let keep = get_u64(store, KEEP)?.unwrap_or(backup::DEFAULT_KEEP);
         set(store, LAST_ATTEMPT, Some(&now.to_string()))?;
         let (db, dir, t, g) = (db_path.to_path_buf(), tmp_dir.to_path_buf(), tmp.clone(), gz.clone());
         tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -204,18 +226,36 @@ pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, t
         .await
         .map_err(|e| e.to_string())??;
         let _ = std::fs::remove_file(&tmp);
-        upload(http, &c, &key, &gz).await
+        upload(http, &c, &key, &gz).await?;
+        Ok::<_, String>((c, keep))
     }
     .await;
     let _ = std::fs::remove_file(&tmp);
     let _ = std::fs::remove_file(&gz);
+    let pruned = match &result {
+        Ok((c, keep)) => Some(prune(http, c, &prefix, *keep, &key).await),
+        Err(_) => None,
+    };
     RUNNING.store(false, Ordering::SeqCst);
     match result {
-        Ok(()) => {
+        Ok(_) => {
             log::info!("r2 backup uploaded: {key}");
             set(store, LAST_SUCCESS, Some(&unix_now().to_string()))?;
             set(store, LAST_KEY, Some(&key))?;
             set(store, LAST_ERROR, None)?;
+            match pruned {
+                Some(Err(e)) => {
+                    log::warn!("r2 prune failed: {e}");
+                    set(store, LAST_PRUNE_ERROR, Some(&e))?;
+                }
+                Some(Ok(n)) => {
+                    if n > 0 {
+                        log::info!("r2: deleted {n} old backups");
+                    }
+                    set(store, LAST_PRUNE_ERROR, None)?;
+                }
+                None => {}
+            }
             Ok(key)
         }
         Err(e) => {
@@ -243,8 +283,81 @@ fn device_name() -> String {
     if name.is_empty() { "device".into() } else { name.to_ascii_lowercase() }
 }
 
-fn object_key(device: &str, now: u64) -> String {
-    format!("lattice/{device}/lattice-{}.db.gz", amz_date(now))
+fn device_prefix(device: &str) -> String {
+    format!("lattice/{device}/")
+}
+
+/// The fixed-width UTC stamp makes keys sort chronologically as strings.
+fn object_key(prefix: &str, now: u64) -> String {
+    format!("{prefix}lattice-{}.db.gz", amz_date(now))
+}
+
+/// Only keys shaped exactly like `object_key` output, so nothing else in the bucket is deleted.
+fn is_backup_key(key: &str, prefix: &str) -> bool {
+    let Some(stamp) = key.strip_prefix(prefix).and_then(|k| k.strip_prefix("lattice-")).and_then(|k| k.strip_suffix(".db.gz")) else {
+        return false;
+    };
+    let b = stamp.as_bytes();
+    b.len() == 16
+        && b.iter().enumerate().all(|(i, c)| match i {
+            8 => *c == b'T',
+            15 => *c == b'Z',
+            _ => c.is_ascii_digit(),
+        })
+}
+
+/// Deletes this device's backups beyond the newest `keep`, never `current`. Returns how many.
+async fn prune(http: &reqwest::Client, c: &Creds, prefix: &str, keep: u64, current: &str) -> Result<usize, String> {
+    let mut keys = Vec::new();
+    let mut token: Option<String> = None;
+    loop {
+        let mut query = vec![("list-type", "2"), ("prefix", prefix)];
+        if let Some(t) = &token {
+            query.push(("continuation-token", t));
+        }
+        let body = send(http, c, "GET", "", &query, Vec::new()).await?.text().await.map_err(|e| e.to_string())?;
+        let page = parse_list(&body)?;
+        keys.extend(page.keys);
+        match page.next {
+            Some(t) => token = Some(t),
+            None => break,
+        }
+    }
+    keys.retain(|k| is_backup_key(k, prefix));
+    let old = backup::stale(keys, keep, &current.to_string());
+    for (i, key) in old.iter().enumerate() {
+        send(http, c, "DELETE", key, &[], Vec::new()).await.map_err(|e| format!("{e}（{i}/{} 件削除済み）", old.len()))?;
+    }
+    Ok(old.len())
+}
+
+#[derive(Debug, PartialEq)]
+struct ListPage {
+    keys: Vec<String>,
+    /// Continuation token when the listing is truncated.
+    next: Option<String>,
+}
+
+/// ListObjectsV2 response. S3 elements carry no attributes, so tag matching is enough; text is
+/// unescaped with quick-xml (keys may contain `&amp;` and character references).
+fn parse_list(xml: &str) -> Result<ListPage, String> {
+    if !xml.contains("<ListBucketResult") {
+        return Err(format!("unexpected ListObjectsV2 response: {}", truncate(xml)));
+    }
+    let text = |s: &str, tag: &str| -> Result<Option<String>, String> {
+        xml_text(s, tag).map(|v| quick_xml::escape::unescape(&v).map(|u| u.into_owned()).map_err(|e| format!("bad XML in <{tag}>: {e}"))).transpose()
+    };
+    let mut keys = Vec::new();
+    for item in xml.split("<Contents>").skip(1) {
+        let item = &item[..item.find("</Contents>").ok_or("unterminated <Contents>")?];
+        keys.push(text(item, "Key")?.ok_or("<Contents> without <Key>")?);
+    }
+    let next = if text(xml, "IsTruncated")?.as_deref() == Some("true") {
+        Some(text(xml, "NextContinuationToken")?.filter(|t| !t.is_empty()).ok_or("truncated listing without NextContinuationToken")?)
+    } else {
+        None
+    };
+    Ok(ListPage { keys, next })
 }
 
 /// `YYYYMMDDTHHMMSSZ` in UTC.
@@ -343,10 +456,12 @@ struct Signed {
     headers: Vec<(&'static str, String)>,
 }
 
-/// Path-style request to `https://<account>.r2.cloudflarestorage.com/<bucket>/<key>`.
+/// Path-style request to `https://<account>.r2.cloudflarestorage.com/<bucket>/<key>`; an empty
+/// key addresses the bucket itself (`/<bucket>`, e.g. ListObjectsV2).
 fn build(c: &Creds, method: &str, key: &str, query: &[(&str, &str)], payload_hash: &str, now: u64) -> Signed {
     let host = format!("{}.r2.cloudflarestorage.com", c.account_id);
-    let path = format!("/{}/{}", uri_encode(&c.bucket, false), uri_encode(key, true));
+    let bucket = uri_encode(&c.bucket, false);
+    let path = if key.is_empty() { format!("/{bucket}") } else { format!("/{bucket}/{}", uri_encode(key, true)) };
     let query = canonical_query(query);
     let date = amz_date(now);
     let auth = authorization(
@@ -468,7 +583,10 @@ mod tests {
         assert_eq!(amz_date(0), "19700101T000000Z");
         assert_eq!(amz_date(1_369_353_600), "20130524T000000Z");
         assert_eq!(amz_date(951_782_400 + 86399), "20000229T235959Z");
-        assert_eq!(object_key("pc", 0), "lattice/pc/lattice-19700101T000000Z.db.gz");
+        assert_eq!(object_key(&device_prefix("pc"), 0), "lattice/pc/lattice-19700101T000000Z.db.gz");
+        // Lexicographic order of keys is chronological order.
+        let keys: Vec<String> = [0, 9, 10, 86_399, 86_400, 951_782_400, 4_102_444_800].iter().map(|t| object_key("p/", *t)).collect();
+        assert!(keys.windows(2).all(|w| w[0] < w[1]), "{keys:?}");
         assert_eq!(xml_text("<a><UploadId>x-1</UploadId></a>", "UploadId").as_deref(), Some("x-1"));
     }
 
@@ -498,6 +616,87 @@ mod tests {
     }
 
     fn input_with(enabled: bool) -> R2Settings {
-        R2Settings { enabled, account_id: "0123456789abcdef0123456789abcdef".into(), bucket: "lattice-backup".into(), access_key_id: "abc123".into(), interval_hours: 24, secret_access_key: None }
+        R2Settings {
+            enabled,
+            account_id: "0123456789abcdef0123456789abcdef".into(),
+            bucket: "lattice-backup".into(),
+            access_key_id: "abc123".into(),
+            interval_hours: 24,
+            keep_generations: 30,
+            secret_access_key: None,
+        }
+    }
+
+    #[test]
+    fn generations_and_clearing_secret() {
+        let s = Store::open_in_memory().unwrap();
+        assert_eq!(status(&s).unwrap().keep_generations, 30);
+        assert!(save(&s, R2Settings { keep_generations: 0, ..input_with(false) }).is_err());
+        save(&s, R2Settings { keep_generations: 5, secret_access_key: Some("k".into()), ..input_with(true) }).unwrap();
+        assert_eq!(status(&s).unwrap().keep_generations, 5);
+        clear_secret(&s).unwrap();
+        let st = status(&s).unwrap();
+        assert!(!st.has_secret && !st.enabled);
+        assert_eq!((st.account_id.as_str(), st.access_key_id.as_str()), ("0123456789abcdef0123456789abcdef", "abc123"));
+    }
+
+    fn test_creds() -> Creds {
+        Creds { account_id: "0123456789abcdef0123456789abcdef".into(), bucket: "lattice-backup".into(), access_key_id: "AKID".into(), secret: "s".into() }
+    }
+
+    fn signature(auth: &str) -> &str {
+        auth.rsplit("Signature=").next().unwrap()
+    }
+
+    #[test]
+    fn signs_list_and_delete_requests() {
+        let c = test_creds();
+        let host = "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
+        let headers = [("host", host), ("x-amz-content-sha256", EMPTY_SHA), ("x-amz-date", "20130524T000000Z")];
+        let expect = |method, path, query| signature(&authorization(method, path, query, &headers, EMPTY_SHA, "20130524T000000Z", "auto", "AKID", "s")).to_string();
+
+        let list = build(&c, "GET", "", &[("list-type", "2"), ("prefix", "lattice/pc/"), ("continuation-token", "1x/y+z=")], EMPTY_SHA, 1_369_353_600);
+        let query = "continuation-token=1x%2Fy%2Bz%3D&list-type=2&prefix=lattice%2Fpc%2F";
+        assert_eq!(list.url, format!("https://{host}/lattice-backup?{query}"));
+        assert_eq!(signature(&list.headers[2].1), expect("GET", "/lattice-backup", query));
+
+        let key = "lattice/pc/lattice-20130524T000000Z.db.gz";
+        let path = format!("/lattice-backup/{key}");
+        let del = build(&c, "DELETE", key, &[], EMPTY_SHA, 1_369_353_600);
+        assert_eq!(del.url, format!("https://{host}{path}"));
+        assert_eq!(signature(&del.headers[2].1), expect("DELETE", &path, ""));
+        assert_ne!(signature(&del.headers[2].1), expect("GET", &path, ""), "method is signed");
+    }
+
+    #[test]
+    fn parses_list_pages() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Name>lattice-backup</Name><Prefix>lattice/pc/</Prefix><KeyCount>2</KeyCount><MaxKeys>1000</MaxKeys><IsTruncated>true</IsTruncated>
+  <Contents><Key>lattice/pc/lattice-20261001T000000Z.db.gz</Key><LastModified>2026-10-01T00:00:01.000Z</LastModified><ETag>"a"</ETag><Size>10</Size><StorageClass>STANDARD</StorageClass></Contents>
+  <Contents>
+    <Key>lattice/pc/a&amp;b&#x41;.txt</Key><Size>1</Size>
+  </Contents>
+  <NextContinuationToken>tok/+=&amp;</NextContinuationToken></ListBucketResult>"#;
+        assert_eq!(
+            parse_list(xml).unwrap(),
+            ListPage { keys: vec!["lattice/pc/lattice-20261001T000000Z.db.gz".into(), "lattice/pc/a&bA.txt".into()], next: Some("tok/+=&".into()) }
+        );
+        let last = "<ListBucketResult><KeyCount>0</KeyCount><IsTruncated>false</IsTruncated></ListBucketResult>";
+        assert_eq!(parse_list(last).unwrap(), ListPage { keys: vec![], next: None });
+        assert!(parse_list("<ListBucketResult><IsTruncated>true</IsTruncated></ListBucketResult>").is_err(), "no token: would loop forever");
+        assert!(parse_list("<Error><Code>AccessDenied</Code></Error>").is_err());
+    }
+
+    #[test]
+    fn selects_old_generations_of_this_device_only() {
+        let p = device_prefix("pc");
+        let key = |t| object_key(&p, t);
+        let current = key(500);
+        let mut listed: Vec<String> = [100, 400, 200, 300].map(key).to_vec();
+        listed.extend([current.clone(), "lattice/pc/notes.txt".into(), "lattice/pc/lattice-2026.db.gz".into(), "lattice/pc/sub/lattice-20261001T000000Z.db.gz".into()]);
+        listed.push(object_key(&device_prefix("pc-2"), 50));
+        listed.retain(|k| is_backup_key(k, &p));
+        assert_eq!(backup::stale(listed.clone(), 3, &current), vec![key(200), key(100)]);
+        assert_eq!(backup::stale(listed, 1, &current), vec![key(400), key(300), key(200), key(100)]);
     }
 }

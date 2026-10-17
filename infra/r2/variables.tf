@@ -14,14 +14,3 @@ variable "location" {
   type        = string
   default     = "apac"
 }
-
-variable "retention_days" {
-  description = "この日数より古いバックアップを自動削除する"
-  type        = number
-  default     = 60
-
-  validation {
-    condition     = var.retention_days >= 1
-    error_message = "retention_days must be at least 1."
-  }
-}
