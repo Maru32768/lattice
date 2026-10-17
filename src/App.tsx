@@ -15,6 +15,7 @@ import { NO_FACETS, activeDims, countBy, inScope, matches, relaxations, scopeLab
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
+import { Palette, type PaletteActions } from "./Palette";
 import "./App.css";
 
 type Doc = null | { kind: "reader"; id: number } | { kind: "page"; target: BrowseTarget };
@@ -51,6 +52,10 @@ export default function App() {
   const [covers, setCovers] = useState(0);
   const cover = useCallback((d: 1 | -1) => setCovers((c) => c + d), []);
   const [now, setNow] = useState(() => Date.now());
+  /** Open palette's initial query. */
+  const [palette, setPalette] = useState<string | null>(null);
+  const [, setFeedsUrl] = useState<string | undefined>(undefined);
+  const [, setChatScope] = useState<{ key: string; seq: number } | null>(null);
 
   // Page (in-app browser)
   const [page, setPage] = useState<PageState | null>(null);
@@ -236,9 +241,36 @@ export default function App() {
     }
   }
 
+  function openChat(key?: string) {
+    setChatOpen(true);
+    if (key) setChatScope((c) => ({ key, seq: (c?.seq ?? 0) + 1 }));
+  }
+
+  function setLang(m: LanguageMode, p?: number) {
+    if (doc?.kind === "page") changeOverlay({ enabled: m !== "original", percent: m === "translated" ? 100 : p ?? overlay.percent });
+    else {
+      setMode(m);
+      if (p != null) setPercent(p);
+    }
+  }
+
+  const paletteActions: PaletteActions = {
+    scope: setScope,
+    facets: (f) => { setFacets(f); setScreen("library"); },
+    open: (a) => openReader(a.id),
+    page: (url) => openPage(url),
+    index: (url) => act(async () => openReader(await api.saveUrl(url))),
+    discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
+    search: () => {},
+    screen: setScreen,
+    chat: openChat,
+    lang: setLang,
+    translate: current ? () => act(() => api.translateArticle(current.id), current.id) : null,
+  };
+
   // ---- keyboard -----------------------------------------------------------------------------
   const actions: Record<Action, () => void> = {
-    palette: () => {},
+    palette: () => setPalette((p) => (p == null ? "" : null)),
     search: () => {},
     next: () => step(1),
     prev: () => step(-1),
@@ -281,10 +313,10 @@ export default function App() {
   const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
   const nav = navOpen
     ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
-        chatOpen={chatOpen} searching={false} recentSearches={[]} onScope={setScope} onScreen={setScreen} onPalette={() => {}}
-        onOpenUrl={() => {}} onChat={() => setChatOpen((o) => !o)} onRecent={() => {}} onGenres={() => setScreen("settings")}
+        chatOpen={chatOpen} searching={false} recentSearches={[]} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
+        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={() => {}} onGenres={() => setScreen("settings")}
         onCollapse={() => setNavOpen(false)} />
-    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => {}}
+    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
   if (screen === "settings") {
@@ -334,6 +366,10 @@ export default function App() {
           )}
           {screen === "library" && !doc && loaded && <p className="doc-empty muted">{articles.length ? "記事を選んでください" : "記事はまだありません"}</p>}
         </main>
+        {palette != null && (
+          <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
+            onClose={() => setPalette(null)} />
+        )}
         {chatOpen && (
           <ChatPane article={chatArticle} groups={chatGroups} onCite={openCitation} onClose={() => setChatOpen(false)} />
         )}
