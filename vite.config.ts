@@ -6,7 +6,16 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Every Tauri webview reads woff2; dropping fontsource's woff fallbacks halves the bundled fonts.
+    {
+      name: "woff2-only",
+      enforce: "pre" as const,
+      transform: (code: string, id: string) =>
+        /@fontsource.*\.css$/.test(id) ? code.replace(/,\s*url\([^)]+\.woff\) format\('woff'\)/g, "") : undefined,
+    },
+  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

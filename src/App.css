@@ -1,34 +1,4 @@
-:root {
-  --bg: #fbfaf7;
-  --panel: #f2f0ea;
-  --text: #1f1d1a;
-  --muted: #6b665d;
-  --border: #dedad0;
-  --accent: #2f5d8a;
-  --code-bg: #eeebe3;
-  --error: #a33a2a;
-  --mark: #f3e3a6;
-  font-family: system-ui, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
-  color: var(--text);
-  background: var(--bg);
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1b1a18;
-    --panel: #232220;
-    --text: #e8e4dc;
-    --muted: #9b958a;
-    --border: #3a3834;
-    --accent: #8db8e3;
-    --code-bg: #2b2a27;
-    --error: #e7816f;
-    --mark: #5a4b1c;
-  }
-}
-
-* { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); }
-button { font: inherit; color: inherit; cursor: pointer; }
+:root { --text: var(--ink); --muted: var(--ink3); --border: var(--line); --accent: var(--acc); --error: var(--err); }
 
 .app { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
 

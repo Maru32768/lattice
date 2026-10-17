@@ -1,7 +1,5 @@
 import type { ArticleRow } from "./api";
-
-/** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
-export const DIFFICULTY_LABELS = ["入門", "初級", "中級", "上級", "専門"];
+import { DIFFICULTY_LABELS } from "./library";
 
 export const difficultyLabel = (d: number | null) => (d == null ? null : DIFFICULTY_LABELS[d - 1] ?? null);
 
