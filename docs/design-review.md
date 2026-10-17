@@ -290,7 +290,7 @@ feed 登録 / 30 分ごと / 起動時 / 「すべて更新」→ 未見の entr
 
 ### 未実装（意図的）
 
-feed の自動検出（サイトの URL から `<link rel="alternate">` を探す）、feed 単位の取り込み件数・間隔の設定、ジャンルの改名・統合 UI、表示モードと並び順の保存（再起動で既定に戻る）、entry の日付で記事の `published_at` を補うこと。
+feed 単位の取り込み件数・間隔の設定、表示モードと並び順の保存（再起動で既定に戻る）。feed の自動検出、ジャンルの改名・統合 UI、entry の日付で `published_at` を補うことは §14 で実装した。
 
 ## 9. 取り込みの改善（F1・F11・同一ホスト制限・再抽出）
 
@@ -399,3 +399,25 @@ feed の自動検出（サイトの URL から `<link rel="alternate">` を探�
 ### 未実装（意図的）
 
 裏で描画するページの音声のミュート（WebView2 の COM API が必要）、クライアント側リダイレクト（`location.href = …`）で読み込みが 2 回起きるページへの対応（最初の読み込み完了で待ち始めるので、DOM を取れずに失敗することがある）、描画の並列化。
+
+## 14. フィードの自動検出・ジャンル管理・サイドバーの絞り込み
+
+| 対象 | ファイル |
+|---|---|
+| 自動検出（`discover`・`feed_links`）、entry の日付 | `crates/lattice-core/src/feeds.rs` |
+| `feed_items.published_at`（migration 15）、抽出時の補完 | `crates/lattice-core/src/store.rs`（`save_fetched`） |
+| ジャンルの改名・統合・削除 | `crates/lattice-core/src/classify.rs`（`rename_genre` / `delete_genre`）、`src/GenreSettings.tsx`（設定画面） |
+| Tauri commands（`discover_feeds` / `rename_genre` / `delete_genre`） | `src-tauri/src/lib.rs` |
+| 登録 UI・候補の選択 | `src/FeedsView.tsx` |
+| サイドバーのジャンル・フィード絞り込み | `src/App.tsx` |
+
+- **自動検出。** 「登録」はまず `discover_feeds` を呼ぶ。URL そのものが feed として読めればそれを使う。読めなければ HTML として `<link rel="alternate" type="application/rss+xml | atom+xml | feed+json" href>` を探す（rel・type は大文字小文字を区別しない。href はリダイレクト後の URL を基準に解決し、http(s) 以外と重複は捨てる）。1 つもなければ同じホストの `/feed`・`/rss.xml`・`/atom.xml`・`/index.xml` を順に試し、最初に読めたものを使う。取得はすべて `fetch::client()` と `check_public` を通る（private アドレスには行かない）。
+- **候補が複数なら選ばせる。** 1 件ならそのまま登録し、複数なら一覧を出して 1 件ずつ「登録」できる（登録したものは一覧から消える）。0 件ならそう表示する。`<link>` の候補は登録時に従来どおり取得し、読めなければ登録しない。feed の URL を直接入れた場合は検出と登録で 2 回取得する（登録時だけなので許容した）。OPML の読み込みは feed の URL なので検出を通さない。
+- **entry の日付で `published_at` を補う。** entry の公開日時（なければ更新日時）を UTC の ISO 8601 で `feed_items.published_at` に記録する。抽出で `published_at` を決めるとき、ページに日付がなければ記事の feed（`articles.feed_id`）の entry の日付を使う（`coalesce`）。ページの日付があればそちらを優先する。feed に載る前に抽出済みで日付のない記事は、取り込み時に埋める。再抽出しても entry の日付は残る。この slice より前に記録した `feed_items` には日付がないので、既存の記事は補わない。
+- **ジャンルの改名と統合は 1 つの操作。** 設定画面の「ジャンル」に全ジャンルと件数を並べ、名前を書き換えて「名前を変更」する。既存のジャンル名（大文字小文字を区別しない）にすると「統合」になり、記事をそのジャンルに移して元のジャンルを消す。記事の `genre_source` はそのまま（Reader で選んだジャンルは統合先で手動のまま固定され、自動のものは自動のまま）。分類の prompt は既存のジャンル一覧を渡すので、新しい名前は次の分類から使われる。`classifications` の履歴は当時の名前のまま残す。
+- **削除は記事のないジャンルだけ。** 記事のあるジャンルは統合で片付ける。初期ジャンルも削除できる。
+- **サイドバーの絞り込み。** 最近追加／未読／お気に入りの隣に「ジャンル・フィード…」の select を置き、ジャンル（記事のあるもの・未分類）かフィード（手動追加・各 feed）を 1 つ選んで一覧を絞る（`ArticleFilter::Genre` / `Feed`）。表示モード（一覧・フィード・ジャンル）とグループの開閉はそのまま使える。グループ見出しのクリックは開閉のままにした（見出しに 2 つの操作を載せない）。
+
+### 未実装（意図的）
+
+統合の取り消し、`<link>` の候補の事前検証、`<a href>` で張られた feed の検出、改名で消えたジャンルを選んでいる絞り込みの自動解除（一覧が空になるので選び直す）。

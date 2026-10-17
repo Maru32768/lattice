@@ -83,6 +83,11 @@ export interface FeedRow {
   article_count: number;
 }
 
+export interface FeedCandidate {
+  url: string;
+  title: string | null;
+}
+
 export interface TagCount {
   name: string;
   count: number;
@@ -241,6 +246,8 @@ export const api = {
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),
+  renameGenre: (from: string, to: string) => invoke<void>("rename_genre", { from, to }),
+  deleteGenre: (name: string) => invoke<void>("delete_genre", { name }),
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
@@ -250,6 +257,7 @@ export const api = {
   setAutoClassify: (on: boolean) => invoke<void>("set_auto_classify", { on }),
   listFeeds: () => invoke<FeedRow[]>("list_feeds"),
   addFeed: (url: string) => invoke<number>("add_feed", { url }),
+  discoverFeeds: (url: string) => invoke<FeedCandidate[]>("discover_feeds", { url }),
   removeFeed: (id: number) => invoke<void>("remove_feed", { id }),
   refreshFeeds: () => invoke<number>("refresh_feeds"),
   jobOverview: () => invoke<JobOverview>("job_overview"),

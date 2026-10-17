@@ -3,10 +3,11 @@ import { api, type Settings } from "./api";
 import { ModelSettings } from "./ModelSettings";
 import { R2BackupSection } from "./R2BackupSection";
 import { ClassifySettings } from "./ClassifySettings";
+import { GenreSettings } from "./GenreSettings";
 import { TranslationSettings } from "./TranslationSettings";
 import { RenderSettings } from "./RenderSettings";
 
-export function SettingsView() {
+export function SettingsView({ onChanged }: { onChanged: () => void }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +41,7 @@ export function SettingsView() {
       <h2>設定・バックアップ</h2>
       <ModelSettings />
       <ClassifySettings />
+      <GenreSettings onChanged={onChanged} />
       <TranslationSettings />
       <RenderSettings />
       <div>

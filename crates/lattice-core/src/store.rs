@@ -295,6 +295,9 @@ CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_r
 ALTER TABLE articles ADD COLUMN difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 5);
 ALTER TABLE articles ADD COLUMN difficulty_source TEXT CHECK (difficulty_source IN ('auto', 'manual'));
 ALTER TABLE classifications ADD COLUMN difficulty INTEGER;
+"#, r#"
+-- The entry's published (else updated) date: fills articles.published_at when the page has none.
+ALTER TABLE feed_items ADD COLUMN published_at TEXT;
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -781,7 +784,9 @@ impl Store {
                 let m = &ir.meta;
                 tx.execute(
                     "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
-                     canonical_url = ?2, title = ?3, author = ?4, site_name = ?5, published_at = ?6,
+                     canonical_url = ?2, title = ?3, author = ?4, site_name = ?5,
+                     published_at = coalesce(?6, (SELECT published_at FROM feed_items
+                                                  WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
                      language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10
                      WHERE id = ?1",
                     params![

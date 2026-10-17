@@ -127,6 +127,17 @@ fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
     classify::list_genres(&app.store)
 }
 
+/// Renaming to an existing genre merges into it.
+#[tauri::command(async)]
+fn rename_genre(app: State<'_, App>, from: String, to: String) -> Result<(), String> {
+    classify::rename_genre(&app.store, &from, &to)
+}
+
+#[tauri::command(async)]
+fn delete_genre(app: State<'_, App>, name: String) -> Result<(), String> {
+    classify::delete_genre(&app.store, &name)
+}
+
 /// Manual choice; an empty name clears it.
 #[tauri::command(async)]
 fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
@@ -176,6 +187,12 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 #[tauri::command(async)]
 fn list_feeds(app: State<'_, App>) -> Result<Vec<FeedRow>, String> {
     feeds::list(&app.store)
+}
+
+/// The URL itself if it is a feed, else the feeds its page links (or a common feed path).
+#[tauri::command]
+async fn discover_feeds(app: State<'_, App>, url: String) -> Result<Vec<feeds::Candidate>, String> {
+    feeds::discover(&app.providers.http, &url).await
 }
 
 /// Subscribes and fetches right away; a new URL that is not a readable feed is not kept.
@@ -532,6 +549,8 @@ pub fn run() {
             list_tags,
             list_genres,
             set_genre,
+            rename_genre,
+            delete_genre,
             set_difficulty,
             classify_article,
             classify_unclassified,
@@ -541,6 +560,7 @@ pub fn run() {
             set_translate_keep_terms,
             list_feeds,
             add_feed,
+            discover_feeds,
             remove_feed,
             refresh_feeds,
             set_favorite,
