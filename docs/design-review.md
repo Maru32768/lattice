@@ -532,6 +532,7 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 |---|---|
 | Rust の整形と lint | `rustfmt.toml`、`mise.toml`（`lint`） |
 | TypeScript の lint | `oxlint.config.ts`、`package.json`（`lint`） |
+| E2E | `e2e/`（`mock.ts`・`fixtures.ts`・`setup.ts`・`harness.ts`・`*.spec.ts`）、`playwright.config.ts` |
 
 - **rustfmt。** それまで整形していなかった。`max_width = 160` と `use_small_heuristics = "Max"` は、幅 100〜180 と heuristics を試して、整形で変わる行が最も少なかった組み合わせ（671 行）。`mise run lint` は `cargo fmt --check` を含む。
 - **clippy（`-D warnings`、`--all-targets`）。** 指摘はすべて直した（`allow` はなし）。`search.rs` の `Ordered` は `PartialOrd` を derive して `Ord` だけ手で書いていたので、`PartialEq`・`PartialOrd` も `total_cmp` に揃えた（NaN でも等価と順序が食い違わない）。
@@ -540,3 +541,11 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
   - `no-misused-promises` は JSX の属性（`onClick={async …}`）を対象外にした。React は handler の戻り値を使わず、handler の中の非同期処理は `act` / `run` が catch してエラーを表示する。
   - 指摘のほとんどは、自分で catch する関数（`refresh`・`act`・`load` など）の Promise を投げっぱなしにしているもので、`void` を付けて意図を示した。実際に catch されていなかったのは、フィードのアイコンのファイル読み込み（`file.arrayBuffer()`）だけで、保存と同じ `act` の中に移した。localStorage の最近の検索は配列の文字列だけを読む。
   - `exhaustive-deps` の 8 か所は、依存を意図して絞っている effect（開いたときに 1 回、`seq` ごとに 1 回など）なので、理由を付けて行ごとに止めた。
+- **E2E（mock IPC）。** アプリ本体（Rust）は起動しない。`e2e/vite.config.ts` がアプリの Vite 設定のまま `e2e/index.html` を port 1430 で配信し、`e2e/setup.ts` が `mockWindows("main")` と `mockIPC`（event も mock）を入れてから `src/main.tsx` を読む。実データにも実ネットワークにも触れない。
+  - mock backend は `e2e/mock.ts` の `handlers`（command 名 → 関数）1 つ。引数と戻り値に `src/api.ts` の型を付けたので、型が変わると `tsc -p e2e` が失敗する。`e2e/commands.test.ts`（`npm test` で走る）は `api.ts` の `invoke("…")` を抜き出して `handlers` と突き合わせ、足りない command と余った command を名指しする。window / webview plugin の command（タイトルバー、ページからのショートカット）は `pluginHandlers`。
+  - 状態を持つ: 既読・お気に入り・タグ・ジャンル・削除・取り込みは mock の中の記事の複製を書き換え、次の `list_articles` に出る。ページを読み直すと fixtures に戻る。結果は JSON の往復と同じく複製して返す。
+  - 検索は「原文に語があれば全文、訳文にだけあれば意味、両方なら両方」と決めた。本物の意味検索ではないが、一致の種類での絞り込みとグループ化を決定的に試せる。
+  - 時計は `page.clock.setFixedTime` で固定する（最近追加の件数が日付に依存するため）。
+  - `harness.ts` の `app` fixture は、mock が答えない command を呼んだとき、ページの例外、`console.error` のどれかがあればテストを失敗させる。spec は見た目ではなく役割・ラベル・件数・呼ばれた command で確かめる（スクリーンショット比較はしない）。
+  - 見つけた点: タグなどの facet を初めて選ぶと、popover を閉じたときにフォーカスが chip に戻らない（選ぶ前の chip ボタンが選択済みの chip に置き換わり、戻す先の要素が消える）。spec ではこの点を確かめていない。
+- **単体テストの追加。** job の backoff（2・4・8・16 分の後に失敗）、取得 job だけが同じホストの取得を待つこと、実行中の job は取り消しも再実行もできないこと、1 回の poll で同じ記事が 2 度出ても 1 件だけ積むこと、overlay の sanitize が大文字や制御文字で隠した `javascript:` を落とすこと、キー設定を既定に戻すと override が消えること、ペイン移動が端で止まること。どれも、対象のコードを壊すとそのテストだけが失敗することを確かめた。

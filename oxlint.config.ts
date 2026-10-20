@@ -43,7 +43,7 @@ export default defineConfig({
   overrides: [
     {
       // node:test tracks the promise test() returns.
-      files: ["src/**/*.test.ts"],
+      files: ["src/**/*.test.ts", "e2e/*.test.ts"],
       rules: { "typescript/no-floating-promises": "off" },
     },
   ],

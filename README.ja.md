@@ -104,12 +104,23 @@ mise run test
 
 `mise run test` は `mise run lint`（rustfmt・clippy・oxlint）を実行してから、Rust とフロントエンドのテストを実行し、フロントエンドを型チェックしてビルドします。
 
+```bash
+mise exec -- npx playwright install chromium
+```
+
+```bash
+mise run e2e
+```
+
+`mise run e2e` は `e2e/` のブラウザテストを実行します。Vite が本物のフロントエンドを配信し、Tauri の IPC をサンプルデータ（`e2e/fixtures.ts`）の上の mock backend（`e2e/mock.ts`）に置き換え、Playwright が Chromium で操作します。アプリ本体は起動せず、実データには触れません。最初のコマンドでブラウザを一度だけインストールします。
+
 | パス | 内容 |
 |---|---|
 | `crates/lattice-core` | Tauri に依存しないドメインロジック: 取得・抽出・保存・ジョブ・翻訳・検索・対話・バックアップ。 |
 | `src-tauri` | Tauri アプリ: コマンド、バックグラウンドの runner、アプリ内ブラウザ。 |
 | `src` | React のフロントエンド。 |
 | `src/overlay` | アプリ内ブラウザのページに注入するスクリプト（翻訳 overlay、ページの snapshot）。 |
+| `e2e` | ブラウザテスト: mock backend、サンプルデータ、Playwright の spec。 |
 | `infra/r2` | R2 バックアップ用 bucket の Terraform。 |
 | `docs` | 設計メモ（`design-review.md`）とロードマップ（`roadmap.md`）。 |
 

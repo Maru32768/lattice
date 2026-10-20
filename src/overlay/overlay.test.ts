@@ -58,6 +58,14 @@ test("sanitize drops scripts, handlers and unsafe URLs", () => {
   assert.equal(out, `<a>a</a>bad()<img src="x"><code>c</code>`);
 });
 
+test("sanitize keeps http(s) links and image data URLs only, however the scheme is disguised", () => {
+  const out = sanitize(
+    `<a href=" JaVa&#x09;Script:alert(1)">a</a><a href="data:text/html;base64,PHNjcmlwdD4=">b</a><a href="https://x.dev/w">c</a>` +
+      `<img src="data:image/png;base64,AAAA" alt="i"><img src="data:text/html;base64,AAAA"><div><iframe src="https://x.dev/"></iframe><em>d</em></div>`,
+  );
+  assert.equal(out, `<a>a</a><a>b</a><a href="https://x.dev/w">c</a><img src="data:image/png;base64,AAAA" alt="i"><img><em>d</em>`);
+});
+
 function block(html: string) {
   const p = document.createElement("p");
   p.innerHTML = html;

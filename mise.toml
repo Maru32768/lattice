@@ -19,3 +19,7 @@ run = [
 description = "Lint, Rust tests, frontend tests and typecheck"
 depends = ["lint"]
 run = ["cargo test --workspace", "npm test", "npm run build"]
+
+[tasks.e2e]
+description = "Browser tests of the frontend over a mock backend (Playwright, Chromium)"
+run = "npm run e2e"

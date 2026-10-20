@@ -178,4 +178,20 @@ mod tests {
         assert!(cancel(&s, summary_job.id).unwrap());
         assert!(!run_next(&s, &ok, LLM_JOBS, &|_| {}).await.unwrap(), "cancelled job is gone");
     }
+
+    #[test]
+    fn a_running_job_is_neither_cancelled_nor_retried() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/1", "https://example.com/1", "example.com").unwrap();
+        summarize::enqueue(&s, id).unwrap();
+        let job = s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().unwrap();
+        assert!(!cancel(&s, job.id).unwrap());
+        assert_eq!(retry(&s, job.id).unwrap(), None);
+        assert_eq!(retry_failed(&s, None).unwrap(), 0);
+
+        s.finish_job(job.id, Some("boom")).unwrap();
+        assert_eq!(retry(&s, job.id).unwrap().as_deref(), Some(summarize::JOB_TYPE), "retryable once it has finished");
+        assert!(cancel(&s, job.id).unwrap());
+        assert_eq!((retry(&s, job.id).unwrap(), cancel(&s, job.id).unwrap()), (None, false), "gone");
+    }
 }

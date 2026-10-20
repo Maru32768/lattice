@@ -651,6 +651,16 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_listed_twice_in_one_poll_is_queued_once() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let entries = [entry("https://blog.dev/p?utm_source=rss"), entry("https://blog.dev/p#top"), entry("https://blog.dev/q")];
+        assert_eq!(import(&s, id, &entries).unwrap(), 2);
+        assert_eq!(s.list_articles(&ArticleFilter::All).unwrap().len(), 2);
+        assert_eq!(import(&s, id, &entries).unwrap(), 0);
+    }
+
+    #[test]
     fn imports_only_unseen_entries_and_caps_first_import() {
         let s = Store::open_in_memory().unwrap();
         assert!(add(&s, "file:///etc/passwd").is_err());

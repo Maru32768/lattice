@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_BINDINGS, actionFor, conflicts, keyLabel, merge, pageKeys } from "./keys.ts";
+import { DEFAULT_BINDINGS, actionFor, conflicts, getBindings, isCustom, keyLabel, merge, pageKeys, resetKeys, setKeys } from "./keys.ts";
 import { keyOf } from "./keyname.ts";
 
 const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) =>
@@ -49,4 +49,18 @@ test("pageKeys: Ctrl keys of in-field actions go from page fields too; named key
   assert.ok(custom.outside.includes("P") && !custom.inFields.includes("P"), "a plain key never from a field");
   assert.ok(custom.outside.includes("Ctrl+S"), "an action that skips the app's fields skips the page's");
   assert.ok(custom.outside.includes("Shift+J") && !custom.outside.includes("Space"));
+});
+
+test("custom keys: setting an action's defaults back clears its override; reset restores one action or all", () => {
+  setKeys("next", ["N"]);
+  assert.deepEqual(getBindings().next, ["N"]);
+  assert.ok(isCustom("next"));
+  setKeys("next", [...DEFAULT_BINDINGS.next]);
+  assert.ok(!isCustom("next"), "a later change to the defaults reaches this action again");
+  setKeys("prev", ["P"]);
+  setKeys("favorite", ["X"]);
+  resetKeys("prev");
+  assert.deepEqual([getBindings().prev, isCustom("favorite")], [DEFAULT_BINDINGS.prev, true]);
+  resetKeys();
+  assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
 });

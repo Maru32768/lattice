@@ -1574,6 +1574,52 @@ mod tests {
     }
 
     #[test]
+    fn a_job_that_keeps_failing_backs_off_doubling_then_fails_for_good() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        let mut seen = Vec::new();
+        for _ in 0..MAX_ATTEMPTS {
+            let job = s.claim_next_job(&["t"]).unwrap().expect("ready once its backoff has elapsed");
+            s.finish_job(job.id, Some("boom")).unwrap();
+            assert!(s.claim_next_job(&["t"]).unwrap().is_none(), "not ready during the backoff");
+            seen.push(
+                s.conn()
+                    .query_row(
+                        "SELECT status, CAST(round((julianday(next_run_at) - julianday(completed_at)) * 1440) AS INTEGER) FROM processing_jobs",
+                        [],
+                        |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)),
+                    )
+                    .unwrap(),
+            );
+            s.exec_for_test("UPDATE processing_jobs SET next_run_at = '2000-01-01T00:00:00.000Z'");
+        }
+        let pending = |m| ("pending".to_string(), m);
+        assert_eq!(seen[..4], [pending(2), pending(4), pending(8), pending(16)]);
+        assert_eq!(seen[4].0, "failed");
+        assert!(s.claim_next_job(&["t"]).unwrap().is_none(), "a failed job is never claimed again");
+    }
+
+    #[test]
+    fn only_fetch_jobs_wait_for_a_running_fetch_on_the_same_host() {
+        use crate::{images, ingest};
+        let s = Store::open_in_memory().unwrap();
+        let (a1, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        let (a2, _) = s.upsert_pending("https://a.dev/2", "https://a.dev/2", "a.dev").unwrap();
+        s.enqueue_job(ingest::JOB_TYPE, a1, "{}", "ingest:1").unwrap();
+        s.enqueue_job(images::JOB_TYPE, a2, "{}", "images:2").unwrap();
+        s.enqueue_job("translate", a2, "{}", "translate:2").unwrap();
+        let types = [ingest::JOB_TYPE, images::JOB_TYPE, "translate"];
+        let claim = || s.claim_next_job(&types).unwrap().map(|j| (j.id, j.job_type));
+        let (fetch, kind) = claim().unwrap();
+        assert_eq!(kind, ingest::JOB_TYPE);
+        assert_eq!(claim().map(|j| j.1).as_deref(), Some("translate"), "the image fetch on a.dev waits, translation does not");
+        assert_eq!(claim(), None);
+        s.finish_job(fetch, None).unwrap();
+        assert_eq!(claim().map(|j| j.1).as_deref(), Some(images::JOB_TYPE));
+    }
+
+    #[test]
     fn inbox_filters_and_tags() {
         let s = Store::open_in_memory().unwrap();
         for u in ["https://a.dev/1", "https://a.dev/2", "https://a.dev/3"] {
