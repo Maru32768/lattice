@@ -12,6 +12,7 @@ pub mod favicons;
 pub mod feeds;
 pub mod fetch;
 pub mod gemini;
+pub mod groups;
 pub mod images;
 pub mod ingest;
 pub mod instructions;

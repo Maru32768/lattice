@@ -12,6 +12,7 @@ use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::fetch::client;
+use lattice_core::groups::{self, GroupRow};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::job_status::{self, JobOverview};
@@ -394,6 +395,36 @@ async fn refresh_feeds(app: State<'_, App>) -> Result<usize, String> {
 #[tauri::command(async)]
 fn list_tags(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
     app.store.list_tags().map_err(err)
+}
+
+#[tauri::command(async)]
+fn list_groups(app: State<'_, App>) -> Result<Vec<GroupRow>, String> {
+    groups::list(&app.store)
+}
+
+#[tauri::command(async)]
+fn create_group(app: State<'_, App>, name: String) -> Result<i64, String> {
+    groups::create(&app.store, &name)
+}
+
+#[tauri::command(async)]
+fn rename_group(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
+    groups::rename(&app.store, id, &name)
+}
+
+#[tauri::command(async)]
+fn delete_group(app: State<'_, App>, id: i64) -> Result<(), String> {
+    groups::delete(&app.store, id)
+}
+
+#[tauri::command(async)]
+fn group_add(app: State<'_, App>, id: i64, articles: Vec<i64>) -> Result<(), String> {
+    groups::add(&app.store, id, &articles)
+}
+
+#[tauri::command(async)]
+fn group_remove(app: State<'_, App>, id: i64, articles: Vec<i64>) -> Result<(), String> {
+    groups::remove(&app.store, id, &articles)
 }
 
 #[tauri::command(async)]
@@ -783,10 +814,10 @@ fn cancel_job(app: State<'_, App>, id: i64) -> Result<bool, String> {
     job_status::cancel(&app.store, id)
 }
 
-/// Writes <data>/exports/lattice-export-<UTC>.jsonl.gz and returns its path.
+/// Writes <data>/exports/lattice-export-<UTC>.jsonl.gz (only `group`'s articles when given) and returns its path.
 #[tauri::command(async)]
-fn export_json(app: State<'_, App>) -> Result<String, String> {
-    Ok(export::export_file(&app.store, &app.data_dir.join("exports"))?.display().to_string())
+fn export_json(app: State<'_, App>, group: Option<i64>) -> Result<String, String> {
+    Ok(export::export_file(&app.store, &app.data_dir.join("exports"), group)?.display().to_string())
 }
 
 #[tauri::command(async)]
@@ -960,6 +991,12 @@ pub fn run() {
             feed_icon,
             set_favorite,
             add_tag,
+            list_groups,
+            create_group,
+            rename_group,
+            delete_group,
+            group_add,
+            group_remove,
             remove_tag,
             get_article,
             delete_article,
