@@ -240,6 +240,8 @@ export const api = {
   setAutoRender: (on: boolean) => invoke<void>("set_auto_render", { on }),
   /** The stored image of an image block as a data: URL; null while not downloaded or not stored. */
   articleImage: (blockId: number) => invoke<string | null>("article_image", { blockId }),
+  /** A site's icon as a data: URL; null while not fetched (a fetch is queued; `favicon-changed` follows) or when it has none. */
+  favicon: (domain: string) => invoke<string | null>("favicon", { domain }),
   imageSettings: () => invoke<ImageSettings>("get_image_settings"),
   setImageSettings: (settings: ImageSettings) => invoke<void>("set_image_settings", { settings }),
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),

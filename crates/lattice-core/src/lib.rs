@@ -8,6 +8,7 @@ pub mod codex;
 pub mod embed;
 pub mod export;
 pub mod extract;
+pub mod favicons;
 pub mod feeds;
 pub mod fetch;
 pub mod gemini;

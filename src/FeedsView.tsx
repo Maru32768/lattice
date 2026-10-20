@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
 import { relTime } from "./time";
+import { Favicon, hostOf } from "./Favicon";
 import "./manage.css";
 
 const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
@@ -185,7 +186,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 </tr>
               ) : (
                 <tr key={f.id} className={f.last_error ? "err" : undefined}>
-                  <td><div className="fn">{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
+                  <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
                   <td>{f.last_error ? <span className="st err"><i />{f.last_error}</span> : <span className="st"><i />正常</span>}</td>
                   <td className="num when">{relTime(f.last_fetched_at)}</td>
                   <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>

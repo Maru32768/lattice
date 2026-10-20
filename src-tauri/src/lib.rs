@@ -16,7 +16,8 @@ use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::{backup, classify, export, images, r2, render, summarize, translate};
+use lattice_core::store::JobRow;
+use lattice_core::{backup, classify, export, favicons, images, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -122,6 +123,17 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
 #[tauri::command(async)]
 fn article_image(app: State<'_, App>, block_id: i64) -> Result<Option<String>, String> {
     images::data_url(&app.store, block_id)
+}
+
+/// A site's stored icon as a `data:` URL, or `None` (the UI shows its initial). Queues a
+/// background fetch when there is none yet or it is a week old; `favicon-changed` follows.
+#[tauri::command(async)]
+fn favicon(app: State<'_, App>, domain: String) -> Result<Option<String>, String> {
+    let (icon, queued) = favicons::get(&app.store, &domain)?;
+    if queued {
+        app.wake_net.iter().for_each(|w| w.notify_one());
+    }
+    Ok(icon)
 }
 
 #[tauri::command(async)]
@@ -569,8 +581,15 @@ pub fn run() {
                 .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
                 let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
-                let on_change = move |article_id: i64| {
-                    let _ = handle.emit("article-changed", article_id);
+                let on_change = move |job: &JobRow| {
+                    let _ = match job.article_id {
+                        Some(id) => handle.emit("article-changed", id),
+                        // Favicon jobs are per domain, not per article.
+                        None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
+                            Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
+                            _ => Ok(()),
+                        },
+                    };
                     if types == NET_JOBS {
                         embedder_wake.notify_one(); // a fetched article has just queued its embed job
                         llm_wake.notify_one(); // ... and maybe its classify job
@@ -612,6 +631,7 @@ pub fn run() {
             set_auto_render,
             import_urls,
             article_image,
+            favicon,
             get_image_settings,
             set_image_settings,
             list_articles,

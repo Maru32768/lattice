@@ -9,6 +9,7 @@ const COMMANDS: &[&str] = &[
     "set_auto_render",
     "import_urls",
     "article_image",
+    "favicon",
     "get_image_settings",
     "set_image_settings",
     "list_articles",

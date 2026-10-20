@@ -88,7 +88,7 @@ pub fn enqueue_missing(store: &Store) -> Result<usize, String> {
 /// Why an image was not stored. Transient failures (timeouts, 5xx, 429) leave no record, so
 /// the job's retry with backoff tries them again; permanent ones are recorded and not retried.
 #[derive(Debug, PartialEq)]
-enum Fail {
+pub(crate) enum Fail {
     Permanent(String),
     Transient(String),
 }
@@ -177,7 +177,7 @@ fn record(store: &Store, article_id: i64, src: &str, hash: Option<&str>, error: 
     Ok(())
 }
 
-async fn download(client: &reqwest::Client, src: &str, referer: &str, cap: usize) -> Result<(&'static str, Vec<u8>), Fail> {
+pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str, cap: usize) -> Result<(&'static str, Vec<u8>), Fail> {
     if !(src.starts_with("https://") || src.starts_with("http://")) {
         return Err(Fail::Permanent("http(s) 以外の URL です".into()));
     }
@@ -230,6 +230,7 @@ fn sniff(b: &[u8]) -> Option<&'static str> {
         [b'G', b'I', b'F', b'8', b'7' | b'9', b'a', ..] => Some("image/gif"),
         [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some("image/webp"),
         [_, _, _, _, b'f', b't', b'y', b'p', b'a', b'v', b'i', b'f' | b's', ..] => Some("image/avif"),
+        [0, 0, 1, 0, ..] => Some("image/x-icon"),
         _ => None,
     }
 }
@@ -252,7 +253,7 @@ pub fn data_url(store: &Store, block_id: i64) -> Result<Option<String>, String> 
     Ok(row.map(|(mime, bytes)| format!("data:{mime};base64,{}", base64(&bytes))))
 }
 
-fn base64(b: &[u8]) -> String {
+pub(crate) fn base64(b: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(b.len().div_ceil(3) * 4);
     for c in b.chunks(3) {
@@ -278,6 +279,7 @@ mod tests {
         assert_eq!(sniff(b"\xff\xd8\xff\xe0"), Some("image/jpeg"));
         assert_eq!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some("image/webp"));
         assert_eq!(sniff(b"\0\0\0\x1cftypavif"), Some("image/avif"));
+        assert_eq!(sniff(b"\0\0\x01\0\x01\0\x10\x10"), Some("image/x-icon"));
         assert_eq!(sniff(b"<svg xmlns=\"http://www.w3.org/2000/svg\"><script>"), None);
         assert_eq!(sniff(b"<!doctype html>"), None);
         assert!(check_response(Some("image/png"), Some(1000), MB).is_ok());

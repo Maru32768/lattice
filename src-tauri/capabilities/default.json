@@ -13,6 +13,7 @@
     "allow-set-auto-render",
     "allow-import-urls",
     "allow-article-image",
+    "allow-favicon",
     "allow-get-image-settings",
     "allow-set-image-settings",
     "allow-list-articles",

@@ -53,6 +53,9 @@
 .row .dot { position: absolute; left: 10px; top: 17px; width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
 .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--ink3); }
 .meta .fav { display: inline-flex; color: var(--tr); }
+.favicon { flex: none; width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
+.favicon.letter { display: inline-flex; align-items: center; justify-content: center; background: var(--active); color: var(--ink3); font: 600 9.5px/1 var(--sans); }
+.with-ico { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .meta .fav .ico { fill: currentColor; }
 .row .tags { font: 12px var(--mono); color: var(--ink3); }
 .list .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px 20px; font-size: 12.5px; }

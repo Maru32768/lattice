@@ -14,11 +14,11 @@ use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::segments::Target;
 use crate::store::{JobRow, Store};
-use crate::{classify, images, render, summarize, translate};
+use crate::{classify, favicons, images, render, summarize, translate};
 
 pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
-pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE];
+pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
 const IDLE_POLL: Duration = Duration::from_secs(30);
@@ -30,12 +30,13 @@ pub struct Providers<L, E> {
 }
 
 /// Call `store.recover_running_jobs()` once before starting runners, not per runner.
+/// `on_change` gets each job as it starts, makes progress and finishes.
 pub async fn run_worker<L: LlmProvider, E: EmbeddingProvider>(
     store: Arc<Store>,
     providers: Arc<Providers<L, E>>,
     types: &'static [&'static str],
     wake: Arc<Notify>,
-    on_change: impl Fn(i64) + Send + Sync + 'static,
+    on_change: impl Fn(&JobRow) + Send + Sync + 'static,
 ) {
     loop {
         match run_next(&store, &providers, types, &on_change).await {
@@ -55,19 +56,18 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     providers: &Providers<L, E>,
     types: &[&str],
-    on_change: &(dyn Fn(i64) + Send + Sync),
+    on_change: &(dyn Fn(&JobRow) + Send + Sync),
 ) -> Result<bool, String> {
     let Some(job) = store.claim_next_job(types).map_err(|e| e.to_string())? else {
         return Ok(false);
     };
-    let article_id = job.article_id.unwrap_or_default();
-    on_change(article_id);
-    let result = run_job(store, providers, &job, &|| on_change(article_id)).await;
+    on_change(&job);
+    let result = run_job(store, providers, &job, &|| on_change(&job)).await;
     if let Err(e) = &result {
-        log::warn!("job {} ({}) article {article_id} attempt {} failed: {e}", job.id, job.job_type, job.attempt_count);
+        log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count);
     }
     store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
-    on_change(article_id);
+    on_change(&job);
     Ok(true)
 }
 
@@ -78,6 +78,9 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     progress: &(dyn Fn() + Send + Sync),
 ) -> Result<(), String> {
     let params: serde_json::Value = job.params.as_deref().map(serde_json::from_str).transpose().map_err(|e| e.to_string())?.unwrap_or_default();
+    if job.job_type == favicons::JOB_TYPE {
+        return favicons::run(store, &p.http, params["domain"].as_str().ok_or("job has no domain")?).await;
+    }
     let article_id = job.article_id.ok_or("job has no article")?;
     match job.job_type.as_str() {
         translate::JOB_TYPE => {
@@ -234,6 +237,18 @@ mod tests {
         assert_eq!((sum.text.as_str(), sum.stale), ("要約です。\n\n・要点", false));
         s.exec_for_test(&format!("UPDATE articles SET content_hash = 'changed' WHERE id = {id}"));
         assert!(s.get_article(id, "ja").unwrap().unwrap().summary.unwrap().stale);
+    }
+
+    #[tokio::test]
+    async fn favicon_jobs_need_no_article() {
+        let s = Store::open_in_memory().unwrap();
+        assert!(favicons::get(&s, "127.0.0.1").unwrap().1);
+        let seen = std::sync::Mutex::new(Vec::new());
+        assert!(run_next(&s, &with(Fake::new()), NET_JOBS, &|j| seen.lock().unwrap().push((j.job_type.clone(), j.article_id))).await.unwrap());
+        assert_eq!(seen.into_inner().unwrap(), [("favicon".to_string(), None), ("favicon".to_string(), None)], "started and finished");
+        assert_eq!(favicons::get(&s, "127.0.0.1").unwrap(), (None, false), "the refusal is stored, not retried");
+        let status: String = s.conn().query_row("SELECT status FROM processing_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(status, "succeeded");
     }
 
     #[test]

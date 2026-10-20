@@ -6,6 +6,7 @@ import { UNCLASSIFIED } from "./groups";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
+import { Favicon } from "./Favicon";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -384,7 +385,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}
-            <span>{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{a.domain}</span>
+            <span className="with-ico"><Favicon domain={a.domain} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{a.domain}</span>
             {a.author && <><span>·</span><span>{a.author}</span></>}
             {a.published_at && <><span>·</span><span>{a.published_at.slice(0, 10)}</span></>}
           </div>
