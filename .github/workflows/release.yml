@@ -1,4 +1,4 @@
-# Builds a draft GitHub release for a `v*` tag: the NSIS installer, a portable zip, the
+# Builds a draft GitHub release for a `v*` tag: the NSIS installer, a portable zip (with lattice-cli), the
 # third-party license list and, when the signing key secret is set, the updater artifacts
 # (the installer's .sig and latest.json). See docs/release.md.
 name: Release
@@ -78,6 +78,9 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ steps.updater.outputs.args }}
 
+      - name: Build the CLI
+        run: cargo build --release -p lattice-cli
+
       - name: Portable zip and license list
         shell: pwsh
         env:
@@ -87,6 +90,7 @@ jobs:
           $name = "Lattice_${version}_x64-portable"
           New-Item -ItemType Directory $name | Out-Null
           Copy-Item target/release/lattice.exe "$name/Lattice.exe"
+          Copy-Item target/release/lattice-cli.exe "$name/lattice-cli.exe"
           # The marker that keeps all data in a `data` folder next to the exe.
           New-Item -ItemType File "$name/portable" | Out-Null
           Copy-Item LICENSE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES $name

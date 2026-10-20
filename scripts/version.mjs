@@ -1,4 +1,4 @@
-// The app version lives in package.json, package-lock.json, the workspace Cargo.toml (both
+// The app version lives in package.json, package-lock.json, the workspace Cargo.toml (the
 // crates inherit it, and tauri.conf.json has no version so Tauri reads Cargo's) and Cargo.lock.
 //   node scripts/version.mjs              print each file's version
 //   node scripts/version.mjs 1.2.3        set every file to 1.2.3
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const WORKSPACE_VERSION = /(\[workspace\.package\][^[]*?\nversion = ")([^"]+)(")/;
-const LOCK_VERSION = /(\nname = "(?:lattice|lattice-core)"\r?\nversion = ")([^"]+)(")/g;
+const LOCK_VERSION = /(\nname = "(?:lattice|lattice-core|lattice-cli)"\r?\nversion = ")([^"]+)(")/g;
 
 const json = {
   read: (text, path) => path.reduce((o, k) => o?.[k], JSON.parse(text)),
@@ -33,7 +33,7 @@ const SOURCES = [
     file: "Cargo.lock",
     read: (t) => {
       const found = [...t.matchAll(LOCK_VERSION)].map((m) => m[2]);
-      return found.length === 2 ? found : [undefined];
+      return found.length === 3 ? found : [undefined];
     },
     write: (t, v) => t.replace(LOCK_VERSION, `$1${v}$3`),
   },

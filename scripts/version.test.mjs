@@ -29,7 +29,7 @@ test("setVersion rewrites every source and leaves dependencies alone", () => {
   assert.equal(setVersion(dir, "2.3.4-beta.1"), "2.3.4-beta.1");
   assert.deepEqual(readVersions(dir).map((f) => f.versions.every((v) => v === "2.3.4-beta.1")), [true, true, true, true]);
   const changed = lockBefore.split("\n").filter((l, i) => l !== readFileSync(join(dir, "Cargo.lock"), "utf8").split("\n")[i]);
-  assert.equal(changed.length, 2);
+  assert.equal(changed.length, 3, "lattice, lattice-core and lattice-cli");
 });
 
 test("drift and bad input are reported", () => {

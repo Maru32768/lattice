@@ -19,6 +19,7 @@ pub mod ir;
 pub mod job_status;
 pub mod jobs;
 pub mod llm;
+pub mod location;
 pub mod markdown;
 pub mod msg;
 pub mod openai;

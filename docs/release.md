@@ -105,7 +105,7 @@ The draft release `Lattice v<x.y.z>` has these assets:
 | Asset | What it is |
 |---|---|
 | `Lattice_<x.y.z>_x64-setup.exe` | NSIS installer. Installs for the current user and keeps data in `%APPDATA%\dev.lattice.app`. |
-| `Lattice_<x.y.z>_x64-portable.zip` | `Lattice.exe` with a `portable` marker file, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`. Unzip anywhere; the marker keeps all data, logs and the WebView2 profile in a `data` folder next to the exe. Users update it by replacing `Lattice.exe`; the in-app updater only links to the release. |
+| `Lattice_<x.y.z>_x64-portable.zip` | `Lattice.exe` and `lattice-cli.exe` (the CLI and MCP server, built in its own step) with a `portable` marker file, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`. Unzip anywhere; the marker keeps all data, logs and the WebView2 profile in a `data` folder next to the exe. Users update it by replacing `Lattice.exe`; the in-app updater only links to the release. |
 | `THIRD_PARTY_LICENSES` | The license list the build shipped with. |
 | `Lattice_<x.y.z>_x64-setup.exe.sig`, `latest.json` | Only with the signing key secrets: the installer's signature and the manifest installed copies read to find updates. |
 

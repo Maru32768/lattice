@@ -61,6 +61,31 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     let Some(job) = store.claim_next_job(types).map_err(|e| e.to_string())? else {
         return Ok(false);
     };
+    run_claimed(store, providers, job, on_change).await
+}
+
+/// Runs one article's ready jobs of `types` here, oldest first, as a runner would (the CLI's
+/// `save --run` when the app is not running). Returns how many ran.
+pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
+    store: &Store,
+    providers: &Providers<L, E>,
+    types: &[&str],
+    article_id: i64,
+) -> Result<usize, String> {
+    let mut ran = 0;
+    while let Some(job) = store.claim_article_job(types, article_id).map_err(|e| e.to_string())? {
+        run_claimed(store, providers, job, &|_| {}).await?;
+        ran += 1;
+    }
+    Ok(ran)
+}
+
+async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
+    store: &Store,
+    providers: &Providers<L, E>,
+    job: JobRow,
+    on_change: &(dyn Fn(&JobRow) + Send + Sync),
+) -> Result<bool, String> {
     on_change(&job);
     let result = run_job(store, providers, &job, &|| on_change(&job)).await;
     if let Err(e) = &result {
@@ -309,6 +334,20 @@ mod tests {
         assert_eq!(favicons::get(&s, "127.0.0.1").unwrap(), (None, false), "the refusal is stored, not retried");
         let status: String = s.conn().query_row("SELECT status FROM processing_jobs", [], |r| r.get(0)).unwrap();
         assert_eq!(status, "succeeded");
+    }
+
+    #[tokio::test]
+    async fn run_article_runs_only_that_articles_jobs() {
+        let (s, id) = setup();
+        let (other, _) = s.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap();
+        crate::summarize::enqueue(&s, other).unwrap();
+        crate::summarize::enqueue(&s, id).unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
+        let p = with(Fake::new());
+        assert_eq!(run_article(&s, &p, LLM_JOBS, id).await.unwrap(), 2);
+        assert!(s.get_article(id, "ja").unwrap().unwrap().jobs.iter().all(|j| j.status == "succeeded"));
+        assert_eq!(s.get_article(other, "ja").unwrap().unwrap().jobs[0].status, "pending", "another article's job waits");
+        assert_eq!(run_article(&s, &p, LLM_JOBS, id).await.unwrap(), 0);
     }
 
     #[test]

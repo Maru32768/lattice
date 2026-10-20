@@ -1288,6 +1288,15 @@ impl Store {
     /// Claims the oldest ready job whose type is in `types`. Ingest and image jobs are skipped
     /// while another one for an article of the same host is running (one fetch per site at a time).
     pub fn claim_next_job(&self, types: &[&str]) -> Result<Option<JobRow>> {
+        self.claim_job(types, None)
+    }
+
+    /// `claim_next_job` limited to one article's jobs (the CLI's `save --run`).
+    pub fn claim_article_job(&self, types: &[&str], article_id: i64) -> Result<Option<JobRow>> {
+        self.claim_job(types, Some(article_id))
+    }
+
+    fn claim_job(&self, types: &[&str], article_id: Option<i64>) -> Result<Option<JobRow>> {
         self.conn()
             .query_row(
                 &format!(
@@ -1298,6 +1307,7 @@ impl Store {
                                  WHERE j.status = 'pending'
                                    AND j.type IN (SELECT value FROM json_each(?1))
                                    AND (j.next_run_at IS NULL OR j.next_run_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+                                   AND (?4 IS NULL OR j.article_id = ?4)
                                    AND NOT (j.type IN (?2, ?3) AND EXISTS (
                                        SELECT 1 FROM processing_jobs r
                                        JOIN articles ra ON ra.id = r.article_id
@@ -1306,7 +1316,7 @@ impl Store {
                                  ORDER BY j.id LIMIT 1)
                      RETURNING {JOB_COLS}"
                 ),
-                params![json(&types), crate::ingest::JOB_TYPE, crate::images::JOB_TYPE],
+                params![json(&types), crate::ingest::JOB_TYPE, crate::images::JOB_TYPE, article_id],
                 job_row,
             )
             .optional()
