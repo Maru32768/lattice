@@ -58,6 +58,8 @@ export interface ArticleRow {
   read_status: "unread" | "read";
   favorite: boolean;
   tags: string[];
+  /** Ids of the groups the article is in (`GroupRow`). */
+  groups: number[];
   genre: string | null;
   genre_manual: boolean;
   /** 1 (入門) to 5 (専門); see DifficultyField.tsx. */
@@ -82,7 +84,7 @@ export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("co
 /** `genre` null: 未分類; `feed` null: 手動追加. */
 export type ArticleFilter =
   | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null };
+  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number };
 
 export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc";
 
@@ -104,6 +106,14 @@ export interface FeedRow {
 export interface FeedCandidate {
   url: string;
   title: string | null;
+}
+
+/** A user-made collection of articles (G53); an article can be in many. */
+export interface GroupRow {
+  id: number;
+  name: string;
+  created_at: string;
+  count: number;
 }
 
 export interface TagCount {
@@ -175,6 +185,8 @@ export interface ImportSummary {
   queued: number;
   existing: number;
   invalid: number;
+  /** The articles the valid URLs are, new and already saved. */
+  ids: number[];
 }
 
 export interface ImageSettings {
@@ -342,6 +354,13 @@ export const api = {
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
   addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
   removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
+  listGroups: () => invoke<GroupRow[]>("list_groups"),
+  createGroup: (name: string) => invoke<number>("create_group", { name }),
+  renameGroup: (id: number, name: string) => invoke<void>("rename_group", { id, name }),
+  /** The group's articles stay in the library. */
+  deleteGroup: (id: number) => invoke<void>("delete_group", { id }),
+  groupAdd: (id: number, articles: number[]) => invoke<void>("group_add", { id, articles }),
+  groupRemove: (id: number, articles: number[]) => invoke<void>("group_remove", { id, articles }),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
   /** Removes the article with its HTML, blocks, translations only it uses, summaries, images and jobs. */
   deleteArticle: (id: number) => invoke<boolean>("delete_article", { id }),
@@ -432,7 +451,8 @@ export const api = {
   retryFailedJobs: (jobType: string | null) => invoke<number>("retry_failed_jobs", { jobType }),
   cancelJob: (id: number) => invoke<boolean>("cancel_job", { id }),
   /** Writes a JSON-lines export and returns its path. */
-  exportJson: () => invoke<string>("export_json"),
+  /** `group`: only that group's articles. */
+  exportJson: (group: number | null = null) => invoke<string>("export_json", { group }),
 };
 
 /** The in-app browser: one native child webview per visible Page tab, positioned over its placeholder element. */

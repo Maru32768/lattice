@@ -1,10 +1,11 @@
 import { useState } from "react";
-import type { FeedRow } from "./api";
+import type { FeedRow, GroupRow } from "./api";
 import { feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
+import { NavGroups } from "./NavGroups";
 import { useT, type PlainKey } from "./i18n";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review";
@@ -30,13 +31,14 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
-  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCollapse }: {
+export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
+  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
   counts: NavCounts;
   feeds: FeedRow[];
+  groups: GroupRow[];
   jobFailures: number;
   /** Cards in today's review queue. */
   reviewDue: number;
@@ -51,6 +53,9 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
   onChat: () => void;
   onRecent: (q: string) => void;
   onGenres: () => void;
+  onCreateGroup: (name: string) => void;
+  onRenameGroup: (id: number, name: string) => void;
+  onDeleteGroup: (id: number) => void;
   onCollapse: () => void;
 }) {
   const t = useT();
@@ -90,6 +95,8 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
 
       <div className="sec">{t("nav.library")}</div>
       {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
+
+      <NavGroups groups={groups} scope={scope} onScope={onScope} onCreate={onCreateGroup} onRename={onRenameGroup} onDelete={onDeleteGroup} />
 
       <div className="sec">{t("common.genre")}<button className="link" onClick={onGenres}>{t("nav.edit")}</button></div>
       {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? t("common.unclassified"), c, <span className="sw" style={{ background: genreSwatch(g) }} />))}

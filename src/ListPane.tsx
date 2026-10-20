@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { siteOf, type ArticleRow, type ArticleSort } from "./api";
-import { DIMS, DIM_LABELS, activeDims, facetBase, facetLabel, without, type Dim, type Facets, type Relaxation } from "./library";
-import type { Group } from "./groups";
+import { useEffect, useState } from "react";
+import { siteOf, type ArticleRow, type ArticleSort, type GroupRow } from "./api";
+import { DIMS, DIM_LABELS, NO_FACETS, activeDims, facetBase, facetLabel, without, type Dim, type Facets, type Relaxation } from "./library";
+import { flatten, type Group } from "./groups";
+import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
+import { GroupPicker } from "./GroupPicker";
 import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
@@ -34,17 +36,24 @@ function badge(a: ArticleRow, translating: string | null): [string, string] | nu
   return null;
 }
 
-/** `sel`: the open article; `cur`: the keyboard cursor (j / k), opened with Enter. */
-export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCursor }: {
-  a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; onOpen: (newTab: boolean) => void; onCursor: () => void;
+/**
+ * `sel`: the open article; `cur`: the keyboard cursor (j / k), opened with Enter. `picked` is set
+ * while rows are picked for a bulk action: a click then picks instead of opening (Shift+click
+ * starts picking).
+ */
+export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen, onPick, onCursor }: {
+  a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; picked?: boolean;
+  onOpen: (newTab: boolean) => void; onPick?: (range: boolean) => void; onCursor: () => void;
 }) {
   const t = useT();
   const b = badge(a, translating);
   const unread = a.read_status === "unread";
   return (
-    <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}`} onClick={(e) => onOpen(e.ctrlKey || e.metaKey)}
+    <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}${picked !== undefined ? " picking" : ""}`}
+      onClick={(e) => (onPick && (picked !== undefined || e.shiftKey) ? onPick(e.shiftKey) : onOpen(e.ctrlKey || e.metaKey))}
       {...onMiddle(() => onOpen(true))} onFocus={onCursor}
-      aria-current={sel || undefined} data-id={a.id}>
+      aria-current={sel || undefined} aria-pressed={picked} data-id={a.id}>
+      {picked !== undefined && <span className={`cb${picked ? " on" : ""}`} aria-hidden="true">{picked && "✓"}</span>}
       {unread && <span className="dot" aria-label={t("common.unread")} />}
       <span className="t">{a.title ?? a.original_url}</span>
       <span className="meta">
@@ -60,15 +69,18 @@ export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCurso
 }
 
 /** Active facets as removable chips, inactive dimensions as popover openers. */
-export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children }: {
+export function FacetBar({ facets, onFacets, scoped, all, groups, dims = DIMS, children }: {
   facets: Facets;
   onFacets: (f: Facets) => void;
   scoped: ArticleRow[];
   all: ArticleRow[];
+  groups: GroupRow[];
   dims?: Dim[];
   children?: React.ReactNode;
 }) {
   const t = useT();
+  // Without groups the dimension would only open an empty popover.
+  if (groups.length === 0) dims = dims.filter((d) => d !== "groups");
   const [open, setOpen] = useState<{ dim: Dim; el: HTMLElement } | null>(null);
   const active = activeDims(facets);
   const toggleOpen = (dim: Dim) => (e: React.MouseEvent<HTMLElement>) => {
@@ -86,7 +98,7 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
       {active.map((d) => (
         <span key={d} ref={chipRef(d)} className={`chip on${open?.dim === d ? " open" : ""}`}>
           <button className="chip-body" onClick={toggleOpen(d)} aria-haspopup="dialog" aria-expanded={open?.dim === d}>
-            <span className="k">{t(DIM_LABELS[d])}</span>{facetLabel(facets, d, all, t)}
+            <span className="k">{t(DIM_LABELS[d])}</span>{facetLabel(facets, d, all, groups, t)}
           </button>
           <button className="x" onClick={() => onFacets(without(facets, d))} aria-label={t("listPane.clearFacet", { label: t(DIM_LABELS[d]) })}><Icon name="x" size="sm" /></button>
         </span>
@@ -98,7 +110,7 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
         </button>
       ))}
       {open && (
-        <FacetPopover dim={open.dim} facets={facets} onFacets={onFacets} base={facetBase(scoped, facets, open.dim)} all={all}
+        <FacetPopover dim={open.dim} facets={facets} onFacets={onFacets} base={facetBase(scoped, facets, open.dim)} all={all} groups={groups}
           anchor={open.el} onClose={() => setOpen(null)} />
       )}
     </div>
@@ -123,8 +135,8 @@ export function SortMenu({ sort, onSort, group, onGroup }: {
   );
 }
 
-export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, sort, onSort, group, onGroup, selectedId, cursorId, onCursor,
-  translating, relax, onRelax, onOpen, onCollapse }: {
+export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, groupRows, sort, onSort, group, onGroup, selectedId, cursorId, onCursor,
+  translating, relax, onRelax, onOpen, onGroupMembers, onCreateGroup, onCollapse }: {
   title: string;
   count: number;
   total: number;
@@ -134,6 +146,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   all: ArticleRow[];
   /** Shown articles; one unnamed group when not grouping. */
   groups: Group<ArticleRow>[];
+  /** The user's groups (G53): the facet and the bulk グループに追加. */
+  groupRows: GroupRow[];
   sort: ArticleSort;
   onSort: (s: ArticleSort) => void;
   group: Grouping;
@@ -146,10 +160,24 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   onRelax: (r: Relaxation) => void;
   /** `newTab`: Ctrl / middle click. */
   onOpen: (a: ArticleRow, newTab: boolean) => void;
+  onGroupMembers: (group: number, ids: number[], add: boolean) => void;
+  onCreateGroup: (name: string) => Promise<number>;
   onCollapse: () => void;
 }) {
   const t = useT();
   const hasFacets = activeDims(facets).length > 0;
+  /** Rows picked for a bulk action; null while not picking. */
+  const [picked, setPicked] = useState<number[] | null>(null);
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const [picker, setPicker] = useState<HTMLElement | null>(null);
+  useEffect(() => { setPicked(null); setPicker(null); }, [title]);
+  const order = flatten(groups);
+  const pickedRows = order.filter((a) => picked?.includes(a.id));
+  const ids = pickedRows.map((a) => a.id);
+  const onPick = (id: number) => (range: boolean) => {
+    setPicked((p) => (p ? pick(order.map((a) => a.id), p, anchor, id, range) : [id]));
+    setAnchor(id);
+  };
   const renderGroup = (g: Group<ArticleRow>, depth: number): React.ReactNode => (
     <div key={g.key} role="group" aria-label={g.label || undefined}>
       {g.label && <div className={`grp-h d${depth}`}><span className="label">{g.label}</span><span className="n">{g.articles.length}</span></div>}
@@ -157,7 +185,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
         ? g.children.map((c) => renderGroup(c, depth + 1))
         : g.articles.map((a) => (
           <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={(t) => onOpen(a, t)} onCursor={() => onCursor(a.id)}
-            translating={translating?.id === a.id ? translating.label : null} />
+            translating={translating?.id === a.id ? translating.label : null} picked={picked ? picked.includes(a.id) : undefined} onPick={onPick(a.id)} />
         ))}
     </div>
   );
@@ -169,13 +197,30 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
           <span className="mono count">{count} / {total}</span>
           <button className="ib" onClick={onCollapse} aria-label={t("listPane.close")} title={t("listPane.close")}><Icon name="left" /></button>
         </div>
-        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} />
-        <div className="list-tools">
-          <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
-          <button className="clear" onClick={() => onFacets({ ...facets, genres: [], tags: [], feeds: [], difficulty: [], state: [] })} disabled={!hasFacets}>
-            {t("listPane.clear")}<Kbd>Esc</Kbd>
-          </button>
-        </div>
+        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groupRows} />
+        {picked ? (
+          <div className="list-tools" role="toolbar" aria-label={t("listPane.picking")}>
+            <span className="mono">{t("listPane.picked", { n: ids.length })}</span>
+            <button className="btn sm" disabled={ids.length === 0} aria-haspopup="dialog" aria-expanded={!!picker}
+              onClick={(e) => { const el = e.currentTarget; setPicker((p) => (p ? null : el)); }}>
+              <Icon name="folder" size="sm" />{t("listPane.addToGroup")}
+            </button>
+            <button className="btn sm ghost push" onClick={() => { setPicked(null); setPicker(null); }}>{t("listPane.endPicking")}</button>
+          </div>
+        ) : (
+          <div className="list-tools">
+            <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
+            <button className="tb" onClick={() => { setPicked([]); setAnchor(null); }} title={t("listPane.pickHint")}>{t("listPane.pick")}</button>
+            <button className="clear" onClick={() => onFacets({ ...NO_FACETS, tagMode: facets.tagMode })} disabled={!hasFacets}>
+              {t("listPane.clear")}<Kbd>Esc</Kbd>
+            </button>
+          </div>
+        )}
+        {picker && picked && (
+          <GroupPicker groups={groupRows} anchor={picker} onClose={() => setPicker(null)} onCreate={onCreateGroup}
+            selected={groupRows.filter((g) => pickedRows.length > 0 && pickedRows.every((a) => a.groups.includes(g.id))).map((g) => g.id)}
+            onToggle={(g, on) => onGroupMembers(g, ids, on)} />
+        )}
       </header>
       <div className="list-body">
         {count > 0 ? groups.map((g) => renderGroup(g, 0))

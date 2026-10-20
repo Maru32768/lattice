@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { api, isLocal, siteOf, type ArticleView, type Block, type Inline, type JobRow } from "./api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
@@ -8,6 +8,7 @@ import { Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { QuizPanel } from "./QuizPanel";
+import { GroupChips } from "./GroupPicker";
 import { onMiddle } from "./middle";
 import { locale, t, useT } from "./i18n";
 
@@ -295,7 +296,8 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged }: {
+  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged,
+  groups, onGroup, onCreateGroup, groupRequest }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -329,6 +331,12 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onFocusBlock: (block: number, label: string) => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
+  /** Every group, for the article's group chips and picker. */
+  groups: GroupRow[];
+  onGroup: (id: number, add: boolean) => void;
+  onCreateGroup: (name: string) => Promise<number>;
+  /** Opens the group picker when it grows (palette). */
+  groupRequest: number;
 }) {
   const t = useT();
   const { article: a, blocks } = view;
@@ -444,6 +452,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
               <span key={tag} className="chip mono">{tag}<button className="x" onClick={() => onTag(tag, false)} aria-label={t("reader.removeTag", { tag })}><Icon name="x" size="sm" /></button></span>
             ))}
             <TagAdder onAdd={(tag) => onTag(tag, true)} />
+            <GroupChips groups={groups} ids={a.groups} onToggle={onGroup} onCreate={onCreateGroup} request={groupRequest} />
             {!failed && (
               <label className="chip sel-chip" title={t("reader.difficultyHint")}>
                 <Dif d={a.difficulty} />{a.difficulty ? t(DIFFICULTY_LABELS[a.difficulty - 1]) : t("common.difficulty")}

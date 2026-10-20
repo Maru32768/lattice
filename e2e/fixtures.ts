@@ -1,5 +1,5 @@
 // Sample library for the mock backend: specs import it to compute what the UI should show.
-import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, JobOverview, JobRow, Quiz, QuizQuestion, ReviewItem } from "../src/api.ts";
+import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, GroupRow, JobOverview, JobRow, Quiz, QuizQuestion, ReviewItem } from "../src/api.ts";
 
 /** The clock every spec runs at (`page.clock.setFixedTime`), so 最近追加 is stable. */
 export const NOW = Date.parse("2026-10-20T03:00:00Z");
@@ -86,6 +86,7 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     read_status: read ? "read" : "unread",
     favorite,
     tags,
+    groups: [],
     genre,
     genre_manual: false,
     difficulty,
@@ -99,6 +100,15 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
   };
 });
 for (const f of FEEDS) f.article_count = ARTICLES.filter((a) => a.feed_id === f.id).length;
+
+/** User-made groups (G53); `count` is filled from the memberships below. */
+export const GROUPS: GroupRow[] = [
+  { id: 1, name: "MVCC 調査", created_at: daysAgo(10), count: 0 },
+  { id: 2, name: "Rust 勉強会", created_at: daysAgo(5), count: 0 },
+  { id: 3, name: "空のグループ", created_at: daysAgo(1), count: 0 },
+];
+const MEMBERS: Record<number, number[]> = { 1: [1, 2, 31, 36], 2: [20, 21, 22, 32] };
+for (const [g, ids] of Object.entries(MEMBERS)) for (const id of ids) ARTICLES[id - 1].groups.push(Number(g));
 
 /** The article the Reader specs open: fully translated, with a semantic-only search hit. */
 export const SNAPSHOT_ID = 1;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { siteOf, type ArticleRow, type SearchHit, type SearchResult } from "./api";
+import { siteOf, type ArticleRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
 import { DIM_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
@@ -9,7 +9,7 @@ import { useT, type PlainKey } from "./i18n";
 
 export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<string, PlainKey>;
 const METHODS: [SearchMethod, PlainKey][] = [["hybrid", "searchPane.hybrid"], ["lexical", "searchPane.lexical"], ["semantic", "searchPane.semantic"]];
-const COMPACT: Dim[] = ["genres", "tags", "feeds", "state"];
+const COMPACT: Dim[] = ["genres", "tags", "groups", "feeds", "state"];
 const SHOWN_VALUES = 3;
 
 export function Marked({ text, ts }: { text: string; ts: string[] }) {
@@ -17,8 +17,8 @@ export function Marked({ text, ts }: { text: string; ts: string[] }) {
 }
 
 /** 範囲: the scope search runs in, as a chip-styled select. */
-function ScopeSelect({ scope, onScope, genres, feeds }: {
-  scope: Scope; onScope: (s: Scope) => void; genres: (string | null)[]; feeds: [number | null, string][];
+function ScopeSelect({ scope, onScope, genres, feeds, groups }: {
+  scope: Scope; onScope: (s: Scope) => void; genres: (string | null)[]; feeds: [number | null, string][]; groups: GroupRow[];
 }) {
   const t = useT();
   return (
@@ -29,6 +29,11 @@ function ScopeSelect({ scope, onScope, genres, feeds }: {
         <option value={JSON.stringify({ kind: "recent" })}>{t("library.recent")}</option>
         <option value={JSON.stringify({ kind: "unread" })}>{t("common.unread")}</option>
         <option value={JSON.stringify({ kind: "favorites" })}>{t("common.favorites")}</option>
+        {groups.length > 0 && (
+          <optgroup label={t("common.group")}>
+            {groups.map((g) => <option key={g.id} value={JSON.stringify({ kind: "group", id: g.id })}>{g.name}</option>)}
+          </optgroup>
+        )}
         <optgroup label={t("common.genre")}>
           {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? t("common.unclassified")}</option>)}
         </optgroup>
@@ -42,7 +47,7 @@ function ScopeSelect({ scope, onScope, genres, feeds }: {
 }
 
 export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, open, onSearch, onOpen, onExit,
-  scope, onScope, facets, onFacets, scoped, all, articleById, focusSeq }: {
+  scope, onScope, facets, onFacets, scoped, all, groups, articleById, focusSeq }: {
   initial: string;
   result: SearchResult | null;
   busy: boolean;
@@ -65,6 +70,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   onFacets: (f: Facets) => void;
   scoped: ArticleRow[];
   all: ArticleRow[];
+  groups: GroupRow[];
   articleById: Map<number, ArticleRow>;
   /** Bumped to move focus back into the search box (the `/` key). */
   focusSeq: number;
@@ -104,7 +110,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, t)]);
+  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, groups, t)]);
   let n = 0;
   return (
     <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
@@ -119,8 +125,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
             ))}
           </div>
         </div>
-        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} dims={["genres", "tags", "feeds"]}>
-          <ScopeSelect scope={scope} onScope={onScope} genres={[...countBy(all, "genres").keys()]} feeds={feedNames} />
+        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groups} dims={["genres", "tags", "groups", "feeds"]}>
+          <ScopeSelect scope={scope} onScope={onScope} genres={[...countBy(all, "genres").keys()]} feeds={feedNames} groups={groups} />
         </FacetBar>
         <div className="search-count mono">{busy ? t("searchPane.searching") : result ? t("searchPane.count", { length: flat.length, length2: hits.length }) : ""}</div>
         {result && hitArticles.length > 0 && (
@@ -139,7 +145,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                       const on = (facets[d] as DimValue<Dim>[]).includes(v);
                       return (
                         <button key={String(v)} className={on ? "on" : ""} aria-pressed={on} onClick={() => onFacets(toggle(facets, d, v))}>
-                          {valueLabel(d, v, all, t)} <b>{c}</b>
+                          {valueLabel(d, v, all, groups, t)} <b>{c}</b>
                         </button>
                       );
                     })}

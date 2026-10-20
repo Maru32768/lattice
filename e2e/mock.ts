@@ -1,13 +1,14 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
-  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
+  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, GroupRow, ImageSettings,
   Grade, LlmSettings, Quiz, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
+const groups = structuredClone(GROUPS);
 const threads = structuredClone(CHAT_THREADS);
 const messages = structuredClone(CHAT_MESSAGES);
 const jobs = structuredClone(JOBS);
@@ -56,6 +57,7 @@ function matches(a: ArticleRow, f: ArticleFilter | null): boolean {
     case "tag": return a.tags.includes(f.name);
     case "genre": return a.genre === f.name;
     case "feed": return a.feed_id === f.id;
+    case "group": return a.groups.includes(f.id);
   }
 }
 
@@ -136,7 +138,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
   articles.push({
     id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
     language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
-    read_status: "unread", favorite: false, tags: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
+    read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
     feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, ...extra,
   });
   return id;
@@ -166,6 +168,31 @@ export const handlers = {
   remove_tag: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
     a.tags = a.tags.filter((t) => t !== name);
+  },
+  list_groups: (): GroupRow[] => groups.map((g) => ({ ...g, count: articles.filter((a) => a.groups.includes(g.id)).length }))
+    .sort((a, b) => a.name.localeCompare(b.name)),
+  create_group: ({ name }: { name: string }): number => {
+    const n = name.trim();
+    if (!n) reject("groups.emptyName");
+    if (groups.some((g) => g.name.toLowerCase() === n.toLowerCase())) reject("groups.exists", { name: n });
+    const id = Math.max(0, ...groups.map((g) => g.id)) + 1;
+    groups.push({ id, name: n, created_at: new Date(NOW).toISOString(), count: 0 });
+    return id;
+  },
+  rename_group: ({ id, name }: { id: number; name: string }) => {
+    const n = name.trim();
+    if (groups.some((g) => g.id !== id && g.name.toLowerCase() === n.toLowerCase())) reject("groups.exists", { name: n });
+    groups.find((g) => g.id === id)!.name = n;
+  },
+  delete_group: ({ id }: { id: number }) => {
+    groups.splice(groups.findIndex((g) => g.id === id), 1);
+    for (const a of articles) a.groups = a.groups.filter((g) => g !== id);
+  },
+  group_add: ({ id, articles: ids }: { id: number; articles: number[] }) => {
+    for (const a of articles) if (ids.includes(a.id) && !a.groups.includes(id)) a.groups = [...a.groups, id].sort((x, y) => x - y);
+  },
+  group_remove: ({ id, articles: ids }: { id: number; articles: number[] }) => {
+    for (const a of articles) if (ids.includes(a.id)) a.groups = a.groups.filter((g) => g !== id);
   },
   get_article: ({ id }: { id: number }): ArticleView | null => view(id),
   delete_article: ({ id }: { id: number }): boolean => {
@@ -243,8 +270,8 @@ export const handlers = {
   import_urls: ({ text }: { text: string }) => {
     const urls = text.match(/https?:\/\/\S+/g) ?? [];
     const existing = urls.filter((u) => articles.some((a) => a.original_url === u)).length;
-    for (const u of urls) if (!articles.some((a) => a.original_url === u)) addArticle(u, null);
-    return { found: urls.length, queued: urls.length - existing, existing, invalid: 0 };
+    const ids = urls.map((u) => articles.find((a) => a.original_url === u)?.id ?? addArticle(u, null));
+    return { found: urls.length, queued: urls.length - existing, existing, invalid: 0, ids };
   },
   import_markdown: ({ text }: { text: string }): number =>
     addArticle(`local:md/${text.length}`, /^#\s+(.+)$/m.exec(text)?.[1] ?? null, { domain: "", fetch_status: "ok", extraction_status: "ok" }),

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
+import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
@@ -12,7 +12,7 @@ import { JobsView } from "./JobsView";
 import { QuizReview } from "./QuizReview";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
-import { groupArticles, type Group } from "./groups";
+import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
@@ -106,6 +106,10 @@ export default function App() {
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
+  /** The user's groups (G53); `groups` below is the list's grouping. */
+  const [groupRows, setGroupRows] = useState<GroupRow[]>([]);
+  /** The palette asked this Reader tab to open its group picker; `seq` grows with each ask. */
+  const [groupRequest, setGroupRequest] = useState<{ tab: Id; seq: number } | null>(null);
   const [sort, setSort] = useState<ArticleSort>("saved_desc");
   const sortRef = useRef(sort);
   sortRef.current = sort;
@@ -173,7 +177,7 @@ export default function App() {
     setNow(Date.now());
     return Promise.all([
       api.listArticles({ kind: "all" }, sortRef.current).then((a) => { setArticles(a); setLoaded(true); }),
-      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres),
+      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres), api.listGroups().then(setGroupRows),
     ]).catch(fail);
   };
   /** Whether the page a tab shows is in the Index. */
@@ -257,10 +261,7 @@ export default function App() {
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
   const groups: Group<ArticleRow>[] = useMemo(
     () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t)), [shown, group, t]);
-  const order = useMemo(() => {
-    const flat = (g: Group<ArticleRow>): ArticleRow[] => (g.children ? g.children.flatMap(flat) : g.articles);
-    return groups.flatMap(flat);
-  }, [groups]);
+  const order = useMemo(() => flatten(groups), [groups]);
   const counts: NavCounts = useMemo(() => {
     const unread = articles.filter((a) => a.read_status === "unread");
     return {
@@ -279,8 +280,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now, t) : []),
-    [shown.length, articles, scope, facets, now, t]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t) : []),
+    [shown.length, articles, groupRows, scope, facets, now, t]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -288,7 +289,7 @@ export default function App() {
     return groupHits(filterHits(search.result.hits, method, ids));
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
-  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags, t), [genres, feeds, tags, t]);
+  const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t), [groupRows, genres, feeds, tags, t]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -428,6 +429,22 @@ export default function App() {
   const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
 
+  // ---- groups (G53) -------------------------------------------------------------------------
+  async function createGroup(name: string) {
+    const id = await api.createGroup(name);
+    await refresh();
+    return id;
+  }
+  async function groupMembers(group: number, ids: number[], add: boolean) {
+    await act(() => (add ? api.groupAdd(group, ids) : api.groupRemove(group, ids)));
+    for (const id of ids) if (viewsRef.current.has(id)) void loadView(id);
+  }
+  async function deleteGroup(id: number) {
+    await act(() => api.deleteGroup(id));
+    if (scope.kind === "group" && scope.id === id) setScope({ kind: "all" });
+    setFacets((f) => ({ ...f, groups: f.groups.filter((g) => g !== id) }));
+  }
+
   async function deleteArticle(a: ArticleRow) {
     setDeleting(null);
     try {
@@ -500,9 +517,13 @@ export default function App() {
     facets: (f) => { setFacets(f); setScreen("library"); },
     open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
     page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
-    index: (url) => {
+    index: (url, group) => {
       const where = whereFromPalette();
-      void act(async () => openReader(await api.saveUrl(url), undefined, where));
+      void act(async () => {
+        const id = await api.saveUrl(url);
+        if (group != null) await api.groupAdd(group, [id]);
+        openReader(id, undefined, where);
+      });
     },
     discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
     search: (q) => void runSearch(q),
@@ -512,6 +533,7 @@ export default function App() {
     chat: openChat,
     lang: setLang,
     translate: current ? () => void act(() => api.translateArticle(current.id), current.id) : null,
+    addToGroup: cur?.kind === "reader" ? () => setGroupRequest((r) => ({ tab: cur.id, seq: (r?.seq ?? 0) + 1 })) : null,
   };
 
   // ---- keyboard -----------------------------------------------------------------------------
@@ -668,7 +690,7 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles, t);
+  const title = scopeLabel(scope, articles, groupRows, t);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
@@ -691,9 +713,11 @@ export default function App() {
     <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
   );
   const nav = navOpen
-    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures} reviewDue={reviewDue}
+    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
         onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
+        onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
+        onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
         onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
@@ -738,7 +762,8 @@ export default function App() {
         onGenre={(name) => act(() => api.setGenre(a.id, name), a.id)}
         onDifficulty={(level) => act(() => api.setDifficulty(a.id, level), a.id)}
         onClassify={vAct(api.classifyArticle)} onDelete={() => setDeleting({ article: a, page: false })}
-        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview} />
+        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview}
+        groups={groupRows} onGroup={(id, add) => groupMembers(id, [a.id], add)} onCreateGroup={createGroup} groupRequest={groupRequest?.tab === tab.id ? groupRequest.seq : 0} />
     );
   };
 
@@ -754,7 +779,8 @@ export default function App() {
             : nav}
           {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review") && (
             <main className="main" data-pane="doc">
-              {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }} />}
+              {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }}
+                groups={groupRows} initialGroups={scope.kind === "group" ? [scope.id] : []} onCreateGroup={createGroup} />}
               {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
@@ -765,16 +791,16 @@ export default function App() {
           {screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
               hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
+              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
           {screen === "library" && search && listOpen && splitter("search")}
           {screen === "library" && !(search && listOpen) && (listOpen
             ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
-                all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
+                all={articles} groups={groups} groupRows={groupRows} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-                onCollapse={() => setListOpen(false)} />
-            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
+                onGroupMembers={groupMembers} onCreateGroup={createGroup} onCollapse={() => setListOpen(false)} />
+            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, groupRows, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {screen === "library" && !search && listOpen && splitter("list")}
           {screen === "library" && <div className="doc-area-wrap">
@@ -787,7 +813,7 @@ export default function App() {
             <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
           </div>}
           {palette != null && (
-            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
+            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} groups={groupRows} scope={scope} facets={facets} actions={paletteActions}
               onClose={() => setPalette(null)} />
           )}
           {deleting && (
