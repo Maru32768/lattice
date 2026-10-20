@@ -207,6 +207,23 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_translate_instructions(app: State<'_, App>) -> Result<String, String> {
+    translate::instructions(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_instructions(app: State<'_, App>, text: String) -> Result<(), String> {
+    translate::set_instructions(&app.store, &text)
+}
+
+/// The built-in prompt the instructions extend (current term mode, English to Japanese).
+#[tauri::command(async)]
+fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
+    let target = translate::target(&app.store)?;
+    Ok(segments::translation_prompt(&segments::Target { instructions: String::new(), ..target }))
+}
+
+#[tauri::command(async)]
 fn list_feeds(app: State<'_, App>) -> Result<Vec<FeedRow>, String> {
     feeds::list(&app.store)
 }
@@ -604,6 +621,9 @@ pub fn run() {
             set_auto_classify,
             get_translate_keep_terms,
             set_translate_keep_terms,
+            get_translate_instructions,
+            set_translate_instructions,
+            get_translation_prompt,
             list_feeds,
             add_feed,
             discover_feeds,

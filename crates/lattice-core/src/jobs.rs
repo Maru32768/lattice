@@ -81,7 +81,8 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     let article_id = job.article_id.ok_or("job has no article")?;
     match job.job_type.as_str() {
         translate::JOB_TYPE => {
-            let target = Target::from_key(params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE));
+            let key = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
+            let target = Target::from_key(key, params["instructions"].as_str().unwrap_or_default());
             translate::run(store, &p.llm, article_id, &target, progress).await
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
@@ -165,6 +166,19 @@ mod tests {
         assert_eq!(p.llm.calls.lock().unwrap().len(), 2);
         assert_eq!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
         assert_eq!(s.cached_segments(&[crate::store::sha256_hex("Intro")], "ja").unwrap().len(), 1);
+
+        // New instructions: a new cache key, and the job sends them in the prompt.
+        translate::set_keep_terms(&s, true).unwrap();
+        assert!(translate::set_instructions(&s, &"x".repeat(translate::MAX_INSTRUCTION_CHARS + 1)).is_err());
+        translate::set_instructions(&s, "  です・ます調で訳す ").unwrap();
+        let target = translate::target(&s).unwrap();
+        assert_eq!(target.instructions, "です・ます調で訳す");
+        translate::enqueue(&s, id, &target).unwrap();
+        translate::set_instructions(&s, "").unwrap();
+        assert_eq!(translate::target(&s).unwrap().key(), "ja", "cleared");
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        assert!(p.llm.systems.lock().unwrap().last().unwrap().contains("です・ます調で訳す"), "the job keeps the instructions it was queued with");
+        assert_eq!(s.get_article(id, &target.key()).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
     }
 
     #[tokio::test]

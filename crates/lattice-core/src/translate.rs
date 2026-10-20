@@ -11,6 +11,9 @@ pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
 /// "off" translates technical terms too; absent means keep them in English (§8).
 pub const KEEP_TERMS_SETTING: &str = "translate_keep_terms";
+/// The user's extra instructions for the translation prompt; absent means none.
+pub const INSTRUCTIONS_SETTING: &str = "translate_instructions";
+pub const MAX_INSTRUCTION_CHARS: usize = 2000;
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
 
@@ -22,9 +25,21 @@ pub fn set_keep_terms(store: &Store, on: bool) -> Result<(), String> {
     store.set_setting(KEEP_TERMS_SETTING, (!on).then_some("off")).map_err(|e| e.to_string())
 }
 
+pub fn instructions(store: &Store) -> Result<String, String> {
+    Ok(store.setting(INSTRUCTIONS_SETTING).map_err(|e| e.to_string())?.unwrap_or_default())
+}
+
+pub fn set_instructions(store: &Store, text: &str) -> Result<(), String> {
+    let text = text.trim();
+    if text.chars().count() > MAX_INSTRUCTION_CHARS {
+        return Err(format!("追加の指示は {MAX_INSTRUCTION_CHARS} 文字までです"));
+    }
+    store.set_setting(INSTRUCTIONS_SETTING, (!text.is_empty()).then_some(text)).map_err(|e| e.to_string())
+}
+
 /// The current settings' target for non-Japanese sources (`Target::for_source` adapts it).
 pub fn target(store: &Store) -> Result<Target, String> {
-    Ok(Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)? })
+    Ok(Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)?, instructions: instructions(store)? })
 }
 
 /// The current settings' target for one article: English if the article is Japanese.
@@ -35,7 +50,7 @@ pub fn article_target(store: &Store, article_id: i64) -> Result<Target, String> 
 /// The job keeps the target it was queued with, so changing settings meanwhile does not mix modes.
 pub fn enqueue(store: &Store, article_id: i64, target: &Target) -> Result<(), String> {
     let key = target.key();
-    let params = serde_json::json!({ "target_language": key }).to_string();
+    let params = serde_json::json!({ "target_language": key, "instructions": target.instructions }).to_string();
     store.enqueue_job(JOB_TYPE, article_id, &params, &format!("{JOB_TYPE}:{article_id}:{key}")).map_err(|e| e.to_string())
 }
 

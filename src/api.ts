@@ -273,6 +273,10 @@ export const api = {
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
+  translateInstructions: () => invoke<string>("get_translate_instructions"),
+  setTranslateInstructions: (text: string) => invoke<void>("set_translate_instructions", { text }),
+  /** The built-in translation prompt (English to Japanese, current term mode) that the instructions extend. */
+  translationPrompt: () => invoke<string>("get_translation_prompt"),
   classifyArticle: (id: number) => invoke<void>("classify_article", { id }),
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-translate-instructions"
+description = "Enables the get_translate_instructions command without any pre-configured scope."
+commands.allow = ["get_translate_instructions"]
+
+[[permission]]
+identifier = "deny-get-translate-instructions"
+description = "Denies the get_translate_instructions command without any pre-configured scope."
+commands.deny = ["get_translate_instructions"]

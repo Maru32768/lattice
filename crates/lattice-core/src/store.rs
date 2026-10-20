@@ -976,7 +976,7 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
             )
             .optional()?;
-        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language).language, blocks, jobs, summary }))
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary }))
     }
 
     /// Translatable blocks of an article lacking a current translation in `target_language`.
