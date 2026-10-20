@@ -53,8 +53,16 @@ fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => {
             let [a, b, ..] = v4.octets();
-            !(v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified() || v4.is_broadcast()
-                || v4.is_documentation() || v4.is_multicast() || a == 0 || a >= 240 || (a == 100 && (64..128).contains(&b)))
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_multicast()
+                || a == 0
+                || a >= 240
+                || (a == 100 && (64..128).contains(&b)))
         }
         IpAddr::V6(v6) => match v6.to_ipv4() {
             Some(v4) => is_public(v4.into()),
@@ -97,11 +105,7 @@ pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, Strin
     if !status.is_success() {
         return Err(format!("HTTP {status}"));
     }
-    let content_type = resp
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
+    let content_type = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(str::to_string);
     if let Some(ct) = &content_type {
         if !ct.contains("html") {
             return Err(format!("unsupported content type: {ct}"));
@@ -146,8 +150,23 @@ mod tests {
     #[test]
     fn classifies_addresses() {
         let ip = |s: &str| is_public(s.parse().unwrap());
-        for private in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "0.0.0.0", "100.64.0.1", "255.255.255.255",
-            "::1", "::", "fc00::1", "fd12::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1"] {
+        for private in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "100.64.0.1",
+            "255.255.255.255",
+            "::1",
+            "::",
+            "fc00::1",
+            "fd12::1",
+            "fe80::1",
+            "::ffff:127.0.0.1",
+            "::ffff:10.0.0.1",
+        ] {
             assert!(!ip(private), "{private}");
         }
         for public in ["93.184.215.14", "1.1.1.1", "172.32.0.1", "2606:4700::1111", "::ffff:8.8.8.8"] {

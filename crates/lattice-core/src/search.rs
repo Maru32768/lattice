@@ -2,8 +2,8 @@
 //! merged with Reciprocal Rank Fusion. RRF needs no score calibration between the two,
 //! which raw bm25 and cosine values would.
 
-use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 
 use serde::Serialize;
 

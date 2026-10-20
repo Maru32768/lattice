@@ -16,7 +16,8 @@ use crate::ir::{ArticleIr, Block, Inline};
 use crate::segments::{Target, Unit, plain_text};
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
-const MIGRATIONS: &[&str] = &[r#"
+const MIGRATIONS: &[&str] = &[
+    r#"
 CREATE TABLE articles (
     id                 INTEGER PRIMARY KEY,
     original_url       TEXT NOT NULL,
@@ -66,7 +67,8 @@ CREATE TABLE blocks (
     heading_id  INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
     UNIQUE (article_id, ordinal)
 );
-"#, r#"
+"#,
+    r#"
 -- Derived data: several translations per block may coexist; readers pick the newest
 -- whose source_hash still matches blocks.text_hash.
 CREATE TABLE translations (
@@ -98,7 +100,8 @@ CREATE TABLE processing_jobs (
 );
 CREATE INDEX processing_jobs_ready ON processing_jobs(status, next_run_at);
 CREATE INDEX processing_jobs_article ON processing_jobs(article_id);
-"#, r#"
+"#,
+    r#"
 -- Lexical search. trigram tokenizes Japanese and identifiers like pg_visibility alike;
 -- terms under 3 characters fall back to LIKE (see lexical_search).
 CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid='id', tokenize='trigram');
@@ -133,7 +136,8 @@ CREATE TABLE embeddings (
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     PRIMARY KEY (block_id, model)
 );
-"#, r#"
+"#,
+    r#"
 -- Snapshots get compressed (raw HTML is 100KB-1MB per article). Existing rows stay as-is.
 CREATE TABLE snapshots_v2 (
     id           INTEGER PRIMARY KEY,
@@ -150,7 +154,8 @@ INSERT INTO snapshots_v2 (id, article_id, fetched_at, final_url, http_status, co
 DROP TABLE snapshots;
 ALTER TABLE snapshots_v2 RENAME TO snapshots;
 CREATE INDEX snapshots_article ON snapshots(article_id);
-"#, r#"
+"#,
+    r#"
 -- Translations become a cache keyed by the paragraph's plain-text hash (= blocks.text_hash),
 -- holding reading units [{source, translation}] as HTML. Shared by the live page overlay,
 -- the reader and search; independent of articles, so it also survives re-extraction.
@@ -183,7 +188,8 @@ CREATE TRIGGER translations_fts_ad AFTER DELETE ON segment_translations BEGIN
 END;
 INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
 CREATE INDEX blocks_text_hash ON blocks(text_hash);
-"#, r#"
+"#,
+    r#"
 CREATE TABLE tags (
     id   INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE
@@ -195,7 +201,8 @@ CREATE TABLE article_tags (
 );
 CREATE INDEX article_tags_tag ON article_tags(tag_id);
 CREATE INDEX articles_inbox ON articles(read_status, favorite, saved_at);
-"#, r#"
+"#,
+    r#"
 CREATE TABLE summaries (
     id             INTEGER PRIMARY KEY,
     article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
@@ -208,12 +215,14 @@ CREATE TABLE summaries (
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX summaries_article ON summaries(article_id, type);
-"#, r#"
+"#,
+    r#"
 CREATE TABLE settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-"#, r#"
+"#,
+    r#"
 -- Chat over saved articles (F9). Scope and citations are JSON; citations copy the cited
 -- block's title/heading/text so old answers still render after re-extraction or deletion.
 CREATE TABLE chat_threads (
@@ -236,7 +245,8 @@ CREATE TABLE chat_messages (
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX chat_messages_thread ON chat_messages(thread_id);
-"#, r#"
+"#,
+    r#"
 -- Genres (§11 topic): one per article. genre_source 'manual' pins the user's choice against auto runs.
 CREATE TABLE genres (
     id   INTEGER PRIMARY KEY,
@@ -260,7 +270,8 @@ CREATE TABLE classifications (
     created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX classifications_article ON classifications(article_id);
-"#, r#"
+"#,
+    r#"
 CREATE TABLE feeds (
     id              INTEGER PRIMARY KEY,
     url             TEXT NOT NULL UNIQUE,
@@ -281,22 +292,26 @@ CREATE TABLE feed_items (
 -- Removing a feed keeps its articles (they fall back to manually added).
 ALTER TABLE articles ADD COLUMN feed_id INTEGER REFERENCES feeds(id) ON DELETE SET NULL;
 CREATE INDEX articles_feed ON articles(feed_id);
-"#, r#"
+"#,
+    r#"
 -- Extracted text length (characters): flags pages whose server HTML has almost no content
 -- (JS-rendered), so the user can re-save them from the in-app browser.
 ALTER TABLE articles ADD COLUMN text_length INTEGER;
 UPDATE articles SET text_length = (SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = articles.id)
     WHERE extraction_status = 'ok';
-"#, r#"
+"#,
+    r#"
 -- Jobs view: counts per (status, type) and the backed-off list without touching table rows.
 CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_run_at);
-"#, r#"
+"#,
+    r#"
 -- Difficulty for a working software engineer, 1 (入門) to 5 (専門), from the classify job.
 -- difficulty_source 'manual' pins the user's choice against auto runs, as genre_source does.
 ALTER TABLE articles ADD COLUMN difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 5);
 ALTER TABLE articles ADD COLUMN difficulty_source TEXT CHECK (difficulty_source IN ('auto', 'manual'));
 ALTER TABLE classifications ADD COLUMN difficulty INTEGER;
-"#, r#"
+"#,
+    r#"
 -- Article images (§6), stored once per content hash (sha256 of the bytes) across articles.
 -- Raster formats only (sniffed): SVG can carry script and stays a link.
 CREATE TABLE images (
@@ -319,10 +334,12 @@ CREATE INDEX article_images_hash ON article_images(hash);
 CREATE TRIGGER article_images_gc AFTER DELETE ON article_images WHEN old.hash IS NOT NULL BEGIN
     DELETE FROM images WHERE hash = old.hash AND NOT EXISTS (SELECT 1 FROM article_images WHERE hash = old.hash);
 END;
-"#, r#"
+"#,
+    r#"
 -- The entry's published (else updated) date: fills articles.published_at when the page has none.
 ALTER TABLE feed_items ADD COLUMN published_at TEXT;
-"#, r#"
+"#,
+    r#"
 -- Site icons per domain (favicons.rs). A failure is a row too (bytes NULL, error set), so a
 -- site without an icon is not asked again until the row is a week old.
 CREATE TABLE favicons (
@@ -332,20 +349,23 @@ CREATE TABLE favicons (
     error      TEXT,
     fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-"#, r#"
+"#,
+    r#"
 -- The entry's own title, and its full text when the feed carries one (deflated HTML; NULL for
 -- excerpts): read in place of the page when the site refuses to serve it (feeds::Entry).
 ALTER TABLE feed_items ADD COLUMN title TEXT;
 ALTER TABLE feed_items ADD COLUMN content BLOB;
 -- So the next poll gets every feed in full and fills these for entries seen before.
 UPDATE feeds SET etag = NULL, last_modified = NULL;
-"#, r#"
+"#,
+    r#"
 -- The user's name and icon for a feed (feeds::rename / set_icon); NULL shows the feed's own
 -- title and the site's favicon. title keeps the feed's own, so the name can be reset.
 ALTER TABLE feeds ADD COLUMN custom_title TEXT;
 ALTER TABLE feeds ADD COLUMN icon_mime TEXT;
 ALTER TABLE feeds ADD COLUMN icon BLOB;
-"#];
+"#,
+];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
 const RENORMALIZE_AT: usize = 18;
@@ -353,10 +373,8 @@ const RENORMALIZE_AT: usize = 18;
 /// `UPDATE OR IGNORE`: a URL whose new form is already taken keeps its old one.
 fn renormalize_urls(tx: &rusqlite::Transaction) -> Result<()> {
     for (table, col) in [("articles", "normalized_url"), ("articles", "canonical_url"), ("feed_items", "normalized_url")] {
-        let urls: Vec<String> = tx
-            .prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%'"))?
-            .query_map([], |r| r.get(0))?
-            .collect::<Result<_>>()?;
+        let urls: Vec<String> =
+            tx.prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%'"))?.query_map([], |r| r.get(0))?.collect::<Result<_>>()?;
         for old in urls {
             if let Ok(new) = crate::url_norm::normalize(&old).map(String::from) {
                 if new != old {
@@ -442,11 +460,17 @@ pub enum ArticleFilter {
     All,
     Unread,
     Favorites,
-    Tag { name: String },
+    Tag {
+        name: String,
+    },
     /// `None`: 未分類.
-    Genre { name: Option<String> },
+    Genre {
+        name: Option<String>,
+    },
     /// `None`: 手動追加 (not from a feed).
-    Feed { id: Option<i64> },
+    Feed {
+        id: Option<i64>,
+    },
 }
 
 /// SQL condition on `articles` for `filter`, with its one parameter (`?1`) if any.
@@ -455,10 +479,9 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::All => ("1", None),
         ArticleFilter::Unread => ("read_status = 'unread'", None),
         ArticleFilter::Favorites => ("favorite = 1", None),
-        ArticleFilter::Tag { name } => (
-            "EXISTS (SELECT 1 FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id AND t.name = ?1)",
-            Some(name.clone().into()),
-        ),
+        ArticleFilter::Tag { name } => {
+            ("EXISTS (SELECT 1 FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id AND t.name = ?1)", Some(name.clone().into()))
+        }
         ArticleFilter::Genre { name: Some(n) } => ("genre_id = (SELECT id FROM genres WHERE name = ?1)", Some(n.clone().into())),
         ArticleFilter::Genre { name: None } => ("genre_id IS NULL", None),
         ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
@@ -568,7 +591,6 @@ pub struct HitDetail {
     pub ordinal: i64,
 }
 
-
 const JOB_COLS: &str = "id, type, article_id, params, status, attempt_count, last_error, next_run_at";
 
 fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
@@ -617,7 +639,8 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
         // A short local note is complete; only a page can have more text than was extracted.
-        thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS
+        thin: r.get::<_, String>(11)? == "ok"
+            && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS
             && !crate::markdown::is_local(&r.get::<_, String>(1)?),
         from_feed: r.get::<_, Option<String>>(23)?.as_deref() == Some(FEED_CONTENT_TYPE),
     })
@@ -688,8 +711,7 @@ fn json<T: Serialize>(v: &T) -> String {
 
 fn from_json_col<T: serde::de::DeserializeOwned>(r: &rusqlite::Row, i: usize, wrap: impl Fn(&str) -> String) -> Result<T> {
     let s: String = r.get(i)?;
-    serde_json::from_str(&wrap(&s))
-        .map_err(|e| rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e)))
+    serde_json::from_str(&wrap(&s)).map_err(|e| rusqlite::Error::FromSqlConversionFailure(i, rusqlite::types::Type::Text, Box::new(e)))
 }
 
 /// NULL JSON columns decode to the type's default.
@@ -732,18 +754,14 @@ impl Store {
     pub fn summary_source(&self, article_id: i64) -> Result<Option<SummarySource>> {
         let c = self.conn();
         let Some((title, content_hash)) = c
-            .query_row(
-                "SELECT coalesce(title, original_url), content_hash FROM articles WHERE id = ?1 AND extraction_status = 'ok'",
-                [article_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
-            )
+            .query_row("SELECT coalesce(title, original_url), content_hash FROM articles WHERE id = ?1 AND extraction_status = 'ok'", [article_id], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+            })
             .optional()?
         else {
             return Ok(None);
         };
-        let mut st = c.prepare(
-            "SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal",
-        )?;
+        let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal")?;
         let blocks = st.query_map(params![article_id, json(&crate::ir::PROSE_KINDS)], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
         Ok(Some(SummarySource { title, content_hash, blocks }))
     }
@@ -799,11 +817,7 @@ impl Store {
     /// The saved article for a normalized URL (matching either its own or its canonical URL).
     pub fn find_article_by_url(&self, normalized_url: &str) -> Result<Option<i64>> {
         self.conn()
-            .query_row(
-                "SELECT id FROM articles WHERE normalized_url = ?1 OR canonical_url = ?1 ORDER BY id LIMIT 1",
-                [normalized_url],
-                |r| r.get(0),
-            )
+            .query_row("SELECT id FROM articles WHERE normalized_url = ?1 OR canonical_url = ?1 ORDER BY id LIMIT 1", [normalized_url], |r| r.get(0))
             .optional()
     }
 
@@ -826,10 +840,7 @@ impl Store {
     }
 
     pub fn record_fetch_failure(&self, id: i64, error: &str) -> Result<()> {
-        self.conn().execute(
-            "UPDATE articles SET fetch_status = 'failed', last_error = ?2 WHERE id = ?1",
-            params![id, error],
-        )?;
+        self.conn().execute("UPDATE articles SET fetch_status = 'failed', last_error = ?2 WHERE id = ?1", params![id, error])?;
         Ok(())
     }
 
@@ -869,10 +880,7 @@ impl Store {
                  VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
                 params![id, f.final_url, f.status, f.content_type, deflate(&f.html)],
             )?;
-            tx.execute(
-                "UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
-                [id],
-            )?;
+            tx.execute("UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [id])?;
         }
         match extracted {
             Err(e) => {
@@ -893,8 +901,16 @@ impl Store {
                      language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10
                      WHERE id = ?1",
                     params![
-                        id, canonical_normalized, m.title, m.author, m.site_name, m.published_at,
-                        m.language, sha256_hex(&content.join("\n")), EXTRACTION_VERSION, text_length as i64
+                        id,
+                        canonical_normalized,
+                        m.title,
+                        m.author,
+                        m.site_name,
+                        m.published_at,
+                        m.language,
+                        sha256_hex(&content.join("\n")),
+                        EXTRACTION_VERSION,
+                        text_length as i64
                     ],
                 )?;
             }
@@ -906,15 +922,12 @@ impl Store {
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
         let row: Option<(String, String, Vec<u8>)> = self
             .conn()
-            .query_row(
-                "SELECT final_url, encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1",
-                [article_id],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-            )
+            .query_row("SELECT final_url, encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1", [article_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
             .optional()?;
         row.map(|(final_url, enc, body)| {
-            let html = inflate(&enc, &body)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Blob, Box::new(e)))?;
+            let html = inflate(&enc, &body).map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Blob, Box::new(e)))?;
             Ok(Snapshot { final_url, html })
         })
         .transpose()
@@ -985,10 +998,7 @@ impl Store {
         let mut c = self.conn();
         let tx = c.transaction()?;
         tx.execute("INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING", [name])?;
-        tx.execute(
-            "INSERT OR IGNORE INTO article_tags (article_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2",
-            params![article_id, name],
-        )?;
+        tx.execute("INSERT OR IGNORE INTO article_tags (article_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2", params![article_id, name])?;
         tx.commit()
     }
 
@@ -996,19 +1006,14 @@ impl Store {
     pub fn remove_tag(&self, article_id: i64, name: &str) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;
-        tx.execute(
-            "DELETE FROM article_tags WHERE article_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)",
-            params![article_id, name.trim()],
-        )?;
+        tx.execute("DELETE FROM article_tags WHERE article_id = ?1 AND tag_id = (SELECT id FROM tags WHERE name = ?2)", params![article_id, name.trim()])?;
         tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM article_tags)", [])?;
         tx.commit()
     }
 
     pub fn list_tags(&self) -> Result<Vec<TagCount>> {
         let c = self.conn();
-        let mut st = c.prepare(
-            "SELECT t.name, count(*) FROM tags t JOIN article_tags x ON x.tag_id = t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
-        )?;
+        let mut st = c.prepare("SELECT t.name, count(*) FROM tags t JOIN article_tags x ON x.tag_id = t.id GROUP BY t.id ORDER BY t.name COLLATE NOCASE")?;
         st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? }))?.collect()
     }
 
@@ -1020,10 +1025,7 @@ impl Store {
     /// `target_language` is a `Target::key`.
     pub fn get_article(&self, id: i64, target_language: &str) -> Result<Option<ArticleView>> {
         let c = self.conn();
-        let Some(article) = c
-            .query_row(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE id = ?1"), [id], article_row)
-            .optional()?
-        else {
+        let Some(article) = c.query_row(&format!("SELECT {ARTICLE_COLS} FROM articles WHERE id = ?1"), [id], article_row).optional()? else {
             return Ok(None);
         };
         let mut st = c.prepare(
@@ -1073,13 +1075,7 @@ impl Store {
              ORDER BY b.ordinal",
         )?;
         let rows = st.query_map(params![article_id, target_language], |r| {
-            Ok(PendingBlock {
-                id: r.get(0)?,
-                kind: r.get(1)?,
-                text: r.get(2)?,
-                text_hash: r.get(3)?,
-                inlines: opt_json_col(r, 4)?,
-            })
+            Ok(PendingBlock { id: r.get(0)?, kind: r.get(1)?, text: r.get(2)?, text_hash: r.get(3)?, inlines: opt_json_col(r, 4)? })
         })?;
         rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
     }
@@ -1208,9 +1204,7 @@ impl Store {
         let mut c = self.conn();
         let tx = c.transaction()?;
         {
-            let mut ins = tx.prepare(
-                "INSERT OR REPLACE INTO embeddings (block_id, model, vector, source_hash) VALUES (?1, ?2, ?3, ?4)",
-            )?;
+            let mut ins = tx.prepare("INSERT OR REPLACE INTO embeddings (block_id, model, vector, source_hash) VALUES (?1, ?2, ?3, ?4)")?;
             for (src, v) in items {
                 let blob: Vec<u8> = v.iter().flat_map(|f| f.to_le_bytes()).collect();
                 ins.execute(params![src.block_id, model, blob, src.text_hash])?;
@@ -1344,9 +1338,7 @@ impl Store {
             })?
             .collect::<Result<_>>()?;
         let mut keys: HashMap<i64, String> = HashMap::new();
-        let mut tr = c.prepare(
-            "SELECT text FROM segment_translations WHERE source_hash = ?1 AND target_language = ?2 ORDER BY id DESC LIMIT 1",
-        )?;
+        let mut tr = c.prepare("SELECT text FROM segment_translations WHERE source_hash = ?1 AND target_language = ?2 ORDER BY id DESC LIMIT 1")?;
         let mut out = Vec::with_capacity(rows.len());
         for (mut hit, hash) in rows {
             let key = match keys.get(&hit.article_id) {
@@ -1370,10 +1362,7 @@ impl Store {
     }
 
     pub fn set_read_status(&self, id: i64, read: bool) -> Result<()> {
-        self.conn().execute(
-            "UPDATE articles SET read_status = ?2 WHERE id = ?1",
-            params![id, if read { "read" } else { "unread" }],
-        )?;
+        self.conn().execute("UPDATE articles SET read_status = ?2 WHERE id = ?1", params![id, if read { "read" } else { "unread" }])?;
         Ok(())
     }
 }
@@ -1439,7 +1428,8 @@ mod tests {
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
-        let urls: Vec<String> = s.conn().prepare("SELECT normalized_url FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        let urls: Vec<String> =
+            s.conn().prepare("SELECT normalized_url FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
         assert_eq!(urls, ["https://m.dev/a", "https://m.dev/b", "https://m.dev/b?source=rss----x---4"], "a taken URL keeps its old form");
         let item: String = s.conn().query_row("SELECT normalized_url FROM feed_items", [], |r| r.get(0)).unwrap();
         assert_eq!(item, "https://m.dev/a");
@@ -1529,7 +1519,8 @@ mod tests {
         let (hs, ho) = (sha256_hex("shared paragraph"), sha256_hex("only in the deleted article"));
         s.insert_segments("ja", "v", &[(hs.as_str(), &shared[..], "p", None), (ho.as_str(), &only[..], "p", None)]).unwrap();
         let blocks = s.get_article(a, "ja").unwrap().unwrap().blocks;
-        let srcs: Vec<EmbedSource> = blocks.iter().map(|b| EmbedSource { block_id: b.id, text_hash: sha256_hex(&b.block.text), text: b.block.text.clone(), heading: None }).collect();
+        let srcs: Vec<EmbedSource> =
+            blocks.iter().map(|b| EmbedSource { block_id: b.id, text_hash: sha256_hex(&b.block.text), text: b.block.text.clone(), heading: None }).collect();
         s.upsert_embeddings("m", &srcs.iter().map(|e| (e, &[1.0f32][..])).collect::<Vec<_>>()).unwrap();
         s.add_tag(a, "mine").unwrap();
         s.add_tag(a, "both").unwrap();

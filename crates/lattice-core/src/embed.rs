@@ -56,9 +56,7 @@ impl EmbeddingProvider for LocalE5 {
         tokio::task::spawn_blocking(move || {
             let mut guard = model.lock().unwrap_or_else(|e| e.into_inner());
             if guard.is_none() {
-                let opts = TextInitOptions::new(EmbeddingModel::MultilingualE5Small)
-                    .with_cache_dir(cache_dir)
-                    .with_show_download_progress(false);
+                let opts = TextInitOptions::new(EmbeddingModel::MultilingualE5Small).with_cache_dir(cache_dir).with_show_download_progress(false);
                 *guard = Some(TextEmbedding::try_new(opts).map_err(|e| format!("loading embedding model: {e}"))?);
             }
             let vecs = guard.as_mut().expect("initialized above").embed(&texts, Some(BATCH)).map_err(|e| e.to_string())?;

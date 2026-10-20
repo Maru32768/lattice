@@ -161,8 +161,11 @@ mod tests {
         assert_eq!((a["type"].as_str(), a["title"].as_str(), a["tags"].clone()), (Some("article"), Some("Post"), json!(["mvcc"])));
         let intro = &a["blocks"][0];
         assert_eq!((intro["kind"].as_str(), intro["text"].as_str()), (Some("heading"), Some("Intro")));
-        assert_eq!(intro["translations"], json!([{"target_language": "ja", "text": "はじめに", "units": [{"source": "Intro", "translation": "はじめに"}],
-            "provider": "fake", "model": "m", "prompt_version": "v1", "created_at": intro["translations"][0]["created_at"]}]));
+        assert_eq!(
+            intro["translations"],
+            json!([{"target_language": "ja", "text": "はじめに", "units": [{"source": "Intro", "translation": "はじめに"}],
+            "provider": "fake", "model": "m", "prompt_version": "v1", "created_at": intro["translations"][0]["created_at"]}])
+        );
         assert_eq!(a["blocks"][1]["inlines"][1], json!({"t": "code", "v": "write skew"}));
         assert_eq!((a["summaries"][0]["text"].as_str(), a["summaries"][0]["stale"].as_bool()), (Some("要約"), Some(true)));
         let chat = &lines[2];

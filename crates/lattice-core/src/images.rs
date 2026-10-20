@@ -103,8 +103,7 @@ pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Re
             [article_id],
         )
         .map_err(err)?;
-        let page: Option<String> =
-            c.query_row("SELECT original_url FROM articles WHERE id = ?1", [article_id], |r| r.get(0)).optional().map_err(err)?;
+        let page: Option<String> = c.query_row("SELECT original_url FROM articles WHERE id = ?1", [article_id], |r| r.get(0)).optional().map_err(err)?;
         let mut st = c
             .prepare(
                 "SELECT json_extract(b.attrs, '$.src') AS s FROM blocks b
@@ -159,8 +158,7 @@ pub(crate) fn save(store: &Store, article_id: i64, src: &str, mime: &str, bytes:
     let hash: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
     {
         let c = store.conn();
-        c.execute("INSERT INTO images (hash, mime, bytes) VALUES (?1, ?2, ?3) ON CONFLICT(hash) DO NOTHING", params![hash, mime, bytes])
-            .map_err(err)?;
+        c.execute("INSERT INTO images (hash, mime, bytes) VALUES (?1, ?2, ?3) ON CONFLICT(hash) DO NOTHING", params![hash, mime, bytes]).map_err(err)?;
     }
     record(store, article_id, src, Some(&hash), None)
 }

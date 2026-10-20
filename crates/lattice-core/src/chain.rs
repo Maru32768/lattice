@@ -83,10 +83,8 @@ pub fn save_config(store: &Store, entries: Vec<ChainEntry>) -> Result<Vec<ChainE
             return Err(format!("{} 段目のプロバイダは effort「{}」に対応していません", i + 1, x.as_str()));
         }
     }
-    let entries: Vec<ChainEntry> = entries
-        .into_iter()
-        .map(|e| ChainEntry { model: e.model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()), ..e })
-        .collect();
+    let entries: Vec<ChainEntry> =
+        entries.into_iter().map(|e| ChainEntry { model: e.model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()), ..e }).collect();
     let json = serde_json::to_string(&entries).map_err(|e| e.to_string())?;
     store.set_setting(CHAIN_SETTING, Some(&json)).map_err(|e| e.to_string())?;
     Ok(entries)
@@ -250,10 +248,13 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         s.set_setting(LEGACY_MODEL_SETTING, Some("sonnet")).unwrap();
         assert_eq!(load_config(&s).unwrap(), vec![ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("sonnet".into()), effort: None }]);
-        let saved = save_config(&s, vec![
-            ChainEntry { kind: ProviderKind::CodexCli, model: Some("  ".into()), effort: Some(Effort::Max) },
-            ChainEntry { kind: ProviderKind::Gemini, model: Some(" gemini-pro-latest ".into()), effort: None },
-        ])
+        let saved = save_config(
+            &s,
+            vec![
+                ChainEntry { kind: ProviderKind::CodexCli, model: Some("  ".into()), effort: Some(Effort::Max) },
+                ChainEntry { kind: ProviderKind::Gemini, model: Some(" gemini-pro-latest ".into()), effort: None },
+            ],
+        )
         .unwrap();
         assert_eq!(saved[0].model, None);
         assert_eq!(load_config(&s).unwrap(), saved);

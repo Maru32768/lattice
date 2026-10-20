@@ -11,9 +11,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl};
+use tokio::sync::oneshot;
 
 pub const LABEL: &str = "browser";
 pub const RENDER_LABEL: &str = "renderer";

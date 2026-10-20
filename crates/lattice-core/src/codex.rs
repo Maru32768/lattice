@@ -16,8 +16,19 @@ use crate::llm::{Completion, Effort, LlmError, LlmProvider, strict_schema};
 
 /// Features that give the agent tools; all off so page text cannot drive anything.
 const DISABLED_FEATURES: &[&str] = &[
-    "shell_tool", "unified_exec", "apps", "plugins", "multi_agent", "image_generation", "hooks",
-    "browser_use", "computer_use", "view_image", "skill_search", "goals", "tool_suggest",
+    "shell_tool",
+    "unified_exec",
+    "apps",
+    "plugins",
+    "multi_agent",
+    "image_generation",
+    "hooks",
+    "browser_use",
+    "computer_use",
+    "view_image",
+    "skill_search",
+    "goals",
+    "tool_suggest",
 ];
 
 pub struct CodexCli {
@@ -69,12 +80,7 @@ impl CodexCli {
             cmd.args(["--disable", f]);
         }
         // Instructions as the prompt; the untrusted text arrives on stdin as a <stdin> block.
-        cmd.arg(system)
-            .current_dir(&cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        cmd.arg(system).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
 
@@ -104,11 +110,15 @@ impl CodexCli {
 
 /// Last error reported in `codex exec --json` events (usage limits, auth).
 fn event_error(jsonl: &str) -> Option<String> {
-    jsonl.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter_map(|v| match v["type"].as_str() {
-        Some("turn.failed") => v["error"]["message"].as_str().map(str::to_string),
-        Some("error") => v["message"].as_str().map(str::to_string),
-        _ => None,
-    }).last()
+    jsonl
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter_map(|v| match v["type"].as_str() {
+            Some("turn.failed") => v["error"]["message"].as_str().map(str::to_string),
+            Some("error") => v["message"].as_str().map(str::to_string),
+            _ => None,
+        })
+        .last()
 }
 
 /// Parses `codex exec --json` JSONL: the final agent message holds the schema-shaped JSON.

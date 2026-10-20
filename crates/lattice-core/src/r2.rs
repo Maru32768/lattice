@@ -384,8 +384,7 @@ async fn upload(http: &reqwest::Client, c: &Creds, key: &str, path: &Path) -> Re
         return send(http, c, "PUT", key, &[], body).await.map(drop);
     }
     let created = send(http, c, "POST", key, &[("uploads", "")], Vec::new()).await?;
-    let upload_id = xml_text(&created.text().await.map_err(|e| e.to_string())?, "UploadId")
-        .ok_or("CreateMultipartUpload returned no UploadId")?;
+    let upload_id = xml_text(&created.text().await.map_err(|e| e.to_string())?, "UploadId").ok_or("CreateMultipartUpload returned no UploadId")?;
     let parts = async {
         let mut xml = String::from("<CompleteMultipartUpload>");
         for n in 1.. {
@@ -427,14 +426,7 @@ fn truncate(s: &str) -> &str {
     &s[..s.floor_char_boundary(500)]
 }
 
-async fn send(
-    http: &reqwest::Client,
-    c: &Creds,
-    method: &str,
-    key: &str,
-    query: &[(&str, &str)],
-    body: Vec<u8>,
-) -> Result<reqwest::Response, String> {
+async fn send(http: &reqwest::Client, c: &Creds, method: &str, key: &str, query: &[(&str, &str)], body: Vec<u8>) -> Result<reqwest::Response, String> {
     let req = build(c, method, key, query, &hex(&Sha256::digest(&body)), unix_now());
     let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
     let mut rb = http.request(method, &req.url).body(body);
@@ -476,10 +468,7 @@ fn build(c: &Creds, method: &str, key: &str, query: &[(&str, &str)], payload_has
         &c.secret,
     );
     let url = if query.is_empty() { format!("https://{host}{path}") } else { format!("https://{host}{path}?{query}") };
-    Signed {
-        url,
-        headers: vec![("x-amz-date", date), ("x-amz-content-sha256", payload_hash.to_string()), ("authorization", auth)],
-    }
+    Signed { url, headers: vec![("x-amz-date", date), ("x-amz-content-sha256", payload_hash.to_string()), ("authorization", auth)] }
 }
 
 fn canonical_query(query: &[(&str, &str)]) -> String {
@@ -568,13 +557,20 @@ mod tests {
 
     #[test]
     fn builds_path_style_r2_request() {
-        let c = Creds { account_id: "0123456789abcdef0123456789abcdef".into(), bucket: "lattice-backup".into(), access_key_id: "AKID".into(), secret: "s".into() };
+        let c =
+            Creds { account_id: "0123456789abcdef0123456789abcdef".into(), bucket: "lattice-backup".into(), access_key_id: "AKID".into(), secret: "s".into() };
         let r = build(&c, "PUT", "lattice/pc/lattice-20130524T000000Z.db.gz", &[("uploadId", "a/b+c"), ("partNumber", "2")], EMPTY_SHA, 1_369_353_600);
-        assert_eq!(r.url, "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/lattice-backup/lattice/pc/lattice-20130524T000000Z.db.gz?partNumber=2&uploadId=a%2Fb%2Bc");
+        assert_eq!(
+            r.url,
+            "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/lattice-backup/lattice/pc/lattice-20130524T000000Z.db.gz?partNumber=2&uploadId=a%2Fb%2Bc"
+        );
         assert_eq!(r.headers[0], ("x-amz-date", "20130524T000000Z".to_string()));
         assert_eq!(r.headers[1].1, EMPTY_SHA);
         let auth = &r.headers[2].1;
-        assert!(auth.starts_with("AWS4-HMAC-SHA256 Credential=AKID/20130524/auto/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature="), "{auth}");
+        assert!(
+            auth.starts_with("AWS4-HMAC-SHA256 Credential=AKID/20130524/auto/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature="),
+            "{auth}"
+        );
         assert_eq!(auth.rsplit('=').next().unwrap().len(), 64);
     }
 
@@ -653,7 +649,8 @@ mod tests {
         let c = test_creds();
         let host = "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
         let headers = [("host", host), ("x-amz-content-sha256", EMPTY_SHA), ("x-amz-date", "20130524T000000Z")];
-        let expect = |method, path, query| signature(&authorization(method, path, query, &headers, EMPTY_SHA, "20130524T000000Z", "auto", "AKID", "s")).to_string();
+        let expect =
+            |method, path, query| signature(&authorization(method, path, query, &headers, EMPTY_SHA, "20130524T000000Z", "auto", "AKID", "s")).to_string();
 
         let list = build(&c, "GET", "", &[("list-type", "2"), ("prefix", "lattice/pc/"), ("continuation-token", "1x/y+z=")], EMPTY_SHA, 1_369_353_600);
         let query = "continuation-token=1x%2Fy%2Bz%3D&list-type=2&prefix=lattice%2Fpc%2F";
@@ -693,7 +690,12 @@ mod tests {
         let key = |t| object_key(&p, t);
         let current = key(500);
         let mut listed: Vec<String> = [100, 400, 200, 300].map(key).to_vec();
-        listed.extend([current.clone(), "lattice/pc/notes.txt".into(), "lattice/pc/lattice-2026.db.gz".into(), "lattice/pc/sub/lattice-20261001T000000Z.db.gz".into()]);
+        listed.extend([
+            current.clone(),
+            "lattice/pc/notes.txt".into(),
+            "lattice/pc/lattice-2026.db.gz".into(),
+            "lattice/pc/sub/lattice-20261001T000000Z.db.gz".into(),
+        ]);
         listed.push(object_key(&device_prefix("pc-2"), 50));
         listed.retain(|k| is_backup_key(k, &p));
         assert_eq!(backup::stale(listed.clone(), 3, &current), vec![key(200), key(100)]);

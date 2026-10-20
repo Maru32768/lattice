@@ -26,7 +26,8 @@ pub fn load(store: &Store) -> Result<Settings, String> {
 
 /// Validates all three before storing any; blank texts are removed.
 pub fn save(store: &Store, s: &Settings) -> Result<(), String> {
-    let fields = [(PROFILE_SETTING, "自分について", &s.profile), (SUMMARY_SETTING, "要約の追加の指示", &s.summary), (CHAT_SETTING, "対話の追加の指示", &s.chat)];
+    let fields =
+        [(PROFILE_SETTING, "自分について", &s.profile), (SUMMARY_SETTING, "要約の追加の指示", &s.summary), (CHAT_SETTING, "対話の追加の指示", &s.chat)];
     if let Some((_, name, _)) = fields.iter().find(|(_, _, t)| t.trim().chars().count() > MAX_CHARS) {
         return Err(format!("{name}は {MAX_CHARS} 文字までです"));
     }

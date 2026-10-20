@@ -41,9 +41,10 @@ impl ClaudeCli {
 
 impl ClaudeCli {
     fn args(&self, system: &str, schema: &Value) -> Vec<String> {
-        let mut args: Vec<String> = ["-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--setting-sources", ""]
-            .map(String::from)
-            .into();
+        let mut args: Vec<String> =
+            ["-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--setting-sources", ""]
+                .map(String::from)
+                .into();
         args.extend(["--system-prompt".into(), system.into(), "--json-schema".into(), schema.to_string()]);
         if let Some(m) = self.model() {
             args.extend(["--model".into(), m]);
@@ -57,11 +58,7 @@ impl ClaudeCli {
     async fn run(&self, system: &str, input: &str, schema: &Value) -> Result<Value, LlmError> {
         let mut cmd = Command::new(&self.program);
         cmd.args(self.args(system, schema));
-        cmd.current_dir(std::env::temp_dir())
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
+        cmd.current_dir(std::env::temp_dir()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash from the GUI app
 

@@ -88,9 +88,7 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
             }
         })
         .focused(false);
-    let wv = window
-        .add_child(builder, LogicalPosition::new(OFFSCREEN.0, OFFSCREEN.1), LogicalSize::new(VIEWPORT.0, VIEWPORT.1))
-        .map_err(err)?;
+    let wv = window.add_child(builder, LogicalPosition::new(OFFSCREEN.0, OFFSCREEN.1), LogicalSize::new(VIEWPORT.0, VIEWPORT.1)).map_err(err)?;
     let result = async {
         match tokio::time::timeout(LOAD_TIMEOUT, loaded).await {
             Ok(Ok(())) => {}
