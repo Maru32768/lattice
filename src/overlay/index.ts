@@ -7,6 +7,9 @@
  *
  * Adapted from Mazelingo's content script (MIT License, Copyright (c) 2026 Yeq6X).
  *
+ * Selecting an English word shows 単語を登録 (G56), which sends the word and its sentence to the
+ * app's vocabulary.
+ *
  * Runs inside untrusted pages: it only ever inserts sanitized HTML, and the backend only
  * honours its translate calls while the user has translation switched on.
  */
@@ -15,6 +18,7 @@ import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, rout
 import type { PageKeys } from "../keys.ts";
 import type { OverlayLabels } from "../api.ts";
 import { keyOf } from "../keyname.ts";
+import { captureIn, collapse, isWord } from "../vocab.ts";
 
 interface Unit {
   source: string;
@@ -52,7 +56,7 @@ const BATCH_CHARS = 6000;
 const MAX_INFLIGHT = 3;
 
 const state = {
-  config: { enabled: false, percent: 70, labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "" } } as Config,
+  config: { enabled: false, percent: 70, labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" } } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
   pending: [] as Pending[],
@@ -328,6 +332,80 @@ function bindBlockHover(el: HTMLElement) {
   });
 }
 
+// ---- 単語を登録 -------------------------------------------------------------------------------
+
+let saveBtn: { host: HTMLElement; btn: HTMLButtonElement } | null = null;
+let saveTimer = 0;
+/** What the button saves. */
+let offered: { selection: string; sentence: string } | null = null;
+
+function ensureSaveButton() {
+  if (saveBtn) return saveBtn;
+  const host = document.createElement("div");
+  host.dataset.latticeUi = "1";
+  const root = host.attachShadow({ mode: "closed" });
+  root.innerHTML = `<style>
+    button{position:fixed;z-index:2147483647;display:none;transform:translate(-50%,6px);height:28px;padding:0 12px;border-radius:6px;border:1px solid #2F5D8A;
+      font:500 12.5px/1 "IBM Plex Sans JP",system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#fff;background:#2F5D8A;
+      box-shadow:0 8px 24px rgba(30,28,24,.18);cursor:pointer}
+    button:disabled{cursor:default;opacity:.9}
+  </style><button type="button"></button>`;
+  const btn = root.querySelector("button")!;
+  // Keep the page's selection when the button is pressed.
+  btn.addEventListener("mousedown", (e) => e.preventDefault());
+  btn.addEventListener("click", () => {
+    if (!offered) return;
+    btn.disabled = true;
+    invoke("overlay_vocab", offered)
+      .then(() => {
+        btn.textContent = state.config.labels.saved_word;
+        saveTimer = window.setTimeout(hideSave, 1200);
+      })
+      .catch((e) => {
+        console.warn("[lattice] save word failed", e);
+        hideSave();
+      });
+  });
+  document.documentElement.append(host);
+  saveBtn = { host, btn };
+  return saveBtn;
+}
+
+function hideSave() {
+  clearTimeout(saveTimer);
+  if (saveBtn) saveBtn.btn.style.display = "none";
+}
+
+/** The selected word and its sentence, cut from the nearest block around it. */
+function selectedWord(): { selection: string; sentence: string; rect: DOMRect } | null {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(sel.toString())) return null;
+  const range = sel.getRangeAt(0);
+  const node = range.commonAncestorContainer;
+  let block = node instanceof Element ? node : node.parentElement;
+  if (!block || block.closest("input, textarea, [contenteditable=''], [contenteditable='true'], [data-lattice-ui]")) return null;
+  while (block.parentElement && block !== document.body && !isBlock(block)) block = block.parentElement;
+  const before = document.createRange();
+  before.setStart(block, 0);
+  before.setEnd(range.startContainer, range.startOffset);
+  const text = sel.toString();
+  const c = captureIn(block.textContent ?? "", text, before.toString().length);
+  return { selection: c?.surface ?? collapse(text), sentence: c?.sentence ?? collapse(text), rect: range.getBoundingClientRect() };
+}
+
+function offerSave() {
+  const word = state.config.labels.save_word ? selectedWord() : null;
+  if (!word) return hideSave();
+  const { btn } = ensureSaveButton();
+  clearTimeout(saveTimer);
+  btn.textContent = state.config.labels.save_word;
+  btn.disabled = false;
+  btn.style.left = `${Math.min(Math.max(60, word.rect.left + word.rect.width / 2), window.innerWidth - 60)}px`;
+  btn.style.top = `${Math.min(word.rect.bottom, window.innerHeight - 40)}px`;
+  btn.style.display = "block";
+  offered = { selection: word.selection, sentence: word.sentence };
+}
+
 // ---- public API -------------------------------------------------------------------------------
 
 function start() {
@@ -430,6 +508,10 @@ if (window.top === window && !window.__lattice) {
   window.__lattice = { configure, setKeys, scrollToText, snapshot };
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
+  // After the selection settles (a click inside it collapses it only after mouseup).
+  document.addEventListener("mouseup", (e) => { if (!e.composedPath().some((n) => n === saveBtn?.host)) setTimeout(offerSave); });
+  document.addEventListener("selectionchange", () => { if (saveBtn && !saveBtn.btn.disabled && window.getSelection()?.isCollapsed) hideSave(); });
+  window.addEventListener("scroll", () => { if (!saveBtn?.btn.disabled) hideSave(); }, { passive: true });
   const boot = () =>
     void invoke("overlay_config")
       .then((c) => {

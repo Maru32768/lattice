@@ -1,5 +1,5 @@
 // Sample library for the mock backend: specs import it to compute what the UI should show.
-import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, JobOverview, JobRow, Quiz, QuizQuestion, ReviewItem } from "../src/api.ts";
+import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, JobOverview, JobRow, Quiz, QuizQuestion, QuizReviewItem, ReviewItem, VocabEntry } from "../src/api.ts";
 
 /** The clock every spec runs at (`page.clock.setFixedTime`), so 最近追加 is stable. */
 export const NOW = Date.parse("2026-10-20T03:00:00Z");
@@ -204,11 +204,24 @@ export const QUIZ: Quiz = {
 /** A new card's intervals (minutes) after again / hard / good / easy with the default settings. */
 export const NEW_PREVIEWS: ReviewItem["previews"] = [1440, 1440, 1440, 5760];
 
-const card = (a: ArticleRow, q: QuizQuestion): ReviewItem => ({ ...q, article_id: a.id, article_title: a.title!, new: false, previews: [1440, 2880, 8640, 11520] });
+const card = (a: ArticleRow, q: QuizQuestion): QuizReviewItem => ({ ...q, type: "quiz", article_id: a.id, article_title: a.title!, new: false, previews: [1440, 2880, 8640, 11520] });
 
 /** Today's review: two due cards from the VACUUM article. */
-export const REVIEW: ReviewItem[] = [
+export const REVIEW: QuizReviewItem[] = [
   card(ARTICLES[1], { id: 21, kind: "recall", question: "VACUUM が回収するのは何？", answer: "どのスナップショットからも見えなくなった古い版の行", explanation: "MVCC では更新のたびに古い版が残る。", block_ids: [202] }),
   card(ARTICLES[1], { id: 22, kind: "choice", question: "bloat が増える主な原因は？", options: ["長いトランザクション", "インデックスの不足", "WAL の圧縮", "共有バッファの不足"],
     answer: "長いトランザクション", explanation: "古いスナップショットが残る間、VACUUM は版を回収できない。", block_ids: [203] }),
+];
+
+/** The vocabulary: a word saved from the snapshot article (its cards not due today) and one the LLM could not explain. */
+export const VOCAB: VocabEntry[] = [
+  {
+    id: 2, headword: "write skew", pos: "noun", meaning: "書き込みスキュー", definition: "an anomaly where two transactions each write based on data the other changes",
+    ipa: "", example: "Write skew broke the on-call invariant.", state: "ready", suspended: false, created_at: daysAgo(2), due_at: NOW / 1000 + 3 * 86_400,
+    contexts: [{ surface: "Write skew", sentence: SNAPSHOT_BLOCKS[5][1], article_id: SNAPSHOT_ID, block_id: 106, url: ARTICLES[0].original_url, title: ARTICLES[0].title }],
+  },
+  {
+    id: 1, headword: "bloat", pos: "", meaning: "", definition: "", ipa: "", example: "", state: "failed", suspended: false, created_at: daysAgo(3), due_at: null,
+    contexts: [{ surface: "bloat", sentence: "Table bloat grows while old snapshots live.", article_id: null, block_id: null, url: "https://wiki.example.org/vacuum", title: null }],
+  },
 ];

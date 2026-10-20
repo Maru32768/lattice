@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { api, type Grade, type ReviewItem, type ReviewOverview } from "./api";
+import { api, type Grade, type ReviewItem, type ReviewOverview, type VocabContext } from "./api";
 import { QuizCard } from "./QuizCard";
+import { VocabCard } from "./VocabCard";
+import { hostOf } from "./Favicon";
 import { GRADES } from "./quiz";
 import { relTime } from "./time";
 import { Menu } from "./Popover";
@@ -11,10 +13,14 @@ import { t, useT } from "./i18n";
 
 const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? t("quizReview.dueNow") : relTime(new Date(unix * 1000).toISOString(), t));
 
-/** 今日の復習: today's due cards one by one, then a summary; and the articles in review. */
-export function QuizReview({ onOpen, onChanged }: {
-  /** Opens the article in the Reader, at `block` when given. */
-  onOpen: (articleId: number, block?: number) => void;
+const same = (a: ReviewItem, b: ReviewItem) => a.type === b.type && a.id === b.id;
+
+/** 今日の復習: today's due cards (quiz questions and words) one by one, then a summary; and the articles in review. */
+export function QuizReview({ onOpen, onOpenPage, onChanged }: {
+  /** Opens the article in the Reader, at `block` when given, marked with `label`. */
+  onOpen: (articleId: number, block?: number, label?: string) => void;
+  /** Opens a page a word was captured from, scrolled to `text`. */
+  onOpenPage: (url: string, text: string) => void;
   /** Cards were answered or removed (the nav badge). */
   onChanged: () => void;
 }) {
@@ -51,21 +57,22 @@ export function QuizReview({ onOpen, onChanged }: {
   useEffect(() => { if (finished && answered.length > 0) void refreshOverview(); }, [finished]);
 
   const grade = (g: Grade) => item && run(async () => {
-    await api.reviewGrade(item.id, g);
+    await (item.type === "quiz" ? api.reviewGrade(item.id, g) : api.vocabGrade(item.id, g));
     setAnswered((a) => [...a, g]);
     setAt((n) => n + 1);
     onChanged();
   });
   const dropCard = () => item && run(async () => {
-    await api.reviewRemoveCard(item.id);
-    setItems((xs) => xs && xs.filter((x) => x.id !== item.id));
+    // A word's cards are suspended together (単語帳 resumes them).
+    await (item.type === "quiz" ? api.reviewRemoveCard(item.id) : api.vocabSuspend(item.entry_id, true));
+    setItems((xs) => xs && xs.filter((x, i) => i < at || !(same(x, item) || (item.type === "vocab" && x.type === "vocab" && x.entry_id === item.entry_id))));
     onChanged();
     await refreshOverview();
   });
   const dropArticle = (articleId: number) => run(async () => {
     await api.reviewRemoveArticle(articleId);
     // Cards already answered stay counted; the rest of that article's cards leave the session.
-    setItems((xs) => xs && xs.filter((x, i) => i < at || x.article_id !== articleId));
+    setItems((xs) => xs && xs.filter((x, i) => i < at || x.type !== "quiz" || x.article_id !== articleId));
     onChanged();
     await refreshOverview();
   });
@@ -73,6 +80,8 @@ export function QuizReview({ onOpen, onChanged }: {
   const left = items ? items.length - at : 0;
   const fresh = items ? items.slice(at).filter((x) => x.new).length : 0;
   const articles = overview?.articles ?? [];
+  const openContext = (c: VocabContext) =>
+    c.article_id != null ? onOpen(c.article_id, c.block_id ?? undefined, t("vocabCard.sourceLabel")) : c.url && onOpenPage(c.url, c.sentence);
 
   return (
     <main className="manage">
@@ -89,13 +98,22 @@ export function QuizReview({ onOpen, onChanged }: {
             <div className="qz-session-h">
               <span className="mono muted">{at + 1} / {items.length}</span>
               {item.new && <span className="bd run">{t("quizReview.new")}</span>}
-              <button className="linkish qz-art" onClick={() => onOpen(item.article_id)} title={t("quizReview.openArticle")}>{item.article_title}</button>
-              <Menu className="ib" label={t("quizReview.cardActions")} align="right" trigger={<Icon name="more" />} items={[
+              {item.type === "quiz"
+                ? <button className="linkish qz-art" onClick={() => onOpen(item.article_id)} title={t("quizReview.openArticle")}>{item.article_title}</button>
+                : <button className="linkish qz-art" onClick={() => openContext(item.context)} title={t("vocabCard.source")}
+                    disabled={item.context.article_id == null && !item.context.url}>
+                    {item.context.title ?? (item.context.url ? hostOf(item.context.url) : t("vocabCard.word"))}
+                  </button>}
+              <Menu className="ib" label={t("quizReview.cardActions")} align="right" trigger={<Icon name="more" />} items={item.type === "quiz" ? [
                 { label: t("quizReview.removeCard"), onSelect: () => void dropCard() },
                 { label: t("quizReview.removeArticle"), onSelect: () => void dropArticle(item.article_id) },
+              ] : [
+                { label: t("vocabCard.suspend"), onSelect: () => void dropCard() },
               ]} />
             </div>
-            <QuizCard key={item.id} q={item} previews={item.previews} onGrade={(g) => void grade(g)} onSource={(b) => onOpen(item.article_id, b)} />
+            {item.type === "quiz"
+              ? <QuizCard key={`q${item.id}`} q={item} previews={item.previews} onGrade={(g) => void grade(g)} onSource={(b) => onOpen(item.article_id, b)} />
+              : <VocabCard key={`v${item.id}`} item={item} onGrade={(g) => void grade(g)} onSource={() => openContext(item.context)} />}
           </section>
         )}
 

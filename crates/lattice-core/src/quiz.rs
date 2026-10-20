@@ -1,7 +1,7 @@
 //! Comprehension quizzes and their review (G32). The `quiz` job asks the LLM for a few
 //! questions per article (the article is untrusted input; the output is validated in `parse`).
 //! The user can add an article's questions to spaced repetition: each question becomes a card
-//! scheduled by `srs`, and today's queue is drawn within the daily limits of Settings › 復習.
+//! scheduled by `srs`, and today's queue (`review.rs`) is drawn within the daily limits of Settings › 復習.
 //! Review state hangs off the questions, so deleting an article removes its cards and log.
 
 use std::collections::HashSet;
@@ -279,7 +279,7 @@ impl Default for Settings {
 }
 
 impl Settings {
-    fn limits(&self) -> srs::Limits {
+    pub(crate) fn limits(&self) -> srs::Limits {
         srs::Limits { min: i64::from(self.min_interval_minutes), max: i64::from(self.max_interval_days) * srs::DAY }
     }
 }
@@ -398,38 +398,6 @@ pub fn remove_article(store: &Store, article_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-/// Start and end (unix seconds) of the local day containing `now`.
-fn local_day(c: &Connection, now: i64) -> rusqlite::Result<(i64, i64)> {
-    c.query_row(
-        "SELECT CAST(strftime('%s', date(?1, 'unixepoch', 'localtime'), 'utc') AS INTEGER),
-                CAST(strftime('%s', date(?1, 'unixepoch', 'localtime'), '+1 day', 'utc') AS INTEGER)",
-        [now],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )
-}
-
-/// Today's cards in order: due reviews (oldest due first), then new cards, each within what is
-/// left of its daily limit. A day-scale card is due all day on its due date, as in Anki; a card
-/// on a shorter step is due from its exact time.
-fn due_ids(c: &Connection, s: &Settings, now: i64) -> rusqlite::Result<Vec<i64>> {
-    let (start, end) = local_day(c, now)?;
-    let (new_done, reviews_done): (i64, i64) = c.query_row(
-        "SELECT coalesce(sum(prev_interval_minutes = 0), 0), coalesce(sum(prev_interval_minutes > 0), 0) FROM review_log WHERE reviewed_at >= ?1 AND reviewed_at < ?2",
-        [start, end],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    )?;
-    let left = |limit: u32, done: i64| (i64::from(limit) - done).max(0);
-    let mut st = c.prepare(
-        "SELECT question_id FROM review_cards
-         WHERE interval_minutes > 0 AND (due_at <= ?1 OR (interval_minutes >= ?2 AND due_at < ?3))
-         ORDER BY due_at, question_id LIMIT ?4",
-    )?;
-    let mut ids: Vec<i64> = st.query_map(params![now, srs::DAY, end, left(s.reviews_per_day, reviews_done)], |r| r.get(0))?.collect::<Result<_, _>>()?;
-    let mut st = c.prepare("SELECT question_id FROM review_cards WHERE interval_minutes = 0 ORDER BY question_id LIMIT ?1")?;
-    ids.extend(st.query_map([left(s.new_per_day, new_done)], |r| r.get::<_, i64>(0))?.collect::<Result<Vec<_>, _>>()?);
-    Ok(ids)
-}
-
 #[derive(Debug, Serialize)]
 pub struct ReviewItem {
     #[serde(flatten)]
@@ -442,77 +410,26 @@ pub struct ReviewItem {
     pub previews: [i64; 4],
 }
 
-pub fn queue(store: &Store, now: i64) -> Result<Vec<ReviewItem>, String> {
-    let s = settings(store)?;
-    let c = store.conn();
-    let mut st = c
-        .prepare(&format!(
+/// The question with its card's state; `question_id` must be in review.
+pub(crate) fn review_item(c: &Connection, question_id: i64, limits: srs::Limits) -> rusqlite::Result<ReviewItem> {
+    c.query_row(
+        &format!(
             "SELECT {QUESTION_COLS}, a.id, coalesce(a.title, a.original_url), c.ease, c.interval_minutes, c.reps, c.lapses
              FROM review_cards c JOIN quiz_questions q ON q.id = c.question_id JOIN quizzes z ON z.id = q.quiz_id JOIN articles a ON a.id = z.article_id
              WHERE c.question_id = ?1"
-        ))
-        .map_err(err)?;
-    due_ids(&c, &s, now)
-        .map_err(err)?
-        .into_iter()
-        .map(|id| {
-            st.query_row([id], |r| {
-                let card = card_row(r, 9)?;
-                Ok(ReviewItem {
-                    question: question_row(r)?,
-                    article_id: r.get(7)?,
-                    article_title: r.get(8)?,
-                    new: card.interval == 0,
-                    previews: srs::schedule(card, s.limits()).map(|c| c.interval),
-                })
+        ),
+        [question_id],
+        |r| {
+            let card = card_row(r, 9)?;
+            Ok(ReviewItem {
+                question: question_row(r)?,
+                article_id: r.get(7)?,
+                article_title: r.get(8)?,
+                new: card.interval == 0,
+                previews: srs::schedule(card, limits).map(|c| c.interval),
             })
-            .map_err(err)
-        })
-        .collect()
-}
-
-#[derive(Debug, Serialize)]
-pub struct ReviewArticle {
-    pub article_id: i64,
-    pub title: String,
-    pub cards: i64,
-    pub next_due_at: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Overview {
-    /// Cards in today's queue now (the nav badge).
-    pub due: usize,
-    /// When the next card not yet in the queue comes due.
-    pub next_due_at: Option<i64>,
-    /// Articles in review, the soonest due first.
-    pub articles: Vec<ReviewArticle>,
-}
-
-pub fn overview(store: &Store, now: i64) -> Result<Overview, String> {
-    let s = settings(store)?;
-    let c = store.conn();
-    let due = due_ids(&c, &s, now).map_err(err)?;
-    let next_due_at = c
-        .query_row(
-            "SELECT min(due_at) FROM review_cards WHERE due_at > ?1 AND question_id NOT IN (SELECT value FROM json_each(?2))",
-            params![now, json!(due).to_string()],
-            |r| r.get(0),
-        )
-        .map_err(err)?;
-    let mut st = c
-        .prepare(
-            "SELECT a.id, coalesce(a.title, a.original_url), count(*), min(c.due_at)
-             FROM review_cards c JOIN quiz_questions q ON q.id = c.question_id JOIN quizzes z ON z.id = q.quiz_id JOIN articles a ON a.id = z.article_id
-             GROUP BY a.id ORDER BY min(c.due_at), a.id",
-        )
-        .map_err(err)?;
-    let articles = st
-        .query_map([], |r| Ok(ReviewArticle { article_id: r.get(0)?, title: r.get(1)?, cards: r.get(2)?, next_due_at: r.get(3)? }))
-        .map_err(err)?
-        .collect::<Result<_, _>>()
-        .map_err(err)?;
-    Ok(Overview { due: due.len(), next_due_at, articles })
+        },
+    )
 }
 
 #[cfg(test)]
@@ -523,7 +440,19 @@ mod tests {
     use crate::fetch::Fetched;
     use crate::ingest::store_fetched;
     use crate::llm::{Completion, LlmError};
+    use crate::review::{local_day, overview};
     use crate::srs::DAY;
+
+    /// Today's queue, which holds only quiz cards here.
+    fn queue(s: &Store, now: i64) -> Result<Vec<ReviewItem>, String> {
+        Ok(crate::review::queue(s, now)?
+            .into_iter()
+            .map(|i| match i {
+                crate::review::Item::Quiz(q) => q,
+                other => panic!("{other:?}"),
+            })
+            .collect())
+    }
 
     /// Answers every quiz request with `reply`, recording the input and system prompt.
     struct Llm {

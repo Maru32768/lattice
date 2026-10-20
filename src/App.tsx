@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
+import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
@@ -10,13 +10,15 @@ import { SettingsView, type SettingsSection } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
 import { QuizReview } from "./QuizReview";
+import { VocabView } from "./VocabView";
+import { wordMarks } from "./vocab";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
-import { Reader, TRANSLATABLE, type Focus } from "./Reader";
+import { Reader, TRANSLATABLE, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext, useCover } from "./Popover";
@@ -49,6 +51,16 @@ function loadRecent(): string[] {
     return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
   } catch {
     return [];
+  }
+}
+
+const MARKS_KEY = "lattice.vocabMarks";
+/** Whether saved words are underlined in the Reader (default on). */
+function loadMarks(): boolean {
+  try {
+    return localStorage.getItem(MARKS_KEY) !== "off";
+  } catch {
+    return true;
   }
 }
 
@@ -234,6 +246,35 @@ export default function App() {
     const poll = window.setInterval(loadReview, JOB_POLL_MS);
     return () => clearInterval(poll);
   }, []);
+
+  // Vocabulary (G56): the book, its marks in the Reader, and the 単語を登録 shortcut.
+  const [vocab, setVocab] = useState<VocabEntry[]>([]);
+  const [marksOn, setMarksOn] = useState(loadMarks);
+  const [saveWordSeq, setSaveWordSeq] = useState(0);
+  const marks = useMemo(() => (marksOn ? wordMarks(vocab) : null), [vocab, marksOn]);
+  const loadVocab = () => {
+    void api.vocabList().then(setVocab).catch(() => {});
+    void loadReview();
+  };
+  const setMarks = (on: boolean) => {
+    setMarksOn(on);
+    try {
+      localStorage.setItem(MARKS_KEY, on ? "on" : "off");
+    } catch {
+      // Blocked storage: the choice lasts for this session only.
+    }
+  };
+  useEffect(() => {
+    loadVocab();
+    // The job filled in meanings, or a page's overlay saved a word.
+    const sub = listen("vocab-changed", loadVocab);
+    return () => void sub.then((f) => f());
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once
+  }, []);
+  const openContext = (c: VocabContext) => {
+    if (c.article_id != null) openReader(c.article_id, c.block_id == null ? undefined : { block: c.block_id, label: t("vocabCard.sourceLabel"), terms: [], tone: "cite" });
+    else if (c.url) openPage(c.url, c.sentence);
+  };
 
   // Reader tabs need their article views; views of closed tabs are dropped.
   const readerIds = useMemo(() => [...new Set(allTabs(layout).filter((t) => t.kind === "reader").map((t) => t.articleId))], [layout]);
@@ -609,6 +650,7 @@ export default function App() {
     prevTab: () => setLayout((l) => cycle(l, -1)),
     splitRight: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "row")); },
     splitDown: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "column")); },
+    saveWord: () => setSaveWordSeq((n) => n + 1),
   };
   const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
   keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
@@ -738,7 +780,8 @@ export default function App() {
         onGenre={(name) => act(() => api.setGenre(a.id, name), a.id)}
         onDifficulty={(level) => act(() => api.setDifficulty(a.id, level), a.id)}
         onClassify={vAct(api.classifyArticle)} onDelete={() => setDeleting({ article: a, page: false })}
-        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview} />
+        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview}
+        saveWordSeq={saveWordSeq} onVocabChanged={loadVocab} />
     );
   };
 
@@ -752,14 +795,15 @@ export default function App() {
             ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
             : nav}
-          {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review") && (
+          {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (
             <main className="main" data-pane="doc">
               {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }} />}
               {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
-              {screen === "review" && <QuizReview onChanged={loadReview}
-                onOpen={(id, block) => openReader(id, block == null ? undefined : { block, label: t("reader.quizSource"), terms: [], tone: "cite" })} />}
+              {screen === "review" && <QuizReview onChanged={loadVocab} onOpenPage={(url, text) => openPage(url, text)}
+                onOpen={(id, block, label) => openReader(id, block == null ? undefined : { block, label: label ?? t("reader.quizSource"), terms: [], tone: "cite" })} />}
+              {screen === "vocab" && <VocabView entries={vocab} marks={marksOn} onMarks={setMarks} onChanged={loadVocab} onSource={openContext} />}
             </main>
           )}
           {screen === "library" && search && listOpen && (
@@ -784,7 +828,9 @@ export default function App() {
                 <button className="ib" onClick={() => setError(null)} aria-label={t("common.close")}>×</button>
               </div>
             )}
-            <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
+            <WordMarksContext.Provider value={marks}>
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
+            </WordMarksContext.Provider>
           </div>}
           {palette != null && (
             <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}

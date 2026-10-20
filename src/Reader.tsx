@@ -1,19 +1,24 @@
-import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { api, isLocal, siteOf, type ArticleView, type Block, type Inline, type JobRow } from "./api";
+import { Fragment, createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { api, isLocal, siteOf, type ArticleView, type Block, type Inline, type JobRow, type VocabCapture } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
-import { Dif, Icon, Kbd } from "./Icon";
+import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { QuizPanel } from "./QuizPanel";
 import { onMiddle } from "./middle";
+import { captureIn, isWord, markWords, type WordMarks } from "./vocab";
 import { locale, t, useT } from "./i18n";
+import "./vocab.css";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
 const OpenLink = createContext<(href: string, newTab: boolean) => void>(() => {});
+/** Saved words to underline (G56), or null when marking is off or the book is empty. */
+export const WordMarksContext = createContext<WordMarks | null>(null);
 
 function Link({ href, children }: { href: string; children: React.ReactNode }) {
   const openLink = useContext(OpenLink);
@@ -35,11 +40,13 @@ export const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "block
 
 const busy = (j?: JobRow) => j?.status === "running" || (j?.status === "pending" && !j.last_error);
 
-/** Plain text with search terms marked. */
-function Txt({ v, ts }: { v: string; ts?: string[] }) {
-  if (!ts?.length) return <>{v}</>;
-  return <>{highlight(v, ts).map((s, i) => (s.mark ? <mark key={i}>{s.v}</mark> : s.v))}</>;
-}
+/** Plain text with search terms and saved words marked. Memoized: hovering a block re-renders the Reader. */
+const Txt = memo(function Txt({ v, ts }: { v: string; ts?: string[] }) {
+  const marks = useContext(WordMarksContext);
+  const words = (s: string) => markWords(s, marks).map((p, i) => (p.meaning != null ? <span key={i} className="vw" title={p.meaning}>{p.v}</span> : p.v));
+  if (!ts?.length) return <>{words(v)}</>;
+  return <>{highlight(v, ts).map((s, i) => (s.mark ? <mark key={i}>{words(s.v)}</mark> : <Fragment key={i}>{words(s.v)}</Fragment>))}</>;
+});
 
 function Inlines({ block, translated, ts }: { block: Block; translated: boolean; ts?: string[] }) {
   if (translated && block.translation != null) {
@@ -295,7 +302,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged }: {
+  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged, saveWordSeq, onVocabChanged }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -329,6 +336,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onFocusBlock: (block: number, label: string) => void;
   /** Quiz cards were added to or removed from review. */
   onReviewChanged: () => void;
+  /** Bumped by the 単語を登録 shortcut: saves the word selected in this article, if any. */
+  saveWordSeq: number;
+  /** A word was saved. */
+  onVocabChanged: () => void;
 }) {
   const t = useT();
   const { article: a, blocks } = view;
@@ -337,7 +348,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   const [pop, setPop] = useState<number | null>(null);
   const [confirmRetranslate, setConfirmRetranslate] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
-  const timers = useRef({ show: 0, hide: 0 });
+  const timers = useRef({ show: 0, hide: 0, cap: 0 });
+  const blocksEl = useRef<HTMLDivElement>(null);
+  /** 単語を登録 over the selection, then what came of it. */
+  const [cap, setCap] = useState<{ capture: VocabCapture; x: number; y: number; status?: string; error?: string } | null>(null);
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const selected = translatedBlockIds(blocks, mode, percent);
@@ -357,6 +371,57 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
     if (focus) document.getElementById(`b-${focus.block}`)?.scrollIntoView({ block: "center" });
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focus?.seq, blocks.length]);
+
+  const shows = (b: Block) => b.translation != null && selected.has(b.id) !== flipped.has(b.id);
+
+  /** The word selected in one prose block of this article, as shown (original or translation), and where to put the button. */
+  function selectionCapture(): { capture: VocabCapture; x: number; y: number } | null {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(sel.toString())) return null;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>(".blk");
+    const block = el && blocksEl.current?.contains(el) ? blocks.find((b) => el.id === `b-${b.id}`) : undefined;
+    if (!el || !block || !TRANSLATABLE.has(block.kind)) return null;
+    const before = document.createRange();
+    before.setStart(el, 0);
+    before.setEnd(range.startContainer, range.startOffset);
+    const c = captureIn(shows(block) ? block.translation! : block.text, sel.toString(), before.toString().length);
+    if (!c) return null;
+    const r = range.getBoundingClientRect();
+    return { capture: { ...c, article_id: a.id, block_id: block.id, url: isLocal(a.original_url) ? null : a.original_url }, x: r.left + r.width / 2, y: r.bottom };
+  }
+
+  async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
+    clearTimeout(timers.current.cap);
+    try {
+      const r = await api.vocabAdd(c.capture);
+      setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
+      onVocabChanged();
+    } catch (e) {
+      setCap({ ...c, error: String(e) });
+    }
+    timers.current.cap = window.setTimeout(() => setCap(null), 2000);
+  }
+
+  const offerCapture = () => {
+    clearTimeout(timers.current.cap);
+    setCap(selectionCapture());
+  };
+  useEffect(() => {
+    const collapsed = () => { if (window.getSelection()?.isCollapsed) setCap((c) => (c?.status || c?.error ? c : null)); };
+    document.addEventListener("selectionchange", collapsed);
+    const t = timers.current;
+    return () => {
+      document.removeEventListener("selectionchange", collapsed);
+      clearTimeout(t.cap);
+    };
+  }, []);
+  useEffect(() => {
+    const c = saveWordSeq ? selectionCapture() : null;
+    if (c) void saveWord(c);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per shortcut press
+  }, [saveWordSeq]);
 
   function setLang(m: LanguageMode, p: number) {
     onLang(m, p);
@@ -429,7 +494,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
       </div>
 
       <div className="doc-body">
-      <div className="doc-scroll" tabIndex={-1} data-pane-target>
+      <div className="doc-scroll" tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}
@@ -502,10 +567,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           )}
 
           <OpenLink.Provider value={onLink}>
-            <div className="prose blocks">
+            <div className="prose blocks" ref={blocksEl} onMouseUp={offerCapture} onKeyUp={(e) => e.shiftKey && offerCapture()}>
               {blocks.map((b, i) => {
                 const has = b.translation != null;
-                const translated = selected.has(b.id) !== flipped.has(b.id) && has;
+                const translated = shows(b);
                 const pending = !has && translating && TRANSLATABLE.has(b.kind);
                 const focused = focus?.block === b.id ? focus : undefined;
                 const label = translated ? t("reader.flipToOriginal") : t("reader.flipToTranslation");
@@ -534,6 +599,14 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
       </div>
       {quizOpen && <QuizPanel view={view} onSource={(b) => onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={onReviewChanged} onClose={() => setQuizOpen(false)} />}
       </div>
+      {cap && createPortal(
+        <div className="vw-cap" style={{ left: cap.x, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
+          {cap.status ? <span className="msg">{cap.status}</span>
+            : cap.error ? <span className="msg error-text">{t.msg(cap.error)}</span>
+            : <button className="btn sm pri" onMouseDown={(e) => e.preventDefault()} onClick={() => void saveWord(cap)}>{t("vocab.save")}<ActionKey id="saveWord" /></button>}
+        </div>,
+        document.body,
+      )}
       {confirmRetranslate && (
         <ConfirmDialog title={t("reader.confirmRetranslate")} confirm={t("reader.retranslate")}
           onConfirm={() => { setConfirmRetranslate(false); onRetranslate(); }} onCancel={() => setConfirmRetranslate(false)}>

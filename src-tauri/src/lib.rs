@@ -22,7 +22,7 @@ use lattice_core::srs::Grade;
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
-use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, quiz, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, quiz, r2, render, review, summarize, translate, vocab};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -527,13 +527,77 @@ fn review_remove_article(app: State<'_, App>, article_id: i64) -> Result<(), Str
 }
 
 #[tauri::command(async)]
-fn review_queue(app: State<'_, App>) -> Result<Vec<quiz::ReviewItem>, String> {
-    quiz::queue(&app.store, unix_now())
+fn review_queue(app: State<'_, App>) -> Result<Vec<review::Item>, String> {
+    review::queue(&app.store, unix_now())
 }
 
 #[tauri::command(async)]
-fn review_overview(app: State<'_, App>) -> Result<quiz::Overview, String> {
-    quiz::overview(&app.store, unix_now())
+fn review_overview(app: State<'_, App>) -> Result<review::Overview, String> {
+    review::overview(&app.store, unix_now())
+}
+
+#[tauri::command(async)]
+fn vocab_add(app: State<'_, App>, capture: vocab::Capture) -> Result<vocab::Added, String> {
+    let added = vocab::capture(&app.store, &capture)?;
+    app.wake_llm.notify_one();
+    Ok(added)
+}
+
+/// 単語を登録 from a page's overlay. Exposed to remote pages: the selection is untrusted and
+/// bounded (`vocab::validate`), the page must be on screen, and captures are spaced out
+/// (`browser::ensure_capture_allowed`). The source is the webview's own URL, not the page's word.
+#[tauri::command(async)]
+fn overlay_vocab(app: State<'_, App>, browser: State<'_, Browser>, webview: Webview, selection: String, sentence: String) -> Result<vocab::Added, String> {
+    if selection.len() > 4 * vocab::MAX_SURFACE || sentence.len() > 4 * vocab::MAX_SENTENCE {
+        return Err("request too large".into());
+    }
+    browser::ensure_capture_allowed(&webview, &browser)?;
+    let url = webview.url().map_err(err)?.to_string();
+    let article_id = match normalize(&url) {
+        Ok(norm) => app.store.find_article_by_url(norm.as_str()).map_err(err)?,
+        Err(_) => None,
+    };
+    let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url: Some(url) })?;
+    app.wake_llm.notify_one();
+    let _ = webview.app_handle().emit("vocab-changed", ());
+    Ok(added)
+}
+
+#[tauri::command(async)]
+fn vocab_list(app: State<'_, App>) -> Result<Vec<vocab::Entry>, String> {
+    vocab::list(&app.store)
+}
+
+#[tauri::command(async)]
+fn vocab_set_meaning(app: State<'_, App>, id: i64, meaning: String) -> Result<(), String> {
+    vocab::set_meaning(&app.store, id, &meaning, unix_now())
+}
+
+#[tauri::command(async)]
+fn vocab_suspend(app: State<'_, App>, id: i64, suspended: bool) -> Result<(), String> {
+    vocab::set_suspended(&app.store, id, suspended)
+}
+
+#[tauri::command(async)]
+fn vocab_delete(app: State<'_, App>, id: i64) -> Result<(), String> {
+    vocab::delete(&app.store, id)
+}
+
+#[tauri::command(async)]
+fn vocab_retry(app: State<'_, App>, id: i64) -> Result<(), String> {
+    vocab::retry(&app.store, id)?;
+    app.wake_llm.notify_one();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn vocab_grade(app: State<'_, App>, card_id: i64, grade: Grade) -> Result<(), String> {
+    vocab::grade(&app.store, card_id, grade, unix_now())
+}
+
+#[tauri::command(async)]
+fn export_vocab_csv(app: State<'_, App>) -> Result<String, String> {
+    Ok(vocab::export_csv(&app.store, &app.data_dir.join("exports"))?.display().to_string())
 }
 
 #[tauri::command(async)]
@@ -855,6 +919,7 @@ pub fn run() {
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
             classify::enqueue_missing(&store)?;
+            vocab::enqueue_missing(&store)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
@@ -868,6 +933,7 @@ pub fn run() {
                         // Favicon jobs are per domain, not per article.
                         None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
                             Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
+                            _ if job.job_type == vocab::JOB_TYPE => handle.emit("vocab-changed", ()),
                             _ => Ok(()),
                         },
                     };
@@ -976,6 +1042,15 @@ pub fn run() {
             review_overview,
             get_review_settings,
             set_review_settings,
+            vocab_add,
+            vocab_list,
+            vocab_set_meaning,
+            vocab_suspend,
+            vocab_delete,
+            vocab_retry,
+            vocab_grade,
+            export_vocab_csv,
+            overlay_vocab,
             search_blocks,
             chat_ask,
             chat_threads,

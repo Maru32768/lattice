@@ -4,6 +4,30 @@ import { GRADES, formatInterval, suggestedGrade } from "./quiz";
 import "./quiz.css";
 import { useT } from "./i18n";
 
+/** Keys 1–4 grade a revealed card (outside text fields). */
+export function gradeKey(e: React.KeyboardEvent, shown: boolean, onGrade: (g: Grade) => void) {
+  const i = "1234".indexOf(e.key);
+  if (!shown || i < 0 || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) return;
+  e.preventDefault();
+  e.stopPropagation();
+  onGrade(GRADES[i].grade);
+}
+
+/** もう一度 / 難しい / 正解 / 簡単, with the next intervals in review; `hint` is preselected and focused (else 正解). */
+export function GradeRow({ hint, previews, onGrade }: { hint: Grade | null; previews?: number[]; onGrade: (g: Grade) => void }) {
+  const t = useT();
+  return (
+    <div className="qz-grades" role="group" aria-label={hint ? t("quizCard.gradeChange") : t("quizCard.gradeAsk")}>
+      {GRADES.map(({ grade, label }, i) => (
+        <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
+          title={`${label} (${i + 1})`}>
+          {t(label)}{previews && <span className="ivl">{formatInterval(previews[i], t)}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * One question: answer (pick an option, or reveal after recalling), then the answer, its
  * explanation and sources, and the grade. A multiple-choice answer preselects 正解 or もう一度;
@@ -25,16 +49,8 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
   const shown = revealed || chosen != null;
   const hint = suggestedGrade(q, chosen);
 
-  const keys = (e: React.KeyboardEvent) => {
-    const i = "1234".indexOf(e.key);
-    if (!shown || i < 0 || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onGrade(GRADES[i].grade);
-  };
-
   return (
-    <div className="qz-card" onKeyDown={keys}>
+    <div className="qz-card" onKeyDown={(e) => gradeKey(e, shown, onGrade)}>
       <p className="qz-q">{q.question}</p>
       {q.kind === "choice" ? (
         <div className="qz-opts" role="group" aria-label={t("quizCard.options")}>
@@ -70,14 +86,7 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
               ))}
             </div>
           )}
-          <div className="qz-grades" role="group" aria-label={hint ? t("quizCard.gradeChange") : t("quizCard.gradeAsk")}>
-            {GRADES.map(({ grade, label }, i) => (
-              <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
-                title={`${label} (${i + 1})`}>
-                {t(label)}{previews && <span className="ivl">{formatInterval(previews[i], t)}</span>}
-              </button>
-            ))}
-          </div>
+          <GradeRow hint={hint} previews={previews} onGrade={onGrade} />
         </div>
       )}
     </div>

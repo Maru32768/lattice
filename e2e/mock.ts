@@ -2,9 +2,10 @@
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
   ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
-  Grade, LlmSettings, Quiz, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
+  Grade, LlmSettings, Quiz, QuizReviewItem, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
+  VocabCapture, VocabEntry, VocabReviewItem,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
@@ -13,7 +14,16 @@ const messages = structuredClone(CHAT_MESSAGES);
 const jobs = structuredClone(JOBS);
 /** Quizzes by article; review cards by question id (`due`: in today's queue). */
 const quizzes = new Map<number, Quiz>([[1, structuredClone(QUIZ)]]);
-const cards = new Map<number, { item: ReviewItem; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
+const cards = new Map<number, { item: QuizReviewItem; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
+/** The vocabulary, and its cards by id: a saved word's cloze, due at once, stands in for the enrichment job. */
+const vocab = structuredClone(VOCAB);
+const vocabCards = new Map<number, { entry_id: number; kind: VocabReviewItem["kind"]; due: boolean }>([[31, { entry_id: 2, kind: "cloze", due: false }]]);
+const entry = (id: number) => vocab.find((e) => e.id === id) ?? reject("vocab.gone");
+const vocabItem = (id: number, c: { entry_id: number; kind: VocabReviewItem["kind"] }): VocabReviewItem => {
+  const { id: _, state: _s, suspended: _u, created_at: _c, due_at: _d, contexts, ...sense } = entry(c.entry_id);
+  return { ...sense, type: "vocab", id, entry_id: c.entry_id, kind: c.kind, context: contexts[0], new: true, previews: NEW_PREVIEWS };
+};
+const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry_id).suspended);
 const store = {
   autoRender: true,
   autoClassify: true,
@@ -117,11 +127,11 @@ function generateQuiz(id: number): Quiz {
 }
 
 function reviewOverview(): ReviewOverview {
-  const byArticle = new Map<number, ReviewItem[]>();
+  const byArticle = new Map<number, QuizReviewItem[]>();
   for (const { item } of cards.values()) byArticle.set(item.article_id, [...(byArticle.get(item.article_id) ?? []), item]);
   const tomorrow = NOW / 1000 + 86_400;
   return {
-    due: [...cards.values()].filter((c) => c.due).length,
+    due: [...cards.values()].filter((c) => c.due).length + dueVocab().length,
     next_due_at: [...cards.values()].some((c) => !c.due) ? tomorrow : null,
     articles: [...byArticle].map(([id, items]) => ({
       article_id: id, title: items[0].article_title, cards: items.length,
@@ -186,7 +196,7 @@ export const handlers = {
     for (const q of quiz.questions) {
       if (cards.has(q.id)) continue;
       const answered = answers.some((x) => x.question_id === q.id);
-      cards.set(q.id, { item: { ...q, article_id: id, article_title: a.title ?? a.original_url, new: !answered, previews: NEW_PREVIEWS }, due: !answered });
+      cards.set(q.id, { item: { ...q, type: "quiz", article_id: id, article_title: a.title ?? a.original_url, new: !answered, previews: NEW_PREVIEWS }, due: !answered });
     }
     return articleCards(id).length;
   },
@@ -199,13 +209,48 @@ export const handlers = {
   review_remove_article: ({ articleId }: { articleId: number }) => {
     for (const c of articleCards(articleId)) cards.delete(c.item.id);
   },
-  review_queue: (): ReviewItem[] => [...cards.values()].filter((c) => c.due).map((c) => c.item),
+  review_queue: (): ReviewItem[] => [...[...cards.values()].filter((c) => c.due).map((c) => c.item), ...dueVocab().map(([id, c]) => vocabItem(id, c))],
   review_overview: reviewOverview,
   get_review_settings: (): ReviewSettings => store.review,
   set_review_settings: ({ settings }: { settings: ReviewSettings }) => {
     if (settings.min_interval_minutes < 1) reject("quiz.minRange");
     store.review = settings;
   },
+  vocab_add: ({ capture: c }: { capture: VocabCapture }): { entry_id: number; new: boolean } => {
+    if (!/[A-Za-z]/.test(c.surface)) reject("vocab.notEnglish");
+    if (!c.sentence.includes(c.surface)) reject("vocab.notInSentence");
+    const a = c.article_id == null ? null : article(c.article_id);
+    const context = { surface: c.surface, sentence: c.sentence, article_id: c.article_id ?? null, block_id: c.block_id ?? null, url: c.url ?? null, title: a?.title ?? null };
+    const known = vocab.find((e) => [e.headword, ...e.contexts.map((x) => x.surface)].some((f) => f.toLowerCase() === c.surface.toLowerCase()));
+    if (known) {
+      if (!known.contexts.some((x) => x.sentence === c.sentence)) known.contexts.push(context);
+      return { entry_id: known.id, new: false };
+    }
+    const id = Math.max(0, ...vocab.map((e) => e.id)) + 1;
+    vocab.push({
+      id, headword: c.surface.toLowerCase(), pos: "noun", meaning: `${c.surface} の意味`, definition: `the meaning of ${c.surface}`, ipa: "", example: "",
+      state: "ready", suspended: false, created_at: new Date(NOW).toISOString(), due_at: NOW / 1000, contexts: [context],
+    });
+    vocabCards.set(100 + id, { entry_id: id, kind: "cloze", due: true });
+    return { entry_id: id, new: true };
+  },
+  vocab_list: (): VocabEntry[] => [...vocab].sort((a, b) => b.id - a.id),
+  vocab_set_meaning: ({ id, meaning }: { id: number; meaning: string }) => {
+    if (!meaning.trim()) reject("vocab.meaningLength", { max: 300 });
+    Object.assign(entry(id), { meaning: meaning.trim(), state: "ready" });
+  },
+  vocab_suspend: ({ id, suspended }: { id: number; suspended: boolean }) => void (entry(id).suspended = suspended),
+  vocab_delete: ({ id }: { id: number }) => {
+    vocab.splice(vocab.indexOf(entry(id)), 1);
+    for (const [k, c] of vocabCards) if (c.entry_id === id) vocabCards.delete(k);
+  },
+  vocab_retry: ({ id }: { id: number }) => void (entry(id).state = "pending"),
+  vocab_grade: ({ cardId }: { cardId: number }) => {
+    const c = vocabCards.get(cardId);
+    if (!c) reject("quiz.cardRemoved");
+    c.due = false;
+  },
+  export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-vocab-20261020T030000Z.csv",
   search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),
   chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
     const thread = threadId ?? Math.max(0, ...threads.map((t) => t.id)) + 1;

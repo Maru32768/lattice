@@ -52,3 +52,12 @@ test("the command palette matches English commands", async ({ app }) => {
   await input.fill(">unread");
   await expect(app.getByRole("option", { name: "Show unread" })).toBeVisible();
 });
+
+test("Vocabulary reads in English", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "Vocabulary" }).click();
+  const main = app.locator("main.manage");
+  await expect(main.locator("h1")).toHaveText("Vocabulary");
+  await expect(main.locator(".sub")).toHaveText("2 words");
+  await expect(main.locator("tbody tr", { hasText: "bloat" })).toContainText("Lookup failed");
+  expect((await main.innerText()).replace("書き込みスキュー", ""), "no Japanese but a word's meaning").not.toMatch(JAPANESE);
+});

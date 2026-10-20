@@ -7,7 +7,7 @@ import { Icon, Kbd, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
 import { useT, type PlainKey } from "./i18n";
 
-export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review";
+export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review" | "vocab";
 
 export interface NavCounts {
   recent: number;
@@ -124,6 +124,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
       <div className="sec">{t("nav.tools")}</div>
       <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}><Icon name="chat" /><span className="label">{t("common.chat")}</span></button>
       {tool("review", t("common.todaysReview"), "review", reviewDue > 0 && <span className="bd run push" aria-label={t("nav.due", { reviewDue })}>{n(reviewDue)}</span>)}
+      {tool("vocab", t("vocabView.title"), "vocab")}
       {tool("jobs", t("common.jobs"), "jobs", jobFailures > 0 && <span className="bd err push">{t("nav.failed", { n: n(jobFailures) })}</span>)}
       {tool("import", t("common.bulkImport"), "import")}
       <div className="grow" />
