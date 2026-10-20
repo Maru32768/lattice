@@ -99,11 +99,11 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
 /// "Index に追加" in the in-app browser: stores the page as rendered (JS-built pages have no
 /// content in their server HTML), or fetches it from the server if the page does not answer.
 #[tauri::command]
-async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle) -> Result<i64, String> {
-    let id = match browser::snapshot(&handle, &browser).await {
+async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle, tab: u32) -> Result<i64, String> {
+    let id = match browser::snapshot(&handle, &browser, tab).await {
         Some((url, html)) => ingest::save_rendered(&app.store, &url, html)?,
         None => {
-            let wv = handle.get_webview(browser::LABEL).ok_or("the browser is not open")?;
+            let wv = handle.get_webview(&browser::label(tab)).ok_or("the browser is not open")?;
             log::info!("no DOM snapshot from the page; fetching from the server");
             ingest::save_url(&app.store, &app.providers.http, wv.url().map_err(err)?.as_str()).await?
         }
@@ -879,6 +879,7 @@ pub fn run() {
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,
+            browser::browser_close,
             browser::browser_capture,
             browser::browser_go,
             browser::browser_set_translation,
