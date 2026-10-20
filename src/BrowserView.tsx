@@ -19,6 +19,9 @@ export interface PageState {
   url: string;
   title: string;
   loading: boolean;
+  /** From the page's Navigation API; unknown (undefined) leaves the button enabled. */
+  canGoBack?: boolean;
+  canGoForward?: boolean;
 }
 
 export interface PageLang {
@@ -44,7 +47,7 @@ function UrlPill({ url }: { url: string }) {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onError }: {
+export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
   target: BrowseTarget;
   page: PageState | null;
   saved: ArticleRow | null;
@@ -56,6 +59,8 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
   onSave: () => void;
   onReader: () => void;
   onFavorite: () => void;
+  /** Asks for confirmation, then removes the saved article from the Index. */
+  onDelete: () => void;
   onError: (e: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -65,9 +70,12 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
   };
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
+  // While an open is in flight, setBounds would re-show the previous page before the backend
+  // knows a new one is loading; the open places the webview itself.
+  const opening = useRef(false);
   const sync = () => {
     const b = bounds();
-    if (b && !coveredRef.current) browser.setBounds(b).catch(() => {}); // also re-shows it
+    if (b && !coveredRef.current && !opening.current) browser.setBounds(b).catch(() => {}); // also re-shows it
   };
 
   useLayoutEffect(() => {
@@ -75,7 +83,11 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
     // reload the page, which would also cancel the first load and lose its scroll target.
     if (target === lastOpened) return;
     lastOpened = target;
-    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e)));
+    opening.current = true;
+    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e))).finally(() => {
+      opening.current = false;
+      sync();
+    });
   }, [target]);
 
   useEffect(() => {
@@ -102,8 +114,8 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
       <div className="docbar">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        <button className="ib" onClick={() => browser.go("back")} aria-label="戻る" title="戻る"><Icon name="left" /></button>
-        <button className="ib" onClick={() => browser.go("forward")} aria-label="進む" title="進む"><Icon name="right" /></button>
+        <button className="ib" onClick={() => browser.go("back")} disabled={page?.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
+        <button className="ib" onClick={() => browser.go("forward")} disabled={page?.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
         <button className="ib" onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
         <UrlPill url={url} />
         <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label="このページを翻訳" />
@@ -111,11 +123,10 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
           <>
             <span className="indexed"><Icon name="check" />Index 済み</span>
             <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label="お気に入り (s)" title="お気に入り (s)"><Icon name="star" /></button>
-            {resave && (
-              <Menu className="tb" label="その他（描画後のページで保存し直す）" align="right" trigger={<Icon name="more" />} items={[
-                { label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading },
-              ]} />
-            )}
+            <Menu className="tb" label="その他（保存し直す・Index から削除）" align="right" trigger={<Icon name="more" />} items={[
+              ...(resave ? [{ label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
+              { label: <span className="error-text">Index から削除…</span>, onSelect: onDelete },
+            ]} />
           </>
         ) : (
           <button className="tb pri" onClick={onSave} disabled={saving || !page || loading}

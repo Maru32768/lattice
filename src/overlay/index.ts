@@ -1,7 +1,8 @@
 /**
  * Page overlay injected into the in-app browser. Translates the page in place, sentence by
  * sentence, without changing its layout: leaf blocks are sent as inline-HTML snippets,
- * returned reading units are wrapped in spans, and a seeded share of them shows Japanese.
+ * returned reading units are wrapped in spans, and a seeded share of them shows the translation
+ * (Japanese, or English on a Japanese page).
  * Hovering a sentence shows the other language; clicking that tooltip flips the sentence.
  *
  * Adapted from Mazelingo's content script (MIT License, Copyright (c) 2026 Yeq6X).
@@ -10,7 +11,7 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
-import { assignTranslated, isCjkDominant, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
+import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
 
 interface Unit {
   source: string;
@@ -33,8 +34,9 @@ declare global {
   }
 }
 
+// Not aside: boxed sidebars inside articles are content.
 const SKIP =
-  "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer,aside," +
+  "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer," +
   "[role='navigation'],[role='banner'],[role='contentinfo'],[contenteditable=''],[contenteditable='true']," +
   "[translate='no'],.notranslate,[data-lattice-ui]";
 const BLOCK_DISPLAY = new Set(["block", "flex", "grid", "list-item", "table", "table-row", "table-cell", "table-caption", "flow-root"]);
@@ -46,6 +48,8 @@ const MAX_INFLIGHT = 3;
 
 const state = {
   config: { enabled: false, percent: 70 } as Config,
+  /** Decided once per page from the first blocks seen. */
+  target: null as Target | null,
   pending: [] as Pending[],
   queue: [] as Pending[][],
   inflight: 0,
@@ -85,7 +89,9 @@ function processRoot(root: Element) {
     }),
     { rootMargin: "1000px" },
   );
-  for (const el of findLeafBlocks(root)) {
+  const blocks = findLeafBlocks(root);
+  state.target ??= pageTarget(document.documentElement.lang, blocks.slice(0, 30).map((b) => b.textContent ?? "").join(" "));
+  for (const el of blocks) {
     el.dataset.latticeBlock = "pending";
     bindBlockHover(el);
     state.io.observe(el);
@@ -94,8 +100,8 @@ function processRoot(root: Element) {
 
 function enqueue(el: HTMLElement) {
   if (!el.isConnected || !state.config.enabled) return;
-  if (isCjkDominant(el.textContent ?? "")) {
-    el.dataset.latticeBlock = "skip"; // already Japanese
+  if (isWrittenIn(el.textContent ?? "", state.target ?? "ja")) {
+    el.dataset.latticeBlock = "skip";
     return;
   }
   const { parts } = splitByLineBreaks(snippetHtml(el));
@@ -142,7 +148,7 @@ async function translateBatch(batch: Pending[]) {
   const snippets = batch.flatMap((p) => p.parts);
   let results: (Unit[] | null)[] = [];
   try {
-    results = (await invoke("overlay_translate", { snippets })) as (Unit[] | null)[];
+    results = (await invoke("overlay_translate", { snippets, target: state.target })) as (Unit[] | null)[];
   } catch (e) {
     console.warn("[lattice] translate failed", e);
   }
@@ -323,7 +329,6 @@ function start() {
   const style = document.createElement("style");
   style.dataset.latticeUi = "1";
   style.textContent = `.${SENTENCE}{cursor:help;border-radius:2px}.${SENTENCE}:hover{background:#F4EAD9}
-    .${SENTENCE}[data-shown='t']{text-decoration:underline dotted #B98A4A;text-underline-offset:4px;text-decoration-thickness:1px}
     .lattice-flash{outline:3px solid rgba(47,93,138,.55)!important;outline-offset:4px;transition:outline-color 1.5s}`;
   document.head?.append(style);
   processRoot(document.body);
@@ -335,6 +340,13 @@ function start() {
     }
   });
   state.mo.observe(document.body, { childList: true, subtree: true });
+}
+
+/** Back/forward availability for the toolbar, from Chromium's Navigation API (absent: both stay enabled). */
+function reportHistory() {
+  const nav = (window as { navigation?: { canGoBack?: unknown; canGoForward?: unknown } }).navigation;
+  if (typeof nav?.canGoBack !== "boolean" || typeof nav.canGoForward !== "boolean") return;
+  invoke("overlay_history", { canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }).catch(() => {});
 }
 
 function configure(c: Partial<Config>) {
@@ -379,4 +391,7 @@ if (window.top === window && !window.__lattice) {
       .catch(() => {});
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
   else boot();
+  reportHistory();
+  // Same-document navigations (pushState, fragments) fire no page-load event.
+  (window as { navigation?: EventTarget }).navigation?.addEventListener("currententrychange", reportHistory);
 }

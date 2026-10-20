@@ -6,6 +6,7 @@ import { UNCLASSIFIED } from "./groups";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
+import { Favicon } from "./Favicon";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -153,17 +154,17 @@ export function LangSeg({ mode, percent, onChange, label = "表示言語" }: {
       <button className={mode === "mixed" ? "on" : ""} aria-pressed={mode === "mixed"} onClick={() => onChange("mixed", percent)}>
         混在 <span className="mono">{percent}%</span>
       </button>
-      <button className="step" onClick={() => step(-10)} aria-label="日本語の割合を下げる ([)" title="日本語の割合を下げる ([)">−</button>
-      <button className="step" onClick={() => step(10)} aria-label="日本語の割合を上げる (])" title="日本語の割合を上げる (])">+</button>
+      <button className="step" onClick={() => step(-10)} aria-label="訳文の割合を下げる ([)" title="訳文の割合を下げる ([)">−</button>
+      <button className="step" onClick={() => step(10)} aria-label="訳文の割合を上げる (])" title="訳文の割合を上げる (])">+</button>
       <button className={mode === "translated" ? "on" : ""} aria-pressed={mode === "translated"} onClick={() => onChange("translated", percent)}>訳文</button>
     </div>
   );
 }
 
-function TranslationStatus({ job, done, total, onTranslate }: { job?: JobRow; done: number; total: number; onTranslate: () => void }) {
+function TranslationStatus({ job, done, total, target, onTranslate }: { job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void }) {
   const keys = <span className="keys"><Kbd>[</Kbd><Kbd>]</Kbd> 割合</span>;
   const hint = <span className="hint-keys">{keys}</span>;
-  if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />日本語に翻訳</button></>;
+  if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />{target === "en" ? "英語" : "日本語"}に翻訳</button></>;
   if (busy(job)) {
     return (
       <span className="tr-prog" role="status">
@@ -267,7 +268,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode }: {
+  onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -292,6 +293,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onClassify: () => void;
   onAsk: () => void;
   onFocusMode: () => void;
+  /** Asks for confirmation, then deletes the article. */
+  onDelete: () => void;
 }) {
   const { article: a, blocks } = view;
   // Per-block click overrides on top of the mode; App remounts Reader per article.
@@ -354,7 +357,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <ViewSeg page={false} onReader={() => {}} onPage={onPage} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
-        {!failed && <TranslationStatus job={job} done={done} total={total} onTranslate={onTranslate} />}
+        {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} />}
         {matches && (
           <span className="matches">
             一致 {matches.i + 1} / {matches.n}
@@ -367,11 +370,13 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
-          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す）" align="right" trigger={<Icon name="more" />} items={[
+          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
             { label: "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
             { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering || !fetched },
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
+            "-",
+            { label: <span className="error-text">記事を削除…</span>, onSelect: onDelete },
           ]} />
         </div>
       </div>
@@ -380,7 +385,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}
-            <span>{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{a.domain}</span>
+            <span className="with-ico"><Favicon domain={a.domain} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{a.domain}</span>
             {a.author && <><span>·</span><span>{a.author}</span></>}
             {a.published_at && <><span>·</span><span>{a.published_at.slice(0, 10)}</span></>}
           </div>

@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ir::{ArticleIr, Block, Inline};
-use crate::segments::{Unit, plain_text};
+use crate::segments::{Target, Unit, plain_text};
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[r#"
@@ -321,6 +321,16 @@ END;
 "#, r#"
 -- The entry's published (else updated) date: fills articles.published_at when the page has none.
 ALTER TABLE feed_items ADD COLUMN published_at TEXT;
+"#, r#"
+-- Site icons per domain (favicons.rs). A failure is a row too (bytes NULL, error set), so a
+-- site without an icon is not asked again until the row is a week old.
+CREATE TABLE favicons (
+    domain     TEXT PRIMARY KEY,
+    mime       TEXT,
+    bytes      BLOB,
+    error      TEXT,
+    fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 "#];
 
 fn deflate(s: &str) -> Vec<u8> {
@@ -472,6 +482,8 @@ pub struct SummaryView {
 #[derive(Debug, Serialize)]
 pub struct ArticleView {
     pub article: ArticleRow,
+    /// Language of `blocks[].translation`: "en" for a Japanese article, else "ja".
+    pub target_language: &'static str,
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
     pub summary: Option<SummaryView>,
@@ -607,6 +619,17 @@ fn replace_blocks(tx: &rusqlite::Transaction, article_id: i64, blocks: &[Block])
     }
     tx.execute("DELETE FROM blocks WHERE article_id = ?1 AND ordinal < 0", [article_id])?;
     Ok(())
+}
+
+fn article_is_japanese(c: &Connection, id: i64) -> Result<bool> {
+    let (declared, sample): (Option<String>, String) = c.query_row(
+        "SELECT language, (SELECT coalesce(group_concat(text, ' '), '') FROM (SELECT text FROM blocks WHERE article_id = ?1
+             AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal LIMIT 20))
+         FROM articles WHERE id = ?1",
+        params![id, json(&crate::ir::PROSE_KINDS)],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok(crate::segments::is_japanese(declared.as_deref(), &sample))
 }
 
 pub fn sha256_hex(s: &str) -> String {
@@ -875,6 +898,25 @@ impl Store {
         Ok(Some(ids))
     }
 
+    /// Deletes an article and everything hanging off it. Snapshots, blocks (with their FTS rows
+    /// and embeddings), jobs, tag links, summaries, classifications and image mappings cascade;
+    /// image bytes go by trigger; translations no other block uses and tags no other article
+    /// uses are deleted here. Feed items stay, so the feed does not import the article again,
+    /// and chat answers keep their copied citations. Returns whether the article existed.
+    pub fn delete_article(&self, id: i64) -> Result<bool> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM segment_translations WHERE source_hash IN (SELECT text_hash FROM blocks WHERE article_id = ?1)
+             AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash AND b.article_id != ?1)",
+            [id],
+        )?;
+        let n = tx.execute("DELETE FROM articles WHERE id = ?1", [id])?;
+        tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM article_tags)", [])?;
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {
         self.conn().execute("UPDATE articles SET favorite = ?2 WHERE id = ?1", params![id, favorite])?;
         Ok(())
@@ -916,6 +958,12 @@ impl Store {
         st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? }))?.collect()
     }
 
+    /// Whether the article is Japanese (`segments::is_japanese`), from its declared language or its opening prose.
+    pub fn article_is_japanese(&self, id: i64) -> Result<bool> {
+        article_is_japanese(&self.conn(), id)
+    }
+
+    /// `target_language` is a `Target::key`.
     pub fn get_article(&self, id: i64, target_language: &str) -> Result<Option<ArticleView>> {
         let c = self.conn();
         let Some(article) = c
@@ -957,7 +1005,7 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
             )
             .optional()?;
-        Ok(Some(ArticleView { article, blocks, jobs, summary }))
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary }))
     }
 
     /// Translatable blocks of an article lacking a current translation in `target_language`.
@@ -1208,32 +1256,48 @@ impl Store {
         st.query_map(rusqlite::params_from_iter(args), |r| r.get(0))?.collect()
     }
 
-    /// Display data for search hits, in the order of `block_ids`.
-    pub fn hit_details(&self, block_ids: &[i64], target_language: &str) -> Result<Vec<HitDetail>> {
+    /// Display data for search hits, in the order of `block_ids`. Each hit's translation is in its
+    /// article's target language (`settings` adapted per article).
+    pub fn hit_details(&self, block_ids: &[i64], settings: &Target) -> Result<Vec<HitDetail>> {
         let c = self.conn();
         let mut st = c.prepare(
-            "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text,
-                    (SELECT st.text FROM segment_translations st
-                     WHERE st.source_hash = b.text_hash AND st.target_language = ?2
-                     ORDER BY st.id DESC LIMIT 1), b.ordinal
+            "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text, b.text_hash, b.ordinal
              FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id
              WHERE b.id IN (SELECT value FROM json_each(?1))",
         )?;
-        let mut rows: Vec<HitDetail> = st
-            .query_map(params![json(&block_ids), target_language], |r| {
-                Ok(HitDetail {
+        let rows: Vec<(HitDetail, String)> = st
+            .query_map(params![json(&block_ids)], |r| {
+                let hit = HitDetail {
                     block_id: r.get(0)?,
                     article_id: r.get(1)?,
                     article_title: r.get(2)?,
                     heading: r.get(3)?,
                     text: r.get(4)?,
-                    translation: r.get(5)?,
+                    translation: None,
                     ordinal: r.get(6)?,
-                })
+                };
+                Ok((hit, r.get(5)?))
             })?
             .collect::<Result<_>>()?;
-        rows.sort_by_key(|h| block_ids.iter().position(|&id| id == h.block_id));
-        Ok(rows)
+        let mut keys: HashMap<i64, String> = HashMap::new();
+        let mut tr = c.prepare(
+            "SELECT text FROM segment_translations WHERE source_hash = ?1 AND target_language = ?2 ORDER BY id DESC LIMIT 1",
+        )?;
+        let mut out = Vec::with_capacity(rows.len());
+        for (mut hit, hash) in rows {
+            let key = match keys.get(&hit.article_id) {
+                Some(k) => k.clone(),
+                None => {
+                    let k = settings.for_source(article_is_japanese(&c, hit.article_id)?).key();
+                    keys.insert(hit.article_id, k.clone());
+                    k
+                }
+            };
+            hit.translation = tr.query_row(params![hash, key], |r| r.get(0)).optional()?;
+            out.push(hit);
+        }
+        out.sort_by_key(|h| block_ids.iter().position(|&id| id == h.block_id));
+        Ok(out)
     }
 
     #[cfg(test)]
@@ -1359,6 +1423,58 @@ mod tests {
     }
 
     #[test]
+    fn deleting_an_article_leaves_nothing_orphaned() {
+        use crate::ir::BlockKind::Paragraph;
+        let s = Store::open_in_memory().unwrap();
+        let save = |url: &str, texts: &[&str]| {
+            let (id, _) = s.upsert_pending(url, url, "a.dev").unwrap();
+            let blocks = texts.iter().map(|t| Block { kind: Paragraph, text: t.to_string(), inlines: vec![], attrs: Default::default() }).collect();
+            let f = Fetched { final_url: url.into(), status: 200, content_type: None, html: "<p>x</p>".into() };
+            s.save_fetched(id, Some(&f), Ok(ArticleIr { meta: Default::default(), blocks }), None).unwrap();
+            id
+        };
+        let a = save("https://a.dev/1", &["shared paragraph", "only in the deleted article"]);
+        let b = save("https://a.dev/2", &["shared paragraph"]);
+        let unit = |t: &str| vec![Unit { source: t.into(), translation: format!("訳: {t}") }];
+        let (shared, only) = (unit("shared paragraph"), unit("only in the deleted article"));
+        let (hs, ho) = (sha256_hex("shared paragraph"), sha256_hex("only in the deleted article"));
+        s.insert_segments("ja", "v", &[(hs.as_str(), &shared[..], "p", None), (ho.as_str(), &only[..], "p", None)]).unwrap();
+        let blocks = s.get_article(a, "ja").unwrap().unwrap().blocks;
+        let srcs: Vec<EmbedSource> = blocks.iter().map(|b| EmbedSource { block_id: b.id, text_hash: sha256_hex(&b.block.text), text: b.block.text.clone(), heading: None }).collect();
+        s.upsert_embeddings("m", &srcs.iter().map(|e| (e, &[1.0f32][..])).collect::<Vec<_>>()).unwrap();
+        s.add_tag(a, "mine").unwrap();
+        s.add_tag(a, "both").unwrap();
+        s.add_tag(b, "both").unwrap();
+        s.insert_summary(a, "normal", "要約", "h", "p", None, "v").unwrap();
+        s.enqueue_job("translate", a, "{}", "translate:a").unwrap();
+        crate::images::save(&s, a, "https://a.dev/x.png", "image/png", b"\x89PNG only-a").unwrap();
+        s.exec_for_test(&format!(
+            "INSERT INTO classifications (article_id, genre, tags, provider, prompt_version) VALUES ({a}, 'Database', '[]', 'p', 'v');
+             INSERT INTO feeds (url) VALUES ('https://a.dev/feed');
+             INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'https://a.dev/1');
+             UPDATE articles SET feed_id = 1 WHERE id = {a};"
+        ));
+
+        assert!(s.delete_article(a).unwrap());
+        assert!(!s.delete_article(a).unwrap(), "already gone");
+        let count = |sql: &str| s.conn().query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        for table in ["snapshots", "blocks", "processing_jobs", "article_tags", "summaries", "classifications", "article_images"] {
+            assert_eq!(count(&format!("SELECT count(*) FROM {table} WHERE article_id NOT IN (SELECT id FROM articles)")), 0, "{table}");
+        }
+        assert_eq!(count("SELECT count(*) FROM embeddings WHERE block_id NOT IN (SELECT id FROM blocks)"), 0);
+        assert_eq!(count("SELECT count(*) FROM embeddings"), 0);
+        assert_eq!(count("SELECT count(*) FROM images"), 0, "unused image bytes collected");
+        assert_eq!(count("SELECT count(*) FROM snapshots"), 1, "the other article's snapshot stays");
+        assert_eq!(s.list_tags().unwrap().iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["both"]);
+        assert_eq!(s.cached_segments(&[hs.clone(), ho.clone()], "ja").unwrap().into_keys().collect::<Vec<_>>(), [hs], "a translation still in use stays");
+        assert!(s.lexical_search("deleted", None, 10).unwrap().is_empty(), "block FTS rows gone");
+        assert_eq!(count("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH '\"deleted article\"'"), 0, "translation FTS rows gone");
+        assert_eq!(count("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH '\"shared paragraph\"'"), 1);
+        assert_eq!(s.lexical_search("shared", None, 10).unwrap().len(), 1);
+        assert_eq!(count("SELECT count(*) FROM feed_items"), 1, "the feed does not import it again");
+    }
+
+    #[test]
     fn re_enqueue_gives_a_failed_job_fresh_attempts() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
@@ -1429,7 +1545,7 @@ mod tests {
 
         let restricted = s.article_ids(&db).unwrap();
         let hits = s.lexical_search("checkpoint", restricted.as_deref(), 10).unwrap();
-        let mut owners = s.hit_details(&hits, "ja").unwrap().into_iter().map(|h| h.article_id).collect::<Vec<_>>();
+        let mut owners = s.hit_details(&hits, &Target::default()).unwrap().into_iter().map(|h| h.article_id).collect::<Vec<_>>();
         owners.sort();
         assert_eq!(owners, [1, 3]);
         assert_eq!(s.lexical_search("checkpoint", None, 10).unwrap().len(), 3);

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-translation-prompt"
+description = "Enables the get_translation_prompt command without any pre-configured scope."
+commands.allow = ["get_translation_prompt"]
+
+[[permission]]
+identifier = "deny-get-translation-prompt"
+description = "Denies the get_translation_prompt command without any pre-configured scope."
+commands.deny = ["get_translation_prompt"]

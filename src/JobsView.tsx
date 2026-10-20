@@ -9,6 +9,7 @@ const TYPES: { type: string; label: string; hint?: string }[] = [
   { type: "ingest", label: "取得" },
   { type: "render", label: "描画", hint: "裏描画 · 最大約 20 秒/件" },
   { type: "images", label: "画像" },
+  { type: "favicon", label: "サイトアイコン" },
   { type: "embed", label: "検索 index" },
   { type: "translate", label: "翻訳" },
   { type: "summarize", label: "要約" },

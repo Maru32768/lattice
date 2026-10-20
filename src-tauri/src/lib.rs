@@ -16,7 +16,8 @@ use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::{backup, classify, export, images, r2, render, summarize, translate};
+use lattice_core::store::JobRow;
+use lattice_core::{backup, classify, export, favicons, images, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -124,6 +125,17 @@ fn article_image(app: State<'_, App>, block_id: i64) -> Result<Option<String>, S
     images::data_url(&app.store, block_id)
 }
 
+/// A site's stored icon as a `data:` URL, or `None` (the UI shows its initial). Queues a
+/// background fetch when there is none yet or it is a week old; `favicon-changed` follows.
+#[tauri::command(async)]
+fn favicon(app: State<'_, App>, domain: String) -> Result<Option<String>, String> {
+    let (icon, queued) = favicons::get(&app.store, &domain)?;
+    if queued {
+        app.wake_net.iter().for_each(|w| w.notify_one());
+    }
+    Ok(icon)
+}
+
 #[tauri::command(async)]
 fn get_image_settings(app: State<'_, App>) -> Result<images::ImageSettings, String> {
     images::settings(&app.store)
@@ -207,6 +219,23 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_translate_instructions(app: State<'_, App>) -> Result<String, String> {
+    translate::instructions(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_instructions(app: State<'_, App>, text: String) -> Result<(), String> {
+    translate::set_instructions(&app.store, &text)
+}
+
+/// The built-in prompt the instructions extend (current term mode, English to Japanese).
+#[tauri::command(async)]
+fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
+    let target = translate::target(&app.store)?;
+    Ok(segments::translation_prompt(&segments::Target { instructions: String::new(), ..target }))
+}
+
+#[tauri::command(async)]
 fn list_feeds(app: State<'_, App>) -> Result<Vec<FeedRow>, String> {
     feeds::list(&app.store)
 }
@@ -267,7 +296,13 @@ fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
-    app.store.get_article(id, &translate::target(&app.store)?).map_err(err)
+    app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)
+}
+
+/// Removes the article and everything derived from it (`Store::delete_article`).
+#[tauri::command(async)]
+fn delete_article(app: State<'_, App>, id: i64) -> Result<bool, String> {
+    app.store.delete_article(id).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -280,19 +315,22 @@ fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow
 }
 
 /// Translation for the page overlay: cached units where available, the LLM for the rest.
-/// Snippets come from an untrusted page, so size and count are bounded.
+/// Snippets come from an untrusted page, so size and count are bounded. `target` is the
+/// overlay's choice for the page ("en" for a Japanese page); anything else means Japanese.
 #[tauri::command]
 async fn overlay_translate(
     app: State<'_, App>,
     browser: State<'_, Browser>,
     webview: Webview,
     snippets: Vec<String>,
+    target: Option<String>,
 ) -> Result<Vec<Option<Vec<Unit>>>, String> {
     browser::ensure_translation_allowed(&webview, &browser)?;
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
         return Err("request too large".into());
     }
-    let target = &translate::target(&app.store)?;
+    let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
+    let target = &to.key();
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut cached = app.store.cached_segments(&hashes, target).map_err(err)?;
     let mut misses: Vec<usize> = Vec::new();
@@ -305,7 +343,7 @@ async fn overlay_translate(
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
         let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
         let llm = &app.providers.llm;
-        let t = segments::translate_snippets(llm, &batch, translate::SOURCE_LANGUAGE, target).await;
+        let t = segments::translate_snippets(llm, &batch, &to).await;
         let rows: Vec<SegmentRow> = misses
             .iter()
             .zip(&t.results)
@@ -333,7 +371,7 @@ fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
-    translate::enqueue(&app.store, id, &translate::target(&app.store)?)?;
+    translate::enqueue(&app.store, id, &translate::article_target(&app.store, id)?)?;
     app.wake_llm.notify_one();
     Ok(())
 }
@@ -533,6 +571,7 @@ pub fn run() {
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
+            classify::enqueue_missing(&store)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
@@ -542,8 +581,15 @@ pub fn run() {
                 .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
                 let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
-                let on_change = move |article_id: i64| {
-                    let _ = handle.emit("article-changed", article_id);
+                let on_change = move |job: &JobRow| {
+                    let _ = match job.article_id {
+                        Some(id) => handle.emit("article-changed", id),
+                        // Favicon jobs are per domain, not per article.
+                        None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
+                            Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
+                            _ => Ok(()),
+                        },
+                    };
                     if types == NET_JOBS {
                         embedder_wake.notify_one(); // a fetched article has just queued its embed job
                         llm_wake.notify_one(); // ... and maybe its classify job
@@ -585,6 +631,7 @@ pub fn run() {
             set_auto_render,
             import_urls,
             article_image,
+            favicon,
             get_image_settings,
             set_image_settings,
             list_articles,
@@ -600,6 +647,9 @@ pub fn run() {
             set_auto_classify,
             get_translate_keep_terms,
             set_translate_keep_terms,
+            get_translate_instructions,
+            set_translate_instructions,
+            get_translation_prompt,
             list_feeds,
             add_feed,
             discover_feeds,
@@ -609,6 +659,7 @@ pub fn run() {
             add_tag,
             remove_tag,
             get_article,
+            delete_article,
             article_for_url,
             translate_article,
             summarize_article,
@@ -642,6 +693,7 @@ pub fn run() {
             browser::browser_set_translation,
             browser::overlay_config,
             browser::overlay_snapshot,
+            browser::overlay_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

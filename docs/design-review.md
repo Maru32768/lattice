@@ -116,7 +116,7 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **途中で失敗しても失われない。** batch ごとに保存するので、再試行で送るのは未翻訳の分だけになる。provider が全滅した batch は job を失敗させて backoff する。
 - **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
-- **翻訳対象。** 英語の prose だけを訳す（日本語が優勢な block は送らない）。code / pre / nav / header / footer / aside、`translate="no"` は対象外。
+- **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer、`translate="no"` は対象外（aside は記事中の囲み記事が本文なので訳す）。訳先の言語は §16 を参照。
 
 ## 4. 検索 slice（実装済み）
 
@@ -452,3 +452,29 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 ### 未実装（意図的）
 
 統合の取り消し、`<link>` の候補の事前検証、`<a href>` で張られた feed の検出、改名で消えたジャンルを選んでいる絞り込みの自動解除（一覧が空になるので選び直す）。
+
+## 16. フィードバック対応
+
+| 対象 | ファイル |
+|---|---|
+| 訳先の言語（`Target`・`is_japanese`・英訳の prompt） | `crates/lattice-core/src/segments.rs`、`translate.rs`、`store.rs`（`article_is_japanese`・`hit_details`） |
+| ページの訳先 | `src/overlay/logic.ts`（`pageTarget`）、`src/overlay/index.ts` |
+
+- **日本語の記事は英語に訳す。** 記事の言語は、`articles.language`（ページが宣言した言語）があればそれで、なければ先頭 20 個の prose block のテキストで決める（CJK が優勢なら日本語）。日本語なら訳先は `en`、それ以外は従来どおり `ja`。訳先は `segments::Target`（言語と専門用語モード）で表し、その `key()` を `target_language` として cache・Reader の join・検索結果の訳文・translate job の params と dedup key に使う。英語への訳の既定モードの key は `en`。言語は保存せず、`get_article`・`translate_article`・検索のたびに決める（`hit_details` は記事ごとに決める）。
+  - 宣言された言語がテキストと食い違っても宣言を優先する。中国語の記事は宣言がなければ日本語と判定され、英語に訳される。
+  - 英語への訳の専門用語モード: オン（既定）は「定着した英語の用語を使う（ラテン文字で書かれた用語はそのまま）」、オフは「専門用語より平易な英語を優先する（略語と製品名はそのまま）」を prompt に入れる。訳元の言語は、英語への訳なら日本語、それ以外は英語として prompt に書く。
+  - Reader の混在は「訳文の割合」になり、日本語の記事では英語の割合になる。「日本語に翻訳」は記事の訳先に合わせて「英語に翻訳」と表示する。
+  - ページ表示の overlay も、`<html lang>` があればそれで、なければ最初に見つけた 30 個の block のテキストでページの言語を決め、日本語のページは英語に訳す（`overlay_translate` の `target`。`en` 以外は日本語として扱う）。訳先の言語ですでに書かれた block は送らない。
+- **分類のバックフィル。** 自動分類が入る前に保存した記事には classify job がない。起動時、自動分類がオンなら、ジャンルか難易度がなく classify job を一度も持たなかった抽出済みの記事に job を積む（`classify::enqueue_missing`。dedup key `classify:{id}` で `ON CONFLICT DO NOTHING`）。「未分類をすべて分類」と違って既存の job は再投入しないので、失敗した分類や結果の出なかった分類を起動のたびに LLM に送り直すことはない。
+- **翻訳の追加の指示。** 設定「翻訳」の「追加の指示」（`settings.translate_instructions`、2000 文字まで、空なら保存しない）を、翻訳と re-split の prompt の末尾（信頼しない入力についての注意の直前）に「ユーザーからの追加の指示」として付ける。記事の翻訳もページ表示の overlay も同じ prompt を通るので両方に効く。`Target` が指示を持ち、`key()` に指示の sha256 の先頭 12 桁を `-x-instr-` で付けるので、指示を変えると別の cache になる（空の指示は従来の key のまま）。translate job は params に key と指示の本文を持ち、queue に入れたときの指示で訳す。設定画面には、指示が拡張する組み込みの prompt（英語→日本語、現在の専門用語モード）を読み取り専用で表示する。
+- **記事の削除。** `Store::delete_article`（command `delete_article`）が記事と、そこから派生したものを 1 transaction で消す。snapshot・block（FTS の行と embedding も）・job・タグ付け・要約・分類履歴・画像の対応行は FK の cascade で消え、どの記事も使わなくなった画像の bytes は既存の trigger が消す。訳文の cache（`segment_translations`）は記事から独立しているので、消す記事の block の hash のうち、他の記事の block が使っていないものだけを消す（FTS の行は trigger で消える。ページ表示でしか使っていない訳は記事を消すと失われる）。どの記事も使わなくなったタグも消す。残すもの: `feed_items`（残さないとフィードの次の取得で同じ記事を取り込み直す）、対話の回答（引用は block のテキストをコピーして持つので表示でき、引用元を開くと記事がないためページで開く）。実行中の job が消した記事に書き込もうとしても FK で失敗するだけで、job は失敗として記録される。
+  - UI: Reader の ⋯ に「記事を削除…」、ページ表示で Index 済みのときの ⋯ に「Index から削除…」。どちらも確認ダイアログ（`src/ConfirmDialog.tsx`。`alertdialog`、初期フォーカスは「キャンセル」、Tab はダイアログ内を巡回、Esc と背景のクリックでキャンセル、キーはアプリのショートカットに届かない、ネイティブの webview は隠す）を通す。削除後は文書を閉じて一覧を読み直す。
+- **アプリ内ブラウザ。**
+  - ページを切り替えると前のページが一瞬見えていた。原因は 2 つ。(1) Page 表示に入ると UI の `browser_set_bounds`（同期 command）が非同期の `browser_open` より先に走り、読み込み済み扱いのままの前のページを表示していた。`BrowserView` は open の応答までは bounds を送らない。(2) 読み込み中は `hide()` していたが、非表示の WebView2 は描画を止めるので、表示し直した瞬間に前のページの最後のフレームが出る。読み込み中は隠さずにウィンドウ外（-20000, -20000。renderer と同じ）に置き、描画を続けさせる。読み込み中の扱いは、アプリから開いたときだけでなく、ページ内のリンク・戻る・進む・再読み込みを含むすべての読み込み（`PageLoadEvent::Started` から `Finished` まで）に広げた。その間は下の placeholder が「読み込み中…」を出す。読み込みが完了しない遷移（ダウンロードなど `Finished` が来ない場合）ではページが出ないままになりうる（実機では未確認）。
+  - 戻る・進むは、履歴がない方向を disabled にする。overlay が Chromium の Navigation API（`navigation.canGoBack` / `canGoForward`）を読み込み時と同一文書内の遷移（`currententrychange`）で `overlay_history` に送り、`browser-page` イベントに `can_go_back` / `can_go_forward` として載る。読み込み開始時と、API がないときは両方有効のままにする。`overlay_history` はリモートのページから呼べるが、browser webview からの呼び出しだけを受け付け、ツールバーのボタンの状態しか変えない。
+  - overlay は aside を訳す対象に含める（`SKIP` から外した。nav / header / footer は従来どおり除く）。抽出でも、Readability（dom_smoothie）はすべての `<aside>` と「sidebar」のような class を持つ要素を boilerplate として消すので、本文（`article` / `main` / `[role=main]` / `[itemprop=articleBody]`）の中の aside は parse の前に `<div>` にし、その中の class / id を外す（code と pre の class は言語を持つので残す）。本文の外の aside は従来どおり消える。`EXTRACTION_VERSION` は 2。
+  - ページ上の訳文の点線の下線をやめた（hover の背景と吹き出しは残す）。
+- **favicon。** フィード（フィード画面の表・サイドバー）、記事の行、Reader の meta 行で、名前の左にサイトのアイコンを出す（`src/Favicon.tsx`。16px、角丸 3px。アイコンがない間はドメインの頭文字を中立色の四角で出す）。取得はバックエンドだけで行う（main webview の CSP は `img-src 'self' data:` のまま）。
+  - 保存先は `favicons(domain, mime, bytes, error, fetched_at)`（migration 17）。取得できなかった理由も 1 行として残す。`favicon(domain)` command は保存済みのアイコンを `data:` URL で返し、行がないか 1 週間より古ければ `favicon` job（network runner、記事を持たない job。dedup key `favicon:{domain}`）を積む。古い行は再取得が終わるまでそのまま返す。job が終わると `favicon-changed`（ドメイン）を emit し、UI はそのドメインだけを聞き直す。UI はドメインごとの Promise を module 内に持つので、1,000 行の一覧でも呼び出しはドメインごとに 1 回になる（harness で確認）。ドメインは「初めて見たとき」＝UI が初めて聞いたときに取得する（取り込み時には積まない）。
+  - 取得の順序: そのドメインの記事の最新 snapshot の `<link rel~=icon href>`、snapshot がない（またはリンクがない）ときはサイトの root（`https://{domain}/`）の HTML のリンク、最後に `/favicon.ico`。最初に取得できたものを保存する。取得は記事画像の `download`（`check_public` で private address を拒否、Content-Type と magic number の検査、受信中のサイズ確認）を通し、上限は 1 MB。SVG は保存しない。ICO を magic number の判定に加えた（記事画像でも ICO を保存するようになる）。timeout・5xx・429 だけのときは何も保存せず job を失敗させ、backoff で再試行する。ほかの失敗は理由を保存し、1 週間後に聞かれるまで再取得しない。root は https だけを試す。
+

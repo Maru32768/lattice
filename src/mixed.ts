@@ -3,7 +3,7 @@ export type LanguageMode = "original" | "translated" | "mixed";
 /**
  * Which blocks show their translation. Pure display logic: changing mode or ratio never
  * re-translates. Mixed mode spreads `percent` evenly over translated blocks (by count),
- * so Japanese isn't bunched at the top.
+ * so the other language isn't bunched at the top.
  */
 export function translatedBlockIds(
   blocks: { id: number; translation: string | null }[],

@@ -8,6 +8,7 @@ use std::cmp::Reverse;
 use serde::Serialize;
 
 use crate::embed::{EmbeddingProvider, Purpose};
+use crate::segments::Target;
 use crate::store::{HitDetail, Store};
 
 const CANDIDATES: usize = 50;
@@ -41,7 +42,7 @@ pub async fn search<E: EmbeddingProvider>(
     embedder: &E,
     query: &str,
     articles: Option<&[i64]>,
-    target_language: &str,
+    target: &Target,
     limit: usize,
 ) -> Result<SearchResult, String> {
     let query = query.trim();
@@ -55,7 +56,7 @@ pub async fn search<E: EmbeddingProvider>(
     };
     let fused = fuse(&lexical, &semantic, limit);
     let ids: Vec<i64> = fused.iter().map(|f| f.0).collect();
-    let details = store.hit_details(&ids, target_language).map_err(|e| e.to_string())?;
+    let details = store.hit_details(&ids, target).map_err(|e| e.to_string())?;
     let by_id: HashMap<i64, (MatchSource, f64)> = fused.into_iter().map(|(id, s, sc)| (id, (s, sc))).collect();
     let hits = details
         .into_iter()
@@ -179,11 +180,11 @@ pub(crate) mod tests {
         crate::embed::run(&s, &Letters, id).await.unwrap();
 
         // Exact identifier, case-insensitive, also inside code blocks.
-        let r = search(&s, &Letters, "epollet", None, "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "epollet", None, &Target::default(), 10).await.unwrap();
         assert!(r.hits[0].detail.text.contains("EPOLLET"));
         assert_eq!(r.hits[0].detail.heading.as_deref(), Some("Visibility"));
         assert_eq!(r.hits[0].detail.article_title, "MVCC notes");
-        let r = search(&s, &Letters, "pg_visibility_map", None, "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "pg_visibility_map", None, &Target::default(), 10).await.unwrap();
         assert!(r.hits.iter().any(|h| h.detail.text.starts_with("SELECT") && h.source != MatchSource::Semantic));
 
         // A Japanese query matches the stored translation lexically, including a 2-char term via LIKE.
@@ -192,24 +193,24 @@ pub(crate) mod tests {
         let units = [Unit { source: "x".into(), translation: "可視性情報は<b>ヒープ</b>に保持される".into() }];
         s.insert_segments("ja", "v", &[(p.1.as_str(), &units[..], "fake", None)]).unwrap();
         for q in ["可視性情報", "ヒープ", "可視性 保持"] {
-            let r = search(&s, &Offline, q, None, "ja", 10).await.unwrap();
+            let r = search(&s, &Offline, q, None, &Target::default(), 10).await.unwrap();
             assert_eq!(r.hits.first().map(|h| h.detail.block_id), Some(p.0), "query {q}");
             assert_eq!(r.hits[0].detail.translation.as_deref(), Some("可視性情報はヒープに保持される"));
         }
 
         // Semantic-only match, and graceful degradation when the embedder is unavailable.
-        let r = search(&s, &Letters, "tuple heap visibility", None, "ja", 10).await.unwrap();
+        let r = search(&s, &Letters, "tuple heap visibility", None, &Target::default(), 10).await.unwrap();
         assert!(r.hits.iter().any(|h| h.source != MatchSource::Lexical));
-        let r = search(&s, &Offline, "EPOLLET", None, "ja", 10).await.unwrap();
+        let r = search(&s, &Offline, "EPOLLET", None, &Target::default(), 10).await.unwrap();
         assert_eq!(r.semantic_error.as_deref(), Some("model not downloaded"));
         assert_eq!(r.hits.len(), 1);
 
         // FTS syntax in user input is literal, not an error.
-        assert!(search(&s, &Offline, "\"unbalanced OR (", None, "ja", 10).await.is_ok());
+        assert!(search(&s, &Offline, "\"unbalanced OR (", None, &Target::default(), 10).await.is_ok());
 
         // Deleting an article removes its blocks and translations from the index.
         s.exec_for_test(&format!("DELETE FROM articles WHERE id = {id}"));
-        assert!(search(&s, &Offline, "EPOLLET", None, "ja", 10).await.unwrap().hits.is_empty());
-        assert!(search(&s, &Offline, "可視性情報", None, "ja", 10).await.unwrap().hits.is_empty());
+        assert!(search(&s, &Offline, "EPOLLET", None, &Target::default(), 10).await.unwrap().hits.is_empty());
+        assert!(search(&s, &Offline, "可視性情報", None, &Target::default(), 10).await.unwrap().hits.is_empty());
     }
 }

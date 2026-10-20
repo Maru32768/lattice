@@ -9,6 +9,7 @@ const COMMANDS: &[&str] = &[
     "set_auto_render",
     "import_urls",
     "article_image",
+    "favicon",
     "get_image_settings",
     "set_image_settings",
     "list_articles",
@@ -24,6 +25,9 @@ const COMMANDS: &[&str] = &[
     "set_auto_classify",
     "get_translate_keep_terms",
     "set_translate_keep_terms",
+    "get_translate_instructions",
+    "set_translate_instructions",
+    "get_translation_prompt",
     "list_feeds",
     "add_feed",
     "discover_feeds",
@@ -33,6 +37,7 @@ const COMMANDS: &[&str] = &[
     "add_tag",
     "remove_tag",
     "get_article",
+    "delete_article",
     "article_for_url",
     "translate_article",
     "summarize_article",
@@ -66,6 +71,7 @@ const COMMANDS: &[&str] = &[
     "overlay_config",
     "overlay_translate",
     "overlay_snapshot",
+    "overlay_history",
 ];
 
 fn main() {

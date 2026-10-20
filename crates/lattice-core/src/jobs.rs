@@ -12,12 +12,13 @@ use crate::embed::{self, EmbeddingProvider};
 use crate::fetch::HttpClient;
 use crate::ingest;
 use crate::llm::LlmProvider;
+use crate::segments::Target;
 use crate::store::{JobRow, Store};
-use crate::{classify, images, render, summarize, translate};
+use crate::{classify, favicons, images, render, summarize, translate};
 
 pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
-pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE];
+pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
 const IDLE_POLL: Duration = Duration::from_secs(30);
@@ -29,12 +30,13 @@ pub struct Providers<L, E> {
 }
 
 /// Call `store.recover_running_jobs()` once before starting runners, not per runner.
+/// `on_change` gets each job as it starts, makes progress and finishes.
 pub async fn run_worker<L: LlmProvider, E: EmbeddingProvider>(
     store: Arc<Store>,
     providers: Arc<Providers<L, E>>,
     types: &'static [&'static str],
     wake: Arc<Notify>,
-    on_change: impl Fn(i64) + Send + Sync + 'static,
+    on_change: impl Fn(&JobRow) + Send + Sync + 'static,
 ) {
     loop {
         match run_next(&store, &providers, types, &on_change).await {
@@ -54,19 +56,18 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     providers: &Providers<L, E>,
     types: &[&str],
-    on_change: &(dyn Fn(i64) + Send + Sync),
+    on_change: &(dyn Fn(&JobRow) + Send + Sync),
 ) -> Result<bool, String> {
     let Some(job) = store.claim_next_job(types).map_err(|e| e.to_string())? else {
         return Ok(false);
     };
-    let article_id = job.article_id.unwrap_or_default();
-    on_change(article_id);
-    let result = run_job(store, providers, &job, &|| on_change(article_id)).await;
+    on_change(&job);
+    let result = run_job(store, providers, &job, &|| on_change(&job)).await;
     if let Err(e) = &result {
-        log::warn!("job {} ({}) article {article_id} attempt {} failed: {e}", job.id, job.job_type, job.attempt_count);
+        log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count);
     }
     store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
-    on_change(article_id);
+    on_change(&job);
     Ok(true)
 }
 
@@ -77,11 +78,15 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     progress: &(dyn Fn() + Send + Sync),
 ) -> Result<(), String> {
     let params: serde_json::Value = job.params.as_deref().map(serde_json::from_str).transpose().map_err(|e| e.to_string())?.unwrap_or_default();
+    if job.job_type == favicons::JOB_TYPE {
+        return favicons::run(store, &p.http, params["domain"].as_str().ok_or("job has no domain")?).await;
+    }
     let article_id = job.article_id.ok_or("job has no article")?;
     match job.job_type.as_str() {
         translate::JOB_TYPE => {
-            let target = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
-            translate::run(store, &p.llm, article_id, target, progress).await
+            let key = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
+            let target = Target::from_key(key, params["instructions"].as_str().unwrap_or_default());
+            translate::run(store, &p.llm, article_id, &target, progress).await
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
@@ -132,7 +137,7 @@ mod tests {
     #[tokio::test]
     async fn translates_prose_blocks_and_is_idempotent() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         let p = with(Fake::new());
         assert!(run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap());
         assert!(!run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap(), "queue drained");
@@ -148,34 +153,73 @@ mod tests {
         assert_eq!(v.jobs[0].status, "succeeded");
 
         // Re-enqueue: nothing left to translate, provider is not called again.
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(p.llm.calls.lock().unwrap().len(), 1);
 
         // Translating terms too is a separate cache: translated again, the default rows stay.
-        assert_eq!(translate::target(&s).unwrap(), "ja");
+        assert_eq!(translate::target(&s).unwrap().key(), "ja");
         translate::set_keep_terms(&s, false).unwrap();
-        let other = translate::target(&s).unwrap();
+        let target = translate::target(&s).unwrap();
+        let other = target.key();
         assert_ne!(other, "ja");
         assert!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.is_none(), "modes do not share rows");
-        translate::enqueue(&s, id, &other).unwrap();
+        translate::enqueue(&s, id, &target).unwrap();
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(p.llm.calls.lock().unwrap().len(), 2);
         assert_eq!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
         assert_eq!(s.cached_segments(&[crate::store::sha256_hex("Intro")], "ja").unwrap().len(), 1);
+
+        // New instructions: a new cache key, and the job sends them in the prompt.
+        translate::set_keep_terms(&s, true).unwrap();
+        assert!(translate::set_instructions(&s, &"x".repeat(translate::MAX_INSTRUCTION_CHARS + 1)).is_err());
+        translate::set_instructions(&s, "  です・ます調で訳す ").unwrap();
+        let target = translate::target(&s).unwrap();
+        assert_eq!(target.instructions, "です・ます調で訳す");
+        translate::enqueue(&s, id, &target).unwrap();
+        translate::set_instructions(&s, "").unwrap();
+        assert_eq!(translate::target(&s).unwrap().key(), "ja", "cleared");
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        assert!(p.llm.systems.lock().unwrap().last().unwrap().contains("です・ます調で訳す"), "the job keeps the instructions it was queued with");
+        assert_eq!(s.get_article(id, &target.key()).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
+    }
+
+    #[tokio::test]
+    async fn japanese_articles_translate_into_english() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.jp/a", "https://example.jp/a", "example.jp").unwrap();
+        let html = "<html><body><article><h2>はじめに</h2>            <p>スナップショット分離では write skew が起こりうるが、直列化可能スナップショット分離はコミット時にそれを防ぐ。</p>            <p>Written in English: not sent.</p></article></body></html>";
+        store_fetched(&s, id, &Fetched { final_url: "https://example.jp/a".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        assert!(s.article_is_japanese(id).unwrap(), "no declared language: decided by the text");
+
+        let target = translate::article_target(&s, id).unwrap();
+        assert_eq!(target.key(), "en");
+        translate::enqueue(&s, id, &target).unwrap();
+        let p = with(Fake::new());
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        let sent: Vec<serde_json::Value> = serde_json::from_str(&p.llm.calls.lock().unwrap()[0]).unwrap();
+        assert_eq!(sent.len(), 2, "only the Japanese blocks are sent: {sent:?}");
+
+        let v = s.get_article(id, &target.key()).unwrap().unwrap();
+        assert_eq!(v.target_language, "en");
+        assert!(v.blocks[0].translation.is_some() && v.blocks[2].translation.is_none());
+        assert!(s.get_article(id, "ja").unwrap().unwrap().blocks[0].translation.is_none(), "kept apart from Japanese targets");
+
+        s.exec_for_test(&format!("UPDATE articles SET language = 'en-US' WHERE id = {id}"));
+        assert_eq!(translate::article_target(&s, id).unwrap().key(), "ja", "a declared language wins over the text");
     }
 
     #[tokio::test]
     async fn failure_backs_off_and_manual_retry_resumes() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &with(Fake { fail: true, ..Fake::new() }), LLM_JOBS, &|_| {}).await.unwrap();
         let job = &s.get_article(id, "ja").unwrap().unwrap().jobs[0];
         assert_eq!((job.status.as_str(), job.attempt_count), ("pending", 1));
         assert!(job.next_run_at.is_some() && job.last_error.as_deref() == Some("provider failed: usage limit reached"));
         assert!(!run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap(), "not ready until backoff elapses");
 
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().jobs[0].status, "succeeded");
     }
@@ -195,10 +239,22 @@ mod tests {
         assert!(s.get_article(id, "ja").unwrap().unwrap().summary.unwrap().stale);
     }
 
+    #[tokio::test]
+    async fn favicon_jobs_need_no_article() {
+        let s = Store::open_in_memory().unwrap();
+        assert!(favicons::get(&s, "127.0.0.1").unwrap().1);
+        let seen = std::sync::Mutex::new(Vec::new());
+        assert!(run_next(&s, &with(Fake::new()), NET_JOBS, &|j| seen.lock().unwrap().push((j.job_type.clone(), j.article_id))).await.unwrap());
+        assert_eq!(seen.into_inner().unwrap(), [("favicon".to_string(), None), ("favicon".to_string(), None)], "started and finished");
+        assert_eq!(favicons::get(&s, "127.0.0.1").unwrap(), (None, false), "the refusal is stored, not retried");
+        let status: String = s.conn().query_row("SELECT status FROM processing_jobs", [], |r| r.get(0)).unwrap();
+        assert_eq!(status, "succeeded");
+    }
+
     #[test]
     fn recovers_jobs_left_running() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         s.claim_next_job(LLM_JOBS).unwrap().unwrap();
         assert_eq!(s.recover_running_jobs().unwrap(), 1);
         assert!(s.claim_next_job(LLM_JOBS).unwrap().is_some());

@@ -53,6 +53,9 @@
 .row .dot { position: absolute; left: 10px; top: 17px; width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
 .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--ink3); }
 .meta .fav { display: inline-flex; color: var(--tr); }
+.favicon { flex: none; width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
+.favicon.letter { display: inline-flex; align-items: center; justify-content: center; background: var(--active); color: var(--ink3); font: 600 9.5px/1 var(--sans); }
+.with-ico { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .meta .fav .ico { fill: currentColor; }
 .row .tags { font: 12px var(--mono); color: var(--ink3); }
 .list .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px 20px; font-size: 12.5px; }
@@ -107,6 +110,11 @@
 /* ---- command palette (Palette board) ------------------------------------------------------- */
 .pal-scrim { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding: 88px 40px 0; background: var(--scrim); }
 .pal { width: 660px; max-width: 100%; max-height: calc(100vh - 128px); display: flex; flex-direction: column; overflow: hidden; background: var(--raise); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 24px 70px var(--shadow), 0 2px 8px var(--shadow2); }
+.dlg { width: 440px; max-width: 100%; margin-top: 8vh; padding: 20px 22px 18px; background: var(--raise); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 24px 70px var(--shadow), 0 2px 8px var(--shadow2); }
+.dlg h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.dlg-body { font-size: 13px; line-height: 1.7; color: var(--ink2); }
+.dlg-body p { margin: 0 0 6px; }
+.dlg-acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .pal-q { display: flex; align-items: center; gap: 10px; height: 52px; flex: none; padding: 0 18px; border-bottom: 1px solid var(--line); color: var(--ink3); }
 .pal-q input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; font: 15px var(--mono); color: var(--ink); }
 .pal-where { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--ink3); }

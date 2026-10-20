@@ -4,6 +4,7 @@ import { MANUAL, UNCLASSIFIED } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
+import { Favicon, hostOf } from "./Favicon";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings";
 
@@ -109,7 +110,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
       </button>
       {feedsOpen && (
         <div className="nav-sub">
-          {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, f.title ?? f.url, counts.feedUnread.get(f.id) ?? 0, null, " sub"))}
+          {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, f.title ?? f.url, counts.feedUnread.get(f.id) ?? 0, <Favicon domain={hostOf(f.site_url ?? f.url)} />, " sub"))}
           {feeds.length > FEEDS_SHOWN && (
             <button className="ni sub dim" onClick={() => setAllFeeds((v) => !v)} aria-expanded={allFeeds}>
               {allFeeds ? "折りたたむ" : "すべてのフィード…"}

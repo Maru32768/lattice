@@ -51,6 +51,18 @@ export function isCjkDominant(text: string): boolean {
   return cjk > 0 && cjk * 2 >= alnum;
 }
 
+export type Target = "ja" | "en";
+
+/** Japanese pages translate into English, all others into Japanese: the declared `lang` decides, else the text. */
+export function pageTarget(lang: string, sample: string): Target {
+  const l = lang.trim().toLowerCase();
+  const japanese = l ? l === "ja" || l.startsWith("ja-") || l.startsWith("ja_") : isCjkDominant(sample);
+  return japanese ? "en" : "ja";
+}
+
+/** Text already in the target language has nothing to translate. */
+export const isWrittenIn = (text: string, target: Target) => isCjkDominant(text) === (target === "ja");
+
 const safeUrl = (v: string, allowData: boolean) => {
   const s = v.trim().replace(/[\p{C}\s]+/gu, "");
   const scheme = /^([a-z][a-z0-9+.-]*):/iu.exec(s)?.[1]?.toLowerCase();

@@ -95,6 +95,8 @@ export interface TagCount {
 
 export interface ArticleView {
   article: ArticleRow;
+  /** Language of `blocks[].translation`: Japanese articles are translated into English. */
+  target_language: "ja" | "en";
   blocks: Block[];
   jobs: JobRow[];
   summary: { text: string; created_at: string; stale: boolean } | null;
@@ -238,6 +240,8 @@ export const api = {
   setAutoRender: (on: boolean) => invoke<void>("set_auto_render", { on }),
   /** The stored image of an image block as a data: URL; null while not downloaded or not stored. */
   articleImage: (blockId: number) => invoke<string | null>("article_image", { blockId }),
+  /** A site's icon as a data: URL; null while not fetched (a fetch is queued; `favicon-changed` follows) or when it has none. */
+  favicon: (domain: string) => invoke<string | null>("favicon", { domain }),
   imageSettings: () => invoke<ImageSettings>("get_image_settings"),
   setImageSettings: (settings: ImageSettings) => invoke<void>("set_image_settings", { settings }),
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
@@ -246,6 +250,8 @@ export const api = {
   addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
   removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
+  /** Removes the article with its HTML, blocks, translations only it uses, summaries, images and jobs. */
+  deleteArticle: (id: number) => invoke<boolean>("delete_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
@@ -271,6 +277,10 @@ export const api = {
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
+  translateInstructions: () => invoke<string>("get_translate_instructions"),
+  setTranslateInstructions: (text: string) => invoke<void>("set_translate_instructions", { text }),
+  /** The built-in translation prompt (English to Japanese, current term mode) that the instructions extend. */
+  translationPrompt: () => invoke<string>("get_translation_prompt"),
   classifyArticle: (id: number) => invoke<void>("classify_article", { id }),
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),

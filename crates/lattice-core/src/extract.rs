@@ -8,7 +8,10 @@ use url::Url;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 
 /// Bump when segmentation output changes, so stored articles can be re-extracted.
-pub const EXTRACTION_VERSION: i64 = 1;
+pub const EXTRACTION_VERSION: i64 = 2;
+
+/// Asides inside the article body: boxed sidebars and footnotes that belong to the text.
+const BODY_ASIDES: &str = "article aside, main aside, [role=main] aside, [itemprop=articleBody] aside";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
@@ -29,6 +32,17 @@ pub fn extract(html: &str, url: &str) -> Result<ArticleIr, ExtractError> {
         .select(r#"link[rel="canonical"]"#)
         .attr("href")
         .and_then(|h| http_url(&base, &h));
+    // Readability drops every <aside>, and anything classed like "sidebar", as boilerplate; inside
+    // the article body they are content, so they become plain <div>s first. Code keeps its
+    // classes (they carry the language).
+    let asides = r.doc.select(BODY_ASIDES);
+    for node in asides.select(":not(pre):not(code)").nodes() {
+        node.remove_attrs(&["class", "id"]);
+    }
+    for aside in asides.nodes() {
+        aside.rename("div");
+        aside.remove_attrs(&["class", "id", "role"]);
+    }
     let a = r.parse().map_err(|e| ExtractError::Readability(e.to_string()))?;
 
     let content = Document::from(a.content.as_ref());
@@ -320,6 +334,35 @@ mod tests {
 </article>
 <footer>Copyright 2026, all rights reserved, unrelated footer text.</footer>
 </body></html>"#;
+
+    /// Reduced from a Sphinx book page: a boxed sidebar inside the article body is content.
+    const SIDEBAR: &str = r#"<!doctype html><html lang="en"><head><title>2.1 Technology</title></head><body>
+<nav class="toc"><a href="/">Contents</a> <a href="/next.html">Next</a></nav>
+<div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article"><div itemprop="articleBody">
+<section id="technology"><h1>2.1 Technology</h1>
+<p>The link layer is where nodes share a physical medium. This paragraph is long enough, with commas, clauses, and detail, to count as real content for readability.</p>
+<p>This section introduces the problems addressed by the link layer, and uses Ethernet as its representative example, with plenty of words to score well.</p>
+<aside class="sidebar">
+<p class="sidebar-title">Ethernet Standards</p>
+<p>When we say Ethernet we are really talking about a family of standards, tracing back to the first specification written by DEC, Intel, and Xerox.</p>
+</aside>
+<p>Encoding comes next, and it is just as important, because bits must be turned into signals that the receiver can decode reliably.</p>
+<aside class="footnote brackets" id="id2" role="doc-footnote"><p>A footnote that belongs to the text.</p></aside>
+</section></div></div>
+<aside class="related"><p><a href="/other.html">Related posts</a> from elsewhere on the site.</p></aside>
+<footer>Copyright notice and other unrelated footer text.</footer>
+</body></html>"#;
+
+    #[test]
+    fn keeps_asides_inside_the_article_body() {
+        let ir = extract(SIDEBAR, "https://book.example/technology.html").unwrap();
+        let texts: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+        let at = |prefix: &str| texts.iter().position(|t| t.starts_with(prefix)).unwrap_or_else(|| panic!("{prefix}: {texts:?}"));
+        assert!(at("This section introduces") < at("Ethernet Standards"), "kept in place");
+        assert!(at("When we say Ethernet") < at("Encoding comes next"));
+        at("A footnote that belongs");
+        assert!(!texts.iter().any(|t| t.contains("Related posts") || t.contains("Contents")), "asides outside the body stay out: {texts:?}");
+    }
 
     #[test]
     fn segments_article_into_blocks() {
