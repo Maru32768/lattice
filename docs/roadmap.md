@@ -65,7 +65,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G37 | 更新通知とアプリ内アップデート | 後 | Tauri updater。G41 のリリースフローが前提。 |
 | G38 | データ保存先の変更 | 後 | 今は `%APPDATA%\dev.lattice.app`。インストーラーを使わない配布（zip・単体 exe）なら exe と同じフォルダを既定にする案もある。要検討。 |
 | G39 | 単体テスト・E2E テストの強化 | 済 | `e2e/`: Vite が本物のフロントエンドを `@tauri-apps/api/mocks` の上で配信し、Playwright（Chromium）が操作する。mock backend は `e2e/mock.ts` の 1 つの表（`src/api.ts` の全 command と window / webview plugin）で、サンプルデータは 40 記事・6 フィード・訳文・Markdown 記事・検索・job・対話。spec は一覧の scope・facet と件数、タグの popover、j/k と Enter、Ctrl+K、検索、Reader の表示言語と block の反転、削除の確認、設定、ショートカットの変更、ペイン幅の保存（22 件、約 25 秒）。`api.ts` の command を mock が答えないと `npm test` が失敗する。単体テストは job の backoff・同一ホスト制限・実行中の job の取り消し・feed の重複 entry・overlay の sanitize・キー設定・ペイン移動に追加（design-review §18）。 |
-| G40 | CI でテスト | 後 | GitHub Actions（Windows runner）で `mise run test`。 |
+| G40 | CI でテスト | 済 | `.github/workflows/ci.yml`: master への push と PR で、windows-latest・`jdx/mise-action`（`mise.toml` の版）・cargo と npm と Playwright のブラウザの cache の上で、overlay のビルド、rustfmt、clippy、Rust のテスト、`npm test`、oxlint、型チェックとビルド、E2E を順に実行する。失敗時は Playwright のレポートを artifact に残す（design-review §18）。 |
 | G41 | リリースフロー | 後 | バージョン付け、ビルド、署名、配布物の作り方を決める。 |
 | G42 | 静的解析 | 済 | `mise run lint`: rustfmt（`rustfmt.toml` は既存の長い行に合わせた）、clippy（`--all-targets -D warnings`）、oxlint（type-aware。hooks・promise・`no-unsafe-*` など、外した規則は `oxlint.config.ts` に理由を書いた）。`mise run test` は lint の後に走る。型チェックは従来どおり `npm run build`（design-review §18）。 |
 | G43 | 対話の入力欄で Vim キーバインド | 後 | |

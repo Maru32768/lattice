@@ -549,3 +549,5 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
   - `harness.ts` の `app` fixture は、mock が答えない command を呼んだとき、ページの例外、`console.error` のどれかがあればテストを失敗させる。spec は見た目ではなく役割・ラベル・件数・呼ばれた command で確かめる（スクリーンショット比較はしない）。
   - 見つけた点: タグなどの facet を初めて選ぶと、popover を閉じたときにフォーカスが chip に戻らない（選ぶ前の chip ボタンが選択済みの chip に置き換わり、戻す先の要素が消える）。spec ではこの点を確かめていない。
 - **単体テストの追加。** job の backoff（2・4・8・16 分の後に失敗）、取得 job だけが同じホストの取得を待つこと、実行中の job は取り消しも再実行もできないこと、1 回の poll で同じ記事が 2 度出ても 1 件だけ積むこと、overlay の sanitize が大文字や制御文字で隠した `javascript:` を落とすこと、キー設定を既定に戻すと override が消えること、ペイン移動が端で止まること。どれも、対象のコードを壊すとそのテストだけが失敗することを確かめた。
+- **CI。** `.github/workflows/ci.yml` は windows-latest の 1 job。アプリを Windows で開発しているので Windows だけで走らせる（semantic search の ONNX Runtime が MSVC 14.40 以降を要る。README）。Node と Rust は `jdx/mise-action` が `mise.toml` の版を入れ、各コマンドは `mise exec --` で走らせる（ローカルと同じ解決）。clippy と rustfmt は toolchain の profile に頼らず `rustup component add` で入れる。手順は `mise run lint` と `mise run test` と `npm run e2e` を分けたもので、どの段で落ちたかがログで分かる。cache は `Swatinem/rust-cache`（`target` と cargo の registry）、npm の cache、Playwright のブラウザ（`package-lock.json` の hash で鍵を作る）。同じ ref の古い実行は取り消す。
+
