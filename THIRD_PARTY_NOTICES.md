@@ -135,4 +135,4 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ## Libraries
 
-The Rust crates and npm packages Lattice depends on are listed in `Cargo.lock` and `package-lock.json`. Each is distributed under its own license (mostly MIT or Apache-2.0), found in its package. A generated list of every bundled dependency's license is planned with the release flow (roadmap G41).
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) holds the license text of every Rust crate compiled into the app and every npm package bundled into its UI. It is generated from `Cargo.lock` and `package-lock.json` by `mise run licenses`, and each release regenerates it and ships it next to the executable. The ONNX Runtime library that semantic search links statically (through the `ort` crate) is Copyright (c) Microsoft Corporation, under the MIT License.

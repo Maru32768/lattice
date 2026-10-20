@@ -66,7 +66,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G38 | データ保存先の変更 | 後 | 今は `%APPDATA%\dev.lattice.app`。インストーラーを使わない配布（zip・単体 exe）なら exe と同じフォルダを既定にする案もある。要検討。 |
 | G39 | 単体テスト・E2E テストの強化 | 後 | E2E は今の mock IPC harness を土台にできる。 |
 | G40 | CI でテスト | 後 | GitHub Actions（Windows runner）で `mise run test`。 |
-| G41 | リリースフロー | 後 | バージョン付け、ビルド、署名、配布物の作り方を決める。 |
+| G41 | リリースフロー | 済 | バージョンは `package.json`・`package-lock.json`・workspace の `Cargo.toml`（両 crate が継承、`tauri.conf.json` は持たない）・`Cargo.lock` にあり、`npm run bump -- <x.y.z>` で揃え、`npm test` がずれを検出する。`CHANGELOG.md`（Keep a Changelog）。`v*` タグで `.github/workflows/release.yml` が NSIS インストーラー・portable zip・`THIRD_PARTY_LICENSES` を draft release に載せる（署名鍵の secret があれば updater 用の `.sig` と `latest.json` も）。ライセンス一覧は cargo-about と `scripts/licenses.mjs` で生成（`mise run licenses`）。手順は `docs/release.md`。 |
 | G42 | 静的解析 | 後 | clippy（`-D warnings`）、ESLint、型チェックを CI に入れる。 |
 | G43 | 対話の入力欄で Vim キーバインド | 後 | |
 | G44 | アプリ全体を Vim 風に操作 | 後 | Chrome の Vimium のように、リンクのヒント表示などで操作する。G9 のキー設定の上に作る。 |

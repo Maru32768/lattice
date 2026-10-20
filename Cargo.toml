@@ -2,6 +2,10 @@
 resolver = "3"
 members = ["crates/lattice-core", "src-tauri"]
 
+# The app version for both crates; `npm run bump -- <x.y.z>` keeps it in sync with package.json.
+[workspace.package]
+version = "0.1.0"
+
 [profile.release]
 codegen-units = 1
 lto = true

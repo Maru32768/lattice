@@ -179,6 +179,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - **モデル選択。** 翻訳と要約に使う provider とモデルを、最大 3 つの fallback として設定画面で選ぶ（§6）。`settings` テーブル（migration 8）に保存する。
 - **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。書き出しに成功したら、`lattice-<数字>.db` という名前の通常ファイルだけを対象に、新しい順に「残す世代数」（`backup.keep_generations`、既定 30、設定画面で変更）を超えた分を削除する（`crates/lattice-core/src/backup.rs`）。同じフォルダにある R2 の一時ファイル（`r2-upload-*`）などには触れない。削除に失敗してもバックアップ自体は成功として返し、警告を表示する。
 - **ログ（§25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
+- **リリース（G41）。** バージョンの置き場所を減らしてから同期する。2 つの crate は `[workspace.package]` を継承し、`tauri.conf.json` には書かない（Tauri は `Cargo.toml` を読む）。残る 4 ファイルは `scripts/version.mjs` が書き換え、`npm test` とリリース workflow が一致を確かめる。npm script を `version` にしないのは `npm version` の hook と衝突するため（`bump`）。updater 用の成果物は署名鍵がないとビルドが失敗するので、`tauri.conf.json` では切り、鍵の secret があるときだけ `src-tauri/tauri.updater.conf.json` を `--config` で重ねる。依存ライセンス一覧は Rust を cargo-about、npm を lockfile から読む小さなスクリプトで作り（本番依存は十数個なので npx のツールは足さない）、リポジトリにも commit してインストーラーの resources と zip に同梱する。
 
 ### R2 への自動バックアップ（F10）
 

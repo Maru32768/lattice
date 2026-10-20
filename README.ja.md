@@ -48,7 +48,7 @@ mise run dev
 mise exec -- npm run tauri build
 ```
 
-`target/release/bundle/` に出力されます。
+インストーラーは `target/release/bundle/nsis/`、実行ファイルは `target/release/lattice.exe` に出力されます。リリースはタグから GitHub Actions で作ります（[docs/release.md](docs/release.md)）。
 
 ## 設定
 

@@ -48,7 +48,7 @@ To build an installer and a standalone executable:
 mise exec -- npm run tauri build
 ```
 
-The output is in `target/release/bundle/`.
+The installer is in `target/release/bundle/nsis/` and the executable is `target/release/lattice.exe`. Releases are cut from a tag by GitHub Actions; see [docs/release.md](docs/release.md).
 
 ## Configuration
 
