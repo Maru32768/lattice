@@ -437,7 +437,7 @@ pub struct ReviewItem {
     pub article_title: String,
     /// Never answered.
     pub new: bool,
-    /// Interval in minutes after each grade, in `Grade::ALL` order.
+    /// Interval in minutes after each grade: again, hard, good, easy.
     pub previews: [i64; 4],
 }
 

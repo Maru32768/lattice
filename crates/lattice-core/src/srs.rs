@@ -27,8 +27,6 @@ pub enum Grade {
 }
 
 impl Grade {
-    pub const ALL: [Grade; 4] = [Grade::Again, Grade::Hard, Grade::Good, Grade::Easy];
-
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Again => "again",
@@ -68,7 +66,7 @@ fn round(minutes: f64) -> i64 {
     if minutes >= DAY as f64 { (minutes / DAY as f64).round() as i64 * DAY } else { minutes.round() as i64 }
 }
 
-/// The card after each grade, indexed like `Grade::ALL`. Hard < Good < Easy for cards in review.
+/// The card after each grade, indexed by `Grade` (again, hard, good, easy). Hard < Good < Easy for cards in review.
 pub fn schedule(card: Card, l: Limits) -> [Card; 4] {
     let review = card.reps > 0;
     let ease = |delta: i64| if review { (card.ease + delta).max(MIN_EASE) } else { card.ease };

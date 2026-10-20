@@ -1,5 +1,5 @@
 // Sample library for the mock backend: specs import it to compute what the UI should show.
-import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, JobOverview, JobRow } from "../src/api.ts";
+import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, JobOverview, JobRow, Quiz, QuizQuestion, ReviewItem } from "../src/api.ts";
 
 /** The clock every spec runs at (`page.clock.setFixedTime`), so 最近追加 is stable. */
 export const NOW = Date.parse("2026-10-20T03:00:00Z");
@@ -185,4 +185,29 @@ export const CHAT_MESSAGES: ChatMessage[] = [
     ],
     scope: { kind: "filter", filter: { kind: "tag", name: "mvcc" } }, mode: "retrieval", provider: "claude_cli", model: null, created_at: daysAgo(1),
   },
+];
+
+/** The snapshot article's quiz: a multiple-choice, a recall and another multiple-choice question. */
+export const QUIZ: Quiz = {
+  id: 1, created_at: daysAgo(0), stale: false, in_review: 0,
+  questions: [
+    { id: 11, kind: "choice", question: "PostgreSQL はスナップショット分離を何で実装している？", options: ["2 相ロック", "MVCC", "WAL のリプレイ", "楽観ロックだけ"],
+      answer: "MVCC", explanation: "行の複数の版を持ち、各トランザクションは自分のスナップショットに見える版を読む。", block_ids: [103] },
+    { id: 12, kind: "recall", question: "スナップショット分離でも起こりうる異常は？", answer: "write skew",
+      explanation: "別々の行を読んで書く 2 つのトランザクションは、互いの書き込みを検出できない。", block_ids: [106] },
+    { id: 13, kind: "choice", question: "スナップショット分離で、読み取りは書き込みを妨げる？", options: ["妨げる", "妨げない", "行ロック次第", "WAL 次第"],
+      answer: "妨げない", explanation: "読み取りは古い版を読むので、書き込みを待たせない。", block_ids: [104] },
+  ],
+};
+
+/** A new card's intervals (minutes) after again / hard / good / easy with the default settings. */
+export const NEW_PREVIEWS: ReviewItem["previews"] = [1440, 1440, 1440, 5760];
+
+const card = (a: ArticleRow, q: QuizQuestion): ReviewItem => ({ ...q, article_id: a.id, article_title: a.title!, new: false, previews: [1440, 2880, 8640, 11520] });
+
+/** Today's review: two due cards from the VACUUM article. */
+export const REVIEW: ReviewItem[] = [
+  card(ARTICLES[1], { id: 21, kind: "recall", question: "VACUUM が回収するのは何？", answer: "どのスナップショットからも見えなくなった古い版の行", explanation: "MVCC では更新のたびに古い版が残る。", block_ids: [202] }),
+  card(ARTICLES[1], { id: 22, kind: "choice", question: "bloat が増える主な原因は？", options: ["長いトランザクション", "インデックスの不足", "WAL の圧縮", "共有バッファの不足"],
+    answer: "長いトランザクション", explanation: "古いスナップショットが残る間、VACUUM は版を回収できない。", block_ids: [203] }),
 ];

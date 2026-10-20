@@ -7,6 +7,7 @@ import { ClassifySettings } from "./ClassifySettings";
 import { GenreSettings } from "./GenreSettings";
 import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
+import { QuizSettings } from "./QuizSettings";
 import { BackupSection } from "./BackupSection";
 import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
@@ -17,7 +18,7 @@ import { TaskbarSettings } from "./TaskbarSettings";
 import { UpdateSection } from "./Update";
 import "./manage.css";
 
-export type SettingsSection = "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
+export type SettingsSection = "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
 
 const GROUPS = ["AI", "ライブラリ", "操作", "データ", "アプリ"] as const;
 
@@ -29,6 +30,7 @@ const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: st
   { id: "genres", group: "ライブラリ", title: "ジャンル", lead: "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。" },
   { id: "render", group: "ライブラリ", title: "取り込み・JS 描画" },
   { id: "images", group: "ライブラリ", title: "画像" },
+  { id: "review", group: "ライブラリ", title: "復習", lead: "理解度チェックで「復習に追加」した問題を、Anki と同じ SM-2 方式で間隔を空けて「今日の復習」に出します。正解するたびに間隔が伸び（1 日、6 日、その後は約 2.5 倍ずつ）、「もう一度」で最短間隔に戻ります。" },
   { id: "shortcuts", group: "操作", title: "ショートカット", lead: "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。" },
   { id: "browser", group: "操作", title: "ブラウザ", lead: "ページ表示（アプリ内ブラウザ）の URL バーとホームボタン。" },
   { id: "taskbar", group: "操作", title: "タスクバー" },
@@ -48,6 +50,7 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
     case "genres": return <GenreSettings onChanged={onChanged} />;
     case "render": return <RenderSettings />;
     case "images": return <ImageSettings />;
+    case "review": return <QuizSettings />;
     case "shortcuts": return <ShortcutSettings />;
     case "browser": return <BrowserSettings />;
     case "taskbar": return <TaskbarSettings />;
