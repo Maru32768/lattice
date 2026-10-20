@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { api, type ChainEntry, type KeySource, type LlmSettings, type ProviderKind } from "./api";
 import { SetRow } from "./SetRow";
 
@@ -45,21 +48,47 @@ const KEYS = { openai: ["OpenAI", "OPENAI_API_KEY"], gemini: ["Gemini", "GEMINI_
 const CUSTOM = "__custom";
 
 interface Slot {
+  /** Stable key for drag and drop. */
+  id: number;
   kind: ProviderKind | "";
   model: string;
   /** Free-text model ID; kept separately so choosing "その他" shows the input (F2). */
   custom: boolean;
 }
 
-const EMPTY: Slot = { kind: "", model: "", custom: false };
+let nextId = 0;
+const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false });
 
 function toSlots(chain: ChainEntry[]): Slot[] {
   const slots = chain.slice(0, 3).map(({ kind, model }): Slot => {
     const m = model ?? "";
-    return { kind, model: m, custom: !PRESETS[kind].some((p) => p.value === m) };
+    return { id: nextId++, kind, model: m, custom: !PRESETS[kind].some((p) => p.value === m) };
   });
-  while (slots.length < 3) slots.push(EMPTY);
+  while (slots.length < 3) slots.push(empty());
   return slots;
+}
+
+const DND_TEXT = {
+  screenReaderInstructions: { draggable: "Space か Enter で持ち上げ、↑ ↓ で移動し、もう一度 Space か Enter で置きます。Esc で取り消します。" },
+  announcements: {
+    onDragStart: () => "段を持ち上げました",
+    onDragOver: () => "",
+    onDragEnd: ({ over }: { over: { id: unknown } | null }) => (over ? "段を置きました" : "移動を取り消しました"),
+    onDragCancel: () => "移動を取り消しました",
+  },
+};
+
+/** One fallback-chain row; the ⋮⋮ handle drags it (pointer or keyboard). Empty rows stay put. */
+function ChainRow({ slot, children }: { slot: Slot; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: slot.id, disabled: !slot.kind });
+  return (
+    <div ref={setNodeRef} className={`chain${isDragging ? " dragging" : ""}`} style={{ transform: CSS.Translate.toString(transform), transition }}>
+      {slot.kind
+        ? <button ref={setActivatorNodeRef} className="grip" aria-label="ドラッグで並べ替え" title="ドラッグで並べ替え" {...attributes} {...listeners}>⋮⋮</button>
+        : <span />}
+      {children}
+    </div>
+  );
 }
 
 function keyLabel(source: KeySource, env: string) {
@@ -74,7 +103,8 @@ function KeyPill({ kind, llm }: { kind: ProviderKind; llm: LlmSettings | null })
 
 export function ModelSettings() {
   const [llm, setLlm] = useState<LlmSettings | null>(null);
-  const [slots, setSlots] = useState<Slot[]>([EMPTY, EMPTY, EMPTY]);
+  const [slots, setSlots] = useState<Slot[]>(() => [empty(), empty(), empty()]);
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const [keys, setKeys] = useState({ openai: "", gemini: "", anthropic: "" });
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +123,16 @@ export function ModelSettings() {
     setSlots((prev) => prev.map((s, j) => (j === i ? { ...s, ...patch } : s)));
   }
 
-  const remove = (i: number) => setSlots((prev) => [...prev.filter((_, j) => j !== i), EMPTY]);
+  const remove = (i: number) => setSlots((prev) => [...prev.filter((_, j) => j !== i), empty()]);
+
+  function drop({ active, over }: DragEndEvent) {
+    if (!over || active.id === over.id) return;
+    setSlots((prev) => {
+      const moved = arrayMove(prev, prev.findIndex((s) => s.id === active.id), prev.findIndex((s) => s.id === over.id));
+      // Filled rows first: the first row has no "なし" option.
+      return [...moved.filter((s) => s.kind), ...moved.filter((s) => !s.kind)];
+    });
+  }
 
   async function run(action: () => Promise<unknown>, done: string) {
     setError(null);
@@ -111,38 +150,42 @@ export function ModelSettings() {
   return (
     <>
       <section className="card" aria-label="Fallback chain">
-        <div className="chain-head">Fallback chain<span>最大 3 段</span></div>
-        {slots.map((s, i) => (
-          <div className="chain" key={i}>
-            <span className="k">{i + 1}</span>
-            <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false })} aria-label={`${i + 1} 段目のプロバイダ`}>
-              {i > 0 && <option value="">なし</option>}
-              {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
-            <span className="model">
-              {s.kind && (
-                <select
-                  className="select"
-                  value={s.custom ? CUSTOM : s.model}
-                  onChange={(e) => update(i, e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false })}
-                  aria-label={`${i + 1} 段目のモデル`}
-                >
-                  {PRESETS[s.kind].map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  <option value={CUSTOM}>その他（モデル ID を入力）</option>
+        <div className="chain-head">Fallback chain<span>最大 3 段 · ドラッグで並べ替え</span></div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop} accessibility={DND_TEXT}>
+          <SortableContext items={slots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+            {slots.map((s, i) => (
+              <ChainRow key={s.id} slot={s}>
+                <span className="k">{i + 1}</span>
+                <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false })} aria-label={`${i + 1} 段目のプロバイダ`}>
+                  {i > 0 && <option value="">なし</option>}
+                  {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
-              )}
-              {s.kind && s.custom && (
-                <input className="input sm mono" value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder="モデル ID" aria-label={`${i + 1} 段目のモデル ID`} spellCheck={false} />
-              )}
-            </span>
-            <span>{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
-            <span>
-              {s.kind && (
-                <button className="btn ghost" onClick={() => remove(i)} disabled={chain.length <= 1} aria-label={`${i + 1} 段目を削除`}>削除</button>
-              )}
-            </span>
-          </div>
-        ))}
+                <span className="model">
+                  {s.kind && (
+                    <select
+                      className="select"
+                      value={s.custom ? CUSTOM : s.model}
+                      onChange={(e) => update(i, e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false })}
+                      aria-label={`${i + 1} 段目のモデル`}
+                    >
+                      {PRESETS[s.kind].map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      <option value={CUSTOM}>その他（モデル ID を入力）</option>
+                    </select>
+                  )}
+                  {s.kind && s.custom && (
+                    <input className="input sm mono" value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder="モデル ID" aria-label={`${i + 1} 段目のモデル ID`} spellCheck={false} />
+                  )}
+                </span>
+                <span>{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
+                <span>
+                  {s.kind && (
+                    <button className="btn ghost" onClick={() => remove(i)} disabled={chain.length <= 1} aria-label={`${i + 1} 段目を削除`}>削除</button>
+                  )}
+                </span>
+              </ChainRow>
+            ))}
+          </SortableContext>
+        </DndContext>
       </section>
       <div className="btn-row">
         <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), "モデルを保存しました")}>保存</button>

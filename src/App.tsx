@@ -473,6 +473,8 @@ export default function App() {
       // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
       if (s.overlays && action.id !== "palette") return;
       const t = e.target as HTMLElement;
+      // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
+      if (t.closest("[aria-roledescription='sortable']")) return;
       const inField = t.closest("input, textarea, select, [contenteditable='true']");
       if (inField && !action.inFields) return;
       // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
