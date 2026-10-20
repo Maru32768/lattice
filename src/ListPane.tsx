@@ -70,11 +70,16 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
     const el = e.currentTarget.closest<HTMLElement>(".chip")!;
     setOpen((o) => (o?.dim === dim ? null : { dim, el }));
   };
+  // Picking a dimension's first value replaces its chip (button → active chip). The open popover
+  // follows the dimension to the new chip, so it still toggles from it and returns focus to it.
+  const chipRef = (dim: Dim) => (el: HTMLElement | null) => {
+    if (el && open?.dim === dim && open.el !== el) setOpen({ dim, el });
+  };
   return (
     <div className="chips">
       {children}
       {active.map((d) => (
-        <span key={d} className={`chip on${open?.dim === d ? " open" : ""}`}>
+        <span key={d} ref={chipRef(d)} className={`chip on${open?.dim === d ? " open" : ""}`}>
           <button className="chip-body" onClick={toggleOpen(d)} aria-haspopup="dialog" aria-expanded={open?.dim === d}>
             <span className="k">{DIM_LABELS[d]}</span>{facetLabel(facets, d, all)}
           </button>
@@ -82,7 +87,7 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
         </span>
       ))}
       {dims.filter((d) => !active.includes(d)).map((d) => (
-        <button key={d} className={`chip${d === "state" ? " dashed" : ""}${open?.dim === d ? " open" : ""}`} onClick={toggleOpen(d)}
+        <button key={d} ref={chipRef(d)} className={`chip${d === "state" ? " dashed" : ""}${open?.dim === d ? " open" : ""}`} onClick={toggleOpen(d)}
           aria-haspopup="dialog" aria-expanded={open?.dim === d}>
           {DIM_LABELS[d]}{d !== "state" && <Icon name="down" size="sm" />}
         </button>

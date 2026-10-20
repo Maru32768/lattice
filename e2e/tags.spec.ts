@@ -55,3 +55,27 @@ test("tag popover keyboard: arrows move, Space toggles, Ctrl+Enter applies", asy
   await expect(pv).toBeHidden();
   await expect(list(app).locator(".chip.on .chip-body")).toHaveText(`タグ${second}`);
 });
+
+test("closing a facet popover returns focus to its chip, also after the first pick replaced the chip", async ({ app }) => {
+  await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
+  const pv = app.getByRole("dialog", { name: "ジャンルで絞り込む" });
+  await app.keyboard.press("Space");
+  await expect(list(app).locator(".chip.on .chip-body")).toContainText("ジャンル");
+  await app.keyboard.press("Escape");
+  await expect(pv).toBeHidden();
+  const chip = list(app).locator(".chip.on .chip-body");
+  await expect(chip).toBeFocused();
+
+  await app.keyboard.press("Enter");
+  await expect(pv).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(chip, "an already active chip gets focus back too").toBeFocused();
+
+  await chip.click();
+  await app.keyboard.press("Space");
+  await expect(list(app).locator(".chip.on")).toHaveCount(0);
+  await expect(pv).toBeVisible();
+  await list(app).getByRole("button", { name: "ジャンル", exact: true }).click();
+  await expect(pv, "the replaced chip still toggles its popover closed").toBeHidden();
+  await expect(list(app).getByRole("button", { name: "ジャンル", exact: true })).toBeFocused();
+});

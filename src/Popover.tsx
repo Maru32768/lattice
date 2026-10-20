@@ -53,7 +53,7 @@ const escape = (onClose: () => void) => (e: React.KeyboardEvent) => {
   onClose();
 };
 
-/** A dialog anchored below `anchor` (fixed, clamped to the window); focus returns to the anchor on close. */
+/** A dialog anchored below `anchor` (fixed, clamped to the window); focus returns to the anchor (or its first button) on close. */
 export function Popover({ anchor, label, width, onClose, children }: {
   anchor: HTMLElement;
   label: string;
@@ -68,7 +68,7 @@ export function Popover({ anchor, label, width, onClose, children }: {
   useLayoutEffect(() => {
     const first = ref.current?.querySelector<HTMLElement>("input, [data-autofocus]") ?? ref.current;
     first?.focus();
-    return () => anchor.focus();
+    return () => (anchor.querySelector<HTMLElement>("button") ?? anchor).focus();
   }, [anchor]);
   return (
     <div ref={ref} className="pv" role="dialog" aria-label={label} tabIndex={-1}
