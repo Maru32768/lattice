@@ -74,6 +74,27 @@ export function matches(a: ArticleRow, f: Facets): boolean {
   return DIMS.every((d) => matchesDim(a, f, d));
 }
 
+/**
+ * Articles opened (and so marked read) while a list view was showing them stay in that view, so
+ * 未読 does not lose the row under the reader. `view` is the scope ∧ facets they were kept for;
+ * the shell starts over whenever the view or the screen changes.
+ */
+export interface Kept {
+  view: string;
+  ids: ReadonlySet<number>;
+}
+
+export const NO_KEPT: Kept = { view: "", ids: new Set() };
+export const viewKey = (s: Scope, f: Facets) => JSON.stringify([s, f]);
+export const keep = (k: Kept, view: string, id: number): Kept => ({ view, ids: new Set(k.view === view ? [...k.ids, id] : [id]) });
+
+/** The list's rows: scope ∧ facets, plus the articles kept for this view. */
+export function listed(all: ArticleRow[], s: Scope, f: Facets, now: number, k: Kept): { scoped: ArticleRow[]; shown: ArticleRow[] } {
+  const kept = k.view === viewKey(s, f) ? k.ids : NO_KEPT.ids;
+  const scoped = all.filter((a) => kept.has(a.id) || inScope(a, s, now));
+  return { scoped, shown: scoped.filter((a) => kept.has(a.id) || matches(a, f)) };
+}
+
 export const isActive = (f: Facets, dim: Dim) => f[dim].length > 0;
 export const activeDims = (f: Facets) => DIMS.filter((d) => isActive(f, d));
 export const without = (f: Facets, dim: Dim): Facets => ({ ...f, [dim]: [] });

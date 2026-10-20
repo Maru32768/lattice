@@ -11,7 +11,7 @@ import { JobsView } from "./JobsView";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
-import { NO_FACETS, activeDims, countBy, facetLabel, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
+import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, TRANSLATABLE, type Focus } from "./Reader";
@@ -70,6 +70,7 @@ export default function App() {
   const [group, setGroup] = useState<Grouping>("none");
   const [scope, setScopeState] = useState<Scope>({ kind: "all" });
   const [facets, setFacets] = useState<Facets>(NO_FACETS);
+  const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreen] = useState<Screen>("library");
   const [doc, setDoc] = useState<Doc>(null);
   const [navOpen, setNavOpen] = useState(true);
@@ -159,8 +160,7 @@ export default function App() {
   useEffect(() => { refresh(); }, [sort]);
 
   // ---- derived library --------------------------------------------------------------------
-  const scoped = useMemo(() => articles.filter((a) => inScope(a, scope, now)), [articles, scope, now]);
-  const shown = useMemo(() => scoped.filter((a) => matches(a, facets)), [scoped, facets]);
+  const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
   const groups: Group<ArticleRow>[] = useMemo(
     () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group)), [shown, group]);
   const order = useMemo(() => {
@@ -192,6 +192,17 @@ export default function App() {
 
   const current: ArticleRow | null = doc?.kind === "reader" ? view?.article ?? null : doc?.kind === "page" ? saved : null;
   const selectedId = current?.id ?? null;
+
+  // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
+  const listView = viewKey(scope, facets);
+  useEffect(() => setKept(NO_KEPT), [listView, screen]);
+  const openId = doc?.kind === "reader" ? doc.id : doc?.kind === "page" ? saved?.id ?? null : null;
+  useEffect(() => {
+    const a = openId == null ? undefined : articleById.get(openId);
+    if (a?.read_status !== "unread") return;
+    if (shown.some((x) => x.id === a.id)) setKept((k) => keep(k, listView, a.id));
+    act(() => api.setRead(a.id, true), a.id);
+  }, [openId]);
 
   // ---- navigation -------------------------------------------------------------------------
   function setScope(s: Scope) {
