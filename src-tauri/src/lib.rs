@@ -1,3 +1,4 @@
+mod badge;
 mod browser;
 mod renderer;
 
@@ -610,6 +611,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .manage(Browser::default())
+        .manage(badge::Badge::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -741,6 +743,9 @@ pub fn run() {
             cancel_job,
             export_json,
             overlay_translate,
+            badge::set_unread_badge,
+            badge::get_taskbar_badge,
+            badge::set_taskbar_badge,
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,

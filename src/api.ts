@@ -287,6 +287,10 @@ export const api = {
   importMarkdown: (text: string) => invoke<number>("import_markdown", { text }),
   /** Opens a file dialog (in the backend); null when cancelled. */
   importMarkdownFile: () => invoke<number | null>("import_markdown_file"),
+  /** The unread count for the taskbar badge (shown unless switched off). */
+  setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
+  taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),
+  setTaskbarBadge: (on: boolean) => invoke<void>("set_taskbar_badge", { on }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),

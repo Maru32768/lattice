@@ -201,6 +201,12 @@ export default function App() {
       feedUnread: countBy(unread, "feeds"),
     };
   }, [articles, now]);
+  // The taskbar badge follows the unread count; reading through a list changes it in bursts.
+  useEffect(() => {
+    if (!loaded) return;
+    const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
+    return () => window.clearTimeout(t);
+  }, [counts.unread, loaded]);
   const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now) : []),
     [shown.length, articles, scope, facets, now]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
