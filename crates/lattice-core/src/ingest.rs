@@ -76,9 +76,11 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
         return Ok(false);
     }
     let id = store_fetched(store, id, &Fetched { final_url: url, status: 200, content_type: Some(FEED_CONTENT_TYPE.into()), html })?;
-    if let Some(e) = page_error {
-        store.conn().execute("UPDATE articles SET last_error = ?2 WHERE id = ?1", rusqlite::params![id, e]).map_err(|e| e.to_string())?;
-    }
+    // The entry's title is exact; Readability would cut "Title — Part II" at the dash as a site name.
+    store
+        .conn()
+        .execute("UPDATE articles SET title = coalesce(?2, title), last_error = coalesce(?3, last_error) WHERE id = ?1", rusqlite::params![id, title, page_error])
+        .map_err(|e| e.to_string())?;
     Ok(true)
 }
 

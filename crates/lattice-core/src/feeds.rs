@@ -516,7 +516,7 @@ mod tests {
         let para = "<p>Snapshot isolation prevents dirty reads but still permits write skew, which is why serializable snapshot isolation exists at all. </p>";
         let full = if with_content { format!("<content:encoded><![CDATA[<h3>Why</h3>{}]]></content:encoded>", para.repeat(6)) } else { String::new() };
         format!(r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Tech</title>
-            <item><title><![CDATA[Full post]]></title><link>https://blog.dev/full-1a2b?source=rss----abc---4</link>
+            <item><title><![CDATA[Evolving the ads event pipeline for live — Part II]]></title><link>https://blog.dev/full-1a2b?source=rss----abc---4</link>
               <pubDate>Tue, 01 Oct 2024 00:00:00 GMT</pubDate><description>Short teaser.</description>{full}</item>
             <item><title>Teaser only</title><link>https://blog.dev/teaser?source=rss----abc---4</link><description>Short teaser.</description></item>
             </channel></rss>"#)
@@ -525,7 +525,7 @@ mod tests {
     #[test]
     fn keeps_entry_titles_and_only_full_content() {
         let p = parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap();
-        assert_eq!(p.entries[0].title.as_deref(), Some("Full post"));
+        assert_eq!(p.entries[0].title.as_deref(), Some("Evolving the ads event pipeline for live — Part II"));
         assert!(p.entries[0].content.as_deref().unwrap().contains("<h3>Why</h3>"), "content:encoded, not the description");
         assert_eq!((p.entries[1].title.as_deref(), p.entries[1].content.as_deref()), (Some("Teaser only"), None), "an excerpt is not content");
     }
@@ -539,14 +539,14 @@ mod tests {
         assert_eq!(import(&s, feed, &entries).unwrap(), 2);
         let rows = s.list_articles(&ArticleFilter::All).unwrap();
         let row = |t: &str| rows.iter().find(|a| a.title.as_deref() == Some(t)).unwrap_or_else(|| panic!("{t}: {rows:?}")).id;
-        let (full, teaser) = (row("Full post"), row("Teaser only"));
+        let (full, teaser) = (row("Evolving the ads event pipeline for live — Part II"), row("Teaser only"));
         assert_eq!(s.article_url(full).unwrap().as_deref(), Some("https://blog.dev/full-1a2b?source=rss----abc---4"), "the original URL is kept");
 
         let refused = || Err("HTTP 403 Forbidden".to_string());
         ingest::store_fetch_result(&s, full, refused()).unwrap();
         let a = s.get_article(full, "ja").unwrap().unwrap();
         assert_eq!((a.article.fetch_status.as_str(), a.article.extraction_status.as_str(), a.article.from_feed), ("ok", "ok", true));
-        assert_eq!((a.article.title.as_deref(), a.article.last_error.as_deref()), (Some("Full post"), Some("HTTP 403 Forbidden")));
+        assert_eq!((a.article.title.as_deref(), a.article.last_error.as_deref()), (Some("Evolving the ads event pipeline for live — Part II"), Some("HTTP 403 Forbidden")), "the entry's title, not Readability's cut");
         assert_eq!(a.article.published_at.as_deref(), Some("2024-10-01T00:00:00Z"));
         assert!(a.blocks.len() > 1 && !a.article.thin, "{:?}", a.blocks);
         assert!(!render::enqueue_if_auto(&s, full).unwrap(), "readable: no render");
@@ -578,7 +578,7 @@ mod tests {
             ingest::store_fetch_result(&s, j.article_id.unwrap(), Err("HTTP 403 Forbidden".into())).unwrap();
             s.finish_job(j.id, None).unwrap();
         }
-        let failed = s.list_articles(&ArticleFilter::All).unwrap().into_iter().find(|a| a.title.as_deref() == Some("Full post")).unwrap();
+        let failed = s.list_articles(&ArticleFilter::All).unwrap().into_iter().find(|a| a.title.as_deref() == Some("Evolving the ads event pipeline for live — Part II")).unwrap();
         assert_eq!(failed.fetch_status, "failed");
 
         let new = parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries;
