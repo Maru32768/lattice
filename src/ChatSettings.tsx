@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { SetRow } from "./SetRow";
+import { SetRow, Switch } from "./SetRow";
 import { api, type ChatBudget } from "./api";
+import { setVimEnabled, vimEnabled } from "./vim";
 
 // Sizes mirror `chat::Budget::limits` (context characters per question).
 const BUDGETS: { id: ChatBudget; label: string }[] = [
@@ -11,6 +12,7 @@ const BUDGETS: { id: ChatBudget; label: string }[] = [
 
 export function ChatSettings() {
   const [budget, setBudget] = useState<ChatBudget>("standard");
+  const [vim, setVim] = useState(vimEnabled);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => { api.chatBudget().then(setBudget).catch((e) => setError(String(e))); }, []);
@@ -32,6 +34,10 @@ export function ChatSettings() {
         <select id="chat-budget" className="select" value={budget} onChange={(e) => void save(e.target.value as ChatBudget)}>
           {BUDGETS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
         </select>
+      </SetRow>
+      <SetRow title="質問の入力欄で Vim キーバインドを使う" htmlFor="chat-vim"
+        desc="Esc でノーマルモード、i・a・o などで挿入モード。h j k l w b e 0 $ gg G で移動し、x dd dw cw yy p u で編集します。送信はどちらのモードでも Ctrl + Enter。">
+        <Switch id="chat-vim" checked={vim} onChange={(on) => { setVim(on); setVimEnabled(on); }} />
       </SetRow>
       {error && <p className="msg error-text" role="alert">{error}</p>}
     </div>
