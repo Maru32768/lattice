@@ -12,7 +12,7 @@ use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::llm::{Completion, LlmError, LlmProvider, strict_schema};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider, strict_schema};
 
 /// Features that give the agent tools; all off so page text cannot drive anything.
 const DISABLED_FEATURES: &[&str] = &[
@@ -24,16 +24,30 @@ pub struct CodexCli {
     pub program: String,
     /// `--model` value; None uses the CLI's default.
     pub model: Option<String>,
+    /// `model_reasoning_effort`; None uses `DEFAULT_EFFORT`.
+    pub effort: Option<Effort>,
     pub timeout: Duration,
 }
 
+/// Translation and summaries rarely need deep reasoning; low keeps a usage-limited CLI fast.
+pub const DEFAULT_EFFORT: Effort = Effort::Low;
+
 impl Default for CodexCli {
     fn default() -> Self {
-        Self { program: "codex".into(), model: None, timeout: Duration::from_secs(600) }
+        Self { program: "codex".into(), model: None, effort: None, timeout: Duration::from_secs(600) }
     }
 }
 
 impl CodexCli {
+    /// The configurable part of the command line.
+    fn model_args(&self) -> Vec<String> {
+        let mut args = vec!["-c".to_string(), format!("model_reasoning_effort={}", self.effort.unwrap_or(DEFAULT_EFFORT).as_str())];
+        if let Some(m) = &self.model {
+            args.extend(["--model".into(), m.clone()]);
+        }
+        args
+    }
+
     async fn run(&self, system: &str, input: &str, schema: &Value) -> Result<String, LlmError> {
         static SEQ: AtomicU64 = AtomicU64::new(0);
         let tmp = std::env::temp_dir();
@@ -45,16 +59,14 @@ impl CodexCli {
 
         let mut cmd = Command::new(&self.program);
         cmd.args(["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules"])
-            .args(["--sandbox", "read-only", "--color", "never", "-c", "web_search=disabled", "-c", "model_reasoning_effort=low"])
+            .args(["--sandbox", "read-only", "--color", "never", "-c", "web_search=disabled"])
+            .args(self.model_args())
             .arg("-C")
             .arg(&cwd)
             .arg("--output-schema")
             .arg(&schema_path);
         for f in DISABLED_FEATURES {
             cmd.args(["--disable", f]);
-        }
-        if let Some(m) = &self.model {
-            cmd.args(["--model", m]);
         }
         // Instructions as the prompt; the untrusted text arrives on stdin as a <stdin> block.
         cmd.arg(system)
@@ -148,6 +160,13 @@ mod tests {
         assert!(matches!(parse_completion(failed), Err(LlmError::Failed(m)) if m.contains("usage limit")));
         let garbage = r#"{"type":"item.completed","item":{"type":"agent_message","text":"not json"}}"#;
         assert!(matches!(parse_completion(garbage), Err(LlmError::Malformed(_))));
+    }
+
+    #[test]
+    fn effort_defaults_to_low() {
+        assert_eq!(CodexCli::default().model_args(), ["-c", "model_reasoning_effort=low"]);
+        let c = CodexCli { model: Some("gpt-6-luna".into()), effort: Some(Effort::High), ..CodexCli::default() };
+        assert_eq!(c.model_args(), ["-c", "model_reasoning_effort=high", "--model", "gpt-6-luna"]);
     }
 
     /// Real paid call: `cargo test -p lattice-core codex -- --ignored`.

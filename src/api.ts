@@ -186,9 +186,13 @@ export interface LocalBackup {
 
 export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini" | "anthropic";
 
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface ChainEntry {
   kind: ProviderKind;
   model: string | null;
+  /** Absent or null: the provider's default. */
+  effort?: Effort | null;
 }
 
 /** Where an API key comes from; the key itself never reaches the UI. */

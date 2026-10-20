@@ -119,6 +119,7 @@
 .stg .chain .k { font: 12px var(--mono); color: var(--ink3); }
 .stg .chain .model { display: flex; gap: 6px; min-width: 0; }
 .stg .chain .model > * { min-width: 0; flex: 1; }
+.stg .chain .model > .effort { flex: 0 1 150px; }
 .stg .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); }
 .stg .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .stg .pill.off i { background: var(--err); }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, type ChainEntry, type KeySource, type LlmSettings, type ProviderKind } from "./api";
+import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderKind } from "./api";
 import { SetRow } from "./SetRow";
 
 const PROVIDERS: { value: ProviderKind; label: string }[] = [
@@ -43,6 +43,16 @@ const PRESETS: Record<ProviderKind, { value: string; label: string }[]> = {
   ],
 };
 
+// Mirrors ProviderKind::efforts in chain.rs. Codex runs at low unless set (codex.rs DEFAULT_EFFORT).
+const ALL_EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
+const EFFORTS: Record<ProviderKind, { label: string; values: Effort[] }> = {
+  claude_cli: { label: "CLI の既定", values: ALL_EFFORTS },
+  codex_cli: { label: "既定（low）", values: ALL_EFFORTS },
+  openai: { label: "モデルの既定", values: ALL_EFFORTS },
+  gemini: { label: "モデルの既定", values: ["low", "medium", "high"] },
+  anthropic: { label: "モデルの既定", values: ALL_EFFORTS },
+};
+
 const KEYS = { openai: ["OpenAI", "OPENAI_API_KEY"], gemini: ["Gemini", "GEMINI_API_KEY"], anthropic: ["Anthropic", "ANTHROPIC_API_KEY"] } as const;
 
 const CUSTOM = "__custom";
@@ -54,15 +64,17 @@ interface Slot {
   model: string;
   /** Free-text model ID; kept separately so choosing "その他" shows the input (F2). */
   custom: boolean;
+  /** "" = the provider's default. */
+  effort: Effort | "";
 }
 
 let nextId = 0;
-const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false });
+const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false, effort: "" });
 
 function toSlots(chain: ChainEntry[]): Slot[] {
-  const slots = chain.slice(0, 3).map(({ kind, model }): Slot => {
+  const slots = chain.slice(0, 3).map(({ kind, model, effort }): Slot => {
     const m = model ?? "";
-    return { id: nextId++, kind, model: m, custom: !PRESETS[kind].some((p) => p.value === m) };
+    return { id: nextId++, kind, model: m, custom: !PRESETS[kind].some((p) => p.value === m), effort: effort ?? "" };
   });
   while (slots.length < 3) slots.push(empty());
   return slots;
@@ -145,7 +157,7 @@ export function ModelSettings() {
     }
   }
 
-  const chain: ChainEntry[] = slots.flatMap((s) => (s.kind ? [{ kind: s.kind, model: s.model.trim() || null }] : []));
+  const chain: ChainEntry[] = slots.flatMap((s) => (s.kind ? [{ kind: s.kind, model: s.model.trim() || null, effort: s.effort || null }] : []));
 
   return (
     <>
@@ -156,7 +168,7 @@ export function ModelSettings() {
             {slots.map((s, i) => (
               <ChainRow key={s.id} slot={s}>
                 <span className="k">{i + 1}</span>
-                <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false })} aria-label={`${i + 1} 段目のプロバイダ`}>
+                <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false, effort: "" })} aria-label={`${i + 1} 段目のプロバイダ`}>
                   {i > 0 && <option value="">なし</option>}
                   {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
@@ -175,6 +187,13 @@ export function ModelSettings() {
                   {s.kind && s.custom && (
                     <input className="input sm mono" value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder="モデル ID" aria-label={`${i + 1} 段目のモデル ID`} spellCheck={false} />
                   )}
+                  {s.kind && (
+                    <select className="select effort" value={s.effort} onChange={(e) => update(i, { effort: e.target.value as Effort | "" })}
+                      aria-label={`${i + 1} 段目の effort`} title="Reasoning effort（考える深さ）。上げると品質が上がることがある代わりに遅く、高くなります">
+                      <option value="">effort: {EFFORTS[s.kind].label}</option>
+                      {EFFORTS[s.kind].values.map((v) => <option key={v} value={v}>effort: {v}</option>)}
+                    </select>
+                  )}
                 </span>
                 <span>{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
                 <span>
@@ -189,7 +208,7 @@ export function ModelSettings() {
       </section>
       <div className="btn-row">
         <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), "モデルを保存しました")}>保存</button>
-        <span className="muted">Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルがおすすめです。</span>
+        <span className="muted">Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルと低い effort がおすすめです。モデルが対応しない effort を選ぶと、その段は失敗して次の段に進みます。</span>
       </div>
 
       <section aria-labelledby="api-keys">

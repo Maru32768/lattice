@@ -70,7 +70,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G42 | 静的解析 | 後 | clippy（`-D warnings`）、ESLint、型チェックを CI に入れる。 |
 | G43 | 対話の入力欄で Vim キーバインド | 後 | |
 | G44 | アプリ全体を Vim 風に操作 | 後 | Chrome の Vimium のように、リンクのヒント表示などで操作する。G9 のキー設定の上に作る。 |
-| G45 | モデルごとの effort 設定 | 後 | provider chain の各段に reasoning effort を持たせる（対応する provider だけ）。 |
+| G45 | モデルごとの effort 設定 | 済 | chain の各段に任意の effort（`low`〜`max`、Gemini は `low`〜`high`）。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`（既定は従来どおり low）、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定は provider の既定で、保存済みの chain はそのまま読める。 |
 | G46 | タスクバーに未読数バッジ | 後 | Windows の overlay icon。 |
 | G47 | スマホから使える簡易版 | 将来 | 同期の仕組みが前提（R2 バックアップの延長か、別の仕組みか）。 |
 | G48 | Markdown の取り込みと表示 | 後 | ファイルとテキストの直接入力の両方。画像の扱いも決める。 |

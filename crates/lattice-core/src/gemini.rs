@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 
-use crate::llm::{Completion, LlmError, LlmProvider, api_client, post_json};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider, api_client, post_json};
 
 const BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 pub const DEFAULT_MODEL: &str = "gemini-flash-latest";
@@ -10,12 +10,14 @@ pub const DEFAULT_MODEL: &str = "gemini-flash-latest";
 pub struct Gemini {
     pub key: Option<String>,
     pub model: Option<String>,
+    /// `thinkingConfig.thinkingLevel`; None leaves it to the model.
+    pub effort: Option<Effort>,
     http: reqwest::Client,
 }
 
 impl Gemini {
-    pub fn new(key: Option<String>, model: Option<String>) -> Self {
-        Self { key, model, http: api_client() }
+    pub fn new(key: Option<String>, model: Option<String>, effort: Option<Effort>) -> Self {
+        Self { key, model, effort, http: api_client() }
     }
 
     fn url(&self) -> String {
@@ -25,12 +27,16 @@ impl Gemini {
     }
 }
 
-fn body(system: &str, input: &str, schema: &Value) -> Value {
-    json!({
+fn body(system: &str, input: &str, schema: &Value, effort: Option<Effort>) -> Value {
+    let mut body = json!({
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": input}]}],
         "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": schema},
-    })
+    });
+    if let Some(e) = effort {
+        body["generationConfig"]["thinkingConfig"] = json!({"thinkingLevel": e.as_str()});
+    }
+    body
 }
 
 fn parse_completion(v: &Value) -> Result<Completion, LlmError> {
@@ -51,7 +57,7 @@ impl LlmProvider for Gemini {
 
     async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
         let key = self.key.as_deref().filter(|k| !k.is_empty()).ok_or_else(|| LlmError::Unavailable("Gemini API key is not set".into()))?;
-        let v = post_json(self.http.post(self.url()).header("x-goog-api-key", key), &body(system, input, schema)).await?;
+        let v = post_json(self.http.post(self.url()).header("x-goog-api-key", key), &body(system, input, schema, self.effort)).await?;
         parse_completion(&v)
     }
 }
@@ -62,11 +68,13 @@ mod tests {
 
     #[test]
     fn builds_request_and_parses_response() {
-        assert!(Gemini::new(None, None).url().ends_with("/gemini-flash-latest:generateContent"));
-        assert!(Gemini::new(None, Some("../x?k=1".into())).url().ends_with("/..xk1:generateContent"));
-        let b = body("sys", "text", &json!({"type": "object"}));
+        assert!(Gemini::new(None, None, None).url().ends_with("/gemini-flash-latest:generateContent"));
+        assert!(Gemini::new(None, Some("../x?k=1".into()), None).url().ends_with("/..xk1:generateContent"));
+        let b = body("sys", "text", &json!({"type": "object"}), None);
         assert_eq!(b["systemInstruction"]["parts"][0]["text"], "sys");
         assert_eq!(b["generationConfig"]["responseJsonSchema"]["type"], "object");
+        assert!(b["generationConfig"].get("thinkingConfig").is_none(), "the model's default thinking");
+        assert_eq!(body("", "", &json!({}), Some(Effort::Low))["generationConfig"]["thinkingConfig"], json!({"thinkingLevel": "low"}));
 
         let v = json!({"modelVersion": "gemini-3-flash", "candidates": [{"content": {"parts": [{"text": "{\"summary\":"}, {"text": "\"s\"}"}]}, "finishReason": "STOP"}]});
         let c = parse_completion(&v).unwrap();

@@ -232,11 +232,12 @@ domain（segments / translate / summarize / overlay）→ LlmChain（LlmProvider
 - **設定。** `settings.llm_chain` に `[{kind, model}]` の JSON で保存する。未保存なら旧 `claude_model` を 1 つ目（Claude CLI）として読む。保存すると chain を作り直す（job runner は同じ `Arc` を共有したまま、`RwLock` の中身だけ差し替える）。
 - **API キー。** `secret.openai_api_key` / `secret.gemini_api_key` / `secret.anthropic_api_key` に保存し、バックアップからは除かれる（`backup_to`）。未設定なら環境変数 `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` を使う。UI に返すのはキーの有無と出所（保存／環境変数）だけ。キーがない entry は `Unavailable` になり次へ進む。
 - **Untrusted input（§25）。** どの adapter にも tool を渡さない。Codex は user config・rules・web search・shell などの tool feature をすべて無効にし、read-only sandbox・空の一時ディレクトリ・`--ephemeral` で動かす。指示は prompt 引数、記事テキストは stdin（`<stdin>` block）で渡す。API は structured output だけを使う（Anthropic は forced tool ではなく `output_config.format` の JSON schema。tools は送らない）。
+- **Reasoning effort（G45）。** chain の各段に任意の `effort`（`llm::Effort`: low / medium / high / xhigh / max）を持たせ、`settings.llm_chain` の JSON に、指定したときだけ書く（ない段は provider の既定。G45 より前に保存した chain もそのまま読める）。渡し方は Claude CLI が `--effort`（`claude --help` の 2.1.303 で確認し、`-p` で受け付けることを実際の呼び出しで確認）、Codex CLI が `-c model_reasoning_effort=…`（未指定は従来どおり `low`。翻訳や要約に深い推論は要らず、usage limit のある CLI を速く回すため）、OpenAI API が `reasoning.effort`、Anthropic API が `output_config.effort`（structured output の `format` と同じ object）、Gemini API が `generationConfig.thinkingConfig.thinkingLevel`。どの provider も対応するので、設定画面では全段に effort の select を出す。選べる値は provider ごとに `ProviderKind::efforts` で決め（Gemini は多くのモデルに共通する low / medium / high だけ）、保存時にそれ以外を拒む。モデルが対応しない値（古いモデルや `gpt-reserve` など）は API が 400 を返し、その段は失敗として次の段に進む。モデルごとの対応表は持たない（モデル ID を自由に入力できるので網羅できない）。
 - **モデルの選択肢。** Claude は alias（haiku / sonnet / opus）、Codex は `~/.codex/models_cache.json` にある ID、OpenAI API は既定を `gpt-6-luna`、Gemini API は既定を `gemini-flash-latest`、Anthropic API は既定を `claude-opus-5-5`（選択肢に `claude-sonnet-5-5` / `claude-haiku-5-5`）にした。どれも「その他」でモデル ID を直接入力できる（F2 の修正。選択状態を model 値と別に持つ）。
 
 ### 未実装（意図的）
 
-API の usage（token 数）の記録、entry ごとの timeout 設定、chain の実機での疎通確認 UI。Anthropic の server-side refusal fallback と effort 指定（refusal は chain の次の entry に任せる。effort はモデルの既定）、streaming。
+API の usage（token 数）の記録、entry ごとの timeout 設定、chain の実機での疎通確認 UI。Anthropic の server-side refusal fallback（refusal は chain の次の entry に任せる）、streaming。
 Codex adapter、JS で描画するページの Index 追加（今はサーバーから再取得した HTML を抽出する）、bulk import の同一ホスト宛て並列数の制限、検索の metadata filter、reranker、re-extract コマンド（block ID の再利用も含む）、画像の保存。
 
 ## 7. 対話ペイン slice（F9、実装済み）

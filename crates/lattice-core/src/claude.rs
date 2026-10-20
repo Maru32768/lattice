@@ -12,18 +12,20 @@ use serde_json::Value;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::llm::{Completion, LlmError, LlmProvider};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider};
 
 pub struct ClaudeCli {
     pub program: String,
     /// `--model` value (alias like "sonnet" or a full id); None uses the CLI's default.
     model: RwLock<Option<String>>,
+    /// `--effort` value; None uses the CLI's default.
+    pub effort: Option<Effort>,
     pub timeout: Duration,
 }
 
 impl Default for ClaudeCli {
     fn default() -> Self {
-        Self { program: "claude".into(), model: RwLock::new(None), timeout: Duration::from_secs(600) }
+        Self { program: "claude".into(), model: RwLock::new(None), effort: None, timeout: Duration::from_secs(600) }
     }
 }
 
@@ -38,14 +40,23 @@ impl ClaudeCli {
 }
 
 impl ClaudeCli {
+    fn args(&self, system: &str, schema: &Value) -> Vec<String> {
+        let mut args: Vec<String> = ["-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config", "--tools", "", "--setting-sources", ""]
+            .map(String::from)
+            .into();
+        args.extend(["--system-prompt".into(), system.into(), "--json-schema".into(), schema.to_string()]);
+        if let Some(m) = self.model() {
+            args.extend(["--model".into(), m]);
+        }
+        if let Some(e) = self.effort {
+            args.extend(["--effort".into(), e.as_str().into()]);
+        }
+        args
+    }
+
     async fn run(&self, system: &str, input: &str, schema: &Value) -> Result<Value, LlmError> {
         let mut cmd = Command::new(&self.program);
-        cmd.args(["-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config"])
-            .args(["--tools", "", "--setting-sources", ""])
-            .args(["--system-prompt", system, "--json-schema", &schema.to_string()]);
-        if let Some(m) = self.model() {
-            cmd.args(["--model", &m]);
-        }
+        cmd.args(self.args(system, schema));
         cmd.current_dir(std::env::temp_dir())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -112,5 +123,16 @@ mod tests {
         assert_eq!(out.value["blocks"][0]["i"], 0);
         assert_eq!(out.model.as_deref(), Some("claude-opus-5-5"));
         assert!(matches!(parse_completion(&serde_json::json!({})), Err(LlmError::Malformed(_))));
+    }
+
+    #[test]
+    fn passes_model_and_effort_only_when_set() {
+        let args = ClaudeCli::default().args("sys", &serde_json::json!({}));
+        assert!(args.windows(2).any(|w| w == ["--tools", ""]), "tools stay off");
+        assert!(!args.iter().any(|a| a == "--effort" || a == "--model"));
+        let c = ClaudeCli { effort: Some(Effort::Xhigh), ..ClaudeCli::default() };
+        c.set_model(Some("opus".into()));
+        let args = c.args("sys", &serde_json::json!({}));
+        assert!(args.windows(2).any(|w| w == ["--effort", "xhigh"]) && args.windows(2).any(|w| w == ["--model", "opus"]), "{args:?}");
     }
 }

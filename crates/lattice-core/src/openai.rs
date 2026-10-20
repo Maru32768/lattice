@@ -2,7 +2,7 @@
 
 use serde_json::{Value, json};
 
-use crate::llm::{Completion, LlmError, LlmProvider, api_client, post_json, strict_schema};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider, api_client, post_json, strict_schema};
 
 const URL: &str = "https://api.openai.com/v1/responses";
 pub const DEFAULT_MODEL: &str = "gpt-6-luna";
@@ -10,22 +10,28 @@ pub const DEFAULT_MODEL: &str = "gpt-6-luna";
 pub struct OpenAi {
     pub key: Option<String>,
     pub model: Option<String>,
+    /// `reasoning.effort`; None leaves it to the model.
+    pub effort: Option<Effort>,
     http: reqwest::Client,
 }
 
 impl OpenAi {
-    pub fn new(key: Option<String>, model: Option<String>) -> Self {
-        Self { key, model, http: api_client() }
+    pub fn new(key: Option<String>, model: Option<String>, effort: Option<Effort>) -> Self {
+        Self { key, model, effort, http: api_client() }
     }
 
     fn body(&self, system: &str, input: &str, schema: &Value) -> Value {
-        json!({
+        let mut body = json!({
             "model": self.model.as_deref().unwrap_or(DEFAULT_MODEL),
             "instructions": system,
             "input": input,
             "store": false,
             "text": {"format": {"type": "json_schema", "name": "output", "strict": true, "schema": strict_schema(schema)}},
-        })
+        });
+        if let Some(e) = self.effort {
+            body["reasoning"] = json!({"effort": e.as_str()});
+        }
+        body
     }
 }
 
@@ -65,9 +71,11 @@ mod tests {
 
     #[test]
     fn builds_request_and_parses_response() {
-        let b = OpenAi::new(None, None).body("sys", "text", &crate::segments::schema());
+        let b = OpenAi::new(None, None, None).body("sys", "text", &crate::segments::schema());
         assert_eq!((b["model"].as_str(), b["instructions"].as_str(), b["input"].as_str()), (Some(DEFAULT_MODEL), Some("sys"), Some("text")));
         assert_eq!(b["text"]["format"]["schema"]["additionalProperties"], false);
+        assert!(b.get("reasoning").is_none(), "the model's default effort");
+        assert_eq!(OpenAi::new(None, None, Some(Effort::Max)).body("", "", &json!({}))["reasoning"], json!({"effort": "max"}));
 
         let v = json!({"model": "gpt-6-luna-2026-09-01", "status": "completed", "output": [
             {"type": "reasoning", "summary": []},
