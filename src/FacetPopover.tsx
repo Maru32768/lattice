@@ -118,7 +118,6 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
             </label>
             {!q.trim() && (
               <div className="pv-mode">
-                一致
                 <div className="seg sm" role="group" aria-label="タグの一致条件">
                   <button className={facets.tagMode === "all" ? "on" : ""} aria-pressed={facets.tagMode === "all"} onClick={() => onFacets({ ...facets, tagMode: "all" })}>すべて含む</button>
                   <button className={facets.tagMode === "any" ? "on" : ""} aria-pressed={facets.tagMode === "any"} onClick={() => onFacets({ ...facets, tagMode: "any" })}>いずれか</button>
