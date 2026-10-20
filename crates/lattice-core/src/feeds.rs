@@ -324,7 +324,6 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
     .map_err(err)?;
     let mut retry: Vec<i64> = Vec::new();
     {
-        let mut had = c.prepare("SELECT content IS NOT NULL FROM feed_items WHERE feed_id = ?1 AND normalized_url = ?2").map_err(err)?;
         let mut put = c
             .prepare(
                 "INSERT INTO feed_items (feed_id, normalized_url, published_at, title, content) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -332,7 +331,12 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
             )
             .map_err(err)?;
         let mut failed = c
-            .prepare("SELECT id FROM articles WHERE feed_id = ?1 AND normalized_url = ?2 AND (fetch_status = 'failed' OR extraction_status = 'failed')")
+            // Failed without having read the feed text (an ingest that ran before this entry's content
+            // was stored): reading it again now converges, since the fallback then has content.
+            .prepare(
+                "SELECT id FROM articles WHERE feed_id = ?1 AND normalized_url = ?2 AND (fetch_status = 'failed' OR extraction_status = 'failed')
+                   AND (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1) IS NOT ?3",
+            )
             .map_err(err)?;
         let mut done = std::collections::HashSet::new();
         for e in entries {
@@ -341,10 +345,9 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
             if !done.insert(norm.clone()) {
                 continue;
             }
-            let had_content = had.query_row(params![feed_id, norm], |r| r.get(0)).optional().map_err(err)?.unwrap_or(false);
             put.execute(params![feed_id, norm, e.published, e.title, e.content.as_deref().map(deflate)]).map_err(err)?;
-            if e.content.is_some() && !had_content {
-                retry.extend(failed.query_row(params![feed_id, norm], |r| r.get::<_, i64>(0)).optional().map_err(err)?);
+            if e.content.is_some() {
+                retry.extend(failed.query_row(params![feed_id, norm, ingest::FEED_CONTENT_TYPE], |r| r.get::<_, i64>(0)).optional().map_err(err)?);
             }
         }
     }
@@ -590,6 +593,23 @@ mod tests {
         assert!(s.article_row(failed.id).unwrap().unwrap().from_feed);
         assert_eq!(import(&s, feed, &new).unwrap(), 0, "once");
         assert!(s.claim_next_job(&[ingest::JOB_TYPE]).unwrap().is_none());
+    }
+
+    #[test]
+    fn an_article_that_failed_while_its_feed_text_was_being_stored_is_retried() {
+        let s = Store::open_in_memory().unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed").unwrap();
+        import(&s, feed, &parse(blocked_feed(false).as_bytes(), "https://blog.dev/feed").unwrap().entries).unwrap();
+        while let Some(j) = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap() {
+            ingest::store_fetch_result(&s, j.article_id.unwrap(), Err("HTTP 403 Forbidden".into())).unwrap();
+            s.finish_job(j.id, None).unwrap();
+        }
+        let new = parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries;
+        assert_eq!(import(&s, feed, &new).unwrap(), 1);
+        // The retry is lost (it ran before the content was visible), so the article is still failed from the page.
+        let job = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap().unwrap();
+        s.finish_job(job.id, None).unwrap();
+        assert_eq!(import(&s, feed, &new).unwrap(), 1, "the next poll retries it");
     }
 
     #[test]
