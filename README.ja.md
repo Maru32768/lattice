@@ -92,6 +92,10 @@ cp mise.local.toml.example mise.local.toml
 
 データはすべて 1 つの SQLite ファイル `%APPDATA%\dev.lattice.app\lattice.db` にあります。同じフォルダに `backups\`・`exports\`・意味検索のモデル（`models\`）があります。ログは `%LOCALAPPDATA%\dev.lattice.app\logs\` です。正確なパスは 設定 › ログ・保存場所 に表示されます。
 
+別の場所に置くには、設定 › ログ・保存場所 の「変更…」でフォルダを選びます。データベース・バックアップ・エクスポート・モデルをそこにコピーし、再起動後は新しいフォルダを使います。元のデータは削除しないので、不要なら手動で削除してください。既に Lattice のデータがあるフォルダを選ぶと、コピーせずにそのデータに切り替えます。既定のフォルダを選ぶと既定に戻ります。選んだ場所は `%APPDATA%\dev.lattice.app\data-location.json` に記録します。
+
+ポータブル版: `Lattice.exe` の隣に `portable`（または `lattice.portable`）というファイルがあると、ログとアプリ内ブラウザの Cookie・キャッシュも含めて、すべて exe の隣の `data` フォルダに保存します。Releases の portable zip にはこのファイルが入っています。ポータブル版は、新しい zip の `Lattice.exe` に置き換えて更新します。
+
 ## キーボード
 
 `Ctrl+K` でコマンドパレットを開きます。記事・タグ・ソース・ジャンルを開く、コマンドを実行する、検索する、貼り付けた URL を開く・保存する、ができます。設定 › ショートカット にすべてのショートカットがあり、変更できます。

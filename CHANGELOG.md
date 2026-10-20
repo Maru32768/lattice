@@ -16,6 +16,7 @@ The first public release. Everything below is new.
 - **Keeping data.** One SQLite file. Local backups by generation count, JSONL export, and automatic backup to Cloudflare R2 with a Terraform-managed bucket.
 - **App.** A processing-jobs screen with retry and cancel, a command palette (`Ctrl+K`), configurable shortcuts with tmux-style pane navigation, resizable panes, a custom title bar and app icon, site favicons, and an unread badge on the taskbar button.
 - **Updates.** At startup and from Settings › アップデート the app checks the latest GitHub release and, when a newer version exists, offers to download, verify, install and restart.
+- **Data location.** Move the data folder from Settings › ログ・保存場所 (the data is copied, the old copy is kept), and a portable mode that keeps everything next to the exe when a `portable` file sits beside it.
 - **Project.** MIT license, third-party notices, English and Japanese READMEs, and toolchains pinned with mise.
 
 [Unreleased]: https://github.com/Maru32768/lattice/commits/master

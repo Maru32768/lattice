@@ -92,6 +92,10 @@ Semantic search uses the multilingual-e5-small model (about 470 MB). It runs loc
 
 All data is in one SQLite file, `%APPDATA%\dev.lattice.app\lattice.db`. The same folder holds `backups\`, `exports\` and the semantic search model (`models\`). Logs are in `%LOCALAPPDATA%\dev.lattice.app\logs\`. Settings › ログ・保存場所 shows the exact paths.
 
+To keep the data somewhere else, press 変更… in Settings › ログ・保存場所 and pick a folder. Lattice copies the database, backups, exports and model there, uses the new folder after a restart, and leaves the old copy in place for you to delete. Picking a folder that already holds Lattice data switches to that data without copying; picking the default folder goes back to it. The choice is stored in `%APPDATA%\dev.lattice.app\data-location.json`.
+
+Portable mode: when a file named `portable` (or `lattice.portable`) sits next to `Lattice.exe`, everything goes to a `data` folder beside the exe, including logs and the in-app browser's cookies and cache. The portable zip on the Releases page ships with that file. A portable copy is updated by replacing `Lattice.exe` with the one from a newer zip.
+
 ## Keyboard
 
 Press `Ctrl+K` for the command palette. It opens articles, tags, sources and genres, runs commands, searches, and opens or saves a pasted URL. Settings › ショートカット lists every shortcut and lets you change them.

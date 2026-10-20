@@ -1,9 +1,11 @@
 mod badge;
 mod browser;
+mod location;
 mod renderer;
 mod update;
 
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
@@ -23,7 +25,8 @@ use lattice_core::{backup, classify, export, favicons, images, instructions, mar
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
-use browser::Browser;
+use browser::{Browser, lock};
+use location::{Kind, Location};
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
@@ -44,6 +47,9 @@ struct App {
     overlay_llm: Semaphore,
     chat_llm: Semaphore,
     db_path: String,
+    data_dir: PathBuf,
+    /// The folder `pick_data_dir` returned, waiting for `set_data_dir`.
+    picked_dir: Mutex<Option<PathBuf>>,
 }
 
 fn err(e: impl ToString) -> String {
@@ -486,19 +492,89 @@ fn db_path(app: State<'_, App>) -> String {
 #[derive(serde::Serialize)]
 struct Settings {
     db_path: String,
+    data_dir: String,
+    location: Kind,
+    /// Why the folder the user chose is not in use.
+    location_warning: Option<String>,
     log_dir: String,
     backup_dir: String,
     backup_keep: u64,
 }
 
 #[tauri::command]
-fn get_settings(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Settings, String> {
+fn get_settings(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Settings, String> {
+    let log_dir = match loc.log_dir() {
+        Some(d) => d,
+        None => handle.path().app_log_dir().map_err(err)?,
+    };
     Ok(Settings {
         db_path: app.db_path.clone(),
-        log_dir: handle.path().app_log_dir().map_err(err)?.display().to_string(),
-        backup_dir: backup_dir(&handle)?.display().to_string(),
+        data_dir: app.data_dir.display().to_string(),
+        location: loc.kind,
+        location_warning: loc.warning.clone(),
+        log_dir: log_dir.display().to_string(),
+        backup_dir: backup_dir(&app).display().to_string(),
         backup_keep: backup::keep_generations(&app.store)?,
     })
+}
+
+#[derive(serde::Serialize)]
+struct PickedDir {
+    path: String,
+    /// It already holds a Lattice database, which `set_data_dir` can switch to instead of copying.
+    has_data: bool,
+}
+
+/// Picks the new data folder with a native dialog (the webview never passes a path).
+#[tauri::command]
+async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Option<PickedDir>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    if loc.kind == Kind::Portable {
+        return Err("ポータブル版はデータを exe の隣の data フォルダに保存します".into());
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = handle.dialog().file().set_title("データの保存場所を選ぶ").set_directory(&app.data_dir);
+    if let Some(w) = handle.get_window("main") {
+        dialog = dialog.set_parent(&w);
+    }
+    dialog.pick_folder(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let path = picked.into_path().map_err(err)?;
+    let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    location::check_target(&canonical(&app.data_dir), &canonical(&path))?;
+    let has_data = path.join(location::DB_FILE).exists();
+    *lock(&app.picked_dir) = Some(path.clone());
+    Ok(Some(PickedDir { path: path.display().to_string(), has_data }))
+}
+
+/// Uses the picked folder from the next start: copies the data there (`copy`), or switches to the
+/// Lattice data already in it. The current folder is left as it is.
+#[tauri::command]
+async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool) -> Result<String, String> {
+    let target = lock(&app.picked_dir).take().ok_or("フォルダを選び直してください")?;
+    let has_data = target.join(location::DB_FILE).exists();
+    if copy && has_data {
+        return Err("選んだフォルダには既に Lattice のデータがあります".into());
+    }
+    if !copy && !has_data {
+        return Err("選んだフォルダに Lattice のデータがありません".into());
+    }
+    if copy {
+        let (store, from, to) = (app.store.clone(), app.data_dir.clone(), target.clone());
+        tauri::async_runtime::spawn_blocking(move || location::copy_data(&store, &from, &to)).await.map_err(err)??;
+        log::info!("copied the data from {} to {}", app.data_dir.display(), target.display());
+    }
+    let default_dir = handle.path().app_data_dir().map_err(err)?;
+    location::write_bootstrap(&default_dir, &target)
+        .map_err(|e| format!("保存場所を {} に記録できませんでした: {e}", default_dir.join(location::BOOTSTRAP_FILE).display()))?;
+    Ok(target.display().to_string())
+}
+
+#[tauri::command]
+fn restart_app(handle: tauri::AppHandle) {
+    handle.restart()
 }
 
 /// Fallback chain plus where each API key comes from ("stored" / "env"); never the keys.
@@ -535,15 +611,15 @@ fn set_api_key(app: State<'_, App>, kind: ProviderKind, key: Option<String>) -> 
     Ok(())
 }
 
-fn backup_dir(handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    Ok(handle.path().app_data_dir().map_err(err)?.join("backups"))
+fn backup_dir(app: &App) -> PathBuf {
+    app.data_dir.join("backups")
 }
 
 /// Writes a consistent copy of the database to app_data/backups and prunes old generations.
 #[tauri::command(async)]
-fn backup_db(app: State<'_, App>, handle: tauri::AppHandle) -> Result<backup::LocalBackup, String> {
+fn backup_db(app: State<'_, App>) -> Result<backup::LocalBackup, String> {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
-    backup::backup_local(&app.store, &backup_dir(&handle)?, secs)
+    backup::backup_local(&app.store, &backup_dir(&app), secs)
 }
 
 #[tauri::command(async)]
@@ -591,11 +667,10 @@ fn cancel_job(app: State<'_, App>, id: i64) -> Result<bool, String> {
     job_status::cancel(&app.store, id)
 }
 
-/// Writes app_data/exports/lattice-export-<UTC>.jsonl.gz and returns its path.
+/// Writes <data>/exports/lattice-export-<UTC>.jsonl.gz and returns its path.
 #[tauri::command(async)]
-fn export_json(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
-    let dir = handle.path().app_data_dir().map_err(err)?.join("exports");
-    Ok(export::export_file(&app.store, &dir)?.display().to_string())
+fn export_json(app: State<'_, App>) -> Result<String, String> {
+    Ok(export::export_file(&app.store, &app.data_dir.join("exports"))?.display().to_string())
 }
 
 #[tauri::command(async)]
@@ -614,29 +689,48 @@ fn r2_clear_secret(app: State<'_, App>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn r2_backup_now(app: State<'_, App>, handle: tauri::AppHandle) -> Result<String, String> {
-    r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&handle)?).await
+async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
+    r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&app)).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .clear_targets()
-                .level(log::LevelFilter::Info)
-                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("lattice".into()) }))
-                .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
-                .build(),
-        )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .setup(|app| {
-            let dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&dir)?;
-            let path = dir.join("lattice.db");
+            let loc = location::detect(&app.path().app_data_dir()?);
+            // The log folder follows the data in portable mode, so the plugin is added here.
+            let file_name = Some("lattice".to_string());
+            let log_file = match loc.log_dir() {
+                Some(path) => tauri_plugin_log::TargetKind::Folder { path, file_name },
+                None => tauri_plugin_log::TargetKind::LogDir { file_name },
+            };
+            app.handle().plugin(
+                tauri_plugin_log::Builder::new()
+                    .clear_targets()
+                    .level(log::LevelFilter::Info)
+                    .target(tauri_plugin_log::Target::new(log_file))
+                    .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
+                    .build(),
+            )?;
+            if let Some(w) = &loc.warning {
+                log::warn!("{w}");
+            }
+            // Created here rather than from the config so a portable install can give it its own
+            // WebView2 profile folder (tauri.conf.json has `create: false`).
+            let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
+            let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?;
+            if let Some(d) = loc.webview_dir() {
+                main = main.data_directory(d);
+            }
+            main.build()?;
+
+            let dir = loc.dir.clone();
+            app.manage(loc);
+            let path = dir.join(location::DB_FILE);
             let store = Arc::new(Store::open(&path)?);
             let llm = LlmChain::new(chain::load(&store)?);
             let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http: client() });
@@ -692,7 +786,7 @@ pub fn run() {
                 let _ = handle.emit("feeds-changed", queued);
             }));
 
-            app.manage(App { store, providers, wake_llm, wake_local, wake_net, wake_render, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY), db_path: path.display().to_string() });
+            app.manage(App { store, providers, wake_llm, wake_local, wake_net, wake_render, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY), db_path: path.display().to_string(), data_dir: dir, picked_dir: Mutex::new(None) });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -765,6 +859,9 @@ pub fn run() {
             retry_failed_jobs,
             cancel_job,
             export_json,
+            pick_data_dir,
+            set_data_dir,
+            restart_app,
             overlay_translate,
             badge::set_unread_badge,
             badge::get_taskbar_badge,

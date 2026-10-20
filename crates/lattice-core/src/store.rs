@@ -779,10 +779,16 @@ impl Store {
         Ok(())
     }
 
-    /// Consistent single-file copy of the whole database (safe while the app is running).
-    /// Settings under `SECRET_PREFIX` (API keys) are removed from the copy.
-    pub fn backup_to(&self, path: &Path) -> Result<()> {
+    /// Consistent single-file copy of the whole database, secrets included (safe while the app
+    /// is running). For moving the data folder; backups use `backup_to`.
+    pub fn copy_to(&self, path: &Path) -> Result<()> {
         self.conn().execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
+        Ok(())
+    }
+
+    /// `copy_to` with the settings under `SECRET_PREFIX` (API keys) removed from the copy.
+    pub fn backup_to(&self, path: &Path) -> Result<()> {
+        self.copy_to(path)?;
         let copy = Connection::open(path)?;
         copy.execute("DELETE FROM settings WHERE key LIKE ?1 || '%'", [SECRET_PREFIX])?;
         copy.execute_batch("VACUUM")
@@ -1681,6 +1687,10 @@ mod tests {
         assert_eq!(copy.setting("claude_model").unwrap().as_deref(), Some("haiku"));
         assert_eq!(s.setting("secret.openai_api_key").unwrap().as_deref(), Some("sk-test"));
         drop(copy);
+        let moved = dir.join("moved.db");
+        let _ = std::fs::remove_file(&moved);
+        s.copy_to(&moved).unwrap();
+        assert_eq!(Store::open(&moved).unwrap().setting("secret.openai_api_key").unwrap().as_deref(), Some("sk-test"), "moving keeps secrets");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
