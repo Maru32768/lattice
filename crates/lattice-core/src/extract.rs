@@ -259,7 +259,7 @@ fn collect_inline(base: &Url, node: &NodeRef, out: &mut Vec<Inline>) {
     }
 }
 
-fn collapse(s: &str) -> String {
+pub(crate) fn collapse(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut ws = false;
     for c in s.chars() {
@@ -276,7 +276,7 @@ fn collapse(s: &str) -> String {
     out
 }
 
-fn push_text(out: &mut Vec<Inline>, s: &str) {
+pub(crate) fn push_text(out: &mut Vec<Inline>, s: &str) {
     let s = collapse(s);
     if s.is_empty() {
         return;
@@ -292,7 +292,7 @@ fn push_text(out: &mut Vec<Inline>, s: &str) {
     }
 }
 
-fn trim_inlines(inlines: &mut Vec<Inline>) {
+pub(crate) fn trim_inlines(inlines: &mut Vec<Inline>) {
     if let Some(Inline::Text { v }) = inlines.first_mut() {
         *v = v.trim_start().to_string();
     }
@@ -302,7 +302,7 @@ fn trim_inlines(inlines: &mut Vec<Inline>) {
     inlines.retain(|i| !inline_text(i).is_empty());
 }
 
-fn inline_text(i: &Inline) -> &str {
+pub(crate) fn inline_text(i: &Inline) -> &str {
     match i {
         Inline::Text { v } | Inline::Code { v } | Inline::Link { v, .. } => v,
     }

@@ -18,6 +18,7 @@ pub mod ir;
 pub mod job_status;
 pub mod jobs;
 pub mod llm;
+pub mod markdown;
 pub mod openai;
 pub mod r2;
 pub mod render;

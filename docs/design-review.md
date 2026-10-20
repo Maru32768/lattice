@@ -163,6 +163,14 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - 各 URL を pending の記事として登録し、`ingest` job を投入する。job は 4 本の network runner が並列に処理する（翻訳や embedding とは別の runner）。
 - 取得や抽出に失敗した URL は記事側に記録し（一覧に「失敗」と表示）、全体の処理は止めない。取得に成功した記事には embed job を投入する。
 
+### Markdown の取り込み（G48）
+
+- **入口。** インポート画面の「Markdown」タブ（サイドバーの ＋、パレットの「Markdown を取り込む」、空のライブラリのカードからも開く）。ファイル（.md / .markdown）か貼り付けたテキストを 1 つの記事にし、取り込んだら Reader で開く。変換は `crates/lattice-core/src/markdown.rs`（pulldown-cmark）。
+- **IR への変換。** 見出し・段落・リスト（深さ・番号付き、タスクリストは ☑ / ☐）・引用・コード（fence の言語）・表・画像・リンク・インラインコードを、HTML の抽出と同じ block にする。強調は平文にする。リンクは http(s) だけ残し、相対リンクは平文。HTML タグ（インライン・ブロックとも）と YAML front matter は捨てる（untrusted）。タイトルは最初の H1（文書の先頭なら本文からは除く）、なければファイル名、なければ最初の行。
+- **URL のない記事。** `original_url` / `normalized_url` を `local:md/<本文の sha256>`（BOM・改行コードを揃え、前後の空白を除いた本文）、`domain` を空にする。同じ本文を取り込み直すと同じ記事を返す（重複しない）。snapshot には Markdown の原文を `content_type = 'text/markdown'` で保存し、再抽出は原文を変換し直す（タイトルが H1 でなければ今のタイトルを保つ）。`thin` にはならない（短いメモはそれで全文）。UI は `isLocal` で見分け、Page を無効にし（tooltip で理由）、「再試行」「描画して取り込み直す」を出さず、サイト名を「ローカル」と表示する。`openPage` に local の URL が来たら Reader を開く（`v`・一覧から Page で開く・引用のどれでも）。
+- **画像。** http(s) の画像は通常の画像 job で保存する（Referer は送らない）。相対パスの画像は、ファイルから取り込んだときだけ、そのファイルのフォルダから読む。ファイルは backend が開くダイアログで選ぶので、webview がパスを渡すことはない（`import_markdown_file`。`tauri-plugin-dialog` は Rust からだけ使い、JS の権限は付けない）。パスは `file:` URL としてフォルダに join し（`%20` などを解く）、フォルダの外（`../`・絶対パス）は読まない。中身がラスター画像で、画像の上限（1 枚・記事あたり）に収まるものだけを `article_images` に原文の相対パスで保存する。読めなかったものと貼り付けたときの相対パス、`data:` URL の画像は代替テキストを表示する。
+- **取り込んだ後。** URL の記事と同じく embed・分類 job を積み、翻訳も同じように使える。
+
 ### 運用（設定・バックアップ・ログ）
 
 - **モデル選択。** 翻訳と要約に使う provider とモデルを、最大 3 つの fallback として設定画面で選ぶ（§6）。`settings` テーブル（migration 8）に保存する。
@@ -480,6 +488,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
   - 保存先は `favicons(domain, mime, bytes, error, fetched_at)`（migration 17）。取得できなかった理由も 1 行として残す。`favicon(domain)` command は保存済みのアイコンを `data:` URL で返し、行がないか 1 週間より古ければ `favicon` job（network runner、記事を持たない job。dedup key `favicon:{domain}`）を積む。古い行は再取得が終わるまでそのまま返す。job が終わると `favicon-changed`（ドメイン）を emit し、UI はそのドメインだけを聞き直す。UI はドメインごとの Promise を module 内に持つので、1,000 行の一覧でも呼び出しはドメインごとに 1 回になる（harness で確認）。ドメインは「初めて見たとき」＝UI が初めて聞いたときに取得する（取り込み時には積まない）。
   - 取得の順序: そのドメインの記事の最新 snapshot の `<link rel~=icon href>`、snapshot がない（またはリンクがない）ときはサイトの root（`https://{domain}/`）の HTML のリンク、最後に `/favicon.ico`。最初に取得できたものを保存する。取得は記事画像の `download`（`check_public` で private address を拒否、Content-Type と magic number の検査、受信中のサイズ確認）を通し、上限は 1 MB。SVG は保存しない。ICO を magic number の判定に加えた（記事画像でも ICO を保存するようになる）。timeout・5xx・429 だけのときは何も保存せず job を失敗させ、backoff で再試行する。ほかの失敗は理由を保存し、1 週間後に聞かれるまで再取得しない。root は https だけを試す。
 
+- **タスクバーの未読数（G46）。** Windows には badge の API がないので、未読数を描いた画像をウィンドウの overlay icon にする（`src-tauri/src/badge.rs`。他の OS は `set_badge_count`）。画像は 16 px × 表示倍率の accent 色の円に、3×5 px の数字を整数倍で白く描く（ぼけない）。100 件以上は「99+」、0 件なら消す。未読数は UI が既に数えている `counts.unread` を、変わってから 500 ms 待って `set_unread_badge` で渡す（既読にしていくと続けて変わるため）。backend は最後の数を覚えていて、設定「タスクバー」でオフ（`settings.taskbar_badge = 'off'`、既定はオン）にすると消し、オンに戻すとその数を出す。
 
 ## 17. 取得できない記事とフィードの表示名・アイコン
 

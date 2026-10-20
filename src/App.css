@@ -328,7 +328,7 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 /* ---- first run (States board #8) ------------------------------------------------------------ */
 .first-run { max-width: 760px; margin: auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 14px; }
 .first-run h1 { margin: 0; font-size: 18px; font-weight: 600; }
-.first-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.first-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .first-cards .btn { height: auto; padding: 12px; flex-direction: column; align-items: flex-start; gap: 4px; white-space: normal; text-align: left; }
 .first-cards .h { font-weight: 500; }
 .first-cards .muted { font-size: 12px; }

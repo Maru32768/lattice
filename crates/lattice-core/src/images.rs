@@ -182,8 +182,11 @@ pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str,
         return Err(Fail::Permanent("http(s) 以外の URL です".into()));
     }
     check_public(src).map_err(Fail::Permanent)?;
-    // Many sites refuse hotlinked images without a Referer from their own pages.
-    let sent = client.get(src).header(reqwest::header::REFERER, referer).send().await;
+    // Many sites refuse hotlinked images without a Referer from their own pages. Imported
+    // Markdown has no page to name.
+    let req = client.get(src);
+    let req = if referer.starts_with("http") { req.header(reqwest::header::REFERER, referer) } else { req };
+    let sent = req.send().await;
     let mut resp = sent.map_err(|e| if e.is_timeout() { Fail::Transient(request_error(e)) } else { Fail::Permanent(request_error(e)) })?;
     let status = resp.status();
     if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {

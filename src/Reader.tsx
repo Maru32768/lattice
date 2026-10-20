@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { api, type ArticleView, type Block, type Inline, type JobRow } from "./api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type Inline, type JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { UNCLASSIFIED } from "./groups";
@@ -69,11 +69,13 @@ function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) 
     io.observe(el);
     return () => io.disconnect();
   }, [block.id, imagesJob, url]);
-  const src = block.attrs.src!;
+  const src = block.attrs.src;
   return (
     <figure className="image" ref={ref}>
       {url ? <img src={url} alt={block.text} title={block.text || undefined} />
-        : <Link href={src}>画像: {block.text || src}</Link>}
+        : src && /^https?:/i.test(src) ? <Link href={src}>画像: {block.text || src}</Link>
+        // Imported Markdown: an image that could not be read from the file's folder.
+        : <span className="muted">画像: {block.text || src}</span>}
     </figure>
   );
 }
@@ -130,13 +132,16 @@ function listMarkers(blocks: Block[]): (string | undefined)[] {
 }
 
 /** Reader | Page, shared by both toolbars. */
-export function ViewSeg({ page, onReader, onPage, readerDisabled }: { page: boolean; onReader: () => void; onPage: () => void; readerDisabled?: boolean }) {
+export function ViewSeg({ page, onReader, onPage, readerDisabled, pageDisabled }: {
+  page: boolean; onReader: () => void; onPage: () => void; readerDisabled?: boolean; pageDisabled?: boolean;
+}) {
   return (
     <>
       <div className="seg" role="group" aria-label="表示">
         <button className={page ? "" : "on"} aria-pressed={!page} onClick={onReader} disabled={readerDisabled}
           title={readerDisabled ? "Index に追加すると Reader が使えます" : "Reader (v)"}><Icon name="reader" size="md" />Reader</button>
-        <button className={page ? "on" : ""} aria-pressed={page} onClick={onPage} title="Page (v)"><Icon name="page" size="md" />Page</button>
+        <button className={page ? "on" : ""} aria-pressed={page} onClick={onPage} disabled={pageDisabled}
+          title={pageDisabled ? "取り込んだ Markdown にはページがありません" : "Page (v)"}><Icon name="page" size="md" />Page</button>
       </div>
       <Kbd>v</Kbd>
     </>
@@ -350,11 +355,12 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
       title="裏の非表示ブラウザでページを描画し、その内容で保存し直します">{rendering ? "描画して取り込み中…" : "描画して取り込み直す"}</button>
   );
   const fetched = a.fetch_status === "ok";
+  const local = isLocal(a.original_url);
 
   return (
     <div className="doc">
       <div className="docbar">
-        <ViewSeg page={false} onReader={() => {}} onPage={onPage} />
+        <ViewSeg page={false} onReader={() => {}} onPage={onPage} pageDisabled={local} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
         {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} />}
@@ -371,8 +377,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
           <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
-            { label: "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
-            { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering },
+            { label: local ? "再抽出（保存済みの Markdown から）" : "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
+            ...(local ? [] : [{ label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering }]),
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
             "-",
@@ -385,7 +391,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}
-            <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{a.domain}</span>
+            <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{siteOf(a)}</span>
             {a.author && <><span>·</span><span>{a.author}</span></>}
             {a.published_at && <><span>·</span><span>{a.published_at.slice(0, 10)}</span></>}
           </div>
@@ -420,10 +426,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
                 <span>{a.last_error}{fetched && " — 取得は成功し、HTML は保存済みです。"}</span>
               </div>
               <div className="btn-row">
-                {renderBtn(true)}
+                {!local && renderBtn(true)}
                 {fetched && <button className="btn" onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出（オフライン）</button>}
-                <button className="btn" onClick={onRetry}>再試行</button>
-                <button className="btn" onClick={onPage}>Page で開く</button>
+                {!local && <button className="btn" onClick={onRetry}>再試行</button>}
+                {!local && <button className="btn" onClick={onPage}>Page で開く</button>}
               </div>
             </div>
           )}

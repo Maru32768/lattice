@@ -170,6 +170,9 @@ pub const RENDERED_CONTENT_TYPE: &str = "text/html; source=webview";
 /// unchanged keep their ids (and with them embeddings and search hits).
 pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
     let snap = store.latest_snapshot(id).map_err(|e| e.to_string())?.ok_or("no stored snapshot to re-extract")?;
+    if crate::markdown::is_local(&snap.final_url) {
+        return crate::markdown::reextract(store, id, &snap.html);
+    }
     extract_into(store, id, &snap.html, &snap.final_url, None)
 }
 
