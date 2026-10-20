@@ -6,16 +6,19 @@ import { FilterOptgroups } from "./FilterOptgroups";
 import { Menu } from "./Popover";
 import { Icon, Kbd } from "./Icon";
 import { initialVim, vimEnabled, vimKey } from "./vim";
+import { useT, type PlainKey } from "./i18n";
 
-const MODE_LABEL = { full: "記事全文から回答", retrieval: "検索で選んだ関連箇所から回答", none: "" } as const;
+const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetrieval", none: null } as const satisfies Record<string, PlainKey | null>;
 
 function Cite({ c, onCite }: { c: Citation; onCite: (c: Citation) => void }) {
+  const t = useT();
   const where = `${c.title}${c.heading ? ` › ${c.heading}` : ""}`;
-  return <button className="cite" onClick={() => onCite(c)} title={where} aria-label={`出典 ${c.n}: ${where}`}>{c.n}</button>;
+  return <button className="cite" onClick={() => onCite(c)} title={where} aria-label={t("chatPane.cite", { n: c.n, where })}>{c.n}</button>;
 }
 
 // The answer is model output over untrusted pages: rendered as text nodes only, never as HTML.
 function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }) {
+  const t = useT();
   const byN = new Map(m.citations.map((c) => [c.n, c]));
   return (
     <div className="answer">
@@ -36,8 +39,8 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
       )}
       <div className="answer-meta">
         {m.model && <span>{m.model}</span>}
-        {MODE_LABEL[m.mode] && <span>{MODE_LABEL[m.mode]}</span>}
-        {m.citations.length > 0 && <span>引用 {m.citations.length}</span>}
+        {MODE_LABEL[m.mode] && <span>{t(MODE_LABEL[m.mode]!)}</span>}
+        {m.citations.length > 0 && <span>{t("chatPane.citations", { length: m.citations.length })}</span>}
       </div>
     </div>
   );
@@ -54,6 +57,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
   onCite: (c: Citation) => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -129,40 +133,40 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
     }
   }
 
-  const title = threads.find((t) => t.id === threadId)?.title ?? "新しい会話";
+  const title = threads.find((t) => t.id === threadId)?.title ?? t("chatPane.newChat");
   const last = messages[messages.length - 1];
   return (
     <>
-      <aside className="chat" aria-label="対話" data-pane="chat">
+      <aside className="chat" aria-label={t("common.chat")} data-pane="chat">
         <header className="chat-h">
-          <Menu className="thread-btn" label="会話を選ぶ" title="保存済みの会話" trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}
+          <Menu className="thread-btn" label={t("chatPane.pickThread")} title={t("chatPane.saved")} trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}
             items={[
-              { label: "新しい会話", onSelect: () => void openThread(null), checked: threadId == null, disabled: !!pending },
-              ...(threads.length ? ["保存済み"] : []),
+              { label: t("chatPane.newChat"), onSelect: () => void openThread(null), checked: threadId == null, disabled: !!pending },
+              ...(threads.length ? [t("chatPane.savedGroup")] : []),
               ...threads.map((t) => ({ label: t.title, onSelect: () => void openThread(t.id), checked: t.id === threadId, disabled: !!pending })),
               "-",
-              { label: "この会話を削除", onSelect: () => void removeThread(), disabled: !!pending || threadId == null },
+              { label: t("chatPane.deleteThread"), onSelect: () => void removeThread(), disabled: !!pending || threadId == null },
             ]} />
-          <span className="muted saved">保存済み {threads.length} 件</span>
-          <button className="ib push" onClick={() => openThread(null)} disabled={!!pending || threadId == null} aria-label="新しい会話" title="新しい会話"><Icon name="plus" /></button>
-          <button className="ib" onClick={onClose} aria-label="対話ペインを閉じる" title="閉じる"><Icon name="x" /></button>
+          <span className="muted saved">{t("chatPane.savedCount", { length: threads.length })}</span>
+          <button className="ib push" onClick={() => openThread(null)} disabled={!!pending || threadId == null} aria-label={t("chatPane.newChat")} title={t("chatPane.newChat")}><Icon name="plus" /></button>
+          <button className="ib" onClick={onClose} aria-label={t("chatPane.close")} title={t("common.close")}><Icon name="x" /></button>
         </header>
         <div className="chat-scope">
-          範囲
+          {t("chatPane.scope")}
           <label className="chip scope-chip">
-            <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} aria-label="質問の範囲">
-              <option value="article" disabled={!article}>この記事{article ? `（${article.title}）` : "（記事を開いていません）"}</option>
-              <option value="all">全記事</option>
-              {current && <option value={current.key}>現在の一覧: {current.label}</option>}
+            <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} aria-label={t("chatPane.scopeLabel")}>
+              <option value="article" disabled={!article}>{t("chatPane.thisArticle")}{article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}</option>
+              <option value="all">{t("chatPane.allArticles")}</option>
+              {current && <option value={current.key}>{t("chatPane.currentList", { label: current.label })}</option>}
               <FilterOptgroups groups={groups} />
             </select>
             <Icon name="down" size="sm" />
           </label>
-          {last && MODE_LABEL[last.mode] && <span className="push">{MODE_LABEL[last.mode]}</span>}
+          {last && MODE_LABEL[last.mode] && <span className="push">{t(MODE_LABEL[last.mode]!)}</span>}
         </div>
         <div className="chat-log" ref={log}>
           {messages.length === 0 && !pending && (
-            <p className="muted chat-hint">保存した記事をもとに回答します。回答中の番号をクリックすると、根拠の箇所を開きます。</p>
+            <p className="muted chat-hint">{t("chatPane.intro")}</p>
           )}
           {messages.map((m) => (
             <div key={m.id} className="turn">
@@ -173,15 +177,15 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
           {pending && (
             <div className="turn">
               <p className="question">{pending}</p>
-              <p className="pending" role="status"><span className="dot" />回答を生成しています…</p>
+              <p className="pending" role="status"><span className="dot" />{t("chatPane.answering")}</p>
             </div>
           )}
-          {error && <p className="error-text" role="alert">{error}</p>}
+          {error && <p className="error-text" role="alert">{t.msg(error)}</p>}
         </div>
         <form className="chat-f" onSubmit={ask}>
-          <label className="vh" htmlFor="chat-q">質問</label>
+          <label className="vh" htmlFor="chat-q">{t("chatPane.question")}</label>
           <textarea id="chat-q" ref={input} value={question} onChange={(e) => setQuestion(e.target.value)} rows={3}
-            placeholder={scopeKey === "article" ? "この記事について質問…" : "保存した記事について質問…"}
+            placeholder={scopeKey === "article" ? t("chatPane.askArticle") : t("chatPane.askSaved")}
             readOnly={normal} onFocus={() => setVimOn(vimEnabled())}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return void ask(e);
@@ -196,12 +200,12 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
             }} />
           <div className="chat-f-row">
             {vimOn && (
-              <span className={`bd vim-mode${normal ? " run" : ""}`} aria-live="polite" title="Vim のモード">
+              <span className={`bd vim-mode${normal ? " run" : ""}`} aria-live="polite" title={t("chatPane.vimMode")}>
                 {normal ? "NORMAL" : "INSERT"}{vim.pending && ` ${vim.pending}`}
               </span>
             )}
-            <span className="push"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> 送信</span>
-            <button type="submit" className="btn sm pri" disabled={!question.trim() || !!pending || !scope()}>{pending ? "回答中…" : "送信"}</button>
+            <span className="push"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd>{t("chatPane.hintSend")}</span>
+            <button type="submit" className="btn sm pri" disabled={!question.trim() || !!pending || !scope()}>{pending ? t("chatPane.sending") : t("chatPane.send")}</button>
           </div>
         </form>
       </aside>

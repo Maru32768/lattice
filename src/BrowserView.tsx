@@ -6,6 +6,7 @@ import { LangSeg, ViewSeg } from "./Reader";
 import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
+import { useT } from "./i18n";
 
 /** The `seq` each tab's webview was last told to open: a tab shown again is not reloaded. */
 const opened = new Map<Id, number>();
@@ -20,6 +21,7 @@ export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", per
 
 /** https:// + host emphasized + the rest; a click edits it, with the whole URL selected. */
 function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
+  const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const editing = draft != null;
@@ -28,7 +30,7 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
   }, [editing]);
   if (editing) {
     return (
-      <input ref={input} className="url-pill" value={draft} autoFocus spellCheck={false} aria-label="URL または検索語"
+      <input ref={input} className="url-pill" value={draft} autoFocus spellCheck={false} aria-label={t("browserView.urlPlaceholder")}
         onChange={(e) => setDraft(e.target.value)} onBlur={() => setDraft(null)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing || (e.key !== "Enter" && e.key !== "Escape")) return;
@@ -41,7 +43,7 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
   const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url);
   return (
     <button type="button" className="url-pill" title={url} onClick={() => setDraft(url)}>
-      <span className="vh">URL（クリックで編集・検索）: </span>
+      <span className="vh">{t("browserView.urlLabel")}</span>
       {m ? <>{m[1]}<b>{m[2]}</b>{m[3]}</> : url}
     </button>
   );
@@ -68,6 +70,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   onDelete: () => void;
   onError: (e: string) => void;
 }) {
+  const t = useT();
   const id = tab.id;
   const host = useRef<HTMLDivElement>(null);
   const bounds = (): Bounds | null => {
@@ -150,33 +153,33 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
       <div className="docbar">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        <button className="ib" onClick={() => browser.go(id, "back")} disabled={tab.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
-        <button className="ib" onClick={() => browser.go(id, "forward")} disabled={tab.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
-        <button className="ib" onClick={() => browser.go(id, "reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
-        <button className="ib" onClick={() => onNavigate(homeOf(getEngine()))} aria-label="ホーム（検索エンジン）" title="ホーム（検索エンジン）"><Icon name="home" /></button>
+        <button className="ib" onClick={() => browser.go(id, "back")} disabled={tab.canGoBack === false} aria-label={t("browserView.back")} title={t("browserView.back")}><Icon name="left" /></button>
+        <button className="ib" onClick={() => browser.go(id, "forward")} disabled={tab.canGoForward === false} aria-label={t("browserView.forward")} title={t("browserView.forward")}><Icon name="right" /></button>
+        <button className="ib" onClick={() => browser.go(id, "reload")} aria-label={t("browserView.reload")} title={t("browserView.reload")}><Icon name="reload" /></button>
+        <button className="ib" onClick={() => onNavigate(homeOf(getEngine()))} aria-label={t("browserView.home")} title={t("browserView.home")}><Icon name="home" /></button>
         <UrlBar url={url} onGo={(input) => {
           const next = toNavigation(input, getEngine());
           if (next) onNavigate(next);
         }} />
-        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label="このページを翻訳" />
+        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
         {saved ? (
           <>
-            <span className="indexed"><Icon name="check" />Index 済み</span>
-            <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label="お気に入り (s)" title="お気に入り (s)"><Icon name="star" /></button>
-            <Menu className="tb" label="その他（保存し直す・Index から削除）" align="right" trigger={<Icon name="more" />} items={[
-              ...(resave ? [{ label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
-              { label: <span className="error-text">Index から削除…</span>, onSelect: onDelete },
+            <span className="indexed"><Icon name="check" />{t("browserView.indexed")}</span>
+            <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
+            <Menu className="tb" label={t("browserView.more")} align="right" trigger={<Icon name="more" />} items={[
+              ...(resave ? [{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
+              { label: <span className="error-text">{t("browserView.remove")}</span>, onSelect: onDelete },
             ]} />
           </>
         ) : (
           <button className="tb pri" onClick={onSave} disabled={saving || loading}
-            title="保存すると Reader・タグ・ジャンル・お気に入りが有効になります。取り込みは描画後の DOM を使います。"><Icon name="import" />{saving ? "追加中…" : "Index に追加"}</button>
+            title={t("browserView.addHint")}><Icon name="import" />{saving ? t("browserView.adding") : t("browserView.add")}</button>
         )}
       </div>
-      <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? "読み込み中" : undefined}><b /></div>
+      <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? t("browserView.loading") : undefined}><b /></div>
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">
-        {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">読み込み中…</span>}
+        {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
       </div>
     </div>
   );

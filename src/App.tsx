@@ -344,7 +344,7 @@ export default function App() {
     const a = articleById.get(h.article_id);
     const where: Where = newTab ? "new" : "active";
     if (page && a) return openPage(a.original_url, h.text, a, where);
-    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" }, where);
+    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${t(MATCH_LABEL[h.source])}`, terms: terms(search?.query ?? ""), tone: "hit" }, where);
   }
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. `pane`: not the focused one. */
