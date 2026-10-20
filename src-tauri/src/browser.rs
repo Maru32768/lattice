@@ -4,8 +4,9 @@
 //!
 //! Trust boundary: the pages are remote and untrusted. Their webviews (labels `browser-<tab>`)
 //! get only the capability in `capabilities/browser.json` (overlay_config / overlay_translate /
-//! overlay_snapshot / overlay_history / overlay_key), translate calls are refused unless the user
-//! has switched translation on, and snapshots unless the app asked for one. The background
+//! overlay_snapshot / overlay_history / overlay_key / overlay_vocab), translate calls are refused
+//! unless the user has switched translation on, snapshots unless the app asked for one, and word
+//! captures unless the page is on screen and the last one is a moment ago. The background
 //! renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
 
 use std::collections::HashMap;
@@ -54,6 +55,9 @@ pub struct OverlayLabels {
     translating: String,
     failed: String,
     retry: String,
+    /// 単語を登録 and its confirmation.
+    save_word: String,
+    saved_word: String,
 }
 
 /// The app shortcuts the overlay forwards (`PageKeys` in `src/keys.ts`), passed through to the page.
@@ -85,11 +89,13 @@ struct TabState {
     history: (bool, bool),
     /// Since when the webview has been hidden.
     parked: Option<Instant>,
+    /// The page's last word capture (overlay_vocab).
+    captured: Option<Instant>,
 }
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None }
+        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None }
     }
 }
 
@@ -579,6 +585,30 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
     Ok(())
 }
 
+/// A page can call overlay_vocab on its own, so captures are spaced at least this far apart:
+/// a reader selects and clicks far slower, a script filling the book with junk is held to this.
+const CAPTURE_GAP: Duration = Duration::from_secs(1);
+
+/// Guards overlay_vocab: the caller must be a browser webview on screen, not capturing faster than `CAPTURE_GAP`.
+pub fn ensure_capture_allowed(webview: &Webview, browser: &Browser) -> Result<(), String> {
+    if !is_browser(webview.label()) {
+        return Err("not a browser webview".into());
+    }
+    if !browser.with_tab(webview.label(), |t| take_capture(t, Instant::now())) {
+        return Err("capture refused".into());
+    }
+    Ok(())
+}
+
+/// Whether the tab may capture a word at `now` (on screen, `CAPTURE_GAP` since its last one); if so, records it.
+fn take_capture(t: &mut TabState, now: Instant) -> bool {
+    let ok = t.visibility.wanted && !t.visibility.loading && t.captured.is_none_or(|at| now.duration_since(at) >= CAPTURE_GAP);
+    if ok {
+        t.captured = Some(now);
+    }
+    ok
+}
+
 /// Guards overlay_translate: the caller must be a browser webview with translation on.
 pub fn ensure_translation_allowed(webview: &Webview, browser: &Browser) -> Result<(), String> {
     if !is_browser(webview.label()) {
@@ -638,6 +668,19 @@ mod tests {
         let v = serde_json::to_value(TabEvent { tab: 4, body: Title { title: "t".into() } }).unwrap();
         assert_eq!(v, serde_json::json!({ "tab": 4, "title": "t" }));
         assert_eq!(serde_json::to_value(TabEvent { tab: 4, body: Empty {} }).unwrap(), serde_json::json!({ "tab": 4 }));
+    }
+
+    #[test]
+    fn a_page_captures_words_only_on_screen_and_not_in_bursts() {
+        let now = Instant::now();
+        let mut t = TabState::default();
+        assert!(!take_capture(&mut t, now), "hidden");
+        t.visibility.wanted = true;
+        assert!(take_capture(&mut t, now));
+        assert!(!take_capture(&mut t, now + Duration::from_millis(300)), "too soon");
+        assert!(take_capture(&mut t, now + CAPTURE_GAP));
+        t.visibility.loading = true;
+        assert!(!take_capture(&mut t, now + 3 * CAPTURE_GAP), "loading");
     }
 
     #[test]

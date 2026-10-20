@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-vocab-suspend"
+description = "Enables the vocab_suspend command without any pre-configured scope."
+commands.allow = ["vocab_suspend"]
+
+[[permission]]
+identifier = "deny-vocab-suspend"
+description = "Denies the vocab_suspend command without any pre-configured scope."
+commands.deny = ["vocab_suspend"]
