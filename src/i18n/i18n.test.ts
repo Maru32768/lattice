@@ -20,6 +20,14 @@ test("en has every key of ja, with the same params", () => {
   }
 });
 
+test("en keeps ja's leading and trailing spaces (text placed next to markup; English may add its own)", () => {
+  const off = (Object.keys(ja) as Key[]).filter((k) => {
+    const [j, e] = [ja[k], en[k]];
+    return typeof e === "string" && ((/^\s/.test(j) && !/^\s/.test(e)) || (/\s$/.test(j) && !/\s$/.test(e)));
+  });
+  assert.deepEqual(off, []);
+});
+
 test("English text has no Japanese in it", () => {
   const en_ = translatorFor("en");
   const leaks = (Object.keys(ja) as Key[]).filter((k) => {

@@ -598,3 +598,27 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **キーボード。** `Ctrl+T` 新しいタブ（パレットを開く）、`Ctrl+W` タブを閉じる、`Ctrl+Tab` / `Ctrl+Shift+Tab` タブの切り替え、`Ctrl+\` 右に分割、`Ctrl+-` 下に分割。プレフィックス（Ctrl+B）の後の `"` / `%` が下 / 右に分割、`x` がペインを閉じる、`c` / `n` / `p` がタブの新規 / 次 / 前（tmux）。← → ↑ ↓ / h j k l は、ペインの矩形で方向の隣を探す（上下に分けたペインにも移動できる）。
 - **ドラッグ。** タブはポインタで掴んで同じ列の中でも別のペインの列へも移せる。HTML5 の drag and drop は Tauri の drag-drop handler と競合するので使わず、`elementFromPoint` で落とし先を決める。ペインの区切りは `Splitter` と同じ見た目・操作（ドラッグ、← → / ↑ ↓、Shift で大きく）。
 - **保存。** レイアウトは `localStorage`（`lattice.layout`）に、タブは種類と記事 id / URL と題名だけを保存して起動時に復元する（読めなければ 1 ペイン）。Page タブは見えたときに開き直す。
+
+## 21. 表示言語（G51）
+
+| 対象 | ファイル |
+|---|---|
+| カタログと翻訳関数 | `src/i18n/ja.ts`（キーの元）、`src/i18n/en.ts`、`src/i18n/index.ts`（テスト `src/i18n/*.test.ts`） |
+| 表示言語の設定 | `src/LanguageSettings.tsx`、`src-tauri/src/lib.rs`（`get_ui_language` / `set_ui_language`） |
+| backend のメッセージコード | `crates/lattice-core/src/msg.rs`（`msg!`） |
+| 抽出・書き換えの道具 | `scripts/i18n-extract.mjs` |
+
+- **カタログは平らなキー。** `"<モジュール>.<語>"`（共有は `common.*`、backend のコードは `be.*`）。`ja.ts` は文字列だけで、`{name}` がそのまま引数の型になる（`t("list.count", { shown, total })` の欠け・余りは型エラー）。`en.ts` は `satisfies Messages` で、キーの過不足は型エラー、引数名の一致と英語に日本語が混ざらないこと・前後の空白（マークアップとの境目）はテストで見る。英語の複数形は `(p) => plural(p.n, "article", "articles")` の関数。数値の引数は `Intl.NumberFormat` で整形する。マークアップを含む文は `t.rich(key, { code: <code>…</code> })`。ICU や i18next は入れなかった（2 言語・複数形は英語だけで足りる）。
+- **再描画。** `useT()` は言語ごとに別の関数を返す（`useSyncExternalStore`）。App が購読するので切り替えで木全体が描き直され、`t` を使う memo は exhaustive-deps の lint が依存に `t` を要求するので古いラベルが残らない。描画中に呼ぶ helper（`relTime`・`scopeLabel`・`groupArticles` など）は `t` を引数に取る。表のラベル（並び順・ジョブの種類・ショートカット名など）はキー（`PlainKey`）を持ち、描画時に訳す。ショートカット名は `keys.<id>` から引くので `keys.ts` に文言はない。
+- **既定と保存。** 初回描画は localStorage のキャッシュ、なければ `navigator.language`（`ja` で始まれば日本語、それ以外は英語）。起動後に DB の `ui_language` を読み、あればそれに合わせ、なければ検出した言語を書く。backend はネイティブのファイルダイアログの題名にだけ使う。記事の翻訳方向（日本語の記事は英語へ、それ以外は日本語へ）と LLM の prompt は表示言語に関係しない。Reader の 原文/混在/訳文 は英語では "Language shown" とし、表示言語の設定と紛れないようにした。
+- **backend の文言はコード。** `msg!("backup.keepRange", max = MAX_KEEP)` は `{"code":"backup.keepRange","params":{"max":1000}}` という JSON 文字列で、`Result<_, String>` のエラーにも `last_error` 列にもそのまま入る（ログにはコードが出る）。UI は `t.msg(x)` で `be.<code>` を訳し、文字列の引数がコードならそれも訳す（「{field}は {max} 文字まで」の field など）。コードでない文字列（HTTP status、provider のエラー、G51 以前に保存した日本語の `last_error`）はそのまま出す。エラーは受け取ったまま state に置き、表示するときに訳すので、言語を切り替えると表示中のエラーも変わる。`backend.test.ts` が Rust の `msg!` 呼び出しをすべて読み、カタログにないコード・引数名の違い・使われていない `be.*` で落ちる。対象外のソースなし対話の回答も `chat.noSources` のコードで保存し、mode が none の回答だけ `t.msg` を通す。
+- **overlay。** tooltip の文言（原文・訳文・クリックで反転など）は `browser_set_translation` の設定に `labels` として渡し、表示言語やページの言語設定が変わるたびに App が送り直す。overlay 側に文言は持たない。
+- **抽出の道具。** `scripts/i18n-extract.mjs scan` が TypeScript の AST から日本語の文字列・テンプレート・JSX テキスト（要素をまたがない連続した部分を 1 文として、式は `{name}` の引数に）を拾い、英文とキーを埋めた map を `apply` すると呼び出しを `t(…)` に書き換え、コンポーネントに `const t = useT()` を入れ、カタログに追記する。モジュール直下の定数・比較に使う文字列・入れ子のテンプレート・マークアップをまたぐ文は書き換えずに報告し、手で仕上げた（キーを持つ表、`t.rich`）。`src/i18n/literals.test.ts` が同じ scan で、カタログ以外の UI コード（`src/**/*.ts(x)`）に日本語の文字列が残ると落ちる（データとしての日本語は allowlist に足す。今は空）。
+- **パレットの検索語。** コマンドの検索語は英語の語（全言語で効く）と訳したラベル。ラベルに含まれない日本語の別名（「割合」「クイズ」「質問」「インポート」）は `palette.alias*` として日本語カタログに置いた。
+- **e2e。** 既定のプロジェクトは `locale: ja-JP` で従来の spec を日本語のまま回し、`i18n.spec.ts` が設定で英語に切り替えて設定・ライブラリが変わることとエラーの英訳を見る。`english` プロジェクト（`locale: en-US`）が `english.spec.ts` で、英語の WebView なら英語で起動して保存すること、ライブラリ・Reader・処理状況・フィード・復習・全設定項目・パレット・backend のエラーが英語で出ることを確かめる。mock も backend と同じくコードで reject する。
+
+### 未実装（意図的）
+
+- 日本語・英語以外の言語。カタログの型と `Lang` を足せば増やせる。
+- G51 以前に DB に保存された日本語のエラー（`last_error`）や対話の回答は、再試行などで書き直されるまで日本語のまま出る。
+- LLM の prompt と、要約の箇条書きの記号（・）は記事の言語側のもので、表示言語に従わない。

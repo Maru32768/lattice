@@ -54,9 +54,13 @@ The installer is in `target/release/bundle/nsis/` and the executable is `target/
 
 Most settings are in the app (gear icon at the bottom left of the sidebar).
 
+### Display language
+
+The UI is in Japanese or English. Lattice starts in the language of the system (Japanese if it is Japanese, English otherwise); Settings › Display language switches it at once, without a restart. It does not change how articles are translated: Japanese articles are translated into English and others into Japanese either way.
+
 ### AI providers
 
-Settings › AI プロバイダ holds a fallback chain of up to three providers. Lattice uses the first one and moves to the next when a call fails (for example, on a usage limit). A provider that failed is skipped for 5 minutes.
+Settings › AI providers holds a fallback chain of up to three providers. Lattice uses the first one and moves to the next when a call fails (for example, on a usage limit). A provider that failed is skipped for 5 minutes.
 
 | Provider | What it needs |
 |---|---|
@@ -66,7 +70,7 @@ Settings › AI プロバイダ holds a fallback chain of up to three providers.
 | Gemini API | `GEMINI_API_KEY` |
 | Anthropic API | `ANTHROPIC_API_KEY` |
 
-You can save API keys in the app (Settings › AI プロバイダ). Keys saved there are stored in the local database and are never included in backups or exports. If no key is saved, Lattice reads the environment variable.
+You can save API keys in the app (Settings › AI providers). Keys saved there are stored in the local database and are never included in backups or exports. If no key is saved, Lattice reads the environment variable.
 
 To keep keys in environment variables, put them in `mise.local.toml` at the repository root. mise loads it automatically, and git ignores it. Start from the example:
 
@@ -84,21 +88,21 @@ Semantic search uses the multilingual-e5-small model (about 470 MB). It runs loc
 
 ### Backups
 
-- **Local.** Settings › バックアップ writes a copy of the database and keeps the number of generations you set.
-- **Export.** Settings › エクスポート writes articles, translations, summaries, tags, feeds and chats as gzipped JSON lines.
-- **Cloudflare R2.** Settings › クラウドバックアップ uploads compressed backups on a schedule. [`infra/r2`](infra/r2/README.md) has Terraform that creates the bucket and an API token.
+- **Local.** Settings › Backup writes a copy of the database and keeps the number of generations you set.
+- **Export.** Settings › Export writes articles, translations, summaries, tags, feeds and chats as gzipped JSON lines.
+- **Cloudflare R2.** Settings › Cloud backup (R2) uploads compressed backups on a schedule. [`infra/r2`](infra/r2/README.md) has Terraform that creates the bucket and an API token.
 
 ### Where data is stored
 
-All data is in one SQLite file, `%APPDATA%\dev.lattice.app\lattice.db`. The same folder holds `backups\`, `exports\` and the semantic search model (`models\`). Logs are in `%LOCALAPPDATA%\dev.lattice.app\logs\`. Settings › ログ・保存場所 shows the exact paths.
+All data is in one SQLite file, `%APPDATA%\dev.lattice.app\lattice.db`. The same folder holds `backups\`, `exports\` and the semantic search model (`models\`). Logs are in `%LOCALAPPDATA%\dev.lattice.app\logs\`. Settings › Logs & storage shows the exact paths.
 
-To keep the data somewhere else, press 変更… in Settings › ログ・保存場所 and pick a folder. Lattice copies the database, backups, exports and model there, uses the new folder after a restart, and leaves the old copy in place for you to delete. Picking a folder that already holds Lattice data switches to that data without copying; picking the default folder goes back to it. The choice is stored in `%APPDATA%\dev.lattice.app\data-location.json`.
+To keep the data somewhere else, press Change… in Settings › Logs & storage and pick a folder. Lattice copies the database, backups, exports and model there, uses the new folder after a restart, and leaves the old copy in place for you to delete. Picking a folder that already holds Lattice data switches to that data without copying; picking the default folder goes back to it. The choice is stored in `%APPDATA%\dev.lattice.app\data-location.json`.
 
 Portable mode: when a file named `portable` (or `lattice.portable`) sits next to `Lattice.exe`, everything goes to a `data` folder beside the exe, including logs and the in-app browser's cookies and cache. The portable zip on the Releases page ships with that file. A portable copy is updated by replacing `Lattice.exe` with the one from a newer zip.
 
 ## Keyboard
 
-Press `Ctrl+K` for the command palette. It opens articles, tags, sources and genres, runs commands, searches, and opens or saves a pasted URL. Settings › ショートカット lists every shortcut and lets you change them.
+Press `Ctrl+K` for the command palette. It opens articles, tags, sources and genres, runs commands, searches, and opens or saves a pasted URL. Settings › Shortcuts lists every shortcut and lets you change them.
 
 ## Development
 
