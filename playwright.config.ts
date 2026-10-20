@@ -11,6 +11,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure", ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
-  projects: [{ name: "chromium" }],
+  // The specs read the Japanese UI; the default language follows the WebView's (navigator.language).
+  projects: [{ name: "chromium", use: { locale: "ja-JP" } }],
   webServer: { command: "npx vite -c e2e/vite.config.ts", url: `http://localhost:${port}`, reuseExistingServer: !process.env.CI },
 });

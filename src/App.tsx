@@ -36,6 +36,7 @@ import {
   tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
+import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import "./App.css";
 
 /** Where a document opens: the focused pane's active tab, or a new tab (Ctrl / middle click, Ctrl+T). */
@@ -92,6 +93,12 @@ function PrefixHint({ prefix }: { prefix: string }) {
 }
 
 export default function App() {
+  // Subscribes the whole tree to the display language: a switch re-renders everything below.
+  useT();
+  useEffect(() => {
+    // The backend's choice wins over the cached one; the first start stores the detected language.
+    api.uiLanguage().then((l) => (isLang(l) ? setDisplayLang(l) : api.setUiLanguage(displayLang()))).catch(() => {});
+  }, []);
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);

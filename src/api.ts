@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PageKeys } from "./keys";
+import type { Lang } from "./i18n";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
 export type Inline =
@@ -384,6 +385,9 @@ export const api = {
   setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
   taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),
   setTaskbarBadge: (on: boolean) => invoke<void>("set_taskbar_badge", { on }),
+  /** The display language; null until the UI first stores the one it detected. */
+  uiLanguage: () => invoke<Lang | null>("get_ui_language"),
+  setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),

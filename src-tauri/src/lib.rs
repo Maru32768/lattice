@@ -87,6 +87,28 @@ fn set_auto_render(app: State<'_, App>, on: bool) -> Result<(), String> {
     render::set_auto(&app.store, on)
 }
 
+/// The display language (G51), chosen in the UI; the backend reads it for native dialog titles.
+const UI_LANGUAGE: &str = "ui_language";
+
+/// `None` until the UI first stores the language it detected.
+#[tauri::command(async)]
+fn get_ui_language(app: State<'_, App>) -> Result<Option<String>, String> {
+    app.store.setting(UI_LANGUAGE).map_err(err)
+}
+
+#[tauri::command(async)]
+fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
+    if !matches!(lang.as_str(), "ja" | "en") {
+        return Err(format!("unknown language {lang:?}"));
+    }
+    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)
+}
+
+/// A native dialog's title in the display language.
+fn ui_text(app: &App, ja: &'static str, en: &'static str) -> &'static str {
+    if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") { en } else { ja }
+}
+
 /// Index every saved article; it is local and free, unlike translation.
 fn indexed(app: &App, id: i64) -> Result<i64, String> {
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
@@ -142,7 +164,7 @@ fn import_markdown(app: State<'_, App>, text: String) -> Result<i64, String> {
 async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("Markdown を取り込む").add_filter("Markdown", &["md", "markdown"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "Markdown を取り込む", "Import Markdown")).add_filter("Markdown", &["md", "markdown"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -165,7 +187,7 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
 async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("PDF を取り込む").add_filter("PDF", &["pdf"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDF を取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -626,7 +648,7 @@ async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: ta
         return Err("ポータブル版はデータを exe の隣の data フォルダに保存します".into());
     }
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("データの保存場所を選ぶ").set_directory(&app.data_dir);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "データの保存場所を選ぶ", "Choose where to keep the data")).set_directory(&app.data_dir);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -898,6 +920,8 @@ pub fn run() {
             reextract_article,
             render_article,
             get_auto_render,
+            get_ui_language,
+            set_ui_language,
             set_auto_render,
             import_urls,
             import_markdown,

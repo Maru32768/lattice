@@ -18,6 +18,7 @@ const store = {
   autoRender: true,
   autoClassify: true,
   taskbarBadge: true,
+  uiLanguage: null as string | null,
   keepTerms: true,
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
@@ -248,6 +249,8 @@ export const handlers = {
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),
+  get_ui_language: (): string | null => store.uiLanguage,
+  set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
   article_for_url: ({ url }: { url: string }): ArticleRow | null => articles.find((a) => a.original_url === url) ?? null,
   list_genres: (): TagCount[] => counts(articles.map((a) => a.genre)),
   set_genre: ({ id, name }: { id: number; name: string }) => {
