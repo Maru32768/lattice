@@ -116,6 +116,55 @@ export interface FeedRow {
   last_fetched_at: string | null;
   last_error: string | null;
   article_count: number;
+  /** Entries the import filters kept out (`api.feedRejected`). */
+  rejected: number;
+  /** The feed has import filters of its own. */
+  filtered: boolean;
+  /** Why the LLM filter last let entries through unjudged (a coded message). */
+  filter_note: string | null;
+}
+
+/** Mirrors feed_filter.rs. */
+export type FilterField = "title" | "url" | "author" | "category" | "domain" | "language";
+export interface FilterRule {
+  field: FilterField;
+  action: "include" | "exclude";
+  pattern: string;
+  regex: boolean;
+}
+
+/** One import filter: the global defaults (feedId null) or a feed's own. */
+export interface FeedFilter {
+  rules: FilterRule[];
+  /** Entries whose feed carries their full text need at least this many characters of it. */
+  min_chars: number | null;
+  llm: boolean;
+  instruction: string;
+  /** Import only entries the LLM rates at least this relevant to 「自分について」 (1-5). */
+  min_relevance: number | null;
+}
+
+export type FilterScope = "global" | "feed";
+export type FilterReason =
+  | { kind: "excluded"; scope: FilterScope; rule: FilterRule }
+  | { kind: "not_included"; scope: FilterScope }
+  | { kind: "too_short"; scope: FilterScope; min: number; chars: number }
+  | { kind: "llm"; reason: string; score: number | null };
+
+export interface RejectedEntry {
+  /** Normalized; the key for `api.importRejected`. */
+  url: string;
+  title: string | null;
+  published_at: string | null;
+  excerpt: string;
+  reason: FilterReason | null;
+}
+
+export interface Reevaluated {
+  imported: number;
+  /** Passed the rules and wait for the LLM. */
+  asked: number;
+  rejected: number;
 }
 
 export interface FeedCandidate {
@@ -449,6 +498,14 @@ export const api = {
   setFeedIcon: (id: number, bytes: number[] | null) => invoke<void>("set_feed_icon", { id, bytes }),
   /** The user's icon for a feed as a data: URL; null when it has none. */
   feedIcon: (id: number) => invoke<string | null>("feed_icon", { id }),
+  /** feedId null: the global defaults. */
+  feedFilter: (feedId: number | null) => invoke<FeedFilter>("get_feed_filter", { feedId }),
+  setFeedFilter: (feedId: number | null, filter: FeedFilter) => invoke<void>("set_feed_filter", { feedId, filter }),
+  feedRejected: (feedId: number) => invoke<RejectedEntry[]>("feed_rejected", { feedId }),
+  /** Returns how many articles were queued (0 when it was saved already). */
+  importRejected: (feedId: number, url: string) => invoke<number>("import_rejected", { feedId, url }),
+  /** One feed's rejected entries, or (null) every feed's, through the current filters. */
+  reevaluateRejected: (feedId: number | null) => invoke<Reevaluated>("reevaluate_rejected", { feedId }),
   jobOverview: () => invoke<JobOverview>("job_overview"),
   retryJob: (id: number) => invoke<boolean>("retry_job", { id }),
   retryFailedJobs: (jobType: string | null) => invoke<number>("retry_failed_jobs", { jobType }),

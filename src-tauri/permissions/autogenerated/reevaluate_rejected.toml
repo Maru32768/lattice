@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reevaluate-rejected"
+description = "Enables the reevaluate_rejected command without any pre-configured scope."
+commands.allow = ["reevaluate_rejected"]
+
+[[permission]]
+identifier = "deny-reevaluate-rejected"
+description = "Denies the reevaluate_rejected command without any pre-configured scope."
+commands.deny = ["reevaluate_rejected"]

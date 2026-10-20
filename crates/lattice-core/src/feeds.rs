@@ -8,10 +8,10 @@ use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
 use crate::fetch::HttpClient;
-use crate::ingest;
 use crate::msg;
 use crate::store::{Store, deflate};
 use crate::url_norm::normalize;
+use crate::{feed_filter, ingest};
 
 pub const POLL_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// Entries imported on the first fetch of a feed; older ones are only marked seen,
@@ -38,6 +38,12 @@ pub struct FeedRow {
     pub last_fetched_at: Option<String>,
     pub last_error: Option<String>,
     pub article_count: i64,
+    /// Entries the import filters kept out (feed_filter.rs).
+    pub rejected: i64,
+    /// The feed has filters of its own.
+    pub filtered: bool,
+    /// Why the LLM filter last let entries through unjudged (it fails open).
+    pub filter_note: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -57,6 +63,14 @@ pub struct Entry {
     /// The entry's full HTML (RSS `content:encoded` or a long `description`, Atom `content` or a
     /// long `summary`); `None` when the feed only carries an excerpt.
     pub content: Option<String>,
+    pub author: Option<String>,
+    pub categories: Vec<String>,
+    /// The entry's declared language, else the feed's.
+    pub language: Option<String>,
+    /// Characters of the entry's content element (RSS `content:encoded`, Atom `content`), when it has one.
+    pub body_chars: Option<usize>,
+    /// Plain text of the summary or content, at most `feed_filter::EXCERPT_CHARS` characters.
+    pub excerpt: String,
 }
 
 /// A feed found on a page (autodiscovery), or the URL itself when it is one.
@@ -69,6 +83,7 @@ pub struct Candidate {
 pub fn parse(body: &[u8], feed_url: &str) -> Result<Parsed, String> {
     let feed = feed_rs::parser::Builder::new().base_uri(Some(feed_url)).build().parse(body).map_err(|e| format!("not an RSS/Atom feed: {e}"))?;
     let alternate = |links: &[feed_rs::model::Link]| links.iter().find(|l| l.rel.as_deref().is_none_or(|r| r == "alternate")).map(|l| l.href.clone());
+    let feed_language = feed.language.clone();
     let mut entries = feed.entries;
     entries.sort_by_key(|e| std::cmp::Reverse(e.published.or(e.updated))); // stable: undated keep feed order
     Ok(Parsed {
@@ -91,7 +106,19 @@ pub fn parse(body: &[u8], feed_url: &str) -> Result<Parsed, String> {
                     .max_by_key(|(n, _)| *n)
                     .filter(|(n, _)| *n >= FULL_CONTENT_CHARS)
                     .map(|(_, html)| html);
-                Some(Entry { url, published, title, content })
+                let body = e.content.as_ref().and_then(|c| c.body.as_deref());
+                let excerpt = e.summary.as_ref().map(|t| t.content.as_str()).or(body).map(plain_text).unwrap_or_default();
+                Some(Entry {
+                    url,
+                    published,
+                    title,
+                    content,
+                    author: e.authors.iter().find_map(|p| p.name.clone()).map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+                    categories: e.categories.iter().flat_map(|c| [Some(c.term.clone()), c.label.clone()]).flatten().filter(|c| !c.trim().is_empty()).collect(),
+                    language: e.language.clone().or_else(|| feed_language.clone()),
+                    body_chars: body.map(text_chars),
+                    excerpt: excerpt.chars().take(crate::feed_filter::EXCERPT_CHARS).collect(),
+                })
             })
             .filter(|e| e.url.starts_with("https://") || e.url.starts_with("http://"))
             .collect(),
@@ -100,6 +127,10 @@ pub fn parse(body: &[u8], feed_url: &str) -> Result<Parsed, String> {
 
 fn text_chars(html: &str) -> usize {
     dom_query::Document::from(html).root().text().split_whitespace().map(|w| w.chars().count()).sum()
+}
+
+fn plain_text(html: &str) -> String {
+    dom_query::Document::from(html).root().text().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 const FEED_TYPES: [&str; 3] = ["application/rss+xml", "application/atom+xml", "application/feed+json"];
@@ -171,7 +202,8 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
     let mut st = c
         .prepare(
             "SELECT id, url, title, site_url, last_fetched_at, last_error, (SELECT count(*) FROM articles WHERE feed_id = feeds.id),
-                    custom_title, icon IS NOT NULL
+                    custom_title, icon IS NOT NULL,
+                    (SELECT count(*) FROM feed_items WHERE feed_id = feeds.id AND filter_status = 'rejected'), filter IS NOT NULL, filter_note
              FROM feeds ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE",
         )
         .map_err(err)?;
@@ -186,6 +218,9 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
             article_count: r.get(6)?,
             custom_title: r.get(7)?,
             has_icon: r.get(8)?,
+            rejected: r.get(9)?,
+            filtered: r.get(10)?,
+            filter_note: r.get(11)?,
         })
     })
     .map_err(err)?
@@ -287,9 +322,10 @@ pub async fn poll_forever(store: std::sync::Arc<Store>, client: HttpClient, on_p
     }
 }
 
-/// Network-free half of a refresh: queues entries this feed has not listed before, and stores
-/// every entry's title and text. Articles that failed before their entry's text was known are
-/// fetched again, so they fall back to it (once: only when the text first appears).
+/// Network-free half of a refresh: queues entries this feed has not listed before and the
+/// import filters let through (`feed_filter`), and stores every entry's title and text.
+/// Articles that failed before their entry's text was known are fetched again, so they fall
+/// back to it (once: only when the text first appears).
 pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, String> {
     let first: bool = !store.conn().query_row("SELECT EXISTS (SELECT 1 FROM feed_items WHERE feed_id = ?1)", [feed_id], |r| r.get(0)).map_err(err)?;
     let mut unseen: Vec<(&Entry, String)> = Vec::new();
@@ -305,7 +341,22 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
         }
     }
     let take = if first { FIRST_IMPORT } else { unseen.len() };
-    let urls: Vec<String> = unseen.iter().take(take).map(|(e, _)| e.url.clone()).collect();
+    let rules = feed_filter::Rules::load(store, feed_id)?;
+    // (status, reason, input) per judged entry; entries past the first-fetch cap are only seen.
+    let mut judged: std::collections::HashMap<&str, (&str, Option<String>, String)> = std::collections::HashMap::new();
+    let mut urls: Vec<String> = Vec::new();
+    for (e, norm) in unseen.iter().take(take) {
+        let input = feed_filter::Input::from_entry(e);
+        let (status, reason) = match rules.verdict(&input) {
+            feed_filter::Verdict::Import => {
+                urls.push(e.url.clone());
+                ("passed", None)
+            }
+            feed_filter::Verdict::AskLlm => ("pending", None),
+            feed_filter::Verdict::Reject(r) => ("rejected", Some(serde_json::to_string(&r).expect("reasons serialize"))),
+        };
+        judged.insert(norm, (status, reason, serde_json::to_string(&input).expect("inputs serialize")));
+    }
     let summary = ingest::enqueue_urls(store, &urls)?;
     let items: Vec<serde_json::Value> = unseen.iter().map(|(e, n)| serde_json::json!({"u": n, "p": e.published})).collect();
     let items = serde_json::to_string(&items).expect("json serializes");
@@ -320,7 +371,8 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
     {
         let mut put = c
             .prepare(
-                "INSERT INTO feed_items (feed_id, normalized_url, published_at, title, content) VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO feed_items (feed_id, normalized_url, published_at, title, content, filter_status, filter_reason, filter_input)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT DO UPDATE SET title = coalesce(excluded.title, title), content = coalesce(excluded.content, content)",
             )
             .map_err(err)?;
@@ -339,7 +391,9 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
             if !done.insert(norm.clone()) {
                 continue;
             }
-            put.execute(params![feed_id, norm, e.published, e.title, e.content.as_deref().map(|c| deflate(c.as_bytes()))]).map_err(err)?;
+            let (status, reason, input) = judged.get(norm.as_str()).map(|(s, r, i)| (Some(*s), r.as_deref(), Some(i.as_str()))).unwrap_or_default();
+            put.execute(params![feed_id, norm, e.published, e.title, e.content.as_deref().map(|c| deflate(c.as_bytes())), status, reason, input])
+                .map_err(err)?;
             if e.content.is_some() {
                 retry.extend(failed.query_row(params![feed_id, norm, ingest::FEED_CONTENT_TYPE], |r| r.get::<_, i64>(0)).optional().map_err(err)?);
             }
@@ -356,6 +410,14 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
     drop(c);
     for id in &retry {
         store.enqueue_job(ingest::JOB_TYPE, *id, "{}", &format!("{}:{id}", ingest::JOB_TYPE)).map_err(err)?;
+    }
+    // Also entries a finishing LLM run missed: they converge on the next poll.
+    if store
+        .conn()
+        .query_row("SELECT EXISTS (SELECT 1 FROM feed_items WHERE feed_id = ?1 AND filter_status = 'pending')", [feed_id], |r| r.get(0))
+        .map_err(err)?
+    {
+        feed_filter::enqueue(store, feed_id)?;
     }
     Ok(summary.queued + retry.len())
 }

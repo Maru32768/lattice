@@ -22,7 +22,7 @@ use lattice_core::srs::Grade;
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
-use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, quiz, r2, relevance, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, feed_filter, images, instructions, markdown, pdf, quiz, r2, relevance, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -414,6 +414,39 @@ async fn refresh_feeds(app: State<'_, App>) -> Result<usize, String> {
     let n = feeds::refresh_all(&app.store, &app.providers.http).await;
     app.wake_net.iter().for_each(|w| w.notify_one());
     Ok(n)
+}
+
+/// `feed_id` `None`: the global defaults (Settings › 取り込みフィルタ).
+#[tauri::command(async)]
+fn get_feed_filter(app: State<'_, App>, feed_id: Option<i64>) -> Result<feed_filter::Filter, String> {
+    feed_filter::load(&app.store, feed_id)
+}
+
+#[tauri::command(async)]
+fn set_feed_filter(app: State<'_, App>, feed_id: Option<i64>, filter: feed_filter::Filter) -> Result<(), String> {
+    feed_filter::save(&app.store, feed_id, filter)
+}
+
+#[tauri::command(async)]
+fn feed_rejected(app: State<'_, App>, feed_id: i64) -> Result<Vec<feed_filter::Rejected>, String> {
+    feed_filter::rejected(&app.store, feed_id)
+}
+
+/// 「取り込む」 on an entry the filters rejected; `url` is the entry's normalized URL.
+#[tauri::command(async)]
+fn import_rejected(app: State<'_, App>, feed_id: i64, url: String) -> Result<usize, String> {
+    let n = feed_filter::import_rejected(&app.store, feed_id, &url)?;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    Ok(n)
+}
+
+/// 「除外分を再評価」 for one feed, or every feed (`None`).
+#[tauri::command(async)]
+fn reevaluate_rejected(app: State<'_, App>, feed_id: Option<i64>) -> Result<feed_filter::Reevaluated, String> {
+    let r = feed_filter::reevaluate(&app.store, feed_id)?;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    app.wake_llm.notify_one();
+    Ok(r)
 }
 
 #[tauri::command(async)]
@@ -880,6 +913,7 @@ pub fn run() {
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
             classify::enqueue_missing(&store)?;
+            feed_filter::enqueue_pending(&store)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
@@ -887,12 +921,18 @@ pub fn run() {
             let runners = [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
                 let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
+                let fetchers = wake_net.clone();
                 let on_change = move |job: &JobRow| {
                     let _ = match job.article_id {
                         Some(id) => handle.emit("article-changed", id),
                         // Favicon jobs are per domain, not per article.
                         None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
                             Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
+                            // The LLM filter has queued the entries it let through.
+                            Some(_) if job.job_type == feed_filter::JOB_TYPE => {
+                                fetchers.iter().for_each(|w| w.notify_one());
+                                handle.emit("feeds-changed", 0)
+                            }
                             _ => Ok(()),
                         },
                     };
@@ -987,6 +1027,11 @@ pub fn run() {
             rename_feed,
             set_feed_icon,
             feed_icon,
+            get_feed_filter,
+            set_feed_filter,
+            feed_rejected,
+            import_rejected,
+            reevaluate_rejected,
             set_favorite,
             add_tag,
             remove_tag,

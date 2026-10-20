@@ -14,9 +14,9 @@ use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::segments::Target;
 use crate::store::{JobRow, Store};
-use crate::{classify, favicons, images, quiz, relevance, render, summarize, translate};
+use crate::{classify, favicons, feed_filter, images, quiz, relevance, render, summarize, translate};
 
-pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, relevance::JOB_TYPE];
+pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, relevance::JOB_TYPE, feed_filter::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
@@ -80,6 +80,9 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     let params: serde_json::Value = job.params.as_deref().map(serde_json::from_str).transpose().map_err(|e| e.to_string())?.unwrap_or_default();
     if job.job_type == favicons::JOB_TYPE {
         return favicons::run(store, &p.http, params["domain"].as_str().ok_or("job has no domain")?).await;
+    }
+    if job.job_type == feed_filter::JOB_TYPE {
+        return feed_filter::run(store, &p.llm, params["feed_id"].as_i64().ok_or("job has no feed")?).await;
     }
     let article_id = job.article_id.ok_or("job has no article")?;
     match job.job_type.as_str() {

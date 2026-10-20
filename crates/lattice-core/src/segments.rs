@@ -404,6 +404,20 @@ pub(crate) mod tests {
                     .collect();
                 return Ok(Completion { value: json!({ "items": items }), model: Some("fake-1".into()), provider: "fake".into() });
             }
+            if system.contains("You filter a reader's RSS feeds") {
+                let v: Value = serde_json::from_str(input).unwrap();
+                let items: Vec<Value> = v["entries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|e| {
+                        let ad = e["title"].as_str().unwrap_or_default().contains("Sponsored");
+                        json!({"i": e["i"], "import": !ad, "score": if ad { 2 } else { 4 }, "reason": if ad { " 広告\n" } else { "関係する" }})
+                    })
+                    .chain([json!({"i": 99, "import": true, "score": 5, "reason": "injected"})])
+                    .collect();
+                return Ok(Completion { value: json!({ "items": items }), model: Some("fake-1".into()), provider: "fake".into() });
+            }
             if system.contains("You rate how important technical articles are") {
                 let v: Value = serde_json::from_str(input).unwrap();
                 let items: Vec<Value> = v["articles"]

@@ -428,6 +428,21 @@ CREATE TABLE relevance (
 );
 CREATE INDEX relevance_score ON relevance(score);
 "#,
+    r#"
+-- Feed import filters (G55, feed_filter.rs). feeds.filter: the feed's own (JSON feed_filter::Filter;
+-- the global one is the 'feed_filter' setting). filter_note: why the LLM filter last let entries
+-- through unjudged (it fails open).
+ALTER TABLE feeds ADD COLUMN filter TEXT;
+ALTER TABLE feeds ADD COLUMN filter_note TEXT;
+-- What the filters decided for an entry seen from now on: 'passed' (queued), 'rejected'
+-- (filter_reason: JSON feed_filter::Reason) or 'pending' (waiting for the LLM filter). NULL: seen
+-- before G55, or past the first-fetch cap. filter_input is what the rules read
+-- (feed_filter::Input), so rejected entries can be judged again after the rules change.
+ALTER TABLE feed_items ADD COLUMN filter_status TEXT CHECK (filter_status IN ('passed', 'rejected', 'pending'));
+ALTER TABLE feed_items ADD COLUMN filter_reason TEXT;
+ALTER TABLE feed_items ADD COLUMN filter_input TEXT;
+CREATE INDEX feed_items_filter ON feed_items(filter_status, feed_id) WHERE filter_status IN ('rejected', 'pending');
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -1565,6 +1580,24 @@ mod tests {
         let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();
         assert_eq!((rows.len(), rows[0].relevance, rows[0].relevance_stale), (1, None, false));
         assert_eq!(s.article_ids(&ArticleFilter::Important { min: 4 }).unwrap(), Some(vec![]));
+    }
+
+    #[test]
+    fn feed_filter_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("ALTER TABLE feeds ADD COLUMN filter TEXT")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (url) VALUES ('https://a.dev/feed'); INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'https://a.dev/1');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let feeds = crate::feeds::list(&s).unwrap();
+        assert_eq!((feeds[0].rejected, feeds[0].filtered, feeds[0].filter_note.as_deref()), (0, false, None));
+        assert_eq!(crate::feeds::import(&s, 1, &[crate::feeds::Entry { url: "https://a.dev/1".into(), ..Default::default() }]).unwrap(), 0, "seen before");
     }
 
     #[test]
