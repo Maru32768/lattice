@@ -76,6 +76,8 @@ const COMMANDS: &[&str] = &[
     "overlay_translate",
     "overlay_snapshot",
     "overlay_history",
+    "browser_set_keys",
+    "overlay_key",
 ];
 
 fn main() {

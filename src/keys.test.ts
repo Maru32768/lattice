@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_BINDINGS, actionFor, conflicts, keyLabel, keyOf, merge } from "./keys.ts";
+import { DEFAULT_BINDINGS, actionFor, conflicts, keyLabel, merge, pageKeys } from "./keys.ts";
+import { keyOf } from "./keyname.ts";
 
 const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) =>
   ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
@@ -37,4 +38,15 @@ test("conflicts: a key bound to two actions, first in registry order wins", () =
   const b = merge({ favorite: ["S", "J"] });
   assert.deepEqual([...conflicts(b)], [["J", ["next", "favorite"]]]);
   assert.equal(actionFor(b, "J")?.id, "next");
+});
+
+test("pageKeys: Ctrl keys of in-field actions go from page fields too; named keys stay the page's", () => {
+  const k = pageKeys(DEFAULT_BINDINGS);
+  assert.deepEqual(k.inFields, ["Ctrl+K", "Ctrl+B"]);
+  assert.deepEqual(k.outside, ["/", "J", "K", "S", "M", "F", "V", "[", "]"]);
+  assert.deepEqual(k.prefix, ["Ctrl+B"]);
+  const custom = pageKeys(merge({ palette: ["P"], favorite: ["Ctrl+S"], next: ["Shift+J", "Space"] }));
+  assert.ok(custom.outside.includes("P") && !custom.inFields.includes("P"), "a plain key never from a field");
+  assert.ok(custom.outside.includes("Ctrl+S"), "an action that skips the app's fields skips the page's");
+  assert.ok(custom.outside.includes("Shift+J") && !custom.outside.includes("Space"));
 });

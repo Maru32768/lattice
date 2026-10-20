@@ -11,7 +11,9 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
-import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
+import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
+import type { PageKeys } from "../keys.ts";
+import { keyOf } from "../keyname.ts";
 
 interface Unit {
   source: string;
@@ -29,7 +31,7 @@ type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 declare global {
   interface Window {
-    __lattice?: { configure(c: Partial<Config>): void; scrollToText(text: string): boolean; snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void> };
+    __lattice?: { configure(c: Partial<Config>): void; setKeys(k: PageKeys | null): void; scrollToText(text: string): boolean; snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void> };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
 }
@@ -349,6 +351,40 @@ function reportHistory() {
   invoke("overlay_history", { canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }).catch(() => {});
 }
 
+// ---- app shortcuts ----------------------------------------------------------------------------
+// The page's webview has keyboard focus, so the app's shortcuts are picked up here and forwarded.
+
+let keys: PageKeys | null = null;
+/** Until when the key after the pane prefix (Ctrl+B) goes to the app. */
+let prefixUntil = 0;
+
+function setKeys(k: PageKeys | null) {
+  keys = k;
+}
+
+const inField = (t: EventTarget | undefined) =>
+  t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select"));
+
+function forward(key: string, armed: boolean) {
+  prefixUntil = !armed && keys?.prefix.includes(key) ? Date.now() + keys.prefixMs : 0;
+  invoke("overlay_key", { key }).catch(() => {});
+}
+
+function onKey(e: KeyboardEvent) {
+  if (!keys || e.isComposing) return;
+  const key = keyOf(e);
+  const armed = Date.now() < prefixUntil;
+  // composedPath: the field itself, not its shadow host.
+  const route = routeKey(keys, key, inField(e.composedPath()[0]), armed);
+  if (route === "take") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    forward(key!, armed);
+  } else if (route === "unlessHandled") {
+    setTimeout(() => e.defaultPrevented || forward(key!, armed));
+  }
+}
+
 function configure(c: Partial<Config>) {
   const was = state.config;
   state.config = { ...was, ...c };
@@ -384,10 +420,16 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
 }
 
 if (window.top === window && !window.__lattice) {
-  window.__lattice = { configure, scrollToText, snapshot };
+  window.__lattice = { configure, setKeys, scrollToText, snapshot };
+  // Capture on window: ahead of the page's own handlers.
+  window.addEventListener("keydown", onKey, true);
   const boot = () =>
     invoke("overlay_config")
-      .then((c) => configure(c as Config))
+      .then((c) => {
+        const { keys: k, ...config } = c as Config & { keys: PageKeys | null };
+        setKeys(k);
+        configure(config);
+      })
       .catch(() => {});
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
   else boot();

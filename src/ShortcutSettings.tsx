@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ACTIONS, conflicts, isCustom, keyLabel, keyOf, resetKeys, setKeys, useBindings, type ActionId } from "./keys";
+import { ACTIONS, conflicts, isCustom, keyLabel, resetKeys, setKeys, useBindings, type ActionId } from "./keys";
+import { keyOf } from "./keyname";
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
 export function ShortcutSettings() {

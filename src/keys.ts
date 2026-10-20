@@ -1,6 +1,7 @@
 // Keyboard shortcuts: one registry of shell actions with their default keys. The user's
 // changes (Settings › ショートカット) persist as overrides; the shell reads the merged bindings.
 import { useSyncExternalStore } from "react";
+import { keyOf } from "./keyname.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
@@ -34,17 +35,6 @@ export const ACTIONS: ActionDef[] = [
 export type Bindings = Record<ActionId, string[]>;
 export const DEFAULT_BINDINGS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.keys])) as Bindings;
 
-const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "Dead", "Unidentified", "Process"]);
-
-/** Canonical key ("Ctrl+K", "Shift+Enter", "J", "/", "ArrowDown"); null for a lone modifier. */
-export function keyOf(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): string | null {
-  if (MODIFIERS.has(e.key)) return null;
-  const k = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
-  // A printed symbol already carries Shift ("?" is Shift+/); letters and named keys keep it.
-  const shift = e.shiftKey && (e.key.length > 1 || e.key === " " || /^[a-z]$/i.test(e.key));
-  return `${e.ctrlKey || e.metaKey ? "Ctrl+" : ""}${e.altKey ? "Alt+" : ""}${shift ? "Shift+" : ""}${k}`;
-}
-
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };
 
 /** Display form: "Ctrl+K" → "Ctrl K", "J" → "j", "ArrowDown" → "↓". */
@@ -71,6 +61,35 @@ export function conflicts(b: Bindings): Map<string, ActionId[]> {
   const by = new Map<string, ActionId[]>();
   for (const a of ACTIONS) for (const k of b[a.id]) by.set(k, [...(by.get(k) ?? []), a.id]);
   return new Map([...by].filter(([, ids]) => ids.length > 1));
+}
+
+/** How long the pane prefix (Ctrl+B) waits for its follow-up key. */
+export const PREFIX_MS = 1500;
+
+/** The app shortcuts the page overlay forwards while the page has keyboard focus. */
+export interface PageKeys {
+  /** Ctrl / Alt keys of actions that also run in text fields: forwarded even from the page's own fields. */
+  inFields: string[];
+  /** Forwarded only outside the page's fields. */
+  outside: string[];
+  /** The pane prefix: the key after it is forwarded too, within prefixMs. */
+  prefix: string[];
+  prefixMs: number;
+}
+
+const MODIFIED = /^(Ctrl|Alt)\+/;
+
+export function pageKeys(b: Bindings): PageKeys {
+  const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
+  for (const a of ACTIONS) {
+    for (const k of b[a.id]) {
+      const mod = MODIFIED.test(k);
+      // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.
+      if (!mod && k.replace(/^Shift\+/, "").length > 1) continue;
+      (mod && a.inFields ? out.inFields : out.outside).push(k);
+    }
+  }
+  return out;
 }
 
 export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_BINDINGS, ...overrides });
