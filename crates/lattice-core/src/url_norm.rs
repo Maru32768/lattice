@@ -13,9 +13,11 @@ pub fn normalize(input: &str) -> Result<Url, String> {
     u.set_fragment(None);
     let kept: Vec<(String, String)> = u
         .query_pairs()
-        .filter(|(k, _)| {
+        .filter(|(k, v)| {
             let k = k.to_ascii_lowercase();
-            !TRACKING_KEYS.contains(&k.as_str()) && !TRACKING_PREFIXES.iter().any(|p| k.starts_with(p))
+            // Medium tags every feed link `?source=rss----<id>---4`; other `source` values may matter.
+            let rss_source = k == "source" && v.starts_with("rss");
+            !TRACKING_KEYS.contains(&k.as_str()) && !TRACKING_PREFIXES.iter().any(|p| k.starts_with(p)) && !rss_source
         })
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();
@@ -36,6 +38,8 @@ mod tests {
         let n = |s| normalize(s).unwrap().to_string();
         assert_eq!(n("HTTPS://Example.COM:443/a?utm_source=x&id=3&fbclid=y#sec"), "https://example.com/a?id=3");
         assert_eq!(n("https://example.com/a?utm_medium=rss"), "https://example.com/a");
+        assert_eq!(n("https://netflixtechblog.com/a-post-0123abcd?source=rss----2615bd06b42e---4"), "https://netflixtechblog.com/a-post-0123abcd");
+        assert_eq!(n("https://example.com/a?source=github&id=1"), "https://example.com/a?source=github&id=1");
         assert!(normalize("javascript:alert(1)").is_err());
         assert!(normalize("not a url").is_err());
     }

@@ -2,45 +2,61 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "./api";
 
-/** One request per domain for the whole app: a list of 1,000 rows asks once per site. */
+/** One request per key for the whole app: a list of 1,000 rows asks once per site. A key is a
+ *  domain (the site's icon) or `feed:<id>` (the icon the user picked for that feed). */
 const icons = new Map<string, Promise<string | null>>();
-/** Mounted icons per domain, re-asked when a background fetch for it finishes. */
+/** Mounted icons per key, re-asked when the icon behind it changes. */
 const waiting = new Map<string, Set<() => void>>();
 
-listen<string>("favicon-changed", (e) => {
-  icons.delete(e.payload);
-  waiting.get(e.payload)?.forEach((f) => f());
-}).catch(() => {});
+function forget(key: string) {
+  icons.delete(key);
+  waiting.get(key)?.forEach((f) => f());
+}
 
-function icon(domain: string) {
-  let p = icons.get(domain);
+listen<string>("favicon-changed", (e) => forget(e.payload)).catch(() => {});
+
+/** After the user picked or removed a feed's icon. */
+export const feedIconChanged = (id: number) => forget(`feed:${id}`);
+
+function icon(key: string) {
+  let p = icons.get(key);
   if (!p) {
-    p = api.favicon(domain).catch(() => null);
-    icons.set(domain, p);
+    p = (key.startsWith("feed:") ? api.feedIcon(Number(key.slice(5))) : api.favicon(key)).catch(() => null);
+    icons.set(key, p);
   }
   return p;
 }
 
-export const hostOf = (url: string) => URL.parse(url)?.hostname ?? "";
-
-/** The site's icon (16 px), fetched and stored by the backend; its initial until there is one. */
-export function Favicon({ domain }: { domain: string }) {
-  const [url, setUrl] = useState<string | null>(null);
+/** The icon's data URL; null when there is none, undefined while asking (or for an empty key). */
+function useIcon(key: string): string | null | undefined {
+  const [got, setGot] = useState<{ key: string; url: string | null } | null>(null);
   const [seq, setSeq] = useState(0);
   useEffect(() => {
-    if (!domain) return;
-    const set = waiting.get(domain) ?? new Set();
-    waiting.set(domain, set);
+    if (!key) return;
+    const set = waiting.get(key) ?? new Set();
+    waiting.set(key, set);
     const bump = () => setSeq((n) => n + 1);
     set.add(bump);
     return () => { set.delete(bump); };
-  }, [domain]);
+  }, [key]);
   useEffect(() => {
-    if (!domain) return;
+    if (!key) return;
     let live = true;
-    icon(domain).then((u) => { if (live) setUrl(u); });
+    icon(key).then((url) => { if (live) setGot({ key, url }); });
     return () => { live = false; };
-  }, [domain, seq]);
+  }, [key, seq]);
+  return got?.key === key ? got.url : undefined;
+}
+
+export const hostOf = (url: string) => URL.parse(url)?.hostname ?? "";
+
+/** The site's icon (16 px), fetched and stored by the backend; for a feed's articles, the icon the
+ *  user picked for the feed instead. Its initial until there is one. */
+export function Favicon({ domain, feed }: { domain: string; feed?: number | null }) {
+  const custom = useIcon(feed != null ? `feed:${feed}` : "");
+  const site = useIcon(feed == null || custom === null ? domain : "");
+  const url = custom ?? site;
+  // A picked icon may be SVG: shown only through <img> from a data: URL, where it runs no script.
   if (url) return <img className="favicon" src={url} alt="" width={16} height={16} />;
   return <span className="favicon letter" aria-hidden="true">{domain.replace(/^www\./, "").charAt(0).toUpperCase()}</span>;
 }

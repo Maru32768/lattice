@@ -1,5 +1,5 @@
 import type { ArticleFilter, FeedRow, TagCount } from "./api";
-import { MANUAL, UNCLASSIFIED } from "./groups.ts";
+import { MANUAL, UNCLASSIFIED, feedName } from "./groups.ts";
 
 export interface FilterGroup {
   label: string;
@@ -25,7 +25,7 @@ export function filterGroups(genres: TagCount[], feeds: FeedRow[], tags: TagCoun
       label: "フィード",
       options: [
         opt({ kind: "feed", id: null }, MANUAL),
-        ...feeds.map((f) => opt({ kind: "feed", id: f.id }, `${f.title ?? f.url}（${f.article_count}件）`)),
+        ...feeds.map((f) => opt({ kind: "feed", id: f.id }, `${feedName(f)}（${f.article_count}件）`)),
       ],
     },
     { label: "タグ", options: tags.map((t) => opt({ kind: "tag", name: t.name }, `#${t.name}（${t.count}件）`)) },

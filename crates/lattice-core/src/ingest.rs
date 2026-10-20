@@ -3,7 +3,8 @@
 
 use crate::extract::extract;
 use crate::fetch::{Fetched, fetch};
-use crate::store::Store;
+use crate::store::{Store, THIN_TEXT_CHARS};
+use rusqlite::OptionalExtension;
 use crate::url_norm::normalize;
 
 pub const JOB_TYPE: &str = "ingest";
@@ -24,14 +25,67 @@ pub async fn process(store: &Store, client: &reqwest::Client, article_id: i64) -
     fetch_into(store, client, article_id, &url).await
 }
 
+/// A page that is refused (bot protection answers 403 to anything but a browser) or has no
+/// text falls back to the feed entry's copy, when its feed carries one.
 async fn fetch_into(store: &Store, client: &reqwest::Client, id: i64, url: &str) -> Result<i64, String> {
-    match fetch(client, url).await {
-        Ok(fetched) => store_fetched(store, id, &fetched),
+    store_fetch_result(store, id, fetch(client, url).await)
+}
+
+/// Network-free half of `fetch_into`, also used by tests.
+pub(crate) fn store_fetch_result(store: &Store, id: i64, fetched: Result<Fetched, String>) -> Result<i64, String> {
+    match fetched {
+        Ok(fetched) => {
+            let id = store_fetched(store, id, &fetched)?;
+            from_feed(store, id, None)?;
+            Ok(id)
+        }
         Err(e) => {
             store.record_fetch_failure(id, &e).map_err(|e| e.to_string())?;
+            from_feed(store, id, Some(&e))?;
             Ok(id)
         }
     }
+}
+
+/// Marks snapshots holding a feed entry's own HTML (`feed_items.content`), not the page.
+pub const FEED_CONTENT_TYPE: &str = "text/html; source=feed";
+
+/// Stores the article's feed entry content through the normal pipeline (it is as untrusted as
+/// any page) when the article has nothing better: no text, a thin one, or an earlier feed copy.
+/// `page_error` stays as `last_error` to say why. Returns whether it stored anything.
+fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, String> {
+    let row: Option<(String, Option<String>, Vec<u8>, i64)> = store
+        .conn()
+        .query_row(
+            "SELECT a.original_url, i.title, i.content,
+                    CASE WHEN a.extraction_status = 'ok' AND (SELECT content_type FROM snapshots
+                              WHERE article_id = a.id ORDER BY id DESC LIMIT 1) IS NOT ?2
+                         THEN coalesce(a.text_length, 0) ELSE -1 END
+             FROM articles a JOIN feed_items i ON i.feed_id = a.feed_id AND i.normalized_url = a.normalized_url
+             WHERE a.id = ?1 AND i.content IS NOT NULL",
+            rusqlite::params![id, FEED_CONTENT_TYPE],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((url, title, content, current)) = row.filter(|r| r.3 < THIN_TEXT_CHARS) else { return Ok(false) };
+    let content = crate::store::inflate("deflate", &content).map_err(|e| e.to_string())?;
+    let html = format!("<html><head><title>{}</title></head><body><article>{content}</article></body></html>", escape(title.as_deref().unwrap_or("")));
+    let Ok(ir) = extract(&html, &url) else { return Ok(false) };
+    if ir.blocks.iter().map(|b| b.text.chars().count() as i64).sum::<i64>() <= current {
+        return Ok(false);
+    }
+    let id = store_fetched(store, id, &Fetched { final_url: url, status: 200, content_type: Some(FEED_CONTENT_TYPE.into()), html })?;
+    // The entry's title is exact; Readability would cut "Title — Part II" at the dash as a site name.
+    store
+        .conn()
+        .execute("UPDATE articles SET title = coalesce(?2, title), last_error = coalesce(?3, last_error) WHERE id = ?1", rusqlite::params![id, title, page_error])
+        .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[derive(Debug, Default, PartialEq, serde::Serialize)]

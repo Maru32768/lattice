@@ -267,6 +267,24 @@ fn remove_feed(app: State<'_, App>, id: i64) -> Result<(), String> {
     feeds::remove(&app.store, id)
 }
 
+/// `None` or blank goes back to the feed's own title.
+#[tauri::command(async)]
+fn rename_feed(app: State<'_, App>, id: i64, name: Option<String>) -> Result<(), String> {
+    feeds::rename(&app.store, id, name.as_deref())
+}
+
+/// Image bytes picked by the user (checked and typed by content), or `None` for the site's favicon.
+#[tauri::command(async)]
+fn set_feed_icon(app: State<'_, App>, id: i64, bytes: Option<Vec<u8>>) -> Result<(), String> {
+    feeds::set_icon(&app.store, id, bytes.as_deref())
+}
+
+/// The user's icon for a feed as a `data:` URL, or `None` (the UI then shows the site's favicon).
+#[tauri::command(async)]
+fn feed_icon(app: State<'_, App>, id: i64) -> Result<Option<String>, String> {
+    feeds::icon(&app.store, id)
+}
+
 #[tauri::command]
 async fn refresh_feeds(app: State<'_, App>) -> Result<usize, String> {
     let n = feeds::refresh_all(&app.store, &app.providers.http).await;
@@ -655,6 +673,9 @@ pub fn run() {
             discover_feeds,
             remove_feed,
             refresh_feeds,
+            rename_feed,
+            set_feed_icon,
+            feed_icon,
             set_favorite,
             add_tag,
             remove_tag,

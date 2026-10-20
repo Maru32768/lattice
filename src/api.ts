@@ -64,6 +64,8 @@ export interface ArticleRow {
   feed_title: string | null;
   /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
   thin: boolean;
+  /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
+  from_feed: boolean;
 }
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */
@@ -76,7 +78,12 @@ export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "diffi
 export interface FeedRow {
   id: number;
   url: string;
+  /** The feed's own title; see `feedName`. */
   title: string | null;
+  /** The user's name for the feed, shown in place of `title`. */
+  custom_title: string | null;
+  /** The user picked an icon (`api.feedIcon`), shown in place of the site's favicon. */
+  has_icon: boolean;
   site_url: string | null;
   last_fetched_at: string | null;
   last_error: string | null;
@@ -290,6 +297,12 @@ export const api = {
   discoverFeeds: (url: string) => invoke<FeedCandidate[]>("discover_feeds", { url }),
   removeFeed: (id: number) => invoke<void>("remove_feed", { id }),
   refreshFeeds: () => invoke<number>("refresh_feeds"),
+  /** null or blank goes back to the feed's own title. */
+  renameFeed: (id: number, name: string | null) => invoke<void>("rename_feed", { id, name }),
+  /** Image bytes (PNG, JPEG, GIF, WebP, ICO or SVG, 1 MB at most), or null for the site's favicon. */
+  setFeedIcon: (id: number, bytes: number[] | null) => invoke<void>("set_feed_icon", { id, bytes }),
+  /** The user's icon for a feed as a data: URL; null when it has none. */
+  feedIcon: (id: number) => invoke<string | null>("feed_icon", { id }),
   jobOverview: () => invoke<JobOverview>("job_overview"),
   retryJob: (id: number) => invoke<boolean>("retry_job", { id }),
   retryFailedJobs: (jobType: string | null) => invoke<number>("retry_failed_jobs", { jobType }),

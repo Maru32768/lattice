@@ -2,12 +2,65 @@ import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
 import { relTime } from "./time";
-import { Favicon, hostOf } from "./Favicon";
+import { Favicon, feedIconChanged, hostOf } from "./Favicon";
 import "./manage.css";
 
 const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
 const bare = (url: string) => url.replace(/^https?:\/\//, "");
-const feedName = (f: FeedRow) => f.title ?? bare(f.url);
+const feedName = (f: FeedRow) => f.custom_title ?? f.title ?? bare(f.url);
+const MAX_ICON_BYTES = 1024 * 1024;
+const ICON_TYPES = ".png,.jpg,.jpeg,.gif,.webp,.svg,.ico,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon";
+
+/** Display name and icon of one feed, below its row in the table. */
+function FeedEditor({ feed: f, onSaved, onClose }: { feed: FeedRow; onSaved: () => void; onClose: () => void }) {
+  const [name, setName] = useState(f.custom_title ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const own = f.title ?? bare(f.url);
+
+  async function act(task: () => Promise<void>) {
+    setError(null);
+    try {
+      await task();
+      onSaved();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+  const rename = (n: string | null) => act(() => api.renameFeed(f.id, n));
+  const setIcon = (bytes: number[] | null) => act(async () => {
+    await api.setFeedIcon(f.id, bytes);
+    feedIconChanged(f.id);
+  });
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_ICON_BYTES) return setError("アイコンの画像は 1 MB までです");
+    setIcon(Array.from(new Uint8Array(await file.arrayBuffer())));
+  };
+
+  return (
+    <form className="feed-edit" aria-label={`${feedName(f)} の名前とアイコン`} onSubmit={(e) => { e.preventDefault(); rename(name); }}>
+      <label htmlFor={`feed-name-${f.id}`}>表示名</label>
+      <div className="line">
+        <input id={`feed-name-${f.id}`} className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={own} maxLength={200} autoFocus />
+        <button type="submit" className="btn sm pri" disabled={name.trim() === (f.custom_title ?? "")}>保存</button>
+        {f.custom_title && <button type="button" className="btn sm" onClick={() => { setName(""); rename(null); }}>元に戻す</button>}
+      </div>
+      <div className="fs">フィード本来の名前: {own}</div>
+      <span className="lbl">アイコン</span>
+      <div className="line">
+        <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />
+        <label className="btn sm">
+          画像を選ぶ
+          <input type="file" className="vh" accept={ICON_TYPES} onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
+        </label>
+        {f.has_icon && <button type="button" className="btn sm" onClick={() => setIcon(null)}>サイトのアイコンに戻す</button>}
+        <span className="muted">PNG・JPEG・GIF・WebP・SVG・ICO、1 MB まで</span>
+      </div>
+      {error && <p role="alert" className="error-text">{error}</p>}
+      <div><button type="button" className="btn sm" onClick={onClose}>閉じる</button></div>
+    </form>
+  );
+}
 
 /** RSS / Atom subscriptions. Polling runs in the background every 30 minutes and at startup. */
 export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
@@ -26,6 +79,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [query, setQuery] = useState("");
   const [confirming, setConfirming] = useState<number | null>(null);
+  const [editing, setEditing] = useState<number | null>(null);
 
   const load = () => api.listFeeds().then(setFeeds).catch((e) => setError(String(e)));
   useEffect(() => {
@@ -111,7 +165,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
   const errorCount = feeds.filter((f) => f.last_error).length;
   const needle = query.trim().toLowerCase();
   const shown = feeds.filter((f) => (!onlyErrors || f.last_error)
-    && (!needle || `${f.title ?? ""} ${f.url} ${f.site_url ?? ""}`.toLowerCase().includes(needle)));
+    && (!needle || `${f.custom_title ?? ""} ${f.title ?? ""} ${f.url} ${f.site_url ?? ""}`.toLowerCase().includes(needle)));
 
   return (
     <main className="manage">
@@ -184,18 +238,25 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                     </div>
                   </td>
                 </tr>
-              ) : (
+              ) : [
                 <tr key={f.id} className={f.last_error ? "err" : undefined}>
-                  <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
+                  <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
                   <td>{f.last_error ? <span className="st err"><i />{f.last_error}</span> : <span className="st"><i />正常</span>}</td>
                   <td className="num when">{relTime(f.last_fetched_at)}</td>
                   <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>
                   <td className="row-acts">
                     <button className="btn sm ghost" onClick={() => onShowFeed(f.id)} aria-label={`${feedName(f)} の記事を見る`}>記事を見る →</button>
+                    <button className="btn sm ghost" onClick={() => setEditing(editing === f.id ? null : f.id)} aria-expanded={editing === f.id}
+                      aria-label={`${feedName(f)} の名前とアイコンを変更`}>編集</button>
                     <button className="btn sm ghost" onClick={() => setConfirming(f.id)} aria-label={`${feedName(f)} を削除`}>削除</button>
                   </td>
-                </tr>
-              ))}
+                </tr>,
+                editing === f.id && (
+                  <tr key={`${f.id}-edit`} className="edit">
+                    <td colSpan={5}><FeedEditor feed={f} onSaved={() => { load(); onChanged(); }} onClose={() => setEditing(null)} /></td>
+                  </tr>
+                ),
+              ])}
             </tbody>
           </table>
         </div>

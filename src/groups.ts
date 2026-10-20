@@ -16,6 +16,9 @@ export interface Group<A> {
 export const UNCLASSIFIED = "未分類";
 export const MANUAL = "手動追加";
 
+/** What the UI calls a feed: the user's name for it, else its own title, else its URL. */
+export const feedName = (f: { custom_title: string | null; title: string | null; url: string }) => f.custom_title ?? f.title ?? f.url;
+
 function groupBy<A>(articles: A[], keyOf: (a: A) => [string, string]): Group<A>[] {
   const m = new Map<string, Group<A>>();
   for (const a of articles) {

@@ -44,7 +44,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCurso
       {unread && <span className="dot" aria-label="未読" />}
       <span className="t">{a.title ?? a.original_url}</span>
       <span className="meta">
-        <span className="with-ico"><Favicon domain={a.domain} />{a.feed_title ?? a.site_name ?? a.domain}</span>
+        <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? a.domain}</span>
         <span>{mmdd((sort === "published_desc" && a.published_at) || a.saved_at)}</span>
         {a.difficulty != null && <Dif d={a.difficulty} />}
         {a.favorite && <span className="fav" aria-label="お気に入り"><Icon name="star" size="sm" /></span>}
