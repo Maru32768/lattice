@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 
 use crate::location::{Kind, Location};
+use lattice_core::msg;
 
 /// tauri.conf.json ships this in place of the signing public key; until it is replaced the
 /// updater stays off instead of failing every check (docs/release.md).
@@ -44,9 +45,9 @@ pub fn update_info(app: AppHandle) -> UpdateInfo {
 
 async fn find(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
     if !configured(pubkey(app).as_deref()) {
-        return Err("このビルドでは自動更新が設定されていません".into());
+        return Err(msg!("update.notConfigured"));
     }
-    app.updater().map_err(err)?.check().await.map_err(|e| format!("更新を確認できませんでした: {e}"))
+    app.updater().map_err(err)?.check().await.map_err(|e| msg!("update.checkFailed", error = e.to_string()))
 }
 
 /// The newer version, or `None` when this one is the latest.
@@ -66,9 +67,9 @@ struct Progress {
 #[tauri::command]
 pub async fn update_install(app: AppHandle) -> Result<(), String> {
     if portable(&app) {
-        return Err("ポータブル版は新しい zip に置き換えて更新してください".into());
+        return Err(msg!("update.portable"));
     }
-    let update = find(&app).await?.ok_or("新しいバージョンはありません")?;
+    let update = find(&app).await?.ok_or_else(|| msg!("update.none"))?;
     let (mut downloaded, mut reported) = (0u64, 0u64);
     update
         .download_and_install(
@@ -82,7 +83,7 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
             || {},
         )
         .await
-        .map_err(|e| format!("更新をインストールできませんでした: {e}"))?;
+        .map_err(|e| msg!("update.installFailed", error = e.to_string()))?;
     app.restart()
 }
 

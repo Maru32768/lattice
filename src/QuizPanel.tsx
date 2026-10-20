@@ -4,6 +4,7 @@ import { QuizCard } from "./QuizCard";
 import { knownCount } from "./quiz";
 import { Icon } from "./Icon";
 import "./quiz.css";
+import { locale, useT } from "./i18n";
 
 /** 理解度チェック beside the Reader: take the article's quiz, then optionally add it to review. */
 export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
@@ -14,6 +15,7 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   onReviewChanged: () => void;
   onClose: () => void;
 }) {
+  const t = useT();
   const id = view.article.id;
   const job = view.jobs.find((j) => j.type === "quiz");
   const running = job?.status === "running" || (job?.status === "pending" && !job.last_error);
@@ -60,46 +62,46 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   const total = quiz?.questions.length ?? 0;
   const q = quiz?.questions[at];
   const reviewRow = quiz && (quiz.in_review > 0
-    ? <><span className="qz-in">復習中 · {quiz.in_review} 枚</span><button className="tb" onClick={() => review(false)}>復習から外す</button></>
-    : <button className="tb" onClick={() => review(true)} title="答えた問題はその結果を最初の復習として記録します">復習に追加</button>);
+    ? <><span className="qz-in">{t("quizPanel.inReview", { in_review: quiz.in_review })}</span><button className="tb" onClick={() => review(false)}>{t("quizPanel.removeFromReview")}</button></>
+    : <button className="tb" onClick={() => review(true)} title={t("quizPanel.addHint")}>{t("quizPanel.addToReview")}</button>);
 
   return (
-    <aside className="qz-panel" aria-label="理解度チェック">
+    <aside className="qz-panel" aria-label={t("quizPanel.title")}>
       <div className="qz-h">
         <Icon name="quiz" />
-        <span className="qz-title">理解度チェック</span>
+        <span className="qz-title">{t("quizPanel.title")}</span>
         {q && <span className="qz-n mono">{at + 1} / {total}</span>}
-        <button className="ib push" onClick={onClose} aria-label="理解度チェックを閉じる" title="閉じる"><Icon name="x" /></button>
+        <button className="ib push" onClick={onClose} aria-label={t("quizPanel.close")} title={t("common.close")}><Icon name="x" /></button>
       </div>
       <div className="qz-body">
         {quiz === null && (
           <div className="qz-empty">
-            <p>この記事の要点を確かめる問題を 3〜8 問作ります（記述と 4 択）。答えたあと「復習に追加」すると、間隔を空けて「今日の復習」で出題します。</p>
-            {generating ? <p className="muted" role="status">作成中…</p> : <button className="btn pri" onClick={generate}>クイズを作成</button>}
+            <p>{t("quizPanel.intro")}</p>
+            {generating ? <p className="muted" role="status">{t("quizPanel.generating")}</p> : <button className="btn pri" onClick={generate}>{t("quizPanel.generate")}</button>}
           </div>
         )}
         {quiz && q && <QuizCard key={q.id} q={q} onSource={onSource} onGrade={(g) => { setGrades((m) => new Map(m).set(q.id, g)); setAt(at + 1); }} />}
         {quiz && !q && (
           <div className="qz-done" role="status">
-            <p className="qz-score"><b>{knownCount(grades.values())}</b> / {total} 問 答えられました</p>
+            <p className="qz-score">{t.rich("quizPanel.score", { known: <b>{knownCount(grades.values())}</b>, total })}</p>
             {quiz.in_review === 0
               ? <>
-                  <button className="btn pri" onClick={() => review(true)}>復習に追加</button>
-                  <p className="muted">今日の結果を最初の復習として、Anki と同じように間隔を空けて出題します（間隔は 設定 › 復習）。</p>
+                  <button className="btn pri" onClick={() => review(true)}>{t("quizPanel.addToReview")}</button>
+                  <p className="muted">{t("quizPanel.addDesc")}</p>
                 </>
-              : <p className="muted">復習中です（{quiz.in_review} 枚）。「今日の復習」で出題します。</p>}
-            <button className="btn" onClick={() => { setAt(0); setGrades(new Map()); }}>もう一度解く</button>
+              : <p className="muted">{t("quizPanel.reviewing", { in_review: quiz.in_review })}</p>}
+            <button className="btn" onClick={() => { setAt(0); setGrades(new Map()); }}>{t("quizPanel.retry")}</button>
           </div>
         )}
-        {failure && <p className="qz-note error-text" title={failure}>クイズの作成に失敗: {failure}</p>}
-        {error && <p className="qz-note error-text" role="alert">{error}</p>}
+        {failure && <p className="qz-note error-text" title={t.msg(failure)}>{t("quizPanel.failed", { failure: t.msg(failure) })}</p>}
+        {error && <p className="qz-note error-text" role="alert">{t.msg(error)}</p>}
       </div>
       {quiz && (
         <div className="qz-foot">
-          {quiz.stale && <p className="qz-note muted">本文か「自分について」が変わっています。作り直すと反映されます</p>}
+          {quiz.stale && <p className="qz-note muted">{t("quizPanel.stale")}</p>}
           <div className="qz-meta">
-            <span>{new Date(quiz.created_at).toLocaleDateString("ja-JP", { month: "2-digit", day: "2-digit" })} 作成</span>
-            {generating ? <span>作り直し中…</span> : <button className="tb" onClick={generate}>作り直す</button>}
+            <span>{t("quizPanel.created", { date: new Date(quiz.created_at).toLocaleDateString(locale(t.lang), { month: "2-digit", day: "2-digit" }) })}</span>
+            {generating ? <span>{t("quizPanel.regenerating")}</span> : <button className="tb" onClick={generate}>{t("quizPanel.regenerate")}</button>}
             <span className="push" />
             {/* At the end the summary offers 復習に追加 itself. */}
             {(q || quiz.in_review > 0) && reviewRow}

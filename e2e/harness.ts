@@ -15,7 +15,7 @@ export const test = base.extend<{ app: Page }>({
     await page.clock.setFixedTime(NOW);
     await page.goto("/");
     // The first pages after the dev server starts wait for it to transform the app.
-    await expect(page.getByRole("region", { name: "記事一覧" }).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+    await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
     await provide(page);
     expect(await page.evaluate(() => window.__e2e.unmocked), "commands the mock does not answer").toEqual([]);
     expect(errors, "page errors").toEqual([]);
@@ -32,5 +32,6 @@ export const callsOf = (page: Page, cmd: string) =>
 export const navItem = (page: Page, label: string) =>
   page.locator(".nav .ni").filter({ has: page.locator(".label").getByText(label, { exact: true }) });
 
-export const list = (page: Page) => page.getByRole("region", { name: "記事一覧" });
+/** The article list, in either display language. */
+export const list = (page: Page) => page.getByRole("region", { name: /^(記事一覧|Articles)$/ });
 export const listCount = (page: Page) => list(page).locator(".count");

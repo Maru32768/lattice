@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::fetch::{check_public, request_error};
+use crate::msg;
 use crate::store::Store;
 
 pub const JOB_TYPE: &str = "images";
@@ -40,7 +41,7 @@ pub fn settings(store: &Store) -> Result<ImageSettings, String> {
 
 pub fn set_settings(store: &Store, s: ImageSettings) -> Result<(), String> {
     if !(1..=MAX_MB_LIMIT).contains(&s.max_mb) {
-        return Err(format!("1 枚あたりの上限は 1〜{MAX_MB_LIMIT} MB で指定してください"));
+        return Err(msg!("images.maxMbRange", max = MAX_MB_LIMIT));
     }
     store.set_setting(SAVE_SETTING, (!s.save).then_some("off")).map_err(err)?;
     store.set_setting(MAX_MB_SETTING, Some(&s.max_mb.to_string())).map_err(err)
@@ -129,7 +130,7 @@ pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Re
     }
     let mut transient = None;
     for src in pending {
-        let over = "記事あたりの画像の上限（30 MB）を超えました";
+        let over = &msg!("images.articleCap");
         if used >= ARTICLE_CAP {
             record(store, article_id, &src, None, Some(over))?;
             continue;
@@ -148,7 +149,7 @@ pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Re
         }
     }
     match transient {
-        Some(e) => Err(format!("一部の画像を取得できませんでした（後で再試行します）: {e}")),
+        Some(e) => Err(msg!("images.someFailed", error = e)),
         None => Ok(()),
     }
 }
@@ -177,7 +178,7 @@ fn record(store: &Store, article_id: i64, src: &str, hash: Option<&str>, error: 
 
 pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str, cap: usize) -> Result<(&'static str, Vec<u8>), Fail> {
     if !(src.starts_with("https://") || src.starts_with("http://")) {
-        return Err(Fail::Permanent("http(s) 以外の URL です".into()));
+        return Err(Fail::Permanent(msg!("images.notHttp")));
     }
     check_public(src).map_err(Fail::Permanent)?;
     // Many sites refuse hotlinked images without a Referer from their own pages. Imported
@@ -202,12 +203,12 @@ pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str,
             return Err(Fail::Permanent(too_large(cap)));
         }
     }
-    let mime = sniff(&body).ok_or_else(|| Fail::Permanent("対応していない画像形式です（PNG・JPEG・GIF・WebP・AVIF のみ保存します）".into()))?;
+    let mime = sniff(&body).ok_or_else(|| Fail::Permanent(msg!("images.unsupported")))?;
     Ok((mime, body))
 }
 
 fn too_large(cap: usize) -> String {
-    format!("1 枚あたりの上限（{} MB）を超えています", cap / MB)
+    msg!("images.tooLarge", max = cap / MB)
 }
 
 /// Header checks before reading the body. The stored type comes from `sniff`, never the header.
@@ -215,7 +216,7 @@ fn check_response(content_type: Option<&str>, content_length: Option<u64>, cap: 
     let ct = content_type.unwrap_or("").to_ascii_lowercase();
     let image = ct.starts_with("image/") || ct.is_empty() || ct.starts_with("application/octet-stream");
     if !image || ct.contains("svg") {
-        return Err(format!("保存しない形式です: {ct}"));
+        return Err(msg!("images.skippedType", kind = ct));
     }
     if content_length.is_some_and(|n| n > cap as u64) {
         return Err(too_large(cap));
@@ -288,7 +289,7 @@ mod tests {
         assert!(check_response(Some("application/octet-stream"), None, MB).is_ok());
         assert!(check_response(Some("image/svg+xml"), None, MB).is_err());
         assert!(check_response(Some("text/html; charset=utf-8"), None, MB).is_err());
-        assert!(check_response(Some("image/jpeg"), Some(MB as u64 + 1), MB).unwrap_err().contains("上限"));
+        assert!(check_response(Some("image/jpeg"), Some(MB as u64 + 1), MB).unwrap_err().contains("images.tooLarge"));
     }
 
     #[tokio::test]

@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::fetch::HttpClient;
 use crate::ingest;
+use crate::msg;
 use crate::store::{Store, deflate};
 use crate::url_norm::normalize;
 
@@ -207,7 +208,7 @@ fn changed(rows: rusqlite::Result<usize>) -> Result<(), String> {
 pub fn rename(store: &Store, id: i64, name: Option<&str>) -> Result<(), String> {
     let name = name.map(str::trim).filter(|n| !n.is_empty());
     if name.is_some_and(|n| n.chars().count() > MAX_NAME_CHARS) {
-        return Err(format!("名前は {MAX_NAME_CHARS} 文字までです"));
+        return Err(msg!("feeds.nameTooLong", max = MAX_NAME_CHARS));
     }
     changed(store.conn().execute("UPDATE feeds SET custom_title = ?2 WHERE id = ?1", params![id, name]))
 }
@@ -218,10 +219,8 @@ pub fn rename(store: &Store, id: i64, name: Option<&str>) -> Result<(), String> 
 pub fn set_icon(store: &Store, id: i64, bytes: Option<&[u8]>) -> Result<(), String> {
     let mime = match bytes {
         None => None,
-        Some(b) if b.len() > MAX_ICON_BYTES => return Err("アイコンの画像は 1 MB までです".into()),
-        Some(b) => {
-            Some(crate::images::sniff(b).or_else(|| is_svg(b).then_some("image/svg+xml")).ok_or("PNG・JPEG・GIF・WebP・ICO・SVG の画像を選んでください")?)
-        }
+        Some(b) if b.len() > MAX_ICON_BYTES => return Err(msg!("feeds.iconTooLarge")),
+        Some(b) => Some(crate::images::sniff(b).or_else(|| is_svg(b).then_some("image/svg+xml")).ok_or_else(|| msg!("feeds.iconFormat"))?),
     };
     changed(store.conn().execute("UPDATE feeds SET icon_mime = ?2, icon = ?3 WHERE id = ?1", params![id, mime, bytes]))
 }

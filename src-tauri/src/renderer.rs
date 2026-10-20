@@ -15,6 +15,7 @@ use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, We
 use tokio::sync::{Notify, oneshot};
 
 use crate::browser::{self, Browser, OVERLAY_JS, RENDER_LABEL, http_url, is_http, lock};
+use lattice_core::msg;
 
 const LOAD_TIMEOUT: Duration = Duration::from_secs(12);
 /// The overlay snapshots once the DOM has had no mutations for 1.5 s, or after 6 s regardless.
@@ -96,10 +97,10 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
     let result = async {
         match tokio::time::timeout(LOAD_TIMEOUT, loaded).await {
             Ok(Ok(())) => {}
-            _ => return Err("ページの読み込みが終わりませんでした".to_string()),
+            _ => return Err(msg!("render.loadTimeout")),
         }
         let browser = app.state::<Browser>();
-        browser::snapshot_of(&wv, &browser, Some(SETTLE_MS), SNAPSHOT_TIMEOUT).await.ok_or_else(|| "ページから DOM を取得できませんでした".to_string())
+        browser::snapshot_of(&wv, &browser, Some(SETTLE_MS), SNAPSHOT_TIMEOUT).await.ok_or_else(|| msg!("render.noDom"))
     }
     .await;
     if let Err(e) = wv.close() {

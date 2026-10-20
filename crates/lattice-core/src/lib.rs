@@ -20,6 +20,7 @@ pub mod job_status;
 pub mod jobs;
 pub mod llm;
 pub mod markdown;
+pub mod msg;
 pub mod openai;
 pub mod pdf;
 pub mod quiz;

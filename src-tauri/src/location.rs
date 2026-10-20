@@ -5,6 +5,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use lattice_core::msg;
 use lattice_core::store::Store;
 
 pub const PORTABLE_MARKERS: [&str; 2] = ["portable", "lattice.portable"];
@@ -56,10 +57,10 @@ pub fn resolve(portable: bool, exe_dir: &Path, default_dir: &Path, bootstrap: Op
     let parsed = text
         .map_err(|e| e.to_string())
         .and_then(|t| serde_json::from_str::<Bootstrap>(&t).map_err(|e| e.to_string()))
-        .and_then(|b| if b.data_dir.is_absolute() { Ok(b.data_dir) } else { Err("絶対パスではありません".into()) });
+        .and_then(|b| if b.data_dir.is_absolute() { Ok(b.data_dir) } else { Err(msg!("location.notAbsolute")) });
     match parsed {
         Ok(dir) => Location { kind: Kind::Custom, dir, warning: None },
-        Err(e) => default(Some(format!("{} を読めないため既定の場所を使っています: {e}", default_dir.join(BOOTSTRAP_FILE).display()))),
+        Err(e) => default(Some(msg!("location.unreadable", path = default_dir.join(BOOTSTRAP_FILE).display().to_string(), error = e))),
     }
 }
 
@@ -77,7 +78,7 @@ pub fn detect(default_dir: &Path) -> Location {
         Err(e) if loc.kind == Kind::Custom => Location {
             kind: Kind::Default,
             dir: default_dir.to_path_buf(),
-            warning: Some(format!("保存場所 {} を使えないため既定の場所を使っています: {e}", loc.dir.display())),
+            warning: Some(msg!("location.unusable", path = loc.dir.display().to_string(), error = e.to_string())),
         },
         _ => loc,
     }
@@ -86,10 +87,10 @@ pub fn detect(default_dir: &Path) -> Location {
 /// Refuses the folder in use and folders inside it (copying would recurse into itself).
 pub fn check_target(current: &Path, target: &Path) -> Result<(), String> {
     if target == current {
-        return Err("今の保存場所と同じフォルダです".into());
+        return Err(msg!("location.same"));
     }
     if target.starts_with(current) {
-        return Err("今の保存場所の中のフォルダは選べません".into());
+        return Err(msg!("location.inside"));
     }
     Ok(())
 }
@@ -126,10 +127,10 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 /// folders into `to`. Nothing in `from` is changed or deleted.
 pub fn copy_data(store: &Store, from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    store.copy_to(&to.join(DB_FILE)).map_err(|e| format!("データベースをコピーできませんでした: {e}"))?;
+    store.copy_to(&to.join(DB_FILE)).map_err(|e| msg!("location.copyDbFailed", error = e.to_string()))?;
     for d in DATA_DIRS {
         if from.join(d).is_dir() {
-            copy_dir(&from.join(d), &to.join(d)).map_err(|e| format!("{d} をコピーできませんでした: {e}"))?;
+            copy_dir(&from.join(d), &to.join(d)).map_err(|e| msg!("location.copyFailed", name = d, error = e.to_string()))?;
         }
     }
     Ok(())

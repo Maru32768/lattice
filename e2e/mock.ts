@@ -18,6 +18,7 @@ const store = {
   autoRender: true,
   autoClassify: true,
   taskbarBadge: true,
+  uiLanguage: null as string | null,
   keepTerms: true,
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
@@ -34,6 +35,11 @@ const store = {
     last_success: null, last_key: null, last_error: null, last_prune_error: null, running: false,
   } as R2Status,
 };
+
+/** Rejects like the backend: with its coded message (lattice-core msg.rs), which the UI translates. */
+function reject(code: string, params: Record<string, unknown> = {}): never {
+  throw JSON.stringify({ code, params });
+}
 
 const article = (id: number) => {
   const a = articles.find((x) => x.id === id);
@@ -186,7 +192,7 @@ export const handlers = {
   },
   review_grade: ({ questionId }: { questionId: number }) => {
     const c = cards.get(questionId);
-    if (!c) throw new Error("このカードは復習から外されています");
+    if (!c) reject("quiz.cardRemoved");
     c.due = false;
   },
   review_remove_card: ({ questionId }: { questionId: number }) => void cards.delete(questionId),
@@ -197,7 +203,7 @@ export const handlers = {
   review_overview: reviewOverview,
   get_review_settings: (): ReviewSettings => store.review,
   set_review_settings: ({ settings }: { settings: ReviewSettings }) => {
-    if (settings.min_interval_minutes < 1) throw new Error("最短間隔は 1 分〜30 日です");
+    if (settings.min_interval_minutes < 1) reject("quiz.minRange");
     store.review = settings;
   },
   search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),
@@ -248,6 +254,8 @@ export const handlers = {
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),
+  get_ui_language: (): string | null => store.uiLanguage,
+  set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
   article_for_url: ({ url }: { url: string }): ArticleRow | null => articles.find((a) => a.original_url === url) ?? null,
   list_genres: (): TagCount[] => counts(articles.map((a) => a.genre)),
   set_genre: ({ id, name }: { id: number; name: string }) => {

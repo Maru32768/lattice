@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { api } from "./api";
 import { SetRow } from "./SetRow";
+import { useT } from "./i18n";
 
 export function ExportSection() {
+  const t = useT();
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function exportJson() {
     setError(null);
-    setStatus("エクスポート中…");
+    setStatus(t("exportSection.exporting"));
     try {
-      setStatus(`エクスポートしました: ${await api.exportJson()}`);
+      setStatus(t("exportSection.exported", { x: await api.exportJson() }));
     } catch (e) {
       setStatus(null);
       setError(String(e));
@@ -20,13 +22,13 @@ export function ExportSection() {
   return (
     <>
       <div className="grp">
-        <SetRow title="JSON でエクスポート"
-          desc={<><code>exports</code> フォルダに、1 行 1 オブジェクトの gzip で書き出します。記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。</>}>
-          <button className="btn" onClick={exportJson}>エクスポート</button>
+        <SetRow title={t("exportSection.json")}
+          desc={t.rich("exportSection.jsonDesc", { code: <code>exports</code> })}>
+          <button className="btn" onClick={exportJson}>{t("exportSection.export")}</button>
         </SetRow>
       </div>
       {status && <p role="status" className="msg">{status}</p>}
-      {error && <p role="alert" className="msg error-text">{error}</p>}
+      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
     </>
   );
 }

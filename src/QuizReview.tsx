@@ -7,8 +7,9 @@ import { Menu } from "./Popover";
 import { Icon } from "./Icon";
 import "./manage.css";
 import "./quiz.css";
+import { t, useT } from "./i18n";
 
-const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? "出題中" : relTime(new Date(unix * 1000).toISOString()));
+const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? t("quizReview.dueNow") : relTime(new Date(unix * 1000).toISOString(), t));
 
 /** 今日の復習: today's due cards one by one, then a summary; and the articles in review. */
 export function QuizReview({ onOpen, onChanged }: {
@@ -17,6 +18,7 @@ export function QuizReview({ onOpen, onChanged }: {
   /** Cards were answered or removed (the nav badge). */
   onChanged: () => void;
 }) {
+  const t = useT();
   const [items, setItems] = useState<ReviewItem[] | null>(null);
   const [overview, setOverview] = useState<ReviewOverview | null>(null);
   const [at, setAt] = useState(0);
@@ -76,21 +78,21 @@ export function QuizReview({ onOpen, onChanged }: {
     <main className="manage">
       <div className="wrap qz-review">
         <header className="head base">
-          <h1>今日の復習</h1>
-          {items && left > 0 && <span className="sub">残り {left} 枚{fresh > 0 && `（うち新規 ${fresh}）`}</span>}
-          <span className="aside">間隔と 1 日の上限は 設定 › 復習</span>
+          <h1>{t("common.todaysReview")}</h1>
+          {items && left > 0 && <span className="sub">{t("quizReview.left", { left })}{fresh > 0 && t("quizReview.fresh", { fresh })}</span>}
+          <span className="aside">{t("quizReview.settingsHint")}</span>
         </header>
-        {error && <p role="alert" className="msg error-text">{error}</p>}
+        {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
 
         {item && (
-          <section className="card qz-session" aria-label="復習カード">
+          <section className="card qz-session" aria-label={t("quizReview.card")}>
             <div className="qz-session-h">
               <span className="mono muted">{at + 1} / {items.length}</span>
-              {item.new && <span className="bd run">新規</span>}
-              <button className="linkish qz-art" onClick={() => onOpen(item.article_id)} title="記事を開く">{item.article_title}</button>
-              <Menu className="ib" label="カードの操作" align="right" trigger={<Icon name="more" />} items={[
-                { label: "このカードを復習から外す", onSelect: () => void dropCard() },
-                { label: "この記事を復習から外す", onSelect: () => void dropArticle(item.article_id) },
+              {item.new && <span className="bd run">{t("quizReview.new")}</span>}
+              <button className="linkish qz-art" onClick={() => onOpen(item.article_id)} title={t("quizReview.openArticle")}>{item.article_title}</button>
+              <Menu className="ib" label={t("quizReview.cardActions")} align="right" trigger={<Icon name="more" />} items={[
+                { label: t("quizReview.removeCard"), onSelect: () => void dropCard() },
+                { label: t("quizReview.removeArticle"), onSelect: () => void dropArticle(item.article_id) },
               ]} />
             </div>
             <QuizCard key={item.id} q={item} previews={item.previews} onGrade={(g) => void grade(g)} onSource={(b) => onOpen(item.article_id, b)} />
@@ -100,30 +102,30 @@ export function QuizReview({ onOpen, onChanged }: {
         {finished && (
           <section className="card qz-session qz-summary" role="status">
             {answered.length > 0 && <>
-              <p className="qz-score"><b>{answered.length}</b> 枚を復習しました</p>
-              <p className="qz-tally">{GRADES.map(({ grade, label }) => <span key={grade}>{label} {answered.filter((g) => g === grade).length}</span>)}</p>
+              <p className="qz-score">{t.rich("quizReview.reviewed", { n: <b>{answered.length}</b> })}</p>
+              <p className="qz-tally">{GRADES.map(({ grade, label }) => <span key={grade}>{t(label)} {answered.filter((g) => g === grade).length}</span>)}</p>
             </>}
             {overview && overview.due > 0
-              ? <button className="btn pri" onClick={() => void start()}>続ける（{overview.due} 枚）</button>
+              ? <button className="btn pri" onClick={() => void start()}>{t("quizReview.continue", { due: overview.due })}</button>
               : articles.length > 0
-                ? <p className="muted">今日の復習は終わりです。{overview?.next_due_at != null && `次のカードは ${when(overview.next_due_at)}に出題します。`}</p>
-                : <p className="muted">復習するカードはまだありません。記事の「理解度チェック」で問題を解き、「復習に追加」すると、間隔を空けてここで出題します。</p>}
+                ? <p className="muted">{t("quizReview.done")}{overview?.next_due_at != null && t("quizReview.next", { when: when(overview.next_due_at) })}</p>
+                : <p className="muted">{t("quizReview.empty")}</p>}
           </section>
         )}
 
         {articles.length > 0 && (
           <>
-            <h2>復習中の記事</h2>
+            <h2>{t("quizReview.articles")}</h2>
             <div className="card scroll">
               <table className="tbl dense">
-                <thead><tr><th>記事</th><th className="r">カード</th><th>次の出題</th><th><span className="vh">操作</span></th></tr></thead>
+                <thead><tr><th>{t("common.article")}</th><th className="r">{t("quizReview.cards")}</th><th>{t("quizReview.nextDue")}</th><th><span className="vh">{t("common.actions")}</span></th></tr></thead>
                 <tbody>
                   {articles.map((a) => (
                     <tr key={a.article_id}>
                       <td className="art"><button className="linkish" onClick={() => onOpen(a.article_id)}>{a.title}</button></td>
                       <td className="r m">{a.cards}</td>
                       <td className="m">{when(a.next_due_at)}</td>
-                      <td className="r"><button className="btn sm ghost" onClick={() => void dropArticle(a.article_id)} aria-label={`${a.title} を復習から外す`}>外す</button></td>
+                      <td className="r"><button className="btn sm ghost" onClick={() => void dropArticle(a.article_id)} aria-label={t("quizReview.removeTitle", { title: a.title })}>{t("quizReview.remove")}</button></td>
                     </tr>
                   ))}
                 </tbody>

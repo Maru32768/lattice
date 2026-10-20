@@ -27,6 +27,7 @@ use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
 use browser::{Browser, lock};
+use lattice_core::msg;
 use location::{Kind, Location};
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
@@ -87,6 +88,28 @@ fn set_auto_render(app: State<'_, App>, on: bool) -> Result<(), String> {
     render::set_auto(&app.store, on)
 }
 
+/// The display language (G51), chosen in the UI; the backend reads it for native dialog titles.
+const UI_LANGUAGE: &str = "ui_language";
+
+/// `None` until the UI first stores the language it detected.
+#[tauri::command(async)]
+fn get_ui_language(app: State<'_, App>) -> Result<Option<String>, String> {
+    app.store.setting(UI_LANGUAGE).map_err(err)
+}
+
+#[tauri::command(async)]
+fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
+    if !matches!(lang.as_str(), "ja" | "en") {
+        return Err(format!("unknown language {lang:?}"));
+    }
+    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)
+}
+
+/// A native dialog's title in the display language.
+fn ui_text(app: &App, ja: &'static str, en: &'static str) -> &'static str {
+    if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") { en } else { ja }
+}
+
 /// Index every saved article; it is local and free, unlike translation.
 fn indexed(app: &App, id: i64) -> Result<i64, String> {
     embed::enqueue(&app.store, id, app.providers.embedder.model_id())?;
@@ -142,7 +165,7 @@ fn import_markdown(app: State<'_, App>, text: String) -> Result<i64, String> {
 async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("Markdown を取り込む").add_filter("Markdown", &["md", "markdown"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "Markdown を取り込む", "Import Markdown")).add_filter("Markdown", &["md", "markdown"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -152,9 +175,9 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
     let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > markdown::MAX_FILE_BYTES {
-        return Err("ファイルが大きすぎます（10 MB まで）".into());
+        return Err(msg!("file.tooLarge", max = markdown::MAX_FILE_BYTES / 1024 / 1024));
     }
-    let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| "UTF-8 のテキストファイルではありません")?;
+    let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| msg!("file.notUtf8"))?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
     let id = markdown::import(&app.store, &text, name.as_deref(), path.parent())?;
     indexed(&app, id).map(Some)
@@ -165,7 +188,7 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
 async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("PDF を取り込む").add_filter("PDF", &["pdf"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDF を取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -175,7 +198,7 @@ async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Resul
     let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > pdf::MAX_BYTES as u64 {
-        return Err("ファイルが大きすぎます（50 MB まで）".into());
+        return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
     }
     let bytes = std::fs::read(&path).map_err(err)?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -623,10 +646,10 @@ struct PickedDir {
 async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Option<PickedDir>, String> {
     use tauri_plugin_dialog::DialogExt;
     if loc.kind == Kind::Portable {
-        return Err("ポータブル版はデータを exe の隣の data フォルダに保存します".into());
+        return Err(msg!("location.portable"));
     }
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title("データの保存場所を選ぶ").set_directory(&app.data_dir);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "データの保存場所を選ぶ", "Choose where to keep the data")).set_directory(&app.data_dir);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -646,13 +669,13 @@ async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: ta
 /// Lattice data already in it. The current folder is left as it is.
 #[tauri::command]
 async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool) -> Result<String, String> {
-    let target = lock(&app.picked_dir).take().ok_or("フォルダを選び直してください")?;
+    let target = lock(&app.picked_dir).take().ok_or_else(|| msg!("location.pickAgain"))?;
     let has_data = target.join(location::DB_FILE).exists();
     if copy && has_data {
-        return Err("選んだフォルダには既に Lattice のデータがあります".into());
+        return Err(msg!("location.hasData"));
     }
     if !copy && !has_data {
-        return Err("選んだフォルダに Lattice のデータがありません".into());
+        return Err(msg!("location.noData"));
     }
     if copy {
         let (store, from, to) = (app.store.clone(), app.data_dir.clone(), target.clone());
@@ -661,7 +684,7 @@ async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool)
     }
     let default_dir = handle.path().app_data_dir().map_err(err)?;
     location::write_bootstrap(&default_dir, &target)
-        .map_err(|e| format!("保存場所を {} に記録できませんでした: {e}", default_dir.join(location::BOOTSTRAP_FILE).display()))?;
+        .map_err(|e| msg!("location.recordFailed", path = default_dir.join(location::BOOTSTRAP_FILE).display().to_string(), error = e.to_string()))?;
     Ok(target.display().to_string())
 }
 
@@ -898,6 +921,8 @@ pub fn run() {
             reextract_article,
             render_article,
             get_auto_render,
+            get_ui_language,
+            set_ui_language,
             set_auto_render,
             import_urls,
             import_markdown,

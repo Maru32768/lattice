@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 use crate::instructions::{self, Applied};
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
+use crate::msg;
 use crate::srs::{self, Card, Grade};
 use crate::store::Store;
 
@@ -289,13 +290,13 @@ pub fn settings(store: &Store) -> Result<Settings, String> {
 
 pub fn set_settings(store: &Store, s: &Settings) -> Result<(), String> {
     if s.new_per_day > 9999 || s.reviews_per_day > 9999 {
-        return Err("1 日の上限は 9999 枚までです".into());
+        return Err(msg!("quiz.dailyMax"));
     }
     if !(1..=30 * srs::DAY as u32).contains(&s.min_interval_minutes) {
-        return Err("最短間隔は 1 分〜30 日です".into());
+        return Err(msg!("quiz.minRange"));
     }
     if !(1..=36500).contains(&s.max_interval_days) || i64::from(s.max_interval_days) * srs::DAY < i64::from(s.min_interval_minutes) {
-        return Err("最長間隔は最短間隔以上、100 年以下にしてください".into());
+        return Err(msg!("quiz.maxRange"));
     }
     store.set_setting(SETTINGS_KEY, Some(&serde_json::to_string(s).map_err(err)?)).map_err(err)
 }
@@ -376,7 +377,7 @@ pub fn grade(store: &Store, question_id: i64, grade: Grade, now: i64) -> Result<
         .query_row("SELECT ease, interval_minutes, reps, lapses FROM review_cards WHERE question_id = ?1", [question_id], |r| card_row(r, 0))
         .optional()
         .map_err(err)?
-        .ok_or("このカードは復習から外されています")?;
+        .ok_or_else(|| msg!("quiz.cardRemoved"))?;
     answer(&tx, question_id, card, grade, limits, now).map_err(err)?;
     tx.commit().map_err(err)
 }

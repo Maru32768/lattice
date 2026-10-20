@@ -11,6 +11,7 @@ use crate::extract::{collapse, inline_text, push_text, trim_inlines};
 use crate::fetch::Fetched;
 use crate::images;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
+use crate::msg;
 use crate::store::{Store, sha256_hex};
 
 /// `original_url` and `normalized_url` of every imported Markdown article.
@@ -67,7 +68,7 @@ pub fn to_ir(md: &str, fallback: Option<&str>) -> Result<ArticleIr, String> {
     }
     c.flush();
     if c.blocks.is_empty() {
-        return Err("取り込める本文がありません".into());
+        return Err(msg!("markdown.empty"));
     }
     let non_empty = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
     let first_line = || c.blocks.iter().find(|b| !b.text.is_empty()).map(|b| b.text.chars().take(80).collect::<String>());

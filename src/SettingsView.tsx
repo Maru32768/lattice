@@ -14,32 +14,37 @@ import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { LanguageSettings } from "./LanguageSettings";
 import { BrowserSettings } from "./BrowserSettings";
 import { TaskbarSettings } from "./TaskbarSettings";
 import { UpdateSection } from "./Update";
 import "./manage.css";
+import { useT, type PlainKey, type T } from "./i18n";
 
-export type SettingsSection = "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
+export type SettingsSection = "language" | "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
 
-const GROUPS = ["AI", "ライブラリ", "操作", "データ", "アプリ"] as const;
+const GROUPS = { ai: "settingsView.groupAi", library: "settingsView.groupLibrary", controls: "settingsView.groupControls", data: "settingsView.groupData", app: "settingsView.groupApp" } as const satisfies Record<string, PlainKey>;
+type Group = keyof typeof GROUPS;
 
-const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: string; lead?: ReactNode }[] = [
-  { id: "provider", group: "AI", title: "AI プロバイダ", lead: "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。" },
-  { id: "translation", group: "AI", title: "翻訳", lead: "記事の翻訳とページ表示の翻訳の両方に効きます。" },
-  { id: "instructions", group: "AI", title: "要約・対話", lead: "要約と対話の回答に、あなたの関心や前提知識を反映させます。記事の本文は信頼しない入力として扱い、その中の指示には従わせません。" },
-  { id: "classify", group: "AI", title: "自動分類" },
-  { id: "genres", group: "ライブラリ", title: "ジャンル", lead: "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。" },
-  { id: "render", group: "ライブラリ", title: "取り込み・JS 描画" },
-  { id: "images", group: "ライブラリ", title: "画像" },
-  { id: "review", group: "ライブラリ", title: "復習", lead: "理解度チェックで「復習に追加」した問題を、Anki と同じ SM-2 方式で間隔を空けて「今日の復習」に出します。正解するたびに間隔が伸び（1 日、6 日、その後は約 2.5 倍ずつ）、「もう一度」で最短間隔に戻ります。" },
-  { id: "shortcuts", group: "操作", title: "ショートカット", lead: "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。" },
-  { id: "browser", group: "操作", title: "ブラウザ", lead: "ページ表示（アプリ内ブラウザ）の URL バーとホームボタン。" },
-  { id: "taskbar", group: "操作", title: "タスクバー" },
-  { id: "backup", group: "データ", title: "バックアップ", lead: "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。" },
-  { id: "r2", group: "データ", title: "クラウドバックアップ（R2）", lead: <>DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。</> },
-  { id: "export", group: "データ", title: "エクスポート" },
-  { id: "storage", group: "データ", title: "ログ・保存場所" },
-  { id: "update", group: "アプリ", title: "アップデート", lead: "新しいバージョンは GitHub の Releases から取得します。更新は署名を確かめてからインストールし、データはそのまま残ります。" },
+/** `lead` is a key, or rendered (text with markup). */
+const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: PlainKey | ((t: T) => ReactNode) }[] = [
+  { id: "provider", group: "ai", title: "settingsView.provider", lead: "settingsView.providerLead" },
+  { id: "translation", group: "ai", title: "settingsView.translation", lead: "settingsView.translationLead" },
+  { id: "instructions", group: "ai", title: "settingsView.instructions", lead: "settingsView.instructionsLead" },
+  { id: "classify", group: "ai", title: "settingsView.classify" },
+  { id: "genres", group: "library", title: "settingsView.genres", lead: "settingsView.genresLead" },
+  { id: "render", group: "library", title: "settingsView.render" },
+  { id: "images", group: "library", title: "settingsView.images" },
+  { id: "review", group: "library", title: "settingsView.review", lead: "settingsView.reviewLead" },
+  { id: "language", group: "controls", title: "language.title" },
+  { id: "shortcuts", group: "controls", title: "settingsView.shortcuts", lead: "settingsView.shortcutsLead" },
+  { id: "browser", group: "controls", title: "settingsView.browser", lead: "settingsView.browserLead" },
+  { id: "taskbar", group: "controls", title: "settingsView.taskbar" },
+  { id: "backup", group: "data", title: "settingsView.backup", lead: "settingsView.backupLead" },
+  { id: "r2", group: "data", title: "settingsView.r2", lead: (t) => t.rich("settingsView.r2Lead", { code: <code>infra/r2</code> }) },
+  { id: "export", group: "data", title: "settingsView.export" },
+  { id: "storage", group: "data", title: "settingsView.storage" },
+  { id: "update", group: "app", title: "settingsView.update", lead: "settingsView.updateLead" },
 ];
 
 function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: () => void; onOpenUrl: (url: string) => void }) {
@@ -52,6 +57,7 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
     case "render": return <RenderSettings />;
     case "images": return <ImageSettings />;
     case "review": return <QuizSettings />;
+    case "language": return <LanguageSettings />;
     case "shortcuts": return <ShortcutSettings />;
     case "browser": return <BrowserSettings />;
     case "taskbar": return <TaskbarSettings />;
@@ -71,45 +77,46 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
   /** Opens a web page (release notes) in the Page view. */
   onOpenUrl: (url: string) => void;
 }) {
+  const t = useT();
   const [section, setSection] = useState(initialSection);
   const [badges, setBadges] = useState<Partial<Record<SettingsSection, ReactNode>>>({});
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
     void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setBadges({
-      provider: llm.status === "fulfilled" ? `${llm.value.chain.length} 段` : null,
+      provider: llm.status === "fulfilled" ? t("settingsView.models", { length: llm.value.chain.length }) : null,
       genres: genres.status === "fulfilled" ? genres.value.length : null,
-      r2: r2s.status === "fulfilled" && r2s.value.last_error ? <span className="error-text">エラー</span> : null,
+      r2: r2s.status === "fulfilled" && r2s.value.last_error ? <span className="error-text">{t("common.error")}</span> : null,
     }));
-  }, [section]);
+  }, [section, t]);
 
   const current = SECTIONS.find((s) => s.id === section)!;
   return (
     <div className="stg">
-      <nav aria-label="設定カテゴリ" data-pane="nav">
+      <nav aria-label={t("settingsView.categories")} data-pane="nav">
         <button className="ni back" onClick={onBack}>
           <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-          ライブラリに戻る<span className="kbd">Esc</span>
+          {t("settingsView.backToLibrary")}<span className="kbd">Esc</span>
         </button>
-        {GROUPS.map((g) => (
+        {(Object.keys(GROUPS) as Group[]).map((g) => (
           <Fragment key={g}>
-            <div className="sec">{g}</div>
+            <div className="sec">{t(GROUPS[g])}</div>
             {SECTIONS.filter((s) => s.group === g).map((s) => (
-              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={s.title} aria-current={s.id === section ? "page" : undefined} onClick={() => setSection(s.id)}>
-                <span className="label">{s.title}</span>
+              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={t(s.title)} aria-current={s.id === section ? "page" : undefined} onClick={() => setSection(s.id)}>
+                <span className="label">{t(s.title)}</span>
                 {badges[s.id] != null && <span className="n">{badges[s.id]}</span>}
               </button>
             ))}
-            {g === "ライブラリ" && <button className="ni" onClick={onFeeds}>フィード →</button>}
+            {g === "library" && <button className="ni" onClick={onFeeds}>{t("settingsView.feeds")}</button>}
           </Fragment>
         ))}
       </nav>
       <main key={section} data-pane="doc">
         <div className="body">
           <header>
-            <div className="cap">{current.group}</div>
-            <h1>{current.title}</h1>
-            {current.lead && <p className="lead">{current.lead}</p>}
+            <div className="cap">{t(GROUPS[current.group])}</div>
+            <h1>{t(current.title)}</h1>
+            {current.lead && <p className="lead">{typeof current.lead === "function" ? current.lead(t) : t(current.lead)}</p>}
           </header>
           <Body id={section} onChanged={onChanged} onOpenUrl={onOpenUrl} />
         </div>

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { FeedRow } from "./api";
-import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
+import { feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
+import { useT, type PlainKey } from "./i18n";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review";
 
@@ -20,11 +21,11 @@ export interface NavCounts {
 
 const GENRES_SHOWN = 6;
 const FEEDS_SHOWN = 5;
-const LIBRARY: [Scope, string, IconName, keyof NavCounts][] = [
-  [{ kind: "recent" }, "最近追加", "recent", "recent"],
-  [{ kind: "unread" }, "未読", "unread", "unread"],
-  [{ kind: "favorites" }, "お気に入り", "star", "favorites"],
-  [{ kind: "all" }, "すべての記事", "all", "all"],
+const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
+  [{ kind: "recent" }, "library.recent", "recent", "recent"],
+  [{ kind: "unread" }, "common.unread", "unread", "unread"],
+  [{ kind: "favorites" }, "common.favorites", "star", "favorites"],
+  [{ kind: "all" }, "common.allArticles", "all", "all"],
 ];
 
 const n = (v: number) => v.toLocaleString();
@@ -52,6 +53,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
   onGenres: () => void;
   onCollapse: () => void;
 }) {
+  const t = useT();
   const [allGenres, setAllGenres] = useState(false);
   const [feedsOpen, setFeedsOpen] = useState(true);
   const [allFeeds, setAllFeeds] = useState(false);
@@ -70,62 +72,62 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
   const shownFeeds = allFeeds ? feeds : feeds.slice(0, FEEDS_SHOWN);
 
   return (
-    <nav className="nav" aria-label="ナビゲーション" data-pane="nav">
+    <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
       <div className="nav-top">
-        <Menu className="ib" label="追加（URL・一括インポート・Markdown・フィード）" align="right" trigger={<Icon name="plus" />} items={[
-          { label: <><Icon name="page" />URL を開く</>, onSelect: onOpenUrl },
-          { label: <><Icon name="import" />一括インポート</>, onSelect: () => onScreen("import") },
-          { label: <><Icon name="reader" />Markdown を取り込む</>, onSelect: onMarkdown },
-          { label: <><Icon name="rss" />フィードを登録</>, onSelect: () => onScreen("feeds") },
+        <Menu className="ib" label={t("nav.add")} align="right" trigger={<Icon name="plus" />} items={[
+          { label: <><Icon name="page" />{t("nav.openUrl")}</>, onSelect: onOpenUrl },
+          { label: <><Icon name="import" />{t("common.bulkImport")}</>, onSelect: () => onScreen("import") },
+          { label: <><Icon name="reader" />{t("common.importMarkdown")}</>, onSelect: onMarkdown },
+          { label: <><Icon name="rss" />{t("common.addFeed")}</>, onSelect: () => onScreen("feeds") },
         ]} />
-        <button className="ib" onClick={onCollapse} aria-label="ナビゲーションを閉じる" title="ナビゲーションを閉じる"><Icon name="panel" /></button>
+        <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}><Icon name="panel" /></button>
       </div>
       <button className={`nav-search${searching ? " on" : ""}`} onClick={onPalette}>
         <Icon name="search" />
-        <span>{searching ? "検索中" : "検索・コマンド・URL"}</span>
+        <span>{searching ? t("nav.searching") : t("nav.searchPlaceholder")}</span>
         <span className="kbds">{searching ? <Kbd>/</Kbd> : <Kbd>Ctrl K</Kbd>}</span>
       </button>
 
-      <div className="sec">ライブラリ</div>
-      {LIBRARY.map(([s, label, icon, key]) => item(s, label, counts[key] as number, <Icon name={icon} />))}
+      <div className="sec">{t("nav.library")}</div>
+      {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
 
-      <div className="sec">ジャンル<button className="link" onClick={onGenres}>編集</button></div>
-      {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? UNCLASSIFIED, c, <span className="sw" style={{ background: genreSwatch(g) }} />))}
+      <div className="sec">{t("common.genre")}<button className="link" onClick={onGenres}>{t("nav.edit")}</button></div>
+      {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? t("common.unclassified"), c, <span className="sw" style={{ background: genreSwatch(g) }} />))}
       {counts.genres.length > GENRES_SHOWN && (
         <button className="ni dim" onClick={() => setAllGenres((v) => !v)} aria-expanded={allGenres}>
-          <Icon name={allGenres ? "up" : "right"} />{allGenres ? "折りたたむ" : `他 ${counts.genres.length - GENRES_SHOWN} ジャンル`}
+          <Icon name={allGenres ? "up" : "right"} />{allGenres ? t("nav.collapse") : t("nav.moreGenres", { x: counts.genres.length - GENRES_SHOWN })}
         </button>
       )}
 
       {searching && recentSearches.length > 0 && <>
-        <div className="sec">最近の検索</div>
+        <div className="sec">{t("nav.recentSearches")}</div>
         {recentSearches.map((q) => <button key={q} className="ni mono-ni" onClick={() => onRecent(q)}><span className="label">{q}</span></button>)}
       </>}
 
-      <div className="sec">ソース<button className="link" onClick={() => onScreen("feeds")}>管理</button></div>
+      <div className="sec">{t("common.source")}<button className="link" onClick={() => onScreen("feeds")}>{t("nav.manage")}</button></div>
       <button className="ni" onClick={() => setFeedsOpen((v) => !v)} aria-expanded={feedsOpen}>
-        <Icon name={feedsOpen ? "down" : "right"} /><span className="label">フィード</span><span className="n">{n(feeds.length)}</span>
+        <Icon name={feedsOpen ? "down" : "right"} /><span className="label">{t("nav.feeds")}</span><span className="n">{n(feeds.length)}</span>
       </button>
       {feedsOpen && (
         <div className="nav-sub">
           {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, feedName(f), counts.feedUnread.get(f.id) ?? 0, <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />, " sub"))}
           {feeds.length > FEEDS_SHOWN && (
             <button className="ni sub dim" onClick={() => setAllFeeds((v) => !v)} aria-expanded={allFeeds}>
-              {allFeeds ? "折りたたむ" : "すべてのフィード…"}
+              {allFeeds ? t("nav.collapse") : t("nav.allFeeds")}
             </button>
           )}
         </div>
       )}
-      {item({ kind: "feed", id: null }, MANUAL, counts.manual, <Icon name="manual" />)}
-      {screen === "feeds" && tool("feeds", "フィードを管理", "gear")}
+      {item({ kind: "feed", id: null }, t("common.manual"), counts.manual, <Icon name="manual" />)}
+      {screen === "feeds" && tool("feeds", t("nav.manageFeeds"), "gear")}
 
-      <div className="sec">ツール</div>
-      <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}><Icon name="chat" /><span className="label">対話</span></button>
-      {tool("review", "今日の復習", "review", reviewDue > 0 && <span className="bd run push" aria-label={`期限 ${reviewDue} 枚`}>{n(reviewDue)}</span>)}
-      {tool("jobs", "処理状況", "jobs", jobFailures > 0 && <span className="bd err push">{n(jobFailures)} 失敗</span>)}
-      {tool("import", "一括インポート", "import")}
+      <div className="sec">{t("nav.tools")}</div>
+      <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}><Icon name="chat" /><span className="label">{t("common.chat")}</span></button>
+      {tool("review", t("common.todaysReview"), "review", reviewDue > 0 && <span className="bd run push" aria-label={t("nav.due", { reviewDue })}>{n(reviewDue)}</span>)}
+      {tool("jobs", t("common.jobs"), "jobs", jobFailures > 0 && <span className="bd err push">{t("nav.failed", { n: n(jobFailures) })}</span>)}
+      {tool("import", t("common.bulkImport"), "import")}
       <div className="grow" />
-      <div className="nav-bottom">{tool("settings", "設定", "gear")}</div>
+      <div className="nav-bottom">{tool("settings", t("common.settings"), "gear")}</div>
     </nav>
   );
 }
@@ -133,16 +135,17 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
 export function NavRail({ scope, chatOpen, onOpen, onPalette, onScope, onChat }: {
   scope: Scope | null; chatOpen: boolean; onOpen: () => void; onPalette: () => void; onScope: (s: Scope) => void; onChat: () => void;
 }) {
+  const t = useT();
   const btn = (s: Scope, label: string, icon: IconName) => (
     <button className={`ib${scope && sameScope(scope, s) ? " on" : ""}`} onClick={() => onScope(s)} aria-label={label} title={label}><Icon name={icon} /></button>
   );
   return (
-    <nav className="nav-rail" aria-label="ナビゲーション（折りたたみ）" data-pane="nav">
-      <button className="ib" onClick={onOpen} aria-label="ナビゲーションを開く" title="ナビゲーションを開く"><Icon name="panel" /></button>
-      <button className="ib" onClick={onPalette} aria-label="検索・コマンド" title="検索・コマンド (Ctrl K)"><Icon name="search" /></button>
-      {btn({ kind: "unread" }, "未読", "unread")}
-      {btn({ kind: "favorites" }, "お気に入り", "star")}
-      <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label="対話" title="対話" aria-pressed={chatOpen}><Icon name="chat" /></button>
+    <nav className="nav-rail" aria-label={t("nav.rail")} data-pane="nav">
+      <button className="ib" onClick={onOpen} aria-label={t("nav.open")} title={t("nav.open")}><Icon name="panel" /></button>
+      <button className="ib" onClick={onPalette} aria-label={t("nav.railSearch")} title={t("nav.railSearchHint")}><Icon name="search" /></button>
+      {btn({ kind: "unread" }, t("common.unread"), "unread")}
+      {btn({ kind: "favorites" }, t("common.favorites"), "star")}
+      <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label={t("common.chat")} title={t("common.chat")} aria-pressed={chatOpen}><Icon name="chat" /></button>
     </nav>
   );
 }

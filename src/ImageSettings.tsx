@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "./SetRow";
 import { api, type ImageSettings as Value } from "./api";
+import { useT } from "./i18n";
 
 export function ImageSettings() {
+  const t = useT();
   const [value, setValue] = useState<Value>({ save: true, max_mb: 5 });
   const [error, setError] = useState<string | null>(null);
 
@@ -20,16 +22,16 @@ export function ImageSettings() {
 
   return (
     <div className="grp">
-      <SetRow title="画像を保存する" htmlFor="save-images"
-        desc="記事の画像（PNG・JPEG・GIF・WebP・AVIF）を取り込み後にダウンロードし、データベースに保存します。元の URL が消えても読めて、バックアップにも入ります。SVG は保存せずリンクのままにします。オフにしても保存済みの画像は消えません。">
+      <SetRow title={t("imageSettings.save")} htmlFor="save-images"
+        desc={t("imageSettings.saveDesc")}>
         <Switch id="save-images" checked={value.save} onChange={(on) => save({ ...value, save: on })} />
       </SetRow>
-      <SetRow title="1 枚あたりの上限" htmlFor="image-max" desc="記事 1 件あたりは 30 MB まで。">
+      <SetRow title={t("imageSettings.maxMb")} htmlFor="image-max" desc={t("imageSettings.maxMbDesc")}>
         <input id="image-max" className="input sm num" type="number" min={1} max={20} value={value.max_mb}
           onChange={(e) => save({ ...value, max_mb: Number(e.target.value) })} />
         <span className="muted">MB</span>
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{error}</p>}
+      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>
   );
 }

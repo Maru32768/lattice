@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { siteOf, type ArticleRow, type SearchHit, type SearchResult } from "./api";
-import { MANUAL, UNCLASSIFIED } from "./groups";
-import { countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
+import { DIM_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { onMiddle } from "./middle";
+import { useT, type PlainKey } from "./i18n";
 
-export const MATCH_LABEL = { lexical: "全文", semantic: "意味", both: "全文 + 意味" } as const;
-const METHODS: [SearchMethod, string][] = [["hybrid", "Hybrid"], ["lexical", "全文"], ["semantic", "意味"]];
+export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<string, PlainKey>;
+const METHODS: [SearchMethod, PlainKey][] = [["hybrid", "searchPane.hybrid"], ["lexical", "searchPane.lexical"], ["semantic", "searchPane.semantic"]];
 const COMPACT: Dim[] = ["genres", "tags", "feeds", "state"];
 const SHOWN_VALUES = 3;
 
@@ -20,18 +20,19 @@ export function Marked({ text, ts }: { text: string; ts: string[] }) {
 function ScopeSelect({ scope, onScope, genres, feeds }: {
   scope: Scope; onScope: (s: Scope) => void; genres: (string | null)[]; feeds: [number | null, string][];
 }) {
+  const t = useT();
   return (
     <label className="chip scope-chip">
-      <span className="k">範囲</span>
-      <select value={JSON.stringify(scope)} onChange={(e) => onScope(JSON.parse(e.target.value) as Scope)} aria-label="検索範囲">
-        <option value={JSON.stringify({ kind: "all" })}>すべての記事</option>
-        <option value={JSON.stringify({ kind: "recent" })}>最近追加</option>
-        <option value={JSON.stringify({ kind: "unread" })}>未読</option>
-        <option value={JSON.stringify({ kind: "favorites" })}>お気に入り</option>
-        <optgroup label="ジャンル">
-          {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? UNCLASSIFIED}</option>)}
+      <span className="k">{t("chatPane.scope")}</span>
+      <select value={JSON.stringify(scope)} onChange={(e) => onScope(JSON.parse(e.target.value) as Scope)} aria-label={t("searchPane.scope")}>
+        <option value={JSON.stringify({ kind: "all" })}>{t("common.allArticles")}</option>
+        <option value={JSON.stringify({ kind: "recent" })}>{t("library.recent")}</option>
+        <option value={JSON.stringify({ kind: "unread" })}>{t("common.unread")}</option>
+        <option value={JSON.stringify({ kind: "favorites" })}>{t("common.favorites")}</option>
+        <optgroup label={t("common.genre")}>
+          {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? t("common.unclassified")}</option>)}
         </optgroup>
-        <optgroup label="ソース">
+        <optgroup label={t("common.source")}>
           {feeds.map(([id, name]) => <option key={String(id)} value={JSON.stringify({ kind: "feed", id })}>{name}</option>)}
         </optgroup>
       </select>
@@ -68,6 +69,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   /** Bumped to move focus back into the search box (the `/` key). */
   focusSeq: number;
 }) {
+  const t = useT();
   const [q, setQ] = useState(initial);
   const [moreDims, setMoreDims] = useState<Set<Dim>>(new Set());
   const input = useRef<HTMLInputElement>(null);
@@ -102,25 +104,25 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? MANUAL : valueLabel("feeds", id, all)]);
+  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, t)]);
   let n = 0;
   return (
-    <section className="list search" aria-label="検索結果" data-pane="list" onKeyDown={keys}>
+    <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
       <header className="list-h">
         <div className="search-q">
-          <label className="vh" htmlFor="search-q">検索語</label>
-          <input id="search-q" ref={input} className="input lg" value={q} onChange={(e) => setQ(e.target.value)} placeholder="保存した記事を検索" />
-          <div className="seg" role="group" aria-label="検索方式" title="検索は常に Hybrid で実行し、全文・意味は一致の種類で結果を絞り込みます">
+          <label className="vh" htmlFor="search-q">{t("searchPane.terms")}</label>
+          <input id="search-q" ref={input} className="input lg" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchPane.searchSaved")} />
+          <div className="seg" role="group" aria-label={t("searchPane.method")} title={t("searchPane.methodHint")}>
             {METHODS.map(([m, label]) => (
               <button key={m} className={method === m ? "on" : ""} aria-pressed={method === m} onClick={() => onMethod(m)}
-                disabled={m === "semantic" && semanticOff}>{label}</button>
+                disabled={m === "semantic" && semanticOff}>{t(label)}</button>
             ))}
           </div>
         </div>
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} dims={["genres", "tags", "feeds"]}>
           <ScopeSelect scope={scope} onScope={onScope} genres={[...countBy(all, "genres").keys()]} feeds={feedNames} />
         </FacetBar>
-        <div className="search-count mono">{busy ? "検索中…" : result ? `${flat.length} block · ${hits.length} 記事` : ""}</div>
+        <div className="search-count mono">{busy ? t("searchPane.searching") : result ? t("searchPane.count", { length: flat.length, length2: hits.length }) : ""}</div>
         {result && hitArticles.length > 0 && (
           <div className="ftab">
             {COMPACT.map((d) => {
@@ -131,19 +133,19 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
               const shown = open ? counts : counts.slice(0, SHOWN_VALUES);
               return (
                 <div className="fr" key={d}>
-                  <span className="l">{d === "genres" ? "ジャンル" : d === "tags" ? "タグ" : d === "feeds" ? "ソース" : "状態"}</span>
+                  <span className="l">{t(DIM_LABELS[d])}</span>
                   <div className="fv">
                     {shown.map(([v, c]) => {
                       const on = (facets[d] as DimValue<Dim>[]).includes(v);
                       return (
                         <button key={String(v)} className={on ? "on" : ""} aria-pressed={on} onClick={() => onFacets(toggle(facets, d, v))}>
-                          {valueLabel(d, v, all)} <b>{c}</b>
+                          {valueLabel(d, v, all, t)} <b>{c}</b>
                         </button>
                       );
                     })}
                     {counts.length > SHOWN_VALUES && (
                       <button className="more" onClick={() => setMoreDims((s) => { const x = new Set(s); if (!x.delete(d)) x.add(d); return x; })}>
-                        {open ? "閉じる" : `+${counts.length - SHOWN_VALUES}`}
+                        {open ? t("common.close") : `+${counts.length - SHOWN_VALUES}`}
                       </button>
                     )}
                   </div>
@@ -155,22 +157,22 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
         {semanticOff && (
           <div className="note warn center">
             <Icon name="offline" />
-            <span className="grow">全文検索のみで表示中 — {result.semantic_error}</span>
-            <button className="btn sm" onClick={() => onSearch(initial)}>再試行</button>
+            <span className="grow">{t("searchPane.lexicalOnly", { semantic_error: t.msg(result.semantic_error) })}</span>
+            <button className="btn sm" onClick={() => onSearch(initial)}>{t("searchPane.retry")}</button>
           </div>
         )}
       </header>
       <div className="list-body" ref={body}>
-        {result && hits.length === 0 && !busy && <div className="empty"><div className="muted">該当する箇所はありません。</div></div>}
+        {result && hits.length === 0 && !busy && <div className="empty"><div className="muted">{t("searchPane.none")}</div></div>}
         {hits.map((g) => {
           const a = articleById.get(g.article_id);
           return (
             <div className="sgrp" key={g.article_id}>
               <div className="at">{a?.title ?? g.hits[0].article_title}</div>
               <div className="am">
-                {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a)}</span>}
+                {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>}
                 {a && <span>{mmdd(a.saved_at)}</span>}
-                <span>{g.hits.length} 一致</span>
+                <span>{t("searchPane.matches", { length: g.hits.length })}</span>
               </div>
               {g.hits.map((h) => {
                 const i = n++;
@@ -178,8 +180,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                   <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
                     onClick={(e) => { onSel(i); onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey); }} {...onMiddle(() => onOpen(h, false, true))}
                     onFocus={() => onSel(i)}>
-                    <span className="sh">{h.heading && h.heading !== h.text ? h.heading : "冒頭"}</span>
-                    <span className={`mt ${h.source}`}>{MATCH_LABEL[h.source]}{h.source === "semantic" && ` ${h.score.toFixed(2)}`}</span>
+                    <span className="sh">{h.heading && h.heading !== h.text ? h.heading : t("searchPane.top")}</span>
+                    <span className={`mt ${h.source}`}>{t(MATCH_LABEL[h.source])}{h.source === "semantic" && ` ${h.score.toFixed(2)}`}</span>
                     <span className="tx"><Marked text={h.text} ts={ts} /></span>
                     {h.translation && <span className="tx tr"><Marked text={h.translation} ts={ts} /></span>}
                   </button>
@@ -190,10 +192,10 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
         })}
       </div>
       <footer className="list-f hints">
-        <span><ActionKey id="next" /><ActionKey id="prev" /> 一致間を移動</span>
-        <span><Kbd>Enter</Kbd> Reader で開く</span>
-        <span><Kbd>Shift</Kbd><Kbd>Enter</Kbd> Page で開く</span>
-        <span className="r"><Kbd>Esc</Kbd> 元の一覧へ</span>
+        <span><ActionKey id="next" /><ActionKey id="prev" />{t("searchPane.hintMatches")}</span>
+        <span><Kbd>Enter</Kbd>{t("searchPane.hintReader")}</span>
+        <span><Kbd>Shift</Kbd><Kbd>Enter</Kbd>{t("searchPane.hintPage")}</span>
+        <span className="r"><Kbd>Esc</Kbd>{t("searchPane.hintBack")}</span>
       </footer>
     </section>
   );

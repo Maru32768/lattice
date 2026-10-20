@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ArticleRow } from "./api.ts";
+import { translatorFor } from "./i18n/index.ts";
 import { NO_FACETS, NO_KEPT, countBy, facetBase, inScope, keep, listed, matches, relaxations, toFilter, toggle, valueLabel, viewKey, type Facets } from "./library.ts";
 
 const NOW = Date.parse("2026-10-17T12:00:00Z");
@@ -18,6 +19,8 @@ const all = [
 ];
 const ids = (rows: ArticleRow[]) => rows.map((a) => a.id);
 const f = (p: Partial<Facets>): Facets => ({ ...NO_FACETS, ...p });
+
+const [ja, en] = [translatorFor("ja"), translatorFor("en")];
 
 test("scopes: recent is the last 7 days; genre/feed null are 未分類/手動追加", () => {
   assert.deepEqual(ids(all.filter((a) => inScope(a, { kind: "recent" }, NOW))), [1, 3, 4]);
@@ -46,18 +49,20 @@ test("popover counts: own dimension removed, except tags in all mode", () => {
 });
 
 test("relaxations: one per active facet, plus the scope unless all", () => {
-  const r = relaxations(all, { kind: "unread" }, f({ genres: ["Database"], tags: ["ebpf"] }), NOW);
+  const r = relaxations(all, { kind: "unread" }, f({ genres: ["Database"], tags: ["ebpf"] }), NOW, ja);
   assert.deepEqual(r.map((x) => [x.label, x.count]), [
     ["ジャンル Database を外す", 1], ["タグ ebpf を外す", 1], ["未読 → すべての記事", 0],
   ]);
+  assert.deepEqual(relaxations(all, { kind: "unread" }, f({ genres: ["Database"] }), NOW, en).map((x) => x.label), ["Remove Genre: Database", "Unread → All articles"]);
   assert.deepEqual(r[1].facets, f({ genres: ["Database"] }));
   assert.deepEqual(r[2].scope, { kind: "all" });
 });
 
 test("labels and backend filters", () => {
-  assert.equal(valueLabel("feeds", 7, all), "Planet PostgreSQL");
-  assert.equal(valueLabel("feeds", null, all), "手動追加");
-  assert.equal(valueLabel("difficulty", 4, all), "上級");
+  assert.equal(valueLabel("feeds", 7, all, ja), "Planet PostgreSQL");
+  assert.equal(valueLabel("feeds", null, all, ja), "手動追加");
+  assert.equal(valueLabel("difficulty", 4, all, ja), "上級");
+  assert.equal(valueLabel("difficulty", null, all, en), "Not rated");
   assert.deepEqual(toFilter({ kind: "recent" }), { kind: "all" });
   assert.deepEqual(toFilter({ kind: "genre", name: null }), { kind: "genre", name: null });
 });

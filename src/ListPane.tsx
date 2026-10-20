@@ -7,16 +7,17 @@ import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
+import { t, useT, type PlainKey } from "./i18n";
 
 export type Grouping = "none" | "feed" | "genre";
 
-export const SORTS: [ArticleSort, string][] = [
-  ["saved_desc", "追加日・新しい順"],
-  ["saved_asc", "追加日・古い順"],
-  ["published_desc", "公開日・新しい順"],
-  ["difficulty_asc", "難易度・やさしい順"],
+export const SORTS: [ArticleSort, PlainKey][] = [
+  ["saved_desc", "listPane.savedDesc"],
+  ["saved_asc", "listPane.savedAsc"],
+  ["published_desc", "listPane.publishedDesc"],
+  ["difficulty_asc", "listPane.difficultyAsc"],
 ];
-const GROUPINGS: [Grouping, string][] = [["none", "なし"], ["feed", "ソース"], ["genre", "ジャンル"]];
+const GROUPINGS: [Grouping, PlainKey][] = [["none", "common.none"], ["feed", "common.source"], ["genre", "common.genre"]];
 
 export const mmdd = (s: string) => {
   const d = new Date(s);
@@ -25,11 +26,11 @@ export const mmdd = (s: string) => {
 
 /** A status badge only when something is abnormal. */
 function badge(a: ArticleRow, translating: string | null): [string, string] | null {
-  if (a.fetch_status === "pending") return ["run", "取得中"];
-  if (a.fetch_status === "failed") return ["err", "取得失敗"];
-  if (a.extraction_status === "failed") return ["err", "抽出失敗"];
+  if (a.fetch_status === "pending") return ["run", t("listPane.fetching")];
+  if (a.fetch_status === "failed") return ["err", t("listPane.fetchFailed")];
+  if (a.extraction_status === "failed") return ["err", t("listPane.extractFailed")];
   if (translating) return ["run", translating];
-  if (a.thin) return ["warn", "本文が短い"];
+  if (a.thin) return ["warn", t("listPane.thin")];
   return null;
 }
 
@@ -37,19 +38,20 @@ function badge(a: ArticleRow, translating: string | null): [string, string] | nu
 export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCursor }: {
   a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; onOpen: (newTab: boolean) => void; onCursor: () => void;
 }) {
+  const t = useT();
   const b = badge(a, translating);
   const unread = a.read_status === "unread";
   return (
     <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}`} onClick={(e) => onOpen(e.ctrlKey || e.metaKey)}
       {...onMiddle(() => onOpen(true))} onFocus={onCursor}
       aria-current={sel || undefined} data-id={a.id}>
-      {unread && <span className="dot" aria-label="未読" />}
+      {unread && <span className="dot" aria-label={t("common.unread")} />}
       <span className="t">{a.title ?? a.original_url}</span>
       <span className="meta">
-        <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? siteOf(a)}</span>
+        <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>
         <span>{mmdd((sort === "published_desc" && a.published_at) || a.saved_at)}</span>
         {a.difficulty != null && <Dif d={a.difficulty} />}
-        {a.favorite && <span className="fav" aria-label="お気に入り"><Icon name="star" size="sm" /></span>}
+        {a.favorite && <span className="fav" aria-label={t("common.favorites")}><Icon name="star" size="sm" /></span>}
         {b && <span className={`bd ${b[0]}`}>{b[1]}</span>}
       </span>
       {a.tags.length > 0 && <span className="tags">{a.tags.join(" · ")}</span>}
@@ -66,6 +68,7 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
   dims?: Dim[];
   children?: React.ReactNode;
 }) {
+  const t = useT();
   const [open, setOpen] = useState<{ dim: Dim; el: HTMLElement } | null>(null);
   const active = activeDims(facets);
   const toggleOpen = (dim: Dim) => (e: React.MouseEvent<HTMLElement>) => {
@@ -83,15 +86,15 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
       {active.map((d) => (
         <span key={d} ref={chipRef(d)} className={`chip on${open?.dim === d ? " open" : ""}`}>
           <button className="chip-body" onClick={toggleOpen(d)} aria-haspopup="dialog" aria-expanded={open?.dim === d}>
-            <span className="k">{DIM_LABELS[d]}</span>{facetLabel(facets, d, all)}
+            <span className="k">{t(DIM_LABELS[d])}</span>{facetLabel(facets, d, all, t)}
           </button>
-          <button className="x" onClick={() => onFacets(without(facets, d))} aria-label={`${DIM_LABELS[d]}の絞り込みを解除`}><Icon name="x" size="sm" /></button>
+          <button className="x" onClick={() => onFacets(without(facets, d))} aria-label={t("listPane.clearFacet", { label: t(DIM_LABELS[d]) })}><Icon name="x" size="sm" /></button>
         </span>
       ))}
       {dims.filter((d) => !active.includes(d)).map((d) => (
         <button key={d} ref={chipRef(d)} className={`chip${d === "state" ? " dashed" : ""}${open?.dim === d ? " open" : ""}`} onClick={toggleOpen(d)}
           aria-haspopup="dialog" aria-expanded={open?.dim === d}>
-          {DIM_LABELS[d]}{d !== "state" && <Icon name="down" size="sm" />}
+          {t(DIM_LABELS[d])}{d !== "state" && <Icon name="down" size="sm" />}
         </button>
       ))}
       {open && (
@@ -105,16 +108,17 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
 export function SortMenu({ sort, onSort, group, onGroup }: {
   sort: ArticleSort; onSort: (s: ArticleSort) => void; group: Grouping; onGroup: (g: Grouping) => void;
 }) {
-  const label = SORTS.find(([s]) => s === sort)![1];
+  const t = useT();
+  const label = t(SORTS.find(([s]) => s === sort)![1]);
   return (
-    <Menu className="tb sort" label="並び順とグループ" title="並び順とグループ"
-      trigger={<><Icon name="sort" size="md" />{label}{group !== "none" && ` · ${GROUPINGS.find(([g]) => g === group)![1]}`}</>}
+    <Menu className="tb sort" label={t("listPane.sortGroup")} title={t("listPane.sortGroup")}
+      trigger={<><Icon name="sort" size="md" />{label}{group !== "none" && ` · ${t(GROUPINGS.find(([g]) => g === group)![1])}`}</>}
       items={[
-        "並び順",
-        ...SORTS.map(([s, l]) => ({ label: l, checked: s === sort, onSelect: () => onSort(s) })),
+        t("listPane.sort"),
+        ...SORTS.map(([s, l]) => ({ label: t(l), checked: s === sort, onSelect: () => onSort(s) })),
         "-",
-        "グループ",
-        ...GROUPINGS.map(([g, l]) => ({ label: l, checked: g === group, onSelect: () => onGroup(g) })),
+        t("listPane.group"),
+        ...GROUPINGS.map(([g, l]) => ({ label: t(l), checked: g === group, onSelect: () => onGroup(g) })),
       ]} />
   );
 }
@@ -144,6 +148,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   onOpen: (a: ArticleRow, newTab: boolean) => void;
   onCollapse: () => void;
 }) {
+  const t = useT();
   const hasFacets = activeDims(facets).length > 0;
   const renderGroup = (g: Group<ArticleRow>, depth: number): React.ReactNode => (
     <div key={g.key} role="group" aria-label={g.label || undefined}>
@@ -157,18 +162,18 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
     </div>
   );
   return (
-    <section className="list" aria-label="記事一覧" data-pane="list">
+    <section className="list" aria-label={t("listPane.articles")} data-pane="list">
       <header className="list-h">
         <div className="list-title">
           <h1>{title}</h1>
           <span className="mono count">{count} / {total}</span>
-          <button className="ib" onClick={onCollapse} aria-label="記事一覧を閉じる" title="記事一覧を閉じる"><Icon name="left" /></button>
+          <button className="ib" onClick={onCollapse} aria-label={t("listPane.close")} title={t("listPane.close")}><Icon name="left" /></button>
         </div>
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} />
         <div className="list-tools">
           <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
           <button className="clear" onClick={() => onFacets({ ...facets, genres: [], tags: [], feeds: [], difficulty: [], state: [] })} disabled={!hasFacets}>
-            クリア <Kbd>Esc</Kbd>
+            {t("listPane.clear")}<Kbd>Esc</Kbd>
           </button>
         </div>
       </header>
@@ -176,21 +181,21 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
         {count > 0 ? groups.map((g) => renderGroup(g, 0))
           : total > 0 || relax.length > 0 ? (
             <div className="empty">
-              <div className="empty-h">この条件の記事はありません</div>
+              <div className="empty-h">{t("listPane.noMatch")}</div>
               {relax.length > 0 && <>
-                <div className="muted">どれか 1 つを外すと:</div>
+                <div className="muted">{t("listPane.relaxHint")}</div>
                 <div className="btn-row">
-                  {relax.map((r) => <button key={r.label} className="btn" onClick={() => onRelax(r)}>{r.label} → {r.count} 件</button>)}
+                  {relax.map((r) => <button key={r.label} className="btn" onClick={() => onRelax(r)}>{t("listPane.relaxation", { label: r.label, count: r.count })}</button>)}
                 </div>
               </>}
             </div>
-          ) : <div className="empty"><div className="muted">{all.length === 0 ? "記事はまだありません" : "この一覧に記事はありません"}</div></div>}
+          ) : <div className="empty"><div className="muted">{all.length === 0 ? t("listPane.empty") : t("listPane.emptyList")}</div></div>}
       </div>
       <footer className="list-f hints">
-        <span><ActionKey id="next" /><ActionKey id="prev" /> 移動</span>
-        <span><ActionKey id="open" /> 開く</span>
-        <span><ActionKey id="favorite" /> お気に入り</span>
-        <span><ActionKey id="read" /> 既読</span>
+        <span><ActionKey id="next" /><ActionKey id="prev" />{t("common.hintMove")}</span>
+        <span><ActionKey id="open" />{t("common.hintOpen")}</span>
+        <span><ActionKey id="favorite" />{t("listPane.hintFavorite")}</span>
+        <span><ActionKey id="read" />{t("listPane.hintRead")}</span>
       </footer>
     </section>
   );
@@ -199,12 +204,13 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
 export function ListRail({ label, index, count, onOpen, onPrev, onNext }: {
   label: string; index: number; count: number; onOpen: () => void; onPrev: () => void; onNext: () => void;
 }) {
+  const t = useT();
   return (
-    <section className="list-rail" aria-label="記事一覧（折りたたみ）" data-pane="list">
-      <button className="ib" onClick={onOpen} aria-label="記事一覧を開く" title="記事一覧を開く"><Icon name="right" /></button>
-      <button className="ib" onClick={onPrev} aria-label="前の記事へカーソル (k)" title="前の記事へカーソル (k)"><Icon name="up" /></button>
+    <section className="list-rail" aria-label={t("listPane.rail")} data-pane="list">
+      <button className="ib" onClick={onOpen} aria-label={t("listPane.open")} title={t("listPane.open")}><Icon name="right" /></button>
+      <button className="ib" onClick={onPrev} aria-label={t("listPane.prev")} title={t("listPane.prev")}><Icon name="up" /></button>
       <span className="vlabel mono">{index > 0 ? index : "–"} / {count} · {label}</span>
-      <button className="ib" onClick={onNext} aria-label="次の記事へカーソル (j)" title="次の記事へカーソル (j)"><Icon name="down" /></button>
+      <button className="ib" onClick={onNext} aria-label={t("listPane.next")} title={t("listPane.next")}><Icon name="down" /></button>
     </section>
   );
 }

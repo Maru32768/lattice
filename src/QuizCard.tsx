@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Grade, QuizQuestion } from "./api";
 import { GRADES, formatInterval, suggestedGrade } from "./quiz";
 import "./quiz.css";
+import { useT } from "./i18n";
 
 /**
  * One question: answer (pick an option, or reveal after recalling), then the answer, its
@@ -17,6 +18,7 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
   onGrade: (g: Grade) => void;
   onSource: (blockId: number) => void;
 }) {
+  const t = useT();
   const [chosen, setChosen] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -35,7 +37,7 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
     <div className="qz-card" onKeyDown={keys}>
       <p className="qz-q">{q.question}</p>
       {q.kind === "choice" ? (
-        <div className="qz-opts" role="group" aria-label="選択肢">
+        <div className="qz-opts" role="group" aria-label={t("quizCard.options")}>
           {q.options.map((o, i) => {
             const tone = shown && o === q.answer ? " right" : chosen === o ? " wrong" : "";
             return (
@@ -47,32 +49,32 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
         </div>
       ) : !revealed && (
         <div className="qz-recall">
-          <textarea className="qz-draft" rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label="自分の答え"
-            placeholder="自分の答え（任意・保存されません）" />
-          <button className="btn pri" onClick={() => setRevealed(true)}>答えを見る</button>
+          <textarea className="qz-draft" rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={t("quizCard.yourAnswer")}
+            placeholder={t("quizCard.yourAnswerPlaceholder")} />
+          <button className="btn pri" onClick={() => setRevealed(true)}>{t("quizCard.reveal")}</button>
         </div>
       )}
       {shown && (
         <div className="qz-reveal">
           {q.kind === "choice"
-            ? <p className={`qz-verdict ${chosen === q.answer ? "ok" : "ng"}`} role="status">{chosen === q.answer ? "正解" : `不正解 · 答えは「${q.answer}」`}</p>
+            ? <p className={`qz-verdict ${chosen === q.answer ? "ok" : "ng"}`} role="status">{chosen === q.answer ? t("quizCard.correct") : t("quizCard.wrong", { answer: q.answer })}</p>
             : <>
-                {draft.trim() && <p className="qz-mine"><span className="cap">自分の答え</span>{draft}</p>}
-                <p className="qz-answer" role="status"><span className="cap">答え</span>{q.answer}</p>
+                {draft.trim() && <p className="qz-mine"><span className="cap">{t("quizCard.yourAnswer")}</span>{draft}</p>}
+                <p className="qz-answer" role="status"><span className="cap">{t("quizCard.answer")}</span>{q.answer}</p>
               </>}
           {q.explanation && <p className="qz-expl">{q.explanation}</p>}
           {q.block_ids.length > 0 && (
             <div className="qz-src">
               {q.block_ids.map((b, i) => (
-                <button key={b} className="chip" onClick={() => onSource(b)} title="記事のこの箇所へ移動">出典{q.block_ids.length > 1 ? ` ${i + 1}` : ""}へ</button>
+                <button key={b} className="chip" onClick={() => onSource(b)} title={t("quizCard.sourceHint")}>{t.rich("quizCard.source", { x: q.block_ids.length > 1 ? ` ${i + 1}` : "" })}</button>
               ))}
             </div>
           )}
-          <div className="qz-grades" role="group" aria-label={hint ? "評価（変更できます）" : "どのくらい答えられましたか"}>
+          <div className="qz-grades" role="group" aria-label={hint ? t("quizCard.gradeChange") : t("quizCard.gradeAsk")}>
             {GRADES.map(({ grade, label }, i) => (
               <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
                 title={`${label} (${i + 1})`}>
-                {label}{previews && <span className="ivl">{formatInterval(previews[i])}</span>}
+                {t(label)}{previews && <span className="ivl">{formatInterval(previews[i], t)}</span>}
               </button>
             ))}
           </div>

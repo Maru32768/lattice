@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PageKeys } from "./keys";
+import type { Lang, T } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
 export type Inline =
@@ -75,8 +76,8 @@ export interface ArticleRow {
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
 export const isLocal = (url: string) => url.startsWith("local:");
 
-/** The site shown for an article: its domain, or ローカル for an imported file. */
-export const siteOf = (a: Pick<ArticleRow, "domain">) => a.domain || "ローカル";
+/** The site shown for an article: its domain, or "local" for an imported file. */
+export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */
 export type ArticleFilter =
@@ -304,6 +305,16 @@ export interface ReviewSettings {
   max_interval_days: number;
 }
 
+/** Mirrors browser.rs OverlayLabels: the in-page overlay's tooltip text. */
+export interface OverlayLabels {
+  original: string;
+  translated: string;
+  flip: string;
+  translating: string;
+  failed: string;
+  retry: string;
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -384,6 +395,9 @@ export const api = {
   setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
   taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),
   setTaskbarBadge: (on: boolean) => invoke<void>("set_taskbar_badge", { on }),
+  /** The display language; null until the UI first stores the one it detected. */
+  uiLanguage: () => invoke<Lang | null>("get_ui_language"),
+  setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),
@@ -432,7 +446,7 @@ export const browser = {
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
   capture: (tab: number) => invoke<string | null>("browser_capture", { tab }),
   go: (tab: number, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
-  setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
+  setTranslation: (enabled: boolean, percent: number, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 

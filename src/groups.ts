@@ -1,4 +1,5 @@
 // List grouping (グループ: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
+import type { T } from "./i18n/index.ts";
 
 interface Groupable {
   genre: string | null;
@@ -13,8 +14,6 @@ export interface Group<A> {
   children?: Group<A>[];
 }
 
-export const UNCLASSIFIED = "未分類";
-export const MANUAL = "手動追加";
 
 /** What the UI calls a feed: the user's name for it, else its own title, else its URL. */
 export const feedName = (f: { custom_title: string | null; title: string | null; url: string }) => f.custom_title ?? f.title ?? f.url;
@@ -36,12 +35,12 @@ function ordered<A>(groups: Group<A>[], special: string, first: boolean): Group<
   return groups.sort((x, y) => rank(x) - rank(y) || x.label.localeCompare(y.label));
 }
 
-const byGenre = <A extends Groupable>(articles: A[]) =>
-  ordered(groupBy(articles, (a) => [`g:${a.genre?.toLowerCase() ?? ""}`, a.genre ?? UNCLASSIFIED]), "g:", false);
+const byGenre = <A extends Groupable>(articles: A[], t: T) =>
+  ordered(groupBy(articles, (a) => [`g:${a.genre?.toLowerCase() ?? ""}`, a.genre ?? t("common.unclassified")]), "g:", false);
 
 /** "feed": feeds (manual additions first) → genres → articles. "genre": genres → articles. */
-export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" | "genre"): Group<A>[] {
-  if (mode === "genre") return byGenre(articles);
-  const feeds = groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? MANUAL]);
-  return ordered(feeds, "f:", true).map((f) => ({ ...f, children: byGenre(f.articles) }));
+export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" | "genre", t: T): Group<A>[] {
+  if (mode === "genre") return byGenre(articles, t);
+  const feeds = groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? t("common.manual")]);
+  return ordered(feeds, "f:", true).map((f) => ({ ...f, children: byGenre(f.articles, t) }));
 }

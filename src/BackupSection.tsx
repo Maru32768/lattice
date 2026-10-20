@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type Settings } from "./api";
 import { SetRow } from "./SetRow";
+import { useT } from "./i18n";
 
 export function BackupSection() {
+  const t = useT();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [keep, setKeep] = useState(30);
   const [status, setStatus] = useState<string | null>(null);
@@ -16,7 +18,7 @@ export function BackupSection() {
     setError(null);
     try {
       const b = await api.backup();
-      setStatus(`バックアップを作成しました: ${b.path}`);
+      setStatus(t("backupSection.created", { path: b.path }));
       if (b.warning) setError(b.warning);
     } catch (e) {
       setError(String(e));
@@ -27,7 +29,7 @@ export function BackupSection() {
     setError(null);
     try {
       await api.setBackupKeep(keep);
-      setStatus(`ローカルのバックアップを新しい ${keep} 世代まで残します`);
+      setStatus(t("backupSection.keepSaved", { keep }));
     } catch (e) {
       setError(String(e));
     }
@@ -36,17 +38,17 @@ export function BackupSection() {
   return (
     <>
       <div className="grp">
-        <SetRow title="ローカルバックアップ" desc={<>保存先: <code>{settings?.backup_dir}</code></>}>
-          <button className="btn" onClick={backup}>今すぐバックアップ</button>
+        <SetRow title={t("backupSection.local")} desc={t.rich("backupSection.location", { path: <code>{settings?.backup_dir}</code> })}>
+          <button className="btn" onClick={backup}>{t("backupSection.backUpNow")}</button>
         </SetRow>
-        <SetRow title="残す世代数" htmlFor="backup-keep"
-          desc={<>バックアップを作るたびに、新しいものから指定した世代数だけ残して古い <code>lattice-*.db</code> を削除します。日数では消さないので、しばらく使わなくても消えません。</>}>
+        <SetRow title={t("backupSection.keep")} htmlFor="backup-keep"
+          desc={<>{t.rich("backupSection.keepDesc", { code: <code>lattice-*.db</code> })}</>}>
           <input id="backup-keep" className="input sm num" type="number" min={1} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
-          <button className="btn" onClick={saveKeep}>保存</button>
+          <button className="btn" onClick={saveKeep}>{t("common.save")}</button>
         </SetRow>
       </div>
       {status && <p role="status" className="msg">{status}</p>}
-      {error && <p role="alert" className="msg error-text">{error}</p>}
+      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
     </>
   );
 }

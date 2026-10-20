@@ -1,4 +1,5 @@
 import { keyLabel, useBindings, type ActionId } from "./keys";
+import { useT } from "./i18n";
 
 // Stroke icons copied from the design boards (24×24 viewBox, styled by .ico).
 const PATHS = {
@@ -46,8 +47,9 @@ export function Icon({ name, size }: { name: IconName; size?: "sm" | "md" }) {
 
 /** Five difficulty dots (filled up to `d`). */
 export function Dif({ d }: { d: number | null }) {
+  const t = useT();
   return (
-    <span className="dif" aria-label={d == null ? "難易度 未判定" : `難易度 ${d}/5`} role="img">
+    <span className="dif" aria-label={d == null ? t("icon.difficultyNone") : t("icon.difficulty", { d })} role="img">
       {[1, 2, 3, 4, 5].map((i) => <i key={i} className={d != null && i <= d ? "f" : ""} />)}
     </span>
   );

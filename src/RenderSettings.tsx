@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "./SetRow";
 import { api } from "./api";
+import { useT } from "./i18n";
 
 export function RenderSettings() {
+  const t = useT();
   const [on, setOn] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,11 +22,11 @@ export function RenderSettings() {
 
   return (
     <div className="grp">
-      <SetRow title="JS ページを自動で描画" htmlFor="auto-render"
-        desc="一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。">
+      <SetRow title={t("renderSettings.auto")} htmlFor="auto-render"
+        desc={t("renderSettings.autoDesc")}>
         <Switch id="auto-render" checked={on} onChange={toggle} />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{error}</p>}
+      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>
   );
 }

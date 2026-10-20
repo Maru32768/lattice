@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { api, type ImportSummary } from "./api";
 import "./manage.css";
+import { useT, type PlainKey } from "./i18n";
 
 export type ImportTab = "urls" | "markdown" | "pdf";
 
-const SUB: Record<ImportTab, string> = {
-  urls: "URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。",
-  pdf: "論文などの PDF を 1 つの記事として取り込みます。本文の文字を読み取り、2 段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します（文字のない画像だけの PDF は取り込めません）。arXiv の …/pdf/… のような PDF の URL は、普通の URL と同じように保存やフィードから取り込めます。元の PDF は保存しておき、再抽出に使います。",
-  markdown: "Markdown を 1 つの記事として取り込みます。タイトルは最初の見出し（# ）、なければファイル名か最初の行です。画像は、URL のものは保存し、相対パスのものはファイルから取り込んだときだけ同じフォルダから読み込みます（貼り付けたときは代替テキストを表示）。HTML タグは取り込みません。",
+const SUB: Record<ImportTab, PlainKey> = {
+  urls: "importView.urlsDesc",
+  pdf: "importView.pdfDesc",
+  markdown: "importView.markdownDesc",
 };
 
 /** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), one
@@ -19,17 +20,18 @@ export function ImportView({ tab, onTab, onImported, onOpen }: {
   /** After a Markdown or PDF import: the article it made (or already was). */
   onOpen: (id: number) => void;
 }) {
+  const t = useT();
   return (
     <main className="manage">
       <div className="wrap">
         <header className="head">
           <div>
-            <h1>インポート</h1>
-            <p className="sub">{SUB[tab]}</p>
+            <h1>{t("importView.title")}</h1>
+            <p className="sub">{t(SUB[tab])}</p>
           </div>
           <div className="acts">
-            <div className="seg" role="group" aria-label="インポートの種類">
-              <button className={tab === "urls" ? "on" : ""} aria-pressed={tab === "urls"} onClick={() => onTab("urls")}>URL 一覧</button>
+            <div className="seg" role="group" aria-label={t("importView.kind")}>
+              <button className={tab === "urls" ? "on" : ""} aria-pressed={tab === "urls"} onClick={() => onTab("urls")}>{t("importView.urls")}</button>
               <button className={tab === "markdown" ? "on" : ""} aria-pressed={tab === "markdown"} onClick={() => onTab("markdown")}>Markdown</button>
               <button className={tab === "pdf" ? "on" : ""} aria-pressed={tab === "pdf"} onClick={() => onTab("pdf")}>PDF</button>
             </div>
@@ -42,6 +44,7 @@ export function ImportView({ tab, onTab, onImported, onOpen }: {
 }
 
 function UrlImport({ onImported }: { onImported: () => void }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportSummary | null>(null);
@@ -65,31 +68,32 @@ function UrlImport({ onImported }: { onImported: () => void }) {
   }
 
   return (
-    <section className="card add" aria-label="インポートするテキスト">
+    <section className="card add" aria-label={t("importView.text")}>
       <div>
         <label className="btn">
-          ファイルを選択
+          {t("importView.chooseFile")}
           <input type="file" className="vh" accept=".txt,.csv,.json,.html,.htm,.md" onChange={(e) => loadFile(e.target.files?.[0])} />
         </label>
       </div>
-      <textarea className="paste" value={text} onChange={(e) => setText(e.target.value)} rows={14} aria-label="インポートするテキスト"
+      <textarea className="paste" value={text} onChange={(e) => setText(e.target.value)} rows={14} aria-label={t("importView.text")}
         placeholder={"https://example.com/post-1\nhttps://example.com/post-2"} spellCheck={false} />
       <div className="line">
-        <button className="btn pri lg" onClick={run} disabled={busy || !text.trim()}>{busy ? "登録中…" : "インポート"}</button>
+        <button className="btn pri lg" onClick={run} disabled={busy || !text.trim()}>{busy ? t("importView.adding") : t("importView.import")}</button>
         {result && (
           <span role="status" className="msg">
-            {result.found} 件中 {result.queued} 件を取得キューに追加
-            {result.existing > 0 && `・${result.existing} 件は保存済み`}
-            {result.invalid > 0 && `・${result.invalid} 件は無効な URL`}
+            {t("importView.queued", { found: result.found, queued: result.queued })}
+            {result.existing > 0 && t("importView.existing", { existing: result.existing })}
+            {result.invalid > 0 && t("importView.invalid", { invalid: result.invalid })}
           </span>
         )}
-        {error && <span role="alert" className="msg error-text">{error}</span>}
+        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
       </div>
     </section>
   );
 }
 
 function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
+  const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,19 +114,20 @@ function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
   return (
     <section className="card add" aria-label="Markdown">
       <div>
-        <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>ファイルを選択…</button>
+        <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>{t("importView.chooseFileEllipsis")}</button>
       </div>
       <textarea className="paste" value={text} onChange={(e) => setText(e.target.value)} rows={14} aria-label="Markdown"
-        placeholder={"# タイトル\n\n本文をここに貼り付け"} spellCheck={false} />
+        placeholder={t("importView.markdownPlaceholder")} spellCheck={false} />
       <div className="line">
-        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>{busy ? "取り込み中…" : "取り込む"}</button>
-        {error && <span role="alert" className="msg error-text">{error}</span>}
+        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>{busy ? t("importView.importing") : t("importView.importMarkdown")}</button>
+        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
       </div>
     </section>
   );
 }
 
 function PdfImport({ onOpen }: { onOpen: (id: number) => void }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -142,8 +147,8 @@ function PdfImport({ onOpen }: { onOpen: (id: number) => void }) {
   return (
     <section className="card add" aria-label="PDF">
       <div className="line">
-        <button className="btn pri lg" onClick={run} disabled={busy}>{busy ? "取り込み中…" : "PDF ファイルを選択…"}</button>
-        {error && <span role="alert" className="msg error-text">{error}</span>}
+        <button className="btn pri lg" onClick={run} disabled={busy}>{busy ? t("importView.importing") : t("importView.choosePdf")}</button>
+        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
       </div>
     </section>
   );

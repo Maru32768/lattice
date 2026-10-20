@@ -4,6 +4,7 @@ import { DIM_LABELS, DIFFICULTY_LABELS, countBy, toggle, valueLabel, type Dim, t
 import { Popover } from "./Popover";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { listStep } from "./keys";
+import { useT } from "./i18n";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
 
@@ -33,32 +34,33 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
   anchor: HTMLElement;
   onClose: () => void;
 }) {
+  const t = useT();
   const [q, setQ] = useState("");
   const [act, setAct] = useState(0);
   const [more, setMore] = useState(false);
   const isTags = dim === "tags";
   const selected = facets[dim] as DimValue<Dim>[];
   const counts = useMemo(() => countBy(base, dim), [base, dim]);
-  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all), count: counts.get(v) ?? 0 })), [dim, all, counts]);
+  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, t), count: counts.get(v) ?? 0 })), [dim, all, counts, t]);
 
   // Tags: popular (no query), or matches split into in-set (prefix first) and out-of-set.
   const sections = useMemo(() => {
     if (!isTags) {
       const sorted = dim === "state" || dim === "difficulty" ? opts : [...opts].sort((a, b) => b.count - a.count);
-      return [{ title: "", note: "件数", opts: sorted }];
+      return [{ title: "", note: t("facetPopover.count"), opts: sorted }];
     }
     const unselected = opts.filter((o) => !selected.includes(o.v));
     const ql = q.trim().toLowerCase();
-    if (!ql) return [{ title: "この集合で多い", note: "件数", opts: unselected.filter((o) => o.count > 0).sort((a, b) => b.count - a.count).slice(0, 8) }];
+    if (!ql) return [{ title: t("facetPopover.popular"), note: t("facetPopover.count"), opts: unselected.filter((o) => o.count > 0).sort((a, b) => b.count - a.count).slice(0, 8) }];
     const hit = unselected.filter((o) => o.label.toLowerCase().includes(ql));
     const rank = (o: Opt) => (o.label.toLowerCase().startsWith(ql) ? 0 : 1);
     const inSet = hit.filter((o) => o.count > 0).sort((a, b) => rank(a) - rank(b) || b.count - a.count);
     const outSet = hit.filter((o) => o.count === 0).sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
     return [
-      { title: "この集合に含まれる", note: "前方一致 → 部分一致", opts: inSet },
-      { title: "集合外（選ぶと 0 件）", note: String(outSet.length), opts: more ? outSet : outSet.slice(0, 2), hidden: more ? 0 : Math.max(0, outSet.length - 2) },
+      { title: t("facetPopover.inSet"), note: t("facetPopover.matchOrder"), opts: inSet },
+      { title: t("facetPopover.outSet"), note: String(outSet.length), opts: more ? outSet : outSet.slice(0, 2), hidden: more ? 0 : Math.max(0, outSet.length - 2) },
     ];
-  }, [isTags, opts, selected, q, more, dim]);
+  }, [isTags, opts, selected, q, more, dim, t]);
   const flat = sections.flatMap((s) => s.opts);
   const matchCount = isTags && q.trim() ? sections.reduce((n, s) => n + s.opts.length + (s.hidden ?? 0), 0) : 0;
   const active = flat[Math.min(act, flat.length - 1)];
@@ -105,52 +107,52 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
 
   let n = 0;
   return (
-    <Popover anchor={anchor} label={`${DIM_LABELS[dim]}で絞り込む`} width={isTags ? 372 : 300} onClose={onClose}>
+    <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={isTags ? 372 : 300} onClose={onClose}>
       <div onKeyDown={keys} className="facet-pv" tabIndex={isTags ? undefined : -1} data-autofocus={isTags ? undefined : true}>
         {isTags && (
           <div className="pv-head">
             <label className="pv-search">
               <Icon name="search" />
-              <span className="vh">タグを検索</span>
+              <span className="vh">{t("facetPopover.searchTags")}</span>
               <input value={q} onChange={(e) => { setQ(e.target.value); setAct(0); setMore(false); }}
-                placeholder={`${opts.length.toLocaleString()} タグを検索…`} />
-              {q.trim() && <span className="pv-count">{matchCount} 件一致</span>}
+                placeholder={t("facetPopover.searchPlaceholder", { n: opts.length })} />
+              {q.trim() && <span className="pv-count">{t("facetPopover.matches", { matchCount })}</span>}
             </label>
             {!q.trim() && (
               <div className="pv-mode">
-                <div className="seg sm" role="group" aria-label="タグの一致条件">
-                  <button className={facets.tagMode === "all" ? "on" : ""} aria-pressed={facets.tagMode === "all"} onClick={() => onFacets({ ...facets, tagMode: "all" })}>すべて含む</button>
-                  <button className={facets.tagMode === "any" ? "on" : ""} aria-pressed={facets.tagMode === "any"} onClick={() => onFacets({ ...facets, tagMode: "any" })}>いずれか</button>
+                <div className="seg sm" role="group" aria-label={t("facetPopover.tagMode")}>
+                  <button className={facets.tagMode === "all" ? "on" : ""} aria-pressed={facets.tagMode === "all"} onClick={() => onFacets({ ...facets, tagMode: "all" })}>{t("facetPopover.all")}</button>
+                  <button className={facets.tagMode === "any" ? "on" : ""} aria-pressed={facets.tagMode === "any"} onClick={() => onFacets({ ...facets, tagMode: "any" })}>{t("facetPopover.any")}</button>
                 </div>
-                <span className="pv-note">件数は現在の集合内</span>
+                <span className="pv-note">{t("facetPopover.countNote")}</span>
               </div>
             )}
           </div>
         )}
         {isTags && selected.length > 0 && !q.trim() && (
           <>
-            <div className="ph">選択中<span>{selected.length}</span></div>
+            <div className="ph">{t("facetPopover.selected")}<span>{selected.length}</span></div>
             <div className="pv-chips">
-              {(selected as string[]).map((t) => (
-                <button key={t} className="chip on mono" onClick={() => pick(t)} aria-label={`${t} を解除`}>{t}<Icon name="x" size="sm" /></button>
+              {(selected as string[]).map((tag) => (
+                <button key={tag} className="chip on mono" onClick={() => pick(tag)} aria-label={t("facetPopover.unselect", { tag })}>{tag}<Icon name="x" size="sm" /></button>
               ))}
             </div>
           </>
         )}
         <div className="pv-list">
           {sections.map((s) => (
-            <div key={s.title} role="group" aria-label={s.title || DIM_LABELS[dim]}>
+            <div key={s.title} role="group" aria-label={s.title || t(DIM_LABELS[dim])}>
               {s.title && <div className="ph">{s.title}<span>{s.note}</span></div>}
               {s.opts.map((o) => option(o, n++))}
-              {"hidden" in s && s.hidden! > 0 && <button className="opt zero more" onClick={() => setMore(true)}>他 {s.hidden} 件を表示</button>}
-              {s.opts.length === 0 && <div className="pv-empty">該当なし</div>}
+              {"hidden" in s && s.hidden! > 0 && <button className="opt zero more" onClick={() => setMore(true)}>{t("facetPopover.showMore", { hidden: s.hidden! })}</button>}
+              {s.opts.length === 0 && <div className="pv-empty">{t("facetPopover.none")}</div>}
             </div>
           ))}
         </div>
         <div className="pv-foot hints">
           {isTags && q.trim()
-            ? <><span><Kbd>Enter</Kbd> 追加して続ける</span><span><Kbd>Tab</Kbd> 補完</span><span className="r"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> 適用</span></>
-            : <><span>{!isTags && <><ActionKey id="next" /><ActionKey id="prev" /> </>}<Kbd>↑</Kbd><Kbd>↓</Kbd> 移動</span><span><Kbd>Space</Kbd> 切替</span>{isTags && <span><Kbd>⌫</Kbd> 最後を解除</span>}<span className="r"><Kbd>Esc</Kbd></span></>}
+            ? <><span><Kbd>Enter</Kbd>{t("facetPopover.hintAdd")}</span><span><Kbd>Tab</Kbd>{t("facetPopover.hintComplete")}</span><span className="r"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd>{t("common.hintApply")}</span></>
+            : <><span>{!isTags && <><ActionKey id="next" /><ActionKey id="prev" /> </>}<Kbd>↑</Kbd><Kbd>↓</Kbd>{t("common.hintMove")}</span><span><Kbd>Space</Kbd>{t("facetPopover.hintToggle")}</span>{isTags && <span><Kbd>⌫</Kbd>{t("facetPopover.hintRemoveLast")}</span>}<span className="r"><Kbd>Esc</Kbd></span></>}
         </div>
       </div>
     </Popover>

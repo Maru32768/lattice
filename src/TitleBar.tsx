@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
+import { useT } from "./i18n";
 
 // Windows 11 caption glyphs, 10×10.
 const GLYPHS = {
@@ -15,6 +16,7 @@ const GLYPHS = {
  * double-click to maximize.
  */
 export function TitleBar() {
+  const t = useT();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     const w = getCurrentWindow();
@@ -50,9 +52,9 @@ export function TitleBar() {
       <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} />
       <span className="tb-name">Lattice</span>
       <span className="grow" />
-      {caption("min", "最小化", () => getCurrentWindow().minimize())}
-      {caption(maximized ? "restore" : "max", maximized ? "元のサイズに戻す" : "最大化", () => getCurrentWindow().toggleMaximize())}
-      {caption("close", "閉じる", () => getCurrentWindow().close(), " close")}
+      {caption("min", t("titleBar.minimize"), () => getCurrentWindow().minimize())}
+      {caption(maximized ? "restore" : "max", maximized ? t("titleBar.restore") : t("titleBar.maximize"), () => getCurrentWindow().toggleMaximize())}
+      {caption("close", t("common.close"), () => getCurrentWindow().close(), " close")}
     </header>
   );
 }

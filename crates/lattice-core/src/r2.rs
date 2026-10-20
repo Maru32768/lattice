@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::backup;
+use crate::msg;
 use crate::store::Store;
 
 pub const SECRET_KEY: &str = "secret.r2_secret_access_key";
@@ -119,24 +120,24 @@ pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
     let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
     let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
     if !account_id.is_empty() && !valid_account_id(account_id) {
-        return Err("Account ID は 32 桁の 16 進数です".into());
+        return Err(msg!("r2.accountId"));
     }
     if !bucket.is_empty() && !valid_bucket(bucket) {
-        return Err("bucket 名は 3〜63 文字の英小文字・数字・ハイフンです".into());
+        return Err(msg!("r2.bucket"));
     }
     if !key_id.is_empty() && !valid_key_id(key_id) {
-        return Err("Access Key ID は英数字です".into());
+        return Err(msg!("r2.accessKeyId"));
     }
     if secret.is_some_and(|v| v.chars().any(|c| !c.is_ascii_graphic())) {
-        return Err("Secret Access Key に使えない文字が含まれています".into());
+        return Err(msg!("r2.secret"));
     }
     if !(1..=24 * 30).contains(&s.interval_hours) {
-        return Err("間隔は 1〜720 時間です".into());
+        return Err(msg!("r2.interval"));
     }
     backup::check_keep(s.keep_generations)?;
     let has_secret = secret.is_some() || get(store, SECRET_KEY)?.is_some();
     if s.enabled && (account_id.is_empty() || bucket.is_empty() || key_id.is_empty() || !has_secret) {
-        return Err("有効にするには Account ID・bucket・Access Key ID・Secret Access Key をすべて設定してください".into());
+        return Err(msg!("r2.incomplete"));
     }
     let opt = |v: &str| (!v.is_empty()).then(|| v.to_string());
     set(store, ENABLED, s.enabled.then_some("1"))?;
@@ -200,7 +201,7 @@ pub fn client() -> reqwest::Client {
 /// The copy reads through its own connection so app commands are not blocked meanwhile.
 pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, tmp_dir: &Path) -> Result<String, String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
-        return Err("R2 へのバックアップを実行中です".into());
+        return Err(msg!("r2.running"));
     }
     let now = unix_now();
     let tmp = tmp_dir.join(format!("{TMP_PREFIX}{now}.db"));
@@ -326,7 +327,7 @@ async fn prune(http: &reqwest::Client, c: &Creds, prefix: &str, keep: u64, curre
     keys.retain(|k| is_backup_key(k, prefix));
     let old = backup::stale(keys, keep, &current.to_string());
     for (i, key) in old.iter().enumerate() {
-        send(http, c, "DELETE", key, &[], Vec::new()).await.map_err(|e| format!("{e}（{i}/{} 件削除済み）", old.len()))?;
+        send(http, c, "DELETE", key, &[], Vec::new()).await.map_err(|e| msg!("r2.pruneStopped", error = e, done = i, total = old.len()))?;
     }
     Ok(old.len())
 }

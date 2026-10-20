@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Favicon } from "./Favicon";
 import { Icon } from "./Icon";
 import type { Dir, Id, Pane, Tab } from "./layout";
+import { useT } from "./i18n";
 
 export interface TabLabel {
   title: string;
@@ -48,6 +49,7 @@ export function TabStrip({ pane, multi, labelOf, drop, onActivate, onClose, onNe
   onDrag: (t: DropTarget | null) => void;
   onDrop: (tab: Id, t: DropTarget) => void;
 }) {
+  const t = useT();
   const [dragging, setDragging] = useState<Id | null>(null);
   const press = useRef<{ tab: Id; x: number; y: number; moved: boolean } | null>(null);
 
@@ -82,26 +84,26 @@ export function TabStrip({ pane, multi, labelOf, drop, onActivate, onClose, onNe
 
   const here = drop?.pane === pane.id ? drop.index : -1;
   return (
-    <div className="tabs" role="tablist" aria-label="タブ">
-      {pane.tabs.map((t, i) => {
-        const { title, domain, feed } = labelOf(t);
-        const on = t.id === pane.active;
+    <div className="tabs" role="tablist" aria-label={t("tabStrip.tabs")}>
+      {pane.tabs.map((tab, i) => {
+        const { title, domain, feed } = labelOf(tab);
+        const on = tab.id === pane.active;
         return (
-          <div key={t.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title}
-            className={`tab${on ? " on" : ""}${dragging === t.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
-            onPointerDown={(e) => down(e, t.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, t.id)} onPointerCancel={(e) => up(e, t.id)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(t.id); } }}>
-            {t.kind === "page" ? <Favicon domain={domain} /> : <Favicon domain={domain} feed={feed} />}
+          <div key={tab.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title}
+            className={`tab${on ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
+            onPointerDown={(e) => down(e, tab.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, tab.id)} onPointerCancel={(e) => up(e, tab.id)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(tab.id); } }}>
+            {tab.kind === "page" ? <Favicon domain={domain} /> : <Favicon domain={domain} feed={feed} />}
             <span className="tab-t">{title}</span>
-            <button className="x" onClick={() => onClose(t.id)} aria-label={`${title} を閉じる`} title="閉じる (Ctrl+W)" tabIndex={-1}><Icon name="x" size="sm" /></button>
+            <button className="x" onClick={() => onClose(tab.id)} aria-label={t("tabStrip.closeTitle", { title })} title={t("tabStrip.closeHint")} tabIndex={-1}><Icon name="x" size="sm" /></button>
           </div>
         );
       })}
-      <button className="ib" onClick={onNew} aria-label="新しいタブ" title="新しいタブ (Ctrl+T)"><Icon name="plus" /></button>
+      <button className="ib" onClick={onNew} aria-label={t("tabStrip.newTab")} title={t("tabStrip.newTabHint")}><Icon name="plus" /></button>
       <span className="grow" />
-      <button className="ib" onClick={() => onSplit("row")} aria-label="右に分割" title="右に分割 (Ctrl+\)"><Icon name="vsplit" /></button>
-      <button className="ib" onClick={() => onSplit("column")} aria-label="下に分割" title="下に分割 (Ctrl+-)"><Icon name="hsplit" /></button>
-      {multi && <button className="ib" onClick={onClosePane} aria-label="ペインを閉じる" title="ペインを閉じる"><Icon name="x" /></button>}
+      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}><Icon name="vsplit" /></button>
+      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}><Icon name="hsplit" /></button>
+      {multi && <button className="ib" onClick={onClosePane} aria-label={t("tabStrip.closePane")} title={t("tabStrip.closePane")}><Icon name="x" /></button>}
     </div>
   );
 }

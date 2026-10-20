@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
-import { BrowserView, overlayOf, type PageLang } from "./BrowserView";
+import { BrowserView, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
@@ -36,6 +36,7 @@ import {
   tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
+import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import "./App.css";
 
 /** Where a document opens: the focused pane's active tab, or a new tab (Ctrl / middle click, Ctrl+T). */
@@ -59,39 +60,47 @@ const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "c
 function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
   onPaste: () => void; onFeeds: () => void; onImport: () => void; onMarkdown: () => void; onSettings: () => void;
 }) {
+  const t = useT();
   return (
-    <section className="first-run" aria-label="最初の記事を入れる">
-      <h1>最初の記事を入れる</h1>
+    <section className="first-run" aria-label={t("app.firstRun")}>
+      <h1>{t("app.firstRun")}</h1>
       <div className="first-cards">
-        <button className="btn" onClick={onPaste}><span className="h">URL を貼る</span><span className="muted"><Kbd>Ctrl</Kbd><Kbd>K</Kbd> に貼り付けて Index</span></button>
-        <button className="btn" onClick={onFeeds}><span className="h">フィードを登録</span><span className="muted">サイト URL か OPML</span></button>
-        <button className="btn" onClick={onImport}><span className="h">一括インポート</span><span className="muted">ブックマーク HTML・CSV・JSON</span></button>
-        <button className="btn" onClick={onMarkdown}><span className="h">Markdown を取り込む</span><span className="muted">ファイルか貼り付け</span></button>
+        <button className="btn" onClick={onPaste}><span className="h">{t("app.pasteUrl")}</span><span className="muted"><Kbd>Ctrl</Kbd><Kbd>K</Kbd>{t("app.pasteHint")}</span></button>
+        <button className="btn" onClick={onFeeds}><span className="h">{t("common.addFeed")}</span><span className="muted">{t("app.feedHint")}</span></button>
+        <button className="btn" onClick={onImport}><span className="h">{t("common.bulkImport")}</span><span className="muted">{t("app.bulkHint")}</span></button>
+        <button className="btn" onClick={onMarkdown}><span className="h">{t("common.importMarkdown")}</span><span className="muted">{t("app.markdownHint")}</span></button>
       </div>
-      <p className="muted">翻訳・要約・分類には AI プロバイダが必要です — <button className="linkish" onClick={onSettings}>設定する</button>。取り込みと全文検索はなしで使えます。</p>
+      <p className="muted">{t.rich("app.needsProvider", { link: <button className="linkish" onClick={onSettings}>{t("app.setUp")}</button> })}</p>
     </section>
   );
 }
 
 /** Shown while the pane prefix is armed. */
 function PrefixHint({ prefix }: { prefix: string }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   useCover(ref, true);
   return (
     <div ref={ref} className="prefix-hint" role="status">
       <Kbd>{prefix}</Kbd>
-      <span><Kbd>←</Kbd><Kbd>→</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd> <Kbd>h</Kbd><Kbd>j</Kbd><Kbd>k</Kbd><Kbd>l</Kbd> ペイン移動</span>
-      <span><Kbd>o</Kbd> 次のペイン</span>
-      <span><Kbd>%</Kbd> 右に分割</span>
-      <span><Kbd>"</Kbd> 下に分割</span>
-      <span><Kbd>x</Kbd> ペインを閉じる</span>
-      <span><Kbd>c</Kbd><Kbd>n</Kbd><Kbd>p</Kbd> タブ</span>
-      <span><Kbd>z</Kbd> フォーカスモード</span>
+      <span><Kbd>←</Kbd><Kbd>→</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd> <Kbd>h</Kbd><Kbd>j</Kbd><Kbd>k</Kbd><Kbd>l</Kbd>{t("app.prefixMove")}</span>
+      <span><Kbd>o</Kbd>{t("app.prefixNext")}</span>
+      <span><Kbd>%</Kbd>{t("app.prefixSplitRight")}</span>
+      <span><Kbd>"</Kbd>{t("app.prefixSplitDown")}</span>
+      <span><Kbd>x</Kbd>{t("app.prefixClose")}</span>
+      <span><Kbd>c</Kbd><Kbd>n</Kbd><Kbd>p</Kbd>{t("app.prefixTabs")}</span>
+      <span><Kbd>z</Kbd>{t("app.prefixFocus")}</span>
     </div>
   );
 }
 
 export default function App() {
+  // Also subscribes the whole tree to the display language: a switch re-renders everything below.
+  const t = useT();
+  useEffect(() => {
+    // The backend's choice wins over the cached one; the first start stores the detected language.
+    api.uiLanguage().then((l) => (isLang(l) ? setDisplayLang(l) : api.setUiLanguage(displayLang()))).catch(() => {});
+  }, []);
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
@@ -150,7 +159,12 @@ export default function App() {
   viewsRef.current = views;
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
-  const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
+  const [pageLang, setPageLang] = useState<PageLang>({ mode: "original", percent: 70 });
+  // Every page's overlay follows the Page language choice, its tooltips the display language.
+  useEffect(() => {
+    const o = overlayOf(pageLang);
+    browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch((e) => setError(String(e)));
+  }, [pageLang, t]);
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
 
@@ -242,7 +256,7 @@ export default function App() {
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
   const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group)), [shown, group]);
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t)), [shown, group, t]);
   const order = useMemo(() => {
     const flat = (g: Group<ArticleRow>): ArticleRow[] => (g.children ? g.children.flatMap(flat) : g.articles);
     return groups.flatMap(flat);
@@ -265,8 +279,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now) : []),
-    [shown.length, articles, scope, facets, now]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now, t) : []),
+    [shown.length, articles, scope, facets, now, t]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -274,7 +288,7 @@ export default function App() {
     return groupHits(filterHits(search.result.hits, method, ids));
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
-  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
+  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags, t), [genres, feeds, tags, t]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -337,13 +351,13 @@ export default function App() {
     const a = articleById.get(h.article_id);
     const where: Where = newTab ? "new" : "active";
     if (page && a) return openPage(a.original_url, h.text, a, where);
-    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" }, where);
+    openReader(h.article_id, { block: h.block_id, label: t("app.searchHit", { label: t(MATCH_LABEL[h.source]) }), terms: terms(search?.query ?? ""), tone: "hit" }, where);
   }
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. `pane`: not the focused one. */
   function openPage(url: string, focus?: string, article?: ArticleRow, where: Where = "active", pane?: Id) {
     // An imported file has no page: it stays in the Reader.
-    if (isLocal(url)) return article ? openReader(article.id, undefined, where, pane) : setError("取り込んだファイルにはページがありません");
+    if (isLocal(url)) return article ? openReader(article.id, undefined, where, pane) : setError(t("reader.pageDisabled"));
     setError(null);
     setScreen("library");
     setLayout((l) => open(l, { kind: "page", url, focus, title: article?.title ?? "", saved: article?.id ?? null }, where, pane));
@@ -396,9 +410,9 @@ export default function App() {
 
   /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
   function openCitation(c: Citation) {
-    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: `[${c.n}] 引用元`, terms: [], tone: "cite" });
+    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" });
     else if (c.url) openPage(c.url, c.text);
-    else setError("引用元の記事は削除されています");
+    else setError(t("app.citationDeleted"));
   }
 
   // ---- article actions ----------------------------------------------------------------------
@@ -441,11 +455,6 @@ export default function App() {
     }
   }
 
-  function setPageLang(l: PageLang) {
-    setPageLangState(l);
-    const o = overlayOf(l);
-    browser.setTranslation(o.enabled, o.percent).catch(fail);
-  }
 
   function nudgeRatio(delta: number) {
     if (cur?.kind === "page") setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
@@ -659,12 +668,12 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles);
+  const title = scopeLabel(scope, articles, t);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
     id: curView.article.id,
-    label: `翻訳中 ${curView.blocks.filter((b) => b.translation != null).length}/${curView.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length}`,
+    label: t("app.translating", { length: curView.blocks.filter((b) => b.translation != null).length, length2: curView.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length }),
   } : null;
   const docHits = search && cur?.kind === "reader" ? flatHits.filter((h) => h.article_id === cur.articleId) : [];
   const readerMatches = docHits.length > 0 && cur?.kind === "reader" ? {
@@ -696,28 +705,28 @@ export default function App() {
   };
 
   const renderPane = (pane: Pane) => {
-    const t = activeTab(pane);
-    if (!t) {
+    const tab = activeTab(pane);
+    if (!tab) {
       if (!loaded) return null;
-      if (articles.length || layout.root.kind === "split") return <p className="doc-empty muted">記事を選んでください</p>;
+      if (articles.length || layout.root.kind === "split") return <p className="doc-empty muted">{t("app.pickArticle")}</p>;
       return <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
         onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />;
     }
-    if (t.kind === "page") {
-      const saved = savedOf(t);
+    if (tab.kind === "page") {
+      const saved = savedOf(tab);
       return (
-        <BrowserView key={t.id} tab={t} saved={saved} saving={saving === t.id} lang={pageLang} overlays={overlays}
-          onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(t)}
+        <BrowserView key={tab.id} tab={tab} saved={saved} saving={saving === tab.id} lang={pageLang} overlays={overlays}
+          onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(tab)}
           onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
           onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
       );
     }
-    const v = views.get(t.articleId);
+    const v = views.get(tab.articleId);
     if (!v) return null;
     const a = v.article;
     const vAct = (task: (id: number) => Promise<unknown>) => () => act(() => task(a.id), a.id);
     return (
-      <Reader key={a.id} view={v} focus={t.focus} matches={t === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
         focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
         onAsk={() => openChat("article")}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)} onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
@@ -750,7 +759,7 @@ export default function App() {
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
               {screen === "review" && <QuizReview onChanged={loadReview}
-                onOpen={(id, block) => openReader(id, block == null ? undefined : { block, label: "クイズの出典", terms: [], tone: "cite" })} />}
+                onOpen={(id, block) => openReader(id, block == null ? undefined : { block, label: t("reader.quizSource"), terms: [], tone: "cite" })} />}
             </main>
           )}
           {screen === "library" && search && listOpen && (
@@ -765,14 +774,14 @@ export default function App() {
                 all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
                 onCollapse={() => setListOpen(false)} />
-            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
+            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {screen === "library" && !search && listOpen && splitter("list")}
           {screen === "library" && <div className="doc-area-wrap">
             {error && (
               <div className="banner" role="alert">
-                <span className="grow">{error}</span>
-                <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
+                <span className="grow">{t.msg(error)}</span>
+                <button className="ib" onClick={() => setError(null)} aria-label={t("common.close")}>×</button>
               </div>
             )}
             <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
@@ -782,10 +791,10 @@ export default function App() {
               onClose={() => setPalette(null)} />
           )}
           {deleting && (
-            <ConfirmDialog title={deleting.page ? "Index から削除しますか？" : "記事を削除しますか？"} confirm="削除"
+            <ConfirmDialog title={deleting.page ? t("app.confirmRemove") : t("app.confirmDelete")} confirm={t("common.delete")}
               onConfirm={() => deleteArticle(deleting.article)} onCancel={() => setDeleting(null)}>
-              <p>「{deleting.article.title ?? deleting.article.original_url}」を削除します。</p>
-              <p>保存した HTML・本文・この記事だけの訳文・要約・タグ付け・画像・検索 index も削除され、元に戻せません。対話の回答に残る引用は消えません。</p>
+              <p>{t.rich("app.deleteWhat", { x: deleting.article.title ?? deleting.article.original_url })}</p>
+              <p>{t("app.deleteDesc")}</p>
             </ConfirmDialog>
           )}
           {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
