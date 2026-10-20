@@ -149,7 +149,7 @@ export const en = {
   "modelSettings.chainHint": "Up to 3 steps · drag to reorder",
   "modelSettings.provider": "Provider for step {x}",
   "modelSettings.model": "Model for step {x}",
-  "modelSettings.other": "Other (enter a model ID)",
+  "modelSettings.other": "Custom model ID",
   "modelSettings.modelId": "Model ID",
   "modelSettings.modelIdLabel": "Model ID for step {x}",
   "modelSettings.effort": "Effort for step {x}",
@@ -820,5 +820,6 @@ export const en = {
   "be.update.portable": "Update a portable copy by replacing it with the new zip",
   "be.update.none": "There is no newer version",
   "be.update.installFailed": "Could not install the update: {error}",
+  "nav.feeds": "Feeds",
   // @i18n-append
 } satisfies Messages;

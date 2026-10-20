@@ -11,7 +11,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure", ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
-  // The specs read the Japanese UI; the default language follows the WebView's (navigator.language).
-  projects: [{ name: "chromium", use: { locale: "ja-JP" } }],
+  // The display language follows the WebView's (navigator.language): the specs read the Japanese
+  // UI, and english.spec.ts runs the main screens in English.
+  projects: [
+    { name: "chromium", use: { locale: "ja-JP" }, testIgnore: "english.spec.ts" },
+    { name: "english", use: { locale: "en-US" }, testMatch: "english.spec.ts" },
+  ],
   webServer: { command: "npx vite -c e2e/vite.config.ts", url: `http://localhost:${port}`, reuseExistingServer: !process.env.CI },
 });

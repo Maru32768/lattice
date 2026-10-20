@@ -816,5 +816,6 @@ export const ja = {
   "be.update.portable": "ポータブル版は新しい zip に置き換えて更新してください",
   "be.update.none": "新しいバージョンはありません",
   "be.update.installFailed": "更新をインストールできませんでした: {error}",
+  "nav.feeds": "フィード",
   // @i18n-append
 } as const satisfies Record<string, string>;

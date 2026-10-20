@@ -106,7 +106,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
 
       <div className="sec">{t("common.source")}<button className="link" onClick={() => onScreen("feeds")}>{t("nav.manage")}</button></div>
       <button className="ni" onClick={() => setFeedsOpen((v) => !v)} aria-expanded={feedsOpen}>
-        <Icon name={feedsOpen ? "down" : "right"} /><span className="label">{t("common.feed")}</span><span className="n">{n(feeds.length)}</span>
+        <Icon name={feedsOpen ? "down" : "right"} /><span className="label">{t("nav.feeds")}</span><span className="n">{n(feeds.length)}</span>
       </button>
       {feedsOpen && (
         <div className="nav-sub">
