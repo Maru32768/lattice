@@ -5,6 +5,7 @@ import { countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
 import { ActionKey, Icon, Kbd } from "./Icon";
+import { onMiddle } from "./middle";
 
 export const MATCH_LABEL = { lexical: "全文", semantic: "意味", both: "全文 + 意味" } as const;
 const METHODS: [SearchMethod, string][] = [["hybrid", "Hybrid"], ["lexical", "全文"], ["semantic", "意味"]];
@@ -54,7 +55,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   /** The hit open in the Reader. */
   open: { id: number; block: number } | null;
   onSearch: (q: string) => void;
-  onOpen: (hit: SearchHit, page: boolean) => void;
+  /** `page`: Shift; `newTab`: Ctrl / middle click. */
+  onOpen: (hit: SearchHit, page: boolean, newTab?: boolean) => void;
   onExit: () => void;
   scope: Scope;
   onScope: (s: Scope) => void;
@@ -174,7 +176,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                 const i = n++;
                 return (
                   <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
-                    onClick={(e) => { onSel(i); onOpen(h, e.shiftKey); }} onFocus={() => onSel(i)}>
+                    onClick={(e) => { onSel(i); onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey); }} {...onMiddle(() => onOpen(h, false, true))}
+                    onFocus={() => onSel(i)}>
                     <span className="sh">{h.heading && h.heading !== h.text ? h.heading : "冒頭"}</span>
                     <span className={`mt ${h.source}`}>{MATCH_LABEL[h.source]}{h.source === "semantic" && ` ${h.score.toFixed(2)}`}</span>
                     <span className="tx"><Marked text={h.text} ts={ts} /></span>

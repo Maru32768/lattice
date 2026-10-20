@@ -6,6 +6,7 @@ import { FacetPopover } from "./FacetPopover";
 import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
+import { onMiddle } from "./middle";
 
 export type Grouping = "none" | "feed" | "genre";
 
@@ -34,12 +35,13 @@ function badge(a: ArticleRow, translating: string | null): [string, string] | nu
 
 /** `sel`: the open article; `cur`: the keyboard cursor (j / k), opened with Enter. */
 export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCursor }: {
-  a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; onOpen: () => void; onCursor: () => void;
+  a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; onOpen: (newTab: boolean) => void; onCursor: () => void;
 }) {
   const b = badge(a, translating);
   const unread = a.read_status === "unread";
   return (
-    <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}`} onClick={onOpen} onFocus={onCursor}
+    <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}`} onClick={(e) => onOpen(e.ctrlKey || e.metaKey)}
+      {...onMiddle(() => onOpen(true))} onFocus={onCursor}
       aria-current={sel || undefined} data-id={a.id}>
       {unread && <span className="dot" aria-label="未読" />}
       <span className="t">{a.title ?? a.original_url}</span>
@@ -133,7 +135,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   translating: { id: number; label: string } | null;
   relax: Relaxation[];
   onRelax: (r: Relaxation) => void;
-  onOpen: (a: ArticleRow) => void;
+  /** `newTab`: Ctrl / middle click. */
+  onOpen: (a: ArticleRow, newTab: boolean) => void;
   onCollapse: () => void;
 }) {
   const hasFacets = activeDims(facets).length > 0;
@@ -143,7 +146,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
       {g.children
         ? g.children.map((c) => renderGroup(c, depth + 1))
         : g.articles.map((a) => (
-          <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={() => onOpen(a)} onCursor={() => onCursor(a.id)}
+          <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={(t) => onOpen(a, t)} onCursor={() => onCursor(a.id)}
             translating={translating?.id === a.id ? translating.label : null} />
         ))}
     </div>

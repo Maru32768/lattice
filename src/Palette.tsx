@@ -11,8 +11,9 @@ import type { LanguageMode } from "./mixed";
 export interface PaletteActions {
   scope: (s: Scope) => void;
   facets: (f: Facets) => void;
-  open: (a: ArticleRow) => void;
-  page: (url: string) => void;
+  /** `newTab`: Ctrl-clicked. */
+  open: (a: ArticleRow, newTab?: boolean) => void;
+  page: (url: string, newTab?: boolean) => void;
   index: (url: string) => void;
   discover: (url: string) => void;
   search: (q: string) => void;
@@ -32,7 +33,8 @@ interface Item {
   label: React.ReactNode;
   sub?: React.ReactNode;
   right?: React.ReactNode;
-  run: () => void;
+  /** `newTab`: Ctrl-clicked (only articles and URLs use it). */
+  run: (newTab?: boolean) => void;
   /** Tab: stack this filter as a facet and keep the palette open. */
   stack?: () => void;
 }
@@ -126,8 +128,8 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     const addTag = (t: string) => actions.facets({ ...facets, tags: facets.tags.includes(t) ? facets.tags : [...facets.tags, t] });
 
     if (url) {
-      const page: Item = { group: "URL", icon: "page", label: "Page で開く", right: <Kbd>Enter</Kbd>, run: () => actions.page(url) };
-      if (known) out.push({ group: "URL", icon: "reader", label: "Reader で開く", sub: known.title ?? undefined, right: "保存済み", run: () => actions.open(known) });
+      const page: Item = { group: "URL", icon: "page", label: "Page で開く", right: <Kbd>Enter</Kbd>, run: (t) => actions.page(url, t) };
+      if (known) out.push({ group: "URL", icon: "reader", label: "Reader で開く", sub: known.title ?? undefined, right: "保存済み", run: (t) => actions.open(known, t) });
       out.push(page);
       out.push({ group: "URL", icon: "import", label: "Index に追加（取り込み）", right: <><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd></>, run: () => actions.index(url) });
       out.push({ group: "URL", icon: "rss", label: "フィードを検出して登録", run: () => actions.discover(url) });
@@ -162,7 +164,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       const titled = all.filter((a) => has(a.title ?? a.original_url));
       for (const a of titled.slice(0, LIMIT)) {
         out.push({ group: "記事", icon: "reader", label: <Hl text={a.title ?? a.original_url} q={text} />,
-          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a)), run: () => actions.open(a) });
+          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a)), run: (t) => actions.open(a, t) });
       }
     }
     if (!prefix ? text : prefix === "#") {
@@ -191,10 +193,10 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
   useEffect(() => setAct(0), [raw]);
   useEffect(() => { list.current?.querySelector(".it.act")?.scrollIntoView({ block: "nearest" }); }, [act]);
 
-  function run(it: Item | undefined) {
+  function run(it: Item | undefined, newTab = false) {
     if (!it) return;
     onClose();
-    it.run();
+    it.run(newTab);
   }
 
   function keys(e: React.KeyboardEvent) {
@@ -247,7 +249,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
                   </div>
                 )}
                 <button id={`pal-${i}`} role="option" aria-selected={i === act} className={`it${i === act ? " act" : ""}`} tabIndex={-1}
-                  onMouseMove={() => setAct(i)} onClick={() => run(it)}>
+                  onMouseMove={() => setAct(i)} onClick={(e) => run(it, e.ctrlKey || e.metaKey)}>
                   {it.icon && <Icon name={it.icon} />}
                   <span className="it-l">{it.label}</span>
                   {it.sub && <span className="s">{it.sub}</span>}

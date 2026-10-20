@@ -114,16 +114,18 @@ test("cycle wraps; focus ignores unknown panes", () => {
   assert.equal(cycle(open(single(), reader(1)), 1).focused, 1);
 });
 
-test("resize moves a fraction between neighbours and stops at MIN_SIZE", () => {
+test("resize sets a child's fraction, its neighbour takes the rest, and both stop at MIN_SIZE", () => {
   let l = split(open(single(), reader(1)), 1, "row");
   const id = l.root.kind === "split" ? l.root.id : -1;
-  l = resize(l, id, 0, 0.2);
-  assert.deepEqual(l.root.kind === "split" && l.root.sizes.map((s) => Math.round(s * 100)), [70, 30]);
   const pct = () => l.root.kind === "split" && l.root.sizes.map((s) => Math.round(s * 100));
+  l = resize(l, id, 0, 0.7);
+  assert.deepEqual(pct(), [70, 30]);
   l = resize(l, id, 0, 1);
-  assert.deepEqual(pct(), [100 - MIN_SIZE * 100, MIN_SIZE * 100]);
+  const [lo, hi] = [Math.round(MIN_SIZE * 100), Math.round(100 - MIN_SIZE * 100)];
+  assert.deepEqual(pct(), [hi, lo]);
   l = resize(l, id, 0, -5);
-  assert.deepEqual(pct(), [MIN_SIZE * 100, 100 - MIN_SIZE * 100]);
+  assert.deepEqual(pct(), [lo, hi]);
+  assert.deepEqual(resize(l, id, 5, 0.5), l, "no such child");
 });
 
 test("navigated keeps the title on the same URL and clears it on another; a Reader tab ignores page events", () => {

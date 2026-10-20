@@ -229,14 +229,15 @@ export function split(l: Layout, id: Id, dir: Dir): Layout {
 
 export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) ? removePane(l, id) : l);
 
-/** Moves `delta` (a fraction of the split) from child `i + 1` to child `i`, within MIN_SIZE. */
-export function resize(l: Layout, splitId: Id, i: number, delta: number): Layout {
+/** Sets child `i` of a split to `size` (a fraction of the split); child `i + 1` takes the difference, both within MIN_SIZE. */
+export function resize(l: Layout, splitId: Id, i: number, size: number): Layout {
   const rec = (n: Node): Node => {
     if (n.kind === "pane") return n;
     if (n.id !== splitId) return { ...n, children: n.children.map(rec) };
     const [a, b] = [n.sizes[i], n.sizes[i + 1]];
-    const d = Math.max(MIN_SIZE - a, Math.min(b - MIN_SIZE, delta));
-    return { ...n, sizes: spliced(n.sizes, i, 2, a + d, b - d) };
+    if (a == null || b == null) return n;
+    const next = Math.max(MIN_SIZE, Math.min(a + b - MIN_SIZE, size));
+    return { ...n, sizes: spliced(n.sizes, i, 2, next, a + b - next) };
   };
   return { ...l, root: rec(l.root) };
 }

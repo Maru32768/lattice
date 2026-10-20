@@ -8,14 +8,16 @@ import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { onMiddle } from "./middle";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
-const OpenLink = createContext<(href: string) => void>(() => {});
+const OpenLink = createContext<(href: string, newTab: boolean) => void>(() => {});
 
 function Link({ href, children }: { href: string; children: React.ReactNode }) {
   const openLink = useContext(OpenLink);
-  return <a href={href} title={href} onClick={(e) => { e.preventDefault(); e.stopPropagation(); openLink(href); }}>{children}</a>;
+  const go = (e: React.MouseEvent, newTab: boolean) => { e.preventDefault(); e.stopPropagation(); openLink(href, newTab); };
+  return <a href={href} title={href} onClick={(e) => go(e, e.ctrlKey || e.metaKey)} {...onMiddle(() => openLink(href, true))}>{children}</a>;
 }
 
 /** A block to scroll to and mark: a search hit or a chat citation. `seq` re-triggers the scroll. */
@@ -296,7 +298,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onLang: (m: LanguageMode, p: number) => void;
   focusMode: boolean;
   onPage: () => void;
-  onLink: (href: string) => void;
+  /** `newTab`: Ctrl / middle click. */
+  onLink: (href: string, newTab: boolean) => void;
   onToggleRead: () => void;
   onRetry: () => void;
   /** Re-runs extraction on the stored HTML (no network). */
