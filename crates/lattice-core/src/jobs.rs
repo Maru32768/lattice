@@ -66,7 +66,12 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     if let Err(e) = &result {
         log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count);
     }
+    let ok = result.is_ok();
     store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
+    // A word captured while the finished vocab job was still marked running was not re-queued by its capture.
+    if ok && job.job_type == vocab::JOB_TYPE {
+        vocab::enqueue_missing(store)?;
+    }
     on_change(&job);
     Ok(true)
 }

@@ -661,6 +661,19 @@ mod tests {
     }
 
     #[test]
+    fn a_capture_while_the_job_runs_is_queued_again_when_it_finishes() {
+        let s = Store::open_in_memory().unwrap();
+        capture(&s, &cap("flaky", "A flaky test.")).unwrap();
+        let job = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();
+        capture(&s, &cap("skew", "Write skew happens.")).unwrap();
+        let status = || s.conn().query_row("SELECT status FROM processing_jobs", [], |r| r.get::<_, String>(0)).unwrap();
+        assert_eq!(status(), "running", "the capture cannot reset a running job");
+        s.finish_job(job.id, None).unwrap();
+        enqueue_missing(&s).unwrap();
+        assert_eq!(status(), "pending");
+    }
+
+    #[test]
     fn editing_suspending_and_deleting() {
         let s = Store::open_in_memory().unwrap();
         let id = capture(&s, &cap("flaky", "A flaky test.")).unwrap().entry_id;
