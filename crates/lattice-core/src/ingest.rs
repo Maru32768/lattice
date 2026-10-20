@@ -139,10 +139,10 @@ pub fn extract_urls(text: &str) -> Vec<String> {
                 break;
             }
         }
-        if let Ok(norm) = normalize(&url) {
-            if seen.insert(norm.to_string()) {
-                out.push(url);
-            }
+        if let Ok(norm) = normalize(&url)
+            && seen.insert(norm.to_string())
+        {
+            out.push(url);
         }
         rest = &tail[end.max(1)..];
     }

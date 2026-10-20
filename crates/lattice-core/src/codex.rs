@@ -118,7 +118,7 @@ fn event_error(jsonl: &str) -> Option<String> {
             Some("error") => v["message"].as_str().map(str::to_string),
             _ => None,
         })
-        .last()
+        .next_back()
 }
 
 /// Parses `codex exec --json` JSONL: the final agent message holds the schema-shaped JSON.
@@ -128,7 +128,7 @@ fn parse_completion(jsonl: &str) -> Result<Completion, LlmError> {
         .filter_map(|l| serde_json::from_str::<Value>(l).ok())
         .filter(|v| v["type"] == "item.completed" && v["item"]["type"] == "agent_message")
         .filter_map(|v| v["item"]["text"].as_str().map(str::to_string))
-        .last();
+        .next_back();
     let Some(text) = text else {
         return Err(event_error(jsonl).map(LlmError::Failed).unwrap_or_else(|| LlmError::Malformed("no agent message".into())));
     };

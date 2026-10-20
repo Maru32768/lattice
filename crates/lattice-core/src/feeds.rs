@@ -139,10 +139,10 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
     let base = url::Url::parse(&got.url).map_err(err)?;
     for path in COMMON_PATHS {
         let Ok(u) = base.join(path) else { continue };
-        if let Ok(Some(g)) = fetch(client, u.as_str(), None, None).await {
-            if let Ok(p) = parse(&g.body, u.as_str()) {
-                return Ok(vec![Candidate { url: u.to_string(), title: p.title }]);
-            }
+        if let Ok(Some(g)) = fetch(client, u.as_str(), None, None).await
+            && let Ok(p) = parse(&g.body, u.as_str())
+        {
+            return Ok(vec![Candidate { url: u.to_string(), title: p.title }]);
         }
     }
     Ok(Vec::new())

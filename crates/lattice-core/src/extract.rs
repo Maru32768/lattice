@@ -149,7 +149,7 @@ impl Walker {
             return;
         }
         // `language-rust` / `lang-rust` on <pre> or its <code>.
-        let classes = Selection::from(pre.clone()).select("code").attr("class").or_else(|| pre.attr("class")).unwrap_or_default();
+        let classes = Selection::from(*pre).select("code").attr("class").or_else(|| pre.attr("class")).unwrap_or_default();
         let lang = classes.split_whitespace().find_map(|c| c.strip_prefix("language-").or_else(|| c.strip_prefix("lang-"))).map(str::to_string);
         self.blocks.push(Block { kind: BlockKind::Code, text, inlines: Vec::new(), attrs: BlockAttrs { lang, ..Default::default() } });
     }
@@ -171,11 +171,11 @@ impl Walker {
     }
 
     fn table(&mut self, table: &NodeRef) {
-        let rows: Vec<Vec<String>> = Selection::from(table.clone())
+        let rows: Vec<Vec<String>> = Selection::from(*table)
             .select("tr")
             .nodes()
             .iter()
-            .map(|tr| Selection::from(tr.clone()).select("th, td").nodes().iter().map(|c| collapse(&c.text()).trim().to_string()).collect())
+            .map(|tr| Selection::from(*tr).select("th, td").nodes().iter().map(|c| collapse(&c.text()).trim().to_string()).collect())
             .filter(|r: &Vec<String>| !r.is_empty())
             .collect();
         if rows.is_empty() {

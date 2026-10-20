@@ -507,7 +507,7 @@ fn authorization(
     let request = format!("{method}\n{path}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
     let scope = format!("{}/{region}/s3/aws4_request", &amz_date[..8]);
     let to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}", hex(&Sha256::digest(request.as_bytes())));
-    let mut key = hmac(format!("AWS4{secret}").as_bytes(), amz_date[..8].as_bytes());
+    let mut key = hmac(format!("AWS4{secret}").as_bytes(), &amz_date.as_bytes()[..8]);
     for part in [region, "s3", "aws4_request"] {
         key = hmac(&key, part.as_bytes());
     }

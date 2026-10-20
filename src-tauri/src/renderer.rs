@@ -81,10 +81,10 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
         .on_navigation(|u| is_http(u) && u.host_str() != Some("localhost") && lattice_core::fetch::check_public(u.as_str()).is_ok())
         .on_new_window(|_, _| NewWindowResponse::Deny)
         .on_page_load(move |_, p| {
-            if matches!(p.event(), PageLoadEvent::Finished) {
-                if let Some(tx) = lock(&tx).take() {
-                    let _ = tx.send(());
-                }
+            if matches!(p.event(), PageLoadEvent::Finished)
+                && let Some(tx) = lock(&tx).take()
+            {
+                let _ = tx.send(());
             }
         })
         .focused(false);

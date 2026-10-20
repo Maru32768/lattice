@@ -339,6 +339,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
 
   useEffect(() => {
     if (focus) document.getElementById(`b-${focus.block}`)?.scrollIntoView({ block: "center" });
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focus?.seq, blocks.length]);
 
   function setLang(m: LanguageMode, p: number) {

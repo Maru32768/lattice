@@ -97,10 +97,10 @@ fn snapshot(store: &Store, domain: &str) -> Result<Option<(String, String)>, Str
 pub async fn run(store: &Store, client: &reqwest::Client, domain: &str) -> Result<(), String> {
     let root = root(domain)?;
     let mut candidates = snapshot(store, domain)?.map(|(base, html)| icon_links(&html, &base)).unwrap_or_default();
-    if candidates.is_empty() {
-        if let Ok(page) = fetch(client, root.as_str()).await {
-            candidates = icon_links(&page.html, &page.final_url);
-        }
+    if candidates.is_empty()
+        && let Ok(page) = fetch(client, root.as_str()).await
+    {
+        candidates = icon_links(&page.html, &page.final_url);
     }
     let ico = root.join("/favicon.ico").expect("static path").to_string();
     if !candidates.contains(&ico) {

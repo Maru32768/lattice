@@ -525,3 +525,18 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 ### 未実装（意図的）
 
 poll と ingest job の競合: entry の本文は job を積んだ後に保存するので、その間に job が走ると（数 ms）本文なしで失敗する。poll のたびに「本文があるのにフィード本文を使わずに失敗した記事」を積み直すので、次の poll で回復する。
+
+## 18. 品質（静的解析・テスト・CI。G39・G40・G42）
+
+| 対象 | ファイル |
+|---|---|
+| Rust の整形と lint | `rustfmt.toml`、`mise.toml`（`lint`） |
+| TypeScript の lint | `oxlint.config.ts`、`package.json`（`lint`） |
+
+- **rustfmt。** それまで整形していなかった。`max_width = 160` と `use_small_heuristics = "Max"` は、幅 100〜180 と heuristics を試して、整形で変わる行が最も少なかった組み合わせ（671 行）。`mise run lint` は `cargo fmt --check` を含む。
+- **clippy（`-D warnings`、`--all-targets`）。** 指摘はすべて直した（`allow` はなし）。`search.rs` の `Ordered` は `PartialOrd` を derive して `Ord` だけ手で書いていたので、`PartialEq`・`PartialOrd` も `total_cmp` に揃えた（NaN でも等価と順序が食い違わない）。
+- **oxlint（type-aware、`oxlint-tsgolint`）。** correctness と suspicious に加えて、hooks の規則（`rules-of-hooks`・`exhaustive-deps`）、promise の規則（`no-floating-promises`・`no-misused-promises`・`await-thenable`）、`no-unsafe-*`、`switch-exhaustiveness-check`（`default` のある switch は網羅とみなす）。type-aware でも 10 秒かからない。`tsc --noEmit` は従来どおり `npm run build` にある。
+  - 外した規則と理由は `oxlint.config.ts` に書いた。React Compiler 向けの規則（アプリは compiler を使わない）、DOM の型の絞り込み（`e.target as HTMLElement`）を咎める `no-unsafe-type-assertion`、新しい配列にしか使っていない `no-array-sort`、スタイルだけの規則。
+  - `no-misused-promises` は JSX の属性（`onClick={async …}`）を対象外にした。React は handler の戻り値を使わず、handler の中の非同期処理は `act` / `run` が catch してエラーを表示する。
+  - 指摘のほとんどは、自分で catch する関数（`refresh`・`act`・`load` など）の Promise を投げっぱなしにしているもので、`void` を付けて意図を示した。実際に catch されていなかったのは、フィードのアイコンのファイル読み込み（`file.arrayBuffer()`）だけで、保存と同じ `act` の中に移した。localStorage の最近の検索は配列の文字列だけを読む。
+  - `exhaustive-deps` の 8 か所は、依存を意図して絞っている effect（開いたときに 1 回、`seq` ごとに 1 回など）なので、理由を付けて行ごとに止めた。

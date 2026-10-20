@@ -102,7 +102,7 @@ cp mise.local.toml.example mise.local.toml
 mise run test
 ```
 
-`mise run test` は overlay をビルドし、Rust とフロントエンドのテストを実行し、フロントエンドを型チェックしてビルドします。
+`mise run test` は `mise run lint`（rustfmt・clippy・oxlint）を実行してから、Rust とフロントエンドのテストを実行し、フロントエンドを型チェックしてビルドします。
 
 | パス | 内容 |
 |---|---|

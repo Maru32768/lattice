@@ -93,7 +93,7 @@ test("sentences are wrapped in place and swapped without losing page elements", 
   renderVariant(spans[0], `<a href="https://x.dev/w">WAL</a>⟦1⟧は永続的です。`);
   assert.equal(spans[0].querySelector("a")!.className, "k");
   assert.equal(spans[0].querySelector("a")!.textContent, "WAL");
-  assert.ok(spans[0].textContent!.includes("は永続的です。"));
+  assert.ok(spans[0].textContent.includes("は永続的です。"));
   assert.equal(p.querySelector("img"), img, "the live image node is reused, not recreated");
 
   // Different structure falls back to plain text but keeps the atom.

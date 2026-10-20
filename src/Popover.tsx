@@ -13,6 +13,7 @@ export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean
   useLayoutEffect(() => {
     if (!open || !ref.current) return;
     return cover(ref.current.getBoundingClientRect());
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the rectangle is reported once per opening; cover and ref are stable
   }, [open]);
 }
 
@@ -41,6 +42,7 @@ function useDismiss(ref: React.RefObject<HTMLElement | null>, anchor: HTMLElemen
     };
     document.addEventListener("pointerdown", down);
     return () => document.removeEventListener("pointerdown", down);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- ref is read when the pointer is pressed, not when the effect runs
   }, [anchor, onClose]);
 }
 
@@ -96,7 +98,8 @@ export function Menu({ trigger, label, className, items, align = "left", title }
   trigger: React.ReactNode;
   label: string;
   className: string;
-  items: (MenuItem | "-" | string)[];
+  /** "-" is a separator; any other string, a caption. */
+  items: (MenuItem | string)[];
   align?: "left" | "right";
   title?: string;
 }) {

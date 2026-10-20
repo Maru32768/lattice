@@ -67,7 +67,7 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
-    Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setBadges({
+    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setBadges({
       provider: llm.status === "fulfilled" ? `${llm.value.chain.length} 段` : null,
       genres: genres.status === "fulfilled" ? genres.value.length : null,
       r2: r2s.status === "fulfilled" && r2s.value.last_error ? <span className="error-text">エラー</span> : null,

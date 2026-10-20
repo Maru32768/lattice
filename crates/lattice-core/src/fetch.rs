@@ -106,10 +106,10 @@ pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, Strin
         return Err(format!("HTTP {status}"));
     }
     let content_type = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(str::to_string);
-    if let Some(ct) = &content_type {
-        if !ct.contains("html") {
-            return Err(format!("unsupported content type: {ct}"));
-        }
+    if let Some(ct) = &content_type
+        && !ct.contains("html")
+    {
+        return Err(format!("unsupported content type: {ct}"));
     }
     let final_url = resp.url().to_string();
     let mut body = Vec::new();

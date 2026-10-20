@@ -68,6 +68,7 @@ export function Splitter({ pane, side, width, onWidth }: {
       window.removeEventListener("mouseup", up);
       window.removeEventListener("blur", up);
     };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- listeners live for one drag, during which pane, side and onWidth do not change
   }, [drag]);
 
   function down(e: React.MouseEvent) {

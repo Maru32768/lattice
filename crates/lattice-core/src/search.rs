@@ -91,9 +91,20 @@ async fn semantic_search<E: EmbeddingProvider>(store: &Store, embedder: &E, quer
     Ok(ranked.into_iter().map(|(_, id)| id).collect())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+/// Scores ordered by `total_cmp`, so equality and ordering agree even for NaN.
+#[derive(Debug, Clone, Copy)]
 struct Ordered(f32);
+impl PartialEq for Ordered {
+    fn eq(&self, o: &Self) -> bool {
+        self.cmp(o).is_eq()
+    }
+}
 impl Eq for Ordered {}
+impl PartialOrd for Ordered {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(o))
+    }
+}
 impl Ord for Ordered {
     fn cmp(&self, o: &Self) -> std::cmp::Ordering {
         self.0.total_cmp(&o.0)

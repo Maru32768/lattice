@@ -6,6 +6,16 @@ rust = "1.99.1"
 description = "Run the desktop app with hot reload"
 run = "npm run tauri dev"
 
+[tasks.lint]
+description = "rustfmt, clippy and oxlint"
+run = [
+  "npm run build:overlay",
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "npm run lint",
+]
+
 [tasks.test]
-description = "Rust tests, frontend tests and typecheck"
-run = ["npm run build:overlay", "cargo test --workspace", "npm test", "npm run build"]
+description = "Lint, Rust tests, frontend tests and typecheck"
+depends = ["lint"]
+run = ["cargo test --workspace", "npm test", "npm run build"]

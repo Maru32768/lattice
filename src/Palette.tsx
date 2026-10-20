@@ -218,7 +218,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       else if (raw) { onClose(); actions.search(raw.replace(/^\?/, "").trim()); }
     } else if (k === "Tab" && items[act]?.stack) {
       e.preventDefault();
-      items[act].stack!();
+      items[act].stack();
       setQ("");
     }
   }

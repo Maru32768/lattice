@@ -102,7 +102,7 @@ Press `Ctrl+K` for the command palette. It opens articles, tags, sources and gen
 mise run test
 ```
 
-`mise run test` builds the overlay, runs the Rust and frontend tests, and type-checks and builds the frontend.
+`mise run test` runs `mise run lint` (rustfmt, clippy and oxlint), then the Rust and frontend tests, and type-checks and builds the frontend.
 
 | Path | Contents |
 |---|---|

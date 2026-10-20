@@ -67,7 +67,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G39 | 単体テスト・E2E テストの強化 | 後 | E2E は今の mock IPC harness を土台にできる。 |
 | G40 | CI でテスト | 後 | GitHub Actions（Windows runner）で `mise run test`。 |
 | G41 | リリースフロー | 後 | バージョン付け、ビルド、署名、配布物の作り方を決める。 |
-| G42 | 静的解析 | 後 | clippy（`-D warnings`）、ESLint、型チェックを CI に入れる。 |
+| G42 | 静的解析 | 済 | `mise run lint`: rustfmt（`rustfmt.toml` は既存の長い行に合わせた）、clippy（`--all-targets -D warnings`）、oxlint（type-aware。hooks・promise・`no-unsafe-*` など、外した規則は `oxlint.config.ts` に理由を書いた）。`mise run test` は lint の後に走る。型チェックは従来どおり `npm run build`（design-review §18）。 |
 | G43 | 対話の入力欄で Vim キーバインド | 後 | |
 | G44 | アプリ全体を Vim 風に操作 | 後 | Chrome の Vimium のように、リンクのヒント表示などで操作する。G9 のキー設定の上に作る。 |
 | G45 | モデルごとの effort 設定 | 済 | chain の各段に任意の effort（`low`〜`max`、Gemini は `low`〜`high`）。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`（既定は従来どおり low）、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定は provider の既定で、保存済みの chain はそのまま読める。 |

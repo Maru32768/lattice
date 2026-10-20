@@ -51,7 +51,7 @@ export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
 /** The values an article has in one dimension (several for tags and state). */
 export function valuesOf<D extends Dim>(a: ArticleRow, dim: D): DimValue<D>[] {
   const v = ((): unknown[] => {
-    switch (dim as Dim) {
+    switch (dim) {
       case "genres": return [a.genre];
       case "tags": return a.tags;
       case "feeds": return [a.feed_id];

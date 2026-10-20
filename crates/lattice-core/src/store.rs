@@ -376,10 +376,10 @@ fn renormalize_urls(tx: &rusqlite::Transaction) -> Result<()> {
         let urls: Vec<String> =
             tx.prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%'"))?.query_map([], |r| r.get(0))?.collect::<Result<_>>()?;
         for old in urls {
-            if let Ok(new) = crate::url_norm::normalize(&old).map(String::from) {
-                if new != old {
-                    tx.execute(&format!("UPDATE OR IGNORE {table} SET {col} = ?2 WHERE {col} = ?1"), params![old, new])?;
-                }
+            if let Ok(new) = crate::url_norm::normalize(&old).map(String::from)
+                && new != old
+            {
+                tx.execute(&format!("UPDATE OR IGNORE {table} SET {col} = ?2 WHERE {col} = ?1"), params![old, new])?;
             }
         }
     }
@@ -1257,7 +1257,7 @@ impl Store {
             };
             for (_, block_id, blob) in &chunk {
                 buf.clear();
-                buf.extend(blob.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])));
+                buf.extend(blob.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)));
                 f(*block_id, &buf);
             }
             match chunk.last() {
@@ -1457,7 +1457,7 @@ mod tests {
         let v = s.get_article(1, "ja").unwrap().unwrap();
         assert_eq!(v.blocks[0].translation.as_deref(), Some("スナップショット分離"));
         assert_eq!(s.lexical_search("スナップショット", None, 10).unwrap(), [1]);
-        let cached = s.cached_segments(&[hash.clone()], "ja").unwrap();
+        let cached = s.cached_segments(std::slice::from_ref(&hash), "ja").unwrap();
         assert_eq!(cached[&hash], [Unit { source: "Snapshot isolation".into(), translation: "スナップショット分離".into() }]);
     }
 

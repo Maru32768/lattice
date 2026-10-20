@@ -112,18 +112,19 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
     opening.current = true;
     browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e))).finally(() => {
       opening.current = false;
-      sync();
+      void sync();
     });
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- each target opens once; onError only reports
   }, [target]);
 
   useEffect(() => {
     if (!covered) {
-      sync().then(() => setStill(null));
+      void sync().then(() => setStill(null));
       return;
     }
     // The still is painted under the webview before it hides, so no blank frame shows in between.
     let live = true;
-    (async () => {
+    void (async () => {
       const png = loadingRef.current ? null : await browser.capture().catch(() => null);
       if (png && live) {
         const img = new Image();
@@ -138,12 +139,13 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
   }, [covered]);
 
   useEffect(() => {
-    const ro = new ResizeObserver(sync);
+    const resize = () => void sync();
+    const ro = new ResizeObserver(resize);
     ro.observe(host.current!);
-    window.addEventListener("resize", sync);
+    window.addEventListener("resize", resize);
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", sync);
+      window.removeEventListener("resize", resize);
       browser.hide().catch(() => {});
     };
   }, []);

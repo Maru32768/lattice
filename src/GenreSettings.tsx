@@ -9,7 +9,7 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.listGenres().then(setGenres).catch((e) => setError(String(e)));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { void load(); }, []);
 
   async function act(task: Promise<void>, done: string) {
     setError(null);
@@ -21,7 +21,7 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
     } catch (e) {
       setError(String(e));
     }
-    load();
+    void load();
     onChanged();
   }
 
@@ -32,7 +32,7 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
     const submit = () => changed && act(api.renameGenre(g.name, to),
       into ? `「${g.name}」を「${into.name}」に統合しました` : `「${g.name}」を「${to}」に変更しました`);
     return (
-      <form key={g.name} className="set" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+      <form key={g.name} className="set" onSubmit={(e) => { e.preventDefault(); void submit(); }}>
         <div className="h">
           <input className="input sm" list="genre-manage-options" value={drafts[g.name] ?? g.name} aria-label={`${g.name} の新しい名前`}
             onChange={(e) => setDrafts((d) => ({ ...d, [g.name]: e.target.value }))} />

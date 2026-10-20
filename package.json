@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "node --test src/*.test.ts src/overlay/*.test.ts",
-    "build:overlay": "vite build -c vite.overlay.config.ts"
+    "build:overlay": "vite build -c vite.overlay.config.ts",
+    "lint": "oxlint --deny-warnings"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -31,6 +32,8 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^26.1.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2004",
     "typescript": "~6.0.3",
     "vite": "^8.0.16"
   }
