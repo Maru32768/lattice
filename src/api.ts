@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PageKeys } from "./keys";
-import type { Lang } from "./i18n/index.ts";
+import type { Lang, T } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
 export type Inline =
@@ -76,8 +76,8 @@ export interface ArticleRow {
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
 export const isLocal = (url: string) => url.startsWith("local:");
 
-/** The site shown for an article: its domain, or ローカル for an imported file. */
-export const siteOf = (a: Pick<ArticleRow, "domain">) => a.domain || "ローカル";
+/** The site shown for an article: its domain, or "local" for an imported file. */
+export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */
 export type ArticleFilter =

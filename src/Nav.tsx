@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { FeedRow } from "./api";
-import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
+import { feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
+import { t } from "./i18n";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review";
 
@@ -90,7 +91,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
       {LIBRARY.map(([s, label, icon, key]) => item(s, label, counts[key] as number, <Icon name={icon} />))}
 
       <div className="sec">ジャンル<button className="link" onClick={onGenres}>編集</button></div>
-      {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? UNCLASSIFIED, c, <span className="sw" style={{ background: genreSwatch(g) }} />))}
+      {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? t("common.unclassified"), c, <span className="sw" style={{ background: genreSwatch(g) }} />))}
       {counts.genres.length > GENRES_SHOWN && (
         <button className="ni dim" onClick={() => setAllGenres((v) => !v)} aria-expanded={allGenres}>
           <Icon name={allGenres ? "up" : "right"} />{allGenres ? "折りたたむ" : `他 ${counts.genres.length - GENRES_SHOWN} ジャンル`}
@@ -116,7 +117,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chat
           )}
         </div>
       )}
-      {item({ kind: "feed", id: null }, MANUAL, counts.manual, <Icon name="manual" />)}
+      {item({ kind: "feed", id: null }, t("common.manual"), counts.manual, <Icon name="manual" />)}
       {screen === "feeds" && tool("feeds", "フィードを管理", "gear")}
 
       <div className="sec">ツール</div>

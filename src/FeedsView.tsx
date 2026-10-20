@@ -4,6 +4,7 @@ import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
 import { relTime } from "./time";
 import { Favicon, feedIconChanged, hostOf } from "./Favicon";
 import "./manage.css";
+import { t } from "./i18n";
 
 const ADDED = "登録しました。新しい記事をバックグラウンドで取得します。";
 const bare = (url: string) => url.replace(/^https?:\/\//, "");
@@ -175,7 +176,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
         <header className="head">
           <div>
             <h1>フィードを管理</h1>
-            <p className="sub">{feeds.length} 件 · 最終巡回 {relTime(newest)} · 起動時と 30 分ごとに新着のみ取得</p>
+            <p className="sub">{feeds.length} 件 · 最終巡回 {relTime(newest, t)} · 起動時と 30 分ごとに新着のみ取得</p>
           </div>
           <div className="acts">
             <label className="btn lg">
@@ -244,7 +245,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 <tr key={f.id} className={f.last_error ? "err" : undefined}>
                   <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
                   <td>{f.last_error ? <span className="st err"><i />{f.last_error}</span> : <span className="st"><i />正常</span>}</td>
-                  <td className="num when">{relTime(f.last_fetched_at)}</td>
+                  <td className="num when">{relTime(f.last_fetched_at, t)}</td>
                   <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>
                   <td className="row-acts">
                     <button className="btn sm ghost" onClick={() => onShowFeed(f.id)} aria-label={`${feedName(f)} の記事を見る`}>記事を見る →</button>

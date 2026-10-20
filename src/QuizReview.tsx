@@ -7,8 +7,9 @@ import { Menu } from "./Popover";
 import { Icon } from "./Icon";
 import "./manage.css";
 import "./quiz.css";
+import { t } from "./i18n";
 
-const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? "出題中" : relTime(new Date(unix * 1000).toISOString()));
+const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? "出題中" : relTime(new Date(unix * 1000).toISOString(), t));
 
 /** 今日の復習: today's due cards one by one, then a summary; and the articles in review. */
 export function QuizReview({ onOpen, onChanged }: {
@@ -101,7 +102,7 @@ export function QuizReview({ onOpen, onChanged }: {
           <section className="card qz-session qz-summary" role="status">
             {answered.length > 0 && <>
               <p className="qz-score"><b>{answered.length}</b> 枚を復習しました</p>
-              <p className="qz-tally">{GRADES.map(({ grade, label }) => <span key={grade}>{label} {answered.filter((g) => g === grade).length}</span>)}</p>
+              <p className="qz-tally">{GRADES.map(({ grade, label }) => <span key={grade}>{t(label)} {answered.filter((g) => g === grade).length}</span>)}</p>
             </>}
             {overview && overview.due > 0
               ? <button className="btn pri" onClick={() => void start()}>続ける（{overview.due} 枚）</button>

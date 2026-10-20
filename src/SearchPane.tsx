@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { siteOf, type ArticleRow, type SearchHit, type SearchResult } from "./api";
-import { MANUAL, UNCLASSIFIED } from "./groups";
 import { countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { onMiddle } from "./middle";
+import { t } from "./i18n";
 
 export const MATCH_LABEL = { lexical: "全文", semantic: "意味", both: "全文 + 意味" } as const;
 const METHODS: [SearchMethod, string][] = [["hybrid", "Hybrid"], ["lexical", "全文"], ["semantic", "意味"]];
@@ -29,7 +29,7 @@ function ScopeSelect({ scope, onScope, genres, feeds }: {
         <option value={JSON.stringify({ kind: "unread" })}>未読</option>
         <option value={JSON.stringify({ kind: "favorites" })}>お気に入り</option>
         <optgroup label="ジャンル">
-          {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? UNCLASSIFIED}</option>)}
+          {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? t("common.unclassified")}</option>)}
         </optgroup>
         <optgroup label="ソース">
           {feeds.map(([id, name]) => <option key={String(id)} value={JSON.stringify({ kind: "feed", id })}>{name}</option>)}
@@ -102,7 +102,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? MANUAL : valueLabel("feeds", id, all)]);
+  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, t)]);
   let n = 0;
   return (
     <section className="list search" aria-label="検索結果" data-pane="list" onKeyDown={keys}>
@@ -137,7 +137,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                       const on = (facets[d] as DimValue<Dim>[]).includes(v);
                       return (
                         <button key={String(v)} className={on ? "on" : ""} aria-pressed={on} onClick={() => onFacets(toggle(facets, d, v))}>
-                          {valueLabel(d, v, all)} <b>{c}</b>
+                          {valueLabel(d, v, all, t)} <b>{c}</b>
                         </button>
                       );
                     })}
@@ -168,7 +168,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
             <div className="sgrp" key={g.article_id}>
               <div className="at">{a?.title ?? g.hits[0].article_title}</div>
               <div className="am">
-                {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a)}</span>}
+                {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>}
                 {a && <span>{mmdd(a.saved_at)}</span>}
                 <span>{g.hits.length} 一致</span>
               </div>

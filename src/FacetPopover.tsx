@@ -4,6 +4,7 @@ import { DIM_LABELS, DIFFICULTY_LABELS, countBy, toggle, valueLabel, type Dim, t
 import { Popover } from "./Popover";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { listStep } from "./keys";
+import { t } from "./i18n";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
 
@@ -39,7 +40,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
   const isTags = dim === "tags";
   const selected = facets[dim] as DimValue<Dim>[];
   const counts = useMemo(() => countBy(base, dim), [base, dim]);
-  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all), count: counts.get(v) ?? 0 })), [dim, all, counts]);
+  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, t), count: counts.get(v) ?? 0 })), [dim, all, counts]);
 
   // Tags: popular (no query), or matches split into in-set (prefix first) and out-of-set.
   const sections = useMemo(() => {
@@ -105,7 +106,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
 
   let n = 0;
   return (
-    <Popover anchor={anchor} label={`${DIM_LABELS[dim]}で絞り込む`} width={isTags ? 372 : 300} onClose={onClose}>
+    <Popover anchor={anchor} label={`${t(DIM_LABELS[dim])}で絞り込む`} width={isTags ? 372 : 300} onClose={onClose}>
       <div onKeyDown={keys} className="facet-pv" tabIndex={isTags ? undefined : -1} data-autofocus={isTags ? undefined : true}>
         {isTags && (
           <div className="pv-head">
@@ -139,7 +140,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
         )}
         <div className="pv-list">
           {sections.map((s) => (
-            <div key={s.title} role="group" aria-label={s.title || DIM_LABELS[dim]}>
+            <div key={s.title} role="group" aria-label={s.title || t(DIM_LABELS[dim])}>
               {s.title && <div className="ph">{s.title}<span>{s.note}</span></div>}
               {s.opts.map((o) => option(o, n++))}
               {"hidden" in s && s.hidden! > 0 && <button className="opt zero more" onClick={() => setMore(true)}>他 {s.hidden} 件を表示</button>}

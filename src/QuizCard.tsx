@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Grade, QuizQuestion } from "./api";
 import { GRADES, formatInterval, suggestedGrade } from "./quiz";
 import "./quiz.css";
+import { t } from "./i18n";
 
 /**
  * One question: answer (pick an option, or reveal after recalling), then the answer, its
@@ -72,7 +73,7 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
             {GRADES.map(({ grade, label }, i) => (
               <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
                 title={`${label} (${i + 1})`}>
-                {label}{previews && <span className="ivl">{formatInterval(previews[i])}</span>}
+                {t(label)}{previews && <span className="ivl">{formatInterval(previews[i], t)}</span>}
               </button>
             ))}
           </div>

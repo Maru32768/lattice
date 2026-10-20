@@ -1,15 +1,17 @@
-const MIN = 60_000;
-const UNITS: [number, string][] = [[24 * 60 * MIN, "日"], [60 * MIN, "時間"], [MIN, "分"]];
+import { locale, type T } from "./i18n/index.ts";
 
-/** "12 分前", "3 分後", "4 日前", "たった今"; a month or more away falls back to the date. */
-export function relTime(iso: string | null, now = Date.now()): string {
+const MIN = 60_000;
+const UNITS: [number, Intl.RelativeTimeFormatUnit][] = [[24 * 60 * MIN, "day"], [60 * MIN, "hour"], [MIN, "minute"]];
+
+/** "12 分前" / "12 minutes ago", "in 3 minutes", "just now"; a month or more away falls back to the date. */
+export function relTime(iso: string | null, t: T, now = Date.now()): string {
   if (!iso) return "—";
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  const diff = t - now;
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return "—";
+  const diff = at - now;
   const abs = Math.abs(diff);
-  if (abs < MIN) return "たった今";
-  if (abs >= 30 * 24 * 60 * MIN) return new Date(t).toLocaleDateString("ja-JP");
+  if (abs < MIN) return t("time.justNow");
+  if (abs >= 30 * 24 * 60 * MIN) return new Date(at).toLocaleDateString(locale(t.lang));
   const [size, unit] = UNITS.find(([size]) => abs >= size)!;
-  return `${Math.floor(abs / size)} ${unit}${diff < 0 ? "前" : "後"}`;
+  return new Intl.RelativeTimeFormat(locale(t.lang)).format(Math.sign(diff) * Math.floor(abs / size), unit);
 }

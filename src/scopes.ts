@@ -1,5 +1,6 @@
 import type { ArticleFilter, FeedRow, TagCount } from "./api";
-import { MANUAL, UNCLASSIFIED, feedName } from "./groups.ts";
+import { feedName } from "./groups.ts";
+import type { T } from "./i18n/index.ts";
 
 export interface FilterGroup {
   label: string;
@@ -11,23 +12,23 @@ export const filterKey = (f: ArticleFilter) => JSON.stringify(f);
 export const parseFilterKey = (k: string) => JSON.parse(k) as ArticleFilter;
 
 /** Genre / feed / tag filters as `<optgroup>`s for the search and chat scope pickers. Empty genres are left out. */
-export function filterGroups(genres: TagCount[], feeds: FeedRow[], tags: TagCount[]): FilterGroup[] {
+export function filterGroups(genres: TagCount[], feeds: FeedRow[], tags: TagCount[], t: T): FilterGroup[] {
   const opt = (f: ArticleFilter, label: string) => ({ key: filterKey(f), label });
   return [
     {
-      label: "ジャンル",
+      label: t("common.genre"),
       options: [
-        ...genres.filter((g) => g.count > 0).map((g) => opt({ kind: "genre", name: g.name }, `${g.name}（${g.count}件）`)),
-        opt({ kind: "genre", name: null }, UNCLASSIFIED),
+        ...genres.filter((g) => g.count > 0).map((g) => opt({ kind: "genre", name: g.name }, t("scopes.option", { name: g.name, count: g.count }))),
+        opt({ kind: "genre", name: null }, t("common.unclassified")),
       ],
     },
     {
-      label: "フィード",
+      label: t("common.feed"),
       options: [
-        opt({ kind: "feed", id: null }, MANUAL),
-        ...feeds.map((f) => opt({ kind: "feed", id: f.id }, `${feedName(f)}（${f.article_count}件）`)),
+        opt({ kind: "feed", id: null }, t("common.manual")),
+        ...feeds.map((f) => opt({ kind: "feed", id: f.id }, t("scopes.option", { name: feedName(f), count: f.article_count }))),
       ],
     },
-    { label: "タグ", options: tags.map((t) => opt({ kind: "tag", name: t.name }, `#${t.name}（${t.count}件）`)) },
+    { label: t("common.tag"), options: tags.map((tag) => opt({ kind: "tag", name: tag.name }, t("scopes.option", { name: `#${tag.name}`, count: tag.count }))) },
   ].filter((g) => g.options.length > 0);
 }

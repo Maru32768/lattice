@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, type JobIssue, type JobOverview, type JobState } from "./api";
 import { relTime } from "./time";
 import "./manage.css";
+import { t } from "./i18n";
 
 // Pipeline order; a type the backend adds later still shows, after these.
 const TYPES: { type: string; label: string; hint?: string }[] = [
@@ -143,7 +144,7 @@ export function JobsView() {
                           </span>
                           {j.attempt_count}/{MAX_ATTEMPTS}
                         </td>
-                        <td className={`m${failed ? " z" : ""}`}>{failed ? "—" : relTime(j.next_run_at)}</td>
+                        <td className={`m${failed ? " z" : ""}`}>{failed ? "—" : relTime(j.next_run_at, t)}</td>
                         <td className={`state${failed ? "" : " wait"}`}>{failed ? "失敗" : "再試行待ち"}</td>
                         <td className="r">
                           <button className="btn sm" onClick={() => retry(j)}>{failed ? "再実行" : "今すぐ再実行"}</button>

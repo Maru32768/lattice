@@ -93,8 +93,8 @@ function PrefixHint({ prefix }: { prefix: string }) {
 }
 
 export default function App() {
-  // Subscribes the whole tree to the display language: a switch re-renders everything below.
-  useT();
+  // Also subscribes the whole tree to the display language: a switch re-renders everything below.
+  const t = useT();
   useEffect(() => {
     // The backend's choice wins over the cached one; the first start stores the detected language.
     api.uiLanguage().then((l) => (isLang(l) ? setDisplayLang(l) : api.setUiLanguage(displayLang()))).catch(() => {});
@@ -249,7 +249,7 @@ export default function App() {
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
   const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group)), [shown, group]);
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t)), [shown, group, t]);
   const order = useMemo(() => {
     const flat = (g: Group<ArticleRow>): ArticleRow[] => (g.children ? g.children.flatMap(flat) : g.articles);
     return groups.flatMap(flat);
@@ -272,8 +272,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now) : []),
-    [shown.length, articles, scope, facets, now]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, scope, facets, now, t) : []),
+    [shown.length, articles, scope, facets, now, t]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -281,7 +281,7 @@ export default function App() {
     return groupHits(filterHits(search.result.hits, method, ids));
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
-  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
+  const chatGroups = useMemo(() => filterGroups(genres, feeds, tags, t), [genres, feeds, tags, t]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -666,7 +666,7 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles);
+  const title = scopeLabel(scope, articles, t);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
@@ -772,7 +772,7 @@ export default function App() {
                 all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
                 onCollapse={() => setListOpen(false)} />
-            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
+            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {screen === "library" && !search && listOpen && splitter("list")}
           {screen === "library" && <div className="doc-area-wrap">

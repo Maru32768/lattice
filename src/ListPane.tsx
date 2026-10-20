@@ -7,6 +7,7 @@ import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
+import { t } from "./i18n";
 
 export type Grouping = "none" | "feed" | "genre";
 
@@ -46,7 +47,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCurso
       {unread && <span className="dot" aria-label="未読" />}
       <span className="t">{a.title ?? a.original_url}</span>
       <span className="meta">
-        <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? siteOf(a)}</span>
+        <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>
         <span>{mmdd((sort === "published_desc" && a.published_at) || a.saved_at)}</span>
         {a.difficulty != null && <Dif d={a.difficulty} />}
         {a.favorite && <span className="fav" aria-label="お気に入り"><Icon name="star" size="sm" /></span>}
@@ -83,15 +84,15 @@ export function FacetBar({ facets, onFacets, scoped, all, dims = DIMS, children 
       {active.map((d) => (
         <span key={d} ref={chipRef(d)} className={`chip on${open?.dim === d ? " open" : ""}`}>
           <button className="chip-body" onClick={toggleOpen(d)} aria-haspopup="dialog" aria-expanded={open?.dim === d}>
-            <span className="k">{DIM_LABELS[d]}</span>{facetLabel(facets, d, all)}
+            <span className="k">{t(DIM_LABELS[d])}</span>{facetLabel(facets, d, all, t)}
           </button>
-          <button className="x" onClick={() => onFacets(without(facets, d))} aria-label={`${DIM_LABELS[d]}の絞り込みを解除`}><Icon name="x" size="sm" /></button>
+          <button className="x" onClick={() => onFacets(without(facets, d))} aria-label={`${t(DIM_LABELS[d])}の絞り込みを解除`}><Icon name="x" size="sm" /></button>
         </span>
       ))}
       {dims.filter((d) => !active.includes(d)).map((d) => (
         <button key={d} ref={chipRef(d)} className={`chip${d === "state" ? " dashed" : ""}${open?.dim === d ? " open" : ""}`} onClick={toggleOpen(d)}
           aria-haspopup="dialog" aria-expanded={open?.dim === d}>
-          {DIM_LABELS[d]}{d !== "state" && <Icon name="down" size="sm" />}
+          {t(DIM_LABELS[d])}{d !== "state" && <Icon name="down" size="sm" />}
         </button>
       ))}
       {open && (

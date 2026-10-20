@@ -2,7 +2,6 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { api, isLocal, siteOf, type ArticleView, type Block, type Inline, type JobRow } from "./api";
 import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
-import { UNCLASSIFIED } from "./groups";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
@@ -10,6 +9,7 @@ import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { QuizPanel } from "./QuizPanel";
 import { onMiddle } from "./middle";
+import { t } from "./i18n";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -223,13 +223,13 @@ function GenreChip({ genre, classifying, onGenre, onClassify }: {
   if (!editing) {
     return (
       <button className="chip" onClick={() => setEditing(true)} title="ジャンルを変更">
-        <span className="sw" style={{ background: genreSwatch(genre) }} />{genre ?? UNCLASSIFIED}
+        <span className="sw" style={{ background: genreSwatch(genre) }} />{genre ?? t("common.unclassified")}
       </button>
     );
   }
   return (
     <form className="chip-edit" onSubmit={(e) => { e.preventDefault(); commit(); }}>
-      <input className="input sm" list="genre-options" value={value} autoFocus aria-label="ジャンル" placeholder={UNCLASSIFIED}
+      <input className="input sm" list="genre-options" value={value} autoFocus aria-label="ジャンル" placeholder={t("common.unclassified")}
         onChange={(e) => setValue(e.target.value)} onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setValue(genre ?? ""); setEditing(false); } }} />
       <datalist id="genre-options">{genres.map((g) => <option key={g} value={g} />)}</datalist>
@@ -426,7 +426,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}
-            <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{siteOf(a)}</span>
+            <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.site_name && a.site_name !== a.feed_title ? `${a.site_name} · ` : ""}{siteOf(a, t)}</span>
             {a.author && <><span>·</span><span>{a.author}</span></>}
             {a.published_at && <><span>·</span><span>{a.published_at.slice(0, 10)}</span></>}
           </div>
@@ -439,10 +439,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             <TagAdder onAdd={(t) => onTag(t, true)} />
             {!failed && (
               <label className="chip sel-chip" title="難易度（未判定に戻すと自動分類で推定し直します）">
-                <Dif d={a.difficulty} />{a.difficulty ? DIFFICULTY_LABELS[a.difficulty - 1] : "難易度"}
+                <Dif d={a.difficulty} />{a.difficulty ? t(DIFFICULTY_LABELS[a.difficulty - 1]) : "難易度"}
                 <select value={a.difficulty ?? ""} aria-label="難易度" onChange={(e) => onDifficulty(e.target.value ? Number(e.target.value) : null)}>
                   <option value="">未判定</option>
-                  {DIFFICULTY_LABELS.map((l, i) => <option key={l} value={i + 1}>{i + 1} {l}</option>)}
+                  {DIFFICULTY_LABELS.map((l, i) => <option key={l} value={i + 1}>{i + 1} {t(l)}</option>)}
                 </select>
               </label>
             )}

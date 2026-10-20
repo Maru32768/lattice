@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, siteOf, type ArticleRow, type FeedRow } from "./api";
-import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
+import { feedName } from "./groups";
 import { activeDims, countBy, facetLabel, genreSwatch, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
 import { useCover } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
 import type { Screen } from "./Nav";
 import type { LanguageMode } from "./mixed";
+import { t } from "./i18n";
 
 export interface PaletteActions {
   scope: (s: Scope) => void;
@@ -105,9 +106,9 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: "お気に入りを表示", keys: "favorites star お気に入り", icon: "star", run: () => actions.scope({ kind: "favorites" }) },
     { label: "最近追加を表示", keys: "recent 最近", icon: "recent", run: () => actions.scope({ kind: "recent" }) },
     { label: "すべての記事を表示", keys: "all すべて", icon: "all", run: () => actions.scope({ kind: "all" }) },
-    ...genreCounts.map(([g]): Command => ({ label: `ジャンル: ${g ?? UNCLASSIFIED}`, keys: `genre ジャンル ${g ?? UNCLASSIFIED}`, icon: "filter", run: () => actions.scope({ kind: "genre", name: g }) })),
+    ...genreCounts.map(([g]): Command => ({ label: `ジャンル: ${g ?? t("common.unclassified")}`, keys: `genre ジャンル ${g ?? t("common.unclassified")}`, icon: "filter", run: () => actions.scope({ kind: "genre", name: g }) })),
     ...feeds.map((f): Command => ({ label: `ソース: ${feedName(f)}`, keys: `source feed ソース ${feedName(f)} ${f.title ?? ""} ${f.url}`, icon: "rss", run: () => actions.scope({ kind: "feed", id: f.id }) })),
-    { label: `ソース: ${MANUAL}`, keys: `source ソース manual ${MANUAL}`, icon: "manual", run: () => actions.scope({ kind: "feed", id: null }) },
+    { label: `ソース: ${t("common.manual")}`, keys: `source ソース manual ${t("common.manual")}`, icon: "manual", run: () => actions.scope({ kind: "feed", id: null }) },
     ...(actions.translate ? [{ label: "この記事を翻訳（job を積む）", keys: "translate 翻訳", icon: "translate", run: actions.translate } as Command] : []),
     { label: "表示言語: 混在", keys: "translate mixed ratio 混在 割合 表示言語", icon: "translate", run: (n) => actions.lang("mixed", n ?? undefined), withNumber: (n) => `表示言語: 混在 · 訳文 ${n}%` },
     { label: "表示言語: 原文", keys: "original 原文 表示言語", icon: "translate", run: () => actions.lang("original") },
@@ -168,7 +169,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       const titled = all.filter((a) => has(a.title ?? a.original_url));
       for (const a of titled.slice(0, LIMIT)) {
         out.push({ group: "記事", icon: "reader", label: <Hl text={a.title ?? a.original_url} q={text} />,
-          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a)), run: (t) => actions.open(a, t) });
+          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a, t)), run: (t) => actions.open(a, t) });
       }
     }
     if (!prefix ? text : prefix === "#") {
@@ -177,7 +178,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       }
     }
     if (!prefix ? text : prefix === "@") {
-      const sources: [number | null, string][] = [...feeds.map((f): [number, string] => [f.id, feedName(f)]), [null, MANUAL]];
+      const sources: [number | null, string][] = [...feeds.map((f): [number, string] => [f.id, feedName(f)]), [null, t("common.manual")]];
       for (const [id, name] of sources.filter(([, name]) => has(name)).slice(0, prefix ? 12 : LIMIT)) {
         const add = () => actions.facets({ ...facets, feeds: facets.feeds.includes(id) ? facets.feeds : [...facets.feeds, id] });
         out.push({ group: "ソース", icon: id == null ? "manual" : "rss", label: <Hl text={name} q={text} />, sub: id == null ? undefined : "フィード",
@@ -185,9 +186,9 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       }
     }
     if (!prefix ? text : prefix === "g:") {
-      for (const [g, n] of genreCounts.filter(([g]) => has(g ?? UNCLASSIFIED)).slice(0, prefix ? 12 : LIMIT)) {
+      for (const [g, n] of genreCounts.filter(([g]) => has(g ?? t("common.unclassified"))).slice(0, prefix ? 12 : LIMIT)) {
         const add = () => actions.facets({ ...facets, genres: facets.genres.includes(g) ? facets.genres : [...facets.genres, g] });
-        out.push({ group: "ジャンル", label: <><span className="sw" style={{ background: genreSwatch(g) }} /><Hl text={g ?? UNCLASSIFIED} q={text} /></>,
+        out.push({ group: "ジャンル", label: <><span className="sw" style={{ background: genreSwatch(g) }} /><Hl text={g ?? t("common.unclassified")} q={text} /></>,
           right: `${n} 記事`, run: () => actions.scope({ kind: "genre", name: g }), stack: add });
       }
     }
@@ -229,7 +230,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     }
   }
 
-  const where = [scopeLabel(scope, all), ...activeDims(facets).map((d) => facetLabel(facets, d, all))].join(" · ");
+  const where = [scopeLabel(scope, all, t), ...activeDims(facets).map((d) => facetLabel(facets, d, all, t))].join(" · ");
   let lastGroup = "";
   return (
     <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
