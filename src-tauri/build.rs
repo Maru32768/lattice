@@ -66,6 +66,7 @@ const COMMANDS: &[&str] = &[
     "browser_open",
     "browser_set_bounds",
     "browser_hide",
+    "browser_capture",
     "browser_go",
     "browser_set_translation",
     "overlay_config",

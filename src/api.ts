@@ -304,6 +304,8 @@ export const browser = {
     invoke<void>("browser_open", { url, bounds, focusText: focusText ?? null }),
   setBounds: (bounds: Bounds) => invoke<void>("browser_set_bounds", { bounds }),
   hide: () => invoke<void>("browser_hide"),
+  /** PNG data URL of the page as drawn (Windows); null elsewhere. */
+  capture: () => invoke<string | null>("browser_capture"),
   go: (action: "back" | "forward" | "reload") => invoke<void>("browser_go", { action }),
   setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
 };

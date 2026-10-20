@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
 
@@ -11,8 +11,8 @@ const GLYPHS = {
 };
 
 /**
- * The undecorated window's title bar: icon and name on a drag region (double-click maximizes),
- * caption buttons at the right. Tauri's drag script acts only on elements that carry the attribute.
+ * The undecorated window's title bar: press anywhere but the caption buttons to drag the window,
+ * double-click to maximize.
  */
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false);
@@ -23,16 +23,33 @@ export function TitleBar() {
     const off = w.onResized(sync);
     return () => { off.then((f) => f()); };
   }, []);
+  // Chromium counts a press as a repeat click when it lands on the same spot of the window. A drag
+  // moves the window along with the cursor, so a click right after it would read as the drag's
+  // second click; Tauri's data-tauri-drag-region then maximizes. The screen position tells them apart.
+  const lastPress = useRef<{ x: number; y: number } | null>(null);
+  function press(e: React.MouseEvent) {
+    if (e.button !== 0 || (e.target as Element).closest("button")) return;
+    e.preventDefault();
+    const at = { x: e.screenX, y: e.screenY }, prev = lastPress.current;
+    const w = getCurrentWindow();
+    if (e.detail >= 2 && prev && Math.abs(at.x - prev.x) <= 2 && Math.abs(at.y - prev.y) <= 2) {
+      lastPress.current = null;
+      w.toggleMaximize().catch(() => {});
+    } else {
+      lastPress.current = at;
+      w.startDragging().catch(() => {});
+    }
+  }
   const caption = (glyph: keyof typeof GLYPHS, label: string, run: () => Promise<void>, extra = "") => (
     <button className={`cap${extra}`} onClick={() => run().catch(() => {})} aria-label={label} title={label} tabIndex={-1}>
       <svg viewBox="0 0 10 10" aria-hidden="true">{GLYPHS[glyph]}</svg>
     </button>
   );
   return (
-    <header className="titlebar" data-tauri-drag-region>
-      <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} data-tauri-drag-region />
-      <span className="tb-name" data-tauri-drag-region>Lattice</span>
-      <span className="grow" data-tauri-drag-region />
+    <header className="titlebar" onMouseDown={press}>
+      <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} />
+      <span className="tb-name">Lattice</span>
+      <span className="grow" />
       {caption("min", "最小化", () => getCurrentWindow().minimize())}
       {caption(maximized ? "restore" : "max", maximized ? "元のサイズに戻す" : "最大化", () => getCurrentWindow().toggleMaximize())}
       {caption("close", "閉じる", () => getCurrentWindow().close(), " close")}

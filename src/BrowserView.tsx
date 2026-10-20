@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type Bounds } from "./api";
 import type { LanguageMode } from "./mixed";
 import { LangSeg, ViewSeg } from "./Reader";
@@ -53,7 +53,7 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
   saved: ArticleRow | null;
   saving: boolean;
   lang: PageLang;
-  /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so it hides instead. */
+  /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so a still of it stands in. */
   overlays: DOMRect[];
   onLang: (l: PageLang) => void;
   onSave: () => void;
@@ -72,12 +72,15 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
   const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
+  const loadingRef = useRef(false);
+  loadingRef.current = !!page?.loading;
+  const [still, setStill] = useState<string | null>(null);
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
-  const sync = () => {
+  const sync = async () => {
     const b = bounds();
-    if (b && !coveredRef.current && !opening.current) browser.setBounds(b).catch(() => {}); // also re-shows it
+    if (b && !coveredRef.current && !opening.current) await browser.setBounds(b).catch(() => {}); // also re-shows it
   };
 
   useLayoutEffect(() => {
@@ -93,8 +96,24 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
   }, [target]);
 
   useEffect(() => {
-    if (covered) browser.hide().catch(() => {});
-    else sync();
+    if (!covered) {
+      sync().then(() => setStill(null));
+      return;
+    }
+    // The still is painted under the webview before it hides, so no blank frame shows in between.
+    let live = true;
+    (async () => {
+      const png = loadingRef.current ? null : await browser.capture().catch(() => null);
+      if (png && live) {
+        const img = new Image();
+        img.src = png;
+        await img.decode().catch(() => {});
+        if (live) setStill(png);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      }
+      if (live) await browser.hide().catch(() => {});
+    })();
+    return () => { live = false; };
   }, [covered]);
 
   useEffect(() => {
@@ -138,7 +157,7 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
       <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? "読み込み中" : undefined}><b /></div>
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">
-        {loading && <span className="muted">読み込み中…</span>}
+        {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">読み込み中…</span>}
       </div>
     </div>
   );

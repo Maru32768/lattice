@@ -689,6 +689,7 @@ pub fn run() {
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,
+            browser::browser_capture,
             browser::browser_go,
             browser::browser_set_translation,
             browser::overlay_config,

@@ -26,4 +26,9 @@ serde_json = "1.0.154"
 tauri-plugin-log = "2"
 log = "0.4.34"
 
+[target.'cfg(windows)'.dependencies]
+# The versions wry uses, so the WebView2 controller it hands out is the same type.
+webview2-com = "0.39.1"
+windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+
 

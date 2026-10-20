@@ -284,7 +284,9 @@
 .page-progress b { display: none; height: 2px; width: 30%; background: var(--acc); }
 .page-progress.on b { display: block; animation: page-load 1.2s ease-in-out infinite; }
 @keyframes page-load { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-.page-host { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; margin: 0 10px 10px; background: var(--raise); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; }
+.page-host { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; margin: 0 10px 10px; background: var(--raise); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; }
+/* Covers the border box like the native webview (the host has no top border). */
+.page-still { position: absolute; top: 0; left: -1px; width: calc(100% + 2px); height: calc(100% + 1px); }
 
 
 /* ---- chat dock (Conversation board) ----------------------------------------------------------- */
