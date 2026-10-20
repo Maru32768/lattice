@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-quiz-article"
+description = "Enables the quiz_article command without any pre-configured scope."
+commands.allow = ["quiz_article"]
+
+[[permission]]
+identifier = "deny-quiz-article"
+description = "Denies the quiz_article command without any pre-configured scope."
+commands.deny = ["quiz_article"]
