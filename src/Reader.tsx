@@ -7,6 +7,7 @@ import { highlight } from "./search";
 import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -161,7 +162,12 @@ export function LangSeg({ mode, percent, onChange, label = "表示言語" }: {
   );
 }
 
-function TranslationStatus({ job, done, total, target, onTranslate }: { job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void }) {
+/** Re-translating more blocks than this asks first. */
+const RETRANSLATE_CONFIRM_BLOCKS = 50;
+
+function TranslationStatus({ job, done, total, target, onTranslate, onRetranslate }: {
+  job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void; onRetranslate: () => void;
+}) {
   const keys = <span className="keys"><Kbd>[</Kbd><Kbd>]</Kbd> 割合</span>;
   const hint = <span className="hint-keys">{keys}</span>;
   if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />{target === "en" ? "英語" : "日本語"}に翻訳</button></>;
@@ -173,7 +179,14 @@ function TranslationStatus({ job, done, total, target, onTranslate }: { job?: Jo
       </span>
     );
   }
-  if (job.status === "succeeded" && done >= total) return <span className="hint-keys">{keys}<span className="keys"> · </span>翻訳 {done}/{total}</span>;
+  if (job.status === "succeeded" && done >= total) {
+    return (
+      <>
+        <span className="hint-keys">{keys}<span className="keys"> · </span>翻訳 {done}/{total}</span>
+        <button className="btn sm" onClick={onRetranslate} title="この記事の訳を捨てて、今の設定で訳し直します">訳し直す</button>
+      </>
+    );
+  }
   const retryAt = job.status === "pending" && job.next_run_at
     ? new Date(job.next_run_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" }) : null;
   return (
@@ -268,7 +281,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete }: {
+  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -285,6 +298,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onReextract: () => void;
   onRender: () => void;
   onTranslate: () => void;
+  /** Drops this article's translations and translates it again. */
+  onRetranslate: () => void;
   onSummarize: () => void;
   onFavorite: () => void;
   onTag: (name: string, add: boolean) => void;
@@ -300,6 +315,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   // Per-block click overrides on top of the mode; App remounts Reader per article.
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const [pop, setPop] = useState<number | null>(null);
+  const [confirmRetranslate, setConfirmRetranslate] = useState(false);
   const timers = useRef({ show: 0, hide: 0 });
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
@@ -345,6 +361,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
     timers.current.hide = window.setTimeout(() => setPop(null), 150);
   }
 
+  const retranslate = () => (done > RETRANSLATE_CONFIRM_BLOCKS ? setConfirmRetranslate(true) : onRetranslate());
+
   const renderBtn = (pri: boolean) => (
     <button className={`btn${pri ? " pri" : ""}`} onClick={onRender} disabled={rendering}
       title="裏の非表示ブラウザでページを描画し、その内容で保存し直します">{rendering ? "描画して取り込み中…" : "描画して取り込み直す"}</button>
@@ -357,7 +375,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <ViewSeg page={false} onReader={() => {}} onPage={onPage} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
-        {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} />}
+        {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} onRetranslate={retranslate} />}
         {matches && (
           <span className="matches">
             一致 {matches.i + 1} / {matches.n}
@@ -370,10 +388,11 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
-          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
+          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・訳し直す・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
             { label: "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
             { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering },
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
+            { label: translating ? "翻訳中…" : "訳し直す", onSelect: retranslate, disabled: failed || translating || done === 0 },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
             "-",
             { label: <span className="error-text">記事を削除…</span>, onSelect: onDelete },
@@ -484,6 +503,12 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           </OpenLink.Provider>
         </article>
       </div>
+      {confirmRetranslate && (
+        <ConfirmDialog title="訳し直しますか？" confirm="訳し直す"
+          onConfirm={() => { setConfirmRetranslate(false); onRetranslate(); }} onCancel={() => setConfirmRetranslate(false)}>
+          <p>この記事の訳文 {done} block を捨てて、今のプロバイダと設定で訳し直します。同じ段落を含むほかの記事やページ表示も新しい訳になります。</p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

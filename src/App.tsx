@@ -597,6 +597,7 @@ export default function App() {
                 onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
                 onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
                 onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
+                onRetranslate={viewAct(api.retranslateArticle)}
                 onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
                 onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
                 onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}

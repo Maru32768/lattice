@@ -117,6 +117,9 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
 - **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer、`translate="no"` は対象外（aside は記事中の囲み記事が本文なので訳す）。訳先の言語は §16 を参照。
+- **訳し直す（G29）。** Reader の ⋯ と、全部訳し終えたときの翻訳状況の横に「訳し直す」を置く。`translate::retranslate` が、記事の prose block の hash と今の訳先の key に一致する `segment_translations` の行を消し（FTS の行は trigger で消える）、translate job を積み直す。job は全 block を未翻訳として見るので cache を通らない。provider は chain のまま（この実行だけ別の provider を選ぶことはしない）。訳文が 50 block を超えるときだけ確認ダイアログを出す。
+  - cache は本文 1 つにつき 1 つなので、同じ段落を持つほかの記事とページ表示も新しい訳になる（記事ごとに訳を持たせると、ページ表示や検索と共有する今の設計が崩れる）。別の訳先（英訳、専門用語モード、追加の指示）の行は消さない。
+  - 訳し直しの途中で失敗すると、その記事は訳のない block が残る（古い訳には戻らない）。job は従来どおり backoff して再試行し、「続きを翻訳」も使える。翻訳 job の実行中は「訳し直す」を押せない（実行中の job は積み直せず、消した分が訳されないまま終わるため）。
 
 ## 4. 検索 slice（実装済み）
 

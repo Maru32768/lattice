@@ -54,6 +54,15 @@ pub fn enqueue(store: &Store, article_id: i64, target: &Target) -> Result<(), St
     store.enqueue_job(JOB_TYPE, article_id, &params, &format!("{JOB_TYPE}:{article_id}:{key}")).map_err(|e| e.to_string())
 }
 
+/// Translates the article anew: drops its cached translations for `target` (also those of
+/// paragraphs other articles share, which then get the new translation) and queues the job,
+/// which now finds every block untranslated. Returns how many translations were dropped.
+pub fn retranslate(store: &Store, article_id: i64, target: &Target) -> Result<usize, String> {
+    let dropped = store.drop_translations(article_id, &target.key(), PROSE_KINDS).map_err(|e| e.to_string())?;
+    enqueue(store, article_id, target)?;
+    Ok(dropped)
+}
+
 fn batches(blocks: Vec<PendingBlock>) -> Vec<Vec<PendingBlock>> {
     let mut out: Vec<Vec<PendingBlock>> = Vec::new();
     let mut chars = 0;

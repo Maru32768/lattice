@@ -260,6 +260,8 @@ export const api = {
   /** Removes the article with its HTML, blocks, translations only it uses, summaries, images and jobs. */
   deleteArticle: (id: number) => invoke<boolean>("delete_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
+  /** Drops the article's translations for its current target and translates every block again. */
+  retranslateArticle: (id: number) => invoke<void>("translate_article", { id, fresh: true }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
   chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>

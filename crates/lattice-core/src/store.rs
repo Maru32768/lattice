@@ -1079,6 +1079,16 @@ impl Store {
         rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
     }
 
+    /// Deletes the cached translations into `target_language` of the article's blocks of `kinds`.
+    /// The cache is keyed by text, so other articles with the same paragraph lose it too.
+    pub fn drop_translations(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<usize> {
+        self.conn().execute(
+            "DELETE FROM segment_translations WHERE target_language = ?2 AND source_hash IN (
+                 SELECT text_hash FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?3)))",
+            params![article_id, target_language, json(&kinds)],
+        )
+    }
+
     /// Newest cached reading units per source hash.
     pub fn cached_segments(&self, hashes: &[String], target_language: &str) -> Result<HashMap<String, Vec<Unit>>> {
         let c = self.conn();

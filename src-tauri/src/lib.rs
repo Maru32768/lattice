@@ -388,8 +388,13 @@ fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
-fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
-    translate::enqueue(&app.store, id, &translate::article_target(&app.store, id)?)?;
+fn translate_article(app: State<'_, App>, id: i64, fresh: Option<bool>) -> Result<(), String> {
+    let target = translate::article_target(&app.store, id)?;
+    if fresh == Some(true) {
+        translate::retranslate(&app.store, id, &target)?;
+    } else {
+        translate::enqueue(&app.store, id, &target)?;
+    }
     app.wake_llm.notify_one();
     Ok(())
 }
