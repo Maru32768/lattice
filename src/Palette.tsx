@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type ArticleRow, type FeedRow } from "./api";
+import { api, siteOf, type ArticleRow, type FeedRow } from "./api";
 import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
 import { activeDims, countBy, facetLabel, genreSwatch, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
@@ -17,6 +17,8 @@ export interface PaletteActions {
   discover: (url: string) => void;
   search: (q: string) => void;
   screen: (s: Screen) => void;
+  /** The import screen's Markdown tab. */
+  importMarkdown: () => void;
   /** Opens the chat dock; `scopeKey` is a chat scope option value (filterKey). */
   chat: (scopeKey?: string) => void;
   lang: (mode: LanguageMode, percent?: number) => void;
@@ -111,6 +113,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: "対話を開く", keys: "chat 対話 質問", icon: "chat", run: () => actions.chat() },
     { label: "フィードを管理", keys: "feeds フィード 管理 rss", icon: "rss", run: () => actions.screen("feeds") },
     { label: "一括インポート", keys: "import インポート", icon: "import", run: () => actions.screen("import") },
+    { label: "Markdown を取り込む", keys: "markdown md import インポート 取り込む", icon: "reader", run: actions.importMarkdown },
     { label: "設定を開く", keys: "settings 設定", icon: "gear", run: () => actions.screen("settings") },
   ], [genreCounts, feeds, actions]);
 
@@ -159,7 +162,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       const titled = all.filter((a) => has(a.title ?? a.original_url));
       for (const a of titled.slice(0, LIMIT)) {
         out.push({ group: "記事", icon: "reader", label: <Hl text={a.title ?? a.original_url} q={text} />,
-          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : a.domain), run: () => actions.open(a) });
+          right: a.feed_title ?? (a.tags[0] ? <Tg>{a.tags[0]}</Tg> : siteOf(a)), run: () => actions.open(a) });
       }
     }
     if (!prefix ? text : prefix === "#") {

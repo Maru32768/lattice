@@ -17,7 +17,7 @@ use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
 use lattice_core::store::JobRow;
-use lattice_core::{backup, classify, export, favicons, images, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, markdown, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -117,6 +117,37 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
     let summary = ingest::enqueue_urls(&app.store, &ingest::extract_urls(&text))?;
     app.wake_net.iter().for_each(|w| w.notify_one());
     Ok(summary)
+}
+
+/// Markdown pasted into the import screen; the same text again opens the article it made.
+#[tauri::command(async)]
+fn import_markdown(app: State<'_, App>, text: String) -> Result<i64, String> {
+    let id = markdown::import(&app.store, &text, None, None)?;
+    indexed(&app, id)
+}
+
+/// Picks the file here rather than taking a path from the webview: relative images are read
+/// only from the folder of a file the user chose. `None` when the dialog is cancelled.
+#[tauri::command]
+async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = handle.dialog().file().set_title("Markdown を取り込む").add_filter("Markdown", &["md", "markdown"]);
+    if let Some(w) = handle.get_window("main") {
+        dialog = dialog.set_parent(&w);
+    }
+    dialog.pick_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let path = picked.into_path().map_err(err)?;
+    if std::fs::metadata(&path).map_err(err)?.len() > markdown::MAX_FILE_BYTES {
+        return Err("ファイルが大きすぎます（10 MB まで）".into());
+    }
+    let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| "UTF-8 のテキストファイルではありません")?;
+    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+    let id = markdown::import(&app.store, &text, name.as_deref(), path.parent())?;
+    indexed(&app, id).map(Some)
 }
 
 /// The stored image of an image block as a `data:` URL, or `None` (the Reader then shows a link).
@@ -577,6 +608,7 @@ pub fn run() {
                 .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
                 .build(),
         )
+        .plugin(tauri_plugin_dialog::init())
         .manage(Browser::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
@@ -648,6 +680,8 @@ pub fn run() {
             get_auto_render,
             set_auto_render,
             import_urls,
+            import_markdown,
+            import_markdown_file,
             article_image,
             favicon,
             get_image_settings,

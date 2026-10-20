@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
+import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, overlayOf, type BrowseTarget, type PageLang, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
-import { ImportView } from "./ImportView";
+import { ImportView, type ImportTab } from "./ImportView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
@@ -43,14 +43,17 @@ const PREFIX_MS = 1500;
 const JOB_POLL_MS = 10_000;
 
 /** States board #8: an empty library. */
-function FirstRun({ onPaste, onFeeds, onImport, onSettings }: { onPaste: () => void; onFeeds: () => void; onImport: () => void; onSettings: () => void }) {
+function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
+  onPaste: () => void; onFeeds: () => void; onImport: () => void; onMarkdown: () => void; onSettings: () => void;
+}) {
   return (
     <section className="first-run" aria-label="最初の記事を入れる">
       <h1>最初の記事を入れる</h1>
       <div className="first-cards">
         <button className="btn" onClick={onPaste}><span className="h">URL を貼る</span><span className="muted"><Kbd>Ctrl</Kbd><Kbd>K</Kbd> に貼り付けて Index</span></button>
         <button className="btn" onClick={onFeeds}><span className="h">フィードを登録</span><span className="muted">サイト URL か OPML</span></button>
-        <button className="btn" onClick={onImport}><span className="h">一括インポート</span><span className="muted">ブックマーク HTML・CSV・JSON・Markdown</span></button>
+        <button className="btn" onClick={onImport}><span className="h">一括インポート</span><span className="muted">ブックマーク HTML・CSV・JSON</span></button>
+        <button className="btn" onClick={onMarkdown}><span className="h">Markdown を取り込む</span><span className="muted">ファイルか貼り付け</span></button>
       </div>
       <p className="muted">翻訳・要約・分類には AI プロバイダが必要です — <button className="linkish" onClick={onSettings}>設定する</button>。取り込みと全文検索はなしで使えます。</p>
     </section>
@@ -103,6 +106,7 @@ export default function App() {
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
+  const [importTab, setImportTab] = useState<ImportTab>("urls");
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
   const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
   /** The article waiting for delete confirmation, and the view that asked. */
@@ -268,6 +272,8 @@ export default function App() {
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
   function openPage(url: string, focus?: string, article?: ArticleRow) {
+    // Imported Markdown has no page: it stays in the Reader.
+    if (isLocal(url)) return article ? openReader(article.id) : setError("取り込んだ Markdown にはページがありません");
     setError(null);
     setScreen("library");
     // The page already showing (also after a redirect, by its saved article): navigating again would only reload it.
@@ -397,6 +403,11 @@ export default function App() {
     }
   }
 
+  function importMarkdown() {
+    setImportTab("markdown");
+    setScreen("import");
+  }
+
   const paletteActions: PaletteActions = {
     scope: setScope,
     facets: (f) => { setFacets(f); setScreen("library"); },
@@ -406,6 +417,7 @@ export default function App() {
     discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
     search: (q) => runSearch(q),
     screen: setScreen,
+    importMarkdown,
     chat: openChat,
     lang: setLang,
     translate: current ? () => act(() => api.translateArticle(current.id), current.id) : null,
@@ -541,7 +553,7 @@ export default function App() {
   const nav = navOpen
     ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
-        onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
+        onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
@@ -557,7 +569,7 @@ export default function App() {
             : nav}
           {(screen === "import" || screen === "feeds" || screen === "jobs") && (
             <main className="main" data-pane="doc">
-              {screen === "import" && <ImportView onImported={refresh} />}
+              {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { refresh(); openReader(id); }} />}
               {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
@@ -604,7 +616,7 @@ export default function App() {
                 onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })} />
             )}
             {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
-              : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
+              : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
                   onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
           </main>}
           {palette != null && (

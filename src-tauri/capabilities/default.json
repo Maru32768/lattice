@@ -17,6 +17,8 @@
     "allow-get-auto-render",
     "allow-set-auto-render",
     "allow-import-urls",
+    "allow-import-markdown",
+    "allow-import-markdown-file",
     "allow-article-image",
     "allow-favicon",
     "allow-rename-feed",

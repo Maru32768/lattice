@@ -30,7 +30,7 @@ const LIBRARY: [Scope, string, IconName, keyof NavCounts][] = [
 const n = (v: number) => v.toLocaleString();
 
 export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
-  onOpenUrl, onChat, onRecent, onGenres, onCollapse }: {
+  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCollapse }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
@@ -44,6 +44,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
   onScreen: (s: Screen) => void;
   onPalette: () => void;
   onOpenUrl: () => void;
+  onMarkdown: () => void;
   onChat: () => void;
   onRecent: (q: string) => void;
   onGenres: () => void;
@@ -69,9 +70,10 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
   return (
     <nav className="nav" aria-label="ナビゲーション" data-pane="nav">
       <div className="nav-top">
-        <Menu className="ib" label="追加（URL・一括インポート・フィード）" align="right" trigger={<Icon name="plus" />} items={[
+        <Menu className="ib" label="追加（URL・一括インポート・Markdown・フィード）" align="right" trigger={<Icon name="plus" />} items={[
           { label: <><Icon name="page" />URL を開く</>, onSelect: onOpenUrl },
           { label: <><Icon name="import" />一括インポート</>, onSelect: () => onScreen("import") },
+          { label: <><Icon name="reader" />Markdown を取り込む</>, onSelect: onMarkdown },
           { label: <><Icon name="rss" />フィードを登録</>, onSelect: () => onScreen("feeds") },
         ]} />
         <button className="ib" onClick={onCollapse} aria-label="ナビゲーションを閉じる" title="ナビゲーションを閉じる"><Icon name="panel" /></button>

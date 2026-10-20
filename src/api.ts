@@ -40,6 +40,7 @@ export interface JobRow {
 
 export interface ArticleRow {
   id: number;
+  /** `local:md/<hash>` for imported Markdown (see `isLocal`). */
   original_url: string;
   canonical_url: string | null;
   domain: string;
@@ -67,6 +68,12 @@ export interface ArticleRow {
   /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
   from_feed: boolean;
 }
+
+/** Imported Markdown: no page to open, refetch or render. */
+export const isLocal = (url: string) => url.startsWith("local:");
+
+/** The site shown for an article: its domain, or ローカル for imported Markdown. */
+export const siteOf = (a: Pick<ArticleRow, "domain">) => a.domain || "ローカル";
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */
 export type ArticleFilter =
@@ -276,6 +283,10 @@ export const api = {
   backup: () => invoke<LocalBackup>("backup_db"),
   setBackupKeep: (keep: number) => invoke<void>("set_backup_keep", { keep }),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
+  /** Imports Markdown as an article; the same text again returns the existing one. */
+  importMarkdown: (text: string) => invoke<number>("import_markdown", { text }),
+  /** Opens a file dialog (in the backend); null when cancelled. */
+  importMarkdownFile: () => invoke<number | null>("import_markdown_file"),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),

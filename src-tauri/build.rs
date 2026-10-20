@@ -8,6 +8,8 @@ const COMMANDS: &[&str] = &[
     "get_auto_render",
     "set_auto_render",
     "import_urls",
+    "import_markdown",
+    "import_markdown_file",
     "article_image",
     "favicon",
     "get_image_settings",

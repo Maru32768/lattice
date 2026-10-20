@@ -163,6 +163,14 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - 各 URL を pending の記事として登録し、`ingest` job を投入する。job は 4 本の network runner が並列に処理する（翻訳や embedding とは別の runner）。
 - 取得や抽出に失敗した URL は記事側に記録し（一覧に「失敗」と表示）、全体の処理は止めない。取得に成功した記事には embed job を投入する。
 
+### Markdown の取り込み（G48）
+
+- **入口。** インポート画面の「Markdown」タブ（サイドバーの ＋、パレットの「Markdown を取り込む」、空のライブラリのカードからも開く）。ファイル（.md / .markdown）か貼り付けたテキストを 1 つの記事にし、取り込んだら Reader で開く。変換は `crates/lattice-core/src/markdown.rs`（pulldown-cmark）。
+- **IR への変換。** 見出し・段落・リスト（深さ・番号付き、タスクリストは ☑ / ☐）・引用・コード（fence の言語）・表・画像・リンク・インラインコードを、HTML の抽出と同じ block にする。強調は平文にする。リンクは http(s) だけ残し、相対リンクは平文。HTML タグ（インライン・ブロックとも）と YAML front matter は捨てる（untrusted）。タイトルは最初の H1（文書の先頭なら本文からは除く）、なければファイル名、なければ最初の行。
+- **URL のない記事。** `original_url` / `normalized_url` を `local:md/<本文の sha256>`（BOM・改行コードを揃え、前後の空白を除いた本文）、`domain` を空にする。同じ本文を取り込み直すと同じ記事を返す（重複しない）。snapshot には Markdown の原文を `content_type = 'text/markdown'` で保存し、再抽出は原文を変換し直す（タイトルが H1 でなければ今のタイトルを保つ）。`thin` にはならない（短いメモはそれで全文）。UI は `isLocal` で見分け、Page を無効にし（tooltip で理由）、「再試行」「描画して取り込み直す」を出さず、サイト名を「ローカル」と表示する。`openPage` に local の URL が来たら Reader を開く（`v`・一覧から Page で開く・引用のどれでも）。
+- **画像。** http(s) の画像は通常の画像 job で保存する（Referer は送らない）。相対パスの画像は、ファイルから取り込んだときだけ、そのファイルのフォルダから読む。ファイルは backend が開くダイアログで選ぶので、webview がパスを渡すことはない（`import_markdown_file`。`tauri-plugin-dialog` は Rust からだけ使い、JS の権限は付けない）。パスは `file:` URL としてフォルダに join し（`%20` などを解く）、フォルダの外（`../`・絶対パス）は読まない。中身がラスター画像で、画像の上限（1 枚・記事あたり）に収まるものだけを `article_images` に原文の相対パスで保存する。読めなかったものと貼り付けたときの相対パス、`data:` URL の画像は代替テキストを表示する。
+- **取り込んだ後。** URL の記事と同じく embed・分類 job を積み、翻訳も同じように使える。
+
 ### 運用（設定・バックアップ・ログ）
 
 - **モデル選択。** 翻訳と要約に使う provider とモデルを、最大 3 つの fallback として設定画面で選ぶ（§6）。`settings` テーブル（migration 8）に保存する。

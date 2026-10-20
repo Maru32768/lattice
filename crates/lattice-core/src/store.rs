@@ -613,7 +613,9 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         difficulty_manual: r.get(22)?,
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
-        thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS,
+        // A short local note is complete; only a page can have more text than was extracted.
+        thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS
+            && !crate::markdown::is_local(&r.get::<_, String>(1)?),
         from_feed: r.get::<_, Option<String>>(23)?.as_deref() == Some(FEED_CONTENT_TYPE),
     })
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "./api";
+import { Icon } from "./Icon";
 
 /** One request per key for the whole app: a list of 1,000 rows asks once per site. A key is a
  *  domain (the site's icon) or `feed:<id>` (the icon the user picked for that feed). */
@@ -58,5 +59,7 @@ export function Favicon({ domain, feed }: { domain: string; feed?: number | null
   const url = custom ?? site;
   // A picked icon may be SVG: shown only through <img> from a data: URL, where it runs no script.
   if (url) return <img className="favicon" src={url} alt="" width={16} height={16} />;
+  // No domain: imported Markdown, a local document.
+  if (!domain) return <span className="favicon letter" aria-hidden="true"><Icon name="reader" size="sm" /></span>;
   return <span className="favicon letter" aria-hidden="true">{domain.replace(/^www\./, "").charAt(0).toUpperCase()}</span>;
 }

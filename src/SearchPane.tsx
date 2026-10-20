@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ArticleRow, SearchHit, SearchResult } from "./api";
+import { siteOf, type ArticleRow, type SearchHit, type SearchResult } from "./api";
 import { MANUAL, UNCLASSIFIED } from "./groups";
 import { countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
@@ -166,7 +166,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
             <div className="sgrp" key={g.article_id}>
               <div className="at">{a?.title ?? g.hits[0].article_title}</div>
               <div className="am">
-                {a && <span>{a.feed_title ?? a.site_name ?? a.domain}</span>}
+                {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a)}</span>}
                 {a && <span>{mmdd(a.saved_at)}</span>}
                 <span>{g.hits.length} 一致</span>
               </div>
