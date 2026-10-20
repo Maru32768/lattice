@@ -580,3 +580,21 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **Reader での回答を 1 回目にする。** 「復習に追加」で、その回に答えた問いはその評価で最初の復習を記録する（直後に今日の復習へ同じ問いが並ばない）。答えていない問いは新規カードとして 1 日の新規上限の中で出る。新規・復習の上限は review_log のその日の件数（前回の間隔 0 = 新規）で数える。
 - **4 択の評価。** 正解なら「正解」、不正解なら「もう一度」を既定にしてフォーカスし（Enter で確定）、他の評価で上書きできる。記述式は答えを見てから自分で評価する。1〜4 キーでも評価できる。今日の復習では各評価の次の間隔をボタンに出す（Rust の `schedule` が返す）。
 - **保存。** 追加の migration: `quizzes`・`quiz_questions`（選択肢と出典 block は JSON）・`review_cards`（問いと 1 対 1、ease は千分率の整数で丸め誤差を溜めない、due は unix 秒）・`review_log`。記事を消すと cascade で全部消える。JSON エクスポートは記事ごとに `quizzes`（出典は block の ordinal、復習中なら card と log）。
+
+## 20. タブと Page ペインの分割（G33・G34）
+
+| 対象 | ファイル |
+|---|---|
+| レイアウトのデータモデルと操作 | `src/layout.ts`（テスト `src/layout.test.ts`） |
+| ペインの木とタブ列の描画・ドラッグ・区切り | `src/DocArea.tsx`、`src/TabStrip.tsx` |
+| ラベル付き webview | `src-tauri/src/browser.rs` |
+| ペイン間のキーボード移動（上下を含む） | `src/panes.ts` |
+
+- **データモデルは木。** `Layout = { root, focused }`。節は `Split`（`dir: row | column`、`children`、割合の `sizes`）か `Pane`（`tabs` の列と `active`）。タブは `ReaderTab`（記事 id と検索一致などの `focus`）か `PageTab`（今の URL・題名・明示的な移動の回数 `seq`・読み込み中・履歴の可否・Index 済み記事の id）。ペインとタブの id は 1 つの連番。操作（開く・閉じる・切り替え・移動・分割・ペインを閉じる・比率・フォーカス・ページ状態の更新）はすべて `(Layout, …) => Layout` の純粋関数で、`useState` の関数更新で呼ぶ。空になったペインは木から外し、子が 1 つになった split はその子に畳む（root は空のまま残す）。
+- **開く先。** 一覧のクリック・パレット・検索一致・引用・Reader のリンクは、フォーカスされたペインのアクティブなタブを置き換える（同じ記事・同じ URL ならそのまま）。Ctrl / middle クリックは新しいタブに開く。Page タブを別の文書で置き換えても id は変わらないので、webview はそのまま次の URL へ移動する。
+- **webview は見えている Page タブごとに 1 つ**（ラベル `browser-<tab id>`）。隠れたタブの webview は破棄せず画面外に置くので、切り替えは即時で、履歴とスクロール位置が残る。画面外の webview は `MAX_PARKED`（3）まで残し、次に webview を作るときに超過分を隠れてから古い順に閉じる（LRU）。閉じられたタブや再起動で復元したタブは、見えたときに `browser_set_bounds` が `false` を返すので UI がその URL を開き直す（履歴は失う）。メモリと即時切り替えの折り合いはこの 3 で付けた。タブを閉じる・ペインを閉じる・Page タブが Reader に置き換わると UI が `browser_close` を呼ぶ。
+- **Rust 側の状態は webview ごと**（表示状態・scroll 先のテキスト・履歴の可否・隠れた時刻）。翻訳 overlay の設定とショートカットは全 webview で共通（Reader の表示言語が記事をまたいで共通なのと同じ）で、変更は生きている全 webview に `configure` / `setKeys` する。安全確認は従来どおり: `http(s)` だけ、overlay の command は `browser-*`（snapshot は renderer も）のラベルからだけ受け、`overlay_key` はその webview が画面に出ているときだけ、翻訳は設定がオンのときだけ。capability `browser-overlay` の `webviews` は glob `browser-*`。
+- **イベントは tab id を運ぶ。** `browser-page` / `browser-title` / `browser-key` / `browser-focus`（WebView2 の `GotFocus`。ページをクリックしたらそのペインがフォーカスされる）。
+- **キーボード。** `Ctrl+T` 新しいタブ（パレットを開く）、`Ctrl+W` タブを閉じる、`Ctrl+Tab` / `Ctrl+Shift+Tab` タブの切り替え、`Ctrl+\` 右に分割、`Ctrl+-` 下に分割。プレフィックス（Ctrl+B）の後の `"` / `%` が下 / 右に分割、`x` がペインを閉じる、`c` / `n` / `p` がタブの新規 / 次 / 前（tmux）。← → ↑ ↓ / h j k l は、ペインの矩形で方向の隣を探す（上下に分けたペインにも移動できる）。
+- **ドラッグ。** タブはポインタで掴んで同じ列の中でも別のペインの列へも移せる。HTML5 の drag and drop は Tauri の drag-drop handler と競合するので使わず、`elementFromPoint` で落とし先を決める。ペインの区切りは `Splitter` と同じ見た目・操作（ドラッグ、← → / ↑ ↓、Shift で大きく）。
+- **保存。** レイアウトは `localStorage`（`lattice.layout`）に、タブは種類と記事 id / URL と題名だけを保存して起動時に復元する（読めなければ 1 ペイン）。Page タブは見えたときに開き直す。

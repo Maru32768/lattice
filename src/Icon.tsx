@@ -4,6 +4,8 @@ import { keyLabel, useBindings, type ActionId } from "./keys";
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
   panel: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16" /></>,
+  vsplit: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
+  hsplit: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 12h18" /></>,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></>,
   recent: <><path d="M3 13h5l1.5 3h5L16 13h5" /><path d="M5 5h14l2 8v6H3v-6z" /></>,
   unread: <circle cx="12" cy="12" r="4" />,

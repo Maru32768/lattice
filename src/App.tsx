@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
-import { BrowserView, overlayOf, type BrowseTarget, type PageLang, type PageState } from "./BrowserView";
+import { BrowserView, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
@@ -29,9 +29,17 @@ import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { TitleBar } from "./TitleBar";
 import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "./Splitter";
+import { DocArea } from "./DocArea";
+import { hostOf } from "./Favicon";
+import {
+  activeTab, allTabs, close, closePane, closeWhere, cycle, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, save as saveLayout, split,
+  tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
+} from "./layout";
+import type { TabLabel } from "./TabStrip";
 import "./App.css";
 
-type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"; target: BrowseTarget };
+/** Where a document opens: the focused pane's active tab, or a new tab (Ctrl / middle click, Ctrl+T). */
+type Where = "active" | "new";
 
 const RECENT_KEY = "lattice.recentSearches";
 function loadRecent(): string[] {
@@ -45,7 +53,7 @@ function loadRecent(): string[] {
 
 const JOB_POLL_MS = 10_000;
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view"]);
+const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown"]);
 
 /** States board #8: an empty library. */
 function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
@@ -72,8 +80,12 @@ function PrefixHint({ prefix }: { prefix: string }) {
   return (
     <div ref={ref} className="prefix-hint" role="status">
       <Kbd>{prefix}</Kbd>
-      <span><Kbd>←</Kbd><Kbd>→</Kbd> <Kbd>h</Kbd><Kbd>l</Kbd> ペイン移動</span>
+      <span><Kbd>←</Kbd><Kbd>→</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd> <Kbd>h</Kbd><Kbd>j</Kbd><Kbd>k</Kbd><Kbd>l</Kbd> ペイン移動</span>
       <span><Kbd>o</Kbd> 次のペイン</span>
+      <span><Kbd>%</Kbd> 右に分割</span>
+      <span><Kbd>"</Kbd> 下に分割</span>
+      <span><Kbd>x</Kbd> ペインを閉じる</span>
+      <span><Kbd>c</Kbd><Kbd>n</Kbd><Kbd>p</Kbd> タブ</span>
       <span><Kbd>z</Kbd> フォーカスモード</span>
     </div>
   );
@@ -93,7 +105,6 @@ export default function App() {
   const [facets, setFacets] = useState<Facets>(NO_FACETS);
   const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreen] = useState<Screen>("library");
-  const [doc, setDoc] = useState<Doc>(null);
   const [navOpen, setNavOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
@@ -102,7 +113,7 @@ export default function App() {
   const [jobFailures, setJobFailures] = useState(0);
   const [reviewDue, setReviewDue] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  /** Rectangles of open overlays (popovers, menus, palette); the page webview hides under them. */
+  /** Rectangles of open overlays (popovers, menus, palette); the page webviews hide under them. */
   const [overlays, setOverlays] = useState<DOMRect[]>([]);
   const cover = useCallback((r: DOMRect) => {
     setOverlays((o) => [...o, r]);
@@ -111,6 +122,9 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
+  /** The palette was opened for a new tab (Ctrl+T, the strip's +): its pick opens in one. Cleared once it has closed (its pick runs first). */
+  const paletteNew = useRef(false);
+  useEffect(() => { if (palette == null) paletteNew.current = false; }, [palette]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
   const [importTab, setImportTab] = useState<ImportTab>("urls");
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
@@ -125,17 +139,20 @@ export default function App() {
   const [searchFocus, setSearchFocus] = useState(0);
   const [recent, setRecent] = useState<string[]>(loadRecent);
 
-  // Page (in-app browser)
-  const [page, setPage] = useState<PageState | null>(null);
-  const [saved, setSaved] = useState<ArticleRow | null>(null);
-  const [saving, setSaving] = useState(false);
+  // Documents: the pane tree with its tabs, the loaded article views, the pages' state
+  const [layout, setLayout] = useState<Layout>(loadLayout);
+  useEffect(() => saveLayout(layout), [layout]);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  /** Article views of the open Reader tabs, by article id. */
+  const [views, setViews] = useState<Map<number, ArticleView>>(() => new Map());
+  const viewsRef = useRef(views);
+  viewsRef.current = views;
+  /** The page tab being added to the Index. */
+  const [saving, setSaving] = useState<Id | null>(null);
   const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
-
-  // Reader
-  const [view, setView] = useState<ArticleView | null>(null);
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
-  const viewId = useRef<number | null>(null);
 
   const fail = (e: unknown) => setError(String(e));
   const refresh = () => {
@@ -145,7 +162,9 @@ export default function App() {
       api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres),
     ]).catch(fail);
   };
-  const refreshSaved = (url: string) => api.articleForUrl(url).then(setSaved).catch(() => setSaved(null));
+  /** Whether the page a tab shows is in the Index. */
+  const refreshSaved = (tab: Id, url: string) =>
+    api.articleForUrl(url).then((a) => setLayout((l) => update(l, tab, { saved: a?.id ?? null }))).catch(() => {});
   // Background jobs (bulk import fetches) report every article; throttle list reloads to one
   // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
   const refreshTimer = useRef(0);
@@ -153,10 +172,11 @@ export default function App() {
     if (refreshTimer.current) return;
     refreshTimer.current = window.setTimeout(() => { refreshTimer.current = 0; void refresh(); }, 500);
   };
-  const loadView = (id: number) => {
-    viewId.current = id;
-    return api.getArticle(id).then((v) => { if (viewId.current === id) setView(v); }).catch(fail);
-  };
+  const loadView = (id: number) => api.getArticle(id).then((v) => {
+    if (v) setViews((m) => new Map(m).set(id, v));
+    // Gone from the library (deleted elsewhere): its tabs go too.
+    else setLayout((l) => closeWhere(l, (t) => t.kind === "reader" && t.articleId === id));
+  }).catch(fail);
   const loadJobs = () => api.jobOverview()
     .then((o) => setJobFailures(o.counts.filter((c) => c.state === "failed").reduce((n, c) => n + c.count, 0)))
     .catch(() => {});
@@ -167,17 +187,25 @@ export default function App() {
     let jobTimer = 0;
     const subs = [
       listen<number>("article-changed", (e) => {
-        if (e.payload === viewId.current) void loadView(e.payload);
+        if (viewsRef.current.has(e.payload)) void loadView(e.payload);
         refreshSoon();
         clearTimeout(jobTimer);
         jobTimer = window.setTimeout(loadJobs, 1000);
       }),
-      listen<{ url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
-        const { url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
-        setPage((p) => ({ url, loading, canGoBack, canGoForward, title: p?.url === url ? p.title : "" }));
-        if (!e.payload.loading) void refreshSaved(e.payload.url);
+      listen<{ tab: Id; url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
+        const { tab, url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
+        setLayout((l) => navigated(l, tab, { url, loading, canGoBack, canGoForward }));
+        if (!loading) void refreshSaved(tab, url);
       }),
-      listen<string>("browser-title", (e) => setPage((p) => (p ? { ...p, title: e.payload } : p))),
+      listen<{ tab: Id; title: string }>("browser-title", (e) => setLayout((l) => update(l, e.payload.tab, { title: e.payload.title }))),
+      // A click in a page focuses its pane, as a click in a Reader does through pointerdown.
+      listen<{ tab: Id }>("browser-focus", (e) => {
+        const hit = tabById(layoutRef.current, e.payload.tab);
+        if (!hit) return;
+        setLayout((l) => focusLayout(l, hit.pane.id));
+        setKbPane(null);
+        pointerPane.current = "doc";
+      }),
     ];
     return () => {
       clearInterval(poll);
@@ -192,6 +220,24 @@ export default function App() {
     const poll = window.setInterval(loadReview, JOB_POLL_MS);
     return () => clearInterval(poll);
   }, []);
+
+  // Reader tabs need their article views; views of closed tabs are dropped.
+  const readerIds = useMemo(() => [...new Set(allTabs(layout).filter((t) => t.kind === "reader").map((t) => t.articleId))], [layout]);
+  const readerKey = readerIds.join(",");
+  useEffect(() => {
+    for (const id of readerIds) if (!viewsRef.current.has(id)) void loadView(id);
+    setViews((m) => ([...m.keys()].every((id) => readerIds.includes(id)) ? m : new Map([...m].filter(([id]) => readerIds.includes(id)))));
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the set of open articles
+  }, [readerKey]);
+  // Page tabs that closed (or show a Reader now) give up their webview.
+  const pageIds = useMemo(() => allTabs(layout).filter((t) => t.kind === "page").map((t) => t.id), [layout]);
+  const pageKey = pageIds.join(",");
+  const prevPages = useRef<Id[]>([]);
+  useEffect(() => {
+    for (const id of prevPages.current) if (!pageIds.includes(id)) browser.close(id).catch(() => {});
+    prevPages.current = pageIds;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the set of page tabs
+  }, [pageKey]);
 
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
@@ -230,13 +276,17 @@ export default function App() {
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
   const chatGroups = useMemo(() => filterGroups(genres, feeds, tags), [genres, feeds, tags]);
 
-  const current: ArticleRow | null = doc?.kind === "reader" ? view?.article ?? null : doc?.kind === "page" ? saved : null;
+  // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
+  const cur = activeTab(focusedPane(layout));
+  const curView = cur?.kind === "reader" ? views.get(cur.articleId) : undefined;
+  const savedOf = (t: PageTab) => (t.saved == null ? null : articleById.get(t.saved) ?? null);
+  const current: ArticleRow | null = cur?.kind === "reader" ? curView?.article ?? articleById.get(cur.articleId) ?? null : cur?.kind === "page" ? savedOf(cur) : null;
   const selectedId = current?.id ?? null;
 
   // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
   const listView = viewKey(scope, facets);
   useEffect(() => setKept(NO_KEPT), [listView, screen]);
-  const openId = doc?.kind === "reader" ? doc.id : doc?.kind === "page" ? saved?.id ?? null : null;
+  const openId = selectedId;
   const [cursor, setCursor] = useState<number | null>(null);
   useEffect(() => { if (openId != null) setCursor(openId); }, [openId]);
   useEffect(() => {
@@ -283,37 +333,33 @@ export default function App() {
     setSearchFocus((n) => n + 1);
   }
 
-  function openHit(h: SearchHit, page = false) {
+  function openHit(h: SearchHit, page = false, newTab = false) {
     const a = articleById.get(h.article_id);
-    if (page && a) return openPage(a.original_url, h.text, a);
-    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" });
+    const where: Where = newTab ? "new" : "active";
+    if (page && a) return openPage(a.original_url, h.text, a, where);
+    openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" }, where);
   }
 
-  /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
-  function openPage(url: string, focus?: string, article?: ArticleRow) {
+  /** `article`: the saved article being opened, highlighted right away rather than after the page loads. `pane`: not the focused one. */
+  function openPage(url: string, focus?: string, article?: ArticleRow, where: Where = "active", pane?: Id) {
     // An imported file has no page: it stays in the Reader.
-    if (isLocal(url)) return article ? openReader(article.id) : setError("取り込んだファイルにはページがありません");
+    if (isLocal(url)) return article ? openReader(article.id, undefined, where, pane) : setError("取り込んだファイルにはページがありません");
     setError(null);
     setScreen("library");
-    // The page already showing (also after a redirect, by its saved article): navigating again would only reload it.
-    if (doc?.kind === "page" && !focus && (page?.url === url || (article && saved?.id === article.id))) return;
-    setDoc((d) => ({ kind: "page", target: { url, focus, seq: (d?.kind === "page" ? d.target.seq : 0) + 1 } }));
-    setPage({ url, title: article?.title ?? "", loading: true });
-    setSaved(article ?? null);
+    setLayout((l) => open(l, { kind: "page", url, focus, title: article?.title ?? "", saved: article?.id ?? null }, where, pane));
   }
 
-  function openReader(id: number, focus?: Omit<Focus, "seq">) {
+  function openReader(id: number, focus?: Omit<Focus, "seq">, where: Where = "active", pane?: Id) {
     setError(null);
     setScreen("library");
-    if (doc?.kind === "reader" && doc.id === id && !focus) return;
-    if (viewId.current !== id || !view) void loadView(id);
-    setDoc((d) => ({ kind: "reader", id, focus: focus && { ...focus, seq: (d?.kind === "reader" ? d.focus?.seq ?? 0 : 0) + 1 } }));
+    setLayout((l) => open(l, { kind: "reader", articleId: id, focus }, where, pane));
   }
 
-  /** Opens in the view the current document uses (Reader by default). */
-  function openArticle(a: ArticleRow) {
-    if (doc?.kind === "page") openPage(a.original_url, undefined, a);
-    else openReader(a.id);
+  /** Opens in the view the focused document uses (Reader by default). */
+  function openArticle(a: ArticleRow, newTab = false) {
+    const where: Where = newTab ? "new" : "active";
+    if (cur?.kind === "page") openPage(a.original_url, undefined, a, where);
+    else openReader(a.id, undefined, where);
   }
 
   // ---- cursor: j / k move it through the list (or the search hits) without opening; Enter opens it.
@@ -344,8 +390,8 @@ export default function App() {
   }
 
   function toggleView() {
-    if (doc?.kind === "reader" && view) openPage(view.article.original_url, undefined, view.article);
-    else if (doc?.kind === "page" && saved) openReader(saved.id);
+    if (cur?.kind === "reader" && curView) openPage(curView.article.original_url, undefined, curView.article);
+    else if (cur?.kind === "page" && current) openReader(current.id);
   }
 
   /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
@@ -359,39 +405,39 @@ export default function App() {
   async function act(task: () => Promise<unknown>, id?: number) {
     try {
       await task();
-      await Promise.all([refresh(), id != null && viewId.current === id && loadView(id), page && refreshSaved(page.url)]);
+      const pages = allTabs(layoutRef.current).filter((t): t is PageTab => t.kind === "page");
+      await Promise.all([refresh(), id != null && viewsRef.current.has(id) && loadView(id), ...pages.map((t) => refreshSaved(t.id, t.url))]);
     } catch (e) {
       fail(e);
     }
   }
   const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
-  const viewAct = (task: (id: number) => Promise<unknown>) => () => view && act(() => task(view.article.id), view.article.id);
 
   async function deleteArticle(a: ArticleRow) {
     setDeleting(null);
     try {
       await api.deleteArticle(a.id);
-      viewId.current = null;
-      setView(null);
-      setSaved(null);
-      setDoc(null);
+      setViews((m) => { const n = new Map(m); n.delete(a.id); return n; });
+      setLayout((l) => {
+        const kept = closeWhere(l, (t) => t.kind === "reader" && t.articleId === a.id);
+        return allTabs(kept).filter((t) => t.kind === "page" && t.saved === a.id).reduce((acc, t) => update(acc, t.id, { saved: null }), kept);
+      });
       await refresh();
     } catch (e) {
       fail(e);
     }
   }
 
-  async function saveCurrent() {
-    if (!page) return;
-    setSaving(true);
+  async function savePage(t: PageTab) {
+    setSaving(t.id);
     try {
-      await api.savePage();
-      await Promise.all([refresh(), refreshSaved(page.url)]);
+      await api.savePage(t.id);
+      await Promise.all([refresh(), refreshSaved(t.id, t.url)]);
     } catch (e) {
       fail(e);
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
 
@@ -402,7 +448,7 @@ export default function App() {
   }
 
   function nudgeRatio(delta: number) {
-    if (doc?.kind === "page") setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
+    if (cur?.kind === "page") setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
     else {
       setMode("mixed");
       setPercent((p) => Math.max(0, Math.min(100, p + delta)));
@@ -415,7 +461,7 @@ export default function App() {
   }
 
   function setLang(m: LanguageMode, p?: number) {
-    if (doc?.kind === "page") setPageLang({ mode: m, percent: p ?? pageLang.percent });
+    if (cur?.kind === "page") setPageLang({ mode: m, percent: p ?? pageLang.percent });
     else {
       setMode(m);
       if (p != null) setPercent(p);
@@ -432,12 +478,23 @@ export default function App() {
     setScreen("import");
   }
 
+  /** The palette for a new tab in `pane`: what it opens goes into a new tab there. */
+  function newTab(pane?: Id) {
+    if (pane != null) setLayout((l) => focusLayout(l, pane));
+    paletteNew.current = true;
+    setPalette("");
+  }
+  const whereFromPalette = (newTab?: boolean): Where => (newTab || paletteNew.current ? "new" : "active");
+
   const paletteActions: PaletteActions = {
     scope: setScope,
     facets: (f) => { setFacets(f); setScreen("library"); },
-    open: (a) => openReader(a.id),
-    page: (url) => openPage(url),
-    index: (url) => void act(async () => openReader(await api.saveUrl(url))),
+    open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
+    page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
+    index: (url) => {
+      const where = whereFromPalette();
+      void act(async () => openReader(await api.saveUrl(url), undefined, where));
+    },
     discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
     search: (q) => void runSearch(q),
     screen: setScreen,
@@ -462,7 +519,10 @@ export default function App() {
     const focusin = (e: FocusEvent) => setKbPane((p) => p && (paneOf(e.target as Element)?.dataset.pane ?? null));
     const pointer = (e: PointerEvent) => {
       setKbPane(null);
-      pointerPane.current = paneOf(e.target as Element)?.dataset.pane ?? null;
+      const p = paneOf(e.target as Element);
+      pointerPane.current = p?.dataset.pane ?? null;
+      // A click in a document pane focuses it: that is where the next document opens.
+      if (p?.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
     };
     window.addEventListener("focusin", focusin);
     window.addEventListener("pointerdown", pointer, true);
@@ -472,18 +532,27 @@ export default function App() {
     };
   }, []);
 
+  /** tmux keys after the prefix that act on panes and tabs rather than move. */
+  const PREFIXED: Record<string, ActionId | "closePane"> = { '"': "splitDown", "%": "splitRight", X: "closePane", C: "newTab", N: "nextTab", P: "prevTab", Z: "focus" };
+
   /** True when focus moved to another pane. */
   function paneKey(key: string, from = paneOf(document.activeElement)): boolean {
     clearTimeout(prefixTimer.current);
     setPrefix(false);
-    if (key === "Z") {
-      actions.focus();
+    const act = PREFIXED[key];
+    if (act === "closePane") {
+      setLayout((l) => closePane(l, l.focused));
+      return false;
+    }
+    if (act) {
+      actions[act]();
       return false;
     }
     const p = paneAfter(key, from);
     if (!p) return false;
     focusPane(p);
     setKbPane(p.dataset.pane!);
+    if (p.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
     return true;
   }
 
@@ -522,6 +591,15 @@ export default function App() {
       else if (search) setSearch(null);
       else setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
     },
+    newTab: () => newTab(),
+    closeTab: () => setLayout((l) => {
+      const t = activeTab(focusedPane(l));
+      return t ? close(l, t.id) : l;
+    }),
+    nextTab: () => setLayout((l) => cycle(l, 1)),
+    prevTab: () => setLayout((l) => cycle(l, -1)),
+    splitRight: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "row")); },
+    splitDown: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "column")); },
   };
   const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
   keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
@@ -555,14 +633,16 @@ export default function App() {
       e.preventDefault();
       s.actions[action.id]();
     };
-    // A shortcut the page overlay forwarded: keyboard focus is in the page, in the doc pane.
-    const fromPage = (key: string) => {
+    // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
+    const fromPage = ({ tab, key }: { tab: Id; key: string }) => {
       const s = keyState.current;
       const focusApp = () => getCurrentWebview().setFocus().catch(() => {});
       // What the app focused last is stale (j / k in the nav would step the nav).
       (document.activeElement as HTMLElement | null)?.blur();
+      const pane = tabById(layoutRef.current, tab)?.pane.id;
+      if (pane != null) setLayout((l) => focusLayout(l, pane));
       if (s.prefix) {
-        if (s.paneKey(key, document.querySelector<HTMLElement>("[data-pane='doc']"))) void focusApp();
+        if (s.paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) void focusApp();
         return;
       }
       const action = actionFor(getBindings(), key);
@@ -571,7 +651,7 @@ export default function App() {
       s.actions[action.id]();
     };
     window.addEventListener("keydown", down);
-    const unlisten = listen<string>("browser-key", (e) => fromPage(e.payload));
+    const unlisten = listen<{ tab: Id; key: string }>("browser-key", (e) => fromPage(e.payload));
     return () => {
       window.removeEventListener("keydown", down);
       void unlisten.then((f) => f());
@@ -581,17 +661,17 @@ export default function App() {
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
-  const tjob = view?.jobs.find((j) => j.type === "translate");
-  const translatingRow = view && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
-    id: view.article.id,
-    label: `翻訳中 ${view.blocks.filter((b) => b.translation != null).length}/${view.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length}`,
+  const tjob = curView?.jobs.find((j) => j.type === "translate");
+  const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
+    id: curView.article.id,
+    label: `翻訳中 ${curView.blocks.filter((b) => b.translation != null).length}/${curView.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length}`,
   } : null;
-  const docHits = search && doc?.kind === "reader" ? flatHits.filter((h) => h.article_id === doc.id) : [];
-  const readerMatches = docHits.length > 0 && doc?.kind === "reader" ? {
-    i: docHits.findIndex((h) => h.block_id === doc.focus?.block),
+  const docHits = search && cur?.kind === "reader" ? flatHits.filter((h) => h.article_id === cur.articleId) : [];
+  const readerMatches = docHits.length > 0 && cur?.kind === "reader" ? {
+    i: docHits.findIndex((h) => h.block_id === cur.focus?.block),
     n: docHits.length,
     onStep: (d: 1 | -1) => {
-      const at = docHits.findIndex((h) => h.block_id === doc.focus?.block);
+      const at = docHits.findIndex((h) => h.block_id === cur.focus?.block);
       const h = docHits[Math.max(0, Math.min(docHits.length - 1, at + d))];
       setHitSel(flatHits.indexOf(h));
       openHit(h);
@@ -609,6 +689,49 @@ export default function App() {
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
+  const labelOf = (t: Tab): TabLabel => {
+    if (t.kind === "page") return { title: t.title || hostOf(t.url) || t.url, domain: hostOf(t.url) };
+    const a = views.get(t.articleId)?.article ?? articleById.get(t.articleId);
+    return { title: a?.title ?? a?.original_url ?? "…", domain: a?.domain ?? "", feed: a?.feed_id };
+  };
+
+  const renderPane = (pane: Pane) => {
+    const t = activeTab(pane);
+    if (!t) {
+      if (!loaded) return null;
+      if (articles.length || layout.root.kind === "split") return <p className="doc-empty muted">記事を選んでください</p>;
+      return <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
+        onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />;
+    }
+    if (t.kind === "page") {
+      const saved = savedOf(t);
+      return (
+        <BrowserView key={t.id} tab={t} saved={saved} saving={saving === t.id} lang={pageLang} overlays={overlays}
+          onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(t)}
+          onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
+          onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
+      );
+    }
+    const v = views.get(t.articleId);
+    if (!v) return null;
+    const a = v.article;
+    const vAct = (task: (id: number) => Promise<unknown>) => () => act(() => task(a.id), a.id);
+    return (
+      <Reader key={a.id} view={v} focus={t.focus} matches={t === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+        focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
+        onAsk={() => openChat("article")}
+        onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)} onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
+        onToggleRead={() => toggleRead(a)} onRetry={vAct(() => api.saveUrl(a.original_url))}
+        onReextract={vAct(api.reextractArticle)} onRender={vAct(api.renderArticle)} onTranslate={vAct(api.translateArticle)}
+        onRetranslate={vAct(api.retranslateArticle)}
+        onSummarize={vAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(a)}
+        onTag={(name, add) => act(() => (add ? api.addTag(a.id, name) : api.removeTag(a.id, name)), a.id)}
+        onGenre={(name) => act(() => api.setGenre(a.id, name), a.id)}
+        onDifficulty={(level) => act(() => api.setDifficulty(a.id, level), a.id)}
+        onClassify={vAct(api.classifyArticle)} onDelete={() => setDeleting({ article: a, page: false })}
+        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview} />
+    );
+  };
 
   return (
     <CoverContext.Provider value={cover}>
@@ -632,7 +755,7 @@ export default function App() {
           )}
           {screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
-              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={doc?.kind === "reader" && doc.focus?.tone === "hit" ? { id: doc.id, block: doc.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
+              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
               scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
               focusSeq={searchFocus} />
           )}
@@ -645,37 +768,15 @@ export default function App() {
             : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {screen === "library" && !search && listOpen && splitter("list")}
-          {screen === "library" && <main className="main" data-pane="doc">
+          {screen === "library" && <div className="doc-area-wrap">
             {error && (
               <div className="banner" role="alert">
                 <span className="grow">{error}</span>
                 <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
               </div>
             )}
-            {doc?.kind === "page" && (
-              <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
-                onNavigate={(url) => openPage(url)} onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
-                onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
-            )}
-            {doc?.kind === "reader" && view && (
-              <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
-                focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
-                onAsk={() => openChat("article")}
-                onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
-                onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
-                onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
-                onRetranslate={viewAct(api.retranslateArticle)}
-                onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
-                onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
-                onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
-                onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
-                onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })}
-                onFocusBlock={(block, label) => openReader(view.article.id, { block, label, terms: [], tone: "cite" })} onReviewChanged={loadReview} />
-            )}
-            {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
-              : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
-                  onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
-          </main>}
+            <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
+          </div>}
           {palette != null && (
             <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
               onClose={() => setPalette(null)} />

@@ -313,8 +313,8 @@ export interface Bounds {
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
-  /** Saves the page shown in the in-app browser, as rendered. */
-  savePage: () => invoke<number>("save_page"),
+  /** Saves the page a browser tab shows, as rendered. */
+  savePage: (tab: number) => invoke<number>("save_page", { tab }),
   reextractArticle: (id: number) => invoke<number>("reextract_article", { id }),
   /** Re-saves the article from its page as rendered in a hidden webview (background job). */
   renderArticle: (id: number) => invoke<void>("render_article", { id }),
@@ -421,15 +421,17 @@ export const api = {
   exportJson: () => invoke<string>("export_json"),
 };
 
-/** The in-app browser (a native child webview positioned over a placeholder element). */
+/** The in-app browser: one native child webview per visible Page tab, positioned over its placeholder element. */
 export const browser = {
-  open: (url: string, bounds: Bounds, focusText?: string) =>
-    invoke<void>("browser_open", { url, bounds, focusText: focusText ?? null }),
-  setBounds: (bounds: Bounds) => invoke<void>("browser_set_bounds", { bounds }),
-  hide: () => invoke<void>("browser_hide"),
+  open: (tab: number, url: string, bounds: Bounds, focusText?: string) =>
+    invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null }),
+  /** Also shows the webview. False when the tab has none (evicted or restored): open it again. */
+  setBounds: (tab: number, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
+  hide: (tab: number) => invoke<void>("browser_hide", { tab }),
+  close: (tab: number) => invoke<void>("browser_close", { tab }),
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
-  capture: () => invoke<string | null>("browser_capture"),
-  go: (action: "back" | "forward" | "reload") => invoke<void>("browser_go", { action }),
+  capture: (tab: number) => invoke<string | null>("browser_capture", { tab }),
+  go: (tab: number, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
   setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };

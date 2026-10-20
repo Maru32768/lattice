@@ -15,6 +15,30 @@
 .titlebar .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
 .titlebar .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
 .main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
+/* The document area: a tree of splits over panes, each with a tab strip (G33 / G34). */
+.doc-area-wrap { flex: 1 1 auto; min-width: 360px; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }
+.doc-area { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.split { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.split.down { flex-direction: column; }
+.split > .cell { min-width: 0; min-height: 0; display: flex; }
+.dpane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }
+.doc-area.multi .dpane.focused { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
+.tabs { height: 34px; flex: none; display: flex; align-items: stretch; gap: 2px; padding: 5px 6px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tab { position: relative; display: flex; align-items: center; gap: 6px; min-width: 56px; max-width: 200px; padding: 0 4px 0 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; font-size: 12px; color: var(--ink2); user-select: none; touch-action: none; }
+.tab:hover { background: var(--hover); }
+.tab.on { background: var(--doc); border-color: var(--line); color: var(--ink); margin-bottom: -1px; }
+.tab.dragging { opacity: .5; }
+.tab.drop-before::before, .tab.drop-after::after { content: ""; position: absolute; top: 4px; bottom: 2px; width: 2px; background: var(--acc); }
+.tab.drop-before::before { left: -2px; }
+.tab.drop-after::after { right: -2px; }
+.tab:focus-visible { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
+.tab .favicon { flex: none; }
+.tab .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .x { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink3); opacity: 0; }
+.tab:hover .x, .tab.on .x { opacity: 1; }
+.tab .x:hover { background: var(--active); color: var(--ink); }
+.tabs > .ib { width: 24px; height: 24px; align-self: center; }
+.tabs > .grow { flex: 1; min-width: 8px; }
 .banner { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px 6px 14px; background: var(--err-soft); color: var(--err-ink); font-size: 12.5px; border-bottom: 1px solid var(--err-line); }
 .update-bar { display: flex; align-items: center; gap: 8px; flex: none; padding: 4px 10px 4px 14px; background: var(--acc-soft); color: var(--acc-ink); font-size: 12.5px; border-bottom: 1px solid var(--acc-line); }
 .update-bar .btn { height: 24px; padding: 0 8px; font-size: 12px; }
@@ -123,7 +147,7 @@
 
 /* ---- keyboard: the pane focus moved to (Ctrl+B …), the armed prefix -------------------------- */
 .app[data-kb-pane="nav"] [data-pane="nav"], .app[data-kb-pane="list"] [data-pane="list"],
-.app[data-kb-pane="doc"] [data-pane="doc"], .app[data-kb-pane="chat"] [data-pane="chat"] { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
+.app[data-kb-pane="doc"] main[data-pane="doc"], .app[data-kb-pane="doc"] .dpane.focused, .app[data-kb-pane="chat"] [data-pane="chat"] { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
 .doc-scroll:focus { outline: none; }
 .prefix-hint { position: fixed; left: 12px; bottom: 12px; z-index: 70; display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 12px; box-shadow: 0 10px 30px var(--shadow); }
 .prefix-hint .kbd { background: transparent; border-color: var(--ink3); color: var(--on-ink); }
@@ -135,6 +159,10 @@
 .splitter:hover span, .splitter.on span, .splitter:focus-visible span { background: var(--ink3); }
 .splitter:focus-visible { outline-offset: -2px; }
 .drag-shield { position: fixed; inset: 0; z-index: 60; cursor: col-resize; }
+/* Between two document panes: vertical as the others, or a horizontal bar between stacked panes. */
+.splitter.at-pane { background: var(--panel); }
+.splitter.h { width: auto; height: 5px; flex-direction: row; border-left: 0; border-top: 1px solid var(--line); cursor: row-resize; }
+.splitter.h span { width: 28px; height: 1px; }
 
 /* ---- command palette (Palette board) ------------------------------------------------------- */
 .pal-scrim { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding: 88px 40px 0; background: var(--scrim); }

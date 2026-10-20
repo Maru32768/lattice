@@ -42,7 +42,7 @@ test("conflicts: a key bound to two actions, first in registry order wins", () =
 
 test("pageKeys: Ctrl keys of in-field actions go from page fields too; named keys stay the page's", () => {
   const k = pageKeys(DEFAULT_BINDINGS);
-  assert.deepEqual(k.inFields, ["Ctrl+K", "Ctrl+B"]);
+  assert.deepEqual(k.inFields, ["Ctrl+K", "Ctrl+B", "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+\\", "Ctrl+-"]);
   assert.deepEqual(k.outside, ["/", "J", "K", "S", "M", "F", "V", "[", "]"]);
   assert.deepEqual(k.prefix, ["Ctrl+B"]);
   const custom = pageKeys(merge({ palette: ["P"], favorite: ["Ctrl+S"], next: ["Shift+J", "Space"] }));

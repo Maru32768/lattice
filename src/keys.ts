@@ -5,7 +5,7 @@ import { keyOf } from "./keyname.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown";
 
 export interface ActionDef {
   id: ActionId;
@@ -29,7 +29,13 @@ export const ACTIONS: ActionDef[] = [
   { id: "less", label: "日本語の割合を下げる", keys: ["["] },
   { id: "more", label: "日本語の割合を上げる", keys: ["]"] },
   { id: "escape", label: "戻る・絞り込みを解除", keys: ["Escape"], inFields: true },
-  { id: "pane", label: "ペイン移動のプレフィックス（続けて ← → / h l・o・z）", keys: ["Ctrl+B"], inFields: true },
+  { id: "pane", label: "ペイン移動のプレフィックス（続けて ← → ↑ ↓ / h j k l・o・z・\" %・x・c n p）", keys: ["Ctrl+B"], inFields: true },
+  { id: "newTab", label: "新しいタブ", keys: ["Ctrl+T"], inFields: true },
+  { id: "closeTab", label: "タブを閉じる", keys: ["Ctrl+W"], inFields: true },
+  { id: "nextTab", label: "次のタブ", keys: ["Ctrl+Tab"], inFields: true },
+  { id: "prevTab", label: "前のタブ", keys: ["Ctrl+Shift+Tab"], inFields: true },
+  { id: "splitRight", label: "ペインを右に分割", keys: ["Ctrl+\\"], inFields: true },
+  { id: "splitDown", label: "ペインを下に分割", keys: ["Ctrl+-"], inFields: true },
 ];
 
 export type Bindings = Record<ActionId, string[]>;

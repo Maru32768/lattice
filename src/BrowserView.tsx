@@ -1,29 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type Bounds } from "./api";
 import type { LanguageMode } from "./mixed";
+import type { Id, PageTab } from "./layout";
 import { LangSeg, ViewSeg } from "./Reader";
 import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 
-let lastOpened: BrowseTarget | null = null;
-
-export interface BrowseTarget {
-  url: string;
-  /** Text of a block to scroll to after load (search-result jumps). */
-  focus?: string;
-  /** Bumped to force re-navigation to the same URL. */
-  seq: number;
-}
-
-export interface PageState {
-  url: string;
-  title: string;
-  loading: boolean;
-  /** From the page's Navigation API; unknown (undefined) leaves the button enabled. */
-  canGoBack?: boolean;
-  canGoForward?: boolean;
-}
+/** The `seq` each tab's webview was last told to open: a tab shown again is not reloaded. */
+const opened = new Map<Id, number>();
 
 export interface PageLang {
   mode: LanguageMode;
@@ -63,12 +48,11 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
 }
 
 /**
- * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
- * box. Page content never enters this (app) webview.
+ * Toolbar plus a placeholder box for one Page tab; the tab's native webview is kept positioned
+ * over the box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, lang, overlays, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
-  target: BrowseTarget;
-  page: PageState | null;
+export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
+  tab: PageTab;
   saved: ArticleRow | null;
   saving: boolean;
   lang: PageLang;
@@ -84,6 +68,7 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
   onDelete: () => void;
   onError: (e: string) => void;
 }) {
+  const id = tab.id;
   const host = useRef<HTMLDivElement>(null);
   const bounds = (): Bounds | null => {
     const r = host.current?.getBoundingClientRect();
@@ -93,29 +78,35 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
   const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
-  const loadingRef = useRef(false);
-  loadingRef.current = !!page?.loading;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
-  const sync = async () => {
-    const b = bounds();
-    if (b && !coveredRef.current && !opening.current) await browser.setBounds(b).catch(() => {}); // also re-shows it
-  };
-
-  useLayoutEffect(() => {
-    // Open each target once: returning to the browser view (or a StrictMode re-run) must not
-    // reload the page, which would also cancel the first load and lose its scroll target.
-    if (target === lastOpened) return;
-    lastOpened = target;
+  const open = (b: Bounds, focus?: string) => {
     opening.current = true;
-    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e))).finally(() => {
+    opened.set(id, tabRef.current.seq);
+    return browser.open(id, tabRef.current.url, b, focus).catch((e) => onError(String(e))).finally(() => {
       opening.current = false;
       void sync();
     });
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- each target opens once; onError only reports
-  }, [target]);
+  };
+  const sync = async () => {
+    const b = bounds();
+    if (!b || coveredRef.current || opening.current) return;
+    const exists = await browser.setBounds(id, b).catch(() => true); // also re-shows it
+    // Evicted while hidden, or restored from the saved layout: the tab reopens its URL.
+    if (!exists && !opening.current) await open(b);
+  };
+
+  useLayoutEffect(() => {
+    // Open each navigation once: showing the tab again (or a StrictMode re-run) must not
+    // reload the page, which would also cancel the first load and lose its scroll target.
+    if ((opened.get(id) ?? -1) >= tab.seq) return;
+    void open(bounds()!, tab.focus);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- each navigation opens once; onError only reports
+  }, [tab.seq]);
 
   useEffect(() => {
     if (!covered) {
@@ -125,7 +116,7 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
     // The still is painted under the webview before it hides, so no blank frame shows in between.
     let live = true;
     void (async () => {
-      const png = loadingRef.current ? null : await browser.capture().catch(() => null);
+      const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
       if (png && live) {
         const img = new Image();
         img.src = png;
@@ -133,9 +124,10 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
         if (live) setStill(png);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
-      if (live) await browser.hide().catch(() => {});
+      if (live) await browser.hide(id).catch(() => {});
     })();
     return () => { live = false; };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab id is fixed per instance (keyed by it); sync reads refs
   }, [covered]);
 
   useEffect(() => {
@@ -146,21 +138,21 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", resize);
-      browser.hide().catch(() => {});
+      browser.hide(id).catch(() => {});
     };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab id is fixed per instance (keyed by it); sync reads refs
   }, []);
 
-  const url = page?.url ?? target.url;
-  const loading = !!page?.loading;
+  const { url, loading } = tab;
   const resave = saved && (saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed");
   return (
     <div className="doc">
       <div className="docbar">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        <button className="ib" onClick={() => browser.go("back")} disabled={page?.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
-        <button className="ib" onClick={() => browser.go("forward")} disabled={page?.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
-        <button className="ib" onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
+        <button className="ib" onClick={() => browser.go(id, "back")} disabled={tab.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
+        <button className="ib" onClick={() => browser.go(id, "forward")} disabled={tab.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
+        <button className="ib" onClick={() => browser.go(id, "reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
         <button className="ib" onClick={() => onNavigate(homeOf(getEngine()))} aria-label="ホーム（検索エンジン）" title="ホーム（検索エンジン）"><Icon name="home" /></button>
         <UrlBar url={url} onGo={(input) => {
           const next = toNavigation(input, getEngine());
@@ -177,7 +169,7 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onNav
             ]} />
           </>
         ) : (
-          <button className="tb pri" onClick={onSave} disabled={saving || !page || loading}
+          <button className="tb pri" onClick={onSave} disabled={saving || loading}
             title="保存すると Reader・タグ・ジャンル・お気に入りが有効になります。取り込みは描画後の DOM を使います。"><Icon name="import" />{saving ? "追加中…" : "Index に追加"}</button>
         )}
       </div>
