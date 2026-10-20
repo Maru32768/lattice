@@ -73,6 +73,9 @@ const COMMANDS: &[&str] = &[
     "retry_failed_jobs",
     "cancel_job",
     "export_json",
+    "pick_data_dir",
+    "set_data_dir",
+    "restart_app",
     "browser_open",
     "browser_set_bounds",
     "browser_hide",
@@ -85,6 +88,9 @@ const COMMANDS: &[&str] = &[
     "overlay_history",
     "browser_set_keys",
     "overlay_key",
+    "update_info",
+    "update_check",
+    "update_install",
 ];
 
 fn main() {

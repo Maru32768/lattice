@@ -19,6 +19,7 @@ import { Reader, TRANSLATABLE, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext, useCover } from "./Popover";
+import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
 import { keyOf } from "./keyname";
@@ -597,9 +598,11 @@ export default function App() {
     <CoverContext.Provider value={cover}>
       <div className="shell">
         <TitleBar />
+        <UpdateNotice onOpenUrl={(url) => openPage(url)} />
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {screen === "settings"
-            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
+            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
+                onOpenUrl={(url) => openPage(url)} />
             : nav}
           {(screen === "import" || screen === "feeds" || screen === "jobs") && (
             <main className="main" data-pane="doc">

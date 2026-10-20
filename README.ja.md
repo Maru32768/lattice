@@ -48,7 +48,7 @@ mise run dev
 mise exec -- npm run tauri build
 ```
 
-`target/release/bundle/` に出力されます。
+インストーラーは `target/release/bundle/nsis/`、実行ファイルは `target/release/lattice.exe` に出力されます。リリースはタグから GitHub Actions で作ります（[docs/release.md](docs/release.md)）。
 
 ## 設定
 
@@ -91,6 +91,10 @@ cp mise.local.toml.example mise.local.toml
 ### データの保存場所
 
 データはすべて 1 つの SQLite ファイル `%APPDATA%\dev.lattice.app\lattice.db` にあります。同じフォルダに `backups\`・`exports\`・意味検索のモデル（`models\`）があります。ログは `%LOCALAPPDATA%\dev.lattice.app\logs\` です。正確なパスは 設定 › ログ・保存場所 に表示されます。
+
+別の場所に置くには、設定 › ログ・保存場所 の「変更…」でフォルダを選びます。データベース・バックアップ・エクスポート・モデルをそこにコピーし、再起動後は新しいフォルダを使います。元のデータは削除しないので、不要なら手動で削除してください。既に Lattice のデータがあるフォルダを選ぶと、コピーせずにそのデータに切り替えます。既定のフォルダを選ぶと既定に戻ります。選んだ場所は `%APPDATA%\dev.lattice.app\data-location.json` に記録します。
+
+ポータブル版: `Lattice.exe` の隣に `portable`（または `lattice.portable`）というファイルがあると、ログとアプリ内ブラウザの Cookie・キャッシュも含めて、すべて exe の隣の `data` フォルダに保存します。Releases の portable zip にはこのファイルが入っています。ポータブル版は、新しい zip の `Lattice.exe` に置き換えて更新します。
 
 ## キーボード
 

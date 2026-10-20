@@ -180,6 +180,12 @@ export interface ImageSettings {
 
 export interface Settings {
   db_path: string;
+  /** The folder with the database, backups, exports and the search model. */
+  data_dir: string;
+  /** default: %APPDATA%; custom: chosen in settings; portable: `data` next to the exe. */
+  location: "default" | "custom" | "portable";
+  /** Why the chosen folder is not in use (the default folder is used instead). */
+  location_warning: string | null;
   log_dir: string;
   backup_dir: string;
   backup_keep: number;
@@ -295,6 +301,11 @@ export const api = {
   setLlmChain: (chain: ChainEntry[]) => invoke<void>("set_llm_chain", { chain }),
   setApiKey: (kind: "openai" | "gemini" | "anthropic", key: string | null) => invoke<void>("set_api_key", { kind, key }),
   backup: () => invoke<LocalBackup>("backup_db"),
+  /** Native folder picker; null when cancelled. `has_data`: the folder already holds a Lattice database. */
+  pickDataDir: () => invoke<{ path: string; has_data: boolean } | null>("pick_data_dir"),
+  /** Uses the picked folder from the next start, copying the current data there or switching to the data in it. */
+  setDataDir: (copy: boolean) => invoke<string>("set_data_dir", { copy }),
+  restart: () => invoke<void>("restart_app"),
   setBackupKeep: (keep: number) => invoke<void>("set_backup_keep", { keep }),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
   /** Imports Markdown as an article; the same text again returns the existing one. */
@@ -389,4 +400,21 @@ export const r2 = {
   save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
+};
+
+export interface UpdateInfo {
+  current: string;
+  /** false while tauri.conf.json still has the placeholder public key (docs/release.md). */
+  configured: boolean;
+  /** Portable copies are updated by replacing them with the new zip, not by the installer. */
+  portable: boolean;
+}
+
+/** In-place updates from the GitHub releases. */
+export const updates = {
+  info: () => invoke<UpdateInfo>("update_info"),
+  /** The newer version, or null when this one is the latest. */
+  check: () => invoke<string | null>("update_check"),
+  /** Downloads and installs, then the app restarts; `update-progress` events report the download. */
+  install: () => invoke<void>("update_install"),
 };

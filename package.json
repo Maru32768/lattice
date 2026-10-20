@@ -9,7 +9,8 @@
     "build": "tsc && npm run build:overlay && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "node --test src/*.test.ts src/overlay/*.test.ts",
+    "test": "node --test src/*.test.ts src/overlay/*.test.ts scripts/*.test.mjs",
+    "bump": "node scripts/version.mjs",
     "build:overlay": "vite build -c vite.overlay.config.ts"
   },
   "dependencies": {

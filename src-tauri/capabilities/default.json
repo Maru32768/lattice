@@ -83,12 +83,18 @@
     "allow-retry-failed-jobs",
     "allow-cancel-job",
     "allow-export-json",
+    "allow-pick-data-dir",
+    "allow-set-data-dir",
+    "allow-restart-app",
     "allow-browser-open",
     "allow-browser-set-bounds",
     "allow-browser-hide",
     "allow-browser-capture",
     "allow-browser-go",
     "allow-browser-set-translation",
-    "allow-browser-set-keys"
+    "allow-browser-set-keys",
+    "allow-update-info",
+    "allow-update-check",
+    "allow-update-install"
   ]
 }

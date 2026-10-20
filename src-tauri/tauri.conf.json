@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lattice",
-  "version": "0.1.0",
   "identifier": "dev.lattice.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,6 +11,8 @@
   "app": {
     "windows": [
       {
+        "label": "main",
+        "create": false,
         "title": "Lattice",
         "width": 1200,
         "height": 800,
@@ -22,9 +23,20 @@
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "NOT_CONFIGURED: replace with the public key from `tauri signer generate` (docs/release.md)",
+      "endpoints": ["https://github.com/Maru32768/lattice/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "resources": {
+      "../LICENSE": "LICENSE",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
+      "../THIRD_PARTY_LICENSES": "THIRD_PARTY_LICENSES"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

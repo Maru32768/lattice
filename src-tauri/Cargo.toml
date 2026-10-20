@@ -1,6 +1,6 @@
 [package]
 name = "lattice"
-version = "0.1.0"
+version.workspace = true
 description = "Programmable reading environment"
 license = "MIT"
 authors = ["Maru32768"]
@@ -20,13 +20,14 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["unstable"] }
-lattice-core = { version = "0.1.0", path = "../crates/lattice-core" }
+lattice-core = { path = "../crates/lattice-core" }
 tokio = { version = "1.53.3", features = ["sync", "time"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tauri-plugin-log = "2"
 log = "0.4.34"
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 # The versions wry uses, so the WebView2 controller it hands out is the same type.

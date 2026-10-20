@@ -224,6 +224,10 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
         .on_document_title_changed(|wv, title| {
             let _ = wv.app_handle().emit_to("main", "browser-title", title);
         });
+    let builder = match app.state::<crate::location::Location>().webview_dir() {
+        Some(d) => builder.data_directory(d),
+        None => builder,
+    };
     let wv = window
         .add_child(builder, LogicalPosition::new(PARKED.0, PARKED.1), LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)))
         .map_err(|e| e.to_string())?;

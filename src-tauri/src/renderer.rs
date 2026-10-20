@@ -88,6 +88,10 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
             }
         })
         .focused(false);
+    let builder = match app.state::<crate::location::Location>().webview_dir() {
+        Some(d) => builder.data_directory(d),
+        None => builder,
+    };
     let wv = window
         .add_child(builder, LogicalPosition::new(OFFSCREEN.0, OFFSCREEN.1), LogicalSize::new(VIEWPORT.0, VIEWPORT.1))
         .map_err(err)?;
