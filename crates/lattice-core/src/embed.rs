@@ -31,11 +31,23 @@ pub trait EmbeddingProvider: Send + Sync + 'static {
 pub struct LocalE5 {
     cache_dir: PathBuf,
     model: Arc<Mutex<Option<TextEmbedding>>>,
+    download: bool,
 }
 
 impl LocalE5 {
     pub fn new(cache_dir: PathBuf) -> Self {
-        Self { cache_dir, model: Arc::new(Mutex::new(None)) }
+        Self { cache_dir, model: Arc::new(Mutex::new(None)), download: true }
+    }
+
+    /// Never downloads (the CLI): `embed` fails until the app has fetched the model.
+    pub fn offline(cache_dir: PathBuf) -> Self {
+        Self { download: false, ..Self::new(cache_dir) }
+    }
+
+    /// The model file is in the cache (hf-hub's `models--<org>--<name>/snapshots/<rev>/` layout).
+    pub fn is_downloaded(&self) -> bool {
+        let snapshots = self.cache_dir.join("models--intfloat--multilingual-e5-small").join("snapshots");
+        std::fs::read_dir(snapshots).is_ok_and(|mut revs| revs.any(|r| r.is_ok_and(|r| r.path().join("onnx").join("model.onnx").is_file())))
     }
 }
 
@@ -45,6 +57,9 @@ impl EmbeddingProvider for LocalE5 {
     }
 
     async fn embed(&self, texts: Vec<String>, purpose: Purpose) -> Result<Vec<Vec<f32>>, String> {
+        if !self.download && !self.is_downloaded() {
+            return Err("the embedding model is not downloaded yet (the app downloads it on first use)".into());
+        }
         // e5 is trained with these prefixes; omitting them noticeably hurts retrieval.
         let prefix = match purpose {
             Purpose::Query => "query: ",
@@ -102,4 +117,26 @@ pub async fn run<E: EmbeddingProvider>(store: &Store, embedder: &E, article_id: 
         store.upsert_embeddings(model, &items).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn offline_never_downloads_and_sees_the_cached_model() {
+        let dir = std::env::temp_dir().join(format!("lattice-e5-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let e5 = LocalE5::offline(dir.clone());
+        assert!(!e5.is_downloaded());
+        let err = e5.embed(vec!["x".into()], Purpose::Query).await.unwrap_err();
+        assert!(err.contains("not downloaded"), "{err}");
+        assert!(!dir.exists(), "nothing was fetched");
+
+        let onnx = dir.join("models--intfloat--multilingual-e5-small").join("snapshots").join("614241f").join("onnx");
+        std::fs::create_dir_all(&onnx).unwrap();
+        std::fs::write(onnx.join("model.onnx"), "weights").unwrap();
+        assert!(e5.is_downloaded());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
