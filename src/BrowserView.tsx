@@ -23,6 +23,7 @@ export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", per
 export const overlayLabels = (t: T): OverlayLabels => ({
   original: t("reader.original"), translated: t("reader.translated"), flip: t("overlay.flip"),
   translating: t("reader.translatingEllipsis"), failed: t("overlay.failed"), retry: t("overlay.retry"),
+  save_word: t("vocab.save"), saved_word: t("vocab.savedShort"),
 });
 
 /** https:// + host emphasized + the rest; a click edits it, with the whole URL selected. */

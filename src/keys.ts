@@ -6,7 +6,7 @@ import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord";
 
 export interface ActionDef {
   id: ActionId;
@@ -36,6 +36,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "prevTab", keys: ["Ctrl+Shift+Tab"], inFields: true },
   { id: "splitRight", keys: ["Ctrl+\\"], inFields: true },
   { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
+  { id: "saveWord", keys: ["W"] },
 ];
 
 export type Bindings = Record<ActionId, string[]>;
@@ -91,6 +92,8 @@ const MODIFIED = /^(Ctrl|Alt)\+/;
 export function pageKeys(b: Bindings): PageKeys {
   const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
   for (const a of ACTIONS) {
+    // A selection in the page is saved with the overlay's own button; the app's Reader has none there.
+    if (a.id === "saveWord") continue;
     for (const k of b[a.id]) {
       const mod = MODIFIED.test(k);
       // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.

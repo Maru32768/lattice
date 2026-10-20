@@ -1,0 +1,38 @@
+/* Vocabulary (G56): the Reader's capture button and word marks, the review card, 単語帳. Tokens from theme.css. */
+
+/* Reader: saved words, and 単語を登録 over a selection */
+.reader .vw { text-decoration: underline dotted var(--acc-line); text-decoration-thickness: 1.5px; text-underline-offset: 3px; cursor: help; }
+.vw-cap { position: fixed; z-index: 30; transform: translate(-50%, 6px); display: flex; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--line2); border-radius: 8px; background: var(--raise); box-shadow: 0 8px 24px var(--shadow); font-size: 12px; }
+.vw-cap .btn { height: 26px; }
+.vw-cap .msg { padding: 0 6px; color: var(--ink2); white-space: nowrap; }
+.vw-cap .msg.error-text { color: var(--err); white-space: normal; max-width: 280px; }
+
+/* Review card */
+.vc-word { margin: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; font: 600 22px/1.4 var(--serif); color: var(--ink); }
+.vc-ipa { font: 13px var(--mono); color: var(--ink3); }
+.vc-pos { font: 500 11.5px var(--sans); color: var(--ink3); letter-spacing: .04em; }
+.vc-cloze { font-family: var(--serif); }
+.vc-blank { display: inline-block; width: 5em; height: 1.1em; vertical-align: -0.15em; border-bottom: 2px solid var(--acc); }
+.vc-fill { color: var(--acc-ink); border-bottom: 2px solid var(--acc); }
+.vc-hint { margin: 0; font-size: 13px; color: var(--ink2); }
+.vc-hint .cap, .vc-context .cap { margin-right: 8px; font-size: 11px; letter-spacing: .06em; color: var(--ink3); }
+.vc-example { font-style: italic; color: var(--ink2); }
+.vc-context b { color: var(--acc-ink); font-weight: 600; }
+.vc-show { align-self: flex-start; }
+
+/* 単語帳 */
+.manage .wrap.vocab { max-width: 1160px; }
+.vocab .filter { flex-wrap: wrap; }
+.vocab .filter .input { margin-left: 0; }
+.vocab .filter .acts { margin-left: auto; }
+.vocab .marks { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink2); }
+.vocab .tbl td { vertical-align: top; }
+.vocab .hw { font: 600 14px var(--serif); overflow-wrap: anywhere; }
+.vocab .hw-sub { display: block; font: 11.5px var(--mono); color: var(--ink3); }
+.vocab .def { display: block; font-size: 11.5px; color: var(--ink3); }
+.vocab .ctx { max-width: 420px; font-size: 12.5px; line-height: 1.6; color: var(--ink2); }
+.vocab .ctx b { color: var(--ink); font-weight: 600; }
+.vocab .ctx .more { margin-left: 6px; font-size: 11.5px; color: var(--ink3); }
+.vocab .meaning-edit { display: flex; gap: 6px; }
+.vocab .meaning-edit .input { min-width: 160px; background: var(--doc); }
+.vocab tr.off > td { color: var(--ink3); }

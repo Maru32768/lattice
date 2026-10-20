@@ -118,6 +118,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: t("palette.langOriginal"), keys: "original", icon: "translate", run: () => actions.lang("original") },
     { label: t("palette.langTranslated"), keys: "translated", icon: "translate", run: () => actions.lang("translated") },
     { label: t("palette.review"), keys: `review quiz ${t("palette.aliasQuiz")}`, icon: "review", run: () => actions.screen("review") },
+    { label: t("palette.vocab"), keys: `vocab words ${t("palette.aliasVocab")}`, icon: "vocab", run: () => actions.screen("vocab") },
     { label: t("palette.jobs"), keys: "jobs", icon: "jobs", run: () => actions.screen("jobs") },
     { label: t("palette.retryFailed"), keys: "jobs failed retry", icon: "reload", run: () => { api.retryFailedJobs(null).catch(() => {}); actions.screen("jobs"); } },
     { label: t("palette.chat"), keys: `chat ${t("palette.aliasAsk")}`, icon: "chat", run: () => actions.chat() },

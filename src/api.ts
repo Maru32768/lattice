@@ -281,7 +281,11 @@ export interface Quiz {
   in_review: number;
 }
 
-export type ReviewItem = QuizQuestion & {
+/** Mirrors review.rs Item: today's queue holds quiz questions and vocabulary cards. */
+export type ReviewItem = QuizReviewItem | VocabReviewItem;
+
+export type QuizReviewItem = QuizQuestion & {
+  type: "quiz";
   article_id: number;
   article_title: string;
   /** Never answered. */
@@ -298,6 +302,57 @@ export interface ReviewOverview {
   articles: { article_id: number; title: string; cards: number; next_due_at: number }[];
 }
 
+/** Mirrors lattice-core's vocab.rs. */
+export interface VocabSense {
+  headword: string;
+  pos: string;
+  /** Japanese, as used in the first capture. */
+  meaning: string;
+  definition: string;
+  ipa: string;
+  example: string;
+}
+
+/** Where a word was captured. */
+export interface VocabContext {
+  surface: string;
+  sentence: string;
+  article_id: number | null;
+  block_id: number | null;
+  url: string | null;
+  title: string | null;
+}
+
+export interface VocabEntry extends VocabSense {
+  id: number;
+  /** pending: waiting for the LLM; failed: it gave no usable answer. */
+  state: "pending" | "ready" | "failed";
+  suspended: boolean;
+  created_at: string;
+  /** Unix seconds; null before the word has a meaning. */
+  due_at: number | null;
+  contexts: VocabContext[];
+}
+
+export interface VocabCapture {
+  surface: string;
+  sentence: string;
+  article_id?: number | null;
+  block_id?: number | null;
+  url?: string | null;
+}
+
+export type VocabReviewItem = VocabSense & {
+  type: "vocab";
+  /** The card's id. */
+  id: number;
+  entry_id: number;
+  kind: "cloze" | "meaning";
+  context: VocabContext;
+  new: boolean;
+  previews: [number, number, number, number];
+};
+
 export interface ReviewSettings {
   new_per_day: number;
   reviews_per_day: number;
@@ -313,6 +368,8 @@ export interface OverlayLabels {
   translating: string;
   failed: string;
   retry: string;
+  save_word: string;
+  saved_word: string;
 }
 
 export interface Bounds {
@@ -363,6 +420,16 @@ export const api = {
   reviewOverview: () => invoke<ReviewOverview>("review_overview"),
   reviewSettings: () => invoke<ReviewSettings>("get_review_settings"),
   setReviewSettings: (settings: ReviewSettings) => invoke<void>("set_review_settings", { settings }),
+  vocabAdd: (capture: VocabCapture) => invoke<{ entry_id: number; new: boolean }>("vocab_add", { capture }),
+  vocabList: () => invoke<VocabEntry[]>("vocab_list"),
+  vocabSetMeaning: (id: number, meaning: string) => invoke<void>("vocab_set_meaning", { id, meaning }),
+  vocabSuspend: (id: number, suspended: boolean) => invoke<void>("vocab_suspend", { id, suspended }),
+  vocabDelete: (id: number) => invoke<void>("vocab_delete", { id }),
+  /** Asks the LLM again about a failed word. */
+  vocabRetry: (id: number) => invoke<void>("vocab_retry", { id }),
+  vocabGrade: (cardId: number, grade: Grade) => invoke<void>("vocab_grade", { cardId, grade }),
+  /** Writes an Anki-importable CSV into the exports folder; returns its path. */
+  exportVocabCsv: () => invoke<string>("export_vocab_csv"),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
   chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>
     invoke<ChatMessage>("chat_ask", { threadId, question, scope }),

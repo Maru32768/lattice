@@ -15,6 +15,7 @@ const TYPES: { type: string; label: PlainKey; hint?: PlainKey }[] = [
   { type: "translate", label: "jobsView.translate" },
   { type: "summarize", label: "jobsView.summarize" },
   { type: "quiz", label: "jobsView.quiz" },
+  { type: "vocab", label: "jobsView.vocab" },
   { type: "classify", label: "jobsView.classify", hint: "jobsView.classifyHint" },
 ];
 const STATES: { state: JobState; label: PlainKey; tone: string }[] = [
@@ -143,7 +144,7 @@ export function JobsView() {
                       <tr key={j.id}>
                         <td><span className="ty" title={typeLabel(j.job_type, t)}>{j.job_type}</span></td>
                         <td className="art" title={t("jobsView.times", { time: time(j.created_at, t), time2: time(j.started_at, t), time3: time(j.completed_at, t) })}>
-                          {j.article_title ?? t("jobsView.articleN", { x: j.article_id ?? "—" })}
+                          {j.article_title ?? (j.article_id == null ? typeLabel(j.job_type, t) : t("jobsView.articleN", { x: j.article_id }))}
                         </td>
                         <td>{j.last_error && <span className="er" title={t.msg(j.last_error)}>{t.msg(j.last_error)}</span>}</td>
                         <td className="m">
