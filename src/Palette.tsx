@@ -108,6 +108,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: "表示言語: 混在", keys: "translate mixed ratio 混在 割合 表示言語", icon: "translate", run: (n) => actions.lang("mixed", n ?? undefined), withNumber: (n) => `表示言語: 混在 · 訳文 ${n}%` },
     { label: "表示言語: 原文", keys: "original 原文 表示言語", icon: "translate", run: () => actions.lang("original") },
     { label: "表示言語: 訳文", keys: "translated 訳文 表示言語", icon: "translate", run: () => actions.lang("translated") },
+    { label: "今日の復習を開く", keys: "review quiz 復習 クイズ", icon: "review", run: () => actions.screen("review") },
     { label: "処理状況を開く", keys: "jobs 処理状況", icon: "jobs", run: () => actions.screen("jobs") },
     { label: "失敗したジョブをすべて再実行", keys: "jobs failed retry 失敗 再実行", icon: "reload", run: () => { api.retryFailedJobs(null).catch(() => {}); actions.screen("jobs"); } },
     { label: "対話を開く", keys: "chat 対話 質問", icon: "chat", run: () => actions.chat() },

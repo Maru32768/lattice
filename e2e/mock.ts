@@ -2,15 +2,18 @@
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
   ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
-  LlmSettings, R2Settings, R2Status, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
+  Grade, LlmSettings, Quiz, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NOW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
 const threads = structuredClone(CHAT_THREADS);
 const messages = structuredClone(CHAT_MESSAGES);
 const jobs = structuredClone(JOBS);
+/** Quizzes by article; review cards by question id (`due`: in today's queue). */
+const quizzes = new Map<number, Quiz>([[1, structuredClone(QUIZ)]]);
+const cards = new Map<number, { item: ReviewItem; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
 const store = {
   autoRender: true,
   autoClassify: true,
@@ -24,6 +27,7 @@ const store = {
     chain: [{ kind: "claude_cli", model: null, effort: null }, { kind: "openai", model: "gpt-5-mini", effort: "low" }],
     openai_key: "env", gemini_key: null, anthropic_key: "stored",
   } as LlmSettings,
+  review: { new_per_day: 20, reviews_per_day: 200, min_interval_minutes: 1440, max_interval_days: 365 },
   r2: {
     enabled: false, account_id: "", bucket: "", access_key_id: "", interval_hours: 24, keep_generations: 7, has_secret: false,
     last_success: null, last_key: null, last_error: null, last_prune_error: null, running: false,
@@ -94,6 +98,31 @@ function view(id: number): ArticleView | null {
   };
 }
 
+const articleCards = (id: number) => [...cards.values()].filter((c) => c.item.article_id === id);
+
+/** A generated quiz: one recall question per prose block of the article. */
+function generateQuiz(id: number): Quiz {
+  const blocks = blocksOf(article(id)).filter((b) => b.kind === "paragraph");
+  return {
+    id: 100 + id, created_at: new Date(NOW).toISOString(), stale: false, in_review: 0,
+    questions: blocks.map((b, i) => ({ id: id * 1000 + i, kind: "recall", question: `${i + 1} 段落目の要点は？`, answer: b.text, explanation: "", block_ids: [b.id] })),
+  };
+}
+
+function reviewOverview(): ReviewOverview {
+  const byArticle = new Map<number, ReviewItem[]>();
+  for (const { item } of cards.values()) byArticle.set(item.article_id, [...(byArticle.get(item.article_id) ?? []), item]);
+  const tomorrow = NOW / 1000 + 86_400;
+  return {
+    due: [...cards.values()].filter((c) => c.due).length,
+    next_due_at: [...cards.values()].some((c) => !c.due) ? tomorrow : null,
+    articles: [...byArticle].map(([id, items]) => ({
+      article_id: id, title: items[0].article_title, cards: items.length,
+      next_due_at: articleCards(id).some((c) => c.due) ? NOW / 1000 : tomorrow,
+    })),
+  };
+}
+
 let nextId = 1000;
 function addArticle(url: string, title: string | null, extra: Partial<ArticleRow> = {}): number {
   const id = nextId++;
@@ -139,6 +168,37 @@ export const handlers = {
   },
   translate_article: none,
   summarize_article: none,
+  quiz_article: ({ id }: { id: number }) => void quizzes.set(id, generateQuiz(id)),
+  get_quiz: ({ id }: { id: number }): Quiz | null => {
+    const q = quizzes.get(id);
+    return q ? { ...q, in_review: articleCards(id).length } : null;
+  },
+  review_add: ({ quizId, answers }: { quizId: number; answers: { question_id: number; grade: Grade }[] }): number => {
+    const [id, quiz] = [...quizzes].find(([, q]) => q.id === quizId)!;
+    const a = article(id);
+    for (const q of quiz.questions) {
+      if (cards.has(q.id)) continue;
+      const answered = answers.some((x) => x.question_id === q.id);
+      cards.set(q.id, { item: { ...q, article_id: id, article_title: a.title ?? a.original_url, new: !answered, previews: NEW_PREVIEWS }, due: !answered });
+    }
+    return articleCards(id).length;
+  },
+  review_grade: ({ questionId }: { questionId: number }) => {
+    const c = cards.get(questionId);
+    if (!c) throw new Error("このカードは復習から外されています");
+    c.due = false;
+  },
+  review_remove_card: ({ questionId }: { questionId: number }) => void cards.delete(questionId),
+  review_remove_article: ({ articleId }: { articleId: number }) => {
+    for (const c of articleCards(articleId)) cards.delete(c.item.id);
+  },
+  review_queue: (): ReviewItem[] => [...cards.values()].filter((c) => c.due).map((c) => c.item),
+  review_overview: reviewOverview,
+  get_review_settings: (): ReviewSettings => store.review,
+  set_review_settings: ({ settings }: { settings: ReviewSettings }) => {
+    if (settings.min_interval_minutes < 1) throw new Error("最短間隔は 1 分〜30 日です");
+    store.review = settings;
+  },
   search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),
   chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
     const thread = threadId ?? Math.max(0, ...threads.map((t) => t.id)) + 1;

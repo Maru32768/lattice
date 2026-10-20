@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-review-overview"
+description = "Enables the review_overview command without any pre-configured scope."
+commands.allow = ["review_overview"]
+
+[[permission]]
+identifier = "deny-review-overview"
+description = "Denies the review_overview command without any pre-configured scope."
+commands.deny = ["review_overview"]

@@ -13,6 +13,7 @@ const TYPES: { type: string; label: string; hint?: string }[] = [
   { type: "embed", label: "検索 index" },
   { type: "translate", label: "翻訳" },
   { type: "summarize", label: "要約" },
+  { type: "quiz", label: "クイズ" },
   { type: "classify", label: "分類", hint: "最大 20 件を 1 呼び出しに" },
 ];
 const STATES: { state: JobState; label: string; tone: string }[] = [

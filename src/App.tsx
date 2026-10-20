@@ -9,6 +9,7 @@ import { ImportView, type ImportTab } from "./ImportView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
 import { FeedsView } from "./FeedsView";
 import { JobsView } from "./JobsView";
+import { QuizReview } from "./QuizReview";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
@@ -99,6 +100,7 @@ export default function App() {
   const [widths, setWidths] = useState<PaneWidths>(loadWidths);
   useEffect(() => saveWidths(widths), [widths]);
   const [jobFailures, setJobFailures] = useState(0);
+  const [reviewDue, setReviewDue] = useState(0);
   const [error, setError] = useState<string | null>(null);
   /** Rectangles of open overlays (popovers, menus, palette); the page webview hides under them. */
   const [overlays, setOverlays] = useState<DOMRect[]>([]);
@@ -184,6 +186,12 @@ export default function App() {
     };
   }, []);
   useEffect(() => { void refresh(); }, [sort]);
+  const loadReview = () => api.reviewOverview().then((o) => setReviewDue(o.due)).catch(() => {});
+  useEffect(() => {
+    void loadReview();
+    const poll = window.setInterval(loadReview, JOB_POLL_MS);
+    return () => clearInterval(poll);
+  }, []);
 
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
@@ -588,7 +596,7 @@ export default function App() {
     <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
   );
   const nav = navOpen
-    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
+    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures} reviewDue={reviewDue}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
         onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
@@ -606,12 +614,14 @@ export default function App() {
             ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
             : nav}
-          {(screen === "import" || screen === "feeds" || screen === "jobs") && (
+          {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review") && (
             <main className="main" data-pane="doc">
               {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }} />}
               {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
+              {screen === "review" && <QuizReview onChanged={loadReview}
+                onOpen={(id, block) => openReader(id, block == null ? undefined : { block, label: "クイズの出典", terms: [], tone: "cite" })} />}
             </main>
           )}
           {screen === "library" && search && listOpen && (
@@ -653,7 +663,8 @@ export default function App() {
                 onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
                 onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
                 onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
-                onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })} />
+                onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })}
+                onFocusBlock={(block, label) => openReader(view.article.id, { block, label, terms: [], tone: "cite" })} onReviewChanged={loadReview} />
             )}
             {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
               : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}

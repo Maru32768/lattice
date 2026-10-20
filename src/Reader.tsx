@@ -8,6 +8,7 @@ import { Menu } from "./Popover";
 import { Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { QuizPanel } from "./QuizPanel";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
 // and links open in the in-app browser instead of navigating this (app) WebView.
@@ -286,7 +287,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete }: {
+  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -315,12 +316,17 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onFocusMode: () => void;
   /** Asks for confirmation, then deletes the article. */
   onDelete: () => void;
+  /** Scrolls to a block and marks it with `label` (a quiz answer's source). */
+  onFocusBlock: (block: number, label: string) => void;
+  /** Quiz cards were added to or removed from review. */
+  onReviewChanged: () => void;
 }) {
   const { article: a, blocks } = view;
   // Per-block click overrides on top of the mode; App remounts Reader per article.
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const [pop, setPop] = useState<number | null>(null);
   const [confirmRetranslate, setConfirmRetranslate] = useState(false);
+  const [quizOpen, setQuizOpen] = useState(false);
   const timers = useRef({ show: 0, hide: 0 });
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
@@ -394,6 +400,11 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className={`tb${a.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={a.favorite} aria-label="お気に入り (s)" title="お気に入り (s)"><Icon name="star" /></button>
           <button className="tb" onClick={onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
+          {!failed && (
+            <button className={`tb qz-btn${quizOpen ? " qz-open" : ""}`} onClick={() => setQuizOpen((o) => !o)} aria-pressed={quizOpen} aria-label="理解度チェック" title="この記事の理解度チェック（クイズ）">
+              <Icon name="quiz" /><span className="lbl">理解度チェック</span>
+            </button>
+          )}
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
           <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・訳し直す・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
             { label: local ? "再抽出（保存済みの Markdown から）" : "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
@@ -407,6 +418,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         </div>
       </div>
 
+      <div className="doc-body">
       <div className="doc-scroll" tabIndex={-1} data-pane-target>
         <article className="reader">
           <div className="art-meta">
@@ -509,6 +521,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             </div>
           </OpenLink.Provider>
         </article>
+      </div>
+      {quizOpen && <QuizPanel view={view} onSource={(b) => onFocusBlock(b, "クイズの出典")} onReviewChanged={onReviewChanged} onClose={() => setQuizOpen(false)} />}
       </div>
       {confirmRetranslate && (
         <ConfirmDialog title="訳し直しますか？" confirm="訳し直す"

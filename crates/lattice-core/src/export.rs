@@ -1,5 +1,5 @@
-//! JSON export (§17): articles, their translations and summaries, and chat, in an open format,
-//! so none of it lives only in this database or at an LLM provider. One JSON object per line,
+//! JSON export (§17): articles, their translations, summaries and quizzes (with review state),
+//! and chat, in an open format, so none of it lives only in this database or at an LLM provider. One JSON object per line,
 //! gzip-compressed, written article by article: 10^5 articles never sit in memory at once.
 //! Left out: settings (API keys and other secrets), raw HTML snapshots, image bytes, embeddings
 //! and jobs; the database backup has the snapshots, images and embeddings. Image blocks carry
@@ -44,6 +44,25 @@ const SUMMARIES: &str = "SELECT json_group_array(json_object(
         ORDER BY s.id)
     FROM summaries s JOIN articles a ON a.id = s.article_id WHERE s.article_id = ?1";
 
+/// Every quiz, oldest first; a question in review carries its card and answer log. Sources are
+/// block ordinals, as in `blocks`.
+const QUIZZES: &str = "SELECT json_group_array(json_object(
+        'stale', json(iif(z.source_hash IS a.content_hash, 'false', 'true')),
+        'provider', z.provider, 'model', z.model, 'prompt_version', z.prompt_version, 'created_at', z.created_at,
+        'questions', json((SELECT json_group_array(json_object(
+            'kind', q.kind, 'question', q.question, 'options', json(q.options), 'answer', q.answer, 'explanation', q.explanation,
+            'block_ordinals', json((SELECT json_group_array(b.ordinal) FROM json_each(q.block_ids) j JOIN blocks b ON b.id = j.value)),
+            'review', json((SELECT json_object(
+                'ease', c.ease / 1000.0, 'interval_minutes', c.interval_minutes, 'reps', c.reps, 'lapses', c.lapses,
+                'due_at', strftime('%Y-%m-%dT%H:%M:%SZ', c.due_at, 'unixepoch'), 'created_at', c.created_at,
+                'log', json((SELECT json_group_array(json_object(
+                    'grade', l.grade, 'interval_minutes', l.interval_minutes, 'reviewed_at', strftime('%Y-%m-%dT%H:%M:%SZ', l.reviewed_at, 'unixepoch'))
+                    ORDER BY l.id) FROM review_log l WHERE l.question_id = c.question_id)))
+                FROM review_cards c WHERE c.question_id = q.id)))
+            ORDER BY q.ordinal) FROM quiz_questions q WHERE q.quiz_id = z.id)))
+        ORDER BY z.id)
+    FROM quizzes z JOIN articles a ON a.id = z.article_id WHERE z.article_id = ?1";
+
 /// Writes the export as JSON lines: a header (`format`), then `feed`, `article` and `chat_thread`
 /// objects. Returns the number of articles written.
 // shortcut: not a snapshot (the store lock is taken per article so jobs and the UI keep going);
@@ -75,15 +94,16 @@ pub fn export_to(store: &Store, out: &mut impl Write) -> Result<usize, String> {
     let mut n = 0;
     for id in ids {
         let Some(article) = store.article_row(id).map_err(err)? else { continue }; // deleted meanwhile
-        let (blocks, summaries): (String, String) = {
+        let (blocks, summaries, quizzes): (String, String, String) = {
             let c = store.conn();
             let q = |sql: &str| c.query_row(sql, [id], |r| r.get::<_, String>(0)).map_err(err);
-            (q(BLOCKS)?, q(SUMMARIES)?)
+            (q(BLOCKS)?, q(SUMMARIES)?, q(QUIZZES)?)
         };
         let mut v = json!({"type": "article"});
         v.as_object_mut().expect("object").extend(serde_json::to_value(article).map_err(err)?.as_object().cloned().unwrap_or_default());
         v["blocks"] = serde_json::from_str(&blocks).map_err(err)?;
         v["summaries"] = serde_json::from_str(&summaries).map_err(err)?;
+        v["quizzes"] = serde_json::from_str(&quizzes).map_err(err)?;
         line(out, &v)?;
         n += 1;
     }
@@ -150,6 +170,15 @@ mod tests {
              INSERT INTO chat_messages (thread_id, question, answer, citations, scope, mode, prompt_version)
              VALUES (1, 'what?', 'answer [1]', '[]', '{{\"kind\":\"article\",\"id\":{id}}}', 'full', 'c1');"
         ));
+        let para: i64 = s.conn().query_row("SELECT id FROM blocks WHERE article_id = ?1 AND ordinal = 1", [id], |r| r.get(0)).unwrap();
+        s.exec_for_test(&format!(
+            "INSERT INTO quizzes (id, article_id, source_hash, provider, prompt_version) VALUES (1, {id}, (SELECT content_hash FROM articles WHERE id = {id}), 'fake', 'quiz-v1');
+             INSERT INTO quiz_questions (id, quiz_id, ordinal, kind, question, options, answer, explanation, block_ids)
+                 VALUES (7, 1, 0, 'choice', 'どれ？', '[\"a\",\"b\",\"c\",\"d\"]', 'b', 'b だから', '[{para}]'),
+                        (8, 1, 1, 'recall', '何を防ぐ？', '[]', 'write skew', '', '[]');
+             INSERT INTO review_cards (question_id, ease, interval_minutes, reps, lapses, due_at) VALUES (7, 2500, 1440, 1, 0, 86400);
+             INSERT INTO review_log (question_id, grade, prev_interval_minutes, interval_minutes, ease, reviewed_at) VALUES (7, 'good', 0, 1440, 2500, 0);"
+        ));
 
         let mut out = Vec::new();
         assert_eq!(export_to(&s, &mut out).unwrap(), 1);
@@ -168,6 +197,16 @@ mod tests {
         );
         assert_eq!(a["blocks"][1]["inlines"][1], json!({"t": "code", "v": "write skew"}));
         assert_eq!((a["summaries"][0]["text"].as_str(), a["summaries"][0]["stale"].as_bool()), (Some("要約"), Some(true)));
+        let quiz = &a["quizzes"][0];
+        assert_eq!(quiz["stale"], false);
+        assert_eq!(quiz["questions"][0]["block_ordinals"], json!([1]), "sources as block ordinals");
+        assert_eq!(quiz["questions"][0]["options"][1], "b");
+        assert_eq!(
+            quiz["questions"][0]["review"],
+            json!({"ease": 2.5, "interval_minutes": 1440, "reps": 1, "lapses": 0, "due_at": "1970-01-02T00:00:00Z", "created_at": quiz["questions"][0]["review"]["created_at"],
+                   "log": [{"grade": "good", "interval_minutes": 1440, "reviewed_at": "1970-01-01T00:00:00Z"}]})
+        );
+        assert_eq!(quiz["questions"][1]["review"], Value::Null, "not in review");
         let chat = &lines[2];
         assert_eq!((chat["type"].as_str(), chat["messages"][0]["answer"].as_str()), (Some("chat_thread"), Some("answer [1]")));
         assert_eq!(lines.len(), 3);

@@ -14,9 +14,9 @@ use crate::ingest;
 use crate::llm::LlmProvider;
 use crate::segments::Target;
 use crate::store::{JobRow, Store};
-use crate::{classify, favicons, images, render, summarize, translate};
+use crate::{classify, favicons, images, quiz, render, summarize, translate};
 
-pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE];
+pub const LLM_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
@@ -90,6 +90,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
+        quiz::JOB_TYPE => quiz::run(store, &p.llm, article_id).await,
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
         ingest::JOB_TYPE => {
             // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.

@@ -254,6 +254,52 @@ export interface JobOverview {
   issues: JobIssue[];
 }
 
+/** Mirrors lattice-core's quiz.rs / srs.rs. A question's id is also its review card's id. */
+export type Grade = "again" | "hard" | "good" | "easy";
+
+export type QuizQuestion = {
+  id: number;
+  question: string;
+  answer: string;
+  explanation: string;
+  /** Blocks the answer comes from. */
+  block_ids: number[];
+} & ({ kind: "recall" } | { kind: "choice"; options: string[] });
+
+export interface Quiz {
+  id: number;
+  questions: QuizQuestion[];
+  created_at: string;
+  /** The article's text or the 「自分について」 profile changed since generation. */
+  stale: boolean;
+  /** Cards in review from this article. */
+  in_review: number;
+}
+
+export type ReviewItem = QuizQuestion & {
+  article_id: number;
+  article_title: string;
+  /** Never answered. */
+  new: boolean;
+  /** Minutes until the next review after again / hard / good / easy. */
+  previews: [number, number, number, number];
+};
+
+export interface ReviewOverview {
+  /** Cards in today's queue now. */
+  due: number;
+  /** Unix seconds. */
+  next_due_at: number | null;
+  articles: { article_id: number; title: string; cards: number; next_due_at: number }[];
+}
+
+export interface ReviewSettings {
+  new_per_day: number;
+  reviews_per_day: number;
+  min_interval_minutes: number;
+  max_interval_days: number;
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -288,6 +334,20 @@ export const api = {
   /** Drops the article's translations for its current target and translates every block again. */
   retranslateArticle: (id: number) => invoke<void>("translate_article", { id, fresh: true }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
+  /** Queues the quiz job (generate, or regenerate). */
+  quizArticle: (id: number) => invoke<void>("quiz_article", { id }),
+  /** The article's newest quiz. */
+  quiz: (id: number) => invoke<Quiz | null>("get_quiz", { id }),
+  /** Adds the quiz's questions to review; `answers` count as their first review. Returns the article's cards in review. */
+  reviewAdd: (quizId: number, answers: { question_id: number; grade: Grade }[]) => invoke<number>("review_add", { quizId, answers }),
+  reviewGrade: (questionId: number, grade: Grade) => invoke<void>("review_grade", { questionId, grade }),
+  reviewRemoveCard: (questionId: number) => invoke<void>("review_remove_card", { questionId }),
+  reviewRemoveArticle: (articleId: number) => invoke<void>("review_remove_article", { articleId }),
+  /** Today's cards, within the daily limits. */
+  reviewQueue: () => invoke<ReviewItem[]>("review_queue"),
+  reviewOverview: () => invoke<ReviewOverview>("review_overview"),
+  reviewSettings: () => invoke<ReviewSettings>("get_review_settings"),
+  setReviewSettings: (settings: ReviewSettings) => invoke<void>("set_review_settings", { settings }),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
   chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>
     invoke<ChatMessage>("chat_ask", { threadId, question, scope }),

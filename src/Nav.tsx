@@ -6,7 +6,7 @@ import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
 
-export type Screen = "library" | "feeds" | "jobs" | "import" | "settings";
+export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review";
 
 export interface NavCounts {
   recent: number;
@@ -29,7 +29,7 @@ const LIBRARY: [Scope, string, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
+export function Nav({ screen, scope, counts, feeds, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
   onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCollapse }: {
   screen: Screen;
   /** null while a management screen is shown. */
@@ -37,6 +37,8 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
   counts: NavCounts;
   feeds: FeedRow[];
   jobFailures: number;
+  /** Cards in today's review queue. */
+  reviewDue: number;
   chatOpen: boolean;
   searching: boolean;
   recentSearches: string[];
@@ -119,6 +121,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
 
       <div className="sec">ツール</div>
       <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}><Icon name="chat" /><span className="label">対話</span></button>
+      {tool("review", "今日の復習", "review", reviewDue > 0 && <span className="bd run push" aria-label={`期限 ${reviewDue} 枚`}>{n(reviewDue)}</span>)}
       {tool("jobs", "処理状況", "jobs", jobFailures > 0 && <span className="bd err push">{n(jobFailures)} 失敗</span>)}
       {tool("import", "一括インポート", "import")}
       <div className="grow" />

@@ -18,10 +18,11 @@ use lattice_core::job_status::{self, JobOverview};
 use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
+use lattice_core::srs::Grade;
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
-use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, quiz, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -441,6 +442,62 @@ fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+fn quiz_article(app: State<'_, App>, id: i64) -> Result<(), String> {
+    quiz::enqueue(&app.store, id)?;
+    app.wake_llm.notify_one();
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn get_quiz(app: State<'_, App>, id: i64) -> Result<Option<quiz::QuizView>, String> {
+    quiz::get(&app.store, id)
+}
+
+fn unix_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64)
+}
+
+#[tauri::command(async)]
+fn review_add(app: State<'_, App>, quiz_id: i64, answers: Vec<quiz::Answer>) -> Result<i64, String> {
+    quiz::add(&app.store, quiz_id, &answers, unix_now())
+}
+
+#[tauri::command(async)]
+fn review_grade(app: State<'_, App>, question_id: i64, grade: Grade) -> Result<(), String> {
+    quiz::grade(&app.store, question_id, grade, unix_now())
+}
+
+#[tauri::command(async)]
+fn review_remove_card(app: State<'_, App>, question_id: i64) -> Result<(), String> {
+    quiz::remove_card(&app.store, question_id)
+}
+
+#[tauri::command(async)]
+fn review_remove_article(app: State<'_, App>, article_id: i64) -> Result<(), String> {
+    quiz::remove_article(&app.store, article_id)
+}
+
+#[tauri::command(async)]
+fn review_queue(app: State<'_, App>) -> Result<Vec<quiz::ReviewItem>, String> {
+    quiz::queue(&app.store, unix_now())
+}
+
+#[tauri::command(async)]
+fn review_overview(app: State<'_, App>) -> Result<quiz::Overview, String> {
+    quiz::overview(&app.store, unix_now())
+}
+
+#[tauri::command(async)]
+fn get_review_settings(app: State<'_, App>) -> Result<quiz::Settings, String> {
+    quiz::settings(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_review_settings(app: State<'_, App>, settings: quiz::Settings) -> Result<(), String> {
+    quiz::set_settings(&app.store, &settings)
+}
+
+#[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64, fresh: Option<bool>) -> Result<(), String> {
     let target = translate::article_target(&app.store, id)?;
     if fresh == Some(true) {
@@ -847,6 +904,16 @@ pub fn run() {
             article_for_url,
             translate_article,
             summarize_article,
+            quiz_article,
+            get_quiz,
+            review_add,
+            review_grade,
+            review_remove_card,
+            review_remove_article,
+            review_queue,
+            review_overview,
+            get_review_settings,
+            set_review_settings,
             search_blocks,
             chat_ask,
             chat_threads,

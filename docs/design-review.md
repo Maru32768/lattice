@@ -554,3 +554,18 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **単体テストの追加。** job の backoff（2・4・8・16 分の後に失敗）、取得 job だけが同じホストの取得を待つこと、実行中の job は取り消しも再実行もできないこと、1 回の poll で同じ記事が 2 度出ても 1 件だけ積むこと、overlay の sanitize が大文字や制御文字で隠した `javascript:` を落とすこと、キー設定を既定に戻すと override が消えること、ペイン移動が端で止まること。どれも、対象のコードを壊すとそのテストだけが失敗することを確かめた。
 - **CI。** `.github/workflows/ci.yml` は windows-latest の 1 job。アプリを Windows で開発しているので Windows だけで走らせる（semantic search の ONNX Runtime が MSVC 14.40 以降を要る。README）。Node と Rust は `jdx/mise-action` が `mise.toml` の版を入れ、各コマンドは `mise exec --` で走らせる（ローカルと同じ解決）。clippy と rustfmt は toolchain の profile に頼らず `rustup component add` で入れる。手順は `mise run lint` と `mise run test` と `npm run e2e` を分けたもので、どの段で落ちたかがログで分かる。cache は `Swatinem/rust-cache`（`target` と cargo の registry）、npm の cache、Playwright のブラウザ（`package-lock.json` の hash で鍵を作る）。同じ ref の古い実行は取り消す。
 
+## 19. 理解度チェックと間隔反復（G32）
+
+| 対象 | ファイル |
+|---|---|
+| 生成 job・保存・今日のキュー・設定 | `crates/lattice-core/src/quiz.rs` |
+| SM-2 のスケジュール（純粋関数） | `crates/lattice-core/src/srs.rs` |
+| UI | `src/QuizPanel.tsx`（Reader の右パネル）・`src/QuizCard.tsx`（1 問）・`src/QuizReview.tsx`（今日の復習）・`src/QuizSettings.tsx`・`src/quiz.ts` |
+
+- **生成。** 要約と同じく prose block を送り、各 block に `[n]` を付けて出典を番号で返させ、保存時に block id に戻す（範囲外の番号は捨てる）。種類は `options` の数で決める（空なら記述、4 つで答えを含み重複がなければ 4 択、それ以外の問いは捨てる）。enum を schema に書かないのは provider ごとの structured output の差を避けるため。使える問いが 0 なら job を失敗にする（再試行される）。8 問を超えたら切る。要約の追加の指示は使わず、「自分について」だけを反映する（prompt version に hash を付け、変わると stale）。
+- **世代。** 作り直しても古いクイズは消さない（要約と同じ。新しいものが current）。カードは問いに付くので、作り直しただけでは復習中のカードは変わらない。新しいクイズで「復習に追加」すると、その記事の古い世代のカードを外して置き換える。
+- **SM-2 の値（Anki に合わせた）。** ease の初期値 2.5、下限 1.3。もう一度 −0.20・難しい −0.15・正解 ±0・簡単 +0.15（ease は復習中のカードだけ変える。学習中は変えない）。間隔は 1 回目に正解で最短間隔（既定 1 日）、簡単で 4 日。2 回目に正解で 6 日（SM-2 の I(2)）。以降は 正解 = 前回 × ease、難しい = 前回 × 1.2、簡単 = 正解 × 1.3。1 日以上の間隔は日単位に丸め、難しい < 正解 < 簡単 を 1 日ずつ保つ。もう一度は最短間隔に戻し、lapse を数える。すべて最短〜最長間隔に収める。全問正解の列は 1・6・15・38・95・238 日（テストで固定）。fuzz（ばらつき）は入れていない。
+- **最短間隔。** 「もう一度」と 1 回目の正解の間隔を兼ねる。1 日未満（例 10 分）にすると Anki の learning step のようにその日のうちに再出題する。1 日以上の間隔のカードは期限の日なら 1 日中出題し（Anki と同じ）、1 日未満のものは期限の時刻から出す。日の境は端末のローカル時刻の 0 時（Anki の 4 時区切りはしない）。
+- **Reader での回答を 1 回目にする。** 「復習に追加」で、その回に答えた問いはその評価で最初の復習を記録する（直後に今日の復習へ同じ問いが並ばない）。答えていない問いは新規カードとして 1 日の新規上限の中で出る。新規・復習の上限は review_log のその日の件数（前回の間隔 0 = 新規）で数える。
+- **4 択の評価。** 正解なら「正解」、不正解なら「もう一度」を既定にしてフォーカスし（Enter で確定）、他の評価で上書きできる。記述式は答えを見てから自分で評価する。1〜4 キーでも評価できる。今日の復習では各評価の次の間隔をボタンに出す（Rust の `schedule` が返す）。
+- **保存。** 追加の migration: `quizzes`・`quiz_questions`（選択肢と出典 block は JSON）・`review_cards`（問いと 1 対 1、ease は千分率の整数で丸め誤差を溜めない、due は unix 秒）・`review_log`。記事を消すと cascade で全部消える。JSON エクスポートは記事ごとに `quizzes`（出典は block の ordinal、復習中なら card と log）。
