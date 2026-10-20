@@ -443,10 +443,14 @@ export default function App() {
         {screen === "settings"
           ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
           : nav}
-        {screen === "import" && <ImportView onImported={refresh} />}
-        {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
-          onShowFeed={(id) => setScope({ kind: "feed", id })} />}
-        {screen === "jobs" && <JobsView />}
+        {(screen === "import" || screen === "feeds" || screen === "jobs") && (
+          <main className="main" data-pane="doc">
+            {screen === "import" && <ImportView onImported={refresh} />}
+            {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
+              onShowFeed={(id) => setScope({ kind: "feed", id })} />}
+            {screen === "jobs" && <JobsView />}
+          </main>
+        )}
         {screen === "library" && search && listOpen && (
           <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
             hits={hitGroups} sel={hitSel} onSel={setHitSel} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
