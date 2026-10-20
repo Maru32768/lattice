@@ -104,6 +104,42 @@ cp mise.local.toml.example mise.local.toml
 
 `Ctrl+K` でコマンドパレットを開きます。記事・タグ・ソース・ジャンルを開く、コマンドを実行する、検索する、貼り付けた URL を開く・保存する、ができます。設定 › ショートカット にすべてのショートカットがあり、変更できます。
 
+## CLI と MCP
+
+`lattice-cli` で、同じライブラリをターミナルから読んだり追加したりでき、Claude Code などのエージェントに MCP サーバーとして提供できます。アプリと同じデータフォルダ（選んだ保存場所やポータブル版も含む）を使い、アプリの起動中も動きます。
+
+リポジトリからインストールします。
+
+```bash
+mise exec -- cargo install --path crates/lattice-cli
+```
+
+Releases の portable zip にも `Lattice.exe` の隣に `lattice-cli.exe` が入っており、その `data` フォルダを使います。
+
+```bash
+lattice-cli search "MVCC write skew" --limit 5
+```
+
+```bash
+lattice-cli --format text get 42
+```
+
+出力は JSON で、`--format text` で人が読む形になります。コマンドは `search`・`get`（`--blocks`・`--translation`）・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask` です。`--scope` には `unread`・`favorites`・`tag:名前`・`genre:名前`・`feed:ID`・`article:ID` を指定できます。`--data-dir` で別のデータフォルダを指定できます。一覧は `lattice-cli --help` で見られます。
+
+- **検索** はアプリと同じハイブリッド検索です。アプリが意味検索のモデルをまだダウンロードしていなければ全文検索だけになり、JSON にそう示します（`"mode": "full_text"`）。CLI はモデルをダウンロードしません。
+- **質問（ask）** はアプリで設定した AI プロバイダで保存した記事から答えます。質問はアプリの対話の履歴にも残ります。
+- **変更**（`save`・`tag`・`read`・`favorite`）には `--allow-write` か `LATTICE_ALLOW_WRITE=1` が必要です。`save` はページの取得をアプリに任せ、アプリが起動していれば 30 秒以内に取得します。`save --run` は CLI でその場で取得して索引に加えます。
+
+Claude Code から使うには次のように登録します。
+
+```bash
+claude mcp add lattice -- lattice-cli mcp
+```
+
+search・get・list・summary・tags・genres・feeds・jobs・ask が tool として使えます。`mcp` の後に `--allow-write` を付けると save・tag・read・favorite も使えます。
+
+**Prompt injection に注意。** 保存した記事は他人が書いた Web ページで、記事を読んだエージェントは本文に隠れた指示に誘導されることがあります。tool の結果にはすべて信頼できない外部のテキストであることを示し、大きさに上限を設け、記事の内容は何も実行しません。それでも、書き込みは必要なときだけ有効にし、記事を読ませるのと同じエージェントのセッションに、被害を出しうる tool（シェル、ファイルの書き込み、メール送信など）を持たせないでください。
+
 ## 開発
 
 ```bash
@@ -127,6 +163,7 @@ CI（`.github/workflows/ci.yml`）は `master` への push と pull request の�
 | パス | 内容 |
 |---|---|
 | `crates/lattice-core` | Tauri に依存しないドメインロジック: 取得・抽出・保存・ジョブ・翻訳・検索・対話・バックアップ。 |
+| `crates/lattice-cli` | `lattice-core` だけを使う `lattice-cli` コマンドと MCP サーバー。 |
 | `src-tauri` | Tauri アプリ: コマンド、バックグラウンドの runner、アプリ内ブラウザ。 |
 | `src` | React のフロントエンド。 |
 | `src/overlay` | アプリ内ブラウザのページに注入するスクリプト（翻訳 overlay、ページの snapshot）。 |

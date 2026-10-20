@@ -104,6 +104,42 @@ Portable mode: when a file named `portable` (or `lattice.portable`) sits next to
 
 Press `Ctrl+K` for the command palette. It opens articles, tags, sources and genres, runs commands, searches, and opens or saves a pasted URL. Settings › Shortcuts lists every shortcut and lets you change them.
 
+## CLI and MCP
+
+`lattice-cli` reads and adds to the same library from a terminal, and serves it to agents such as Claude Code as an MCP server. It finds the data folder the app uses (including a folder you chose and portable mode) and works while the app is running.
+
+Install it from the repository:
+
+```bash
+mise exec -- cargo install --path crates/lattice-cli
+```
+
+The portable zip on the Releases page also has `lattice-cli.exe` next to `Lattice.exe`; it uses that copy's `data` folder.
+
+```bash
+lattice-cli search "MVCC write skew" --limit 5
+```
+
+```bash
+lattice-cli --format text get 42
+```
+
+Output is JSON unless you pass `--format text`. The commands are `search`, `get` (`--blocks`, `--translation`), `list`, `summary`, `tags`, `genres`, `feeds`, `jobs` and `ask`. `--scope` takes `unread`, `favorites`, `tag:NAME`, `genre:NAME`, `feed:ID` or `article:ID`. `--data-dir` points at another data folder. `lattice-cli --help` lists everything.
+
+- **Search** is hybrid, like the app's. If the app has not downloaded the semantic search model yet, results are full text only and the JSON says so (`"mode": "full_text"`); the CLI never downloads the model.
+- **Ask** answers from your saved articles through the AI providers set in the app, and the question shows up in the app's chat history.
+- **Changes** (`save`, `tag`, `read`, `favorite`) need `--allow-write` or `LATTICE_ALLOW_WRITE=1`. `save` queues the page for the app, which fetches it within 30 seconds while it runs; `save --run` fetches and indexes it in the CLI instead.
+
+To use Lattice from Claude Code:
+
+```bash
+claude mcp add lattice -- lattice-cli mcp
+```
+
+This exposes search, get, list, summary, tags, genres, feeds, jobs and ask as tools. Add `--allow-write` after `mcp` to also expose save, tag, read and favorite.
+
+**Prompt injection.** Saved articles are web pages written by other people, and an agent that reads them can be steered by instructions hidden in the text. Every tool result is marked as untrusted external content, results are capped in size, and nothing in an article is ever run. Still, keep write access off unless you need it, and do not give the same agent session tools that can do damage (shell, file writes, email) while it reads articles.
+
 ## Development
 
 ```bash
@@ -127,6 +163,7 @@ CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on W
 | Path | Contents |
 |---|---|
 | `crates/lattice-core` | Domain logic without Tauri: fetching, extraction, storage, jobs, translation, search, chat, backup. |
+| `crates/lattice-cli` | The `lattice-cli` command and its MCP server, on `lattice-core` alone. |
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser. |
 | `src` | The React frontend. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots). |

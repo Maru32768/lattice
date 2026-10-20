@@ -7828,6 +7828,11 @@ SOFTWARE.
 -------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  anstyle 1.0.14
+  clap 4.6.7
+  clap_builder 4.6.7
+  clap_derive 4.6.7
+  clap_lex 1.1.1
   serde_spanned 1.1.2
   toml 1.1.8+spec-1.1.0
   toml_datetime 1.1.2+spec-1.1.0
@@ -9108,6 +9113,7 @@ SOFTWARE.
 -------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
+  lattice-cli 0.1.0
   lattice-core 0.1.0
   lattice 0.1.0
   adobe-cmap-parser 0.4.1
