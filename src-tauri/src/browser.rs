@@ -139,8 +139,30 @@ struct PageEvent {
 
 fn emit_page(wv: &Webview, browser: &Browser, url: String) {
     let loading = lock(&browser.visibility).loading;
-    let (can_go_back, can_go_forward) = *lock(&browser.history);
-    let _ = wv.app_handle().emit_to("main", "browser-page", PageEvent { url, loading, can_go_back, can_go_forward });
+    let reported = *lock(&browser.history);
+    let app = wv.app_handle().clone();
+    let send = move |(can_go_back, can_go_forward): (bool, bool)| {
+        let _ = app.emit_to("main", "browser-page", PageEvent { url, loading, can_go_back, can_go_forward });
+    };
+    // The page's `navigation` API only sees same-origin entries, so after moving to another site
+    // it reports no way back; WebView2 knows the whole history.
+    #[cfg(windows)]
+    if let Err(e) = wv.with_webview(move |pw| send(unsafe { native_history(&pw) }.unwrap_or(reported))) {
+        log::warn!("reading the page history: {e}");
+    }
+    #[cfg(not(windows))]
+    send(reported);
+}
+
+#[cfg(windows)]
+unsafe fn native_history(pw: &tauri::webview::PlatformWebview) -> windows::core::Result<(bool, bool)> {
+    let core = unsafe { pw.controller().CoreWebView2()? };
+    let (mut back, mut forward) = (windows::core::BOOL::default(), windows::core::BOOL::default());
+    unsafe {
+        core.CanGoBack(&mut back)?;
+        core.CanGoForward(&mut forward)?;
+    }
+    Ok((back.as_bool(), forward.as_bool()))
 }
 
 pub(crate) fn http_url(s: &str) -> Result<Url, String> {
