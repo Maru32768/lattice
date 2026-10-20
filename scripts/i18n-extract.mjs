@@ -89,6 +89,8 @@ function paramName(expr, taken) {
   else if (ts.isPropertyAccessExpression(expr)) base = expr.name.text;
   else if (ts.isCallExpression(expr)) base = (ts.isPropertyAccessExpression(expr.expression) ? expr.expression.name : expr.expression).getText();
   else if (ts.isJsxElement(expr) || ts.isJsxSelfClosingElement(expr)) base = (ts.isJsxElement(expr) ? expr.openingElement : expr).tagName.getText().toLowerCase();
+  // `t` would read as the translator: a translated label passed in, or a loop variable.
+  if (base === "t") base = ts.isCallExpression(expr) ? "label" : "value";
   base = base.replace(/\W/g, "") || "x";
   let name = base;
   for (let i = 2; taken.has(name); i++) name = `${base}${i}`;

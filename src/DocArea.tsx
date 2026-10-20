@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { MIN_SIZE, activate, close, closePane, focusedPane, move, panes, resize, split, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
 import { TabStrip, type DropTarget, type TabLabel } from "./TabStrip";
+import { useT } from "./i18n";
 
 type Update = (f: (l: Layout) => Layout) => void;
 
@@ -9,6 +10,7 @@ type Update = (f: (l: Layout) => Layout) => void;
  * `i` to the fraction the pointer asks for; the next child takes the difference.
  */
 function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (size: number) => void }) {
+  const t = useT();
   const [drag, setDrag] = useState<{ at: number; size: number; len: number } | null>(null);
   const row = dir === "row";
   useEffect(() => {
@@ -43,11 +45,11 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
     onSize(size + d * (e.shiftKey ? 0.08 : 0.02));
   }
 
-  const label = row ? "ペインの幅" : "ペインの高さ";
+  const label = row ? t("docArea.paneWidth") : t("docArea.paneHeight");
   return (
     <div className={`splitter at-pane${row ? "" : " h"}${drag ? " on" : ""}`} role="separator" aria-orientation={row ? "vertical" : "horizontal"} aria-label={label}
       aria-valuenow={Math.round(size * 100)} aria-valuemin={Math.round(MIN_SIZE * 100)} aria-valuemax={Math.round((1 - MIN_SIZE) * 100)} tabIndex={0}
-      title={`${label}（ドラッグ・${row ? "← →" : "↑ ↓"} で変更、ダブルクリックで均等に）`} onMouseDown={down} onKeyDown={keys}>
+      title={t("docArea.handle", { label, x: row ? "← →" : "↑ ↓" })} onMouseDown={down} onKeyDown={keys}>
       <span />
     </div>
   );
@@ -65,6 +67,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDra
   /** Reading-order number of the first pane in this node, for the panes' labels. */
   index: number;
 }) {
+  const t = useT();
   if (n.kind === "split") {
     let at = index;
     return (
@@ -94,7 +97,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDra
   const focused = focusedPane(layout).id === n.id;
   const multi = layout.root.kind === "split";
   return (
-    <section className={`dpane${focused ? " focused" : ""}`} data-pane="doc" data-pane-id={n.id} aria-label={`ドキュメント ${index + 1}`}>
+    <section className={`dpane${focused ? " focused" : ""}`} data-pane="doc" data-pane-id={n.id} aria-label={t("docArea.document", { x: index + 1 })}>
       <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop}
         onActivate={(t) => onLayout((l) => activate(l, t))} onClose={(t) => onLayout((l) => close(l, t))} onNew={() => onNew(n.id)}
         onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}

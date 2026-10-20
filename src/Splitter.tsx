@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useCover } from "./Popover";
+import { useT, type PlainKey } from "./i18n";
 
 export type Resizable = "nav" | "list" | "search" | "chat";
 export type PaneWidths = Record<Resizable, number>;
 
-const LIMITS: Record<Resizable, { min: number; max: number; label: string }> = {
-  nav: { min: 180, max: 360, label: "ナビゲーションの幅" },
-  list: { min: 300, max: 640, label: "記事一覧の幅" },
-  search: { min: 380, max: 760, label: "検索結果の幅" },
-  chat: { min: 320, max: 720, label: "対話ペインの幅" },
+const LIMITS: Record<Resizable, { min: number; max: number; label: PlainKey }> = {
+  nav: { min: 180, max: 360, label: "splitter.nav" },
+  list: { min: 300, max: 640, label: "splitter.list" },
+  search: { min: 380, max: 760, label: "splitter.search" },
+  chat: { min: 320, max: 720, label: "splitter.chat" },
 };
 export const DEFAULT_WIDTHS: PaneWidths = { nav: 228, list: 396, search: 520, chat: 430 };
 
@@ -52,6 +53,7 @@ export function Splitter({ pane, side, width, onWidth }: {
   width: number;
   onWidth: (w: number) => void;
 }) {
+  const t = useT();
   const [drag, setDrag] = useState<{ x: number; w: number } | null>(null);
   const shield = useRef<HTMLDivElement>(null);
   const dir = side === "left" ? 1 : -1;
@@ -86,11 +88,12 @@ export function Splitter({ pane, side, width, onWidth }: {
     onWidth(clamp(pane, width + dir * (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 64 : 16)));
   }
 
-  const { min, max, label } = LIMITS[pane];
+  const { min, max } = LIMITS[pane];
+  const label = t(LIMITS[pane].label);
   return (
     <>
       <div className={`splitter at-${pane}${drag ? " on" : ""}`} role="separator" aria-orientation="vertical" aria-label={label}
-        aria-valuenow={width} aria-valuemin={min} aria-valuemax={max} tabIndex={0} title={`${label}（ドラッグ・← → で変更、ダブルクリックで元に戻す）`}
+        aria-valuenow={width} aria-valuemin={min} aria-valuemax={max} tabIndex={0} title={t("splitter.handle", { label })}
         onMouseDown={down} onKeyDown={keys}>
         <span />
       </div>

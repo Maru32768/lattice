@@ -1,4 +1,4 @@
-import { test, expect, callsOf } from "./harness.ts";
+import { test, expect, callsOf, navItem } from "./harness.ts";
 
 test("the display language switches live in Settings and is stored in the backend", async ({ app }) => {
   expect(await callsOf(app, "set_ui_language"), "the first start stores the detected language").toContainEqual({ lang: "ja" });
@@ -22,6 +22,13 @@ test("the display language switches live in Settings and is stored in the backen
   await navEn.getByRole("button", { name: "AI providers" }).click();
   await expect(app.getByLabel("Provider for step 1")).toBeVisible();
 
+
+  await app.keyboard.press("Escape");
+  await expect(navItem(app, "All articles")).toBeVisible();
+  await expect(app.getByRole("region", { name: "Articles" }).locator(".row").first()).toBeVisible();
+  await expect(app.getByRole("button", { name: "Sort and group" })).toContainText("Date added, newest first");
+
+  await app.locator(".nav").getByRole("button", { name: "Settings" }).click();
   await navEn.getByRole("button", { name: "Display language" }).click();
   await app.getByLabel("Display language").selectOption("ja");
   await expect(app.locator(".stg main h1")).toHaveText("表示言語");

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useCover } from "./Popover";
+import { useT } from "./i18n";
 
 /**
  * A modal confirmation for a destructive action. Focus starts on キャンセル and stays inside;
@@ -13,6 +14,7 @@ export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }:
   onCancel: () => void;
   children: React.ReactNode;
 }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
@@ -42,7 +44,7 @@ export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }:
         <h2 id="dlg-title">{title}</h2>
         <div id="dlg-body" className="dlg-body">{children}</div>
         <div className="dlg-acts">
-          <button ref={cancel} className="btn" onClick={onCancel}>キャンセル</button>
+          <button ref={cancel} className="btn" onClick={onCancel}>{t("common.cancel")}</button>
           <button className="btn danger" onClick={onConfirm}>{confirm}</button>
         </div>
       </div>
