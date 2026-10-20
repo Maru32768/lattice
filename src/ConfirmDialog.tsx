@@ -15,7 +15,8 @@ export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }:
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
-  useCover(true);
+  const scrim = useRef<HTMLDivElement>(null);
+  useCover(scrim, true);
   useEffect(() => {
     const before = document.activeElement as HTMLElement | null;
     cancel.current?.focus();
@@ -36,7 +37,7 @@ export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }:
   }
 
   return (
-    <div className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+    <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <div ref={ref} className="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby="dlg-body" onKeyDown={keys}>
         <h2 id="dlg-title">{title}</h2>
         <div id="dlg-body" className="dlg-body">{children}</div>

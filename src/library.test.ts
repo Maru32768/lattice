@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ArticleRow } from "./api.ts";
-import { NO_FACETS, countBy, facetBase, inScope, matches, relaxations, toFilter, toggle, valueLabel, type Facets } from "./library.ts";
+import { NO_FACETS, NO_KEPT, countBy, facetBase, inScope, keep, listed, matches, relaxations, toFilter, toggle, valueLabel, viewKey, type Facets } from "./library.ts";
 
 const NOW = Date.parse("2026-10-17T12:00:00Z");
 const row = (id: number, p: Partial<ArticleRow> = {}): ArticleRow => ({
@@ -60,4 +60,20 @@ test("labels and backend filters", () => {
   assert.equal(valueLabel("difficulty", 4, all), "上級");
   assert.deepEqual(toFilter({ kind: "recent" }), { kind: "all" });
   assert.deepEqual(toFilter({ kind: "genre", name: null }), { kind: "genre", name: null });
+});
+
+test("kept: an article read while listed stays in that view only", () => {
+  const unread = { kind: "unread" } as const;
+  const state = f({ state: ["unread"] });
+  const read1 = all.map((a) => (a.id === 1 ? { ...a, read_status: "read" } : a));
+  assert.deepEqual(ids(listed(read1, unread, NO_FACETS, NOW, NO_KEPT).shown), [3, 4]);
+  const k = keep(NO_KEPT, viewKey(unread, NO_FACETS), 1);
+  assert.deepEqual(ids(listed(read1, unread, NO_FACETS, NOW, k).shown), [1, 3, 4]);
+  assert.deepEqual(ids(listed(read1, unread, NO_FACETS, NOW, k).scoped), [1, 3, 4]);
+  assert.deepEqual(ids(listed(read1, unread, f({ genres: ["Linux"] }), NOW, k).shown), [3], "another facet drops it");
+  assert.deepEqual(ids(listed(read1, { kind: "all" }, state, NOW, k).shown), [3, 4], "another scope drops it");
+  const k2 = keep(NO_KEPT, viewKey({ kind: "all" }, state), 1);
+  assert.deepEqual(ids(listed(read1, { kind: "all" }, state, NOW, k2).shown), [1, 3, 4], "状態=未読 keeps it too");
+  assert.deepEqual([...keep(k, viewKey(unread, NO_FACETS), 3).ids], [1, 3]);
+  assert.deepEqual([...keep(k, viewKey(unread, state), 3).ids], [3], "keeping in a new view starts over");
 });

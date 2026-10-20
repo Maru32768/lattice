@@ -381,7 +381,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         </div>
       </div>
 
-      <div className="doc-scroll">
+      <div className="doc-scroll" tabIndex={-1} data-pane-target>
         <article className="reader">
           <div className="art-meta">
             {a.feed_title && <span className="src">{a.feed_title}</span>}

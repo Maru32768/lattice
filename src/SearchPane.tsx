@@ -4,7 +4,7 @@ import { MANUAL, UNCLASSIFIED } from "./groups";
 import { countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
-import { Icon, Kbd } from "./Icon";
+import { ActionKey, Icon, Kbd } from "./Icon";
 
 export const MATCH_LABEL = { lexical: "全文", semantic: "意味", both: "全文 + 意味" } as const;
 const METHODS: [SearchMethod, string][] = [["hybrid", "Hybrid"], ["lexical", "全文"], ["semantic", "意味"]];
@@ -39,7 +39,7 @@ function ScopeSelect({ scope, onScope, genres, feeds }: {
   );
 }
 
-export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, onSearch, onOpen, onExit,
+export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, open, onSearch, onOpen, onExit,
   scope, onScope, facets, onFacets, scoped, all, articleById, focusSeq }: {
   initial: string;
   result: SearchResult | null;
@@ -48,8 +48,11 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   onMethod: (m: SearchMethod) => void;
   /** Hits after the method filter and scope ∧ facets, grouped by article. */
   hits: { article_id: number; hits: SearchHit[] }[];
+  /** The cursor (j / k, ↑ ↓) over the flat hit list. */
   sel: number;
   onSel: (i: number) => void;
+  /** The hit open in the Reader. */
+  open: { id: number; block: number } | null;
   onSearch: (q: string) => void;
   onOpen: (hit: SearchHit, page: boolean) => void;
   onExit: () => void;
@@ -69,7 +72,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => { setQ(initial); }, [initial]);
   useEffect(() => { input.current?.focus(); input.current?.select(); }, [focusSeq]);
-  useEffect(() => { body.current?.querySelector(".hit.sel")?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  useEffect(() => { body.current?.querySelector(".hit.cur")?.scrollIntoView({ block: "nearest" }); }, [sel]);
 
   const flat = hits.flatMap((g) => g.hits);
   const ts = terms(result ? initial : "");
@@ -100,7 +103,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? MANUAL : valueLabel("feeds", id, all)]);
   let n = 0;
   return (
-    <section className="list search" aria-label="検索結果" onKeyDown={keys}>
+    <section className="list search" aria-label="検索結果" data-pane="list" onKeyDown={keys}>
       <header className="list-h">
         <div className="search-q">
           <label className="vh" htmlFor="search-q">検索語</label>
@@ -170,7 +173,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
               {g.hits.map((h) => {
                 const i = n++;
                 return (
-                  <button key={h.block_id} className={`hit${i === sel ? " sel" : ""}`} onClick={(e) => { onSel(i); onOpen(h, e.shiftKey); }}>
+                  <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
+                    onClick={(e) => { onSel(i); onOpen(h, e.shiftKey); }} onFocus={() => onSel(i)}>
                     <span className="sh">{h.heading && h.heading !== h.text ? h.heading : "冒頭"}</span>
                     <span className={`mt ${h.source}`}>{MATCH_LABEL[h.source]}{h.source === "semantic" && ` ${h.score.toFixed(2)}`}</span>
                     <span className="tx"><Marked text={h.text} ts={ts} /></span>
@@ -183,7 +187,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
         })}
       </div>
       <footer className="list-f hints">
-        <span><Kbd>↑</Kbd><Kbd>↓</Kbd> 一致間を移動</span>
+        <span><ActionKey id="next" /><ActionKey id="prev" /> 一致間を移動</span>
         <span><Kbd>Enter</Kbd> Reader で開く</span>
         <span><Kbd>Shift</Kbd><Kbd>Enter</Kbd> Page で開く</span>
         <span className="r"><Kbd>Esc</Kbd> 元の一覧へ</span>

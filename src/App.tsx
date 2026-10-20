@@ -11,16 +11,20 @@ import { JobsView } from "./JobsView";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { groupArticles, type Group } from "./groups";
-import { NO_FACETS, activeDims, countBy, facetLabel, inScope, matches, relaxations, scopeLabel, toFilter, type Facets, type Scope } from "./library";
+import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, TRANSLATABLE, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
-import { CoverContext } from "./Popover";
+import { CoverContext, useCover } from "./Popover";
 import { Kbd } from "./Icon";
+import { actionFor, getBindings, keyLabel, keyOf, useBindings, type ActionId } from "./keys";
+import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { TitleBar } from "./TitleBar";
+import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "./Splitter";
 import "./App.css";
 
 type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"; target: BrowseTarget };
@@ -34,13 +38,7 @@ function loadRecent(): string[] {
   }
 }
 
-type Action = "palette" | "search" | "next" | "prev" | "favorite" | "read" | "focus" | "view" | "less" | "more" | "escape";
-const KEYS: Record<string, Action> = {
-  "ctrl+k": "palette", "/": "search", j: "next", k: "prev", s: "favorite", m: "read", f: "focus", v: "view", "[": "less", "]": "more", Escape: "escape",
-};
-/** Actions that still run while focus is in a text field. */
-const IN_FIELDS = new Set<Action>(["palette", "escape"]);
-const keyOf = (e: KeyboardEvent) => `${e.ctrlKey || e.metaKey ? "ctrl+" : ""}${e.key.length === 1 ? e.key.toLowerCase() : e.key}`;
+const PREFIX_MS = 1500;
 
 const JOB_POLL_MS = 10_000;
 
@@ -59,6 +57,20 @@ function FirstRun({ onPaste, onFeeds, onImport, onSettings }: { onPaste: () => v
   );
 }
 
+/** Shown while the pane prefix is armed. */
+function PrefixHint({ prefix }: { prefix: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useCover(ref, true);
+  return (
+    <div ref={ref} className="prefix-hint" role="status">
+      <Kbd>{prefix}</Kbd>
+      <span><Kbd>←</Kbd><Kbd>→</Kbd> <Kbd>h</Kbd><Kbd>l</Kbd> ペイン移動</span>
+      <span><Kbd>o</Kbd> 次のペイン</span>
+      <span><Kbd>z</Kbd> フォーカスモード</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -71,15 +83,22 @@ export default function App() {
   const [group, setGroup] = useState<Grouping>("none");
   const [scope, setScopeState] = useState<Scope>({ kind: "all" });
   const [facets, setFacets] = useState<Facets>(NO_FACETS);
+  const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreen] = useState<Screen>("library");
   const [doc, setDoc] = useState<Doc>(null);
   const [navOpen, setNavOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const [widths, setWidths] = useState<PaneWidths>(loadWidths);
+  useEffect(() => saveWidths(widths), [widths]);
   const [jobFailures, setJobFailures] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [covers, setCovers] = useState(0);
-  const cover = useCallback((d: 1 | -1) => setCovers((c) => c + d), []);
+  /** Rectangles of open overlays (popovers, menus, palette); the page webview hides under them. */
+  const [overlays, setOverlays] = useState<DOMRect[]>([]);
+  const cover = useCallback((r: DOMRect) => {
+    setOverlays((o) => [...o, r]);
+    return () => setOverlays((o) => o.filter((x) => x !== r));
+  }, []);
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
@@ -159,8 +178,7 @@ export default function App() {
   useEffect(() => { refresh(); }, [sort]);
 
   // ---- derived library --------------------------------------------------------------------
-  const scoped = useMemo(() => articles.filter((a) => inScope(a, scope, now)), [articles, scope, now]);
-  const shown = useMemo(() => scoped.filter((a) => matches(a, facets)), [scoped, facets]);
+  const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
   const groups: Group<ArticleRow>[] = useMemo(
     () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group)), [shown, group]);
   const order = useMemo(() => {
@@ -192,6 +210,19 @@ export default function App() {
 
   const current: ArticleRow | null = doc?.kind === "reader" ? view?.article ?? null : doc?.kind === "page" ? saved : null;
   const selectedId = current?.id ?? null;
+
+  // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
+  const listView = viewKey(scope, facets);
+  useEffect(() => setKept(NO_KEPT), [listView, screen]);
+  const openId = doc?.kind === "reader" ? doc.id : doc?.kind === "page" ? saved?.id ?? null : null;
+  const [cursor, setCursor] = useState<number | null>(null);
+  useEffect(() => { if (openId != null) setCursor(openId); }, [openId]);
+  useEffect(() => {
+    const a = openId == null ? undefined : articleById.get(openId);
+    if (a?.read_status !== "unread") return;
+    if (shown.some((x) => x.id === a.id)) setKept((k) => keep(k, listView, a.id));
+    act(() => api.setRead(a.id, true), a.id);
+  }, [openId]);
 
   // ---- navigation -------------------------------------------------------------------------
   function setScope(s: Scope) {
@@ -235,27 +266,23 @@ export default function App() {
     openReader(h.article_id, { block: h.block_id, label: `検索一致 · ${MATCH_LABEL[h.source]}`, terms: terms(search?.query ?? ""), tone: "hit" });
   }
 
-  function stepHit(delta: 1 | -1) {
-    if (!flatHits.length) return;
-    const i = Math.max(0, Math.min(flatHits.length - 1, hitSel + delta));
-    setHitSel(i);
-    openHit(flatHits[i]);
-  }
-
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
   function openPage(url: string, focus?: string, article?: ArticleRow) {
     setError(null);
+    setScreen("library");
+    // The page already showing (also after a redirect, by its saved article): navigating again would only reload it.
+    if (doc?.kind === "page" && !focus && (page?.url === url || (article && saved?.id === article.id))) return;
     setDoc((d) => ({ kind: "page", target: { url, focus, seq: (d?.kind === "page" ? d.target.seq : 0) + 1 } }));
     setPage({ url, title: article?.title ?? "", loading: true });
     setSaved(article ?? null);
-    setScreen("library");
   }
 
   function openReader(id: number, focus?: Omit<Focus, "seq">) {
     setError(null);
+    setScreen("library");
+    if (doc?.kind === "reader" && doc.id === id && !focus) return;
     if (viewId.current !== id || !view) loadView(id);
     setDoc((d) => ({ kind: "reader", id, focus: focus && { ...focus, seq: (d?.kind === "reader" ? d.focus?.seq ?? 0 : 0) + 1 } }));
-    setScreen("library");
   }
 
   /** Opens in the view the current document uses (Reader by default). */
@@ -264,12 +291,31 @@ export default function App() {
     else openReader(a.id);
   }
 
-  function step(delta: 1 | -1) {
-    if (order.length === 0) return;
-    const i = order.findIndex((a) => a.id === selectedId);
-    const next = order[i < 0 ? (delta > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + delta))];
-    if (next && next.id !== selectedId) openArticle(next);
-    window.setTimeout(() => document.querySelector(`.row[data-id="${next.id}"]`)?.scrollIntoView({ block: "nearest" }));
+  // ---- cursor: j / k move it through the list (or the search hits) without opening; Enter opens it.
+  /** After the cursor moves: keep it in view, and keep DOM focus on it while the list pane has focus. */
+  function revealCursor() {
+    window.setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(".row.cur, .hit.cur");
+      el?.scrollIntoView({ block: "nearest" });
+      if (el && paneOf(document.activeElement)?.dataset.pane === "list") el.focus({ preventScroll: true });
+    });
+  }
+
+  function moveCursor(d: 1 | -1) {
+    if (search) {
+      if (flatHits.length) setHitSel(Math.max(0, Math.min(flatHits.length - 1, hitSel + d)));
+    } else if (order.length) {
+      const i = order.findIndex((a) => a.id === (cursor ?? selectedId));
+      setCursor(order[i < 0 ? (d > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + d))].id);
+    }
+    revealCursor();
+  }
+
+  function openCursor(asPage: boolean) {
+    if (search) return flatHits[hitSel] && openHit(flatHits[hitSel], asPage);
+    const a = cursor == null ? undefined : articleById.get(cursor);
+    if (a && asPage) openPage(a.original_url, undefined, a);
+    else if (a) openArticle(a);
   }
 
   function toggleView() {
@@ -366,11 +412,58 @@ export default function App() {
   };
 
   // ---- keyboard -----------------------------------------------------------------------------
-  const actions: Record<Action, () => void> = {
+  const bindings = useBindings();
+  /** tmux-style prefix (Ctrl+B): armed until the next key or PREFIX_MS. */
+  const [prefix, setPrefix] = useState(false);
+  const prefixTimer = useRef(0);
+  /** The pane keyboard focus was moved to, outlined until the pointer is used. */
+  const [kbPane, setKbPane] = useState<string | null>(null);
+  /** The pane last clicked; arrows scroll there instead of moving the list cursor when it is the document or chat. */
+  const pointerPane = useRef<string | null>(null);
+  useEffect(() => {
+    const focusin = (e: FocusEvent) => setKbPane((p) => p && (paneOf(e.target as Element)?.dataset.pane ?? null));
+    const pointer = (e: PointerEvent) => {
+      setKbPane(null);
+      pointerPane.current = paneOf(e.target as Element)?.dataset.pane ?? null;
+    };
+    window.addEventListener("focusin", focusin);
+    window.addEventListener("pointerdown", pointer, true);
+    return () => {
+      window.removeEventListener("focusin", focusin);
+      window.removeEventListener("pointerdown", pointer, true);
+    };
+  }, []);
+
+  function paneKey(key: string) {
+    clearTimeout(prefixTimer.current);
+    setPrefix(false);
+    if (key === "Z") return actions.focus();
+    const p = paneAfter(key);
+    if (!p) return;
+    focusPane(p);
+    setKbPane(p.dataset.pane!);
+  }
+
+  const step = (d: 1 | -1) => {
+    const nav = paneOf(document.activeElement);
+    if (nav?.dataset.pane === "nav") {
+      stepNav(nav, d);
+      setKbPane("nav");
+    } else moveCursor(d);
+  };
+
+  const actions: Record<ActionId, () => void> = {
     palette: () => setPalette((p) => (p == null ? "" : null)),
     search: enterSearch,
-    next: () => (search ? stepHit(1) : step(1)),
-    prev: () => (search ? stepHit(-1) : step(-1)),
+    next: () => step(1),
+    prev: () => step(-1),
+    open: () => openCursor(false),
+    openPage: () => openCursor(true),
+    pane: () => {
+      setPrefix(true);
+      clearTimeout(prefixTimer.current);
+      prefixTimer.current = window.setTimeout(() => setPrefix(false), PREFIX_MS);
+    },
     favorite: () => current && toggleFavorite(current),
     read: () => current && toggleRead(current),
     focus: () => {
@@ -387,22 +480,36 @@ export default function App() {
       else setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
     },
   };
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
+  const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
+  keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.altKey || e.isComposing) return;
-      const action = KEYS[keyOf(e)];
+      if (e.defaultPrevented || e.isComposing) return;
+      const key = keyOf(e);
+      if (!key) return;
+      const s = keyState.current;
+      if (s.prefix) {
+        e.preventDefault();
+        return s.paneKey(key);
+      }
+      const action = actionFor(getBindings(), key);
       if (!action) return;
+      // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
+      if (s.overlays && action.id !== "palette") return;
       const t = e.target as HTMLElement;
+      // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
+      if (t.closest("[aria-roledescription='sortable']")) return;
       const inField = t.closest("input, textarea, select, [contenteditable='true']");
-      if (inField && !IN_FIELDS.has(action)) return;
+      if (inField && !action.inFields) return;
+      const focused = document.activeElement !== document.body ? paneOf(document.activeElement)?.dataset.pane : pointerPane.current;
+      if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) return;
       // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
-      if (inField && action === "escape") return (t as HTMLElement).blur();
-      if ((e.ctrlKey || e.metaKey) && action !== "palette") return;
-      // Plain keys on a focused button would also activate it; only Escape is shared.
-      if (action !== "escape" || !inField) e.preventDefault();
-      actionsRef.current[action]();
+      if (inField && action.id === "escape") return t.blur();
+      // Enter on a control activates it; on a list row or search hit it opens the cursor.
+      if ((action.id === "open" || action.id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) return;
+      // Plain keys on a focused button would also activate it.
+      e.preventDefault();
+      s.actions[action.id]();
     };
     window.addEventListener("keydown", down);
     return () => window.removeEventListener("keydown", down);
@@ -428,82 +535,96 @@ export default function App() {
     },
   } : undefined;
   const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
+  const splitter = (pane: Resizable, side: "left" | "right" = "left") => (
+    <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
+  );
   const nav = navOpen
-    ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
+    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
         onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
-        onCollapse={() => setNavOpen(false)} />
+        onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
 
   return (
     <CoverContext.Provider value={cover}>
-      <div className="app">
-        {screen === "settings"
-          ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
-          : nav}
-        {screen === "import" && <ImportView onImported={refresh} />}
-        {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
-          onShowFeed={(id) => setScope({ kind: "feed", id })} />}
-        {screen === "jobs" && <JobsView />}
-        {screen === "library" && search && listOpen && (
-          <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
-            hits={hitGroups} sel={hitSel} onSel={setHitSel} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-            scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
-            focusSeq={searchFocus} />
-        )}
-        {screen === "library" && !(search && listOpen) && (listOpen
-          ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
-              all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
-              translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-              onCollapse={() => setListOpen(false)} />
-          : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
-              count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
-        {screen === "library" && <main className="main">
-          {error && (
-            <div className="banner" role="alert">
-              <span className="grow">{error}</span>
-              <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
-            </div>
+      <div className="shell">
+        <TitleBar />
+        <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
+          {screen === "settings"
+            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
+            : nav}
+          {(screen === "import" || screen === "feeds" || screen === "jobs") && (
+            <main className="main" data-pane="doc">
+              {screen === "import" && <ImportView onImported={refresh} />}
+              {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
+                onShowFeed={(id) => setScope({ kind: "feed", id })} />}
+              {screen === "jobs" && <JobsView />}
+            </main>
           )}
-          {doc?.kind === "page" && (
-            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} covered={covers > 0}
-              onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
-              onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
+          {screen === "library" && search && listOpen && (
+            <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
+              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={doc?.kind === "reader" && doc.focus?.tone === "hit" ? { id: doc.id, block: doc.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
+              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
+              focusSeq={searchFocus} />
           )}
-          {doc?.kind === "reader" && view && (
-            <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
-              focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
-              onAsk={() => openChat("article")}
-              onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
-              onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
-              onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
-              onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
-              onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
-              onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
-              onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
-              onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })} />
+          {screen === "library" && search && listOpen && splitter("search")}
+          {screen === "library" && !(search && listOpen) && (listOpen
+            ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
+                all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
+                translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
+                onCollapse={() => setListOpen(false)} />
+            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
+                count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
+          {screen === "library" && !search && listOpen && splitter("list")}
+          {screen === "library" && <main className="main" data-pane="doc">
+            {error && (
+              <div className="banner" role="alert">
+                <span className="grow">{error}</span>
+                <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
+              </div>
+            )}
+            {doc?.kind === "page" && (
+              <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
+                onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+                onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
+            )}
+            {doc?.kind === "reader" && view && (
+              <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+                focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
+                onAsk={() => openChat("article")}
+                onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
+                onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
+                onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
+                onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
+                onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
+                onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
+                onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
+                onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })} />
+            )}
+            {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
+              : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
+                  onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
+          </main>}
+          {palette != null && (
+            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
+              onClose={() => setPalette(null)} />
           )}
-          {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
-            : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
-                onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
-        </main>}
-        {palette != null && (
-          <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
-            onClose={() => setPalette(null)} />
-        )}
-        {deleting && (
-          <ConfirmDialog title={deleting.page ? "Index から削除しますか？" : "記事を削除しますか？"} confirm="削除"
-            onConfirm={() => deleteArticle(deleting.article)} onCancel={() => setDeleting(null)}>
-            <p>「{deleting.article.title ?? deleting.article.original_url}」を削除します。</p>
-            <p>保存した HTML・本文・この記事だけの訳文・要約・タグ付け・画像・検索 index も削除され、元に戻せません。対話の回答に残る引用は消えません。</p>
-          </ConfirmDialog>
-        )}
-        {chatOpen && (
-          <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
-            current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
-        )}
+          {deleting && (
+            <ConfirmDialog title={deleting.page ? "Index から削除しますか？" : "記事を削除しますか？"} confirm="削除"
+              onConfirm={() => deleteArticle(deleting.article)} onCancel={() => setDeleting(null)}>
+              <p>「{deleting.article.title ?? deleting.article.original_url}」を削除します。</p>
+              <p>保存した HTML・本文・この記事だけの訳文・要約・タグ付け・画像・検索 index も削除され、元に戻せません。対話の回答に残る引用は消えません。</p>
+            </ConfirmDialog>
+          )}
+          {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+          {chatOpen && splitter("chat", "right")}
+          {chatOpen && (
+            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
+              current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
+          )}
+        </div>
       </div>
     </CoverContext.Provider>
   );

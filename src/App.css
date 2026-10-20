@@ -1,16 +1,25 @@
 
 /* ---- shell: nav | list | main | chat ---------------------------------------------------- */
-.app { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
-.main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--doc); }
+/* Pane widths come from the splitters; when the window is too narrow for them, the panes give way down to their minimums before the document does. */
+.shell { height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+.app { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
+
+/* Title bar of the undecorated window: drag region plus Windows 11 caption buttons (46 × 32). */
+.titlebar { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; background: var(--panel); border-bottom: 1px solid var(--line); user-select: none; }
+.tb-icon { display: block; flex: none; }
+.tb-name { font-size: 12px; font-weight: 600; color: var(--ink2); }
+.titlebar .cap { width: 46px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
+.titlebar .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+.titlebar .cap:hover { background: var(--hover); color: var(--ink); }
+.titlebar .cap:active { background: var(--active); }
+.titlebar .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
+.titlebar .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
+.main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
 .banner { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px 6px 14px; background: var(--err-soft); color: var(--err-ink); font-size: 12.5px; border-bottom: 1px solid var(--err-line); }
 .doc-empty { margin: auto; font-size: 13px; }
 
-.nav { width: 228px; flex: none; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
-.nav-top { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }
-.brand { font-weight: 600; font-size: 14px; letter-spacing: .01em; margin-right: auto; }
-.logo { width: 18px; height: 18px; flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
-.logo i { border: 1.5px solid var(--ink); border-radius: 2px; }
-.logo i.f { background: var(--ink); }
+.nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }
+.nav-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 0 8px; }
 .nav-search { display: flex; align-items: center; gap: 8px; height: 30px; flex: none; padding: 0 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--ink3); font-size: 12.5px; text-align: left; }
 .nav-search:hover { border-color: var(--chip-hover); }
 .nav-search.on { border-color: var(--ink); color: var(--ink); }
@@ -24,7 +33,7 @@
 .nav-rail { width: 48px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-rail .ib.acc { color: var(--acc); }
 
-.list { width: 396px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg); border-right: 1px solid var(--line); }
+.list { width: var(--list-w); flex: 0 1 auto; min-width: 300px; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
 .list-h { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 .list-title { display: flex; align-items: baseline; gap: 10px; }
 .list-title h1 { margin: 0; font-size: 17px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -48,6 +57,8 @@
 .row:hover { background: var(--blk-hover); }
 .row.sel { background: var(--sel); }
 .row.sel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+/* The keyboard cursor, when it is not on the open row (that one already shows as .sel). */
+.row.cur:not(.sel) { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
 .row .t { font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--ink); text-wrap: pretty; }
 .row.read .t { font-weight: 400; color: var(--ink2); }
 .row .dot { position: absolute; left: 10px; top: 17px; width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
@@ -107,6 +118,21 @@
 
 
 
+/* ---- keyboard: the pane focus moved to (Ctrl+B …), the armed prefix -------------------------- */
+.app[data-kb-pane="nav"] [data-pane="nav"], .app[data-kb-pane="list"] [data-pane="list"],
+.app[data-kb-pane="doc"] [data-pane="doc"], .app[data-kb-pane="chat"] [data-pane="chat"] { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
+.doc-scroll:focus { outline: none; }
+.prefix-hint { position: fixed; left: 12px; bottom: 12px; z-index: 70; display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 12px; box-shadow: 0 10px 30px var(--shadow); }
+.prefix-hint .kbd { background: transparent; border-color: var(--ink3); color: var(--on-ink); }
+
+/* ---- pane splitters (Conversation board's dock divider) ------------------------------------ */
+.splitter { width: 5px; flex: none; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); background: var(--doc); cursor: col-resize; touch-action: none; }
+.splitter.at-nav { background: var(--bg); }
+.splitter span { width: 1px; height: 28px; background: var(--line2); }
+.splitter:hover span, .splitter.on span, .splitter:focus-visible span { background: var(--ink3); }
+.splitter:focus-visible { outline-offset: -2px; }
+.drag-shield { position: fixed; inset: 0; z-index: 60; cursor: col-resize; }
+
 /* ---- command palette (Palette board) ------------------------------------------------------- */
 .pal-scrim { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding: 88px 40px 0; background: var(--scrim); }
 .pal { width: 660px; max-width: 100%; max-height: calc(100vh - 128px); display: flex; flex-direction: column; overflow: hidden; background: var(--raise); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 24px 70px var(--shadow), 0 2px 8px var(--shadow2); }
@@ -134,7 +160,7 @@
 .pal .ft .r { margin-left: auto; }
 
 /* ---- search mode of the list pane (Search board) ------------------------------------------ */
-.list.search { width: 520px; }
+.list.search { width: var(--search-w); min-width: 380px; }
 .list.search .list-h { padding: 12px 16px; }
 .search-q { display: flex; align-items: center; gap: 8px; }
 .search-q .input { flex: 1; min-width: 0; height: 34px; font-size: 15px; }
@@ -158,6 +184,7 @@
 .hit { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; width: calc(100% + 20px); margin: 6px -10px 0; padding: 8px 10px; border: 0; border-radius: 6px; background: none; text-align: left; color: inherit; }
 .hit:hover { background: var(--bar); }
 .hit.sel { background: var(--hit-sel); }
+.hit.cur { box-shadow: inset 0 0 0 1.5px var(--acc); }
 .hit .sh { font-size: 11.5px; color: var(--ink3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hit .tx { grid-column: 1 / -1; font-size: 13px; line-height: 1.6; color: var(--ink2); }
 .hit .tx.tr { color: var(--ink3); font-size: 12.5px; }
@@ -174,7 +201,9 @@
 @container (max-width: 800px) { .docbar .tb .lbl { display: none; } }
 @container (max-width: 700px) { .docbar .hint-keys { display: none; } }
 @container (max-width: 720px) { .docbar { gap: 6px; } .docbar .vsep { display: none; } }
-.docbar { position: relative; height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); white-space: nowrap; }
+.docbar { position: relative; height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+.docbar > * { flex-shrink: 0; }
+.docbar > .url-pill { flex-shrink: 1; }
 .docbar-r { margin-left: auto; display: flex; align-items: center; gap: 2px; }
 .hint-keys { font-size: 11.5px; color: var(--ink3); }
 .tr-prog { display: flex; flex-direction: column; gap: 3px; width: 150px; font-size: 11.5px; }
@@ -259,9 +288,7 @@
 
 
 /* ---- chat dock (Conversation board) ----------------------------------------------------------- */
-.dock-divider { width: 5px; flex: none; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); background: var(--doc); }
-.dock-divider span { width: 1px; height: 28px; background: var(--line2); }
-.chat { width: 430px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--raise); }
+.chat { width: var(--chat-w); flex: 0 1 auto; min-width: 320px; display: flex; flex-direction: column; min-height: 0; background: var(--raise); }
 .chat .push { margin-left: auto; }
 .chat-h { height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
 .thread-btn { display: flex; align-items: center; gap: 6px; max-width: 230px; padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 600; color: var(--ink); }

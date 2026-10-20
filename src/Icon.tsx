@@ -1,3 +1,5 @@
+import { keyLabel, useBindings, type ActionId } from "./keys";
+
 // Stroke icons copied from the design boards (24×24 viewBox, styled by .ico).
 const PATHS = {
   plus: <path d="M12 5v14M5 12h14" />,
@@ -47,3 +49,9 @@ export function Dif({ d }: { d: number | null }) {
 }
 
 export const Kbd = ({ children }: { children: string }) => <span className="kbd">{children}</span>;
+
+/** The first key bound to a shell action (Settings › ショートカット), as a key chip. */
+export function ActionKey({ id }: { id: ActionId }) {
+  const k = useBindings()[id][0];
+  return k ? <Kbd>{keyLabel(k)}</Kbd> : null;
+}

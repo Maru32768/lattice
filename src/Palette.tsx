@@ -72,7 +72,8 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
   const [known, setKnown] = useState<ArticleRow | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  useCover(true);
+  const scrim = useRef<HTMLDivElement>(null);
+  useCover(scrim, true);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     input.current?.focus();
@@ -222,7 +223,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
   const where = [scopeLabel(scope, all), ...activeDims(facets).map((d) => facetLabel(facets, d, all))].join(" · ");
   let lastGroup = "";
   return (
-    <div className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="pal" role="dialog" aria-modal="true" aria-label="コマンドパレット" onKeyDown={keys}>
         <label className="pal-q">
           <Icon name="search" />
