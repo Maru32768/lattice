@@ -36,6 +36,11 @@ const store = {
   } as R2Status,
 };
 
+/** Rejects like the backend: with its coded message (lattice-core msg.rs), which the UI translates. */
+function reject(code: string, params: Record<string, unknown> = {}): never {
+  throw JSON.stringify({ code, params });
+}
+
 const article = (id: number) => {
   const a = articles.find((x) => x.id === id);
   if (!a) throw new Error(`no article ${id}`);
@@ -187,7 +192,7 @@ export const handlers = {
   },
   review_grade: ({ questionId }: { questionId: number }) => {
     const c = cards.get(questionId);
-    if (!c) throw new Error("このカードは復習から外されています");
+    if (!c) reject("quiz.cardRemoved");
     c.due = false;
   },
   review_remove_card: ({ questionId }: { questionId: number }) => void cards.delete(questionId),
@@ -198,7 +203,7 @@ export const handlers = {
   review_overview: reviewOverview,
   get_review_settings: (): ReviewSettings => store.review,
   set_review_settings: ({ settings }: { settings: ReviewSettings }) => {
-    if (settings.min_interval_minutes < 1) throw new Error("最短間隔は 1 分〜30 日です");
+    if (settings.min_interval_minutes < 1) reject("quiz.minRange");
     store.review = settings;
   },
   search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),

@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::msg;
 use crate::store::{Store, sha256_hex};
 
 pub const MAX_CHARS: usize = 2000;
@@ -26,10 +27,14 @@ pub fn load(store: &Store) -> Result<Settings, String> {
 
 /// Validates all three before storing any; blank texts are removed.
 pub fn save(store: &Store, s: &Settings) -> Result<(), String> {
-    let fields =
-        [(PROFILE_SETTING, "自分について", &s.profile), (SUMMARY_SETTING, "要約の追加の指示", &s.summary), (CHAT_SETTING, "対話の追加の指示", &s.chat)];
-    if let Some((_, name, _)) = fields.iter().find(|(_, _, t)| t.trim().chars().count() > MAX_CHARS) {
-        return Err(format!("{name}は {MAX_CHARS} 文字までです"));
+    let fields = [
+        (PROFILE_SETTING, "instructions.profile", &s.profile),
+        (SUMMARY_SETTING, "instructions.summary", &s.summary),
+        (CHAT_SETTING, "instructions.chat", &s.chat),
+    ];
+    if let Some((_, field, _)) = fields.iter().find(|(_, _, t)| t.trim().chars().count() > MAX_CHARS) {
+        // The field name is itself a code, translated by the UI too.
+        return Err(msg!("instructions.tooLong", field = crate::msg::coded(field, Default::default()), max = MAX_CHARS));
     }
     for (key, _, text) in fields {
         let text = text.trim();
@@ -98,7 +103,7 @@ mod tests {
         save(&s, &Settings { profile: " DB エンジニア ".into(), summary: "".into(), chat: "箇条書きで".into() }).unwrap();
         assert_eq!(load(&s).unwrap(), Settings { profile: "DB エンジニア".into(), summary: "".into(), chat: "箇条書きで".into() });
         let long = Settings { profile: "p".into(), summary: "x".repeat(MAX_CHARS + 1), chat: String::new() };
-        assert!(save(&s, &long).unwrap_err().contains("要約"));
+        assert!(save(&s, &long).unwrap_err().contains("instructions.summary"), "the error names the field");
         assert_eq!(load(&s).unwrap().profile, "DB エンジニア", "nothing stored when one field is too long");
         save(&s, &Settings::default()).unwrap();
         assert!(s.setting(PROFILE_SETTING).unwrap().is_none(), "blank is removed");

@@ -5,6 +5,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
+use crate::msg;
 use crate::store::Store;
 
 const KEEP: &str = "backup.keep_generations";
@@ -19,7 +20,7 @@ pub struct LocalBackup {
 }
 
 pub fn check_keep(n: u64) -> Result<(), String> {
-    if (1..=MAX_KEEP).contains(&n) { Ok(()) } else { Err(format!("保持する世代数は 1〜{MAX_KEEP} です")) }
+    if (1..=MAX_KEEP).contains(&n) { Ok(()) } else { Err(msg!("backup.keepRange", max = MAX_KEEP)) }
 }
 
 pub fn keep_generations(store: &Store) -> Result<u64, String> {
@@ -54,7 +55,7 @@ pub fn backup_local(store: &Store, dir: &Path, now: u64) -> Result<LocalBackup, 
         }
         Err(e) => {
             log::warn!("pruning local backups failed: {e}");
-            Some(format!("古いバックアップの削除に失敗しました: {e}"))
+            Some(msg!("backup.pruneFailed", error = e.to_string()))
         }
     };
     Ok(LocalBackup { path: path.display().to_string(), warning })

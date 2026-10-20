@@ -7,6 +7,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::extract::extract;
 use crate::fetch::Fetched;
 use crate::ingest::{self, RENDERED_CONTENT_TYPE};
+use crate::msg;
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::{classify, embed};
 
@@ -64,11 +65,11 @@ pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<bool, String> {
 pub fn finish(store: &Store, article_id: i64, rendered: Result<(String, String), String>, embed_model: &str) -> Result<i64, String> {
     let (url, html) = match rendered {
         Ok(r) => r,
-        Err(e) => return record_failure(store, article_id, &format!("ページの描画に失敗しました: {e}")),
+        Err(e) => return record_failure(store, article_id, &msg!("render.failed", error = e)),
     };
     let rendered_len: i64 = match extract(&html, &url) {
         Ok(ir) => ir.blocks.iter().map(|b| b.text.chars().count() as i64).sum(),
-        Err(e) => return record_failure(store, article_id, &format!("描画後のページからも本文を抽出できませんでした: {e}")),
+        Err(e) => return record_failure(store, article_id, &msg!("render.noText", error = e.to_string())),
     };
     let current: i64 = store
         .conn()
@@ -77,7 +78,7 @@ pub fn finish(store: &Store, article_id: i64, rendered: Result<(String, String),
         })
         .map_err(err)?;
     if rendered_len <= current {
-        return record_failure(store, article_id, "描画しても本文は増えませんでした");
+        return record_failure(store, article_id, &msg!("render.noGain"));
     }
     let id = ingest::store_fetched(store, article_id, &Fetched { final_url: url, status: 200, content_type: Some(RENDERED_CONTENT_TYPE.into()), html })?;
     classify::enqueue_if_auto(store, id)?;
@@ -155,7 +156,7 @@ mod tests {
         finish(&s, id, Ok(("https://example.com/app".into(), page("<p>Accept cookies?</p>"))), "m").unwrap();
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert_eq!((v.article.extraction_status.as_str(), v.blocks.len()), ("ok", before));
-        assert_eq!(v.article.last_error.as_deref(), Some("描画しても本文は増えませんでした"));
+        assert_eq!(v.article.last_error.as_deref(), Some(msg!("render.noGain").as_str()));
         assert!(!s.latest_snapshot(id).unwrap().unwrap().html().contains("Accept cookies"), "not stored");
     }
 }

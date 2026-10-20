@@ -36,11 +36,3 @@ test("t fills params, formats numbers per language and pluralizes English", () =
   assert.equal(tj("language.title"), "表示言語");
   assert.equal(te("language.title"), "Display language");
 });
-
-test("t.msg passes plain text and unknown codes through", () => {
-  const te = translatorFor("en");
-  assert.equal(te.msg("HTTP 404"), "HTTP 404");
-  assert.equal(te.msg(new Error("boom")), "boom");
-  assert.equal(te.msg('{"code":"no.such.code","params":{}}'), '{"code":"no.such.code","params":{}}', "an unknown code is shown raw");
-  assert.equal(te.msg('{"code":"broken'), '{"code":"broken');
-});

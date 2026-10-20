@@ -12,6 +12,7 @@ use crate::embed::EmbeddingProvider;
 use crate::instructions;
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
+use crate::msg;
 use crate::search;
 use crate::segments::Target;
 use crate::store::{ArticleFilter, Result, Store};
@@ -25,7 +26,6 @@ const MAX_BLOCK_CHARS: usize = 1_500;
 const HISTORY_TURNS: usize = 3;
 const HISTORY_ANSWER_CHARS: usize = 1_000;
 const MAX_QUESTION_CHARS: usize = 4_000;
-const NO_SOURCES: &str = "この範囲の保存済み記事には、質問に関係する箇所が見つかりませんでした。範囲を広げるか、質問の言い方を変えてみてください。";
 
 /// How much of the scope one question sends (Settings › 要約・対話). Cost and latency grow with it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,7 +283,7 @@ pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
     let e = |e: rusqlite::Error| e.to_string();
     let question = question.trim();
     if question.is_empty() || question.chars().count() > MAX_QUESTION_CHARS {
-        return Err("質問が空か、長すぎます".into());
+        return Err(msg!("chat.badQuestion"));
     }
     let history = match thread_id {
         Some(t) => store.chat_messages(t).map_err(e)?,
@@ -299,7 +299,8 @@ pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
         }
     };
     if sources.is_empty() {
-        return store.save_chat_message(thread_id, question, NO_SOURCES, Vec::new(), scope, "none", None, None).map_err(e);
+        // Mode "none" answers are the app's own message, translated by the UI.
+        return store.save_chat_message(thread_id, question, &msg!("chat.noSources"), Vec::new(), scope, "none", None, None).map_err(e);
     }
     let (input, sent) = input_text(&history, &sources, question, limits.context_chars);
     let system = instructions::load(store)?.for_chat().system(RULES, UNTRUSTED);
@@ -579,7 +580,7 @@ mod tests {
         // An empty scope answers without calling the model.
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
         let m = ask(&s, &llm, &Letters, None, "checkpoints", none).await.unwrap();
-        assert_eq!((m.mode.as_str(), m.answer.as_str(), m.citations.len()), ("none", NO_SOURCES, 0));
+        assert_eq!((m.mode.as_str(), m.answer.as_str(), m.citations.len()), ("none", msg!("chat.noSources").as_str(), 0));
         assert_eq!(llm.inputs.lock().unwrap().len(), 2);
     }
 

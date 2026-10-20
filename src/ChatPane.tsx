@@ -22,7 +22,8 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
   const byN = new Map(m.citations.map((c) => [c.n, c]));
   return (
     <div className="answer">
-      <p>{splitCitations(m.answer, new Set(byN.keys())).map((p, i) =>
+      {/* Mode "none": no sources in scope, and the answer is the backend's coded message. */}
+      <p>{splitCitations(m.mode === "none" ? t.msg(m.answer) : m.answer, new Set(byN.keys())).map((p, i) =>
         typeof p === "string" ? p : <Cite key={i} c={byN.get(p.n)!} onCite={onCite} />)}</p>
       {m.citations.length > 0 && (
         <ol className="sources">

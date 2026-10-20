@@ -13,6 +13,7 @@ use crate::claude::ClaudeCli;
 use crate::codex::CodexCli;
 use crate::gemini::Gemini;
 use crate::llm::{Completion, Effort, LlmError, LlmProvider};
+use crate::msg;
 use crate::openai::OpenAi;
 use crate::store::{SECRET_PREFIX, Store};
 
@@ -76,11 +77,11 @@ pub fn load_config(store: &Store) -> Result<Vec<ChainEntry>, String> {
 /// Validates and stores the chain; returns it normalized (trimmed models, empty = default).
 pub fn save_config(store: &Store, entries: Vec<ChainEntry>) -> Result<Vec<ChainEntry>, String> {
     if entries.is_empty() || entries.len() > MAX_ENTRIES {
-        return Err(format!("1〜{MAX_ENTRIES} 個のモデルを指定してください"));
+        return Err(msg!("chain.entries", max = MAX_ENTRIES));
     }
     for (i, e) in entries.iter().enumerate() {
         if let Some(x) = e.effort.filter(|x| !e.kind.efforts().contains(x)) {
-            return Err(format!("{} 段目のプロバイダは effort「{}」に対応していません", i + 1, x.as_str()));
+            return Err(msg!("chain.effortUnsupported", step = i + 1, effort = x.as_str()));
         }
     }
     let entries: Vec<ChainEntry> =
@@ -100,7 +101,7 @@ pub fn api_key(store: &Store, kind: ProviderKind) -> Result<Option<(String, &'st
 }
 
 pub fn set_api_key(store: &Store, kind: ProviderKind, key: Option<&str>) -> Result<(), String> {
-    let (setting, _) = kind.key_names().ok_or("この provider に API キーはありません")?;
+    let (setting, _) = kind.key_names().ok_or_else(|| msg!("chain.noApiKey"))?;
     store.set_setting(&setting, key.map(str::trim).filter(|k| !k.is_empty())).map_err(|e| e.to_string())
 }
 

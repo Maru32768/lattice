@@ -9,6 +9,7 @@ use rusqlite::{OptionalExtension, params};
 use serde_json::{Value, json};
 
 use crate::llm::LlmProvider;
+use crate::msg;
 use crate::store::{Store, TagCount};
 
 pub const JOB_TYPE: &str = "classify";
@@ -105,12 +106,12 @@ pub fn list_genres(store: &Store) -> Result<Vec<TagCount>, String> {
 pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
     let to = clean(to);
     if to.is_empty() {
-        return Err("ジャンル名が空です".into());
+        return Err(msg!("classify.emptyName"));
     }
     let mut c = store.conn();
     let tx = c.transaction().map_err(err)?;
     let id_of = |name: &str| tx.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get::<_, i64>(0)).optional();
-    let from_id = id_of(from).map_err(err)?.ok_or_else(|| format!("ジャンル「{from}」がありません"))?;
+    let from_id = id_of(from).map_err(err)?.ok_or_else(|| msg!("classify.noGenre", name = from))?;
     match id_of(&to).map_err(err)? {
         Some(to_id) if to_id != from_id => {
             tx.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
@@ -125,7 +126,7 @@ pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
 pub fn delete_genre(store: &Store, name: &str) -> Result<(), String> {
     let n =
         store.conn().execute("DELETE FROM genres WHERE name = ?1 AND NOT EXISTS (SELECT 1 FROM articles WHERE genre_id = genres.id)", [name]).map_err(err)?;
-    if n == 0 { Err(format!("ジャンル「{name}」は記事があるか、存在しません")) } else { Ok(()) }
+    if n == 0 { Err(msg!("classify.notDeletable", name = name)) } else { Ok(()) }
 }
 
 /// The user's choice, pinned against auto runs. Empty clears the genre and unpins it.

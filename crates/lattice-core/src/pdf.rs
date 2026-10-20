@@ -13,6 +13,7 @@ use pdf_extract::{Document, MediaBox, Object, OutputDev, OutputError, Transform}
 use crate::extract::collapse;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
+use crate::msg;
 use crate::store::{NewSnapshot, Store, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
@@ -72,7 +73,7 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
     let front = take_front_matter(&mut lines, body, half);
     let blocks = to_blocks(&lines, body);
     if blocks.is_empty() {
-        return Err("PDF から本文を取り出せませんでした（文字のない画像だけの PDF には対応していません）".into());
+        return Err(msg!("pdf.noText"));
     }
     let non_empty = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
     let first_line = || blocks.first().map(|b| b.text.chars().take(80).collect::<String>());
@@ -121,13 +122,13 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
         let created = info(&doc, b"CreationDate").and_then(|d| pdf_date(&d));
         Ok(Parsed { pages, title: info(&doc, b"Title"), author: info(&doc, b"Author"), created })
     })
-    .unwrap_or_else(|_| Err("PDF の解析に失敗しました".into()))
+    .unwrap_or_else(|_| Err(msg!("pdf.parseFailed")))
 }
 
 /// `skip_forms`: figures are form XObjects, whose labels are noise, and pdf-extract places text
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
-    let fail = |e: &dyn std::fmt::Debug| format!("PDF を読み込めません: {e:?}");
+    let fail = |e: &dyn std::fmt::Debug| msg!("pdf.unreadable", error = format!("{e:?}"));
     let mut doc = Document::load_mem(bytes).map_err(|e| fail(&e))?;
     if doc.is_encrypted() {
         doc.decrypt("").map_err(|e| fail(&e))?;

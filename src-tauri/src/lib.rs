@@ -27,6 +27,7 @@ use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
 use browser::{Browser, lock};
+use lattice_core::msg;
 use location::{Kind, Location};
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
@@ -174,9 +175,9 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
     let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > markdown::MAX_FILE_BYTES {
-        return Err("ファイルが大きすぎます（10 MB まで）".into());
+        return Err(msg!("file.tooLarge", max = markdown::MAX_FILE_BYTES / 1024 / 1024));
     }
-    let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| "UTF-8 のテキストファイルではありません")?;
+    let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| msg!("file.notUtf8"))?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
     let id = markdown::import(&app.store, &text, name.as_deref(), path.parent())?;
     indexed(&app, id).map(Some)
@@ -197,7 +198,7 @@ async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Resul
     let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > pdf::MAX_BYTES as u64 {
-        return Err("ファイルが大きすぎます（50 MB まで）".into());
+        return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
     }
     let bytes = std::fs::read(&path).map_err(err)?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -645,7 +646,7 @@ struct PickedDir {
 async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Option<PickedDir>, String> {
     use tauri_plugin_dialog::DialogExt;
     if loc.kind == Kind::Portable {
-        return Err("ポータブル版はデータを exe の隣の data フォルダに保存します".into());
+        return Err(msg!("location.portable"));
     }
     let (tx, rx) = tokio::sync::oneshot::channel();
     let mut dialog = handle.dialog().file().set_title(ui_text(&app, "データの保存場所を選ぶ", "Choose where to keep the data")).set_directory(&app.data_dir);
@@ -668,13 +669,13 @@ async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: ta
 /// Lattice data already in it. The current folder is left as it is.
 #[tauri::command]
 async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool) -> Result<String, String> {
-    let target = lock(&app.picked_dir).take().ok_or("フォルダを選び直してください")?;
+    let target = lock(&app.picked_dir).take().ok_or_else(|| msg!("location.pickAgain"))?;
     let has_data = target.join(location::DB_FILE).exists();
     if copy && has_data {
-        return Err("選んだフォルダには既に Lattice のデータがあります".into());
+        return Err(msg!("location.hasData"));
     }
     if !copy && !has_data {
-        return Err("選んだフォルダに Lattice のデータがありません".into());
+        return Err(msg!("location.noData"));
     }
     if copy {
         let (store, from, to) = (app.store.clone(), app.data_dir.clone(), target.clone());
@@ -683,7 +684,7 @@ async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool)
     }
     let default_dir = handle.path().app_data_dir().map_err(err)?;
     location::write_bootstrap(&default_dir, &target)
-        .map_err(|e| format!("保存場所を {} に記録できませんでした: {e}", default_dir.join(location::BOOTSTRAP_FILE).display()))?;
+        .map_err(|e| msg!("location.recordFailed", path = default_dir.join(location::BOOTSTRAP_FILE).display().to_string(), error = e.to_string()))?;
     Ok(target.display().to_string())
 }
 

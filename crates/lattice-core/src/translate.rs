@@ -4,6 +4,7 @@
 
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
+use crate::msg;
 use crate::segments::{self, PROMPT_VERSION, Target, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
 
@@ -32,7 +33,7 @@ pub fn instructions(store: &Store) -> Result<String, String> {
 pub fn set_instructions(store: &Store, text: &str) -> Result<(), String> {
     let text = text.trim();
     if text.chars().count() > MAX_INSTRUCTION_CHARS {
-        return Err(format!("追加の指示は {MAX_INSTRUCTION_CHARS} 文字までです"));
+        return Err(msg!("translate.instructionsTooLong", max = MAX_INSTRUCTION_CHARS));
     }
     store.set_setting(INSTRUCTIONS_SETTING, (!text.is_empty()).then_some(text)).map_err(|e| e.to_string())
 }
