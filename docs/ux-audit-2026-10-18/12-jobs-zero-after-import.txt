@@ -1,0 +1,233 @@
+Window: "Lattice", App: lattice.exe.
+	0 window Lattice Secondary Actions: Raise
+		1 pane
+			8 pane Lattice
+				9 pane (disabled)
+				10 region Lattice - Web content
+					11 region
+						12 region
+						13 region
+							14 region
+								16 document Lattice Value: http://localhost:1420/ ID: RootWebArea
+									17 group ID: root
+										18 navigation ナビゲーション
+											19 text Lattice
+											20 button 追加（URL・一括インポート・フィード） Description: 追加（URL・一括インポート・フィード）
+											21 button ナビゲーションを閉じる Description: ナビゲーションを閉じる
+											22 button 検索・コマンド・URL Ctrl K
+											23 text ライブラリ
+											24 button 最近追加 27
+											25 button 未読 26
+											26 button お気に入り 1
+											27 button すべての記事 27
+											28 text ジャンル
+											29 button 編集
+											65 button AI/ML 10
+											66 button Other 4
+											67 button Networking 2
+											68 button Web 2
+											69 button Security 2
+											70 button Distributed Systems 1
+											71 button 他 2 ジャンル
+											30 text ソース
+											31 button 管理
+											32 button フィード 1
+											72 button LINEヤフー Tech Blog (LY Corporation Tech Blog 19
+											33 button 手動追加 7
+											34 text ツール
+											35 toggle button 対話
+											36 button 処理状況
+											37 button 一括インポート
+											38 button 設定
+										271 main
+											272 section header
+												273 heading 処理状況
+												274 text ライブ · イベント + 10 秒ごと
+												275 text 失敗は間隔を空けて自動再試行、
+												276 text 5
+												277 text 回で停止
+											278 table
+												279 row
+													280 column header 種類
+													281 column header 待機
+													282 column header 再試行待ち
+													283 column header 実行中
+													284 column header 失敗
+													285 column header 補足
+													286 column header 操作
+												287 row
+													288 item ingest
+														289 group Description: 取得
+													290 item 0
+													291 item 0
+													292 item 0
+													293 item 0
+													294 item
+													295 item
+												296 row
+													297 item render
+														298 group Description: 描画
+													299 item 0
+													300 item 0
+													301 item 0
+													302 item 0
+													303 item 裏描画 · 最大約 20 秒/件
+													304 item
+												305 row
+													306 item images
+														307 group Description: 画像
+													308 item 0
+													309 item 0
+													310 item 0
+													311 item 0
+													312 item
+													313 item
+												314 row
+													315 item embed
+														316 group Description: 検索 index
+													317 item 0
+													318 item 0
+													319 item 0
+													320 item 0
+													321 item
+													322 item
+												323 row
+													324 item translate
+														325 group Description: 翻訳
+													326 item 0
+													327 item 0
+													328 item 0
+													329 item 0
+													330 item
+													331 item
+												332 row
+													333 item summarize
+														334 group Description: 要約
+													335 item 0
+													336 item 0
+													337 item 0
+													338 item 0
+													339 item
+													340 item
+												341 row
+													342 item classify
+														343 group Description: 分類
+													344 item 0
+													345 item 0
+													346 item 0
+													347 item 0
+													348 item 最大 20 件を 1 呼び出しに
+													349 item
+											350 text 処理中・失敗したジョブはありません。
+								15 region
+		2 title bar (settable, string) Value: Lattice
+			3 menu bar System ID: MenuBar
+				4 menu item System
+			5 button Minimize
+			6 button Maximize
+			7 button Close
+
+Document text: ```
+Lattice
+追加（URL・一括インポート・フィード）
+ナビゲーションを閉じる
+検索・コマンド・URL検索・コマンド…
+Ctrl K
+ライブラリ
+最近追加
+27
+未読
+26
+お気に入り
+1
+すべての記事
+27
+ジャンル
+編集
+AI/ML
+10
+Other
+4
+Networking
+2
+Web
+2
+Security
+2
+Distributed Systems
+1
+他 2 ジャンル
+ソース
+管理
+フィード
+1
+LINEヤフー Tech Blog (LY Corporation Tech BlogLINEヤフー Tech Blog (L…
+19
+手動追加
+7
+ツール
+対話
+処理状況
+一括インポート
+設定
+処理状況
+ライブ · イベント + 10 秒ごと
+失敗は間隔を空けて自動再試行、5 回で停止
+種類
+待機
+再試行待ち
+実行中
+失敗
+補足
+操作
+ingest
+0
+0
+0
+0
+￼
+￼
+render
+0
+0
+0
+0
+裏描画 · 最大約 20 秒/件
+￼
+images
+0
+0
+0
+0
+￼
+￼
+embed
+0
+0
+0
+0
+￼
+￼
+translate
+0
+0
+0
+0
+￼
+￼
+summarize
+0
+0
+0
+0
+￼
+￼
+classify
+0
+0
+0
+0
+最大 20 件を 1 呼び出しに
+￼
+処理中・失敗したジョブはありません。
+```

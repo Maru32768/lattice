@@ -54,7 +54,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G26 | カスタムタイトルバー | 進行中 | ウィンドウの枠を消し、アプリが描くタイトルバーにする。 |
 | G27 | 環境変数を mise で管理 | 進行中 | `mise.local.toml`（git 管理外）に API キーを書く。 |
 | G28 | 英語レベル（CEFR A1〜C2） | 後 | レベルを設定し、翻訳に使う。案: 翻訳時に各文がレベルを超えるかを LLM に判定させ、混在モードに「レベル基準」を足す。または訳文の語彙・注釈をレベルに合わせる。 |
-| G29 | 再翻訳 | 後 | 記事の訳を捨てて訳し直す。プロンプトやモデルを変えたあとに使う。 |
+| G29 | 再翻訳 | 済 | Reader の ⋯ と、全部訳し終えたときの翻訳状況の横に「訳し直す」。今の訳先（cache key）の訳をこの記事の段落の分だけ消して translate job を積み直す。50 block を超えるときだけ確認する。 |
 | G30 | ライセンス表記 | 済 | `LICENSE`（MIT）と `THIRD_PARTY_NOTICES.md`（Mazelingo の MIT 表記、同梱フォントの OFL）。依存ライブラリのライセンス一覧の自動生成は G41 と一緒に行う。 |
 | G31 | 論文 PDF の取り込み | 後 | PDF からテキストと構造を抽出して IR に変換する。 |
 | G32 | 理解度チェックのクイズと間隔反復 | 後 | 記事ごとにクイズを生成する。繰り返し出題は手動で追加した記事だけ。再出題の間隔は Anki（SM-2 系）に合わせ、最短間隔は要調整。 |
@@ -70,11 +70,11 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G42 | 静的解析 | 後 | clippy（`-D warnings`）、ESLint、型チェックを CI に入れる。 |
 | G43 | 対話の入力欄で Vim キーバインド | 後 | |
 | G44 | アプリ全体を Vim 風に操作 | 後 | Chrome の Vimium のように、リンクのヒント表示などで操作する。G9 のキー設定の上に作る。 |
-| G45 | モデルごとの effort 設定 | 後 | provider chain の各段に reasoning effort を持たせる（対応する provider だけ）。 |
+| G45 | モデルごとの effort 設定 | 済 | chain の各段に任意の effort（`low`〜`max`、Gemini は `low`〜`high`）。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`（既定は従来どおり low）、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定は provider の既定で、保存済みの chain はそのまま読める。 |
 | G46 | タスクバーに未読数バッジ | 済 | 未読数を描いた画像を Windows の overlay icon にする（99+ まで、0 で消す）。UI の未読数の変化を 500 ms まとめて backend に渡す。設定「タスクバー」でオフにできる（design-review §16）。 |
 | G47 | スマホから使える簡易版 | 将来 | 同期の仕組みが前提（R2 バックアップの延長か、別の仕組みか）。 |
 | G48 | Markdown の取り込みと表示 | 済 | インポート画面の「Markdown」タブで、ファイルか貼り付けたテキストを 1 つの記事にする（pulldown-cmark で IR に変換、HTML タグは捨てる）。URL の代わりに `local:md/<sha256>` を持ち、同じ本文は重複しない。Page・再試行・描画はなし。URL の画像は保存し、相対パスの画像は選んだファイルのフォルダからだけ読む（design-review §5）。 |
-| G49 | 対話・要約のカスタム指示 | 後 | 自分の志向（関心・前提知識）を与え、要約や回答に反映させる。対話ペインごとか全体共通かは要検討。G25 と同じ仕組みにできる。 |
+| G49 | 対話・要約のカスタム指示 | 済 | 設定 › 要約・対話 に全体共通の「自分について」（2000 文字まで）と、要約・対話それぞれの追加の指示。system prompt の組み込みの規則の後、untrusted input の注意の前に入れる。指示を変えると作成済みの要約を stale として表示する。 |
 | G50 | Page 表示でページにフォーカスがあるとショートカットが効かない | 済 | アプリが転送するキーの一覧（`pageKeys`）を backend 経由で overlay に渡し（起動時・ページ読み込み時・変更時）、overlay がページの keydown（capture）で拾って `overlay_key` で送る。`Ctrl+K`・`Ctrl+B` とその次のキーはページの入力欄からも送り、ページには渡さない。j / k・s・m・v・[ ] などはページの入力欄の外でだけ、ページが `preventDefault` しなかったときに送る。Enter・Esc・矢印・Space はページのもの。パレット・検索・Reader への切り替え・ペイン移動はフォーカスをアプリに戻す。 |
 
 ## 3. 要件定義の未実装項目

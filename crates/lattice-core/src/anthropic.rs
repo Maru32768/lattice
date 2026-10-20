@@ -3,7 +3,7 @@
 
 use serde_json::{Value, json};
 
-use crate::llm::{Completion, LlmError, LlmProvider, api_client, post_json, strict_schema};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider, api_client, post_json, strict_schema};
 
 const URL: &str = "https://api.anthropic.com/v1/messages";
 const VERSION: &str = "2023-06-01";
@@ -14,22 +14,28 @@ const MAX_TOKENS: u32 = 16000;
 pub struct Anthropic {
     pub key: Option<String>,
     pub model: Option<String>,
+    /// `output_config.effort`; None leaves it to the model.
+    pub effort: Option<Effort>,
     http: reqwest::Client,
 }
 
 impl Anthropic {
-    pub fn new(key: Option<String>, model: Option<String>) -> Self {
-        Self { key, model, http: api_client() }
+    pub fn new(key: Option<String>, model: Option<String>, effort: Option<Effort>) -> Self {
+        Self { key, model, effort, http: api_client() }
     }
 
     fn body(&self, system: &str, input: &str, schema: &Value) -> Value {
-        json!({
+        let mut body = json!({
             "model": self.model.as_deref().unwrap_or(DEFAULT_MODEL),
             "max_tokens": MAX_TOKENS,
             "system": system,
             "messages": [{"role": "user", "content": input}],
             "output_config": {"format": {"type": "json_schema", "schema": strict_schema(schema)}},
-        })
+        });
+        if let Some(e) = self.effort {
+            body["output_config"]["effort"] = e.as_str().into();
+        }
+        body
     }
 }
 
@@ -67,13 +73,16 @@ mod tests {
 
     #[test]
     fn builds_request_and_parses_response() {
-        let b = Anthropic::new(None, None).body("sys", "text", &crate::segments::schema());
+        let b = Anthropic::new(None, None, None).body("sys", "text", &crate::segments::schema());
         assert_eq!((b["model"].as_str(), b["system"].as_str()), (Some(DEFAULT_MODEL), Some("sys")));
         assert_eq!(b["messages"], json!([{"role": "user", "content": "text"}]));
         assert_eq!(b["output_config"]["format"]["type"], "json_schema");
         assert_eq!(b["output_config"]["format"]["schema"]["additionalProperties"], false);
         assert!(b.get("tools").is_none(), "untrusted input gets no tools");
-        assert_eq!(Anthropic::new(None, Some("claude-haiku-5-5".into())).body("", "", &json!({}))["model"], "claude-haiku-5-5");
+        assert!(b["output_config"].get("effort").is_none(), "the model's default effort");
+        let b = Anthropic::new(None, Some("claude-haiku-5-5".into()), Some(Effort::High)).body("", "", &json!({}));
+        assert_eq!((b["model"].as_str(), b["output_config"]["effort"].as_str()), (Some("claude-haiku-5-5"), Some("high")));
+        assert_eq!(b["output_config"]["format"]["type"], "json_schema", "effort sits beside the format");
 
         let v = json!({"model": "claude-opus-5-5", "stop_reason": "end_turn", "content": [
             {"type": "thinking", "thinking": "", "signature": "x"},
@@ -89,7 +98,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_key_is_unavailable() {
-        let e = Anthropic::new(Some(String::new()), None).complete_json("s", "i", &json!({})).await.unwrap_err();
+        let e = Anthropic::new(Some(String::new()), None, None).complete_json("s", "i", &json!({})).await.unwrap_err();
         assert!(matches!(e, LlmError::Unavailable(_)));
     }
 }

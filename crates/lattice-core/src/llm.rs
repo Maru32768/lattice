@@ -26,6 +26,30 @@ pub enum LlmError {
     Malformed(String),
 }
 
+/// Reasoning effort of one chain entry; each provider accepts a subset (`ProviderKind::efforts`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Effort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
+impl Effort {
+    /// The value every provider's API and CLI takes.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Xhigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+}
+
 pub trait LlmProvider: Send + Sync + 'static {
     /// Stable identifier recorded with derived data, e.g. "claude-cli".
     fn name(&self) -> &str;

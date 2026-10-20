@@ -14,6 +14,7 @@ pub mod fetch;
 pub mod gemini;
 pub mod images;
 pub mod ingest;
+pub mod instructions;
 pub mod ir;
 pub mod job_status;
 pub mod jobs;

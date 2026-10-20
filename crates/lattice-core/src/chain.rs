@@ -12,7 +12,7 @@ use crate::anthropic::Anthropic;
 use crate::claude::ClaudeCli;
 use crate::codex::CodexCli;
 use crate::gemini::Gemini;
-use crate::llm::{Completion, LlmError, LlmProvider};
+use crate::llm::{Completion, Effort, LlmError, LlmProvider};
 use crate::openai::OpenAi;
 use crate::store::{SECRET_PREFIX, Store};
 
@@ -42,6 +42,16 @@ impl ProviderKind {
             Self::ClaudeCli | Self::CodexCli => None,
         }
     }
+
+    /// Reasoning efforts the provider accepts: Claude `--effort`, Codex `model_reasoning_effort`,
+    /// OpenAI `reasoning.effort`, Anthropic `output_config.effort`, Gemini `thinkingLevel`.
+    pub fn efforts(self) -> &'static [Effort] {
+        use Effort::*;
+        match self {
+            Self::Gemini => &[Low, Medium, High],
+            Self::ClaudeCli | Self::CodexCli | Self::Openai | Self::Anthropic => &[Low, Medium, High, Xhigh, Max],
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,6 +59,9 @@ pub struct ChainEntry {
     pub kind: ProviderKind,
     /// None uses the provider's default model.
     pub model: Option<String>,
+    /// None uses the provider's (or model's) default. Absent in chains saved before efforts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<Effort>,
 }
 
 pub fn load_config(store: &Store) -> Result<Vec<ChainEntry>, String> {
@@ -57,13 +70,18 @@ pub fn load_config(store: &Store) -> Result<Vec<ChainEntry>, String> {
         return Ok(entries);
     }
     let model = store.setting(LEGACY_MODEL_SETTING).map_err(|e| e.to_string())?;
-    Ok(vec![ChainEntry { kind: ProviderKind::ClaudeCli, model }])
+    Ok(vec![ChainEntry { kind: ProviderKind::ClaudeCli, model, effort: None }])
 }
 
 /// Validates and stores the chain; returns it normalized (trimmed models, empty = default).
 pub fn save_config(store: &Store, entries: Vec<ChainEntry>) -> Result<Vec<ChainEntry>, String> {
     if entries.is_empty() || entries.len() > MAX_ENTRIES {
         return Err(format!("1〜{MAX_ENTRIES} 個のモデルを指定してください"));
+    }
+    for (i, e) in entries.iter().enumerate() {
+        if let Some(x) = e.effort.filter(|x| !e.kind.efforts().contains(x)) {
+            return Err(format!("{} 段目のプロバイダは effort「{}」に対応していません", i + 1, x.as_str()));
+        }
     }
     let entries: Vec<ChainEntry> = entries
         .into_iter()
@@ -125,17 +143,18 @@ pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
         .into_iter()
         .map(|e| {
             let key = api_key(store, e.kind)?.map(|(k, _)| k);
-            let model = e.model.clone();
+            let (model, effort) = (e.model.clone(), e.effort);
             let llm = match e.kind {
                 ProviderKind::ClaudeCli => {
-                    let c = ClaudeCli::default();
+                    let mut c = ClaudeCli::default();
+                    c.effort = effort;
                     c.set_model(model.clone());
                     AnyLlm::Claude(c)
                 }
-                ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), ..CodexCli::default() }),
-                ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone())),
-                ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone())),
-                ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone())),
+                ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), effort, ..CodexCli::default() }),
+                ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone(), effort)),
+                ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone(), effort)),
+                ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone(), effort)),
             };
             Ok((llm, model))
         })
@@ -230,14 +249,22 @@ mod tests {
     fn config_migrates_legacy_model_and_keys() {
         let s = Store::open_in_memory().unwrap();
         s.set_setting(LEGACY_MODEL_SETTING, Some("sonnet")).unwrap();
-        assert_eq!(load_config(&s).unwrap(), vec![ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("sonnet".into()) }]);
+        assert_eq!(load_config(&s).unwrap(), vec![ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("sonnet".into()), effort: None }]);
         let saved = save_config(&s, vec![
-            ChainEntry { kind: ProviderKind::CodexCli, model: Some("  ".into()) },
-            ChainEntry { kind: ProviderKind::Gemini, model: Some(" gemini-pro-latest ".into()) },
+            ChainEntry { kind: ProviderKind::CodexCli, model: Some("  ".into()), effort: Some(Effort::Max) },
+            ChainEntry { kind: ProviderKind::Gemini, model: Some(" gemini-pro-latest ".into()), effort: None },
         ])
         .unwrap();
         assert_eq!(saved[0].model, None);
         assert_eq!(load_config(&s).unwrap(), saved);
+        let json = s.setting(CHAIN_SETTING).unwrap().unwrap();
+        assert!(json.contains(r#""effort":"max""#) && json.matches("effort").count() == 1, "default effort is not stored: {json}");
+        assert!(save_config(&s, vec![ChainEntry { kind: ProviderKind::Gemini, model: None, effort: Some(Effort::Xhigh) }]).is_err(), "Gemini has no xhigh");
+
+        // Chains saved before efforts existed still load, with the default effort.
+        s.set_setting(CHAIN_SETTING, Some(r#"[{"kind":"openai","model":null}]"#)).unwrap();
+        assert_eq!(load_config(&s).unwrap(), vec![ChainEntry { kind: ProviderKind::Openai, model: None, effort: None }]);
+        save_config(&s, saved.clone()).unwrap();
         assert!(save_config(&s, vec![]).is_err());
         assert!(save_config(&s, vec![saved[0].clone(); 4]).is_err());
 

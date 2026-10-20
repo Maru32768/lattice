@@ -512,8 +512,11 @@ pub struct JobRow {
 pub struct SummaryView {
     pub text: String,
     pub created_at: String,
-    /// The article was re-extracted with different content since this summary was made.
+    /// The article was re-extracted with different content since this summary was made
+    /// (`summarize::mark_stale` adds changed instructions).
     pub stale: bool,
+    #[serde(skip)]
+    pub prompt_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1050,10 +1053,10 @@ impl Store {
         let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
         let summary = c
             .query_row(
-                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id
+                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version FROM summaries s JOIN articles a ON a.id = s.article_id
                  WHERE s.article_id = ?1 AND s.type = 'normal' ORDER BY s.id DESC LIMIT 1",
                 [id],
-                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
+                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
         Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary }))
@@ -1079,6 +1082,16 @@ impl Store {
             })
         })?;
         rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
+    }
+
+    /// Deletes the cached translations into `target_language` of the article's blocks of `kinds`.
+    /// The cache is keyed by text, so other articles with the same paragraph lose it too.
+    pub fn drop_translations(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<usize> {
+        self.conn().execute(
+            "DELETE FROM segment_translations WHERE target_language = ?2 AND source_hash IN (
+                 SELECT text_hash FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?3)))",
+            params![article_id, target_language, json(&kinds)],
+        )
     }
 
     /// Newest cached reading units per source hash.

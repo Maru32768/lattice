@@ -1,0 +1,108 @@
+Window: "Lattice", App: lattice.exe.
+	0 window Lattice Secondary Actions: Raise
+		1 pane
+			8 pane Lattice
+				9 pane (disabled)
+				10 region Lattice - Web content
+					11 region
+						12 region
+						13 region
+							14 region
+								16 document Lattice Value: http://localhost:1420/ ID: RootWebArea
+									17 group ID: root
+										18 navigation ナビゲーション
+											19 text Lattice
+											20 button 追加（URL・一括インポート・フィード） Description: 追加（URL・一括インポート・フィード）
+											21 button ナビゲーションを閉じる Description: ナビゲーションを閉じる
+											22 button 検索・コマンド・URL Ctrl K
+											23 text ライブラリ
+											24 button 最近追加 25
+											25 button 未読 24
+											26 button お気に入り 1
+											27 button すべての記事 25
+											28 text ジャンル
+											29 button 編集
+											65 button AI/ML 10
+											66 button Other 3
+											67 button Networking 2
+											68 button Web 2
+											69 button Security 2
+											70 button Distributed Systems 1
+											71 button 他 2 ジャンル
+											30 text ソース
+											31 button 管理
+											32 button フィード 1
+											72 button LINEヤフー Tech Blog (LY Corporation Tech Blog 19
+											33 button 手動追加 5
+											34 text ツール
+											35 toggle button 対話
+											36 button 処理状況
+											37 button 一括インポート
+											38 button 設定
+										146 main
+											147 section header
+												148 heading 一括インポート
+												149 text URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。
+											150 region インポートするテキスト
+												151 text ファイルを選択
+												152 button ファイルを選択: No file chosen Value: No file chosen
+												153 edit (settable, string) インポートするテキスト Description: https://example.com/post-1https://example.com/post-2
+												154 button (disabled) インポート
+								15 region
+		2 title bar (settable, string) Value: Lattice
+			3 menu bar System ID: MenuBar
+				4 menu item System
+			5 button Minimize
+			6 button Maximize
+			7 button Close
+
+Document text: ```
+Lattice
+追加（URL・一括インポート・フィード）
+ナビゲーションを閉じる
+検索・コマンド・URL検索・コマンド…
+Ctrl K
+ライブラリ
+最近追加
+25
+未読
+24
+お気に入り
+1
+すべての記事
+25
+ジャンル
+編集
+AI/ML
+10
+Other
+3
+Networking
+2
+Web
+2
+Security
+2
+Distributed Systems
+1
+他 2 ジャンル
+ソース
+管理
+フィード
+1
+LINEヤフー Tech Blog (LY Corporation Tech BlogLINEヤフー Tech Blog (L…
+19
+手動追加
+5
+ツール
+対話
+処理状況
+一括インポート
+設定
+一括インポート
+URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。
+ファイルを選択
+￼
+インポートするテキスト
+インポート
+```

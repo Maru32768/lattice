@@ -1,0 +1,350 @@
+Window: "Lattice", App: lattice.exe.
+	0 window Lattice Secondary Actions: Raise
+		1 pane
+			8 pane Lattice
+				9 pane (disabled)
+				10 region Lattice - Web content
+					11 region
+						12 region
+						13 region
+							14 region
+								16 document Lattice Value: http://localhost:1420/ ID: RootWebArea
+									17 group ID: root
+										18 navigation ナビゲーション
+											19 text Lattice
+											20 button 追加（URL・一括インポート・フィード） Description: 追加（URL・一括インポート・フィード）
+											21 button ナビゲーションを閉じる Description: ナビゲーションを閉じる
+											22 button 検索・コマンド・URL Ctrl K
+											23 text ライブラリ
+											24 button 最近追加 25
+											25 button 未読 24
+											26 button お気に入り 1
+											27 button すべての記事 25
+											28 text ジャンル
+											29 button 編集
+											65 button AI/ML 10
+											66 button Other 3
+											67 button Networking 2
+											68 button Web 2
+											69 button Security 2
+											70 button Distributed Systems 1
+											71 button 他 2 ジャンル
+											30 text ソース
+											31 button 管理
+											32 button フィード 1
+											72 button LINEヤフー Tech Blog (LY Corporation Tech Blog 19
+											33 button 手動追加 5
+											34 text ツール
+											35 toggle button 対話
+											36 button 処理状況
+											37 button 一括インポート
+											38 button 設定
+										39 region 記事一覧
+											40 section header
+												41 heading すべての記事
+												42 text 25
+												43 text /
+												44 text 25
+												45 button 記事一覧を閉じる Description: 記事一覧を閉じる
+												46 button ジャンル
+												47 button タグ
+												48 button ソース
+												49 button 難易度
+												50 button 状態
+												51 button 並び順とグループ Description: 並び順とグループ
+												52 button (disabled) クリア Esc
+											73 group
+												74 button 未読 Chapter 3: Network Technology — Computer Networks: A Systems Approach Version 7.1-dev documentation 7e.systemsapproach.org 10/17 難易度 2/5 arpanet · ethernet · packet switching
+													75 group 未読
+													76 graphic 難易度 2/5
+												77 button 未読 LINEヤフーのAgent iを支えるAIエージェント基盤：「誰でも作れる」と「安全に動かせる」をどう両立したか LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 agent-runtime · ai-agents · no-code
+													78 group 未読
+													79 graphic 難易度 3/5
+												80 button 未読 AI活用率100％のQA組織をつくるまで LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 ai-agents · codex · qa
+													81 group 未読
+													82 graphic 難易度 2/5
+												83 button 未読 iOSDC Japan 2026にLINEヤフーのエンジニア7名が登壇します（9/11〜9/13） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 1/5 foundation-models · iosdc · swift
+													84 group 未読
+													85 graphic 難易度 1/5
+												86 button 未読 Yahoo!ニュースの表示高速化で広告のクリックは増えるのか LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 ads · prerender · speculation-rules-api
+													87 group 未読
+													88 graphic 難易度 3/5
+												89 button 未読 AIの成果物を人が受け取るための設計ワークフロー LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 ai-agents · design-docs · workflow
+													90 group 未読
+													91 graphic 難易度 2/5
+												92 button 未読 個人のAIエージェントを、チームの力に変えるまで 〜Yahoo!検索のAX実践〜 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 ci · code-review · coding-agent
+													93 group 未読
+													94 graphic 難易度 2/5
+												95 button 未読 Decaton Per-Key-Quotaによるプッシュ通知のスパイク制御（インターンレポート） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 decaton · kafka · rate-limiting
+													96 group 未読
+													97 graphic 難易度 3/5
+												98 button 未読 2026年10月の技術系イベント予定 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 1/5 conference · events
+													99 group 未読
+													100 graphic 難易度 1/5
+												101 button 未読 Kafkaアラートの初動調査を支援するAI Alert Watcherの開発（インターンレポート） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 grafana · kafka · llm
+													102 group 未読
+													103 graphic 難易度 3/5
+												104 button 未読 チームの記憶を検索可能にしたら、AIにタスクを丸ごと任せられるようになった LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 knowledge-search · opentsdb · rag
+													105 group 未読
+													106 graphic 難易度 3/5
+												107 button 未読 プライベートクラウドにおけるサービス間通信の今、そして「サービス指向クラウド」が作る未来 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 athenz · microservices · private-cloud
+													108 group 未読
+													109 graphic 難易度 3/5
+												110 button 未読 個人で育てたAIエージェント設定を、チームの資産にする（APMによるSkill・指示・MCPの配布とマルチエディタ展開） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 ai-agents · apm · mcp
+													111 group 未読
+													112 graphic 難易度 2/5
+												113 button デバイス操作はAIエージェントの時代へ。mobile-mcpを活用したAndroid UI/E2Eテストの挑戦 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 android · e2e-testing · mcp
+													114 graphic 難易度 3/5
+												115 button 未読 今日、生成 AI は良い仕事をした。では、明日は？ LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 deepeval · llm-evaluation · rubric
+													116 group 未読
+													117 graphic 難易度 3/5
+												118 button 未読 「LINEヤフー Data Science Share #2」を開催しました！（イベントレポート） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 bayesian-ab-test · causal-inference · data-science
+													119 group 未読
+													120 graphic 難易度 2/5
+												121 button 未読 LINEスキマニのトップページにおけるパフォーマンス改善（インターンレポート） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 performance · ssr · tanstack-query
+													122 group 未読
+													123 graphic 難易度 3/5
+												124 button 未読 プライベートクラウドにおけるVM Live Migrationの通信暗号化の実装と検証（インターンレポート） LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 4/5 live-migration · openstack · qemu
+													125 group 未読
+													126 graphic 難易度 4/5
+												127 button 未読 iOSDC Japan 2026のブースで実施した「リアル知恵袋」の裏話 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 1/5 conference · iosdc · ocr
+													128 group 未読
+													129 graphic 難易度 1/5
+												130 button 未読 大規模テキストデータを活用したサービス特化型言語モデルの社内共有プロジェクト：Moegi LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 3/5 bert · language-model · pretraining
+													131 group 未読
+													132 graphic 難易度 3/5
+												133 button 未読 セキュリティ業務向けAIエージェント基盤「SAGE」の開発記 第1弾：判断は人間に委ねる設計 LINEヤフー Tech Blog (LY Corporation Tech Blog 10/17 難易度 2/5 ai agents · human-in-the-loop · security governance
+													134 group 未読
+													135 graphic 難易度 2/5
+												136 button 未読 Announcing Rust 1.76.0 | Rust Blog blog.rust-lang.org 10/17
+													137 group 未読
+												138 button 未読 Behind "Hello World" on Linux Julia Evans 10/17
+													139 group 未読
+												140 button 未読 28.3. Write-Ahead Logging (WAL) PostgreSQL Documentation 10/17 お気に入り Database
+													141 group 未読
+													142 group お気に入り
+												143 button 未読 Memory Performance in a Nutshell Intel 10/16
+													144 group 未読
+											54 section footer
+												55 text j
+												56 text k
+												57 text 移動
+												58 text s
+												59 text お気に入り
+												60 text m
+												61 text 既読
+												62 text f
+												63 text フォーカス
+										64 main
+											145 text 記事を選んでください
+								15 region
+		2 title bar (settable, string) Value: Lattice
+			3 menu bar System ID: MenuBar
+				4 menu item System
+			5 button Minimize
+			6 button Maximize
+			7 button Close
+
+Document text: ```
+Lattice
+追加（URL・一括インポート・フィード）
+ナビゲーションを閉じる
+検索・コマンド・URL検索・コマンド…
+Ctrl K
+ライブラリ
+最近追加
+25
+未読
+24
+お気に入り
+1
+すべての記事
+25
+ジャンル
+編集
+AI/ML
+10
+Other
+3
+Networking
+2
+Web
+2
+Security
+2
+Distributed Systems
+1
+他 2 ジャンル
+ソース
+管理
+フィード
+1
+LINEヤフー Tech Blog (LY Corporation Tech BlogLINEヤフー Tech Blog (L…
+19
+手動追加
+5
+ツール
+対話
+処理状況
+一括インポート
+設定
+すべての記事
+25 / 25
+記事一覧を閉じる
+ジャンル
+タグ
+ソース
+難易度
+状態
+並び順とグループ
+クリア
+Esc
+未読
+Chapter 3: Network Technology — Computer Networks: A Systems Approach Version 7.1-dev documentation
+7e.systemsapproach.org
+10/17
+￼
+arpanet · ethernet · packet switching
+未読
+LINEヤフーのAgent iを支えるAIエージェント基盤：「誰でも作れる」と「安全に動かせる」をどう両立したか
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+agent-runtime · ai-agents · no-code
+未読
+AI活用率100％のQA組織をつくるまで
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ai-agents · codex · qa
+未読
+iOSDC Japan 2026にLINEヤフーのエンジニア7名が登壇します（9/11〜9/13）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+foundation-models · iosdc · swift
+未読
+Yahoo!ニュースの表示高速化で広告のクリックは増えるのか
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ads · prerender · speculation-rules-api
+未読
+AIの成果物を人が受け取るための設計ワークフロー
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ai-agents · design-docs · workflow
+未読
+個人のAIエージェントを、チームの力に変えるまで 〜Yahoo!検索のAX実践〜
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ci · code-review · coding-agent
+未読
+Decaton Per-Key-Quotaによるプッシュ通知のスパイク制御（インターンレポート）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+decaton · kafka · rate-limiting
+未読
+2026年10月の技術系イベント予定
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+conference · events
+未読
+Kafkaアラートの初動調査を支援するAI Alert Watcherの開発（インターンレポート）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+grafana · kafka · llm
+未読
+チームの記憶を検索可能にしたら、AIにタスクを丸ごと任せられるようになった
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+knowledge-search · opentsdb · rag
+未読
+プライベートクラウドにおけるサービス間通信の今、そして「サービス指向クラウド」が作る未来
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+athenz · microservices · private-cloud
+未読
+個人で育てたAIエージェント設定を、チームの資産にする（APMによるSkill・指示・MCPの配布とマルチエディタ展開）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ai-agents · apm · mcp
+デバイス操作はAIエージェントの時代へ。mobile-mcpを活用したAndroid UI/E2Eテストの挑戦
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+android · e2e-testing · mcp
+未読
+今日、生成 AI は良い仕事をした。では、明日は？
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+deepeval · llm-evaluation · rubric
+未読
+「LINEヤフー Data Science Share #2」を開催しました！（イベントレポート）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+bayesian-ab-test · causal-inference · data-science
+未読
+LINEスキマニのトップページにおけるパフォーマンス改善（インターンレポート）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+performance · ssr · tanstack-query
+未読
+プライベートクラウドにおけるVM Live Migrationの通信暗号化の実装と検証（インターンレポート）
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+live-migration · openstack · qemu
+未読
+iOSDC Japan 2026のブースで実施した「リアル知恵袋」の裏話
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+conference · iosdc · ocr
+未読
+大規模テキストデータを活用したサービス特化型言語モデルの社内共有プロジェクト：Moegi
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+bert · language-model · pretraining
+未読
+セキュリティ業務向けAIエージェント基盤「SAGE」の開発記 第1弾：判断は人間に委ねる設計
+LINEヤフー Tech Blog (LY Corporation Tech Blog
+10/17
+￼
+ai agents · human-in-the-loop · security governance
+未読
+Announcing Rust 1.76.0 | Rust Blog
+blog.rust-lang.org
+10/17
+未読
+Behind "Hello World" on Linux
+Julia Evans
+10/17
+未読
+28.3. Write-Ahead Logging (WAL)
+PostgreSQL Documentation
+10/17
+お気に入り
+Database
+未読
+Memory Performance in a Nutshell
+Intel
+10/16
+jk 移動
+s お気に入り
+m 既読
+f フォーカス
+記事を選んでください
+```

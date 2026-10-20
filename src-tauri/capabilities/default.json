@@ -46,6 +46,8 @@
     "allow-get-translate-instructions",
     "allow-set-translate-instructions",
     "allow-get-translation-prompt",
+    "allow-get-custom-instructions",
+    "allow-set-custom-instructions",
     "allow-list-feeds",
     "allow-add-feed",
     "allow-discover-feeds",

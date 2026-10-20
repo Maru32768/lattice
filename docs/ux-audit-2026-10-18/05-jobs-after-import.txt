@@ -1,0 +1,160 @@
+Window: "Lattice", App: lattice.exe.
+	0 window Lattice Secondary Actions: Raise
+		1 pane
+			8 pane Lattice
+				9 pane (disabled)
+				10 region Lattice - Web content
+					11 region
+						12 region
+						13 region
+							14 region
+								16 document Lattice Value: http://localhost:1420/ ID: RootWebArea
+									17 group ID: root
+										18 navigation ナビゲーション
+											19 text Lattice
+											20 button 追加（URL・一括インポート・フィード） Description: 追加（URL・一括インポート・フィード）
+											21 button ナビゲーションを閉じる Description: ナビゲーションを閉じる
+											22 button 検索・コマンド・URL Ctrl K
+											23 text ライブラリ
+											24 button 最近追加 25
+											25 button 未読 24
+											26 button お気に入り 1
+											27 button すべての記事 25
+											28 text ジャンル
+											29 button 編集
+											65 button AI/ML 10
+											66 button Other 3
+											67 button Networking 2
+											68 button Web 2
+											69 button Security 2
+											70 button Distributed Systems 1
+											71 button 他 2 ジャンル
+											30 text ソース
+											31 button 管理
+											32 button フィード 1
+											72 button LINEヤフー Tech Blog (LY Corporation Tech Blog 19
+											33 button 手動追加 5
+											34 text ツール
+											35 toggle button 対話
+											36 button 処理状況
+											37 button 一括インポート
+											38 button 設定
+										160 main
+											161 section header
+												162 heading 処理状況
+												163 text ライブ · イベント + 10 秒ごと
+												164 text 失敗は間隔を空けて自動再試行、
+												165 text 5
+												166 text 回で停止
+								15 region
+		2 title bar (settable, string) Value: Lattice
+			3 menu bar System ID: MenuBar
+				4 menu item System
+			5 button Minimize
+			6 button Maximize
+			7 button Close
+
+Document text: ```
+Lattice
+追加（URL・一括インポート・フィード）
+ナビゲーションを閉じる
+検索・コマンド・URL検索・コマンド…
+Ctrl K
+ライブラリ
+最近追加
+25
+未読
+24
+お気に入り
+1
+すべての記事
+25
+ジャンル
+編集
+AI/ML
+10
+Other
+3
+Networking
+2
+Web
+2
+Security
+2
+Distributed Systems
+1
+他 2 ジャンル
+ソース
+管理
+フィード
+1
+LINEヤフー Tech Blog (LY Corporation Tech BlogLINEヤフー Tech Blog (L…
+19
+手動追加
+5
+ツール
+対話
+処理状況
+一括インポート
+設定
+処理状況
+ライブ · イベント + 10 秒ごと
+失敗は間隔を空けて自動再試行、5 回で停止
+種類
+待機
+再試行待ち
+実行中
+失敗
+補足
+操作
+ingest
+0
+0
+0
+0
+￼
+￼
+render
+0
+0
+0
+0
+裏描画 · 最大約 20 秒/件
+￼
+images
+0
+0
+0
+0
+￼
+￼
+embed
+0
+0
+0
+0
+￼
+￼
+translate
+0
+0
+0
+0
+￼
+￼
+summarize
+0
+0
+0
+0
+￼
+￼
+classify
+0
+0
+0
+0
+最大 20 件を 1 呼び出しに
+￼
+処理中・失敗したジョブはありません。
+```
