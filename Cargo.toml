@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/lattice-core", "src-tauri"]
+members = ["crates/lattice-core", "crates/lattice-cli", "src-tauri"]
 
 # The app version for both crates; `npm run bump -- <x.y.z>` keeps it in sync with package.json.
 [workspace.package]
