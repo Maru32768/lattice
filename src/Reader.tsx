@@ -267,7 +267,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
 }
 
 export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode }: {
+  onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete }: {
   view: ArticleView;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
@@ -292,6 +292,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   onClassify: () => void;
   onAsk: () => void;
   onFocusMode: () => void;
+  /** Asks for confirmation, then deletes the article. */
+  onDelete: () => void;
 }) {
   const { article: a, blocks } = view;
   // Per-block click overrides on top of the mode; App remounts Reader per article.
@@ -367,11 +369,13 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
-          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す）" align="right" trigger={<Icon name="more" />} items={[
+          <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
             { label: "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
             { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering || !fetched },
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
+            "-",
+            { label: <span className="error-text">記事を削除…</span>, onSelect: onDelete },
           ]} />
         </div>
       </div>

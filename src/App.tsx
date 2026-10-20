@@ -20,6 +20,7 @@ import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
 import { Kbd } from "./Icon";
 import { Palette, type PaletteActions } from "./Palette";
+import { ConfirmDialog } from "./ConfirmDialog";
 import "./App.css";
 
 type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"; target: BrowseTarget };
@@ -85,6 +86,8 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
   const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
+  /** The article waiting for delete confirmation, and the view that asked. */
+  const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
 
   // Search mode of the list pane
   const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
@@ -293,6 +296,20 @@ export default function App() {
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
   const viewAct = (task: (id: number) => Promise<unknown>) => () => view && act(() => task(view.article.id), view.article.id);
 
+  async function deleteArticle(a: ArticleRow) {
+    setDeleting(null);
+    try {
+      await api.deleteArticle(a.id);
+      viewId.current = null;
+      setView(null);
+      setSaved(null);
+      setDoc(null);
+      await refresh();
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   async function saveCurrent() {
     if (!page) return;
     setSaving(true);
@@ -452,7 +469,7 @@ export default function App() {
           {doc?.kind === "page" && (
             <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} covered={covers > 0}
               onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
-              onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
+              onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
           )}
           {doc?.kind === "reader" && view && (
             <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
@@ -465,7 +482,7 @@ export default function App() {
               onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
               onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
               onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
-              onClassify={viewAct(api.classifyArticle)} />
+              onClassify={viewAct(api.classifyArticle)} onDelete={() => setDeleting({ article: view.article, page: false })} />
           )}
           {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
             : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
@@ -474,6 +491,13 @@ export default function App() {
         {palette != null && (
           <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
             onClose={() => setPalette(null)} />
+        )}
+        {deleting && (
+          <ConfirmDialog title={deleting.page ? "Index から削除しますか？" : "記事を削除しますか？"} confirm="削除"
+            onConfirm={() => deleteArticle(deleting.article)} onCancel={() => setDeleting(null)}>
+            <p>「{deleting.article.title ?? deleting.article.original_url}」を削除します。</p>
+            <p>保存した HTML・本文・この記事だけの訳文・要約・タグ付け・画像・検索 index も削除され、元に戻せません。対話の回答に残る引用は消えません。</p>
+          </ConfirmDialog>
         )}
         {chatOpen && (
           <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}

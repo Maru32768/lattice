@@ -40,6 +40,7 @@
     "allow-add-tag",
     "allow-remove-tag",
     "allow-get-article",
+    "allow-delete-article",
     "allow-article-for-url",
     "allow-translate-article",
     "allow-summarize-article",

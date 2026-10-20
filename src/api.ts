@@ -248,6 +248,8 @@ export const api = {
   addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
   removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
   getArticle: (id: number) => invoke<ArticleView | null>("get_article", { id }),
+  /** Removes the article with its HTML, blocks, translations only it uses, summaries, images and jobs. */
+  deleteArticle: (id: number) => invoke<boolean>("delete_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),

@@ -888,6 +888,25 @@ impl Store {
         Ok(Some(ids))
     }
 
+    /// Deletes an article and everything hanging off it. Snapshots, blocks (with their FTS rows
+    /// and embeddings), jobs, tag links, summaries, classifications and image mappings cascade;
+    /// image bytes go by trigger; translations no other block uses and tags no other article
+    /// uses are deleted here. Feed items stay, so the feed does not import the article again,
+    /// and chat answers keep their copied citations. Returns whether the article existed.
+    pub fn delete_article(&self, id: i64) -> Result<bool> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        tx.execute(
+            "DELETE FROM segment_translations WHERE source_hash IN (SELECT text_hash FROM blocks WHERE article_id = ?1)
+             AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash AND b.article_id != ?1)",
+            [id],
+        )?;
+        let n = tx.execute("DELETE FROM articles WHERE id = ?1", [id])?;
+        tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM article_tags)", [])?;
+        tx.commit()?;
+        Ok(n > 0)
+    }
+
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {
         self.conn().execute("UPDATE articles SET favorite = ?2 WHERE id = ?1", params![id, favorite])?;
         Ok(())
@@ -1391,6 +1410,58 @@ mod tests {
         assert!(s.lexical_search("Alpha", None, 10).unwrap().is_empty());
         let snaps: i64 = s.conn().query_row("SELECT count(*) FROM snapshots", [], |r| r.get(0)).unwrap();
         assert_eq!(snaps, 1, "re-extraction stores no new snapshot");
+    }
+
+    #[test]
+    fn deleting_an_article_leaves_nothing_orphaned() {
+        use crate::ir::BlockKind::Paragraph;
+        let s = Store::open_in_memory().unwrap();
+        let save = |url: &str, texts: &[&str]| {
+            let (id, _) = s.upsert_pending(url, url, "a.dev").unwrap();
+            let blocks = texts.iter().map(|t| Block { kind: Paragraph, text: t.to_string(), inlines: vec![], attrs: Default::default() }).collect();
+            let f = Fetched { final_url: url.into(), status: 200, content_type: None, html: "<p>x</p>".into() };
+            s.save_fetched(id, Some(&f), Ok(ArticleIr { meta: Default::default(), blocks }), None).unwrap();
+            id
+        };
+        let a = save("https://a.dev/1", &["shared paragraph", "only in the deleted article"]);
+        let b = save("https://a.dev/2", &["shared paragraph"]);
+        let unit = |t: &str| vec![Unit { source: t.into(), translation: format!("訳: {t}") }];
+        let (shared, only) = (unit("shared paragraph"), unit("only in the deleted article"));
+        let (hs, ho) = (sha256_hex("shared paragraph"), sha256_hex("only in the deleted article"));
+        s.insert_segments("ja", "v", &[(hs.as_str(), &shared[..], "p", None), (ho.as_str(), &only[..], "p", None)]).unwrap();
+        let blocks = s.get_article(a, "ja").unwrap().unwrap().blocks;
+        let srcs: Vec<EmbedSource> = blocks.iter().map(|b| EmbedSource { block_id: b.id, text_hash: sha256_hex(&b.block.text), text: b.block.text.clone(), heading: None }).collect();
+        s.upsert_embeddings("m", &srcs.iter().map(|e| (e, &[1.0f32][..])).collect::<Vec<_>>()).unwrap();
+        s.add_tag(a, "mine").unwrap();
+        s.add_tag(a, "both").unwrap();
+        s.add_tag(b, "both").unwrap();
+        s.insert_summary(a, "normal", "要約", "h", "p", None, "v").unwrap();
+        s.enqueue_job("translate", a, "{}", "translate:a").unwrap();
+        crate::images::save(&s, a, "https://a.dev/x.png", "image/png", b"\x89PNG only-a").unwrap();
+        s.exec_for_test(&format!(
+            "INSERT INTO classifications (article_id, genre, tags, provider, prompt_version) VALUES ({a}, 'Database', '[]', 'p', 'v');
+             INSERT INTO feeds (url) VALUES ('https://a.dev/feed');
+             INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'https://a.dev/1');
+             UPDATE articles SET feed_id = 1 WHERE id = {a};"
+        ));
+
+        assert!(s.delete_article(a).unwrap());
+        assert!(!s.delete_article(a).unwrap(), "already gone");
+        let count = |sql: &str| s.conn().query_row(sql, [], |r| r.get::<_, i64>(0)).unwrap();
+        for table in ["snapshots", "blocks", "processing_jobs", "article_tags", "summaries", "classifications", "article_images"] {
+            assert_eq!(count(&format!("SELECT count(*) FROM {table} WHERE article_id NOT IN (SELECT id FROM articles)")), 0, "{table}");
+        }
+        assert_eq!(count("SELECT count(*) FROM embeddings WHERE block_id NOT IN (SELECT id FROM blocks)"), 0);
+        assert_eq!(count("SELECT count(*) FROM embeddings"), 0);
+        assert_eq!(count("SELECT count(*) FROM images"), 0, "unused image bytes collected");
+        assert_eq!(count("SELECT count(*) FROM snapshots"), 1, "the other article's snapshot stays");
+        assert_eq!(s.list_tags().unwrap().iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["both"]);
+        assert_eq!(s.cached_segments(&[hs.clone(), ho.clone()], "ja").unwrap().into_keys().collect::<Vec<_>>(), [hs], "a translation still in use stays");
+        assert!(s.lexical_search("deleted", None, 10).unwrap().is_empty(), "block FTS rows gone");
+        assert_eq!(count("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH '\"deleted article\"'"), 0, "translation FTS rows gone");
+        assert_eq!(count("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH '\"shared paragraph\"'"), 1);
+        assert_eq!(s.lexical_search("shared", None, 10).unwrap().len(), 1);
+        assert_eq!(count("SELECT count(*) FROM feed_items"), 1, "the feed does not import it again");
     }
 
     #[test]

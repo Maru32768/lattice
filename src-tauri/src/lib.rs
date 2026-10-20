@@ -287,6 +287,12 @@ fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, Stri
     app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)
 }
 
+/// Removes the article and everything derived from it (`Store::delete_article`).
+#[tauri::command(async)]
+fn delete_article(app: State<'_, App>, id: i64) -> Result<bool, String> {
+    app.store.delete_article(id).map_err(err)
+}
+
 #[tauri::command(async)]
 fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow>, String> {
     let Ok(norm) = normalize(&url) else { return Ok(None) };
@@ -633,6 +639,7 @@ pub fn run() {
             add_tag,
             remove_tag,
             get_article,
+            delete_article,
             article_for_url,
             translate_article,
             summarize_article,

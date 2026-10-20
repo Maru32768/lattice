@@ -44,7 +44,7 @@ function UrlPill({ url }: { url: string }) {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onError }: {
+export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
   target: BrowseTarget;
   page: PageState | null;
   saved: ArticleRow | null;
@@ -56,6 +56,8 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
   onSave: () => void;
   onReader: () => void;
   onFavorite: () => void;
+  /** Asks for confirmation, then removes the saved article from the Index. */
+  onDelete: () => void;
   onError: (e: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -111,11 +113,10 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
           <>
             <span className="indexed"><Icon name="check" />Index 済み</span>
             <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label="お気に入り (s)" title="お気に入り (s)"><Icon name="star" /></button>
-            {resave && (
-              <Menu className="tb" label="その他（描画後のページで保存し直す）" align="right" trigger={<Icon name="more" />} items={[
-                { label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading },
-              ]} />
-            )}
+            <Menu className="tb" label="その他（保存し直す・Index から削除）" align="right" trigger={<Icon name="more" />} items={[
+              ...(resave ? [{ label: saving ? "保存中…" : "描画後のページで保存し直す", onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
+              { label: <span className="error-text">Index から削除…</span>, onSelect: onDelete },
+            ]} />
           </>
         ) : (
           <button className="tb pri" onClick={onSave} disabled={saving || !page || loading}

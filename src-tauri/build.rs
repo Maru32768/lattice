@@ -36,6 +36,7 @@ const COMMANDS: &[&str] = &[
     "add_tag",
     "remove_tag",
     "get_article",
+    "delete_article",
     "article_for_url",
     "translate_article",
     "summarize_article",
