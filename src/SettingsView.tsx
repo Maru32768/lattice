@@ -14,11 +14,12 @@ import { StorageSection } from "./StorageSection";
 import { ShortcutSettings } from "./ShortcutSettings";
 import { BrowserSettings } from "./BrowserSettings";
 import { TaskbarSettings } from "./TaskbarSettings";
+import { UpdateSection } from "./Update";
 import "./manage.css";
 
-export type SettingsSection = "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage";
+export type SettingsSection = "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
 
-const GROUPS = ["AI", "ライブラリ", "操作", "データ"] as const;
+const GROUPS = ["AI", "ライブラリ", "操作", "データ", "アプリ"] as const;
 
 const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: string; lead?: ReactNode }[] = [
   { id: "provider", group: "AI", title: "AI プロバイダ", lead: "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。" },
@@ -35,9 +36,10 @@ const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: st
   { id: "r2", group: "データ", title: "クラウドバックアップ（R2）", lead: <>DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。</> },
   { id: "export", group: "データ", title: "エクスポート" },
   { id: "storage", group: "データ", title: "ログ・保存場所" },
+  { id: "update", group: "アプリ", title: "アップデート", lead: "新しいバージョンは GitHub の Releases から取得します。更新は署名を確かめてからインストールし、データはそのまま残ります。" },
 ];
 
-function Body({ id, onChanged }: { id: SettingsSection; onChanged: () => void }) {
+function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: () => void; onOpenUrl: (url: string) => void }) {
   switch (id) {
     case "provider": return <ModelSettings />;
     case "translation": return <TranslationSettings />;
@@ -53,14 +55,17 @@ function Body({ id, onChanged }: { id: SettingsSection; onChanged: () => void })
     case "r2": return <R2BackupSection />;
     case "export": return <ExportSection />;
     case "storage": return <StorageSection />;
+    case "update": return <UpdateSection onOpenUrl={onOpenUrl} />;
   }
 }
 
-export function SettingsView({ initialSection = "provider", onBack, onFeeds, onChanged }: {
+export function SettingsView({ initialSection = "provider", onBack, onFeeds, onChanged, onOpenUrl }: {
   initialSection?: SettingsSection;
   onBack: () => void;
   onFeeds: () => void;
   onChanged: () => void;
+  /** Opens a web page (release notes) in the Page view. */
+  onOpenUrl: (url: string) => void;
 }) {
   const [section, setSection] = useState(initialSection);
   const [badges, setBadges] = useState<Partial<Record<SettingsSection, ReactNode>>>({});
@@ -102,7 +107,7 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
             <h1>{current.title}</h1>
             {current.lead && <p className="lead">{current.lead}</p>}
           </header>
-          <Body id={section} onChanged={onChanged} />
+          <Body id={section} onChanged={onChanged} onOpenUrl={onOpenUrl} />
         </div>
       </main>
     </div>

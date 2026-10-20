@@ -16,6 +16,9 @@
 .titlebar .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
 .main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
 .banner { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px 6px 14px; background: var(--err-soft); color: var(--err-ink); font-size: 12.5px; border-bottom: 1px solid var(--err-line); }
+.update-bar { display: flex; align-items: center; gap: 8px; flex: none; padding: 4px 10px 4px 14px; background: var(--acc-soft); color: var(--acc-ink); font-size: 12.5px; border-bottom: 1px solid var(--acc-line); }
+.update-bar .btn { height: 24px; padding: 0 8px; font-size: 12px; }
+.update-bar .btn.ghost { color: var(--acc-ink); }
 .doc-empty { margin: auto; font-size: 13px; }
 
 .nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }

@@ -390,3 +390,18 @@ export const r2 = {
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
 };
+
+export interface UpdateInfo {
+  current: string;
+  /** false while tauri.conf.json still has the placeholder public key (docs/release.md). */
+  configured: boolean;
+}
+
+/** In-place updates from the GitHub releases. */
+export const updates = {
+  info: () => invoke<UpdateInfo>("update_info"),
+  /** The newer version, or null when this one is the latest. */
+  check: () => invoke<string | null>("update_check"),
+  /** Downloads and installs, then the app restarts; `update-progress` events report the download. */
+  install: () => invoke<void>("update_install"),
+};

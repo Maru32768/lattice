@@ -53,6 +53,32 @@ mise run licenses
 
 cargo-about fails on a license that is not in the `accepted` list of `scripts/about.toml`. Check that the new license allows redistribution before adding it. The release workflow regenerates the file before building, so a release never ships a stale list.
 
+## Signed updates
+
+The app checks `https://github.com/Maru32768/lattice/releases/latest/download/latest.json` at startup and from Settings › アップデート, and installs an update only when its signature matches the public key built into the app. Until you set up a key pair, `src-tauri/tauri.conf.json` holds a placeholder (`plugins.updater.pubkey` starting with `NOT_CONFIGURED`), the app makes no update requests, and the settings section says updates are not configured. Releases still build without a key; they just carry no updater files.
+
+To turn updates on, once:
+
+1. Generate a key pair on your machine. Choose a password when asked, and keep the private key out of the repository:
+
+   ```bash
+   mise exec -- npx tauri signer generate -w "$HOME/.tauri/lattice.key"
+   ```
+
+   This writes the private key to `~/.tauri/lattice.key` and the public key to `~/.tauri/lattice.key.pub`. Back up both and the password: without the private key, installed copies can never be updated again, and a new key pair means users must reinstall by hand.
+
+2. In the GitHub repository, open Settings › Secrets and variables › Actions and add two repository secrets:
+   - `TAURI_SIGNING_PRIVATE_KEY`: the contents of `~/.tauri/lattice.key`.
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password you chose.
+
+3. Replace the placeholder in `src-tauri/tauri.conf.json` with the contents of `~/.tauri/lattice.key.pub` (one line), and commit it. The public key is not a secret.
+
+From the next tag on, the workflow adds `src-tauri/tauri.updater.conf.json` to the build, which signs the installer, and the draft release gets `Lattice_<x.y.z>_x64-setup.exe.sig` and `latest.json`. Installed copies see an update only after you publish the draft: `releases/latest` ignores drafts and prereleases.
+
+An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\dev.lattice.app` is untouched.
+
+To build signed artifacts locally, set the same two variables in the shell and run `mise exec -- npm run tauri build -- --config src-tauri/tauri.updater.conf.json`.
+
 ## Cutting a release
 
 1. Bump the version and edit `CHANGELOG.md` as above, then run `mise run test`.
@@ -81,6 +107,7 @@ The draft release `Lattice v<x.y.z>` has these assets:
 | `Lattice_<x.y.z>_x64-setup.exe` | NSIS installer. Installs for the current user and keeps data in `%APPDATA%\dev.lattice.app`. |
 | `Lattice_<x.y.z>_x64-portable.zip` | `Lattice.exe` with a `portable` marker file, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`. |
 | `THIRD_PARTY_LICENSES` | The license list the build shipped with. |
+| `Lattice_<x.y.z>_x64-setup.exe.sig`, `latest.json` | Only with the signing key secrets: the installer's signature and the manifest installed copies read to find updates. |
 
 Both the installer and the zip need the WebView2 runtime, which Windows 11 includes. The installer downloads it on Windows 10 when it is missing.
 

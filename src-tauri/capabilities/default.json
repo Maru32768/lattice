@@ -89,6 +89,9 @@
     "allow-browser-capture",
     "allow-browser-go",
     "allow-browser-set-translation",
-    "allow-browser-set-keys"
+    "allow-browser-set-keys",
+    "allow-update-info",
+    "allow-update-check",
+    "allow-update-install"
   ]
 }

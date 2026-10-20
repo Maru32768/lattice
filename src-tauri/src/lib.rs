@@ -1,6 +1,7 @@
 mod badge;
 mod browser;
 mod renderer;
+mod update;
 
 use std::sync::Arc;
 
@@ -629,6 +630,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .setup(|app| {
@@ -778,6 +780,9 @@ pub fn run() {
             browser::overlay_history,
             browser::browser_set_keys,
             browser::overlay_key,
+            update::update_info,
+            update::update_check,
+            update::update_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

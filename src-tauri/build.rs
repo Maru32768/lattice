@@ -85,6 +85,9 @@ const COMMANDS: &[&str] = &[
     "overlay_history",
     "browser_set_keys",
     "overlay_key",
+    "update_info",
+    "update_check",
+    "update_install",
 ];
 
 fn main() {

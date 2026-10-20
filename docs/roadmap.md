@@ -62,7 +62,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G34 | Page ペインの分割 | 後 | 複数の Page ペインを横・縦に自由に並べる（tmux のように）。G33 と合わせて設計する。 |
 | G35 | 技術書の取り込み | 将来 | G31 の延長。 |
 | G36 | URL バーから検索 | 済 | Page のツールバーの URL をクリックすると全体を選択した入力欄になり、Enter で開く・Esc で戻す。`http(s)://` で始まる入力はそのまま、ホストらしい入力（`example.com/x`・`localhost:3000`・IP）は `https://` を付けて開き、それ以外は検索する（`toNavigation`）。設定「ブラウザ」で検索エンジン（DuckDuckGo（既定）・Google・Bing・Brave Search・Kagi・`%s` を含むカスタム URL）を選ぶ。再読み込みの隣にホームボタン（エンジンのトップページ）。 |
-| G37 | 更新通知とアプリ内アップデート | 後 | Tauri updater。G41 のリリースフローが前提。 |
+| G37 | 更新通知とアプリ内アップデート | 済 | `tauri-plugin-updater` が GitHub の公開済み release の `latest.json` を読む。起動時と 設定 › アップデート の「更新を確認」で確認し、新しい版があればタイトルバーの下にバー（版・リリースノート（Page 表示で開く）・「更新して再起動」・「後で」）を出す。ダウンロードの進み具合を表示し、署名を確かめて NSIS インストーラーを passive で実行する（インストーラーがアプリを閉じて新しい版を起動する）。公開鍵は `tauri.conf.json` に置き、placeholder のままなら確認せず「設定されていません」と表示する。鍵の作り方と secret は `docs/release.md`。 |
 | G38 | データ保存先の変更 | 後 | 今は `%APPDATA%\dev.lattice.app`。インストーラーを使わない配布（zip・単体 exe）なら exe と同じフォルダを既定にする案もある。要検討。 |
 | G39 | 単体テスト・E2E テストの強化 | 後 | E2E は今の mock IPC harness を土台にできる。 |
 | G40 | CI でテスト | 後 | GitHub Actions（Windows runner）で `mise run test`。 |

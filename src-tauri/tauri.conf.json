@@ -21,6 +21,12 @@
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "NOT_CONFIGURED: replace with the public key from `tauri signer generate` (docs/release.md)",
+      "endpoints": ["https://github.com/Maru32768/lattice/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
