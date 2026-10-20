@@ -115,4 +115,4 @@ mise run test
 
 ## License
 
-Not decided yet. See the roadmap.
+MIT. See [LICENSE](LICENSE). Lattice adapts code from [Mazelingo](https://github.com/Yeq6X/mazelingo) and bundles fonts under the SIL Open Font License; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

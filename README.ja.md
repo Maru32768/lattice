@@ -115,4 +115,4 @@ mise run test
 
 ## ライセンス
 
-未定です。ロードマップを参照してください。
+MIT です（[LICENSE](LICENSE)）。[Mazelingo](https://github.com/Yeq6X/mazelingo) のコードを移植しており、SIL Open Font License のフォントを同梱しています。詳しくは [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。

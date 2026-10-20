@@ -2,6 +2,7 @@
 name = "lattice"
 version = "0.1.0"
 description = "Programmable reading environment"
+license = "MIT"
 authors = ["Maru32768"]
 edition = "2024"
 
