@@ -172,13 +172,9 @@ export function scan(file) {
     const params = [];
     let ja = "";
     let rich = false;
-    run.forEach((c, i) => {
+    run.forEach((c) => {
       if (ts.isJsxText(c)) {
-        let s = jsxText(c.text);
-        // jsxText trims at line breaks; the trimmed ends of the run's own edges stay outside the message
-        if (i === 0) s = s.replace(/^\s+/, "");
-        if (i === run.length - 1) s = s.replace(/\s+$/, "");
-        ja += s;
+        ja += jsxText(c.text);
       } else if (ts.isJsxExpression(c)) {
         if (!c.expression) return;
         const name = paramName(c.expression, taken);
@@ -219,7 +215,7 @@ const camel = (s) => s.replace(/^[A-Z]/, (c) => c.toLowerCase());
 /** A key from the English text: the file's namespace and the first words, camelCased. */
 function proposeKey(entry, common) {
   const ns = common.has(entry.ja) ? "common" : camel(basename(entry.file).replace(/\.(tsx?|mjs)$/, ""));
-  const words = entry.en.replace(/\{\w+\}/g, " ").toLowerCase().match(/[a-z0-9]+/g) ?? ["text"];
+  const words = entry.en.replace(/^\(p\) =>|\{\w+\}|p\.\w+/g, " ").toLowerCase().match(/[a-z0-9]+/g) ?? ["text"];
   return `${ns}.${words.slice(0, 4).map((w, i) => (i ? w[0].toUpperCase() + w.slice(1) : w)).join("")}`;
 }
 
@@ -295,7 +291,9 @@ function appendCatalog(lang, entries) {
   const lines = [];
   for (const e of entries) {
     if (src.includes(`  ${quote(e.key)}:`) || lines.some((l) => l.startsWith(`  ${quote(e.key)}:`))) continue;
-    lines.push(`  ${quote(e.key)}: ${quote(lang === "ja" ? e.ja : e.en)},`);
+    // English given as `(p) => …` (plurals) is code, not text.
+    const value = lang === "ja" ? quote(e.ja) : e.en.startsWith("(p) =>") ? e.en : quote(e.en);
+    lines.push(`  ${quote(e.key)}: ${value},`);
   }
   if (!src.includes(APPEND)) throw new Error(`${path} has no "${APPEND.trim()}" line`);
   src = src.replace(APPEND, [...lines, APPEND].join("\n"));

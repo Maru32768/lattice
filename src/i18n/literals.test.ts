@@ -9,13 +9,11 @@ const ALLOWED: Record<string, string[]> = {};
 
 /** Not moved to the catalogs yet (G51 is migrating them file by file). */
 const PENDING = new Set([
-  "src/api.ts", "src/App.tsx", "src/BackupSection.tsx", "src/BrowserSettings.tsx", "src/BrowserView.tsx", "src/ChatPane.tsx", "src/ChatSettings.tsx",
-  "src/ClassifySettings.tsx", "src/ConfirmDialog.tsx", "src/DocArea.tsx", "src/ExportSection.tsx", "src/FacetPopover.tsx", "src/FeedsView.tsx",
-  "src/GenreSettings.tsx", "src/groups.ts", "src/Icon.tsx", "src/ImageSettings.tsx", "src/ImportView.tsx", "src/InstructionSettings.tsx",
-  "src/JobsView.tsx", "src/keys.ts", "src/library.ts", "src/ListPane.tsx", "src/ModelSettings.tsx", "src/Nav.tsx", "src/overlay/index.ts",
-  "src/Palette.tsx", "src/quiz.ts", "src/QuizCard.tsx", "src/QuizPanel.tsx", "src/QuizReview.tsx", "src/QuizSettings.tsx", "src/R2BackupSection.tsx",
-  "src/Reader.tsx", "src/RenderSettings.tsx", "src/scopes.ts", "src/SearchPane.tsx", "src/ShortcutSettings.tsx", "src/Splitter.tsx",
-  "src/StorageSection.tsx", "src/TabStrip.tsx", "src/TaskbarSettings.tsx", "src/time.ts", "src/TitleBar.tsx", "src/TranslationSettings.tsx", "src/Update.tsx",
+  "src/api.ts", "src/App.tsx", "src/BrowserView.tsx", "src/ChatPane.tsx", "src/ConfirmDialog.tsx", "src/DocArea.tsx", "src/FacetPopover.tsx",
+  "src/FeedsView.tsx", "src/groups.ts", "src/Icon.tsx", "src/ImportView.tsx", "src/JobsView.tsx", "src/keys.ts", "src/library.ts",
+  "src/ListPane.tsx", "src/ModelSettings.tsx", "src/Nav.tsx", "src/overlay/index.ts", "src/Palette.tsx", "src/quiz.ts", "src/QuizCard.tsx",
+  "src/QuizPanel.tsx", "src/QuizReview.tsx", "src/R2BackupSection.tsx", "src/Reader.tsx", "src/scopes.ts", "src/SearchPane.tsx",
+  "src/ShortcutSettings.tsx", "src/Splitter.tsx", "src/StorageSection.tsx", "src/TabStrip.tsx", "src/time.ts", "src/TitleBar.tsx", "src/Update.tsx",
 ]);
 
 test("UI code has no Japanese text outside the catalogs (src/i18n)", () => {

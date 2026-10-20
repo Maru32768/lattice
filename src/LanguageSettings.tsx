@@ -14,7 +14,7 @@ export function LanguageSettings() {
     try {
       await api.setUiLanguage(lang);
     } catch (e) {
-      setError(t.msg(e));
+      setError(String(e));
     }
   }
 
@@ -25,7 +25,7 @@ export function LanguageSettings() {
           {LANGS.map((l) => <option key={l} value={l}>{LANGUAGE_NAMES[l]}</option>)}
         </select>
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{error}</p>}
+      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>
   );
 }

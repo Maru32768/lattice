@@ -1,32 +1,34 @@
 import { useEffect, useState } from "react";
 import { api, type CustomInstructions } from "./api";
+import { useT, type PlainKey } from "./i18n";
 
 const MAX_CHARS = 2000;
 
-const FIELDS: { key: keyof CustomInstructions; label: string; desc: string; placeholder: string }[] = [
+const FIELDS: { key: keyof CustomInstructions; label: PlainKey; desc: PlainKey; placeholder: PlainKey }[] = [
   {
     key: "profile",
-    label: "自分について",
-    desc: "関心のある分野、前提にしてよい知識、重視してほしいことなど。要約と対話の回答の両方に使います。",
-    placeholder: "例: バックエンドエンジニア。PostgreSQL と Kubernetes の運用経験がある。性能の数値と運用上の注意点を重視する。",
+    label: "instructionSettings.profile",
+    desc: "instructionSettings.profileDesc",
+    placeholder: "instructionSettings.profilePlaceholder",
   },
   {
     key: "summary",
-    label: "要約の追加の指示",
-    desc: "要約だけに付け加える指示。変えると、作成済みの要約に「作り直すと反映されます」と表示します。",
-    placeholder: "なし",
+    label: "instructionSettings.summary",
+    desc: "instructionSettings.summaryDesc",
+    placeholder: "common.none",
   },
   {
     key: "chat",
-    label: "対話の追加の指示",
-    desc: "対話の回答だけに付け加える指示。次の質問から効きます。",
-    placeholder: "なし",
+    label: "instructionSettings.chat",
+    desc: "instructionSettings.chatDesc",
+    placeholder: "common.none",
   },
 ];
 
 const EMPTY: CustomInstructions = { profile: "", summary: "", chat: "" };
 
 export function InstructionSettings() {
+  const t = useT();
   const [value, setValue] = useState(EMPTY);
   const [saved, setSaved] = useState(EMPTY);
   const [status, setStatus] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function InstructionSettings() {
       await api.setCustomInstructions(trimmed);
       setValue(trimmed);
       setSaved(trimmed);
-      setStatus("保存しました");
+      setStatus(t("common.saved"));
     } catch (e) {
       setError(String(e));
     }
@@ -55,20 +57,20 @@ export function InstructionSettings() {
     <div className="grp">
       {FIELDS.map(({ key, label, desc, placeholder }) => (
         <div className="set wide" key={key}>
-          <label className="h" htmlFor={`ci-${key}`}>{label}</label>
-          <div className="d">{desc}</div>
-          <textarea id={`ci-${key}`} value={value[key]} rows={key === "profile" ? 5 : 3} maxLength={MAX_CHARS} placeholder={placeholder}
+          <label className="h" htmlFor={`ci-${key}`}>{t(label)}</label>
+          <div className="d">{t(desc)}</div>
+          <textarea id={`ci-${key}`} value={value[key]} rows={key === "profile" ? 5 : 3} maxLength={MAX_CHARS} placeholder={t(placeholder)}
             onChange={(e) => { setValue((v) => ({ ...v, [key]: e.target.value })); setStatus(null); }} />
           <div className="acts"><span className="muted">{value[key].length} / {MAX_CHARS}</span></div>
         </div>
       ))}
       <div className="set wide">
         <div className="acts">
-          <button className="btn sm" onClick={save} disabled={!changed}>保存</button>
+          <button className="btn sm" onClick={save} disabled={!changed}>{t("common.save")}</button>
           {status && <span className="muted" role="status">{status}</span>}
         </div>
       </div>
-      {error && <p className="msg error-text" role="alert">{error}</p>}
+      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>
   );
 }

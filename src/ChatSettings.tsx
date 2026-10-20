@@ -2,15 +2,17 @@ import { useEffect, useState } from "react";
 import { SetRow, Switch } from "./SetRow";
 import { api, type ChatBudget } from "./api";
 import { setVimEnabled, vimEnabled } from "./vim";
+import { useT, type PlainKey } from "./i18n";
 
 // Sizes mirror `chat::Budget::limits` (context characters per question).
-const BUDGETS: { id: ChatBudget; label: string }[] = [
-  { id: "small", label: "少なめ（約 4 万字）" },
-  { id: "standard", label: "標準（約 8 万字）" },
-  { id: "large", label: "多め（約 15 万字）" },
+const BUDGETS: { id: ChatBudget; label: PlainKey }[] = [
+  { id: "small", label: "chatSettings.small" },
+  { id: "standard", label: "chatSettings.standard" },
+  { id: "large", label: "chatSettings.large" },
 ];
 
 export function ChatSettings() {
+  const t = useT();
   const [budget, setBudget] = useState<ChatBudget>("standard");
   const [vim, setVim] = useState(vimEnabled);
   const [error, setError] = useState<string | null>(null);
@@ -29,17 +31,17 @@ export function ChatSettings() {
 
   return (
     <div className="grp">
-      <SetRow title="対話で使う範囲" htmlFor="chat-budget"
-        desc="1 回の質問で LLM に渡す記事の量。範囲が収まれば全文を、収まらなければ検索で選んだ箇所を 1 記事 4 箇所までにして多くの記事から集めます。多いほど網羅的に答えられますが、1 回のコスト（API の料金や CLI の usage）と待ち時間が増えます。次の質問から効きます。">
+      <SetRow title={t("chatSettings.budget")} htmlFor="chat-budget"
+        desc={t("chatSettings.budgetDesc")}>
         <select id="chat-budget" className="select" value={budget} onChange={(e) => void save(e.target.value as ChatBudget)}>
-          {BUDGETS.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
+          {BUDGETS.map((b) => <option key={b.id} value={b.id}>{t(b.label)}</option>)}
         </select>
       </SetRow>
-      <SetRow title="質問の入力欄で Vim キーバインドを使う" htmlFor="chat-vim"
-        desc="Esc でノーマルモード、i・a・o などで挿入モード。h j k l w b e 0 $ gg G で移動し、x dd dw cw yy p u で編集します。送信はどちらのモードでも Ctrl + Enter。">
+      <SetRow title={t("chatSettings.vim")} htmlFor="chat-vim"
+        desc={t("chatSettings.vimDesc")}>
         <Switch id="chat-vim" checked={vim} onChange={(on) => { setVim(on); setVimEnabled(on); }} />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{error}</p>}
+      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>
   );
 }
