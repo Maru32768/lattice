@@ -1,0 +1,9 @@
+# Copy to mise.local.toml (ignored by git). mise loads it after mise.toml, so these
+# variables reach `mise run dev` and anything run with `mise exec`.
+# Keys saved in the app (Settings > AI プロバイダ) take precedence over these.
+# Leave a provider's key empty if you do not use it.
+
+[env]
+OPENAI_API_KEY = ""
+GEMINI_API_KEY = ""
+ANTHROPIC_API_KEY = ""

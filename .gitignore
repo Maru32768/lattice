@@ -38,3 +38,6 @@ dist-ssr
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+
+# Local mise overrides (API keys); see mise.local.toml.example
+mise.local.toml
