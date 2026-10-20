@@ -9,7 +9,7 @@ const ALLOWED: Record<string, string[]> = {};
 
 /** Not moved to the catalogs yet (G51 is migrating them file by file). */
 const PENDING = new Set([
-  "src/App.tsx", "src/overlay/index.ts", "src/Palette.tsx", "src/Reader.tsx",
+  "src/App.tsx", "src/overlay/index.ts", "src/Palette.tsx",
 ]);
 
 test("UI code has no Japanese text outside the catalogs (src/i18n)", () => {
