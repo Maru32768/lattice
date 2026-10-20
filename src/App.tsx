@@ -615,7 +615,7 @@ export default function App() {
             )}
             {doc?.kind === "page" && (
               <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
-                onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+                onNavigate={(url) => openPage(url)} onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
                 onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
             )}
             {doc?.kind === "reader" && view && (
