@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, browser, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, overlayOf, type BrowseTarget, type PageLang, type PageState } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
@@ -19,7 +20,8 @@ import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext, useCover } from "./Popover";
 import { Kbd } from "./Icon";
-import { actionFor, getBindings, keyLabel, keyOf, useBindings, type ActionId } from "./keys";
+import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
+import { keyOf } from "./keyname";
 import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -38,9 +40,9 @@ function loadRecent(): string[] {
   }
 }
 
-const PREFIX_MS = 1500;
-
 const JOB_POLL_MS = 10_000;
+/** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
+const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view"]);
 
 /** States board #8: an empty library. */
 function FirstRun({ onPaste, onFeeds, onImport, onSettings }: { onPaste: () => void; onFeeds: () => void; onImport: () => void; onSettings: () => void }) {
@@ -413,6 +415,7 @@ export default function App() {
 
   // ---- keyboard -----------------------------------------------------------------------------
   const bindings = useBindings();
+  useEffect(() => { browser.setKeys(pageKeys(bindings)).catch(() => {}); }, [bindings]);
   /** tmux-style prefix (Ctrl+B): armed until the next key or PREFIX_MS. */
   const [prefix, setPrefix] = useState(false);
   const prefixTimer = useRef(0);
@@ -434,14 +437,19 @@ export default function App() {
     };
   }, []);
 
-  function paneKey(key: string) {
+  /** True when focus moved to another pane. */
+  function paneKey(key: string, from = paneOf(document.activeElement)): boolean {
     clearTimeout(prefixTimer.current);
     setPrefix(false);
-    if (key === "Z") return actions.focus();
-    const p = paneAfter(key);
-    if (!p) return;
+    if (key === "Z") {
+      actions.focus();
+      return false;
+    }
+    const p = paneAfter(key, from);
+    if (!p) return false;
     focusPane(p);
     setKbPane(p.dataset.pane!);
+    return true;
   }
 
   const step = (d: 1 | -1) => {
@@ -490,7 +498,8 @@ export default function App() {
       const s = keyState.current;
       if (s.prefix) {
         e.preventDefault();
-        return s.paneKey(key);
+        s.paneKey(key);
+        return;
       }
       const action = actionFor(getBindings(), key);
       if (!action) return;
@@ -511,8 +520,27 @@ export default function App() {
       e.preventDefault();
       s.actions[action.id]();
     };
+    // A shortcut the page overlay forwarded: keyboard focus is in the page, in the doc pane.
+    const fromPage = (key: string) => {
+      const s = keyState.current;
+      const focusApp = () => getCurrentWebview().setFocus().catch(() => {});
+      // What the app focused last is stale (j / k in the nav would step the nav).
+      (document.activeElement as HTMLElement | null)?.blur();
+      if (s.prefix) {
+        if (s.paneKey(key, document.querySelector<HTMLElement>("[data-pane='doc']"))) focusApp();
+        return;
+      }
+      const action = actionFor(getBindings(), key);
+      if (!action || (s.overlays && action.id !== "palette")) return;
+      if (LEAVES_PAGE.has(action.id)) focusApp();
+      s.actions[action.id]();
+    };
     window.addEventListener("keydown", down);
-    return () => window.removeEventListener("keydown", down);
+    const unlisten = listen<string>("browser-key", (e) => fromPage(e.payload));
+    return () => {
+      window.removeEventListener("keydown", down);
+      unlisten.then((f) => f());
+    };
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
@@ -587,7 +615,7 @@ export default function App() {
             )}
             {doc?.kind === "page" && (
               <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
-                onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+                onNavigate={(url) => openPage(url)} onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
                 onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
             )}
             {doc?.kind === "reader" && view && (

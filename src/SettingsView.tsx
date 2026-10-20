@@ -11,9 +11,10 @@ import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { BrowserSettings } from "./BrowserSettings";
 import "./manage.css";
 
-export type SettingsSection = "provider" | "translation" | "classify" | "genres" | "render" | "images" | "shortcuts" | "backup" | "r2" | "export" | "storage";
+export type SettingsSection = "provider" | "translation" | "classify" | "genres" | "render" | "images" | "shortcuts" | "browser" | "backup" | "r2" | "export" | "storage";
 
 const GROUPS = ["AI", "ライブラリ", "操作", "データ"] as const;
 
@@ -25,6 +26,7 @@ const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: st
   { id: "render", group: "ライブラリ", title: "取り込み・JS 描画" },
   { id: "images", group: "ライブラリ", title: "画像" },
   { id: "shortcuts", group: "操作", title: "ショートカット", lead: "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。" },
+  { id: "browser", group: "操作", title: "ブラウザ", lead: "ページ表示（アプリ内ブラウザ）の URL バーとホームボタン。" },
   { id: "backup", group: "データ", title: "バックアップ", lead: "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。" },
   { id: "r2", group: "データ", title: "クラウドバックアップ（R2）", lead: <>DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。</> },
   { id: "export", group: "データ", title: "エクスポート" },
@@ -40,6 +42,7 @@ function Body({ id, onChanged }: { id: SettingsSection; onChanged: () => void })
     case "render": return <RenderSettings />;
     case "images": return <ImageSettings />;
     case "shortcuts": return <ShortcutSettings />;
+    case "browser": return <BrowserSettings />;
     case "backup": return <BackupSection />;
     case "r2": return <R2BackupSection />;
     case "export": return <ExportSection />;

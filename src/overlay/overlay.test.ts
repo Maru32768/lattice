@@ -14,7 +14,8 @@ Object.assign(globalThis, {
 });
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
-const { assignTranslated, isWrittenIn, pageTarget, plainText, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
+const { assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
+const { DEFAULT_BINDINGS, pageKeys } = await import("../keys.ts");
 
 test("settle waits for DOM mutations to stop, up to a cap", async () => {
   const root = document.createElement("div");
@@ -104,4 +105,17 @@ test("sentences are wrapped in place and swapped without losing page elements", 
   assert.equal(p.textContent, "The WAL  is durable. It never loses data.");
   assert.equal(p.querySelector("b")!.textContent, "never");
   assert.equal(p.querySelector("img"), img);
+});
+
+test("routeKey: which keys pressed in the page go to the app, and when", () => {
+  const keys = pageKeys(DEFAULT_BINDINGS);
+  assert.equal(routeKey(keys, "Ctrl+K", true, false), "take", "Ctrl+K even from a page field, before the page");
+  assert.equal(routeKey(keys, "Ctrl+B", false, false), "take");
+  assert.equal(routeKey(keys, "J", false, false), "unlessHandled", "after the page, which may claim it");
+  assert.equal(routeKey(keys, "J", true, false), null, "typing in a page field");
+  assert.equal(routeKey(keys, "ArrowDown", false, false), null, "the page scrolls with arrows");
+  assert.equal(routeKey(keys, "Enter", false, false), null);
+  assert.equal(routeKey(keys, "Q", false, false), null, "not an app shortcut");
+  assert.equal(routeKey(keys, "ArrowLeft", true, true), "take", "the key after the pane prefix");
+  assert.equal(routeKey(keys, null, false, true), null, "a lone modifier");
 });

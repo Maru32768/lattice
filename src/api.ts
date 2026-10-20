@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { PageKeys } from "./keys";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
 export type Inline =
@@ -321,6 +322,7 @@ export const browser = {
   capture: () => invoke<string | null>("browser_capture"),
   go: (action: "back" | "forward" | "reload") => invoke<void>("browser_go", { action }),
   setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
+  setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 
 /** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */

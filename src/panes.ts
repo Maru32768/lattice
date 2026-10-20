@@ -12,10 +12,10 @@ export function focusPane(p: HTMLElement) {
   }
 }
 
-/** The pane a tmux-style key after the prefix moves to: ← → / h l to a neighbour, o cycles. Null: nothing there. */
-export function paneAfter(key: string): HTMLElement | null {
+/** The pane a tmux-style key after the prefix moves to from `from`: ← → / h l to a neighbour, o cycles. Null: nothing there. */
+export function paneAfter(key: string, from: HTMLElement | null): HTMLElement | null {
   const all = [...document.querySelectorAll<HTMLElement>("[data-pane]")];
-  const i = all.indexOf(paneOf(document.activeElement)!);
+  const i = from ? all.indexOf(from) : -1;
   if (key === "O") return all[(i + 1) % all.length] ?? null;
   const d = ({ ArrowLeft: -1, H: -1, ArrowRight: 1, L: 1 } as Record<string, number>)[key];
   // ↑ ↓ / k j: the panes sit side by side, so nothing is above or below.

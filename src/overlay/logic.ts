@@ -4,6 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
+import type { PageKeys } from "../keys.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;
@@ -152,4 +153,17 @@ export function assignTranslated(sources: string[], percent: number, seed: strin
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+/**
+ * What the overlay does with a key pressed in the page. "take": forward it before the page sees
+ * it. "unlessHandled": forward it once the page has had it, if the page did not preventDefault
+ * (sites with their own "/" or "j" keep them). Null: the page's.
+ */
+export function routeKey(keys: PageKeys, key: string | null, inField: boolean, prefixArmed: boolean): "take" | "unlessHandled" | null {
+  if (!key) return null;
+  if (prefixArmed) return "take";
+  if (!keys.inFields.includes(key) && (inField || !keys.outside.includes(key))) return null;
+  // A plain key has no browser default to suppress; a Ctrl / Alt one may (Ctrl+S, Ctrl+P).
+  return /^(Ctrl|Alt)\+/.test(key) ? "take" : "unlessHandled";
 }

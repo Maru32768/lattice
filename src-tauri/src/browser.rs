@@ -2,7 +2,7 @@
 //! page and runs the translation overlay. Links navigate in place; pop-ups open here too.
 //!
 //! Trust boundary: the page is remote and untrusted. Its webview gets only the capability in
-//! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot / overlay_history), translate calls are
+//! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot / overlay_history / overlay_key), translate calls are
 //! refused unless the user has switched translation on, and snapshots unless the app asked for one.
 //! The background renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
 
@@ -25,8 +25,19 @@ pub struct OverlayConfig {
     pub percent: u8,
 }
 
+/// The app shortcuts the overlay forwards (`PageKeys` in `src/keys.ts`), passed through to the page.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageKeys {
+    in_fields: Vec<String>,
+    outside: Vec<String>,
+    prefix: Vec<String>,
+    prefix_ms: u32,
+}
+
 pub struct Browser {
     pub config: Mutex<OverlayConfig>,
+    keys: Mutex<Option<PageKeys>>,
     /// Text to scroll to once the next page finishes loading (search-result jumps).
     focus: Mutex<Option<String>>,
     /// Serializes create-or-navigate so overlapping opens cannot create the webview twice.
@@ -82,6 +93,7 @@ impl Default for Browser {
     fn default() -> Self {
         Self {
             config: Mutex::new(OverlayConfig { enabled: false, percent: 70 }),
+            keys: Mutex::new(None),
             focus: Mutex::new(None),
             opening: tokio::sync::Mutex::new(()),
             visibility: Mutex::new(Visibility::default()),
@@ -351,12 +363,52 @@ pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>
     Ok(())
 }
 
+#[derive(Serialize)]
+pub struct OverlayBoot {
+    #[serde(flatten)]
+    config: OverlayConfig,
+    keys: Option<PageKeys>,
+}
+
 /// Called by the overlay on every page load. Exposed to remote pages (read-only).
-/// Only the visible browser translates; the renderer's page stays as served.
+/// Only the visible browser translates and forwards shortcuts; the renderer's page stays as served.
 #[tauri::command]
-pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayConfig {
-    let cfg = *lock(&browser.config);
-    if webview.label() == LABEL { cfg } else { OverlayConfig { enabled: false, ..cfg } }
+pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayBoot {
+    let config = *lock(&browser.config);
+    if webview.label() == LABEL {
+        OverlayBoot { config, keys: lock(&browser.keys).clone() }
+    } else {
+        OverlayBoot { config: OverlayConfig { enabled: false, ..config }, keys: None }
+    }
+}
+
+/// The user's shortcuts changed (or the app started): the overlay forwards these from now on.
+#[tauri::command]
+pub async fn browser_set_keys(app: AppHandle, browser: State<'_, Browser>, keys: PageKeys) -> Result<(), String> {
+    let arg = serde_json::to_string(&keys).expect("keys serialize");
+    *lock(&browser.keys) = Some(keys);
+    if let Some(wv) = app.get_webview(LABEL) {
+        wv.eval(format!("window.__lattice&&window.__lattice.setKeys({arg})")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Called by the overlay with an app shortcut pressed while the page has focus. Exposed to remote
+/// pages, so a page can press the app's shortcuts itself; it can do no more than the user's keys
+/// can, and only while it is on screen.
+#[tauri::command]
+pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -> Result<(), String> {
+    if webview.label() != LABEL {
+        return Err("not the browser webview".into());
+    }
+    let shown = {
+        let v = lock(&browser.visibility);
+        v.wanted && !v.loading
+    };
+    if !shown || key.len() > 64 {
+        return Err("key refused".into());
+    }
+    webview.app_handle().emit_to("main", "browser-key", key).map_err(|e| e.to_string())
 }
 
 /// Guards overlay_translate: the caller must be the browser webview with translation on.
@@ -385,5 +437,14 @@ mod tests {
         let (b2, _rb2) = s.begin(LABEL);
         assert!(s.take(LABEL, &b).is_none(), "superseded by a newer request");
         assert!(s.take(LABEL, &b2).is_some());
+    }
+
+    #[test]
+    fn page_keys_keep_the_overlay_shape() {
+        let keys: PageKeys = serde_json::from_str(r#"{"inFields":["Ctrl+K"],"outside":["J"],"prefix":["Ctrl+B"],"prefixMs":1500}"#).unwrap();
+        let boot = serde_json::to_value(OverlayBoot { config: OverlayConfig { enabled: true, percent: 70 }, keys: Some(keys) }).unwrap();
+        assert_eq!(boot["enabled"], true, "config fields at the top level, as configure() takes them");
+        assert_eq!(boot["keys"]["inFields"][0], "Ctrl+K");
+        assert_eq!(boot["keys"]["prefixMs"], 1500);
     }
 }

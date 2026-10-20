@@ -4,6 +4,7 @@ import type { LanguageMode } from "./mixed";
 import { LangSeg, ViewSeg } from "./Reader";
 import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
+import { getEngine, homeOf, toNavigation } from "./engines";
 
 let lastOpened: BrowseTarget | null = null;
 
@@ -32,14 +33,32 @@ export interface PageLang {
 /** The overlay's switch and ratio for a language choice: 原文 = off, 訳文 = 100 %. */
 export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", percent: l.mode === "translated" ? 100 : l.percent });
 
-/** https:// + host emphasized + the rest. */
-function UrlPill({ url }: { url: string }) {
+/** https:// + host emphasized + the rest; a click edits it, with the whole URL selected. */
+function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const editing = draft != null;
+  useEffect(() => {
+    if (editing) input.current?.select();
+  }, [editing]);
+  if (editing) {
+    return (
+      <input ref={input} className="url-pill" value={draft} autoFocus spellCheck={false} aria-label="URL または検索語"
+        onChange={(e) => setDraft(e.target.value)} onBlur={() => setDraft(null)}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing || (e.key !== "Enter" && e.key !== "Escape")) return;
+          e.preventDefault();
+          if (e.key === "Enter") onGo(draft);
+          setDraft(null);
+        }} />
+    );
+  }
   const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url);
   return (
-    <div className="url-pill" title={url}>
-      <span className="vh">URL: </span>
+    <button type="button" className="url-pill" title={url} onClick={() => setDraft(url)}>
+      <span className="vh">URL（クリックで編集・検索）: </span>
       {m ? <>{m[1]}<b>{m[2]}</b>{m[3]}</> : url}
-    </div>
+    </button>
   );
 }
 
@@ -47,7 +66,7 @@ function UrlPill({ url }: { url: string }) {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, lang, overlays, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
+export function BrowserView({ target, page, saved, saving, lang, overlays, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
   target: BrowseTarget;
   page: PageState | null;
   saved: ArticleRow | null;
@@ -55,6 +74,8 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
   lang: PageLang;
   /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so a still of it stands in. */
   overlays: DOMRect[];
+  /** Opens an http(s) URL typed in the URL bar or the home page. */
+  onNavigate: (url: string) => void;
   onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
@@ -138,7 +159,11 @@ export function BrowserView({ target, page, saved, saving, lang, overlays, onLan
         <button className="ib" onClick={() => browser.go("back")} disabled={page?.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
         <button className="ib" onClick={() => browser.go("forward")} disabled={page?.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
         <button className="ib" onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
-        <UrlPill url={url} />
+        <button className="ib" onClick={() => onNavigate(homeOf(getEngine()))} aria-label="ホーム（検索エンジン）" title="ホーム（検索エンジン）"><Icon name="home" /></button>
+        <UrlBar url={url} onGo={(input) => {
+          const next = toNavigation(input, getEngine());
+          if (next) onNavigate(next);
+        }} />
         <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label="このページを翻訳" />
         {saved ? (
           <>
