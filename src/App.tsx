@@ -77,8 +77,12 @@ export default function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [jobFailures, setJobFailures] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [covers, setCovers] = useState(0);
-  const cover = useCallback((d: 1 | -1) => setCovers((c) => c + d), []);
+  /** Rectangles of open overlays (popovers, menus, palette); the page webview hides under them. */
+  const [overlays, setOverlays] = useState<DOMRect[]>([]);
+  const cover = useCallback((r: DOMRect) => {
+    setOverlays((o) => [...o, r]);
+    return () => setOverlays((o) => o.filter((x) => x !== r));
+  }, []);
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
@@ -442,7 +446,7 @@ export default function App() {
               onCollapse={() => setListOpen(false)} />
           : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
               count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
-        {screen === "library" && <main className="main">
+        {screen === "library" && <main className="main" data-pane="doc">
           {error && (
             <div className="banner" role="alert">
               <span className="grow">{error}</span>
@@ -450,7 +454,7 @@ export default function App() {
             </div>
           )}
           {doc?.kind === "page" && (
-            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} covered={covers > 0}
+            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
               onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
               onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
           )}

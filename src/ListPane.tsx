@@ -144,7 +144,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
     </div>
   );
   return (
-    <section className="list" aria-label="記事一覧">
+    <section className="list" aria-label="記事一覧" data-pane="list">
       <header className="list-h">
         <div className="list-title">
           <h1>{title}</h1>
@@ -187,7 +187,7 @@ export function ListRail({ label, index, count, onOpen, onPrev, onNext }: {
   label: string; index: number; count: number; onOpen: () => void; onPrev: () => void; onNext: () => void;
 }) {
   return (
-    <section className="list-rail" aria-label="記事一覧（折りたたみ）">
+    <section className="list-rail" aria-label="記事一覧（折りたたみ）" data-pane="list">
       <button className="ib" onClick={onOpen} aria-label="記事一覧を開く" title="記事一覧を開く"><Icon name="right" /></button>
       <button className="ib" onClick={onPrev} aria-label="前の記事 (k)" title="前の記事 (k)"><Icon name="up" /></button>
       <span className="vlabel mono">{index > 0 ? index : "–"} / {count} · {label}</span>

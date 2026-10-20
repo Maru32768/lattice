@@ -100,7 +100,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? MANUAL : valueLabel("feeds", id, all)]);
   let n = 0;
   return (
-    <section className="list search" aria-label="検索結果" onKeyDown={keys}>
+    <section className="list search" aria-label="検索結果" data-pane="list" onKeyDown={keys}>
       <header className="list-h">
         <div className="search-q">
           <label className="vh" htmlFor="search-q">検索語</label>

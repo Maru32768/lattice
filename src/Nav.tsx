@@ -70,7 +70,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
   const shownFeeds = allFeeds ? feeds : feeds.slice(0, FEEDS_SHOWN);
 
   return (
-    <nav className="nav" aria-label="ナビゲーション">
+    <nav className="nav" aria-label="ナビゲーション" data-pane="nav">
       <div className="nav-top">
         <Logo />
         <span className="brand">Lattice</span>
@@ -137,7 +137,7 @@ export function NavRail({ scope, chatOpen, onOpen, onPalette, onScope, onChat }:
     <button className={`ib${scope && sameScope(scope, s) ? " on" : ""}`} onClick={() => onScope(s)} aria-label={label} title={label}><Icon name={icon} /></button>
   );
   return (
-    <nav className="nav-rail" aria-label="ナビゲーション（折りたたみ）">
+    <nav className="nav-rail" aria-label="ナビゲーション（折りたたみ）" data-pane="nav">
       <button className="ib" onClick={onOpen} aria-label="ナビゲーションを開く" title="ナビゲーションを開く"><Icon name="panel" /></button>
       <button className="ib" onClick={onPalette} aria-label="検索・コマンド" title="検索・コマンド (Ctrl K)"><Icon name="search" /></button>
       {btn({ kind: "unread" }, "未読", "unread")}

@@ -1,18 +1,34 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 /**
- * The Page view's native webview is drawn above all app DOM, so any app overlay that could
- * overlap it reports itself here; the shell hides the webview while one is open (BrowserView `covered`).
+ * The Page view's native webview is drawn above all app DOM, so every app overlay reports its
+ * rectangle here; the Page view hides the webview while one of them intersects it.
+ * Returns the function that withdraws the report.
  */
-export const CoverContext = createContext<(delta: 1 | -1) => void>(() => {});
+export const CoverContext = createContext<(r: DOMRect) => () => void>(() => () => {});
 
-export function useCover(open: boolean) {
+export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean) {
   const cover = useContext(CoverContext);
-  useEffect(() => {
-    if (!open) return;
-    cover(1);
-    return () => cover(-1);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    return cover(ref.current.getBoundingClientRect());
   }, [open]);
+}
+
+export const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+/**
+ * Where a surface anchored below `anchor` goes: inside the pane the anchor sits in (so a popover
+ * opened from the list stays off the page webview), else inside the window. Computed during render
+ * so the first frame is already in place.
+ */
+function place(anchor: HTMLElement, width: number, align: "left" | "right") {
+  const r = anchor.getBoundingClientRect();
+  const pane = anchor.closest("[data-pane]")?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+  const w = Math.min(width, pane.width - 16);
+  const lo = pane.left + 8, hi = pane.right - w - 8;
+  const left = Math.max(lo, Math.min(align === "left" ? r.left : r.right - w, hi));
+  return { left, top: r.bottom + 4, width: w };
 }
 
 /** Closes on Escape and on a pointer press outside `ref` (and outside `anchor`, which toggles itself). */
@@ -43,19 +59,17 @@ export function Popover({ anchor, label, width, onClose, children }: {
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ left: 0, top: 0 });
-  useCover(true);
+  const pos = useMemo(() => place(anchor, width, "left"), [anchor, width]);
+  useCover(ref, true);
   useDismiss(ref, anchor, onClose);
   useLayoutEffect(() => {
-    const r = anchor.getBoundingClientRect();
-    setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), top: r.bottom + 6 });
     const first = ref.current?.querySelector<HTMLElement>("input, [data-autofocus]") ?? ref.current;
     first?.focus();
     return () => anchor.focus();
   }, [anchor]);
   return (
     <div ref={ref} className="pv" role="dialog" aria-label={label} tabIndex={-1}
-      style={{ ...pos, width, maxHeight: `calc(100vh - ${pos.top + 12}px)` }} onKeyDown={escape(onClose)}>
+      style={{ ...pos, maxHeight: `calc(100vh - ${pos.top + 12}px)` }} onKeyDown={escape(onClose)}>
       {children}
     </div>
   );
@@ -66,6 +80,14 @@ export interface MenuItem {
   onSelect: () => void;
   disabled?: boolean;
   checked?: boolean;
+}
+
+/** `.menu` min-width; a wider menu grows away from the aligned edge. */
+const MENU_WIDTH = 220;
+
+function menuPlace(btn: HTMLElement, align: "left" | "right") {
+  const p = place(btn, MENU_WIDTH, align);
+  return align === "left" ? { left: p.left, top: p.top } : { right: window.innerWidth - p.left - p.width, top: p.top };
 }
 
 /** A trigger button plus an anchored menu. `items` entries of "-" are separators, strings are captions. */
@@ -80,7 +102,7 @@ export function Menu({ trigger, label, className, items, align = "left", title }
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useCover(open);
+  useCover(ref, open);
   useDismiss(ref, btn.current, () => setOpen(false));
   useEffect(() => { if (open) ref.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus(); }, [open]);
 
@@ -98,12 +120,12 @@ export function Menu({ trigger, label, className, items, align = "left", title }
   }
 
   return (
-    <span style={{ position: "relative", display: "inline-flex" }}>
+    <span style={{ display: "inline-flex" }}>
       <button ref={btn} className={className} aria-label={label} title={title ?? label} aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}>{trigger}</button>
       {open && (
         <div ref={ref} className="menu" role="menu" aria-label={label} onKeyDown={arrows}
-          style={{ top: "calc(100% + 4px)", [align]: 0 }}>
+          style={menuPlace(btn.current!, align)}>
           {items.map((it, i) =>
             it === "-" ? <div key={i} className="sep" role="separator" />
             : typeof it === "string" ? <div key={i} className="cap">{it}</div>

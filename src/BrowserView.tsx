@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { browser, type ArticleRow, type Bounds } from "./api";
 import type { LanguageMode } from "./mixed";
 import { LangSeg, ViewSeg } from "./Reader";
-import { Menu } from "./Popover";
+import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
 
 let lastOpened: BrowseTarget | null = null;
@@ -44,14 +44,14 @@ function UrlPill({ url }: { url: string }) {
  * Toolbar plus a placeholder box; the native browser webview is kept positioned over the
  * box. Page content never enters this (app) webview.
  */
-export function BrowserView({ target, page, saved, saving, lang, covered, onLang, onSave, onReader, onFavorite, onError }: {
+export function BrowserView({ target, page, saved, saving, lang, overlays, onLang, onSave, onReader, onFavorite, onError }: {
   target: BrowseTarget;
   page: PageState | null;
   saved: ArticleRow | null;
   saving: boolean;
   lang: PageLang;
-  /** An app overlay (palette, popover, menu) is open; the native webview would hide it, so hide the webview. */
-  covered: boolean;
+  /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so it hides instead. */
+  overlays: DOMRect[];
   onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
@@ -63,6 +63,8 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
     const r = host.current?.getBoundingClientRect();
     return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
   };
+  const hostRect = host.current?.getBoundingClientRect();
+  const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
   const sync = () => {
