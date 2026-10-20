@@ -339,6 +339,12 @@ ALTER TABLE feed_items ADD COLUMN title TEXT;
 ALTER TABLE feed_items ADD COLUMN content BLOB;
 -- So the next poll gets every feed in full and fills these for entries seen before.
 UPDATE feeds SET etag = NULL, last_modified = NULL;
+"#, r#"
+-- The user's name and icon for a feed (feeds::rename / set_icon); NULL shows the feed's own
+-- title and the site's favicon. title keeps the feed's own, so the name can be reset.
+ALTER TABLE feeds ADD COLUMN custom_title TEXT;
+ALTER TABLE feeds ADD COLUMN icon_mime TEXT;
+ALTER TABLE feeds ADD COLUMN icon BLOB;
 "#];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -580,7 +586,7 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)), author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
-    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
+    (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, type ArticleRow, type FeedRow } from "./api";
-import { MANUAL, UNCLASSIFIED } from "./groups";
+import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
 import { activeDims, countBy, facetLabel, genreSwatch, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
 import { useCover } from "./Popover";
@@ -100,7 +100,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: "最近追加を表示", keys: "recent 最近", icon: "recent", run: () => actions.scope({ kind: "recent" }) },
     { label: "すべての記事を表示", keys: "all すべて", icon: "all", run: () => actions.scope({ kind: "all" }) },
     ...genreCounts.map(([g]): Command => ({ label: `ジャンル: ${g ?? UNCLASSIFIED}`, keys: `genre ジャンル ${g ?? UNCLASSIFIED}`, icon: "filter", run: () => actions.scope({ kind: "genre", name: g }) })),
-    ...feeds.map((f): Command => ({ label: `ソース: ${f.title ?? f.url}`, keys: `source feed ソース ${f.title ?? ""} ${f.url}`, icon: "rss", run: () => actions.scope({ kind: "feed", id: f.id }) })),
+    ...feeds.map((f): Command => ({ label: `ソース: ${feedName(f)}`, keys: `source feed ソース ${feedName(f)} ${f.title ?? ""} ${f.url}`, icon: "rss", run: () => actions.scope({ kind: "feed", id: f.id }) })),
     { label: `ソース: ${MANUAL}`, keys: `source ソース manual ${MANUAL}`, icon: "manual", run: () => actions.scope({ kind: "feed", id: null }) },
     ...(actions.translate ? [{ label: "この記事を翻訳（job を積む）", keys: "translate 翻訳", icon: "translate", run: actions.translate } as Command] : []),
     { label: "表示言語: 混在", keys: "translate mixed ratio 混在 割合 表示言語", icon: "translate", run: (n) => actions.lang("mixed", n ?? undefined), withNumber: (n) => `表示言語: 混在 · 訳文 ${n}%` },
@@ -168,7 +168,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       }
     }
     if (!prefix ? text : prefix === "@") {
-      const sources: [number | null, string][] = [...feeds.map((f): [number, string] => [f.id, f.title ?? f.url]), [null, MANUAL]];
+      const sources: [number | null, string][] = [...feeds.map((f): [number, string] => [f.id, feedName(f)]), [null, MANUAL]];
       for (const [id, name] of sources.filter(([, name]) => has(name)).slice(0, prefix ? 12 : LIMIT)) {
         const add = () => actions.facets({ ...facets, feeds: facets.feeds.includes(id) ? facets.feeds : [...facets.feeds, id] });
         out.push({ group: "ソース", icon: id == null ? "manual" : "rss", label: <Hl text={name} q={text} />, sub: id == null ? undefined : "フィード",

@@ -28,7 +28,11 @@ fn err(e: impl ToString) -> String {
 pub struct FeedRow {
     pub id: i64,
     pub url: String,
+    /// The feed's own title; `custom_title` (the user's name for it) is shown instead when set.
     pub title: Option<String>,
+    pub custom_title: Option<String>,
+    /// The user picked an icon (`icon`), shown in place of the site's favicon.
+    pub has_icon: bool,
     pub site_url: Option<String>,
     pub last_fetched_at: Option<String>,
     pub last_error: Option<String>,
@@ -166,8 +170,9 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
     let c = store.conn();
     let mut st = c
         .prepare(
-            "SELECT id, url, title, site_url, last_fetched_at, last_error, (SELECT count(*) FROM articles WHERE feed_id = feeds.id)
-             FROM feeds ORDER BY coalesce(title, url) COLLATE NOCASE",
+            "SELECT id, url, title, site_url, last_fetched_at, last_error, (SELECT count(*) FROM articles WHERE feed_id = feeds.id),
+                    custom_title, icon IS NOT NULL
+             FROM feeds ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE",
         )
         .map_err(err)?;
     st.query_map([], |r| {
@@ -179,11 +184,59 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
             last_fetched_at: r.get(4)?,
             last_error: r.get(5)?,
             article_count: r.get(6)?,
+            custom_title: r.get(7)?,
+            has_icon: r.get(8)?,
         })
     })
     .map_err(err)?
     .collect::<Result<_, _>>()
     .map_err(err)
+}
+
+const MAX_NAME_CHARS: usize = 200;
+/// Shown at 16 px: anything bigger is a mistake, not an icon.
+const MAX_ICON_BYTES: usize = 1024 * 1024;
+
+fn changed(rows: rusqlite::Result<usize>) -> Result<(), String> {
+    match rows.map_err(err)? {
+        0 => Err("feed no longer exists".into()),
+        _ => Ok(()),
+    }
+}
+
+/// The user's name for a feed; `None` or blank goes back to the feed's own title.
+pub fn rename(store: &Store, id: i64, name: Option<&str>) -> Result<(), String> {
+    let name = name.map(str::trim).filter(|n| !n.is_empty());
+    if name.is_some_and(|n| n.chars().count() > MAX_NAME_CHARS) {
+        return Err(format!("名前は {MAX_NAME_CHARS} 文字までです"));
+    }
+    changed(store.conn().execute("UPDATE feeds SET custom_title = ?2 WHERE id = ?1", params![id, name]))
+}
+
+/// The user's icon for a feed, typed by its content (PNG, JPEG, GIF, WebP, AVIF, ICO or SVG);
+/// `None` goes back to the site's favicon. SVG is kept as is: the UI shows it only through
+/// `<img>` from a `data:` URL, where its scripts never run.
+pub fn set_icon(store: &Store, id: i64, bytes: Option<&[u8]>) -> Result<(), String> {
+    let mime = match bytes {
+        None => None,
+        Some(b) if b.len() > MAX_ICON_BYTES => return Err("アイコンの画像は 1 MB までです".into()),
+        Some(b) => Some(crate::images::sniff(b).or_else(|| is_svg(b).then_some("image/svg+xml")).ok_or("PNG・JPEG・GIF・WebP・ICO・SVG の画像を選んでください")?),
+    };
+    changed(store.conn().execute("UPDATE feeds SET icon_mime = ?2, icon = ?3 WHERE id = ?1", params![id, mime, bytes]))
+}
+
+fn is_svg(b: &[u8]) -> bool {
+    std::str::from_utf8(b).is_ok_and(|s| s[..s.floor_char_boundary(4096)].to_ascii_lowercase().contains("<svg"))
+}
+
+/// The user's icon for a feed as a `data:` URL; `None` when it has none.
+pub fn icon(store: &Store, id: i64) -> Result<Option<String>, String> {
+    let row: Option<(Option<String>, Option<Vec<u8>>)> = store
+        .conn()
+        .query_row("SELECT icon_mime, icon FROM feeds WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()
+        .map_err(err)?;
+    Ok(row.and_then(|(mime, bytes)| Some(format!("data:{};base64,{}", mime?, crate::images::base64(&bytes?)))))
 }
 
 /// Fetches one feed and queues its unseen entries. Returns how many articles were queued.
@@ -537,6 +590,36 @@ mod tests {
         assert!(s.article_row(failed.id).unwrap().unwrap().from_feed);
         assert_eq!(import(&s, feed, &new).unwrap(), 0, "once");
         assert!(s.claim_next_job(&[ingest::JOB_TYPE]).unwrap().is_none());
+    }
+
+    #[test]
+    fn names_and_icons_override_the_feeds_own() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = add(&s, "https://blog.dev/feed").unwrap();
+        import(&s, id, &[entry("https://blog.dev/p")]).unwrap();
+        mark_fetched(&s, id, Some(&Parsed { title: Some("Blog".into()), ..Default::default() }), None, None).unwrap();
+        let shown = || (list(&s).unwrap()[0].custom_title.clone(), s.list_articles(&ArticleFilter::All).unwrap()[0].feed_title.clone());
+
+        rename(&s, id, Some("  My blog ")).unwrap();
+        assert_eq!(shown(), (Some("My blog".into()), Some("My blog".into())));
+        assert_eq!(list(&s).unwrap()[0].title.as_deref(), Some("Blog"), "the feed's own title is kept");
+        assert!(rename(&s, id, Some(&"x".repeat(MAX_NAME_CHARS + 1))).is_err());
+        rename(&s, id, Some(" ")).unwrap();
+        assert_eq!(shown(), (None, Some("Blog".into())), "blank resets");
+        assert!(rename(&s, 999, Some("x")).is_err());
+
+        const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+        assert_eq!(icon(&s, id).unwrap(), None);
+        set_icon(&s, id, Some(PNG)).unwrap();
+        assert!(list(&s).unwrap()[0].has_icon);
+        assert!(icon(&s, id).unwrap().unwrap().starts_with("data:image/png;base64,"));
+        let svg = br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>"#;
+        set_icon(&s, id, Some(svg)).unwrap();
+        assert!(icon(&s, id).unwrap().unwrap().starts_with("data:image/svg+xml;base64,"), "stored, shown only as an image");
+        assert!(set_icon(&s, id, Some(b"<html>not an image</html>")).is_err());
+        assert!(set_icon(&s, id, Some(&[PNG, &vec![0; MAX_ICON_BYTES]].concat())).is_err());
+        set_icon(&s, id, None).unwrap();
+        assert_eq!((icon(&s, id).unwrap(), list(&s).unwrap()[0].has_icon), (None, false));
     }
 
     #[test]

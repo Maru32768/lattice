@@ -486,7 +486,8 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | entry の title・本文の保存、失敗した記事の取り直し | `crates/lattice-core/src/feeds.rs`（`parse`・`import`） |
 | フィードの本文での取り込み | `crates/lattice-core/src/ingest.rs`（`store_fetch_result`・`from_feed`） |
 | 取得を拒否された記事の裏描画 | `crates/lattice-core/src/render.rs`（`enqueue_if_auto`） |
-| スキーマ、URL の正規化のやり直し | `crates/lattice-core/src/store.rs`（migration 18）、`url_norm.rs` |
+| スキーマ、URL の正規化のやり直し | `crates/lattice-core/src/store.rs`（migration 18, 19）、`url_norm.rs` |
+| 表示名・アイコン | `crates/lattice-core/src/feeds.rs`（`rename`・`set_icon`・`icon`）、`src/FeedsView.tsx`（`FeedEditor`）、`src/Favicon.tsx` |
 | 表示 | `src/Reader.tsx` |
 
 - **きっかけ。** Medium がホストするフィード（例: `techblog.netflix.com/feeds/posts/default` → `medium.com/feed/netflix-techblog`）の記事は、ブラウザ以外の取得に 403 を返す（bot 対策。ブラウザの user agent の curl でも 403）。記事はすべて「取得失敗」になり、タイトルも URL のままだった。フィードには entry の title と、`content:encoded` に本文の HTML 全体が入っている。
@@ -499,6 +500,10 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 - **既に失敗した記事。** poll で entry の本文が初めて保存されたとき、その entry の記事が取得か抽出に失敗していれば ingest job を積み直す。job は取得をやり直し、失敗すればフィードの本文を使う。本文が初めて現れたときだけなので、何度 poll しても積み直すのは 1 回だけ。
 - **URL の正規化。** Medium はフィードのリンクに `?source=rss----<id>---4` を付けるので、`source` の値が `rss` で始まるときは正規化で落とす（他の `source` は意味を持ちうるので残す）。保存済みの `articles.normalized_url` / `canonical_url` と `feed_items.normalized_url` は migration 18 の中で Rust の `normalize` で付け直す（`RENORMALIZE_AT`）。新しい形が既に使われている行は `UPDATE OR IGNORE` で元のまま残る。
 - **実際のフィードで確認。** `https://medium.com/feed/netflix-techblog` は 10 entry で、すべてに本文があり（HTML 12〜36 KB、抽出後 10,000〜30,000 文字、35〜145 block）、記事ページは 403 を返した（使い捨ての example で取得・解析・抽出した）。
+
+- **フィードの表示名。** フィード画面の各行の「編集」で、表示名（`feeds.custom_title`、migration 19、200 文字まで）を付けられる。空にするか「元に戻す」でフィード本来の名前（`feeds.title`。poll で更新され続ける）に戻る。表示名は `ARTICLE_COLS` の `feed_title`（`coalesce(custom_title, title, url)`）とフィード一覧の並び順に入るので、記事の行・Reader・グループ・スコープ名・検索の絞り込みに効く。`FeedRow` を直接表示する箇所（サイドバー、パレット、対話と検索のスコープ選択）は `groups.ts` の `feedName` を通す。
+- **フィードのアイコン。** 同じ編集欄で画像ファイル（1 MB まで）を選ぶと `feeds.icon` / `icon_mime` に保存する。形式は拡張子や申告ではなく中身で決める（ラスターは記事画像と同じ magic number の判定、SVG は UTF-8 で先頭 4 KB に `<svg` があるもの）。SVG は script を持てるが、UI は `data:` URL の `<img>` でしか表示しない（`<img>` の SVG では script が動かない。harness で確認）。`feed_icon(id)` command が `data:` URL を返し、`Favicon` は `feed` を渡されるとそれを優先して、なければサイトの favicon を出す。サイドバー・フィード画面の表・そのフィードの記事の行・Reader の meta 行で使う。変更後は `feedIconChanged` がそのフィードの cache だけを消す。「サイトのアイコンに戻す」で消す。
+  - サイドバーのフィードには右クリックのメニューを付けていない（アプリにコンテキストメニューの仕組みがない）。編集はフィード画面（サイドバーの「管理」）から行う。
 
 ### 未実装（意図的）
 

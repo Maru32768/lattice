@@ -223,7 +223,7 @@ fn check_response(content_type: Option<&str>, content_length: Option<u64>, cap: 
 }
 
 /// Raster formats by magic number. Anything else (SVG, HTML error pages) is not stored.
-fn sniff(b: &[u8]) -> Option<&'static str> {
+pub(crate) fn sniff(b: &[u8]) -> Option<&'static str> {
     match b {
         [0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', ..] => Some("image/png"),
         [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),

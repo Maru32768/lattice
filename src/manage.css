@@ -34,6 +34,13 @@
 .manage tr.err > td { background: var(--err-row); }
 .manage tr.confirm > td { background: var(--foot); padding: 12px; }
 .manage .confirm-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.manage tr.edit > td { background: var(--foot); padding: 12px 16px; }
+.manage .feed-edit { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.manage .feed-edit > label, .manage .feed-edit > .lbl { font-size: 12px; color: var(--ink2); }
+.manage .feed-edit .line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.manage .feed-edit .input { flex: 1; min-width: 200px; background: var(--doc); }
+.manage .feed-edit .muted { font-size: 12px; }
+.manage .feed-edit p { margin: 0; }
 .manage .confirm-line .muted { font-size: 12px; }
 
 /* Jobs */

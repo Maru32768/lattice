@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FeedRow } from "./api";
-import { MANUAL, UNCLASSIFIED } from "./groups";
+import { MANUAL, UNCLASSIFIED, feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
@@ -104,7 +104,7 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
       </button>
       {feedsOpen && (
         <div className="nav-sub">
-          {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, f.title ?? f.url, counts.feedUnread.get(f.id) ?? 0, <Favicon domain={hostOf(f.site_url ?? f.url)} />, " sub"))}
+          {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, feedName(f), counts.feedUnread.get(f.id) ?? 0, <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />, " sub"))}
           {feeds.length > FEEDS_SHOWN && (
             <button className="ni sub dim" onClick={() => setAllFeeds((v) => !v)} aria-expanded={allFeeds}>
               {allFeeds ? "折りたたむ" : "すべてのフィード…"}
