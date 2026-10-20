@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-auto-relevance"
+description = "Enables the set_auto_relevance command without any pre-configured scope."
+commands.allow = ["set_auto_relevance"]
+
+[[permission]]
+identifier = "deny-set-auto-relevance"
+description = "Denies the set_auto_relevance command without any pre-configured scope."
+commands.deny = ["set_auto_relevance"]

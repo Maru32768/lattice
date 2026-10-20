@@ -163,8 +163,8 @@ fn clean(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_NAME_CHARS).collect()
 }
 
-/// Title, domain and the summary if there is one, else the opening prose.
-fn source(store: &Store, article_id: i64) -> rusqlite::Result<Option<Value>> {
+/// Title, domain and the summary if there is one, else the opening prose (`chars` at most).
+pub(crate) fn source(store: &Store, article_id: i64, chars: usize) -> rusqlite::Result<Option<Value>> {
     let c = store.conn();
     c.query_row(
         "SELECT coalesce(a.title, a.original_url), a.domain,
@@ -175,7 +175,7 @@ fn source(store: &Store, article_id: i64) -> rusqlite::Result<Option<Value>> {
         [article_id],
         |r| {
             let text: Option<String> = r.get::<_, Option<String>>(2)?.or(r.get(3)?);
-            let text: String = text.unwrap_or_default().chars().take(EXCERPT_CHARS).collect();
+            let text: String = text.unwrap_or_default().chars().take(chars).collect();
             Ok(json!({"title": r.get::<_, String>(0)?, "domain": r.get::<_, String>(1)?, "text": text}))
         },
     )
@@ -240,7 +240,7 @@ async fn classify<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> R
     let mut out = HashMap::new();
     let mut items: Vec<(i64, Value)> = Vec::new();
     for &id in ids {
-        match source(store, id) {
+        match source(store, id, EXCERPT_CHARS) {
             Ok(Some(mut v)) => {
                 v["i"] = json!(items.len());
                 items.push((id, v));

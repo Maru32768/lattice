@@ -5,6 +5,8 @@ import { TranslationSettings } from "./TranslationSettings";
 import { InstructionSettings } from "./InstructionSettings";
 import { ChatSettings } from "./ChatSettings";
 import { ClassifySettings } from "./ClassifySettings";
+import { RelevanceSettings } from "./RelevanceSettings";
+import { FilterEditor } from "./FeedFilterEditor";
 import { GenreSettings } from "./GenreSettings";
 import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
@@ -21,7 +23,7 @@ import { UpdateSection } from "./Update";
 import "./manage.css";
 import { useT, type PlainKey, type T } from "./i18n";
 
-export type SettingsSection = "language" | "provider" | "translation" | "instructions" | "classify" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
+export type SettingsSection = "language" | "provider" | "translation" | "instructions" | "classify" | "relevance" | "feedFilter" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
 
 const GROUPS = { ai: "settingsView.groupAi", library: "settingsView.groupLibrary", controls: "settingsView.groupControls", data: "settingsView.groupData", app: "settingsView.groupApp" } as const satisfies Record<string, PlainKey>;
 type Group = keyof typeof GROUPS;
@@ -32,8 +34,10 @@ const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: Pla
   { id: "translation", group: "ai", title: "settingsView.translation", lead: "settingsView.translationLead" },
   { id: "instructions", group: "ai", title: "settingsView.instructions", lead: "settingsView.instructionsLead" },
   { id: "classify", group: "ai", title: "settingsView.classify" },
+  { id: "relevance", group: "ai", title: "settingsView.relevance", lead: "settingsView.relevanceLead" },
   { id: "genres", group: "library", title: "settingsView.genres", lead: "settingsView.genresLead" },
   { id: "render", group: "library", title: "settingsView.render" },
+  { id: "feedFilter", group: "library", title: "settingsView.feedFilter", lead: "settingsView.feedFilterLead" },
   { id: "images", group: "library", title: "settingsView.images" },
   { id: "review", group: "library", title: "settingsView.review", lead: "settingsView.reviewLead" },
   { id: "language", group: "controls", title: "language.title" },
@@ -53,8 +57,10 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
     case "translation": return <TranslationSettings />;
     case "instructions": return <><InstructionSettings /><ChatSettings /></>;
     case "classify": return <ClassifySettings />;
+    case "relevance": return <RelevanceSettings onChanged={onChanged} />;
     case "genres": return <GenreSettings onChanged={onChanged} />;
     case "render": return <RenderSettings />;
+    case "feedFilter": return <div className="grp"><div className="set wide"><FilterEditor feedId={null} onSaved={onChanged} /></div></div>;
     case "images": return <ImageSettings />;
     case "review": return <QuizSettings />;
     case "language": return <LanguageSettings />;

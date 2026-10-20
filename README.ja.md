@@ -124,7 +124,7 @@ lattice-cli search "MVCC write skew" --limit 5
 lattice-cli --format text get 42
 ```
 
-出力は JSON で、`--format text` で人が読む形になります。コマンドは `search`・`get`（`--blocks`・`--translation`）・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask` です。`--scope` には `unread`・`favorites`・`tag:名前`・`genre:名前`・`feed:ID`・`group:ID`・`article:ID` を指定できます。`--data-dir` で別のデータフォルダを指定できます。一覧は `lattice-cli --help` で見られます。
+出力は JSON で、`--format text` で人が読む形になります。コマンドは `search`・`get`（`--blocks`・`--translation`）・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask` です。`--scope` には `unread`・`favorites`・`tag:名前`・`genre:名前`・`feed:ID`・`group:ID`・`important[:下限]`（重要度。既定 4）・`article:ID` を指定できます。`--data-dir` で別のデータフォルダを指定できます。一覧は `lattice-cli --help` で見られます。
 
 - **検索** はアプリと同じハイブリッド検索です。アプリが意味検索のモデルをまだダウンロードしていなければ全文検索だけになり、JSON にそう示します（`"mode": "full_text"`）。CLI はモデルをダウンロードしません。
 - **質問（ask）** はアプリで設定した AI プロバイダで保存した記事から答えます。質問はアプリの対話の履歴にも残ります。

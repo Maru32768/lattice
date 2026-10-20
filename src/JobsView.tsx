@@ -7,6 +7,7 @@ import { locale, useT, type PlainKey, type T } from "./i18n";
 
 // Pipeline order; a type the backend adds later still shows, after these.
 const TYPES: { type: string; label: PlainKey; hint?: PlainKey }[] = [
+  { type: "feed_filter", label: "jobsView.feedFilter", hint: "jobsView.feedFilterHint" },
   { type: "ingest", label: "jobsView.ingest" },
   { type: "render", label: "jobsView.render", hint: "jobsView.renderHint" },
   { type: "images", label: "jobsView.images" },
@@ -17,6 +18,7 @@ const TYPES: { type: string; label: PlainKey; hint?: PlainKey }[] = [
   { type: "quiz", label: "jobsView.quiz" },
   { type: "vocab", label: "jobsView.vocab" },
   { type: "classify", label: "jobsView.classify", hint: "jobsView.classifyHint" },
+  { type: "relevance", label: "jobsView.relevance", hint: "jobsView.classifyHint" },
 ];
 const STATES: { state: JobState; label: PlainKey; tone: string }[] = [
   { state: "pending", label: "jobsView.pending", tone: "" },

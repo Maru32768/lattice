@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-feed-rejected"
+description = "Enables the feed_rejected command without any pre-configured scope."
+commands.allow = ["feed_rejected"]
+
+[[permission]]
+identifier = "deny-feed-rejected"
+description = "Denies the feed_rejected command without any pre-configured scope."
+commands.deny = ["feed_rejected"]

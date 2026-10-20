@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
 import { relTime } from "./time";
 import { Favicon, feedIconChanged, hostOf } from "./Favicon";
+import { FilterEditor, RejectedList } from "./FeedFilterEditor";
 import "./manage.css";
 import { useT } from "./i18n";
 
@@ -12,7 +13,7 @@ const MAX_ICON_BYTES = 1024 * 1024;
 const ICON_TYPES = ".png,.jpg,.jpeg,.gif,.webp,.svg,.ico,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon";
 
 /** Display name and icon of one feed, below its row in the table. */
-function FeedEditor({ feed: f, onSaved, onClose }: { feed: FeedRow; onSaved: () => void; onClose: () => void }) {
+function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }) {
   const t = useT();
   const [name, setName] = useState(f.custom_title ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +60,6 @@ function FeedEditor({ feed: f, onSaved, onClose }: { feed: FeedRow; onSaved: () 
         <span className="muted">{t("feedsView.iconFormats")}</span>
       </div>
       {error && <p role="alert" className="error-text">{t.msg(error)}</p>}
-      <div><button type="button" className="btn sm" onClick={onClose}>{t("common.close")}</button></div>
     </form>
   );
 }
@@ -245,7 +245,15 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
               ) : [
                 <tr key={f.id} className={f.last_error ? "err" : undefined}>
                   <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
-                  <td>{f.last_error ? <span className="st err"><i />{t.msg(f.last_error)}</span> : <span className="st"><i />{t("feedsView.ok")}</span>}</td>
+                  <td>
+                    {f.last_error ? <span className="st err"><i />{t.msg(f.last_error)}</span> : <span className="st"><i />{t("feedsView.ok")}</span>}
+                    {f.filter_note && <div className="st warn">{t.msg(f.filter_note)}</div>}
+                    {f.rejected > 0 && (
+                      <div><button className="btn sm ghost" onClick={() => setEditing(f.id)} aria-label={t("feedsView.rejectedOf", { feedName: feedName(f), n: f.rejected })}>
+                        {t("feedsView.rejected", { n: f.rejected })}
+                      </button></div>
+                    )}
+                  </td>
                   <td className="num when">{relTime(f.last_fetched_at, t)}</td>
                   <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>
                   <td className="row-acts">
@@ -257,7 +265,14 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 </tr>,
                 editing === f.id && (
                   <tr key={`${f.id}-edit`} className="edit">
-                    <td colSpan={5}><FeedEditor feed={f} onSaved={() => { void load(); onChanged(); }} onClose={() => setEditing(null)} /></td>
+                    <td colSpan={5}>
+                      <div className="feed-edit">
+                        <FeedEditor feed={f} onSaved={() => { void load(); onChanged(); }} />
+                        <FilterEditor feedId={f.id} onSaved={() => { void load(); onChanged(); }} />
+                        <RejectedList feed={f} onChanged={() => { void load(); onChanged(); }} />
+                        <div><button type="button" className="btn sm" onClick={() => setEditing(null)}>{t("common.close")}</button></div>
+                      </div>
+                    </td>
                   </tr>
                 ),
               ])}

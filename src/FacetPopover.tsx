@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ArticleRow, GroupRow } from "./api";
-import { DIM_LABELS, DIFFICULTY_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets } from "./library";
+import { DIM_LABELS, DIFFICULTY_LABELS, RELEVANCE_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "./Popover";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { listStep } from "./keys";
@@ -14,6 +14,7 @@ const STATE_ORDER = ["unread", "read", "favorite", "issue"] as const;
 function universe(dim: Dim, all: ArticleRow[]): DimValue<Dim>[] {
   if (dim === "state") return [...STATE_ORDER];
   if (dim === "difficulty") return [...DIFFICULTY_LABELS.map((_, i) => i + 1), null];
+  if (dim === "relevance") return [...RELEVANCE_LABELS.map((_, i) => 5 - i), null];
   return [...countBy(all, dim).keys()];
 }
 
@@ -47,7 +48,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
   // Tags: popular (no query), or matches split into in-set (prefix first) and out-of-set.
   const sections = useMemo(() => {
     if (!isTags) {
-      const sorted = dim === "state" || dim === "difficulty" ? opts : [...opts].sort((a, b) => b.count - a.count);
+      const sorted = dim === "state" || dim === "difficulty" || dim === "relevance" ? opts : [...opts].sort((a, b) => b.count - a.count);
       return [{ title: "", note: t("facetPopover.count"), opts: sorted }];
     }
     const unselected = opts.filter((o) => !selected.includes(o.v));

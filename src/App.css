@@ -101,6 +101,9 @@
 .row > .cb { position: absolute; left: 10px; top: 14px; }
 .meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--ink3); }
 .meta .fav { display: inline-flex; color: var(--tr); }
+/* Importance mark: only 4 and 5 are shown, 5 the strongest. */
+.meta .imp { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; font: 600 10.5px var(--mono); background: var(--acc-soft); color: var(--acc-ink); }
+.meta .imp.s5 { background: var(--acc); color: var(--raise); }
 .favicon { flex: none; width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
 .favicon.letter { display: inline-flex; align-items: center; justify-content: center; background: var(--active); color: var(--ink3); font: 600 9.5px/1 var(--sans); }
 .with-ico { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
@@ -264,6 +267,8 @@
 .sel-chip select { position: absolute; inset: 0; width: 100%; opacity: 0; cursor: pointer; }
 .sel-chip:focus-within { box-shadow: 0 0 0 2px var(--acc); }
 .chip-cap { font-size: 11px; color: var(--ink3); }
+.art-relevance { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin: 10px 0 0; font-size: 12.5px; color: var(--ink2); }
+.imp-score { font: 600 11px var(--mono); color: var(--acc-ink); }
 
 .summary { margin: 22px 0 26px; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .summary-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 26px; padding: 0; border: 0; background: transparent; text-align: left; font-size: 13px; color: var(--ink2); }

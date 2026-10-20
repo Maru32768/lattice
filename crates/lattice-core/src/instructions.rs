@@ -11,6 +11,8 @@ pub const MAX_CHARS: usize = 2000;
 const PROFILE_SETTING: &str = "user_profile";
 const SUMMARY_SETTING: &str = "summary_instructions";
 const CHAT_SETTING: &str = "chat_instructions";
+/// Hash of the current profile, so SQL can tell a relevance score judged against another one.
+pub const PROFILE_HASH_SETTING: &str = "user_profile_hash";
 
 /// Everything the settings screen edits; blank means none.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -40,7 +42,13 @@ pub fn save(store: &Store, s: &Settings) -> Result<(), String> {
         let text = text.trim();
         store.set_setting(key, (!text.is_empty()).then_some(text)).map_err(|e| e.to_string())?;
     }
-    Ok(())
+    store.set_setting(PROFILE_HASH_SETTING, profile_hash(&s.profile).as_deref()).map_err(|e| e.to_string())
+}
+
+/// `None` for a blank profile.
+pub fn profile_hash(profile: &str) -> Option<String> {
+    let p = profile.trim();
+    (!p.is_empty()).then(|| sha256_hex(p)[..16].to_string())
 }
 
 /// What one kind of request (summary or chat answer) adds to its system prompt.

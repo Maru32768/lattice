@@ -1,15 +1,19 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
-  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, GroupRow, ImageSettings,
-  Grade, LlmSettings, Quiz, QuizReviewItem, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
+  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, FeedFilter, GroupRow, ImageSettings,
+  Reevaluated, RejectedEntry,
+  Grade, LlmSettings, Quiz, QuizReviewItem, R2Settings, R2Status, RelevanceStatus, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
   VocabCapture, VocabEntry, VocabReviewItem,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
 const groups = structuredClone(GROUPS);
+const filters = new Map<number, FeedFilter>(Object.entries(structuredClone(FEED_FILTERS)).map(([k, v]) => [Number(k), v]));
+const rejected = new Map<number, RejectedEntry[]>(Object.entries(structuredClone(REJECTED)).map(([k, v]) => [Number(k), v]));
+const NO_FILTER: FeedFilter = { rules: [], min_chars: null, llm: false, instruction: "", min_relevance: null };
 const threads = structuredClone(CHAT_THREADS);
 const messages = structuredClone(CHAT_MESSAGES);
 const jobs = structuredClone(JOBS);
@@ -28,6 +32,8 @@ const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry
 const store = {
   autoRender: true,
   autoClassify: true,
+  autoRelevance: true,
+  relevanceThreshold: 4,
   taskbarBadge: true,
   uiLanguage: null as string | null,
   keepTerms: true,
@@ -68,6 +74,7 @@ function matches(a: ArticleRow, f: ArticleFilter | null): boolean {
     case "genre": return a.genre === f.name;
     case "feed": return a.feed_id === f.id;
     case "group": return a.groups.includes(f.id);
+    case "important": return (a.relevance ?? 0) >= f.min;
   }
 }
 
@@ -76,6 +83,7 @@ const SORTERS: Record<ArticleSort, (a: ArticleRow, b: ArticleRow) => number> = {
   saved_asc: (a, b) => a.saved_at.localeCompare(b.saved_at) || a.id - b.id,
   published_desc: (a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "") || b.id - a.id,
   difficulty_asc: (a, b) => (a.difficulty ?? 9) - (b.difficulty ?? 9) || b.id - a.id,
+  relevance_desc: (a, b) => (b.relevance ?? 0) - (a.relevance ?? 0) || b.saved_at.localeCompare(a.saved_at) || b.id - a.id,
 };
 
 const counts = (values: (string | null)[]): TagCount[] => {
@@ -149,7 +157,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
     language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
     read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
-    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, ...extra,
+    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...extra,
   });
   return id;
 }
@@ -355,10 +363,27 @@ export const handlers = {
   classify_unclassified: (): number => articles.filter((a) => a.genre == null).length,
   get_auto_classify: (): boolean => store.autoClassify,
   set_auto_classify: ({ on }: { on: boolean }) => void (store.autoClassify = on),
+  relevance_status: (): RelevanceStatus => {
+    const done = articles.filter((a) => a.extraction_status === "ok");
+    return {
+      has_profile: store.custom.profile.trim() !== "", auto: store.autoRelevance, threshold: store.relevanceThreshold,
+      scored: done.filter((a) => a.relevance != null).length, stale: done.filter((a) => a.relevance_stale).length,
+      unscored: done.filter((a) => a.relevance == null).length,
+    };
+  },
+  set_auto_relevance: ({ on }: { on: boolean }) => void (store.autoRelevance = on),
+  set_relevance_threshold: ({ min }: { min: number }) => void (store.relevanceThreshold = min),
+  rescore_relevance: ({ ids }: { ids: number[] | null }): number => {
+    if (!store.custom.profile.trim()) reject("relevance.noProfile");
+    return ids?.length ?? articles.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
+  },
   list_feeds: () => feeds,
   add_feed: ({ url }: { url: string }): number => {
     const id = Math.max(...feeds.map((f) => f.id)) + 1;
-    feeds.push({ id, url, title: null, custom_title: null, has_icon: false, site_url: null, last_fetched_at: null, last_error: null, article_count: 0 });
+    feeds.push({
+      id, url, title: null, custom_title: null, has_icon: false, site_url: null, last_fetched_at: null, last_error: null, article_count: 0,
+      rejected: 0, filtered: false, filter_note: null,
+    });
     return id;
   },
   discover_feeds: ({ url }: { url: string }): FeedCandidate[] => [{ url: new URL("/feed.xml", url).href, title: "Discovered feed" }],
@@ -371,6 +396,47 @@ export const handlers = {
     if (f) f.custom_title = name?.trim() || null;
   },
   set_feed_icon: none,
+  get_feed_filter: ({ feedId }: { feedId: number | null }): FeedFilter => filters.get(feedId ?? 0) ?? NO_FILTER,
+  set_feed_filter: ({ feedId, filter }: { feedId: number | null; filter: FeedFilter }) => {
+    for (const r of filter.rules.filter((x) => x.regex)) {
+      try {
+        RegExp(r.pattern);
+      } catch (e) {
+        reject("feedFilter.badRegex", { pattern: r.pattern, error: String(e) });
+      }
+    }
+    filters.set(feedId ?? 0, { ...filter, rules: filter.rules.filter((r) => r.pattern.trim()), instruction: filter.instruction.trim() });
+    const f = feeds.find((x) => x.id === feedId);
+    if (f) f.filtered = true;
+  },
+  feed_rejected: ({ feedId }: { feedId: number }): RejectedEntry[] => rejected.get(feedId) ?? [],
+  import_rejected: ({ feedId, url }: { feedId: number; url: string }): number => {
+    const list = rejected.get(feedId) ?? [];
+    const r = list.find((x) => x.url === url);
+    if (!r) reject("feedFilter.notRejected");
+    rejected.set(feedId, list.filter((x) => x !== r));
+    feeds.find((x) => x.id === feedId)!.rejected -= 1;
+    addArticle(url, r.title, { feed_id: feedId });
+    return 1;
+  },
+  // An exclusion whose rule is gone imports; everything else stays rejected.
+  reevaluate_rejected: ({ feedId }: { feedId: number | null }): Reevaluated => {
+    const out = { imported: 0, asked: 0, rejected: 0 };
+    for (const [id, list] of rejected) {
+      if (feedId != null && id !== feedId) continue;
+      const keep = list.filter((r) => {
+        if (r.reason?.kind !== "excluded") return true;
+        const rule = r.reason.rule;
+        return (filters.get(r.reason.scope === "global" ? 0 : id)?.rules ?? []).some((x) => JSON.stringify(x) === JSON.stringify(rule));
+      });
+      for (const r of list.filter((x) => !keep.includes(x))) addArticle(r.url, r.title, { feed_id: id });
+      out.imported += list.length - keep.length;
+      out.rejected += keep.length;
+      rejected.set(id, keep);
+      feeds.find((x) => x.id === id)!.rejected = keep.length;
+    }
+    return out;
+  },
   feed_icon: none,
   job_overview: () => jobs,
   retry_job: (): boolean => true,

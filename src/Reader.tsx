@@ -535,6 +535,14 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             )}
           </div>
 
+          {a.relevance != null && (
+            <p className="art-relevance">
+              <span className="imp-score">{t("reader.relevance", { score: a.relevance })}</span>
+              {a.relevance_reason}
+              {a.relevance_stale && <span className="muted">{t("reader.relevanceStale")}</span>}
+            </p>
+          )}
+
           {failed && (
             <div className="promoted">
               <div className="note err col">

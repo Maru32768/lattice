@@ -12,6 +12,7 @@ export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "rev
 
 export interface NavCounts {
   recent: number;
+  important: number;
   unread: number;
   favorites: number;
   all: number;
@@ -32,7 +33,7 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 const n = (v: number) => v.toLocaleString();
 
 export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
-  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse }: {
+  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse, importantMin }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
@@ -57,6 +58,8 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   onRenameGroup: (id: number, name: string) => void;
   onDeleteGroup: (id: number) => void;
   onCollapse: () => void;
+  /** The lowest score in 重要; null hides it (no 「自分について」 profile and nothing scored). */
+  importantMin: number | null;
 }) {
   const t = useT();
   const [allGenres, setAllGenres] = useState(false);
@@ -95,6 +98,7 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
 
       <div className="sec">{t("nav.library")}</div>
       {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
+      {importantMin != null && item({ kind: "important", min: importantMin }, t("library.important"), counts.important, <Icon name="flag" />)}
 
       <NavGroups groups={groups} scope={scope} onScope={onScope} onCreate={onCreateGroup} onRename={onRenameGroup} onDelete={onDeleteGroup} />
 

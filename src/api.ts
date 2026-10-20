@@ -73,6 +73,11 @@ export interface ArticleRow {
   from_feed: boolean;
   /** Extracted from a PDF (a URL's or an imported file's); there is no HTML page to render. */
   pdf: boolean;
+  /** Importance for the reader, 1-5, judged against the 「自分について」 profile (relevance.rs), and why. */
+  relevance: number | null;
+  relevance_reason: string | null;
+  /** Judged against an earlier profile. */
+  relevance_stale: boolean;
 }
 
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
@@ -81,12 +86,24 @@ export const isLocal = (url: string) => url.startsWith("local:");
 /** The site shown for an article: its domain, or "local" for an imported file. */
 export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
 
-/** `genre` null: 未分類; `feed` null: 手動追加. */
+/** `genre` null: 未分類; `feed` null: 手動追加; `important`: importance at least `min`. */
 export type ArticleFilter =
   | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number };
+  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number } | { kind: "important"; min: number };
 
-export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc";
+export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc" | "relevance_desc";
+
+/** Mirrors relevance.rs Status. */
+export interface RelevanceStatus {
+  has_profile: boolean;
+  auto: boolean;
+  /** The lowest score in 重要. */
+  threshold: number;
+  scored: number;
+  /** Judged against an earlier profile. */
+  stale: number;
+  unscored: number;
+}
 
 export interface FeedRow {
   id: number;
@@ -101,6 +118,55 @@ export interface FeedRow {
   last_fetched_at: string | null;
   last_error: string | null;
   article_count: number;
+  /** Entries the import filters kept out (`api.feedRejected`). */
+  rejected: number;
+  /** The feed has import filters of its own. */
+  filtered: boolean;
+  /** Why the LLM filter last let entries through unjudged (a coded message). */
+  filter_note: string | null;
+}
+
+/** Mirrors feed_filter.rs. */
+export type FilterField = "title" | "url" | "author" | "category" | "domain" | "language";
+export interface FilterRule {
+  field: FilterField;
+  action: "include" | "exclude";
+  pattern: string;
+  regex: boolean;
+}
+
+/** One import filter: the global defaults (feedId null) or a feed's own. */
+export interface FeedFilter {
+  rules: FilterRule[];
+  /** Entries whose feed carries their full text need at least this many characters of it. */
+  min_chars: number | null;
+  llm: boolean;
+  instruction: string;
+  /** Import only entries the LLM rates at least this relevant to 「自分について」 (1-5). */
+  min_relevance: number | null;
+}
+
+export type FilterScope = "global" | "feed";
+export type FilterReason =
+  | { kind: "excluded"; scope: FilterScope; rule: FilterRule }
+  | { kind: "not_included"; scope: FilterScope }
+  | { kind: "too_short"; scope: FilterScope; min: number; chars: number }
+  | { kind: "llm"; reason: string; score: number | null };
+
+export interface RejectedEntry {
+  /** Normalized; the key for `api.importRejected`. */
+  url: string;
+  title: string | null;
+  published_at: string | null;
+  excerpt: string;
+  reason: FilterReason | null;
+}
+
+export interface Reevaluated {
+  imported: number;
+  /** Passed the rules and wait for the LLM. */
+  asked: number;
+  rejected: number;
 }
 
 export interface FeedCandidate {
@@ -502,6 +568,11 @@ export const api = {
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),
   setAutoClassify: (on: boolean) => invoke<void>("set_auto_classify", { on }),
+  relevanceStatus: () => invoke<RelevanceStatus>("relevance_status"),
+  setAutoRelevance: (on: boolean) => invoke<void>("set_auto_relevance", { on }),
+  setRelevanceThreshold: (min: number) => invoke<void>("set_relevance_threshold", { min }),
+  /** The given articles, or (null) every article whose score is missing or stale. Returns how many were queued. */
+  rescoreRelevance: (ids: number[] | null) => invoke<number>("rescore_relevance", { ids }),
   listFeeds: () => invoke<FeedRow[]>("list_feeds"),
   addFeed: (url: string) => invoke<number>("add_feed", { url }),
   discoverFeeds: (url: string) => invoke<FeedCandidate[]>("discover_feeds", { url }),
@@ -513,6 +584,14 @@ export const api = {
   setFeedIcon: (id: number, bytes: number[] | null) => invoke<void>("set_feed_icon", { id, bytes }),
   /** The user's icon for a feed as a data: URL; null when it has none. */
   feedIcon: (id: number) => invoke<string | null>("feed_icon", { id }),
+  /** feedId null: the global defaults. */
+  feedFilter: (feedId: number | null) => invoke<FeedFilter>("get_feed_filter", { feedId }),
+  setFeedFilter: (feedId: number | null, filter: FeedFilter) => invoke<void>("set_feed_filter", { feedId, filter }),
+  feedRejected: (feedId: number) => invoke<RejectedEntry[]>("feed_rejected", { feedId }),
+  /** Returns how many articles were queued (0 when it was saved already). */
+  importRejected: (feedId: number, url: string) => invoke<number>("import_rejected", { feedId, url }),
+  /** One feed's rejected entries, or (null) every feed's, through the current filters. */
+  reevaluateRejected: (feedId: number | null) => invoke<Reevaluated>("reevaluate_rejected", { feedId }),
   jobOverview: () => invoke<JobOverview>("job_overview"),
   retryJob: (id: number) => invoke<boolean>("retry_job", { id }),
   retryFailedJobs: (jobType: string | null) => invoke<number>("retry_failed_jobs", { jobType }),

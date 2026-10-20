@@ -485,6 +485,37 @@ CREATE TABLE group_articles (
 );
 CREATE INDEX group_articles_article ON group_articles(article_id);
 "#,
+    r#"
+-- Importance for the reader (G54, relevance.rs): 1-5 against the 「自分について」 profile, with a
+-- one-line reason. Only the newest judgment is kept. profile_hash is the profile it was judged
+-- against; settings 'user_profile_hash' holds the current one, so editing the profile makes it stale.
+CREATE TABLE relevance (
+    article_id     INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    score          INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+    reason         TEXT NOT NULL,
+    profile_hash   TEXT NOT NULL,
+    provider       TEXT NOT NULL,
+    model          TEXT,
+    prompt_version TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX relevance_score ON relevance(score);
+"#,
+    r#"
+-- Feed import filters (G55, feed_filter.rs). feeds.filter: the feed's own (JSON feed_filter::Filter;
+-- the global one is the 'feed_filter' setting). filter_note: why the LLM filter last let entries
+-- through unjudged (it fails open).
+ALTER TABLE feeds ADD COLUMN filter TEXT;
+ALTER TABLE feeds ADD COLUMN filter_note TEXT;
+-- What the filters decided for an entry seen from now on: 'passed' (queued), 'rejected'
+-- (filter_reason: JSON feed_filter::Reason) or 'pending' (waiting for the LLM filter). NULL: seen
+-- before G55, or past the first-fetch cap. filter_input is what the rules read
+-- (feed_filter::Input), so rejected entries can be judged again after the rules change.
+ALTER TABLE feed_items ADD COLUMN filter_status TEXT CHECK (filter_status IN ('passed', 'rejected', 'pending'));
+ALTER TABLE feed_items ADD COLUMN filter_reason TEXT;
+ALTER TABLE feed_items ADD COLUMN filter_input TEXT;
+CREATE INDEX feed_items_filter ON feed_items(filter_status, feed_id) WHERE filter_status IN ('rejected', 'pending');
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -595,6 +626,11 @@ pub struct ArticleRow {
     pub from_feed: bool,
     /// Extracted from a PDF (a URL's or an imported file's), kept as the snapshot.
     pub pdf: bool,
+    /// Importance for the reader, 1-5 (relevance.rs), and why.
+    pub relevance: Option<i64>,
+    pub relevance_reason: Option<String>,
+    /// Judged against another profile than the current one.
+    pub relevance_stale: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -618,6 +654,10 @@ pub enum ArticleFilter {
     Group {
         id: i64,
     },
+    /// 重要: importance at least `min`.
+    Important {
+        min: i64,
+    },
 }
 
 /// SQL condition on `articles` for `filter`, with its one parameter (`?1`) if any.
@@ -634,6 +674,7 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
         ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
         ArticleFilter::Group { id } => ("EXISTS (SELECT 1 FROM group_articles WHERE article_id = articles.id AND group_id = ?1)", Some((*id).into())),
+        ArticleFilter::Important { min } => ("EXISTS (SELECT 1 FROM relevance WHERE article_id = articles.id AND score >= ?1)", Some((*min).into())),
     }
 }
 
@@ -647,6 +688,8 @@ pub enum ArticleSort {
     PublishedDesc,
     /// Easiest first; articles without a difficulty come last.
     DifficultyAsc,
+    /// Most important first; unscored articles come last.
+    RelevanceDesc,
 }
 
 #[derive(Debug, Serialize)]
@@ -761,7 +804,9 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
-    (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id))";
+    (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id)),
+    (SELECT score FROM relevance WHERE article_id = articles.id), (SELECT reason FROM relevance WHERE article_id = articles.id),
+    coalesce((SELECT profile_hash IS NOT (SELECT value FROM settings WHERE key = 'user_profile_hash') FROM relevance WHERE article_id = articles.id), 0)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     let snapshot_type: Option<String> = r.get(23)?;
@@ -797,6 +842,9 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
             && snapshot_type.as_deref() != Some(crate::pdf::CONTENT_TYPE),
         from_feed: snapshot_type.as_deref() == Some(FEED_CONTENT_TYPE),
         pdf: snapshot_type.as_deref() == Some(crate::pdf::CONTENT_TYPE),
+        relevance: r.get(25)?,
+        relevance_reason: r.get(26)?,
+        relevance_stale: r.get(27)?,
     })
 }
 
@@ -1117,6 +1165,7 @@ impl Store {
             // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
             ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
+            ArticleSort::RelevanceDesc => "(SELECT score FROM relevance WHERE article_id = articles.id) DESC NULLS LAST, saved_at DESC, id DESC",
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();
@@ -1643,6 +1692,39 @@ mod tests {
         let g = crate::groups::create(&s, "Reading").unwrap();
         crate::groups::add(&s, g, &[1]).unwrap();
         assert_eq!(s.list_articles(&ArticleFilter::Group { id: g }).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn relevance_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE relevance")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch("INSERT INTO articles (original_url, normalized_url, domain) VALUES ('https://a.dev/1', 'https://a.dev/1', 'a.dev');").unwrap();
+        let s = Store::init(conn).unwrap();
+        let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();
+        assert_eq!((rows.len(), rows[0].relevance, rows[0].relevance_stale), (1, None, false));
+        assert_eq!(s.article_ids(&ArticleFilter::Important { min: 4 }).unwrap(), Some(vec![]));
+    }
+
+    #[test]
+    fn feed_filter_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("ALTER TABLE feeds ADD COLUMN filter TEXT")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (url) VALUES ('https://a.dev/feed'); INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'https://a.dev/1');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let feeds = crate::feeds::list(&s).unwrap();
+        assert_eq!((feeds[0].rejected, feeds[0].filtered, feeds[0].filter_note.as_deref()), (0, false, None));
+        assert_eq!(crate::feeds::import(&s, 1, &[crate::feeds::Entry { url: "https://a.dev/1".into(), ..Default::default() }]).unwrap(), 0, "seen before");
     }
 
     #[test]

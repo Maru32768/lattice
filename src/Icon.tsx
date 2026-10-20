@@ -38,6 +38,7 @@ const PATHS = {
   review: <><rect x="4" y="8" width="12" height="12" rx="2" /><path d="M8 5h10a2 2 0 0 1 2 2v10" /></>,
   vocab: <><path d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15H7.5A2.5 2.5 0 0 0 5 20.5z" /><path d="M5 20.5A2.5 2.5 0 0 1 7.5 18H19v3H7.5" /><path d="M9.5 12.5l2-5 2 5M10.1 11h2.8" /></>,
   alert: <><circle cx="12" cy="12" r="8.5" /><path d="M12 8v5M12 16h.01" /></>,
+  flag: <path d="M5 21V4M5 4h11l-2 4 2 4H5" />,
   offline: <path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M14 10.3A10 10 0 0 1 19 13M12 20h.01" />,
 } as const;
 

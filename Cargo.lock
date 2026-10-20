@@ -2538,6 +2538,7 @@ dependencies = [
  "pdf-extract",
  "pulldown-cmark",
  "quick-xml",
+ "regex",
  "reqwest 0.13.5",
  "rusqlite",
  "serde",

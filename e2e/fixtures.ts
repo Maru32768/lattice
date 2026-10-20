@@ -1,17 +1,17 @@
 // Sample library for the mock backend: specs import it to compute what the UI should show.
-import type { ArticleRow, Block, ChatMessage, ChatThread, FeedRow, GroupRow, JobOverview, JobRow, Quiz, QuizQuestion, QuizReviewItem, ReviewItem, VocabEntry } from "../src/api.ts";
+import type { ArticleRow, Block, ChatMessage, ChatThread, FeedFilter, FeedRow, GroupRow, JobOverview, JobRow, Quiz, QuizQuestion, QuizReviewItem, RejectedEntry, ReviewItem, VocabEntry } from "../src/api.ts";
 
 /** The clock every spec runs at (`page.clock.setFixedTime`), so 最近追加 is stable. */
 export const NOW = Date.parse("2026-10-20T03:00:00Z");
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000 - 3_600_000).toISOString();
 
 export const FEEDS: FeedRow[] = [
-  { id: 1, url: "https://postgresweekly.com/rss/", title: "Postgres Weekly", custom_title: null, has_icon: false, site_url: "https://postgresweekly.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0 },
-  { id: 2, url: "https://netflixtechblog.com/feed", title: "Netflix TechBlog", custom_title: null, has_icon: false, site_url: "https://netflixtechblog.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0 },
-  { id: 3, url: "https://web.dev/feed.xml", title: "web.dev", custom_title: null, has_icon: false, site_url: "https://web.dev", last_fetched_at: daysAgo(1), last_error: null, article_count: 0 },
-  { id: 4, url: "https://zenn.dev/feed", title: "Zenn トレンド", custom_title: "Zenn", has_icon: false, site_url: "https://zenn.dev", last_fetched_at: daysAgo(0), last_error: null, article_count: 0 },
-  { id: 5, url: "https://blog.rust-lang.org/feed.xml", title: "Rust Blog", custom_title: null, has_icon: false, site_url: "https://blog.rust-lang.org", last_fetched_at: daysAgo(2), last_error: null, article_count: 0 },
-  { id: 6, url: "https://lwn.net/headlines/rss", title: "LWN.net", custom_title: null, has_icon: false, site_url: "https://lwn.net", last_fetched_at: daysAgo(3), last_error: "HTTP 503 Service Unavailable", article_count: 0 },
+  { id: 1, url: "https://postgresweekly.com/rss/", title: "Postgres Weekly", custom_title: null, has_icon: false, site_url: "https://postgresweekly.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 2, url: "https://netflixtechblog.com/feed", title: "Netflix TechBlog", custom_title: null, has_icon: false, site_url: "https://netflixtechblog.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 3, url: "https://web.dev/feed.xml", title: "web.dev", custom_title: null, has_icon: false, site_url: "https://web.dev", last_fetched_at: daysAgo(1), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 4, url: "https://zenn.dev/feed", title: "Zenn トレンド", custom_title: "Zenn", has_icon: false, site_url: "https://zenn.dev", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 5, url: "https://blog.rust-lang.org/feed.xml", title: "Rust Blog", custom_title: null, has_icon: false, site_url: "https://blog.rust-lang.org", last_fetched_at: daysAgo(2), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 6, url: "https://lwn.net/headlines/rss", title: "LWN.net", custom_title: null, has_icon: false, site_url: "https://lwn.net", last_fetched_at: daysAgo(3), last_error: "HTTP 503 Service Unavailable", article_count: 0, rejected: 0, filtered: false, filter_note: null },
 ];
 
 const FEED_DOMAIN: Record<number, string> = { 1: "postgresweekly.com", 2: "netflixtechblog.com", 3: "web.dev", 4: "zenn.dev", 5: "blog.rust-lang.org" };
@@ -62,6 +62,14 @@ const ROWS: Row[] = [
   ["HTTP/3 and QUIC in production", "blog.cloudflare.com", "ネットワーク", ["http", "performance"], 3, true, false, 35],
 ];
 
+/** Importance by article id: [score, reason, judged against an earlier profile]. */
+const RELEVANCE: Record<number, [number, string, boolean]> = {
+  1: [5, "PostgreSQL の MVCC を扱う仕事に直結する", false],
+  2: [4, "VACUUM の運用はデータベース担当として重要", false],
+  8: [4, "移行作業の進め方が参考になる", true],
+  14: [2, "フロントエンドは関心の外", false],
+};
+
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "article";
 
 export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, difficulty, read, favorite, days, extra], i) => {
@@ -96,6 +104,9 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     thin: false,
     from_feed: false,
     pdf: false,
+    relevance: RELEVANCE[id]?.[0] ?? null,
+    relevance_reason: RELEVANCE[id]?.[1] ?? null,
+    relevance_stale: RELEVANCE[id]?.[2] ?? false,
     ...extra,
   };
 });
@@ -109,6 +120,30 @@ export const GROUPS: GroupRow[] = [
 ];
 const MEMBERS: Record<number, number[]> = { 1: [1, 2, 31, 36], 2: [20, 21, 22, 32] };
 for (const [g, ids] of Object.entries(MEMBERS)) for (const id of ids) ARTICLES[id - 1].groups.push(Number(g));
+
+/** Import filters by feed id; 0 is the global one. */
+export const FEED_FILTERS: Record<number, FeedFilter> = {
+  1: { rules: [{ field: "title", action: "exclude", pattern: "sponsored", regex: false }], min_chars: null, llm: true, instruction: "Postgres の内部実装だけ", min_relevance: null },
+};
+
+/** Entries the filters kept out, by feed id. */
+export const REJECTED: Record<number, RejectedEntry[]> = {
+  1: [
+    {
+      url: "https://postgresweekly.com/posts/sponsored-managed-postgres", title: "Sponsored: managed Postgres in one click", published_at: daysAgo(0),
+      excerpt: "Try our hosted database.", reason: { kind: "excluded", scope: "feed", rule: FEED_FILTERS[1].rules[0] },
+    },
+    {
+      url: "https://postgresweekly.com/posts/meetup-tokyo", title: "Postgres meetup in Tokyo", published_at: daysAgo(1),
+      excerpt: "Join us next month.", reason: { kind: "llm", reason: "イベント告知で内部実装の記事ではない", score: 2 },
+    },
+  ],
+};
+for (const f of FEEDS) {
+  f.rejected = REJECTED[f.id]?.length ?? 0;
+  f.filtered = f.id in FEED_FILTERS;
+}
+FEEDS[1].filter_note = JSON.stringify({ code: "feedFilter.llmFailed", params: { error: "usage limit reached" } });
 
 /** The article the Reader specs open: fully translated, with a semantic-only search hit. */
 export const SNAPSHOT_ID = 1;
