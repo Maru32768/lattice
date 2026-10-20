@@ -135,6 +135,8 @@ export interface SearchResult {
 
 /** Mirrors chat.rs. Every article filter is a chat scope. */
 export type ChatScope = { kind: "article"; id: number } | { kind: "filter"; filter: ArticleFilter };
+/** How much of the scope one chat question sends (`chat::Budget`). */
+export type ChatBudget = "small" | "standard" | "large";
 
 export interface Citation {
   n: number;
@@ -294,6 +296,8 @@ export const api = {
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
+  chatBudget: () => invoke<ChatBudget>("get_chat_budget"),
+  setChatBudget: (budget: ChatBudget) => invoke<void>("set_chat_budget", { budget }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
   dbPath: () => invoke<string>("db_path"),
   settings: () => invoke<Settings>("get_settings"),

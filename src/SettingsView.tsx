@@ -3,6 +3,7 @@ import { api, r2 } from "./api";
 import { ModelSettings } from "./ModelSettings";
 import { TranslationSettings } from "./TranslationSettings";
 import { InstructionSettings } from "./InstructionSettings";
+import { ChatSettings } from "./ChatSettings";
 import { ClassifySettings } from "./ClassifySettings";
 import { GenreSettings } from "./GenreSettings";
 import { RenderSettings } from "./RenderSettings";
@@ -43,7 +44,7 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
   switch (id) {
     case "provider": return <ModelSettings />;
     case "translation": return <TranslationSettings />;
-    case "instructions": return <InstructionSettings />;
+    case "instructions": return <><InstructionSettings /><ChatSettings /></>;
     case "classify": return <ClassifySettings />;
     case "genres": return <GenreSettings onChanged={onChanged} />;
     case "render": return <RenderSettings />;

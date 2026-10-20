@@ -49,8 +49,10 @@ pub async fn search<E: EmbeddingProvider>(
     if query.is_empty() {
         return Ok(SearchResult { hits: Vec::new(), semantic_error: None });
     }
-    let lexical = store.lexical_search(query, articles, CANDIDATES).map_err(|e| e.to_string())?;
-    let (semantic, semantic_error) = match semantic_search(store, embedder, query, articles).await {
+    // A large limit (chat's wide budgets) needs deeper lists than the fused page itself.
+    let candidates = limit.max(CANDIDATES);
+    let lexical = store.lexical_search(query, articles, candidates).map_err(|e| e.to_string())?;
+    let (semantic, semantic_error) = match semantic_search(store, embedder, query, articles, candidates).await {
         Ok(ids) => (ids, None),
         Err(e) => (Vec::new(), Some(e)),
     };
@@ -68,9 +70,15 @@ pub async fn search<E: EmbeddingProvider>(
     Ok(SearchResult { hits, semantic_error })
 }
 
-async fn semantic_search<E: EmbeddingProvider>(store: &Store, embedder: &E, query: &str, articles: Option<&[i64]>) -> Result<Vec<i64>, String> {
+async fn semantic_search<E: EmbeddingProvider>(
+    store: &Store,
+    embedder: &E,
+    query: &str,
+    articles: Option<&[i64]>,
+    candidates: usize,
+) -> Result<Vec<i64>, String> {
     let q = embedder.embed(vec![query.to_string()], Purpose::Query).await?.pop().ok_or("no query vector")?;
-    // Min-heap of the best CANDIDATES by dot product (vectors are normalized, so = cosine).
+    // Min-heap of the best `candidates` by dot product (vectors are normalized, so = cosine).
     let mut top: BinaryHeap<Reverse<(Ordered, i64)>> = BinaryHeap::new();
     store
         .scan_embeddings(embedder.model_id(), articles, |id, v| {
@@ -78,7 +86,7 @@ async fn semantic_search<E: EmbeddingProvider>(store: &Store, embedder: &E, quer
                 return;
             }
             let s = Ordered(v.iter().zip(&q).map(|(a, b)| a * b).sum());
-            if top.len() < CANDIDATES {
+            if top.len() < candidates {
                 top.push(Reverse((s, id)));
             } else if top.peek().is_some_and(|Reverse((min, _))| s > *min) {
                 top.pop();

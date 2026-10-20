@@ -1,8 +1,8 @@
 //! Chat over saved articles (F9, §24), NotebookLM style: answers grounded in the blocks of a
-//! chosen scope, citing them by number. A scope whose prose fits `FULL_TEXT_CHARS` is sent
-//! whole; a larger one sends the top hybrid-search hits within the scope.
+//! chosen scope, citing them by number. A scope whose prose fits the budget's full-text size is
+//! sent whole; a larger one sends the top hybrid-search hits within the scope, a few per article.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -17,16 +17,57 @@ use crate::segments::Target;
 use crate::store::{ArticleFilter, Result, Store};
 
 pub const PROMPT_VERSION: &str = "chat-v1";
-const FULL_TEXT_CHARS: usize = 30_000;
-/// Retrieved blocks for the question, plus a few for the previous one (follow-ups like 「その欠点は？」).
-const TOP_K: usize = 24;
-const TOP_K_PREVIOUS: usize = 6;
+const BUDGET_SETTING: &str = "chat_budget";
+/// Retrieval takes at most this many blocks from one article before filling up with the rest,
+/// so a wide scope answers from many articles rather than the two or three that rank highest.
+const PER_ARTICLE: usize = 4;
 const MAX_BLOCK_CHARS: usize = 1_500;
-const MAX_CONTEXT_CHARS: usize = 40_000;
 const HISTORY_TURNS: usize = 3;
 const HISTORY_ANSWER_CHARS: usize = 1_000;
 const MAX_QUESTION_CHARS: usize = 4_000;
 const NO_SOURCES: &str = "この範囲の保存済み記事には、質問に関係する箇所が見つかりませんでした。範囲を広げるか、質問の言い方を変えてみてください。";
+
+/// How much of the scope one question sends (Settings › 要約・対話). Cost and latency grow with it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Budget {
+    Small,
+    #[default]
+    Standard,
+    Large,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Limits {
+    /// A scope whose prose fits is sent whole.
+    full_text_chars: usize,
+    /// Retrieved blocks for the question, plus a quarter as many for the previous one
+    /// (follow-ups like 「その欠点は？」).
+    top_k: usize,
+    context_chars: usize,
+}
+
+impl Budget {
+    // top_k × MAX_BLOCK_CHARS stays under context_chars, so retrieval is rarely truncated.
+    // Large stays well inside a 200k-token window even for Japanese text (about 1 token per char).
+    fn limits(self) -> Limits {
+        match self {
+            Budget::Small => Limits { full_text_chars: 30_000, top_k: 24, context_chars: 40_000 },
+            Budget::Standard => Limits { full_text_chars: 60_000, top_k: 48, context_chars: 80_000 },
+            Budget::Large => Limits { full_text_chars: 120_000, top_k: 96, context_chars: 150_000 },
+        }
+    }
+}
+
+pub fn budget(store: &Store) -> std::result::Result<Budget, String> {
+    let v = store.setting(BUDGET_SETTING).map_err(|e| e.to_string())?;
+    Ok(v.and_then(|v| serde_json::from_value(Value::String(v)).ok()).unwrap_or_default())
+}
+
+pub fn set_budget(store: &Store, b: Budget) -> std::result::Result<(), String> {
+    let v = serde_json::to_value(b).expect("budget serializes");
+    store.set_setting(BUDGET_SETTING, v.as_str()).map_err(|e| e.to_string())
+}
 
 /// What a question may draw on. Every kind reduces to a set of article ids (`None` = all);
 /// every inbox filter (tag, genre, feed, ...) is a scope.
@@ -248,15 +289,19 @@ pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
         Some(t) => store.chat_messages(t).map_err(e)?,
         None => Vec::new(),
     };
+    let limits = budget(store)?.limits();
     let ids = store.scope_articles(&scope).map_err(e)?;
-    let (mode, sources) = match store.scope_sources(ids.as_deref(), FULL_TEXT_CHARS).map_err(e)? {
+    let (mode, sources) = match store.scope_sources(ids.as_deref(), limits.full_text_chars).map_err(e)? {
         Some(s) => ("full", s),
-        None => ("retrieval", retrieve(store, embedder, question, history.last().map(|m| m.question.as_str()), ids.as_deref()).await?),
+        None => {
+            let previous = history.last().map(|m| m.question.as_str());
+            ("retrieval", retrieve(store, embedder, question, previous, ids.as_deref(), limits.top_k).await?)
+        }
     };
     if sources.is_empty() {
         return store.save_chat_message(thread_id, question, NO_SOURCES, Vec::new(), scope, "none", None, None).map_err(e);
     }
-    let (input, sent) = input_text(&history, &sources, question);
+    let (input, sent) = input_text(&history, &sources, question, limits.context_chars);
     let system = instructions::load(store)?.for_chat().system(RULES, UNTRUSTED);
     let c = llm.complete_json(&system, &input, &schema()).await.map_err(|e| e.to_string())?;
     let answer = c.value["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or("malformed chat answer")?;
@@ -270,15 +315,18 @@ async fn retrieve<E: EmbeddingProvider>(
     question: &str,
     previous: Option<&str>,
     articles: Option<&[i64]>,
+    top_k: usize,
 ) -> std::result::Result<Vec<Source>, String> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for (q, k) in std::iter::once((question, TOP_K)).chain(previous.map(|p| (p, TOP_K_PREVIOUS))) {
-        let r = search::search(store, embedder, q, articles, &Target::default(), k).await?;
+    for (q, k) in std::iter::once((question, top_k)).chain(previous.map(|p| (p, top_k / 4))) {
+        // Twice the slots in candidates, so the per-article cap has other articles to pick from.
+        let r = search::search(store, embedder, q, articles, &Target::default(), k * 2).await?;
         if let Some(err) = r.semantic_error {
             log::warn!("chat retrieval is lexical only: {err}");
         }
-        for h in r.hits.into_iter().filter(|h| seen.insert(h.detail.block_id)) {
+        let hits = diversify(r.hits, |h| h.detail.article_id, k);
+        for h in hits.into_iter().filter(|h| seen.insert(h.detail.block_id)) {
             let d = h.detail;
             out.push((
                 d.ordinal,
@@ -292,8 +340,27 @@ async fn retrieve<E: EmbeddingProvider>(
     Ok(out.into_iter().map(|(_, s)| s).collect())
 }
 
+/// `k` of the best-first `ranked`, at most `PER_ARTICLE` from any one article, then filled up
+/// to `k` in rank order: a scope of one or two articles still sends a full context.
+fn diversify<T>(ranked: Vec<T>, article: impl Fn(&T) -> i64, k: usize) -> Vec<T> {
+    let mut taken: HashMap<i64, usize> = HashMap::new();
+    let (mut picked, mut rest) = (Vec::new(), Vec::new());
+    for t in ranked {
+        let n = taken.entry(article(&t)).or_default();
+        if *n < PER_ARTICLE && picked.len() < k {
+            *n += 1;
+            picked.push(t);
+        } else {
+            rest.push(t);
+        }
+    }
+    let fill = k.saturating_sub(picked.len());
+    picked.extend(rest.into_iter().take(fill));
+    picked
+}
+
 /// Prompt input and how many of `sources` (a prefix) fit in it; source `[n]` is `sources[n - 1]`.
-fn input_text(history: &[ChatMessage], sources: &[Source], question: &str) -> (String, usize) {
+fn input_text(history: &[ChatMessage], sources: &[Source], question: &str, max_chars: usize) -> (String, usize) {
     let mut out = String::new();
     let recent = &history[history.len().saturating_sub(HISTORY_TURNS)..];
     if !recent.is_empty() {
@@ -324,7 +391,7 @@ fn input_text(history: &[ChatMessage], sources: &[Source], question: &str) -> (S
             chunk.push_str(&format!("[{}] {text}\n", i + 1));
         }
         let n = chunk.chars().count();
-        if size + n > MAX_CONTEXT_CHARS {
+        if size + n > max_chars {
             out.push_str("[…truncated]\n");
             break;
         }
@@ -411,7 +478,10 @@ mod tests {
             "<h2>Durability</h2><p>The write-ahead log records changes before data pages, and checkpoints bound recovery time. Marker alphaword.</p>\
              <p>Fsync makes the log durable on disk before commit returns to the client.</p>",
         );
-        let big: String = (0..400).map(|i| format!("<p>Paragraph {i} on checkpoints and background writer tuning in production databases.</p>")).collect();
+        // About 135,000 chars: over every budget's full-text size.
+        let big: String = (0..400)
+            .map(|i| format!("<p>Paragraph {i} on checkpoints and background writer tuning in production databases.{}</p>", " Tuning notes.".repeat(18)))
+            .collect();
         let b = add(&s, "https://b.dev/tuning", "Tuning", &format!("<h2>Checkpoints</h2>{big}"));
         let c = add(
             &s,
@@ -424,6 +494,11 @@ mod tests {
             crate::embed::run(&s, &Letters, id).await.unwrap();
         }
         (s, a, b, c)
+    }
+
+    /// Sources sent, by their `[n]` lines.
+    fn numbered(input: &str) -> usize {
+        input.lines().filter(|l| l.starts_with('[') && !l.starts_with("[…")).count()
     }
 
     fn articles_of(s: &Store, blocks: &[i64]) -> HashSet<i64> {
@@ -492,7 +567,8 @@ mod tests {
         assert_eq!(m.mode, "retrieval");
         let input = llm.inputs.lock().unwrap()[0].clone();
         assert!(input.contains("# 記事: Tuning") && !input.contains("alphaword") && !input.contains("gammaword"));
-        assert!(input.matches("Paragraph ").count() <= TOP_K);
+        // One article: the per-article cap fills back up to the default budget's top_k.
+        assert_eq!(numbered(&input), Budget::Standard.limits().top_k);
         assert!(m.citations.iter().all(|c| c.article_id == b));
 
         // All articles: too big for full text, so retrieval over everything.
@@ -507,13 +583,46 @@ mod tests {
         assert_eq!(llm.inputs.lock().unwrap().len(), 2);
     }
 
+    #[tokio::test]
+    async fn budget_setting_sizes_the_context() {
+        let (s, _, b, _) = library().await;
+        assert_eq!(budget(&s).unwrap(), Budget::Standard);
+        let llm = Fake::default();
+        let levels = [Budget::Small, Budget::Standard, Budget::Large];
+        for (i, level) in levels.into_iter().enumerate() {
+            set_budget(&s, level).unwrap();
+            assert_eq!(budget(&s).unwrap(), level);
+            let m = ask(&s, &llm, &Letters, None, "checkpoints", Scope::Article { id: b }).await.unwrap();
+            assert_eq!(m.mode, "retrieval");
+            let input = llm.inputs.lock().unwrap()[i].clone();
+            assert_eq!(numbered(&input), level.limits().top_k, "{level:?}");
+            assert!(input.chars().count() <= level.limits().context_chars);
+        }
+
+        s.set_setting(BUDGET_SETTING, Some("huge")).unwrap();
+        assert_eq!(budget(&s).unwrap(), Budget::Standard, "an unknown value falls back to the default");
+    }
+
+    #[test]
+    fn diversify_caps_blocks_per_article_then_fills() {
+        // Items are (rank, article); article 1 holds the six best.
+        let ranked = [1, 1, 1, 1, 1, 1, 2, 3, 2, 4];
+        let pick = |k| diversify(ranked.iter().copied().enumerate().collect(), |&(_, a)| a, k);
+        let ranks = |v: Vec<(usize, i64)>| v.into_iter().map(|(r, _)| r).collect::<Vec<_>>();
+        assert_eq!(ranks(pick(6)), [0, 1, 2, 3, 6, 7], "at most PER_ARTICLE from article 1, the rest from others");
+        assert_eq!(ranks(pick(8)), [0, 1, 2, 3, 6, 7, 8, 9]);
+        assert_eq!(ranks(pick(10)), [0, 1, 2, 3, 6, 7, 8, 9, 4, 5], "filled up from article 1 in rank order");
+        assert_eq!(ranks(pick(20)).len(), 10);
+    }
+
     #[test]
     fn input_respects_context_cap() {
         let src = |i: i64| Source { block_id: i, article_id: 1, title: "T".into(), heading: None, is_heading: false, text: "x".repeat(MAX_BLOCK_CHARS * 2) };
         let sources: Vec<Source> = (0..100).map(src).collect();
-        let (text, sent) = input_text(&[], &sources, "q");
+        let max = Budget::Small.limits().context_chars;
+        let (text, sent) = input_text(&[], &sources, "q", max);
         assert!(sent > 0 && sent < sources.len());
-        assert!(text.chars().count() < MAX_CONTEXT_CHARS + 100 && text.contains("[…truncated]"));
+        assert!(text.chars().count() < max + 100 && text.contains("[…truncated]"));
         assert_eq!(markers("a [1] b [x] [12]c [").collect::<Vec<_>>(), [1, 12]);
     }
 }

@@ -66,6 +66,8 @@
     "allow-chat-threads",
     "allow-chat-messages",
     "allow-chat-delete-thread",
+    "allow-get-chat-budget",
+    "allow-set-chat-budget",
     "allow-set-read",
     "allow-db-path",
     "allow-get-settings",

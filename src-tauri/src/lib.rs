@@ -480,6 +480,16 @@ fn chat_delete_thread(app: State<'_, App>, thread_id: i64) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_chat_budget(app: State<'_, App>) -> Result<chat::Budget, String> {
+    chat::budget(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_chat_budget(app: State<'_, App>, budget: chat::Budget) -> Result<(), String> {
+    chat::set_budget(&app.store, budget)
+}
+
+#[tauri::command(async)]
 fn set_read(app: State<'_, App>, id: i64, read: bool) -> Result<(), String> {
     app.store.set_read_status(id, read).map_err(err)
 }
@@ -852,6 +862,8 @@ pub fn run() {
             chat_threads,
             chat_messages,
             chat_delete_thread,
+            get_chat_budget,
+            set_chat_budget,
             set_read,
             db_path,
             get_settings,
