@@ -17,7 +17,7 @@ use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::feeds::{self, FeedRow};
 use lattice_core::job_status::{self, JobOverview};
 use lattice_core::store::JobRow;
-use lattice_core::{backup, classify, export, favicons, images, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, instructions, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -228,6 +228,16 @@ fn set_translate_instructions(app: State<'_, App>, text: String) -> Result<(), S
     translate::set_instructions(&app.store, &text)
 }
 
+#[tauri::command(async)]
+fn get_custom_instructions(app: State<'_, App>) -> Result<instructions::Settings, String> {
+    instructions::load(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_custom_instructions(app: State<'_, App>, settings: instructions::Settings) -> Result<(), String> {
+    instructions::save(&app.store, &settings)
+}
+
 /// The built-in prompt the instructions extend (current term mode, English to Japanese).
 #[tauri::command(async)]
 fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
@@ -314,7 +324,11 @@ fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
-    app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)
+    let mut view = app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)?;
+    if let Some(v) = view.as_mut() {
+        summarize::mark_stale(&app.store, v)?;
+    }
+    Ok(view)
 }
 
 /// Removes the article and everything derived from it (`Store::delete_article`).
@@ -673,6 +687,8 @@ pub fn run() {
             get_translate_instructions,
             set_translate_instructions,
             get_translation_prompt,
+            get_custom_instructions,
+            set_custom_instructions,
             list_feeds,
             add_feed,
             discover_feeds,

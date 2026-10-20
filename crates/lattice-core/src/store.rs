@@ -512,8 +512,11 @@ pub struct JobRow {
 pub struct SummaryView {
     pub text: String,
     pub created_at: String,
-    /// The article was re-extracted with different content since this summary was made.
+    /// The article was re-extracted with different content since this summary was made
+    /// (`summarize::mark_stale` adds changed instructions).
     pub stale: bool,
+    #[serde(skip)]
+    pub prompt_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -1048,10 +1051,10 @@ impl Store {
         let jobs = st.query_map([id], job_row)?.collect::<Result<_>>()?;
         let summary = c
             .query_row(
-                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id
+                "SELECT s.text, s.created_at, s.source_hash IS NOT a.content_hash, s.prompt_version FROM summaries s JOIN articles a ON a.id = s.article_id
                  WHERE s.article_id = ?1 AND s.type = 'normal' ORDER BY s.id DESC LIMIT 1",
                 [id],
-                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
+                |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
         Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary }))

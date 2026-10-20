@@ -28,6 +28,8 @@ const COMMANDS: &[&str] = &[
     "get_translate_instructions",
     "set_translate_instructions",
     "get_translation_prompt",
+    "get_custom_instructions",
+    "set_custom_instructions",
     "list_feeds",
     "add_feed",
     "discover_feeds",

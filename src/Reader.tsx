@@ -274,7 +274,7 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
           </div>
         </div>
       )}
-      {s?.stale && <div className="summary-note muted">本文が更新されています</div>}
+      {s?.stale && <div className="summary-note muted">本文か要約の設定（設定 › 要約・対話）が変わっています。作り直すと反映されます</div>}
       {failed && <div className="summary-note error-text" title={job.last_error ?? ""}>要約に失敗: {job.last_error}</div>}
     </section>
   );

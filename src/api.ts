@@ -186,6 +186,13 @@ export interface LocalBackup {
 
 export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini" | "anthropic";
 
+/** The user's context for summaries and chat answers; blank means none. */
+export interface CustomInstructions {
+  profile: string;
+  summary: string;
+  chat: string;
+}
+
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ChainEntry {
@@ -294,6 +301,8 @@ export const api = {
   setTranslateInstructions: (text: string) => invoke<void>("set_translate_instructions", { text }),
   /** The built-in translation prompt (English to Japanese, current term mode) that the instructions extend. */
   translationPrompt: () => invoke<string>("get_translation_prompt"),
+  customInstructions: () => invoke<CustomInstructions>("get_custom_instructions"),
+  setCustomInstructions: (settings: CustomInstructions) => invoke<void>("set_custom_instructions", { settings }),
   classifyArticle: (id: number) => invoke<void>("classify_article", { id }),
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),
