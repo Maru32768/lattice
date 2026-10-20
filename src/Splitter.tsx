@@ -13,6 +13,14 @@ const LIMITS: Record<Resizable, { min: number; max: number; label: string }> = {
 export const DEFAULT_WIDTHS: PaneWidths = { nav: 228, list: 396, search: 520, chat: 430 };
 
 const KEY = "lattice.paneWidths";
+
+/**
+ * true: the page webview stays up and follows its pane during a drag. Chromium captures the mouse
+ * on the press (the pressed webview's window holds capture until release), so moves over the page
+ * still reach this document. false: a still of the page covers it for the drag instead.
+ */
+const LIVE_RESIZE = true;
+
 const clamp = (p: Resizable, w: number) => Math.round(Math.max(LIMITS[p].min, Math.min(LIMITS[p].max, w)));
 
 export function loadWidths(): PaneWidths {
@@ -47,8 +55,7 @@ export function Splitter({ pane, side, width, onWidth }: {
   const [drag, setDrag] = useState<{ x: number; w: number } | null>(null);
   const shield = useRef<HTMLDivElement>(null);
   const dir = side === "left" ? 1 : -1;
-  // The page webview takes pointer events over its rectangle; the shield hides it for the drag.
-  useCover(shield, !!drag);
+  useCover(shield, !!drag && !LIVE_RESIZE);
   useEffect(() => {
     if (!drag) return;
     const move = (e: MouseEvent) => onWidth(clamp(pane, drag.w + dir * (e.clientX - drag.x)));

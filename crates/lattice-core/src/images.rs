@@ -253,7 +253,7 @@ pub fn data_url(store: &Store, block_id: i64) -> Result<Option<String>, String> 
     Ok(row.map(|(mime, bytes)| format!("data:{mime};base64,{}", base64(&bytes))))
 }
 
-pub(crate) fn base64(b: &[u8]) -> String {
+pub fn base64(b: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(b.len().div_ceil(3) * 4);
     for c in b.chunks(3) {

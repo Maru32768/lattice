@@ -217,6 +217,64 @@ pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>) -> Result<(), S
     }
 }
 
+#[cfg(windows)]
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// The page as the webview currently draws it, as a PNG data URL at device pixels, for the UI to
+/// show in the webview's place while an app overlay needs it hidden. None off Windows.
+#[tauri::command]
+#[cfg_attr(not(windows), allow(unused_variables))]
+pub async fn browser_capture(app: AppHandle) -> Result<Option<String>, String> {
+    #[cfg(windows)]
+    if let Some(wv) = app.get_webview(LABEL) {
+        let png = tokio::time::timeout(CAPTURE_TIMEOUT, capture_png(&wv)).await.map_err(|_| "capture timed out")??;
+        return Ok(Some(format!("data:image/png;base64,{}", lattice_core::images::base64(&png))));
+    }
+    Ok(None)
+}
+
+#[cfg(windows)]
+async fn capture_png(wv: &Webview) -> Result<Vec<u8>, String> {
+    use webview2_com::CapturePreviewCompletedHandler;
+    use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
+    use windows::Win32::UI::Shell::SHCreateMemStream;
+
+    let (tx, rx) = oneshot::channel();
+    wv.with_webview(move |pw| unsafe {
+        let Some(stream) = SHCreateMemStream(None) else { return };
+        let out = stream.clone();
+        // Fires later on this (main) thread; if CapturePreview fails, dropping it closes the channel.
+        let done = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
+            let _ = tx.send(hr.and_then(|()| read_stream(&out)));
+            Ok(())
+        }));
+        let started = pw.controller().CoreWebView2().and_then(|core| core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &done));
+        if let Err(e) = started {
+            log::warn!("CapturePreview: {e}");
+        }
+    })
+    .map_err(|e| e.to_string())?;
+    rx.await.map_err(|_| "capture failed".to_string())?.map_err(|e| e.to_string())
+}
+
+#[cfg(windows)]
+unsafe fn read_stream(s: &windows::Win32::System::Com::IStream) -> windows::core::Result<Vec<u8>> {
+    use windows::Win32::System::Com::STREAM_SEEK_SET;
+    let mut out = Vec::new();
+    let mut buf = vec![0u8; 1 << 16];
+    unsafe {
+        s.Seek(0, STREAM_SEEK_SET, None)?;
+        loop {
+            let mut n = 0u32;
+            s.Read(buf.as_mut_ptr().cast(), buf.len() as u32, Some(&mut n)).ok()?;
+            if n == 0 {
+                return Ok(out);
+            }
+            out.extend_from_slice(&buf[..n as usize]);
+        }
+    }
+}
+
 const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The current page's rendered DOM and the webview's own URL, from the overlay.

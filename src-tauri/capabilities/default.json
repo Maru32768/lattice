@@ -75,6 +75,7 @@
     "allow-browser-open",
     "allow-browser-set-bounds",
     "allow-browser-hide",
+    "allow-browser-capture",
     "allow-browser-go",
     "allow-browser-set-translation"
   ]
