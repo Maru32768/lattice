@@ -554,3 +554,21 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **単体テストの追加。** job の backoff（2・4・8・16 分の後に失敗）、取得 job だけが同じホストの取得を待つこと、実行中の job は取り消しも再実行もできないこと、1 回の poll で同じ記事が 2 度出ても 1 件だけ積むこと、overlay の sanitize が大文字や制御文字で隠した `javascript:` を落とすこと、キー設定を既定に戻すと override が消えること、ペイン移動が端で止まること。どれも、対象のコードを壊すとそのテストだけが失敗することを確かめた。
 - **CI。** `.github/workflows/ci.yml` は windows-latest の 1 job。アプリを Windows で開発しているので Windows だけで走らせる（semantic search の ONNX Runtime が MSVC 14.40 以降を要る。README）。Node と Rust は `jdx/mise-action` が `mise.toml` の版を入れ、各コマンドは `mise exec --` で走らせる（ローカルと同じ解決）。clippy と rustfmt は toolchain の profile に頼らず `rustup component add` で入れる。手順は `mise run lint` と `mise run test` と `npm run e2e` を分けたもので、どの段で落ちたかがログで分かる。cache は `Swatinem/rust-cache`（`target` と cargo の registry）、npm の cache、Playwright のブラウザ（`package-lock.json` の hash で鍵を作る）。同じ ref の古い実行は取り消す。
 
+
+## 19. タブと Page ペインの分割（G33・G34）
+
+| 対象 | ファイル |
+|---|---|
+| レイアウトのデータモデルと操作 | `src/layout.ts`（テスト `src/layout.test.ts`） |
+| ペインの木とタブ列の描画・ドラッグ・区切り | `src/DocArea.tsx`、`src/TabStrip.tsx` |
+| ラベル付き webview | `src-tauri/src/browser.rs` |
+| ペイン間のキーボード移動（上下を含む） | `src/panes.ts` |
+
+- **データモデルは木。** `Layout = { root, focused }`。節は `Split`（`dir: row | column`、`children`、割合の `sizes`）か `Pane`（`tabs` の列と `active`）。タブは `ReaderTab`（記事 id と検索一致などの `focus`）か `PageTab`（今の URL・題名・明示的な移動の回数 `seq`・読み込み中・履歴の可否・Index 済み記事の id）。ペインとタブの id は 1 つの連番。操作（開く・閉じる・切り替え・移動・分割・ペインを閉じる・比率・フォーカス・ページ状態の更新）はすべて `(Layout, …) => Layout` の純粋関数で、`useState` の関数更新で呼ぶ。空になったペインは木から外し、子が 1 つになった split はその子に畳む（root は空のまま残す）。
+- **開く先。** 一覧のクリック・パレット・検索一致・引用・Reader のリンクは、フォーカスされたペインのアクティブなタブを置き換える（同じ記事・同じ URL ならそのまま）。Ctrl / middle クリックは新しいタブに開く。Page タブを別の文書で置き換えても id は変わらないので、webview はそのまま次の URL へ移動する。
+- **webview は見えている Page タブごとに 1 つ**（ラベル `browser-<tab id>`）。隠れたタブの webview は破棄せず画面外に置くので、切り替えは即時で、履歴とスクロール位置が残る。画面外の webview は最大 `MAX_PARKED`（3）まで、超えたら隠れてから最も古いものを閉じる（LRU）。閉じられたタブや再起動で復元したタブは、見えたときに `browser_set_bounds` が `false` を返すので UI がその URL を開き直す（履歴は失う）。メモリと即時切り替えの折り合いはこの 3 で付けた。タブを閉じる・ペインを閉じる・Page タブが Reader に置き換わると UI が `browser_close` を呼ぶ。
+- **Rust 側の状態は webview ごと**（表示状態・scroll 先のテキスト・履歴の可否・隠れた時刻）。翻訳 overlay の設定とショートカットは全 webview で共通（Reader の表示言語が記事をまたいで共通なのと同じ）で、変更は生きている全 webview に `configure` / `setKeys` する。安全確認は従来どおり: `http(s)` だけ、overlay の command は `browser-*`（snapshot は renderer も）のラベルからだけ受け、`overlay_key` はその webview が画面に出ているときだけ、翻訳は設定がオンのときだけ。capability `browser-overlay` の `webviews` は glob `browser-*`。
+- **イベントは tab id を運ぶ。** `browser-page` / `browser-title` / `browser-key` / `browser-focus`（WebView2 の `GotFocus`。ページをクリックしたらそのペインがフォーカスされる）。
+- **キーボード。** `Ctrl+T` 新しいタブ（パレットを開く）、`Ctrl+W` タブを閉じる、`Ctrl+Tab` / `Ctrl+Shift+Tab` タブの切り替え、`Ctrl+\` 右に分割、`Ctrl+-` 下に分割。プレフィックス（Ctrl+B）の後の `"` / `%` が下 / 右に分割、`x` がペインを閉じる、`c` / `n` / `p` がタブの新規 / 次 / 前（tmux）。← → ↑ ↓ / h j k l は、ペインの矩形で方向の隣を探す（上下に分けたペインにも移動できる）。
+- **ドラッグ。** タブはポインタで掴んで同じ列の中でも別のペインの列へも移せる。HTML5 の drag and drop は Tauri の drag-drop handler と競合するので使わず、`elementFromPoint` で落とし先を決める。ペインの区切りは `Splitter` と同じ見た目・操作（ドラッグ、← → / ↑ ↓、Shift で大きく）。
+- **保存。** レイアウトは `localStorage`（`lattice.layout`）に、タブは種類と記事 id / URL と題名だけを保存して起動時に復元する（読めなければ 1 ペイン）。Page タブは見えたときに開き直す。
