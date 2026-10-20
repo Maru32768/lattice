@@ -21,6 +21,7 @@ pub mod jobs;
 pub mod llm;
 pub mod markdown;
 pub mod openai;
+pub mod pdf;
 pub mod quiz;
 pub mod r2;
 pub mod render;

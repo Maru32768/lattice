@@ -319,7 +319,7 @@ fn store_local_images(store: &Store, id: i64, dir: &Path, ir: &ArticleIr) -> Res
 }
 
 /// Japanese text and its full-width punctuation run on across a line break.
-fn joins_without_space(c: char) -> bool {
+pub(crate) fn joins_without_space(c: char) -> bool {
     crate::segments::is_cjk(c) || matches!(c, '\u{3000}'..='\u{303F}' | '\u{FF00}'..='\u{FFEF}')
 }
 

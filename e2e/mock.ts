@@ -131,7 +131,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
     language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
     read_status: "unread", favorite: false, tags: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
-    feed_id: null, feed_title: null, thin: false, from_feed: false, ...extra,
+    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, ...extra,
   });
   return id;
 }
@@ -243,6 +243,8 @@ export const handlers = {
   import_markdown: ({ text }: { text: string }): number =>
     addArticle(`local:md/${text.length}`, /^#\s+(.+)$/m.exec(text)?.[1] ?? null, { domain: "", fetch_status: "ok", extraction_status: "ok" }),
   import_markdown_file: none,
+  import_pdf_file: (): number =>
+    addArticle("local:pdf/e2e", "Reading Order in Two Column Papers", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),

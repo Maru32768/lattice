@@ -98,7 +98,21 @@ impl reqwest::dns::Resolve for PublicDns {
     }
 }
 
+/// What a URL answered: a web page, or a PDF's bytes.
+pub enum Resource {
+    Page(Fetched),
+    Pdf { final_url: String, bytes: Vec<u8> },
+}
+
 pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
+    match fetch_resource(client, url).await? {
+        Resource::Page(page) => Ok(page),
+        Resource::Pdf { .. } => Err(format!("unsupported content type: {}", crate::pdf::CONTENT_TYPE)),
+    }
+}
+
+/// A page, or a PDF (a paper's `…/pdf/…` link).
+pub async fn fetch_resource(client: &reqwest::Client, url: &str) -> Result<Resource, String> {
     check_public(url)?;
     let mut resp = client.get(url).send().await.map_err(request_error)?;
     let status = resp.status();
@@ -106,21 +120,36 @@ pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, Strin
         return Err(format!("HTTP {status}"));
     }
     let content_type = resp.headers().get(reqwest::header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(str::to_string);
-    if let Some(ct) = &content_type
-        && !ct.contains("html")
-    {
-        return Err(format!("unsupported content type: {ct}"));
-    }
+    let cap = body_cap(content_type.as_deref())?;
     let final_url = resp.url().to_string();
     let mut body = Vec::new();
     while let Some(chunk) = resp.chunk().await.map_err(|e| format!("read failed: {e}"))? {
         body.extend_from_slice(&chunk);
-        if body.len() > MAX_BODY {
-            return Err(format!("body exceeds {MAX_BODY} bytes"));
+        if body.len() > cap {
+            return Err(format!("body exceeds {cap} bytes"));
         }
     }
+    resource(final_url, status.as_u16(), content_type, body)
+}
+
+/// Which responses are read, and up to how many bytes: pages, and what may be a PDF.
+fn body_cap(content_type: Option<&str>) -> Result<usize, String> {
+    match content_type.map(str::to_ascii_lowercase) {
+        Some(ct) if ct.contains("pdf") || ct.contains("octet-stream") => Ok(crate::pdf::MAX_BYTES),
+        Some(ct) if !ct.contains("html") => Err(format!("unsupported content type: {ct}")),
+        _ => Ok(MAX_BODY),
+    }
+}
+
+fn resource(final_url: String, status: u16, content_type: Option<String>, body: Vec<u8>) -> Result<Resource, String> {
+    if crate::pdf::is_pdf(content_type.as_deref(), &body) {
+        return Ok(Resource::Pdf { final_url, bytes: body });
+    }
+    if let Some(ct) = content_type.as_deref().filter(|ct| ct.contains("octet-stream")) {
+        return Err(format!("unsupported content type: {ct}"));
+    }
     let html = decode_html(content_type.as_deref(), &body);
-    Ok(Fetched { final_url, status: status.as_u16(), content_type, html })
+    Ok(Resource::Page(Fetched { final_url, status, content_type, html }))
 }
 
 /// Charset precedence follows browsers: BOM (handled by `decode`), Content-Type, then
@@ -184,6 +213,19 @@ mod tests {
             let e = fetch(&c, url).await.err().unwrap();
             assert!(e.contains("private") || e.contains("public address"), "{url}: {e}");
         }
+    }
+
+    #[test]
+    fn tells_pdfs_from_pages() {
+        let res = |ct: Option<&str>, body: &[u8]| resource("https://arxiv.org/pdf/1".into(), 200, ct.map(String::from), body.to_vec());
+        assert!(matches!(res(Some("application/pdf"), b"%PDF-1.5"), Ok(Resource::Pdf { .. })));
+        assert!(matches!(res(Some("application/octet-stream"), b"%PDF-1.5"), Ok(Resource::Pdf { .. })), "sniffed");
+        assert!(matches!(res(None, b"%PDF-1.5"), Ok(Resource::Pdf { .. })));
+        assert!(res(Some("application/octet-stream"), b"\x00\x01").is_err());
+        assert!(matches!(res(Some("text/html"), b"<p>x</p>"), Ok(Resource::Page(p)) if p.html == "<p>x</p>"));
+        assert_eq!(body_cap(Some("Application/PDF")), Ok(crate::pdf::MAX_BYTES));
+        assert_eq!(body_cap(Some("text/html; charset=utf-8")), Ok(MAX_BODY));
+        assert!(body_cap(Some("image/png")).is_err());
     }
 
     #[test]

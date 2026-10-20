@@ -94,6 +94,7 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     feed_title: f ? (f.custom_title ?? f.title) : null,
     thin: false,
     from_feed: false,
+    pdf: false,
     ...extra,
   };
 });

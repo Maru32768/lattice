@@ -41,7 +41,7 @@ export interface JobRow {
 
 export interface ArticleRow {
   id: number;
-  /** `local:md/<hash>` for imported Markdown (see `isLocal`). */
+  /** `local:md/<hash>` / `local:pdf/<hash>` for an imported Markdown or PDF file (see `isLocal`). */
   original_url: string;
   canonical_url: string | null;
   domain: string;
@@ -68,12 +68,14 @@ export interface ArticleRow {
   thin: boolean;
   /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
   from_feed: boolean;
+  /** Extracted from a PDF (a URL's or an imported file's); there is no HTML page to render. */
+  pdf: boolean;
 }
 
-/** Imported Markdown: no page to open, refetch or render. */
+/** An imported file (Markdown or PDF): no page to open, refetch or render. */
 export const isLocal = (url: string) => url.startsWith("local:");
 
-/** The site shown for an article: its domain, or ローカル for imported Markdown. */
+/** The site shown for an article: its domain, or ローカル for an imported file. */
 export const siteOf = (a: Pick<ArticleRow, "domain">) => a.domain || "ローカル";
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */
@@ -376,6 +378,8 @@ export const api = {
   importMarkdown: (text: string) => invoke<number>("import_markdown", { text }),
   /** Opens a file dialog (in the backend); null when cancelled. */
   importMarkdownFile: () => invoke<number | null>("import_markdown_file"),
+  /** Opens a PDF file dialog (in the backend); null when cancelled. */
+  importPdfFile: () => invoke<number | null>("import_pdf_file"),
   /** The unread count for the taskbar badge (shown unless switched off). */
   setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
   taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),

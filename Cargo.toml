@@ -10,5 +10,7 @@ version = "0.1.0"
 codegen-units = 1
 lto = true
 opt-level = 3
-panic = "abort"
+# Unwind, not abort: pdf-extract panics on some malformed PDFs, and `pdf::read` catches that
+# as an import error instead of losing the app.
+panic = "unwind"
 strip = true
