@@ -28,10 +28,6 @@ const LIBRARY: [Scope, string, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Logo() {
-  return <span className="logo" aria-hidden="true"><i className="f" /><i /><i /><i className="f" /></span>;
-}
-
 export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
   onOpenUrl, onChat, onRecent, onGenres, onCollapse }: {
   screen: Screen;
@@ -72,8 +68,6 @@ export function Nav({ screen, scope, counts, feeds, jobFailures, chatOpen, searc
   return (
     <nav className="nav" aria-label="ナビゲーション" data-pane="nav">
       <div className="nav-top">
-        <Logo />
-        <span className="brand">Lattice</span>
         <Menu className="ib" label="追加（URL・一括インポート・フィード）" align="right" trigger={<Icon name="plus" />} items={[
           { label: <><Icon name="page" />URL を開く</>, onSelect: onOpenUrl },
           { label: <><Icon name="import" />一括インポート</>, onSelect: () => onScreen("import") },

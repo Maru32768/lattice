@@ -22,6 +22,7 @@ import { Kbd } from "./Icon";
 import { actionFor, getBindings, keyLabel, keyOf, useBindings, type ActionId } from "./keys";
 import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
 import { Palette, type PaletteActions } from "./Palette";
+import { TitleBar } from "./TitleBar";
 import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "./Splitter";
 import "./App.css";
 
@@ -523,72 +524,75 @@ export default function App() {
 
   return (
     <CoverContext.Provider value={cover}>
-      <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
-        {screen === "settings"
-          ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
-          : nav}
-        {(screen === "import" || screen === "feeds" || screen === "jobs") && (
-          <main className="main" data-pane="doc">
-            {screen === "import" && <ImportView onImported={refresh} />}
-            {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
-              onShowFeed={(id) => setScope({ kind: "feed", id })} />}
-            {screen === "jobs" && <JobsView />}
-          </main>
-        )}
-        {screen === "library" && search && listOpen && (
-          <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
-            hits={hitGroups} sel={hitSel} onSel={setHitSel} open={doc?.kind === "reader" && doc.focus?.tone === "hit" ? { id: doc.id, block: doc.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-            scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
-            focusSeq={searchFocus} />
-        )}
-        {screen === "library" && search && listOpen && splitter("search")}
-        {screen === "library" && !(search && listOpen) && (listOpen
-          ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
-              all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
-              translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-              onCollapse={() => setListOpen(false)} />
-          : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
-              count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
-        {screen === "library" && !search && listOpen && splitter("list")}
-        {screen === "library" && <main className="main" data-pane="doc">
-          {error && (
-            <div className="banner" role="alert">
-              <span className="grow">{error}</span>
-              <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
-            </div>
+      <div className="shell">
+        <TitleBar />
+        <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
+          {screen === "settings"
+            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
+            : nav}
+          {(screen === "import" || screen === "feeds" || screen === "jobs") && (
+            <main className="main" data-pane="doc">
+              {screen === "import" && <ImportView onImported={refresh} />}
+              {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
+                onShowFeed={(id) => setScope({ kind: "feed", id })} />}
+              {screen === "jobs" && <JobsView />}
+            </main>
           )}
-          {doc?.kind === "page" && (
-            <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
-              onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
-              onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
+          {screen === "library" && search && listOpen && (
+            <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
+              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={doc?.kind === "reader" && doc.focus?.tone === "hit" ? { id: doc.id, block: doc.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
+              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
+              focusSeq={searchFocus} />
           )}
-          {doc?.kind === "reader" && view && (
-            <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
-              focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
-              onAsk={() => openChat("article")}
-              onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
-              onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
-              onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
-              onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
-              onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
-              onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
-              onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
-              onClassify={viewAct(api.classifyArticle)} />
+          {screen === "library" && search && listOpen && splitter("search")}
+          {screen === "library" && !(search && listOpen) && (listOpen
+            ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
+                all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
+                translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
+                onCollapse={() => setListOpen(false)} />
+            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
+                count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
+          {screen === "library" && !search && listOpen && splitter("list")}
+          {screen === "library" && <main className="main" data-pane="doc">
+            {error && (
+              <div className="banner" role="alert">
+                <span className="grow">{error}</span>
+                <button className="ib" onClick={() => setError(null)} aria-label="閉じる">×</button>
+              </div>
+            )}
+            {doc?.kind === "page" && (
+              <BrowserView target={doc.target} page={page} saved={saved} saving={saving} lang={pageLang} overlays={overlays}
+                onLang={setPageLang} onSave={saveCurrent} onReader={() => saved && openReader(saved.id)}
+                onFavorite={() => saved && toggleFavorite(saved)} onError={fail} />
+            )}
+            {doc?.kind === "reader" && view && (
+              <Reader key={view.article.id} view={view} focus={doc.focus} matches={readerMatches} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+                focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
+                onAsk={() => openChat("article")}
+                onPage={() => openPage(view.article.original_url, undefined, view.article)} onLink={(href) => openPage(href)}
+                onToggleRead={() => toggleRead(view.article)} onRetry={viewAct(() => api.saveUrl(view.article.original_url))}
+                onReextract={viewAct(api.reextractArticle)} onRender={viewAct(api.renderArticle)} onTranslate={viewAct(api.translateArticle)}
+                onSummarize={viewAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(view.article)}
+                onTag={(name, add) => act(() => (add ? api.addTag(view.article.id, name) : api.removeTag(view.article.id, name)), view.article.id)}
+                onGenre={(name) => act(() => api.setGenre(view.article.id, name), view.article.id)}
+                onDifficulty={(level) => act(() => api.setDifficulty(view.article.id, level), view.article.id)}
+                onClassify={viewAct(api.classifyArticle)} />
+            )}
+            {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
+              : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
+                  onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
+          </main>}
+          {palette != null && (
+            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
+              onClose={() => setPalette(null)} />
           )}
-          {!doc && loaded && (articles.length ? <p className="doc-empty muted">記事を選んでください</p>
-            : <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => setScreen("import")}
-                onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />)}
-        </main>}
-        {palette != null && (
-          <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
-            onClose={() => setPalette(null)} />
-        )}
-        {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
-        {chatOpen && splitter("chat", "right")}
-        {chatOpen && (
-          <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
-            current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
-        )}
+          {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+          {chatOpen && splitter("chat", "right")}
+          {chatOpen && (
+            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
+              current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
+          )}
+        </div>
       </div>
     </CoverContext.Provider>
   );
