@@ -57,7 +57,8 @@ pub fn overview(store: &Store) -> Result<JobOverview, String> {
         st.query_map([], |r| Ok(JobCount { job_type: r.get(0)?, state: r.get(1)?, count: r.get(2)? })).map_err(err)?.collect::<Result<_, _>>().map_err(err)?;
     let mut st = c
         .prepare(&format!(
-            "SELECT j.id, j.type, j.article_id, coalesce(a.title, a.original_url, json_extract(j.params, '$.domain')), j.status, j.attempt_count, j.last_error,
+            "SELECT j.id, j.type, j.article_id, coalesce(a.title, a.original_url, json_extract(j.params, '$.domain'),
+                             (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = json_extract(j.params, '$.feed_id'))), j.status, j.attempt_count, j.last_error,
                     j.next_run_at, j.created_at, j.started_at, j.completed_at
              FROM processing_jobs j LEFT JOIN articles a ON a.id = j.article_id
              WHERE {ISSUE} ORDER BY j.completed_at DESC, j.id DESC LIMIT ?1"
