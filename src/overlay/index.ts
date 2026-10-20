@@ -1,7 +1,8 @@
 /**
  * Page overlay injected into the in-app browser. Translates the page in place, sentence by
  * sentence, without changing its layout: leaf blocks are sent as inline-HTML snippets,
- * returned reading units are wrapped in spans, and a seeded share of them shows Japanese.
+ * returned reading units are wrapped in spans, and a seeded share of them shows the translation
+ * (Japanese, or English on a Japanese page).
  * Hovering a sentence shows the other language; clicking that tooltip flips the sentence.
  *
  * Adapted from Mazelingo's content script (MIT License, Copyright (c) 2026 Yeq6X).
@@ -10,7 +11,7 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
-import { assignTranslated, isCjkDominant, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
+import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
 
 interface Unit {
   source: string;
@@ -46,6 +47,8 @@ const MAX_INFLIGHT = 3;
 
 const state = {
   config: { enabled: false, percent: 70 } as Config,
+  /** Decided once per page from the first blocks seen. */
+  target: null as Target | null,
   pending: [] as Pending[],
   queue: [] as Pending[][],
   inflight: 0,
@@ -85,7 +88,9 @@ function processRoot(root: Element) {
     }),
     { rootMargin: "1000px" },
   );
-  for (const el of findLeafBlocks(root)) {
+  const blocks = findLeafBlocks(root);
+  state.target ??= pageTarget(document.documentElement.lang, blocks.slice(0, 30).map((b) => b.textContent ?? "").join(" "));
+  for (const el of blocks) {
     el.dataset.latticeBlock = "pending";
     bindBlockHover(el);
     state.io.observe(el);
@@ -94,8 +99,8 @@ function processRoot(root: Element) {
 
 function enqueue(el: HTMLElement) {
   if (!el.isConnected || !state.config.enabled) return;
-  if (isCjkDominant(el.textContent ?? "")) {
-    el.dataset.latticeBlock = "skip"; // already Japanese
+  if (isWrittenIn(el.textContent ?? "", state.target ?? "ja")) {
+    el.dataset.latticeBlock = "skip";
     return;
   }
   const { parts } = splitByLineBreaks(snippetHtml(el));
@@ -142,7 +147,7 @@ async function translateBatch(batch: Pending[]) {
   const snippets = batch.flatMap((p) => p.parts);
   let results: (Unit[] | null)[] = [];
   try {
-    results = (await invoke("overlay_translate", { snippets })) as (Unit[] | null)[];
+    results = (await invoke("overlay_translate", { snippets, target: state.target })) as (Unit[] | null)[];
   } catch (e) {
     console.warn("[lattice] translate failed", e);
   }

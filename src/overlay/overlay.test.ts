@@ -14,7 +14,7 @@ Object.assign(globalThis, {
 });
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
-const { assignTranslated, plainText, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
+const { assignTranslated, isWrittenIn, pageTarget, plainText, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
 
 test("settle waits for DOM mutations to stop, up to a cap", async () => {
   const root = document.createElement("div");
@@ -30,6 +30,15 @@ test("settle waits for DOM mutations to stop, up to a cap", async () => {
   await settle(root, 50, 150);
   clearInterval(busy);
   assert.ok(Date.now() - t1 < 400, "capped while the page keeps changing");
+});
+
+test("Japanese pages translate into English, others into Japanese", () => {
+  assert.equal(pageTarget("ja-JP", "English words only"), "en", "declared lang wins");
+  assert.equal(pageTarget("en", "日本語の本文です"), "ja");
+  assert.equal(pageTarget("", "日本語の本文で MVCC を説明する"), "en", "no lang: decided by the text");
+  assert.equal(pageTarget("", "An English page about MVCC"), "ja");
+  assert.ok(isWrittenIn("スナップショット分離", "ja") && !isWrittenIn("スナップショット分離", "en"));
+  assert.ok(isWrittenIn("Snapshot isolation", "en") && !isWrittenIn("Snapshot isolation", "ja"));
 });
 
 test("splitByLineBreaks splits on blank lines and after sentence ends only", () => {

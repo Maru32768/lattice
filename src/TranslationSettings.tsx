@@ -21,7 +21,7 @@ export function TranslationSettings() {
   return (
     <div className="grp">
       <SetRow title="専門用語を英語のまま残す" htmlFor="keep-terms"
-        desc="MVCC、WAL、snapshot isolation、write skew など。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります（元の設定に戻せば以前の訳文が表示されます）。">
+        desc="MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります（元の設定に戻せば以前の訳文が表示されます）。">
         <Switch id="keep-terms" checked={on} onChange={toggle} />
       </SetRow>
       {error && <p className="msg error-text" role="alert">{error}</p>}

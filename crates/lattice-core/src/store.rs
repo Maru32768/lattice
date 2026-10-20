@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ir::{ArticleIr, Block, Inline};
-use crate::segments::{Unit, plain_text};
+use crate::segments::{Target, Unit, plain_text};
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[r#"
@@ -472,6 +472,8 @@ pub struct SummaryView {
 #[derive(Debug, Serialize)]
 pub struct ArticleView {
     pub article: ArticleRow,
+    /// Language of `blocks[].translation`: "en" for a Japanese article, else "ja".
+    pub target_language: &'static str,
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
     pub summary: Option<SummaryView>,
@@ -607,6 +609,17 @@ fn replace_blocks(tx: &rusqlite::Transaction, article_id: i64, blocks: &[Block])
     }
     tx.execute("DELETE FROM blocks WHERE article_id = ?1 AND ordinal < 0", [article_id])?;
     Ok(())
+}
+
+fn article_is_japanese(c: &Connection, id: i64) -> Result<bool> {
+    let (declared, sample): (Option<String>, String) = c.query_row(
+        "SELECT language, (SELECT coalesce(group_concat(text, ' '), '') FROM (SELECT text FROM blocks WHERE article_id = ?1
+             AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal LIMIT 20))
+         FROM articles WHERE id = ?1",
+        params![id, json(&crate::ir::PROSE_KINDS)],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    Ok(crate::segments::is_japanese(declared.as_deref(), &sample))
 }
 
 pub fn sha256_hex(s: &str) -> String {
@@ -916,6 +929,12 @@ impl Store {
         st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? }))?.collect()
     }
 
+    /// Whether the article is Japanese (`segments::is_japanese`), from its declared language or its opening prose.
+    pub fn article_is_japanese(&self, id: i64) -> Result<bool> {
+        article_is_japanese(&self.conn(), id)
+    }
+
+    /// `target_language` is a `Target::key`.
     pub fn get_article(&self, id: i64, target_language: &str) -> Result<Option<ArticleView>> {
         let c = self.conn();
         let Some(article) = c
@@ -957,7 +976,7 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)? }),
             )
             .optional()?;
-        Ok(Some(ArticleView { article, blocks, jobs, summary }))
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language).language, blocks, jobs, summary }))
     }
 
     /// Translatable blocks of an article lacking a current translation in `target_language`.
@@ -1208,32 +1227,48 @@ impl Store {
         st.query_map(rusqlite::params_from_iter(args), |r| r.get(0))?.collect()
     }
 
-    /// Display data for search hits, in the order of `block_ids`.
-    pub fn hit_details(&self, block_ids: &[i64], target_language: &str) -> Result<Vec<HitDetail>> {
+    /// Display data for search hits, in the order of `block_ids`. Each hit's translation is in its
+    /// article's target language (`settings` adapted per article).
+    pub fn hit_details(&self, block_ids: &[i64], settings: &Target) -> Result<Vec<HitDetail>> {
         let c = self.conn();
         let mut st = c.prepare(
-            "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text,
-                    (SELECT st.text FROM segment_translations st
-                     WHERE st.source_hash = b.text_hash AND st.target_language = ?2
-                     ORDER BY st.id DESC LIMIT 1), b.ordinal
+            "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.text, b.text_hash, b.ordinal
              FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id
              WHERE b.id IN (SELECT value FROM json_each(?1))",
         )?;
-        let mut rows: Vec<HitDetail> = st
-            .query_map(params![json(&block_ids), target_language], |r| {
-                Ok(HitDetail {
+        let rows: Vec<(HitDetail, String)> = st
+            .query_map(params![json(&block_ids)], |r| {
+                let hit = HitDetail {
                     block_id: r.get(0)?,
                     article_id: r.get(1)?,
                     article_title: r.get(2)?,
                     heading: r.get(3)?,
                     text: r.get(4)?,
-                    translation: r.get(5)?,
+                    translation: None,
                     ordinal: r.get(6)?,
-                })
+                };
+                Ok((hit, r.get(5)?))
             })?
             .collect::<Result<_>>()?;
-        rows.sort_by_key(|h| block_ids.iter().position(|&id| id == h.block_id));
-        Ok(rows)
+        let mut keys: HashMap<i64, String> = HashMap::new();
+        let mut tr = c.prepare(
+            "SELECT text FROM segment_translations WHERE source_hash = ?1 AND target_language = ?2 ORDER BY id DESC LIMIT 1",
+        )?;
+        let mut out = Vec::with_capacity(rows.len());
+        for (mut hit, hash) in rows {
+            let key = match keys.get(&hit.article_id) {
+                Some(k) => k.clone(),
+                None => {
+                    let k = settings.for_source(article_is_japanese(&c, hit.article_id)?).key();
+                    keys.insert(hit.article_id, k.clone());
+                    k
+                }
+            };
+            hit.translation = tr.query_row(params![hash, key], |r| r.get(0)).optional()?;
+            out.push(hit);
+        }
+        out.sort_by_key(|h| block_ids.iter().position(|&id| id == h.block_id));
+        Ok(out)
     }
 
     #[cfg(test)]
@@ -1429,7 +1464,7 @@ mod tests {
 
         let restricted = s.article_ids(&db).unwrap();
         let hits = s.lexical_search("checkpoint", restricted.as_deref(), 10).unwrap();
-        let mut owners = s.hit_details(&hits, "ja").unwrap().into_iter().map(|h| h.article_id).collect::<Vec<_>>();
+        let mut owners = s.hit_details(&hits, &Target::default()).unwrap().into_iter().map(|h| h.article_id).collect::<Vec<_>>();
         owners.sort();
         assert_eq!(owners, [1, 3]);
         assert_eq!(s.lexical_search("checkpoint", None, 10).unwrap().len(), 3);

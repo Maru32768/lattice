@@ -12,7 +12,8 @@ use crate::embed::EmbeddingProvider;
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
 use crate::store::{ArticleFilter, Result, Store};
-use crate::{search, translate};
+use crate::search;
+use crate::segments::Target;
 
 pub const PROMPT_VERSION: &str = "chat-v1";
 const FULL_TEXT_CHARS: usize = 30_000;
@@ -271,7 +272,7 @@ async fn retrieve<E: EmbeddingProvider>(
     let mut seen = HashSet::new();
     let mut out = Vec::new();
     for (q, k) in std::iter::once((question, TOP_K)).chain(previous.map(|p| (p, TOP_K_PREVIOUS))) {
-        let r = search::search(store, embedder, q, articles, translate::TARGET_LANGUAGE, k).await?;
+        let r = search::search(store, embedder, q, articles, &Target::default(), k).await?;
         if let Some(err) = r.semantic_error {
             log::warn!("chat retrieval is lexical only: {err}");
         }
@@ -407,7 +408,7 @@ mod tests {
     }
 
     fn articles_of(s: &Store, blocks: &[i64]) -> HashSet<i64> {
-        let d = s.hit_details(blocks, "ja").unwrap();
+        let d = s.hit_details(blocks, &Target::default()).unwrap();
         d.into_iter().map(|h| h.article_id).collect()
     }
 
@@ -417,7 +418,7 @@ mod tests {
         assert_eq!(articles_of(&s, &s.lexical_search("Marker", None, 50).unwrap()), HashSet::from([a, c]));
         assert_eq!(articles_of(&s, &s.lexical_search("Marker", Some(&[a, b]), 50).unwrap()), HashSet::from([a]));
         assert!(s.lexical_search("EPOLLET", Some(&[a]), 50).unwrap().is_empty());
-        let r = search::search(&s, &Letters, "edge triggered socket polling", Some(&[a]), "ja", 50).await.unwrap();
+        let r = search::search(&s, &Letters, "edge triggered socket polling", Some(&[a]), &Target::default(), 50).await.unwrap();
         assert!(!r.hits.is_empty() && r.hits.iter().all(|h| h.detail.article_id == a));
         let mut n = 0;
         s.scan_embeddings("letters", Some(&[c]), |_, _| n += 1).unwrap();

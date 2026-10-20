@@ -116,7 +116,7 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **途中で失敗しても失われない。** batch ごとに保存するので、再試行で送るのは未翻訳の分だけになる。provider が全滅した batch は job を失敗させて backoff する。
 - **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
-- **翻訳対象。** 英語の prose だけを訳す（日本語が優勢な block は送らない）。code / pre / nav / header / footer / aside、`translate="no"` は対象外。
+- **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer / aside、`translate="no"` は対象外。訳先の言語は §16 を参照。
 
 ## 4. 検索 slice（実装済み）
 
@@ -452,3 +452,17 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 ### 未実装（意図的）
 
 統合の取り消し、`<link>` の候補の事前検証、`<a href>` で張られた feed の検出、改名で消えたジャンルを選んでいる絞り込みの自動解除（一覧が空になるので選び直す）。
+
+## 16. フィードバック対応
+
+| 対象 | ファイル |
+|---|---|
+| 訳先の言語（`Target`・`is_japanese`・英訳の prompt） | `crates/lattice-core/src/segments.rs`、`translate.rs`、`store.rs`（`article_is_japanese`・`hit_details`） |
+| ページの訳先 | `src/overlay/logic.ts`（`pageTarget`）、`src/overlay/index.ts` |
+
+- **日本語の記事は英語に訳す。** 記事の言語は、`articles.language`（ページが宣言した言語）があればそれで、なければ先頭 20 個の prose block のテキストで決める（CJK が優勢なら日本語）。日本語なら訳先は `en`、それ以外は従来どおり `ja`。訳先は `segments::Target`（言語と専門用語モード）で表し、その `key()` を `target_language` として cache・Reader の join・検索結果の訳文・translate job の params と dedup key に使う。英語への訳の既定モードの key は `en`。言語は保存せず、`get_article`・`translate_article`・検索のたびに決める（`hit_details` は記事ごとに決める）。
+  - 宣言された言語がテキストと食い違っても宣言を優先する。中国語の記事は宣言がなければ日本語と判定され、英語に訳される。
+  - 英語への訳の専門用語モード: オン（既定）は「定着した英語の用語を使う（ラテン文字で書かれた用語はそのまま）」、オフは「専門用語より平易な英語を優先する（略語と製品名はそのまま）」を prompt に入れる。訳元の言語は、英語への訳なら日本語、それ以外は英語として prompt に書く。
+  - Reader の混在は「訳文の割合」になり、日本語の記事では英語の割合になる。「日本語に翻訳」は記事の訳先に合わせて「英語に翻訳」と表示する。
+  - ページ表示の overlay も、`<html lang>` があればそれで、なければ最初に見つけた 30 個の block のテキストでページの言語を決め、日本語のページは英語に訳す（`overlay_translate` の `target`。`en` 以外は日本語として扱う）。訳先の言語ですでに書かれた block は送らない。
+

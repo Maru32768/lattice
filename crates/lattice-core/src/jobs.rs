@@ -12,6 +12,7 @@ use crate::embed::{self, EmbeddingProvider};
 use crate::fetch::HttpClient;
 use crate::ingest;
 use crate::llm::LlmProvider;
+use crate::segments::Target;
 use crate::store::{JobRow, Store};
 use crate::{classify, images, render, summarize, translate};
 
@@ -80,8 +81,8 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     let article_id = job.article_id.ok_or("job has no article")?;
     match job.job_type.as_str() {
         translate::JOB_TYPE => {
-            let target = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
-            translate::run(store, &p.llm, article_id, target, progress).await
+            let target = Target::from_key(params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE));
+            translate::run(store, &p.llm, article_id, &target, progress).await
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
@@ -132,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn translates_prose_blocks_and_is_idempotent() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         let p = with(Fake::new());
         assert!(run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap());
         assert!(!run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap(), "queue drained");
@@ -148,17 +149,18 @@ mod tests {
         assert_eq!(v.jobs[0].status, "succeeded");
 
         // Re-enqueue: nothing left to translate, provider is not called again.
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(p.llm.calls.lock().unwrap().len(), 1);
 
         // Translating terms too is a separate cache: translated again, the default rows stay.
-        assert_eq!(translate::target(&s).unwrap(), "ja");
+        assert_eq!(translate::target(&s).unwrap().key(), "ja");
         translate::set_keep_terms(&s, false).unwrap();
-        let other = translate::target(&s).unwrap();
+        let target = translate::target(&s).unwrap();
+        let other = target.key();
         assert_ne!(other, "ja");
         assert!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.is_none(), "modes do not share rows");
-        translate::enqueue(&s, id, &other).unwrap();
+        translate::enqueue(&s, id, &target).unwrap();
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(p.llm.calls.lock().unwrap().len(), 2);
         assert_eq!(s.get_article(id, &other).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
@@ -166,16 +168,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn japanese_articles_translate_into_english() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.jp/a", "https://example.jp/a", "example.jp").unwrap();
+        let html = "<html><body><article><h2>はじめに</h2>            <p>スナップショット分離では write skew が起こりうるが、直列化可能スナップショット分離はコミット時にそれを防ぐ。</p>            <p>Written in English: not sent.</p></article></body></html>";
+        store_fetched(&s, id, &Fetched { final_url: "https://example.jp/a".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        assert!(s.article_is_japanese(id).unwrap(), "no declared language: decided by the text");
+
+        let target = translate::article_target(&s, id).unwrap();
+        assert_eq!(target.key(), "en");
+        translate::enqueue(&s, id, &target).unwrap();
+        let p = with(Fake::new());
+        run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
+        let sent: Vec<serde_json::Value> = serde_json::from_str(&p.llm.calls.lock().unwrap()[0]).unwrap();
+        assert_eq!(sent.len(), 2, "only the Japanese blocks are sent: {sent:?}");
+
+        let v = s.get_article(id, &target.key()).unwrap().unwrap();
+        assert_eq!(v.target_language, "en");
+        assert!(v.blocks[0].translation.is_some() && v.blocks[2].translation.is_none());
+        assert!(s.get_article(id, "ja").unwrap().unwrap().blocks[0].translation.is_none(), "kept apart from Japanese targets");
+
+        s.exec_for_test(&format!("UPDATE articles SET language = 'en-US' WHERE id = {id}"));
+        assert_eq!(translate::article_target(&s, id).unwrap().key(), "ja", "a declared language wins over the text");
+    }
+
+    #[tokio::test]
     async fn failure_backs_off_and_manual_retry_resumes() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &with(Fake { fail: true, ..Fake::new() }), LLM_JOBS, &|_| {}).await.unwrap();
         let job = &s.get_article(id, "ja").unwrap().unwrap().jobs[0];
         assert_eq!((job.status.as_str(), job.attempt_count), ("pending", 1));
         assert!(job.next_run_at.is_some() && job.last_error.as_deref() == Some("provider failed: usage limit reached"));
         assert!(!run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap(), "not ready until backoff elapses");
 
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().jobs[0].status, "succeeded");
     }
@@ -198,7 +225,7 @@ mod tests {
     #[test]
     fn recovers_jobs_left_running() {
         let (s, id) = setup();
-        translate::enqueue(&s, id, "ja").unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
         s.claim_next_job(LLM_JOBS).unwrap().unwrap();
         assert_eq!(s.recover_running_jobs().unwrap(), 1);
         assert!(s.claim_next_job(LLM_JOBS).unwrap().is_some());

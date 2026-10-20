@@ -267,7 +267,7 @@ fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
-    app.store.get_article(id, &translate::target(&app.store)?).map_err(err)
+    app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -280,19 +280,22 @@ fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow
 }
 
 /// Translation for the page overlay: cached units where available, the LLM for the rest.
-/// Snippets come from an untrusted page, so size and count are bounded.
+/// Snippets come from an untrusted page, so size and count are bounded. `target` is the
+/// overlay's choice for the page ("en" for a Japanese page); anything else means Japanese.
 #[tauri::command]
 async fn overlay_translate(
     app: State<'_, App>,
     browser: State<'_, Browser>,
     webview: Webview,
     snippets: Vec<String>,
+    target: Option<String>,
 ) -> Result<Vec<Option<Vec<Unit>>>, String> {
     browser::ensure_translation_allowed(&webview, &browser)?;
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
         return Err("request too large".into());
     }
-    let target = &translate::target(&app.store)?;
+    let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
+    let target = &to.key();
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut cached = app.store.cached_segments(&hashes, target).map_err(err)?;
     let mut misses: Vec<usize> = Vec::new();
@@ -305,7 +308,7 @@ async fn overlay_translate(
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
         let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
         let llm = &app.providers.llm;
-        let t = segments::translate_snippets(llm, &batch, translate::SOURCE_LANGUAGE, target).await;
+        let t = segments::translate_snippets(llm, &batch, &to).await;
         let rows: Vec<SegmentRow> = misses
             .iter()
             .zip(&t.results)
@@ -333,7 +336,7 @@ fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64) -> Result<(), String> {
-    translate::enqueue(&app.store, id, &translate::target(&app.store)?)?;
+    translate::enqueue(&app.store, id, &translate::article_target(&app.store, id)?)?;
     app.wake_llm.notify_one();
     Ok(())
 }

@@ -95,6 +95,8 @@ export interface TagCount {
 
 export interface ArticleView {
   article: ArticleRow;
+  /** Language of `blocks[].translation`: Japanese articles are translated into English. */
+  target_language: "ja" | "en";
   blocks: Block[];
   jobs: JobRow[];
   summary: { text: string; created_at: string; stale: boolean } | null;

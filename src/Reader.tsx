@@ -153,17 +153,17 @@ export function LangSeg({ mode, percent, onChange, label = "表示言語" }: {
       <button className={mode === "mixed" ? "on" : ""} aria-pressed={mode === "mixed"} onClick={() => onChange("mixed", percent)}>
         混在 <span className="mono">{percent}%</span>
       </button>
-      <button className="step" onClick={() => step(-10)} aria-label="日本語の割合を下げる ([)" title="日本語の割合を下げる ([)">−</button>
-      <button className="step" onClick={() => step(10)} aria-label="日本語の割合を上げる (])" title="日本語の割合を上げる (])">+</button>
+      <button className="step" onClick={() => step(-10)} aria-label="訳文の割合を下げる ([)" title="訳文の割合を下げる ([)">−</button>
+      <button className="step" onClick={() => step(10)} aria-label="訳文の割合を上げる (])" title="訳文の割合を上げる (])">+</button>
       <button className={mode === "translated" ? "on" : ""} aria-pressed={mode === "translated"} onClick={() => onChange("translated", percent)}>訳文</button>
     </div>
   );
 }
 
-function TranslationStatus({ job, done, total, onTranslate }: { job?: JobRow; done: number; total: number; onTranslate: () => void }) {
+function TranslationStatus({ job, done, total, target, onTranslate }: { job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void }) {
   const keys = <span className="keys"><Kbd>[</Kbd><Kbd>]</Kbd> 割合</span>;
   const hint = <span className="hint-keys">{keys}</span>;
-  if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />日本語に翻訳</button></>;
+  if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />{target === "en" ? "英語" : "日本語"}に翻訳</button></>;
   if (busy(job)) {
     return (
       <span className="tr-prog" role="status">
@@ -354,7 +354,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         <ViewSeg page={false} onReader={() => {}} onPage={onPage} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
-        {!failed && <TranslationStatus job={job} done={done} total={total} onTranslate={onTranslate} />}
+        {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} />}
         {matches && (
           <span className="matches">
             一致 {matches.i + 1} / {matches.n}
