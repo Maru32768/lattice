@@ -536,6 +536,7 @@ pub fn run() {
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
+            classify::enqueue_missing(&store)?;
 
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();

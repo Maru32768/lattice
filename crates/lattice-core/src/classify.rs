@@ -67,13 +67,28 @@ pub fn enqueue_manual(store: &Store, article_id: i64) -> Result<(), String> {
 
 /// Queues every extracted article without a genre or difficulty. Returns how many were queued.
 pub fn enqueue_unclassified(store: &Store) -> Result<usize, String> {
+    enqueue_lacking(store, "DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL WHERE status != 'running'")
+}
+
+/// Startup backfill when auto classification is on: articles lacking a genre or difficulty that
+/// never had a classify job (saved before auto classification existed). Existing jobs are left
+/// alone, so a failed or inconclusive classification is not retried on every launch.
+pub fn enqueue_missing(store: &Store) -> Result<usize, String> {
+    if !auto_enabled(store)? {
+        return Ok(0);
+    }
+    enqueue_lacking(store, "DO NOTHING")
+}
+
+fn enqueue_lacking(store: &Store, on_conflict: &str) -> Result<usize, String> {
     store
         .conn()
         .execute(
-            "INSERT INTO processing_jobs (type, article_id, params, dedup_key)
-             SELECT ?1, id, '{}', ?1 || ':' || id FROM articles WHERE extraction_status = 'ok' AND (genre_id IS NULL OR difficulty IS NULL)
-             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
-             WHERE status != 'running'",
+            &format!(
+                "INSERT INTO processing_jobs (type, article_id, params, dedup_key)
+                 SELECT ?1, id, '{{}}', ?1 || ':' || id FROM articles WHERE extraction_status = 'ok' AND (genre_id IS NULL OR difficulty IS NULL)
+                 ON CONFLICT(dedup_key) {on_conflict}"
+            ),
             [JOB_TYPE],
         )
         .map_err(err)
@@ -391,6 +406,26 @@ mod tests {
         assert!(delete_genre(&s, "Database").is_err(), "in use");
         delete_genre(&s, "linux").unwrap();
         assert_eq!(count("Linux"), None);
+    }
+
+    #[test]
+    fn startup_backfill_queues_articles_that_never_had_a_job() {
+        let s = Store::open_in_memory().unwrap();
+        let ids: Vec<i64> = (0..4).map(|n| saved(&s, n)).collect();
+        set_genre(&s, ids[1], "Linux").unwrap();
+        set_difficulty(&s, ids[1], Some(2)).unwrap();
+        enqueue(&s, ids[2]).unwrap();
+        s.exec_for_test(&format!("UPDATE processing_jobs SET status = 'failed', attempt_count = 5 WHERE article_id = {}", ids[2]));
+
+        assert_eq!(enqueue_missing(&s).unwrap(), 2, "classified and already-tried articles are skipped");
+        assert_eq!(enqueue_missing(&s).unwrap(), 0, "idempotent");
+        let queued: Vec<i64> = std::iter::from_fn(|| s.claim_next_job(&[JOB_TYPE]).unwrap()).filter_map(|j| j.article_id).collect();
+        assert_eq!(queued, [ids[0], ids[3]], "the failed job stays failed");
+
+        let more = saved(&s, 9);
+        set_auto(&s, false).unwrap();
+        assert_eq!(enqueue_missing(&s).unwrap(), 0, "auto classification off");
+        assert!(s.get_article(more, "ja").unwrap().unwrap().jobs.is_empty());
     }
 
     #[tokio::test]
