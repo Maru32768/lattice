@@ -20,6 +20,7 @@
     "allow-import-urls",
     "allow-import-markdown",
     "allow-import-markdown-file",
+    "allow-import-pdf-file",
     "allow-set-unread-badge",
     "allow-get-taskbar-badge",
     "allow-set-taskbar-badge",

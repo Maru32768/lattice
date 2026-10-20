@@ -411,6 +411,8 @@ function scrollToText(text: string): boolean {
  * lets the page finish rendering), with every sentence in its original language.
  */
 async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null) {
+  // The PDF viewer's DOM is not the document: an empty answer has the app fetch the file instead.
+  if (document.contentType === "application/pdf") return void invoke("overlay_snapshot", { nonce, html: "" }).catch(() => {});
   if (wait) await settle(document.documentElement, wait.quietMs, wait.maxMs);
   const shown = Array.from(document.querySelectorAll<SentenceSpan>(`span.${SENTENCE}[data-shown='t']`));
   shown.forEach(renderOriginal);

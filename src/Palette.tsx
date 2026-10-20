@@ -19,6 +19,8 @@ export interface PaletteActions {
   screen: (s: Screen) => void;
   /** The import screen's Markdown tab. */
   importMarkdown: () => void;
+  /** The import screen's PDF tab. */
+  importPdf: () => void;
   /** Opens the chat dock; `scopeKey` is a chat scope option value (filterKey). */
   chat: (scopeKey?: string) => void;
   lang: (mode: LanguageMode, percent?: number) => void;
@@ -114,6 +116,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: "フィードを管理", keys: "feeds フィード 管理 rss", icon: "rss", run: () => actions.screen("feeds") },
     { label: "一括インポート", keys: "import インポート", icon: "import", run: () => actions.screen("import") },
     { label: "Markdown を取り込む", keys: "markdown md import インポート 取り込む", icon: "reader", run: actions.importMarkdown },
+    { label: "PDF（論文）を取り込む", keys: "pdf paper arxiv 論文 import インポート 取り込む", icon: "reader", run: actions.importPdf },
     { label: "設定を開く", keys: "settings 設定", icon: "gear", run: () => actions.screen("settings") },
   ], [genreCounts, feeds, actions]);
 

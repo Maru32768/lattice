@@ -21,7 +21,7 @@ use lattice_core::segments::{self, Unit};
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
-use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -101,8 +101,9 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
 #[tauri::command]
 async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle) -> Result<i64, String> {
     let id = match browser::snapshot(&handle, &browser).await {
-        Some((url, html)) => ingest::save_rendered(&app.store, &url, html)?,
-        None => {
+        // The overlay answers with nothing for a PDF the webview shows: the server sends the file.
+        Some((url, html)) if !html.is_empty() => ingest::save_rendered(&app.store, &url, html)?,
+        _ => {
             let wv = handle.get_webview(browser::LABEL).ok_or("the browser is not open")?;
             log::info!("no DOM snapshot from the page; fetching from the server");
             ingest::save_url(&app.store, &app.providers.http, wv.url().map_err(err)?.as_str()).await?
@@ -155,6 +156,31 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
     let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| "UTF-8 のテキストファイルではありません")?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
     let id = markdown::import(&app.store, &text, name.as_deref(), path.parent())?;
+    indexed(&app, id).map(Some)
+}
+
+/// A paper's PDF, picked here like `import_markdown_file`. `None` when the dialog is cancelled.
+#[tauri::command]
+async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = handle.dialog().file().set_title("PDF を取り込む").add_filter("PDF", &["pdf"]);
+    if let Some(w) = handle.get_window("main") {
+        dialog = dialog.set_parent(&w);
+    }
+    dialog.pick_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let path = picked.into_path().map_err(err)?;
+    if std::fs::metadata(&path).map_err(err)?.len() > pdf::MAX_BYTES as u64 {
+        return Err("ファイルが大きすぎます（50 MB まで）".into());
+    }
+    let bytes = std::fs::read(&path).map_err(err)?;
+    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+    // Parsing a paper takes a moment of CPU; keep it off the async runtime's threads.
+    let store = app.store.clone();
+    let id = tokio::task::spawn_blocking(move || pdf::import(&store, &bytes, name.as_deref())).await.map_err(err)??;
     indexed(&app, id).map(Some)
 }
 
@@ -809,6 +835,7 @@ pub fn run() {
             import_urls,
             import_markdown,
             import_markdown_file,
+            import_pdf_file,
             article_image,
             favicon,
             get_image_settings,

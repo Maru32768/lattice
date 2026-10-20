@@ -2,20 +2,21 @@ import { useState } from "react";
 import { api, type ImportSummary } from "./api";
 import "./manage.css";
 
-export type ImportTab = "urls" | "markdown";
+export type ImportTab = "urls" | "markdown" | "pdf";
 
 const SUB: Record<ImportTab, string> = {
   urls: "URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。",
+  pdf: "論文などの PDF を 1 つの記事として取り込みます。本文の文字を読み取り、2 段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します（文字のない画像だけの PDF は取り込めません）。arXiv の …/pdf/… のような PDF の URL は、普通の URL と同じように保存やフィードから取り込めます。元の PDF は保存しておき、再抽出に使います。",
   markdown: "Markdown を 1 つの記事として取り込みます。タイトルは最初の見出し（# ）、なければファイル名か最初の行です。画像は、URL のものは保存し、相対パスのものはファイルから取り込んだときだけ同じフォルダから読み込みます（貼り付けたときは代替テキストを表示）。HTML タグは取り込みません。",
 };
 
-/** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), or one
- *  Markdown document, from a file or pasted. */
+/** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), one
+ *  Markdown document (from a file or pasted), or one PDF file. */
 export function ImportView({ tab, onTab, onImported, onOpen }: {
   tab: ImportTab;
   onTab: (t: ImportTab) => void;
   onImported: () => void;
-  /** After a Markdown import: the article it made (or already was). */
+  /** After a Markdown or PDF import: the article it made (or already was). */
   onOpen: (id: number) => void;
 }) {
   return (
@@ -30,10 +31,11 @@ export function ImportView({ tab, onTab, onImported, onOpen }: {
             <div className="seg" role="group" aria-label="インポートの種類">
               <button className={tab === "urls" ? "on" : ""} aria-pressed={tab === "urls"} onClick={() => onTab("urls")}>URL 一覧</button>
               <button className={tab === "markdown" ? "on" : ""} aria-pressed={tab === "markdown"} onClick={() => onTab("markdown")}>Markdown</button>
+              <button className={tab === "pdf" ? "on" : ""} aria-pressed={tab === "pdf"} onClick={() => onTab("pdf")}>PDF</button>
             </div>
           </div>
         </header>
-        {tab === "urls" ? <UrlImport onImported={onImported} /> : <MarkdownImport onOpen={onOpen} />}
+        {tab === "urls" ? <UrlImport onImported={onImported} /> : tab === "markdown" ? <MarkdownImport onOpen={onOpen} /> : <PdfImport onOpen={onOpen} />}
       </div>
     </main>
   );
@@ -114,6 +116,33 @@ function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
         placeholder={"# タイトル\n\n本文をここに貼り付け"} spellCheck={false} />
       <div className="line">
         <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>{busy ? "取り込み中…" : "取り込む"}</button>
+        {error && <span role="alert" className="msg error-text">{error}</span>}
+      </div>
+    </section>
+  );
+}
+
+function PdfImport({ onOpen }: { onOpen: (id: number) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      const id = await api.importPdfFile();
+      if (id != null) onOpen(id);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card add" aria-label="PDF">
+      <div className="line">
+        <button className="btn pri lg" onClick={run} disabled={busy}>{busy ? "取り込み中…" : "PDF ファイルを選択…"}</button>
         {error && <span role="alert" className="msg error-text">{error}</span>}
       </div>
     </section>

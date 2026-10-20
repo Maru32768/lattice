@@ -283,8 +283,8 @@ export default function App() {
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
   function openPage(url: string, focus?: string, article?: ArticleRow) {
-    // Imported Markdown has no page: it stays in the Reader.
-    if (isLocal(url)) return article ? openReader(article.id) : setError("取り込んだ Markdown にはページがありません");
+    // An imported file has no page: it stays in the Reader.
+    if (isLocal(url)) return article ? openReader(article.id) : setError("取り込んだファイルにはページがありません");
     setError(null);
     setScreen("library");
     // The page already showing (also after a redirect, by its saved article): navigating again would only reload it.
@@ -419,6 +419,11 @@ export default function App() {
     setScreen("import");
   }
 
+  function importPdf() {
+    setImportTab("pdf");
+    setScreen("import");
+  }
+
   const paletteActions: PaletteActions = {
     scope: setScope,
     facets: (f) => { setFacets(f); setScreen("library"); },
@@ -429,6 +434,7 @@ export default function App() {
     search: (q) => void runSearch(q),
     screen: setScreen,
     importMarkdown,
+    importPdf,
     chat: openChat,
     lang: setLang,
     translate: current ? () => void act(() => api.translateArticle(current.id), current.id) : null,

@@ -142,7 +142,7 @@ export function ViewSeg({ page, onReader, onPage, readerDisabled, pageDisabled }
         <button className={page ? "" : "on"} aria-pressed={!page} onClick={onReader} disabled={readerDisabled}
           title={readerDisabled ? "Index に追加すると Reader が使えます" : "Reader (v)"}><Icon name="reader" size="md" />Reader</button>
         <button className={page ? "on" : ""} aria-pressed={page} onClick={onPage} disabled={pageDisabled}
-          title={pageDisabled ? "取り込んだ Markdown にはページがありません" : "Page (v)"}><Icon name="page" size="md" />Page</button>
+          title={pageDisabled ? "取り込んだファイルにはページがありません" : "Page (v)"}><Icon name="page" size="md" />Page</button>
       </div>
       <Kbd>v</Kbd>
     </>
@@ -396,8 +396,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onAsk} title="この記事について対話" aria-label="質問"><Icon name="chat" /><span className="lbl">質問</span></button>
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
           <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・訳し直す・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
-            { label: local ? "再抽出（保存済みの Markdown から）" : "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
-            ...(local ? [] : [{ label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering }]),
+            { label: `再抽出（保存済みの ${a.pdf ? "PDF" : local ? "Markdown" : "HTML"} から）`, onSelect: onReextract, disabled: !fetched },
+            ...(local || a.pdf ? [] : [{ label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering }]),
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
             { label: translating ? "翻訳中…" : "訳し直す", onSelect: retranslate, disabled: failed || translating || done === 0 },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
@@ -443,11 +443,11 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             <div className="promoted">
               <div className="note err col">
                 <span className="strong">{a.fetch_status === "failed" ? "ページを取得できませんでした" : "本文を抽出できませんでした"}</span>
-                <span>{a.last_error}{fetched && " — 取得は成功し、HTML は保存済みです。"}</span>
+                <span>{a.last_error}{fetched && ` — 取得は成功し、${a.pdf ? "PDF" : "HTML"} は保存済みです。`}{a.pdf && " 文字を持たない（画像だけの）PDF からは本文を取り出せません。"}</span>
               </div>
               <div className="btn-row">
-                {!local && renderBtn(true)}
-                {fetched && <button className="btn" onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出（オフライン）</button>}
+                {!local && !a.pdf && renderBtn(true)}
+                {fetched && <button className="btn" onClick={onReextract} title={`保存済みの ${a.pdf ? "PDF" : "HTML"} から抽出し直します`}>再抽出（オフライン）</button>}
                 {!local && <button className="btn" onClick={onRetry}>再試行</button>}
                 {!local && <button className="btn" onClick={onPage}>Page で開く</button>}
               </div>
