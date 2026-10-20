@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { ACTIONS, conflicts, isCustom, keyLabel, resetKeys, setKeys, useBindings, type ActionId } from "./keys";
+import { ACTIONS, actionLabel, conflicts, isCustom, keyLabel, resetKeys, setKeys, useBindings, type ActionId } from "./keys";
 import { keyOf } from "./keyname";
+import { useT } from "./i18n";
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
 export function ShortcutSettings() {
+  const t = useT();
   const bindings = useBindings();
   const [recording, setRecording] = useState<ActionId | null>(null);
   const clash = conflicts(bindings);
-  const labelOf = (id: ActionId) => ACTIONS.find((a) => a.id === id)!.label;
-
+  
   function record(id: ActionId, e: React.KeyboardEvent) {
     if (e.key === "Tab") return; // leaves the button, which cancels
     e.preventDefault();
@@ -23,31 +24,31 @@ export function ShortcutSettings() {
   return (
     <>
       <div className="btn-row">
-        <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id))}>すべて既定に戻す</button>
-        <span className="muted">1 つの操作に複数のキーを割り当てられます。同じキーが複数の操作にあるときは上の操作が優先されます。</span>
+        <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id))}>{t("shortcutSettings.resetAll")}</button>
+        <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
       <div className="grp">
         {ACTIONS.map((a) => {
           const keys = bindings[a.id];
-          const shared = keys.flatMap((k) => (clash.get(k) ?? []).filter((id) => id !== a.id).map((id) => `${keyLabel(k)} は「${labelOf(id)}」にも割り当てられています`));
+          const shared = keys.flatMap((k) => (clash.get(k) ?? []).filter((id) => id !== a.id).map((id) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, id) })));
           return (
             <div className="set" key={a.id}>
-              <span className="h">{a.label}</span>
-              {shared.length > 0 && <span className="d warn-text" role="note">{shared.join("。")}</span>}
+              <span className="h">{actionLabel(t, a.id)}</span>
+              {shared.length > 0 && <span className="d warn-text" role="note">{shared.join(t("shortcutSettings.clashSeparator"))}</span>}
               <span className="ctl keys-ctl">
-                {keys.length === 0 && <span className="muted">なし</span>}
+                {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
                 {keys.map((k) => (
                   <span key={k} className={`kbd key${clash.has(k) ? " clash" : ""}`}>
                     {keyLabel(k)}
-                    <button className="x" onClick={() => setKeys(a.id, keys.filter((x) => x !== k))} aria-label={`${a.label}から ${keyLabel(k)} を外す`}>×</button>
+                    <button className="x" onClick={() => setKeys(a.id, keys.filter((x) => x !== k))} aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}>×</button>
                   </span>
                 ))}
                 <button className={`btn sm ghost${recording === a.id ? " rec" : ""}`} aria-pressed={recording === a.id}
                   onClick={() => setRecording((r) => (r === a.id ? null : a.id))} onKeyDown={recording === a.id ? (e) => record(a.id, e) : undefined}
                   onBlur={() => setRecording((r) => (r === a.id ? null : r))}>
-                  {recording === a.id ? "キーを押してください（Esc で取消）" : "+ キーを追加"}
+                  {recording === a.id ? t("shortcutSettings.pressKey") : t("shortcutSettings.addKey")}
                 </button>
-                <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id)}>既定に戻す</button>
+                <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id)}>{t("shortcutSettings.reset")}</button>
               </span>
             </div>
           );

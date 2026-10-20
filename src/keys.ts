@@ -2,6 +2,7 @@
 // changes (Settings › ショートカット) persist as overrides; the shell reads the merged bindings.
 import { useSyncExternalStore } from "react";
 import { keyOf } from "./keyname.ts";
+import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
@@ -9,36 +10,38 @@ export type ActionId =
 
 export interface ActionDef {
   id: ActionId;
-  label: string;
   keys: string[];
   /** Also runs while focus is in a text field. */
   inFields?: boolean;
 }
 
 export const ACTIONS: ActionDef[] = [
-  { id: "palette", label: "コマンドパレット", keys: ["Ctrl+K"], inFields: true },
-  { id: "search", label: "検索", keys: ["/"] },
-  { id: "next", label: "次の項目へ", keys: ["J", "ArrowDown"] },
-  { id: "prev", label: "前の項目へ", keys: ["K", "ArrowUp"] },
-  { id: "open", label: "カーソルの記事を開く", keys: ["Enter"] },
-  { id: "openPage", label: "カーソルの記事を Page で開く", keys: ["Shift+Enter"] },
-  { id: "favorite", label: "お気に入り", keys: ["S"] },
-  { id: "read", label: "既読 / 未読", keys: ["M"] },
-  { id: "focus", label: "フォーカスモード", keys: ["F"] },
-  { id: "view", label: "Reader / Page を切り替え", keys: ["V"] },
-  { id: "less", label: "日本語の割合を下げる", keys: ["["] },
-  { id: "more", label: "日本語の割合を上げる", keys: ["]"] },
-  { id: "escape", label: "戻る・絞り込みを解除", keys: ["Escape"], inFields: true },
-  { id: "pane", label: "ペイン移動のプレフィックス（続けて ← → ↑ ↓ / h j k l・o・z・\" %・x・c n p）", keys: ["Ctrl+B"], inFields: true },
-  { id: "newTab", label: "新しいタブ", keys: ["Ctrl+T"], inFields: true },
-  { id: "closeTab", label: "タブを閉じる", keys: ["Ctrl+W"], inFields: true },
-  { id: "nextTab", label: "次のタブ", keys: ["Ctrl+Tab"], inFields: true },
-  { id: "prevTab", label: "前のタブ", keys: ["Ctrl+Shift+Tab"], inFields: true },
-  { id: "splitRight", label: "ペインを右に分割", keys: ["Ctrl+\\"], inFields: true },
-  { id: "splitDown", label: "ペインを下に分割", keys: ["Ctrl+-"], inFields: true },
+  { id: "palette", keys: ["Ctrl+K"], inFields: true },
+  { id: "search", keys: ["/"] },
+  { id: "next", keys: ["J", "ArrowDown"] },
+  { id: "prev", keys: ["K", "ArrowUp"] },
+  { id: "open", keys: ["Enter"] },
+  { id: "openPage", keys: ["Shift+Enter"] },
+  { id: "favorite", keys: ["S"] },
+  { id: "read", keys: ["M"] },
+  { id: "focus", keys: ["F"] },
+  { id: "view", keys: ["V"] },
+  { id: "less", keys: ["["] },
+  { id: "more", keys: ["]"] },
+  { id: "escape", keys: ["Escape"], inFields: true },
+  { id: "pane", keys: ["Ctrl+B"], inFields: true },
+  { id: "newTab", keys: ["Ctrl+T"], inFields: true },
+  { id: "closeTab", keys: ["Ctrl+W"], inFields: true },
+  { id: "nextTab", keys: ["Ctrl+Tab"], inFields: true },
+  { id: "prevTab", keys: ["Ctrl+Shift+Tab"], inFields: true },
+  { id: "splitRight", keys: ["Ctrl+\\"], inFields: true },
+  { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
 ];
 
 export type Bindings = Record<ActionId, string[]>;
+/** The action's name in Settings, the palette and the shortcut help (`keys.<id>` in the catalogs). */
+export const actionLabel = (t: T, id: ActionId) => t(`keys.${id}`);
+
 export const DEFAULT_BINDINGS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.keys])) as Bindings;
 
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };

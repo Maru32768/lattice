@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PageKeys } from "./keys";
-import type { Lang } from "./i18n";
+import type { Lang } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
 export type Inline =

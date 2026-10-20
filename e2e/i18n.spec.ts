@@ -17,6 +17,10 @@ test("the display language switches live in Settings and is stored in the backen
   await expect(app.getByText("Keep technical terms in English")).toBeVisible();
   await navEn.getByRole("button", { name: "Review" }).click();
   await expect(app.getByLabel("Unit of the shortest interval")).toContainText("days");
+  await navEn.getByRole("button", { name: "Shortcuts" }).click();
+  await expect(app.locator(".stg main")).toContainText("Command palette");
+  await navEn.getByRole("button", { name: "AI providers" }).click();
+  await expect(app.getByLabel("Provider for step 1")).toBeVisible();
 
   await navEn.getByRole("button", { name: "Display language" }).click();
   await app.getByLabel("Display language").selectOption("ja");

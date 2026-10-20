@@ -237,9 +237,11 @@ function replacement(e) {
   }
 }
 
+/** The catalog module as `file` imports it; .ts modules also run under node --test, which resolves no directories. */
 function importFrom(file) {
   const rel = relative(dirname(file), CATALOG_DIR).replace(/\\/g, "/");
-  return rel.startsWith(".") ? rel : `./${rel}`;
+  const dir = rel.startsWith(".") ? rel : `./${rel}`;
+  return file.endsWith(".ts") ? `${dir}/index.ts` : dir;
 }
 
 /** Adds `name` to the file's import from the catalog module. */
