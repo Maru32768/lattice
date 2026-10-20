@@ -62,6 +62,14 @@ const ROWS: Row[] = [
   ["HTTP/3 and QUIC in production", "blog.cloudflare.com", "ネットワーク", ["http", "performance"], 3, true, false, 35],
 ];
 
+/** Importance by article id: [score, reason, judged against an earlier profile]. */
+const RELEVANCE: Record<number, [number, string, boolean]> = {
+  1: [5, "PostgreSQL の MVCC を扱う仕事に直結する", false],
+  2: [4, "VACUUM の運用はデータベース担当として重要", false],
+  8: [4, "移行作業の進め方が参考になる", true],
+  14: [2, "フロントエンドは関心の外", false],
+};
+
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "article";
 
 export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, difficulty, read, favorite, days, extra], i) => {
@@ -95,6 +103,9 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     thin: false,
     from_feed: false,
     pdf: false,
+    relevance: RELEVANCE[id]?.[0] ?? null,
+    relevance_reason: RELEVANCE[id]?.[1] ?? null,
+    relevance_stale: RELEVANCE[id]?.[2] ?? false,
     ...extra,
   };
 });

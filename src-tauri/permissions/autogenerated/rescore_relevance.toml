@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rescore-relevance"
+description = "Enables the rescore_relevance command without any pre-configured scope."
+commands.allow = ["rescore_relevance"]
+
+[[permission]]
+identifier = "deny-rescore-relevance"
+description = "Denies the rescore_relevance command without any pre-configured scope."
+commands.deny = ["rescore_relevance"]

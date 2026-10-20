@@ -16,6 +16,7 @@ export const SORTS: [ArticleSort, PlainKey][] = [
   ["saved_asc", "listPane.savedAsc"],
   ["published_desc", "listPane.publishedDesc"],
   ["difficulty_asc", "listPane.difficultyAsc"],
+  ["relevance_desc", "listPane.relevanceDesc"],
 ];
 const GROUPINGS: [Grouping, PlainKey][] = [["none", "common.none"], ["feed", "common.source"], ["genre", "common.genre"]];
 
@@ -32,6 +33,13 @@ function badge(a: ArticleRow, translating: string | null): [string, string] | nu
   if (translating) return ["run", translating];
   if (a.thin) return ["warn", t("listPane.thin")];
   return null;
+}
+
+/** Only important articles (4-5) get a mark; the reason is its tooltip. */
+function Importance({ a }: { a: ArticleRow }) {
+  const t = useT();
+  if (a.relevance == null || a.relevance < 4) return null;
+  return <span className={`imp s${a.relevance}`} title={a.relevance_reason ?? undefined}>{t("listPane.importance", { score: a.relevance })}</span>;
 }
 
 /** `sel`: the open article; `cur`: the keyboard cursor (j / k), opened with Enter. */
@@ -51,6 +59,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCurso
         <span className="with-ico"><Favicon domain={a.domain} feed={a.feed_id} />{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>
         <span>{mmdd((sort === "published_desc" && a.published_at) || a.saved_at)}</span>
         {a.difficulty != null && <Dif d={a.difficulty} />}
+        <Importance a={a} />
         {a.favorite && <span className="fav" aria-label={t("common.favorites")}><Icon name="star" size="sm" /></span>}
         {b && <span className={`bd ${b[0]}`}>{b[1]}</span>}
       </span>
@@ -124,7 +133,7 @@ export function SortMenu({ sort, onSort, group, onGroup }: {
 }
 
 export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, sort, onSort, group, onGroup, selectedId, cursorId, onCursor,
-  translating, relax, onRelax, onOpen, onCollapse }: {
+  translating, relax, onRelax, onOpen, onCollapse, onRescore, noProfile }: {
   title: string;
   count: number;
   total: number;
@@ -147,9 +156,15 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   /** `newTab`: Ctrl / middle click. */
   onOpen: (a: ArticleRow, newTab: boolean) => void;
   onCollapse: () => void;
+  /** 「重要度を付け直す」 for the shown articles, resolving to how many were queued; absent when importance is not in view or there is no profile. */
+  onRescore?: () => Promise<number>;
+  /** No 「自分について」 profile: nothing is rated, which the list says when sorted by importance. */
+  noProfile?: boolean;
 }) {
   const t = useT();
+  const [rescored, setRescored] = useState<string | null>(null);
   const hasFacets = activeDims(facets).length > 0;
+  const rescore = (run: () => Promise<number>) => run().then((n) => setRescored(t("listPane.rescoreQueued", { n })), (e) => setRescored(t.msg(String(e))));
   const renderGroup = (g: Group<ArticleRow>, depth: number): React.ReactNode => (
     <div key={g.key} role="group" aria-label={g.label || undefined}>
       {g.label && <div className={`grp-h d${depth}`}><span className="label">{g.label}</span><span className="n">{g.articles.length}</span></div>}
@@ -172,7 +187,10 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} />
         <div className="list-tools">
           <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
-          <button className="clear" onClick={() => onFacets({ ...facets, genres: [], tags: [], feeds: [], difficulty: [], state: [] })} disabled={!hasFacets}>
+          {onRescore && <button className="tb" onClick={() => rescore(onRescore)} disabled={count === 0} title={t("listPane.rescoreHint")}>{t("listPane.rescore")}</button>}
+          {onRescore && rescored && <span className="muted" role="status">{rescored}</span>}
+          {noProfile && sort === "relevance_desc" && <span className="muted">{t("listPane.noProfile")}</span>}
+          <button className="clear" onClick={() => onFacets({ ...facets, genres: [], tags: [], feeds: [], difficulty: [], relevance: [], state: [] })} disabled={!hasFacets}>
             {t("listPane.clear")}<Kbd>Esc</Kbd>
           </button>
         </div>

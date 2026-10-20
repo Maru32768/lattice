@@ -412,6 +412,22 @@ CREATE TABLE review_log (
 CREATE INDEX review_log_card ON review_log(question_id);
 CREATE INDEX review_log_time ON review_log(reviewed_at);
 "#,
+    r#"
+-- Importance for the reader (G54, relevance.rs): 1-5 against the 「自分について」 profile, with a
+-- one-line reason. Only the newest judgment is kept. profile_hash is the profile it was judged
+-- against; settings 'user_profile_hash' holds the current one, so editing the profile makes it stale.
+CREATE TABLE relevance (
+    article_id     INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    score          INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
+    reason         TEXT NOT NULL,
+    profile_hash   TEXT NOT NULL,
+    provider       TEXT NOT NULL,
+    model          TEXT,
+    prompt_version TEXT NOT NULL,
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX relevance_score ON relevance(score);
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -520,6 +536,11 @@ pub struct ArticleRow {
     pub from_feed: bool,
     /// Extracted from a PDF (a URL's or an imported file's), kept as the snapshot.
     pub pdf: bool,
+    /// Importance for the reader, 1-5 (relevance.rs), and why.
+    pub relevance: Option<i64>,
+    pub relevance_reason: Option<String>,
+    /// Judged against another profile than the current one.
+    pub relevance_stale: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -540,6 +561,10 @@ pub enum ArticleFilter {
     Feed {
         id: Option<i64>,
     },
+    /// 重要: importance at least `min`.
+    Important {
+        min: i64,
+    },
 }
 
 /// SQL condition on `articles` for `filter`, with its one parameter (`?1`) if any.
@@ -555,6 +580,7 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::Genre { name: None } => ("genre_id IS NULL", None),
         ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
         ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
+        ArticleFilter::Important { min } => ("EXISTS (SELECT 1 FROM relevance WHERE article_id = articles.id AND score >= ?1)", Some((*min).into())),
     }
 }
 
@@ -568,6 +594,8 @@ pub enum ArticleSort {
     PublishedDesc,
     /// Easiest first; articles without a difficulty come last.
     DifficultyAsc,
+    /// Most important first; unscored articles come last.
+    RelevanceDesc,
 }
 
 #[derive(Debug, Serialize)]
@@ -681,7 +709,9 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
-    (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1)";
+    (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
+    (SELECT score FROM relevance WHERE article_id = articles.id), (SELECT reason FROM relevance WHERE article_id = articles.id),
+    coalesce((SELECT profile_hash IS NOT (SELECT value FROM settings WHERE key = 'user_profile_hash') FROM relevance WHERE article_id = articles.id), 0)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     let snapshot_type: Option<String> = r.get(23)?;
@@ -716,6 +746,9 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
             && snapshot_type.as_deref() != Some(crate::pdf::CONTENT_TYPE),
         from_feed: snapshot_type.as_deref() == Some(FEED_CONTENT_TYPE),
         pdf: snapshot_type.as_deref() == Some(crate::pdf::CONTENT_TYPE),
+        relevance: r.get(24)?,
+        relevance_reason: r.get(25)?,
+        relevance_stale: r.get(26)?,
     })
 }
 
@@ -1036,6 +1069,7 @@ impl Store {
             // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
             ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
+            ArticleSort::RelevanceDesc => "(SELECT score FROM relevance WHERE article_id = articles.id) DESC NULLS LAST, saved_at DESC, id DESC",
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();
@@ -1516,6 +1550,21 @@ mod tests {
         assert_eq!(s.list_articles(&ArticleFilter::All).unwrap().len(), 1);
         assert!(crate::quiz::get(&s, 1).unwrap().is_none());
         assert_eq!(crate::quiz::overview(&s, 0).unwrap().due, 0);
+    }
+
+    #[test]
+    fn relevance_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE relevance")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch("INSERT INTO articles (original_url, normalized_url, domain) VALUES ('https://a.dev/1', 'https://a.dev/1', 'a.dev');").unwrap();
+        let s = Store::init(conn).unwrap();
+        let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();
+        assert_eq!((rows.len(), rows[0].relevance, rows[0].relevance_stale), (1, None, false));
+        assert_eq!(s.article_ids(&ArticleFilter::Important { min: 4 }).unwrap(), Some(vec![]));
     }
 
     #[test]

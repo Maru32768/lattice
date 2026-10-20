@@ -2,7 +2,7 @@
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
   ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
-  Grade, LlmSettings, Quiz, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
+  Grade, LlmSettings, Quiz, R2Settings, R2Status, RelevanceStatus, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
 } from "../src/api.ts";
 import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
 
@@ -17,6 +17,8 @@ const cards = new Map<number, { item: ReviewItem; due: boolean }>(REVIEW.map((r)
 const store = {
   autoRender: true,
   autoClassify: true,
+  autoRelevance: true,
+  relevanceThreshold: 4,
   taskbarBadge: true,
   uiLanguage: null as string | null,
   keepTerms: true,
@@ -56,6 +58,7 @@ function matches(a: ArticleRow, f: ArticleFilter | null): boolean {
     case "tag": return a.tags.includes(f.name);
     case "genre": return a.genre === f.name;
     case "feed": return a.feed_id === f.id;
+    case "important": return (a.relevance ?? 0) >= f.min;
   }
 }
 
@@ -64,6 +67,7 @@ const SORTERS: Record<ArticleSort, (a: ArticleRow, b: ArticleRow) => number> = {
   saved_asc: (a, b) => a.saved_at.localeCompare(b.saved_at) || a.id - b.id,
   published_desc: (a, b) => (b.published_at ?? "").localeCompare(a.published_at ?? "") || b.id - a.id,
   difficulty_asc: (a, b) => (a.difficulty ?? 9) - (b.difficulty ?? 9) || b.id - a.id,
+  relevance_desc: (a, b) => (b.relevance ?? 0) - (a.relevance ?? 0) || b.saved_at.localeCompare(a.saved_at) || b.id - a.id,
 };
 
 const counts = (values: (string | null)[]): TagCount[] => {
@@ -137,7 +141,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
     language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
     read_status: "unread", favorite: false, tags: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
-    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, ...extra,
+    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...extra,
   });
   return id;
 }
@@ -283,6 +287,20 @@ export const handlers = {
   classify_unclassified: (): number => articles.filter((a) => a.genre == null).length,
   get_auto_classify: (): boolean => store.autoClassify,
   set_auto_classify: ({ on }: { on: boolean }) => void (store.autoClassify = on),
+  relevance_status: (): RelevanceStatus => {
+    const done = articles.filter((a) => a.extraction_status === "ok");
+    return {
+      has_profile: store.custom.profile.trim() !== "", auto: store.autoRelevance, threshold: store.relevanceThreshold,
+      scored: done.filter((a) => a.relevance != null).length, stale: done.filter((a) => a.relevance_stale).length,
+      unscored: done.filter((a) => a.relevance == null).length,
+    };
+  },
+  set_auto_relevance: ({ on }: { on: boolean }) => void (store.autoRelevance = on),
+  set_relevance_threshold: ({ min }: { min: number }) => void (store.relevanceThreshold = min),
+  rescore_relevance: ({ ids }: { ids: number[] | null }): number => {
+    if (!store.custom.profile.trim()) reject("relevance.noProfile");
+    return ids?.length ?? articles.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
+  },
   list_feeds: () => feeds,
   add_feed: ({ url }: { url: string }): number => {
     const id = Math.max(...feeds.map((f) => f.id)) + 1;

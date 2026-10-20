@@ -25,6 +25,7 @@ pub mod openai;
 pub mod pdf;
 pub mod quiz;
 pub mod r2;
+pub mod relevance;
 pub mod render;
 pub mod search;
 pub mod segments;

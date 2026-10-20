@@ -22,7 +22,7 @@ use lattice_core::srs::Grade;
 use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
-use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, quiz, r2, render, summarize, translate};
+use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, pdf, quiz, r2, relevance, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
 
@@ -116,6 +116,7 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     app.wake_local.notify_one();
     app.wake_net.iter().for_each(|w| w.notify_one()); // extraction has queued its images job
     classify::enqueue_if_auto(&app.store, id)?;
+    relevance::enqueue_if_auto(&app.store, id)?;
     app.wake_llm.notify_one();
     Ok(id)
 }
@@ -295,6 +296,30 @@ fn get_auto_classify(app: State<'_, App>) -> Result<bool, String> {
 #[tauri::command(async)]
 fn set_auto_classify(app: State<'_, App>, on: bool) -> Result<(), String> {
     classify::set_auto(&app.store, on)
+}
+
+#[tauri::command(async)]
+fn relevance_status(app: State<'_, App>) -> Result<relevance::Status, String> {
+    relevance::status(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_auto_relevance(app: State<'_, App>, on: bool) -> Result<(), String> {
+    relevance::set_auto(&app.store, on)
+}
+
+/// The lowest score in 重要 (1-5).
+#[tauri::command(async)]
+fn set_relevance_threshold(app: State<'_, App>, min: i64) -> Result<(), String> {
+    relevance::set_threshold(&app.store, min)
+}
+
+/// 「重要度を付け直す」: the shown articles (`ids`), or every article with a missing or stale score.
+#[tauri::command(async)]
+fn rescore_relevance(app: State<'_, App>, ids: Option<Vec<i64>>) -> Result<usize, String> {
+    let n = relevance::rescore(&app.store, ids.as_deref())?;
+    app.wake_llm.notify_one();
+    Ok(n)
 }
 
 #[tauri::command(async)]
@@ -943,6 +968,10 @@ pub fn run() {
             classify_unclassified,
             get_auto_classify,
             set_auto_classify,
+            relevance_status,
+            set_auto_relevance,
+            set_relevance_threshold,
+            rescore_relevance,
             get_translate_keep_terms,
             set_translate_keep_terms,
             get_translate_instructions,

@@ -622,3 +622,16 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - 日本語・英語以外の言語。カタログの型と `Lang` を足せば増やせる。
 - G51 以前に DB に保存された日本語のエラー（`last_error`）や対話の回答は、再試行などで書き直されるまで日本語のまま出る。
 - LLM の prompt と、要約の箇条書きの記号（・）は記事の言語側のもので、表示言語に従わない。
+
+## 22. 重要度とフィードの取り込みフィルタ（G54・G55）
+
+| 対象 | ファイル |
+|---|---|
+| 重要度の job・設定・付け直し | `crates/lattice-core/src/relevance.rs`（プロフィールの hash は `instructions.rs`） |
+| UI | `src/RelevanceSettings.tsx`（設定 › 重要度）・`src/library.ts`（scope「重要」・facet「重要度」）・`src/ListPane.tsx`（目印・並び順・表示中の付け直し）・`src/Reader.tsx`（理由の行） |
+
+- **重要度の判定（G54）。** 分類と同じ batched job（最大 20 件、要約があれば要約、なければ本文の冒頭 1500 字）。prompt は「自分について」を system prompt に入れ、untrusted input の注意を最後に置く。返り値は 1〜5 の整数と理由 1 行で、範囲外・理由が空・知らない `i` は捨てる（その記事の job は失敗して再試行される）。理由はプロフィールの言語で書かせ、200 字で切る。
+- **最新だけを保存。** 分類（`classifications`）と違い履歴は残さない（`relevance` 表は記事ごとに 1 行）。並び順・facet・scope は最新の点数しか使わない。
+- **stale の判定。** 行には判定に使ったプロフィールの hash を、設定には今のプロフィールの hash（`user_profile_hash`）を置き、一覧の SQL で比べる。hash は `instructions::save` が書き、job も判定のたびに書く（G54 より前に保存したプロフィールにも hash が入る）。プロフィールを消すとすべて stale。stale の点数も表示・並び順・「重要」には使い続ける（付け直すまでの最善の推定）。
+- **自動判定は新しい記事だけ。** 取り込み後（`indexed`・ingest job）にプロフィールがあり自動判定がオンなら queue する。既存の記事を起動時に一括で判定することはしない（大きなライブラリでは費用がかかるため）。設定の「重要度を付け直す」が未判定と stale の記事をまとめて queue し、一覧のボタン（並び順が重要度か、scope が「重要」か、facet「重要度」があるときだけ出る）は表示中の記事を点数に関係なく判定し直す。
+- **「重要」の下限は scope に持たせる。** `{ kind: "important", min }` を backend の `ArticleFilter::Important` と同じ形にし、検索・対話の範囲にもそのまま使う。下限を変えると、開いている scope も追従する。プロフィールがなく点数もないうちはサイドバーに出さない。

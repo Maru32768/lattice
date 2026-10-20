@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-relevance-status"
+description = "Enables the relevance_status command without any pre-configured scope."
+commands.allow = ["relevance_status"]
+
+[[permission]]
+identifier = "deny-relevance-status"
+description = "Denies the relevance_status command without any pre-configured scope."
+commands.deny = ["relevance_status"]

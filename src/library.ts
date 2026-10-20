@@ -8,7 +8,8 @@ export type Scope =
   | { kind: "recent" } // saved within the last 7 days
   | { kind: "unread" } | { kind: "favorites" } | { kind: "all" }
   | { kind: "genre"; name: string | null } // null = 未分類
-  | { kind: "feed"; id: number | null }; // null = 手動追加
+  | { kind: "feed"; id: number | null } // null = 手動追加
+  | { kind: "important"; min: number }; // importance at least min (Settings › 重要度)
 
 export type ArticleState = "unread" | "read" | "favorite" | "issue";
 
@@ -19,18 +20,23 @@ export interface Facets {
   tagMode: "all" | "any";
   feeds: (number | null)[];
   difficulty: (number | null)[]; // null = 未判定
+  relevance: (number | null)[]; // importance 1-5; null = 未判定
   state: ArticleState[]; // issue = fetch/extraction failed or thin
 }
 
-export type Dim = "genres" | "tags" | "feeds" | "difficulty" | "state";
+export type Dim = "genres" | "tags" | "feeds" | "difficulty" | "relevance" | "state";
 export type DimValue<D extends Dim> = Facets[D][number];
 
-export const DIMS: Dim[] = ["genres", "tags", "feeds", "difficulty", "state"];
-export const DIM_LABELS: Record<Dim, PlainKey> = { genres: "common.genre", tags: "common.tag", feeds: "common.source", difficulty: "common.difficulty", state: "library.state" };
-export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], difficulty: [], state: [] };
+export const DIMS: Dim[] = ["genres", "tags", "feeds", "difficulty", "relevance", "state"];
+export const DIM_LABELS: Record<Dim, PlainKey> = {
+  genres: "common.genre", tags: "common.tag", feeds: "common.source", difficulty: "common.difficulty", relevance: "common.relevance", state: "library.state",
+};
+export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], difficulty: [], relevance: [], state: [] };
 
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
 export const DIFFICULTY_LABELS: PlainKey[] = ["library.difficulty1", "library.difficulty2", "library.difficulty3", "library.difficulty4", "library.difficulty5"];
+/** Mirrors relevance.rs SCORES (1-5), judged against the 「自分について」 profile. */
+export const RELEVANCE_LABELS: PlainKey[] = ["library.relevance1", "library.relevance2", "library.relevance3", "library.relevance4", "library.relevance5"];
 export const STATE_LABELS: Record<ArticleState, PlainKey> = { unread: "common.unread", read: "library.read", favorite: "common.favorites", issue: "library.issue" };
 
 const RECENT_MS = 7 * 24 * 3600 * 1000;
@@ -45,6 +51,7 @@ export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
     case "favorites": return a.favorite;
     case "genre": return a.genre === s.name;
     case "feed": return a.feed_id === s.id;
+    case "important": return (a.relevance ?? 0) >= s.min;
   }
 }
 
@@ -56,6 +63,7 @@ export function valuesOf<D extends Dim>(a: ArticleRow, dim: D): DimValue<D>[] {
       case "tags": return a.tags;
       case "feeds": return [a.feed_id];
       case "difficulty": return [a.difficulty];
+      case "relevance": return [a.relevance];
       case "state": return [a.read_status, ...(a.favorite ? ["favorite"] : []), ...(hasIssue(a) ? ["issue"] : [])];
     }
   })();
@@ -130,6 +138,7 @@ export function scopeLabel(s: Scope, all: ArticleRow[], t: T): string {
     case "all": return t("common.allArticles");
     case "genre": return s.name ?? t("common.unclassified");
     case "feed": return valueLabel("feeds", s.id, all, t);
+    case "important": return t("library.important");
   }
 }
 
@@ -144,6 +153,10 @@ export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRo
     }
     case "difficulty": {
       const label = v == null ? "library.difficultyNone" : DIFFICULTY_LABELS[(v as number) - 1];
+      return label ? t(label) : String(v);
+    }
+    case "relevance": {
+      const label = v == null ? "library.relevanceNone" : RELEVANCE_LABELS[(v as number) - 1];
       return label ? t(label) : String(v);
     }
     default: return t(STATE_LABELS[v as ArticleState]);

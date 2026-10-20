@@ -71,6 +71,11 @@ export interface ArticleRow {
   from_feed: boolean;
   /** Extracted from a PDF (a URL's or an imported file's); there is no HTML page to render. */
   pdf: boolean;
+  /** Importance for the reader, 1-5, judged against the 「自分について」 profile (relevance.rs), and why. */
+  relevance: number | null;
+  relevance_reason: string | null;
+  /** Judged against an earlier profile. */
+  relevance_stale: boolean;
 }
 
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
@@ -79,12 +84,24 @@ export const isLocal = (url: string) => url.startsWith("local:");
 /** The site shown for an article: its domain, or "local" for an imported file. */
 export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
 
-/** `genre` null: 未分類; `feed` null: 手動追加. */
+/** `genre` null: 未分類; `feed` null: 手動追加; `important`: importance at least `min`. */
 export type ArticleFilter =
   | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null };
+  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "important"; min: number };
 
-export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc";
+export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc" | "relevance_desc";
+
+/** Mirrors relevance.rs Status. */
+export interface RelevanceStatus {
+  has_profile: boolean;
+  auto: boolean;
+  /** The lowest score in 重要. */
+  threshold: number;
+  scored: number;
+  /** Judged against an earlier profile. */
+  stale: number;
+  unscored: number;
+}
 
 export interface FeedRow {
   id: number;
@@ -416,6 +433,11 @@ export const api = {
   classifyUnclassified: () => invoke<number>("classify_unclassified"),
   autoClassify: () => invoke<boolean>("get_auto_classify"),
   setAutoClassify: (on: boolean) => invoke<void>("set_auto_classify", { on }),
+  relevanceStatus: () => invoke<RelevanceStatus>("relevance_status"),
+  setAutoRelevance: (on: boolean) => invoke<void>("set_auto_relevance", { on }),
+  setRelevanceThreshold: (min: number) => invoke<void>("set_relevance_threshold", { min }),
+  /** The given articles, or (null) every article whose score is missing or stale. Returns how many were queued. */
+  rescoreRelevance: (ids: number[] | null) => invoke<number>("rescore_relevance", { ids }),
   listFeeds: () => invoke<FeedRow[]>("list_feeds"),
   addFeed: (url: string) => invoke<number>("add_feed", { url }),
   discoverFeeds: (url: string) => invoke<FeedCandidate[]>("discover_feeds", { url }),

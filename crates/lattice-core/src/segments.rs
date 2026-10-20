@@ -404,6 +404,20 @@ pub(crate) mod tests {
                     .collect();
                 return Ok(Completion { value: json!({ "items": items }), model: Some("fake-1".into()), provider: "fake".into() });
             }
+            if system.contains("You rate how important technical articles are") {
+                let v: Value = serde_json::from_str(input).unwrap();
+                let items: Vec<Value> = v["articles"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|a| {
+                        json!({"i": a["i"], "score": match a["i"].as_u64() { Some(1) => 9, Some(2) => 5, _ => 4 }, "reason": "  Rust に関係する
+"})
+                    })
+                    .chain([json!({"i": 99, "score": 5, "reason": "injected"})])
+                    .collect();
+                return Ok(Completion { value: json!({ "items": items }), model: Some("fake-1".into()), provider: "fake".into() });
+            }
             if system.contains("ONE long HTML unit") {
                 let (a, b) = input.split_at(input.len() / 2);
                 let s = |p: &str| json!({"source": p, "translation": p.to_uppercase()});

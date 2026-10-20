@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type SearchHit, type SearchResult } from "./api";
+import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type RelevanceStatus, type SearchHit, type SearchResult } from "./api";
 import { BrowserView, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
@@ -106,6 +106,7 @@ export default function App() {
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
+  const [relevance, setRelevance] = useState<RelevanceStatus | null>(null);
   const [sort, setSort] = useState<ArticleSort>("saved_desc");
   const sortRef = useRef(sort);
   sortRef.current = sort;
@@ -173,7 +174,7 @@ export default function App() {
     setNow(Date.now());
     return Promise.all([
       api.listArticles({ kind: "all" }, sortRef.current).then((a) => { setArticles(a); setLoaded(true); }),
-      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres),
+      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres), api.relevanceStatus().then(setRelevance),
     ]).catch(fail);
   };
   /** Whether the page a tab shows is in the Index. */
@@ -261,10 +262,16 @@ export default function App() {
     const flat = (g: Group<ArticleRow>): ArticleRow[] => (g.children ? g.children.flatMap(flat) : g.articles);
     return groups.flatMap(flat);
   }, [groups]);
+  // 重要 shows once there is a profile to judge against (or scores from an earlier one).
+  const importantMin = relevance && (relevance.has_profile || relevance.scored > 0) ? relevance.threshold : null;
+  useEffect(() => {
+    if (scope.kind === "important" && importantMin != null && scope.min !== importantMin) setScopeState({ kind: "important", min: importantMin });
+  }, [scope, importantMin]);
   const counts: NavCounts = useMemo(() => {
     const unread = articles.filter((a) => a.read_status === "unread");
     return {
       recent: articles.filter((a) => inScope(a, { kind: "recent" }, now)).length,
+      important: importantMin == null ? 0 : articles.filter((a) => inScope(a, { kind: "important", min: importantMin }, now)).length,
       unread: unread.length,
       favorites: articles.filter((a) => a.favorite).length,
       all: articles.length,
@@ -272,7 +279,7 @@ export default function App() {
       genres: [...countBy(articles, "genres")].sort((a, b) => (a[0] == null ? 1 : b[0] == null ? -1 : b[1] - a[1])),
       feedUnread: countBy(unread, "feeds"),
     };
-  }, [articles, now]);
+  }, [articles, now, importantMin]);
   // The taskbar badge follows the unread count; reading through a list changes it in bursts.
   useEffect(() => {
     if (!loaded) return;
@@ -694,7 +701,7 @@ export default function App() {
     ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures} reviewDue={reviewDue}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
         onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
-        onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
+        onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
@@ -773,7 +780,10 @@ export default function App() {
             ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
                 all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-                onCollapse={() => setListOpen(false)} />
+                onCollapse={() => setListOpen(false)}
+                onRescore={relevance?.has_profile && (sort === "relevance_desc" || scope.kind === "important" || facets.relevance.length > 0)
+                  ? () => api.rescoreRelevance(shown.map((a) => a.id)) : undefined}
+                noProfile={relevance != null && !relevance.has_profile} />
             : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {screen === "library" && !search && listOpen && splitter("list")}
