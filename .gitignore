@@ -41,3 +41,7 @@ dist-ssr
 
 # Local mise overrides (API keys); see mise.local.toml.example
 mise.local.toml
+
+# Playwright (npm run e2e)
+/test-results/
+/playwright-report/

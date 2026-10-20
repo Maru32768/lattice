@@ -66,14 +66,8 @@ pub struct Candidate {
 }
 
 pub fn parse(body: &[u8], feed_url: &str) -> Result<Parsed, String> {
-    let feed = feed_rs::parser::Builder::new()
-        .base_uri(Some(feed_url))
-        .build()
-        .parse(body)
-        .map_err(|e| format!("not an RSS/Atom feed: {e}"))?;
-    let alternate = |links: &[feed_rs::model::Link]| {
-        links.iter().find(|l| l.rel.as_deref().is_none_or(|r| r == "alternate")).map(|l| l.href.clone())
-    };
+    let feed = feed_rs::parser::Builder::new().base_uri(Some(feed_url)).build().parse(body).map_err(|e| format!("not an RSS/Atom feed: {e}"))?;
+    let alternate = |links: &[feed_rs::model::Link]| links.iter().find(|l| l.rel.as_deref().is_none_or(|r| r == "alternate")).map(|l| l.href.clone());
     let mut entries = feed.entries;
     entries.sort_by_key(|e| std::cmp::Reverse(e.published.or(e.updated))); // stable: undated keep feed order
     Ok(Parsed {
@@ -86,7 +80,12 @@ pub fn parse(body: &[u8], feed_url: &str) -> Result<Parsed, String> {
                 let published = e.published.or(e.updated).map(|d| d.format("%Y-%m-%dT%H:%M:%SZ").to_string());
                 let title = e.title.as_ref().map(|t| t.content.trim().to_string()).filter(|t| !t.is_empty());
                 let summary = e.summary.as_ref().filter(|t| t.content_type.to_string().contains("html")).map(|t| t.content.clone());
-                let content = e.content.as_ref().and_then(|c| c.body.clone()).into_iter().chain(summary)
+                let content = e
+                    .content
+                    .as_ref()
+                    .and_then(|c| c.body.clone())
+                    .into_iter()
+                    .chain(summary)
                     .map(|html| (text_chars(&html), html))
                     .max_by_key(|(n, _)| *n)
                     .filter(|(n, _)| *n >= FULL_CONTENT_CHARS)
@@ -140,10 +139,10 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
     let base = url::Url::parse(&got.url).map_err(err)?;
     for path in COMMON_PATHS {
         let Ok(u) = base.join(path) else { continue };
-        if let Ok(Some(g)) = fetch(client, u.as_str(), None, None).await {
-            if let Ok(p) = parse(&g.body, u.as_str()) {
-                return Ok(vec![Candidate { url: u.to_string(), title: p.title }]);
-            }
+        if let Ok(Some(g)) = fetch(client, u.as_str(), None, None).await
+            && let Ok(p) = parse(&g.body, u.as_str())
+        {
+            return Ok(vec![Candidate { url: u.to_string(), title: p.title }]);
         }
     }
     Ok(Vec::new())
@@ -220,7 +219,9 @@ pub fn set_icon(store: &Store, id: i64, bytes: Option<&[u8]>) -> Result<(), Stri
     let mime = match bytes {
         None => None,
         Some(b) if b.len() > MAX_ICON_BYTES => return Err("アイコンの画像は 1 MB までです".into()),
-        Some(b) => Some(crate::images::sniff(b).or_else(|| is_svg(b).then_some("image/svg+xml")).ok_or("PNG・JPEG・GIF・WebP・ICO・SVG の画像を選んでください")?),
+        Some(b) => {
+            Some(crate::images::sniff(b).or_else(|| is_svg(b).then_some("image/svg+xml")).ok_or("PNG・JPEG・GIF・WebP・ICO・SVG の画像を選んでください")?)
+        }
     };
     changed(store.conn().execute("UPDATE feeds SET icon_mime = ?2, icon = ?3 WHERE id = ?1", params![id, mime, bytes]))
 }
@@ -231,11 +232,8 @@ fn is_svg(b: &[u8]) -> bool {
 
 /// The user's icon for a feed as a `data:` URL; `None` when it has none.
 pub fn icon(store: &Store, id: i64) -> Result<Option<String>, String> {
-    let row: Option<(Option<String>, Option<Vec<u8>>)> = store
-        .conn()
-        .query_row("SELECT icon_mime, icon FROM feeds WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
-        .optional()
-        .map_err(err)?;
+    let row: Option<(Option<String>, Option<Vec<u8>>)> =
+        store.conn().query_row("SELECT icon_mime, icon FROM feeds WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(err)?;
     Ok(row.and_then(|(mime, bytes)| Some(format!("data:{};base64,{}", mime?, crate::images::base64(&bytes?)))))
 }
 
@@ -294,10 +292,7 @@ pub async fn poll_forever(store: std::sync::Arc<Store>, client: HttpClient, on_p
 /// every entry's title and text. Articles that failed before their entry's text was known are
 /// fetched again, so they fall back to it (once: only when the text first appears).
 pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, String> {
-    let first: bool = !store
-        .conn()
-        .query_row("SELECT EXISTS (SELECT 1 FROM feed_items WHERE feed_id = ?1)", [feed_id], |r| r.get(0))
-        .map_err(err)?;
+    let first: bool = !store.conn().query_row("SELECT EXISTS (SELECT 1 FROM feed_items WHERE feed_id = ?1)", [feed_id], |r| r.get(0)).map_err(err)?;
     let mut unseen: Vec<(&Entry, String)> = Vec::new();
     {
         let c = store.conn();
@@ -487,7 +482,9 @@ mod tests {
             final_url: url.to_string(),
             status: 200,
             content_type: None,
-            html: format!("<html><head><title>T</title>{meta}</head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.</p></article></body></html>"),
+            html: format!(
+                "<html><head><title>T</title>{meta}</head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.</p></article></body></html>"
+            ),
         };
         // Saved by hand before the feed listed it: filled at import.
         assert_eq!(ingest::enqueue_urls(&s, &["https://blog.dev/early".to_string()]).unwrap().queued, 1);
@@ -518,11 +515,13 @@ mod tests {
     fn blocked_feed(with_content: bool) -> String {
         let para = "<p>Snapshot isolation prevents dirty reads but still permits write skew, which is why serializable snapshot isolation exists at all. </p>";
         let full = if with_content { format!("<content:encoded><![CDATA[<h3>Why</h3>{}]]></content:encoded>", para.repeat(6)) } else { String::new() };
-        format!(r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Tech</title>
+        format!(
+            r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Tech</title>
             <item><title><![CDATA[Evolving the ads event pipeline for live — Part II]]></title><link>https://blog.dev/full-1a2b?source=rss----abc---4</link>
               <pubDate>Tue, 01 Oct 2024 00:00:00 GMT</pubDate><description>Short teaser.</description>{full}</item>
             <item><title>Teaser only</title><link>https://blog.dev/teaser?source=rss----abc---4</link><description>Short teaser.</description></item>
-            </channel></rss>"#)
+            </channel></rss>"#
+        )
     }
 
     #[test]
@@ -549,7 +548,11 @@ mod tests {
         ingest::store_fetch_result(&s, full, refused()).unwrap();
         let a = s.get_article(full, "ja").unwrap().unwrap();
         assert_eq!((a.article.fetch_status.as_str(), a.article.extraction_status.as_str(), a.article.from_feed), ("ok", "ok", true));
-        assert_eq!((a.article.title.as_deref(), a.article.last_error.as_deref()), (Some("Evolving the ads event pipeline for live — Part II"), Some("HTTP 403 Forbidden")), "the entry's title, not Readability's cut");
+        assert_eq!(
+            (a.article.title.as_deref(), a.article.last_error.as_deref()),
+            (Some("Evolving the ads event pipeline for live — Part II"), Some("HTTP 403 Forbidden")),
+            "the entry's title, not Readability's cut"
+        );
         assert_eq!(a.article.published_at.as_deref(), Some("2024-10-01T00:00:00Z"));
         assert!(a.blocks.len() > 1 && !a.article.thin, "{:?}", a.blocks);
         assert!(!render::enqueue_if_auto(&s, full).unwrap(), "readable: no render");
@@ -581,7 +584,12 @@ mod tests {
             ingest::store_fetch_result(&s, j.article_id.unwrap(), Err("HTTP 403 Forbidden".into())).unwrap();
             s.finish_job(j.id, None).unwrap();
         }
-        let failed = s.list_articles(&ArticleFilter::All).unwrap().into_iter().find(|a| a.title.as_deref() == Some("Evolving the ads event pipeline for live — Part II")).unwrap();
+        let failed = s
+            .list_articles(&ArticleFilter::All)
+            .unwrap()
+            .into_iter()
+            .find(|a| a.title.as_deref() == Some("Evolving the ads event pipeline for live — Part II"))
+            .unwrap();
         assert_eq!(failed.fetch_status, "failed");
 
         let new = parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries;
@@ -640,6 +648,16 @@ mod tests {
         assert!(set_icon(&s, id, Some(&[PNG, &vec![0; MAX_ICON_BYTES]].concat())).is_err());
         set_icon(&s, id, None).unwrap();
         assert_eq!((icon(&s, id).unwrap(), list(&s).unwrap()[0].has_icon), (None, false));
+    }
+
+    #[test]
+    fn an_entry_listed_twice_in_one_poll_is_queued_once() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let entries = [entry("https://blog.dev/p?utm_source=rss"), entry("https://blog.dev/p#top"), entry("https://blog.dev/q")];
+        assert_eq!(import(&s, id, &entries).unwrap(), 2);
+        assert_eq!(s.list_articles(&ArticleFilter::All).unwrap().len(), 2);
+        assert_eq!(import(&s, id, &entries).unwrap(), 0);
     }
 
     #[test]

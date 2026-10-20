@@ -104,7 +104,9 @@ mod tests {
     #[test]
     fn local_names() {
         assert_eq!(stamp("lattice-1700000000.db"), Some(1_700_000_000));
-        for bad in ["lattice-.db", "lattice-12a.db", "lattice-1.db-journal", "r2-upload-1.db", "r2-upload-1.db.gz", "lattice.db", "lattice-1.db.gz", "lattice--1.db"] {
+        for bad in
+            ["lattice-.db", "lattice-12a.db", "lattice-1.db-journal", "r2-upload-1.db", "r2-upload-1.db.gz", "lattice.db", "lattice-1.db.gz", "lattice--1.db"]
+        {
             assert_eq!(stamp(bad), None, "{bad}");
         }
     }

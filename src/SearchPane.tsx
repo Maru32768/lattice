@@ -22,7 +22,7 @@ function ScopeSelect({ scope, onScope, genres, feeds }: {
   return (
     <label className="chip scope-chip">
       <span className="k">範囲</span>
-      <select value={JSON.stringify(scope)} onChange={(e) => onScope(JSON.parse(e.target.value))} aria-label="検索範囲">
+      <select value={JSON.stringify(scope)} onChange={(e) => onScope(JSON.parse(e.target.value) as Scope)} aria-label="検索範囲">
         <option value={JSON.stringify({ kind: "all" })}>すべての記事</option>
         <option value={JSON.stringify({ kind: "recent" })}>最近追加</option>
         <option value={JSON.stringify({ kind: "unread" })}>未読</option>
@@ -153,7 +153,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
         {semanticOff && (
           <div className="note warn center">
             <Icon name="offline" />
-            <span className="grow">全文検索のみで表示中 — {result!.semantic_error}</span>
+            <span className="grow">全文検索のみで表示中 — {result.semantic_error}</span>
             <button className="btn sm" onClick={() => onSearch(initial)}>再試行</button>
           </div>
         )}

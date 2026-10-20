@@ -38,7 +38,7 @@ export function JobsView() {
   // Jobs report every article; coalesce reloads. The poll catches backoffs that expire silently.
   const timer = useRef(0);
   useEffect(() => {
-    load();
+    void load();
     const poll = window.setInterval(load, POLL_MS);
     const sub = listen("article-changed", () => {
       clearTimeout(timer.current);
@@ -47,7 +47,7 @@ export function JobsView() {
     return () => {
       clearInterval(poll);
       clearTimeout(timer.current);
-      sub.then((f) => f());
+      void sub.then((f) => f());
     };
   }, []);
 
@@ -58,7 +58,7 @@ export function JobsView() {
     } catch (e) {
       setError(String(e));
     }
-    load();
+    void load();
   }
 
   const retryAll = (type: string | null) =>

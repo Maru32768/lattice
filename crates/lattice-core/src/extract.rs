@@ -24,14 +24,9 @@ pub enum ExtractError {
 pub fn extract(html: &str, url: &str) -> Result<ArticleIr, ExtractError> {
     let base = Url::parse(url).map_err(|e| ExtractError::Readability(e.to_string()))?;
     let cfg = Config { keep_classes: true, ..Default::default() };
-    let mut r = Readability::new(html, Some(url), Some(cfg))
-        .map_err(|e| ExtractError::Readability(e.to_string()))?;
+    let mut r = Readability::new(html, Some(url), Some(cfg)).map_err(|e| ExtractError::Readability(e.to_string()))?;
     // Read before parse(): parse() mutates the document.
-    let canonical = r
-        .doc
-        .select(r#"link[rel="canonical"]"#)
-        .attr("href")
-        .and_then(|h| http_url(&base, &h));
+    let canonical = r.doc.select(r#"link[rel="canonical"]"#).attr("href").and_then(|h| http_url(&base, &h));
     // Readability drops every <aside>, and anything classed like "sidebar", as boilerplate; inside
     // the article body they are content, so they become plain <div>s first. Code keeps its
     // classes (they carry the language).
@@ -73,12 +68,12 @@ fn http_url(base: &Url, href: &str) -> Option<String> {
 }
 
 const INLINE: &[&str] = &[
-    "a", "abbr", "b", "bdi", "bdo", "cite", "code", "del", "dfn", "em", "i", "ins", "kbd", "mark",
-    "q", "s", "samp", "small", "span", "strong", "sub", "sup", "time", "u", "var", "br", "wbr",
+    "a", "abbr", "b", "bdi", "bdo", "cite", "code", "del", "dfn", "em", "i", "ins", "kbd", "mark", "q", "s", "samp", "small", "span", "strong", "sub", "sup",
+    "time", "u", "var", "br", "wbr",
 ];
 const SKIP: &[&str] = &[
-    "script", "style", "noscript", "template", "svg", "button", "form", "input", "select",
-    "textarea", "iframe", "object", "embed", "nav", "footer", "aside", "head",
+    "script", "style", "noscript", "template", "svg", "button", "form", "input", "select", "textarea", "iframe", "object", "embed", "nav", "footer", "aside",
+    "head",
 ];
 
 struct Walker {
@@ -154,21 +149,9 @@ impl Walker {
             return;
         }
         // `language-rust` / `lang-rust` on <pre> or its <code>.
-        let classes = Selection::from(pre.clone())
-            .select("code")
-            .attr("class")
-            .or_else(|| pre.attr("class"))
-            .unwrap_or_default();
-        let lang = classes
-            .split_whitespace()
-            .find_map(|c| c.strip_prefix("language-").or_else(|| c.strip_prefix("lang-")))
-            .map(str::to_string);
-        self.blocks.push(Block {
-            kind: BlockKind::Code,
-            text,
-            inlines: Vec::new(),
-            attrs: BlockAttrs { lang, ..Default::default() },
-        });
+        let classes = Selection::from(*pre).select("code").attr("class").or_else(|| pre.attr("class")).unwrap_or_default();
+        let lang = classes.split_whitespace().find_map(|c| c.strip_prefix("language-").or_else(|| c.strip_prefix("lang-"))).map(str::to_string);
+        self.blocks.push(Block { kind: BlockKind::Code, text, inlines: Vec::new(), attrs: BlockAttrs { lang, ..Default::default() } });
     }
 
     fn list(&mut self, list: &NodeRef, ordered: bool, depth: u8) {
@@ -188,41 +171,24 @@ impl Walker {
     }
 
     fn table(&mut self, table: &NodeRef) {
-        let rows: Vec<Vec<String>> = Selection::from(table.clone())
+        let rows: Vec<Vec<String>> = Selection::from(*table)
             .select("tr")
             .nodes()
             .iter()
-            .map(|tr| {
-                Selection::from(tr.clone())
-                    .select("th, td")
-                    .nodes()
-                    .iter()
-                    .map(|c| collapse(&c.text()).trim().to_string())
-                    .collect()
-            })
+            .map(|tr| Selection::from(*tr).select("th, td").nodes().iter().map(|c| collapse(&c.text()).trim().to_string()).collect())
             .filter(|r: &Vec<String>| !r.is_empty())
             .collect();
         if rows.is_empty() {
             return;
         }
         let text = rows.iter().map(|r| r.join("\t")).collect::<Vec<_>>().join("\n");
-        self.blocks.push(Block {
-            kind: BlockKind::Table,
-            text,
-            inlines: Vec::new(),
-            attrs: BlockAttrs { rows: Some(rows), ..Default::default() },
-        });
+        self.blocks.push(Block { kind: BlockKind::Table, text, inlines: Vec::new(), attrs: BlockAttrs { rows: Some(rows), ..Default::default() } });
     }
 
     fn image(&mut self, img: &NodeRef) {
         let Some(src) = img.attr("src").and_then(|s| http_url(&self.base, &s)) else { return };
         let alt = collapse(&img.attr("alt").unwrap_or_default()).trim().to_string();
-        self.blocks.push(Block {
-            kind: BlockKind::Image,
-            text: alt,
-            inlines: Vec::new(),
-            attrs: BlockAttrs { src: Some(src), ..Default::default() },
-        });
+        self.blocks.push(Block { kind: BlockKind::Image, text: alt, inlines: Vec::new(), attrs: BlockAttrs { src: Some(src), ..Default::default() } });
     }
 }
 

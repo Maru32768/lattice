@@ -1,0 +1,32 @@
+import { test, expect, list, callsOf } from "./harness.ts";
+import { ARTICLES } from "./fixtures.ts";
+
+// The list's default order: newest saved first.
+const order = [...ARTICLES].sort((a, b) => b.saved_at.localeCompare(a.saved_at) || b.id - a.id);
+const label = (i: number) => order[i].title ?? order[i].original_url;
+
+test("j / k move the cursor without opening; Enter opens it in the Reader", async ({ app }) => {
+  const cur = list(app).locator(".row.cur .t");
+  await app.keyboard.press("j");
+  await expect(cur).toHaveText(label(0));
+  await app.keyboard.press("j");
+  await app.keyboard.press("ArrowDown");
+  await expect(cur).toHaveText(label(2));
+  await app.keyboard.press("k");
+  await expect(cur).toHaveText(label(1));
+  expect(await callsOf(app, "get_article")).toEqual([]);
+
+  await app.keyboard.press("Enter");
+  await expect(app.locator(".art-title")).toHaveText(label(1));
+  await expect(list(app).locator(".row.sel .t")).toHaveText(label(1));
+  expect(await callsOf(app, "set_read")).toEqual([{ id: order[1].id, read: true }]);
+});
+
+test("Shift+Enter opens the cursor's article as a page", async ({ app }) => {
+  await app.keyboard.press("j");
+  await app.keyboard.press("Shift+Enter");
+  await expect.poll(() => callsOf(app, "browser_open")).toEqual([
+    expect.objectContaining({ url: order[0].original_url }),
+  ]);
+  await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toHaveAttribute("aria-pressed", "true");
+});

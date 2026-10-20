@@ -8,19 +8,19 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
+use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
+use lattice_core::feeds::{self, FeedRow};
 use lattice_core::fetch::client;
+use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::ir::PROSE_KINDS;
+use lattice_core::job_status::{self, JobOverview};
 use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
-use lattice_core::url_norm::normalize;
-use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
-use lattice_core::ingest::{self, ImportSummary};
-use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
-use lattice_core::feeds::{self, FeedRow};
-use lattice_core::job_status::{self, JobOverview};
 use lattice_core::store::JobRow;
+use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
+use lattice_core::url_norm::normalize;
 use lattice_core::{backup, classify, export, favicons, images, instructions, markdown, r2, render, summarize, translate};
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
@@ -743,9 +743,7 @@ pub fn run() {
             let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
             let wake_render = Arc::new(Notify::new());
-            let runners = [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())]
-                .into_iter()
-                .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
+            let runners = [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
                 let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
                 let on_change = move |job: &JobRow| {
@@ -786,7 +784,19 @@ pub fn run() {
                 let _ = handle.emit("feeds-changed", queued);
             }));
 
-            app.manage(App { store, providers, wake_llm, wake_local, wake_net, wake_render, overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY), chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY), db_path: path.display().to_string(), data_dir: dir, picked_dir: Mutex::new(None) });
+            app.manage(App {
+                store,
+                providers,
+                wake_llm,
+                wake_local,
+                wake_net,
+                wake_render,
+                overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY),
+                chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY),
+                db_path: path.display().to_string(),
+                data_dir: dir,
+                picked_dir: Mutex::new(None),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

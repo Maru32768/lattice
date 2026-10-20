@@ -41,11 +41,7 @@ pub fn set_auto(store: &Store, on: bool) -> Result<(), String> {
 pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
     let wanted: bool = store
         .conn()
-        .query_row(
-            "SELECT extraction_status = 'ok' AND (genre_id IS NULL OR difficulty IS NULL) FROM articles WHERE id = ?1",
-            [article_id],
-            |r| r.get(0),
-        )
+        .query_row("SELECT extraction_status = 'ok' AND (genre_id IS NULL OR difficulty IS NULL) FROM articles WHERE id = ?1", [article_id], |r| r.get(0))
         .optional()
         .map_err(err)?
         .unwrap_or(false);
@@ -127,10 +123,8 @@ pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
 
 /// Deletes a genre no article uses.
 pub fn delete_genre(store: &Store, name: &str) -> Result<(), String> {
-    let n = store
-        .conn()
-        .execute("DELETE FROM genres WHERE name = ?1 AND NOT EXISTS (SELECT 1 FROM articles WHERE genre_id = genres.id)", [name])
-        .map_err(err)?;
+    let n =
+        store.conn().execute("DELETE FROM genres WHERE name = ?1 AND NOT EXISTS (SELECT 1 FROM articles WHERE genre_id = genres.id)", [name]).map_err(err)?;
     if n == 0 { Err(format!("ジャンル「{name}」は記事があるか、存在しません")) } else { Ok(()) }
 }
 
@@ -143,11 +137,8 @@ pub fn set_genre(store: &Store, article_id: i64, name: &str) -> Result<(), Strin
         tx.execute("UPDATE articles SET genre_id = NULL, genre_source = NULL WHERE id = ?1", [article_id]).map_err(err)?;
     } else {
         tx.execute("INSERT INTO genres (name) VALUES (?1) ON CONFLICT(name) DO NOTHING", [&name]).map_err(err)?;
-        tx.execute(
-            "UPDATE articles SET genre_id = (SELECT id FROM genres WHERE name = ?2), genre_source = 'manual' WHERE id = ?1",
-            params![article_id, name],
-        )
-        .map_err(err)?;
+        tx.execute("UPDATE articles SET genre_id = (SELECT id FROM genres WHERE name = ?2), genre_source = 'manual' WHERE id = ?1", params![article_id, name])
+            .map_err(err)?;
     }
     tx.commit().map_err(err)
 }
@@ -269,15 +260,8 @@ async fn classify<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> R
         if genre.is_empty() || out.contains_key(&id) {
             continue;
         }
-        let tags: Vec<String> = it["tags"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .map(clean)
-            .filter(|t| !t.is_empty())
-            .take(MAX_TAGS)
-            .collect();
+        let tags: Vec<String> =
+            it["tags"].as_array().into_iter().flatten().filter_map(Value::as_str).map(clean).filter(|t| !t.is_empty()).take(MAX_TAGS).collect();
         let difficulty = it["difficulty"].as_i64().filter(|d| DIFFICULTIES.contains(d));
         out.insert(id, apply(store, id, &genre, &tags, difficulty, &c.provider, c.model.as_deref()).map_err(err));
     }
@@ -320,7 +304,9 @@ mod tests {
     fn saved(s: &Store, n: usize) -> i64 {
         let url = format!("https://example.com/{n}");
         let (id, _) = s.upsert_pending(&url, &url, "example.com").unwrap();
-        let html = format!("<html><head><title>Post {n}</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it. Post number {n}.</p></article></body></html>");
+        let html = format!(
+            "<html><head><title>Post {n}</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it. Post number {n}.</p></article></body></html>"
+        );
         store_fetched(s, id, &Fetched { final_url: url, status: 200, content_type: None, html }).unwrap();
         id
     }
@@ -357,7 +343,8 @@ mod tests {
         assert_eq!((by_id(ids[0]).difficulty, by_id(ids[0]).difficulty_manual), (Some(4), false));
         assert_eq!(by_id(ids[1]).difficulty, None, "out-of-range difficulty dropped");
         assert_eq!((by_id(ids[2]).difficulty, by_id(ids[2]).difficulty_manual), (Some(5), true), "manual difficulty kept");
-        let n: i64 = s.conn().query_row("SELECT count(*) FROM classifications WHERE provider = 'fake' AND prompt_version = ?1", [PROMPT_VERSION], |r| r.get(0)).unwrap();
+        let n: i64 =
+            s.conn().query_row("SELECT count(*) FROM classifications WHERE provider = 'fake' AND prompt_version = ?1", [PROMPT_VERSION], |r| r.get(0)).unwrap();
         assert_eq!(n, 3);
 
         // Manual "分類" unpins; clearing returns the article to 未分類.

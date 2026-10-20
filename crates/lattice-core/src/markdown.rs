@@ -392,13 +392,17 @@ and [a sibling](./other.md).\nSecond line <b>bold</b>.\n\n\
 
     #[test]
     fn joins_japanese_lines_and_drops_inline_script_text() {
-        let ir = to_ir("日本語の文が
+        let ir = to_ir(
+            "日本語の文が
 改行で続く。
 English line
 next.
 
 Hello <script>alert(1)</script>world <STYLE>p{}</style>end
-", None).unwrap();
+",
+            None,
+        )
+        .unwrap();
         assert_eq!(kinds(&ir), [("paragraph", "日本語の文が改行で続く。English line next."), ("paragraph", "Hello world end")]);
     }
 

@@ -71,7 +71,9 @@ pub fn finish(store: &Store, article_id: i64, rendered: Result<(String, String),
     };
     let current: i64 = store
         .conn()
-        .query_row("SELECT CASE WHEN extraction_status = 'ok' THEN coalesce(text_length, 0) ELSE -1 END FROM articles WHERE id = ?1", [article_id], |r| r.get(0))
+        .query_row("SELECT CASE WHEN extraction_status = 'ok' THEN coalesce(text_length, 0) ELSE -1 END FROM articles WHERE id = ?1", [article_id], |r| {
+            r.get(0)
+        })
         .map_err(err)?;
     if rendered_len <= current {
         return record_failure(store, article_id, "描画しても本文は増えませんでした");

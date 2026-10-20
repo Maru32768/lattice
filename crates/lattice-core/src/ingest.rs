@@ -4,8 +4,8 @@
 use crate::extract::extract;
 use crate::fetch::{Fetched, fetch};
 use crate::store::{Store, THIN_TEXT_CHARS};
-use rusqlite::OptionalExtension;
 use crate::url_norm::normalize;
+use rusqlite::OptionalExtension;
 
 pub const JOB_TYPE: &str = "ingest";
 
@@ -79,7 +79,10 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
     // The entry's title is exact; Readability would cut "Title — Part II" at the dash as a site name.
     store
         .conn()
-        .execute("UPDATE articles SET title = coalesce(?2, title), last_error = coalesce(?3, last_error) WHERE id = ?1", rusqlite::params![id, title, page_error])
+        .execute(
+            "UPDATE articles SET title = coalesce(?2, title), last_error = coalesce(?3, last_error) WHERE id = ?1",
+            rusqlite::params![id, title, page_error],
+        )
         .map_err(|e| e.to_string())?;
     Ok(true)
 }
@@ -125,9 +128,7 @@ pub fn extract_urls(text: &str) -> Vec<String> {
     let mut rest = text;
     while let Some(start) = ["https://", "http://"].iter().filter_map(|p| rest.find(p)).min() {
         let tail = &rest[start..];
-        let end = tail
-            .find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | ',' | '|' | '{' | '}'))
-            .unwrap_or(tail.len());
+        let end = tail.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | ',' | '|' | '{' | '}')).unwrap_or(tail.len());
         let mut url = tail[..end].replace("&amp;", "&");
         // Trailing punctuation belongs to the surrounding prose; a ')' only if unbalanced (Markdown links).
         loop {
@@ -138,10 +139,10 @@ pub fn extract_urls(text: &str) -> Vec<String> {
                 break;
             }
         }
-        if let Ok(norm) = normalize(&url) {
-            if seen.insert(norm.to_string()) {
-                out.push(url);
-            }
+        if let Ok(norm) = normalize(&url)
+            && seen.insert(norm.to_string())
+        {
+            out.push(url);
         }
         rest = &tail[end.max(1)..];
     }
@@ -178,12 +179,7 @@ pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
 
 fn extract_into(store: &Store, id: i64, html: &str, url: &str, snapshot: Option<&Fetched>) -> Result<i64, String> {
     let extracted = extract(html, url).map_err(|e| e.to_string());
-    let canonical = extracted
-        .as_ref()
-        .ok()
-        .and_then(|ir| ir.meta.canonical_url.as_deref())
-        .and_then(|c| normalize(c).ok())
-        .map(String::from);
+    let canonical = extracted.as_ref().ok().and_then(|ir| ir.meta.canonical_url.as_deref()).and_then(|c| normalize(c).ok()).map(String::from);
     let id = store.save_fetched(id, snapshot, extracted, canonical.as_deref()).map_err(|e| e.to_string())?;
     crate::images::enqueue(store, id)?;
     Ok(id)
@@ -232,7 +228,9 @@ mod tests {
             final_url: "https://example.com/post".into(),
             status: 200,
             content_type: Some("text/html".into()),
-            html: format!(r#"<html><head><title>T</title><link rel="canonical" href="https://example.com/post?utm_source=feed"></head><body><article>{body}</article></body></html>"#),
+            html: format!(
+                r#"<html><head><title>T</title><link rel="canonical" href="https://example.com/post?utm_source=feed"></head><body><article>{body}</article></body></html>"#
+            ),
         }
     }
 

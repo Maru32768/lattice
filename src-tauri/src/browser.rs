@@ -11,9 +11,9 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::oneshot;
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl};
+use tokio::sync::oneshot;
 
 pub const LABEL: &str = "browser";
 pub const RENDER_LABEL: &str = "renderer";
@@ -198,10 +198,10 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
         // Never leave the web: no file:, custom schemes or app-internal URLs in this webview.
         .on_navigation(is_http)
         .on_new_window(move |u, _| {
-            if is_http(&u) {
-                if let Some(wv) = popup_target.get_webview(LABEL) {
-                    let _ = wv.navigate(u);
-                }
+            if is_http(&u)
+                && let Some(wv) = popup_target.get_webview(LABEL)
+            {
+                let _ = wv.navigate(u);
             }
             NewWindowResponse::Deny
         })
@@ -214,11 +214,9 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
-            if !loading {
-                if let Some(text) = lock(&browser.focus).take() {
-                    let arg = serde_json::to_string(&text).expect("string serializes");
-                    let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({arg})"));
-                }
+            if !loading && let Some(text) = lock(&browser.focus).take() {
+                let arg = serde_json::to_string(&text).expect("string serializes");
+                let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({arg})"));
             }
         })
         .on_document_title_changed(|wv, title| {

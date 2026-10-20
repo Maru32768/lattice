@@ -139,7 +139,7 @@ function pump() {
   while (state.inflight < MAX_INFLIGHT && state.queue.length) {
     const batch = state.queue.shift()!;
     state.inflight++;
-    translateBatch(batch).finally(() => {
+    void translateBatch(batch).finally(() => {
       state.inflight--;
       pump();
     });
@@ -424,7 +424,7 @@ if (window.top === window && !window.__lattice) {
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
   const boot = () =>
-    invoke("overlay_config")
+    void invoke("overlay_config")
       .then((c) => {
         const { keys: k, ...config } = c as Config & { keys: PageKeys | null };
         setKeys(k);

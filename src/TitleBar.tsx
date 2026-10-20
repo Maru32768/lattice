@@ -19,9 +19,9 @@ export function TitleBar() {
   useEffect(() => {
     const w = getCurrentWindow();
     const sync = () => w.isMaximized().then(setMaximized, () => {});
-    sync();
-    const off = w.onResized(sync);
-    return () => { off.then((f) => f()); };
+    void sync();
+    const off = w.onResized(() => void sync());
+    return () => { void off.then((f) => f()); };
   }, []);
   // Chromium counts a press as a repeat click when it lands on the same spot of the window. A drag
   // moves the window along with the cursor, so a click right after it would read as the drag's

@@ -64,10 +64,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
         return Err("article has no extracted content".into());
     };
     let applied = instructions::load(store)?.for_summary();
-    let c = provider
-        .complete_json(&applied.system(RULES, UNTRUSTED), &input_text(&src.title, &src.blocks), &schema())
-        .await
-        .map_err(|e| e.to_string())?;
+    let c = provider.complete_json(&applied.system(RULES, UNTRUSTED), &input_text(&src.title, &src.blocks), &schema()).await.map_err(|e| e.to_string())?;
     let text = format_summary(&c.value).ok_or("malformed summary")?;
     store
         .insert_summary(article_id, SUMMARY_TYPE, &text, &src.content_hash, &c.provider, c.model.as_deref(), &applied.version(PROMPT_VERSION))

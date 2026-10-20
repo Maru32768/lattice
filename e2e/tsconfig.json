@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": [".", "../src/vite-env.d.ts", "../playwright.config.ts"],
+  "exclude": ["vite.config.ts"],
+  "references": []
+}

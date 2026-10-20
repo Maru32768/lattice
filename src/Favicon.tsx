@@ -43,7 +43,7 @@ function useIcon(key: string): string | null | undefined {
   useEffect(() => {
     if (!key) return;
     let live = true;
-    icon(key).then((url) => { if (live) setGot({ key, url }); });
+    void icon(key).then((url) => { if (live) setGot({ key, url }); });
     return () => { live = false; };
   }, [key, seq]);
   return got?.key === key ? got.url : undefined;

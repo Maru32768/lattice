@@ -1,0 +1,3 @@
+# Matches the long lines the code base was written with, so formatting moved as little as possible.
+max_width = 160
+use_small_heuristics = "Max"

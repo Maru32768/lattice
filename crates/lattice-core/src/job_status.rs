@@ -53,11 +53,8 @@ pub fn overview(store: &Store) -> Result<JobOverview, String> {
              FROM processing_jobs WHERE status IN ('pending', 'running', 'failed') GROUP BY 1, 2 ORDER BY 1, 2"
         ))
         .map_err(err)?;
-    let counts = st
-        .query_map([], |r| Ok(JobCount { job_type: r.get(0)?, state: r.get(1)?, count: r.get(2)? }))
-        .map_err(err)?
-        .collect::<Result<_, _>>()
-        .map_err(err)?;
+    let counts =
+        st.query_map([], |r| Ok(JobCount { job_type: r.get(0)?, state: r.get(1)?, count: r.get(2)? })).map_err(err)?.collect::<Result<_, _>>().map_err(err)?;
     let mut st = c
         .prepare(&format!(
             "SELECT j.id, j.type, j.article_id, coalesce(a.title, a.original_url, json_extract(j.params, '$.domain')), j.status, j.attempt_count, j.last_error,
@@ -132,7 +129,9 @@ mod tests {
     fn saved(s: &Store, n: usize) -> i64 {
         let url = format!("https://example.com/{n}");
         let (id, _) = s.upsert_pending(&url, &url, "example.com").unwrap();
-        let html = format!("<html><head><title>Post {n}</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it. Post number {n}.</p></article></body></html>");
+        let html = format!(
+            "<html><head><title>Post {n}</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it. Post number {n}.</p></article></body></html>"
+        );
         store_fetched(s, id, &Fetched { final_url: url, status: 200, content_type: None, html }).unwrap();
         id
     }
@@ -178,5 +177,21 @@ mod tests {
         let summary_job = s.get_article(ids[0], "ja").unwrap().unwrap().jobs.into_iter().find(|j| j.job_type == "summarize").unwrap();
         assert!(cancel(&s, summary_job.id).unwrap());
         assert!(!run_next(&s, &ok, LLM_JOBS, &|_| {}).await.unwrap(), "cancelled job is gone");
+    }
+
+    #[test]
+    fn a_running_job_is_neither_cancelled_nor_retried() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/1", "https://example.com/1", "example.com").unwrap();
+        summarize::enqueue(&s, id).unwrap();
+        let job = s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().unwrap();
+        assert!(!cancel(&s, job.id).unwrap());
+        assert_eq!(retry(&s, job.id).unwrap(), None);
+        assert_eq!(retry_failed(&s, None).unwrap(), 0);
+
+        s.finish_job(job.id, Some("boom")).unwrap();
+        assert_eq!(retry(&s, job.id).unwrap().as_deref(), Some(summarize::JOB_TYPE), "retryable once it has finished");
+        assert!(cancel(&s, job.id).unwrap());
+        assert_eq!((retry(&s, job.id).unwrap(), cancel(&s, job.id).unwrap()), (None, false), "gone");
     }
 }

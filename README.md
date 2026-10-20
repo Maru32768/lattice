@@ -106,7 +106,19 @@ Press `Ctrl+K` for the command palette. It opens articles, tags, sources and gen
 mise run test
 ```
 
-`mise run test` builds the overlay, runs the Rust and frontend tests, and type-checks and builds the frontend.
+`mise run test` runs `mise run lint` (rustfmt, clippy and oxlint), then the Rust and frontend tests, and type-checks and builds the frontend.
+
+```bash
+mise exec -- npx playwright install chromium
+```
+
+```bash
+mise run e2e
+```
+
+`mise run e2e` runs the browser tests in `e2e/`: Vite serves the real frontend with the Tauri IPC replaced by a mock backend (`e2e/mock.ts`) over sample data (`e2e/fixtures.ts`), and Playwright drives it in Chromium. The app itself is not started and no real data is touched. The first command installs the browser once.
+
+CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on Windows for every push and pull request to `master`.
 
 | Path | Contents |
 |---|---|
@@ -114,6 +126,7 @@ mise run test
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser. |
 | `src` | The React frontend. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots). |
+| `e2e` | Browser tests: the mock backend, sample data and Playwright specs. |
 | `infra/r2` | Terraform for the R2 backup bucket. |
 | `docs` | Design notes (`design-review.md`) and the roadmap (`roadmap.md`). |
 

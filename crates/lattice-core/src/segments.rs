@@ -85,10 +85,18 @@ pub fn is_japanese(declared: Option<&str>, text: &str) -> bool {
 
 fn terms_rule(to: &Target) -> &'static str {
     match (to.language, to.keep_terms) {
-        ("en", true) => "- Render technical terms with the standard English term practitioners use (e.g. スナップショット分離 → snapshot isolation, 排他制御 → mutual exclusion), not a literal or descriptive translation; keep terms, acronyms and proper nouns the source already writes in Latin script exactly as written (e.g. MVCC, WAL)",
-        ("en", false) => "- Prefer plain, descriptive English over specialist jargon where it reads more naturally for a general technical reader; keep acronyms (e.g. MVCC, WAL) and product names as written",
-        (_, true) => "- Keep technical terms, acronyms and proper nouns in English as written (e.g. MVCC, WAL, snapshot isolation, write skew, garbage collection); do not translate or transliterate them, and translate only the surrounding text",
-        (_, false) => "- Translate technical terms into their established target-language equivalents where one exists; keep acronyms (e.g. MVCC, WAL) and product names as written",
+        ("en", true) => {
+            "- Render technical terms with the standard English term practitioners use (e.g. スナップショット分離 → snapshot isolation, 排他制御 → mutual exclusion), not a literal or descriptive translation; keep terms, acronyms and proper nouns the source already writes in Latin script exactly as written (e.g. MVCC, WAL)"
+        }
+        ("en", false) => {
+            "- Prefer plain, descriptive English over specialist jargon where it reads more naturally for a general technical reader; keep acronyms (e.g. MVCC, WAL) and product names as written"
+        }
+        (_, true) => {
+            "- Keep technical terms, acronyms and proper nouns in English as written (e.g. MVCC, WAL, snapshot isolation, write skew, garbage collection); do not translate or transliterate them, and translate only the surrounding text"
+        }
+        (_, false) => {
+            "- Translate technical terms into their established target-language equivalents where one exists; keep acronyms (e.g. MVCC, WAL) and product names as written"
+        }
     }
 }
 
@@ -387,7 +395,10 @@ pub(crate) mod tests {
             }
             if system.contains("You classify technical articles") {
                 let v: Value = serde_json::from_str(input).unwrap();
-                let items: Vec<Value> = v["articles"].as_array().unwrap().iter()
+                let items: Vec<Value> = v["articles"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
                     .map(|a| json!({"i": a["i"], "genre": "database", "tags": ["sql", " "], "difficulty": if a["i"] == 1 { 9 } else { 4 }}))
                     .chain([json!({"i": 99, "genre": "Injected", "tags": []})])
                     .collect();

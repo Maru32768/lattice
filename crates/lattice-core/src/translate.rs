@@ -82,13 +82,7 @@ fn batches(blocks: Vec<PendingBlock>) -> Vec<Vec<PendingBlock>> {
     out
 }
 
-pub async fn run<P: LlmProvider>(
-    store: &Store,
-    provider: &P,
-    article_id: i64,
-    target: &Target,
-    on_progress: &(dyn Fn() + Send + Sync),
-) -> Result<(), String> {
+pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, target: &Target, on_progress: &(dyn Fn() + Send + Sync)) -> Result<(), String> {
     let key = target.key();
     let mut pending = store.untranslated_blocks(article_id, &key, PROSE_KINDS).map_err(|e| e.to_string())?;
     // Same paragraph twice translates once; a paragraph already in the target language needs none.
@@ -104,14 +98,12 @@ pub async fn run<P: LlmProvider>(
             .filter_map(|(b, r)| r.as_ref().map(|(units, o)| (b.text_hash.as_str(), &units[..], o.provider.as_str(), o.model.as_deref())))
             .collect();
         missing += batch.len() - rows.len();
-        if rows.is_empty() {
-            if let Some(e) = t.error {
-                return Err(e.to_string()); // provider down or rate-limited: back off instead of hammering
-            }
+        if rows.is_empty()
+            && let Some(e) = t.error
+        {
+            return Err(e.to_string()); // provider down or rate-limited: back off instead of hammering
         }
-        store
-            .insert_segments(&key, PROMPT_VERSION, &rows)
-            .map_err(|e| e.to_string())?;
+        store.insert_segments(&key, PROMPT_VERSION, &rows).map_err(|e| e.to_string())?;
         on_progress();
     }
     if missing > 0 {

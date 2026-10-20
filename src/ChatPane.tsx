@@ -65,12 +65,13 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
 
   const fail = (e: unknown) => setError(String(e));
   const loadThreads = () => api.chatThreads().then(setThreads).catch(fail);
-  useEffect(() => { loadThreads(); }, []);
+  useEffect(() => { void loadThreads(); }, []);
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages, pending]);
   useEffect(() => {
     if (!request) return;
     setScopeKey(request.key);
     input.current?.focus();
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- a request applies once per seq
   }, [request?.seq]);
 
   async function openThread(id: number | null) {
@@ -106,7 +107,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
       const m = await api.chatAsk(threadId, q, s);
       setThreadId(m.thread_id);
       setMessages((ms) => [...ms, m]);
-      loadThreads();
+      void loadThreads();
     } catch (e) {
       fail(e);
       setQuestion(q);
@@ -123,11 +124,11 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
         <header className="chat-h">
           <Menu className="thread-btn" label="会話を選ぶ" title="保存済みの会話" trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}
             items={[
-              { label: "新しい会話", onSelect: () => openThread(null), checked: threadId == null, disabled: !!pending },
+              { label: "新しい会話", onSelect: () => void openThread(null), checked: threadId == null, disabled: !!pending },
               ...(threads.length ? ["保存済み"] : []),
-              ...threads.map((t) => ({ label: t.title, onSelect: () => openThread(t.id), checked: t.id === threadId, disabled: !!pending })),
+              ...threads.map((t) => ({ label: t.title, onSelect: () => void openThread(t.id), checked: t.id === threadId, disabled: !!pending })),
               "-",
-              { label: "この会話を削除", onSelect: removeThread, disabled: !!pending || threadId == null },
+              { label: "この会話を削除", onSelect: () => void removeThread(), disabled: !!pending || threadId == null },
             ]} />
           <span className="muted saved">保存済み {threads.length} 件</span>
           <button className="ib push" onClick={() => openThread(null)} disabled={!!pending || threadId == null} aria-label="新しい会話" title="新しい会話"><Icon name="plus" /></button>
@@ -168,7 +169,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
           <label className="vh" htmlFor="chat-q">質問</label>
           <textarea id="chat-q" ref={input} value={question} onChange={(e) => setQuestion(e.target.value)} rows={3}
             placeholder={scopeKey === "article" ? "この記事について質問…" : "保存した記事について質問…"}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) ask(e); }} />
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void ask(e); }} />
           <div className="chat-f-row">
             <span className="push"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> 送信</span>
             <button type="submit" className="btn sm pri" disabled={!question.trim() || !!pending || !scope()}>{pending ? "回答中…" : "送信"}</button>

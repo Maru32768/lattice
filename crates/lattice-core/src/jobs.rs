@@ -274,7 +274,9 @@ mod tests {
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert!(!view(&s).stale, "made before any instructions: fresh");
 
-        let custom = crate::instructions::Settings { profile: "分散システムに詳しい".into(), summary: "数値を必ず残す".into(), chat: "対話だけ".into() };
+        let custom = crate::instructions::Settings {
+            profile: "分散システムに詳しい".into(), summary: "数値を必ず残す".into(), chat: "対話だけ".into()
+        };
         crate::instructions::save(&s, &custom).unwrap();
         assert!(view(&s).stale, "instructions changed since the summary");
         crate::summarize::enqueue(&s, id).unwrap();

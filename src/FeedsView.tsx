@@ -27,23 +27,24 @@ function FeedEditor({ feed: f, onSaved, onClose }: { feed: FeedRow; onSaved: () 
     }
   }
   const rename = (n: string | null) => act(() => api.renameFeed(f.id, n));
-  const setIcon = (bytes: number[] | null) => act(async () => {
-    await api.setFeedIcon(f.id, bytes);
+  // Reading the file happens inside act, so a failed read shows like a failed save.
+  const setIcon = (bytes: () => Promise<number[] | null>) => act(async () => {
+    await api.setFeedIcon(f.id, await bytes());
     feedIconChanged(f.id);
   });
-  const pick = async (file: File | undefined) => {
+  const pick = (file: File | undefined) => {
     if (!file) return;
     if (file.size > MAX_ICON_BYTES) return setError("アイコンの画像は 1 MB までです");
-    setIcon(Array.from(new Uint8Array(await file.arrayBuffer())));
+    void setIcon(async () => Array.from(new Uint8Array(await file.arrayBuffer())));
   };
 
   return (
-    <form className="feed-edit" aria-label={`${feedName(f)} の名前とアイコン`} onSubmit={(e) => { e.preventDefault(); rename(name); }}>
+    <form className="feed-edit" aria-label={`${feedName(f)} の名前とアイコン`} onSubmit={(e) => { e.preventDefault(); void rename(name); }}>
       <label htmlFor={`feed-name-${f.id}`}>表示名</label>
       <div className="line">
         <input id={`feed-name-${f.id}`} className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={own} maxLength={200} autoFocus />
         <button type="submit" className="btn sm pri" disabled={name.trim() === (f.custom_title ?? "")}>保存</button>
-        {f.custom_title && <button type="button" className="btn sm" onClick={() => { setName(""); rename(null); }}>元に戻す</button>}
+        {f.custom_title && <button type="button" className="btn sm" onClick={() => { setName(""); void rename(null); }}>元に戻す</button>}
       </div>
       <div className="fs">フィード本来の名前: {own}</div>
       <span className="lbl">アイコン</span>
@@ -53,7 +54,7 @@ function FeedEditor({ feed: f, onSaved, onClose }: { feed: FeedRow; onSaved: () 
           画像を選ぶ
           <input type="file" className="vh" accept={ICON_TYPES} onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
-        {f.has_icon && <button type="button" className="btn sm" onClick={() => setIcon(null)}>サイトのアイコンに戻す</button>}
+        {f.has_icon && <button type="button" className="btn sm" onClick={() => setIcon(async () => null)}>サイトのアイコンに戻す</button>}
         <span className="muted">PNG・JPEG・GIF・WebP・SVG・ICO、1 MB まで</span>
       </div>
       {error && <p role="alert" className="error-text">{error}</p>}
@@ -83,10 +84,11 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
 
   const load = () => api.listFeeds().then(setFeeds).catch((e) => setError(String(e)));
   useEffect(() => {
-    load();
-    if (initialUrl?.trim()) detect(initialUrl);
-    const sub = listen("feeds-changed", () => { load(); onChanged(); });
-    return () => { sub.then((f) => f()); };
+    void load();
+    if (initialUrl?.trim()) void detect(initialUrl);
+    const sub = listen("feeds-changed", () => { void load(); onChanged(); });
+    return () => { void sub.then((f) => f()); };
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount only: the view is keyed on initialUrl
   }, []);
 
   async function run(task: () => Promise<string | null>) {
@@ -99,7 +101,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
       setError(String(e));
     } finally {
       setBusy(false);
-      load();
+      void load();
       onChanged();
     }
   }
@@ -116,7 +118,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
 
   const subscribe = () => {
     const c = candidates.find((x) => x.url === picked);
-    if (c) run(async () => {
+    if (c) void run(async () => {
       await api.addFeed(c.url);
       const rest = candidates.filter((x) => x.url !== c.url);
       setCandidates(rest);
@@ -152,7 +154,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
     } catch (e) {
       setError(String(e));
     }
-    load();
+    void load();
     onChanged();
   }
 
@@ -188,7 +190,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
           </div>
         </header>
 
-        <form className="card add" aria-label="フィードを追加" onSubmit={(e) => { e.preventDefault(); if (url.trim()) detect(url); }}>
+        <form className="card add" aria-label="フィードを追加" onSubmit={(e) => { e.preventDefault(); if (url.trim()) void detect(url); }}>
           <label htmlFor="feed-url">サイトまたは記事の URL からフィードを検出</label>
           <div className="line">
             <input id="feed-url" className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/ またはフィードの URL" spellCheck={false} />
@@ -253,7 +255,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 </tr>,
                 editing === f.id && (
                   <tr key={`${f.id}-edit`} className="edit">
-                    <td colSpan={5}><FeedEditor feed={f} onSaved={() => { load(); onChanged(); }} onClose={() => setEditing(null)} /></td>
+                    <td colSpan={5}><FeedEditor feed={f} onSaved={() => { void load(); onChanged(); }} onClose={() => setEditing(null)} /></td>
                   </tr>
                 ),
               ])}

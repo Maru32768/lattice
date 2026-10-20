@@ -95,6 +95,5 @@ const COMMANDS: &[&str] = &[
 
 fn main() {
     println!("cargo:rerun-if-changed=overlay-dist/overlay.js");
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS)))
-        .expect("failed to run tauri-build");
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))).expect("failed to run tauri-build");
 }

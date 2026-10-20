@@ -35,7 +35,8 @@ type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"
 const RECENT_KEY = "lattice.recentSearches";
 function loadRecent(): string[] {
   try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
   } catch {
     return [];
   }
@@ -148,7 +149,7 @@ export default function App() {
   const refreshTimer = useRef(0);
   const refreshSoon = () => {
     if (refreshTimer.current) return;
-    refreshTimer.current = window.setTimeout(() => { refreshTimer.current = 0; refresh(); }, 500);
+    refreshTimer.current = window.setTimeout(() => { refreshTimer.current = 0; void refresh(); }, 500);
   };
   const loadView = (id: number) => {
     viewId.current = id;
@@ -159,12 +160,12 @@ export default function App() {
     .catch(() => {});
 
   useEffect(() => {
-    loadJobs();
+    void loadJobs();
     const poll = window.setInterval(loadJobs, JOB_POLL_MS);
     let jobTimer = 0;
     const subs = [
       listen<number>("article-changed", (e) => {
-        if (e.payload === viewId.current) loadView(e.payload);
+        if (e.payload === viewId.current) void loadView(e.payload);
         refreshSoon();
         clearTimeout(jobTimer);
         jobTimer = window.setTimeout(loadJobs, 1000);
@@ -172,17 +173,17 @@ export default function App() {
       listen<{ url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
         const { url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
         setPage((p) => ({ url, loading, canGoBack, canGoForward, title: p?.url === url ? p.title : "" }));
-        if (!e.payload.loading) refreshSaved(e.payload.url);
+        if (!e.payload.loading) void refreshSaved(e.payload.url);
       }),
       listen<string>("browser-title", (e) => setPage((p) => (p ? { ...p, title: e.payload } : p))),
     ];
     return () => {
       clearInterval(poll);
       clearTimeout(jobTimer);
-      subs.forEach((s) => s.then((f) => f()));
+      subs.forEach((s) => void s.then((f) => f()));
     };
   }, []);
-  useEffect(() => { refresh(); }, [sort]);
+  useEffect(() => { void refresh(); }, [sort]);
 
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
@@ -234,7 +235,8 @@ export default function App() {
     const a = openId == null ? undefined : articleById.get(openId);
     if (a?.read_status !== "unread") return;
     if (shown.some((x) => x.id === a.id)) setKept((k) => keep(k, listView, a.id));
-    act(() => api.setRead(a.id, true), a.id);
+    void act(() => api.setRead(a.id, true), a.id);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- mark read once per opened article
   }, [openId]);
 
   // ---- navigation -------------------------------------------------------------------------
@@ -242,7 +244,7 @@ export default function App() {
     setScopeState(s);
     setFacets(NO_FACETS);
     setScreen("library");
-    if (search?.query) runSearch(search.query, s);
+    if (search?.query) void runSearch(search.query, s);
   }
 
   async function runSearch(q: string, s: Scope = scope) {
@@ -296,7 +298,7 @@ export default function App() {
     setError(null);
     setScreen("library");
     if (doc?.kind === "reader" && doc.id === id && !focus) return;
-    if (viewId.current !== id || !view) loadView(id);
+    if (viewId.current !== id || !view) void loadView(id);
     setDoc((d) => ({ kind: "reader", id, focus: focus && { ...focus, seq: (d?.kind === "reader" ? d.focus?.seq ?? 0 : 0) + 1 } }));
   }
 
@@ -422,14 +424,14 @@ export default function App() {
     facets: (f) => { setFacets(f); setScreen("library"); },
     open: (a) => openReader(a.id),
     page: (url) => openPage(url),
-    index: (url) => act(async () => openReader(await api.saveUrl(url))),
+    index: (url) => void act(async () => openReader(await api.saveUrl(url))),
     discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
-    search: (q) => runSearch(q),
+    search: (q) => void runSearch(q),
     screen: setScreen,
     importMarkdown,
     chat: openChat,
     lang: setLang,
-    translate: current ? () => act(() => api.translateArticle(current.id), current.id) : null,
+    translate: current ? () => void act(() => api.translateArticle(current.id), current.id) : null,
   };
 
   // ---- keyboard -----------------------------------------------------------------------------
@@ -491,8 +493,8 @@ export default function App() {
       clearTimeout(prefixTimer.current);
       prefixTimer.current = window.setTimeout(() => setPrefix(false), PREFIX_MS);
     },
-    favorite: () => current && toggleFavorite(current),
-    read: () => current && toggleRead(current),
+    favorite: () => void (current && toggleFavorite(current)),
+    read: () => void (current && toggleRead(current)),
     focus: () => {
       const collapse = navOpen || listOpen;
       setNavOpen(!collapse);
@@ -546,19 +548,19 @@ export default function App() {
       // What the app focused last is stale (j / k in the nav would step the nav).
       (document.activeElement as HTMLElement | null)?.blur();
       if (s.prefix) {
-        if (s.paneKey(key, document.querySelector<HTMLElement>("[data-pane='doc']"))) focusApp();
+        if (s.paneKey(key, document.querySelector<HTMLElement>("[data-pane='doc']"))) void focusApp();
         return;
       }
       const action = actionFor(getBindings(), key);
       if (!action || (s.overlays && action.id !== "palette")) return;
-      if (LEAVES_PAGE.has(action.id)) focusApp();
+      if (LEAVES_PAGE.has(action.id)) void focusApp();
       s.actions[action.id]();
     };
     window.addEventListener("keydown", down);
     const unlisten = listen<string>("browser-key", (e) => fromPage(e.payload));
     return () => {
       window.removeEventListener("keydown", down);
-      unlisten.then((f) => f());
+      void unlisten.then((f) => f());
     };
   }, []);
 
@@ -606,7 +608,7 @@ export default function App() {
             : nav}
           {(screen === "import" || screen === "feeds" || screen === "jobs") && (
             <main className="main" data-pane="doc">
-              {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { refresh(); openReader(id); }} />}
+              {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }} />}
               {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
