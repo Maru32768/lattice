@@ -38,10 +38,22 @@ fn tab_of(label: &str) -> Option<u32> {
     label.strip_prefix(PREFIX)?.parse().ok()
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayConfig {
     pub enabled: bool,
     pub percent: u8,
+    pub labels: OverlayLabels,
+}
+
+/// The overlay's tooltip text in the display language, from the UI's catalog (G51); empty until the UI sends it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct OverlayLabels {
+    original: String,
+    translated: String,
+    flip: String,
+    translating: String,
+    failed: String,
+    retry: String,
 }
 
 /// The app shortcuts the overlay forwards (`PageKeys` in `src/keys.ts`), passed through to the page.
@@ -125,7 +137,7 @@ const PARKED: (f64, f64) = (-20000.0, -20000.0);
 impl Default for Browser {
     fn default() -> Self {
         Self {
-            config: Mutex::new(OverlayConfig { enabled: false, percent: 70 }),
+            config: Mutex::new(OverlayConfig { enabled: false, percent: 70, labels: OverlayLabels::default() }),
             keys: Mutex::new(None),
             tabs: Mutex::new(HashMap::new()),
             opening: tokio::sync::Mutex::new(()),
@@ -507,10 +519,10 @@ pub async fn browser_go(app: AppHandle, tab: u32, action: String) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>, enabled: bool, percent: u8) -> Result<(), String> {
-    let cfg = OverlayConfig { enabled, percent: percent.min(100) };
-    *lock(&browser.config) = cfg;
+pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>, enabled: bool, percent: u8, labels: OverlayLabels) -> Result<(), String> {
+    let cfg = OverlayConfig { enabled, percent: percent.min(100), labels };
     let arg = serde_json::to_string(&cfg).expect("config serializes");
+    *lock(&browser.config) = cfg;
     for (_, wv) in browser.webviews(&app) {
         wv.eval(format!("window.__lattice&&window.__lattice.configure({arg})")).map_err(|e| e.to_string())?;
     }
@@ -528,7 +540,7 @@ pub struct OverlayBoot {
 /// Only the visible browsers translate and forward shortcuts; the renderer's page stays as served.
 #[tauri::command]
 pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayBoot {
-    let config = *lock(&browser.config);
+    let config = lock(&browser.config).clone();
     if is_browser(webview.label()) {
         OverlayBoot { config, keys: lock(&browser.keys).clone() }
     } else {
@@ -609,7 +621,9 @@ mod tests {
     #[test]
     fn page_keys_keep_the_overlay_shape() {
         let keys: PageKeys = serde_json::from_str(r#"{"inFields":["Ctrl+K"],"outside":["J"],"prefix":["Ctrl+B"],"prefixMs":1500}"#).unwrap();
-        let boot = serde_json::to_value(OverlayBoot { config: OverlayConfig { enabled: true, percent: 70 }, keys: Some(keys) }).unwrap();
+        let boot =
+            serde_json::to_value(OverlayBoot { config: OverlayConfig { enabled: true, percent: 70, labels: OverlayLabels::default() }, keys: Some(keys) })
+                .unwrap();
         assert_eq!(boot["enabled"], true, "config fields at the top level, as configure() takes them");
         assert_eq!(boot["keys"]["inFields"][0], "Ctrl+K");
         assert_eq!(boot["keys"]["prefixMs"], 1500);

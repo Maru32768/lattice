@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { browser, type ArticleRow, type Bounds } from "./api";
+import { browser, type ArticleRow, type Bounds, type OverlayLabels } from "./api";
 import type { LanguageMode } from "./mixed";
 import type { Id, PageTab } from "./layout";
 import { LangSeg, ViewSeg } from "./Reader";
 import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
-import { useT } from "./i18n";
+import { useT, type T } from "./i18n";
 
 /** The `seq` each tab's webview was last told to open: a tab shown again is not reloaded. */
 const opened = new Map<Id, number>();
@@ -18,6 +18,12 @@ export interface PageLang {
 
 /** The overlay's switch and ratio for a language choice: 原文 = off, 訳文 = 100 %. */
 export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", percent: l.mode === "translated" ? 100 : l.percent });
+
+/** The overlay's tooltip text in the display language. */
+export const overlayLabels = (t: T): OverlayLabels => ({
+  original: t("reader.original"), translated: t("reader.translated"), flip: t("overlay.flip"),
+  translating: t("reader.translatingEllipsis"), failed: t("overlay.failed"), retry: t("overlay.retry"),
+});
 
 /** https:// + host emphasized + the rest; a click edits it, with the whole URL selected. */
 function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {

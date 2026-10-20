@@ -13,6 +13,7 @@
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
 import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
 import type { PageKeys } from "../keys.ts";
+import type { OverlayLabels } from "../api.ts";
 import { keyOf } from "../keyname.ts";
 
 interface Unit {
@@ -22,6 +23,8 @@ interface Unit {
 interface Config {
   enabled: boolean;
   percent: number;
+  /** Tooltip text in the app's display language. */
+  labels: OverlayLabels;
 }
 interface Pending {
   el: HTMLElement;
@@ -49,7 +52,7 @@ const BATCH_CHARS = 6000;
 const MAX_INFLIGHT = 3;
 
 const state = {
-  config: { enabled: false, percent: 70 } as Config,
+  config: { enabled: false, percent: 70, labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "" } } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
   pending: [] as Pending[],
@@ -249,7 +252,7 @@ function ensureTip() {
   return tip;
 }
 
-/** `label` / `hint`: the header line ("原文 … クリックで反転"); omitted when both are empty. */
+/** `label` / `hint`: the header line ("Original … click to flip"); omitted when both are empty. */
 function showTip(target: Element, label: string, text: string, hint: string, onClick: (() => void) | null, at?: { x: number; y: number }) {
   const t = ensureTip();
   t.target = target;
@@ -295,7 +298,8 @@ function bindSentenceHover(span: SentenceSpan) {
       if (!state.config.enabled || !span.matches(":hover")) return;
       const translated = span.dataset.shown === "t";
       const other = translated ? span.dataset.source ?? "" : plainText(span.dataset.translation ?? "");
-      showTip(span, translated ? "原文" : "訳文", other, "クリックで反転", () => {
+      const l = state.config.labels;
+      showTip(span, translated ? l.original : l.translated, other, l.flip, () => {
         span.dataset.manual = translated ? "o" : "t";
         render(span);
       }, at);
@@ -312,8 +316,9 @@ function bindBlockHover(el: HTMLElement) {
     const s = el.dataset.latticeBlock;
     if (!state.config.enabled || (s !== "translating" && s !== "failed")) return;
     clearTimeout(hideTimer);
-    if (s === "translating") showTip(el, "", "翻訳中…", "", null, { x: e.clientX, y: e.clientY });
-    else showTip(el, "", "翻訳に失敗しました", "クリックで再試行", () => {
+    const l = state.config.labels;
+    if (s === "translating") showTip(el, "", l.translating, "", null, { x: e.clientX, y: e.clientY });
+    else showTip(el, "", l.failed, l.retry, () => {
       el.dataset.latticeBlock = "pending";
       enqueue(el);
     }, { x: e.clientX, y: e.clientY });

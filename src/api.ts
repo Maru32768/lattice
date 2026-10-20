@@ -305,6 +305,16 @@ export interface ReviewSettings {
   max_interval_days: number;
 }
 
+/** Mirrors browser.rs OverlayLabels: the in-page overlay's tooltip text. */
+export interface OverlayLabels {
+  original: string;
+  translated: string;
+  flip: string;
+  translating: string;
+  failed: string;
+  retry: string;
+}
+
 export interface Bounds {
   x: number;
   y: number;
@@ -436,7 +446,7 @@ export const browser = {
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
   capture: (tab: number) => invoke<string | null>("browser_capture", { tab }),
   go: (tab: number, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
-  setTranslation: (enabled: boolean, percent: number) => invoke<void>("browser_set_translation", { enabled, percent }),
+  setTranslation: (enabled: boolean, percent: number, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 
