@@ -2,7 +2,7 @@
 //! page and runs the translation overlay. Links navigate in place; pop-ups open here too.
 //!
 //! Trust boundary: the page is remote and untrusted. Its webview gets only the capability in
-//! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot), translate calls are
+//! `capabilities/browser.json` (overlay_config / overlay_translate / overlay_snapshot / overlay_history), translate calls are
 //! refused unless the user has switched translation on, and snapshots unless the app asked for one.
 //! The background renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
 
@@ -32,6 +32,8 @@ pub struct Browser {
     /// Serializes create-or-navigate so overlapping opens cannot create the webview twice.
     opening: tokio::sync::Mutex<()>,
     visibility: Mutex<Visibility>,
+    /// (can go back, can go forward) of the current page, as the overlay last reported it.
+    history: Mutex<(bool, bool)>,
     snapshots: Snapshots,
 }
 
@@ -61,14 +63,20 @@ impl Snapshots {
     }
 }
 
-/// The webview is on screen only while the UI shows the browser view and the page opened
-/// from the app has loaded; until then the placeholder underneath shows a loading state
-/// instead of the previous page.
+/// The webview is on screen only while the UI shows the browser view and the current page has
+/// loaded; until then the placeholder underneath shows a loading state instead of the previous
+/// page. A loading page is parked off-screen rather than hidden: a hidden WebView2 stops
+/// rendering, and revealing it would first show the stale frame of the page before.
 #[derive(Default)]
 struct Visibility {
     wanted: bool,
     loading: bool,
+    /// Where the UI's placeholder is.
+    bounds: Option<Bounds>,
 }
+
+/// Off the window's client area, as the renderer's webview (`renderer.rs`).
+const PARKED: (f64, f64) = (-20000.0, -20000.0);
 
 impl Default for Browser {
     fn default() -> Self {
@@ -77,22 +85,31 @@ impl Default for Browser {
             focus: Mutex::new(None),
             opening: tokio::sync::Mutex::new(()),
             visibility: Mutex::new(Visibility::default()),
+            history: Mutex::new((true, true)),
             snapshots: Snapshots::default(),
         }
     }
 }
 
 fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
-    let show = {
+    let (wanted, loading, bounds) = {
         let mut v = lock(&browser.visibility);
         f(&mut v);
-        v.wanted && !v.loading
+        (v.wanted, v.loading, v.bounds)
     };
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
-    if show { wv.show() } else { wv.hide() }
+    match bounds.filter(|_| wanted) {
+        Some(b) => {
+            let (x, y) = if loading { PARKED } else { (b.x, b.y) };
+            wv.set_position(LogicalPosition::new(x, y))?;
+            wv.set_size(LogicalSize::new(b.width.max(1.0), b.height.max(1.0)))?;
+            wv.show()
+        }
+        None => wv.hide(),
+    }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 pub struct Bounds {
     x: f64,
     y: f64,
@@ -104,6 +121,14 @@ pub struct Bounds {
 struct PageEvent {
     url: String,
     loading: bool,
+    can_go_back: bool,
+    can_go_forward: bool,
+}
+
+fn emit_page(wv: &Webview, browser: &Browser, url: String) {
+    let loading = lock(&browser.visibility).loading;
+    let (can_go_back, can_go_forward) = *lock(&browser.history);
+    let _ = wv.app_handle().emit_to("main", "browser-page", PageEvent { url, loading, can_go_back, can_go_forward });
 }
 
 pub(crate) fn http_url(s: &str) -> Result<Url, String> {
@@ -113,11 +138,6 @@ pub(crate) fn http_url(s: &str) -> Result<Url, String> {
 
 pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
-}
-
-fn place(wv: &Webview, b: &Bounds) -> tauri::Result<()> {
-    wv.set_position(LogicalPosition::new(b.x, b.y))?;
-    wv.set_size(LogicalSize::new(b.width.max(1.0), b.height.max(1.0)))
 }
 
 pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -132,10 +152,10 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
     let url = http_url(&url)?;
     let _opening = browser.opening.lock().await;
     *lock(&browser.focus) = focus_text.filter(|t| !t.trim().is_empty());
+    let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
     if let Some(wv) = app.get_webview(LABEL) {
-        update_visibility(&wv, &browser, |v| *v = Visibility { wanted: true, loading: true }).map_err(|e| e.to_string())?;
-        wv.navigate(url).map_err(|e| e.to_string())?;
-        return place(&wv, &bounds).map_err(|e| e.to_string());
+        update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
+        return wv.navigate(url).map_err(|e| e.to_string());
     }
     let window = app.get_window("main").ok_or("main window missing")?;
     let popup_target = app.clone();
@@ -153,10 +173,14 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
         })
         .on_page_load(|wv, p| {
             let loading = matches!(p.event(), PageLoadEvent::Started);
-            let _ = wv.app_handle().emit_to("main", "browser-page", PageEvent { url: p.url().to_string(), loading });
+            let browser = wv.app_handle().state::<Browser>();
+            if loading {
+                *lock(&browser.history) = (true, true); // until the new page's overlay reports
+            }
+            // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
+            let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
+            emit_page(&wv, &browser, p.url().to_string());
             if !loading {
-                let browser = wv.app_handle().state::<Browser>();
-                let _ = update_visibility(&wv, &browser, |v| v.loading = false);
                 if let Some(text) = lock(&browser.focus).take() {
                     let arg = serde_json::to_string(&text).expect("string serializes");
                     let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({arg})"));
@@ -167,16 +191,20 @@ pub async fn browser_open(app: AppHandle, browser: State<'_, Browser>, url: Stri
             let _ = wv.app_handle().emit_to("main", "browser-title", title);
         });
     let wv = window
-        .add_child(builder, LogicalPosition::new(bounds.x, bounds.y), LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)))
+        .add_child(builder, LogicalPosition::new(PARKED.0, PARKED.1), LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)))
         .map_err(|e| e.to_string())?;
-    update_visibility(&wv, &browser, |v| *v = Visibility { wanted: true, loading: true }).map_err(|e| e.to_string())
+    update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 /// Also shows the webview (once loaded): the placeholder only exists while the browser view is on screen.
 pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, bounds: Bounds) -> Result<(), String> {
     match app.get_webview(LABEL) {
-        Some(wv) => place(&wv, &bounds).and_then(|_| update_visibility(&wv, &browser, |v| v.wanted = true)).map_err(|e| e.to_string()),
+        Some(wv) => update_visibility(&wv, &browser, |v| {
+            v.wanted = true;
+            v.bounds = Some(bounds);
+        })
+        .map_err(|e| e.to_string()),
         None => Ok(()),
     }
 }
@@ -227,6 +255,18 @@ pub async fn overlay_snapshot(browser: State<'_, Browser>, webview: Webview, non
         return Err("only http(s) pages can be saved".into());
     }
     let _ = tx.send((url.to_string(), html));
+    Ok(())
+}
+
+/// Called by the overlay with Chromium's `navigation.canGoBack/canGoForward` on load and after
+/// same-document navigations. Exposed to remote pages; it only sets the toolbar's buttons.
+#[tauri::command]
+pub fn overlay_history(browser: State<'_, Browser>, webview: Webview, can_go_back: bool, can_go_forward: bool) -> Result<(), String> {
+    if webview.label() != LABEL {
+        return Err("not the browser webview".into());
+    }
+    *lock(&browser.history) = (can_go_back, can_go_forward);
+    emit_page(&webview, &browser, webview.url().map_err(|e| e.to_string())?.to_string());
     Ok(())
 }
 

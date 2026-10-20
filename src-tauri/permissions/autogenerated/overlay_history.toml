@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-history"
+description = "Enables the overlay_history command without any pre-configured scope."
+commands.allow = ["overlay_history"]
+
+[[permission]]
+identifier = "deny-overlay-history"
+description = "Denies the overlay_history command without any pre-configured scope."
+commands.deny = ["overlay_history"]

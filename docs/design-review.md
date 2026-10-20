@@ -116,7 +116,7 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **途中で失敗しても失われない。** batch ごとに保存するので、再試行で送るのは未翻訳の分だけになる。provider が全滅した batch は job を失敗させて backoff する。
 - **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
-- **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer / aside、`translate="no"` は対象外。訳先の言語は §16 を参照。
+- **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer、`translate="no"` は対象外（aside は記事中の囲み記事が本文なので訳す）。訳先の言語は §16 を参照。
 
 ## 4. 検索 slice（実装済み）
 
@@ -469,4 +469,9 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 - **翻訳の追加の指示。** 設定「翻訳」の「追加の指示」（`settings.translate_instructions`、2000 文字まで、空なら保存しない）を、翻訳と re-split の prompt の末尾（信頼しない入力についての注意の直前）に「ユーザーからの追加の指示」として付ける。記事の翻訳もページ表示の overlay も同じ prompt を通るので両方に効く。`Target` が指示を持ち、`key()` に指示の sha256 の先頭 12 桁を `-x-instr-` で付けるので、指示を変えると別の cache になる（空の指示は従来の key のまま）。translate job は params に key と指示の本文を持ち、queue に入れたときの指示で訳す。設定画面には、指示が拡張する組み込みの prompt（英語→日本語、現在の専門用語モード）を読み取り専用で表示する。
 - **記事の削除。** `Store::delete_article`（command `delete_article`）が記事と、そこから派生したものを 1 transaction で消す。snapshot・block（FTS の行と embedding も）・job・タグ付け・要約・分類履歴・画像の対応行は FK の cascade で消え、どの記事も使わなくなった画像の bytes は既存の trigger が消す。訳文の cache（`segment_translations`）は記事から独立しているので、消す記事の block の hash のうち、他の記事の block が使っていないものだけを消す（FTS の行は trigger で消える。ページ表示でしか使っていない訳は記事を消すと失われる）。どの記事も使わなくなったタグも消す。残すもの: `feed_items`（残さないとフィードの次の取得で同じ記事を取り込み直す）、対話の回答（引用は block のテキストをコピーして持つので表示でき、引用元を開くと記事がないためページで開く）。実行中の job が消した記事に書き込もうとしても FK で失敗するだけで、job は失敗として記録される。
   - UI: Reader の ⋯ に「記事を削除…」、ページ表示で Index 済みのときの ⋯ に「Index から削除…」。どちらも確認ダイアログ（`src/ConfirmDialog.tsx`。`alertdialog`、初期フォーカスは「キャンセル」、Tab はダイアログ内を巡回、Esc と背景のクリックでキャンセル、キーはアプリのショートカットに届かない、ネイティブの webview は隠す）を通す。削除後は文書を閉じて一覧を読み直す。
+- **アプリ内ブラウザ。**
+  - ページを切り替えると前のページが一瞬見えていた。原因は 2 つ。(1) Page 表示に入ると UI の `browser_set_bounds`（同期 command）が非同期の `browser_open` より先に走り、読み込み済み扱いのままの前のページを表示していた。`BrowserView` は open の応答までは bounds を送らない。(2) 読み込み中は `hide()` していたが、非表示の WebView2 は描画を止めるので、表示し直した瞬間に前のページの最後のフレームが出る。読み込み中は隠さずにウィンドウ外（-20000, -20000。renderer と同じ）に置き、描画を続けさせる。読み込み中の扱いは、アプリから開いたときだけでなく、ページ内のリンク・戻る・進む・再読み込みを含むすべての読み込み（`PageLoadEvent::Started` から `Finished` まで）に広げた。その間は下の placeholder が「読み込み中…」を出す。読み込みが完了しない遷移（ダウンロードなど `Finished` が来ない場合）ではページが出ないままになりうる（実機では未確認）。
+  - 戻る・進むは、履歴がない方向を disabled にする。overlay が Chromium の Navigation API（`navigation.canGoBack` / `canGoForward`）を読み込み時と同一文書内の遷移（`currententrychange`）で `overlay_history` に送り、`browser-page` イベントに `can_go_back` / `can_go_forward` として載る。読み込み開始時と、API がないときは両方有効のままにする。`overlay_history` はリモートのページから呼べるが、browser webview からの呼び出しだけを受け付け、ツールバーのボタンの状態しか変えない。
+  - overlay は aside を訳す対象に含める（`SKIP` から外した。nav / header / footer は従来どおり除く）。抽出でも、Readability（dom_smoothie）はすべての `<aside>` と「sidebar」のような class を持つ要素を boilerplate として消すので、本文（`article` / `main` / `[role=main]` / `[itemprop=articleBody]`）の中の aside は parse の前に `<div>` にし、その中の class / id を外す（code と pre の class は言語を持つので残す）。本文の外の aside は従来どおり消える。`EXTRACTION_VERSION` は 2。
+  - ページ上の訳文の点線の下線をやめた（hover の背景と吹き出しは残す）。
 

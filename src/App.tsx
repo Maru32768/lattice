@@ -143,8 +143,9 @@ export default function App() {
         clearTimeout(jobTimer);
         jobTimer = window.setTimeout(loadJobs, 1000);
       }),
-      listen<{ url: string; loading: boolean }>("browser-page", (e) => {
-        setPage((p) => ({ url: e.payload.url, loading: e.payload.loading, title: p?.url === e.payload.url ? p.title : "" }));
+      listen<{ url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
+        const { url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
+        setPage((p) => ({ url, loading, canGoBack, canGoForward, title: p?.url === url ? p.title : "" }));
         if (!e.payload.loading) refreshSaved(e.payload.url);
       }),
       listen<string>("browser-title", (e) => setPage((p) => (p ? { ...p, title: e.payload } : p))),

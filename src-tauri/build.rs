@@ -70,6 +70,7 @@ const COMMANDS: &[&str] = &[
     "overlay_config",
     "overlay_translate",
     "overlay_snapshot",
+    "overlay_history",
 ];
 
 fn main() {

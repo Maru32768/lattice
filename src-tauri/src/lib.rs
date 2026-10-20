@@ -673,6 +673,7 @@ pub fn run() {
             browser::browser_set_translation,
             browser::overlay_config,
             browser::overlay_snapshot,
+            browser::overlay_history,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

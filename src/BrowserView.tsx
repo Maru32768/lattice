@@ -19,6 +19,9 @@ export interface PageState {
   url: string;
   title: string;
   loading: boolean;
+  /** From the page's Navigation API; unknown (undefined) leaves the button enabled. */
+  canGoBack?: boolean;
+  canGoForward?: boolean;
 }
 
 export interface PageLang {
@@ -67,9 +70,12 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
   };
   const coveredRef = useRef(covered);
   coveredRef.current = covered;
+  // While an open is in flight, setBounds would re-show the previous page before the backend
+  // knows a new one is loading; the open places the webview itself.
+  const opening = useRef(false);
   const sync = () => {
     const b = bounds();
-    if (b && !coveredRef.current) browser.setBounds(b).catch(() => {}); // also re-shows it
+    if (b && !coveredRef.current && !opening.current) browser.setBounds(b).catch(() => {}); // also re-shows it
   };
 
   useLayoutEffect(() => {
@@ -77,7 +83,11 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
     // reload the page, which would also cancel the first load and lose its scroll target.
     if (target === lastOpened) return;
     lastOpened = target;
-    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e)));
+    opening.current = true;
+    browser.open(target.url, bounds()!, target.focus).catch((e) => onError(String(e))).finally(() => {
+      opening.current = false;
+      sync();
+    });
   }, [target]);
 
   useEffect(() => {
@@ -104,8 +114,8 @@ export function BrowserView({ target, page, saved, saving, lang, covered, onLang
       <div className="docbar">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        <button className="ib" onClick={() => browser.go("back")} aria-label="戻る" title="戻る"><Icon name="left" /></button>
-        <button className="ib" onClick={() => browser.go("forward")} aria-label="進む" title="進む"><Icon name="right" /></button>
+        <button className="ib" onClick={() => browser.go("back")} disabled={page?.canGoBack === false} aria-label="戻る" title="戻る"><Icon name="left" /></button>
+        <button className="ib" onClick={() => browser.go("forward")} disabled={page?.canGoForward === false} aria-label="進む" title="進む"><Icon name="right" /></button>
         <button className="ib" onClick={() => browser.go("reload")} aria-label="再読み込み" title="再読み込み"><Icon name="reload" /></button>
         <UrlPill url={url} />
         <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label="このページを翻訳" />

@@ -34,8 +34,9 @@ declare global {
   }
 }
 
+// Not aside: boxed sidebars inside articles are content.
 const SKIP =
-  "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer,aside," +
+  "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer," +
   "[role='navigation'],[role='banner'],[role='contentinfo'],[contenteditable=''],[contenteditable='true']," +
   "[translate='no'],.notranslate,[data-lattice-ui]";
 const BLOCK_DISPLAY = new Set(["block", "flex", "grid", "list-item", "table", "table-row", "table-cell", "table-caption", "flow-root"]);
@@ -328,7 +329,6 @@ function start() {
   const style = document.createElement("style");
   style.dataset.latticeUi = "1";
   style.textContent = `.${SENTENCE}{cursor:help;border-radius:2px}.${SENTENCE}:hover{background:#F4EAD9}
-    .${SENTENCE}[data-shown='t']{text-decoration:underline dotted #B98A4A;text-underline-offset:4px;text-decoration-thickness:1px}
     .lattice-flash{outline:3px solid rgba(47,93,138,.55)!important;outline-offset:4px;transition:outline-color 1.5s}`;
   document.head?.append(style);
   processRoot(document.body);
@@ -340,6 +340,13 @@ function start() {
     }
   });
   state.mo.observe(document.body, { childList: true, subtree: true });
+}
+
+/** Back/forward availability for the toolbar, from Chromium's Navigation API (absent: both stay enabled). */
+function reportHistory() {
+  const nav = (window as { navigation?: { canGoBack?: unknown; canGoForward?: unknown } }).navigation;
+  if (typeof nav?.canGoBack !== "boolean" || typeof nav.canGoForward !== "boolean") return;
+  invoke("overlay_history", { canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }).catch(() => {});
 }
 
 function configure(c: Partial<Config>) {
@@ -384,4 +391,7 @@ if (window.top === window && !window.__lattice) {
       .catch(() => {});
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
   else boot();
+  reportHistory();
+  // Same-document navigations (pushState, fragments) fire no page-load event.
+  (window as { navigation?: EventTarget }).navigation?.addEventListener("currententrychange", reportHistory);
 }
