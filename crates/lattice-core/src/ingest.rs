@@ -100,6 +100,8 @@ pub struct ImportSummary {
     pub queued: usize,
     pub existing: usize,
     pub invalid: usize,
+    /// The articles the valid URLs are (new and already saved), in order.
+    pub ids: Vec<i64>,
 }
 
 /// Registers every URL as a pending article and queues a fetch job for those not yet saved.
@@ -113,6 +115,7 @@ pub fn enqueue_urls(store: &Store, urls: &[String]) -> Result<ImportSummary, Str
         };
         let domain = norm.host_str().unwrap_or_default();
         let (id, needs_work) = store.upsert_pending(url, norm.as_str(), domain).map_err(|e| e.to_string())?;
+        s.ids.push(id);
         if needs_work {
             store.enqueue_job(JOB_TYPE, id, "{}", &format!("{JOB_TYPE}:{id}")).map_err(|e| e.to_string())?;
             s.queued += 1;
@@ -219,7 +222,7 @@ mod tests {
     fn enqueue_counts_and_is_idempotent() {
         let s = Store::open_in_memory().unwrap();
         let urls: Vec<String> = ["https://a.dev/1", "https://a.dev/2", "notaurl"].map(String::from).to_vec();
-        assert_eq!(enqueue_urls(&s, &urls).unwrap(), ImportSummary { found: 3, queued: 2, existing: 0, invalid: 1 });
+        assert_eq!(enqueue_urls(&s, &urls).unwrap(), ImportSummary { found: 3, queued: 2, existing: 0, invalid: 1, ids: vec![1, 2] });
         // Not yet fetched: queued again, but dedup_key keeps one job per article.
         assert_eq!(enqueue_urls(&s, &urls[..1]).unwrap().queued, 1);
         let first = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();

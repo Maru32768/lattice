@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ArticleRow } from "./api";
+import type { ArticleRow, GroupRow } from "./api";
 import { DIM_LABELS, DIFFICULTY_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "./Popover";
 import { ActionKey, Icon, Kbd } from "./Icon";
@@ -24,13 +24,14 @@ function Marked({ text, q }: { text: string; q: string }) {
 }
 
 /** Facet picker for one dimension; tags get search, AND/OR and the in-set / out-of-set split (Filter board). */
-export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose }: {
+export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor, onClose }: {
   dim: Dim;
   facets: Facets;
   onFacets: (f: Facets) => void;
   /** The rows counts are taken from (library.facetBase). */
   base: ArticleRow[];
   all: ArticleRow[];
+  groups: GroupRow[];
   anchor: HTMLElement;
   onClose: () => void;
 }) {
@@ -41,7 +42,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
   const isTags = dim === "tags";
   const selected = facets[dim] as DimValue<Dim>[];
   const counts = useMemo(() => countBy(base, dim), [base, dim]);
-  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, t), count: counts.get(v) ?? 0 })), [dim, all, counts, t]);
+  const opts: Opt[] = useMemo(() => universe(dim, all).map((v) => ({ v, label: valueLabel(dim, v, all, groups, t), count: counts.get(v) ?? 0 })), [dim, all, groups, counts, t]);
 
   // Tags: popular (no query), or matches split into in-set (prefix first) and out-of-set.
   const sections = useMemo(() => {

@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { api, type ImportSummary } from "./api";
+import { api, type GroupRow, type ImportSummary } from "./api";
+import { GroupPicker } from "./GroupPicker";
+import { Icon } from "./Icon";
 import "./manage.css";
 import { useT, type PlainKey } from "./i18n";
 
@@ -13,14 +15,23 @@ const SUB: Record<ImportTab, PlainKey> = {
 
 /** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), one
  *  Markdown document (from a file or pasted), or one PDF file. */
-export function ImportView({ tab, onTab, onImported, onOpen }: {
+export function ImportView({ tab, onTab, onImported, onOpen, groups, initialGroups, onCreateGroup }: {
   tab: ImportTab;
   onTab: (t: ImportTab) => void;
   onImported: () => void;
   /** After a Markdown or PDF import: the article it made (or already was). */
   onOpen: (id: number) => void;
+  groups: GroupRow[];
+  /** The groups imported articles go into at first (the list's group scope). */
+  initialGroups: number[];
+  onCreateGroup: (name: string) => Promise<number>;
 }) {
   const t = useT();
+  const [into, setInto] = useState(initialGroups);
+  /** Puts imported articles into the chosen groups (already-saved ones too). */
+  const fileInto = async (ids: number[]) => {
+    for (const g of into) await api.groupAdd(g, ids);
+  };
   return (
     <main className="manage">
       <div className="wrap">
@@ -37,13 +48,38 @@ export function ImportView({ tab, onTab, onImported, onOpen }: {
             </div>
           </div>
         </header>
-        {tab === "urls" ? <UrlImport onImported={onImported} /> : tab === "markdown" ? <MarkdownImport onOpen={onOpen} /> : <PdfImport onOpen={onOpen} />}
+        <GroupField groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} />
+        {tab === "urls" ? <UrlImport onImported={onImported} fileInto={fileInto} /> : tab === "markdown" ? <MarkdownImport onOpen={onOpen} fileInto={fileInto} /> : <PdfImport onOpen={onOpen} fileInto={fileInto} />}
       </div>
     </main>
   );
 }
 
-function UrlImport({ onImported }: { onImported: () => void }) {
+/** グループ: where imported articles go; none by default. */
+function GroupField({ groups, into, onInto, onCreate }: {
+  groups: GroupRow[]; into: number[]; onInto: (ids: number[]) => void; onCreate: (name: string) => Promise<number>;
+}) {
+  const t = useT();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const names = groups.filter((g) => into.includes(g.id)).map((g) => g.name);
+  return (
+    <div className="import-groups">
+      <span className="muted">{t("common.group")}</span>
+      <button className={`chip${names.length ? " on" : " dashed"}`} aria-haspopup="dialog" aria-expanded={!!anchor}
+        onClick={(e) => { const el = e.currentTarget; setAnchor((a) => (a ? null : el)); }}>
+        <Icon name="folder" size="sm" />{names.length ? names.join(" · ") : t("importView.noGroup")}<Icon name="down" size="sm" />
+      </button>
+      {anchor && (
+        <GroupPicker groups={groups} selected={into} anchor={anchor} onClose={() => setAnchor(null)} onCreate={onCreate}
+          onToggle={(id, on) => onInto(on ? [...into, id] : into.filter((x) => x !== id))} />
+      )}
+    </div>
+  );
+}
+
+type FileInto = (ids: number[]) => Promise<void>;
+
+function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto: FileInto }) {
   const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -58,7 +94,9 @@ function UrlImport({ onImported }: { onImported: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      setResult(await api.importUrls(text));
+      const r = await api.importUrls(text);
+      await fileInto(r.ids);
+      setResult(r);
       onImported();
     } catch (e) {
       setError(String(e));
@@ -92,7 +130,7 @@ function UrlImport({ onImported }: { onImported: () => void }) {
   );
 }
 
-function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
+function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
   const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -103,7 +141,9 @@ function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
     setError(null);
     try {
       const id = await load();
-      if (id != null) onOpen(id);
+      if (id == null) return;
+      await fileInto([id]);
+      onOpen(id);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -126,7 +166,7 @@ function MarkdownImport({ onOpen }: { onOpen: (id: number) => void }) {
   );
 }
 
-function PdfImport({ onOpen }: { onOpen: (id: number) => void }) {
+function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -136,7 +176,9 @@ function PdfImport({ onOpen }: { onOpen: (id: number) => void }) {
     setError(null);
     try {
       const id = await api.importPdfFile();
-      if (id != null) onOpen(id);
+      if (id == null) return;
+      await fileInto([id]);
+      onOpen(id);
     } catch (e) {
       setError(String(e));
     } finally {

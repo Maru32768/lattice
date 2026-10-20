@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, siteOf, type ArticleRow, type FeedRow } from "./api";
+import { api, siteOf, type ArticleRow, type FeedRow, type GroupRow } from "./api";
 import { feedName } from "./groups";
-import { activeDims, countBy, facetLabel, genreSwatch, scopeLabel, type Facets, type Scope } from "./library";
+import { activeDims, countBy, facetLabel, genreSwatch, groupName, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
 import { useCover } from "./Popover";
 import { Icon, Kbd, type IconName } from "./Icon";
@@ -15,7 +15,8 @@ export interface PaletteActions {
   /** `newTab`: Ctrl-clicked. */
   open: (a: ArticleRow, newTab?: boolean) => void;
   page: (url: string, newTab?: boolean) => void;
-  index: (url: string) => void;
+  /** `group`: also put the saved article in that group. */
+  index: (url: string, group?: number) => void;
   discover: (url: string) => void;
   search: (q: string) => void;
   screen: (s: Screen) => void;
@@ -28,6 +29,8 @@ export interface PaletteActions {
   lang: (mode: LanguageMode, percent?: number) => void;
   /** Null when no article is open. */
   translate: (() => void) | null;
+  /** Opens the open Reader article's group picker; null without one. */
+  addToGroup: (() => void) | null;
 }
 
 /** Result groups; URL actions have no heading. */
@@ -66,12 +69,13 @@ function Hl({ text, q }: { text: string; q: string }) {
 const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg">{children}</span>;
 
 /** Ctrl K: one input for commands, articles, filters, URLs and search (Palette board). */
-export function Palette({ initial, all, shown, feeds, scope, facets, actions, onClose }: {
+export function Palette({ initial, all, shown, feeds, groups, scope, facets, actions, onClose }: {
   initial: string;
   all: ArticleRow[];
   /** The list as currently filtered, for "現在の集合で N 件". */
   shown: ArticleRow[];
   feeds: FeedRow[];
+  groups: GroupRow[];
   scope: Scope;
   facets: Facets;
   actions: PaletteActions;
@@ -113,6 +117,8 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     ...genreCounts.map(([g]): Command => ({ label: t("palette.genreCommand", { name: g ?? t("common.unclassified") }), keys: `genre ${g ?? t("common.unclassified")}`, icon: "filter", run: () => actions.scope({ kind: "genre", name: g }) })),
     ...feeds.map((f): Command => ({ label: t("palette.sourceCommand", { name: feedName(f) }), keys: `source feed ${feedName(f)} ${f.title ?? ""} ${f.url}`, icon: "rss", run: () => actions.scope({ kind: "feed", id: f.id }) })),
     { label: t("palette.sourceCommand", { name: t("common.manual") }), keys: `source manual ${t("common.manual")}`, icon: "manual", run: () => actions.scope({ kind: "feed", id: null }) },
+    ...groups.map((g): Command => ({ label: t("palette.groupCommand", { name: g.name }), keys: `group ${t("common.group")} ${g.name}`, icon: "folder", run: () => actions.scope({ kind: "group", id: g.id }) })),
+    ...(actions.addToGroup ? [{ label: t("palette.addToGroup"), keys: `add group ${t("common.group")}`, icon: "folder", run: actions.addToGroup } as Command] : []),
     ...(actions.translate ? [{ label: t("palette.translate"), keys: "translate", icon: "translate", run: actions.translate } as Command] : []),
     { label: t("palette.langMixed"), keys: `translate mixed ratio ${t("palette.aliasRatio")}`, icon: "translate", run: (n) => actions.lang("mixed", n ?? undefined), withNumber: (n) => t("palette.langMixedN", { n }) },
     { label: t("palette.langOriginal"), keys: "original", icon: "translate", run: () => actions.lang("original") },
@@ -127,7 +133,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     { label: t("common.importMarkdown"), keys: `markdown md import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importMarkdown },
     { label: t("palette.importPdf"), keys: `pdf paper arxiv import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importPdf },
     { label: t("palette.settings"), keys: "settings", icon: "gear", run: () => actions.screen("settings") },
-  ], [genreCounts, feeds, actions, t]);
+  ], [genreCounts, feeds, groups, actions, t]);
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
@@ -142,6 +148,10 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       if (known) out.push({ group: "url", icon: "reader", label: t("palette.openInReader"), sub: known.title ?? undefined, right: t("palette.saved"), run: (newTab) => actions.open(known, newTab) });
       out.push(page);
       out.push({ group: "url", icon: "import", label: t("palette.index"), right: <><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd></>, run: () => actions.index(url) });
+      if (scope.kind === "group") {
+        const id = scope.id;
+        out.push({ group: "url", icon: "folder", label: t("palette.indexToGroup", { name: groupName(id, groups, t) }), run: () => actions.index(url, id) });
+      }
       out.push({ group: "url", icon: "rss", label: t("palette.discover"), run: () => actions.discover(url) });
       return out;
     }
@@ -161,8 +171,8 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       const words = tl.split(/\s+/).filter(Boolean);
       const num = words.map(Number).find((n) => Number.isInteger(n) && n >= 0 && n <= 100) ?? null;
       const terms = words.filter((w) => !/^\d+$/.test(w));
-      // Per-genre and per-source commands only once the query asks for them.
-      const cmds = commands.filter((c) => (terms.length ? terms.every((w) => `${c.label} ${c.keys}`.toLowerCase().includes(w)) : !/^(genre|source) /.test(c.keys)));
+      // Per-genre, per-source and per-group commands only once the query asks for them.
+      const cmds = commands.filter((c) => (terms.length ? terms.every((w) => `${c.label} ${c.keys}`.toLowerCase().includes(w)) : !/^(genre|source|group) /.test(c.keys)));
       const shownCmds = !prefix && text ? cmds.slice(0, 3) : cmds;
       for (const c of shownCmds) {
         out.push({ group: "commands", icon: c.icon, label: num != null && c.withNumber ? c.withNumber(num) : c.label, run: () => c.run(num) });
@@ -198,7 +208,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
       }
     }
     return out;
-  }, [raw, url, known, commands, all, shown, feeds, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
+  }, [raw, url, known, commands, all, shown, feeds, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
 
   useEffect(() => setAct(0), [raw]);
   useEffect(() => { list.current?.querySelector(".it.act")?.scrollIntoView({ block: "nearest" }); }, [act]);
@@ -235,7 +245,7 @@ export function Palette({ initial, all, shown, feeds, scope, facets, actions, on
     }
   }
 
-  const where = [scopeLabel(scope, all, t), ...activeDims(facets).map((d) => facetLabel(facets, d, all, t))].join(" · ");
+  const where = [scopeLabel(scope, all, groups, t), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
   let lastGroup: Item["group"] | "" = "";
   return (
     <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

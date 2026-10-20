@@ -44,3 +44,6 @@ export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" |
   const feeds = groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? t("common.manual")]);
   return ordered(feeds, "f:", true).map((f) => ({ ...f, children: byGenre(f.articles, t) }));
 }
+
+/** The articles of `groups` in display order. */
+export const flatten = <A>(groups: Group<A>[]): A[] => groups.flatMap((g) => (g.children ? flatten(g.children) : g.articles));

@@ -1,4 +1,4 @@
-import type { ArticleFilter, FeedRow, TagCount } from "./api";
+import type { ArticleFilter, FeedRow, GroupRow, TagCount } from "./api";
 import { feedName } from "./groups.ts";
 import type { T } from "./i18n/index.ts";
 
@@ -11,10 +11,11 @@ export interface FilterGroup {
 export const filterKey = (f: ArticleFilter) => JSON.stringify(f);
 export const parseFilterKey = (k: string) => JSON.parse(k) as ArticleFilter;
 
-/** Genre / feed / tag filters as `<optgroup>`s for the search and chat scope pickers. Empty genres are left out. */
-export function filterGroups(genres: TagCount[], feeds: FeedRow[], tags: TagCount[], t: T): FilterGroup[] {
+/** Group / genre / feed / tag filters as `<optgroup>`s for the search and chat scope pickers. Empty genres are left out. */
+export function filterGroups(groups: GroupRow[], genres: TagCount[], feeds: FeedRow[], tags: TagCount[], t: T): FilterGroup[] {
   const opt = (f: ArticleFilter, label: string) => ({ key: filterKey(f), label });
   return [
+    { label: t("common.group"), options: groups.map((g) => opt({ kind: "group", id: g.id }, t("scopes.option", { name: g.name, count: g.count }))) },
     {
       label: t("common.genre"),
       options: [

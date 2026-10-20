@@ -135,3 +135,4 @@
 .stg .kbd.clash { border-color: var(--tr-line); color: var(--tr-ink); }
 .stg .warn-text { color: var(--tr-ink); }
 .stg .btn.rec { border-color: var(--acc-line); background: var(--acc-soft); color: var(--acc-ink); }
+.manage .import-groups { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12.5px; }

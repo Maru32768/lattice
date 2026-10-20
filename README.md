@@ -124,7 +124,7 @@ lattice-cli search "MVCC write skew" --limit 5
 lattice-cli --format text get 42
 ```
 
-Output is JSON unless you pass `--format text`. The commands are `search`, `get` (`--blocks`, `--translation`), `list`, `summary`, `tags`, `genres`, `feeds`, `jobs` and `ask`. `--scope` takes `unread`, `favorites`, `tag:NAME`, `genre:NAME`, `feed:ID` or `article:ID`. `--data-dir` points at another data folder. `lattice-cli --help` lists everything.
+Output is JSON unless you pass `--format text`. The commands are `search`, `get` (`--blocks`, `--translation`), `list`, `summary`, `tags`, `genres`, `feeds`, `jobs` and `ask`. `--scope` takes `unread`, `favorites`, `tag:NAME`, `genre:NAME`, `feed:ID`, `group:ID` or `article:ID`. `--data-dir` points at another data folder. `lattice-cli --help` lists everything.
 
 - **Search** is hybrid, like the app's. If the app has not downloaded the semantic search model yet, results are full text only and the JSON says so (`"mode": "full_text"`); the CLI never downloads the model.
 - **Ask** answers from your saved articles through the AI providers set in the app, and the question shows up in the app's chat history.

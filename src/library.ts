@@ -1,6 +1,6 @@
 // The library's article set is one query: scope ∧ facets (∧ search). All of it is derived
 // client-side from the full article list, which the backend returns without a limit.
-import type { ArticleFilter, ArticleRow } from "./api.ts";
+import type { ArticleFilter, ArticleRow, GroupRow } from "./api.ts";
 import type { PlainKey, T } from "./i18n/index.ts";
 
 /** NAVIGATION layer: exactly one, chosen in the sidebar; replaces the previous one. */
@@ -8,7 +8,8 @@ export type Scope =
   | { kind: "recent" } // saved within the last 7 days
   | { kind: "unread" } | { kind: "favorites" } | { kind: "all" }
   | { kind: "genre"; name: string | null } // null = 未分類
-  | { kind: "feed"; id: number | null }; // null = 手動追加
+  | { kind: "feed"; id: number | null } // null = 手動追加
+  | { kind: "group"; id: number };
 
 export type ArticleState = "unread" | "read" | "favorite" | "issue";
 
@@ -18,16 +19,19 @@ export interface Facets {
   tags: string[];
   tagMode: "all" | "any";
   feeds: (number | null)[];
+  groups: number[];
   difficulty: (number | null)[]; // null = 未判定
   state: ArticleState[]; // issue = fetch/extraction failed or thin
 }
 
-export type Dim = "genres" | "tags" | "feeds" | "difficulty" | "state";
+export type Dim = "genres" | "tags" | "groups" | "feeds" | "difficulty" | "state";
 export type DimValue<D extends Dim> = Facets[D][number];
 
-export const DIMS: Dim[] = ["genres", "tags", "feeds", "difficulty", "state"];
-export const DIM_LABELS: Record<Dim, PlainKey> = { genres: "common.genre", tags: "common.tag", feeds: "common.source", difficulty: "common.difficulty", state: "library.state" };
-export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], difficulty: [], state: [] };
+export const DIMS: Dim[] = ["genres", "tags", "groups", "feeds", "difficulty", "state"];
+export const DIM_LABELS: Record<Dim, PlainKey> = {
+  genres: "common.genre", tags: "common.tag", groups: "common.group", feeds: "common.source", difficulty: "common.difficulty", state: "library.state",
+};
+export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], groups: [], difficulty: [], state: [] };
 
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
 export const DIFFICULTY_LABELS: PlainKey[] = ["library.difficulty1", "library.difficulty2", "library.difficulty3", "library.difficulty4", "library.difficulty5"];
@@ -45,6 +49,7 @@ export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
     case "favorites": return a.favorite;
     case "genre": return a.genre === s.name;
     case "feed": return a.feed_id === s.id;
+    case "group": return a.groups.includes(s.id);
   }
 }
 
@@ -54,6 +59,7 @@ export function valuesOf<D extends Dim>(a: ArticleRow, dim: D): DimValue<D>[] {
     switch (dim) {
       case "genres": return [a.genre];
       case "tags": return a.tags;
+      case "groups": return a.groups;
       case "feeds": return [a.feed_id];
       case "difficulty": return [a.difficulty];
       case "state": return [a.read_status, ...(a.favorite ? ["favorite"] : []), ...(hasIssue(a) ? ["issue"] : [])];
@@ -122,22 +128,26 @@ export function facetBase(scoped: ArticleRow[], f: Facets, dim: Dim): ArticleRow
   return scoped.filter((a) => matches(a, base));
 }
 
-export function scopeLabel(s: Scope, all: ArticleRow[], t: T): string {
+export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((g) => g.id === id)?.name ?? t("common.group");
+
+export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T): string {
   switch (s.kind) {
     case "recent": return t("library.recent");
     case "unread": return t("common.unread");
     case "favorites": return t("common.favorites");
     case "all": return t("common.allArticles");
     case "genre": return s.name ?? t("common.unclassified");
-    case "feed": return valueLabel("feeds", s.id, all, t);
+    case "feed": return valueLabel("feeds", s.id, all, groups, t);
+    case "group": return groupName(s.id, groups, t);
   }
 }
 
 /** Display name of a facet value; feed names come from the articles' feed_title. */
-export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRow[], t: T): string {
+export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRow[], groups: GroupRow[], t: T): string {
   switch (dim) {
     case "genres": return (v as string | null) ?? t("common.unclassified");
     case "tags": return v as string;
+    case "groups": return groupName(v as number, groups, t);
     case "feeds": {
       if (v == null) return t("common.manual");
       return all.find((a) => a.feed_id === v)?.feed_title ?? t("library.feedN", { id: String(v) });
@@ -151,9 +161,9 @@ export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRo
 }
 
 /** "postgres + mvcc" (all) / "postgres / mvcc" (any). */
-export function facetLabel(f: Facets, dim: Dim, all: ArticleRow[], t: T): string {
+export function facetLabel(f: Facets, dim: Dim, all: ArticleRow[], groups: GroupRow[], t: T): string {
   const sep = dim === "tags" && f.tagMode === "all" ? " + " : " / ";
-  return (f[dim] as DimValue<Dim>[]).map((v) => valueLabel(dim, v, all, t)).join(sep);
+  return (f[dim] as DimValue<Dim>[]).map((v) => valueLabel(dim, v, all, groups, t)).join(sep);
 }
 
 export interface Relaxation {
@@ -164,15 +174,15 @@ export interface Relaxation {
 }
 
 /** Empty-state suggestions: for each active facet (and the scope if not "all"), the count if it alone were removed. */
-export function relaxations(all: ArticleRow[], s: Scope, f: Facets, now: number, t: T): Relaxation[] {
+export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T): Relaxation[] {
   const count = (scope: Scope, facets: Facets) => all.filter((a) => inScope(a, scope, now) && matches(a, facets)).length;
   const out: Relaxation[] = activeDims(f).map((d) => {
     const facets = without(f, d);
-    return { label: t("library.dropFacet", { dim: t(DIM_LABELS[d]), value: facetLabel(f, d, all, t) }), count: count(s, facets), scope: s, facets };
+    return { label: t("library.dropFacet", { dim: t(DIM_LABELS[d]), value: facetLabel(f, d, all, groups, t) }), count: count(s, facets), scope: s, facets };
   });
   if (s.kind !== "all") {
     const scope: Scope = { kind: "all" };
-    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, t) }), count: count(scope, f), scope, facets: f });
+    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t) }), count: count(scope, f), scope, facets: f });
   }
   return out;
 }

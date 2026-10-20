@@ -158,7 +158,9 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
             <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} aria-label={t("chatPane.scopeLabel")}>
               <option value="article" disabled={!article}>{t("chatPane.thisArticle")}{article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}</option>
               <option value="all">{t("chatPane.allArticles")}</option>
-              {current && <option value={current.key}>{t("chatPane.currentList", { label: current.label })}</option>}
+              {current && <option value={current.key}>
+                {parseFilterKey(current.key).kind === "group" ? t("chatPane.thisGroup", { label: current.label }) : t("chatPane.currentList", { label: current.label })}
+              </option>}
               <FilterOptgroups groups={groups} />
             </select>
             <Icon name="down" size="sm" />

@@ -468,6 +468,23 @@ CREATE TABLE vocab_log (
 CREATE INDEX vocab_log_card ON vocab_log(card_id);
 CREATE INDEX vocab_log_time ON vocab_log(reviewed_at);
 "#,
+    r#"
+-- Resource groups (G53, groups.rs): collections the user makes by hand; an article can be in many.
+CREATE TABLE groups (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    color       TEXT,
+    description TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE TABLE group_articles (
+    group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    added_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    PRIMARY KEY (group_id, article_id)
+);
+CREATE INDEX group_articles_article ON group_articles(article_id);
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -562,6 +579,8 @@ pub struct ArticleRow {
     pub read_status: String,
     pub favorite: bool,
     pub tags: Vec<String>,
+    /// Ids of the groups the article is in (`groups.rs`).
+    pub groups: Vec<i64>,
     pub genre: Option<String>,
     /// The user chose the genre; auto classification leaves it alone.
     pub genre_manual: bool,
@@ -596,6 +615,9 @@ pub enum ArticleFilter {
     Feed {
         id: Option<i64>,
     },
+    Group {
+        id: i64,
+    },
 }
 
 /// SQL condition on `articles` for `filter`, with its one parameter (`?1`) if any.
@@ -611,6 +633,7 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::Genre { name: None } => ("genre_id IS NULL", None),
         ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
         ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
+        ArticleFilter::Group { id } => ("EXISTS (SELECT 1 FROM group_articles WHERE article_id = articles.id AND group_id = ?1)", Some((*id).into())),
     }
 }
 
@@ -737,7 +760,8 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
-    (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1)";
+    (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
+    (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id))";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     let snapshot_type: Option<String> = r.get(23)?;
@@ -758,6 +782,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         read_status: r.get(13)?,
         favorite: r.get(14)?,
         tags: from_json_col(r, 15, str::to_string)?,
+        groups: from_json_col(r, 24, str::to_string)?,
         genre: r.get(16)?,
         genre_manual: r.get(17)?,
         difficulty: r.get(21)?,
@@ -1602,6 +1627,22 @@ mod tests {
         let s = Store::init(conn).unwrap();
         assert!(crate::vocab::list(&s).unwrap().is_empty());
         assert_eq!(crate::review::overview(&s, 0).unwrap().due, 1, "the quiz card is still due");
+    }
+
+    #[test]
+    fn group_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE groups")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch("INSERT INTO articles (original_url, normalized_url, domain) VALUES ('https://a.dev/1', 'https://a.dev/1', 'a.dev');").unwrap();
+        let s = Store::init(conn).unwrap();
+        assert_eq!(s.article_row(1).unwrap().unwrap().groups, Vec::<i64>::new());
+        let g = crate::groups::create(&s, "Reading").unwrap();
+        crate::groups::add(&s, g, &[1]).unwrap();
+        assert_eq!(s.list_articles(&ArticleFilter::Group { id: g }).unwrap().len(), 1);
     }
 
     #[test]

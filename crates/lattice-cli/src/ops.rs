@@ -33,7 +33,7 @@ pub enum Op {
     /// Hybrid search (full text and meaning) over the blocks of saved articles
     Search {
         query: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID or article:ID
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -55,7 +55,7 @@ pub enum Op {
     },
     /// Saved articles, newest first
     List {
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID or article:ID
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -76,7 +76,7 @@ pub enum Op {
     /// Ask a question answered from saved articles, with citations (uses the app's LLM chain)
     Ask {
         question: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID or article:ID
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -127,8 +127,14 @@ fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
         Some(("tag", name)) if !name.is_empty() => ArticleFilter::Tag { name: name.into() },
         Some(("genre", name)) if !name.is_empty() => ArticleFilter::Genre { name: Some(name.into()) },
         Some(("feed", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Feed { id: id.parse().ok() },
+        Some(("group", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Group { id: id.parse().map_err(err)? },
         Some(("article", id)) if id.parse::<i64>().is_ok() => return Ok(Scope::Article { id: id.parse().map_err(err)? }),
-        _ => return Err(format!("unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID or article:ID", scope.unwrap_or_default())),
+        _ => {
+            return Err(format!(
+                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID or article:ID",
+                scope.unwrap_or_default()
+            ));
+        }
     };
     Ok(Scope::Filter { filter })
 }
@@ -331,8 +337,9 @@ mod tests {
         assert_eq!(f("tag:db:mvcc"), ArticleFilter::Tag { name: "db:mvcc".into() }, "only the first colon splits");
         assert_eq!(f("genre:データベース"), ArticleFilter::Genre { name: Some("データベース".into()) });
         assert_eq!(f("feed:3"), ArticleFilter::Feed { id: Some(3) });
+        assert_eq!(f("group:4"), ArticleFilter::Group { id: 4 });
         assert_eq!(parse_scope(Some("article:7")).unwrap(), Scope::Article { id: 7 });
-        for bad in ["tag:", "feed:x", "article:", "starred", "unread:1"] {
+        for bad in ["tag:", "feed:x", "group:", "group:x", "article:", "starred", "unread:1"] {
             assert!(parse_scope(Some(bad)).is_err(), "{bad}");
         }
     }

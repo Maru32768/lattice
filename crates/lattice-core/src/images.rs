@@ -348,7 +348,7 @@ mod tests {
         let svg = s.get_article(a, "ja").unwrap().unwrap().blocks.last().unwrap().id;
         assert_eq!(data_url(&s, svg).unwrap(), None, "not stored: the Reader shows the link");
         let mut out = Vec::new();
-        crate::export::export_to(&s, &mut out).unwrap();
+        crate::export::export_to(&s, &mut out, None).unwrap();
         let hash: String = Sha256::digest(PNG).iter().map(|b| format!("{b:02x}")).collect();
         assert_eq!(String::from_utf8(out).unwrap().matches(&format!("\"image_hash\":\"{hash}\"")).count(), 2, "export lists hashes, not bytes");
 

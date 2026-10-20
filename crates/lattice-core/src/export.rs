@@ -1,5 +1,5 @@
 //! JSON export (§17): articles, their translations, summaries and quizzes (with review state),
-//! and chat, in an open format, so none of it lives only in this database or at an LLM provider. One JSON object per line,
+//! groups, and chat, in an open format, so none of it lives only in this database or at an LLM provider. One JSON object per line,
 //! gzip-compressed, written article by article: 10^5 articles never sit in memory at once.
 //! Left out: settings (API keys and other secrets), raw HTML snapshots, image bytes, embeddings
 //! and jobs; the database backup has the snapshots, images and embeddings. Image blocks carry
@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
+use crate::msg;
 use crate::store::Store;
 
 pub const FORMAT: &str = "lattice-export/1";
@@ -63,13 +64,33 @@ const QUIZZES: &str = "SELECT json_group_array(json_object(
         ORDER BY z.id)
     FROM quizzes z JOIN articles a ON a.id = z.article_id WHERE z.article_id = ?1";
 
-/// Writes the export as JSON lines: a header (`format`), then `feed`, `article` and `chat_thread`
-/// objects. Returns the number of articles written.
+/// Writes the export as JSON lines: a header (`format`), then `feed`, `group`, `article` and
+/// `chat_thread` objects; each article lists the ids of its `groups`. `group` limits it to that
+/// group's articles (and that group), without chats, which may cite articles outside it.
+/// Returns the number of articles written.
 // shortcut: not a snapshot (the store lock is taken per article so jobs and the UI keep going);
 // changes made during an export may be half in it. Export from a `backup_to` copy if that matters.
-pub fn export_to(store: &Store, out: &mut impl Write) -> Result<usize, String> {
+pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Result<usize, String> {
+    let groups: Vec<Value> = {
+        let c = store.conn();
+        let mut st = c.prepare("SELECT id, name, color, description, created_at FROM groups WHERE ?1 IS NULL OR id = ?1 ORDER BY id").map_err(err)?;
+        st.query_map([group], |r| {
+            Ok(json!({"type": "group", "id": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?, "color": r.get::<_, Option<String>>(2)?,
+                      "description": r.get::<_, Option<String>>(3)?, "created_at": r.get::<_, String>(4)?}))
+        })
+        .map_err(err)?
+        .collect::<Result<_, _>>()
+        .map_err(err)?
+    };
+    if group.is_some() && groups.is_empty() {
+        return Err(msg!("groups.notFound"));
+    }
     let exported_at: String = store.conn().query_row("SELECT strftime('%Y-%m-%dT%H:%M:%fZ','now')", [], |r| r.get(0)).map_err(err)?;
-    line(out, &json!({"format": FORMAT, "exported_at": exported_at}))?;
+    let mut header = json!({"format": FORMAT, "exported_at": exported_at});
+    if let Some(id) = group {
+        header["group"] = id.into();
+    }
+    line(out, &header)?;
 
     let feeds: Vec<Value> = {
         let c = store.conn();
@@ -82,14 +103,16 @@ pub fn export_to(store: &Store, out: &mut impl Write) -> Result<usize, String> {
         .collect::<Result<_, _>>()
         .map_err(err)?
     };
-    for f in &feeds {
-        line(out, f)?;
+    for v in feeds.iter().chain(&groups) {
+        line(out, v)?;
     }
 
     let ids: Vec<i64> = {
         let c = store.conn();
-        let mut st = c.prepare("SELECT id FROM articles ORDER BY id").map_err(err)?;
-        st.query_map([], |r| r.get(0)).map_err(err)?.collect::<Result<_, _>>().map_err(err)?
+        let mut st = c
+            .prepare("SELECT id FROM articles WHERE ?1 IS NULL OR id IN (SELECT article_id FROM group_articles WHERE group_id = ?1) ORDER BY id")
+            .map_err(err)?;
+        st.query_map([group], |r| r.get(0)).map_err(err)?.collect::<Result<_, _>>().map_err(err)?
     };
     let mut n = 0;
     for id in ids {
@@ -108,6 +131,9 @@ pub fn export_to(store: &Store, out: &mut impl Write) -> Result<usize, String> {
         n += 1;
     }
 
+    if group.is_some() {
+        return Ok(n);
+    }
     for t in store.chat_threads().map_err(err)? {
         let messages = store.chat_messages(t.id).map_err(err)?;
         line(out, &json!({"type": "chat_thread", "id": t.id, "title": t.title, "updated_at": t.updated_at, "messages": messages}))?;
@@ -117,15 +143,19 @@ pub fn export_to(store: &Store, out: &mut impl Write) -> Result<usize, String> {
 
 /// Writes `lattice-export-<UTC>.jsonl.gz` into `dir` and returns its path. A failed export
 /// leaves no partial file behind.
-pub fn export_file(store: &Store, dir: &Path) -> Result<PathBuf, String> {
+pub fn export_file(store: &Store, dir: &Path, group: Option<i64>) -> Result<PathBuf, String> {
     std::fs::create_dir_all(dir).map_err(err)?;
     let stamp: String = store.conn().query_row("SELECT strftime('%Y%m%dT%H%M%SZ','now')", [], |r| r.get(0)).map_err(err)?;
+    let stamp = match group {
+        Some(g) => format!("group{g}-{stamp}"),
+        None => stamp,
+    };
     let path = dir.join(format!("lattice-export-{stamp}.jsonl.gz"));
     let part = dir.join(format!("lattice-export-{stamp}.part"));
     let write = || -> Result<usize, String> {
         let file = std::io::BufWriter::new(std::fs::File::create(&part).map_err(err)?);
         let mut gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        let n = export_to(store, &mut gz)?;
+        let n = export_to(store, &mut gz, group)?;
         gz.finish().map_err(err)?.into_inner().map_err(err)?.sync_all().map_err(err)?;
         std::fs::rename(&part, &path).map_err(err)?;
         Ok(n)
@@ -181,7 +211,7 @@ mod tests {
         ));
 
         let mut out = Vec::new();
-        assert_eq!(export_to(&s, &mut out).unwrap(), 1);
+        assert_eq!(export_to(&s, &mut out, None).unwrap(), 1);
         let text = String::from_utf8(out).unwrap();
         assert!(!text.contains("sk-TOPSECRET") && !text.contains("<article>"), "{text}");
         let lines: Vec<Value> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
@@ -210,5 +240,31 @@ mod tests {
         let chat = &lines[2];
         assert_eq!((chat["type"].as_str(), chat["messages"][0]["answer"].as_str()), (Some("chat_thread"), Some("answer [1]")));
         assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn a_group_export_has_its_articles_and_every_article_its_groups() {
+        let s = Store::open_in_memory().unwrap();
+        for u in ["https://a.dev/1", "https://a.dev/2"] {
+            s.upsert_pending(u, u, "a.dev").unwrap();
+        }
+        let g = crate::groups::create(&s, "Paper").unwrap();
+        let other = crate::groups::create(&s, "Other").unwrap();
+        crate::groups::add(&s, g, &[2]).unwrap();
+        crate::groups::add(&s, other, &[1, 2]).unwrap();
+        s.exec_for_test("INSERT INTO chat_threads (id, title) VALUES (1, 'q');");
+        let export = |group| {
+            let mut out = Vec::new();
+            let n = export_to(&s, &mut out, group).unwrap();
+            (n, String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str::<Value>(l).unwrap()).collect::<Vec<_>>())
+        };
+        let (n, lines) = export(Some(g));
+        assert_eq!((n, lines[0]["group"].as_i64()), (1, Some(g)));
+        let kinds = lines[1..].iter().map(|l| (l["type"].as_str().unwrap(), l["id"].as_i64().unwrap())).collect::<Vec<_>>();
+        assert_eq!(kinds, [("group", g), ("article", 2)], "no chats, no other groups or articles");
+        assert_eq!((lines[1]["name"].as_str(), lines[2]["groups"].clone()), (Some("Paper"), json!([g, other])));
+        let (n, lines) = export(None);
+        assert_eq!((n, lines.iter().filter(|l| l["type"] == "group").count(), lines.last().unwrap()["type"].as_str()), (2, 2, Some("chat_thread")));
+        assert!(export_to(&s, &mut Vec::new(), Some(999)).is_err());
     }
 }
