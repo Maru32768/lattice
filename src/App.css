@@ -1,11 +1,12 @@
 
 /* ---- shell: nav | list | main | chat ---------------------------------------------------- */
+/* Pane widths come from the splitters; when the window is too narrow for them, the panes give way down to their minimums before the document does. */
 .app { display: flex; height: 100vh; overflow: hidden; background: var(--bg); }
-.main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--doc); }
+.main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
 .banner { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px 6px 14px; background: var(--err-soft); color: var(--err-ink); font-size: 12.5px; border-bottom: 1px solid var(--err-line); }
 .doc-empty { margin: auto; font-size: 13px; }
 
-.nav { width: 228px; flex: none; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
+.nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }
 .nav-top { display: flex; align-items: center; gap: 8px; padding: 2px 4px 10px; }
 .brand { font-weight: 600; font-size: 14px; letter-spacing: .01em; margin-right: auto; }
 .logo { width: 18px; height: 18px; flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; }
@@ -24,7 +25,7 @@
 .nav-rail { width: 48px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-rail .ib.acc { color: var(--acc); }
 
-.list { width: 396px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--bg); border-right: 1px solid var(--line); }
+.list { width: var(--list-w); flex: 0 1 auto; min-width: 300px; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
 .list-h { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
 .list-title { display: flex; align-items: baseline; gap: 10px; }
 .list-title h1 { margin: 0; font-size: 17px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -104,6 +105,14 @@
 
 
 
+/* ---- pane splitters (Conversation board's dock divider) ------------------------------------ */
+.splitter { width: 5px; flex: none; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); background: var(--doc); cursor: col-resize; touch-action: none; }
+.splitter.at-nav { background: var(--bg); }
+.splitter span { width: 1px; height: 28px; background: var(--line2); }
+.splitter:hover span, .splitter.on span, .splitter:focus-visible span { background: var(--ink3); }
+.splitter:focus-visible { outline-offset: -2px; }
+.drag-shield { position: fixed; inset: 0; z-index: 60; cursor: col-resize; }
+
 /* ---- command palette (Palette board) ------------------------------------------------------- */
 .pal-scrim { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: center; align-items: flex-start; padding: 88px 40px 0; background: var(--scrim); }
 .pal { width: 660px; max-width: 100%; max-height: calc(100vh - 128px); display: flex; flex-direction: column; overflow: hidden; background: var(--raise); border: 1px solid var(--line2); border-radius: 12px; box-shadow: 0 24px 70px var(--shadow), 0 2px 8px var(--shadow2); }
@@ -126,7 +135,7 @@
 .pal .ft .r { margin-left: auto; }
 
 /* ---- search mode of the list pane (Search board) ------------------------------------------ */
-.list.search { width: 520px; }
+.list.search { width: var(--search-w); min-width: 380px; }
 .list.search .list-h { padding: 12px 16px; }
 .search-q { display: flex; align-items: center; gap: 8px; }
 .search-q .input { flex: 1; min-width: 0; height: 34px; font-size: 15px; }
@@ -253,9 +262,7 @@
 
 
 /* ---- chat dock (Conversation board) ----------------------------------------------------------- */
-.dock-divider { width: 5px; flex: none; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); background: var(--doc); }
-.dock-divider span { width: 1px; height: 28px; background: var(--line2); }
-.chat { width: 430px; flex: none; display: flex; flex-direction: column; min-height: 0; background: var(--raise); }
+.chat { width: var(--chat-w); flex: 0 1 auto; min-width: 320px; display: flex; flex-direction: column; min-height: 0; background: var(--raise); }
 .chat .push { margin-left: auto; }
 .chat-h { height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
 .thread-btn { display: flex; align-items: center; gap: 6px; max-width: 230px; padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 600; color: var(--ink); }

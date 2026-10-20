@@ -119,7 +119,6 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
   const last = messages[messages.length - 1];
   return (
     <>
-      <div className="dock-divider" aria-hidden="true"><span /></div>
       <aside className="chat" aria-label="対話" data-pane="chat">
         <header className="chat-h">
           <Menu className="thread-btn" label="会話を選ぶ" title="保存済みの会話" trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}

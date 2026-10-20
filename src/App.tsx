@@ -20,6 +20,7 @@ import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext } from "./Popover";
 import { Kbd } from "./Icon";
 import { Palette, type PaletteActions } from "./Palette";
+import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "./Splitter";
 import "./App.css";
 
 type Doc = null | { kind: "reader"; id: number; focus?: Focus } | { kind: "page"; target: BrowseTarget };
@@ -76,6 +77,8 @@ export default function App() {
   const [navOpen, setNavOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  const [widths, setWidths] = useState<PaneWidths>(loadWidths);
+  useEffect(() => saveWidths(widths), [widths]);
   const [jobFailures, setJobFailures] = useState(0);
   const [error, setError] = useState<string | null>(null);
   /** Rectangles of open overlays (popovers, menus, palette); the page webview hides under them. */
@@ -428,18 +431,21 @@ export default function App() {
     },
   } : undefined;
   const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
+  const splitter = (pane: Resizable, side: "left" | "right" = "left") => (
+    <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
+  );
   const nav = navOpen
-    ? <Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
+    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} jobFailures={jobFailures}
         chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
         onOpenUrl={() => setPalette("")} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
-        onCollapse={() => setNavOpen(false)} />
+        onCollapse={() => setNavOpen(false)} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
         onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
 
 
   return (
     <CoverContext.Provider value={cover}>
-      <div className="app">
+      <div className="app" style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
         {screen === "settings"
           ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh} />
           : nav}
@@ -457,6 +463,7 @@ export default function App() {
             scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} articleById={articleById}
             focusSeq={searchFocus} />
         )}
+        {screen === "library" && search && listOpen && splitter("search")}
         {screen === "library" && !(search && listOpen) && (listOpen
           ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
               all={articles} groups={groups} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId}
@@ -464,6 +471,7 @@ export default function App() {
               onCollapse={() => setListOpen(false)} />
           : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles))].join(" · ")} index={order.findIndex((a) => a.id === selectedId) + 1}
               count={order.length} onOpen={() => setListOpen(true)} onPrev={() => step(-1)} onNext={() => step(1)} />)}
+        {screen === "library" && !search && listOpen && splitter("list")}
         {screen === "library" && <main className="main" data-pane="doc">
           {error && (
             <div className="banner" role="alert">
@@ -497,6 +505,7 @@ export default function App() {
           <Palette initial={palette} all={articles} shown={shown} feeds={feeds} scope={scope} facets={facets} actions={paletteActions}
             onClose={() => setPalette(null)} />
         )}
+        {chatOpen && splitter("chat", "right")}
         {chatOpen && (
           <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
             current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
