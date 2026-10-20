@@ -132,7 +132,7 @@ pub fn source_hash(html: &str) -> String {
     sha256_hex(&plain_text(html))
 }
 
-fn is_cjk(c: char) -> bool {
+pub(crate) fn is_cjk(c: char) -> bool {
     matches!(c, '\u{3040}'..='\u{30FF}' | '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{3005}' | '\u{3007}')
 }
 

@@ -111,7 +111,15 @@ impl Conv {
                     }
                 }
             },
+            // A soft break inside Japanese text is not a word gap.
+            Event::SoftBreak if self.last_char().is_some_and(joins_without_space) => {}
             Event::SoftBreak | Event::HardBreak => self.text(" "),
+            // Only the tags of inline HTML are dropped by default; the text inside script/style is code, not prose.
+            Event::InlineHtml(h) => match script_tag(&h) {
+                Some(true) => self.skip += 1,
+                Some(false) => self.skip = self.skip.saturating_sub(1),
+                None => {}
+            },
             Event::TaskListMarker(done) => self.text(if done { "☑ " } else { "☐ " }),
             Event::Rule => self.flush(),
             // Raw HTML (and math or footnote syntax, not enabled) never reaches the IR.
@@ -231,6 +239,13 @@ impl Conv {
         }
     }
 
+    fn last_char(&self) -> Option<char> {
+        match (&self.image, &self.code, &self.link, &self.cell) {
+            (Some((_, t)), ..) | (None, Some((_, t)), ..) | (None, None, Some((_, t)), _) | (None, None, None, Some(t)) => t.chars().last(),
+            _ => self.inlines.last().and_then(|i| inline_text(i).chars().last()),
+        }
+    }
+
     fn text(&mut self, s: &str) {
         if self.skip > 0 {
             return;
@@ -303,6 +318,23 @@ fn store_local_images(store: &Store, id: i64, dir: &Path, ir: &ArticleIr) -> Res
     Ok(())
 }
 
+/// Japanese text and its full-width punctuation run on across a line break.
+fn joins_without_space(c: char) -> bool {
+    crate::segments::is_cjk(c) || matches!(c, '\u{3000}'..='\u{303F}' | '\u{FF00}'..='\u{FFEF}')
+}
+
+/// `<script …>` / `<style …>` → Some(true), their closing tags → Some(false), anything else → None.
+fn script_tag(html: &str) -> Option<bool> {
+    let t = html.trim().to_ascii_lowercase();
+    let (close, rest) = match t.strip_prefix("</") {
+        Some(r) => (true, r),
+        None => (false, t.strip_prefix('<')?),
+    };
+    let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    let self_closing = !close && t.ends_with("/>");
+    (matches!(name.as_str(), "script" | "style") && !self_closing).then_some(!close)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -356,6 +388,18 @@ and [a sibling](./other.md).\nSecond line <b>bold</b>.\n\n\
         let srcs: Vec<_> = ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).map(|b| b.attrs.src.as_deref()).collect();
         assert_eq!(srcs, [Some("https://cdn.example.com/a.png"), Some("img/a%20b.png"), None], "data: keeps only its alt");
         assert_eq!(ir.blocks[12].attrs.level, Some(1), "a later H1 stays in the body");
+    }
+
+    #[test]
+    fn joins_japanese_lines_and_drops_inline_script_text() {
+        let ir = to_ir("日本語の文が
+改行で続く。
+English line
+next.
+
+Hello <script>alert(1)</script>world <STYLE>p{}</style>end
+", None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "日本語の文が改行で続く。English line next."), ("paragraph", "Hello world end")]);
     }
 
     #[test]
