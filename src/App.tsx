@@ -245,17 +245,20 @@ export default function App() {
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. */
   function openPage(url: string, focus?: string, article?: ArticleRow) {
     setError(null);
+    setScreen("library");
+    // The page already showing (also after a redirect, by its saved article): navigating again would only reload it.
+    if (doc?.kind === "page" && !focus && (page?.url === url || (article && saved?.id === article.id))) return;
     setDoc((d) => ({ kind: "page", target: { url, focus, seq: (d?.kind === "page" ? d.target.seq : 0) + 1 } }));
     setPage({ url, title: article?.title ?? "", loading: true });
     setSaved(article ?? null);
-    setScreen("library");
   }
 
   function openReader(id: number, focus?: Omit<Focus, "seq">) {
     setError(null);
+    setScreen("library");
+    if (doc?.kind === "reader" && doc.id === id && !focus) return;
     if (viewId.current !== id || !view) loadView(id);
     setDoc((d) => ({ kind: "reader", id, focus: focus && { ...focus, seq: (d?.kind === "reader" ? d.focus?.seq ?? 0 : 0) + 1 } }));
-    setScreen("library");
   }
 
   /** Opens in the view the current document uses (Reader by default). */
