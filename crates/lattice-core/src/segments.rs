@@ -137,7 +137,7 @@ pub fn plain_text(html: &str) -> String {
 
 /// Cache key for a snippet; matches `blocks.text_hash` for the same text.
 pub fn source_hash(html: &str) -> String {
-    sha256_hex(&plain_text(html))
+    sha256_hex(plain_text(html))
 }
 
 pub(crate) fn is_cjk(c: char) -> bool {

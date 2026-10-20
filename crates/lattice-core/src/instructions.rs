@@ -83,7 +83,7 @@ impl Applied {
         if self.profile.is_empty() && self.extra.is_empty() {
             return base.to_string();
         }
-        format!("{base}-x-instr-{}", &sha256_hex(&format!("{}\0{}", self.profile, self.extra))[..12])
+        format!("{base}-x-instr-{}", &sha256_hex(format!("{}\0{}", self.profile, self.extra))[..12])
     }
 }
 

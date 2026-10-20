@@ -386,26 +386,46 @@ fn renormalize_urls(tx: &rusqlite::Transaction) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn deflate(s: &str) -> Vec<u8> {
+pub(crate) fn deflate(body: &[u8]) -> Vec<u8> {
     use std::io::Write;
     let mut e = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
-    e.write_all(s.as_bytes()).expect("writing to a Vec cannot fail");
+    e.write_all(body).expect("writing to a Vec cannot fail");
     e.finish().expect("writing to a Vec cannot fail")
 }
 
 pub(crate) fn inflate(encoding: &str, body: &[u8]) -> std::io::Result<String> {
+    String::from_utf8(inflate_bytes(encoding, body)?).map_err(std::io::Error::other)
+}
+
+fn inflate_bytes(encoding: &str, body: &[u8]) -> std::io::Result<Vec<u8>> {
     use std::io::Read;
-    let mut out = String::new();
+    let mut out = Vec::new();
     match encoding {
-        "deflate" => flate2::read::DeflateDecoder::new(body).read_to_string(&mut out).map(|_| out),
-        _ => String::from_utf8(body.to_vec()).map_err(std::io::Error::other),
+        "deflate" => flate2::read::DeflateDecoder::new(body).read_to_end(&mut out).map(|_| out),
+        _ => Ok(body.to_vec()),
     }
 }
 
-/// The newest stored HTML of an article, for re-extraction without the network.
+/// The newest stored source of an article (HTML, Markdown or a PDF's bytes), for re-extraction
+/// without the network.
 pub struct Snapshot {
     pub final_url: String,
-    pub html: String,
+    pub content_type: Option<String>,
+    pub body: Vec<u8>,
+}
+
+impl Snapshot {
+    pub fn html(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
+}
+
+/// A source to store with its extraction: fetched HTML or Markdown text, or a PDF's bytes.
+pub struct NewSnapshot<'a> {
+    pub final_url: &'a str,
+    pub status: u16,
+    pub content_type: Option<&'a str>,
+    pub body: &'a [u8],
 }
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
@@ -451,6 +471,8 @@ pub struct ArticleRow {
     pub thin: bool,
     /// The text is the feed entry's copy: the page could not be fetched or had no text.
     pub from_feed: bool,
+    /// Extracted from a PDF (a URL's or an imported file's), kept as the snapshot.
+    pub pdf: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -615,6 +637,7 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
+    let snapshot_type: Option<String> = r.get(23)?;
     Ok(ArticleRow {
         id: r.get(0)?,
         original_url: r.get(1)?,
@@ -638,11 +661,14 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         difficulty_manual: r.get(22)?,
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
-        // A short local note is complete; only a page can have more text than was extracted.
+        // A short local note is complete, and so is a PDF; only a page can have more text than
+        // was extracted.
         thin: r.get::<_, String>(11)? == "ok"
             && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS
-            && !crate::markdown::is_local(&r.get::<_, String>(1)?),
-        from_feed: r.get::<_, Option<String>>(23)?.as_deref() == Some(FEED_CONTENT_TYPE),
+            && !crate::markdown::is_local(&r.get::<_, String>(1)?)
+            && snapshot_type.as_deref() != Some(crate::pdf::CONTENT_TYPE),
+        from_feed: snapshot_type.as_deref() == Some(FEED_CONTENT_TYPE),
+        pdf: snapshot_type.as_deref() == Some(crate::pdf::CONTENT_TYPE),
     })
 }
 
@@ -701,8 +727,8 @@ fn article_is_japanese(c: &Connection, id: i64) -> Result<bool> {
     Ok(crate::segments::is_japanese(declared.as_deref(), &sample))
 }
 
-pub fn sha256_hex(s: &str) -> String {
-    Sha256::digest(s.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+pub fn sha256_hex(s: impl AsRef<[u8]>) -> String {
+    Sha256::digest(s.as_ref()).iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn json<T: Serialize>(v: &T) -> String {
@@ -860,6 +886,19 @@ impl Store {
         extracted: std::result::Result<ArticleIr, String>,
         canonical_normalized: Option<&str>,
     ) -> Result<i64> {
+        let snapshot =
+            snapshot.map(|f| NewSnapshot { final_url: &f.final_url, status: f.status, content_type: f.content_type.as_deref(), body: f.html.as_bytes() });
+        self.save_snapshot(id, snapshot.as_ref(), extracted, canonical_normalized)
+    }
+
+    /// `save_fetched` for any source, a PDF's bytes included.
+    pub fn save_snapshot(
+        &self,
+        id: i64,
+        snapshot: Option<&NewSnapshot>,
+        extracted: std::result::Result<ArticleIr, String>,
+        canonical_normalized: Option<&str>,
+    ) -> Result<i64> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         // Only a not-yet-extracted row merges: re-extraction and re-saves (rendered or refetched)
@@ -884,7 +923,7 @@ impl Store {
             tx.execute(
                 "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body)
                  VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
-                params![id, f.final_url, f.status, f.content_type, deflate(&f.html)],
+                params![id, f.final_url, f.status, f.content_type, deflate(f.body)],
             )?;
             tx.execute("UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [id])?;
         }
@@ -914,7 +953,7 @@ impl Store {
                         m.site_name,
                         m.published_at,
                         m.language,
-                        sha256_hex(&content.join("\n")),
+                        sha256_hex(content.join("\n")),
                         EXTRACTION_VERSION,
                         text_length as i64
                     ],
@@ -926,15 +965,15 @@ impl Store {
     }
 
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
-        let row: Option<(String, String, Vec<u8>)> = self
+        let row: Option<(String, Option<String>, String, Vec<u8>)> = self
             .conn()
-            .query_row("SELECT final_url, encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1", [article_id], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            .query_row("SELECT final_url, content_type, encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1", [article_id], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })
             .optional()?;
-        row.map(|(final_url, enc, body)| {
-            let html = inflate(&enc, &body).map_err(|e| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Blob, Box::new(e)))?;
-            Ok(Snapshot { final_url, html })
+        row.map(|(final_url, content_type, enc, body)| {
+            let body = inflate_bytes(&enc, &body).map_err(|e| rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Blob, Box::new(e)))?;
+            Ok(Snapshot { final_url, content_type, body })
         })
         .transpose()
     }
@@ -1392,7 +1431,7 @@ mod tests {
         .unwrap();
         let s = Store::init(conn).unwrap();
         let snap = s.latest_snapshot(1).unwrap().unwrap();
-        assert_eq!((snap.final_url.as_str(), snap.html.as_str()), ("https://x/", "<p>日本語</p>"));
+        assert_eq!((snap.final_url.as_str(), snap.html().as_str()), ("https://x/", "<p>日本語</p>"));
     }
 
     #[test]

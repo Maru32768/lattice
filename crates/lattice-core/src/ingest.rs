@@ -2,7 +2,7 @@
 //! a failed article stays visible and saving the same URL again retries it.
 
 use crate::extract::extract;
-use crate::fetch::{Fetched, fetch};
+use crate::fetch::{Fetched, Resource, fetch_resource};
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use rusqlite::OptionalExtension;
@@ -28,14 +28,17 @@ pub async fn process(store: &Store, client: &reqwest::Client, article_id: i64) -
 /// A page that is refused (bot protection answers 403 to anything but a browser) or has no
 /// text falls back to the feed entry's copy, when its feed carries one.
 async fn fetch_into(store: &Store, client: &reqwest::Client, id: i64, url: &str) -> Result<i64, String> {
-    store_fetch_result(store, id, fetch(client, url).await)
+    store_fetch_result(store, id, fetch_resource(client, url).await)
 }
 
 /// Network-free half of `fetch_into`, also used by tests.
-pub(crate) fn store_fetch_result(store: &Store, id: i64, fetched: Result<Fetched, String>) -> Result<i64, String> {
+pub(crate) fn store_fetch_result(store: &Store, id: i64, fetched: Result<Resource, String>) -> Result<i64, String> {
     match fetched {
         Ok(fetched) => {
-            let id = store_fetched(store, id, &fetched)?;
+            let id = match fetched {
+                Resource::Page(page) => store_fetched(store, id, &page)?,
+                Resource::Pdf { final_url, bytes } => crate::pdf::store_fetched(store, id, &final_url, &bytes)?,
+            };
             from_feed(store, id, None)?;
             Ok(id)
         }
@@ -171,10 +174,13 @@ pub const RENDERED_CONTENT_TYPE: &str = "text/html; source=webview";
 /// unchanged keep their ids (and with them embeddings and search hits).
 pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
     let snap = store.latest_snapshot(id).map_err(|e| e.to_string())?.ok_or("no stored snapshot to re-extract")?;
-    if crate::markdown::is_local(&snap.final_url) {
-        return crate::markdown::reextract(store, id, &snap.html);
+    if snap.content_type.as_deref() == Some(crate::pdf::CONTENT_TYPE) {
+        return crate::pdf::reextract(store, id, &snap.body);
     }
-    extract_into(store, id, &snap.html, &snap.final_url, None)
+    if crate::markdown::is_local(&snap.final_url) {
+        return crate::markdown::reextract(store, id, &snap.html());
+    }
+    extract_into(store, id, &snap.html(), &snap.final_url, None)
 }
 
 fn extract_into(store: &Store, id: i64, html: &str, url: &str, snapshot: Option<&Fetched>) -> Result<i64, String> {
@@ -248,7 +254,7 @@ mod tests {
         assert_eq!(v.article.canonical_url.as_deref(), Some("https://example.com/post"));
         assert_eq!(v.blocks.len(), 2);
         assert_eq!(v.blocks[1].heading_id, Some(v.blocks[0].id));
-        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html, page(BODY).html, "snapshot round-trips through deflate");
+        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html(), page(BODY).html, "snapshot round-trips through deflate");
 
         // Same URL again: already extracted, nothing to do.
         assert_eq!(s.upsert_pending("https://example.com/post#x", "https://example.com/post", "example.com").unwrap(), (id, false));
@@ -285,7 +291,7 @@ mod tests {
         assert_eq!(save_rendered(&s, "https://example.com/post", rendered.clone()).unwrap(), id);
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert!(!v.article.thin && v.blocks.len() > 1, "{:?}", v.blocks);
-        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html, rendered);
+        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().html(), rendered);
 
         let ids: Vec<i64> = v.blocks.iter().map(|b| b.id).collect();
         assert_eq!(reextract(&s, id).unwrap(), id);
@@ -307,6 +313,31 @@ mod tests {
         let all = s.list_articles(&crate::store::ArticleFilter::All).unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all.iter().find(|x| x.id == b).unwrap().tags, ["keep"]);
+    }
+
+    #[test]
+    fn a_pdf_url_becomes_an_article_of_that_url() {
+        let s = Store::open_in_memory().unwrap();
+        let url = "https://arxiv.org/pdf/2401.00001";
+        let (id, _) = s.upsert_pending(url, url, "arxiv.org").unwrap();
+        let bytes = crate::pdf::tests::paper();
+        store_fetch_result(&s, id, Ok(Resource::Pdf { final_url: url.into(), bytes: bytes.clone() })).unwrap();
+        let a = s.article_row(id).unwrap().unwrap();
+        assert_eq!((a.title.as_deref(), a.extraction_status.as_str(), a.pdf), (Some("Reading Order in Two Column Papers"), "ok", true));
+        assert_eq!(s.latest_snapshot(id).unwrap().unwrap().body, bytes);
+        assert_eq!(reextract(&s, id).unwrap(), id);
+        assert_eq!(s.upsert_pending(url, url, "arxiv.org").unwrap(), (id, false), "saving it again finds it");
+
+        let (short, _) = s.upsert_pending("https://a.dev/s.pdf", "https://a.dev/s.pdf", "a.dev").unwrap();
+        let one_line = crate::pdf::tests::pdf(&[vec![(72., 100., 10., "A one-line poster.")]], None);
+        store_fetch_result(&s, short, Ok(Resource::Pdf { final_url: "https://a.dev/s.pdf".into(), bytes: one_line })).unwrap();
+        assert!(!s.article_row(short).unwrap().unwrap().thin, "a short PDF is not a JS page");
+        assert!(!crate::render::enqueue_if_auto(&s, short).unwrap(), "a PDF is never rendered in a browser");
+
+        let (bad, _) = s.upsert_pending("https://a.dev/x.pdf", "https://a.dev/x.pdf", "a.dev").unwrap();
+        store_fetch_result(&s, bad, Ok(Resource::Pdf { final_url: "https://a.dev/x.pdf".into(), bytes: b"%PDF-1.4 broken".to_vec() })).unwrap();
+        let a = s.article_row(bad).unwrap().unwrap();
+        assert_eq!((a.fetch_status.as_str(), a.extraction_status.as_str(), a.pdf), ("ok", "failed", true), "kept to re-extract");
     }
 
     #[test]

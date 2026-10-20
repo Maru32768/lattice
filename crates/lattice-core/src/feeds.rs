@@ -340,7 +340,7 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
             if !done.insert(norm.clone()) {
                 continue;
             }
-            put.execute(params![feed_id, norm, e.published, e.title, e.content.as_deref().map(deflate)]).map_err(err)?;
+            put.execute(params![feed_id, norm, e.published, e.title, e.content.as_deref().map(|c| deflate(c.as_bytes()))]).map_err(err)?;
             if e.content.is_some() {
                 retry.extend(failed.query_row(params![feed_id, norm, ingest::FEED_CONTENT_TYPE], |r| r.get::<_, i64>(0)).optional().map_err(err)?);
             }

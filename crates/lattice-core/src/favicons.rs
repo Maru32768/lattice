@@ -87,7 +87,10 @@ fn snapshot(store: &Store, domain: &str) -> Result<Option<(String, String)>, Str
         .optional()
         .map_err(err)?;
     let Some(id) = id else { return Ok(None) };
-    Ok(store.latest_snapshot(id).map_err(err)?.map(|s| (s.final_url, s.html)))
+    Ok(store.latest_snapshot(id).map_err(err)?.map(|s| {
+        let html = s.html();
+        (s.final_url, html)
+    }))
 }
 
 /// Background job: the icon links of a stored page of the site (else of its root page), then
