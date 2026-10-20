@@ -1,7 +1,7 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
-  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
+  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, ImageSettings,
   Grade, LlmSettings, Quiz, R2Settings, R2Status, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
 } from "../src/api.ts";
 import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REVIEW, SUMMARIES, blocksOf, jobsOf } from "./fixtures.ts";
@@ -21,6 +21,7 @@ const store = {
   keepTerms: true,
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
+  chatBudget: "standard" as ChatBudget,
   images: { save: true, max_mb: 5 } as ImageSettings,
   backupKeep: 5,
   llm: {
@@ -211,6 +212,8 @@ export const handlers = {
     return m;
   },
   chat_threads: () => threads,
+  get_chat_budget: (): ChatBudget => store.chatBudget,
+  set_chat_budget: ({ budget }: { budget: ChatBudget }) => void (store.chatBudget = budget),
   chat_messages: ({ threadId }: { threadId: number }): ChatMessage[] => messages.filter((m) => m.thread_id === threadId),
   chat_delete_thread: ({ threadId }: { threadId: number }) => {
     threads.splice(threads.findIndex((t) => t.id === threadId), 1);

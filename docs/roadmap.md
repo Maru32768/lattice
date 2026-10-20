@@ -68,7 +68,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G40 | CI でテスト | 済 | `.github/workflows/ci.yml`: master への push と PR で、windows-latest・`jdx/mise-action`（`mise.toml` の版）・cargo と npm と Playwright のブラウザの cache の上で、overlay のビルド、rustfmt、clippy、Rust のテスト、`npm test`、oxlint、型チェックとビルド、E2E を順に実行する。失敗時は Playwright のレポートを artifact に残す（design-review §18）。 |
 | G41 | リリースフロー | 済 | バージョンは `package.json`・`package-lock.json`・workspace の `Cargo.toml`（両 crate が継承、`tauri.conf.json` は持たない）・`Cargo.lock` にあり、`npm run bump -- <x.y.z>` で揃え、`npm test` がずれを検出する。`CHANGELOG.md`（Keep a Changelog）。`v*` タグで `.github/workflows/release.yml` が NSIS インストーラー・portable zip・`THIRD_PARTY_LICENSES` を draft release に載せる（署名鍵の secret があれば updater 用の `.sig` と `latest.json` も）。ライセンス一覧は cargo-about と `scripts/licenses.mjs` で生成（`mise run licenses`）。手順は `docs/release.md`。 |
 | G42 | 静的解析 | 済 | `mise run lint`: rustfmt（`rustfmt.toml` は既存の長い行に合わせた）、clippy（`--all-targets -D warnings`）、oxlint（type-aware。hooks・promise・`no-unsafe-*` など、外した規則は `oxlint.config.ts` に理由を書いた）。`mise run test` は lint の後に走る。型チェックは従来どおり `npm run build`（design-review §18）。 |
-| G43 | 対話の入力欄で Vim キーバインド | 後 | |
+| G43 | 対話の入力欄で Vim キーバインド | 済 | 設定 › 要約・対話 で有効にする（既定はオフ、端末ごとに localStorage）。挿入モードで始まり、Esc でノーマルモード。h j k l w b e 0 $ gg G、i a I A o O、x dd dw cw yy p、u。送信はどちらのモードでも Ctrl+Enter。`src/vim.ts` の純粋な状態機械で、依存は足していない。 |
 | G44 | アプリ全体を Vim 風に操作 | 後 | Chrome の Vimium のように、リンクのヒント表示などで操作する。G9 のキー設定の上に作る。 |
 | G45 | モデルごとの effort 設定 | 済 | chain の各段に任意の effort（`low`〜`max`、Gemini は `low`〜`high`）。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`（既定は従来どおり low）、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定は provider の既定で、保存済みの chain はそのまま読める。 |
 | G46 | タスクバーに未読数バッジ | 済 | 未読数を描いた画像を Windows の overlay icon にする（99+ まで、0 で消す）。UI の未読数の変化を 500 ms まとめて backend に渡す。設定「タスクバー」でオフにできる（design-review §16）。 |
@@ -105,12 +105,12 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 
 ### 対話の広い範囲（検討中）
 
-F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは hybrid search の上位 30 block（約 40,000 字）だけ。範囲外の資料を使えないので、「このテーマについて何が分かっているか」（§24）のような網羅型の質問に弱い。上位が 2〜3 記事に偏りやすいのも原因の一つ。NotebookLM のように数百ソースを横断して答えられるようにしたい。
+F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは hybrid search の上位 30 block（約 40,000 字）だけだった。範囲外の資料を使えないので、「このテーマについて何が分かっているか」（§24）のような網羅型の質問に弱い。上位が 2〜3 記事に偏りやすいのも原因の一つ。NotebookLM のように数百ソースを横断して答えられるようにしたい。
 
 | 案 | 状態 | 内容 | 代償 |
 |---|---|---|---|
-| 上限を上げる | 後 | `chat.rs` の `MAX_CONTEXT_CHARS` を数十万字、`TOP_K` を 100〜200 にする。定数の変更だけで済む。 | 1 回の質問のコストと待ち時間が比例して増え、CLI の usage limit に当たりやすくなる。1 回あたりの規模の上限を決める必要がある。 |
-| 1 記事あたりの block 数を制限する | 後 | `retrieve()` で記事ごとに最大 3 block などに絞り、多くの記事から集める（MMR に近い）。「上限を上げる」と組み合わせる。 | 1 記事を深く読む質問では根拠が減る。 |
+| 上限を上げる | 済 | 設定 › 要約・対話 の「対話で使う範囲」（`chat::Budget`）。少なめ = 従来どおり（全文 30,000 字・検索 24 block・context 40,000 字）、標準（既定）= 60,000 字・48 block・80,000 字、多め = 120,000 字・96 block・150,000 字。多めでも日本語で 200k token に収まる大きさで止めた。 | 1 回の質問のコストと待ち時間が比例して増え、CLI の usage limit に当たりやすくなる。設定の説明に書いた。 |
+| 1 記事あたりの block 数を制限する | 済 | `retrieve()` は枠の 2 倍の候補を検索し、順位順に 1 記事 4 block まで取ってから、枠が余れば残りを順位順に足す（`diversify`）。記事が 1〜2 件の範囲でも枠を使い切る。 | 1 記事を深く読む質問では、範囲を「この記事」にしない限り根拠が減る。 |
 | 2 段階（map-reduce） | 後 | 範囲内の各記事の要約で関係する記事を選ばせ、選んだ記事の本文 block で回答させる。 | 全記事に要約が必要。今の要約は Reader から手動で作るだけなので、要約の自動生成と既存記事への backfill が先に要る。 |
 | LLM に検索を繰り返させる（agentic） | 将来 | アプリ内の検索を読み取り専用の tool として渡し、LLM が何度も検索してから答える。 | 「untrusted な記事を扱う LLM に tool を渡さない」方針の見直しが要る。CLI provider で自前の tool を渡すのは難しく、作業量が最も大きい。 |
 

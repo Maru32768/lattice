@@ -66,6 +66,8 @@ const COMMANDS: &[&str] = &[
     "chat_threads",
     "chat_messages",
     "chat_delete_thread",
+    "get_chat_budget",
+    "set_chat_budget",
     "set_read",
     "db_path",
     "get_settings",
