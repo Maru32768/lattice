@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { listStep } from "./keys";
 
 /**
  * The Page view's native webview is drawn above all app DOM, so every app overlay reports its
@@ -112,11 +113,12 @@ export function Menu({ trigger, label, className, items, align = "left", title }
   }
 
   function arrows(e: React.KeyboardEvent) {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return escape(close)(e);
+    const d = listStep(e, false);
+    if (!d) return escape(close)(e);
     e.preventDefault();
     const all = [...ref.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
     const i = all.indexOf(document.activeElement as HTMLElement);
-    all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length]?.focus();
+    all[(i + d + all.length) % all.length]?.focus();
   }
 
   return (

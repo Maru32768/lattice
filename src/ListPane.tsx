@@ -4,7 +4,7 @@ import { DIMS, DIM_LABELS, activeDims, facetBase, facetLabel, without, type Dim,
 import type { Group } from "./groups";
 import { FacetPopover } from "./FacetPopover";
 import { Menu } from "./Popover";
-import { Dif, Icon, Kbd } from "./Icon";
+import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 
 export type Grouping = "none" | "feed" | "genre";
 
@@ -31,13 +31,15 @@ function badge(a: ArticleRow, translating: string | null): [string, string] | nu
   return null;
 }
 
-export function ArticleRowView({ a, sel, sort, translating, onOpen }: {
-  a: ArticleRow; sel: boolean; sort: ArticleSort; translating: string | null; onOpen: () => void;
+/** `sel`: the open article; `cur`: the keyboard cursor (j / k), opened with Enter. */
+export function ArticleRowView({ a, sel, cur, sort, translating, onOpen, onCursor }: {
+  a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; onOpen: () => void; onCursor: () => void;
 }) {
   const b = badge(a, translating);
   const unread = a.read_status === "unread";
   return (
-    <button className={`row${sel ? " sel" : ""}${unread ? "" : " read"}`} onClick={onOpen} aria-current={sel || undefined} data-id={a.id}>
+    <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}`} onClick={onOpen} onFocus={onCursor}
+      aria-current={sel || undefined} data-id={a.id}>
       {unread && <span className="dot" aria-label="未読" />}
       <span className="t">{a.title ?? a.original_url}</span>
       <span className="meta">
@@ -109,8 +111,8 @@ export function SortMenu({ sort, onSort, group, onGroup }: {
   );
 }
 
-export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, sort, onSort, group, onGroup, selectedId, translating,
-  relax, onRelax, onOpen, onCollapse }: {
+export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, sort, onSort, group, onGroup, selectedId, cursorId, onCursor,
+  translating, relax, onRelax, onOpen, onCollapse }: {
   title: string;
   count: number;
   total: number;
@@ -125,6 +127,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   group: Grouping;
   onGroup: (g: Grouping) => void;
   selectedId: number | null;
+  cursorId: number | null;
+  onCursor: (id: number) => void;
   translating: { id: number; label: string } | null;
   relax: Relaxation[];
   onRelax: (r: Relaxation) => void;
@@ -138,7 +142,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
       {g.children
         ? g.children.map((c) => renderGroup(c, depth + 1))
         : g.articles.map((a) => (
-          <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} sort={sort} onOpen={() => onOpen(a)}
+          <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={() => onOpen(a)} onCursor={() => onCursor(a.id)}
             translating={translating?.id === a.id ? translating.label : null} />
         ))}
     </div>
@@ -174,10 +178,10 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
           ) : <div className="empty"><div className="muted">{all.length === 0 ? "記事はまだありません" : "この一覧に記事はありません"}</div></div>}
       </div>
       <footer className="list-f hints">
-        <span><Kbd>j</Kbd><Kbd>k</Kbd> 移動</span>
-        <span><Kbd>s</Kbd> お気に入り</span>
-        <span><Kbd>m</Kbd> 既読</span>
-        <span><Kbd>f</Kbd> フォーカス</span>
+        <span><ActionKey id="next" /><ActionKey id="prev" /> 移動</span>
+        <span><ActionKey id="open" /> 開く</span>
+        <span><ActionKey id="favorite" /> お気に入り</span>
+        <span><ActionKey id="read" /> 既読</span>
       </footer>
     </section>
   );
@@ -189,9 +193,9 @@ export function ListRail({ label, index, count, onOpen, onPrev, onNext }: {
   return (
     <section className="list-rail" aria-label="記事一覧（折りたたみ）" data-pane="list">
       <button className="ib" onClick={onOpen} aria-label="記事一覧を開く" title="記事一覧を開く"><Icon name="right" /></button>
-      <button className="ib" onClick={onPrev} aria-label="前の記事 (k)" title="前の記事 (k)"><Icon name="up" /></button>
+      <button className="ib" onClick={onPrev} aria-label="前の記事へカーソル (k)" title="前の記事へカーソル (k)"><Icon name="up" /></button>
       <span className="vlabel mono">{index > 0 ? index : "–"} / {count} · {label}</span>
-      <button className="ib" onClick={onNext} aria-label="次の記事 (j)" title="次の記事 (j)"><Icon name="down" /></button>
+      <button className="ib" onClick={onNext} aria-label="次の記事へカーソル (j)" title="次の記事へカーソル (j)"><Icon name="down" /></button>
     </section>
   );
 }

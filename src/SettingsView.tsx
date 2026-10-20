@@ -10,11 +10,12 @@ import { BackupSection } from "./BackupSection";
 import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
+import { ShortcutSettings } from "./ShortcutSettings";
 import "./manage.css";
 
-export type SettingsSection = "provider" | "translation" | "classify" | "genres" | "render" | "images" | "backup" | "r2" | "export" | "storage";
+export type SettingsSection = "provider" | "translation" | "classify" | "genres" | "render" | "images" | "shortcuts" | "backup" | "r2" | "export" | "storage";
 
-const GROUPS = ["AI", "ライブラリ", "データ"] as const;
+const GROUPS = ["AI", "ライブラリ", "操作", "データ"] as const;
 
 const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: string; lead?: ReactNode }[] = [
   { id: "provider", group: "AI", title: "AI プロバイダ", lead: "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。" },
@@ -23,6 +24,7 @@ const SECTIONS: { id: SettingsSection; group: (typeof GROUPS)[number]; title: st
   { id: "genres", group: "ライブラリ", title: "ジャンル", lead: "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。" },
   { id: "render", group: "ライブラリ", title: "取り込み・JS 描画" },
   { id: "images", group: "ライブラリ", title: "画像" },
+  { id: "shortcuts", group: "操作", title: "ショートカット", lead: "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。" },
   { id: "backup", group: "データ", title: "バックアップ", lead: "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。" },
   { id: "r2", group: "データ", title: "クラウドバックアップ（R2）", lead: <>DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は <code>infra/r2</code> の Terraform で管理します。</> },
   { id: "export", group: "データ", title: "エクスポート" },
@@ -37,6 +39,7 @@ function Body({ id, onChanged }: { id: SettingsSection; onChanged: () => void })
     case "genres": return <GenreSettings onChanged={onChanged} />;
     case "render": return <RenderSettings />;
     case "images": return <ImageSettings />;
+    case "shortcuts": return <ShortcutSettings />;
     case "backup": return <BackupSection />;
     case "r2": return <R2BackupSection />;
     case "export": return <ExportSection />;
@@ -65,7 +68,7 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
   const current = SECTIONS.find((s) => s.id === section)!;
   return (
     <div className="stg">
-      <nav aria-label="設定カテゴリ">
+      <nav aria-label="設定カテゴリ" data-pane="nav">
         <button className="ni back" onClick={onBack}>
           <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
           ライブラリに戻る<span className="kbd">Esc</span>
@@ -83,7 +86,7 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
           </Fragment>
         ))}
       </nav>
-      <main key={section}>
+      <main key={section} data-pane="doc">
         <div className="body">
           <header>
             <div className="cap">{current.group}</div>

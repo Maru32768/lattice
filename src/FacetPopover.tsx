@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import type { ArticleRow } from "./api";
 import { DIM_LABELS, DIFFICULTY_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "./Popover";
-import { Icon, Kbd } from "./Icon";
+import { ActionKey, Icon, Kbd } from "./Icon";
+import { listStep } from "./keys";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
 
@@ -66,9 +67,10 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
 
   function keys(e: React.KeyboardEvent) {
     const k = e.key;
-    if (k === "ArrowDown" || k === "ArrowUp") {
+    const d = listStep(e, (e.target as HTMLElement).tagName === "INPUT");
+    if (d) {
       e.preventDefault();
-      setAct((i) => Math.max(0, Math.min(flat.length - 1, i + (k === "ArrowDown" ? 1 : -1))));
+      setAct((i) => Math.max(0, Math.min(flat.length - 1, i + d)));
     } else if (k === " " && active) {
       e.preventDefault();
       pick(active.v);
@@ -149,7 +151,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, anchor, onClose
         <div className="pv-foot hints">
           {isTags && q.trim()
             ? <><span><Kbd>Enter</Kbd> 追加して続ける</span><span><Kbd>Tab</Kbd> 補完</span><span className="r"><Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> 適用</span></>
-            : <><span><Kbd>↑</Kbd><Kbd>↓</Kbd> 移動</span><span><Kbd>Space</Kbd> 切替</span>{isTags && <span><Kbd>⌫</Kbd> 最後を解除</span>}<span className="r"><Kbd>Esc</Kbd></span></>}
+            : <><span>{!isTags && <><ActionKey id="next" /><ActionKey id="prev" /> </>}<Kbd>↑</Kbd><Kbd>↓</Kbd> 移動</span><span><Kbd>Space</Kbd> 切替</span>{isTags && <span><Kbd>⌫</Kbd> 最後を解除</span>}<span className="r"><Kbd>Esc</Kbd></span></>}
         </div>
       </div>
     </Popover>

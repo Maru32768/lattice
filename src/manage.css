@@ -107,3 +107,12 @@
 .stg .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
 .stg .pill.off i { background: var(--err); }
 .stg .pill.cli i { background: var(--ink4); }
+
+/* Shortcuts */
+.stg .keys-ctl { flex-wrap: wrap; justify-content: flex-end; max-width: 480px; }
+.stg .kbd.key { display: inline-flex; align-items: center; gap: 2px; padding: 0 1px 0 6px; font-size: 11.5px; line-height: 20px; color: var(--ink2); }
+.stg .kbd.key .x { padding: 0 4px; border: 0; border-radius: 3px; background: none; font: inherit; line-height: 16px; color: var(--ink3); }
+.stg .kbd.key .x:hover { background: var(--hover); color: var(--ink); }
+.stg .kbd.clash { border-color: var(--tr-line); color: var(--tr-ink); }
+.stg .warn-text { color: var(--tr-ink); }
+.stg .btn.rec { border-color: var(--acc-line); background: var(--acc-soft); color: var(--acc-ink); }
