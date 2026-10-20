@@ -478,3 +478,28 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
   - 保存先は `favicons(domain, mime, bytes, error, fetched_at)`（migration 17）。取得できなかった理由も 1 行として残す。`favicon(domain)` command は保存済みのアイコンを `data:` URL で返し、行がないか 1 週間より古ければ `favicon` job（network runner、記事を持たない job。dedup key `favicon:{domain}`）を積む。古い行は再取得が終わるまでそのまま返す。job が終わると `favicon-changed`（ドメイン）を emit し、UI はそのドメインだけを聞き直す。UI はドメインごとの Promise を module 内に持つので、1,000 行の一覧でも呼び出しはドメインごとに 1 回になる（harness で確認）。ドメインは「初めて見たとき」＝UI が初めて聞いたときに取得する（取り込み時には積まない）。
   - 取得の順序: そのドメインの記事の最新 snapshot の `<link rel~=icon href>`、snapshot がない（またはリンクがない）ときはサイトの root（`https://{domain}/`）の HTML のリンク、最後に `/favicon.ico`。最初に取得できたものを保存する。取得は記事画像の `download`（`check_public` で private address を拒否、Content-Type と magic number の検査、受信中のサイズ確認）を通し、上限は 1 MB。SVG は保存しない。ICO を magic number の判定に加えた（記事画像でも ICO を保存するようになる）。timeout・5xx・429 だけのときは何も保存せず job を失敗させ、backoff で再試行する。ほかの失敗は理由を保存し、1 週間後に聞かれるまで再取得しない。root は https だけを試す。
 
+
+## 17. 取得できない記事とフィードの表示名・アイコン
+
+| 対象 | ファイル |
+|---|---|
+| entry の title・本文の保存、失敗した記事の取り直し | `crates/lattice-core/src/feeds.rs`（`parse`・`import`） |
+| フィードの本文での取り込み | `crates/lattice-core/src/ingest.rs`（`store_fetch_result`・`from_feed`） |
+| 取得を拒否された記事の裏描画 | `crates/lattice-core/src/render.rs`（`enqueue_if_auto`） |
+| スキーマ、URL の正規化のやり直し | `crates/lattice-core/src/store.rs`（migration 18）、`url_norm.rs` |
+| 表示 | `src/Reader.tsx` |
+
+- **きっかけ。** Medium がホストするフィード（例: `techblog.netflix.com/feeds/posts/default` → `medium.com/feed/netflix-techblog`）の記事は、ブラウザ以外の取得に 403 を返す（bot 対策。ブラウザの user agent の curl でも 403）。記事はすべて「取得失敗」になり、タイトルも URL のままだった。フィードには entry の title と、`content:encoded` に本文の HTML 全体が入っている。
+- **entry の保存。** `feed_items` に `title` と `content`（deflate した HTML）を足した（migration 18）。本文は RSS の `content:encoded`・Atom の `content` と、HTML の `description` / `summary` のうち長い方で、タグを除いた文字数が 500 未満なら抜粋として保存しない。poll のたびに、取り込み済みの entry も含めて title と本文を上書きする（フィードが本文を載せなくなっても、保存済みの本文は残す）。migration 18 はすべてのフィードの ETag / Last-Modified を消すので、更新後の最初の poll は 304 にならず、以前の entry にも本文が入る。
+- **フィードの本文で取り込む。** 記事の取得に失敗したとき（HTTP のエラーも通信の失敗も）と、取得したページの抽出が失敗するか 300 文字未満（bot 判定のページなど）だったときに、その記事の entry に本文があれば、それを `<title>` 付きの HTML に包んで通常の経路（抽出・block 化・画像 job）に通す。ページと同じく untrusted な入力として扱う。snapshot は `content_type = 'text/html; source=feed'` で保存し、URL は記事の元の URL のまま。取得のエラーは `last_error` に残す。`ArticleRow.from_feed`（最新 snapshot がフィードの本文）で Reader が「フィードの本文から取り込みました」と理由を出し、「再試行」「描画して取り込み直す」を置く。
+  - 既にページから十分な本文を取れている記事（最新 snapshot がフィード以外で 300 文字以上）は上書きしない。フィードの本文は、現在の本文より長いときだけ保存する（最新 snapshot がフィードなら取り直す）。
+  - `upsert_pending` は、最新 snapshot がフィードの本文なら「まだ取得が必要」と返す。そのため Reader の「再試行」や URL の保存し直しは元ページを取り直す。取り直しも失敗すれば同じ本文が入り直す（block ID は変わらない）。
+- **本文がなければ裏描画。** `render::enqueue_if_auto` は、取得が 401・403・429・5xx で失敗した記事にも render job を積む（404・410 と通信の失敗は積まない）。WebView2 なら bot 判定を通ることがある。Reader の「描画して取り込み直す」は取得に失敗した記事でも押せる。
+- **タイトル。** 抽出していない記事（取得中・失敗）の `title` は entry の title を表示する（`ARTICLE_COLS` の coalesce。記事の行は書き換えない）。抽出してもページに title がなければ entry の title を保存する（`published_at` と同じ扱い）。
+- **既に失敗した記事。** poll で entry の本文が初めて保存されたとき、その entry の記事が取得か抽出に失敗していれば ingest job を積み直す。job は取得をやり直し、失敗すればフィードの本文を使う。本文が初めて現れたときだけなので、何度 poll しても積み直すのは 1 回だけ。
+- **URL の正規化。** Medium はフィードのリンクに `?source=rss----<id>---4` を付けるので、`source` の値が `rss` で始まるときは正規化で落とす（他の `source` は意味を持ちうるので残す）。保存済みの `articles.normalized_url` / `canonical_url` と `feed_items.normalized_url` は migration 18 の中で Rust の `normalize` で付け直す（`RENORMALIZE_AT`）。新しい形が既に使われている行は `UPDATE OR IGNORE` で元のまま残る。
+- **実際のフィードで確認。** `https://medium.com/feed/netflix-techblog` は 10 entry で、すべてに本文があり（HTML 12〜36 KB、抽出後 10,000〜30,000 文字、35〜145 block）、記事ページは 403 を返した（使い捨ての example で取得・解析・抽出した）。
+
+### 未実装（意図的）
+
+poll と ingest job の競合: entry の本文は job を積んだ後に保存するので、その間に job が走ると（数 ms）本文なしで失敗し、裏描画に回る。その後の poll では積み直さないので、Reader の「再試行」で取り直す。

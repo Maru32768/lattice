@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
+use crate::ingest::FEED_CONTENT_TYPE;
 use crate::ir::{ArticleIr, Block, Inline};
 use crate::segments::{Target, Unit, plain_text};
 
@@ -331,16 +332,44 @@ CREATE TABLE favicons (
     error      TEXT,
     fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+"#, r#"
+-- The entry's own title, and its full text when the feed carries one (deflated HTML; NULL for
+-- excerpts): read in place of the page when the site refuses to serve it (feeds::Entry).
+ALTER TABLE feed_items ADD COLUMN title TEXT;
+ALTER TABLE feed_items ADD COLUMN content BLOB;
+-- So the next poll gets every feed in full and fills these for entries seen before.
+UPDATE feeds SET etag = NULL, last_modified = NULL;
 "#];
+/// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
+/// `source=rss…`, and feed entries must keep matching the articles and items saved before.
+const RENORMALIZE_AT: usize = 18;
 
-fn deflate(s: &str) -> Vec<u8> {
+/// `UPDATE OR IGNORE`: a URL whose new form is already taken keeps its old one.
+fn renormalize_urls(tx: &rusqlite::Transaction) -> Result<()> {
+    for (table, col) in [("articles", "normalized_url"), ("articles", "canonical_url"), ("feed_items", "normalized_url")] {
+        let urls: Vec<String> = tx
+            .prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%'"))?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_>>()?;
+        for old in urls {
+            if let Ok(new) = crate::url_norm::normalize(&old).map(String::from) {
+                if new != old {
+                    tx.execute(&format!("UPDATE OR IGNORE {table} SET {col} = ?2 WHERE {col} = ?1"), params![old, new])?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn deflate(s: &str) -> Vec<u8> {
     use std::io::Write;
     let mut e = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
     e.write_all(s.as_bytes()).expect("writing to a Vec cannot fail");
     e.finish().expect("writing to a Vec cannot fail")
 }
 
-fn inflate(encoding: &str, body: &[u8]) -> std::io::Result<String> {
+pub(crate) fn inflate(encoding: &str, body: &[u8]) -> std::io::Result<String> {
     use std::io::Read;
     let mut out = String::new();
     match encoding {
@@ -396,6 +425,8 @@ pub struct ArticleRow {
     pub feed_title: Option<String>,
     /// Extracted, but with almost no text: probably a JS-rendered page.
     pub thin: bool,
+    /// The text is the feed entry's copy: the page could not be fetched or had no text.
+    pub from_feed: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -544,10 +575,13 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
     })
 }
 
-const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain, title, author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
+/// A not yet extracted article shows its feed entry's title.
+const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
+    coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)), author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
-    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual'";
+    (SELECT coalesce(title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
+    (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     Ok(ArticleRow {
@@ -574,6 +608,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
         thin: r.get::<_, String>(11)? == "ok" && r.get::<_, Option<i64>>(20)?.unwrap_or(0) < THIN_TEXT_CHARS,
+        from_feed: r.get::<_, Option<String>>(23)?.as_deref() == Some(FEED_CONTENT_TYPE),
     })
 }
 
@@ -669,6 +704,9 @@ impl Store {
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = conn.transaction()?;
             tx.execute_batch(sql)?;
+            if i + 1 == RENORMALIZE_AT {
+                renormalize_urls(&tx)?;
+            }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
         }
@@ -758,7 +796,8 @@ impl Store {
             .optional()
     }
 
-    /// Returns the article id and whether it still needs fetching/extraction.
+    /// Returns the article id and whether it still needs fetching/extraction: also when its text
+    /// is the feed's copy, so saving the URL again retries the page.
     pub fn upsert_pending(&self, original_url: &str, normalized_url: &str, domain: &str) -> Result<(i64, bool)> {
         let c = self.conn();
         c.execute(
@@ -767,8 +806,10 @@ impl Store {
             params![original_url, normalized_url, domain],
         )?;
         c.query_row(
-            "SELECT id, extraction_status != 'ok' FROM articles WHERE normalized_url = ?1",
-            [normalized_url],
+            "SELECT id, extraction_status != 'ok'
+                 OR (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1) IS ?2
+             FROM articles WHERE normalized_url = ?1",
+            params![normalized_url, FEED_CONTENT_TYPE],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
     }
@@ -833,7 +874,9 @@ impl Store {
                 let m = &ir.meta;
                 tx.execute(
                     "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
-                     canonical_url = ?2, title = ?3, author = ?4, site_name = ?5,
+                     canonical_url = ?2, author = ?4, site_name = ?5,
+                     title = coalesce(?3, (SELECT title FROM feed_items
+                                           WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
                      published_at = coalesce(?6, (SELECT published_at FROM feed_items
                                                   WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
                      language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10
@@ -1356,6 +1399,31 @@ mod tests {
         assert_eq!((rows.len(), rows[0].thin, rows[0].genre.as_deref()), (1, true, None), "text_length backfilled");
         assert_eq!(s.get_article(1, "ja").unwrap().unwrap().blocks.len(), 1);
         assert_eq!(s.setting("claude_model").unwrap().as_deref(), Some("sonnet"));
+    }
+
+    #[test]
+    fn medium_feed_links_are_normalized_again() {
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..RENORMALIZE_AT - 1] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", RENORMALIZE_AT as i64 - 1).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (url, etag) VALUES ('https://m.dev/feed', 'W/1');
+             INSERT INTO articles (original_url, normalized_url, domain, feed_id) VALUES
+                 ('https://m.dev/a?source=rss----x---4', 'https://m.dev/a?source=rss----x---4', 'm.dev', 1),
+                 ('https://m.dev/b', 'https://m.dev/b', 'm.dev', NULL),
+                 ('https://m.dev/b?source=rss----x---4', 'https://m.dev/b?source=rss----x---4', 'm.dev', 1);
+             INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'https://m.dev/a?source=rss----x---4');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let urls: Vec<String> = s.conn().prepare("SELECT normalized_url FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect();
+        assert_eq!(urls, ["https://m.dev/a", "https://m.dev/b", "https://m.dev/b?source=rss----x---4"], "a taken URL keeps its old form");
+        let item: String = s.conn().query_row("SELECT normalized_url FROM feed_items", [], |r| r.get(0)).unwrap();
+        assert_eq!(item, "https://m.dev/a");
+        let etag: Option<String> = s.conn().query_row("SELECT etag FROM feeds", [], |r| r.get(0)).unwrap();
+        assert_eq!(etag, None, "the next poll fetches the feed in full");
     }
 
     /// Migration 5 moves block translations into the hash-keyed segment cache.

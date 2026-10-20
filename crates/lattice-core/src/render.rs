@@ -32,14 +32,16 @@ pub fn enqueue(store: &Store, article_id: i64) -> Result<(), String> {
     store.enqueue_job(JOB_TYPE, article_id, "{}", &format!("{JOB_TYPE}:{article_id}")).map_err(err)
 }
 
-/// After a server fetch: queue a render if the page came back thin or unextractable. The
-/// newest snapshot must be from the server, so a rendering never queues another (one
-/// attempt per fetch). Returns whether a job was queued.
+/// After a server fetch: queue a render if the page came back thin or unextractable, or was
+/// refused with a status a real browser may get past (bot checks: 401, 403, 429, 5xx; not 404
+/// or 410). The newest snapshot must not be a rendering, so a rendering never queues another
+/// (one attempt per fetch). Returns whether a job was queued.
 pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<bool, String> {
     let wanted: bool = store
         .conn()
         .query_row(
-            "SELECT fetch_status = 'ok' AND (extraction_status = 'failed' OR coalesce(text_length, 0) < ?2)
+            "SELECT (fetch_status = 'ok' AND (extraction_status = 'failed' OR coalesce(text_length, 0) < ?2)
+                    OR fetch_status = 'failed' AND last_error GLOB 'HTTP [45][0-9][0-9]*' AND substr(last_error, 6, 3) NOT IN ('404', '410'))
                 AND (SELECT content_type FROM snapshots WHERE article_id = a.id ORDER BY id DESC LIMIT 1) IS NOT ?3
              FROM articles a WHERE id = ?1",
             params![article_id, THIN_TEXT_CHARS, RENDERED_CONTENT_TYPE],

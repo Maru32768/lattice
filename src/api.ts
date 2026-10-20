@@ -64,6 +64,8 @@ export interface ArticleRow {
   feed_title: string | null;
   /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
   thin: boolean;
+  /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
+  from_feed: boolean;
 }
 
 /** `genre` null: 未分類; `feed` null: 手動追加. */

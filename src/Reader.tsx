@@ -372,7 +372,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label="フォーカスモード (f)" title="フォーカスモード (f)"><Icon name="focus" /></button>
           <Menu className="tb" label="その他（再抽出・描画して取り込み直す・自動分類・要約を作り直す・削除）" align="right" trigger={<Icon name="more" />} items={[
             { label: "再抽出（保存済みの HTML から）", onSelect: onReextract, disabled: !fetched },
-            { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering || !fetched },
+            { label: rendering ? "描画して取り込み中…" : "描画して取り込み直す", onSelect: onRender, disabled: rendering },
             { label: classifying ? "分類中…" : "自動分類", onSelect: onClassify, disabled: classifying || failed },
             { label: view.summary ? "要約を作り直す" : "要約を作成", onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
             "-",
@@ -420,7 +420,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
                 <span>{a.last_error}{fetched && " — 取得は成功し、HTML は保存済みです。"}</span>
               </div>
               <div className="btn-row">
-                {fetched && renderBtn(true)}
+                {renderBtn(true)}
                 {fetched && <button className="btn" onClick={onReextract} title="保存済みの HTML から抽出し直します">再抽出（オフライン）</button>}
                 <button className="btn" onClick={onRetry}>再試行</button>
                 <button className="btn" onClick={onPage}>Page で開く</button>
@@ -428,6 +428,15 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             </div>
           )}
           {!failed && <Summary view={view} onSummarize={onSummarize} />}
+          {a.from_feed && (
+            <div className="note warn center thin">
+              <span className="grow">
+                フィードの本文から取り込みました。{a.last_error ? `元ページは取得できませんでした（${a.last_error}）。` : "元ページからは本文を取り出せませんでした。"}
+              </span>
+              <button className="btn" onClick={onRetry} title="元ページの取得をやり直します">再試行</button>
+              {renderBtn(false)}
+            </div>
+          )}
           {a.thin && (
             <div className="note warn center thin">
               <span className="grow">
