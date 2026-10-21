@@ -1,6 +1,7 @@
 mod badge;
 mod browser;
 mod location;
+mod popout;
 mod renderer;
 mod update;
 
@@ -971,6 +972,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
+        .on_window_event(popout::on_window_event)
         .setup(|app| {
             let loc = location::detect(&app.path().app_data_dir()?);
             // The log folder follows the data in portable mode, so the plugin is added here.
@@ -1207,6 +1209,8 @@ pub fn run() {
             browser::overlay_history,
             browser::browser_set_keys,
             browser::overlay_key,
+            popout::open_window,
+            popout::close_window,
             update::update_info,
             update::update_check,
             update::update_install,

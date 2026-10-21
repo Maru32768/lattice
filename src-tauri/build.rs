@@ -128,6 +128,8 @@ const COMMANDS: &[&str] = &[
     "browser_set_keys",
     "overlay_key",
     "overlay_vocab",
+    "open_window",
+    "close_window",
     "update_info",
     "update_check",
     "update_install",
