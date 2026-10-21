@@ -64,7 +64,8 @@ const QUIZZES: &str = "SELECT json_group_array(json_object(
         ORDER BY z.id)
     FROM quizzes z JOIN articles a ON a.id = z.article_id WHERE z.article_id = ?1";
 
-/// Writes the export as JSON lines: a header (`format`), then `feed`, `group`, `article` and
+/// Writes the export as JSON lines: a header (`format`), then `feed_folder`, `feed` (with its
+/// `folder_id`), `group`, `article` and
 /// `chat_thread` objects; each article lists the ids of its `groups`. `group` limits it to that
 /// group's articles (and that group), without chats, which may cite articles outside it.
 /// Returns the number of articles written.
@@ -94,16 +95,27 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
 
     let feeds: Vec<Value> = {
         let c = store.conn();
-        let mut st = c.prepare("SELECT id, url, title, site_url, created_at FROM feeds ORDER BY id").map_err(err)?;
+        let mut st = c.prepare("SELECT id, url, title, site_url, created_at, folder_id FROM feeds ORDER BY id").map_err(err)?;
         st.query_map([], |r| {
             Ok(json!({"type": "feed", "id": r.get::<_, i64>(0)?, "url": r.get::<_, String>(1)?, "title": r.get::<_, Option<String>>(2)?,
-                      "site_url": r.get::<_, Option<String>>(3)?, "created_at": r.get::<_, String>(4)?}))
+                      "site_url": r.get::<_, Option<String>>(3)?, "created_at": r.get::<_, String>(4)?, "folder_id": r.get::<_, Option<i64>>(5)?}))
         })
         .map_err(err)?
         .collect::<Result<_, _>>()
         .map_err(err)?
     };
-    for v in feeds.iter().chain(&groups) {
+    let folders: Vec<Value> = {
+        let c = store.conn();
+        let mut st = c.prepare("SELECT id, name, position, created_at FROM feed_folders ORDER BY position, id").map_err(err)?;
+        st.query_map([], |r| {
+            Ok(json!({"type": "feed_folder", "id": r.get::<_, i64>(0)?, "name": r.get::<_, String>(1)?, "position": r.get::<_, i64>(2)?,
+                      "created_at": r.get::<_, String>(3)?}))
+        })
+        .map_err(err)?
+        .collect::<Result<_, _>>()
+        .map_err(err)?
+    };
+    for v in folders.iter().chain(&feeds).chain(&groups) {
         line(out, v)?;
     }
 
@@ -266,5 +278,17 @@ mod tests {
         let (n, lines) = export(None);
         assert_eq!((n, lines.iter().filter(|l| l["type"] == "group").count(), lines.last().unwrap()["type"].as_str()), (2, 2, Some("chat_thread")));
         assert!(export_to(&s, &mut Vec::new(), Some(999)).is_err());
+    }
+
+    #[test]
+    fn feeds_carry_their_folder() {
+        let s = Store::open_in_memory().unwrap();
+        let folder = crate::feed_folders::create(&s, "TechFeed").unwrap();
+        let (feed, _) = crate::feeds::add(&s, "https://a.dev/feed", Some(folder)).unwrap();
+        let mut out = Vec::new();
+        export_to(&s, &mut out, None).unwrap();
+        let lines: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!((lines[1]["type"].as_str(), lines[1]["name"].as_str()), (Some("feed_folder"), Some("TechFeed")));
+        assert_eq!((lines[2]["id"].as_i64(), lines[2]["folder_id"].as_i64()), (Some(feed), Some(folder)));
     }
 }

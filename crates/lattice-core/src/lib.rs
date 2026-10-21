@@ -10,6 +10,7 @@ pub mod export;
 pub mod extract;
 pub mod favicons;
 pub mod feed_filter;
+pub mod feed_folders;
 pub mod feeds;
 pub mod fetch;
 pub mod gemini;

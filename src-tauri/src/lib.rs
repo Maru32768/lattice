@@ -26,7 +26,8 @@ use lattice_core::store::JobRow;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, ArticleView, SegmentRow, Store, TagCount};
 use lattice_core::url_norm::normalize;
 use lattice_core::{
-    backup, classify, export, favicons, feed_filter, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, summarize, translate, vocab,
+    backup, classify, export, favicons, feed_filter, feed_folders, images, instructions, markdown, pdf, quiz, r2, relevance, render, review, summarize,
+    translate, vocab,
 };
 use tauri::{Emitter, Manager, State, Webview};
 use tokio::sync::{Notify, Semaphore};
@@ -387,9 +388,10 @@ async fn discover_feeds(app: State<'_, App>, url: String) -> Result<Vec<feeds::C
 }
 
 /// Subscribes and fetches right away; a new URL that is not a readable feed is not kept.
+/// `folder` puts the feed in that folder, new or already subscribed.
 #[tauri::command]
-async fn add_feed(app: State<'_, App>, url: String) -> Result<i64, String> {
-    let (id, created) = feeds::add(&app.store, &url)?;
+async fn add_feed(app: State<'_, App>, url: String, folder: Option<i64>) -> Result<i64, String> {
+    let (id, created) = feeds::add(&app.store, &url, folder)?;
     match feeds::refresh(&app.store, &app.providers.http, id).await {
         Err(e) if created => {
             feeds::remove(&app.store, id)?;
@@ -463,6 +465,50 @@ fn reevaluate_rejected(app: State<'_, App>, feed_id: Option<i64>) -> Result<feed
     app.wake_net.iter().for_each(|w| w.notify_one());
     app.wake_llm.notify_one();
     Ok(r)
+}
+
+#[tauri::command(async)]
+fn list_feed_folders(app: State<'_, App>) -> Result<Vec<feed_folders::FolderRow>, String> {
+    feed_folders::list(&app.store)
+}
+
+#[tauri::command(async)]
+fn create_feed_folder(app: State<'_, App>, name: String) -> Result<i64, String> {
+    feed_folders::create(&app.store, &name)
+}
+
+#[tauri::command(async)]
+fn rename_feed_folder(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
+    feed_folders::rename(&app.store, id, &name)
+}
+
+/// Its feeds stay, without a folder.
+#[tauri::command(async)]
+fn delete_feed_folder(app: State<'_, App>, id: i64) -> Result<(), String> {
+    feed_folders::delete(&app.store, id)
+}
+
+#[tauri::command(async)]
+fn reorder_feed_folders(app: State<'_, App>, ids: Vec<i64>) -> Result<(), String> {
+    feed_folders::reorder(&app.store, &ids)
+}
+
+/// `folder` `None` takes the feeds out of their folders.
+#[tauri::command(async)]
+fn move_feeds_to_folder(app: State<'_, App>, feeds: Vec<i64>, folder: Option<i64>) -> Result<(), String> {
+    feed_folders::move_feeds(&app.store, &feeds, folder)
+}
+
+/// An OPML file's feeds with their folders, created by name; the UI then subscribes to each.
+#[tauri::command(async)]
+fn import_opml(app: State<'_, App>, xml: String) -> Result<Vec<feed_folders::OpmlFeed>, String> {
+    feed_folders::import_opml(&app.store, &xml)
+}
+
+/// Writes <data>/exports/lattice-feeds-<UTC>.opml and returns its path.
+#[tauri::command(async)]
+fn export_opml(app: State<'_, App>) -> Result<String, String> {
+    Ok(feed_folders::export_opml_file(&app.store, &app.data_dir.join("exports"))?.display().to_string())
 }
 
 #[tauri::command(async)]
@@ -1148,6 +1194,14 @@ pub fn run() {
             feed_rejected,
             import_rejected,
             reevaluate_rejected,
+            list_feed_folders,
+            create_feed_folder,
+            rename_feed_folder,
+            delete_feed_folder,
+            reorder_feed_folders,
+            move_feeds_to_folder,
+            import_opml,
+            export_opml,
             set_favorite,
             add_tag,
             list_groups,

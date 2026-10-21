@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
+import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type FolderRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
 
@@ -82,7 +82,7 @@ const JOB_POLL_MS = 10_000;
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
 const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
 /** What has a right-click menu: list rows and document tabs (H3). */
-const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab]";
+const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 
 /** States board #8: an empty library. */
 function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
@@ -132,6 +132,8 @@ export default function App() {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
+  /** Feed folders (H25), in the user's order. */
+  const [folders, setFolders] = useState<FolderRow[]>([]);
   const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
   const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
   /** The user's groups (G53); `groups` below is the list's grouping. */
@@ -233,7 +235,7 @@ export default function App() {
     setNow(Date.now());
     return Promise.all([
       api.listArticles({ kind: "all" }, sortRef.current).then((a) => { setArticles(a); setLoaded(true); }),
-      api.listFeeds().then(setFeeds), api.listTags().then(setTags), api.listGenres().then(setGenres), api.listGroups().then(setGroupRows), api.relevanceStatus().then(setRelevance),
+      api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders), api.listTags().then(setTags), api.listGenres().then(setGenres), api.listGroups().then(setGroupRows), api.relevanceStatus().then(setRelevance),
     ]).catch(fail);
   };
   /** Whether the page a tab shows is in the Index. */
@@ -385,8 +387,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders) : []),
+    [shown.length, articles, groupRows, scope, facets, now, t, folders]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -394,7 +396,7 @@ export default function App() {
     return groupHits(filterHits(search.result.hits, method, ids));
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
-  const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t), [groupRows, genres, feeds, tags, t]);
+  const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -612,6 +614,12 @@ export default function App() {
     await act(() => api.deleteGroup(id));
     if (scope.kind === "group" && scope.id === id) setScope({ kind: "all" });
     setFacets((f) => ({ ...f, groups: f.groups.filter((g) => g !== id) }));
+  }
+
+  // ---- feed folders (H25) --------------------------------------------------------------------
+  async function deleteFolder(id: number) {
+    await act(() => api.deleteFeedFolder(id));
+    if (scope.kind === "folder" && scope.id === id) setScope({ kind: "all" });
   }
 
   async function deleteArticle(a: ArticleRow) {
@@ -1089,7 +1097,7 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles, groupRows, t);
+  const title = scopeLabel(scope, articles, groupRows, t, folders);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
@@ -1111,11 +1119,12 @@ export default function App() {
     <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
   );
   const nav = navOpen
-    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
+    ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} folders={folders} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
         chatOpen={chatOpen || chatWindow} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen}
         onChat={toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
         onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
+        onRenameFolder={(id, name) => act(() => api.renameFeedFolder(id, name))} onDeleteFolder={deleteFolder} onMenu={setCtxItems}
         onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)}
         onScope={setScope} onChat={toggleChat} />;
@@ -1243,7 +1252,7 @@ export default function App() {
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (
-            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} groups={groupRows} scope={scope} facets={facets} actions={paletteActions}
+            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} folders={folders} groups={groupRows} scope={scope} facets={facets} actions={paletteActions}
               onClose={() => setPalette(null)} />
           )}
           {deleting && (

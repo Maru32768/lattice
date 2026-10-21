@@ -1,16 +1,34 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
-  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, FeedFilter, GroupRow, ImageSettings,
+  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, FeedFilter, FolderRow, GroupRow, ImageSettings, OpmlFeed,
   Reevaluated, RejectedEntry,
   Grade, LlmSettings, Quiz, QuizReviewItem, R2Settings, R2Status, RelevanceStatus, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
   VocabCapture, VocabEntry, VocabReviewItem,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, FOLDERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
 const groups = structuredClone(GROUPS);
+const folders = structuredClone(FOLDERS);
+/** A feed's folder, on the feed and on its articles, as the backend joins it. */
+function syncFolders() {
+  for (const f of feeds) f.folder = folders.find((x) => x.id === f.folder_id)?.name ?? null;
+  for (const a of articles) a.folder_id = feeds.find((f) => f.id === a.feed_id)?.folder_id ?? null;
+}
+const folder = (id: number) => folders.find((x) => x.id === id) ?? reject("feedFolders.notFound");
+function folderName(name: string, id: number | null): string {
+  const n = name.trim();
+  if (!n) reject("feedFolders.emptyName");
+  if (folders.some((x) => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) reject("feedFolders.exists", { name: n });
+  return n;
+}
+function createFolder(name: string): number {
+  const id = Math.max(0, ...folders.map((x) => x.id)) + 1;
+  folders.push({ id, name: folderName(name, null), feeds: 0 });
+  return id;
+}
 const filters = new Map<number, FeedFilter>(Object.entries(structuredClone(FEED_FILTERS)).map(([k, v]) => [Number(k), v]));
 const rejected = new Map<number, RejectedEntry[]>(Object.entries(structuredClone(REJECTED)).map(([k, v]) => [Number(k), v]));
 const NO_FILTER: FeedFilter = { rules: [], min_chars: null, llm: false, instruction: "", min_relevance: null };
@@ -76,6 +94,7 @@ function matches(a: ArticleRow, f: ArticleFilter | null): boolean {
     case "feed": return a.feed_id === f.id;
     case "group": return a.groups.includes(f.id);
     case "important": return (a.relevance ?? 0) >= f.min;
+    case "folder": return feeds.find((x) => x.id === a.feed_id)?.folder_id === f.id;
   }
 }
 
@@ -163,7 +182,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
     language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
     read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
-    feed_id: null, feed_title: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...extra,
+    feed_id: null, feed_title: null, folder_id: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...extra,
   });
   return id;
 }
@@ -181,8 +200,10 @@ export const handlers = {
   favicon: none,
   get_image_settings: (): ImageSettings => store.images,
   set_image_settings: ({ settings }: { settings: ImageSettings }) => void (store.images = settings),
-  list_articles: ({ filter, sort }: { filter: ArticleFilter; sort: ArticleSort | null }): ArticleRow[] =>
-    articles.filter((a) => matches(a, filter)).sort(SORTERS[sort ?? "saved_desc"]),
+  list_articles: ({ filter, sort }: { filter: ArticleFilter; sort: ArticleSort | null }): ArticleRow[] => {
+    syncFolders();
+    return articles.filter((a) => matches(a, filter)).sort(SORTERS[sort ?? "saved_desc"]);
+  },
   list_tags: (): TagCount[] => counts(articles.flatMap((a) => a.tags)),
   set_favorite: ({ id, favorite }: { id: number; favorite: boolean }) => void (article(id).favorite = favorite),
   add_tag: ({ id, name }: { id: number; name: string }) => {
@@ -387,14 +408,58 @@ export const handlers = {
     return ids?.length ?? articles.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
   },
   list_feeds: () => feeds,
-  add_feed: ({ url }: { url: string }): number => {
+  add_feed: ({ url, folder: into }: { url: string; folder: number | null }): number => {
+    if (into != null) folder(into);
+    const known = feeds.find((f) => f.url === url);
+    if (known) {
+      if (into != null) known.folder_id = into;
+      syncFolders();
+      return known.id;
+    }
     const id = Math.max(...feeds.map((f) => f.id)) + 1;
     feeds.push({
       id, url, title: null, custom_title: null, has_icon: false, site_url: null, last_fetched_at: null, last_error: null, article_count: 0,
-      rejected: 0, filtered: false, filter_note: null,
+      rejected: 0, filtered: false, filter_note: null, folder_id: into, folder: null,
     });
+    syncFolders();
     return id;
   },
+  list_feed_folders: (): FolderRow[] => folders.map((x) => ({ ...x, feeds: feeds.filter((f) => f.folder_id === x.id).length })),
+  create_feed_folder: ({ name }: { name: string }): number => createFolder(name),
+  rename_feed_folder: ({ id, name }: { id: number; name: string }) => {
+    folder(id).name = folderName(name, id);
+    syncFolders();
+  },
+  delete_feed_folder: ({ id }: { id: number }) => {
+    folders.splice(folders.findIndex((x) => x.id === id), 1);
+    for (const f of feeds) if (f.folder_id === id) f.folder_id = null;
+    syncFolders();
+  },
+  reorder_feed_folders: ({ ids }: { ids: number[] }) => {
+    folders.sort((a, b) => (ids.indexOf(a.id) + 1 || Infinity) - (ids.indexOf(b.id) + 1 || Infinity));
+  },
+  move_feeds_to_folder: ({ feeds: ids, folder: into }: { feeds: number[]; folder: number | null }) => {
+    if (into != null) folder(into);
+    for (const f of feeds) if (ids.includes(f.id)) f.folder_id = into;
+    syncFolders();
+  },
+  // Outlines with xmlUrl are feeds; their innermost enclosing outline without one is the folder.
+  import_opml: ({ xml }: { xml: string }): OpmlFeed[] => {
+    const doc = new DOMParser().parseFromString(xml, "application/xml");
+    if (doc.querySelector("parsererror")) reject("feeds.badOpml", { error: "parse error" });
+    const out: OpmlFeed[] = [];
+    for (const o of doc.querySelectorAll("outline[xmlUrl]")) {
+      const url = o.getAttribute("xmlUrl")!;
+      if (out.some((x) => x.url === url)) continue;
+      let p = o.parentElement;
+      while (p && p.tagName === "outline" && p.hasAttribute("xmlUrl")) p = p.parentElement;
+      const name = p?.tagName === "outline" ? (p.getAttribute("text") ?? p.getAttribute("title")) : null;
+      const known = name ? folders.find((x) => x.name.toLowerCase() === name.trim().toLowerCase()) : undefined;
+      out.push({ url, folder: name ? (known?.id ?? createFolder(name)) : null });
+    }
+    return out;
+  },
+  export_opml: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-feeds-20261020T030000Z.opml",
   discover_feeds: ({ url }: { url: string }): FeedCandidate[] => [{ url: new URL("/feed.xml", url).href, title: "Discovered feed" }],
   remove_feed: ({ id }: { id: number }) => {
     feeds.splice(feeds.findIndex((f) => f.id === id), 1);

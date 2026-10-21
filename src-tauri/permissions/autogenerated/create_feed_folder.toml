@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-feed-folder"
+description = "Enables the create_feed_folder command without any pre-configured scope."
+commands.allow = ["create_feed_folder"]
+
+[[permission]]
+identifier = "deny-create-feed-folder"
+description = "Denies the create_feed_folder command without any pre-configured scope."
+commands.deny = ["create_feed_folder"]

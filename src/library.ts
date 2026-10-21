@@ -1,6 +1,6 @@
 // The library's article set is one query: scope ∧ facets (∧ search). All of it is derived
 // client-side from the full article list, which the backend returns without a limit.
-import type { ArticleFilter, ArticleRow, GroupRow } from "./api.ts";
+import type { ArticleFilter, ArticleRow, FolderRow, GroupRow } from "./api.ts";
 import type { PlainKey, T } from "./i18n/index.ts";
 
 /** NAVIGATION layer: exactly one, chosen in the sidebar; replaces the previous one. */
@@ -10,6 +10,7 @@ export type Scope =
   | { kind: "genre"; name: string | null } // null = 未分類
   | { kind: "feed"; id: number | null } // null = 手動追加
   | { kind: "group"; id: number }
+  | { kind: "folder"; id: number } // a feed folder's feeds
   | { kind: "important"; min: number }; // importance at least min (Settings › 重要度)
 
 export type ArticleState = "unread" | "read" | "favorite" | "issue";
@@ -55,6 +56,7 @@ export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
     case "genre": return a.genre === s.name;
     case "feed": return a.feed_id === s.id;
     case "group": return a.groups.includes(s.id);
+    case "folder": return a.folder_id === s.id;
     case "important": return (a.relevance ?? 0) >= s.min;
   }
 }
@@ -137,7 +139,7 @@ export function facetBase(scoped: ArticleRow[], f: Facets, dim: Dim): ArticleRow
 
 export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((g) => g.id === id)?.name ?? t("common.group");
 
-export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T): string {
+export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T, folders: FolderRow[] = []): string {
   switch (s.kind) {
     case "recent": return t("library.recent");
     case "unread": return t("common.unread");
@@ -146,6 +148,7 @@ export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T
     case "genre": return s.name ?? t("common.unclassified");
     case "feed": return valueLabel("feeds", s.id, all, groups, t);
     case "group": return groupName(s.id, groups, t);
+    case "folder": return folders.find((f) => f.id === s.id)?.name ?? t("common.folder");
     case "important": return t("library.important");
   }
 }
@@ -186,7 +189,7 @@ export interface Relaxation {
 }
 
 /** Empty-state suggestions: for each active facet (and the scope if not "all"), the count if it alone were removed. */
-export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T): Relaxation[] {
+export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T, folders: FolderRow[] = []): Relaxation[] {
   const count = (scope: Scope, facets: Facets) => all.filter((a) => inScope(a, scope, now) && matches(a, facets)).length;
   const out: Relaxation[] = activeDims(f).map((d) => {
     const facets = without(f, d);
@@ -194,7 +197,7 @@ export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: 
   });
   if (s.kind !== "all") {
     const scope: Scope = { kind: "all" };
-    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t) }), count: count(scope, f), scope, facets: f });
+    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t, folders) }), count: count(scope, f), scope, facets: f });
   }
   return out;
 }

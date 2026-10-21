@@ -68,6 +68,8 @@ export interface ArticleRow {
   difficulty_manual: boolean;
   feed_id: number | null;
   feed_title: string | null;
+  /** The folder of the article's feed. */
+  folder_id: number | null;
   /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
   thin: boolean;
   /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
@@ -90,7 +92,8 @@ export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("co
 /** `genre` null: 未分類; `feed` null: 手動追加; `important`: importance at least `min`. */
 export type ArticleFilter =
   | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number } | { kind: "important"; min: number };
+  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number } | { kind: "important"; min: number }
+  | { kind: "folder"; id: number };
 
 export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc" | "relevance_desc";
 
@@ -125,6 +128,23 @@ export interface FeedRow {
   filtered: boolean;
   /** Why the LLM filter last let entries through unjudged (a coded message). */
   filter_note: string | null;
+  /** The feed's folder (`FolderRow`), and its name. */
+  folder_id: number | null;
+  folder: string | null;
+}
+
+/** A feed folder (H25): named, in the user's order, not nested; a feed is in at most one. */
+export interface FolderRow {
+  id: number;
+  name: string;
+  /** Feeds in the folder. */
+  feeds: number;
+}
+
+/** One subscription of an OPML file, its folder created by name. */
+export interface OpmlFeed {
+  url: string;
+  folder: number | null;
 }
 
 /** Mirrors feed_filter.rs. */
@@ -579,7 +599,20 @@ export const api = {
   /** The given articles, or (null) every article whose score is missing or stale. Returns how many were queued. */
   rescoreRelevance: (ids: number[] | null) => invoke<number>("rescore_relevance", { ids }),
   listFeeds: () => invoke<FeedRow[]>("list_feeds"),
-  addFeed: (url: string) => invoke<number>("add_feed", { url }),
+  /** `folder` puts the feed in it, new or already subscribed. */
+  addFeed: (url: string, folder: number | null = null) => invoke<number>("add_feed", { url, folder }),
+  listFeedFolders: () => invoke<FolderRow[]>("list_feed_folders"),
+  createFeedFolder: (name: string) => invoke<number>("create_feed_folder", { name }),
+  renameFeedFolder: (id: number, name: string) => invoke<void>("rename_feed_folder", { id, name }),
+  /** Its feeds stay, without a folder. */
+  deleteFeedFolder: (id: number) => invoke<void>("delete_feed_folder", { id }),
+  reorderFeedFolders: (ids: number[]) => invoke<void>("reorder_feed_folders", { ids }),
+  /** `folder` null takes the feeds out of their folders. */
+  moveFeedsToFolder: (feeds: number[], folder: number | null) => invoke<void>("move_feeds_to_folder", { feeds, folder }),
+  /** The feeds of an OPML file with their folders (created by name); subscribing is `addFeed`'s. */
+  importOpml: (xml: string) => invoke<OpmlFeed[]>("import_opml", { xml }),
+  /** Writes <data>/exports/lattice-feeds-<UTC>.opml and returns its path. */
+  exportOpml: () => invoke<string>("export_opml"),
   discoverFeeds: (url: string) => invoke<FeedCandidate[]>("discover_feeds", { url }),
   removeFeed: (id: number) => invoke<void>("remove_feed", { id }),
   refreshFeeds: () => invoke<number>("refresh_feeds"),

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-feed-folder"
+description = "Enables the delete_feed_folder command without any pre-configured scope."
+commands.allow = ["delete_feed_folder"]
+
+[[permission]]
+identifier = "deny-delete-feed-folder"
+description = "Denies the delete_feed_folder command without any pre-configured scope."
+commands.deny = ["delete_feed_folder"]

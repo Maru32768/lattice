@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-feed-folders"
+description = "Enables the list_feed_folders command without any pre-configured scope."
+commands.allow = ["list_feed_folders"]
+
+[[permission]]
+identifier = "deny-list-feed-folders"
+description = "Denies the list_feed_folders command without any pre-configured scope."
+commands.deny = ["list_feed_folders"]

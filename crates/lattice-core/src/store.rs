@@ -521,6 +521,18 @@ CREATE INDEX feed_items_filter ON feed_items(filter_status, feed_id) WHERE filte
 -- their log. The meaning cards keep their schedule and log.
 DELETE FROM vocab_cards WHERE kind = 'cloze';
 "#,
+    r#"
+-- Feed folders (H25, feed_folders.rs): named and ordered, not nested; a feed is in at most one.
+-- Deleting a folder leaves its feeds without one.
+CREATE TABLE feed_folders (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    position   INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+ALTER TABLE feeds ADD COLUMN folder_id INTEGER REFERENCES feed_folders(id) ON DELETE SET NULL;
+CREATE INDEX feeds_folder ON feeds(folder_id);
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -625,6 +637,8 @@ pub struct ArticleRow {
     pub difficulty_manual: bool,
     pub feed_id: Option<i64>,
     pub feed_title: Option<String>,
+    /// The folder of the article's feed (feed_folders.rs).
+    pub folder_id: Option<i64>,
     /// Extracted, but with almost no text: probably a JS-rendered page.
     pub thin: bool,
     /// The text is the feed entry's copy: the page could not be fetched or had no text.
@@ -659,6 +673,10 @@ pub enum ArticleFilter {
     Group {
         id: i64,
     },
+    /// The articles of a feed folder's feeds (feed_folders.rs).
+    Folder {
+        id: i64,
+    },
     /// 重要: importance at least `min`.
     Important {
         min: i64,
@@ -680,6 +698,7 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
         ArticleFilter::Group { id } => ("EXISTS (SELECT 1 FROM group_articles WHERE article_id = articles.id AND group_id = ?1)", Some((*id).into())),
         ArticleFilter::Important { min } => ("EXISTS (SELECT 1 FROM relevance WHERE article_id = articles.id AND score >= ?1)", Some((*min).into())),
+        ArticleFilter::Folder { id } => ("feed_id IN (SELECT id FROM feeds WHERE folder_id = ?1)", Some((*id).into())),
     }
 }
 
@@ -811,7 +830,8 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
     (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id)),
     (SELECT score FROM relevance WHERE article_id = articles.id), (SELECT reason FROM relevance WHERE article_id = articles.id),
-    coalesce((SELECT profile_hash IS NOT (SELECT value FROM settings WHERE key = 'user_profile_hash') FROM relevance WHERE article_id = articles.id), 0)";
+    coalesce((SELECT profile_hash IS NOT (SELECT value FROM settings WHERE key = 'user_profile_hash') FROM relevance WHERE article_id = articles.id), 0),
+    (SELECT folder_id FROM feeds WHERE id = articles.feed_id)";
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     let snapshot_type: Option<String> = r.get(23)?;
@@ -839,6 +859,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         difficulty_manual: r.get(22)?,
         feed_id: r.get(18)?,
         feed_title: r.get(19)?,
+        folder_id: r.get(28)?,
         // A short local note is complete, and so is a PDF; only a page can have more text than
         // was extracted.
         thin: r.get::<_, String>(11)? == "ok"
@@ -1744,6 +1765,27 @@ mod tests {
         let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();
         assert_eq!((rows.len(), rows[0].relevance, rows[0].relevance_stale), (1, None, false));
         assert_eq!(s.article_ids(&ArticleFilter::Important { min: 4 }).unwrap(), Some(vec![]));
+    }
+
+    #[test]
+    fn feed_folder_migration_upgrades_an_existing_library() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("CREATE TABLE feed_folders")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (url) VALUES ('https://a.dev/feed');
+             INSERT INTO articles (original_url, normalized_url, domain, feed_id) VALUES ('https://a.dev/1', 'https://a.dev/1', 'a.dev', 1);",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        assert_eq!((crate::feeds::list(&s).unwrap()[0].folder_id, s.article_row(1).unwrap().unwrap().folder_id), (None, None));
+        let f = crate::feed_folders::create(&s, "TechFeed").unwrap();
+        crate::feed_folders::move_feeds(&s, &[1], Some(f)).unwrap();
+        assert_eq!(s.article_row(1).unwrap().unwrap().folder_id, Some(f));
+        assert_eq!(s.list_articles(&ArticleFilter::Folder { id: f }).unwrap().len(), 1);
     }
 
     #[test]
