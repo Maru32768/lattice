@@ -305,11 +305,24 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Puts the page webview under `window`, the one whose UI is showing its tab now, when its tab
-/// moved there from another window (wry reparents on Windows and macOS; on Linux the move fails
-/// and the tab's page stays in its old window).
-fn attach(wv: &Webview, window: &Window) -> tauri::Result<()> {
-    if wv.window().label() == window.label() { Ok(()) } else { wv.reparent(window) }
+/// A tab moved to another window gets a new page webview there: `Webview::reparent` keeps the
+/// WebView2 controller's old offset on Windows (the page drew shifted and spilled past the new
+/// window), so the old one is closed and the tab reloads in its new window.
+fn in_window(wv: &Webview, window: &Window) -> bool {
+    wv.window().label() == window.label()
+}
+
+/// Closes a page webview and waits until its label is free to be used again.
+async fn close_page(app: &AppHandle, wv: Webview) -> Result<(), String> {
+    let label = wv.label().to_string();
+    wv.close().map_err(|e| e.to_string())?;
+    for _ in 0..50 {
+        if app.get_webview(&label).is_none() {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    Err(format!("{label} did not close"))
 }
 
 // browser_open/go/set_translation are async on purpose: sync commands run on the main thread,
@@ -331,8 +344,10 @@ pub async fn browser_open(
     let _opening = browser.opening.lock().await;
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
+    if let Some(wv) = app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
+        close_page(&app, wv).await?;
+    }
     if let Some(wv) = app.get_webview(&label) {
-        attach(&wv, &window).map_err(|e| e.to_string())?;
         // A tab that came from another window already shows this page: no reload, its history and scroll stay.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
         if focus_text.is_none() && !loading && wv.url().is_ok_and(|u| u == url) {
@@ -398,15 +413,14 @@ pub async fn browser_open(
 #[tauri::command]
 pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: Webview, tab: String, bounds: Bounds) -> Result<bool, String> {
     match app.get_webview(&label(&tab)?) {
-        Some(wv) => attach(&wv, &webview.window())
-            .and_then(|()| {
-                update_visibility(&wv, &browser, |v| {
-                    v.wanted = true;
-                    v.bounds = Some(bounds);
-                })
-            })
-            .map(|()| true)
-            .map_err(|e| e.to_string()),
+        // In another window: the UI opens the tab again here (browser_open replaces the webview).
+        Some(wv) if !in_window(&wv, &webview.window()) => Ok(false),
+        Some(wv) => update_visibility(&wv, &browser, |v| {
+            v.wanted = true;
+            v.bounds = Some(bounds);
+        })
+        .map(|()| true)
+        .map_err(|e| e.to_string()),
         None => Ok(false),
     }
 }

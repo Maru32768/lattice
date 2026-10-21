@@ -90,20 +90,17 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
     w.show().map_err(err)
 }
 
-/// Closes the calling pop-out. Its page webviews first go back under the main window, hidden:
-/// the UI is moving their tabs there, and a child webview dies with its window.
+/// Closes the calling pop-out. Its page webviews close with it; the UI moves their tabs to the
+/// main window, which opens their pages again (see `browser::in_window`).
 #[tauri::command]
-pub async fn close_window(app: AppHandle, state: State<'_, App>, webview: Webview) -> Result<(), String> {
+pub async fn close_window(_app: AppHandle, state: State<'_, App>, webview: Webview) -> Result<(), String> {
     let w = webview.window();
     if !is_popout(w.label()) {
         return Err("not a pop-out window".into());
     }
-    if let Some(main) = app.get_window(MAIN) {
-        for wv in w.webviews().into_iter().filter(|wv| browser::is_browser(wv.label())) {
-            let _ = wv.hide();
-            if let Err(e) = wv.reparent(&main) {
-                log::warn!("moving {} back to the main window: {e}", wv.label());
-            }
+    for wv in w.webviews().into_iter().filter(|wv| browser::is_browser(wv.label())) {
+        if let Err(e) = wv.close() {
+            log::warn!("closing {}: {e}", wv.label());
         }
     }
     save_geometry(&state, &w);
