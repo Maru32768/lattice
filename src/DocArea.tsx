@@ -136,7 +136,7 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;
-  /** The pane's + button (or Ctrl+T): the palette, whose pick opens in a new tab. */
+  /** The pane's + button: a new tab in that pane. */
   onNew: (pane: Id) => void;
   /** The strip's button that moves the active tab to another window (out of main, or back to it). */
   windowAction: WindowAction;
