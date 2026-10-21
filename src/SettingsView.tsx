@@ -75,8 +75,9 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
   }
 }
 
-export function SettingsView({ initialSection = "provider", onBack, onFeeds, onChanged, onOpenUrl }: {
-  initialSection?: SettingsSection;
+export function SettingsView({ section, onSection, onBack, onFeeds, onChanged, onOpenUrl }: {
+  section: SettingsSection;
+  onSection: (s: SettingsSection) => void;
   onBack: () => void;
   onFeeds: () => void;
   onChanged: () => void;
@@ -84,7 +85,6 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
   onOpenUrl: (url: string) => void;
 }) {
   const t = useT();
-  const [section, setSection] = useState(initialSection);
   const [badges, setBadges] = useState<Partial<Record<SettingsSection, ReactNode>>>({});
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
@@ -108,7 +108,7 @@ export function SettingsView({ initialSection = "provider", onBack, onFeeds, onC
           <Fragment key={g}>
             <div className="sec">{t(GROUPS[g])}</div>
             {SECTIONS.filter((s) => s.group === g).map((s) => (
-              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={t(s.title)} aria-current={s.id === section ? "page" : undefined} onClick={() => setSection(s.id)}>
+              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={t(s.title)} aria-current={s.id === section ? "page" : undefined} onClick={() => onSection(s.id)}>
                 <span className="label">{t(s.title)}</span>
                 {badges[s.id] != null && <span className="n">{badges[s.id]}</span>}
               </button>

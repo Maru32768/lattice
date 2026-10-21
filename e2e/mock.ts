@@ -37,6 +37,7 @@ const store = {
   taskbarBadge: true,
   uiLanguage: null as string | null,
   keepTerms: true,
+  autoTranslate: false,
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
   chatBudget: "standard" as ChatBudget,
@@ -112,6 +113,9 @@ function search(query: string, filter: ArticleFilter | null): SearchResult {
   return { hits, semantic_error: null };
 }
 
+/** Articles whose translation was queued: their view shows the job waiting. */
+const translating = new Set<number>();
+
 function view(id: number): ArticleView | null {
   const a = articles.find((x) => x.id === id);
   if (!a) return null;
@@ -120,7 +124,9 @@ function view(id: number): ArticleView | null {
     article: a,
     target_language: a.language === "ja" ? "en" : "ja",
     blocks: blocksOf(a),
-    jobs: jobsOf(a),
+    jobs: translating.has(id)
+      ? [...jobsOf(a).filter((j) => j.type !== "translate"), { id: 2000 + id, type: "translate", article_id: id, params: null, status: "pending", attempt_count: 0, last_error: null, next_run_at: null }]
+      : jobsOf(a),
     summary: summary ? { text: summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
   };
 }
@@ -218,7 +224,7 @@ export const handlers = {
     if (i >= 0) articles.splice(i, 1);
     return i >= 0;
   },
-  translate_article: none,
+  translate_article: ({ id }: { id: number }) => void translating.add(id),
   summarize_article: none,
   quiz_article: ({ id }: { id: number }) => void quizzes.set(id, generateQuiz(id)),
   get_quiz: ({ id }: { id: number }): Quiz | null => {
@@ -354,6 +360,8 @@ export const handlers = {
   },
   get_translate_keep_terms: (): boolean => store.keepTerms,
   set_translate_keep_terms: ({ on }: { on: boolean }) => void (store.keepTerms = on),
+  get_auto_translate: (): boolean => store.autoTranslate,
+  set_auto_translate: ({ on }: { on: boolean }) => void (store.autoTranslate = on),
   get_translate_instructions: (): string => store.translateInstructions,
   set_translate_instructions: ({ text }: { text: string }) => void (store.translateInstructions = text),
   get_translation_prompt: (): string => "You translate English technical writing into natural Japanese. Keep code, identifiers and product names as they are.",

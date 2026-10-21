@@ -121,6 +121,7 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     app.wake_net.iter().for_each(|w| w.notify_one()); // extraction has queued its images job
     classify::enqueue_if_auto(&app.store, id)?;
     relevance::enqueue_if_auto(&app.store, id)?;
+    translate::enqueue_if_auto(&app.store, id)?;
     app.wake_llm.notify_one();
     Ok(id)
 }
@@ -324,6 +325,16 @@ fn rescore_relevance(app: State<'_, App>, ids: Option<Vec<i64>>) -> Result<usize
     let n = relevance::rescore(&app.store, ids.as_deref())?;
     app.wake_llm.notify_one();
     Ok(n)
+}
+
+#[tauri::command(async)]
+fn get_auto_translate(app: State<'_, App>) -> Result<bool, String> {
+    translate::auto_enabled(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_auto_translate(app: State<'_, App>, on: bool) -> Result<(), String> {
+    translate::set_auto(&app.store, on)
 }
 
 #[tauri::command(async)]
@@ -1115,6 +1126,8 @@ pub fn run() {
             rescore_relevance,
             get_translate_keep_terms,
             set_translate_keep_terms,
+            get_auto_translate,
+            set_auto_translate,
             get_translate_instructions,
             set_translate_instructions,
             get_translation_prompt,
@@ -1209,6 +1222,7 @@ pub fn run() {
             browser::overlay_history,
             browser::browser_set_keys,
             browser::overlay_key,
+            browser::overlay_print,
             popout::open_window,
             popout::close_window,
             update::update_info,

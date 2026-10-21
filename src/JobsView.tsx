@@ -2,23 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type JobIssue, type JobOverview, type JobState } from "./api";
 import { relTime } from "./time";
+import { InfoTip } from "./InfoTip";
 import "./manage.css";
 import { locale, useT, type PlainKey, type T } from "./i18n";
 
 // Pipeline order; a type the backend adds later still shows, after these.
-const TYPES: { type: string; label: PlainKey; hint?: PlainKey }[] = [
-  { type: "feed_filter", label: "jobsView.feedFilter", hint: "jobsView.feedFilterHint" },
-  { type: "ingest", label: "jobsView.ingest" },
-  { type: "render", label: "jobsView.render", hint: "jobsView.renderHint" },
-  { type: "images", label: "jobsView.images" },
-  { type: "favicon", label: "jobsView.favicon" },
-  { type: "embed", label: "jobsView.embed" },
-  { type: "translate", label: "jobsView.translate" },
-  { type: "summarize", label: "jobsView.summarize" },
-  { type: "quiz", label: "jobsView.quiz" },
-  { type: "vocab", label: "jobsView.vocab" },
-  { type: "classify", label: "jobsView.classify", hint: "jobsView.classifyHint" },
-  { type: "relevance", label: "jobsView.relevance", hint: "jobsView.classifyHint" },
+// `about`: what the job does, the ⓘ next to its name.
+const TYPES: { type: string; label: PlainKey; about: PlainKey; hint?: PlainKey }[] = [
+  { type: "feed_filter", label: "jobsView.feedFilter", about: "jobsView.feedFilterAbout", hint: "jobsView.feedFilterHint" },
+  { type: "ingest", label: "jobsView.ingest", about: "jobsView.ingestAbout" },
+  { type: "render", label: "jobsView.render", about: "jobsView.renderAbout", hint: "jobsView.renderHint" },
+  { type: "images", label: "jobsView.images", about: "jobsView.imagesAbout" },
+  { type: "favicon", label: "jobsView.favicon", about: "jobsView.faviconAbout" },
+  { type: "embed", label: "jobsView.embed", about: "jobsView.embedAbout" },
+  { type: "translate", label: "jobsView.translate", about: "jobsView.translateAbout" },
+  { type: "summarize", label: "jobsView.summarize", about: "jobsView.summarizeAbout" },
+  { type: "quiz", label: "jobsView.quiz", about: "jobsView.quizAbout" },
+  { type: "vocab", label: "jobsView.vocab", about: "jobsView.vocabAbout" },
+  { type: "classify", label: "jobsView.classify", about: "jobsView.classifyAbout", hint: "jobsView.classifyHint" },
+  { type: "relevance", label: "jobsView.relevance", about: "jobsView.relevanceAbout", hint: "jobsView.classifyHint" },
 ];
 const STATES: { state: JobState; label: PlainKey; tone: string }[] = [
   { state: "pending", label: "jobsView.pending", tone: "" },
@@ -33,6 +35,7 @@ const typeLabel = (type: string, t: T) => {
   const label = TYPES.find((x) => x.type === type)?.label;
   return label ? t(label) : type;
 };
+const aboutOf = (type: string) => TYPES.find((x) => x.type === type)?.about;
 const time = (s: string | null, t: T) => (s ? new Date(s).toLocaleString(locale(t.lang)) : "—");
 
 /** Background jobs: counts per type and state, and the failed / backing-off ones with retry and cancel. */
@@ -112,7 +115,10 @@ export function JobsView() {
               <tbody>
                 {types.map((type) => (
                   <tr key={type}>
-                    <td><span className="ty" title={typeLabel(type, t)}>{type}</span></td>
+                    <td>
+                      <span className="ty" title={typeLabel(type, t)}>{type}</span>
+                      {aboutOf(type) && <InfoTip label={t("jobsView.about", { typeLabel: typeLabel(type, t) })} text={t(aboutOf(type)!)} />}
+                    </td>
                     {STATES.map((s) => {
                       const n = count(type, s.state);
                       return <td key={s.state} className="r"><span className={`cnt ${n ? s.tone : "z"}`}>{n}</span></td>;

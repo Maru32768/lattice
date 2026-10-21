@@ -84,6 +84,17 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G56 | 英単語の登録と学習 | 済 | Reader で英語の語・熟語を選ぶと「単語を登録」（ショートカット `w`）、文脈の文（ブロックの文から切り出す）・記事・block を保存する。Page では overlay が同じボタンを出し、`overlay_vocab`（browser webview から、画面に出ているときだけ、1 秒に 1 回まで、長さと「語が文に含まれる」を検証）で送る。出典はページの主張ではなく webview の URL で、保存済みの記事なら記事に結び付ける。LLM job `vocab`（20 語ずつ、文は untrusted、出力は検証）が見出し語・品詞・文脈での意味（日本語）・英語の定義・IPA・例文を付け、同じ見出し語の項目は 1 つにまとめて文脈を足す。意味が付くとカードが 2 枚（穴埋め＝意味をヒントに使われた形を答える、単語→意味＝答えの後に文脈）でき、「今日の復習」に quiz のカードと同じ 1 日の上限で並ぶ（同じ語のカードは 1 日 1 枚）。出典の箇所に飛べる。ツール › 単語帳で検索・並び替え（追加順・期限順）・意味の編集・停止・再取得・削除・Anki 用 CSV の書き出し、記事中の登録語に下線と意味のツールチップ（単語帳で切り替え、既定はオン）。`vocab.rs`・`review.rs`・`src/vocab.ts`、design-review §22。英語レベルからの候補提案は未着手。 |
 | G57 | CLI・外部エージェントから機能を呼ぶ | 済 | `crates/lattice-cli` の `lattice-cli`（アプリの `lattice.exe` と衝突しない名前）。アプリと同じ保存場所の解決（`lattice_core::location` に移した）で同じ DB を WAL で開き、`search`（モデルがなければ全文検索と明示）・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask`（アプリの LLM chain）を JSON か `--format text` で返す。`save`・`tag`・`read`・`favorite` は `--allow-write` か `LATTICE_ALLOW_WRITE=1` のときだけ。`save` は ingest job を積んでアプリの runner（30 秒ごとに queue を見る）に任せ、`--run` で CLI が同じコードで取得する。`lattice-cli mcp` は同じ操作を MCP の tool として stdio で出す（最小の JSON-RPC、結果に untrusted の明示と 25,000 文字の上限）。portable zip に同梱し、README に Claude Code の設定と prompt injection の注意を書いた。設計は `docs/design-review.md` §23。 |
 
+### 2026-10-21 のフィードバック（H）
+
+| # | 項目 | 状態 | 方針 |
+|---|---|---|---|
+| H1 | 翻訳が壊れて見える | 済 | (1) Page の 訳文 / 混在 が効かない: overlay の設定は backend で全 webview 共通なのに、どのウィンドウも起動時に自分の既定（原文）を `browser_set_translation` していた。後から開いた pop-out・対話ウィンドウが全ページの翻訳を切っていた。送るのはメインだけにし、文書ウィンドウは起動時にメインへ今の選択を尋ねる（`main-request` の `pageLang`）。(2) Reader で 混在 / 訳文 を選んだとき、未翻訳で翻訳 job がなければ翻訳を始めて進み具合を出す（設定 › 翻訳「表示を切り替えたら自動で翻訳」、既定オン）。「保存した記事を自動で翻訳」（既定オフ、日本語の記事は対象外）。(3)「訳し直す」は訳が 1 つでもあれば ⋯ に説明付きで出す。 |
+| H2 | ページ表示のちらつき・重なり・印刷 | 済 | 原因は、ページの view が mount し直すたびに（React の StrictMode の 2 回目の mount、ペインの移動）webview の hide が 2 つの show の間に送られていたこと（e2e で show, show, hide, show, show を確認）。設定・処理状況から戻ったときの一瞬の表示崩れと、hide が最後に届いた場合の白いままのペイン（推定）。unmount の hide は microtask まで待ち、同じタブがすぐ mount し直したら送らない。⋯ メニューを閉じたときは、webview を表示し直してから描き終わるまで（150 ms）静止画を残す。位置と大きさは 1 つの `set_bounds` で送る（`set_position` と `set_size` はそれぞれ今の矩形を読んで書き戻すので、後の方が古い位置を書き戻しうる）。placeholder が現れた・大きさが変わった後 600 ms は毎フレーム位置も見て追従する（ResizeObserver は位置の変化を知らせない）。印刷（Ctrl+P・ページの `window.print()`）は overlay が `overlay_print` を呼び、Windows では WebView2 の `ShowPrintUI(SYSTEM)` でシステムの印刷ダイアログを出す（それ以外はページの印刷のまま）。 |
+| H3 | 記事の右クリックメニュー | 済 | 一覧の行と Reader / Page のタブを右クリック（またはメニューキー・Shift+F10。カーソルの行かフォーカスのあるタブ）で、お気に入り / 解除・既読 / 未読・グループに追加…・新しいタブで開く・別ウィンドウで開く・Page で開く・URL をコピー・Index から削除…（確認あり）。「選択」中に選んだ行の上で開くと、まとめて効くもの（お気に入り・既読 / 未読・グループに追加）だけを全部に。保存していないページのタブは 新しいタブで開く・別ウィンドウで開く・URL をコピー。 |
+| H4 | アプリ内の戻る・進む | 済 | 画面（ライブラリ・処理状況・フィード・設定の各セクションなど）、scope と facet、フォーカスされたタブの文書の移り変わりを、上限 50 の履歴（`src/history.ts`、純粋な reducer）に積む。マウスのサイドボタン（XButton1 / XButton2）、`Alt+←` / `Alt+→`（ショートカットの一覧に追加）、タイトルバーの ‹ › で戻る・進む。ページにフォーカスがあるときのサイドボタンと Alt+矢印はページ自身の履歴（WebView2 の既定。overlay は転送しない）。 |
+| H5 | 処理状況の job の説明 | 済 | 種類ごとに ⓘ（`InfoTip`）。hover とキーボードのフォーカスで何をする job かの tooltip を出し、Esc で閉じる。文は ⓘ の `aria-describedby`。ja / en。 |
+| H6 | CSS の細部 | 済 | 押せるもの（button・select・summary・タブ・チェックボックス・ファイル選択を開く label）は `cursor: pointer`、disabled は `not-allowed`（title はそのまま）。ボタンの文字の上寄りは計測して直した（下の design-review）。サイドバーと記事一覧は `user-select: none`（入力欄は選べる）。 |
+
 ## 3. 要件定義の未実装項目
 
 ### MVP 後すぐ

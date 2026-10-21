@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hostOf, nextDocLabel, openWindows, windowKey } from "./windows.ts";
+import { hostOf, nextDocLabel, openWindows, pageLangOnStart, windowKey } from "./windows.ts";
 
 test("a window's label says what it shows; anything unexpected is the main shell", () => {
   assert.deepEqual(hostOf("main"), { kind: "main" });
@@ -15,4 +15,10 @@ test("open pop-outs are the window keys in storage; the next document window tak
   assert.deepEqual(openWindows(keys), ["doc-2", "chat"]);
   assert.equal(nextDocLabel([]), "doc-1");
   assert.equal(nextDocLabel(["doc-1", "doc-3", "chat"]), "doc-2");
+});
+
+test("only the main window sends the shared overlay config; a document window takes main's Page language", () => {
+  assert.equal(pageLangOnStart(hostOf("main")), "send");
+  assert.equal(pageLangOnStart(hostOf("doc-1")), "ask");
+  assert.equal(pageLangOnStart(hostOf("chat")), "none");
 });

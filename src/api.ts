@@ -558,6 +558,9 @@ export const api = {
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
+  /** 保存した記事を自動で翻訳 (off by default). */
+  autoTranslate: () => invoke<boolean>("get_auto_translate"),
+  setAutoTranslate: (on: boolean) => invoke<void>("set_auto_translate", { on }),
   translateInstructions: () => invoke<string>("get_translate_instructions"),
   setTranslateInstructions: (text: string) => invoke<void>("set_translate_instructions", { text }),
   /** The built-in translation prompt (English to Japanese, current term mode) that the instructions extend. */

@@ -25,6 +25,13 @@ const PREFIX = "lattice.window.";
 export const windowKey = (label: string) => PREFIX + label;
 
 /** The pop-outs that are (or were, before a restart) open, from the storage keys. */
+/**
+ * What a window does with the Page language when it starts. The overlay config in the backend is
+ * one for every page webview, so only the main window sends it; a document window asks main for
+ * the current choice (its own default would turn translation off everywhere), the chat window has no pages.
+ */
+export const pageLangOnStart = (h: Host): "send" | "ask" | "none" => (h.kind === "main" ? "send" : h.kind === "doc" ? "ask" : "none");
+
 export const openWindows = (keys: string[]) =>
   keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length)).filter((l) => hostOf(l).kind !== "main");
 
@@ -51,6 +58,8 @@ export type MainRequest =
   | { kind: "chatDocked" }
   /** The chat window is listening: send it the current article (`doc-current`). */
   | { kind: "chatReady" }
+  /** A document window started: send it the Page language (`page-lang`). */
+  | { kind: "pageLang" }
   | { kind: "cite"; citation: Citation }
   | { kind: "screen"; screen: Screen }
   | { kind: "import"; tab: ImportTab }

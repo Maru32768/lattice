@@ -1,5 +1,39 @@
 export type LanguageMode = "original" | "translated" | "mixed";
 
+/** Mirrors ir.rs PROSE_KINDS. */
+export const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
+
+/**
+ * Whether picking `mode` should start the article's translation: there is prose without a
+ * translation and no translate job is queued, running or waiting to retry. A finished job with blocks
+ * still missing is left alone (those are usually already in the target language; 続き does the rest).
+ */
+export function autoTranslates(
+  mode: LanguageMode,
+  blocks: { kind: string; translation: string | null }[],
+  job: { status: string } | undefined,
+): boolean {
+  if (mode === "original" || !blocks.some((b) => TRANSLATABLE.has(b.kind) && b.translation == null)) return false;
+  return !job || job.status === "failed";
+}
+
+const ON_SWITCH_KEY = "lattice.translateOnSwitch";
+/** 表示を切り替えたら自動で翻訳 (default on). Per device, like the word marks: it only decides when the UI asks. */
+export function translateOnSwitch(): boolean {
+  try {
+    return localStorage.getItem(ON_SWITCH_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+export function setTranslateOnSwitch(on: boolean) {
+  try {
+    localStorage.setItem(ON_SWITCH_KEY, on ? "on" : "off");
+  } catch {
+    // Blocked storage: the default (on) stays.
+  }
+}
+
 /**
  * Which blocks show their translation. Pure display logic: changing mode or ratio never
  * re-translates. Mixed mode spreads `percent` evenly over translated blocks (by count),

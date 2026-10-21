@@ -8,6 +8,8 @@
 .titlebar { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; background: var(--panel); border-bottom: 1px solid var(--line); user-select: none; }
 .tb-icon { display: block; flex: none; }
 .tb-name { font-size: 12px; font-weight: 600; color: var(--ink2); }
+.titlebar .tb-hist { width: 26px; height: 24px; }
+.tb-name + .tb-hist { margin-left: 4px; }
 .titlebar .cap { width: 46px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
 .titlebar .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
 .titlebar .cap:hover { background: var(--hover); color: var(--ink); }
@@ -55,7 +57,7 @@
 .nav-search .kbds { margin-left: auto; }
 .nav-search > span:not(.kbds) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-sub { display: flex; flex-direction: column; padding-left: 16px; }
-.ni.sub { height: 26px; font-size: 12.5px; }
+.ni.sub { height: 26px; font-size: 12px; }
 .ni.mono-ni { font-family: var(--mono); font-size: 12px; }
 .ni .push { margin-left: auto; }
 /* A sidebar group: the scope button, and its ⋯ menu shown on hover or focus. */

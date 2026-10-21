@@ -40,7 +40,7 @@ test("a document window shows only its tabs, hands one back to the main window, 
   await expect(shell.getByRole("button", { name: "別ウィンドウで開く" })).toHaveCount(0);
 
   await shell.getByRole("button", { name: "メインウィンドウに戻す" }).click();
-  expect(await requests(shell)).toEqual([{ kind: "open", docs: [{ kind: "reader", articleId: a.id }] }]);
+  expect((await requests(shell)).filter((r) => (r as { kind: string }).kind !== "pageLang")).toEqual([{ kind: "open", docs: [{ kind: "reader", articleId: a.id }] }]);
   await expect(titles(shell)).toHaveText(["P"]);
   // The page's webview is attached here, not reloaded: the window asked to open it by its key.
   expect(await callsOf(shell, "browser_open")).toEqual([expect.objectContaining({ tab: "k1", url: "https://example.com/p" })]);
@@ -95,4 +95,30 @@ test("the chat window is the pane alone; its citations and its close go to the m
   expect(sent.at(-1)).toEqual({ kind: "chatDocked" });
   await expect.poll(() => callsOf(shell, "close_window")).toHaveLength(1);
   expect(await stored(shell, CHAT)).toBeNull();
+});
+
+test("only the main window sends the Page language to the pages; a pop-out takes main's choice instead of resetting it", async ({ shell }) => {
+  const layout = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
+  await seed(shell, { [DOC]: JSON.stringify(layout) });
+  await shell.goto("/?window=doc-1");
+  const lang = shell.getByRole("group", { name: "このページを翻訳" });
+  await expect(lang).toBeVisible();
+  expect(new Set((await requests(shell)).map((r) => JSON.stringify(r))), "asked main for its choice on start").toEqual(new Set(['{"kind":"pageLang"}']));
+  // Main answers with its choice (訳文): the pop-out shows it and never turns the shared overlay off.
+  await shell.evaluate(() => window.__e2e.emit("page-lang", { mode: "translated", percent: 70 }));
+  await expect(lang.getByRole("button", { name: "訳文", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await lang.getByRole("button", { name: /混在/ }).click();
+  expect(await callsOf(shell, "browser_set_translation"), "the pop-out leaves the overlay config to main").toEqual([]);
+
+  const chat = await shell.context().newPage();
+  await chat.goto("/?window=chat");
+  await expect(chat.getByLabel("質問", { exact: true })).toBeVisible();
+  expect(await callsOf(chat, "browser_set_translation")).toEqual([]);
+  await chat.close();
+});
+
+test("the main window sends the Page language to the pages, and a choice made in a pop-out", async ({ app }) => {
+  await expect.poll(() => callsOf(app, "browser_set_translation")).toContainEqual(expect.objectContaining({ enabled: false }));
+  await app.evaluate(() => window.__e2e.emit("page-lang", { mode: "translated", percent: 70 }));
+  await expect.poll(async () => (await callsOf(app, "browser_set_translation")).at(-1)).toMatchObject({ enabled: true, percent: 100 });
 });

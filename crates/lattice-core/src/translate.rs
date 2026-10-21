@@ -7,6 +7,7 @@ use crate::llm::LlmProvider;
 use crate::msg;
 use crate::segments::{self, PROMPT_VERSION, Target, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
+use rusqlite::OptionalExtension;
 
 pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
@@ -15,6 +16,8 @@ pub const KEEP_TERMS_SETTING: &str = "translate_keep_terms";
 /// The user's extra instructions for the translation prompt; absent means none.
 pub const INSTRUCTIONS_SETTING: &str = "translate_instructions";
 pub const MAX_INSTRUCTION_CHARS: usize = 2000;
+/// "on" translates each saved article once it is extracted; absent means off, since it spends LLM usage.
+pub const AUTO_SETTING: &str = "auto_translate";
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
 
@@ -36,6 +39,32 @@ pub fn set_instructions(store: &Store, text: &str) -> Result<(), String> {
         return Err(msg!("translate.instructionsTooLong", max = MAX_INSTRUCTION_CHARS));
     }
     store.set_setting(INSTRUCTIONS_SETTING, (!text.is_empty()).then_some(text)).map_err(|e| e.to_string())
+}
+
+pub fn auto_enabled(store: &Store) -> Result<bool, String> {
+    Ok(store.setting(AUTO_SETTING).map_err(|e| e.to_string())?.as_deref() == Some("on"))
+}
+
+pub fn set_auto(store: &Store, on: bool) -> Result<(), String> {
+    store.set_setting(AUTO_SETTING, on.then_some("on")).map_err(|e| e.to_string())
+}
+
+/// After ingest: queue an extracted article's translation if auto translation is on. Japanese
+/// articles are left alone: the reader reads them as they are, and English output would only cost usage.
+pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
+    if !auto_enabled(store)? {
+        return Ok(());
+    }
+    let extracted: bool = store
+        .conn()
+        .query_row("SELECT extraction_status = 'ok' FROM articles WHERE id = ?1", [article_id], |r| r.get(0))
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(false);
+    if !extracted || store.article_is_japanese(article_id).map_err(|e| e.to_string())? {
+        return Ok(());
+    }
+    enqueue(store, article_id, &target(store)?)
 }
 
 /// The current settings' target for non-Japanese sources (`Target::for_source` adapts it).

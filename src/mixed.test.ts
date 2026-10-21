@@ -1,7 +1,7 @@
 // Run with `npm test` (Node strips the types natively).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { splitBackticks, translatedBlockIds } from "./mixed.ts";
+import { autoTranslates, splitBackticks, translatedBlockIds } from "./mixed.ts";
 
 const blocks = Array.from({ length: 10 }, (_, i) => ({ id: i, translation: i === 9 ? null : `t${i}` }));
 
@@ -21,4 +21,18 @@ test("splitBackticks", () => {
   assert.deepEqual(splitBackticks("ログ（`WAL`）は"), [
     { code: false, v: "ログ（" }, { code: true, v: "WAL" }, { code: false, v: "）は" },
   ]);
+});
+
+test("picking 混在 or 訳文 starts a translation only when prose is untranslated and no job is on it", () => {
+  const fresh = [{ kind: "heading", translation: null }, { kind: "paragraph", translation: null }, { kind: "code", translation: null }];
+  const done = fresh.map((b) => ({ ...b, translation: b.kind === "code" ? null : "訳" }));
+  assert.equal(autoTranslates("translated", fresh, undefined), true);
+  assert.equal(autoTranslates("mixed", fresh, undefined), true);
+  assert.equal(autoTranslates("original", fresh, undefined), false, "原文 needs no translation");
+  assert.equal(autoTranslates("translated", done, undefined), false, "code blocks are never translated");
+  assert.equal(autoTranslates("translated", fresh, { status: "pending" }), false, "queued, or waiting to retry");
+  assert.equal(autoTranslates("translated", fresh, { status: "running" }), false);
+  assert.equal(autoTranslates("translated", fresh, { status: "succeeded" }), false, "what is left is already in the target language");
+  assert.equal(autoTranslates("translated", fresh, { status: "failed" }), true, "gave up earlier: picking again retries");
+  assert.equal(autoTranslates("translated", [], undefined), false, "nothing extracted");
 });

@@ -1,4 +1,4 @@
-import { test, expect, list } from "./harness.ts";
+import { test, expect, list, callsOf } from "./harness.ts";
 import { ARTICLES, MARKDOWN_ID, SNAPSHOT_ID, blocksOf } from "./fixtures.ts";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
@@ -48,4 +48,54 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
   await open(app, md.title!);
   await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toBeDisabled();
   await expect(app.locator(".art-meta")).toContainText("ローカル");
+});
+
+const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;
+
+test("picking 訳文 on an untranslated article starts its translation and shows the progress", async ({ app }) => {
+  await open(app, untranslated.title!);
+  const seg = app.getByRole("group", { name: "表示言語" });
+  await seg.getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.locator(".tr-prog")).toContainText("翻訳待ち 0 /");
+  await seg.getByRole("button", { name: /混在/ }).click();
+  expect(await callsOf(app, "translate_article"), "queued once; the waiting job is not queued again").toEqual([{ id: untranslated.id }]);
+
+  // A translated article is left alone.
+  await open(app, snapshot.title!);
+  await seg.getByRole("button", { name: "訳文", exact: true }).click();
+  expect(await callsOf(app, "translate_article")).toHaveLength(1);
+});
+
+test("with 表示を切り替えたら自動で翻訳 off, switching the view translates nothing", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni").filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) }).click();
+  const onSwitch = app.getByRole("switch", { name: "表示を切り替えたら自動で翻訳" });
+  await expect(onSwitch).toBeChecked();
+  await onSwitch.uncheck();
+  const onSave = app.getByRole("switch", { name: "保存した記事を自動で翻訳" });
+  await expect(onSave).not.toBeChecked();
+  await onSave.check();
+  expect(await callsOf(app, "set_auto_translate")).toEqual([{ on: true }]);
+  await app.getByRole("button", { name: "ライブラリに戻る" }).click();
+
+  await open(app, untranslated.title!);
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.getByRole("button", { name: "英語に翻訳" }).or(app.getByRole("button", { name: "日本語に翻訳" }))).toBeVisible();
+  expect(await callsOf(app, "translate_article")).toEqual([]);
+});
+
+test("訳し直す is in the ⋯ menu, with what it does, as soon as an article has a translation", async ({ app }) => {
+  await open(app, snapshot.title!);
+  const more = app.getByRole("button", { name: /^その他/ });
+  await more.click();
+  const item = app.getByRole("menuitem", { name: /訳し直す/ });
+  await expect(item).toBeEnabled();
+  await expect(item).toContainText("今の設定で訳し直します");
+  await item.click();
+  // Snapshot isolation has 5 translated blocks, under the confirmation threshold: it goes straight away.
+  expect(await callsOf(app, "translate_article")).toEqual([{ id: SNAPSHOT_ID, fresh: true }]);
+
+  await open(app, untranslated.title!);
+  await more.click();
+  await expect(app.getByRole("menuitem", { name: /訳し直す/ }), "nothing to redo yet").toHaveCount(0);
 });

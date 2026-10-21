@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, browser, isLocal, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
-import type { LanguageMode } from "./mixed";
+import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
@@ -19,10 +19,12 @@ import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
-import { Reader, TRANSLATABLE, WordMarksContext, type Focus } from "./Reader";
+import { Reader, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
-import { CoverContext, useCover } from "./Popover";
+import { ContextMenu, CoverContext, menuPoint, useCover, type MenuItem } from "./Popover";
+import { articleMenu, type ArticleActions } from "./articleMenu";
+import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
@@ -35,13 +37,14 @@ import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } fro
 import { DocArea } from "./DocArea";
 import { hostOf as siteOf } from "./Favicon";
 import {
-  LAYOUT_KEY, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
-  save as saveLayout, serialize, single, split, tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
+  LAYOUT_KEY, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
+  save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
 import type { Drop, Point } from "./tabDrag";
-import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
+import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
+import { NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history";
 import "./App.css";
 
 /** Which window this frontend runs in (design-review §26): the main shell, a document pop-out (one pane tree) or the chat window. */
@@ -175,6 +178,10 @@ export default function App() {
   const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
   /** The article waiting for delete confirmation, and the view that asked. */
   const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
+  /** An open context menu (a list row, a tab), and what gets focus back when it closes. */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: (MenuItem | string)[]; from: HTMLElement } | null>(null);
+  /** グループに追加… from a context menu: the picker under the row or tab. */
+  const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
 
   // Search mode of the list pane
   const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
@@ -195,13 +202,14 @@ export default function App() {
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
   const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
-  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others. */
+  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others, main sends it on. */
   const setPageLang = (l: PageLang) => {
     setPageLangState(l);
     void emit("page-lang", l);
   };
   // Every page's overlay follows the Page language choice, its tooltips the display language.
   useEffect(() => {
+    if (pageLangOnStart(HOST) !== "send") return;
     const o = overlayOf(pageLang);
     browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch((e) => setError(String(e)));
   }, [pageLang, t]);
@@ -214,6 +222,7 @@ export default function App() {
       ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
     ];
     if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
+    if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
     return () => subs.forEach((s) => void s.then((f) => f()));
   }, []);
   const [mode, setMode] = useState<LanguageMode>("mixed");
@@ -526,6 +535,43 @@ export default function App() {
     }
   }
   const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
+  /** A bulk change from a context menu; the open Readers of those articles reload too. */
+  const actOn = (ids: number[], task: (id: number) => Promise<unknown>) =>
+    act(() => Promise.all(ids.map(task))).then(() => ids.forEach((id) => viewsRef.current.has(id) && void loadView(id)));
+  const copyUrl = (url: string) => void navigator.clipboard.writeText(url).catch(fail);
+
+  /** What an article's context menu does; `from` is the row or tab it opened on. */
+  const articleActions = (from: HTMLElement): ArticleActions => ({
+    favorite: (ids, on) => void actOn(ids, (id) => api.setFavorite(id, on)),
+    read: (ids, read) => void actOn(ids, (id) => api.setRead(id, read)),
+    group: (ids) => setGroupPick({ el: from, ids }),
+    openNew: (a) => openArticle(a, true),
+    popOut: IS_MAIN ? (a) => void popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
+    page: (a) => openPage(a.original_url, undefined, a),
+    copyUrl: (a) => copyUrl(a.original_url),
+    remove: (a) => setDeleting({ article: a, page: false }),
+  });
+  const openRowMenu = (rows: ArticleRow[], at: { x: number; y: number }, from: HTMLElement) =>
+    setCtxMenu({ ...at, items: articleMenu(rows, articleActions(from), t), from });
+
+  /** Right-click (or the menu key) on a tab: its article's menu, or for an unsaved page what applies to a URL. */
+  function tabMenu(e: React.MouseEvent) {
+    const el = (e.target as Element).closest<HTMLElement>("[role='tab'][data-tab]");
+    const hit = el && tabById(layoutRef.current, Number(el.dataset.tab));
+    if (!el || !hit) return;
+    e.preventDefault();
+    const tab = hit.tab;
+    const a = tab.kind === "reader" ? (viewsRef.current.get(tab.articleId)?.article ?? articleById.get(tab.articleId)) : savedOf(tab);
+    const again = () => (tab.kind === "page" ? openPage(tab.url, undefined, a ?? undefined, "new", hit.pane.id) : openReader(tab.articleId, undefined, "new", hit.pane.id));
+    const items: (MenuItem | string)[] = a
+      ? articleMenu([a], { ...articleActions(el), openNew: again, popOut: IS_MAIN ? () => popOutTab(tab.id) : undefined }, t)
+      : [
+        { label: t("articleMenu.openNewTab"), onSelect: again },
+        ...(IS_MAIN ? [{ label: t("tabStrip.popOut"), onSelect: () => popOutTab(tab.id) }] : []),
+        ...(tab.kind === "page" ? [{ label: t("articleMenu.copyUrl"), onSelect: () => copyUrl(tab.url) }] : []),
+      ];
+    setCtxMenu({ ...menuPoint(e, el), items, from: el });
+  }
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
 
   // ---- groups (G53) -------------------------------------------------------------------------
@@ -577,6 +623,14 @@ export default function App() {
     else {
       setMode("mixed");
       setPercent((p) => Math.max(0, Math.min(100, p + delta)));
+      translateOnPick(curView, "mixed");
+    }
+  }
+
+  /** Picking 混在 / 訳文 on an article nobody has translated yet starts its translation (setting, default on). */
+  function translateOnPick(v: ArticleView | undefined, m: LanguageMode) {
+    if (v && translateOnSwitch() && autoTranslates(m, v.blocks, v.jobs.find((j) => j.type === "translate"))) {
+      void act(() => api.translateArticle(v.article.id), v.article.id);
     }
   }
 
@@ -596,6 +650,7 @@ export default function App() {
     else {
       setMode(m);
       if (p != null) setPercent(p);
+      translateOnPick(curView, m);
     }
   }
 
@@ -619,24 +674,27 @@ export default function App() {
     forgetOpened(t.key);
   }
 
-  /**
-   * The tab moves to a new document window, whose layout waits in storage until it loads; placed
-   * under the pointer when dropped `at` (physical pixels). A document window dragging its only tab
-   * away just moves there.
-   */
+  /** A new document window showing `doc`, placed under the pointer when dropped `at` (physical pixels); its layout waits in storage until it loads. False if it could not be stored. */
+  function popOutDoc(doc: Doc, at?: Point): boolean {
+    const label = nextDocLabel(openWindows(storageKeys()));
+    try {
+      localStorage.setItem(windowKey(label), serialize(open(single(), doc, "new")));
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+    windows.open(label, at).catch(fail);
+    return true;
+  }
+
+  /** The tab moves to a new document window. A document window dragging its only tab away just moves there. */
   function popOutTab(tab: Id, at?: Point) {
     const hit = tabById(layoutRef.current, tab);
     if (!hit) return;
     if (at && HOST.kind === "doc" && allTabs(layoutRef.current).length === 1) return void windows.open(HOST.label, at).catch(fail);
-    const label = nextDocLabel(openWindows(storageKeys()));
-    try {
-      localStorage.setItem(windowKey(label), serialize(open(single(), docOf(hit.tab), "new")));
-    } catch (e) {
-      return fail(e);
-    }
+    if (!popOutDoc(docOf(hit.tab), at)) return;
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
-    windows.open(label, at).catch(fail);
   }
 
   /** The tab goes to window `label`: its focused pane, or the slot `at` it was dropped on. */
@@ -697,6 +755,7 @@ export default function App() {
       case "chat": openChat(r.scopeKey); return;
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
       case "chatReady": void emit("doc-current", chatArticle); return;
+      case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation); break;
       case "screen": setScreen(r.screen); break;
       case "import": setImportTab(r.tab); setScreen("import"); break;
@@ -764,6 +823,60 @@ export default function App() {
     translate: current ? () => void act(() => api.translateArticle(current.id), current.id) : null,
     addToGroup: cur?.kind === "reader" ? () => setGroupRequest((r) => ({ tab: cur.id, seq: (r?.seq ?? 0) + 1 })) : null,
   };
+
+  // ---- in-app history (H4) ------------------------------------------------------------------
+  // Every change of screen, settings section, scope, facets or the focused tab's document is a
+  // visit; back / forward restore one. The chat window has nothing to go back to.
+  const [hist, setHist] = useState(NO_HISTORY);
+  const histTab = activeTab(focusedPane(layout));
+  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, facets, doc: histTab && placeDoc(histTab) };
+  const here = placeKey(place);
+  /** Set by a back / forward step: the place it lands on replaces that entry rather than cutting the ones ahead. */
+  const stepping = useRef(false);
+  useEffect(() => {
+    if (HOST.kind === "chat") return;
+    setHist((h) => (stepping.current ? arrived(h, place) : visit(h, place)));
+    stepping.current = false;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per visited place
+  }, [here]);
+  function goHistory(d: 1 | -1) {
+    const next = go(hist, d);
+    if (!next) return;
+    const p = next.stack[next.at];
+    setHist(next);
+    if (placeKey(p) === here) return;
+    stepping.current = true;
+    setScreenState(p.screen);
+    if (p.section) setSettingsSection(p.section);
+    setScopeState(p.scope);
+    setFacets(p.facets);
+    const doc = p.doc;
+    // Back to the tab that showed it if it still does, else the document opens in the focused tab.
+    if (doc) setLayout((l) => {
+      const hit = tabById(l, doc.tab);
+      return hit && placeDoc(hit.tab).key === doc.key ? activate(l, doc.tab) : open(l, doc.doc, "active");
+    });
+  }
+  const historyRef = useRef(goHistory);
+  historyRef.current = goHistory;
+  // The mouse's side buttons (XButton1 / XButton2). Over a page they never reach here: the page's
+  // webview takes them for its own history.
+  useEffect(() => {
+    if (HOST.kind === "chat") return;
+    const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
+    const down = (e: MouseEvent) => { if (side(e)) e.preventDefault(); };
+    const up = (e: MouseEvent) => {
+      if (!side(e)) return;
+      e.preventDefault();
+      historyRef.current(e.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("mousedown", down);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousedown", down);
+      window.removeEventListener("mouseup", up);
+    };
+  }, []);
 
   // ---- keyboard -----------------------------------------------------------------------------
   const bindings = useBindings();
@@ -865,6 +978,8 @@ export default function App() {
       const t = activeTab(focusedPane(layoutRef.current));
       if (t) (IS_MAIN ? popOutTab : returnTab)(t.id);
     },
+    back: () => goHistory(-1),
+    forward: () => goHistory(1),
   };
   const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
   keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
@@ -877,6 +992,15 @@ export default function App() {
       if (s.prefix) {
         e.preventDefault();
         s.paneKey(key);
+        return;
+      }
+      // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
+      if ((key === "ContextMenu" || key === "Shift+F10") && !s.overlays) {
+        const on = (e.target as Element).closest?.<HTMLElement>(".row[data-id], [role='tab'][data-tab]") ?? document.querySelector<HTMLElement>(".row.cur");
+        if (!on) return;
+        e.preventDefault();
+        on.focus();
+        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
         return;
       }
       const action = actionFor(getBindings(), key);
@@ -992,7 +1116,7 @@ export default function App() {
     const a = v.article;
     const vAct = (task: (id: number) => Promise<unknown>) => () => act(() => task(a.id), a.id);
     return (
-      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); translateOnPick(v, m); }}
         focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
         onAsk={() => openChat("article")}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)} onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
@@ -1025,11 +1149,11 @@ export default function App() {
   return (
     <CoverContext.Provider value={cover}>
       <div className="shell">
-        <TitleBar />
+        <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} />
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"
-            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
+            ? <SettingsView section={settingsSection} onSection={setSettingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
             : nav)}
           {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (
@@ -1055,14 +1179,14 @@ export default function App() {
             ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
                 all={articles} groups={groups} groupRows={groupRows} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-                onGroupMembers={groupMembers} onCreateGroup={createGroup} onCollapse={() => setListOpen(false)}
+                onGroupMembers={groupMembers} onCreateGroup={createGroup} onRowMenu={openRowMenu} onCollapse={() => setListOpen(false)}
                 onRescore={relevance?.has_profile && (sort === "relevance_desc" || scope.kind === "important" || facets.relevance.length > 0)
                   ? () => api.rescoreRelevance(shown.map((a) => a.id)) : undefined}
                 noProfile={relevance != null && !relevance.has_profile} />
             : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, groupRows, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {IS_MAIN && screen === "library" && !search && listOpen && splitter("list")}
-          {screen === "library" && <div className="doc-area-wrap">
+          {screen === "library" && <div className="doc-area-wrap" onContextMenu={tabMenu}>
             {error && (
               <div className="banner" role="alert">
                 <span className="grow">{t.msg(error)}</span>
@@ -1085,6 +1209,12 @@ export default function App() {
             </ConfirmDialog>
           )}
           {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+          {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} label={t("articleMenu.label")} items={ctxMenu.items} from={ctxMenu.from} onClose={() => setCtxMenu(null)} />}
+          {groupPick && (
+            <GroupPicker groups={groupRows} anchor={groupPick.el} onCreate={createGroup} onClose={() => setGroupPick(null)}
+              selected={groupRows.filter((g) => groupPick.ids.every((id) => articleById.get(id)?.groups.includes(g.id))).map((g) => g.id)}
+              onToggle={(g, on) => void groupMembers(g, groupPick.ids, on)} />
+          )}
           {chatOpen && splitter("chat", "right")}
           {chatOpen && (
             <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}

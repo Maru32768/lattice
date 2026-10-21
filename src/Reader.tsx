@@ -1,7 +1,7 @@
 import { Fragment, createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "./api";
-import { type LanguageMode, splitBackticks, translatedBlockIds } from "./mixed";
+import { type LanguageMode, TRANSLATABLE, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
@@ -35,9 +35,6 @@ export interface Focus {
   tone: "hit" | "cite";
   seq: number;
 }
-
-/** Mirrors ir.rs PROSE_KINDS. */
-export const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
 
 const busy = (j?: JobRow) => j?.status === "running" || (j?.status === "pending" && !j.last_error);
 
@@ -493,7 +490,8 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             { label: t("reader.reextractFrom", { x: a.pdf ? "PDF" : local ? "Markdown" : "HTML" }), onSelect: onReextract, disabled: !fetched },
             ...(local || a.pdf ? [] : [{ label: rendering ? t("reader.rendering") : t("reader.render"), onSelect: onRender, disabled: rendering }]),
             { label: classifying ? t("reader.classifying") : t("reader.autoClassify"), onSelect: onClassify, disabled: classifying || failed },
-            { label: translating ? t("reader.translatingEllipsis") : t("reader.retranslate"), onSelect: retranslate, disabled: failed || translating || done === 0 },
+            // Shown whenever there is a translation to redo, not only once the whole article is translated (G29).
+            ...(done > 0 ? [{ label: translating ? t("reader.translatingEllipsis") : t("reader.retranslate"), hint: t("reader.retranslateHint"), onSelect: retranslate, disabled: failed || translating }] : []),
             { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
             "-",
             { label: <span className="error-text">{t("reader.delete")}</span>, onSelect: onDelete },

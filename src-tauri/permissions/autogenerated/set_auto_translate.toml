@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-auto-translate"
+description = "Enables the set_auto_translate command without any pre-configured scope."
+commands.allow = ["set_auto_translate"]
+
+[[permission]]
+identifier = "deny-set-auto-translate"
+description = "Denies the set_auto_translate command without any pre-configured scope."
+commands.deny = ["set_auto_translate"]
