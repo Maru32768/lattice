@@ -509,6 +509,8 @@ export const ja = {
   "importView.queued": "{found} 件中 {queued} 件を取得キューに追加",
   "importView.existing": "・{existing} 件は保存済み",
   "importView.invalid": "・{invalid} 件は無効な URL",
+  "common.skippedScheme": "・{n} 行は http(s) でないため無視",
+  "common.skippedNoUrl": "・{n} 行は URL がないため無視",
   "importView.chooseFileEllipsis": "ファイルを選択…",
   "importView.markdownPlaceholder": "# タイトル\n\n本文をここに貼り付け",
   "importView.importing": "取り込み中…",

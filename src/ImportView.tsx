@@ -4,6 +4,7 @@ import { GroupPicker } from "./GroupPicker";
 import { Icon } from "./Icon";
 import "./manage.css";
 import { useT, type PlainKey } from "./i18n";
+import { skippedLines } from "./urlLines";
 
 export type ImportTab = "urls" | "markdown" | "pdf";
 
@@ -83,7 +84,7 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
   const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<ImportSummary | null>(null);
+  const [result, setResult] = useState<(ImportSummary & ReturnType<typeof skippedLines>) | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function loadFile(file: File | undefined) {
@@ -96,7 +97,8 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
     try {
       const r = await api.importUrls(text);
       await fileInto(r.ids);
-      setResult(r);
+      setResult({ ...r, ...skippedLines(text) });
+      setText("");
       onImported();
     } catch (e) {
       setError(String(e));
@@ -122,6 +124,8 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
             {t("importView.queued", { found: result.found, queued: result.queued })}
             {result.existing > 0 && t("importView.existing", { existing: result.existing })}
             {result.invalid > 0 && t("importView.invalid", { invalid: result.invalid })}
+            {result.scheme > 0 && t("common.skippedScheme", { n: result.scheme })}
+            {result.noUrl > 0 && t("common.skippedNoUrl", { n: result.noUrl })}
           </span>
         )}
         {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}

@@ -123,9 +123,12 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
   await expect(field.getByRole("button")).toHaveText(empty.name);
 
   const existing = ARTICLES[0].original_url;
-  await app.getByRole("textbox", { name: "インポートするテキスト" }).fill(`${existing}\nhttps://example.com/new-post`);
+  const text = app.getByRole("textbox", { name: "インポートするテキスト" });
+  await text.fill(`${existing}\nhttps://example.com/new-post\nftp://example.com/file\nnot-a-url at all`);
   await app.getByRole("button", { name: "インポート", exact: true }).click();
   await expect(app.getByRole("status")).toContainText("2 件中 1 件");
+  await expect(app.getByRole("status")).toContainText("・1 行は http(s) でないため無視・1 行は URL がないため無視");
+  await expect(text).toHaveValue("");
   const [call] = await callsOf(app, "group_add") as { id: number; articles: number[] }[];
   expect(call.id).toBe(empty.id);
   expect(call.articles[0]).toBe(ARTICLES[0].id);

@@ -62,10 +62,10 @@ test("several feed URLs, one per line, are subscribed into the chosen folder", a
   await createFolder(app, "TechFeed");
   const urls = ["https://techfeed.io/feeds/categories/rust", "https://techfeed.io/feeds/categories/go", "https://techfeed.io/feeds/categories/db"];
   const field = app.getByLabel("サイトまたは記事の URL からフィードを検出");
-  await field.fill(urls.join("\n") + "\n\n");
+  await field.fill(urls.join("\n") + "\nftp://techfeed.io/feeds\nnot a feed\n\n");
   await app.getByLabel("追加先のフォルダ").selectOption({ label: "TechFeed" });
   await app.getByRole("button", { name: "3 件を登録" }).click();
-  await expect(app.getByRole("status")).toHaveText("3 件中 3 件を登録");
+  await expect(app.getByRole("status")).toHaveText("3 件中 3 件を登録・1 行は http(s) でないため無視・1 行は URL がないため無視");
   await expect(field).toHaveValue("");
   const calls = await callsOf(app, "add_feed");
   expect(calls.map((c) => (c as { url: string }).url)).toEqual(urls);
@@ -127,4 +127,15 @@ test("OPML outlines become folders on import; the palette finds folders", async 
   await expect(found.first()).toContainText("フォルダ");
   await found.first().click();
   await expect(list(app).locator("h1")).toHaveText("TechFeed");
+});
+
+test("a failed Find shows its error under the field, and editing the field clears it", async ({ app }) => {
+  await openFeeds(app);
+  const form = app.getByRole("form", { name: "フィードを追加" });
+  const field = app.getByLabel("サイトまたは記事の URL からフィードを検出");
+  await field.fill("not a site");
+  await app.getByRole("button", { name: "検出", exact: true }).click();
+  await expect(form.getByRole("alert")).toBeVisible();
+  await field.fill("https://example.com");
+  await expect(app.getByRole("alert")).toHaveCount(0);
 });

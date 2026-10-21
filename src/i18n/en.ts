@@ -513,6 +513,8 @@ export const en = {
   "importView.queued": "Queued {queued} of {found} URLs for fetching",
   "importView.existing": " · {existing} already saved",
   "importView.invalid": " · {invalid} invalid",
+  "common.skippedScheme": (p) => ` · ${plural(p.n, "line", "lines")} skipped: not http(s)`,
+  "common.skippedNoUrl": (p) => ` · ${plural(p.n, "line", "lines")} skipped: no URL`,
   "importView.chooseFileEllipsis": "Choose a file…",
   "importView.markdownPlaceholder": "# Title\n\nPaste the text here",
   "importView.importing": "Importing…",
