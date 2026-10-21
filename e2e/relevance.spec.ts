@@ -28,7 +28,13 @@ test("sorting and filtering by importance; the Reader shows the reason", async (
   await list(app).getByRole("button", { name: "並び順とグループ" }).click();
   await app.getByRole("menuitemradio", { name: /重要度・高い順/ }).click();
   await expect(list(app).locator(".row").first()).toContainText(top.title!);
-  await expect(list(app).getByText("「自分について」がないため重要度は判定していません")).toBeVisible();
+  const note = list(app).getByText("「自分について」がないため重要度は判定していません");
+  await expect(note).toBeVisible();
+  // A narrow list cuts the note to one line; its title keeps the whole of it.
+  await app.locator(".list").evaluate((e) => void ((e as HTMLElement).style.width = "300px"));
+  await expect(note).toHaveAttribute("title", "「自分について」がないため重要度は判定していません");
+  expect(await note.evaluate((e) => [e.scrollWidth > e.clientWidth, e.clientHeight < 2 * parseFloat(getComputedStyle(e).lineHeight)])).toEqual([true, true]);
+  await app.locator(".list").evaluate((e) => void ((e as HTMLElement).style.width = ""));
 
   await list(app).getByRole("button", { name: "重要度", exact: true }).click();
   await app.getByRole("dialog", { name: "重要度で絞り込む" }).getByRole("button", { name: /必読/ }).click();

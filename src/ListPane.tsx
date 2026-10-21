@@ -247,8 +247,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
           <div className="list-tools">
             <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
             {onRescore && <button className="tb" onClick={() => rescore(onRescore)} disabled={count === 0} title={t("listPane.rescoreHint")}>{t("listPane.rescore")}</button>}
-            {onRescore && rescored && <span className="muted" role="status">{rescored}</span>}
-            {noProfile && sort === "relevance_desc" && <span className="muted">{t("listPane.noProfile")}</span>}
+            {onRescore && rescored && <span className="muted list-note" role="status" title={rescored}>{rescored}</span>}
+            {noProfile && sort === "relevance_desc" && <span className="muted list-note" title={t("listPane.noProfile")}>{t("listPane.noProfile")}</span>}
             <button className="tb" onClick={() => { setPicked([]); setAnchor(null); }} title={t("listPane.pickHint")}>{t("listPane.pick")}</button>
             <button className="clear" onClick={() => onFacets({ ...NO_FACETS, tagMode: facets.tagMode })} disabled={!hasFacets}>
               {t("listPane.clear")}<Kbd>Esc</Kbd>
