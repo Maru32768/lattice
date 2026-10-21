@@ -83,6 +83,11 @@
 /* A feed folder (H25): its fold toggle, then the scope row; its feeds sit under its icon. */
 .ni-row .ni-fold { width: 18px; height: 26px; color: var(--ink3); }
 .nav-folder > .nav-sub { padding-left: 18px; }
+.ni-row > .ni-edit { flex: 1; }
+/* Dragging feeds and folders (H26): the held row floats; a folder (or the drop target) a feed is held over lights up. */
+.nav .dragging { position: relative; z-index: 1; background: var(--active); box-shadow: 0 4px 12px var(--shadow); border-radius: 6px; }
+.nav .drop { background: var(--acc-soft); border-radius: 6px; }
+.nav-drop { border: 1px dashed var(--line2); border-radius: 6px; }
 .nav-bottom { margin-top: 12px; }
 .nav-rail { width: 48px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-rail .ib.acc { color: var(--acc); }

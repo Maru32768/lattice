@@ -533,6 +533,16 @@ CREATE TABLE feed_folders (
 ALTER TABLE feeds ADD COLUMN folder_id INTEGER REFERENCES feed_folders(id) ON DELETE SET NULL;
 CREATE INDEX feeds_folder ON feeds(folder_id);
 "#,
+    r#"
+-- The user's order of feeds within their folder, or among the feeds in none (H26, feed_folders.rs).
+-- Existing feeds keep the order they were shown in: by name.
+ALTER TABLE feeds ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
+UPDATE feeds SET position = (
+    SELECT n FROM (
+        SELECT id, row_number() OVER (PARTITION BY folder_id ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE, id) - 1 AS n FROM feeds
+    ) o WHERE o.id = feeds.id
+);
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -1786,6 +1796,27 @@ mod tests {
         crate::feed_folders::move_feeds(&s, &[1], Some(f)).unwrap();
         assert_eq!(s.article_row(1).unwrap().unwrap().folder_id, Some(f));
         assert_eq!(s.list_articles(&ArticleFilter::Folder { id: f }).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn feed_order_migration_keeps_the_order_by_name() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("ALTER TABLE feeds ADD COLUMN position")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feed_folders (name, position) VALUES ('Tech', 0);
+             INSERT INTO feeds (url, title) VALUES ('https://c.dev/feed', 'charlie'), ('https://a.dev/feed', 'Alpha'), ('https://b.dev/feed', NULL);
+             INSERT INTO feeds (url, title, custom_title, folder_id) VALUES ('https://y.dev/feed', 'y', 'Yankee', 1), ('https://x.dev/feed', 'X-ray', NULL, 1);",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let urls = crate::feeds::list(&s).unwrap().into_iter().map(|f| f.url).collect::<Vec<_>>();
+        assert_eq!(urls, ["https://x.dev/feed", "https://y.dev/feed", "https://a.dev/feed", "https://c.dev/feed", "https://b.dev/feed"]);
+        let (d, _) = crate::feeds::add(&s, "https://0.dev/feed", None).unwrap();
+        assert_eq!(crate::feeds::list(&s).unwrap().last().unwrap().id, d, "a new feed goes last");
     }
 
     #[test]

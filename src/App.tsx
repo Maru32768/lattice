@@ -30,6 +30,7 @@ import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
+import { placeFeeds, type FeedOrder } from "./feedFolders";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
 import { keyOf } from "./keyname";
 import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
@@ -617,6 +618,15 @@ export default function App() {
   }
 
   // ---- feed folders (H25) --------------------------------------------------------------------
+  /** A feed or folder moved in the sidebar (H26): shown at once, then stored. */
+  function reorderFeeds(order: FeedOrder) {
+    setFeeds((fs) => placeFeeds(fs, order));
+    void act(() => api.reorderFeeds(order.folder, order.ids));
+  }
+  function reorderFolders(ids: number[]) {
+    setFolders((fs) => ids.flatMap((id) => fs.filter((f) => f.id === id)));
+    void act(() => api.reorderFeedFolders(ids));
+  }
   async function deleteFolder(id: number) {
     await act(() => api.deleteFeedFolder(id));
     if (scope.kind === "folder" && scope.id === id) setScope({ kind: "all" });
@@ -1026,6 +1036,9 @@ export default function App() {
     },
     back: () => goHistory(-1),
     forward: () => goHistory(1),
+    // The focused sidebar row moves itself (NavFolders); nowhere else has rows to move.
+    moveUp: () => {},
+    moveDown: () => {},
   };
   const keyState = useRef({ actions, paneKey, prefix });
   keyState.current = { actions, paneKey, prefix };
@@ -1124,7 +1137,8 @@ export default function App() {
         onChat={toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
         onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
-        onRenameFolder={(id, name) => act(() => api.renameFeedFolder(id, name))} onDeleteFolder={deleteFolder} onMenu={setCtxItems}
+        onRenameFolder={(id, name) => act(() => api.renameFeedFolder(id, name))} onDeleteFolder={deleteFolder}
+        onReorderFeeds={reorderFeeds} onReorderFolders={reorderFolders} onMenu={setCtxItems}
         onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
     : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)}
         onScope={setScope} onChat={toggleChat} />;
@@ -1214,7 +1228,7 @@ export default function App() {
             <main className="main" data-pane="doc">
               {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }}
                 groups={groupRows} initialGroups={scope.kind === "group" ? [scope.id] : []} onCreateGroup={createGroup} />}
-              {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} onChanged={refreshSoon} initialUrl={feedsUrl}
+              {screen === "feeds" && <FeedsView key={feedsUrl} articles={articles} navFeeds={feeds} onChanged={refreshSoon} initialUrl={feedsUrl}
                 onShowFeed={(id) => setScope({ kind: "feed", id })} />}
               {screen === "jobs" && <JobsView />}
               {screen === "review" && <QuizReview onChanged={loadVocab} onOpenPage={(url, text) => openPage(url, text)}
@@ -1225,7 +1239,7 @@ export default function App() {
           {IS_MAIN && screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
               hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
+              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} feeds={feeds} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
           {IS_MAIN && screen === "library" && search && listOpen && splitter("search")}

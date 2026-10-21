@@ -5,7 +5,8 @@ import { relTime } from "./time";
 import { Favicon, feedIconChanged, hostOf } from "./Favicon";
 import { FilterEditor, RejectedList } from "./FeedFilterEditor";
 import { FeedFoldersCard } from "./FeedFoldersCard";
-import { feedUrls } from "./feedFolders";
+import { feedGroups, feedStep, feedUrls, folderTree } from "./feedFolders";
+import { Icon } from "./Icon";
 import "./manage.css";
 import { useT } from "./i18n";
 
@@ -69,8 +70,10 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
 }
 
 /** RSS / Atom subscriptions. Polling runs in the background every 30 minutes and at startup. */
-export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
+export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUrl }: {
   articles: ArticleRow[];
+  /** The sidebar's copy: when a move there (H26) changes it, this screen loads the feeds again. */
+  navFeeds: FeedRow[];
   onChanged: () => void;
   onShowFeed: (id: number) => void;
   initialUrl?: string;
@@ -95,12 +98,13 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
 
   const load = () => Promise.all([api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders)]).catch((e) => setError(String(e)));
   useEffect(() => {
-    void load();
     if (initialUrl?.trim()) void detect(initialUrl);
     const sub = listen("feeds-changed", () => { void load(); onChanged(); });
     return () => { void sub.then((f) => f()); };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount only: the view is keyed on initialUrl
   }, []);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- load only reads setters
+  useEffect(() => void load(), [navFeeds]); // on mount too
 
   async function run(task: () => Promise<string | null>) {
     setBusy(true);
@@ -173,6 +177,12 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
     const name = folders.find((f) => f.id === folder)?.name;
     return name == null ? t("feedsView.movedOut", { n: ids.length }) : t("feedsView.moved", { n: ids.length, folder: name });
   });
+  // The sidebar's order (H26): ↑ ↓ move a feed one place, past a folder's ends into the next one.
+  const groups = feedGroups(folderTree(feeds, folders, new Map()));
+  const step = (f: FeedRow, d: -1 | 1) => {
+    const order = feedStep(groups, f.id, d);
+    if (order) void run(async () => { await api.reorderFeeds(order.folder, order.ids); return null; });
+  };
   const folderOptions = folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>);
   const pickFolder = (v: string) => (v === "" ? null : Number(v));
 
@@ -291,7 +301,13 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
               <th>{t("common.feed")}</th><th>{t("common.folder")}</th><th>{t("jobsView.state")}</th><th>{t("feedsView.updated")}</th><th className="num">{t("feedsView.unreadTotal")}</th><th><span className="vh">{t("common.actions")}</span></th></tr></thead>
             <tbody>
               {shown.length === 0 && <tr><td colSpan={7} className="muted">{feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}</td></tr>}
-              {shown.map((f) => confirming === f.id ? (
+              {shown.map((f, i) => [
+                folders.length > 0 && f.folder_id !== (i > 0 ? shown[i - 1].folder_id : undefined) && (
+                  <tr key={`folder-${f.folder_id}`} className="grp">
+                    <th colSpan={7} scope="colgroup"><Icon name="folder" size="sm" />{f.folder ?? t("feedsView.noFolder")}</th>
+                  </tr>
+                ),
+                confirming === f.id ? (
                 <tr key={f.id} className="confirm">
                   <td colSpan={7}>
                     <div className="confirm-line">
@@ -330,6 +346,8 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                   <td className="num when">{relTime(f.last_fetched_at, t)}</td>
                   <td className="num">{unread.get(f.id) ?? 0} / {f.article_count}</td>
                   <td className="row-acts">
+                    <button className="ib" onClick={() => step(f, -1)} disabled={busy || !feedStep(groups, f.id, -1)} aria-label={t("feedsView.feedUp", { feedName: feedName(f) })}><Icon name="up" size="sm" /></button>
+                    <button className="ib" onClick={() => step(f, 1)} disabled={busy || !feedStep(groups, f.id, 1)} aria-label={t("feedsView.feedDown", { feedName: feedName(f) })}><Icon name="down" size="sm" /></button>
                     <button className="btn sm ghost" onClick={() => onShowFeed(f.id)} aria-label={t("feedsView.viewArticlesOf", { feedName: feedName(f) })}>{t("feedsView.viewArticles")}</button>
                     <button className="btn sm ghost" onClick={() => setEditing(editing === f.id ? null : f.id)} aria-expanded={editing === f.id}
                       aria-label={t("feedsView.editOf", { feedName: feedName(f) })}>{t("nav.edit")}</button>
@@ -348,7 +366,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                     </td>
                   </tr>
                 ),
-              ])}
+              ]])}
             </tbody>
           </table>
         </div>

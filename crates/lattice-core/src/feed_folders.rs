@@ -85,14 +85,35 @@ pub fn reorder(store: &Store, ids: &[i64]) -> Result<(), String> {
     tx.commit().map_err(err)
 }
 
-/// Moves the feeds into `folder`, or out of any folder (`None`).
+/// Moves the feeds into `folder`, or out of any folder (`None`), last there in the order given.
 pub fn move_feeds(store: &Store, feeds: &[i64], folder: Option<i64>) -> Result<(), String> {
     let mut c = store.conn();
     let tx = c.transaction().map_err(err)?;
+    for f in feeds {
+        move_to_end(&tx, *f, folder).map_err(not_found)?;
+    }
+    tx.commit().map_err(err)
+}
+
+/// Puts a feed last in `folder`; one already there stays where it is.
+pub(crate) fn move_to_end(c: &rusqlite::Connection, feed: i64, folder: Option<i64>) -> rusqlite::Result<usize> {
+    c.execute(
+        "UPDATE feeds SET folder_id = ?2, position = (SELECT coalesce(max(position) + 1, 0) FROM feeds WHERE folder_id IS ?2)
+         WHERE id = ?1 AND folder_id IS NOT ?2",
+        params![feed, folder],
+    )
+}
+
+/// These feeds, in this order, first in `folder` (or among the feeds in none), moving them there
+/// from wherever they are; the folder's other feeds keep their order after them.
+pub fn reorder_feeds(store: &Store, folder: Option<i64>, ids: &[i64]) -> Result<(), String> {
+    let mut c = store.conn();
+    let tx = c.transaction().map_err(err)?;
     {
-        let mut st = tx.prepare("UPDATE feeds SET folder_id = ?2 WHERE id = ?1").map_err(err)?;
-        for f in feeds {
-            st.execute(params![f, folder]).map_err(not_found)?;
+        tx.execute("UPDATE feeds SET position = position + ?2 WHERE folder_id IS ?1", params![folder, ids.len() as i64]).map_err(err)?;
+        let mut st = tx.prepare("UPDATE feeds SET folder_id = ?2, position = ?3 WHERE id = ?1").map_err(err)?;
+        for (i, id) in ids.iter().enumerate() {
+            st.execute(params![id, folder, i as i64]).map_err(not_found)?;
         }
     }
     tx.commit().map_err(err)
@@ -253,9 +274,38 @@ mod tests {
 
         delete(&s, news).unwrap();
         assert_eq!(feeds::list(&s).unwrap().len(), 2, "its feeds stay");
-        assert_eq!(feeds::list(&s).unwrap()[0].folder_id, None);
+        assert_eq!(feeds::list(&s).unwrap().into_iter().find(|f| f.id == a).unwrap().folder_id, None);
         move_feeds(&s, &[b], None).unwrap();
         assert_eq!(names(), [("Tech".to_string(), 0)]);
+    }
+
+    #[test]
+    fn feeds_keep_the_users_order_within_their_folder() {
+        let s = Store::open_in_memory().unwrap();
+        let news = create(&s, "News").unwrap();
+        let tech = create(&s, "Tech").unwrap();
+        let add = |name: &str, folder| feeds::add(&s, &format!("https://{name}.dev/feed"), folder).unwrap().0;
+        let (z, y, x) = (add("z", None), add("y", None), add("x", Some(tech)));
+        let (a, b) = (add("a", Some(news)), add("b", Some(news)));
+        let order = || feeds::list(&s).unwrap().into_iter().map(|f| (f.id, f.folder_id)).collect::<Vec<_>>();
+        assert_eq!(order(), [(a, Some(news)), (b, Some(news)), (x, Some(tech)), (z, None), (y, None)], "folders in their order, then the rest; new feeds last");
+
+        reorder_feeds(&s, Some(news), &[b, a]).unwrap();
+        assert_eq!(order()[..2], [(b, Some(news)), (a, Some(news))]);
+        reorder_feeds(&s, None, &[y]).unwrap();
+        assert_eq!(order()[3..], [(y, None), (z, None)], "the ones left out keep their order after");
+
+        reorder_feeds(&s, Some(tech), &[a, x]).unwrap();
+        assert_eq!(order(), [(b, Some(news)), (a, Some(tech)), (x, Some(tech)), (y, None), (z, None)], "dropped at a slot in another folder");
+        move_feeds(&s, &[y], Some(news)).unwrap();
+        assert_eq!(order()[..2], [(b, Some(news)), (y, Some(news))], "moved: last there");
+        move_feeds(&s, &[b], Some(news)).unwrap();
+        assert_eq!(order()[0], (b, Some(news)), "already there: stays put");
+        feeds::add(&s, "https://z.dev/feed", Some(news)).unwrap();
+        assert_eq!(order()[2], (z, Some(news)), "subscribing again into a folder puts it last there");
+        assert_eq!(code(reorder_feeds(&s, Some(999), &[a])), "feedFolders.notFound");
+        reorder(&s, &[tech]).unwrap();
+        assert_eq!(order()[0].1, Some(tech), "a folder's feeds follow it");
     }
 
     #[test]

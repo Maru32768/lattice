@@ -13,6 +13,10 @@
 .manage .fs { font: 11.5px var(--mono); color: var(--ink3); overflow-wrap: anywhere; }
 .manage .tbl td.when { text-align: left; }
 .manage .tbl .row-acts { text-align: right; white-space: nowrap; }
+.manage .tbl .row-acts .ib { vertical-align: middle; }
+/* A folder heading over its feeds (H26), in the sidebar's order. */
+.manage .tbl tr.grp > th { padding: 6px 10px; text-align: left; font-size: 12px; font-weight: 600; color: var(--ink2); background: var(--sunken); }
+.manage .tbl tr.grp .ico { margin-right: 6px; vertical-align: -2px; }
 /* A hidden file input inside a .btn label: show its focus on the label. */
 .btn:has(> input.vh:focus-visible) { outline: 2px solid var(--acc); outline-offset: 1px; }
 

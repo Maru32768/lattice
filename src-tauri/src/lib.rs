@@ -493,6 +493,12 @@ fn reorder_feed_folders(app: State<'_, App>, ids: Vec<i64>) -> Result<(), String
     feed_folders::reorder(&app.store, &ids)
 }
 
+/// `ids` first in `folder` (`None`: the feeds in no folder), in this order (H26).
+#[tauri::command(async)]
+fn reorder_feeds(app: State<'_, App>, folder: Option<i64>, ids: Vec<i64>) -> Result<(), String> {
+    feed_folders::reorder_feeds(&app.store, folder, &ids)
+}
+
 /// `folder` `None` takes the feeds out of their folders.
 #[tauri::command(async)]
 fn move_feeds_to_folder(app: State<'_, App>, feeds: Vec<i64>, folder: Option<i64>) -> Result<(), String> {
@@ -1200,6 +1206,7 @@ pub fn run() {
             delete_feed_folder,
             reorder_feed_folders,
             move_feeds_to_folder,
+            reorder_feeds,
             import_opml,
             export_opml,
             set_favorite,

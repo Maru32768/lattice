@@ -6,7 +6,8 @@ import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "speak" | "popOut" | "back" | "forward";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "speak" | "popOut" | "back" | "forward"
+  | "moveUp" | "moveDown";
 
 export interface ActionDef {
   id: ActionId;
@@ -41,13 +42,16 @@ export const ACTIONS: ActionDef[] = [
   { id: "popOut", keys: ["Ctrl+Shift+N"], inFields: true },
   { id: "back", keys: ["Alt+ArrowLeft"] },
   { id: "forward", keys: ["Alt+ArrowRight"] },
+  // A focused feed or folder in the sidebar moves (H26); the row handles these keys itself.
+  { id: "moveUp", keys: ["Alt+ArrowUp"] },
+  { id: "moveDown", keys: ["Alt+ArrowDown"] },
 ];
 
 /**
  * Keys a focused page keeps: its Alt+← / Alt+→ (and mouse side buttons) are its own history, and
- * the word card's `speak` has nothing to say there.
+ * the word card's `speak` and the sidebar's row moves have nothing to do there.
  */
-const PAGE_OWN = new Set<ActionId>(["saveWord", "speak", "back", "forward"]);
+const PAGE_OWN = new Set<ActionId>(["saveWord", "speak", "back", "forward", "moveUp", "moveDown"]);
 
 export type Bindings = Record<ActionId, string[]>;
 /** The action's name in Settings, the palette and the shortcut help (`keys.<id>` in the catalogs). */

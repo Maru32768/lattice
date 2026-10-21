@@ -63,6 +63,7 @@ const COMMANDS: &[&str] = &[
     "delete_feed_folder",
     "reorder_feed_folders",
     "move_feeds_to_folder",
+    "reorder_feeds",
     "import_opml",
     "export_opml",
     "set_favorite",

@@ -183,7 +183,8 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
     Ok(Vec::new())
 }
 
-/// Returns the feed id and whether it is new. A `folder` puts the feed in it, new or not.
+/// Returns the feed id and whether it is new. A `folder` puts the feed in it, new or not; a new feed
+/// goes last in its folder.
 pub fn add(store: &Store, url: &str, folder: Option<i64>) -> Result<(i64, bool), String> {
     let url = url.trim();
     let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
@@ -191,10 +192,13 @@ pub fn add(store: &Store, url: &str, folder: Option<i64>) -> Result<(i64, bool),
         return Err("only http(s) feeds are supported".into());
     }
     let c = store.conn();
-    let created = c.execute("INSERT INTO feeds (url) VALUES (?1) ON CONFLICT(url) DO NOTHING", [url]).map_err(err)? == 1;
+    let created = c
+        .execute("INSERT INTO feeds (url, position) VALUES (?1, (SELECT coalesce(max(position) + 1, 0) FROM feeds WHERE folder_id IS NULL)) ON CONFLICT(url) DO NOTHING", [url])
+        .map_err(err)?
+        == 1;
     let id = c.query_row("SELECT id FROM feeds WHERE url = ?1", [url], |r| r.get(0)).map_err(err)?;
     if folder.is_some() {
-        c.execute("UPDATE feeds SET folder_id = ?2 WHERE id = ?1", params![id, folder]).map_err(crate::feed_folders::not_found)?;
+        crate::feed_folders::move_to_end(&c, id, folder).map_err(crate::feed_folders::not_found)?;
     }
     Ok((id, created))
 }
@@ -211,7 +215,8 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
                     custom_title, icon IS NOT NULL,
                     (SELECT count(*) FROM feed_items WHERE feed_id = feeds.id AND filter_status = 'rejected'), filter IS NOT NULL, filter_note,
                     folder_id, (SELECT name FROM feed_folders WHERE id = feeds.folder_id)
-             FROM feeds ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE",
+             FROM feeds
+             ORDER BY folder_id IS NULL, (SELECT position FROM feed_folders WHERE id = feeds.folder_id), folder_id, position, id",
         )
         .map_err(err)?;
     st.query_map([], |r| {

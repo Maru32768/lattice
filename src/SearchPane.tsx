@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { siteOf, type ArticleRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
+import { siteOf, type ArticleRow, type FeedRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
 import { DIM_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
@@ -47,12 +47,14 @@ function ScopeSelect({ scope, onScope, genres, feeds, groups }: {
 }
 
 export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, open, onSearch, onOpen, onExit,
-  scope, onScope, facets, onFacets, scoped, all, groups, articleById, focusSeq }: {
+  scope, onScope, facets, onFacets, scoped, all, feeds, groups, articleById, focusSeq }: {
   initial: string;
   result: SearchResult | null;
   busy: boolean;
   method: SearchMethod;
   onMethod: (m: SearchMethod) => void;
+  /** In the user's order (H26), which the scope picker follows. */
+  feeds: FeedRow[];
   /** Hits after the method filter and scope ∧ facets, grouped by article. */
   hits: { article_id: number; hits: SearchHit[] }[];
   /** The cursor (j / k, ↑ ↓) over the flat hit list. */
@@ -110,7 +112,10 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, groups, t)]);
+  // Manual saves last; a feed not loaded yet just before them.
+  const rank = (id: number | null) => (id == null ? feeds.length + 2 : feeds.findIndex((f) => f.id === id) + 1 || feeds.length + 1);
+  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].sort((a, b) => rank(a) - rank(b))
+    .map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, groups, t)]);
   let n = 0;
   return (
     <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
