@@ -83,6 +83,8 @@ export interface MenuItem {
   onSelect: () => void;
   disabled?: boolean;
   checked?: boolean;
+  /** A line under the label saying what the item does. */
+  hint?: string;
 }
 
 /** `.menu` min-width; a wider menu grows away from the aligned edge. */
@@ -136,9 +138,9 @@ export function Menu({ trigger, label, className, items, align = "left", title }
             : typeof it === "string" ? <div key={i} className="cap">{it}</div>
             : (
               <button key={i} role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked}
-                disabled={it.disabled} onClick={() => { close(); it.onSelect(); }}>
+                disabled={it.disabled} title={it.hint} onClick={() => { close(); it.onSelect(); }}>
                 {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
-                {it.label}
+                {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
               </button>
             ))}
         </div>

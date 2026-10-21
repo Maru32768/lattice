@@ -135,6 +135,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             let id = ingest::process(store, &p.http, article_id).await?;
             classify::enqueue_if_auto(store, id)?;
             relevance::enqueue_if_auto(store, id)?;
+            translate::enqueue_if_auto(store, id)?;
             render::enqueue_if_auto(store, id)?;
             embed::enqueue(store, id, p.embedder.model_id())
         }
@@ -222,6 +223,27 @@ mod tests {
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         assert!(p.llm.systems.lock().unwrap().last().unwrap().contains("です・ます調で訳す"), "the job keeps the instructions it was queued with");
         assert_eq!(s.get_article(id, &target.key()).unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
+    }
+
+    #[test]
+    fn saved_articles_are_translated_only_when_asked_and_not_when_japanese() {
+        let (s, id) = setup();
+        let queued = |s: &Store| s.claim_next_job(&[translate::JOB_TYPE]).unwrap().map(|j| j.article_id);
+        translate::enqueue_if_auto(&s, id).unwrap();
+        assert_eq!(queued(&s), None, "off by default: it costs LLM usage");
+
+        translate::set_auto(&s, true).unwrap();
+        assert!(translate::auto_enabled(&s).unwrap());
+        translate::enqueue_if_auto(&s, id).unwrap();
+        assert_eq!(queued(&s), Some(Some(id)));
+
+        let (ja, _) = s.upsert_pending("https://example.jp/a", "https://example.jp/a", "example.jp").unwrap();
+        let html = "<html><body><article><p>スナップショット分離は、書き込みスキューを許します。これは日本語の段落で、抽出に残るように少し長く書いてあります。</p></article></body></html>";
+        store_fetched(&s, ja, &Fetched { final_url: "https://example.jp/a".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        translate::enqueue_if_auto(&s, ja).unwrap();
+        assert_eq!(queued(&s), None, "a Japanese article is not translated to English on its own");
+        translate::set_auto(&s, false).unwrap();
+        assert!(!translate::auto_enabled(&s).unwrap());
     }
 
     #[tokio::test]

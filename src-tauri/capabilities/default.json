@@ -59,6 +59,8 @@
     "allow-rescore-relevance",
     "allow-get-translate-keep-terms",
     "allow-set-translate-keep-terms",
+    "allow-get-auto-translate",
+    "allow-set-auto-translate",
     "allow-get-translate-instructions",
     "allow-set-translate-instructions",
     "allow-get-translation-prompt",

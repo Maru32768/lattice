@@ -84,6 +84,12 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G56 | 英単語の登録と学習 | 済 | Reader で英語の語・熟語を選ぶと「単語を登録」（ショートカット `w`）、文脈の文（ブロックの文から切り出す）・記事・block を保存する。Page では overlay が同じボタンを出し、`overlay_vocab`（browser webview から、画面に出ているときだけ、1 秒に 1 回まで、長さと「語が文に含まれる」を検証）で送る。出典はページの主張ではなく webview の URL で、保存済みの記事なら記事に結び付ける。LLM job `vocab`（20 語ずつ、文は untrusted、出力は検証）が見出し語・品詞・文脈での意味（日本語）・英語の定義・IPA・例文を付け、同じ見出し語の項目は 1 つにまとめて文脈を足す。意味が付くとカードが 2 枚（穴埋め＝意味をヒントに使われた形を答える、単語→意味＝答えの後に文脈）でき、「今日の復習」に quiz のカードと同じ 1 日の上限で並ぶ（同じ語のカードは 1 日 1 枚）。出典の箇所に飛べる。ツール › 単語帳で検索・並び替え（追加順・期限順）・意味の編集・停止・再取得・削除・Anki 用 CSV の書き出し、記事中の登録語に下線と意味のツールチップ（単語帳で切り替え、既定はオン）。`vocab.rs`・`review.rs`・`src/vocab.ts`、design-review §22。英語レベルからの候補提案は未着手。 |
 | G57 | CLI・外部エージェントから機能を呼ぶ | 済 | `crates/lattice-cli` の `lattice-cli`（アプリの `lattice.exe` と衝突しない名前）。アプリと同じ保存場所の解決（`lattice_core::location` に移した）で同じ DB を WAL で開き、`search`（モデルがなければ全文検索と明示）・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask`（アプリの LLM chain）を JSON か `--format text` で返す。`save`・`tag`・`read`・`favorite` は `--allow-write` か `LATTICE_ALLOW_WRITE=1` のときだけ。`save` は ingest job を積んでアプリの runner（30 秒ごとに queue を見る）に任せ、`--run` で CLI が同じコードで取得する。`lattice-cli mcp` は同じ操作を MCP の tool として stdio で出す（最小の JSON-RPC、結果に untrusted の明示と 25,000 文字の上限）。portable zip に同梱し、README に Claude Code の設定と prompt injection の注意を書いた。設計は `docs/design-review.md` §23。 |
 
+### 2026-10-21 のフィードバック（H）
+
+| # | 項目 | 状態 | 方針 |
+|---|---|---|---|
+| H1 | 翻訳が壊れて見える | 済 | (1) Page の 訳文 / 混在 が効かない: overlay の設定は backend で全 webview 共通なのに、どのウィンドウも起動時に自分の既定（原文）を `browser_set_translation` していた。後から開いた pop-out・対話ウィンドウが全ページの翻訳を切っていた。送るのはメインだけにし、文書ウィンドウは起動時にメインへ今の選択を尋ねる（`main-request` の `pageLang`）。(2) Reader で 混在 / 訳文 を選んだとき、未翻訳で翻訳 job がなければ翻訳を始めて進み具合を出す（設定 › 翻訳「表示を切り替えたら自動で翻訳」、既定オン）。「保存した記事を自動で翻訳」（既定オフ、日本語の記事は対象外）。(3)「訳し直す」は訳が 1 つでもあれば ⋯ に説明付きで出す。 |
+
 ## 3. 要件定義の未実装項目
 
 ### MVP 後すぐ

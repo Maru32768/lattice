@@ -37,6 +37,8 @@ const COMMANDS: &[&str] = &[
     "rescore_relevance",
     "get_translate_keep_terms",
     "set_translate_keep_terms",
+    "get_auto_translate",
+    "set_auto_translate",
     "get_translate_instructions",
     "set_translate_instructions",
     "get_translation_prompt",

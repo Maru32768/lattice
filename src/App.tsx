@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, browser, isLocal, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
-import type { LanguageMode } from "./mixed";
+import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
@@ -19,7 +19,7 @@ import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
-import { Reader, TRANSLATABLE, WordMarksContext, type Focus } from "./Reader";
+import { Reader, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { CoverContext, useCover } from "./Popover";
@@ -39,7 +39,7 @@ import {
   save as saveLayout, serialize, single, split, tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
-import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
+import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import "./App.css";
 
@@ -194,13 +194,14 @@ export default function App() {
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
   const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
-  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others. */
+  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others, main sends it on. */
   const setPageLang = (l: PageLang) => {
     setPageLangState(l);
     void emit("page-lang", l);
   };
   // Every page's overlay follows the Page language choice, its tooltips the display language.
   useEffect(() => {
+    if (pageLangOnStart(HOST) !== "send") return;
     const o = overlayOf(pageLang);
     browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch((e) => setError(String(e)));
   }, [pageLang, t]);
@@ -213,6 +214,7 @@ export default function App() {
       ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
     ];
     if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
+    if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
     return () => subs.forEach((s) => void s.then((f) => f()));
   }, []);
   const [mode, setMode] = useState<LanguageMode>("mixed");
@@ -576,6 +578,14 @@ export default function App() {
     else {
       setMode("mixed");
       setPercent((p) => Math.max(0, Math.min(100, p + delta)));
+      translateOnPick(curView, "mixed");
+    }
+  }
+
+  /** Picking 混在 / 訳文 on an article nobody has translated yet starts its translation (setting, default on). */
+  function translateOnPick(v: ArticleView | undefined, m: LanguageMode) {
+    if (v && translateOnSwitch() && autoTranslates(m, v.blocks, v.jobs.find((j) => j.type === "translate"))) {
+      void act(() => api.translateArticle(v.article.id), v.article.id);
     }
   }
 
@@ -595,6 +605,7 @@ export default function App() {
     else {
       setMode(m);
       if (p != null) setPercent(p);
+      translateOnPick(curView, m);
     }
   }
 
@@ -684,6 +695,7 @@ export default function App() {
       case "chat": openChat(r.scopeKey); return;
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
       case "chatReady": void emit("doc-current", chatArticle); return;
+      case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation); break;
       case "screen": setScreen(r.screen); break;
       case "import": setImportTab(r.tab); setScreen("import"); break;
@@ -980,7 +992,7 @@ export default function App() {
     const a = v.article;
     const vAct = (task: (id: number) => Promise<unknown>) => () => act(() => task(a.id), a.id);
     return (
-      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); }}
+      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); translateOnPick(v, m); }}
         focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
         onAsk={() => openChat("article")}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)} onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
