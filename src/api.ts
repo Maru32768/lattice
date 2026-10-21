@@ -619,6 +619,12 @@ export const browser = {
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 
+/** Pop-out windows (G52): `open` also brings an open one to the front; `close` closes the calling pop-out. */
+export const windows = {
+  open: (label: string) => invoke<void>("open_window", { label }),
+  close: () => invoke<void>("close_window"),
+};
+
 /** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */
 export interface R2Status {
   enabled: boolean;

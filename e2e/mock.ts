@@ -451,6 +451,8 @@ export const handlers = {
   browser_go: none,
   browser_set_translation: none,
   browser_set_keys: none,
+  open_window: none,
+  close_window: none,
   r2_status: (): R2Status => store.r2,
   r2_save: ({ settings }: { settings: R2Settings }) => {
     const { secret_access_key: secret, ...rest } = settings;
@@ -475,6 +477,8 @@ export const pluginHandlers: Record<string, () => unknown> = {
   "plugin:window|toggle_maximize": none,
   "plugin:window|close": none,
   "plugin:window|start_dragging": none,
+  "plugin:window|set_focus": none,
+  "plugin:window|set_title": none,
   "plugin:webview|set_webview_focus": none,
 };
 

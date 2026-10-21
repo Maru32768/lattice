@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { MIN_SIZE, activate, close, closePane, focusedPane, move, panes, resize, split, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
-import { TabStrip, type DropTarget, type TabLabel } from "./TabStrip";
+import { TabStrip, type DropTarget, type TabLabel, type WindowAction } from "./TabStrip";
 import { useT } from "./i18n";
 
 type Update = (f: (l: Layout) => Layout) => void;
@@ -55,13 +55,14 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   );
 }
 
-function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDrag, index }: {
+function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, onDrag, index }: {
   n: Node;
   layout: Layout;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;
   onNew: (pane: Id) => void;
+  windowAction: WindowAction;
   drop: DropTarget | null;
   onDrag: (t: DropTarget | null) => void;
   /** Reading-order number of the first pane in this node, for the panes' labels. */
@@ -86,7 +87,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDra
                   })} />
               )}
               <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} drop={drop} onDrag={onDrag} index={first} />
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} onDrag={onDrag} index={first} />
               </div>
             </Fragment>
           );
@@ -98,7 +99,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDra
   const multi = layout.root.kind === "split";
   return (
     <section className={`dpane${focused ? " focused" : ""}`} data-pane="doc" data-pane-id={n.id} aria-label={t("docArea.document", { x: index + 1 })}>
-      <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop}
+      <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop} windowAction={windowAction}
         onActivate={(t) => onLayout((l) => activate(l, t))} onClose={(t) => onLayout((l) => close(l, t))} onNew={() => onNew(n.id)}
         onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}
         onDrag={onDrag} onDrop={(t, to) => onLayout((l) => move(l, t, to.pane, to.index))} />
@@ -108,18 +109,20 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, drop, onDra
 }
 
 /** The document area: the layout tree as nested flex boxes with drag handles, a tab strip over each pane. */
-export function DocArea({ layout, onLayout, labelOf, renderPane, onNew }: {
+export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAction }: {
   layout: Layout;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;
   /** The pane's + button (or Ctrl+T): the palette, whose pick opens in a new tab. */
   onNew: (pane: Id) => void;
+  /** The strip's button that moves the active tab to another window (out of main, or back to it). */
+  windowAction: WindowAction;
 }) {
   const [drop, setDrop] = useState<DropTarget | null>(null);
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
-      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} drop={drop} onDrag={setDrop} index={0} />
+      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} onDrag={setDrop} index={0} />
     </div>
   );
 }

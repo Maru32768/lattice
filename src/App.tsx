@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, browser, isLocal, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
-import { BrowserView, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { api, browser, isLocal, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
+import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import type { LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
@@ -32,14 +33,21 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { TitleBar } from "./TitleBar";
 import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "./Splitter";
 import { DocArea } from "./DocArea";
-import { hostOf } from "./Favicon";
+import { hostOf as siteOf } from "./Favicon";
 import {
-  activeTab, allTabs, close, closePane, closeWhere, cycle, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey, save as saveLayout, split,
-  tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
+  LAYOUT_KEY, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
+  save as saveLayout, serialize, single, split, tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
+import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import "./App.css";
+
+/** Which window this frontend runs in (design-review §26): the main shell, a document pop-out (one pane tree) or the chat window. */
+const HOST = hostOf(getCurrentWindow().label);
+const IS_MAIN = HOST.kind === "main";
+/** Where this window's layout lives; a pop-out's key also marks it as open. */
+const STORAGE = HOST.kind === "main" ? LAYOUT_KEY : windowKey(HOST.kind === "doc" ? HOST.label : CHAT);
 
 /** Where a document opens: the focused pane's active tab, or a new tab (Ctrl / middle click, Ctrl+T). */
 type Where = "active" | "new";
@@ -66,7 +74,7 @@ function loadMarks(): boolean {
 
 const JOB_POLL_MS = 10_000;
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown"]);
+const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
 
 /** States board #8: an empty library. */
 function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
@@ -130,10 +138,19 @@ export default function App() {
   const [scope, setScopeState] = useState<Scope>({ kind: "all" });
   const [facets, setFacets] = useState<Facets>(NO_FACETS);
   const [kept, setKept] = useState<Kept>(NO_KEPT);
-  const [screen, setScreen] = useState<Screen>("library");
+  const [screen, setScreenState] = useState<Screen>("library");
+  /** The screens (settings, feeds, import, …) live in the main window; a pop-out asks it. */
+  const setScreen = (s: Screen) => {
+    if (IS_MAIN) setScreenState(s);
+    else if (s !== "library") void toMain({ kind: "screen", screen: s });
+  };
   const [navOpen, setNavOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
+  /** The chat is in its own window (main only; restored from storage at startup). */
+  const [chatWindow, setChatWindow] = useState(() => IS_MAIN && openWindows(storageKeys()).includes(CHAT));
+  /** The chat window's この記事: the article open in the main window, as it announces it. */
+  const [remoteArticle, setRemoteArticle] = useState<{ id: number; title: string } | null>(null);
   const [widths, setWidths] = useState<PaneWidths>(loadWidths);
   useEffect(() => saveWidths(widths), [widths]);
   const [jobFailures, setJobFailures] = useState(0);
@@ -166,8 +183,8 @@ export default function App() {
   const [recent, setRecent] = useState<string[]>(loadRecent);
 
   // Documents: the pane tree with its tabs, the loaded article views, the pages' state
-  const [layout, setLayout] = useState<Layout>(loadLayout);
-  useEffect(() => saveLayout(layout), [layout]);
+  const [layout, setLayout] = useState<Layout>(() => loadLayout(STORAGE));
+  useEffect(() => { if (HOST.kind !== "chat") saveLayout(layout, STORAGE); }, [layout]);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   /** Article views of the open Reader tabs, by article id. */
@@ -176,12 +193,28 @@ export default function App() {
   viewsRef.current = views;
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
-  const [pageLang, setPageLang] = useState<PageLang>({ mode: "original", percent: 70 });
+  const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
+  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others. */
+  const setPageLang = (l: PageLang) => {
+    setPageLangState(l);
+    void emit("page-lang", l);
+  };
   // Every page's overlay follows the Page language choice, its tooltips the display language.
   useEffect(() => {
     const o = overlayOf(pageLang);
     browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch((e) => setError(String(e)));
   }, [pageLang, t]);
+  // Broadcasts (`emit`) reach every window's `listen`; what is addressed to one window (`emitTo`) is
+  // heard through that window's own listener, since a global `listen` matches any target.
+  useEffect(() => {
+    const subs = [
+      listen<PageLang>("page-lang", (e) => setPageLangState(e.payload)),
+      listen<{ id: number; title: string } | null>("doc-current", (e) => setRemoteArticle(e.payload)),
+      ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
+    ];
+    if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
+    return () => subs.forEach((s) => void s.then((f) => f()));
+  }, []);
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
 
@@ -331,7 +364,7 @@ export default function App() {
   }, [articles, now, importantMin]);
   // The taskbar badge follows the unread count; reading through a list changes it in bursts.
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || !IS_MAIN) return;
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
@@ -352,6 +385,12 @@ export default function App() {
   const savedOf = (t: PageTab) => (t.saved == null ? null : articleById.get(t.saved) ?? null);
   const current: ArticleRow | null = cur?.kind === "reader" ? curView?.article ?? articleById.get(cur.articleId) ?? null : cur?.kind === "page" ? savedOf(cur) : null;
   const selectedId = current?.id ?? null;
+  const chatArticle = HOST.kind === "chat" ? remoteArticle : current && { id: current.id, title: current.title ?? current.original_url };
+  // The chat window's この記事 follows the main window's open article.
+  useEffect(() => {
+    if (IS_MAIN) void emit("doc-current", chatArticle);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per article
+  }, [chatArticle?.id, chatArticle?.title]);
 
   // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
   const listView = viewKey(scope, facets);
@@ -369,6 +408,7 @@ export default function App() {
 
   // ---- navigation -------------------------------------------------------------------------
   function setScope(s: Scope) {
+    if (!IS_MAIN) return void toMain({ kind: "scope", scope: s });
     setScopeState(s);
     setFacets(NO_FACETS);
     setScreen("library");
@@ -376,6 +416,7 @@ export default function App() {
   }
 
   async function runSearch(q: string, s: Scope = scope) {
+    if (!IS_MAIN) return void toMain({ kind: "search", query: q });
     setScreen("library");
     setListOpen(true);
     setHitSel(0);
@@ -397,6 +438,7 @@ export default function App() {
   }
 
   function enterSearch() {
+    if (!IS_MAIN) return void toMain({ kind: "search" });
     setScreen("library");
     setListOpen(true);
     setSearch((s) => s ?? { query: "", result: null, busy: false });
@@ -466,6 +508,7 @@ export default function App() {
 
   /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
   function openCitation(c: Citation) {
+    if (!IS_MAIN) return void toMain({ kind: "cite", citation: c });
     if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" });
     else if (c.url) openPage(c.url, c.text);
     else setError(t("app.citationDeleted"));
@@ -537,6 +580,12 @@ export default function App() {
   }
 
   function openChat(key?: string) {
+    if (!IS_MAIN) return void toMain({ kind: "chat", scopeKey: key });
+    if (chatWindow) {
+      if (key) void emitTo(CHAT, "chat-request", { key });
+      windows.open(CHAT).catch(fail);
+      return;
+    }
     setChatOpen(true);
     if (key) setChatScope((c) => ({ key, seq: (c?.seq ?? 0) + 1 }));
   }
@@ -550,14 +599,127 @@ export default function App() {
   }
 
   function importMarkdown() {
+    if (!IS_MAIN) return void toMain({ kind: "import", tab: "markdown" });
     setImportTab("markdown");
     setScreen("import");
   }
 
   function importPdf() {
+    if (!IS_MAIN) return void toMain({ kind: "import", tab: "pdf" });
     setImportTab("pdf");
     setScreen("import");
   }
+
+  // ---- windows (G52) ------------------------------------------------------------------------
+  /** The tab leaves this window with its webview, which is not closed: the next window attaches it. */
+  function forgetPage(t: Tab) {
+    if (t.kind !== "page") return;
+    prevPages.current = prevPages.current.filter((k) => k !== t.key);
+    forgetOpened(t.key);
+  }
+
+  /** Main: the tab moves to a new document window, whose layout waits in storage until it loads. */
+  function popOutTab(tab: Id) {
+    const hit = tabById(layoutRef.current, tab);
+    if (!hit) return;
+    const label = nextDocLabel(openWindows(storageKeys()));
+    try {
+      localStorage.setItem(windowKey(label), serialize(open(single(), docOf(hit.tab), "new")));
+    } catch (e) {
+      return fail(e);
+    }
+    forgetPage(hit.tab);
+    setLayout((l) => close(l, tab));
+    windows.open(label).catch(fail);
+  }
+
+  /** Document window: the tab goes back to the main window's focused pane. */
+  function returnTab(tab: Id) {
+    const hit = tabById(layoutRef.current, tab);
+    if (!hit) return;
+    forgetPage(hit.tab);
+    setLayout((l) => close(l, tab));
+    void toMain({ kind: "open", docs: [docOf(hit.tab)] });
+  }
+
+  /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
+  function closeWindow() {
+    try {
+      localStorage.removeItem(STORAGE);
+    } catch {
+      // Then it comes back at the next start, which is the lesser harm.
+    }
+    windows.close().catch(() => {});
+  }
+
+  /** × or Alt+F4 on a pop-out: a document window hands its tabs back, the chat window docks back. */
+  function closeRequested() {
+    if (HOST.kind === "doc") {
+      const docs = allTabs(layoutRef.current).map(docOf);
+      if (docs.length) void toMain({ kind: "open", docs });
+    } else if (HOST.kind === "chat") {
+      void toMain({ kind: "chatDocked" });
+    }
+    closeWindow();
+  }
+
+  /** Main: the chat dock moves to its own window. */
+  function popOutChat() {
+    try {
+      localStorage.setItem(windowKey(CHAT), "1");
+    } catch (e) {
+      return fail(e);
+    }
+    setChatOpen(false);
+    setChatWindow(true);
+    windows.open(CHAT).catch(fail);
+  }
+
+  const toggleChat = () => (chatWindow ? void windows.open(CHAT).catch(fail) : setChatOpen((o) => !o));
+
+  /** What a pop-out asked the main window to do; the main window comes to the front for it. */
+  function onRequest(r: MainRequest) {
+    switch (r.kind) {
+      case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d) => open(acc, d, "new"), l)); break;
+      case "chat": openChat(r.scopeKey); return;
+      case "chatDocked": setChatWindow(false); setChatOpen(true); break;
+      case "chatReady": void emit("doc-current", chatArticle); return;
+      case "cite": openCitation(r.citation); break;
+      case "screen": setScreen(r.screen); break;
+      case "import": setImportTab(r.tab); setScreen("import"); break;
+      case "discover": setFeedsUrl(r.url); setScreen("feeds"); break;
+      case "scope": setScope(r.scope); break;
+      case "facets": setFacets(r.facets); setScreen("library"); break;
+      case "search":
+        if (r.query) void runSearch(r.query);
+        else enterSearch();
+        break;
+    }
+    getCurrentWindow().setFocus().catch(() => {});
+  }
+  const requestRef = useRef(onRequest);
+  requestRef.current = onRequest;
+  const closeRef = useRef(closeRequested);
+  closeRef.current = closeRequested;
+  useEffect(() => {
+    if (IS_MAIN) {
+      // The pop-outs that were open last time come back; the chat window is restored from its key too.
+      for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
+      const sub = getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => requestRef.current(e.payload));
+      return () => void sub.then((f) => f());
+    }
+    const sub = getCurrentWindow().onCloseRequested((e) => {
+      e.preventDefault();
+      closeRef.current();
+    });
+    return () => void sub.then((f) => f());
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once; the handlers are read through refs
+  }, []);
+  // A document window with nothing left closes (its last tab was closed or sent back).
+  useEffect(() => {
+    if (HOST.kind === "doc" && allTabs(layout).length === 0) closeWindow();
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- closeWindow reads only constants
+  }, [layout]);
 
   /** The palette for a new tab in `pane`: what it opens goes into a new tab there. */
   function newTab(pane?: Id) {
@@ -569,7 +731,7 @@ export default function App() {
 
   const paletteActions: PaletteActions = {
     scope: setScope,
-    facets: (f) => { setFacets(f); setScreen("library"); },
+    facets: (f) => { if (!IS_MAIN) return void toMain({ kind: "facets", facets: f }); setFacets(f); setScreen("library"); },
     open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
     page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
     index: (url, group) => {
@@ -580,7 +742,7 @@ export default function App() {
         openReader(id, undefined, where);
       });
     },
-    discover: (url) => { setFeedsUrl(url); setScreen("feeds"); },
+    discover: (url) => { if (!IS_MAIN) return void toMain({ kind: "discover", url }); setFeedsUrl(url); setScreen("feeds"); },
     search: (q) => void runSearch(q),
     screen: setScreen,
     importMarkdown,
@@ -687,6 +849,10 @@ export default function App() {
     splitRight: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "row")); },
     splitDown: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "column")); },
     saveWord: () => setSaveWordSeq((n) => n + 1),
+    popOut: () => {
+      const t = activeTab(focusedPane(layoutRef.current));
+      if (t) (IS_MAIN ? popOutTab : returnTab)(t.id);
+    },
   };
   const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
   keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
@@ -765,25 +931,32 @@ export default function App() {
       openHit(h);
     },
   } : undefined;
-  const chatArticle = current && { id: current.id, title: current.title ?? current.original_url };
   const splitter = (pane: Resizable, side: "left" | "right" = "left") => (
     <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
   );
   const nav = navOpen
     ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
-        chatOpen={chatOpen} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
-        onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={() => setChatOpen((o) => !o)} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
+        chatOpen={chatOpen || chatWindow} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
+        onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
         onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
         onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
-    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
-        onScope={setScope} onChat={() => setChatOpen((o) => !o)} />;
+    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
+        onScope={setScope} onChat={toggleChat} />;
 
   const labelOf = (t: Tab): TabLabel => {
-    if (t.kind === "page") return { title: t.title || hostOf(t.url) || t.url, domain: hostOf(t.url) };
+    if (t.kind === "page") return { title: t.title || siteOf(t.url) || t.url, domain: siteOf(t.url) };
     const a = views.get(t.articleId)?.article ?? articleById.get(t.articleId);
     return { title: a?.title ?? a?.original_url ?? "…", domain: a?.domain ?? "", feed: a?.feed_id };
   };
+  // A document window is named after its tab on the taskbar and in Alt+Tab.
+  const windowTitle = HOST.kind === "doc" && cur ? labelOf(cur).title : "";
+  useEffect(() => {
+    if (HOST.kind === "doc") getCurrentWindow().setTitle(windowTitle ? `${windowTitle} - Lattice` : "Lattice").catch(() => {});
+  }, [windowTitle]);
+  const windowAction = IS_MAIN
+    ? { label: t("tabStrip.popOut"), hint: t("tabStrip.popOutHint"), icon: "popout" as const, onSelect: popOutTab }
+    : { label: t("tabStrip.popIn"), hint: t("tabStrip.popInHint"), icon: "popin" as const, onSelect: returnTab };
 
   const renderPane = (pane: Pane) => {
     const tab = activeTab(pane);
@@ -825,16 +998,28 @@ export default function App() {
     );
   };
 
+  if (HOST.kind === "chat") {
+    return (
+      <CoverContext.Provider value={cover}>
+        <div className="shell">
+          <TitleBar />
+          <div className="app solo" data-kb-pane={kbPane ?? undefined}>
+            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} closeLabel={t("chatPane.popIn")} current={null} />
+          </div>
+        </div>
+      </CoverContext.Provider>
+    );
+  }
   return (
     <CoverContext.Provider value={cover}>
       <div className="shell">
         <TitleBar />
-        <UpdateNotice onOpenUrl={(url) => openPage(url)} />
+        {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
-          {screen === "settings"
+          {IS_MAIN && (screen === "settings"
             ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
-            : nav}
+            : nav)}
           {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (
             <main className="main" data-pane="doc">
               {screen === "import" && <ImportView tab={importTab} onTab={setImportTab} onImported={refresh} onOpen={(id) => { void refresh(); openReader(id); }}
@@ -847,14 +1032,14 @@ export default function App() {
               {screen === "vocab" && <VocabView entries={vocab} marks={marksOn} onMarks={setMarks} onChanged={loadVocab} onSource={openContext} />}
             </main>
           )}
-          {screen === "library" && search && listOpen && (
+          {IS_MAIN && screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
               hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
               scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
-          {screen === "library" && search && listOpen && splitter("search")}
-          {screen === "library" && !(search && listOpen) && (listOpen
+          {IS_MAIN && screen === "library" && search && listOpen && splitter("search")}
+          {IS_MAIN && screen === "library" && !(search && listOpen) && (listOpen
             ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
                 all={articles} groups={groups} groupRows={groupRows} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
@@ -864,7 +1049,7 @@ export default function App() {
                 noProfile={relevance != null && !relevance.has_profile} />
             : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, groupRows, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
-          {screen === "library" && !search && listOpen && splitter("list")}
+          {IS_MAIN && screen === "library" && !search && listOpen && splitter("list")}
           {screen === "library" && <div className="doc-area-wrap">
             {error && (
               <div className="banner" role="alert">
@@ -873,7 +1058,7 @@ export default function App() {
               </div>
             )}
             <WordMarksContext.Provider value={marks}>
-              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} />
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (
@@ -890,7 +1075,7 @@ export default function App() {
           {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
           {chatOpen && splitter("chat", "right")}
           {chatOpen && (
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)}
+            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
               current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
           )}
         </div>

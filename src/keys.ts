@@ -6,7 +6,7 @@ import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "popOut";
 
 export interface ActionDef {
   id: ActionId;
@@ -37,6 +37,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "splitRight", keys: ["Ctrl+\\"], inFields: true },
   { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
   { id: "saveWord", keys: ["W"] },
+  { id: "popOut", keys: ["Ctrl+Shift+N"], inFields: true },
 ];
 
 export type Bindings = Record<ActionId, string[]>;
@@ -136,6 +137,16 @@ function commit(next: Partial<Bindings>) {
     // Blocked storage: the change lasts for this session only.
   }
   listeners.forEach((f) => f());
+}
+
+// Another window (a pop-out, G52) changed the shortcuts: follow it.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY) return;
+    overrides = load();
+    bindings = merge(overrides);
+    listeners.forEach((f) => f());
+  });
 }
 
 export const getBindings = () => bindings;

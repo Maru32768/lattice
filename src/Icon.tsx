@@ -40,6 +40,8 @@ const PATHS = {
   alert: <><circle cx="12" cy="12" r="8.5" /><path d="M12 8v5M12 16h.01" /></>,
   flag: <path d="M5 21V4M5 4h11l-2 4 2 4H5" />,
   offline: <path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M14 10.3A10 10 0 0 1 19 13M12 20h.01" />,
+  popout: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></>,
+  popin: <><path d="M20 10h-6V4M14 10l6-6" /><path d="M18 14v6H4V6h6" /></>,
 } as const;
 
 export type IconName = keyof typeof PATHS;
