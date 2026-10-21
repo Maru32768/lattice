@@ -65,6 +65,12 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
   await expect.poll(() => callsOf(app, "group_remove")).toEqual([{ id: mvcc.id, articles: [a.id] }]);
 });
 
+test("an empty scope shows no filters, sort or Select", async ({ app }) => {
+  await navItem(app, empty.name).click();
+  await expect(list(app).locator(".empty")).toBeVisible();
+  await expect(list(app).locator(".chips, .list-tools")).toHaveCount(0);
+});
+
 test("list rows picked with 選択 and Shift+click go into a group together", async ({ app }) => {
   const rows = list(app).locator(".row");
   const ids = await rows.evaluateAll((els) => els.slice(0, 4).map((e) => Number((e as HTMLElement).dataset.id)));

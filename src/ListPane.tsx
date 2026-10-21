@@ -184,6 +184,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   const t = useT();
   const [rescored, setRescored] = useState<string | null>(null);
   const hasFacets = activeDims(facets).length > 0;
+  // Nothing in scope and no filter to clear: the filters, sort and Select would act on nothing.
+  const idle = total === 0 && !hasFacets;
   /** Rows picked for a bulk action; null while not picking. */
   const [picked, setPicked] = useState<number[] | null>(null);
   const [anchor, setAnchor] = useState<number | null>(null);
@@ -231,8 +233,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
           <span className="mono count">{count} / {total}</span>
           <button className="ib" onClick={onCollapse} aria-label={t("listPane.close")} title={t("listPane.close")}><Icon name="left" /></button>
         </div>
-        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groupRows} />
-        {picked ? (
+        {!idle && <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groupRows} />}
+        {idle ? null : picked ? (
           <div className="list-tools" role="toolbar" aria-label={t("listPane.picking")}>
             <span className="mono">{t("listPane.picked", { n: ids.length })}</span>
             <button className="btn sm" disabled={ids.length === 0} aria-haspopup="dialog" aria-expanded={!!picker}
