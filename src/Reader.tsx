@@ -1,7 +1,7 @@
 import { Fragment, createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "./api";
-import { type LanguageMode, TRANSLATABLE, splitBackticks, translatedBlockIds } from "./mixed";
+import { type LanguageMode, TRANSLATABLE, needsTranslation, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
 import { Menu } from "./Popover";
@@ -186,8 +186,7 @@ function TranslationStatus({ job, done, total, target, onTranslate, onRetranslat
   const t = useT();
   const keys = <span className="keys"><Kbd>[</Kbd><Kbd>]</Kbd>{t("reader.ratioHint")}</span>;
   const hint = <span className="hint-keys">{keys}</span>;
-  if (!job) return <>{hint}<button className="tb" onClick={onTranslate} disabled={total === 0}><Icon name="translate" />{t(target === "en" ? "reader.translateToEn" : "reader.translateToJa")}</button></>;
-  if (busy(job)) {
+  if (job && busy(job)) {
     return (
       <span className="tr-prog" role="status">
         <span>{job.status === "running" ? t("reader.translating") : t("reader.waiting")} {done} / {total} block</span>
@@ -195,11 +194,22 @@ function TranslationStatus({ job, done, total, target, onTranslate, onRetranslat
       </span>
     );
   }
-  if (job.status === "succeeded" && done >= total) {
+  // No job yet, or it finished: some blocks may be translated already (a finished job, the Page view's cache).
+  if (!job?.last_error) {
+    if (done >= total) {
+      return done === 0 ? hint : (
+        <>
+          <span className="hint-keys">{keys}<span className="keys"> · </span>{t("reader.translatedCount", { done, total })}</span>
+          <button className="btn sm" onClick={onRetranslate} title={t("reader.retranslateHint")}>{t("reader.retranslate")}</button>
+        </>
+      );
+    }
     return (
       <>
-        <span className="hint-keys">{keys}<span className="keys"> · </span>{t("reader.translatedCount", { done, total })}</span>
-        <button className="btn sm" onClick={onRetranslate} title={t("reader.retranslateHint")}>{t("reader.retranslate")}</button>
+        <span className="hint-keys">{keys}{done > 0 && <><span className="keys"> · </span>{t("reader.translatedCount", { done, total })}</>}</span>
+        <button className="tb" onClick={onTranslate} title={t(target === "en" ? "reader.translateIntoEn" : "reader.translateIntoJa")}>
+          <Icon name="translate" />{done > 0 ? t("reader.translateRest") : t("reader.translate")}
+        </button>
       </>
     );
   }
@@ -207,10 +217,9 @@ function TranslationStatus({ job, done, total, target, onTranslate, onRetranslat
     ? new Date(job.next_run_at).toLocaleTimeString(locale(t.lang), { hour: "2-digit", minute: "2-digit" }) : null;
   return (
     <>
-      <span className={job.last_error ? "error-text" : "muted"} title={job.last_error ? t.msg(job.last_error) : undefined}>{done} / {total}{job.last_error && t("reader.failedSuffix")}</span>
+      <span className="error-text" title={t.msg(job.last_error)}>{done} / {total}{t("reader.failedSuffix")}</span>
       {retryAt && <span className="muted">{t("reader.autoRetry", { retryAt })}</span>}
-      {job.last_error && <button className="btn sm" onClick={onTranslate}>{t("common.retry")}</button>}
-      {done < total && <button className="btn sm" onClick={onTranslate}>{t("reader.continue")}</button>}
+      <button className="btn sm" onClick={onTranslate}>{t("common.retry")}</button>
     </>
   );
 }
@@ -360,8 +369,9 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const selected = translatedBlockIds(blocks, mode, percent);
-  const total = blocks.filter((b) => TRANSLATABLE.has(b.kind)).length;
   const done = blocks.filter((b) => b.translation != null).length;
+  // Blocks already in the target language are never translated, so they are not counted as left.
+  const total = done + blocks.filter((b) => needsTranslation(b, view.target_language)).length;
   const job = view.jobs.find((j) => j.type === "translate");
   const translating = busy(job);
   const images = view.jobs.find((j) => j.type === "images");

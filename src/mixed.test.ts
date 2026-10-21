@@ -1,7 +1,7 @@
 // Run with `npm test` (Node strips the types natively).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoTranslates, splitBackticks, translatedBlockIds } from "./mixed.ts";
+import { autoTranslates, needsTranslation, splitBackticks, translatedBlockIds } from "./mixed.ts";
 
 const blocks = Array.from({ length: 10 }, (_, i) => ({ id: i, translation: i === 9 ? null : `t${i}` }));
 
@@ -35,4 +35,12 @@ test("picking 混在 or 訳文 starts a translation only when prose is untransla
   assert.equal(autoTranslates("translated", fresh, { status: "succeeded" }), false, "what is left is already in the target language");
   assert.equal(autoTranslates("translated", fresh, { status: "failed" }), true, "gave up earlier: picking again retries");
   assert.equal(autoTranslates("translated", [], undefined), false, "nothing extracted");
+});
+
+test("the Reader counts only blocks the job would translate", () => {
+  const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
+  assert.equal(needsTranslation(b("heading", "GitHub Actionsによる自動化"), "en"), true, "Japanese with English identifiers");
+  assert.equal(needsTranslation(b("paragraph", "npm install lattice"), "en"), false, "already English: the job skips it");
+  assert.equal(needsTranslation(b("paragraph", "スナップショット分離", "Snapshot isolation"), "en"), false, "translated");
+  assert.equal(needsTranslation(b("code", "SELECT 1;"), "ja"), false, "code is never translated");
 });
