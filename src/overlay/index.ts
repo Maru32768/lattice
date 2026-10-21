@@ -236,7 +236,7 @@ function ensureTip() {
   const root = host.attachShadow({ mode: "closed" });
   root.innerHTML = `<style>
     .tip{position:fixed;z-index:2147483647;max-width:min(420px,90vw);padding:10px 12px;border-radius:8px;
-      font:13px/1.6 "IBM Plex Sans JP",system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#45474C;background:#fff;
+      font:13px/1.6 system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#45474C;background:#fff;
       border:1px solid #D2CFC6;box-shadow:0 10px 30px rgba(30,28,24,.14);cursor:pointer;display:none;text-align:left}
     .tip:hover{border-color:#B9B5AA}
     .head{display:flex;gap:12px;margin-bottom:2px;font-size:11px;color:#67696E}
@@ -346,7 +346,7 @@ function ensureSaveButton() {
   const root = host.attachShadow({ mode: "closed" });
   root.innerHTML = `<style>
     button{position:fixed;z-index:2147483647;display:none;transform:translate(-50%,6px);height:28px;padding:0 12px;border-radius:6px;border:1px solid #2F5D8A;
-      font:500 12.5px/1 "IBM Plex Sans JP",system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#fff;background:#2F5D8A;
+      font:500 12.5px/1 system-ui,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;color:#fff;background:#2F5D8A;
       box-shadow:0 8px 24px rgba(30,28,24,.18);cursor:pointer}
     button:disabled{cursor:default;opacity:.9}
   </style><button type="button"></button>`;

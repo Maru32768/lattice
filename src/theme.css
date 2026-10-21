@@ -18,9 +18,9 @@
   --cap-close: #C42B1C; --cap-close-down: #C83C31; --cap-close-ink: #FFFFFF;
   --sw1: #4A6FA8; --sw2: #6B5BA0; --sw3: #3F7F6E; --sw4: #2F7FA0; --sw5: #A0563F; --sw6: #8A6A1F;
 
-  --sans: "IBM Plex Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  --sans: "Noto Sans JP Variable", "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
   --mono: "JetBrains Mono", Consolas, "Cascadia Mono", monospace;
-  --serif: "Source Serif 4 Variable", "Source Serif 4", "Noto Serif JP", "Yu Mincho", Georgia, serif;
+  --serif: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
   color-scheme: light;
   font-family: var(--sans);
   font-size: 13px;
@@ -75,8 +75,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .ico.md { width: 13px; height: 13px; }
 
 /* Nav item and section header */
-/* IBM Plex Sans JP sets kana 1.5-2.5px above the middle of a centered control when the line box is
-   fractional (13px x 1.5); an integer one keeps it within half a pixel (measured at 100-150 %). */
+/* An integer line box keeps kana within half a pixel of a centered control's middle; a fractional
+   one (13px x 1.5) can round it a pixel or two off (measured at 100-150 %). */
 .ni { display: flex; align-items: center; gap: 9px; width: 100%; height: 28px; padding: 0 8px; border: 0; border-radius: 5px; background: none; color: var(--ink2); font-size: 13px; line-height: 20px; text-align: left; text-decoration: none; white-space: nowrap; }
 .ni > .label { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ni:hover { background: var(--hover); color: var(--ink); }
@@ -98,10 +98,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .chip.mono { font-family: var(--mono); }
 .chip .x { display: inline-flex; margin: 0 -4px 0 -2px; padding: 2px; border: 0; border-radius: 3px; background: none; color: inherit; }
 .chip .x:hover { background: var(--acc-line); }
-/* IBM Plex Sans JP draws kana and kanji about 1px above the middle of the line box; move sans text
-   (not icons) down so select-like chips read as centered. */
-.chip:not(.mono) { padding-top: 2px; }
-.chip:not(.mono) > .ico, .chip:not(.mono) > .x { margin-top: -2px; }
 
 .kbd { display: inline-block; padding: 0 4px; white-space: nowrap; border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 4px; background: var(--raise); font: 10.5px/16px var(--mono); color: var(--ink3); }
 .kbd + .kbd { margin-left: 2px; }

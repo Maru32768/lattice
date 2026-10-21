@@ -36,10 +36,9 @@ The app bundles these fonts (through the Fontsource npm packages). Each is licen
 
 | Font | Copyright |
 |---|---|
-| IBM Plex Sans JP | Copyright 2018 IBM Corp. All rights reserved. |
+| Noto Sans JP | Google Inc. |
+| Shippori Mincho | Copyright 2021 The Shippori Mincho Project Authors (https://github.com/fontdasu/ShipporiMincho) |
 | JetBrains Mono | Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono) |
-| Source Serif 4 | © 2014 - 2021 Adobe Systems Incorporated (http://www.adobe.com/), with Reserved Font Name ‘Source’. |
-| Noto Serif JP | (c) 2017-2024 Adobe (http://www.adobe.com/). |
 
 ```
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
