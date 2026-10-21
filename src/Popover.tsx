@@ -169,8 +169,11 @@ const menuProps = (label: string, s: ReturnType<typeof useSurface>, height: stri
   onCloseAutoFocus: keepFocus, onKeyDown: stepKeys,
 });
 
-/** A trigger button plus an anchored menu, kept inside the trigger's pane. */
-export function Menu({ trigger, label, className, items, align = "left", title, menuClass }: {
+/**
+ * A trigger button plus an anchored menu, kept inside the trigger's pane unless `inPane` is false
+ * (the nav is narrower than a menu: its menus open beside their trigger, over the list).
+ */
+export function Menu({ trigger, label, className, items, align = "left", title, inPane = true, menuClass }: {
   trigger: React.ReactNode;
   label: string;
   className: string;
@@ -178,6 +181,7 @@ export function Menu({ trigger, label, className, items, align = "left", title, 
   items: (MenuItem | string)[];
   align?: "left" | "right";
   title?: string;
+  inPane?: boolean;
   /** A class added to the open menu (it is drawn in a portal, outside the trigger's subtree). */
   menuClass?: string;
 }) {
@@ -188,7 +192,7 @@ export function Menu({ trigger, label, className, items, align = "left", title, 
         <DM.Trigger ref={btn} className={className} aria-label={label} title={title ?? label}>{trigger}</DM.Trigger>
         <DM.Portal>
           <MenuContent label={label} items={items} align={align === "left" ? "start" : "end"} menuClass={menuClass}
-            boundary={btn.current?.closest("[data-pane]") ?? null} />
+            boundary={inPane ? btn.current?.closest("[data-pane]") ?? null : null} />
         </DM.Portal>
       </DM.Root>
     </span>

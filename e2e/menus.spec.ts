@@ -1,5 +1,5 @@
-// Menus and popovers on Radix (H22, H23): the webview gate, outside presses and Escape.
-import { test, expect, list, listCount, callsOf } from "./harness.ts";
+// Menus and popovers on Radix (H22–H24): the webview gate, outside presses, Escape and placement.
+import { test, expect, list, listCount, navItem, callsOf } from "./harness.ts";
 import { ARTICLES, GROUPS } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -95,4 +95,24 @@ test("Esc closes a popover without also clearing the filters (H23)", async ({ ap
   await expect(listCount(app)).toHaveText(filtered!);
   await app.keyboard.press("Escape");
   await expect(listCount(app)).not.toHaveText(filtered!);
+});
+
+test("a nav group's ⋯ menu opens beside its trigger, not at the window's left edge (H24)", async ({ app }) => {
+  const item = navItem(app, GROUPS[0].name);
+  await item.hover();
+  const trigger = app.locator(".nav").getByRole("button", { name: `${GROUPS[0].name} の操作` });
+  await trigger.click();
+  const menu = app.getByRole("menu");
+  await expect.poll(() => opacity(menu)).toBe("1");
+  const t = (await trigger.boundingBox())!, m = (await menu.boundingBox())!;
+  expect(Math.abs(m.x - t.x), "the menu's left edge lines up with the trigger's").toBeLessThanOrEqual(8);
+  expect(m.y).toBeGreaterThanOrEqual(t.y + t.height);
+
+  // A narrow nav: the menu still starts at its trigger.
+  await app.keyboard.press("Escape");
+  await app.evaluate(() => document.querySelector<HTMLElement>(".app")!.style.setProperty("--nav-w", "170px"));
+  await item.hover();
+  await trigger.click();
+  const t2 = (await trigger.boundingBox())!, m2 = (await menu.boundingBox())!;
+  expect(Math.abs(m2.x - t2.x)).toBeLessThanOrEqual(8);
 });

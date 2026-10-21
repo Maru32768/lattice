@@ -25,8 +25,8 @@ const SHOW_SETTLE_MS = 150;
 const FOLLOW_MS = 600;
 /** How long a still captured ahead of an overlay (see `warm`) may stand in for the page. */
 const WARM_MS = 10_000;
-/** Panes whose popovers and menus stay inside the pane, off the page webview. */
-const OFF_PAGE = new Set(["nav", "list", "chat"]);
+/** Panes whose popovers and menus stay inside the pane, off the page webview (the nav's open beside it). */
+const OFF_PAGE = new Set(["list", "chat"]);
 
 const failedOf = (v: ArticleView) => v.article.fetch_status === "failed" || v.article.extraction_status === "failed";
 const SUMMARY_KEY = "lattice.pageSummary";
