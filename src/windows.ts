@@ -2,7 +2,7 @@
 // where each window keeps its layout, and the requests a pop-out sends the main window.
 import { emitTo } from "@tauri-apps/api/event";
 import type { Citation } from "./api";
-import type { Doc } from "./layout";
+import type { Doc, Id } from "./layout";
 import type { Screen } from "./Nav";
 import type { ImportTab } from "./ImportView";
 import type { Facets, Scope } from "./library";
@@ -41,9 +41,12 @@ export function storageKeys(): string[] {
   }
 }
 
-/** What a pop-out asks the main window to do: it has no sidebar, list, screens or chat dock of its own. */
+/**
+ * What a pop-out asks the main window to do: it has no sidebar, list, screens or chat dock of its
+ * own. `open` also goes to a document window (a tab dragged onto its strip lands in slot `at`).
+ */
 export type MainRequest =
-  | { kind: "open"; docs: Doc[] }
+  | { kind: "open"; docs: Doc[]; at?: { pane: Id; index: number } }
   | { kind: "chat"; scopeKey?: string }
   | { kind: "chatDocked" }
   /** The chat window is listening: send it the current article (`doc-current`). */
@@ -57,4 +60,5 @@ export type MainRequest =
   | { kind: "search"; query?: string };
 
 export const MAIN_REQUEST = "main-request";
-export const toMain = (r: MainRequest) => emitTo(MAIN, MAIN_REQUEST, r);
+export const toWindow = (label: string, r: MainRequest) => emitTo(label, MAIN_REQUEST, r);
+export const toMain = (r: MainRequest) => toWindow(MAIN, r);

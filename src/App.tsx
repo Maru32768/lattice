@@ -39,7 +39,8 @@ import {
   save as saveLayout, serialize, single, split, tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
-import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
+import type { Drop, Point } from "./tabDrag";
+import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import "./App.css";
 
@@ -618,10 +619,15 @@ export default function App() {
     forgetOpened(t.key);
   }
 
-  /** Main: the tab moves to a new document window, whose layout waits in storage until it loads. */
-  function popOutTab(tab: Id) {
+  /**
+   * The tab moves to a new document window, whose layout waits in storage until it loads; placed
+   * under the pointer when dropped `at` (physical pixels). A document window dragging its only tab
+   * away just moves there.
+   */
+  function popOutTab(tab: Id, at?: Point) {
     const hit = tabById(layoutRef.current, tab);
     if (!hit) return;
+    if (at && HOST.kind === "doc" && allTabs(layoutRef.current).length === 1) return void windows.open(HOST.label, at).catch(fail);
     const label = nextDocLabel(openWindows(storageKeys()));
     try {
       localStorage.setItem(windowKey(label), serialize(open(single(), docOf(hit.tab), "new")));
@@ -630,17 +636,23 @@ export default function App() {
     }
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
-    windows.open(label).catch(fail);
+    windows.open(label, at).catch(fail);
   }
 
-  /** Document window: the tab goes back to the main window's focused pane. */
-  function returnTab(tab: Id) {
+  /** The tab goes to window `label`: its focused pane, or the slot `at` it was dropped on. */
+  function sendTab(tab: Id, label: string, at?: { pane: Id; index: number }) {
     const hit = tabById(layoutRef.current, tab);
     if (!hit) return;
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
-    void toMain({ kind: "open", docs: [docOf(hit.tab)] });
+    void toWindow(label, { kind: "open", docs: [docOf(hit.tab)], at });
   }
+
+  /** Document window: the tab goes back to the main window's focused pane. */
+  const returnTab = (tab: Id) => sendTab(tab, MAIN);
+
+  /** A tab dragged onto another window's strip, or away from every strip (design-review §26). */
+  const moveTabOut = (tab: Id, to: Drop) => (to.kind === "strip" ? sendTab(tab, to.label, { pane: to.pane, index: to.index }) : popOutTab(tab, { x: to.x, y: to.y }));
 
   /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
   function closeWindow() {
@@ -677,10 +689,11 @@ export default function App() {
 
   const toggleChat = () => (chatWindow ? void windows.open(CHAT).catch(fail) : setChatOpen((o) => !o));
 
-  /** What a pop-out asked the main window to do; the main window comes to the front for it. */
+  /** What another window asked this one to do (only `open` reaches a document window); it comes to the front for it. */
   function onRequest(r: MainRequest) {
+    if (!IS_MAIN && r.kind !== "open") return;
     switch (r.kind) {
-      case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d) => open(acc, d, "new"), l)); break;
+      case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d, i) => open(acc, d, "new", r.at?.pane, r.at && r.at.index + i), l)); break;
       case "chat": openChat(r.scopeKey); return;
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
       case "chatReady": void emit("doc-current", chatArticle); return;
@@ -702,17 +715,16 @@ export default function App() {
   const closeRef = useRef(closeRequested);
   closeRef.current = closeRequested;
   useEffect(() => {
-    if (IS_MAIN) {
-      // The pop-outs that were open last time come back; the chat window is restored from its key too.
-      for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
-      const sub = getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => requestRef.current(e.payload));
-      return () => void sub.then((f) => f());
+    const subs = [getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => requestRef.current(e.payload))];
+    // The pop-outs that were open last time come back; the chat window is restored from its key too.
+    if (IS_MAIN) for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
+    else {
+      subs.push(getCurrentWindow().onCloseRequested((e) => {
+        e.preventDefault();
+        closeRef.current();
+      }));
     }
-    const sub = getCurrentWindow().onCloseRequested((e) => {
-      e.preventDefault();
-      closeRef.current();
-    });
-    return () => void sub.then((f) => f());
+    return () => subs.forEach((s) => void s.then((f) => f()));
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- once; the handlers are read through refs
   }, []);
   // A document window with nothing left closes (its last tab was closed or sent back).
@@ -1058,7 +1070,7 @@ export default function App() {
               </div>
             )}
             <WordMarksContext.Provider value={marks}>
-              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction} />
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction} onMoveOut={moveTabOut} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (
