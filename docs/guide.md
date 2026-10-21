@@ -383,6 +383,8 @@ A selection must contain English letters, stay on one line and be at most 64 cha
 
 **Today's review** in the navigation shows how many cards are due. It shows quiz questions and word cards one at a time, spaced out with SM-2, the scheme Anki uses.
 
+Opening it first shows how many cards are due today, how many are questions and words, and how many are new. **Start review** shows the first card. Word cards speak only from then on; opening the screen makes no sound.
+
 - A word card shows the word, its IPA and part of speech, and reads the word aloud. The answer side has the English meaning, an example, the Japanese meaning, the sentence you saved and **Go to source**. **Hear the word** and **Hear the example** speak again, and so does `r`.
 - Each grade button shows when the card comes back. Grade with the buttons or `1` to `4`.
 - A card's ⋯ menu removes the card or its whole article from review. For a word, **Suspend this word (resume it in Vocabulary)** stops it.

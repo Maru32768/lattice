@@ -127,7 +127,7 @@ async function speech(page: Page, voices: { name: string; lang: string; localSer
 const spoken = (page: Page) => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
 
 /** Saves `word` from block 104 and opens today's review at its card, the quiz cards taken out. */
-async function reviewWord(page: Page, word: string) {
+async function reviewWord(page: Page, word: string, beforeStart?: () => Promise<void>) {
   await openSnapshot(page);
   await select(page, 104, word);
   await page.getByRole("button", { name: /単語を登録/ }).click();
@@ -135,6 +135,11 @@ async function reviewWord(page: Page, word: string) {
   const review = page.locator(".nav .ni").filter({ hasText: "今日の復習" });
   await expect(review.locator(".bd")).toHaveText(String(REVIEW.length + 1));
   await review.click();
+  // The cards wait for a press: a word card speaks as it appears.
+  const start = page.getByRole("button", { name: "復習を始める" });
+  await expect(start).toBeFocused();
+  await beforeStart?.();
+  await start.click();
   const session = page.getByRole("region", { name: "復習カード" });
   for (let i = 0; i < REVIEW.length; i++) {
     await session.getByRole("button", { name: "カードの操作" }).click();
@@ -146,7 +151,10 @@ async function reviewWord(page: Page, word: string) {
 
 test("今日の復習: a saved word is a word → meaning card, said aloud", async ({ shell: app }) => {
   await speech(app, [{ name: "Haruka", lang: "ja-JP", localService: true }, { name: "Zira", lang: "en-US", localService: true }]);
-  const session = await reviewWord(app, "block");
+  const session = await reviewWord(app, "block", async () => {
+    await app.waitForTimeout(300);
+    expect(await spoken(app), "nothing is said before the review starts").toEqual([]);
+  });
 
   // Front: the word, its part of speech, and nothing that gives the meaning away.
   await expect(session.locator(".vc-word")).toHaveText("block");
@@ -207,6 +215,7 @@ test("a word's card opens the passage it came from", async ({ app }) => {
   await app.getByRole("button", { name: /単語を登録/ }).click();
   await expect(app.locator(".vw-cap")).toContainText("登録しました");
   await app.locator(".nav .ni").filter({ hasText: "今日の復習" }).click();
+  await app.getByRole("button", { name: "復習を始める" }).click();
   const session = app.getByRole("region", { name: "復習カード" });
   for (let i = 0; i < REVIEW.length; i++) {
     await session.getByRole("button", { name: "カードの操作" }).click();

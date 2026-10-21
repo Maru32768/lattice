@@ -99,6 +99,11 @@ test("今日の復習: due cards one by one with their next intervals, then a su
   const main = app.locator(".qz-review");
   await expect(main.getByRole("heading", { level: 1 })).toHaveText("今日の復習");
   await expect(main.locator(".sub")).toHaveText(`残り ${REVIEW.length} 枚`);
+  // A start card first: how many, of which kind; the cards begin on the press.
+  const start = main.getByRole("region", { name: "復習を始める" });
+  await expect(start).toContainText(`今日は ${REVIEW.length} 枚`);
+  await expect(main.getByRole("region", { name: "復習カード" })).toHaveCount(0);
+  await start.getByRole("button", { name: "復習を始める" }).click();
   const session = main.getByRole("region", { name: "復習カード" });
   await expect(session.locator(".qz-q")).toHaveText(REVIEW[0].question);
   await session.getByRole("button", { name: "答えを見る" }).click();
@@ -123,6 +128,7 @@ test("今日の復習: due cards one by one with their next intervals, then a su
 
 test("a card's source opens the Reader at the passage", async ({ app }) => {
   await review(app).click();
+  await app.getByRole("button", { name: "復習を始める" }).click();
   const session = app.getByRole("region", { name: "復習カード" });
   await session.getByRole("button", { name: "答えを見る" }).click();
   await session.getByRole("button", { name: "出典へ" }).click();

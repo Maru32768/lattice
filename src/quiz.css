@@ -53,8 +53,8 @@
 .qz-session-h .push, .qz-art { margin-left: auto; }
 .qz-art { min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; text-align: right; }
 .qz-session .qz-q { font-size: 16px; }
-.qz-summary { align-items: flex-start; font-size: 13px; }
-.qz-summary p { margin: 0; }
+.qz-summary, .qz-start { align-items: flex-start; font-size: 13px; }
+.qz-summary p, .qz-start p { margin: 0; }
 .qz-tally { display: flex; gap: 14px; color: var(--ink3); font-size: 12px; }
 .manage .tbl .linkish { text-align: left; overflow-wrap: anywhere; }
 .docbar .tb.qz-open { background: var(--active); color: var(--ink); }

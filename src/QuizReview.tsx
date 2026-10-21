@@ -30,6 +30,8 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
   const [at, setAt] = useState(0);
   const [answered, setAnswered] = useState<Grade[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Cards start on a press, not on opening the screen: a word card speaks as it appears.
+  const [started, setStarted] = useState(false);
 
   async function run(task: () => Promise<void>) {
     setError(null);
@@ -93,7 +95,16 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
         </header>
         {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
 
-        {item && (
+        {item && !started && (
+          <section className="card qz-session qz-start" aria-label={t("quizReview.start")}>
+            <p className="qz-score">{t.rich("quizReview.ready", { n: <b>{left}</b> })}{fresh > 0 && t("quizReview.fresh", { fresh })}</p>
+            <p className="qz-tally">{t("quizReview.kinds", { quiz: items.slice(at).filter((x) => x.type === "quiz").length, words: items.slice(at).filter((x) => x.type === "vocab").length })}</p>
+            <button className="btn pri" autoFocus onClick={() => setStarted(true)}>{t("quizReview.start")}</button>
+            {items.some((x) => x.type === "vocab") && <p className="muted">{t("quizReview.startHint")}</p>}
+          </section>
+        )}
+
+        {item && started && (
           <section className="card qz-session" aria-label={t("quizReview.card")}>
             <div className="qz-session-h">
               <span className="mono muted">{at + 1} / {items.length}</span>
