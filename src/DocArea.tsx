@@ -8,6 +8,8 @@ import { tabDrag } from "./api";
 import { CoverContext } from "./Popover";
 import { Favicon } from "./Favicon";
 import { useT } from "./i18n";
+import { topStrips } from "./chrome";
+import { WindowControls, dragWindow } from "./TitleBar";
 
 type Update = (f: (l: Layout) => Layout) => void;
 
@@ -61,7 +63,7 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   );
 }
 
-function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, dragging, onDrag, onDrop, index }: {
+function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, dragging, onDrag, onDrop, index, title }: {
   n: Node;
   layout: Layout;
   onLayout: Update;
@@ -75,6 +77,8 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   onDrop: () => void;
   /** Reading-order number of the first pane in this node, for the panes' labels. */
   index: number;
+  /** A pop-out's title bar: these strips (H19). */
+  title: ReturnType<typeof topStrips> | null;
 }) {
   const t = useT();
   if (n.kind === "split") {
@@ -95,7 +99,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
                   })} />
               )}
               <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} />
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} title={title} />
               </div>
             </Fragment>
           );
@@ -110,7 +114,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
       <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop} dragging={dragging} windowAction={windowAction}
         onActivate={(t) => onLayout((l) => activate(l, t))} onClose={(t) => onLayout((l) => close(l, t))} onNew={() => onNew(n.id)}
         onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}
-        onDrag={onDrag} onDrop={onDrop} />
+        onDrag={onDrag} onDrop={onDrop} onTitleDrag={title?.top.has(n.id) ? dragWindow : undefined} end={title?.corner === n.id && <WindowControls />} />
       {renderPane(n)}
     </section>
   );
@@ -132,7 +136,7 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;
-  /** The pane's + button (or Ctrl+T): the palette, whose pick opens in a new tab. */
+  /** The pane's + button: a new tab in that pane. */
   onNew: (pane: Id) => void;
   /** The strip's button that moves the active tab to another window (out of main, or back to it). */
   windowAction: WindowAction;
@@ -231,7 +235,8 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
       <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop}
-        dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0} />
+        dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0}
+        title={movable ? topStrips(layout.root) : null} />
       {ghost && ghostTab && ghostLabel && (
         <div className="tab-ghost" aria-hidden style={{ left: ghost.x - ghost.dx, top: ghost.y - ghost.dy }}>
           <Favicon domain={ghostLabel.domain} feed={ghostTab.kind === "page" ? undefined : ghostLabel.feed} />

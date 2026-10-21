@@ -5,17 +5,24 @@
 .app { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
 
 /* Title bar of the undecorated window: drag region plus Windows 11 caption buttons (46 × 32). */
-.titlebar { height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; background: var(--panel); border-bottom: 1px solid var(--line); user-select: none; }
+.titlebar { position: relative; height: 32px; flex: none; display: flex; align-items: center; gap: 8px; padding-left: 12px; background: var(--panel); border-bottom: 1px solid var(--line); user-select: none; }
 .tb-icon { display: block; flex: none; }
 .tb-name { font-size: 12px; font-weight: 600; color: var(--ink2); }
 .titlebar .tb-hist { width: 26px; height: 24px; }
 .tb-name + .tb-hist { margin-left: 4px; }
-.titlebar .cap { width: 46px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
-.titlebar .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
-.titlebar .cap:hover { background: var(--hover); color: var(--ink); }
-.titlebar .cap:active { background: var(--active); }
-.titlebar .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
-.titlebar .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
+/* The command center (H9): centered on the window, narrower than the space between the history buttons and the captions. */
+.tb-cmd { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); width: min(440px, calc(100% - 340px)); height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--ink3); font-size: 12px; }
+.tb-cmd:hover { border-color: var(--chip-hover); color: var(--ink2); }
+.tb-cmd .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.caps { display: flex; flex: none; align-self: stretch; }
+/* In a pop-out the top-right tab strip is the title bar (H19): the captions reach its top and right edges. */
+.tabs > .caps { position: sticky; right: -6px; margin: -5px -6px 0 4px; background: var(--panel); }
+.caps .cap { width: 46px; height: 100%; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
+.caps .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+.caps .cap:hover { background: var(--hover); color: var(--ink); }
+.caps .cap:active { background: var(--active); }
+.caps .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
+.caps .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
 .main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
 /* The document area: a tree of splits over panes, each with a tab strip (G33 / G34). */
 .doc-area-wrap { flex: 1 1 auto; min-width: 360px; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }
@@ -53,11 +60,6 @@
 
 .nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }
 .nav-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 0 8px; }
-.nav-search { display: flex; align-items: center; gap: 8px; height: 30px; flex: none; padding: 0 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--ink3); font-size: 12.5px; text-align: left; }
-.nav-search:hover { border-color: var(--chip-hover); }
-.nav-search.on { border-color: var(--ink); color: var(--ink); }
-.nav-search .kbds { margin-left: auto; }
-.nav-search > span:not(.kbds) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-sub { display: flex; flex-direction: column; padding-left: 16px; }
 .ni.sub { height: 26px; font-size: 12px; }
 .ni.mono-ni { font-family: var(--mono); font-size: 12px; }
@@ -118,7 +120,6 @@
 .list .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px 20px; font-size: 12.5px; }
 .empty-h { font-size: 14px; font-weight: 500; }
 .list-rail { width: 44px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0; border-right: 1px solid var(--line); background: var(--bg); }
-.list-rail .vlabel { font-size: 11px; color: var(--ink3); writing-mode: vertical-rl; max-height: 60vh; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Facet popover (Filter board) */
 .facet-pv { display: flex; flex-direction: column; min-height: 0; outline: none; }
@@ -249,6 +250,8 @@
 .doc { flex: 1; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }
 @container (max-width: 880px) { .docbar .keys, .docbar > .kbd { display: none; } .tr-prog { width: 120px; } }
 @container (max-width: 800px) { .docbar .tb .lbl { display: none; } }
+/* The Page toolbar also holds the page's navigation and URL: its labels give way sooner (H14). */
+@container (max-width: 1400px) { .docbar.pg .lbl { display: none; } .docbar.pg { gap: 6px; } }
 @container (max-width: 700px) { .docbar .hint-keys { display: none; } }
 @container (max-width: 720px) { .docbar { gap: 6px; } .docbar .vsep { display: none; } }
 .docbar { position: relative; height: 44px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink2); white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
@@ -339,6 +342,8 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 .page-progress.on b { display: block; animation: page-load 1.2s ease-in-out infinite; }
 @keyframes page-load { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 .page-host { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; margin: 0 10px 10px; background: var(--raise); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 8px 8px; }
+.page-summary { flex: none; max-height: 40%; overflow-y: auto; margin: 0 10px; padding: 4px 14px; background: var(--raise); border: 1px solid var(--line); border-top: 0; }
+.page-summary .summary { margin: 0; padding: 0; border: 0; }
 /* Covers the border box like the native webview (the host has no top border). */
 .page-still { position: absolute; top: 0; left: -1px; width: calc(100% + 2px); height: calc(100% + 1px); }
 

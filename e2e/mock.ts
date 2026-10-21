@@ -455,7 +455,8 @@ export const handlers = {
   browser_set_bounds: (): boolean => true,
   browser_hide: none,
   browser_close: none,
-  browser_capture: none,
+  // A 1×1 PNG: the still that stands in for the page under an overlay.
+  browser_capture: (): string => "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
   browser_go: none,
   browser_set_translation: none,
   browser_set_keys: none,

@@ -4,7 +4,7 @@ import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type
 import { type LanguageMode, TRANSLATABLE, needsTranslation, splitBackticks, translatedBlockIds } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
-import { Menu } from "./Popover";
+import { Menu, type MenuItem } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -148,10 +148,10 @@ export function ViewSeg({ page, onReader, onPage, readerDisabled, pageDisabled }
   return (
     <>
       <div className="seg" role="group" aria-label={t("reader.view")}>
-        <button className={page ? "" : "on"} aria-pressed={!page} onClick={onReader} disabled={readerDisabled}
-          title={readerDisabled ? t("reader.readerDisabled") : "Reader (v)"}><Icon name="reader" size="md" />Reader</button>
-        <button className={page ? "on" : ""} aria-pressed={page} onClick={onPage} disabled={pageDisabled}
-          title={pageDisabled ? t("reader.pageDisabled") : "Page (v)"}><Icon name="page" size="md" />Page</button>
+        <button className={page ? "" : "on"} aria-pressed={!page} onClick={onReader} disabled={readerDisabled} aria-label="Reader"
+          title={readerDisabled ? t("reader.readerDisabled") : "Reader (v)"}><Icon name="reader" size="md" /><span className="lbl">Reader</span></button>
+        <button className={page ? "on" : ""} aria-pressed={page} onClick={onPage} disabled={pageDisabled} aria-label="Page"
+          title={pageDisabled ? t("reader.pageDisabled") : "Page (v)"}><Icon name="page" size="md" /><span className="lbl">Page</span></button>
       </div>
       <Kbd>v</Kbd>
     </>
@@ -179,6 +179,95 @@ export function LangSeg({ mode, percent, onChange, label = t("reader.language") 
 
 /** Re-translating more blocks than this asks first. */
 const RETRANSLATE_CONFIRM_BLOCKS = 50;
+
+/** Redoing `done` translated blocks: the action, asking first when there are many, and its dialog. */
+function useRetranslate(done: number, onRetranslate: () => void): [() => void, React.ReactNode] {
+  const t = useT();
+  const [asking, setAsking] = useState(false);
+  // On body: inside the toolbar it would be clipped by the toolbar's overflow.
+  const dialog = asking && createPortal(
+    <ConfirmDialog title={t("reader.confirmRetranslate")} confirm={t("reader.retranslate")}
+      onConfirm={() => { setAsking(false); onRetranslate(); }} onCancel={() => setAsking(false)}>
+      <p>{t("reader.confirmRetranslateDesc", { done })}</p>
+    </ConfirmDialog>,
+    document.body,
+  );
+  return [() => (done > RETRANSLATE_CONFIRM_BLOCKS ? setAsking(true) : onRetranslate()), dialog];
+}
+
+/** What a saved article's toolbar does, the same from the Reader and the Page view (H14). */
+export interface DocActions {
+  focusMode: boolean;
+  onFavorite: () => void;
+  onToggleRead: () => void;
+  onAsk: () => void;
+  onFocusMode: () => void;
+  /** Re-runs extraction on the stored HTML (no network). */
+  onReextract: () => void;
+  onRender: () => void;
+  onClassify: () => void;
+  /** Drops this article's translations and translates it again. */
+  onRetranslate: () => void;
+  onSummarize: () => void;
+  onCopyUrl: () => void;
+  /** Asks for confirmation, then removes the article from the Index. */
+  onDelete: () => void;
+  /** Shows a block in the Reader, marked with `label` (a quiz answer's source). */
+  onFocusBlock: (block: number, label: string) => void;
+  /** Quiz cards were added to or removed from review. */
+  onReviewChanged: () => void;
+}
+
+/**
+ * The right end of both toolbars: ☆ 既読 対話 理解度チェック (the view's own toggles) フォーカス ⋯.
+ * `rerender` is ⋯'s re-import from a rendered page: the Reader renders it in the background, the
+ * Page view takes the page as shown.
+ */
+export function ArticleTools({ view, act, quizOpen, onQuiz, rerender, children }: {
+  view: ArticleView;
+  act: DocActions;
+  quizOpen: boolean;
+  onQuiz: () => void;
+  rerender?: MenuItem;
+  children?: React.ReactNode;
+}) {
+  const t = useT();
+  const a = view.article;
+  const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
+  const local = isLocal(a.original_url);
+  const done = view.blocks.filter((b) => b.translation != null).length;
+  const [retranslate, dialog] = useRetranslate(done, act.onRetranslate);
+  const job = (type: string) => busy(view.jobs.find((j) => j.type === type));
+  const readLabel = a.read_status === "read" ? t("reader.markUnread") : t("reader.markRead");
+  const rendering = job("render");
+  return (
+    <div className="docbar-r">
+      <button className={`tb${a.favorite ? " on" : ""}`} onClick={act.onFavorite} aria-pressed={a.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
+      <button className="tb" onClick={act.onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
+      <button className="tb" onClick={act.onAsk} title={t("reader.chatAbout")} aria-label={t("reader.ask")}><Icon name="chat" /><span className="lbl">{t("reader.ask")}</span></button>
+      {!failed && (
+        <button className={`tb qz-btn${quizOpen ? " qz-open" : ""}`} onClick={onQuiz} aria-pressed={quizOpen} aria-label={t("quizPanel.title")} title={t("reader.quizHint")}>
+          <Icon name="quiz" /><span className="lbl">{t("quizPanel.title")}</span>
+        </button>
+      )}
+      {children}
+      <button className="tb" onClick={act.onFocusMode} aria-pressed={act.focusMode} aria-label={t("reader.focus")} title={t("reader.focus")}><Icon name="focus" /></button>
+      <Menu className="tb" label={t("reader.more2")} align="right" trigger={<Icon name="more" />} items={[
+        { label: t("reader.reextractFrom", { x: a.pdf ? "PDF" : local ? "Markdown" : "HTML" }), onSelect: act.onReextract, disabled: a.fetch_status !== "ok" },
+        ...(rerender ? [rerender] : local || a.pdf ? [] : [{ label: rendering ? t("reader.rendering") : t("reader.render"), onSelect: act.onRender, disabled: rendering }]),
+        { label: job("classify") ? t("reader.classifying") : t("reader.autoClassify"), onSelect: act.onClassify, disabled: job("classify") || failed },
+        // Shown whenever there is a translation to redo, not only once the whole article is translated (G29).
+        ...(done > 0 ? [{ label: job("translate") ? t("reader.translatingEllipsis") : t("reader.retranslate"), hint: t("reader.retranslateHint"), onSelect: retranslate, disabled: failed || job("translate") }] : []),
+        { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: act.onSummarize, disabled: failed || job("summarize") },
+        "-",
+        { label: t("articleMenu.copyUrl"), onSelect: act.onCopyUrl, disabled: local },
+        "-",
+        { label: t("browserView.remove"), onSelect: act.onDelete, danger: true },
+      ]} />
+      {dialog}
+    </div>
+  );
+}
 
 function TranslationStatus({ job, done, total, target, onTranslate, onRetranslate }: {
   job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void; onRetranslate: () => void;
@@ -271,9 +360,10 @@ function TagAdder({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
-function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => void }) {
+/** The summary row, opened to the full text on a click; `initiallyOpen` in the Page view's strip. */
+export function Summary({ view, onSummarize, initiallyOpen = false }: { view: ArticleView; onSummarize: () => void; initiallyOpen?: boolean }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const job = view.jobs.find((j) => j.type === "summarize");
   const running = busy(job);
   const failed = job && job.last_error && !running && job.status !== "succeeded";
@@ -308,42 +398,24 @@ function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => 
   );
 }
 
-export function Reader({ view, focus, matches, mode, percent, onLang, focusMode, onPage, onLink, onToggleRead, onRetry, onReextract, onRender, onTranslate,
-  onRetranslate, onSummarize, onFavorite, onTag, onGenre, onDifficulty, onClassify, onAsk, onFocusMode, onDelete, onFocusBlock, onReviewChanged, saveWordSeq, onVocabChanged,
-  groups, onGroup, onCreateGroup, groupRequest }: {
+export function Reader({ view, act, focus, matches, mode, percent, onLang, onPage, onLink, onRetry, onTranslate,
+  onTag, onGenre, onDifficulty, saveWordSeq, onVocabChanged, groups, onGroup, onCreateGroup, groupRequest }: {
   view: ArticleView;
+  act: DocActions;
   focus?: Focus;
   /** Search hits in this article: `i` of `n` is the focused one. */
   matches?: { i: number; n: number; onStep: (d: 1 | -1) => void };
   mode: LanguageMode;
   percent: number;
   onLang: (m: LanguageMode, p: number) => void;
-  focusMode: boolean;
   onPage: () => void;
   /** `newTab`: Ctrl / middle click. */
   onLink: (href: string, newTab: boolean) => void;
-  onToggleRead: () => void;
   onRetry: () => void;
-  /** Re-runs extraction on the stored HTML (no network). */
-  onReextract: () => void;
-  onRender: () => void;
   onTranslate: () => void;
-  /** Drops this article's translations and translates it again. */
-  onRetranslate: () => void;
-  onSummarize: () => void;
-  onFavorite: () => void;
   onTag: (name: string, add: boolean) => void;
   onGenre: (name: string) => void;
   onDifficulty: (level: number | null) => void;
-  onClassify: () => void;
-  onAsk: () => void;
-  onFocusMode: () => void;
-  /** Asks for confirmation, then deletes the article. */
-  onDelete: () => void;
-  /** Scrolls to a block and marks it with `label` (a quiz answer's source). */
-  onFocusBlock: (block: number, label: string) => void;
-  /** Quiz cards were added to or removed from review. */
-  onReviewChanged: () => void;
   /** Bumped by the 単語を登録 shortcut: saves the word selected in this article, if any. */
   saveWordSeq: number;
   /** A word was saved. */
@@ -360,7 +432,6 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   // Per-block click overrides on top of the mode; App remounts Reader per article.
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const [pop, setPop] = useState<number | null>(null);
-  const [confirmRetranslate, setConfirmRetranslate] = useState(false);
   const [quizOpen, setQuizOpen] = useQuizOpen(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
@@ -379,7 +450,6 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   const classify = view.jobs.find((j) => j.type === "classify");
   const classifying = busy(classify);
   const rendering = busy(view.jobs.find((j) => j.type === "render"));
-  const readLabel = a.read_status === "read" ? t("reader.markUnread") : t("reader.markRead");
   const chars = blocks.reduce((n, b) => n + b.text.length, 0);
 
   useEffect(() => {
@@ -463,10 +533,10 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
     timers.current.hide = window.setTimeout(() => setPop(null), 150);
   }
 
-  const retranslate = () => (done > RETRANSLATE_CONFIRM_BLOCKS ? setConfirmRetranslate(true) : onRetranslate());
+  const [retranslate, retranslateDialog] = useRetranslate(done, act.onRetranslate);
 
   const renderBtn = (pri: boolean) => (
-    <button className={`btn${pri ? " pri" : ""}`} onClick={onRender} disabled={rendering}
+    <button className={`btn${pri ? " pri" : ""}`} onClick={act.onRender} disabled={rendering}
       title={t("reader.renderHint")}>{rendering ? t("reader.rendering") : t("reader.render")}</button>
   );
   const fetched = a.fetch_status === "ok";
@@ -486,27 +556,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
             <button className="chip" onClick={() => matches.onStep(1)} aria-label={t("reader.nextMatch")} disabled={matches.i >= matches.n - 1}>↓</button>
           </span>
         )}
-        <div className="docbar-r">
-          <button className={`tb${a.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={a.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
-          <button className="tb" onClick={onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}><Icon name="check" /><span className="lbl">{readLabel}</span></button>
-          <button className="tb" onClick={onAsk} title={t("reader.chatAbout")} aria-label={t("reader.ask")}><Icon name="chat" /><span className="lbl">{t("reader.ask")}</span></button>
-          {!failed && (
-            <button className={`tb qz-btn${quizOpen ? " qz-open" : ""}`} onClick={() => setQuizOpen((o) => !o)} aria-pressed={quizOpen} aria-label={t("quizPanel.title")} title={t("reader.quizHint")}>
-              <Icon name="quiz" /><span className="lbl">{t("quizPanel.title")}</span>
-            </button>
-          )}
-          <button className="tb" onClick={onFocusMode} aria-pressed={focusMode} aria-label={t("reader.focus")} title={t("reader.focus")}><Icon name="focus" /></button>
-          <Menu className="tb" label={t("reader.more2")} align="right" trigger={<Icon name="more" />} items={[
-            { label: t("reader.reextractFrom", { x: a.pdf ? "PDF" : local ? "Markdown" : "HTML" }), onSelect: onReextract, disabled: !fetched },
-            ...(local || a.pdf ? [] : [{ label: rendering ? t("reader.rendering") : t("reader.render"), onSelect: onRender, disabled: rendering }]),
-            { label: classifying ? t("reader.classifying") : t("reader.autoClassify"), onSelect: onClassify, disabled: classifying || failed },
-            // Shown whenever there is a translation to redo, not only once the whole article is translated (G29).
-            ...(done > 0 ? [{ label: translating ? t("reader.translatingEllipsis") : t("reader.retranslate"), hint: t("reader.retranslateHint"), onSelect: retranslate, disabled: failed || translating }] : []),
-            { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: onSummarize, disabled: failed || busy(view.jobs.find((j) => j.type === "summarize")) },
-            "-",
-            { label: <span className="error-text">{t("reader.delete")}</span>, onSelect: onDelete },
-          ]} />
-        </div>
+        <ArticleTools view={view} act={act} quizOpen={quizOpen} onQuiz={() => setQuizOpen((o) => !o)} />
       </div>
 
       <div className="doc-body">
@@ -520,7 +570,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           </div>
           <h1 className="prose art-title">{a.title ?? a.original_url}</h1>
           <div className="art-chips">
-            {!failed && <GenreChip genre={a.genre} classifying={classifying} onGenre={onGenre} onClassify={onClassify} />}
+            {!failed && <GenreChip genre={a.genre} classifying={classifying} onGenre={onGenre} onClassify={act.onClassify} />}
             {a.tags.map((tag) => (
               <span key={tag} className="chip mono">{tag}<button className="x" onClick={() => onTag(tag, false)} aria-label={t("reader.removeTag", { tag })}><Icon name="x" size="sm" /></button></span>
             ))}
@@ -559,13 +609,13 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
               </div>
               <div className="btn-row">
                 {!local && !a.pdf && renderBtn(true)}
-                {fetched && <button className="btn" onClick={onReextract} title={t("reader.reextractHint", { x: a.pdf ? "PDF" : "HTML" })}>{t("reader.reextractOffline")}</button>}
+                {fetched && <button className="btn" onClick={act.onReextract} title={t("reader.reextractHint", { x: a.pdf ? "PDF" : "HTML" })}>{t("reader.reextractOffline")}</button>}
                 {!local && <button className="btn" onClick={onRetry}>{t("common.retry")}</button>}
                 {!local && <button className="btn" onClick={onPage}>{t("reader.openInPage")}</button>}
               </div>
             </div>
           )}
-          {!failed && <Summary view={view} onSummarize={onSummarize} />}
+          {!failed && <Summary view={view} onSummarize={act.onSummarize} />}
           {a.from_feed && (
             <div className="note warn center thin">
               <span className="grow">
@@ -622,7 +672,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
           </OpenLink.Provider>
         </article>
       </div>
-      {quizOpen && <QuizPanel view={view} onSource={(b) => onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={onReviewChanged} onClose={() => setQuizOpen(false)} />}
+      {quizOpen && <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={() => setQuizOpen(false)} />}
       </div>
       {cap && createPortal(
         <div className="vw-cap" style={{ left: cap.x, top: cap.y }} role={cap.status || cap.error ? "status" : undefined}>
@@ -632,12 +682,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
         </div>,
         document.body,
       )}
-      {confirmRetranslate && (
-        <ConfirmDialog title={t("reader.confirmRetranslate")} confirm={t("reader.retranslate")}
-          onConfirm={() => { setConfirmRetranslate(false); onRetranslate(); }} onCancel={() => setConfirmRetranslate(false)}>
-          <p>{t("reader.confirmRetranslateDesc", { done })}</p>
-        </ConfirmDialog>
-      )}
+      {retranslateDialog}
     </div>
   );
 }

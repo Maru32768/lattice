@@ -1,9 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { browser, type ArticleRow, type Bounds, type OverlayLabels } from "./api";
+import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "./api";
 import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
-import { LangSeg, ViewSeg } from "./Reader";
-import { Menu, intersects } from "./Popover";
+import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "./Reader";
+import { QuizPanel, useQuizOpen } from "./QuizPanel";
+import { Menu, intersects, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "./i18n";
@@ -22,6 +23,27 @@ const leaving = new Set<string>();
 const SHOW_SETTLE_MS = 150;
 /** How long the bounds are checked every frame after the placeholder appears or resizes (layout settling, fonts, banners). */
 const FOLLOW_MS = 600;
+/** How long a still captured ahead of an overlay (see `warm`) may stand in for the page. */
+const WARM_MS = 10_000;
+/** Panes whose popovers and menus stay inside the pane, off the page webview. */
+const OFF_PAGE = new Set(["nav", "list", "chat"]);
+
+const failedOf = (v: ArticleView) => v.article.fetch_status === "failed" || v.article.extraction_status === "failed";
+const SUMMARY_KEY = "lattice.pageSummary";
+/** Whether the Page view shows the saved article's summary strip: a per-device choice. */
+function summaryShown() {
+  try {
+    return localStorage.getItem(SUMMARY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function showSummary(on: boolean) {
+  try {
+    localStorage.setItem(SUMMARY_KEY, on ? "1" : "0");
+  } catch { /* the choice lasts for this view only */ }
+  return on;
+}
 
 export interface PageLang {
   mode: LanguageMode;
@@ -72,21 +94,20 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
  * Toolbar plus a placeholder box for one Page tab; the tab's native webview is kept positioned
  * over the box. Page content never enters this (app) webview.
  */
-export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
+export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, onLang, onSave, onReader, onError }: {
   tab: PageTab;
   saved: ArticleRow | null;
+  /** The saved article's view (its summary), once loaded. */
+  view: ArticleView | null;
+  /** The saved article's actions, shared with the Reader's toolbar (H14). */
+  act: DocActions | null;
   saving: boolean;
   lang: PageLang;
-  /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so a still of it stands in. */
-  overlays: DOMRect[];
   /** Opens an http(s) URL typed in the URL bar or the home page. */
   onNavigate: (url: string) => void;
   onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
-  onFavorite: () => void;
-  /** Asks for confirmation, then removes the saved article from the Index. */
-  onDelete: () => void;
   onError: (e: string) => void;
 }) {
   const t = useT();
@@ -96,6 +117,8 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     const r = host.current?.getBoundingClientRect();
     return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
   };
+  // Open app overlays (palette, popover, menu): the native webview would hide any it overlaps, so a still of it stands in.
+  const overlays = useOverlays();
   const hostRect = host.current?.getBoundingClientRect();
   const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
   const coveredRef = useRef(covered);
@@ -103,6 +126,24 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
+  const [summary, setSummary] = useState(summaryShown);
+  const [quiz, setQuiz] = useQuizOpen(saved?.id ?? 0);
+  /** The page as drawn now, decoded; null while it loads or off Windows. */
+  const grab = async () => {
+    const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
+    if (png) {
+      const img = new Image();
+      img.src = png;
+      await img.decode().catch(() => {});
+    }
+    return png;
+  };
+  /**
+   * A capture takes a few hundred ms, and the overlay stays under the webview until it is done.
+   * So a still is taken when the pointer reaches a control that opens one (`aria-haspopup`), and
+   * the overlay that follows uses it (or waits for it, already under way) (H8).
+   */
+  const warm = useRef<{ png: Promise<string | null>; at: number } | null>(null);
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
@@ -159,12 +200,11 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     }
     // The still is painted under the webview before it hides, so no blank frame shows in between.
     void (async () => {
-      const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
+      const w = warm.current;
+      warm.current = null;
+      const png = await (w && performance.now() - w.at < WARM_MS ? w.png : grab());
       if (png && live) {
-        const img = new Image();
-        img.src = png;
-        await img.decode().catch(() => {});
-        if (live) setStill(png);
+        setStill(png);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
       if (live) await browser.hide(id).catch(() => {});
@@ -175,6 +215,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
 
   useEffect(() => {
     const resize = () => {
+      warm.current = null;
       void sync();
       follow();
     };
@@ -188,6 +229,20 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
+  useEffect(() => {
+    const over = (e: PointerEvent) => {
+      const el = (e.target as Element).closest?.("[aria-haspopup]");
+      if (!el || coveredRef.current || OFF_PAGE.has(el.closest("[data-pane]")?.getAttribute("data-pane") ?? "")) return;
+      if (warm.current && performance.now() - warm.current.at < WARM_MS / 2) return;
+      warm.current = { png: grab(), at: performance.now() };
+    };
+    document.addEventListener("pointerover", over);
+    return () => document.removeEventListener("pointerover", over);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); grab reads refs
+  }, []);
+  // A still of the previous page must not stand in for the next one.
+  useEffect(() => { warm.current = null; }, [tab.seq, tab.loading]);
+
   useLayoutEffect(() => {
     leaving.delete(id);
     return () => {
@@ -197,11 +252,14 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   }, [id]);
 
   const { url, loading } = tab;
-  const resave = saved && (saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed");
+  const shown = saved && view && act && view.article.id === saved.id ? view : null;
+  const copyUrl = () => navigator.clipboard.writeText(url).catch((e) => onError(String(e)));
   return (
     <div className="doc">
-      <div className="docbar">
+      <div className="docbar pg">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
+        <div className="vsep" />
+        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
         <div className="vsep" />
         <button className="ib" onClick={() => browser.go(id, "back")} disabled={tab.canGoBack === false} aria-label={t("browserView.back")} title={t("browserView.back")}><Icon name="left" /></button>
         <button className="ib" onClick={() => browser.go(id, "forward")} disabled={tab.canGoForward === false} aria-label={t("browserView.forward")} title={t("browserView.forward")}><Icon name="right" /></button>
@@ -211,25 +269,34 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
           const next = toNavigation(input, getEngine());
           if (next) onNavigate(next);
         }} />
-        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
-        {saved ? (
-          <>
-            <span className="indexed"><Icon name="check" />{t("browserView.indexed")}</span>
-            <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
+        {saved && <span className="indexed" title={t("browserView.indexed")}><Icon name="check" /><span className="lbl">{t("browserView.indexed")}</span></span>}
+        {shown && act ? (
+          <ArticleTools view={shown} act={act} quizOpen={quiz} onQuiz={() => setQuiz((q) => !q)}
+            rerender={{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }}>
+            {!failedOf(shown) && (
+              <button className={`tb${summary ? " on" : ""}`} aria-pressed={summary} aria-label={t("reader.summary")} title={t("browserView.summaryHint")}
+                onClick={() => setSummary(showSummary(!summary))}><Icon name="summary" /><span className="lbl">{t("reader.summary")}</span></button>
+            )}
+          </ArticleTools>
+        ) : !saved && (
+          <div className="docbar-r">
+            <button className="tb pri" onClick={onSave} disabled={saving || loading}
+              title={t("browserView.addHint")}><Icon name="import" />{saving ? t("browserView.adding") : t("browserView.add")}</button>
             <Menu className="tb" label={t("browserView.more")} align="right" trigger={<Icon name="more" />} items={[
-              ...(resave ? [{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
-              { label: <span className="error-text">{t("browserView.remove")}</span>, onSelect: onDelete },
+              { label: t("articleMenu.copyUrl"), onSelect: () => void copyUrl() },
             ]} />
-          </>
-        ) : (
-          <button className="tb pri" onClick={onSave} disabled={saving || loading}
-            title={t("browserView.addHint")}><Icon name="import" />{saving ? t("browserView.adding") : t("browserView.add")}</button>
+          </div>
         )}
       </div>
       <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? t("browserView.loading") : undefined}><b /></div>
+      {/* A strip above the page; the webview shrinks to the placeholder below it. */}
+      {summary && shown && !failedOf(shown) && <div className="page-summary"><Summary view={shown} onSummarize={act!.onSummarize} initiallyOpen /></div>}
+      <div className="doc-body">
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">
         {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
+      </div>
+      {quiz && shown && act && <QuizPanel view={shown} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={() => setQuiz(false)} />}
       </div>
     </div>
   );

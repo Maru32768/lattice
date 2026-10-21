@@ -271,16 +271,12 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   );
 }
 
-export function ListRail({ label, index, count, onOpen, onPrev, onNext }: {
-  label: string; index: number; count: number; onOpen: () => void; onPrev: () => void; onNext: () => void;
-}) {
+/** The closed list: one button that opens it again (j / k still move the cursor, H11). */
+export function ListRail({ onOpen }: { onOpen: () => void }) {
   const t = useT();
   return (
     <section className="list-rail" aria-label={t("listPane.rail")} data-pane="list">
       <button className="ib" onClick={onOpen} aria-label={t("listPane.open")} title={t("listPane.open")}><Icon name="right" /></button>
-      <button className="ib" onClick={onPrev} aria-label={t("listPane.prev")} title={t("listPane.prev")}><Icon name="up" /></button>
-      <span className="vlabel mono">{index > 0 ? index : "–"} / {count} · {label}</span>
-      <button className="ib" onClick={onNext} aria-label={t("listPane.next")} title={t("listPane.next")}><Icon name="down" /></button>
     </section>
   );
 }
