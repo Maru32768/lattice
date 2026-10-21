@@ -52,6 +52,7 @@
     "allow-delete-feed-folder",
     "allow-reorder-feed-folders",
     "allow-move-feeds-to-folder",
+    "allow-reorder-feeds",
     "allow-import-opml",
     "allow-export-opml",
     "allow-get-image-settings",
