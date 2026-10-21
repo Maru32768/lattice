@@ -23,6 +23,10 @@ test("open: fills the empty pane, then replaces the active tab; a new tab goes r
   assert.deepEqual(picture(l), ["2 4* 3"]);
   const same = open(l, reader(4));
   assert.equal(same, l, "already showing it: unchanged");
+  l = open(l, reader(5), "new", undefined, 0);
+  assert.deepEqual(picture(l), ["5* 2 4 3"], "a tab dropped from another window takes its slot");
+  l = open(l, reader(6), "new", undefined, 99);
+  assert.deepEqual(picture(l), ["5 2 4 3 6*"], "a slot past the end appends");
 });
 
 test("open: a page in its own tab keeps the webview (same id) and bumps seq; the same URL is a no-op", () => {

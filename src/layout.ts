@@ -160,9 +160,10 @@ function shows(t: Tab, doc: Doc): boolean {
 
 /**
  * Opens `doc` in the focused pane: in its active tab (or a new one when `where` is "new" or the
- * pane is empty). In another pane when `pane` is given.
+ * pane is empty). In another pane when `pane` is given. A new tab goes right after the active one,
+ * or at `index` (a tab dropped from another window).
  */
-export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pane = l.focused): Layout {
+export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pane = l.focused, index?: number): Layout {
   const p = paneById(l, pane) ?? focusedPane(l);
   const cur = activeTab(p);
   if (cur && where === "active") {
@@ -171,7 +172,7 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
     return focus(replacePane(l, { ...p, tabs: p.tabs.map((t) => (t.id === cur.id ? tab : t)) }), p.id);
   }
   const tab = tabFor(doc, l.next);
-  const at = cur ? p.tabs.indexOf(cur) + 1 : p.tabs.length;
+  const at = index ?? (cur ? p.tabs.indexOf(cur) + 1 : p.tabs.length);
   return focus({ ...replacePane(l, { ...p, tabs: spliced(p.tabs, at, 0, tab), active: tab.id }), next: l.next + 1 }, p.id);
 }
 
