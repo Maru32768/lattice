@@ -79,6 +79,11 @@ test("単語帳: search, edit a meaning, suspend, export and delete", async ({ a
   expect(await callsOf(app, "vocab_set_meaning")).toEqual([{ id: 1, meaning: "肥大化" }]);
   await expect(row("bloat")).toContainText("肥大化");
 
+  // A ready word can be asked again (an entry from before the learner's-dictionary prompt).
+  await row("write skew").getByRole("button", { name: "write skew の操作" }).click();
+  await app.getByRole("menuitem", { name: /意味と例文を再生成/ }).click();
+  expect(await callsOf(app, "vocab_retry")).toEqual([{ id: 2 }]);
+
   await row("write skew").getByRole("button", { name: "write skew の操作" }).click();
   await app.getByRole("menuitem", { name: "復習を停止" }).click();
   await expect(row("write skew")).toContainText("停止中");
@@ -100,32 +105,100 @@ test("単語帳: search, edit a meaning, suspend, export and delete", async ({ a
   await expect(app.locator("#b-106 .vw")).toHaveCount(0);
 });
 
-test("今日の復習: a saved word comes back as a cloze after the quiz cards", async ({ app }) => {
-  await openSnapshot(app);
-  await select(app, 104, "block");
-  await app.getByRole("button", { name: /単語を登録/ }).click();
-  await expect(app.locator(".vw-cap")).toContainText("登録しました");
-  const review = app.locator(".nav .ni").filter({ hasText: "今日の復習" });
+/**
+ * Replaces the Web Speech API before the app loads: `voices` are what the system offers, and what
+ * the app says is recorded in `window.__spoken`.
+ */
+async function speech(page: Page, voices: { name: string; lang: string; localService: boolean }[]) {
+  await page.addInitScript((voices) => {
+    const spoken: string[] = [];
+    Object.assign(window, { __spoken: spoken });
+    const synth = Object.assign(new EventTarget(), {
+      getVoices: () => voices,
+      speak: (u: { text: string }) => spoken.push(u.text),
+      cancel: () => {},
+    });
+    Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(public text: string) {} }, configurable: true });
+  }, voices);
+  await page.goto("/");
+  await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+}
+const spoken = (page: Page) => page.evaluate(() => (window as unknown as { __spoken: string[] }).__spoken);
+
+/** Saves `word` from block 104 and opens today's review at its card, the quiz cards taken out. */
+async function reviewWord(page: Page, word: string) {
+  await openSnapshot(page);
+  await select(page, 104, word);
+  await page.getByRole("button", { name: /単語を登録/ }).click();
+  await expect(page.locator(".vw-cap")).toContainText("登録しました");
+  const review = page.locator(".nav .ni").filter({ hasText: "今日の復習" });
   await expect(review.locator(".bd")).toHaveText(String(REVIEW.length + 1));
   await review.click();
+  const session = page.getByRole("region", { name: "復習カード" });
+  for (let i = 0; i < REVIEW.length; i++) {
+    await session.getByRole("button", { name: "カードの操作" }).click();
+    await page.getByRole("menuitem", { name: "このカードを復習から外す" }).click();
+  }
+  await expect(session.locator(".vc-word")).toBeVisible();
+  return session;
+}
 
-  const session = app.getByRole("region", { name: "復習カード" });
-  // The quiz cards first (due earlier), then the word.
-  await session.getByRole("button", { name: "答えを見る" }).click();
-  await session.getByRole("button", { name: /正解/ }).click();
-  await session.getByRole("button", { name: /インデックスの不足/ }).click();
-  await app.keyboard.press("Enter");
+test("今日の復習: a saved word is a word → meaning card, said aloud", async ({ shell: app }) => {
+  await speech(app, [{ name: "Haruka", lang: "ja-JP", localService: true }, { name: "Zira", lang: "en-US", localService: true }]);
+  const session = await reviewWord(app, "block");
 
-  await expect(session.locator(".vc-cloze")).toHaveText("Readers never writers.");
-  await expect(session.locator(".vc-hint")).toHaveText("ヒントblock の意味");
+  // Front: the word, its part of speech, and nothing that gives the meaning away.
+  await expect(session.locator(".vc-word")).toHaveText("block");
+  await expect(session.locator(".vc-pos")).toHaveText("noun");
+  await expect(session.getByText("block is a word the mock explains.")).toHaveCount(0);
+  await expect(session.getByText("block の意味")).toHaveCount(0);
+  await expect.poll(() => spoken(app)).toEqual(["block"]);
+  await session.getByRole("button", { name: "発音を聞く" }).click();
+  await app.keyboard.press("r");
+  await expect.poll(() => spoken(app)).toEqual(["block", "block", "block"]);
+
   await session.getByRole("button", { name: "答えを見る" }).click();
-  await expect(session.locator(".vc-fill")).toHaveText("block");
-  await expect(session.locator(".vc-word")).toContainText("block");
+  await expect(session.getByRole("region", { name: "意味" })).toHaveText("意味block is a word the mock explains.");
+  await expect(session.getByRole("region", { name: "例文" })).toContainText("An example sentence with block.");
+  await session.getByRole("button", { name: "例文を聞く" }).click();
+  await expect.poll(() => spoken(app)).toEqual(["block", "block", "block", "An example sentence with block."]);
+  await expect(session.locator(".vc-gloss")).toHaveText("日本語block の意味");
+  await expect(session.locator(".vc-context b")).toHaveText("block");
+  await expect(session.getByRole("button", { name: "出典へ" })).toBeVisible();
+
   await session.getByRole("button", { name: /正解/ }).click();
   const graded = await callsOf(app, "vocab_grade");
   expect(graded).toHaveLength(1);
   expect(graded[0]).toMatchObject({ grade: "good" });
-  await expect(app.locator(".qz-summary")).toContainText("3 枚を復習しました");
+  await expect(app.locator(".qz-summary")).toContainText("1 枚を復習しました");
+});
+
+test("without an offline English voice the card is silent and has no audio buttons", async ({ shell: app }) => {
+  await speech(app, [{ name: "Haruka", lang: "ja-JP", localService: true }, { name: "Aria Online", lang: "en-US", localService: false }]);
+  const session = await reviewWord(app, "block");
+  await expect(session.locator(".vc-word")).toHaveText("block");
+  await expect(session.getByRole("button", { name: "発音を聞く" })).toHaveCount(0);
+  await app.keyboard.press("r");
+  await session.getByRole("button", { name: "答えを見る" }).click();
+  await expect(session.getByRole("region", { name: "例文" })).toContainText("An example sentence with block.");
+  await expect(session.getByRole("button", { name: "例文を聞く" })).toHaveCount(0);
+  expect(await spoken(app)).toEqual([]);
+});
+
+test("auto-play can be turned off in Settings › 復習; the buttons still speak", async ({ shell: app }) => {
+  await speech(app, [{ name: "Hazel", lang: "en-GB", localService: true }]);
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "復習" }).click();
+  await app.getByRole("switch", { name: "単語カードの発音を自動で再生" }).uncheck();
+  // The first Esc leaves the switch, the second the settings.
+  await app.keyboard.press("Escape");
+  await app.keyboard.press("Escape");
+  const session = await reviewWord(app, "block");
+  await expect(session.getByRole("button", { name: "発音を聞く" })).toBeVisible();
+  expect(await spoken(app)).toEqual([]);
+  await session.getByRole("button", { name: "発音を聞く" }).click();
+  await expect.poll(() => spoken(app)).toEqual(["block"]);
 });
 
 test("a word's card opens the passage it came from", async ({ app }) => {
@@ -139,7 +212,7 @@ test("a word's card opens the passage it came from", async ({ app }) => {
     await session.getByRole("button", { name: "カードの操作" }).click();
     await app.getByRole("menuitem", { name: "このカードを復習から外す" }).click();
   }
-  await expect(session.locator(".vc-cloze")).toBeVisible();
+  await expect(session.locator(".vc-word")).toHaveText("writers");
   await session.getByRole("button", { name: "答えを見る" }).click();
   await session.getByRole("button", { name: "出典へ" }).click();
   await expect(app.locator("#b-104")).toHaveClass(/is-cite/);

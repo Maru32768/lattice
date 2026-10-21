@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { SetRow } from "./SetRow";
+import { SetRow, Switch } from "./SetRow";
+import { autoplay, setAutoplay } from "./speech";
 import { api, type ReviewSettings } from "./api";
 import { useT } from "./i18n";
 
@@ -11,11 +12,12 @@ const split = (minutes: number) => {
   return { n: minutes / size, size, label };
 };
 
-/** Settings › 復習: the daily limits and the interval bounds of spaced repetition. */
+/** Settings › 復習: the daily limits and the interval bounds of spaced repetition, and whether word cards speak. */
 export function QuizSettings() {
   const t = useT();
   const [value, setValue] = useState<ReviewSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [auto, setAuto] = useState(autoplay);
 
   useEffect(() => { api.reviewSettings().then(setValue).catch((e) => setError(String(e))); }, []);
 
@@ -55,6 +57,9 @@ export function QuizSettings() {
       </SetRow>
       <SetRow title={t("quizSettings.maxInterval")} htmlFor="review-longest" desc={t("quizSettings.maxIntervalDesc")}>
         {num("review-longest", "max_interval_days", 36500)}<span className="muted">{t("quizSettings.days")}</span>
+      </SetRow>
+      <SetRow title={t("quizSettings.autoplay")} htmlFor="review-autoplay" desc={t("quizSettings.autoplayDesc")}>
+        <Switch id="review-autoplay" checked={auto} onChange={(on) => { setAuto(on); setAutoplay(on); }} />
       </SetRow>
       {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
     </div>

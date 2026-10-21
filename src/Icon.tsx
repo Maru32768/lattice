@@ -44,6 +44,7 @@ const PATHS = {
   summary: <path d="M5 7h14M5 12h14M5 17h9" />,
   popout: <><path d="M14 4h6v6M20 4l-9 9" /><path d="M18 14v6H4V6h6" /></>,
   popin: <><path d="M20 10h-6V4M14 10l6-6" /><path d="M18 14v6H4V6h6" /></>,
+  speaker: <><path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" /><path d="M15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" /></>,
 } as const;
 
 export type IconName = keyof typeof PATHS;

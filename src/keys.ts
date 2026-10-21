@@ -6,7 +6,7 @@ import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "popOut" | "back" | "forward";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "speak" | "popOut" | "back" | "forward";
 
 export interface ActionDef {
   id: ActionId;
@@ -37,13 +37,17 @@ export const ACTIONS: ActionDef[] = [
   { id: "splitRight", keys: ["Ctrl+\\"], inFields: true },
   { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
   { id: "saveWord", keys: ["W"] },
+  { id: "speak", keys: ["R"] },
   { id: "popOut", keys: ["Ctrl+Shift+N"], inFields: true },
   { id: "back", keys: ["Alt+ArrowLeft"] },
   { id: "forward", keys: ["Alt+ArrowRight"] },
 ];
 
-/** The page's own history while it has focus: its Alt+← / Alt+→ (and mouse side buttons) stay in the page. */
-const PAGE_OWN = new Set<ActionId>(["saveWord", "back", "forward"]);
+/**
+ * Keys a focused page keeps: its Alt+← / Alt+→ (and mouse side buttons) are its own history, and
+ * the word card's `speak` has nothing to say there.
+ */
+const PAGE_OWN = new Set<ActionId>(["saveWord", "speak", "back", "forward"]);
 
 export type Bindings = Record<ActionId, string[]>;
 /** The action's name in Settings, the palette and the shortcut help (`keys.<id>` in the catalogs). */
@@ -98,7 +102,7 @@ const MODIFIED = /^(Ctrl|Alt)\+/;
 export function pageKeys(b: Bindings): PageKeys {
   const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
   for (const a of ACTIONS) {
-    // A selection in the page is saved with the overlay's own button; back / forward are the page's history.
+    // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
     if (PAGE_OWN.has(a.id)) continue;
     for (const k of b[a.id]) {
       const mod = MODIFIED.test(k);

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { VocabEntry } from "./api.ts";
-import { MAX_SENTENCE, captureIn, cloze, findWord, isWord, markWords, sentenceAt, shownEntries, wordMarks } from "./vocab.ts";
+import { MAX_SENTENCE, captureIn, findWord, isWord, markWords, sentenceAt, shownEntries, wordMarks } from "./vocab.ts";
 
 test("isWord: short English selections on one line", () => {
   assert.equal(isWord(" write skew "), true);
@@ -30,13 +30,10 @@ test("captureIn picks the occurrence the selection is at", () => {
   assert.equal(captureIn(text, "walk", 0), null);
 });
 
-test("cloze blanks the form used, as a whole word, case-insensitively", () => {
-  const blanks = (sentence: string, surface: string) => cloze(sentence, surface).map((p) => (p.blank ? `[${p.v}]` : p.v)).join("");
-  assert.equal(blanks("She ran the tests and Ran them again.", "ran"), "She [ran] the tests and [Ran] them again.");
-  assert.equal(blanks("Rerun and run.", "run"), "Rerun and [run].", "not inside rerun");
-  assert.equal(blanks("write  skew happens", "write skew"), "[write  skew] happens", "any spaces between words");
-  assert.equal(blanks("it was skewed", "skew"), "it was [skew]ed", "a selection inside a word falls back to the substring");
-  assert.deepEqual(cloze("ran", "ran"), [{ v: "ran", blank: true }]);
+test("findWord finds the form used, as a whole word, case-insensitively", () => {
+  assert.deepEqual(findWord("She ran the tests and Ran them again.", "ran"), [[4, 7], [22, 25]]);
+  assert.deepEqual(findWord("Rerun and run.", "run"), [[10, 13]], "not inside rerun");
+  assert.deepEqual(findWord("write  skew happens", "write skew"), [[0, 11]], "any spaces between words");
   assert.deepEqual(findWord("x", ""), []);
 });
 

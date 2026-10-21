@@ -124,7 +124,9 @@ export function VocabView({ entries, marks, onMarks, onChanged, onSource }: {
                         <Menu className="ib" label={t("vocabView.actions", { word: e.headword })} align="right" trigger={<Icon name="more" />} items={[
                           { label: t("vocabView.editMeaning"), onSelect: () => setEditing(e.id) },
                           { label: t("vocabCard.source"), onSelect: () => c && onSource(c), disabled: !c || (c.article_id == null && !c.url) },
-                          ...(e.state === "failed" ? [{ label: t("vocabView.retry"), onSelect: () => void act(() => api.vocabRetry(e.id)) }] : []),
+                          ...(e.state === "failed" ? [{ label: t("vocabView.retry"), onSelect: () => void act(() => api.vocabRetry(e.id)) }]
+                            : e.state === "ready" ? [{ label: t("vocabView.regenerate"), hint: t("vocabView.regenerateHint"), onSelect: () => void act(() => api.vocabRetry(e.id)) }]
+                            : []),
                           { label: e.suspended ? t("vocabView.resume") : t("vocabView.suspend"), onSelect: () => void act(() => api.vocabSuspend(e.id, !e.suspended)) },
                           "-",
                           { label: <span className="error-text">{t("common.delete")}</span>, onSelect: () => setDeleting(e) },
