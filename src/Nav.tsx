@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { FeedRow, GroupRow } from "./api";
 import { feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
-import { Menu } from "./Popover";
 import { Icon, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
 import { NavGroups } from "./NavGroups";
@@ -33,7 +32,7 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 const n = (v: number) => v.toLocaleString();
 
 export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
-  onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse, importantMin }: {
+  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse, importantMin }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
@@ -48,8 +47,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   recentSearches: string[];
   onScope: (s: Scope) => void;
   onScreen: (s: Screen) => void;
-  onOpenUrl: () => void;
-  onMarkdown: () => void;
   onChat: () => void;
   onRecent: (q: string) => void;
   onGenres: () => void;
@@ -81,12 +78,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   return (
     <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
       <div className="nav-top">
-        <Menu className="ib" label={t("nav.add")} align="right" trigger={<Icon name="plus" />} items={[
-          { label: <><Icon name="page" />{t("nav.openUrl")}</>, onSelect: onOpenUrl },
-          { label: <><Icon name="import" />{t("common.bulkImport")}</>, onSelect: () => onScreen("import") },
-          { label: <><Icon name="reader" />{t("common.importMarkdown")}</>, onSelect: onMarkdown },
-          { label: <><Icon name="rss" />{t("common.addFeed")}</>, onSelect: () => onScreen("feeds") },
-        ]} />
         <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}><Icon name="panel" /></button>
       </div>
 

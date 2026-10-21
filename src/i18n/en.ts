@@ -335,8 +335,6 @@ export const en = {
   "tabStrip.popIn": "Move back to the main window",
   "tabStrip.popInHint": "Move this tab back to the main window (Ctrl+Shift+N)",
   "nav.nav": "Navigation",
-  "nav.add": "Add (URL, bulk import, Markdown, feed)",
-  "nav.openUrl": "Open a URL",
   "common.bulkImport": "Bulk import",
   "common.importMarkdown": "Import Markdown",
   "common.addFeed": "Add a feed",

@@ -69,3 +69,11 @@ test("a document window has the command center, the chat window does not (H9)", 
   await expect(shell.getByLabel("質問", { exact: true })).toBeVisible();
   await expect(commandCenter(shell)).toHaveCount(0);
 });
+
+test("the nav's top holds only its close button; what the ＋ opened is in the palette (H10)", async ({ app }) => {
+  await expect(app.locator(".nav-top").getByRole("button")).toHaveCount(1);
+  await expect(app.locator(".nav-top").getByRole("button")).toHaveAccessibleName("ナビゲーションを閉じる");
+  await commandCenter(app).click();
+  await app.keyboard.type(">");
+  for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
+});

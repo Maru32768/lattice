@@ -331,8 +331,6 @@ export const ja = {
   "tabStrip.popIn": "メインウィンドウに戻す",
   "tabStrip.popInHint": "このタブをメインウィンドウに戻す (Ctrl+Shift+N)",
   "nav.nav": "ナビゲーション",
-  "nav.add": "追加（URL・一括インポート・Markdown・フィード）",
-  "nav.openUrl": "URL を開く",
   "common.bulkImport": "一括インポート",
   "common.importMarkdown": "Markdown を取り込む",
   "common.addFeed": "フィードを登録",
