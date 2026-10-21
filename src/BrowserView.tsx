@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "./api";
 import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
-import { LangSeg, Summary, ViewSeg } from "./Reader";
+import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "./Reader";
+import { QuizPanel } from "./QuizPanel";
 import { Menu, intersects, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
@@ -93,11 +94,13 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
  * Toolbar plus a placeholder box for one Page tab; the tab's native webview is kept positioned
  * over the box. Page content never enters this (app) webview.
  */
-export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang, onSave, onReader, onSummarize, onFavorite, onDelete, onError }: {
+export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, onLang, onSave, onReader, onError }: {
   tab: PageTab;
   saved: ArticleRow | null;
   /** The saved article's view (its summary), once loaded. */
   view: ArticleView | null;
+  /** The saved article's actions, shared with the Reader's toolbar (H14). */
+  act: DocActions | null;
   saving: boolean;
   lang: PageLang;
   /** Opens an http(s) URL typed in the URL bar or the home page. */
@@ -105,10 +108,6 @@ export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang
   onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
-  onSummarize: () => void;
-  onFavorite: () => void;
-  /** Asks for confirmation, then removes the saved article from the Index. */
-  onDelete: () => void;
   onError: (e: string) => void;
 }) {
   const t = useT();
@@ -128,6 +127,7 @@ export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang
   tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
+  const [quiz, setQuiz] = useState(false);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = async () => {
     const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
@@ -252,11 +252,14 @@ export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang
   }, [id]);
 
   const { url, loading } = tab;
-  const resave = saved && (saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed");
+  const shown = saved && view && act && view.article.id === saved.id ? view : null;
+  const copyUrl = () => navigator.clipboard.writeText(url).catch((e) => onError(String(e)));
   return (
     <div className="doc">
-      <div className="docbar">
+      <div className="docbar pg">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
+        <div className="vsep" />
+        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
         <div className="vsep" />
         <button className="ib" onClick={() => browser.go(id, "back")} disabled={tab.canGoBack === false} aria-label={t("browserView.back")} title={t("browserView.back")}><Icon name="left" /></button>
         <button className="ib" onClick={() => browser.go(id, "forward")} disabled={tab.canGoForward === false} aria-label={t("browserView.forward")} title={t("browserView.forward")}><Icon name="right" /></button>
@@ -266,31 +269,34 @@ export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang
           const next = toNavigation(input, getEngine());
           if (next) onNavigate(next);
         }} />
-        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
-        {saved ? (
-          <>
-            <span className="indexed"><Icon name="check" />{t("browserView.indexed")}</span>
-            {view && !failedOf(view) && (
-              <button className={`tb${summary ? " on" : ""}`} aria-pressed={summary} title={t("browserView.summaryHint")}
+        {saved && <span className="indexed" title={t("browserView.indexed")}><Icon name="check" /><span className="lbl">{t("browserView.indexed")}</span></span>}
+        {shown && act ? (
+          <ArticleTools view={shown} act={act} quizOpen={quiz} onQuiz={() => setQuiz((q) => !q)}
+            rerender={{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }}>
+            {!failedOf(shown) && (
+              <button className={`tb${summary ? " on" : ""}`} aria-pressed={summary} aria-label={t("reader.summary")} title={t("browserView.summaryHint")}
                 onClick={() => setSummary(showSummary(!summary))}><Icon name="summary" /><span className="lbl">{t("reader.summary")}</span></button>
             )}
-            <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
+          </ArticleTools>
+        ) : !saved && (
+          <div className="docbar-r">
+            <button className="tb pri" onClick={onSave} disabled={saving || loading}
+              title={t("browserView.addHint")}><Icon name="import" />{saving ? t("browserView.adding") : t("browserView.add")}</button>
             <Menu className="tb" label={t("browserView.more")} align="right" trigger={<Icon name="more" />} items={[
-              ...(resave ? [{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
-              { label: <span className="error-text">{t("browserView.remove")}</span>, onSelect: onDelete },
+              { label: t("articleMenu.copyUrl"), onSelect: () => void copyUrl() },
             ]} />
-          </>
-        ) : (
-          <button className="tb pri" onClick={onSave} disabled={saving || loading}
-            title={t("browserView.addHint")}><Icon name="import" />{saving ? t("browserView.adding") : t("browserView.add")}</button>
+          </div>
         )}
       </div>
       <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? t("browserView.loading") : undefined}><b /></div>
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
-      {summary && view && !failedOf(view) && <div className="page-summary"><Summary view={view} onSummarize={onSummarize} initiallyOpen /></div>}
+      {summary && shown && !failedOf(shown) && <div className="page-summary"><Summary view={shown} onSummarize={act!.onSummarize} initiallyOpen /></div>}
+      <div className="doc-body">
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">
         {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
+      </div>
+      {quiz && shown && act && <QuizPanel view={shown} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={() => setQuiz(false)} />}
       </div>
     </div>
   );

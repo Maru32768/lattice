@@ -19,7 +19,7 @@ import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
-import { Reader, WordMarksContext, type Focus } from "./Reader";
+import { Reader, WordMarksContext, type DocActions, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { getEngine, homeOf } from "./engines";
@@ -1096,13 +1096,23 @@ export default function App() {
       return <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
         onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />;
     }
+    /** What both toolbars do with the article `a` (H14); `page`: asked from the Page view. */
+    const articleActs = (a: ArticleRow, page: boolean): DocActions => {
+      const vAct = (task: (id: number) => Promise<unknown>) => () => void act(() => task(a.id), a.id);
+      return {
+        focusMode: !navOpen && !listOpen, onFocusMode: actions.focus, onFavorite: () => void toggleFavorite(a), onToggleRead: () => void toggleRead(a),
+        onAsk: () => openChat("article"), onReextract: vAct(api.reextractArticle), onRender: vAct(api.renderArticle), onClassify: vAct(api.classifyArticle),
+        onRetranslate: vAct(api.retranslateArticle), onSummarize: vAct(api.summarizeArticle), onCopyUrl: () => copyUrl(a.original_url),
+        onDelete: () => setDeleting({ article: a, page }), onReviewChanged: () => void loadReview(),
+        onFocusBlock: (block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id),
+      };
+    };
     if (tab.kind === "page") {
       const saved = savedOf(tab);
       return (
-        <BrowserView key={tab.id} tab={tab} saved={saved} view={saved && (views.get(saved.id) ?? null)} saving={saving === tab.id} lang={pageLang}
+        <BrowserView key={tab.id} tab={tab} saved={saved} view={saved && (views.get(saved.id) ?? null)} act={saved && articleActs(saved, true)} saving={saving === tab.id} lang={pageLang}
           onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(tab)}
-          onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)} onSummarize={() => saved && act(() => api.summarizeArticle(saved.id), saved.id)}
-          onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
+          onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)} onError={fail} />
       );
     }
     const v = views.get(tab.articleId);
@@ -1110,19 +1120,12 @@ export default function App() {
     const a = v.article;
     const vAct = (task: (id: number) => Promise<unknown>) => () => act(() => task(a.id), a.id);
     return (
-      <Reader key={a.id} view={v} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); translateOnPick(v, m); }}
-        focusMode={!navOpen && !listOpen} onFocusMode={actions.focus}
-        onAsk={() => openChat("article")}
+      <Reader key={a.id} view={v} act={articleActs(a, false)} focus={tab.focus} matches={tab === cur ? readerMatches : undefined} mode={mode} percent={percent} onLang={(m, p) => { setMode(m); setPercent(p); translateOnPick(v, m); }}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)} onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
-        onToggleRead={() => toggleRead(a)} onRetry={vAct(() => api.saveUrl(a.original_url))}
-        onReextract={vAct(api.reextractArticle)} onRender={vAct(api.renderArticle)} onTranslate={vAct(api.translateArticle)}
-        onRetranslate={vAct(api.retranslateArticle)}
-        onSummarize={vAct(api.summarizeArticle)} onFavorite={() => toggleFavorite(a)}
+        onRetry={vAct(() => api.saveUrl(a.original_url))} onTranslate={vAct(api.translateArticle)}
         onTag={(name, add) => act(() => (add ? api.addTag(a.id, name) : api.removeTag(a.id, name)), a.id)}
         onGenre={(name) => act(() => api.setGenre(a.id, name), a.id)}
         onDifficulty={(level) => act(() => api.setDifficulty(a.id, level), a.id)}
-        onClassify={vAct(api.classifyArticle)} onDelete={() => setDeleting({ article: a, page: false })}
-        onFocusBlock={(block, label) => openReader(a.id, { block, label, terms: [], tone: "cite" }, "active", pane.id)} onReviewChanged={loadReview}
         saveWordSeq={saveWordSeq} onVocabChanged={loadVocab}
         groups={groupRows} onGroup={(id, add) => groupMembers(id, [a.id], add)} onCreateGroup={createGroup} groupRequest={groupRequest?.tab === tab.id ? groupRequest.seq : 0} />
     );

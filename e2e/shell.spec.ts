@@ -103,7 +103,7 @@ test("the tab strip's ＋ opens the search engine's start page in a new tab (H12
 
 test("a saved article's summary shows in a strip above its page; it can be generated there (H13)", async ({ app }) => {
   await openPage(app, snapshot.title!);
-  const toggle = app.locator(".docbar").getByRole("button", { name: "要約" });
+  const toggle = app.locator(".docbar").getByRole("button", { name: "要約", exact: true });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   const strip = app.locator(".page-summary");
@@ -112,7 +112,7 @@ test("a saved article's summary shows in a strip above its page; it can be gener
   expect((await strip.boundingBox())!.y).toBeLessThan((await app.locator(".page-host").boundingBox())!.y);
 
   await openPage(app, ARTICLES.find((a) => a.id !== SNAPSHOT_ID && a.fetch_status === "ok" && !a.original_url.startsWith("local:"))!.title!);
-  await expect(app.locator(".docbar").getByRole("button", { name: "要約" })).toHaveAttribute("aria-pressed", "true");
+  await expect(app.locator(".docbar").getByRole("button", { name: "要約", exact: true })).toHaveAttribute("aria-pressed", "true");
   await app.locator(".page-summary").getByRole("button", { name: "要約を作成" }).click();
   await expect.poll(async () => (await callsOf(app, "summarize_article")).length).toBe(1);
 });
@@ -120,6 +120,42 @@ test("a saved article's summary shows in a strip above its page; it can be gener
 test("an unsaved page has no summary (H13)", async ({ app }) => {
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   await expect(app.locator(".docbar").getByRole("button", { name: "Index に追加" })).toBeVisible();
-  await expect(app.locator(".docbar").getByRole("button", { name: "要約" })).toHaveCount(0);
+  await expect(app.locator(".docbar").getByRole("button", { name: "要約", exact: true })).toHaveCount(0);
   await expect(app.locator(".page-summary")).toHaveCount(0);
+});
+
+/** The right end of the toolbar, and the ⋯ menu's items, by name. */
+async function tools(app: Page) {
+  const bar = app.locator(".docbar .docbar-r");
+  const buttons = await bar.getByRole("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") ?? e.textContent));
+  await more(app).click();
+  const items = await app.getByRole("menu").getByRole("menuitem").allTextContents();
+  await app.keyboard.press("Escape");
+  return { buttons, items };
+}
+
+test("the Reader and the Page toolbars carry the same article actions in the same order (H14)", async ({ app }) => {
+  await list(app).locator(".row", { hasText: snapshot.title! }).click();
+  const reader = await tools(app);
+  await openPage(app, snapshot.title!);
+  const page = await tools(app);
+  expect(reader.buttons).toEqual(["お気に入り (s)", "既読にする (m)", "質問", "理解度チェック", "フォーカスモード (f)", expect.stringMatching(/^その他/)]);
+  // Page adds its summary strip's toggle before フォーカス.
+  expect(page.buttons).toEqual([...reader.buttons.slice(0, 4), "要約", ...reader.buttons.slice(4)]);
+  expect(reader.items[1]).toBe("描画して取り込み直す");
+  expect(page.items[1]).toBe("表示中のページで取り込み直す");
+  expect(page.items.toSpliced(1, 1)).toEqual(reader.items.toSpliced(1, 1));
+  expect(reader.items.slice(-2)).toEqual(["URL をコピー", "Index から削除…"]);
+
+  // The quiz opens beside the page, as it does beside the Reader.
+  await app.locator(".docbar").getByRole("button", { name: "理解度チェック" }).click();
+  await expect(app.locator(".qz-panel")).toBeVisible();
+  const host = (await app.locator(".page-host").boundingBox())!, panel = (await app.locator(".qz-panel").boundingBox())!;
+  expect(host.x + host.width).toBeLessThanOrEqual(panel.x);
+});
+
+test("an unsaved page's ⋯ copies its URL (H14)", async ({ app }) => {
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
+  await more(app).click();
+  await expect(app.getByRole("menu").getByRole("menuitem")).toHaveText(["URL をコピー"]);
 });
