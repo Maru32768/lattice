@@ -6,18 +6,28 @@ import { FilterOptgroups } from "./FilterOptgroups";
 import { Menu } from "./Popover";
 import { Icon, Kbd } from "./Icon";
 import { initialVim, vimEnabled, vimKey } from "./vim";
+import { onMiddle } from "./middle";
 import { useT, type PlainKey } from "./i18n";
 
 const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetrieval", none: null } as const satisfies Record<string, PlainKey | null>;
 
-function Cite({ c, onCite }: { c: Citation; onCite: (c: Citation) => void }) {
+/** `newTab`: Ctrl / middle click. */
+type OnCite = (c: Citation, newTab: boolean) => void;
+
+/** Click props for a citation: Ctrl / middle click opens it in a new tab, as in the list. */
+const citeClick = (c: Citation, onCite: OnCite) => ({
+  onClick: (e: React.MouseEvent) => onCite(c, e.ctrlKey || e.metaKey),
+  ...onMiddle(() => onCite(c, true)),
+});
+
+function Cite({ c, onCite }: { c: Citation; onCite: OnCite }) {
   const t = useT();
   const where = `${c.title}${c.heading ? ` › ${c.heading}` : ""}`;
-  return <button className="cite" onClick={() => onCite(c)} title={where} aria-label={t("chatPane.cite", { n: c.n, where })}>{c.n}</button>;
+  return <button className="cite" {...citeClick(c, onCite)} title={where} aria-label={t("chatPane.cite", { n: c.n, where })}>{c.n}</button>;
 }
 
 // The answer is model output over untrusted pages: rendered as text nodes only, never as HTML.
-function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }) {
+function Answer({ m, onCite }: { m: ChatMessage; onCite: OnCite }) {
   const t = useT();
   const byN = new Map(m.citations.map((c) => [c.n, c]));
   return (
@@ -30,7 +40,7 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
           {m.citations.map((c) => (
             <li key={c.n}>
               <Cite c={c} onCite={onCite} />
-              <button className="source" onClick={() => onCite(c)}>
+              <button className="source" {...citeClick(c, onCite)}>
                 <span className="source-title">{c.title}{c.heading && ` › ${c.heading}`}</span>
                 <span className="source-text">{c.text}</span>
               </button>
@@ -57,7 +67,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
   current: { key: string; label: string } | null;
   /** A scope chosen from outside (Reader 質問, palette); `seq` re-applies the same key. */
   request: { key: string; seq: number } | null;
-  onCite: (c: Citation) => void;
+  onCite: OnCite;
   onClose: () => void;
   /** Main window only: moves the dock to its own window (G52). */
   onPopOut?: () => void;

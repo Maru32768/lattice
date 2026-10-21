@@ -545,10 +545,11 @@ export default function App() {
   }
 
   /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
-  function openCitation(c: Citation) {
-    if (!IS_MAIN) return void toMain({ kind: "cite", citation: c });
-    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" });
-    else if (c.url) openPage(c.url, c.text);
+  function openCitation(c: Citation, newTab = false) {
+    if (!IS_MAIN) return void toMain({ kind: "cite", citation: c, newTab });
+    const where: Where = newTab ? "new" : "active";
+    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" }, where);
+    else if (c.url) openPage(c.url, c.text, undefined, where);
     else setError(t("app.citationDeleted"));
   }
 
@@ -811,7 +812,7 @@ export default function App() {
       case "chatReady": void emit("doc-current", chatArticle); void emit("open-docs", chatOpenDocs); return;
       case "openDocs": setDocWindowsOpen((m) => ({ ...m, [r.label]: r.docs })); return;
       case "pageLang": void emit("page-lang", pageLang); return;
-      case "cite": openCitation(r.citation); break;
+      case "cite": openCitation(r.citation, r.newTab); break;
       case "screen": setScreen(r.screen); break;
       case "import": setImportTab(r.tab); setScreen("import"); break;
       case "discover": setFeedsUrl(r.url); setScreen("feeds"); break;
