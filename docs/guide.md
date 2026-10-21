@@ -69,7 +69,16 @@ Lattice reads RSS and Atom feeds. Open **Manage feeds** from **Manage** next to 
 - To subscribe straight into a folder, choose it in **Folder to add to** before you add the feed.
 - In the navigation, a folder is a row you can expand and collapse. Its number is the unread total of its feeds. Clicking it lists the articles of all its feeds. Right-click it, or use its ⋯ button, to rename or delete it. Deleting a folder keeps its feeds.
 
-**Feed order.** You can drag a feed in the navigation to reorder it or to move it into another folder, and drag folders to reorder them. With a feed or folder row focused, `Alt+↑` and `Alt+↓` move it. Feed reordering is new and still being finished, so the exact behavior may change.
+**Feed order.** Feeds keep the order you give them, within their folder and among the feeds in no folder. Every list of feeds in the app (the navigation, the Feeds screen, the palette, the scope pickers, OPML export and the CLI) uses that order.
+
+- Drag a feed in the navigation and drop it on another feed to take that place, in the same folder or another one.
+- Drop a feed on a folder row to put it last in that folder, even when the folder is collapsed.
+- To take a feed out of all folders, drop it among the feeds in no folder. If every feed is in a folder, a box reading **Drop here to take it out of its folder** appears at the end while you drag.
+- Drag a folder row to reorder the folders; their feeds come along.
+- With a feed or folder row focused, `Alt+↑` and `Alt+↓` move it one place. A feed moved past the first or last feed of its folder goes into the neighboring folder, which opens if it was collapsed.
+- On the Feeds screen, the feeds are grouped under their folders in the same order, and each row has ↑ and ↓ buttons.
+
+A short click on a feed or folder still opens it; only a drag moves it.
 
 **Names and icons.** Click **Edit** in a feed's row to set a **Display name** and an **Icon** (PNG, JPEG, GIF, WebP, SVG or ICO, up to 1 MB). **Revert** restores the feed's own name, and **Use the site's icon** removes your icon. Without your icon, Lattice shows the site's own icon.
 
