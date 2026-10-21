@@ -67,6 +67,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
+  const picked = useRef(request != null);
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -84,10 +85,16 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages, pending]);
   useEffect(() => {
     if (!request) return;
+    picked.current = true;
     setScopeKey(request.key);
     input.current?.focus();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- a request applies once per seq
   }, [request?.seq]);
+  // The chat window learns the current article after it mounts: take it while the user has not picked a scope.
+  const hasArticle = article != null;
+  useEffect(() => {
+    if (hasArticle && !picked.current) setScopeKey((k) => (k === "all" ? "article" : k));
+  }, [hasArticle]);
   useLayoutEffect(() => {
     const t = input.current;
     // Normal mode selects the character under the cursor, drawn like Vim's block cursor.
@@ -160,7 +167,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
         <div className="chat-scope">
           {t("chatPane.scope")}
           <label className="chip scope-chip">
-            <select value={scopeKey} onChange={(e) => setScopeKey(e.target.value)} aria-label={t("chatPane.scopeLabel")}>
+            <select value={scopeKey} onChange={(e) => { picked.current = true; setScopeKey(e.target.value); }} aria-label={t("chatPane.scopeLabel")}>
               <option value="article" disabled={!article}>{t("chatPane.thisArticle")}{article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}</option>
               <option value="all">{t("chatPane.allArticles")}</option>
               {current && <option value={current.key}>
