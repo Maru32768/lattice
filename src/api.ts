@@ -385,10 +385,12 @@ export interface ReviewOverview {
 export interface VocabSense {
   headword: string;
   pos: string;
-  /** Japanese, as used in the first capture. */
+  /** A short Japanese gloss, as used in the first capture. */
   meaning: string;
+  /** One plain English sentence, learner's-dictionary style: the card's answer. */
   definition: string;
   ipa: string;
+  /** A sentence written for learning, not the captured one. */
   example: string;
 }
 
@@ -426,7 +428,6 @@ export type VocabReviewItem = VocabSense & {
   /** The card's id. */
   id: number;
   entry_id: number;
-  kind: "cloze" | "meaning";
   context: VocabContext;
   new: boolean;
   previews: [number, number, number, number];

@@ -13,6 +13,7 @@ import { JobsView } from "./JobsView";
 import { QuizReview } from "./QuizReview";
 import { VocabView } from "./VocabView";
 import { wordMarks } from "./vocab";
+import { replayWord } from "./speech";
 import { ChatPane } from "./ChatPane";
 import { mergeDocs, openDocs, type OpenDoc } from "./chat";
 import { filterGroups, filterKey } from "./scopes";
@@ -1001,6 +1002,7 @@ export default function App() {
     splitRight: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "row")); },
     splitDown: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "column")); },
     saveWord: () => setSaveWordSeq((n) => n + 1),
+    speak: replayWord,
     popOut: () => {
       const t = activeTab(focusedPane(layoutRef.current));
       if (t) (IS_MAIN ? popOutTab : returnTab)(t.id);

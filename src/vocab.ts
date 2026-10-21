@@ -56,28 +56,6 @@ export function findWord(text: string, form: string): [number, number][] {
   return [...text.matchAll(new RegExp(pattern([form]), "giu"))].map((m) => [m.index, m.index + m[0].length]);
 }
 
-/**
- * A cloze: the sentence in pieces, the blanks marked. The blank is the form the sentence
- * actually uses (`surface`, e.g. "ran" for the entry "run"), wherever it occurs as a whole
- * word; a selection inside a longer word falls back to its first occurrence.
- */
-export function cloze(sentence: string, surface: string): { v: string; blank?: true }[] {
-  let spans = findWord(sentence, surface);
-  if (spans.length === 0) {
-    const i = sentence.indexOf(surface);
-    spans = i < 0 ? [] : [[i, i + surface.length]];
-  }
-  const out: { v: string; blank?: true }[] = [];
-  let at = 0;
-  for (const [s, e] of spans) {
-    if (s > at) out.push({ v: sentence.slice(at, s) });
-    out.push({ v: sentence.slice(s, e), blank: true });
-    at = e;
-  }
-  if (at < sentence.length) out.push({ v: sentence.slice(at) });
-  return out;
-}
-
 /** Saved words to mark in article text: one pattern over every form, and each form's meaning. */
 export interface WordMarks {
   re: RegExp;

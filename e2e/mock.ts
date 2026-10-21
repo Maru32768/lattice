@@ -20,13 +20,13 @@ const jobs = structuredClone(JOBS);
 /** Quizzes by article; review cards by question id (`due`: in today's queue). */
 const quizzes = new Map<number, Quiz>([[1, structuredClone(QUIZ)]]);
 const cards = new Map<number, { item: QuizReviewItem; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
-/** The vocabulary, and its cards by id: a saved word's cloze, due at once, stands in for the enrichment job. */
+/** The vocabulary, and its cards by id: a saved word's card, due at once, stands in for the enrichment job. */
 const vocab = structuredClone(VOCAB);
-const vocabCards = new Map<number, { entry_id: number; kind: VocabReviewItem["kind"]; due: boolean }>([[31, { entry_id: 2, kind: "cloze", due: false }]]);
+const vocabCards = new Map<number, { entry_id: number; due: boolean }>([[31, { entry_id: 2, due: false }]]);
 const entry = (id: number) => vocab.find((e) => e.id === id) ?? reject("vocab.gone");
-const vocabItem = (id: number, c: { entry_id: number; kind: VocabReviewItem["kind"] }): VocabReviewItem => {
+const vocabItem = (id: number, c: { entry_id: number }): VocabReviewItem => {
   const { id: _, state: _s, suspended: _u, created_at: _c, due_at: _d, contexts, ...sense } = entry(c.entry_id);
-  return { ...sense, type: "vocab", id, entry_id: c.entry_id, kind: c.kind, context: contexts[0], new: true, previews: NEW_PREVIEWS };
+  return { ...sense, type: "vocab", id, entry_id: c.entry_id, context: contexts[0], new: true, previews: NEW_PREVIEWS };
 };
 const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry_id).suspended);
 const store = {
@@ -269,10 +269,11 @@ export const handlers = {
     }
     const id = Math.max(0, ...vocab.map((e) => e.id)) + 1;
     vocab.push({
-      id, headword: c.surface.toLowerCase(), pos: "noun", meaning: `${c.surface} の意味`, definition: `the meaning of ${c.surface}`, ipa: "", example: "",
+      id, headword: c.surface.toLowerCase(), pos: "noun", meaning: `${c.surface} の意味`, definition: `${c.surface} is a word the mock explains.`, ipa: "",
+      example: `An example sentence with ${c.surface}.`,
       state: "ready", suspended: false, created_at: new Date(NOW).toISOString(), due_at: NOW / 1000, contexts: [context],
     });
-    vocabCards.set(100 + id, { entry_id: id, kind: "cloze", due: true });
+    vocabCards.set(100 + id, { entry_id: id, due: true });
     return { entry_id: id, new: true };
   },
   vocab_list: (): VocabEntry[] => [...vocab].sort((a, b) => b.id - a.id),

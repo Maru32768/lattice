@@ -261,7 +261,7 @@ export const REVIEW: QuizReviewItem[] = [
 /** The vocabulary: a word saved from the snapshot article (its cards not due today) and one the LLM could not explain. */
 export const VOCAB: VocabEntry[] = [
   {
-    id: 2, headword: "write skew", pos: "noun", meaning: "書き込みスキュー", definition: "an anomaly where two transactions each write based on data the other changes",
+    id: 2, headword: "write skew", pos: "noun", meaning: "書き込みスキュー", definition: "Write skew is when two transactions each change data based on something the other one changes.",
     ipa: "", example: "Write skew broke the on-call invariant.", state: "ready", suspended: false, created_at: daysAgo(2), due_at: NOW / 1000 + 3 * 86_400,
     contexts: [{ surface: "Write skew", sentence: SNAPSHOT_BLOCKS[5][1], article_id: SNAPSHOT_ID, block_id: 106, url: ARTICLES[0].original_url, title: ARTICLES[0].title }],
   },
