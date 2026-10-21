@@ -124,15 +124,20 @@
 .stg .tg:checked::after { left: 17px; }
 .stg .chain-head { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink3); }
 .stg .chain-head span { margin-left: auto; }
-.stg .chain { position: relative; display: grid; grid-template-columns: 20px 28px 170px minmax(0, 1fr) 180px auto; background: var(--raise); align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line3); }
+/* Flex, not a grid: a narrow pane (chat open) wraps the key pill and Delete instead of squeezing the selects to nothing. */
+.stg .chain { position: relative; display: flex; flex-wrap: wrap; background: var(--raise); align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line3); }
+.stg .chain > :first-child { flex: 0 0 20px; }
+.stg .chain > .k { flex: 0 0 28px; }
+.stg .chain > select { flex: 0 1 170px; min-width: 120px; }
+.stg .chain > .kp { flex: 0 0 180px; }
 .stg .chain:last-child { border-bottom: 0; }
 .stg .chain.dragging { z-index: 1; background: var(--warn-row); box-shadow: 0 6px 18px var(--shadow2); }
 .stg .chain .grip { width: 20px; height: 28px; padding: 0; border: 0; border-radius: 4px; background: none; color: var(--check); font-size: 12px; cursor: grab; touch-action: none; }
 .stg .chain .grip:hover { color: var(--ink2); background: var(--hover); }
 .stg .chain.dragging .grip { cursor: grabbing; }
 .stg .chain .k { font: 12px var(--mono); color: var(--ink3); }
-.stg .chain .model { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.stg .chain .model > * { min-width: 0; flex: 1; }
+.stg .chain .model { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 160px; min-width: 160px; }
+.stg .chain .model > * { min-width: 7em; flex: 1; }
 .stg .chain .model > .effort { flex-basis: 100%; }
 .stg .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); }
 .stg .pill i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }

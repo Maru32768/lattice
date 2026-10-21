@@ -23,3 +23,14 @@ test("every settings section renders, and Esc goes back to the library", async (
   await expect(nav).toBeHidden();
   await expect(navItem(app, "すべての記事")).toBeVisible();
 });
+
+test("in a narrow window the provider chain wraps instead of squeezing its selects to nothing", async ({ app }) => {
+  await app.setViewportSize({ width: 820, height: 800 });
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni").filter({ has: app.locator(".label").getByText("AI プロバイダ", { exact: true }) }).click();
+  for (const name of ["1 段目のモデル", "1 段目の effort", "2 段目のモデル", "2 段目の effort"]) {
+    const box = await app.getByRole("combobox", { name }).boundingBox();
+    // A custom model ID shares the line with its select: each keeps at least 7em.
+    expect(box?.width, name).toBeGreaterThanOrEqual(80);
+  }
+});

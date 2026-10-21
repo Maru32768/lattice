@@ -199,7 +199,7 @@ export function ModelSettings() {
                     </select>
                   )}
                 </span>
-                <span>{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
+                <span className="kp">{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
                 <span>
                   {s.kind && (
                     <button className="btn ghost" onClick={() => remove(i)} disabled={chain.length <= 1} aria-label={t("modelSettings.removeStep", { x: i + 1 })}>{t("common.delete")}</button>
