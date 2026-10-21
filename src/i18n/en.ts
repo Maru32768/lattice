@@ -624,6 +624,8 @@ export const en = {
   "chatPane.articleTitle": " ({title})",
   "chatPane.noArticle": " (no article open)",
   "chatPane.allArticles": "All articles",
+  "chatPane.allOpen": "All open articles ({n})",
+  "chatPane.openGroup": "Open articles",
   "chatPane.currentList": "Current list: {label}",
   "chatPane.thisGroup": "This collection: {label}",
   "chatPane.intro": "Answers come from your saved articles. Click a number in an answer to open the passage it rests on.",

@@ -14,6 +14,7 @@ import { QuizReview } from "./QuizReview";
 import { VocabView } from "./VocabView";
 import { wordMarks } from "./vocab";
 import { ChatPane } from "./ChatPane";
+import { mergeDocs, openDocs, type OpenDoc } from "./chat";
 import { filterGroups, filterKey } from "./scopes";
 import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
@@ -220,6 +221,7 @@ export default function App() {
       listen<PageLang>("page-lang", (e) => setPageLangState(e.payload)),
       listen<{ id: number; title: string } | null>("doc-current", (e) => setRemoteArticle(e.payload)),
       ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
+      ...(HOST.kind === "chat" ? [listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload))] : []),
     ];
     if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
     if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
@@ -401,6 +403,24 @@ export default function App() {
     if (IS_MAIN) void emit("doc-current", chatArticle);
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per article
   }, [chatArticle?.id, chatArticle?.title]);
+  // The chat's 開いている記事: main's tabs and each document window's (they report theirs), sent on to the chat window.
+  const ownOpen = useMemo(() => openDocs(allTabs(layout), (id) => {
+    const a = views.get(id)?.article ?? articleById.get(id);
+    return a ? a.title ?? a.original_url : null;
+  }), [layout, views, articleById]);
+  const [docWindowsOpen, setDocWindowsOpen] = useState<Record<string, OpenDoc[]>>({});
+  const [mainOpen, setMainOpen] = useState<OpenDoc[]>([]);
+  const chatOpenDocs = useMemo(() => (HOST.kind === "chat" ? mainOpen : mergeDocs([ownOpen, ...Object.values(docWindowsOpen)])), [ownOpen, docWindowsOpen, mainOpen]);
+  const ownOpenKey = JSON.stringify(ownOpen);
+  const chatOpenKey = JSON.stringify(chatOpenDocs);
+  useEffect(() => {
+    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: ownOpen });
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
+  }, [ownOpenKey]);
+  useEffect(() => {
+    if (IS_MAIN) void emit("open-docs", chatOpenDocs);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
+  }, [chatOpenKey]);
 
   // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
   const listView = viewKey(scope, facets);
@@ -714,6 +734,7 @@ export default function App() {
 
   /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
   function closeWindow() {
+    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: [] });
     try {
       localStorage.removeItem(STORAGE);
     } catch {
@@ -762,7 +783,8 @@ export default function App() {
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
       // Closed, not docked: the next 対話 opens the dock, as after a restart.
       case "chatClosed": setChatWindow(false); return;
-      case "chatReady": void emit("doc-current", chatArticle); return;
+      case "chatReady": void emit("doc-current", chatArticle); void emit("open-docs", chatOpenDocs); return;
+      case "openDocs": setDocWindowsOpen((m) => ({ ...m, [r.label]: r.docs })); return;
       case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation); break;
       case "screen": setScreen(r.screen); break;
@@ -1148,7 +1170,7 @@ export default function App() {
         <div className="shell">
           <TitleBar />
           <div className="app solo" data-kb-pane={kbPane ?? undefined}>
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} onPopIn={dockChat} current={null} />
+            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} onPopIn={dockChat} current={null} />
           </div>
         </div>
       </CoverContext.Provider>
@@ -1225,7 +1247,7 @@ export default function App() {
           )}
           {chatOpen && splitter("chat", "right")}
           {chatOpen && (
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
+            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
               current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
           )}
         </div>

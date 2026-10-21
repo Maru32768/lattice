@@ -33,7 +33,7 @@ pub enum Op {
     /// Hybrid search (full text and meaning) over the blocks of saved articles
     Search {
         query: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -55,7 +55,7 @@ pub enum Op {
     },
     /// Saved articles, newest first
     List {
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -76,7 +76,7 @@ pub enum Op {
     /// Ask a question answered from saved articles, with citations (uses the app's LLM chain)
     Ask {
         question: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -130,10 +130,15 @@ fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
         Some(("group", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Group { id: id.parse().map_err(err)? },
         Some(("important", "")) => ArticleFilter::Important { min: 4 },
         Some(("important", min)) if matches!(min.parse::<i64>(), Ok(1..=5)) => ArticleFilter::Important { min: min.parse().map_err(err)? },
-        Some(("article", id)) if id.parse::<i64>().is_ok() => return Ok(Scope::Article { id: id.parse().map_err(err)? }),
+        Some(("article", ids)) => {
+            if let Ok(mut ids) = ids.split(',').map(str::parse).collect::<Result<Vec<i64>, _>>() {
+                return Ok(if ids.len() == 1 { Scope::Article { id: ids.remove(0) } } else { Scope::Articles { ids } });
+            }
+            return Err(format!("unknown scope {:?}: article takes ids separated by commas", scope.unwrap_or_default()));
+        }
         _ => {
             return Err(format!(
-                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID",
+                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]",
                 scope.unwrap_or_default()
             ));
         }
@@ -237,6 +242,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
         Op::List { scope, limit } => {
             let rows = match parse_scope(scope.as_deref())? {
                 Scope::Article { id } => vec![article(store, id)?],
+                Scope::Articles { ids } => ids.into_iter().map(|id| article(store, id)).collect::<Result<_, _>>()?,
                 Scope::Filter { filter } => store.list_articles_sorted(&filter, ArticleSort::SavedDesc).map_err(err)?,
             };
             let total = rows.len();
@@ -332,7 +338,7 @@ mod tests {
     fn scopes_parse_into_the_apps_filters() {
         let f = |s| match parse_scope(Some(s)).unwrap() {
             Scope::Filter { filter } => filter,
-            Scope::Article { id } => panic!("article {id}"),
+            other => panic!("{other:?}"),
         };
         assert_eq!(parse_scope(None).unwrap(), Scope::Filter { filter: ArticleFilter::All });
         assert_eq!(f("unread"), ArticleFilter::Unread);
@@ -343,7 +349,8 @@ mod tests {
         assert_eq!(f("important"), ArticleFilter::Important { min: 4 });
         assert_eq!(f("important:5"), ArticleFilter::Important { min: 5 });
         assert_eq!(parse_scope(Some("article:7")).unwrap(), Scope::Article { id: 7 });
-        for bad in ["tag:", "feed:x", "group:", "group:x", "important:9", "article:", "starred", "unread:1"] {
+        assert_eq!(parse_scope(Some("article:7,3")).unwrap(), Scope::Articles { ids: vec![7, 3] });
+        for bad in ["tag:", "feed:x", "group:", "group:x", "important:9", "article:", "article:7,", "article:7,x", "starred", "unread:1"] {
             assert!(parse_scope(Some(bad)).is_err(), "{bad}");
         }
     }

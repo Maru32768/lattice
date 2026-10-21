@@ -2,6 +2,7 @@
 // where each window keeps its layout, and the requests a pop-out sends the main window.
 import { emitTo } from "@tauri-apps/api/event";
 import type { Citation } from "./api";
+import type { OpenDoc } from "./chat";
 import type { Doc, Id } from "./layout";
 import type { Screen } from "./Nav";
 import type { ImportTab } from "./ImportView";
@@ -57,6 +58,8 @@ export type MainRequest =
   | { kind: "chat"; scopeKey?: string }
   | { kind: "chatDocked" }
   | { kind: "chatClosed" }
+  /** A document window's saved articles in tabs, for the chat's 開いている記事 (empty as it closes). */
+  | { kind: "openDocs"; label: string; docs: OpenDoc[] }
   /** The chat window is listening: send it the current article (`doc-current`). */
   | { kind: "chatReady" }
   /** A document window started: send it the Page language (`page-lang`). */

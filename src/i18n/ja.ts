@@ -620,6 +620,8 @@ export const ja = {
   "chatPane.articleTitle": "（{title}）",
   "chatPane.noArticle": "（記事を開いていません）",
   "chatPane.allArticles": "全記事",
+  "chatPane.allOpen": "開いている記事すべて（{n} 件）",
+  "chatPane.openGroup": "開いている記事",
   "chatPane.currentList": "現在の一覧: {label}",
   "chatPane.thisGroup": "このグループ: {label}",
   "chatPane.intro": "保存した記事をもとに回答します。回答中の番号をクリックすると、根拠の箇所を開きます。",

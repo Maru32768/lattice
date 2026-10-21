@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { api, type ChatMessage, type ChatScope, type ChatThread, type Citation } from "./api";
-import { splitCitations } from "./chat";
+import { api, type ChatMessage, type ChatThread, type Citation } from "./api";
+import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations } from "./chat";
 import { type FilterGroup, parseFilterKey } from "./scopes";
 import { FilterOptgroups } from "./FilterOptgroups";
 import { Menu } from "./Popover";
@@ -48,8 +48,10 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
 }
 
 /** Right dock: chat over saved articles. `article` is the one open in the Reader or page view. */
-export function ChatPane({ article, groups, current, request, onCite, onClose, onPopOut, onPopIn }: {
+export function ChatPane({ article, open, groups, current, request, onCite, onClose, onPopOut, onPopIn }: {
   article: { id: number; title: string } | null;
+  /** The saved articles open in tabs, in this window and the document windows. */
+  open: OpenDoc[];
   groups: FilterGroup[];
   /** The list's current scope as a chat scope option (filterKey + label); null when it is 全記事. */
   current: { key: string; label: string } | null;
@@ -95,6 +97,9 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
   useEffect(() => {
     if (hasArticle && !picked.current) setScopeKey((k) => (k === "all" ? "article" : k));
   }, [hasArticle]);
+  // A picked article whose tab closed: the scope widens to what is still open.
+  const gone = scopeKey.startsWith("open:") && !open.some((d) => openKey(d.id) === scopeKey);
+  useEffect(() => { if (gone) setScopeKey(open.length ? OPEN_ALL : "all"); }, [gone, open.length]);
   useLayoutEffect(() => {
     const t = input.current;
     // Normal mode selects the character under the cursor, drawn like Vim's block cursor.
@@ -118,10 +123,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
     }
   }
 
-  function scope(): ChatScope | null {
-    if (scopeKey === "article") return article && { kind: "article", id: article.id };
-    return { kind: "filter", filter: scopeKey === "all" ? { kind: "all" } : parseFilterKey(scopeKey) };
-  }
+  const scope = () => scopeOf(scopeKey, article, open);
 
   async function ask(e: React.FormEvent) {
     e.preventDefault();
@@ -170,10 +172,16 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
           <label className="chip scope-chip">
             <select value={scopeKey} onChange={(e) => { picked.current = true; setScopeKey(e.target.value); }} aria-label={t("chatPane.scopeLabel")}>
               <option value="article" disabled={!article}>{t("chatPane.thisArticle")}{article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}</option>
+              <option value={OPEN_ALL} disabled={open.length === 0}>{t("chatPane.allOpen", { n: open.length })}</option>
               <option value="all">{t("chatPane.allArticles")}</option>
               {current && <option value={current.key}>
                 {parseFilterKey(current.key).kind === "group" ? t("chatPane.thisGroup", { label: current.label }) : t("chatPane.currentList", { label: current.label })}
               </option>}
+              {open.length > 0 && (
+                <optgroup label={t("chatPane.openGroup")}>
+                  {open.map((d) => <option key={d.id} value={openKey(d.id)}>{d.title}</option>)}
+                </optgroup>
+              )}
               <FilterOptgroups groups={groups} />
             </select>
             <Icon name="down" size="sm" />
@@ -201,7 +209,7 @@ export function ChatPane({ article, groups, current, request, onCite, onClose, o
         <form className="chat-f" onSubmit={ask}>
           <label className="vh" htmlFor="chat-q">{t("chatPane.question")}</label>
           <textarea id="chat-q" ref={input} value={question} onChange={(e) => setQuestion(e.target.value)} rows={3}
-            placeholder={scopeKey === "article" ? t("chatPane.askArticle") : t("chatPane.askSaved")}
+            placeholder={scopeKey === "article" || scopeKey.startsWith("open:") ? t("chatPane.askArticle") : t("chatPane.askSaved")}
             readOnly={normal} onFocus={() => setVimOn(vimEnabled())}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) return void ask(e);
