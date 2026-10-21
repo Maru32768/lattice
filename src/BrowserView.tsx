@@ -3,7 +3,7 @@ import { browser, type ArticleRow, type Bounds, type OverlayLabels } from "./api
 import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
 import { LangSeg, ViewSeg } from "./Reader";
-import { Menu, intersects } from "./Popover";
+import { Menu, intersects, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "./i18n";
@@ -22,6 +22,10 @@ const leaving = new Set<string>();
 const SHOW_SETTLE_MS = 150;
 /** How long the bounds are checked every frame after the placeholder appears or resizes (layout settling, fonts, banners). */
 const FOLLOW_MS = 600;
+/** How long a still captured ahead of an overlay (see `warm`) may stand in for the page. */
+const WARM_MS = 10_000;
+/** Panes whose popovers and menus stay inside the pane, off the page webview. */
+const OFF_PAGE = new Set(["nav", "list", "chat"]);
 
 export interface PageLang {
   mode: LanguageMode;
@@ -72,13 +76,11 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
  * Toolbar plus a placeholder box for one Page tab; the tab's native webview is kept positioned
  * over the box. Page content never enters this (app) webview.
  */
-export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
+export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
   tab: PageTab;
   saved: ArticleRow | null;
   saving: boolean;
   lang: PageLang;
-  /** Open app overlays (palette, popover, menu); the native webview would hide any it overlaps, so a still of it stands in. */
-  overlays: DOMRect[];
   /** Opens an http(s) URL typed in the URL bar or the home page. */
   onNavigate: (url: string) => void;
   onLang: (l: PageLang) => void;
@@ -96,6 +98,8 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     const r = host.current?.getBoundingClientRect();
     return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
   };
+  // Open app overlays (palette, popover, menu): the native webview would hide any it overlaps, so a still of it stands in.
+  const overlays = useOverlays();
   const hostRect = host.current?.getBoundingClientRect();
   const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
   const coveredRef = useRef(covered);
@@ -103,6 +107,22 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
+  /** The page as drawn now, decoded; null while it loads or off Windows. */
+  const grab = async () => {
+    const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
+    if (png) {
+      const img = new Image();
+      img.src = png;
+      await img.decode().catch(() => {});
+    }
+    return png;
+  };
+  /**
+   * A capture takes a few hundred ms, and the overlay stays under the webview until it is done.
+   * So a still is taken when the pointer reaches a control that opens one (`aria-haspopup`), and
+   * the overlay that follows uses it (or waits for it, already under way) (H8).
+   */
+  const warm = useRef<{ png: Promise<string | null>; at: number } | null>(null);
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
@@ -159,12 +179,11 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     }
     // The still is painted under the webview before it hides, so no blank frame shows in between.
     void (async () => {
-      const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
+      const w = warm.current;
+      warm.current = null;
+      const png = await (w && performance.now() - w.at < WARM_MS ? w.png : grab());
       if (png && live) {
-        const img = new Image();
-        img.src = png;
-        await img.decode().catch(() => {});
-        if (live) setStill(png);
+        setStill(png);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
       if (live) await browser.hide(id).catch(() => {});
@@ -175,6 +194,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
 
   useEffect(() => {
     const resize = () => {
+      warm.current = null;
       void sync();
       follow();
     };
@@ -188,6 +208,20 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
     };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
+  useEffect(() => {
+    const over = (e: PointerEvent) => {
+      const el = (e.target as Element).closest?.("[aria-haspopup]");
+      if (!el || coveredRef.current || OFF_PAGE.has(el.closest("[data-pane]")?.getAttribute("data-pane") ?? "")) return;
+      if (warm.current && performance.now() - warm.current.at < WARM_MS / 2) return;
+      warm.current = { png: grab(), at: performance.now() };
+    };
+    document.addEventListener("pointerover", over);
+    return () => document.removeEventListener("pointerover", over);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); grab reads refs
+  }, []);
+  // A still of the previous page must not stand in for the next one.
+  useEffect(() => { warm.current = null; }, [tab.seq, tab.loading]);
+
   useLayoutEffect(() => {
     leaving.delete(id);
     return () => {

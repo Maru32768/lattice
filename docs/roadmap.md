@@ -94,6 +94,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | H4 | アプリ内の戻る・進む | 済 | 画面（ライブラリ・処理状況・フィード・設定の各セクションなど）、scope と facet、フォーカスされたタブの文書の移り変わりを、上限 50 の履歴（`src/history.ts`、純粋な reducer）に積む。マウスのサイドボタン（XButton1 / XButton2）、`Alt+←` / `Alt+→`（ショートカットの一覧に追加）、タイトルバーの ‹ › で戻る・進む。ページにフォーカスがあるときのサイドボタンと Alt+矢印はページ自身の履歴（WebView2 の既定。overlay は転送しない）。 |
 | H5 | 処理状況の job の説明 | 済 | 種類ごとに ⓘ（`InfoTip`）。hover とキーボードのフォーカスで何をする job かの tooltip を出し、Esc で閉じる。文は ⓘ の `aria-describedby`。ja / en。 |
 | H6 | CSS の細部 | 済 | 押せるもの（button・select・summary・タブ・チェックボックス・ファイル選択を開く label）は `cursor: pointer`、disabled は `not-allowed`（title はそのまま）。ボタンの文字の上寄りは計測して直した（下の design-review）。サイドバーと記事一覧は `user-select: none`（入力欄は選べる）。 |
+| H8 | ⋯ メニューが遅い・文字が後から出る | 済 | 測ると原因は 3 つ。メニューが開くたびに overlay の矩形の state で App 全体が同期で描き直されていた（58〜66 ms → 3〜6 ms、矩形は Page の view だけが購読する store に移した）。日本語フォントの subset を初めて使う文字の時に読み込んでいた（起動後の idle で UI の文言の分を読み込む）。Page ではページの静止画を撮り終えるまでメニューが webview の下にあった（ポインタが ⋯ などに乗った時点で撮り始める）。 |
 
 ## 3. 要件定義の未実装項目
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -22,7 +22,7 @@ import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
-import { ContextMenu, CoverContext, menuPoint, useCover, type MenuItem } from "./Popover";
+import { ContextMenu, CoverContext, coverRect, menuPoint, openOverlays, useCover, type MenuItem } from "./Popover";
 import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
@@ -160,12 +160,6 @@ export default function App() {
   const [jobFailures, setJobFailures] = useState(0);
   const [reviewDue, setReviewDue] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  /** Rectangles of open overlays (popovers, menus, palette); the page webviews hide under them. */
-  const [overlays, setOverlays] = useState<DOMRect[]>([]);
-  const cover = useCallback((r: DOMRect) => {
-    setOverlays((o) => [...o, r]);
-    return () => setOverlays((o) => o.filter((x) => x !== r));
-  }, []);
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
@@ -981,8 +975,8 @@ export default function App() {
     back: () => goHistory(-1),
     forward: () => goHistory(1),
   };
-  const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
-  keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
+  const keyState = useRef({ actions, paneKey, prefix });
+  keyState.current = { actions, paneKey, prefix };
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.isComposing) return;
@@ -995,7 +989,7 @@ export default function App() {
         return;
       }
       // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
-      if ((key === "ContextMenu" || key === "Shift+F10") && !s.overlays) {
+      if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
         const on = (e.target as Element).closest?.<HTMLElement>(".row[data-id], [role='tab'][data-tab]") ?? document.querySelector<HTMLElement>(".row.cur");
         if (!on) return;
         e.preventDefault();
@@ -1006,7 +1000,7 @@ export default function App() {
       const action = actionFor(getBindings(), key);
       if (!action) return;
       // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
-      if (s.overlays && action.id !== "palette") return;
+      if (openOverlays() && action.id !== "palette") return;
       const t = e.target as HTMLElement;
       // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
       if (t.closest("[aria-roledescription='sortable']")) return;
@@ -1036,7 +1030,7 @@ export default function App() {
         return;
       }
       const action = actionFor(getBindings(), key);
-      if (!action || (s.overlays && action.id !== "palette")) return;
+      if (!action || (openOverlays() && action.id !== "palette")) return;
       if (LEAVES_PAGE.has(action.id)) void focusApp();
       s.actions[action.id]();
     };
@@ -1105,7 +1099,7 @@ export default function App() {
     if (tab.kind === "page") {
       const saved = savedOf(tab);
       return (
-        <BrowserView key={tab.id} tab={tab} saved={saved} saving={saving === tab.id} lang={pageLang} overlays={overlays}
+        <BrowserView key={tab.id} tab={tab} saved={saved} saving={saving === tab.id} lang={pageLang}
           onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(tab)}
           onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
           onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
@@ -1136,7 +1130,7 @@ export default function App() {
 
   if (HOST.kind === "chat") {
     return (
-      <CoverContext.Provider value={cover}>
+      <CoverContext.Provider value={coverRect}>
         <div className="shell">
           <TitleBar />
           <div className="app solo" data-kb-pane={kbPane ?? undefined}>
@@ -1147,7 +1141,7 @@ export default function App() {
     );
   }
   return (
-    <CoverContext.Provider value={cover}>
+    <CoverContext.Provider value={coverRect}>
       <div className="shell">
         <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} />
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}

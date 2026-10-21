@@ -1,12 +1,31 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { listStep } from "./keys";
 
 /**
  * The Page view's native webview is drawn above all app DOM, so every app overlay reports its
- * rectangle here; the Page view hides the webview while one of them intersects it.
- * Returns the function that withdraws the report.
+ * rectangle here; the Page view hides the webview while one of them intersects it. Kept outside
+ * React state so opening a menu re-renders only the Page views, not the whole app (H8).
  */
-export const CoverContext = createContext<(r: DOMRect) => () => void>(() => () => {});
+let rects: DOMRect[] = [];
+const watchers = new Set<() => void>();
+const changed = (next: DOMRect[]) => {
+  rects = next;
+  watchers.forEach((w) => w());
+};
+/** Reports an overlay's rectangle; returns the function that withdraws it. */
+export function coverRect(r: DOMRect) {
+  changed([...rects, r]);
+  return () => changed(rects.filter((x) => x !== r));
+}
+export const CoverContext = createContext<(r: DOMRect) => () => void>(coverRect);
+/** How many overlays are open now. */
+export const openOverlays = () => rects.length;
+export function useOverlays() {
+  return useSyncExternalStore((w) => {
+    watchers.add(w);
+    return () => watchers.delete(w);
+  }, () => rects);
+}
 
 export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean) {
   const cover = useContext(CoverContext);
