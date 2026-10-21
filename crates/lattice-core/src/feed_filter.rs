@@ -625,7 +625,7 @@ mod tests {
         assert!(validate(Filter { min_relevance: Some(6), ..Filter::default() }).is_err());
 
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed", None).unwrap();
         let own = Filter { llm: true, ..Filter::default() };
         save(&s, Some(feed), own.clone()).unwrap();
         assert_eq!((load(&s, Some(feed)).unwrap(), load(&s, None).unwrap()), (own, Filter::default()));
@@ -675,7 +675,7 @@ mod tests {
     #[test]
     fn a_poll_keeps_rejected_entries_with_their_reason_and_never_judges_them_again() {
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed", None).unwrap();
         save(&s, None, only(vec![rule(Field::Title, Action::Exclude, "sponsored")])).unwrap();
         let entries = [entry("https://blog.dev/a", "Rust"), entry("https://blog.dev/b", "Sponsored post")];
         assert_eq!(crate::feeds::import(&s, feed, &entries).unwrap(), 1);
@@ -713,7 +713,7 @@ mod tests {
     #[tokio::test]
     async fn the_llm_judges_what_the_rules_let_through_and_fails_open() {
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed", None).unwrap();
         save(
             &s,
             Some(feed),

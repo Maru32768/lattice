@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-opml"
+description = "Enables the export_opml command without any pre-configured scope."
+commands.allow = ["export_opml"]
+
+[[permission]]
+identifier = "deny-export-opml"
+description = "Denies the export_opml command without any pre-configured scope."
+commands.deny = ["export_opml"]

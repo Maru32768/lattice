@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, siteOf, type ArticleRow, type FeedRow, type GroupRow } from "./api";
+import { api, siteOf, type ArticleRow, type FeedRow, type FolderRow, type GroupRow } from "./api";
 import { feedName } from "./groups";
 import { activeDims, countBy, facetLabel, genreSwatch, groupName, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
@@ -69,12 +69,13 @@ function Hl({ text, q }: { text: string; q: string }) {
 const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg">{children}</span>;
 
 /** Ctrl K: one input for commands, articles, filters, URLs and search (Palette board). */
-export function Palette({ initial, all, shown, feeds, groups, scope, facets, actions, onClose }: {
+export function Palette({ initial, all, shown, feeds, folders, groups, scope, facets, actions, onClose }: {
   initial: string;
   all: ArticleRow[];
   /** The list as currently filtered, for "現在の集合で N 件". */
   shown: ArticleRow[];
   feeds: FeedRow[];
+  folders: FolderRow[];
   groups: GroupRow[];
   scope: Scope;
   facets: Facets;
@@ -116,6 +117,7 @@ export function Palette({ initial, all, shown, feeds, groups, scope, facets, act
     { label: t("palette.showAll"), keys: "all", icon: "all", run: () => actions.scope({ kind: "all" }) },
     ...genreCounts.map(([g]): Command => ({ label: t("palette.genreCommand", { name: g ?? t("common.unclassified") }), keys: `genre ${g ?? t("common.unclassified")}`, icon: "filter", run: () => actions.scope({ kind: "genre", name: g }) })),
     ...feeds.map((f): Command => ({ label: t("palette.sourceCommand", { name: feedName(f) }), keys: `source feed ${feedName(f)} ${f.title ?? ""} ${f.url}`, icon: "rss", run: () => actions.scope({ kind: "feed", id: f.id }) })),
+    ...folders.map((f): Command => ({ label: t("palette.folderCommand", { name: f.name }), keys: `source folder ${t("common.folder")} ${f.name}`, icon: "folder", run: () => actions.scope({ kind: "folder", id: f.id }) })),
     { label: t("palette.sourceCommand", { name: t("common.manual") }), keys: `source manual ${t("common.manual")}`, icon: "manual", run: () => actions.scope({ kind: "feed", id: null }) },
     ...groups.map((g): Command => ({ label: t("palette.groupCommand", { name: g.name }), keys: `group ${t("common.group")} ${g.name}`, icon: "folder", run: () => actions.scope({ kind: "group", id: g.id }) })),
     ...(actions.addToGroup ? [{ label: t("palette.addToGroup"), keys: `add group ${t("common.group")}`, icon: "folder", run: actions.addToGroup } as Command] : []),
@@ -133,7 +135,7 @@ export function Palette({ initial, all, shown, feeds, groups, scope, facets, act
     { label: t("common.importMarkdown"), keys: `markdown md import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importMarkdown },
     { label: t("palette.importPdf"), keys: `pdf paper arxiv import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importPdf },
     { label: t("palette.settings"), keys: "settings", icon: "gear", run: () => actions.screen("settings") },
-  ], [genreCounts, feeds, groups, actions, t]);
+  ], [genreCounts, feeds, folders, groups, actions, t]);
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
@@ -193,6 +195,13 @@ export function Palette({ initial, all, shown, feeds, groups, scope, facets, act
       }
     }
     if (!prefix ? text : prefix === "@") {
+      for (const f of folders.filter((x) => has(x.name)).slice(0, prefix ? 12 : LIMIT)) {
+        const ids = feeds.filter((x) => x.folder_id === f.id).map((x) => x.id);
+        const add = () => actions.facets({ ...facets, feeds: [...facets.feeds, ...ids.filter((id) => !facets.feeds.includes(id))] });
+        const n = ids.reduce((sum, id) => sum + (unreadByFeed.get(id) ?? 0), 0);
+        out.push({ group: "sources", icon: "folder", label: <Hl text={f.name} q={text} />, sub: t("common.folder"),
+          right: t("palette.unreadCount", { n }), run: () => actions.scope({ kind: "folder", id: f.id }), stack: add });
+      }
       const sources: [number | null, string][] = [...feeds.map((f): [number, string] => [f.id, feedName(f)]), [null, t("common.manual")]];
       for (const [id, name] of sources.filter(([, name]) => has(name)).slice(0, prefix ? 12 : LIMIT)) {
         const add = () => actions.facets({ ...facets, feeds: facets.feeds.includes(id) ? facets.feeds : [...facets.feeds, id] });
@@ -208,7 +217,7 @@ export function Palette({ initial, all, shown, feeds, groups, scope, facets, act
       }
     }
     return out;
-  }, [raw, url, known, commands, all, shown, feeds, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
+  }, [raw, url, known, commands, all, shown, feeds, folders, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
 
   useEffect(() => setAct(0), [raw]);
   useEffect(() => { list.current?.querySelector(".it.act")?.scrollIntoView({ block: "nearest" }); }, [act]);
@@ -245,7 +254,7 @@ export function Palette({ initial, all, shown, feeds, groups, scope, facets, act
     }
   }
 
-  const where = [scopeLabel(scope, all, groups, t), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
+  const where = [scopeLabel(scope, all, groups, t, folders), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
   let lastGroup: Item["group"] | "" = "";
   return (
     <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

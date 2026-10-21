@@ -1,17 +1,17 @@
 // Sample library for the mock backend: specs import it to compute what the UI should show.
-import type { ArticleRow, Block, ChatMessage, ChatThread, FeedFilter, FeedRow, GroupRow, JobOverview, JobRow, Quiz, QuizQuestion, QuizReviewItem, RejectedEntry, ReviewItem, VocabEntry } from "../src/api.ts";
+import type { ArticleRow, Block, ChatMessage, ChatThread, FeedFilter, FeedRow, FolderRow, GroupRow, JobOverview, JobRow, Quiz, QuizQuestion, QuizReviewItem, RejectedEntry, ReviewItem, VocabEntry } from "../src/api.ts";
 
 /** The clock every spec runs at (`page.clock.setFixedTime`), so 最近追加 is stable. */
 export const NOW = Date.parse("2026-10-20T03:00:00Z");
 const daysAgo = (d: number) => new Date(NOW - d * 86_400_000 - 3_600_000).toISOString();
 
 export const FEEDS: FeedRow[] = [
-  { id: 1, url: "https://postgresweekly.com/rss/", title: "Postgres Weekly", custom_title: null, has_icon: false, site_url: "https://postgresweekly.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
-  { id: 2, url: "https://netflixtechblog.com/feed", title: "Netflix TechBlog", custom_title: null, has_icon: false, site_url: "https://netflixtechblog.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
-  { id: 3, url: "https://web.dev/feed.xml", title: "web.dev", custom_title: null, has_icon: false, site_url: "https://web.dev", last_fetched_at: daysAgo(1), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
-  { id: 4, url: "https://zenn.dev/feed", title: "Zenn トレンド", custom_title: "Zenn", has_icon: false, site_url: "https://zenn.dev", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
-  { id: 5, url: "https://blog.rust-lang.org/feed.xml", title: "Rust Blog", custom_title: null, has_icon: false, site_url: "https://blog.rust-lang.org", last_fetched_at: daysAgo(2), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null },
-  { id: 6, url: "https://lwn.net/headlines/rss", title: "LWN.net", custom_title: null, has_icon: false, site_url: "https://lwn.net", last_fetched_at: daysAgo(3), last_error: "HTTP 503 Service Unavailable", article_count: 0, rejected: 0, filtered: false, filter_note: null },
+  { id: 1, url: "https://postgresweekly.com/rss/", title: "Postgres Weekly", custom_title: null, has_icon: false, site_url: "https://postgresweekly.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
+  { id: 2, url: "https://netflixtechblog.com/feed", title: "Netflix TechBlog", custom_title: null, has_icon: false, site_url: "https://netflixtechblog.com", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
+  { id: 3, url: "https://web.dev/feed.xml", title: "web.dev", custom_title: null, has_icon: false, site_url: "https://web.dev", last_fetched_at: daysAgo(1), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
+  { id: 4, url: "https://zenn.dev/feed", title: "Zenn トレンド", custom_title: "Zenn", has_icon: false, site_url: "https://zenn.dev", last_fetched_at: daysAgo(0), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
+  { id: 5, url: "https://blog.rust-lang.org/feed.xml", title: "Rust Blog", custom_title: null, has_icon: false, site_url: "https://blog.rust-lang.org", last_fetched_at: daysAgo(2), last_error: null, article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
+  { id: 6, url: "https://lwn.net/headlines/rss", title: "LWN.net", custom_title: null, has_icon: false, site_url: "https://lwn.net", last_fetched_at: daysAgo(3), last_error: "HTTP 503 Service Unavailable", article_count: 0, rejected: 0, filtered: false, filter_note: null, folder_id: null, folder: null },
 ];
 
 const FEED_DOMAIN: Record<number, string> = { 1: "postgresweekly.com", 2: "netflixtechblog.com", 3: "web.dev", 4: "zenn.dev", 5: "blog.rust-lang.org" };
@@ -101,6 +101,7 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     difficulty_manual: false,
     feed_id: feedId,
     feed_title: f ? (f.custom_title ?? f.title) : null,
+    folder_id: null,
     thin: false,
     from_feed: false,
     pdf: false,
@@ -111,6 +112,9 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
   };
 });
 for (const f of FEEDS) f.article_count = ARTICLES.filter((a) => a.feed_id === f.id).length;
+
+/** Feed folders (H25): none until a spec makes them. */
+export const FOLDERS: FolderRow[] = [];
 
 /** User-made groups (G53); `count` is filled from the memberships below. */
 export const GROUPS: GroupRow[] = [

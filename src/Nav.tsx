@@ -1,10 +1,10 @@
 import { useState } from "react";
-import type { FeedRow, GroupRow } from "./api";
-import { feedName } from "./groups";
+import type { FeedRow, FolderRow, GroupRow } from "./api";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Icon, type IconName } from "./Icon";
-import { Favicon, hostOf } from "./Favicon";
 import { NavGroups } from "./NavGroups";
+import { NavFolders } from "./NavFolders";
+import type { MenuItem } from "./Popover";
 import { useT, type PlainKey } from "./i18n";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review" | "vocab";
@@ -21,7 +21,6 @@ export interface NavCounts {
 }
 
 const GENRES_SHOWN = 6;
-const FEEDS_SHOWN = 5;
 const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
   [{ kind: "recent" }, "library.recent", "recent", "recent"],
   [{ kind: "unread" }, "common.unread", "unread", "unread"],
@@ -31,13 +30,14 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
-  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse, importantMin }: {
+export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
+  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onRenameFolder, onDeleteFolder, onMenu, onCollapse, importantMin }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
   counts: NavCounts;
   feeds: FeedRow[];
+  folders: FolderRow[];
   groups: GroupRow[];
   jobFailures: number;
   /** Cards in today's review queue. */
@@ -53,6 +53,10 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   onCreateGroup: (name: string) => void;
   onRenameGroup: (id: number, name: string) => void;
   onDeleteGroup: (id: number) => void;
+  onRenameFolder: (id: number, name: string) => void;
+  onDeleteFolder: (id: number) => void;
+  /** Sets the app's context menu items (a folder row's menu). */
+  onMenu: (items: MenuItem[]) => void;
   onCollapse: () => void;
   /** The lowest score in 重要; null hides it (no 「自分について」 profile and nothing scored). */
   importantMin: number | null;
@@ -60,7 +64,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   const t = useT();
   const [allGenres, setAllGenres] = useState(false);
   const [feedsOpen, setFeedsOpen] = useState(true);
-  const [allFeeds, setAllFeeds] = useState(false);
   const on = (s: Scope) => (scope && sameScope(scope, s) ? " on" : "");
   const item = (s: Scope, label: React.ReactNode, count: number, lead: React.ReactNode, extra = "") => (
     <button key={JSON.stringify(s)} className={`ni${on(s)}${extra}`} onClick={() => onScope(s)} aria-current={on(s) ? "page" : undefined}>
@@ -73,7 +76,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
     </button>
   );
   const genres = allGenres ? counts.genres : counts.genres.slice(0, GENRES_SHOWN);
-  const shownFeeds = allFeeds ? feeds : feeds.slice(0, FEEDS_SHOWN);
 
   return (
     <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
@@ -105,12 +107,8 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
       </button>
       {feedsOpen && (
         <div className="nav-sub">
-          {shownFeeds.map((f) => item({ kind: "feed", id: f.id }, feedName(f), counts.feedUnread.get(f.id) ?? 0, <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />, " sub"))}
-          {feeds.length > FEEDS_SHOWN && (
-            <button className="ni sub dim" onClick={() => setAllFeeds((v) => !v)} aria-expanded={allFeeds}>
-              {allFeeds ? t("nav.collapse") : t("nav.allFeeds")}
-            </button>
-          )}
+          <NavFolders feeds={feeds} folders={folders} unread={counts.feedUnread} scope={scope} onScope={onScope}
+            onRename={onRenameFolder} onDelete={onDeleteFolder} onMenu={onMenu} />
         </div>
       )}
       {item({ kind: "feed", id: null }, t("common.manual"), counts.manual, <Icon name="manual" />)}

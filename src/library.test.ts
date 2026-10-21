@@ -9,7 +9,7 @@ const row = (id: number, p: Partial<ArticleRow> = {}): ArticleRow => ({
   id, original_url: `https://x.dev/${id}`, canonical_url: null, domain: "x.dev", title: `T${id}`, author: null, site_name: null,
   published_at: null, language: null, saved_at: "2026-10-16T00:00:00.000Z", fetch_status: "ok", extraction_status: "ok",
   last_error: null, read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null,
-  difficulty_manual: false, feed_id: null, feed_title: null, thin: false, relevance: null, relevance_reason: null, relevance_stale: false, ...p,
+  difficulty_manual: false, feed_id: null, feed_title: null, folder_id: null, thin: false, relevance: null, relevance_reason: null, relevance_stale: false, ...p,
 });
 const all = [
   row(1, { genre: "Database", tags: ["postgres", "mvcc"], feed_id: 7, feed_title: "Planet PostgreSQL", difficulty: 4, groups: [1, 2] }),
@@ -106,4 +106,12 @@ test("kept: an article read while listed stays in that view only", () => {
   assert.deepEqual(ids(listed(read1, { kind: "all" }, state, NOW, k2).shown), [1, 3, 4], "状態=未読 keeps it too");
   assert.deepEqual([...keep(k, viewKey(unread, NO_FACETS), 3).ids], [1, 3]);
   assert.deepEqual([...keep(k, viewKey(unread, state), 3).ids], [3], "keeping in a new view starts over");
+});
+
+test("a feed folder scope holds its feeds' articles and is named after the folder", () => {
+  const rows = [row(1, { feed_id: 7, folder_id: 3 }), row(2, { feed_id: 8, folder_id: null }), row(3)];
+  assert.deepEqual(ids(rows.filter((a) => inScope(a, { kind: "folder", id: 3 }, NOW))), [1]);
+  assert.equal(scopeLabel({ kind: "folder", id: 3 }, rows, [], ja, [{ id: 3, name: "TechFeed", feeds: 1 }]), "TechFeed");
+  assert.equal(scopeLabel({ kind: "folder", id: 9 }, rows, [], en), "Folder", "a folder deleted meanwhile");
+  assert.deepEqual(toFilter({ kind: "folder", id: 3 }), { kind: "folder", id: 3 });
 });

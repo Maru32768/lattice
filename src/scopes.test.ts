@@ -20,3 +20,10 @@ test("filter groups: empty genres dropped, 未分類/手動追加 always offered
     { kind: "genre", name: "Linux" }, { kind: "genre", name: null }, { kind: "feed", id: null }, { kind: "feed", id: 7 },
   ]);
 });
+
+test("feed folders are offered as scopes beside their feeds", () => {
+  const g = filterGroups([], [], [], [], translatorFor("en"), [{ id: 3, name: "TechFeed", feeds: 2 }]);
+  assert.deepEqual(g.find((x) => x.label === "Feed")!.options.map((o) => [o.label, parseFilterKey(o.key)]), [
+    ["Added by hand", { kind: "feed", id: null }], ["Folder: TechFeed", { kind: "folder", id: 3 }],
+  ]);
+});

@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type ArticleRow, type FeedCandidate, type FeedRow } from "./api";
+import { api, type ArticleRow, type FeedCandidate, type FeedRow, type FolderRow } from "./api";
 import { relTime } from "./time";
 import { Favicon, feedIconChanged, hostOf } from "./Favicon";
 import { FilterEditor, RejectedList } from "./FeedFilterEditor";
+import { FeedFoldersCard } from "./FeedFoldersCard";
+import { feedUrls } from "./feedFolders";
 import "./manage.css";
 import { useT } from "./i18n";
 
@@ -73,6 +75,11 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
 }) {
   const t = useT();
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
+  const [folders, setFolders] = useState<FolderRow[]>([]);
+  /** The folder new subscriptions go into. */
+  const [addFolder, setAddFolder] = useState<number | null>(null);
+  /** Feeds ticked for 「フォルダへ移動」. */
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   const [url, setUrl] = useState(initialUrl ?? "");
   const [candidates, setCandidates] = useState<FeedCandidate[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -84,7 +91,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
   const [confirming, setConfirming] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
 
-  const load = () => api.listFeeds().then(setFeeds).catch((e) => setError(String(e)));
+  const load = () => Promise.all([api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders)]).catch((e) => setError(String(e)));
   useEffect(() => {
     void load();
     if (initialUrl?.trim()) void detect(initialUrl);
@@ -121,7 +128,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
   const subscribe = () => {
     const c = candidates.find((x) => x.url === picked);
     if (c) void run(async () => {
-      await api.addFeed(c.url);
+      await api.addFeed(c.url, addFolder);
       const rest = candidates.filter((x) => x.url !== c.url);
       setCandidates(rest);
       setPicked(rest[0]?.url ?? null);
@@ -130,22 +137,42 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
     });
   };
 
-  // OPML: subscriptions are the outline elements' xmlUrl attributes.
-  const importOpml = (file: File | undefined) => file && run(async () => {
-    const urls = [...(await file.text()).matchAll(/xmlUrl\s*=\s*"([^"]+)"/gi)].map((m) => m[1].replace(/&amp;/g, "&"));
+  /** Subscribes to each feed in turn, reporting progress; a failed one does not stop the rest. */
+  async function addAll(list: { url: string; folder: number | null }[]) {
     let ok = 0;
     const failed: string[] = [];
-    for (const u of urls) {
-      setStatus(t("feedsView.adding", { x: ok + failed.length + 1, length: urls.length }));
+    for (const f of list) {
+      setStatus(t("feedsView.adding", { x: ok + failed.length + 1, length: list.length }));
       try {
-        await api.addFeed(u);
+        await api.addFeed(f.url, f.folder);
         ok++;
       } catch {
-        failed.push(u);
+        failed.push(f.url);
       }
     }
-    return t("feedsView.opmlDone", { total: urls.length, ok }) + (failed.length ? t("feedsView.opmlFailed", { urls: failed.join(", ") }) : "");
+    return t("feedsView.opmlDone", { total: list.length, ok }) + (failed.length ? t("feedsView.opmlFailed", { urls: failed.join(", ") }) : "");
+  }
+
+  // OPML: the backend reads the feeds and makes their outline folders; each is then subscribed.
+  const importOpml = (file: File) => run(async () => addAll(await api.importOpml(await file.text())));
+  const exportOpml = () => run(async () => t("feedsView.exportedOpml", { path: await api.exportOpml() }));
+
+  // Several URLs, one per line: each is taken as a feed URL (TechFeed's per-channel feeds) and subscribed as is.
+  const urls = feedUrls(url);
+  const addMany = () => run(async () => {
+    setCandidates([]);
+    const done = await addAll(urls.map((u) => ({ url: u, folder: addFolder })));
+    setUrl("");
+    return done;
   });
+  const move = (ids: number[], folder: number | null) => run(async () => {
+    await api.moveFeedsToFolder(ids, folder);
+    setSelected(new Set());
+    const name = folders.find((f) => f.id === folder)?.name;
+    return name == null ? t("feedsView.movedOut", { n: ids.length }) : t("feedsView.moved", { n: ids.length, folder: name });
+  });
+  const folderOptions = folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>);
+  const pickFolder = (v: string) => (v === "" ? null : Number(v));
 
   const refreshAll = () => run(async () => t("feedsView.refreshed", { x: await api.refreshFeeds() }));
 
@@ -183,8 +210,12 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
             <label className="btn lg">
               <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5" /><path d="M4 19h16" /></svg>
               {t("feedsView.opml")}
-              <input type="file" className="vh" accept=".opml,.xml" disabled={busy} onChange={(e) => importOpml(e.target.files?.[0])} />
+              <input type="file" className="vh" accept=".opml,.xml" disabled={busy} onChange={(e) => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void importOpml(file); }} />
             </label>
+            <button className="btn lg" onClick={exportOpml} disabled={busy || feeds.length === 0}>
+              <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5" /><path d="M4 19h16" /></svg>
+              {t("feedsView.exportOpml")}
+            </button>
             <button className="btn lg" onClick={refreshAll} disabled={busy || feeds.length === 0}>
               <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12a7 7 0 1 1-2.1-5" /><path d="M19 4v4h-4" /></svg>
               {t("feedsView.refreshAll")}
@@ -192,12 +223,27 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
           </div>
         </header>
 
-        <form className="card add" aria-label={t("feedsView.add")} onSubmit={(e) => { e.preventDefault(); if (url.trim()) void detect(url); }}>
+        <form className="card add" aria-label={t("feedsView.add")} onSubmit={(e) => {
+          e.preventDefault();
+          if (urls.length > 1) void addMany();
+          else if (url.trim()) void detect(url);
+        }}>
           <label htmlFor="feed-url">{t("feedsView.detectHint")}</label>
           <div className="line">
-            <input id="feed-url" className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t("feedsView.urlPlaceholder")} spellCheck={false} />
-            <button type="submit" className="btn pri lg" disabled={busy || !url.trim()}>{t("feedsView.detect")}</button>
+            <textarea id="feed-url" className="input mono" rows={Math.min(8, url.split("\n").length)} value={url} onChange={(e) => setUrl(e.target.value)}
+              placeholder={t("feedsView.urlPlaceholder")} spellCheck={false}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
+            {folders.length > 0 && (
+              <select className="select" value={addFolder ?? ""} onChange={(e) => setAddFolder(pickFolder(e.target.value))} aria-label={t("feedsView.addFolder")}>
+                <option value="">{t("feedsView.noFolder")}</option>
+                {folderOptions}
+              </select>
+            )}
+            <button type="submit" className="btn pri lg" disabled={busy || urls.length === 0}>
+              {urls.length > 1 ? t("feedsView.subscribeAll", { n: urls.length }) : t("feedsView.detect")}
+            </button>
           </div>
+          <span className="fs">{t("feedsView.manyHint")}</span>
           {candidates.length > 0 && (
             <fieldset className="cands">
               <legend>{t("feedsView.candidates", { length: candidates.length })}</legend>
@@ -213,6 +259,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
           )}
         </form>
         {status && <p role="status" className="msg muted">{status}</p>}
+        <FeedFoldersCard folders={folders} onChanged={() => { void load(); onChanged(); }} onError={(e) => setError(String(e))} />
         {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
 
         <div className="filter">
@@ -221,15 +268,30 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
           <label htmlFor="feed-filter" className="vh">{t("feedsView.filter")}</label>
           <input id="feed-filter" className="input sm" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("feedsView.filterPlaceholder")} />
         </div>
+        {selected.size > 0 && (
+          <div className="filter bulk" role="group" aria-label={t("feedsView.selected", { n: selected.size })}>
+            <span>{t("feedsView.selected", { n: selected.size })}</span>
+            <select className="select" value="" disabled={busy} aria-label={t("feedsView.moveTo")}
+              onChange={(e) => { if (e.target.value !== "") void move([...selected], e.target.value === "none" ? null : Number(e.target.value)); }}>
+              <option value="">{t("feedsView.moveTo")}</option>
+              <option value="none">{t("feedsView.noFolder")}</option>
+              {folderOptions}
+            </select>
+            <button className="btn sm ghost" onClick={() => setSelected(new Set())}>{t("feedsView.clearSelection")}</button>
+          </div>
+        )}
 
         <div className="card scroll">
           <table className="tbl">
-            <thead><tr><th>{t("common.feed")}</th><th>{t("jobsView.state")}</th><th>{t("feedsView.updated")}</th><th className="num">{t("feedsView.unreadTotal")}</th><th><span className="vh">{t("common.actions")}</span></th></tr></thead>
+            <thead><tr>
+              <th className="pick"><input type="checkbox" aria-label={t("feedsView.selectAll")} checked={shown.length > 0 && shown.every((f) => selected.has(f.id))}
+                onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((f) => f.id)) : new Set())} /></th>
+              <th>{t("common.feed")}</th><th>{t("common.folder")}</th><th>{t("jobsView.state")}</th><th>{t("feedsView.updated")}</th><th className="num">{t("feedsView.unreadTotal")}</th><th><span className="vh">{t("common.actions")}</span></th></tr></thead>
             <tbody>
-              {shown.length === 0 && <tr><td colSpan={5} className="muted">{feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}</td></tr>}
+              {shown.length === 0 && <tr><td colSpan={7} className="muted">{feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}</td></tr>}
               {shown.map((f) => confirming === f.id ? (
                 <tr key={f.id} className="confirm">
-                  <td colSpan={5}>
+                  <td colSpan={7}>
                     <div className="confirm-line">
                       <div>
                         <div className="fn">{t("feedsView.confirmDelete", { feedName: feedName(f) })}</div>
@@ -244,7 +306,16 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 </tr>
               ) : [
                 <tr key={f.id} className={f.last_error ? "err" : undefined}>
+                  <td className="pick"><input type="checkbox" aria-label={t("feedsView.selectFeed", { feedName: feedName(f) })} checked={selected.has(f.id)}
+                    onChange={(e) => setSelected((cur) => { const n = new Set(cur); if (e.target.checked) n.add(f.id); else n.delete(f.id); return n; })} /></td>
                   <td><div className="fn with-ico"><Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />{feedName(f)}</div><div className="fs">{bare(f.url)}</div></td>
+                  <td>
+                    <select className="select" value={f.folder_id ?? ""} disabled={busy} aria-label={t("feedsView.folderOf", { feedName: feedName(f) })}
+                      onChange={(e) => void move([f.id], pickFolder(e.target.value))}>
+                      <option value="">{t("feedsView.noFolder")}</option>
+                      {folderOptions}
+                    </select>
+                  </td>
                   <td>
                     {f.last_error ? <span className="st err"><i />{t.msg(f.last_error)}</span> : <span className="st"><i />{t("feedsView.ok")}</span>}
                     {f.filter_note && <div className="st warn">{t.msg(f.filter_note)}</div>}
@@ -265,7 +336,7 @@ export function FeedsView({ articles, onChanged, onShowFeed, initialUrl }: {
                 </tr>,
                 editing === f.id && (
                   <tr key={`${f.id}-edit`} className="edit">
-                    <td colSpan={5}>
+                    <td colSpan={7}>
                       <div className="feed-edit">
                         <FeedEditor feed={f} onSaved={() => { void load(); onChanged(); }} />
                         <FilterEditor feedId={f.id} onSaved={() => { void load(); onChanged(); }} />

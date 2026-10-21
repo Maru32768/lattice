@@ -44,6 +44,9 @@ pub struct FeedRow {
     pub filtered: bool,
     /// Why the LLM filter last let entries through unjudged (it fails open).
     pub filter_note: Option<String>,
+    /// The feed's folder (feed_folders.rs), and its name.
+    pub folder_id: Option<i64>,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -180,8 +183,8 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
     Ok(Vec::new())
 }
 
-/// Returns the feed id and whether it is new.
-pub fn add(store: &Store, url: &str) -> Result<(i64, bool), String> {
+/// Returns the feed id and whether it is new. A `folder` puts the feed in it, new or not.
+pub fn add(store: &Store, url: &str, folder: Option<i64>) -> Result<(i64, bool), String> {
     let url = url.trim();
     let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -190,6 +193,9 @@ pub fn add(store: &Store, url: &str) -> Result<(i64, bool), String> {
     let c = store.conn();
     let created = c.execute("INSERT INTO feeds (url) VALUES (?1) ON CONFLICT(url) DO NOTHING", [url]).map_err(err)? == 1;
     let id = c.query_row("SELECT id FROM feeds WHERE url = ?1", [url], |r| r.get(0)).map_err(err)?;
+    if folder.is_some() {
+        c.execute("UPDATE feeds SET folder_id = ?2 WHERE id = ?1", params![id, folder]).map_err(crate::feed_folders::not_found)?;
+    }
     Ok((id, created))
 }
 
@@ -203,7 +209,8 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
         .prepare(
             "SELECT id, url, title, site_url, last_fetched_at, last_error, (SELECT count(*) FROM articles WHERE feed_id = feeds.id),
                     custom_title, icon IS NOT NULL,
-                    (SELECT count(*) FROM feed_items WHERE feed_id = feeds.id AND filter_status = 'rejected'), filter IS NOT NULL, filter_note
+                    (SELECT count(*) FROM feed_items WHERE feed_id = feeds.id AND filter_status = 'rejected'), filter IS NOT NULL, filter_note,
+                    folder_id, (SELECT name FROM feed_folders WHERE id = feeds.folder_id)
              FROM feeds ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE",
         )
         .map_err(err)?;
@@ -221,6 +228,8 @@ pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
             rejected: r.get(9)?,
             filtered: r.get(10)?,
             filter_note: r.get(11)?,
+            folder_id: r.get(12)?,
+            folder: r.get(13)?,
         })
     })
     .map_err(err)?
@@ -552,7 +561,7 @@ mod tests {
         let early_id = s.list_articles(&ArticleFilter::All).unwrap()[0].id;
         ingest::store_fetched(&s, early_id, &page("https://blog.dev/early", "")).unwrap();
 
-        let (feed, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         let dated = |url: &str, d: &str| Entry { url: url.to_string(), published: Some(d.to_string()), ..Default::default() };
         let entries = [
             dated("https://blog.dev/early", "2024-01-01T00:00:00Z"),
@@ -597,7 +606,7 @@ mod tests {
     fn refused_pages_fall_back_to_the_feed_text_or_a_render() {
         use crate::render;
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         let entries = parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries;
         assert_eq!(import(&s, feed, &entries).unwrap(), 2);
         let rows = s.list_articles(&ArticleFilter::All).unwrap();
@@ -638,7 +647,7 @@ mod tests {
     #[test]
     fn articles_that_failed_before_the_feed_text_was_kept_recover_once() {
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         let old = parse(blocked_feed(false).as_bytes(), "https://blog.dev/feed").unwrap().entries;
         import(&s, feed, &old).unwrap();
         while let Some(j) = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap() {
@@ -667,7 +676,7 @@ mod tests {
     #[test]
     fn an_article_that_failed_while_its_feed_text_was_being_stored_is_retried() {
         let s = Store::open_in_memory().unwrap();
-        let (feed, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         import(&s, feed, &parse(blocked_feed(false).as_bytes(), "https://blog.dev/feed").unwrap().entries).unwrap();
         while let Some(j) = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap() {
             ingest::store_fetch_result(&s, j.article_id.unwrap(), Err("HTTP 403 Forbidden".into())).unwrap();
@@ -684,7 +693,7 @@ mod tests {
     #[test]
     fn names_and_icons_override_the_feeds_own() {
         let s = Store::open_in_memory().unwrap();
-        let (id, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (id, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         import(&s, id, &[entry("https://blog.dev/p")]).unwrap();
         mark_fetched(&s, id, Some(&Parsed { title: Some("Blog".into()), ..Default::default() }), None, None).unwrap();
         let shown = || (list(&s).unwrap()[0].custom_title.clone(), s.list_articles(&ArticleFilter::All).unwrap()[0].feed_title.clone());
@@ -714,7 +723,7 @@ mod tests {
     #[test]
     fn an_entry_listed_twice_in_one_poll_is_queued_once() {
         let s = Store::open_in_memory().unwrap();
-        let (id, _) = add(&s, "https://blog.dev/feed").unwrap();
+        let (id, _) = add(&s, "https://blog.dev/feed", None).unwrap();
         let entries = [entry("https://blog.dev/p?utm_source=rss"), entry("https://blog.dev/p#top"), entry("https://blog.dev/q")];
         assert_eq!(import(&s, id, &entries).unwrap(), 2);
         assert_eq!(s.list_articles(&ArticleFilter::All).unwrap().len(), 2);
@@ -724,9 +733,9 @@ mod tests {
     #[test]
     fn imports_only_unseen_entries_and_caps_first_import() {
         let s = Store::open_in_memory().unwrap();
-        assert!(add(&s, "file:///etc/passwd").is_err());
-        let (id, created) = add(&s, "https://blog.dev/feed").unwrap();
-        assert!(created && !add(&s, " https://blog.dev/feed ").unwrap().1);
+        assert!(add(&s, "file:///etc/passwd", None).is_err());
+        let (id, created) = add(&s, "https://blog.dev/feed", None).unwrap();
+        assert!(created && !add(&s, " https://blog.dev/feed ", None).unwrap().1);
 
         let entries: Vec<Entry> = (0..FIRST_IMPORT + 5).map(|i| entry(&format!("https://blog.dev/p{i}"))).collect();
         assert_eq!(import(&s, id, &entries).unwrap(), FIRST_IMPORT, "newest entries only");

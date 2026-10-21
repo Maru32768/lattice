@@ -96,6 +96,22 @@ fn reads_the_library() {
 }
 
 #[test]
+fn a_folder_scopes_to_its_feeds_and_feeds_name_their_folder() {
+    let (dir, _) = library("folder");
+    let s = Store::open(&dir.join("lattice.db")).unwrap();
+    let folder = lattice_core::feed_folders::create(&s, "TechFeed").unwrap();
+    let (feed, _) = lattice_core::feeds::add(&s, "https://techfeed.io/feeds/rust", Some(folder)).unwrap();
+    lattice_core::feeds::import(&s, feed, &[lattice_core::feeds::Entry { url: "https://techfeed.io/e/1".into(), ..Default::default() }]).unwrap();
+    drop(s);
+    let list = ok(&dir, &["list", "--scope", &format!("folder:{folder}")]);
+    assert_eq!((list["total"].clone(), list["articles"][0]["folder_id"].clone()), (json!(1), json!(folder)));
+    let feeds = ok(&dir, &["feeds"]);
+    assert_eq!((feeds[0]["folder_id"].clone(), feeds[0]["folder"].clone()), (json!(folder), json!("TechFeed")));
+    let text = String::from_utf8(cli(&dir, &["--format", "text", "feeds"]).stdout).unwrap();
+    assert!(text.contains("[TechFeed]"), "{text}");
+}
+
+#[test]
 fn a_question_without_sources_is_answered_without_the_llm() {
     let (dir, _) = library("ask");
     let m = ok(&dir, &["ask", "What is MVCC?", "--scope", "tag:nothing"]);

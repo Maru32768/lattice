@@ -33,7 +33,7 @@ pub enum Op {
     /// Hybrid search (full text and meaning) over the blocks of saved articles
     Search {
         query: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -55,7 +55,7 @@ pub enum Op {
     },
     /// Saved articles, newest first
     List {
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -76,7 +76,7 @@ pub enum Op {
     /// Ask a question answered from saved articles, with citations (uses the app's LLM chain)
     Ask {
         question: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -128,6 +128,7 @@ fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
         Some(("genre", name)) if !name.is_empty() => ArticleFilter::Genre { name: Some(name.into()) },
         Some(("feed", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Feed { id: id.parse().ok() },
         Some(("group", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Group { id: id.parse().map_err(err)? },
+        Some(("folder", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Folder { id: id.parse().map_err(err)? },
         Some(("important", "")) => ArticleFilter::Important { min: 4 },
         Some(("important", min)) if matches!(min.parse::<i64>(), Ok(1..=5)) => ArticleFilter::Important { min: min.parse().map_err(err)? },
         Some(("article", ids)) => {
@@ -138,7 +139,7 @@ fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
         }
         _ => {
             return Err(format!(
-                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, group:ID, important[:MIN] or article:ID[,ID...]",
+                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]",
                 scope.unwrap_or_default()
             ));
         }
@@ -267,7 +268,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
         Op::Feeds {} => {
             let feeds = feeds::list(store)?;
             let text = lines(&feeds, |f| {
-                format!("{:>4}  {}  <{}>  {} articles", f.id, f.custom_title.as_ref().or(f.title.as_ref()).unwrap_or(&f.url), f.url, f.article_count)
+                let folder = f.folder.as_ref().map(|n| format!("  [{n}]")).unwrap_or_default();
+                format!("{:>4}  {}  <{}>  {} articles{folder}", f.id, f.custom_title.as_ref().or(f.title.as_ref()).unwrap_or(&f.url), f.url, f.article_count)
             });
             Ok(Out { json: json!(feeds), text })
         }
@@ -346,11 +348,13 @@ mod tests {
         assert_eq!(f("genre:データベース"), ArticleFilter::Genre { name: Some("データベース".into()) });
         assert_eq!(f("feed:3"), ArticleFilter::Feed { id: Some(3) });
         assert_eq!(f("group:4"), ArticleFilter::Group { id: 4 });
+        assert_eq!(f("folder:5"), ArticleFilter::Folder { id: 5 });
         assert_eq!(f("important"), ArticleFilter::Important { min: 4 });
         assert_eq!(f("important:5"), ArticleFilter::Important { min: 5 });
         assert_eq!(parse_scope(Some("article:7")).unwrap(), Scope::Article { id: 7 });
         assert_eq!(parse_scope(Some("article:7,3")).unwrap(), Scope::Articles { ids: vec![7, 3] });
-        for bad in ["tag:", "feed:x", "group:", "group:x", "important:9", "article:", "article:7,", "article:7,x", "starred", "unread:1"] {
+        for bad in ["tag:", "feed:x", "folder:", "folder:x", "group:", "group:x", "important:9", "article:", "article:7,", "article:7,x", "starred", "unread:1"]
+        {
             assert!(parse_scope(Some(bad)).is_err(), "{bad}");
         }
     }

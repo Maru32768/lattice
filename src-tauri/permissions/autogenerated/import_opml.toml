@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-opml"
+description = "Enables the import_opml command without any pre-configured scope."
+commands.allow = ["import_opml"]
+
+[[permission]]
+identifier = "deny-import-opml"
+description = "Denies the import_opml command without any pre-configured scope."
+commands.deny = ["import_opml"]
