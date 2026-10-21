@@ -144,7 +144,8 @@ pub fn set_genre(store: &Store, article_id: i64, name: &str) -> Result<(), Strin
     tx.commit().map_err(err)
 }
 
-/// The user's choice, pinned against auto runs. `None` clears it and unpins it.
+/// The user's choice, pinned against auto runs. `None` clears it, unpins it and, when auto
+/// classification is on, queues the article to be estimated again.
 pub fn set_difficulty(store: &Store, article_id: i64, level: Option<i64>) -> Result<(), String> {
     if level.is_some_and(|l| !DIFFICULTIES.contains(&l)) {
         return Err(format!("difficulty must be 1-5, got {level:?}"));
@@ -155,8 +156,8 @@ pub fn set_difficulty(store: &Store, article_id: i64, level: Option<i64>) -> Res
             "UPDATE articles SET difficulty = ?2, difficulty_source = CASE WHEN ?2 IS NULL THEN NULL ELSE 'manual' END WHERE id = ?1",
             params![article_id, level],
         )
-        .map(drop)
-        .map_err(err)
+        .map_err(err)?;
+    if level.is_none() { enqueue_if_auto(store, article_id) } else { Ok(()) }
 }
 
 fn clean(s: &str) -> String {
@@ -352,12 +353,15 @@ mod tests {
         enqueue_manual(&s, ids[2]).unwrap();
         let job = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();
         run(&s, &fake, job.article_id.unwrap()).await.unwrap();
+        s.finish_job(job.id, None).unwrap();
         let row = s.article_row(ids[2]).unwrap().unwrap();
         assert_eq!((row.genre.as_deref(), row.difficulty), (Some("Database"), Some(4)));
         set_genre(&s, ids[2], " ").unwrap();
         set_difficulty(&s, ids[2], None).unwrap();
         let row = s.article_row(ids[2]).unwrap().unwrap();
         assert_eq!((row.genre, row.difficulty, row.difficulty_manual), (None, None, false));
+        let job = s.claim_next_job(&[JOB_TYPE]).unwrap().expect("Not rated re-queues despite the completed job");
+        assert_eq!(job.article_id, Some(ids[2]));
     }
 
     #[tokio::test]

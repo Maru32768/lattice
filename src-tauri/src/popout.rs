@@ -51,6 +51,10 @@ fn setting_key(label: &str) -> String {
 }
 
 fn save_geometry(app: &App, w: &Window) {
+    // shortcut: a minimized or maximized window keeps its last normal geometry; maximized is not restored, save the flag if that is missed.
+    if w.is_minimized().unwrap_or(false) || w.is_maximized().unwrap_or(false) {
+        return;
+    }
     let saved = w.outer_position().and_then(|p| w.inner_size().map(|s| Geometry { x: p.x, y: p.y, width: s.width, height: s.height }));
     let result = saved
         .map_err(err)
@@ -75,8 +79,13 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
     let Some(w) = create(&app, &loc, &label)? else {
         return app.get_window(&label).map_or(Ok(()), |w| w.set_focus().map_err(err));
     };
+    place(&app, &state, &w)
+}
+
+/// Puts window `w` where it last was; centered when that spot is on no monitor now.
+fn place(app: &AppHandle, state: &App, w: &WebviewWindow) -> Result<(), String> {
     let monitors: Vec<MonitorRect> = app.available_monitors().map_err(err)?.iter().map(|m| (*m.position(), *m.size())).collect();
-    match saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors)) {
+    match saved_geometry(state, w.label()).filter(|g| on_a_monitor(g, &monitors)) {
         Some(g) => {
             w.set_position(PhysicalPosition::new(g.x, g.y)).map_err(err)?;
             w.set_size(PhysicalSize::new(g.width, g.height)).map_err(err)?;
@@ -84,6 +93,19 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
         None => w.center().map_err(err)?,
     }
     Ok(())
+}
+
+/// Shows the (hidden) main window where it last was; at tauri.conf.json's size until it has been closed once.
+pub fn restore_main(app: &AppHandle, state: &App) {
+    let Some(w) = app.get_webview_window(MAIN) else { return };
+    if saved_geometry(state, MAIN).is_some()
+        && let Err(e) = place(app, state, &w)
+    {
+        log::warn!("restoring the main window's position: {e}");
+    }
+    if let Err(e) = w.show() {
+        log::warn!("showing the main window: {e}");
+    }
 }
 
 /// Creates pop-out `label`, hidden until `ready`. None when it is open already (asked twice before
@@ -154,8 +176,8 @@ pub async fn close_window(_app: AppHandle, state: State<'_, App>, webview: Webvi
     w.destroy().map_err(err)
 }
 
-/// The main window's close quits the app, as before pop-outs existed; the pop-outs' positions are
-/// saved first, since they go down with it (their contents are saved by the UI as they change).
+/// The main window's close quits the app, as before pop-outs existed; its position and the
+/// pop-outs' are saved first, since they go down with it (their contents are saved by the UI as they change).
 pub fn on_window_event(w: &Window, e: &WindowEvent) {
     if w.label() != MAIN {
         return;
@@ -165,7 +187,7 @@ pub fn on_window_event(w: &Window, e: &WindowEvent) {
         WindowEvent::CloseRequested { .. } => {
             if let Some(state) = app.try_state::<App>() {
                 for (label, win) in app.windows() {
-                    if is_popout(&label) {
+                    if label == MAIN || is_popout(&label) {
                         save_geometry(&state, &win);
                     }
                 }

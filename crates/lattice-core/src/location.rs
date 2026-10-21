@@ -77,8 +77,9 @@ pub fn resolve(portable: bool, exe_dir: &Path, default_dir: &Path, bootstrap: Op
     }
 }
 
-/// Resolves for this process and makes sure the folder exists; a chosen folder that cannot be
-/// created (a removed drive) falls back to the default with a warning rather than failing to start.
+/// Resolves for this process and makes sure the folder exists. A chosen folder always holds a
+/// database (choosing one copies the data there first), so one without it (moved, deleted, a
+/// removed drive) falls back to the default with a warning instead of starting an empty library.
 pub fn detect(default_dir: &Path) -> Location {
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     let portable = PORTABLE_MARKERS.iter().any(|m| exe_dir.join(m).is_file());
@@ -86,14 +87,24 @@ pub fn detect(default_dir: &Path) -> Location {
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         r => Some(r),
     };
-    let loc = resolve(portable, &exe_dir, default_dir, bootstrap);
-    match std::fs::create_dir_all(&loc.dir) {
-        Err(e) if loc.kind == Kind::Custom => Location {
-            kind: Kind::Default,
-            dir: default_dir.to_path_buf(),
-            warning: Some(msg!("location.unusable", path = loc.dir.display().to_string(), error = e.to_string())),
-        },
-        _ => loc,
+    let loc = in_use(resolve(portable, &exe_dir, default_dir, bootstrap), default_dir);
+    let _ = std::fs::create_dir_all(&loc.dir);
+    loc
+}
+
+fn in_use(loc: Location, default_dir: &Path) -> Location {
+    if loc.kind != Kind::Custom {
+        return loc;
+    }
+    let error = match std::fs::metadata(loc.dir.join(DB_FILE)) {
+        Ok(m) if m.is_file() => return loc,
+        Err(e) if e.kind() != io::ErrorKind::NotFound => e.to_string(),
+        _ => msg!("location.noData"),
+    };
+    Location {
+        kind: Kind::Default,
+        dir: default_dir.to_path_buf(),
+        warning: Some(msg!("location.unusable", path = loc.dir.display().to_string(), error = error)),
     }
 }
 
@@ -171,6 +182,24 @@ mod tests {
         assert!(!default.join(BOOTSTRAP_FILE).exists());
         write_bootstrap(&default, &default).unwrap(); // nothing to remove is fine
         std::fs::remove_dir_all(&default).unwrap();
+    }
+
+    #[test]
+    fn a_chosen_folder_without_a_database_falls_back_to_the_default() {
+        let root = temp("in-use");
+        let custom = |dir: &Path| Location { kind: Kind::Custom, dir: dir.to_path_buf(), warning: None };
+        let (chosen, default) = (root.join("chosen"), root.join("default"));
+        std::fs::create_dir_all(&chosen).unwrap();
+        for dir in [chosen.clone(), root.join("deleted")] {
+            let loc = in_use(custom(&dir), &default);
+            assert_eq!((loc.kind, loc.dir.as_path()), (Kind::Default, default.as_path()), "{dir:?}");
+            assert!(loc.warning.as_deref().is_some_and(|w| w.contains("location.unusable") && w.contains("location.noData")), "{loc:?}");
+        }
+        std::fs::write(chosen.join(DB_FILE), "").unwrap();
+        assert_eq!(in_use(custom(&chosen), &default), custom(&chosen));
+        let portable = Location { kind: Kind::Portable, dir: root.join("fresh"), warning: None };
+        assert_eq!(in_use(portable.clone(), &default), portable, "a new portable install starts empty");
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

@@ -1141,8 +1141,9 @@ impl Store {
                 tx.execute(
                     "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
                      canonical_url = ?2, author = ?4, site_name = ?5,
-                     title = coalesce(?3, (SELECT title FROM feed_items
-                                           WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
+                     -- The feed entry's title is clean; a page <title> often carries the site name.
+                     title = coalesce((SELECT title FROM feed_items
+                                       WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), ?3),
                      published_at = coalesce(?6, (SELECT published_at FROM feed_items
                                                   WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
                      language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10

@@ -2535,6 +2535,7 @@ dependencies = [
  "flate2",
  "futures",
  "log",
+ "native-tls",
  "pdf-extract",
  "pulldown-cmark",
  "quick-xml",
