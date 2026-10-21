@@ -1,7 +1,7 @@
 // Run with `npm test` (Node strips the types natively).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoTranslates, needsTranslation, splitBackticks, translatedBlockIds } from "./mixed.ts";
+import { autoTranslates, needsTranslation, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed.ts";
 
 const blocks = Array.from({ length: 10 }, (_, i) => ({ id: i, translation: i === 9 ? null : `t${i}` }));
 
@@ -43,4 +43,23 @@ test("the Reader counts only blocks the job would translate", () => {
   assert.equal(needsTranslation(b("paragraph", "npm install lattice"), "en"), false, "already English: the job skips it");
   assert.equal(needsTranslation(b("paragraph", "スナップショット分離", "Snapshot isolation"), "en"), false, "translated");
   assert.equal(needsTranslation(b("code", "SELECT 1;"), "ja"), false, "code is never translated");
+});
+
+test("the list and the Reader count the same blocks left to translate", () => {
+  const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
+  const blocks = [
+    b("heading", "MVCC", "MVCC"), b("paragraph", "Readers never block writers."), b("paragraph", "多版本并发控制让读写互不阻塞。"),
+    b("paragraph", "すでに日本語の段落"), b("code", "SELECT 1;"),
+  ];
+  assert.deepEqual(translationProgress(blocks, "ja"), { done: 1, total: 3 }, "Chinese is left to translate; Japanese and code are not");
+  assert.deepEqual(translationProgress([b("code", "RFC 8446 ...")], "ja"), { done: 0, total: 0 });
+});
+
+test("an article with nothing to translate says why", () => {
+  const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
+  assert.equal(nothingToTranslate([b("code", "Network Working Group   RFC 8446")], "ja"), "reader.noProse", "only <pre>");
+  assert.equal(nothingToTranslate([b("paragraph", "npm install lattice")], "en"), "reader.alreadyInTarget");
+  assert.equal(nothingToTranslate([b("paragraph", "Readers never block writers.")], "ja"), null, "something to translate");
+  assert.equal(nothingToTranslate([b("paragraph", "MVCC", "MVCC")], "ja"), null, "already translated");
+  assert.equal(nothingToTranslate([], "ja"), null, "not extracted yet");
 });

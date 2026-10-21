@@ -13,6 +13,7 @@ const BREAKS = /(?:\r\n|\n|<br\b[^>]*>)(?:[ \t]*(?:\r\n|\n|<br\b[^>]*>))*/giu;
 const ONE_BREAK = /\r\n|\n|<br\b[^>]*>/giu;
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const ALNUM = /[\p{L}\p{N}]/u;
+const KANA = /[ぁ-ゖァ-ヺ]/u;
 
 export const ALLOWED_TAGS = new Set(["a", "b", "i", "em", "strong", "span", "img", "br", "code", "s", "u", "mark", "sub", "sup", "kbd"]);
 
@@ -57,18 +58,18 @@ export type Target = "ja" | "en";
 /** Japanese pages translate into English, all others into Japanese: the declared `lang` decides, else the text. */
 export function pageTarget(lang: string, sample: string): Target {
   const l = lang.trim().toLowerCase();
-  const japanese = l ? l === "ja" || l.startsWith("ja-") || l.startsWith("ja_") : isCjkDominant(sample);
+  // Kana tell Japanese from Chinese (as segments::is_japanese).
+  const japanese = l ? l === "ja" || l.startsWith("ja-") || l.startsWith("ja_") : isCjkDominant(sample) && KANA.test(sample);
   return japanese ? "en" : "ja";
 }
 
-const KANA = /[ぁ-ゖァ-ヺ]/u;
-
 /**
  * Text already in the target language has nothing to translate (as `Target::is_written_in`). Errs
- * toward translating: any kana or kanji keeps text from counting as English ("GitHub Actionsによる自動化").
+ * toward translating: any kana or kanji keeps text from counting as English ("GitHub Actionsによる自動化"),
+ * and only kana make it Japanese, so Chinese (kanji without kana) is translated.
  */
 export const isWrittenIn = (text: string, target: Target) =>
-  target === "ja" ? KANA.test(text) || isCjkDominant(text) : ![...text].some((c) => CJK.test(c));
+  target === "ja" ? KANA.test(text) : ![...text].some((c) => CJK.test(c));
 
 const safeUrl = (v: string, allowData: boolean) => {
   const s = v.trim().replace(/[\p{C}\s]+/gu, "");

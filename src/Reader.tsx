@@ -1,7 +1,7 @@
 import { Fragment, createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "./api";
-import { type LanguageMode, TRANSLATABLE, needsTranslation, splitBackticks, translatedBlockIds } from "./mixed";
+import { type LanguageMode, TRANSLATABLE, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "./library";
 import { highlight } from "./search";
 import { Menu, type MenuItem } from "./Popover";
@@ -269,8 +269,8 @@ export function ArticleTools({ view, act, quizOpen, onQuiz, rerender, children }
   );
 }
 
-function TranslationStatus({ job, done, total, target, onTranslate, onRetranslate }: {
-  job?: JobRow; done: number; total: number; target: ArticleView["target_language"]; onTranslate: () => void; onRetranslate: () => void;
+function TranslationStatus({ job, done, total, nothing, target, onTranslate, onRetranslate }: {
+  job?: JobRow; done: number; total: number; nothing: ReturnType<typeof nothingToTranslate>; target: ArticleView["target_language"]; onTranslate: () => void; onRetranslate: () => void;
 }) {
   const t = useT();
   const keys = <span className="keys"><Kbd>[</Kbd><Kbd>]</Kbd>{t("reader.ratioHint")}</span>;
@@ -278,7 +278,7 @@ function TranslationStatus({ job, done, total, target, onTranslate, onRetranslat
   if (job && busy(job)) {
     return (
       <span className="tr-prog" role="status">
-        <span>{job.status === "running" ? t("reader.translating") : t("reader.waiting")} {done} / {total} block</span>
+        <span>{job.status === "running" ? t("reader.translating") : t("reader.waiting")} {t("reader.blockProgress", { done, total })}</span>
         <span className="prog"><b style={{ width: `${total ? Math.round((done / total) * 100) : 0}%` }} /></span>
       </span>
     );
@@ -286,6 +286,7 @@ function TranslationStatus({ job, done, total, target, onTranslate, onRetranslat
   // No job yet, or it finished: some blocks may be translated already (a finished job, the Page view's cache).
   if (!job?.last_error) {
     if (done >= total) {
+      if (nothing) return <span className="muted" role="status">{t(nothing)}</span>;
       return done === 0 ? hint : (
         <>
           <span className="hint-keys">{keys}<span className="keys"> · </span>{t("reader.translatedCount", { done, total })}</span>
@@ -440,9 +441,8 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
   const selected = translatedBlockIds(blocks, mode, percent);
-  const done = blocks.filter((b) => b.translation != null).length;
-  // Blocks already in the target language are never translated, so they are not counted as left.
-  const total = done + blocks.filter((b) => needsTranslation(b, view.target_language)).length;
+  const { done, total } = translationProgress(blocks, view.target_language);
+  const nothing = nothingToTranslate(blocks, view.target_language);
   const job = view.jobs.find((j) => j.type === "translate");
   const translating = busy(job);
   const images = view.jobs.find((j) => j.type === "images");
@@ -548,7 +548,7 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
         <ViewSeg page={false} onReader={() => {}} onPage={onPage} pageDisabled={local} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
-        {!failed && <TranslationStatus job={job} done={done} total={total} target={view.target_language} onTranslate={onTranslate} onRetranslate={retranslate} />}
+        {!failed && <TranslationStatus job={job} done={done} total={total} nothing={nothing} target={view.target_language} onTranslate={onTranslate} onRetranslate={retranslate} />}
         {matches && (
           <span className="matches">
             {t("reader.match", { x: matches.i + 1, n: matches.n })}

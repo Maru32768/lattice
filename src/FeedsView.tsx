@@ -7,6 +7,7 @@ import { FilterEditor, RejectedList } from "./FeedFilterEditor";
 import { FeedFoldersCard } from "./FeedFoldersCard";
 import { feedGroups, feedStep, feedUrls, folderTree } from "./feedFolders";
 import { Icon } from "./Icon";
+import { skippedLines } from "./urlLines";
 import "./manage.css";
 import { useT } from "./i18n";
 
@@ -91,6 +92,8 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** The add form's own error (Find, subscribe), shown under its field. */
+  const [addError, setAddError] = useState<string | null>(null);
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [query, setQuery] = useState("");
   const [confirming, setConfirming] = useState<number | null>(null);
@@ -106,14 +109,15 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- load only reads setters
   useEffect(() => void load(), [navFeeds]); // on mount too
 
-  async function run(task: () => Promise<string | null>) {
+  async function run(task: () => Promise<string | null>, fail = setError) {
     setBusy(true);
     setError(null);
+    setAddError(null);
     setStatus(null);
     try {
       setStatus(await task());
     } catch (e) {
-      setError(String(e));
+      fail(String(e));
     } finally {
       setBusy(false);
       void load();
@@ -129,7 +133,7 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
     setCandidates(found);
     setPicked(found[0].url);
     return null;
-  });
+  }, setAddError);
 
   const subscribe = () => {
     const c = candidates.find((x) => x.url === picked);
@@ -140,7 +144,7 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
       setPicked(rest[0]?.url ?? null);
       if (rest.length === 0) setUrl("");
       return t("feedsView.added", { name: c.title ?? c.url });
-    });
+    }, setAddError);
   };
 
   /** Subscribes to each feed in turn, reporting progress; a failed one does not stop the rest. */
@@ -164,13 +168,17 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   const exportOpml = () => run(async () => t("feedsView.exportedOpml", { path: await api.exportOpml() }));
 
   // Several URLs, one per line: each is taken as a feed URL (TechFeed's per-channel feeds) and subscribed as is.
-  const urls = feedUrls(url);
+  // Lines without an http(s) URL are skipped and reported, not sent to fail one by one.
+  const lines = feedUrls(url);
+  const many = lines.length > 1;
+  const urls = lines.filter((l) => /https?:\/\//u.test(l));
   const addMany = () => run(async () => {
     setCandidates([]);
+    const { scheme, noUrl } = skippedLines(url);
     const done = await addAll(urls.map((u) => ({ url: u, folder: addFolder })));
     setUrl("");
-    return done;
-  });
+    return done + (scheme ? t("common.skippedScheme", { n: scheme }) : "") + (noUrl ? t("common.skippedNoUrl", { n: noUrl }) : "");
+  }, setAddError);
   const move = (ids: number[], folder: number | null) => run(async () => {
     await api.moveFeedsToFolder(ids, folder);
     setSelected(new Set());
@@ -237,12 +245,12 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
 
         <form className="card add" aria-label={t("feedsView.add")} onSubmit={(e) => {
           e.preventDefault();
-          if (urls.length > 1) void addMany();
+          if (many) { if (urls.length > 0) void addMany(); }
           else if (url.trim()) void detect(url);
         }}>
           <label htmlFor="feed-url">{t("feedsView.detectHint")}</label>
           <div className="line">
-            <textarea id="feed-url" className="input mono" rows={Math.min(8, url.split("\n").length)} value={url} onChange={(e) => setUrl(e.target.value)}
+            <textarea id="feed-url" className="input mono" rows={Math.min(8, url.split("\n").length)} value={url} onChange={(e) => { setUrl(e.target.value); setAddError(null); }}
               placeholder={t("feedsView.urlPlaceholder")} spellCheck={false}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
             {folders.length > 0 && (
@@ -251,10 +259,11 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
                 {folderOptions}
               </select>
             )}
-            <button type="submit" className="btn pri lg" disabled={busy || urls.length === 0}>
-              {urls.length > 1 ? t("feedsView.subscribeAll", { n: urls.length }) : t("feedsView.detect")}
+            <button type="submit" className="btn pri lg" disabled={busy || lines.length === 0 || (many && urls.length === 0)}>
+              {many ? t("feedsView.subscribeAll", { n: urls.length }) : t("feedsView.detect")}
             </button>
           </div>
+          {addError && <p role="alert" className="msg error-text">{t.msg(addError)}</p>}
           <span className="fs">{t("feedsView.manyHint")}</span>
           {candidates.length > 0 && (
             <fieldset className="cands">
