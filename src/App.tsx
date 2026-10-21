@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, browser, isLocal, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
+import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
 
@@ -41,7 +41,6 @@ import {
   save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
-import type { Drop, Point } from "./tabDrag";
 import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import { NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history";
@@ -674,25 +673,31 @@ export default function App() {
     forgetOpened(t.key);
   }
 
-  /** A new document window showing `doc`, placed under the pointer when dropped `at` (physical pixels); its layout waits in storage until it loads. False if it could not be stored. */
-  function popOutDoc(doc: Doc, at?: Point): boolean {
+  /** A new document window's label, its layout showing `doc` stored for it to load; null if it could not be stored. */
+  function storeDocWindow(doc: Doc): string | null {
     const label = nextDocLabel(openWindows(storageKeys()));
     try {
       localStorage.setItem(windowKey(label), serialize(open(single(), doc, "new")));
     } catch (e) {
       fail(e);
-      return false;
+      return null;
     }
-    windows.open(label, at).catch(fail);
-    return true;
+    return label;
   }
 
-  /** The tab moves to a new document window. A document window dragging its only tab away just moves there. */
-  function popOutTab(tab: Id, at?: Point) {
+  /** A new document window showing `doc`. False if it could not be stored. */
+  function popOutDoc(doc: Doc): boolean {
+    const label = storeDocWindow(doc);
+    if (label) windows.open(label).catch(fail);
+    return label != null;
+  }
+
+  /** The tab moves to a new document window; `drag`: torn off a strip, so the drag creates and places the window (design-review §26). */
+  function popOutTab(tab: Id, drag = false) {
     const hit = tabById(layoutRef.current, tab);
-    if (!hit) return;
-    if (at && HOST.kind === "doc" && allTabs(layoutRef.current).length === 1) return void windows.open(HOST.label, at).catch(fail);
-    if (!popOutDoc(docOf(hit.tab), at)) return;
+    const label = hit && storeDocWindow(docOf(hit.tab));
+    if (!hit || !label) return;
+    (drag ? tabDrag.float(label) : windows.open(label)).catch(fail);
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
   }
@@ -708,9 +713,6 @@ export default function App() {
 
   /** Document window: the tab goes back to the main window's focused pane. */
   const returnTab = (tab: Id) => sendTab(tab, MAIN);
-
-  /** A tab dragged onto another window's strip, or away from every strip (design-review §26). */
-  const moveTabOut = (tab: Id, to: Drop) => (to.kind === "strip" ? sendTab(tab, to.label, { pane: to.pane, index: to.index }) : popOutTab(tab, { x: to.x, y: to.y }));
 
   /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
   function closeWindow() {
@@ -778,6 +780,7 @@ export default function App() {
     // The pop-outs that were open last time come back; the chat window is restored from its key too.
     if (IS_MAIN) for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
     else {
+      windows.ready().catch(() => {});
       subs.push(getCurrentWindow().onCloseRequested((e) => {
         e.preventDefault();
         closeRef.current();
@@ -1194,7 +1197,8 @@ export default function App() {
               </div>
             )}
             <WordMarksContext.Provider value={marks}>
-              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction} onMoveOut={moveTabOut} />
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction}
+                movable={HOST.kind === "doc"} onSend={sendTab} onTear={(tab) => popOutTab(tab, true)} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (

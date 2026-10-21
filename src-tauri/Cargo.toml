@@ -32,6 +32,6 @@ tauri-plugin-updater = "2"
 [target.'cfg(windows)'.dependencies]
 # The versions wry uses, so the WebView2 controller it hands out is the same type.
 webview2-com = "0.39.1"
-windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "0.62.2", features = ["Win32_System_Com", "Win32_UI_Shell", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
 
 

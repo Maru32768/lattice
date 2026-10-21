@@ -1,9 +1,10 @@
 import { Fragment, useContext, useEffect, useRef, useState } from "react";
-import { emit, emitTo, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MIN_SIZE, activate, close, closePane, focusedPane, move, panes, resize, split, tabById, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
 import { TabStrip, type DropTarget, type TabDrag, type TabLabel, type WindowAction } from "./TabStrip";
-import { TAB_DRAG_OVER, TAB_DRAG_START, TAB_STRIPS, dropAt, measure, targetIn, toScreen, type Drop, type WindowGeom } from "./tabDrag";
+import { TAB_DRAG_DROP, TAB_DRAG_END, TAB_DRAG_OVER, TAB_DRAG_START, TAB_DRAG_TEAR, measure, type Incoming, type Slot } from "./tabDrag";
+import { tabDrag } from "./api";
 import { CoverContext } from "./Popover";
 import { Favicon } from "./Favicon";
 import { useT } from "./i18n";
@@ -60,7 +61,7 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   );
 }
 
-function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, onDrag, onDrop, index }: {
+function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, dragging, onDrag, onDrop, index }: {
   n: Node;
   layout: Layout;
   onLayout: Update;
@@ -68,9 +69,10 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   renderPane: (p: Pane) => React.ReactNode;
   onNew: (pane: Id) => void;
   windowAction: WindowAction;
-  drop: DropTarget | null;
+  drop: Incoming | null;
+  dragging: Id | null;
   onDrag: (d: TabDrag) => void;
-  onDrop: (d: TabDrag | null) => void;
+  onDrop: () => void;
   /** Reading-order number of the first pane in this node, for the panes' labels. */
   index: number;
 }) {
@@ -93,7 +95,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
                   })} />
               )}
               <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} onDrag={onDrag} onDrop={onDrop} index={first} />
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} />
               </div>
             </Fragment>
           );
@@ -105,7 +107,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   const multi = layout.root.kind === "split";
   return (
     <section className={`dpane${focused ? " focused" : ""}`} data-pane="doc" data-pane-id={n.id} aria-label={t("docArea.document", { x: index + 1 })}>
-      <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop} windowAction={windowAction}
+      <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop} dragging={dragging} windowAction={windowAction}
         onActivate={(t) => onLayout((l) => activate(l, t))} onClose={(t) => onLayout((l) => close(l, t))} onNew={() => onNew(n.id)}
         onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}
         onDrag={onDrag} onDrop={onDrop} />
@@ -114,16 +116,18 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   );
 }
 
-/** A tab drag in flight: the strips of every window (as they report them), and the window whose slot is marked now. */
-interface Session {
+/** This window's tab drag: the tab, and whether this window follows the cursor with it (its only tab). */
+interface Own {
   tab: Id;
-  geoms: Map<string, WindowGeom>;
-  over: { label: string; key: string } | null;
-  uncover: () => void;
+  alone: boolean;
 }
 
-/** The document area: the layout tree as nested flex boxes with drag handles, a tab strip over each pane. */
-export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAction, onMoveOut }: {
+/**
+ * The document area: the layout tree as nested flex boxes with drag handles, a tab strip over each
+ * pane. Tab drags across windows run in the backend (design-review §26): this window reports its
+ * strips while any window drags, draws the slot it is told, and does what it is told with the tab.
+ */
+export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAction, movable, onSend, onTear }: {
   layout: Layout;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
@@ -132,71 +136,102 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   onNew: (pane: Id) => void;
   /** The strip's button that moves the active tab to another window (out of main, or back to it). */
   windowAction: WindowAction;
-  /** A tab was dropped on another window's strip, or away from every strip (a new window there). */
-  onMoveOut: (tab: Id, to: Drop) => void;
+  /** A document window: dragged by its only tab, the window itself follows the cursor. */
+  movable: boolean;
+  /** The tab goes to window `label`, at slot `at` of its strips. */
+  onSend: (tab: Id, label: string, at: DropTarget) => void;
+  /** The tab was pulled off every strip: it leaves for a new document window, which the drag places. */
+  onTear: (tab: Id) => void;
 }) {
-  const [drop, setDrop] = useState<DropTarget | null>(null);
+  const [drop, setDrop] = useState<Incoming | null>(null);
   const [ghost, setGhost] = useState<TabDrag | null>(null);
+  const [own, setOwnState] = useState<Own | null>(null);
+  // Read by the pointer moves that come before the next render.
+  const ownRef = useRef<Own | null>(null);
+  const setOwn = (o: Own | null) => setOwnState((ownRef.current = o));
+  /** Some window is dragging a tab: this one reports its strips, again whenever its tabs change. */
+  const [reporting, setReporting] = useState(false);
   const cover = useContext(CoverContext);
-  const session = useRef<Session | null>(null);
+  const uncover = useRef<(() => void) | null>(null);
   const me = getCurrentWindow().label;
 
-  // Any window may be dragging: answer its request for this window's strips, and mark the slot it says.
-  useEffect(() => {
-    const win = getCurrentWindow();
-    const learn = (g: WindowGeom) => void session.current?.geoms.set(g.label, g);
-    const subs = [
-      listen<{ source: string }>(TAB_DRAG_START, (e) => void win.innerPosition().then((p) => {
-        const g = measure(me, p);
-        return e.payload.source === me ? learn(g) : emitTo(e.payload.source, TAB_STRIPS, g);
-      }).catch(() => {})),
-      win.listen<WindowGeom>(TAB_STRIPS, (e) => learn(e.payload)),
-      win.listen<DropTarget | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
-    ];
-    return () => subs.forEach((s) => void s.then((f) => f()));
-  }, [me]);
-
-  /** Where `d` would land now; the marker goes to the window it is over (this one, or another by event). */
-  function resolve(s: Session, d: TabDrag): Drop | null {
-    const own = s.geoms.get(me);
-    const at = own ? dropAt(toScreen(own, d), s.geoms, me) : null;
-    const other = at?.kind === "strip" && at.label !== me ? { label: at.label, key: `${at.pane}:${at.index}` } : null;
-    if (s.over && (s.over.label !== other?.label || s.over.key !== other.key)) void emitTo(s.over.label, TAB_DRAG_OVER, null);
-    if (other && (s.over?.label !== other.label || s.over.key !== other.key)) void emitTo(other.label, TAB_DRAG_OVER, targetIn(at, other.label));
-    s.over = other;
-    setDrop(targetIn(at, me));
-    return at;
-  }
-
-  function drag(d: TabDrag) {
-    if (!session.current) {
-      // The page webviews are drawn above this document: a still of each stands in so the ghost stays visible.
-      session.current = { tab: d.tab, geoms: new Map(), over: null, uncover: cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight)) };
-      void emit(TAB_DRAG_START, { source: me });
-    }
-    setGhost(d);
-    resolve(session.current, d);
-  }
-
-  function dropTab(d: TabDrag | null) {
-    const s = session.current;
-    if (!s) return;
-    const at = d && resolve(s, d);
-    if (s.over) void emitTo(s.over.label, TAB_DRAG_OVER, null);
-    s.uncover();
-    session.current = null;
+  /** The drag is over: the marker, the ghost and the page stills go. */
+  function finish() {
+    uncover.current?.();
+    uncover.current = null;
+    setOwn(null);
     setGhost(null);
     setDrop(null);
-    if (!at) return;
-    if (at.kind === "strip" && at.label === me) onLayout((l) => move(l, s.tab, at.pane, at.index));
-    else onMoveOut(s.tab, at);
+    setReporting(false);
+  }
+
+  /** Where the drag ended, told to the window holding the tab: this window's dragged tab, or a torn-off window's only one. */
+  function dropped(to: Slot) {
+    const all = panes(layout.root).flatMap((p) => p.tabs);
+    const tab = ownRef.current?.tab ?? (all.length === 1 ? all[0].id : null);
+    if (tab == null) return;
+    if (to.label === me) onLayout((l) => move(l, tab, to.pane, to.index));
+    else onSend(tab, to.label, { pane: to.pane, index: to.index });
+  }
+
+  const tear = () => ownRef.current && onTear(ownRef.current.tab);
+  const handlers = useRef({ finish, dropped, tear });
+  handlers.current = { finish, dropped, tear };
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const subs = [
+      listen(TAB_DRAG_START, () => {
+        setDrop(null);
+        setReporting(true);
+      }),
+      listen(TAB_DRAG_END, () => handlers.current.finish()),
+      win.listen<Incoming | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
+      win.listen(TAB_DRAG_TEAR, () => handlers.current.tear()),
+      win.listen<Slot>(TAB_DRAG_DROP, (e) => handlers.current.dropped(e.payload)),
+    ];
+    return () => subs.forEach((s) => void s.then((f) => f()));
+  }, []);
+
+  useEffect(() => {
+    if (!reporting) return;
+    void getCurrentWindow().innerPosition().then((p) => tabDrag.strips(measure(me, p))).catch(() => {});
+  }, [reporting, layout, me]);
+
+  // Escape puts the tab back (on Windows the backend sees the key too); it is the drag's, not the app's.
+  useEffect(() => {
+    if (!own) return;
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      void tabDrag.release(true).catch(() => {});
+    };
+    window.addEventListener("keydown", key, true);
+    return () => window.removeEventListener("keydown", key, true);
+  }, [own]);
+
+  function drag(d: TabDrag) {
+    let o = ownRef.current;
+    if (!o) {
+      const hit = tabById(layout, d.tab);
+      if (!hit) return;
+      o = { tab: d.tab, alone: movable && panes(layout.root).flatMap((p) => p.tabs).length === 1 };
+      setOwn(o);
+      // The page webviews are drawn above this document: a still of each stands in so the ghost stays visible.
+      if (!o.alone) uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
+      const start = { tab: labelOf(hit.tab), pane: hit.pane.id, index: hit.pane.tabs.indexOf(hit.tab), alone: o.alone };
+      void getCurrentWindow().innerPosition().then((p) => tabDrag.start({ ...start, geom: measure(me, p) })).catch(() => finish());
+    }
+    // A window that follows the cursor carries its tab along: no ghost.
+    if (!o.alone) setGhost(d);
   }
 
   const ghostTab = ghost && tabById(layout, ghost.tab)?.tab;
   const ghostLabel = ghostTab && labelOf(ghostTab);
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
-      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} onDrag={drag} onDrop={dropTab} index={0} />
+      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop}
+        dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0} />
       {ghost && ghostTab && ghostLabel && (
         <div className="tab-ghost" aria-hidden style={{ left: ghost.x - ghost.dx, top: ghost.y - ghost.dy }}>
           <Favicon domain={ghostLabel.domain} feed={ghostTab.kind === "page" ? undefined : ghostLabel.feed} />

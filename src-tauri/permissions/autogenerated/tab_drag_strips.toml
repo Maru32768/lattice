@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tab-drag-strips"
+description = "Enables the tab_drag_strips command without any pre-configured scope."
+commands.allow = ["tab_drag_strips"]
+
+[[permission]]
+identifier = "deny-tab-drag-strips"
+description = "Denies the tab_drag_strips command without any pre-configured scope."
+commands.deny = ["tab_drag_strips"]

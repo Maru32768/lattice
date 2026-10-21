@@ -35,6 +35,8 @@ test("a tab reorders by drag; middle-click closes it", async ({ app }) => {
   await app.mouse.down();
   await app.mouse.move(first.x + 4, first.y + first.height / 2, { steps: 6 });
   await app.mouse.up();
+  // The backend runs the drag (tabdrag.spec.ts): over this window's first slot, it says so on release.
+  await app.evaluate(() => window.__e2e.emit("tab-drag-drop", { label: "main", pane: 1, index: 0 }));
   await expect(titles(app)).toHaveText([b.title!, a.title!]);
 
   await tabs(app).nth(0).click({ button: "middle" });
