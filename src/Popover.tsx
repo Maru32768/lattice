@@ -78,6 +78,9 @@ function useSurface() {
   const onPlaced = () => {
     if (undo.current.length || !ref.current) return;
     const r = ref.current.getBoundingClientRect();
+    // Radix can report the placement before its position reaches the DOM: the surface is still
+    // parked above the window (translate(0, -200%)), which overlaps no page. Measure where it lands.
+    if (r.bottom <= 0) return void requestAnimationFrame(onPlaced);
     const check = () => !underPage(r) && setClear(true);
     undo.current.push(cover(r), watch(check));
     check();
