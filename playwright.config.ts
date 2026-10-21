@@ -10,6 +10,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
+  // A window opened by `goto` renders after the dev server serves its modules, which under every
+  // worker at once can pass the default 5 s.
+  expect: { timeout: 15_000 },
   use: { baseURL: `http://localhost:${port}`, trace: "retain-on-failure", ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
   // The display language follows the WebView's (navigator.language): the specs read the Japanese
   // UI, and english.spec.ts runs the main screens in English.
