@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { ContextMenu as CM, DropdownMenu as DM, Popover as PV } from "radix-ui";
 import { listStep } from "./keys";
 
 /**
@@ -7,24 +8,34 @@ import { listStep } from "./keys";
  * React state so opening a menu re-renders only the Page views, not the whole app (H8).
  */
 let rects: DOMRect[] = [];
+/** The page webviews drawn now, by tab key (their placeholders' rectangles); one hidden behind its still is not here. */
+const pages = new Map<string, () => DOMRect | undefined>();
 const watchers = new Set<() => void>();
-const changed = (next: DOMRect[]) => {
-  rects = next;
-  watchers.forEach((w) => w());
+const notify = () => watchers.forEach((w) => w());
+const watch = (w: () => void) => {
+  watchers.add(w);
+  return () => void watchers.delete(w);
 };
 /** Reports an overlay's rectangle; returns the function that withdraws it. */
 export function coverRect(r: DOMRect) {
-  changed([...rects, r]);
-  return () => changed(rects.filter((x) => x !== r));
+  rects = [...rects, r];
+  notify();
+  return () => {
+    rects = rects.filter((x) => x !== r);
+    notify();
+  };
 }
 export const CoverContext = createContext<(r: DOMRect) => () => void>(coverRect);
 /** How many overlays are open now. */
 export const openOverlays = () => rects.length;
 export function useOverlays() {
-  return useSyncExternalStore((w) => {
-    watchers.add(w);
-    return () => watchers.delete(w);
-  }, () => rects);
+  return useSyncExternalStore(watch, () => rects);
+}
+/** The Page view reports its webview as drawn (`rect`) or as hidden behind its still (null). */
+export function pageDrawn(key: string, rect: (() => DOMRect | undefined) | null) {
+  if (rect) pages.set(key, rect);
+  else pages.delete(key);
+  notify();
 }
 
 export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean) {
@@ -37,42 +48,46 @@ export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean
 }
 
 export const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+const underPage = (r: DOMRect) => [...pages.values()].some((p) => {
+  const b = p();
+  return !!b && intersects(b, r);
+});
+
+/** Invisible but focusable: Radix moves focus into the surface while it waits. */
+const WAITING: React.CSSProperties = { opacity: 0, pointerEvents: "none" };
 
 /**
- * Where a surface anchored below `anchor` goes: inside the pane the anchor sits in (so a popover
- * opened from the list stays off the page webview), else inside the window. Computed during render
- * so the first frame is already in place.
+ * Reports the surface's rectangle once Radix has placed it, and keeps it invisible while a page
+ * webview is drawn under it. The webview hides only after its still is painted; a surface shown
+ * before that is drawn in pieces, the part over the page later than the rest (H22).
  */
-function place(anchor: HTMLElement, width: number, align: "left" | "right") {
-  const r = anchor.getBoundingClientRect();
-  const pane = anchor.closest("[data-pane]")?.getBoundingClientRect() ?? new DOMRect(0, 0, window.innerWidth, window.innerHeight);
-  const w = Math.min(width, pane.width - 16);
-  const lo = pane.left + 8, hi = pane.right - w - 8;
-  const left = Math.max(lo, Math.min(align === "left" ? r.left : r.right - w, hi));
-  return { left, top: r.bottom + 4, width: w };
+function useSurface() {
+  const cover = useContext(CoverContext);
+  const ref = useRef<HTMLDivElement>(null);
+  const [clear, setClear] = useState(false);
+  const undo = useRef<(() => void)[]>([]);
+  useEffect(() => () => {
+    undo.current.forEach((f) => f());
+    undo.current = [];
+  }, []);
+  const onPlaced = () => {
+    if (undo.current.length || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const check = () => !underPage(r) && setClear(true);
+    undo.current.push(cover(r), watch(check));
+    check();
+  };
+  // Radix leaves `onPlaced` out of the menu and popover prop types but passes it on to the Popper,
+  // which calls it once placed; every e2e menu spec depends on it.
+  return { ref, style: clear ? undefined : WAITING, ...({ onPlaced } as object) };
 }
 
-/** Closes on Escape and on a pointer press outside `ref` (and outside `anchor`, which toggles itself). */
-function useDismiss(ref: React.RefObject<HTMLElement | null>, anchor: HTMLElement | null, onClose: () => void) {
-  useEffect(() => {
-    const down = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (!ref.current?.contains(t) && !anchor?.contains(t)) onClose();
-    };
-    document.addEventListener("pointerdown", down);
-    return () => document.removeEventListener("pointerdown", down);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- ref is read when the pointer is pressed, not when the effect runs
-  }, [anchor, onClose]);
+/** Radix puts focus back where it was when a surface closes; not when the close already moved it (a press on another control, a picked item that opened a dialog). */
+function keepFocus(e: Event) {
+  if (document.activeElement && document.activeElement !== document.body) e.preventDefault();
 }
 
-const escape = (onClose: () => void) => (e: React.KeyboardEvent) => {
-  if (e.key !== "Escape") return;
-  e.preventDefault();
-  e.stopPropagation();
-  onClose();
-};
-
-/** A dialog anchored below `anchor` (fixed, clamped to the window); focus returns to the anchor (or its first button) on close. */
+/** A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
 export function Popover({ anchor, label, width, onClose, children }: {
   anchor: HTMLElement;
   label: string;
@@ -80,20 +95,32 @@ export function Popover({ anchor, label, width, onClose, children }: {
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const pos = useMemo(() => place(anchor, width, "left"), [anchor, width]);
-  useCover(ref, true);
-  useDismiss(ref, anchor, onClose);
-  useLayoutEffect(() => {
-    const first = ref.current?.querySelector<HTMLElement>("input, [data-autofocus]") ?? ref.current;
-    first?.focus();
-    return () => (anchor.querySelector<HTMLElement>("button") ?? anchor).focus();
-  }, [anchor]);
+  const s = useSurface();
+  // Inside the pane, so a popover opened from the list stays off the page webview.
+  const pane = anchor.closest("[data-pane]");
+  const w = Math.min(width, (pane?.clientWidth ?? window.innerWidth) - 16);
   return (
-    <div ref={ref} className="pv" role="dialog" aria-label={label} tabIndex={-1}
-      style={{ ...pos, maxHeight: `calc(100vh - ${pos.top + 12}px)` }} onKeyDown={escape(onClose)}>
-      {children}
-    </div>
+    <PV.Root open onOpenChange={(o) => !o && onClose()}>
+      <PV.Anchor virtualRef={{ current: anchor }} />
+      <PV.Portal>
+        <PV.Content {...s} className="pv" aria-label={label} align="start" sideOffset={4} collisionBoundary={pane} collisionPadding={8}
+          style={{ ...s.style, width: w, maxHeight: "var(--radix-popover-content-available-height)" }}
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (s.ref.current?.querySelector<HTMLElement>("input, [data-autofocus]") ?? s.ref.current)?.focus();
+          }}
+          onCloseAutoFocus={(e) => {
+            keepFocus(e);
+            if (e.defaultPrevented) return;
+            e.preventDefault();
+            (anchor.querySelector("button") ?? anchor).focus();
+          }}
+          // The anchor toggles the popover itself: a press on it is not a press outside.
+          onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}>
+          {children}
+        </PV.Content>
+      </PV.Portal>
+    </PV.Root>
   );
 }
 
@@ -108,73 +135,45 @@ export interface MenuItem {
   danger?: boolean;
 }
 
-/** `.menu` min-width; a wider menu grows away from the aligned edge. */
-const MENU_WIDTH = 220;
-
-function menuPlace(btn: HTMLElement, align: "left" | "right") {
-  const p = place(btn, MENU_WIDTH, align);
-  return align === "left" ? { left: p.left, top: p.top } : { right: window.innerWidth - p.left - p.width, top: p.top };
+/** j / k (the list bindings) step through a menu as the arrows do; Radix handles the arrows. */
+function stepKeys(e: React.KeyboardEvent<HTMLElement>) {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") return;
+  const d = listStep(e, false);
+  if (!d) return;
+  e.preventDefault();
+  const all = [...e.currentTarget.querySelectorAll<HTMLElement>("[role^='menuitem']:not([data-disabled])")];
+  const i = all.indexOf(document.activeElement as HTMLElement);
+  all[(i + d + all.length) % all.length]?.focus();
 }
+
+/** The parts both menus share; `items` entries of "-" are separators, other strings captions. */
+function MenuItems({ parts: P, items }: { parts: Pick<typeof DM, "Item" | "Label" | "Separator">; items: (MenuItem | string)[] }) {
+  return items.map((it, i) =>
+    it === "-" ? <P.Separator key={i} className="sep" />
+    : typeof it === "string" ? <P.Label key={i} className="cap">{it}</P.Label>
+    : (
+      <P.Item key={i} asChild disabled={it.disabled} onSelect={it.onSelect}>
+        <button role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked} className={it.danger ? "danger" : undefined}
+          disabled={it.disabled} title={it.hint}>
+          {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
+          {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
+        </button>
+      </P.Item>
+    ));
+}
+
+/** The content's props both menus share. */
+const menuProps = (label: string, s: ReturnType<typeof useSurface>, height: string) => ({
+  ...s, className: "menu", "aria-label": label, loop: true, collisionPadding: 8,
+  style: { ...s.style, maxHeight: `var(${height})`, overflowY: "auto" as const },
+  onCloseAutoFocus: keepFocus, onKeyDown: stepKeys,
+});
 
 /**
- * The open menu: arrows move, Esc and a pick close it and return focus to `back`, a press outside
- * dismisses it. `at` is a point (a context menu) clamped into the window before the first paint.
+ * A trigger button plus an anchored menu, kept inside the trigger's pane unless `inPane` is false
+ * (the nav is narrower than a menu: its menus open beside their trigger, over the list).
  */
-function MenuBody({ label, items, style, at, anchor, back, onClose }: {
-  label: string;
-  items: (MenuItem | string)[];
-  style?: React.CSSProperties;
-  at?: { x: number; y: number };
-  /** Toggles the menu itself, so a press on it is not a dismissal. */
-  anchor: HTMLElement | null;
-  back: HTMLElement | null;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!at || !el) return;
-    const r = el.getBoundingClientRect();
-    el.style.left = `${Math.max(8, Math.min(at.x, window.innerWidth - r.width - 8))}px`;
-    el.style.top = `${Math.max(8, at.y + r.height > window.innerHeight - 8 ? at.y - r.height : at.y)}px`;
-  }, [at]);
-  // After the placement above: the rectangle reported is where the menu is drawn.
-  useCover(ref, true);
-  useDismiss(ref, anchor, onClose);
-  useEffect(() => { ref.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus(); }, []);
-
-  function close() {
-    onClose();
-    back?.focus();
-  }
-
-  function arrows(e: React.KeyboardEvent) {
-    const d = listStep(e, false);
-    if (!d) return escape(close)(e);
-    e.preventDefault();
-    const all = [...ref.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
-    const i = all.indexOf(document.activeElement as HTMLElement);
-    all[(i + d + all.length) % all.length]?.focus();
-  }
-
-  return (
-    <div ref={ref} className="menu" role="menu" aria-label={label} onKeyDown={arrows} style={at ? { left: at.x, top: at.y } : style}>
-      {items.map((it, i) =>
-        it === "-" ? <div key={i} className="sep" role="separator" />
-        : typeof it === "string" ? <div key={i} className="cap">{it}</div>
-        : (
-          <button key={i} role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked} className={it.danger ? "danger" : undefined}
-            disabled={it.disabled} title={it.hint} onClick={() => { close(); it.onSelect(); }}>
-            {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
-            {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
-          </button>
-        ))}
-    </div>
-  );
-}
-
-/** A trigger button plus an anchored menu. `items` entries of "-" are separators, strings are captions. */
-export function Menu({ trigger, label, className, items, align = "left", title }: {
+export function Menu({ trigger, label, className, items, align = "left", title, inPane = true, menuClass }: {
   trigger: React.ReactNode;
   label: string;
   className: string;
@@ -182,34 +181,66 @@ export function Menu({ trigger, label, className, items, align = "left", title }
   items: (MenuItem | string)[];
   align?: "left" | "right";
   title?: string;
+  inPane?: boolean;
+  /** A class added to the open menu (it is drawn in a portal, outside the trigger's subtree). */
+  menuClass?: string;
 }) {
-  const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   return (
     <span style={{ display: "inline-flex" }}>
-      <button ref={btn} className={className} aria-label={label} title={title ?? label} aria-haspopup="menu" aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && <MenuBody label={label} items={items} style={menuPlace(btn.current!, align)} anchor={btn.current} back={btn.current} onClose={() => setOpen(false)} />}
+      <DM.Root modal={false}>
+        <DM.Trigger ref={btn} className={className} aria-label={label} title={title ?? label}>{trigger}</DM.Trigger>
+        <DM.Portal>
+          <MenuContent label={label} items={items} align={align === "left" ? "start" : "end"} menuClass={menuClass}
+            boundary={inPane ? btn.current?.closest("[data-pane]") ?? null : null} />
+        </DM.Portal>
+      </DM.Root>
     </span>
   );
 }
 
-/** A menu at a point: right-click, or the menu key / Shift+F10 on the element `from` (which gets focus back). */
-export function ContextMenu({ x, y, label, items, from, onClose }: {
-  x: number;
-  y: number;
+function MenuContent({ label, items, align, boundary, menuClass }: {
   label: string;
   items: (MenuItem | string)[];
-  from: HTMLElement | null;
-  onClose: () => void;
+  align: "start" | "end";
+  boundary: Element | null;
+  menuClass?: string;
 }) {
-  const at = useMemo(() => ({ x, y }), [x, y]);
-  return <MenuBody label={label} items={items} at={at} anchor={null} back={from} onClose={onClose} />;
+  const p = menuProps(label, useSurface(), "--radix-dropdown-menu-content-available-height");
+  return (
+    <DM.Content {...p} className={menuClass ? `menu ${menuClass}` : "menu"} align={align} sideOffset={4} collisionBoundary={boundary}>
+      <MenuItems parts={DM} items={items} />
+    </DM.Content>
+  );
 }
 
-/** Where a context menu opened from the keyboard goes: under the start of the element. */
-export const menuPoint = (e: React.MouseEvent | MouseEvent, el: HTMLElement) => {
-  if (e.clientX || e.clientY) return { x: e.clientX, y: e.clientY };
-  const r = el.getBoundingClientRect();
-  return { x: r.left + 16, y: r.bottom };
-};
+/**
+ * The right-click menu (H3) of whatever inside `children` matches `targets`: that element's own
+ * contextmenu handler sets `items`. A press anywhere else gets the WebView's menu. The menu key and
+ * Shift+F10 dispatch a contextmenu event at the focused target (App).
+ */
+export function ContextMenu({ label, items, targets, children }: {
+  label: string;
+  items: (MenuItem | string)[];
+  targets: string;
+  children: React.ReactElement;
+}) {
+  return (
+    <CM.Root modal={false}>
+      <CM.Trigger asChild onContextMenuCapture={(e) => {
+        if (!(e.target as Element).closest(targets)) e.stopPropagation();
+      }}>{children}</CM.Trigger>
+      <CM.Portal>
+        <ContextContent label={label} items={items} />
+      </CM.Portal>
+    </CM.Root>
+  );
+}
+
+function ContextContent({ label, items }: { label: string; items: (MenuItem | string)[] }) {
+  return (
+    <CM.Content {...menuProps(label, useSurface(), "--radix-context-menu-content-available-height")}>
+      <MenuItems parts={CM} items={items} />
+    </CM.Content>
+  );
+}

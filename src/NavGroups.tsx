@@ -49,7 +49,7 @@ export function NavGroups({ groups, scope, onScope, onCreate, onRename, onDelete
             <button className={`ni${on ? " on" : ""}`} onClick={() => onScope(s)} aria-current={on ? "page" : undefined}>
               <Icon name="folder" /><span className="label">{g.name}</span><span className="n">{g.count.toLocaleString()}</span>
             </button>
-            <Menu className="ib ni-menu" label={t("nav.groupMenu", { name: g.name })} align="right" trigger={<Icon name="more" size="sm" />} items={[
+            <Menu className="ib ni-menu" label={t("nav.groupMenu", { name: g.name })} inPane={false} trigger={<Icon name="more" size="sm" />} items={[
               { label: t("nav.renameGroup"), onSelect: () => setNaming({ id: g.id }) },
               { label: <span className="error-text">{t("common.delete")}</span>, onSelect: () => setDeleting(g) },
             ]} />
