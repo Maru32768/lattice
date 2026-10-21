@@ -3,6 +3,7 @@ mod browser;
 mod location;
 mod popout;
 mod renderer;
+mod tabdrag;
 mod update;
 
 use std::path::{Path, PathBuf};
@@ -983,6 +984,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
+        .manage(tabdrag::TabDrag::default())
         .on_window_event(popout::on_window_event)
         .setup(|app| {
             let loc = location::detect(&app.path().app_data_dir()?);
@@ -1225,6 +1227,11 @@ pub fn run() {
             browser::overlay_print,
             popout::open_window,
             popout::close_window,
+            popout::window_ready,
+            tabdrag::tab_drag_start,
+            tabdrag::tab_drag_strips,
+            tabdrag::tab_drag_float,
+            tabdrag::tab_drag_release,
             update::update_info,
             update::update_check,
             update::update_install,

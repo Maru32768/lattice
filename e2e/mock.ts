@@ -461,6 +461,11 @@ export const handlers = {
   browser_set_keys: none,
   open_window: none,
   close_window: none,
+  window_ready: none,
+  tab_drag_start: none,
+  tab_drag_strips: none,
+  tab_drag_float: none,
+  tab_drag_release: none,
   r2_status: (): R2Status => store.r2,
   r2_save: ({ settings }: { settings: R2Settings }) => {
     const { secret_access_key: secret, ...rest } = settings;
