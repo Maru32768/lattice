@@ -255,7 +255,7 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
     }
   }
 
-  const where = [scopeLabel(scope, all, groups, t, folders), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
+  const where = [scopeLabel(scope, all, groups, t, folders, feeds), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
   let lastGroup: Item["group"] | "" = "";
   return (
     <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>

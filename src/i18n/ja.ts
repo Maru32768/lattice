@@ -292,7 +292,7 @@ export const ja = {
   "library.read": "既読",
   "library.issue": "要対応",
   "library.recent": "最近追加",
-  "library.feedN": "フィード {id}",
+  "library.feedDeleted": "削除したフィード",
   "library.dropFacet": "{dim} {value} を外す",
   "library.toAll": "{scope} → すべての記事",
   "time.justNow": "たった今",

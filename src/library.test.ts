@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ArticleRow } from "./api.ts";
+import type { ArticleRow, FeedRow } from "./api.ts";
 import { translatorFor } from "./i18n/index.ts";
 import { NO_FACETS, NO_KEPT, countBy, facetBase, inScope, keep, listed, matches, relaxations, scopeLabel, toFilter, toggle, valueLabel, viewKey, type Facets } from "./library.ts";
 
@@ -86,6 +86,9 @@ test("relaxations: one per active facet, plus the scope unless all", () => {
 test("labels and backend filters", () => {
   assert.equal(valueLabel("feeds", 7, all, groups, ja), "Planet PostgreSQL");
   assert.equal(valueLabel("feeds", null, all, groups, ja), "手動追加");
+  assert.equal(valueLabel("feeds", 99, all, groups, en), "Deleted feed", "a facet value left after its feed was deleted");
+  const feed = { id: 99, url: "https://example.org/feed", title: "Example", custom_title: null };
+  assert.equal(scopeLabel({ kind: "feed", id: 99 }, all, groups, en, [], [feed as FeedRow]), "Example", "a feed with no articles yet");
   assert.equal(valueLabel("difficulty", 4, all, groups, ja), "上級");
   assert.equal(valueLabel("difficulty", null, all, groups, en), "Not rated");
   assert.deepEqual(toFilter({ kind: "recent" }), { kind: "all" });

@@ -390,8 +390,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t, folders]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
+    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -1114,7 +1114,7 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles, groupRows, t, folders);
+  const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const tprog = curView ? translationProgress(curView.blocks, curView.target_language) : { done: 0, total: 0 };
