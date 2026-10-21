@@ -8,7 +8,7 @@ import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { QuizPanel } from "./QuizPanel";
+import { QuizPanel, useQuizOpen } from "./QuizPanel";
 import { GroupChips } from "./GroupPicker";
 import { onMiddle } from "./middle";
 import { captureIn, isWord, markWords, type WordMarks } from "./vocab";
@@ -352,7 +352,7 @@ export function Reader({ view, focus, matches, mode, percent, onLang, focusMode,
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const [pop, setPop] = useState<number | null>(null);
   const [confirmRetranslate, setConfirmRetranslate] = useState(false);
-  const [quizOpen, setQuizOpen] = useState(false);
+  const [quizOpen, setQuizOpen] = useQuizOpen(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
   /** 単語を登録 over the selection, then what came of it. */

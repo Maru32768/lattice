@@ -54,6 +54,36 @@ test("理解度チェック: answer, see the source, then add the answers to rev
   await expect(panel.locator(".qz-done").getByRole("button", { name: "復習に追加" })).toBeVisible();
 });
 
+test("理解度チェック stays open with its progress across another screen and another tab", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
+  const panel = app.getByRole("complementary", { name: "理解度チェック" });
+  await panel.getByRole("button", { name: /2 相ロック/ }).click();
+  await panel.getByRole("button", { name: "難しい" }).click();
+  await expect(panel.locator(".qz-n")).toHaveText(`2 / ${QUIZ.questions.length}`);
+
+  await navItem(app, "処理状況").click();
+  await expect(app.getByRole("heading", { name: "処理状況" })).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await app.keyboard.press("Alt+ArrowLeft");
+  await expect(panel.locator(".qz-n"), "still on the second question").toHaveText(`2 / ${QUIZ.questions.length}`);
+
+  // Another article in the same tab, then back: its panel is closed, this one's comes back.
+  await open(app, 2);
+  await expect(panel).toHaveCount(0);
+  await open(app, SNAPSHOT_ID);
+  await expect(panel.locator(".qz-n")).toHaveText(`2 / ${QUIZ.questions.length}`);
+  await panel.getByRole("button", { name: "答えを見る" }).click();
+  await panel.getByRole("button", { name: "正解" }).click();
+  await panel.getByRole("button", { name: /妨げない/ }).click();
+  await panel.getByRole("button", { name: "正解" }).click();
+  await panel.locator(".qz-done").getByRole("button", { name: "復習に追加" }).click();
+  expect(await callsOf(app, "review_add"), "the answer given before leaving counts").toEqual([{
+    quizId: QUIZ.id,
+    answers: [{ question_id: 11, grade: "hard" }, { question_id: 12, grade: "good" }, { question_id: 13, grade: "good" }],
+  }]);
+});
+
 test("an article without a quiz offers to make one", async ({ app }) => {
   await open(app, 2);
   await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
