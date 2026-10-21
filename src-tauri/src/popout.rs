@@ -55,14 +55,38 @@ fn saved_geometry(app: &App, label: &str) -> Option<Geometry> {
     serde_json::from_str(&app.store.setting(&setting_key(label)).ok()??).ok()
 }
 
+/// A point in physical screen pixels (the UI maps its pointer through `inner_position`).
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Point {
+    x: f64,
+    y: f64,
+}
+
+/// Where the first tab's center sits in a fresh document window, in logical pixels: the title bar
+/// (32) plus half the strip, and half a tab from the left edge.
+const TAB_GRAB: (f64, f64) = (56.0, 51.0);
+
+/// The origin of a window torn off at `at`, so the tab lands under the pointer that dropped it.
+fn torn_off_origin(at: Point, scale: f64) -> PhysicalPosition<i32> {
+    PhysicalPosition::new((at.x - TAB_GRAB.0 * scale).round() as i32, (at.y - TAB_GRAB.1 * scale).round() as i32)
+}
+
 /// Opens pop-out `label` where it last was (centered when that spot is on no monitor now), or
-/// brings it to the front if it is open.
+/// brings it to the front if it is open. With `at`, the window goes there instead (a tab dragged
+/// away from every strip; an open window moves there).
 #[tauri::command]
-pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, Location>, label: String) -> Result<(), String> {
+pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, Location>, label: String, at: Option<Point>) -> Result<(), String> {
     if !is_popout(&label) {
         return Err("not a pop-out window".into());
     }
+    let dropped = match at {
+        Some(p) => Some(torn_off_origin(p, app.monitor_from_point(p.x, p.y).map_err(err)?.map_or(1.0, |m| m.scale_factor()))),
+        None => None,
+    };
     if let Some(w) = app.get_webview_window(&label) {
+        if let Some(pos) = dropped {
+            w.set_position(pos).map_err(err)?;
+        }
         return w.set_focus().map_err(err);
     }
     let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::default())
@@ -80,12 +104,13 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
         Err(e) => return Err(err(e)),
     };
     let monitors: Vec<MonitorRect> = app.available_monitors().map_err(err)?.iter().map(|m| (*m.position(), *m.size())).collect();
-    match saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors)) {
-        Some(g) => {
+    match (dropped, saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors))) {
+        (Some(pos), _) => w.set_position(pos).map_err(err)?,
+        (None, Some(g)) => {
             w.set_position(PhysicalPosition::new(g.x, g.y)).map_err(err)?;
             w.set_size(PhysicalSize::new(g.width, g.height)).map_err(err)?;
         }
-        None => w.center().map_err(err)?,
+        (None, None) => w.center().map_err(err)?,
     }
     w.show().map_err(err)
 }
@@ -139,6 +164,14 @@ mod tests {
         for other in ["main", "doc-", "doc-x", "doc-1-2", "browser-abc", "renderer", ""] {
             assert!(!is_popout(other), "{other:?}");
         }
+    }
+
+    #[test]
+    fn a_torn_off_window_puts_its_tab_under_the_pointer_at_the_monitor_scale() {
+        assert_eq!(torn_off_origin(Point { x: 1000.0, y: 500.0 }, 1.0), PhysicalPosition::new(944, 449));
+        assert_eq!(torn_off_origin(Point { x: 1000.0, y: 500.0 }, 2.0), PhysicalPosition::new(888, 398));
+        let p: Point = serde_json::from_str(r#"{"x":12.5,"y":-3}"#).unwrap();
+        assert_eq!((p.x, p.y), (12.5, -3.0), "the UI sends plain x/y, possibly left of the primary monitor");
     }
 
     #[test]

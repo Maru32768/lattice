@@ -479,6 +479,7 @@ export const pluginHandlers: Record<string, () => unknown> = {
   "plugin:window|start_dragging": none,
   "plugin:window|set_focus": none,
   "plugin:window|set_title": none,
+  "plugin:window|inner_position": () => ({ x: 0, y: 0 }),
   "plugin:webview|set_webview_focus": none,
 };
 

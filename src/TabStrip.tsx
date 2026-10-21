@@ -24,24 +24,22 @@ export interface DropTarget {
   index: number;
 }
 
-/** The strip under the pointer, and the slot the pointer is over in it. */
-function targetAt(x: number, y: number): DropTarget | null {
-  const pane = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-pane-id]");
-  if (!pane) return null;
-  const tabs = [...pane.querySelectorAll<HTMLElement>(":scope > .tabs > .tab")];
-  const index = tabs.filter((t) => {
-    const r = t.getBoundingClientRect();
-    return r.left + r.width / 2 < x;
-  }).length;
-  return { pane: Number(pane.dataset.paneId), index };
+/** A drag in flight: the tab, where the pointer is (CSS px of this window), and the grab offset inside the tab. */
+export interface TabDrag {
+  tab: Id;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
 }
 
 /** Moves of less than this many pixels are a click. */
 const DRAG_PX = 4;
 
 /**
- * One pane's tabs: title and favicon, × (middle-click closes too), drag to reorder or to another
- * pane's strip, + for a new tab, and the pane's split and close buttons.
+ * One pane's tabs: title and favicon, × (middle-click closes too), drag to reorder, to another
+ * pane's strip, to another window or out of every window (resolved by the DocArea, which sees
+ * every window), + for a new tab, and the pane's split and close buttons.
  */
 export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop }: {
   pane: Pane;
@@ -55,18 +53,21 @@ export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate,
   onNew: () => void;
   onSplit: (dir: Dir) => void;
   onClosePane: () => void;
-  onDrag: (t: DropTarget | null) => void;
-  onDrop: (tab: Id, t: DropTarget) => void;
+  /** Every pointer move of a drag (the first one starts it). */
+  onDrag: (d: TabDrag) => void;
+  /** The pointer was released (null: the drag was cancelled). */
+  onDrop: (d: TabDrag | null) => void;
 }) {
   const t = useT();
   const [dragging, setDragging] = useState<Id | null>(null);
-  const press = useRef<{ tab: Id; x: number; y: number; moved: boolean } | null>(null);
+  const press = useRef<(TabDrag & { moved: boolean }) | null>(null);
 
   function down(e: React.PointerEvent, tab: Id) {
     // A middle press would start Chromium's autoscroll (and then no auxclick comes); see middle.ts.
     if (e.button === 1) return e.preventDefault();
     if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
-    press.current = { tab, x: e.clientX, y: e.clientY, moved: false };
+    const r = e.currentTarget.getBoundingClientRect();
+    press.current = { tab, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
@@ -75,20 +76,20 @@ export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate,
     if (!p) return;
     if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_PX) return;
     p.moved = true;
+    p.x = e.clientX;
+    p.y = e.clientY;
     setDragging(p.tab);
-    onDrag(targetAt(e.clientX, e.clientY));
+    onDrag({ ...p });
   }
 
-  function up(e: React.PointerEvent, tab: Id) {
+  function up(e: React.PointerEvent, tab: Id, cancelled = false) {
     if (e.button === 1) return onClose(tab);
     const p = press.current;
     press.current = null;
     setDragging(null);
-    onDrag(null);
     if (!p) return;
     if (!p.moved) return onActivate(p.tab);
-    const t = targetAt(e.clientX, e.clientY);
-    if (t) onDrop(p.tab, t);
+    onDrop(cancelled ? null : { ...p, x: e.clientX, y: e.clientY });
   }
 
   const here = drop?.pane === pane.id ? drop.index : -1;
@@ -100,7 +101,7 @@ export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate,
         return (
           <div key={tab.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title}
             className={`tab${on ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
-            onPointerDown={(e) => down(e, tab.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, tab.id)} onPointerCancel={(e) => up(e, tab.id)}
+            onPointerDown={(e) => down(e, tab.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, tab.id)} onPointerCancel={(e) => up(e, tab.id, true)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(tab.id); } }}>
             {tab.kind === "page" ? <Favicon domain={domain} /> : <Favicon domain={domain} feed={feed} />}
             <span className="tab-t">{title}</span>

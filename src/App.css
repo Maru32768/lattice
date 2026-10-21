@@ -31,6 +31,8 @@
 .tab.drop-before::before, .tab.drop-after::after { content: ""; position: absolute; top: 4px; bottom: 2px; width: 2px; background: var(--acc); }
 .tab.drop-before::before { left: -2px; }
 .tab.drop-after::after { right: -2px; }
+.tab-ghost { position: fixed; z-index: 70; display: flex; align-items: center; gap: 6px; max-width: 200px; height: 28px; padding: 0 10px 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--doc); color: var(--ink); font-size: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none; }
+.tab-ghost .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab:focus-visible { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
 .tab .favicon { flex: none; }
 .tab .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

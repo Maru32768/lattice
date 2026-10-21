@@ -619,9 +619,12 @@ export const browser = {
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 
-/** Pop-out windows (G52): `open` also brings an open one to the front; `close` closes the calling pop-out. */
+/**
+ * Pop-out windows (G52): `open` also brings an open one to the front, and with `at` (a physical
+ * screen point) puts the window there, its first tab under the point; `close` closes the calling pop-out.
+ */
 export const windows = {
-  open: (label: string) => invoke<void>("open_window", { label }),
+  open: (label: string, at?: { x: number; y: number }) => invoke<void>("open_window", { label, at }),
   close: () => invoke<void>("close_window"),
 };
 
