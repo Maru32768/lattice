@@ -326,8 +326,8 @@ export default function App() {
     else if (c.url) openPage(c.url, c.sentence);
   };
 
-  // Reader tabs need their article views; views of closed tabs are dropped.
-  const readerIds = useMemo(() => [...new Set(allTabs(layout).filter((t) => t.kind === "reader").map((t) => t.articleId))], [layout]);
+  // Reader tabs and saved Page tabs (their summary, H13) need their article views; views of closed tabs are dropped.
+  const readerIds = useMemo(() => [...new Set(allTabs(layout).flatMap((t) => (t.kind === "reader" ? [t.articleId] : t.saved != null ? [t.saved] : [])))], [layout]);
   const readerKey = readerIds.join(",");
   useEffect(() => {
     for (const id of readerIds) if (!viewsRef.current.has(id)) void loadView(id);
@@ -1099,9 +1099,9 @@ export default function App() {
     if (tab.kind === "page") {
       const saved = savedOf(tab);
       return (
-        <BrowserView key={tab.id} tab={tab} saved={saved} saving={saving === tab.id} lang={pageLang}
+        <BrowserView key={tab.id} tab={tab} saved={saved} view={saved && (views.get(saved.id) ?? null)} saving={saving === tab.id} lang={pageLang}
           onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)} onLang={setPageLang} onSave={() => savePage(tab)}
-          onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
+          onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)} onSummarize={() => saved && act(() => api.summarizeArticle(saved.id), saved.id)}
           onFavorite={() => saved && toggleFavorite(saved)} onDelete={() => saved && setDeleting({ article: saved, page: true })} onError={fail} />
       );
     }

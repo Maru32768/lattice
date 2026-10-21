@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { browser, type ArticleRow, type Bounds, type OverlayLabels } from "./api";
+import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "./api";
 import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
-import { LangSeg, ViewSeg } from "./Reader";
+import { LangSeg, Summary, ViewSeg } from "./Reader";
 import { Menu, intersects, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
@@ -26,6 +26,23 @@ const FOLLOW_MS = 600;
 const WARM_MS = 10_000;
 /** Panes whose popovers and menus stay inside the pane, off the page webview. */
 const OFF_PAGE = new Set(["nav", "list", "chat"]);
+
+const failedOf = (v: ArticleView) => v.article.fetch_status === "failed" || v.article.extraction_status === "failed";
+const SUMMARY_KEY = "lattice.pageSummary";
+/** Whether the Page view shows the saved article's summary strip: a per-device choice. */
+function summaryShown() {
+  try {
+    return localStorage.getItem(SUMMARY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function showSummary(on: boolean) {
+  try {
+    localStorage.setItem(SUMMARY_KEY, on ? "1" : "0");
+  } catch { /* the choice lasts for this view only */ }
+  return on;
+}
 
 export interface PageLang {
   mode: LanguageMode;
@@ -76,9 +93,11 @@ function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
  * Toolbar plus a placeholder box for one Page tab; the tab's native webview is kept positioned
  * over the box. Page content never enters this (app) webview.
  */
-export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSave, onReader, onFavorite, onDelete, onError }: {
+export function BrowserView({ tab, saved, view, saving, lang, onNavigate, onLang, onSave, onReader, onSummarize, onFavorite, onDelete, onError }: {
   tab: PageTab;
   saved: ArticleRow | null;
+  /** The saved article's view (its summary), once loaded. */
+  view: ArticleView | null;
   saving: boolean;
   lang: PageLang;
   /** Opens an http(s) URL typed in the URL bar or the home page. */
@@ -86,6 +105,7 @@ export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSa
   onLang: (l: PageLang) => void;
   onSave: () => void;
   onReader: () => void;
+  onSummarize: () => void;
   onFavorite: () => void;
   /** Asks for confirmation, then removes the saved article from the Index. */
   onDelete: () => void;
@@ -107,6 +127,7 @@ export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSa
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
+  const [summary, setSummary] = useState(summaryShown);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = async () => {
     const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
@@ -249,6 +270,10 @@ export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSa
         {saved ? (
           <>
             <span className="indexed"><Icon name="check" />{t("browserView.indexed")}</span>
+            {view && !failedOf(view) && (
+              <button className={`tb${summary ? " on" : ""}`} aria-pressed={summary} title={t("browserView.summaryHint")}
+                onClick={() => setSummary(showSummary(!summary))}><Icon name="summary" /><span className="lbl">{t("reader.summary")}</span></button>
+            )}
             <button className={`tb${saved.favorite ? " on" : ""}`} onClick={onFavorite} aria-pressed={saved.favorite} aria-label={t("browserView.favorite")} title={t("browserView.favorite")}><Icon name="star" /></button>
             <Menu className="tb" label={t("browserView.more")} align="right" trigger={<Icon name="more" />} items={[
               ...(resave ? [{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }, "-" as const] : []),
@@ -261,6 +286,8 @@ export function BrowserView({ tab, saved, saving, lang, onNavigate, onLang, onSa
         )}
       </div>
       <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? t("browserView.loading") : undefined}><b /></div>
+      {/* A strip above the page; the webview shrinks to the placeholder below it. */}
+      {summary && view && !failedOf(view) && <div className="page-summary"><Summary view={view} onSummarize={onSummarize} initiallyOpen /></div>}
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">
         {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}

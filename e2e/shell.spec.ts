@@ -1,12 +1,15 @@
 // The title bar, the toolbars and the Reader / Page parity (H8–H14).
 import { test, expect, list, callsOf } from "./harness.ts";
+import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
+
+const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
 
 const more = (page: Page) => page.locator(".docbar [aria-haspopup=menu]").last();
 
-/** Opens the first article, then its Page view, and lets the page finish loading. */
-async function openPage(app: Page) {
-  await list(app).locator(".row").first().click();
+/** Opens an article (the first one), then its Page view, and lets the page finish loading. */
+async function openPage(app: Page, title?: string) {
+  await (title ? list(app).locator(".row", { hasText: title }) : list(app).locator(".row").first()).click();
   await app.locator(".docbar").getByRole("button", { name: "Page" }).click();
   await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBeGreaterThan(0);
   const { tab, url } = (await callsOf(app, "browser_open")).at(-1) as { tab: string; url: string };
@@ -96,4 +99,27 @@ test("the tab strip's ＋ opens the search engine's start page in a new tab (H12
   await expect(app.locator(".dpane").getByRole("tab")).toHaveCount(2);
   await expect(palette(app)).toBeHidden();
   await expect.poll(async () => ((await callsOf(app, "browser_open")).at(-1) as { url: string } | undefined)?.url).toBe("https://duckduckgo.com/");
+});
+
+test("a saved article's summary shows in a strip above its page; it can be generated there (H13)", async ({ app }) => {
+  await openPage(app, snapshot.title!);
+  const toggle = app.locator(".docbar").getByRole("button", { name: "要約" });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const strip = app.locator(".page-summary");
+  await expect(strip).toContainText("write skew は防げない");
+  // The strip sits above the placeholder the webview follows.
+  expect((await strip.boundingBox())!.y).toBeLessThan((await app.locator(".page-host").boundingBox())!.y);
+
+  await openPage(app, ARTICLES.find((a) => a.id !== SNAPSHOT_ID && a.fetch_status === "ok" && !a.original_url.startsWith("local:"))!.title!);
+  await expect(app.locator(".docbar").getByRole("button", { name: "要約" })).toHaveAttribute("aria-pressed", "true");
+  await app.locator(".page-summary").getByRole("button", { name: "要約を作成" }).click();
+  await expect.poll(async () => (await callsOf(app, "summarize_article")).length).toBe(1);
+});
+
+test("an unsaved page has no summary (H13)", async ({ app }) => {
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
+  await expect(app.locator(".docbar").getByRole("button", { name: "Index に追加" })).toBeVisible();
+  await expect(app.locator(".docbar").getByRole("button", { name: "要約" })).toHaveCount(0);
+  await expect(app.locator(".page-summary")).toHaveCount(0);
 });

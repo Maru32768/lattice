@@ -262,9 +262,10 @@ function TagAdder({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
-function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => void }) {
+/** The summary row, opened to the full text on a click; `initiallyOpen` in the Page view's strip. */
+export function Summary({ view, onSummarize, initiallyOpen = false }: { view: ArticleView; onSummarize: () => void; initiallyOpen?: boolean }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const job = view.jobs.find((j) => j.type === "summarize");
   const running = busy(job);
   const failed = job && job.last_error && !running && job.status !== "succeeded";

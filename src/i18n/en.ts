@@ -590,6 +590,7 @@ export const en = {
   "browserView.home": "Home (search engine)",
   "browserView.translate": "Translate this page",
   "browserView.indexed": "Indexed",
+  "browserView.summaryHint": "Show this article's summary above the page",
   "browserView.favorite": "Favorite (s)",
   "browserView.more": "More (save again, remove from Index)",
   "browserView.saving": "Saving…",

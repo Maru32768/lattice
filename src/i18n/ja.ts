@@ -586,6 +586,7 @@ export const ja = {
   "browserView.home": "ホーム（検索エンジン）",
   "browserView.translate": "このページを翻訳",
   "browserView.indexed": "Index 済み",
+  "browserView.summaryHint": "この記事の要約をページの上に表示",
   "browserView.favorite": "お気に入り (s)",
   "browserView.more": "その他（保存し直す・Index から削除）",
   "browserView.saving": "保存中…",
