@@ -11,7 +11,8 @@ declare global {
 
 const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit };
 window.__e2e = e2e;
-mockWindows("main");
+// `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
+mockWindows(new URLSearchParams(location.search).get("window") ?? "main");
 mockIPC((cmd, args) => {
   e2e.calls.push({ cmd, args });
   try {
@@ -21,5 +22,13 @@ mockIPC((cmd, args) => {
     throw e;
   }
 }, { shouldMockEvents: true });
+// The event mock swallows events to other windows (G52 requests); record them for the specs.
+type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+const invoke = internals.invoke;
+internals.invoke = (cmd, args, options) => {
+  if (cmd === "plugin:event|emit_to") e2e.calls.push({ cmd, args });
+  return invoke(cmd, args, options);
+};
 
 await import("../src/main.tsx");

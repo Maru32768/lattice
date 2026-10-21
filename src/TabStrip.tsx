@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Favicon } from "./Favicon";
-import { Icon } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import type { Dir, Id, Pane, Tab } from "./layout";
 import { useT } from "./i18n";
 
@@ -8,6 +8,14 @@ export interface TabLabel {
   title: string;
   domain: string;
   feed?: number | null;
+}
+
+/** The strip's window button: 別ウィンドウで開く in the main window, メインウィンドウに戻す in a pop-out (G52). */
+export interface WindowAction {
+  label: string;
+  hint: string;
+  icon: IconName;
+  onSelect: (tab: Id) => void;
 }
 
 /** Where a dragged tab would land: before the `index`-th tab of pane `pane`. */
@@ -35,12 +43,13 @@ const DRAG_PX = 4;
  * One pane's tabs: title and favicon, × (middle-click closes too), drag to reorder or to another
  * pane's strip, + for a new tab, and the pane's split and close buttons.
  */
-export function TabStrip({ pane, multi, labelOf, drop, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop }: {
+export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop }: {
   pane: Pane;
   /** More than one pane: this one can be closed. */
   multi: boolean;
   labelOf: (t: Tab) => TabLabel;
   drop: DropTarget | null;
+  windowAction: WindowAction;
   onActivate: (tab: Id) => void;
   onClose: (tab: Id) => void;
   onNew: () => void;
@@ -103,6 +112,7 @@ export function TabStrip({ pane, multi, labelOf, drop, onActivate, onClose, onNe
       <span className="grow" />
       <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}><Icon name="vsplit" /></button>
       <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}><Icon name="hsplit" /></button>
+      {pane.active != null && <button className="ib" onClick={() => windowAction.onSelect(pane.active!)} aria-label={windowAction.label} title={windowAction.hint}><Icon name={windowAction.icon} /></button>}
       {multi && <button className="ib" onClick={onClosePane} aria-label={t("tabStrip.closePane")} title={t("tabStrip.closePane")}><Icon name="x" /></button>}
     </div>
   );

@@ -48,7 +48,7 @@ function Answer({ m, onCite }: { m: ChatMessage; onCite: (c: Citation) => void }
 }
 
 /** Right dock: chat over saved articles. `article` is the one open in the Reader or page view. */
-export function ChatPane({ article, groups, current, request, onCite, onClose }: {
+export function ChatPane({ article, groups, current, request, onCite, onClose, onPopOut, closeLabel }: {
   article: { id: number; title: string } | null;
   groups: FilterGroup[];
   /** The list's current scope as a chat scope option (filterKey + label); null when it is 全記事. */
@@ -57,6 +57,10 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
   request: { key: string; seq: number } | null;
   onCite: (c: Citation) => void;
   onClose: () => void;
+  /** Main window only: moves the dock to its own window (G52). */
+  onPopOut?: () => void;
+  /** What × does here; in the chat window it docks the pane back. */
+  closeLabel?: string;
 }) {
   const t = useT();
   const [threads, setThreads] = useState<ChatThread[]>([]);
@@ -150,7 +154,8 @@ export function ChatPane({ article, groups, current, request, onCite, onClose }:
             ]} />
           <span className="muted saved">{t("chatPane.savedCount", { length: threads.length })}</span>
           <button className="ib push" onClick={() => openThread(null)} disabled={!!pending || threadId == null} aria-label={t("chatPane.newChat")} title={t("chatPane.newChat")}><Icon name="plus" /></button>
-          <button className="ib" onClick={onClose} aria-label={t("chatPane.close")} title={t("common.close")}><Icon name="x" /></button>
+          {onPopOut && <button className="ib" onClick={onPopOut} aria-label={t("chatPane.popOut")} title={t("chatPane.popOut")}><Icon name="popout" /></button>}
+          <button className="ib" onClick={onClose} aria-label={closeLabel ?? t("chatPane.close")} title={closeLabel ?? t("common.close")}><Icon name="x" /></button>
         </header>
         <div className="chat-scope">
           {t("chatPane.scope")}

@@ -719,3 +719,29 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **判定は 1 度だけ（冪等）。** poll は今までどおり未見の entry だけを扱い、判定結果（`passed`・`rejected`・`pending`）・理由・判定に使った値（`filter_input`）を `feed_items` に書く。最初の取得の上限（20 件）より古い entry は判定せず既読にするだけ。ルールを変えても過去の除外は自動では変わらず、「除外分を再評価」が保存した値で判定し直す（LLM がオンなら LLM にも回る）。G55 より前に見た entry は状態が NULL のまま。
 - **LLM の判定は job で fail open。** poll は LLM を待たず、ルールを通った entry を `pending` にして job `feed_filter`（記事を持たない、フィードごとの dedup）を queue する。job はフィードの pending を 20 件ずつ判定し、残りがなくなるまで続ける。返り値は取り込むか・1〜5 の点数・理由で、重要度の下限を選んだフィードは「自分について」があるときだけ点数で決める（G54 と同じ尺度。プロフィールがなければ LLM の判断）。LLM の失敗・判定の抜けは取り込み、`feeds.filter_note` に理由を出す（次に成功すると消える）。fail closed にしなかったのは、usage limit でフィードの新着が丸ごと消えるほうが害が大きいため。job が終わる間際に増えた pending は次の poll と起動時に queue し直す。
 - **後から取り込んだ記事もフィードの記事。** LLM が通した entry・「取り込む」・再評価で取り込んだ entry は、queue と同時に `articles.feed_id` を付ける（poll のときにはまだ記事がないため）。
+
+## 26. 別ウィンドウ（G52）
+
+| 対象 | ファイル |
+|---|---|
+| ウィンドウの種類・レイアウトの保存場所・ウィンドウ間の依頼 | `src/windows.ts`（テスト `src/windows.test.ts`） |
+| ウィンドウごとの殻（メイン・文書・対話） | `src/App.tsx`（`HOST`）、`src/TabStrip.tsx`（別ウィンドウへ / メインへ）、`src/ChatPane.tsx` |
+| ウィンドウの作成・位置の保存・終了 | `src-tauri/src/popout.rs` |
+| page webview の付け替え | `src-tauri/src/browser.rs`（`attach`） |
+
+- **ウィンドウはラベルで決まる。** `main`、文書ウィンドウ `doc-<n>`、対話ウィンドウ `chat`。どのウィンドウも同じ `index.html` を読み、`getCurrentWindow().label` から何を映すかを決める（query ではなくラベルにしたのは、Rust がウィンドウを作るときにも、UI が自分を知るときにも、同じ 1 つの名前で済むため）。capability `default` の `webviews` は `main`・`doc-*`・`chat`。
+- **ウィンドウごとに独立した React の木。** 同じ `App` が走り、ライブラリのデータは各ウィンドウが backend から読む（`article-changed` などの変更イベントは `emit` で全ウィンドウに届く）。レイアウト・開いている overlay・キーボードの状態・パレットはウィンドウのもの。文書ウィンドウのレイアウトは `localStorage` の `lattice.window.doc-<n>`（メインは従来の `lattice.layout`）、対話ウィンドウは `lattice.window.chat`（中身はない）。**このキーがあること = そのウィンドウが開いていること**で、メインは起動時にキーを列挙して `open_window` で開き直し、ウィンドウは最後のタブを閉じる・メインに戻すときに自分のキーを消す。書き手はウィンドウ自身だけ（作るときにメインが初期値を書く）。
+- **ショートカットと表示言語はウィンドウをまたぐ。** `localStorage` の `storage` イベントで他のウィンドウの変更を読む（`keys.ts`・`i18n/index.ts`）。Page の言語（原文 / 混在 / 訳文）は backend の overlay 設定が全 webview 共通なので、変えたウィンドウが `page-lang` を `emit` して全ウィンドウの表示を揃える。
+- **page webview はタブの鍵で名付ける。** タブの id はウィンドウごとの連番なのでウィンドウをまたぐと衝突する。Page タブは作られたときに鍵（`key`、英数字の短い乱数）を持ち、webview のラベルは `browser-<key>`。タブがウィンドウを移っても鍵は変わらないので webview は同じものを使う。backend は `browser_open` / `browser_set_bounds` を呼んだ app webview のウィンドウにその webview を置き（`Webview::reparent`。wry は Windows と macOS で対応、Linux は未対応）、イベント（`browser-page` / `browser-title` / `browser-key` / `browser-focus`）は webview が今いるウィンドウに送る。`browser_open` は webview がすでにその URL を表示していて scroll 先の指定もなければ移動し直さない（移ったタブは読み込み直さず、履歴とスクロール位置を保つ）。overlay の capability は webview のラベルで決まるので、どのウィンドウにあっても `browser-*` のまま。
+- **タブを出す・戻す。** タブ列の「別ウィンドウで開く」（`Ctrl+Shift+N`、パレットからも）: メインがそのタブだけの レイアウトを `lattice.window.doc-<n>` に書き、`open_window` を呼び、自分のレイアウトからタブを外す（Page タブの webview は閉じずに忘れる）。文書ウィンドウの「メインウィンドウに戻す」（同じキー）と ×・Alt+F4（`onCloseRequested`）: タブを `Doc`（Page なら `key` 付き）にしてメインに `main-request` で送り、メインがフォーカスされたペインの新しいタブに開く。最後のタブがなくなった文書ウィンドウは自分を閉じる（`close_window`。Rust が残っている page webview をメインに隠して付け替えてから壊すので、戻る途中の webview がウィンドウと一緒に消えない）。ウィンドウ間のドラッグは作らなかった（`elementFromPoint` はウィンドウをまたげず、別の手段になる）。
+- **ウィンドウ間の依頼は 1 つのイベント。** `main-request` の payload は判別共用体（`open`・`chat`・`chatDocked`・`chatReady`・`cite`・`screen`・`import`・`discover`・`scope`・`facets`・`search`）で、メインだけが聞く。Tauri の JS の `listen()` は target が `Any` で `emitTo` の宛先に関係なく全ウィンドウに届くので、宛先のあるイベント（`main-request`・`chat-request`）は `getCurrentWindow().listen()` で聞く。全ウィンドウ宛て（`page-lang`・`doc-current`）は `emit` と `listen()`。文書ウィンドウのパレットで画面（設定・フィード・インポート・処理状況…）・一覧の範囲・検索を選ぶとメインに送ってメインを前に出す（文書ウィンドウにはサイドバーも一覧もない）。記事を開く・URL を開く・言語・翻訳・グループはそのウィンドウで処理する。
+- **対話ウィンドウ。** 対話ペインの「別ウィンドウで開く」でメインの dock を閉じて `chat` を開く。× とメインに戻す操作は `chat-docked` を送ってメインの dock を開き直す。Reader の「質問」・パレットの「対話」はメインが受け、対話ウィンドウがあればそこへ `chat-request` を送って前に出す。引用のクリックは `cite` でメインに送る（メインが記事を開いて前に出る）。「この記事」はメインが `doc-current` で流す今の記事（対話ウィンドウは聞き始めたら `chatReady` で今の記事を求める。文書ウィンドウで開いている記事は対象外）。「今の一覧」の選択肢はメインの dock にだけ出る。
+- **位置と大きさは Rust が覚える。** 設定表の `window.<label>` に物理座標の JSON。保存するのは pop-out を閉じるとき（`close_window`）とメインを閉じるとき（残っている pop-out すべて）。`open_window` は保存した位置がどのモニタにも乗っていなければ（モニタを外した）位置を捨てて中央に置き、同じラベルが開いていれば前に出すだけ。新しいウィンドウは 960×720。
+- **終了。** メインの × でアプリを終了する（`Destroyed` で `app.exit`。pop-out のレイアウトは変更のたびに保存済みなので次の起動で復元される）。タスクバーのバッジはメインだけ。文書ウィンドウの題名（タスクバー・Alt+Tab）はアクティブなタブの題名。
+- **e2e。** pop-out は `?window=<label>` で始めた 1 ページ（`mockWindows`）。ウィンドウをまたぐもの（`open_window` / `close_window`、`emit_to` の依頼、storage のキー）は呼び出しの記録で見る（`popout.spec.ts`）。
+
+### 未実装（意図的）
+
+- ウィンドウ間のタブのドラッグ。
+- 対話ウィンドウの「この記事」は文書ウィンドウの記事を追わない。
+- 文書ウィンドウでの一覧・サイドバー・設定画面（メインに送る）。

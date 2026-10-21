@@ -2,23 +2,27 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { NOW } from "./fixtures.ts";
 
 /**
- * `app`: the page with the library loaded. Fails the test when the app called a command the mock
+ * `shell`: a page not yet navigated (a spec opens it as the main window or a pop-out). `app`: the
+ * main window with the library loaded. Both fail the test when the app called a command the mock
  * does not answer, threw, or logged an error.
  */
-export const test = base.extend<{ app: Page }>({
-  app: async ({ page }, provide) => {
+export const test = base.extend<{ shell: Page; app: Page }>({
+  shell: async ({ page }, provide) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     page.on("console", (m) => {
       if (m.type() === "error") errors.push(m.text());
     });
     await page.clock.setFixedTime(NOW);
-    await page.goto("/");
-    // The first pages after the dev server starts wait for it to transform the app.
-    await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
     await provide(page);
     expect(await page.evaluate(() => window.__e2e.unmocked), "commands the mock does not answer").toEqual([]);
     expect(errors, "page errors").toEqual([]);
+  },
+  app: async ({ shell }, provide) => {
+    await shell.goto("/");
+    // The first pages after the dev server starts wait for it to transform the app.
+    await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+    await provide(shell);
   },
 });
 

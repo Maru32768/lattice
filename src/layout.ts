@@ -16,6 +16,8 @@ export interface ReaderTab {
 export interface PageTab {
   kind: "page";
   id: Id;
+  /** Names the tab's native webview (`browser-<key>`); unlike `id`, unique across windows and kept when the tab moves to another. */
+  key: string;
   /** Where the page is now: follows the page's own navigations. */
   url: string;
   title: string;
@@ -33,10 +35,17 @@ export interface PageTab {
 
 export type Tab = ReaderTab | PageTab;
 
-/** What to open: a Reader of an article, or a Page of a URL. */
+/** What to open: a Reader of an article, or a Page of a URL (`key`: the webview of a tab moved from another window). */
 export type Doc =
   | { kind: "reader"; articleId: number; focus?: Omit<Focus, "seq"> }
-  | { kind: "page"; url: string; focus?: string; title?: string; saved?: number | null };
+  | { kind: "page"; url: string; focus?: string; title?: string; saved?: number | null; key?: string };
+
+/** A fresh webview key: time plus a random tail, in the characters a webview label allows. */
+export const newKey = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+/** The tab as a `Doc` to open elsewhere (another pane or window); a page keeps its webview. */
+export const docOf = (t: Tab): Doc =>
+  t.kind === "reader" ? { kind: "reader", articleId: t.articleId } : { kind: "page", url: t.url, title: t.title, saved: t.saved, key: t.key };
 
 export interface Pane {
   kind: "pane";
@@ -94,6 +103,8 @@ export function tabById(l: Layout, id: Id): { pane: Pane; tab: Tab } | undefined
   return undefined;
 }
 export const allTabs = (l: Layout) => panes(l.root).flatMap((p) => p.tabs);
+/** The page tab whose webview is `key` (how the backend's events name a tab). */
+export const pageByKey = (l: Layout, key: string) => allTabs(l).find((t): t is PageTab => t.kind === "page" && t.key === key);
 
 // ---- tree edits ---------------------------------------------------------------------------------
 
@@ -134,7 +145,9 @@ function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
     return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq } };
   }
   const seq = (prev?.kind === "page" ? prev.seq : 0) + 1;
-  return { kind: "page", id, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, loading: true, saved: doc.saved ?? null };
+  // A page replacing a page keeps the webview; one arriving from another window brings its own.
+  const key = prev?.kind === "page" ? prev.key : doc.key ?? newKey();
+  return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, loading: true, saved: doc.saved ?? null };
 }
 
 /** True when `t` already shows `doc` and nothing asks to jump inside it. */
@@ -258,7 +271,8 @@ export function navigated(l: Layout, tab: Id, e: { url: string; loading: boolean
 
 // ---- persistence --------------------------------------------------------------------------------
 
-const KEY = "lattice.layout";
+/** The main window's layout; a pop-out's lives under its own key (`windows.ts`). */
+export const LAYOUT_KEY = "lattice.layout";
 
 type Stored = { root: unknown; focused: unknown };
 
@@ -268,7 +282,7 @@ function strip(n: Node): unknown {
     kind: "pane",
     id: n.id,
     active: n.active,
-    tabs: n.tabs.map((t) => (t.kind === "reader" ? { kind: "reader", id: t.id, articleId: t.articleId } : { kind: "page", id: t.id, url: t.url, title: t.title })),
+    tabs: n.tabs.map((t) => (t.kind === "reader" ? { kind: "reader", id: t.id, articleId: t.articleId } : { kind: "page", id: t.id, key: t.key, url: t.url, title: t.title })),
   };
 }
 
@@ -298,7 +312,8 @@ function parseNode(v: unknown, ids: number[]): Node | null {
     if (!isNum(t?.id)) return null;
     ids.push(t.id);
     if (t.kind === "reader" && isNum(t.articleId)) tabs.push({ kind: "reader", id: t.id, articleId: t.articleId });
-    else if (t.kind === "page" && isStr(t.url)) tabs.push({ kind: "page", id: t.id, url: t.url, title: isStr(t.title) ? t.title : "", seq: 0, loading: false, saved: null });
+    // Layouts written before G52 have no key: the tab gets a fresh webview, as a restored tab does anyway.
+    else if (t.kind === "page" && isStr(t.url)) tabs.push({ kind: "page", id: t.id, key: isStr(t.key) ? t.key : newKey(), url: t.url, title: isStr(t.title) ? t.title : "", seq: 0, loading: false, saved: null });
     else return null;
   }
   const active = isNum(o.active) && tabs.some((t) => t.id === o.active) ? o.active : tabs[0]?.id ?? null;
@@ -320,17 +335,17 @@ export function parse(json: string): Layout | null {
   }
 }
 
-export function load(): Layout {
+export function load(key = LAYOUT_KEY): Layout {
   try {
-    return parse(localStorage.getItem(KEY) ?? "") ?? single();
+    return parse(localStorage.getItem(key) ?? "") ?? single();
   } catch {
     return single();
   }
 }
 
-export function save(l: Layout) {
+export function save(l: Layout, key = LAYOUT_KEY) {
   try {
-    localStorage.setItem(KEY, serialize(l));
+    localStorage.setItem(key, serialize(l));
   } catch {
     // Blocked storage: the layout lasts for this session only.
   }

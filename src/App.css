@@ -339,6 +339,8 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 
 /* ---- chat dock (Conversation board) ----------------------------------------------------------- */
 .chat { width: var(--chat-w); flex: 0 1 auto; min-width: 320px; display: flex; flex-direction: column; min-height: 0; background: var(--raise); }
+/* The chat window (G52): the pane fills it. */
+.app.solo > .chat { width: auto; flex: 1 1 auto; }
 .chat .push { margin-left: auto; }
 .chat-h { height: 44px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); }
 .thread-btn { display: flex; align-items: center; gap: 6px; max-width: 230px; padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 600; color: var(--ink); }

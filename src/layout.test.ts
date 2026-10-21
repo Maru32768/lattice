@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MIN_SIZE, activate, activeTab, close, closePane, closeWhere, cycle, focus, focusedPane, move, navigated, open, panes, parse, resize, serialize, single, split,
+  MIN_SIZE, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus, focusedPane, move, navigated, open, pageByKey, panes, parse, resize, serialize, single, split,
   tabById, type Layout,
 } from "./layout.ts";
 
@@ -158,9 +158,29 @@ test("serialize round-trips the tree, drops runtime page state, and rejects othe
   assert.equal(back.next, l.next);
   const p = tabById(back, 3)!.tab;
   assert.deepEqual(p.kind === "page" && [p.title, p.seq, p.loading, p.saved, p.canGoBack], ["A", 0, false, null, undefined]);
+  const before = tabById(l, 3)!.tab;
+  assert.equal(p.kind === "page" && before.kind === "page" && p.key, before.kind === "page" && before.key, "the webview key survives a restart");
+  const legacy = parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 2, url: "https://x.example/", title: "" }], active: 2 }, focused: 1 }))!;
+  assert.match(pageByKey(legacy, allTabs(legacy).map((t) => (t.kind === "page" ? t.key : ""))[0])!.key, /^[0-9a-z]{6,}$/, "a layout saved before keys gets a fresh one");
   assert.equal(parse("nonsense"), null);
   assert.equal(parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "video", id: 2 }] }, focused: 1 })), null);
   const fixed = parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: 5 }], active: 99 }, focused: 42 }))!;
   assert.equal(fixed.focused, 1, "an unknown focused pane falls back to the first");
   assert.equal(panes(fixed.root)[0].active, 2, "an unknown active tab falls back to the first");
+});
+
+test("a page keeps its webview key when replaced in place, and docOf carries it to another pane or window", () => {
+  let l = open(single(), page("https://a.example/"));
+  const a = activeTab(focusedPane(l))!;
+  l = open(l, page("https://b.example/"));
+  const b = activeTab(focusedPane(l))!;
+  assert.equal(b.kind === "page" && b.key, a.kind === "page" && a.key, "same tab, same webview");
+  l = open(l, page("https://c.example/"), "new");
+  const c = activeTab(focusedPane(l))!;
+  assert.notEqual(c.kind === "page" && c.key, a.kind === "page" && a.key, "a new tab gets its own webview");
+  const moved = open(single(), docOf(c), "new");
+  const m = activeTab(focusedPane(moved))!;
+  assert.equal(m.kind === "page" && m.key, c.kind === "page" && c.key, "the doc of a page names its webview");
+  assert.equal(pageByKey(moved, (c as { key: string }).key)?.id, m.id);
+  assert.deepEqual(docOf(tabById(open(single(), reader(4)), 2)!.tab), { kind: "reader", articleId: 4 });
 });

@@ -1,6 +1,6 @@
-//! In-app browser: one child webview per visible Page tab, over the main window's content area,
-//! showing the real page and running the translation overlay. Links navigate in place; pop-ups
-//! open in the same webview.
+//! In-app browser: one child webview per visible Page tab, over the content area of the window
+//! whose UI shows the tab (the main window or a pop-out, G52), showing the real page and running
+//! the translation overlay. Links navigate in place; pop-ups open in the same webview.
 //!
 //! Trust boundary: the pages are remote and untrusted. Their webviews (labels `browser-<tab>`)
 //! get only the capability in `capabilities/browser.json` (overlay_config / overlay_translate /
@@ -15,28 +15,35 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
 use tokio::sync::oneshot;
 
-/// Labels of the page webviews: `browser-<tab id>`.
+/// Labels of the page webviews: `browser-<tab key>`. The key (`PageTab.key` in `src/layout.ts`)
+/// names the tab across windows and restarts; the UI's numeric tab ids are per window.
 const PREFIX: &str = "browser-";
 pub const RENDER_LABEL: &str = "renderer";
 pub(crate) const OVERLAY_JS: &str = include_str!("../overlay-dist/overlay.js");
+/// Keys are short and alphanumeric (`newKey` in `src/layout.ts`); anything else is not a tab of ours.
+const MAX_KEY: usize = 32;
 
 /// Hidden tabs keep their webview (instant switching, history and scroll kept) up to this many;
 /// creating one more closes the one hidden longest, and the UI reopens it when shown again.
 const MAX_PARKED: usize = 3;
 
-pub fn label(tab: u32) -> String {
-    format!("{PREFIX}{tab}")
+/// The webview label of tab `key`; an error for a key the UI could not have made.
+pub fn label(key: &str) -> Result<String, String> {
+    if key.is_empty() || key.len() > MAX_KEY || !key.bytes().all(|b| b.is_ascii_alphanumeric()) {
+        return Err("invalid tab key".into());
+    }
+    Ok(format!("{PREFIX}{key}"))
 }
 
 pub fn is_browser(label: &str) -> bool {
     label.starts_with(PREFIX)
 }
 
-fn tab_of(label: &str) -> Option<u32> {
-    label.strip_prefix(PREFIX)?.parse().ok()
+fn tab_of(label: &str) -> Option<&str> {
+    label.strip_prefix(PREFIX)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,7 +218,7 @@ pub struct Bounds {
 
 #[derive(Clone, Serialize)]
 struct PageEvent {
-    tab: u32,
+    tab: String,
     url: String,
     loading: bool,
     can_go_back: bool,
@@ -220,7 +227,7 @@ struct PageEvent {
 
 #[derive(Clone, Serialize)]
 struct TabEvent<T: Serialize> {
-    tab: u32,
+    tab: String,
     #[serde(flatten)]
     body: T,
 }
@@ -229,18 +236,19 @@ struct TabEvent<T: Serialize> {
 #[derive(Clone, Serialize)]
 struct Empty {}
 
-fn emit_tab<T: Serialize + Clone>(app: &AppHandle, event: &str, label: &str, body: T) {
-    if let Some(tab) = tab_of(label) {
-        let _ = app.emit_to("main", event, TabEvent { tab, body });
+/// Tab events go to the window the webview is in: that window's UI holds the tab.
+fn emit_tab<T: Serialize + Clone>(wv: &Webview, event: &str, body: T) {
+    if let Some(tab) = tab_of(wv.label()) {
+        let _ = wv.app_handle().emit_to(wv.window().label(), event, TabEvent { tab: tab.to_string(), body });
     }
 }
 
 fn emit_page(wv: &Webview, browser: &Browser, url: String) {
-    let Some(tab) = tab_of(wv.label()) else { return };
+    let Some(tab) = tab_of(wv.label()).map(str::to_string) else { return };
     let (loading, reported) = browser.with_tab(wv.label(), |t| (t.visibility.loading, t.history));
-    let app = wv.app_handle().clone();
+    let (app, host) = (wv.app_handle().clone(), wv.window().label().to_string());
     let send = move |(can_go_back, can_go_forward): (bool, bool)| {
-        let _ = app.emit_to("main", "browser-page", PageEvent { tab, url, loading, can_go_back, can_go_forward });
+        let _ = app.emit_to(host, "browser-page", PageEvent { tab, url, loading, can_go_back, can_go_forward });
     };
     // The page's `navigation` API only sees same-origin entries, so after moving to another site
     // it reports no way back; WebView2 knows the whole history.
@@ -268,11 +276,11 @@ unsafe fn native_history(pw: &tauri::webview::PlatformWebview) -> windows::core:
 #[cfg(windows)]
 fn watch_focus(wv: &Webview) {
     use webview2_com::FocusChangedEventHandler;
-    let (app, label) = (wv.app_handle().clone(), wv.label().to_string());
+    let webview = wv.clone();
     // The COM handler is made on the main thread, inside the closure: it cannot be sent there.
     if let Err(e) = wv.with_webview(move |pw| {
         let handler = FocusChangedEventHandler::create(Box::new(move |_, _| {
-            emit_tab(&app, "browser-focus", &label, Empty {});
+            emit_tab(&webview, "browser-focus", Empty {});
             Ok(())
         }));
         let mut token = 0i64;
@@ -297,6 +305,13 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Puts the page webview under `window`, the one whose UI is showing its tab now, when its tab
+/// moved there from another window (wry reparents on Windows and macOS; on Linux the move fails
+/// and the tab's page stays in its old window).
+fn attach(wv: &Webview, window: &Window) -> tauri::Result<()> {
+    if wv.window().label() == window.label() { Ok(()) } else { wv.reparent(window) }
+}
+
 // browser_open/go/set_translation are async on purpose: sync commands run on the main thread,
 // where creating or navigating a WebView2 deadlocks. browser_hide/set_bounds stay sync so
 // hide-then-show sequences from the UI apply in order.
@@ -304,22 +319,33 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 pub async fn browser_open(
     app: AppHandle,
     browser: State<'_, Browser>,
-    tab: u32,
+    webview: Webview,
+    tab: String,
     url: String,
     bounds: Bounds,
     focus_text: Option<String>,
 ) -> Result<(), String> {
     let url = http_url(&url)?;
-    let label = label(tab);
+    let label = label(&tab)?;
+    let window = webview.window();
     let _opening = browser.opening.lock().await;
-    browser.with_tab(&label, |t| t.focus = focus_text.filter(|t| !t.trim().is_empty()));
+    let focus_text = focus_text.filter(|t| !t.trim().is_empty());
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
     if let Some(wv) = app.get_webview(&label) {
+        attach(&wv, &window).map_err(|e| e.to_string())?;
+        // A tab that came from another window already shows this page: no reload, its history and scroll stay.
+        let loading = browser.with_tab(&label, |t| t.visibility.loading);
+        if focus_text.is_none() && !loading && wv.url().is_ok_and(|u| u == url) {
+            update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
+            emit_page(&wv, &browser, url.to_string());
+            return Ok(());
+        }
+        browser.with_tab(&label, |t| t.focus = focus_text);
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
+    browser.with_tab(&label, |t| t.focus = focus_text);
     browser.evict(&app);
-    let window = app.get_window("main").ok_or("main window missing")?;
     let (popup_target, popup_label) = (app.clone(), label.clone());
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
         .initialization_script(OVERLAY_JS)
@@ -352,7 +378,7 @@ pub async fn browser_open(
             struct Title {
                 title: String,
             }
-            emit_tab(wv.app_handle(), "browser-title", wv.label(), Title { title });
+            emit_tab(&wv, "browser-title", Title { title });
         });
     let builder = match app.state::<crate::location::Location>().webview_dir() {
         Some(d) => builder.data_directory(d),
@@ -366,24 +392,28 @@ pub async fn browser_open(
     update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())
 }
 
-/// Also shows the webview (once loaded): the placeholder only exists while its tab is on screen.
-/// False when the tab has no webview (never opened, evicted, or restored at startup): open it.
+/// Also shows the webview (once loaded) in the calling window: the placeholder only exists while
+/// its tab is on screen. False when the tab has no webview (never opened, evicted, or restored at
+/// startup): open it.
 #[tauri::command]
-pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, tab: u32, bounds: Bounds) -> Result<bool, String> {
-    match app.get_webview(&label(tab)) {
-        Some(wv) => update_visibility(&wv, &browser, |v| {
-            v.wanted = true;
-            v.bounds = Some(bounds);
-        })
-        .map(|()| true)
-        .map_err(|e| e.to_string()),
+pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: Webview, tab: String, bounds: Bounds) -> Result<bool, String> {
+    match app.get_webview(&label(&tab)?) {
+        Some(wv) => attach(&wv, &webview.window())
+            .and_then(|()| {
+                update_visibility(&wv, &browser, |v| {
+                    v.wanted = true;
+                    v.bounds = Some(bounds);
+                })
+            })
+            .map(|()| true)
+            .map_err(|e| e.to_string()),
         None => Ok(false),
     }
 }
 
 #[tauri::command]
-pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: u32) -> Result<(), String> {
-    match app.get_webview(&label(tab)) {
+pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String) -> Result<(), String> {
+    match app.get_webview(&label(&tab)?) {
         Some(wv) => update_visibility(&wv, &browser, |v| v.wanted = false).map_err(|e| e.to_string()),
         None => Ok(()),
     }
@@ -391,8 +421,8 @@ pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: u32) -> Re
 
 /// The tab was closed (or shows a Reader now): its webview goes with it.
 #[tauri::command]
-pub async fn browser_close(app: AppHandle, browser: State<'_, Browser>, tab: u32) -> Result<(), String> {
-    let label = label(tab);
+pub async fn browser_close(app: AppHandle, browser: State<'_, Browser>, tab: String) -> Result<(), String> {
+    let label = label(&tab)?;
     let _opening = browser.opening.lock().await;
     lock(&browser.tabs).remove(&label);
     match app.get_webview(&label) {
@@ -408,9 +438,10 @@ const CAPTURE_TIMEOUT: Duration = Duration::from_secs(2);
 /// show in the webview's place while an app overlay needs it hidden. None off Windows.
 #[tauri::command]
 #[cfg_attr(not(windows), allow(unused_variables))]
-pub async fn browser_capture(app: AppHandle, tab: u32) -> Result<Option<String>, String> {
+pub async fn browser_capture(app: AppHandle, tab: String) -> Result<Option<String>, String> {
+    let label = label(&tab)?;
     #[cfg(windows)]
-    if let Some(wv) = app.get_webview(&label(tab)) {
+    if let Some(wv) = app.get_webview(&label) {
         let png = tokio::time::timeout(CAPTURE_TIMEOUT, capture_png(&wv)).await.map_err(|_| "capture timed out")??;
         return Ok(Some(format!("data:image/png;base64,{}", lattice_core::images::base64(&png))));
     }
@@ -463,8 +494,8 @@ const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The rendered DOM of tab's page and the webview's own URL, from the overlay.
 /// None if the page does not answer in time (overlay missing, page busy or hostile).
-pub async fn snapshot(app: &AppHandle, browser: &Browser, tab: u32) -> Option<(String, String)> {
-    snapshot_of(&app.get_webview(&label(tab))?, browser, None, SNAPSHOT_TIMEOUT).await
+pub async fn snapshot(app: &AppHandle, browser: &Browser, tab: &str) -> Option<(String, String)> {
+    snapshot_of(&app.get_webview(&label(tab).ok()?)?, browser, None, SNAPSHOT_TIMEOUT).await
 }
 
 /// `settle`: (quiet ms, max ms) the overlay waits for DOM mutations to stop before snapshotting.
@@ -513,8 +544,8 @@ pub fn overlay_history(browser: State<'_, Browser>, webview: Webview, can_go_bac
 }
 
 #[tauri::command]
-pub async fn browser_go(app: AppHandle, tab: u32, action: String) -> Result<(), String> {
-    let Some(wv) = app.get_webview(&label(tab)) else { return Ok(()) };
+pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(), String> {
+    let Some(wv) = app.get_webview(&label(&tab)?) else { return Ok(()) };
     match action.as_str() {
         "back" => wv.eval("history.back()"),
         "forward" => wv.eval("history.forward()"),
@@ -581,7 +612,7 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
     struct Key {
         key: String,
     }
-    emit_tab(webview.app_handle(), "browser-key", webview.label(), Key { key });
+    emit_tab(&webview, "browser-key", Key { key });
     Ok(())
 }
 
@@ -626,18 +657,21 @@ mod tests {
 
     #[test]
     fn labels_name_their_tab_and_nothing_else_passes() {
-        assert_eq!(label(7), "browser-7");
-        assert_eq!(tab_of("browser-7"), Some(7));
+        assert_eq!(label("k7a").as_deref(), Ok("browser-k7a"));
+        assert_eq!(tab_of("browser-k7a"), Some("k7a"));
         assert!(is_browser("browser-123"));
         assert!(!is_browser("main"), "the app UI is not a page");
         assert!(!is_browser(RENDER_LABEL));
-        assert_eq!(tab_of("browser-x"), None);
+        assert_eq!(tab_of("main"), None);
+        for bad in ["", "a b", "x/y", "../main", &"a".repeat(MAX_KEY + 1)] {
+            assert!(label(bad).is_err(), "{bad:?} is not a key the UI makes");
+        }
     }
 
     #[test]
     fn snapshot_nonces_are_per_label_and_single_use() {
         let s = Snapshots::default();
-        let b_label = label(1);
+        let b_label = label("1").unwrap();
         let (b, _rb) = s.begin(&b_label);
         let (r, _rr) = s.begin(RENDER_LABEL);
         assert!(s.take(&b_label, &r).is_none(), "another webview's nonce");
@@ -665,9 +699,9 @@ mod tests {
         struct Title {
             title: String,
         }
-        let v = serde_json::to_value(TabEvent { tab: 4, body: Title { title: "t".into() } }).unwrap();
-        assert_eq!(v, serde_json::json!({ "tab": 4, "title": "t" }));
-        assert_eq!(serde_json::to_value(TabEvent { tab: 4, body: Empty {} }).unwrap(), serde_json::json!({ "tab": 4 }));
+        let v = serde_json::to_value(TabEvent { tab: "k4".into(), body: Title { title: "t".into() } }).unwrap();
+        assert_eq!(v, serde_json::json!({ "tab": "k4", "title": "t" }));
+        assert_eq!(serde_json::to_value(TabEvent { tab: "k4".into(), body: Empty {} }).unwrap(), serde_json::json!({ "tab": "k4" }));
     }
 
     #[test]
@@ -691,13 +725,13 @@ mod tests {
             let mut t = TabState::default();
             t.visibility.wanted = i == 0; // tab 0 is on screen
             t.parked = Some(now - Duration::from_secs(i as u64)); // higher i: hidden longer
-            tabs.insert(label(i), t);
+            tabs.insert(label(&i.to_string()).unwrap(), t);
         }
         let mut gone = to_evict(&tabs);
         gone.sort();
-        assert_eq!(gone, vec![label(4), label(5)], "5 hidden, 3 kept: the two hidden longest go");
-        tabs.remove(&label(5));
-        tabs.remove(&label(4));
+        assert_eq!(gone, vec!["browser-4", "browser-5"], "5 hidden, 3 kept: the two hidden longest go");
+        tabs.remove("browser-5");
+        tabs.remove("browser-4");
         assert!(to_evict(&tabs).is_empty());
         assert_eq!(TabState::default().history, (true, true), "a fresh tab assumes history both ways until the page reports");
     }

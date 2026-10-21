@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The app UI (local origin only)",
-  "webviews": ["main"],
+  "description": "The app UI (local origin only): the main window and the pop-out windows (doc-<n>, chat)",
+  "webviews": ["main", "doc-*", "chat"],
   "permissions": [
     "core:default",
     "core:window:allow-minimize",
@@ -10,7 +10,11 @@
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-title",
     "core:webview:allow-set-webview-focus",
+    "allow-open-window",
+    "allow-close-window",
     "allow-save-url",
     "allow-save-page",
     "allow-reextract-article",

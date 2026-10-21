@@ -459,8 +459,8 @@ export interface Bounds {
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
-  /** Saves the page a browser tab shows, as rendered. */
-  savePage: (tab: number) => invoke<number>("save_page", { tab }),
+  /** Saves the page a browser tab (by its webview key) shows, as rendered. */
+  savePage: (tab: string) => invoke<number>("save_page", { tab }),
   reextractArticle: (id: number) => invoke<number>("reextract_article", { id }),
   /** Re-saves the article from its page as rendered in a hidden webview (background job). */
   renderArticle: (id: number) => invoke<void>("render_article", { id }),
@@ -601,19 +601,28 @@ export const api = {
   exportJson: (group: number | null = null) => invoke<string>("export_json", { group }),
 };
 
-/** The in-app browser: one native child webview per visible Page tab, positioned over its placeholder element. */
+/**
+ * The in-app browser: one native child webview per visible Page tab, positioned over its placeholder
+ * element in whichever window calls. `tab` is the tab's webview key (`PageTab.key`).
+ */
 export const browser = {
-  open: (tab: number, url: string, bounds: Bounds, focusText?: string) =>
+  open: (tab: string, url: string, bounds: Bounds, focusText?: string) =>
     invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null }),
-  /** Also shows the webview. False when the tab has none (evicted or restored): open it again. */
-  setBounds: (tab: number, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
-  hide: (tab: number) => invoke<void>("browser_hide", { tab }),
-  close: (tab: number) => invoke<void>("browser_close", { tab }),
+  /** Also shows the webview, in the calling window. False when the tab has none (evicted or restored): open it again. */
+  setBounds: (tab: string, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
+  hide: (tab: string) => invoke<void>("browser_hide", { tab }),
+  close: (tab: string) => invoke<void>("browser_close", { tab }),
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
-  capture: (tab: number) => invoke<string | null>("browser_capture", { tab }),
-  go: (tab: number, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
+  capture: (tab: string) => invoke<string | null>("browser_capture", { tab }),
+  go: (tab: string, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
   setTranslation: (enabled: boolean, percent: number, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
+};
+
+/** Pop-out windows (G52): `open` also brings an open one to the front; `close` closes the calling pop-out. */
+export const windows = {
+  open: (label: string) => invoke<void>("open_window", { label }),
+  close: () => invoke<void>("close_window"),
 };
 
 /** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */

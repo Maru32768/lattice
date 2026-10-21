@@ -42,6 +42,13 @@ if (typeof document !== "undefined") document.documentElement.lang = current;
 
 export const displayLang = () => current;
 
+function apply(lang: Lang) {
+  if (lang === current) return;
+  current = lang;
+  if (typeof document !== "undefined") document.documentElement.lang = lang;
+  for (const l of listeners) l();
+}
+
 /** Switches the UI live; the caller persists the choice in the backend (`api.setUiLanguage`). */
 export function setDisplayLang(lang: Lang) {
   try {
@@ -49,10 +56,14 @@ export function setDisplayLang(lang: Lang) {
   } catch {
     // the backend setting still applies from the next start
   }
-  if (lang === current) return;
-  current = lang;
-  if (typeof document !== "undefined") document.documentElement.lang = lang;
-  for (const l of listeners) l();
+  apply(lang);
+}
+
+// Another window (a pop-out, G52) switched the language: follow it.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE && isLang(e.newValue)) apply(e.newValue);
+  });
 }
 
 /** BCP 47 tag for `Intl`. */
