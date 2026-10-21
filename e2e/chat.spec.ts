@@ -1,4 +1,5 @@
-import { test, expect, callsOf } from "./harness.ts";
+import { test, expect, callsOf, list } from "./harness.ts";
+import { ARTICLES } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const section = (app: Page, title: string) =>
@@ -58,4 +59,33 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
   await q.press("Control+Enter");
   expect((await callsOf(app, "chat_ask")).map((a) => (a as { question: string }).question)).toEqual(["hi big world!"]);
   await expect(mode, "a sent question starts the next one in insert mode").toHaveText("INSERT");
+});
+
+test("the chat scope offers each open article and all of them, and follows the tabs", async ({ app }) => {
+  const [a, b, c] = ARTICLES;
+  await list(app).locator(".row", { hasText: a.title! }).click();
+  await list(app).locator(".row", { hasText: b.title! }).click({ modifiers: ["Control"] });
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const scope = app.getByLabel("質問の範囲");
+  const opened = scope.locator("optgroup[label='開いている記事'] option");
+  await expect(opened).toHaveText([a.title!, b.title!]);
+  await expect(scope.locator("option", { hasText: "開いている記事すべて（2 件）" })).toBeEnabled();
+
+  // A document window reports its tabs to the main window.
+  await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
+  await expect(opened).toHaveText([a.title!, b.title!, c.title!]);
+  await scope.selectOption({ label: "開いている記事すべて（3 件）" });
+  const q = app.locator("#chat-q");
+  await q.fill("共通点は？");
+  await q.press("Control+Enter");
+  await expect.poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
+    .toEqual([{ kind: "articles", ids: [a.id, b.id, c.id] }]);
+
+  // One of them, until its tab closes: then the scope widens to what is still open.
+  await scope.selectOption({ label: b.title! });
+  await app.getByRole("button", { name: `${b.title} を閉じる` }).click();
+  await expect(opened).toHaveText([a.title!, c.title!]);
+  await expect(scope).toHaveValue("open");
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
+  await expect(opened).toHaveText([a.title!]);
 });

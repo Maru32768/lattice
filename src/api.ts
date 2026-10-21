@@ -213,7 +213,7 @@ export interface SearchResult {
 }
 
 /** Mirrors chat.rs. Every article filter is a chat scope. */
-export type ChatScope = { kind: "article"; id: number } | { kind: "filter"; filter: ArticleFilter };
+export type ChatScope = { kind: "article"; id: number } | { kind: "articles"; ids: number[] } | { kind: "filter"; filter: ArticleFilter };
 /** How much of the scope one chat question sends (`chat::Budget`). */
 export type ChatBudget = "small" | "standard" | "large";
 

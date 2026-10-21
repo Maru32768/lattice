@@ -40,6 +40,9 @@ test("Japanese pages translate into English, others into Japanese", () => {
   assert.equal(pageTarget("", "An English page about MVCC"), "ja");
   assert.ok(isWrittenIn("スナップショット分離", "ja") && !isWrittenIn("スナップショット分離", "en"));
   assert.ok(isWrittenIn("Snapshot isolation", "en") && !isWrittenIn("Snapshot isolation", "ja"));
+  assert.ok(!isWrittenIn("GitHub Actionsによる自動化", "en") && isWrittenIn("GitHub Actionsによる自動化", "ja"));
+  assert.ok(!isWrittenIn("SRE業務", "en") && !isWrittenIn("the word 改善 (kaizen)", "ja"));
+  assert.ok(isWrittenIn("2026/10/21 — v1.2 beta", "en") && !isWrittenIn("Tokyo・Osaka", "ja"));
 });
 
 test("splitByLineBreaks splits on blank lines and after sentence ends only", () => {

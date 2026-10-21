@@ -88,9 +88,15 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     on_change: &(dyn Fn(&JobRow) + Send + Sync),
 ) -> Result<bool, String> {
     on_change(&job);
+    let started = std::time::Instant::now();
     let result = run_job(store, providers, &job, &|| on_change(&job)).await;
-    if let Err(e) = &result {
-        log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count);
+    match &result {
+        Err(e) => log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count),
+        // LLM jobs take minutes with the CLIs: their durations are what a "stuck" report needs.
+        Ok(()) if LLM_JOBS.contains(&job.job_type.as_str()) => {
+            log::info!("job {} ({}) article {:?} done in {:.0?}", job.id, job.job_type, job.article_id, started.elapsed())
+        }
+        Ok(()) => {}
     }
     let ok = result.is_ok();
     store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
@@ -272,7 +278,7 @@ mod tests {
     async fn japanese_articles_translate_into_english() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://example.jp/a", "https://example.jp/a", "example.jp").unwrap();
-        let html = "<html><body><article><h2>はじめに</h2>            <p>スナップショット分離では write skew が起こりうるが、直列化可能スナップショット分離はコミット時にそれを防ぐ。</p>            <p>Written in English: not sent.</p></article></body></html>";
+        let html = "<html><body><article><h2>はじめに</h2>            <p>スナップショット分離では write skew が起こりうるが、直列化可能スナップショット分離はコミット時にそれを防ぐ。</p>            <p>Written in English: not sent.</p>            <h2>GitHub Actionsによる自動化</h2></article></body></html>";
         store_fetched(&s, id, &Fetched { final_url: "https://example.jp/a".into(), status: 200, content_type: None, html: html.into() }).unwrap();
         assert!(s.article_is_japanese(id).unwrap(), "no declared language: decided by the text");
 
@@ -282,11 +288,13 @@ mod tests {
         let p = with(Fake::new());
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         let sent: Vec<serde_json::Value> = serde_json::from_str(&p.llm.calls.lock().unwrap()[0]).unwrap();
-        assert_eq!(sent.len(), 2, "only the Japanese blocks are sent: {sent:?}");
+        // The last heading has more Latin letters than Japanese ones: it was skipped as English, and the
+        // article stayed at 3 of 4 with 続き doing nothing (H18).
+        assert_eq!(sent.len(), 3, "only the Japanese blocks are sent: {sent:?}");
 
         let v = s.get_article(id, &target.key()).unwrap().unwrap();
         assert_eq!(v.target_language, "en");
-        assert!(v.blocks[0].translation.is_some() && v.blocks[2].translation.is_none());
+        assert!(v.blocks[0].translation.is_some() && v.blocks[2].translation.is_none() && v.blocks[3].translation.is_some());
         assert!(s.get_article(id, "ja").unwrap().unwrap().blocks[0].translation.is_none(), "kept apart from Japanese targets");
 
         s.exec_for_test(&format!("UPDATE articles SET language = 'en-US' WHERE id = {id}"));

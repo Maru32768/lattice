@@ -61,8 +61,14 @@ export function pageTarget(lang: string, sample: string): Target {
   return japanese ? "en" : "ja";
 }
 
-/** Text already in the target language has nothing to translate. */
-export const isWrittenIn = (text: string, target: Target) => isCjkDominant(text) === (target === "ja");
+const KANA = /[ぁ-ゖァ-ヺ]/u;
+
+/**
+ * Text already in the target language has nothing to translate (as `Target::is_written_in`). Errs
+ * toward translating: any kana or kanji keeps text from counting as English ("GitHub Actionsによる自動化").
+ */
+export const isWrittenIn = (text: string, target: Target) =>
+  target === "ja" ? KANA.test(text) || isCjkDominant(text) : ![...text].some((c) => CJK.test(c));
 
 const safeUrl = (v: string, allowData: boolean) => {
   const s = v.trim().replace(/[\p{C}\s]+/gu, "");

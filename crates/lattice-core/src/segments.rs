@@ -69,9 +69,11 @@ impl Target {
         if self.language == "en" { "ja" } else { "en" }
     }
 
-    /// Whether `plain` is already in this language, so there is nothing to translate.
+    /// Whether `plain` is already in this language, so there is nothing to translate. Errs toward
+    /// translating: any kana or kanji keeps text from counting as English, however many English
+    /// identifiers it holds (「GitHub Actionsによる自動化」), and kana make it Japanese.
     pub fn is_written_in(&self, plain: &str) -> bool {
-        is_cjk_dominant(plain) == (self.language == "ja")
+        if self.language == "ja" { plain.chars().any(is_kana) || is_cjk_dominant(plain) } else { !plain.chars().any(is_cjk) }
     }
 }
 
@@ -142,6 +144,11 @@ pub fn source_hash(html: &str) -> String {
 
 pub(crate) fn is_cjk(c: char) -> bool {
     matches!(c, '\u{3040}'..='\u{30FF}' | '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}' | '\u{F900}'..='\u{FAFF}' | '\u{3005}' | '\u{3007}')
+}
+
+/// Hiragana and katakana letters (not the ・ and ー that English text borrows).
+fn is_kana(c: char) -> bool {
+    matches!(c, '\u{3041}'..='\u{3096}' | '\u{30A1}'..='\u{30FA}')
 }
 
 /// At least half of the letters/digits are CJK (Mazelingo's rule).
@@ -482,6 +489,10 @@ pub(crate) mod tests {
         assert_eq!(Target::from_key("en-x-translated-terms", ""), Target { language: "en", keep_terms: false, instructions: String::new() });
         assert!(en.is_written_in("Snapshot isolation") && !en.is_written_in("スナップショット分離"));
         assert!(ja.is_written_in("スナップショット分離") && !ja.is_written_in("Snapshot isolation"));
+        // Japanese with more Latin letters than kana or kanji is still Japanese (H18).
+        assert!(!en.is_written_in("GitHub Actionsによる自動化") && ja.is_written_in("GitHub Actionsによる自動化"));
+        assert!(!en.is_written_in("SRE業務") && !ja.is_written_in("the word 改善 (kaizen)"));
+        assert!(en.is_written_in("2026/10/21 — v1.2 beta") && !ja.is_written_in("Tokyo・Osaka"));
 
         for prompt in [translation_prompt, resplit_prompt] {
             let (keep, plain) = (prompt(&en), prompt(&Target { keep_terms: false, ..en.clone() }));

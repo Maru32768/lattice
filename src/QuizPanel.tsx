@@ -6,6 +6,21 @@ import { Icon } from "./Icon";
 import "./quiz.css";
 import { locale, useT } from "./i18n";
 
+/** Where a quiz was left: the question shown and the grades so far. */
+interface Progress { quizId: number; at: number; grades: Map<number, Grade> }
+
+// The Reader unmounts when another screen (処理状況, 設定, …) or tab is shown; the open panels and
+// their progress outlive it here, by article id, until the app restarts.
+const openPanels = new Set<number>();
+const progress = new Map<number, Progress>();
+
+/** Whether the article's 理解度チェック is open, remembered across Reader remounts. */
+export function useQuizOpen(id: number) {
+  const [open, setOpen] = useState(() => openPanels.has(id));
+  useEffect(() => { if (open) openPanels.add(id); else openPanels.delete(id); }, [id, open]);
+  return [open, setOpen] as const;
+}
+
 /** 理解度チェック beside the Reader: take the article's quiz, then optionally add it to review. */
 export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   view: ArticleView;
@@ -23,15 +38,17 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   const [quiz, setQuiz] = useState<Quiz | null | undefined>(undefined);
   /** The quiz shown when 作成 was pressed: generating until a newer one arrives or the job fails. */
   const [requested, setRequested] = useState<number | null | false>(false);
-  const [at, setAt] = useState(0);
-  const [grades, setGrades] = useState<Map<number, Grade>>(new Map());
+  const [kept, setKept] = useState(() => progress.get(id) ?? null);
+  // Progress belongs to one quiz: a regenerated quiz starts from its first question.
+  const { at, grades } = quiz && kept?.quizId === quiz.id ? kept : { at: 0, grades: new Map<number, Grade>() };
+  const restart = () => quiz && setKept({ quizId: quiz.id, at: 0, grades: new Map() });
+  useEffect(() => { if (kept) progress.set(id, kept); }, [id, kept]);
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.quiz(id).then(setQuiz, (e) => setError(String(e)));
   // The job's progress reaches the view by article-changed; reload the quiz when it moves.
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- load reads only id
   useEffect(() => { void load(); }, [id, job?.status, job?.attempt_count]);
-  useEffect(() => { setAt(0); setGrades(new Map()); }, [quiz?.id]);
 
   const generating = !failure && (running || (requested !== false && (quiz?.id ?? null) === requested));
   async function generate() {
@@ -80,7 +97,7 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
             {generating ? <p className="muted" role="status">{t("quizPanel.generating")}</p> : <button className="btn pri" onClick={generate}>{t("quizPanel.generate")}</button>}
           </div>
         )}
-        {quiz && q && <QuizCard key={q.id} q={q} onSource={onSource} onGrade={(g) => { setGrades((m) => new Map(m).set(q.id, g)); setAt(at + 1); }} />}
+        {quiz && q && <QuizCard key={q.id} q={q} onSource={onSource} onGrade={(g) => setKept({ quizId: quiz.id, at: at + 1, grades: new Map(grades).set(q.id, g) })} />}
         {quiz && !q && (
           <div className="qz-done" role="status">
             <p className="qz-score">{t.rich("quizPanel.score", { known: <b>{knownCount(grades.values())}</b>, total })}</p>
@@ -90,7 +107,7 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
                   <p className="muted">{t("quizPanel.addDesc")}</p>
                 </>
               : <p className="muted">{t("quizPanel.reviewing", { in_review: quiz.in_review })}</p>}
-            <button className="btn" onClick={() => { setAt(0); setGrades(new Map()); }}>{t("quizPanel.retry")}</button>
+            <button className="btn" onClick={restart}>{t("quizPanel.retry")}</button>
           </div>
         )}
         {failure && <p className="qz-note error-text" title={t.msg(failure)}>{t("quizPanel.failed", { failure: t.msg(failure) })}</p>}

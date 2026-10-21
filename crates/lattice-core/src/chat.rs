@@ -74,8 +74,16 @@ pub fn set_budget(store: &Store, b: Budget) -> std::result::Result<(), String> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Scope {
-    Article { id: i64 },
-    Filter { filter: ArticleFilter },
+    Article {
+        id: i64,
+    },
+    /// A chosen set, such as the articles open in tabs.
+    Articles {
+        ids: Vec<i64>,
+    },
+    Filter {
+        filter: ArticleFilter,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -159,6 +167,7 @@ impl Store {
     pub fn scope_articles(&self, scope: &Scope) -> Result<Option<Vec<i64>>> {
         match scope {
             Scope::Article { id } => Ok(Some(vec![*id])),
+            Scope::Articles { ids } => Ok(Some(ids.clone())),
             Scope::Filter { filter } => self.article_ids(filter),
         }
     }
@@ -560,7 +569,7 @@ mod tests {
 
     #[tokio::test]
     async fn large_scope_retrieves_within_scope_only() {
-        let (s, _, b, _) = library().await;
+        let (s, a, b, _) = library().await;
         let llm = Fake::default();
         let tag = Scope::Filter { filter: ArticleFilter::Tag { name: "db".into() } };
         assert_eq!(s.scope_articles(&tag).unwrap(), Some(vec![b]));
@@ -577,11 +586,20 @@ mod tests {
         assert_eq!(ask(&s, &llm, &Letters, None, "gammaword", all).await.unwrap().mode, "retrieval");
         assert!(llm.inputs.lock().unwrap()[1].contains("gammaword"));
 
+        // A set of articles: their text only.
+        let two = Scope::Articles { ids: vec![b, a] };
+        assert_eq!(s.scope_articles(&two).unwrap(), Some(vec![b, a]));
+        let m = ask(&s, &llm, &Letters, None, "checkpoints", two.clone()).await.unwrap();
+        let input = llm.inputs.lock().unwrap()[2].clone();
+        assert!(input.contains("# 記事: Tuning") && input.contains("alphaword") && !input.contains("gammaword"), "{input}");
+        assert!(m.citations.iter().all(|c| c.article_id == a || c.article_id == b));
+        assert_eq!(s.chat_messages(m.thread_id).unwrap()[0].scope, two, "stored and read back");
+
         // An empty scope answers without calling the model.
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
         let m = ask(&s, &llm, &Letters, None, "checkpoints", none).await.unwrap();
         assert_eq!((m.mode.as_str(), m.answer.as_str(), m.citations.len()), ("none", msg!("chat.noSources").as_str(), 0));
-        assert_eq!(llm.inputs.lock().unwrap().len(), 2);
+        assert_eq!(llm.inputs.lock().unwrap().len(), 3);
     }
 
     #[tokio::test]
