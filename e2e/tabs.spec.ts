@@ -92,18 +92,22 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   await app.keyboard.insertText(url);
   await app.keyboard.press("Enter");
   await expect(titles(app)).toHaveText(["example.com"]);
-  const opens = await callsOf(app, "browser_open");
+  const opens = (await callsOf(app, "browser_open")) as { tab: string; url: string }[];
   expect(opens).toHaveLength(1);
-  expect(opens[0]).toMatchObject({ tab: 2, url });
+  expect(opens[0]).toMatchObject({ tab: expect.stringMatching(/^[0-9a-z]+$/), url });
+  const first = opens[0].tab;
 
   await app.keyboard.press("Control+t");
   await app.keyboard.insertText("https://example.org/other");
   await app.keyboard.press("Enter");
   await expect(titles(app)).toHaveText(["example.com", "example.org"]);
-  expect((await callsOf(app, "browser_open")).map((o) => (o as { tab: number }).tab)).toEqual([2, 3]);
-  await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab: 2 });
+  const keys = ((await callsOf(app, "browser_open")) as { tab: string }[]).map((o) => o.tab);
+  expect(keys).toHaveLength(2);
+  expect(keys[0]).toBe(first);
+  expect(keys[1], "its own webview").not.toBe(first);
+  await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab: first });
 
   await app.keyboard.press("Control+w");
   await expect(titles(app)).toHaveText(["example.com"]);
-  await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab: 3 }]);
+  await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab: keys[1] }]);
 });

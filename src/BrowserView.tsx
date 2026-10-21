@@ -1,15 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type Bounds, type OverlayLabels } from "./api";
 import type { LanguageMode } from "./mixed";
-import type { Id, PageTab } from "./layout";
+import type { PageTab } from "./layout";
 import { LangSeg, ViewSeg } from "./Reader";
 import { Menu, intersects } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "./i18n";
 
-/** The `seq` each tab's webview was last told to open: a tab shown again is not reloaded. */
-const opened = new Map<Id, number>();
+/** The `seq` each tab's webview (by key) was last told to open: a tab shown again is not reloaded. */
+const opened = new Map<string, number>();
+/** The tab left this window with its webview: a return opens (attaches) it again rather than only resizing it. */
+export const forgetOpened = (key: string) => void opened.delete(key);
 
 export interface PageLang {
   mode: LanguageMode;
@@ -78,7 +80,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   onError: (e: string) => void;
 }) {
   const t = useT();
-  const id = tab.id;
+  const id = tab.key;
   const host = useRef<HTMLDivElement>(null);
   const bounds = (): Bounds | null => {
     const r = host.current?.getBoundingClientRect();
@@ -137,7 +139,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
       if (live) await browser.hide(id).catch(() => {});
     })();
     return () => { live = false; };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab id is fixed per instance (keyed by it); sync reads refs
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, [covered]);
 
   useEffect(() => {
@@ -150,7 +152,7 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
       window.removeEventListener("resize", resize);
       browser.hide(id).catch(() => {});
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab id is fixed per instance (keyed by it); sync reads refs
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
 
   const { url, loading } = tab;

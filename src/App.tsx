@@ -34,7 +34,7 @@ import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } fro
 import { DocArea } from "./DocArea";
 import { hostOf } from "./Favicon";
 import {
-  activeTab, allTabs, close, closePane, closeWhere, cycle, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, save as saveLayout, split,
+  activeTab, allTabs, close, closePane, closeWhere, cycle, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey, save as saveLayout, split,
   tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
@@ -196,6 +196,11 @@ export default function App() {
   /** Whether the page a tab shows is in the Index. */
   const refreshSaved = (tab: Id, url: string) =>
     api.articleForUrl(url).then((a) => setLayout((l) => update(l, tab, { saved: a?.id ?? null }))).catch(() => {});
+  /** A page event names its tab by webview key; the layout op takes the tab id. */
+  const onPage = (key: string, f: (l: Layout, tab: PageTab) => Layout) => setLayout((l) => {
+    const t = pageByKey(l, key);
+    return t ? f(l, t) : l;
+  });
   // Background jobs (bulk import fetches) report every article; throttle list reloads to one
   // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
   const refreshTimer = useRef(0);
@@ -223,15 +228,17 @@ export default function App() {
         clearTimeout(jobTimer);
         jobTimer = window.setTimeout(loadJobs, 1000);
       }),
-      listen<{ tab: Id; url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
+      listen<{ tab: string; url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
         const { tab, url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
-        setLayout((l) => navigated(l, tab, { url, loading, canGoBack, canGoForward }));
-        if (!loading) void refreshSaved(tab, url);
+        onPage(tab, (l, t) => navigated(l, t.id, { url, loading, canGoBack, canGoForward }));
+        const t = pageByKey(layoutRef.current, tab);
+        if (!loading && t) void refreshSaved(t.id, url);
       }),
-      listen<{ tab: Id; title: string }>("browser-title", (e) => setLayout((l) => update(l, e.payload.tab, { title: e.payload.title }))),
+      listen<{ tab: string; title: string }>("browser-title", (e) => onPage(e.payload.tab, (l, t) => update(l, t.id, { title: e.payload.title }))),
       // A click in a page focuses its pane, as a click in a Reader does through pointerdown.
-      listen<{ tab: Id }>("browser-focus", (e) => {
-        const hit = tabById(layoutRef.current, e.payload.tab);
+      listen<{ tab: string }>("browser-focus", (e) => {
+        const t = pageByKey(layoutRef.current, e.payload.tab);
+        const hit = t && tabById(layoutRef.current, t.id);
         if (!hit) return;
         setLayout((l) => focusLayout(l, hit.pane.id));
         setKbPane(null);
@@ -290,9 +297,9 @@ export default function App() {
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the set of open articles
   }, [readerKey]);
   // Page tabs that closed (or show a Reader now) give up their webview.
-  const pageIds = useMemo(() => allTabs(layout).filter((t) => t.kind === "page").map((t) => t.id), [layout]);
+  const pageIds = useMemo(() => allTabs(layout).filter((t) => t.kind === "page").map((t) => t.key), [layout]);
   const pageKey = pageIds.join(",");
-  const prevPages = useRef<Id[]>([]);
+  const prevPages = useRef<string[]>([]);
   useEffect(() => {
     for (const id of prevPages.current) if (!pageIds.includes(id)) browser.close(id).catch(() => {});
     prevPages.current = pageIds;
@@ -511,7 +518,7 @@ export default function App() {
   async function savePage(t: PageTab) {
     setSaving(t.id);
     try {
-      await api.savePage(t.id);
+      await api.savePage(t.key);
       await Promise.all([refresh(), refreshSaved(t.id, t.url)]);
     } catch (e) {
       fail(e);
@@ -714,12 +721,13 @@ export default function App() {
       s.actions[action.id]();
     };
     // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
-    const fromPage = ({ tab, key }: { tab: Id; key: string }) => {
+    const fromPage = ({ tab, key }: { tab: string; key: string }) => {
       const s = keyState.current;
       const focusApp = () => getCurrentWebview().setFocus().catch(() => {});
       // What the app focused last is stale (j / k in the nav would step the nav).
       (document.activeElement as HTMLElement | null)?.blur();
-      const pane = tabById(layoutRef.current, tab)?.pane.id;
+      const page = pageByKey(layoutRef.current, tab);
+      const pane = page && tabById(layoutRef.current, page.id)?.pane.id;
       if (pane != null) setLayout((l) => focusLayout(l, pane));
       if (s.prefix) {
         if (s.paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) void focusApp();
@@ -731,7 +739,7 @@ export default function App() {
       s.actions[action.id]();
     };
     window.addEventListener("keydown", down);
-    const unlisten = listen<{ tab: Id; key: string }>("browser-key", (e) => fromPage(e.payload));
+    const unlisten = listen<{ tab: string; key: string }>("browser-key", (e) => fromPage(e.payload));
     return () => {
       window.removeEventListener("keydown", down);
       void unlisten.then((f) => f());
