@@ -92,7 +92,7 @@ export function JobsView() {
   const active = only && issueTypes.includes(only) ? only : null;
   const shown = active ? issues.filter((j) => j.job_type === active) : issues;
   const filterButton = (type: string | null, label: string, n: number) => (
-    <button key={type ?? ""} className={`btn sm${active === type ? " on" : ""}`} aria-pressed={active === type} onClick={() => setOnly(type)}>{label} {n}</button>
+    <button key={type ?? ""} className={`btn sm${active === type ? " on" : ""}`} aria-pressed={active === type} title={type ?? undefined} onClick={() => setOnly(type)}>{label} {n}</button>
   );
 
   return (
@@ -116,7 +116,7 @@ export function JobsView() {
                 {types.map((type) => (
                   <tr key={type}>
                     <td>
-                      <span className="ty" title={typeLabel(type, t)}>{type}</span>
+                      <span className="ty" title={type}>{typeLabel(type, t)}</span>
                       {aboutOf(type) && <InfoTip label={t("jobsView.about", { typeLabel: typeLabel(type, t) })} text={t(aboutOf(type)!)} />}
                     </td>
                     {STATES.map((s) => {
@@ -138,7 +138,7 @@ export function JobsView() {
             <div className="issues-head">
               <h2>{t("jobsView.issues")}</h2>
               {filterButton(null, t("jobsView.all"), issues.length)}
-              {issueTypes.map((type) => filterButton(type, type, issues.filter((j) => j.job_type === type).length))}
+              {issueTypes.map((type) => filterButton(type, typeLabel(type, t), issues.filter((j) => j.job_type === type).length))}
               <span className="aside">{types.reduce((n, type) => n + failing(type), 0) > issues.length && t("jobsView.showing", { length: issues.length })}</span>
               <button className="btn sm" onClick={() => retryAll(null)}>{t("jobsView.retryAll")}</button>
             </div>
@@ -150,7 +150,7 @@ export function JobsView() {
                     const failed = j.status === "failed";
                     return (
                       <tr key={j.id}>
-                        <td><span className="ty" title={typeLabel(j.job_type, t)}>{j.job_type}</span></td>
+                        <td><span className="ty" title={j.job_type}>{typeLabel(j.job_type, t)}</span></td>
                         <td className="art" title={t("jobsView.times", { time: time(j.created_at, t), time2: time(j.started_at, t), time3: time(j.completed_at, t) })}>
                           {j.article_title ?? (j.article_id == null ? typeLabel(j.job_type, t) : t("jobsView.articleN", { x: j.article_id }))}
                         </td>

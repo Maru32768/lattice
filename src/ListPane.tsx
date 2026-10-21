@@ -5,7 +5,9 @@ import { flatten, type Group } from "./groups";
 import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
 import { GroupPicker } from "./GroupPicker";
-import { Menu } from "./Popover";
+import { Menu, openOverlays } from "./Popover";
+import { actionFor, getBindings } from "./keys";
+import { keyOf } from "./keyname";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
@@ -182,11 +184,27 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   const t = useT();
   const [rescored, setRescored] = useState<string | null>(null);
   const hasFacets = activeDims(facets).length > 0;
+  // Nothing in scope and no filter to clear: the filters, sort and Select would act on nothing.
+  const idle = total === 0 && !hasFacets;
   /** Rows picked for a bulk action; null while not picking. */
   const [picked, setPicked] = useState<number[] | null>(null);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [picker, setPicker] = useState<HTMLElement | null>(null);
   useEffect(() => { setPicked(null); setPicker(null); }, [title]);
+  // Esc ends picking before it clears the filters (the shell's Esc); an open popover closes first.
+  const picking = picked != null;
+  useEffect(() => {
+    if (!picking) return;
+    const esc = (e: KeyboardEvent) => {
+      const key = keyOf(e);
+      if (e.defaultPrevented || !key || actionFor(getBindings(), key)?.id !== "escape" || openOverlays()) return;
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) return;
+      e.preventDefault();
+      setPicked(null);
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [picking]);
   const order = flatten(groups);
   const pickedRows = order.filter((a) => picked?.includes(a.id));
   const ids = pickedRows.map((a) => a.id);
@@ -215,22 +233,22 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
           <span className="mono count">{count} / {total}</span>
           <button className="ib" onClick={onCollapse} aria-label={t("listPane.close")} title={t("listPane.close")}><Icon name="left" /></button>
         </div>
-        <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groupRows} />
-        {picked ? (
+        {!idle && <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groupRows} />}
+        {idle ? null : picked ? (
           <div className="list-tools" role="toolbar" aria-label={t("listPane.picking")}>
             <span className="mono">{t("listPane.picked", { n: ids.length })}</span>
             <button className="btn sm" disabled={ids.length === 0} aria-haspopup="dialog" aria-expanded={!!picker}
               onClick={(e) => { const el = e.currentTarget; setPicker((p) => (p ? null : el)); }}>
               <Icon name="folder" size="sm" />{t("listPane.addToGroup")}
             </button>
-            <button className="btn sm ghost push" onClick={() => { setPicked(null); setPicker(null); }}>{t("listPane.endPicking")}</button>
+            <button className="btn sm ghost push" onClick={() => { setPicked(null); setPicker(null); }}>{t("listPane.endPicking")}<ActionKey id="escape" /></button>
           </div>
         ) : (
           <div className="list-tools">
             <SortMenu sort={sort} onSort={onSort} group={group} onGroup={onGroup} />
             {onRescore && <button className="tb" onClick={() => rescore(onRescore)} disabled={count === 0} title={t("listPane.rescoreHint")}>{t("listPane.rescore")}</button>}
-            {onRescore && rescored && <span className="muted" role="status">{rescored}</span>}
-            {noProfile && sort === "relevance_desc" && <span className="muted">{t("listPane.noProfile")}</span>}
+            {onRescore && rescored && <span className="muted list-note" role="status" title={rescored}>{rescored}</span>}
+            {noProfile && sort === "relevance_desc" && <span className="muted list-note" title={t("listPane.noProfile")}>{t("listPane.noProfile")}</span>}
             <button className="tb" onClick={() => { setPicked([]); setAnchor(null); }} title={t("listPane.pickHint")}>{t("listPane.pick")}</button>
             <button className="clear" onClick={() => onFacets({ ...NO_FACETS, tagMode: facets.tagMode })} disabled={!hasFacets}>
               {t("listPane.clear")}<Kbd>Esc</Kbd>

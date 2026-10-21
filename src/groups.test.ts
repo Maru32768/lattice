@@ -24,3 +24,8 @@ test("feed mode: manual first, then feeds, each split by genre", () => {
   ]);
   assert.deepEqual(groupArticles(articles, "feed", en).map((x) => x.label), ["Added by hand", "Feed 1", "Feed 2"]);
 });
+
+test("feed mode follows the user's feed order; a feed not in it goes last", () => {
+  const more = [...articles, a(6, null, 3)];
+  assert.deepEqual(groupArticles(more, "feed", ja, [2, 1]).map((x) => x.label), ["手動追加", "Feed 2", "Feed 1", "Feed 3"]);
+});

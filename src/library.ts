@@ -1,6 +1,7 @@
 // The library's article set is one query: scope ∧ facets (∧ search). All of it is derived
 // client-side from the full article list, which the backend returns without a limit.
-import type { ArticleFilter, ArticleRow, FolderRow, GroupRow } from "./api.ts";
+import type { ArticleFilter, ArticleRow, FeedRow, FolderRow, GroupRow } from "./api.ts";
+import { feedName } from "./groups.ts";
 import type { PlainKey, T } from "./i18n/index.ts";
 
 /** NAVIGATION layer: exactly one, chosen in the sidebar; replaces the previous one. */
@@ -139,21 +140,25 @@ export function facetBase(scoped: ArticleRow[], f: Facets, dim: Dim): ArticleRow
 
 export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((g) => g.id === id)?.name ?? t("common.group");
 
-export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T, folders: FolderRow[] = []): string {
+/** `feeds` names a feed none of `all` comes from yet. */
+export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T, folders: FolderRow[] = [], feeds: FeedRow[] = []): string {
   switch (s.kind) {
     case "recent": return t("library.recent");
     case "unread": return t("common.unread");
     case "favorites": return t("common.favorites");
     case "all": return t("common.allArticles");
     case "genre": return s.name ?? t("common.unclassified");
-    case "feed": return valueLabel("feeds", s.id, all, groups, t);
+    case "feed": {
+      const f = s.id == null ? undefined : feeds.find((x) => x.id === s.id);
+      return f ? feedName(f) : valueLabel("feeds", s.id, all, groups, t);
+    }
     case "group": return groupName(s.id, groups, t);
     case "folder": return folders.find((f) => f.id === s.id)?.name ?? t("common.folder");
     case "important": return t("library.important");
   }
 }
 
-/** Display name of a facet value; feed names come from the articles' feed_title. */
+/** Display name of a facet value; feed names come from the articles' feed_title (none left: the feed was deleted). */
 export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRow[], groups: GroupRow[], t: T): string {
   switch (dim) {
     case "genres": return (v as string | null) ?? t("common.unclassified");
@@ -161,7 +166,7 @@ export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRo
     case "groups": return groupName(v as number, groups, t);
     case "feeds": {
       if (v == null) return t("common.manual");
-      return all.find((a) => a.feed_id === v)?.feed_title ?? t("library.feedN", { id: String(v) });
+      return all.find((a) => a.feed_id === v)?.feed_title ?? t("library.feedDeleted");
     }
     case "difficulty": {
       const label = v == null ? "library.difficultyNone" : DIFFICULTY_LABELS[(v as number) - 1];
@@ -189,7 +194,7 @@ export interface Relaxation {
 }
 
 /** Empty-state suggestions: for each active facet (and the scope if not "all"), the count if it alone were removed. */
-export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T, folders: FolderRow[] = []): Relaxation[] {
+export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T, folders: FolderRow[] = [], feeds: FeedRow[] = []): Relaxation[] {
   const count = (scope: Scope, facets: Facets) => all.filter((a) => inScope(a, scope, now) && matches(a, facets)).length;
   const out: Relaxation[] = activeDims(f).map((d) => {
     const facets = without(f, d);
@@ -197,7 +202,7 @@ export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: 
   });
   if (s.kind !== "all") {
     const scope: Scope = { kind: "all" };
-    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t, folders) }), count: count(scope, f), scope, facets: f });
+    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t, folders, feeds) }), count: count(scope, f), scope, facets: f });
   }
   return out;
 }

@@ -1,4 +1,4 @@
-// List grouping (グループ: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
+// List grouping (まとめ方: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
 import type { T } from "./i18n/index.ts";
 
 interface Groupable {
@@ -29,20 +29,21 @@ function groupBy<A>(articles: A[], keyOf: (a: A) => [string, string]): Group<A>[
   return [...m.values()];
 }
 
-/** By label, with the group `special` first or last. */
-function ordered<A>(groups: Group<A>[], special: string, first: boolean): Group<A>[] {
-  const rank = (g: Group<A>) => (g.key === special ? (first ? -1 : 1) : 0);
-  return groups.sort((x, y) => rank(x) - rank(y) || x.label.localeCompare(y.label));
-}
-
+/** By label, 未分類 last. */
 const byGenre = <A extends Groupable>(articles: A[], t: T) =>
-  ordered(groupBy(articles, (a) => [`g:${a.genre?.toLowerCase() ?? ""}`, a.genre ?? t("common.unclassified")]), "g:", false);
+  groupBy(articles, (a) => [`g:${a.genre?.toLowerCase() ?? ""}`, a.genre ?? t("common.unclassified")])
+    .sort((x, y) => Number(x.key === "g:") - Number(y.key === "g:") || x.label.localeCompare(y.label));
 
-/** "feed": feeds (manual additions first) → genres → articles. "genre": genres → articles. */
-export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" | "genre", t: T): Group<A>[] {
+/**
+ * "feed": feeds (manual additions first, then in `feedOrder`, the user's order; a feed not in it by name, last)
+ * → genres → articles. "genre": genres → articles.
+ */
+export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" | "genre", t: T, feedOrder: number[] = []): Group<A>[] {
   if (mode === "genre") return byGenre(articles, t);
-  const feeds = groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? t("common.manual")]);
-  return ordered(feeds, "f:", true).map((f) => ({ ...f, children: byGenre(f.articles, t) }));
+  const rank = (id: number | null) => (id == null ? -1 : feedOrder.indexOf(id) + 1 || feedOrder.length + 1);
+  return groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? t("common.manual")])
+    .sort((x, y) => rank(x.articles[0].feed_id) - rank(y.articles[0].feed_id) || x.label.localeCompare(y.label))
+    .map((f) => ({ ...f, children: byGenre(f.articles, t) }));
 }
 
 /** The articles of `groups` in display order. */

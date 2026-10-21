@@ -64,7 +64,7 @@ export type MainRequest =
   | { kind: "chatReady" }
   /** A document window started: send it the Page language (`page-lang`). */
   | { kind: "pageLang" }
-  | { kind: "cite"; citation: Citation }
+  | { kind: "cite"; citation: Citation; newTab: boolean }
   | { kind: "screen"; screen: Screen }
   | { kind: "import"; tab: ImportTab }
   | { kind: "discover"; url: string }

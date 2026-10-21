@@ -24,7 +24,7 @@ export function filterGroups(groups: GroupRow[], genres: TagCount[], feeds: Feed
       ],
     },
     {
-      label: t("common.feed"),
+      label: t("common.source"),
       options: [
         opt({ kind: "feed", id: null }, t("common.manual")),
         ...folders.map((f) => opt({ kind: "folder", id: f.id }, t("scopes.folderOption", { name: f.name }))),

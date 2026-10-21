@@ -30,7 +30,7 @@ import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
-import { placeFeeds, type FeedOrder } from "./feedFolders";
+import { feedGroups, folderTree, placeFeeds, type FeedOrder } from "./feedFolders";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
 import { keyOf } from "./keyname";
 import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
@@ -361,8 +361,10 @@ export default function App() {
 
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
+  // The sidebar's order: each folder's feeds, then the loose ones.
+  const feedOrder = useMemo(() => feedGroups(folderTree(feeds, folders, new Map())).flatMap((o) => o.ids), [feeds, folders]);
   const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t)), [shown, group, t]);
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t, feedOrder)), [shown, group, t, feedOrder]);
   const order = useMemo(() => flatten(groups), [groups]);
   // 重要 shows once there is a profile to judge against (or scores from an earlier one).
   const importantMin = relevance && (relevance.has_profile || relevance.scored > 0) ? relevance.threshold : null;
@@ -388,8 +390,8 @@ export default function App() {
     const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t, folders]);
+  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
+    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds]);
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   const hitGroups = useMemo(() => {
     if (!search?.result) return [];
@@ -398,6 +400,7 @@ export default function App() {
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
   const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
+  const searchGroups = useMemo(() => filterGroups(groupRows, genres, feeds, [], t, folders), [groupRows, genres, feeds, t, folders]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -545,10 +548,11 @@ export default function App() {
   }
 
   /** Chat citation: the cited block in the Reader; the page when the article is no longer in the library. */
-  function openCitation(c: Citation) {
-    if (!IS_MAIN) return void toMain({ kind: "cite", citation: c });
-    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" });
-    else if (c.url) openPage(c.url, c.text);
+  function openCitation(c: Citation, newTab = false) {
+    if (!IS_MAIN) return void toMain({ kind: "cite", citation: c, newTab });
+    const where: Where = newTab ? "new" : "active";
+    if (articleById.has(c.article_id)) openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" }, where);
+    else if (c.url) openPage(c.url, c.text, undefined, where);
     else setError(t("app.citationDeleted"));
   }
 
@@ -811,7 +815,7 @@ export default function App() {
       case "chatReady": void emit("doc-current", chatArticle); void emit("open-docs", chatOpenDocs); return;
       case "openDocs": setDocWindowsOpen((m) => ({ ...m, [r.label]: r.docs })); return;
       case "pageLang": void emit("page-lang", pageLang); return;
-      case "cite": openCitation(r.citation); break;
+      case "cite": openCitation(r.citation, r.newTab); break;
       case "screen": setScreen(r.screen); break;
       case "import": setImportTab(r.tab); setScreen("import"); break;
       case "discover": setFeedsUrl(r.url); setScreen("feeds"); break;
@@ -1110,7 +1114,7 @@ export default function App() {
   }, []);
 
   // ---- render ---------------------------------------------------------------------------------
-  const title = scopeLabel(scope, articles, groupRows, t, folders);
+  const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
   const tprog = curView ? translationProgress(curView.blocks, curView.target_language) : { done: 0, total: 0 };
@@ -1240,7 +1244,7 @@ export default function App() {
           {IS_MAIN && screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
               hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} feeds={feeds} groups={groupRows} articleById={articleById}
+              scope={scope} onScope={setScope} filters={searchGroups} importantMin={importantMin} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
           {IS_MAIN && screen === "library" && search && listOpen && splitter("search")}

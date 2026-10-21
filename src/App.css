@@ -100,7 +100,9 @@
 .list-title .ib { margin-left: auto; align-self: center; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip-body { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0; border: 0; background: none; color: inherit; font-size: inherit; }
-.list-tools { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink3); }
+.list-tools { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink3); white-space: nowrap; }
+/* A note gives way first, to one line with its full text on hover. */
+.list-tools .list-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .list-tools .tb.sort { padding: 0 6px; margin-left: -6px; }
 .list-tools .clear { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none; font-size: 12px; color: var(--ink3); }
 .list-tools .clear:disabled { opacity: .6; }

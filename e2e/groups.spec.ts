@@ -65,6 +65,12 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
   await expect.poll(() => callsOf(app, "group_remove")).toEqual([{ id: mvcc.id, articles: [a.id] }]);
 });
 
+test("an empty scope shows no filters, sort or Select", async ({ app }) => {
+  await navItem(app, empty.name).click();
+  await expect(list(app).locator(".empty")).toBeVisible();
+  await expect(list(app).locator(".chips, .list-tools")).toHaveCount(0);
+});
+
 test("list rows picked with 選択 and Shift+click go into a group together", async ({ app }) => {
   const rows = list(app).locator(".row");
   const ids = await rows.evaluateAll((els) => els.slice(0, 4).map((e) => Number((e as HTMLElement).dataset.id)));
@@ -83,6 +89,9 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
   await list(app).getByRole("button", { name: "選択を終了" }).click();
   await rows.nth(3).click({ modifiers: ["Shift"] });
   await expect(list(app).getByRole("toolbar")).toContainText("1 件を選択");
+  await app.keyboard.press("Escape");
+  await expect(list(app).getByRole("toolbar")).toHaveCount(0);
+  await expect(list(app).getByRole("button", { name: "選択", exact: true })).toBeVisible();
 });
 
 test("a group is a facet, a search scope and a chat scope (このグループ)", async ({ app }) => {

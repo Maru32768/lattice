@@ -4,6 +4,7 @@ import { feedName } from "./groups";
 import { activeDims, countBy, facetLabel, genreSwatch, groupName, scopeLabel, type Facets, type Scope } from "./library";
 import { filterKey } from "./scopes";
 import { useCover } from "./Popover";
+import { onMiddle } from "./middle";
 import { Icon, Kbd, type IconName } from "./Icon";
 import type { Screen } from "./Nav";
 import type { LanguageMode } from "./mixed";
@@ -12,7 +13,7 @@ import { useT, type PlainKey } from "./i18n";
 export interface PaletteActions {
   scope: (s: Scope) => void;
   facets: (f: Facets) => void;
-  /** `newTab`: Ctrl-clicked. */
+  /** `newTab`: Ctrl / middle clicked. */
   open: (a: ArticleRow, newTab?: boolean) => void;
   page: (url: string, newTab?: boolean) => void;
   /** `group`: also put the saved article in that group. */
@@ -42,7 +43,7 @@ interface Item {
   label: React.ReactNode;
   sub?: React.ReactNode;
   right?: React.ReactNode;
-  /** `newTab`: Ctrl-clicked (only articles and URLs use it). */
+  /** `newTab`: Ctrl / middle clicked (only articles and URLs use it). */
   run: (newTab?: boolean) => void;
   /** Tab: stack this filter as a facet and keep the palette open. */
   stack?: () => void;
@@ -254,7 +255,7 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
     }
   }
 
-  const where = [scopeLabel(scope, all, groups, t, folders), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
+  const where = [scopeLabel(scope, all, groups, t, folders, feeds), ...activeDims(facets).map((d) => facetLabel(facets, d, all, groups, t))].join(" · ");
   let lastGroup: Item["group"] | "" = "";
   return (
     <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -279,7 +280,7 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
                   </div>
                 )}
                 <button id={`pal-${i}`} role="option" aria-selected={i === act} className={`it${i === act ? " act" : ""}`} tabIndex={-1}
-                  onMouseMove={() => setAct(i)} onClick={(e) => run(it, e.ctrlKey || e.metaKey)}>
+                  onMouseMove={() => setAct(i)} onClick={(e) => run(it, e.ctrlKey || e.metaKey)} {...onMiddle(() => run(it, true))}>
                   {it.icon && <Icon name={it.icon} />}
                   <span className="it-l">{it.label}</span>
                   {it.sub && <span className="s">{it.sub}</span>}

@@ -1,4 +1,4 @@
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, list, callsOf, navItem } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 
 const title = (id: number) => ARTICLES.find((a) => a.id === id)!.title!;
@@ -44,4 +44,15 @@ test("the arrows move through the hits and Enter opens the Reader at the hit blo
   await expect(app.locator(".art-title")).toHaveText(title(2));
   await expect(app.locator(".blk.is-hit .blk-label")).toHaveText(/検索一致/);
   await expect(app.locator(".docbar .matches")).toContainText("一致 1 / 1");
+});
+
+test("the search scope picker shows the list's scope, with the chat's groups but no tags", async ({ app }) => {
+  await navItem(app, "重要").click();
+  await app.keyboard.press("/");
+  const scope = app.getByLabel("検索範囲");
+  await expect(scope.locator("option:checked")).toHaveText("重要");
+  const labels = await scope.locator("optgroup").evaluateAll((gs) => gs.map((g) => g.getAttribute("label")));
+  expect(labels).toEqual(["グループ", "ジャンル", "ソース"]);
+  await scope.selectOption({ label: "手動追加" });
+  await expect(scope.locator("option:checked")).toHaveText("手動追加");
 });

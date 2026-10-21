@@ -71,7 +71,7 @@
 .manage .tbl.dense td { padding: 7px 10px; vertical-align: middle; font-size: 12.5px; }
 .manage .tbl.dense td.r, .manage .tbl.dense th.r { text-align: right; white-space: nowrap; }
 .manage .tbl.dense td.hint { font-size: 12px; color: var(--ink3); }
-.manage .ty { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; background: var(--sunken); color: var(--ink2); font: 500 12px var(--mono); }
+.manage .ty { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: 4px; background: var(--sunken); color: var(--ink2); font: 500 12px var(--sans); white-space: nowrap; }
 .manage .cnt { display: inline-flex; min-width: 28px; justify-content: flex-end; font: 500 12px var(--mono); }
 .manage .cnt.z { color: var(--ink4); }
 .manage .cnt.run { color: var(--acc); }

@@ -296,7 +296,7 @@ export const en = {
   "library.read": "Read",
   "library.issue": "Needs attention",
   "library.recent": "Recently added",
-  "library.feedN": "Feed {id}",
+  "library.feedDeleted": "Deleted feed",
   "library.dropFacet": "Remove {dim}: {value}",
   "library.toAll": "{scope} → All articles",
   "time.justNow": "just now",

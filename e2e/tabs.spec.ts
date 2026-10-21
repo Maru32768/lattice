@@ -113,3 +113,20 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   await expect(titles(app)).toHaveText(["example.com"]);
   await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab: keys[1] }]);
 });
+
+test("a chat citation and a palette article open in a new tab on Ctrl / middle click", async ({ app }) => {
+  await row(app, a.title!).click();
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await app.getByRole("button", { name: "会話を選ぶ" }).click();
+  await app.getByRole("menuitemradio", { name: "MVCC と VACUUM の関係" }).click();
+  // [1] cites the second article; a plain click would replace the active tab.
+  await app.locator(".chat .answer > p .cite").first().click({ modifiers: ["Control"] });
+  await expect(titles(app)).toHaveText([a.title!, b.title!]);
+  await app.locator(".chat .source").first().click({ button: "middle" });
+  await expect(titles(app)).toHaveText([a.title!, b.title!, b.title!]);
+
+  await app.keyboard.press("Control+k");
+  await app.keyboard.insertText(c.title!);
+  await app.locator(".pal .it-l").getByText(c.title!, { exact: true }).click({ button: "middle" });
+  await expect(titles(app)).toHaveText([a.title!, b.title!, b.title!, c.title!]);
+});

@@ -290,7 +290,7 @@ The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in
 
 ### Act on several articles
 
-Click **Select** above the list, then click articles to pick them. `Shift`+click picks a range. `Shift`+click also starts picking without the button. Right-click a picked article for the actions that apply to all of them: favorite, read or unread, and **Add to collection…**. Click **Done** to stop.
+Click **Select** above the list, then click articles to pick them. `Shift`+click picks a range. `Shift`+click also starts picking without the button. Right-click a picked article for the actions that apply to all of them: favorite, read or unread, and **Add to collection…**. Click **Done** or press `Esc` to stop.
 
 ### Remove an article from the Index
 
@@ -303,7 +303,7 @@ Choose **Remove from Index…** in the ⋯ menu or the right-click menu, and con
 Press `/` to search your saved articles. Search is hybrid. It combines full-text matching with semantic matching, so a Japanese query finds English passages and the other way round. It searches the original text and the translations.
 
 - Results are passages grouped by article. `j` and `k` move between them, `Enter` opens the article in the Reader at that passage, and `Shift+Enter` opens it in Page. `Esc` goes back to the list.
-- The scope menu limits the search to **Recently added**, **Unread**, **Favorites**, a collection, a genre or a feed. The filter chips narrow the results further.
+- The scope menu limits the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow the results further.
 - **Search method** filters the results by kind of match: **Hybrid**, **Full text** or **Meaning**. The search itself always runs both ways. Each result says how it matched: **Full text**, **Meaning** or **Full text + meaning**.
 - Recent searches appear in the navigation while you search.
 
@@ -413,7 +413,7 @@ Fetching, rendering, translating and the other slow work runs in the background 
 | **Importance** (`relevance`) | Rates articles against your profile, up to 20 per call. |
 | **Import filter** (`feed_filter`) | Decides with the LLM which new feed entries to import, up to 20 per call. |
 
-The Jobs screen lists each type by the ID in parentheses. Hover the ID for the name. The ⓘ next to each type explains it in the app too.
+The Jobs screen lists each type by its name. Hover the name for the ID in parentheses. The ⓘ next to each type explains it in the app too.
 
 A job is **Pending**, **Running**, **Waiting to retry** or **Failed**. A job that fails waits and retries by itself after 2, 4, 8 and 16 minutes. After 5 attempts it is **Failed** and stops. **Retry now** runs a waiting job at once, **Retry** runs a failed one again, and **Retry failed** or **Retry all failed** does it for a type or for everything. **Cancel** removes a job that is waiting to retry or failed. A running job cannot be cancelled.
 

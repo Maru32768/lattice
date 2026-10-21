@@ -52,7 +52,7 @@ test("a menu over no webview is drawn in the frame it first appears (H22)", asyn
     };
     requestAnimationFrame(frame);
   }));
-  await list(app).getByRole("button", { name: "並び順とグループ" }).click();
+  await list(app).getByRole("button", { name: "並び順とまとめ方" }).click();
   expect(await first).toBe("1");
 });
 
@@ -72,7 +72,7 @@ test("a press outside closes the group picker and a menu; so does a click in a p
   await chip.click();
   await expect(picker).toHaveCount(0);
 
-  const sort = list(app).getByRole("button", { name: "並び順とグループ" });
+  const sort = list(app).getByRole("button", { name: "並び順とまとめ方" });
   await sort.click();
   await expect(app.getByRole("menu")).toBeVisible();
   await list(app).locator("h1").click();

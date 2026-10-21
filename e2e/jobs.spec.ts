@@ -3,6 +3,14 @@ import { test, expect, navItem } from "./harness.ts";
 
 const LABELS = ["取り込みフィルタ", "取得", "描画", "画像", "サイトアイコン", "検索 index", "翻訳", "要約", "クイズ", "単語の意味", "分類", "重要度"];
 
+test("job types show their names, with the ID on hover", async ({ app }) => {
+  await navItem(app, "処理状況").click();
+  const filter = app.getByRole("button", { name: "翻訳 2" });
+  await expect(filter).toHaveAttribute("title", "translate");
+  await expect(app.locator(".ty", { hasText: "検索 index" })).toHaveAttribute("title", "embed");
+  await expect(app.locator(".ty", { hasText: /^embed$/ })).toHaveCount(0);
+});
+
 test("each job type's ⓘ explains it on hover and on keyboard focus, and describes the icon", async ({ app }) => {
   await navItem(app, "処理状況").click();
   for (const label of LABELS) await expect(app.getByRole("img", { name: `${label}について` })).toHaveCount(1);

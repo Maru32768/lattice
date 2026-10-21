@@ -78,6 +78,7 @@ test("split and merge: the new pane is empty and focused; same-direction splits 
   l = closePane(l, panes(l.root).find((p) => !p.tabs.length)!.id);
   assert.equal(l.root.kind, "pane");
   assert.deepEqual(picture(l), ["2*"]);
+  assert.equal(closePane(l, l.focused), l, "the only pane stays");
   assert.equal(closePane(l, 99), l);
 });
 
