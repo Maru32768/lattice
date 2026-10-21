@@ -48,6 +48,11 @@ export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean
 }
 
 export const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+/** Page `key` is drawn and no overlay covers it, so a focus it reports came from a click on it. */
+export function pageClickable(key: string) {
+  const b = pages.get(key)?.();
+  return !!b && !rects.some((r) => intersects(r, b));
+}
 const underPage = (r: DOMRect) => [...pages.values()].some((p) => {
   const b = p();
   return !!b && intersects(b, r);

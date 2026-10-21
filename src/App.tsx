@@ -25,7 +25,7 @@ import { Reader, WordMarksContext, type DocActions, type Focus } from "./Reader"
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { getEngine, homeOf } from "./engines";
-import { ContextMenu, CoverContext, coverRect, openOverlays, useCover, type MenuItem } from "./Popover";
+import { ContextMenu, CoverContext, coverRect, openOverlays, pageClickable, useCover, type MenuItem } from "./Popover";
 import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
@@ -281,9 +281,12 @@ export default function App() {
       // A click in a page focuses its pane, as a click in a Reader does through pointerdown.
       listen<{ tab: string }>("browser-focus", (e) => {
         // The click never reached this document: replay it as a press outside every open menu and
-        // popover (Radix dismisses a left press on its click).
-        document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-        document.body.click();
+        // popover (Radix dismisses a left press on its click). Not for a page under an overlay: hiding
+        // it behind its still gives it the focus too, which would close the menu that hid it.
+        if (pageClickable(e.payload.tab)) {
+          document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          document.body.click();
+        }
         const t = pageByKey(layoutRef.current, e.payload.tab);
         const hit = t && tabById(layoutRef.current, t.id);
         if (!hit) return;

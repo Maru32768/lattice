@@ -77,11 +77,29 @@ test("a press outside closes the group picker and a menu; so does a click in a p
   await expect(app.getByRole("menu")).toBeVisible();
   await list(app).locator("h1").click();
   await expect(app.getByRole("menu")).toHaveCount(0);
+});
 
-  // A click in a page (in another pane) never reaches this document; the backend reports it as browser-focus.
+test("a click in a page in another pane closes a popover; the focus a page gets when a menu hides it does not (H23)", async ({ app }) => {
+  await openPage(app);
+  const { tab } = (await callsOf(app, "browser_open")).at(-1) as { tab: string };
+  const menu = app.getByRole("menu");
+  await app.locator(".docbar [aria-haspopup=menu]").last().click();
+  await expect.poll(() => opacity(menu)).toBe("1");
+  // WebView2 reports GotFocus when the page is hidden behind its still for the menu.
+  await app.evaluate((t) => window.__e2e.emit("browser-focus", { tab: t }), tab);
+  await app.waitForTimeout(200);
+  await expect(menu).toBeVisible();
+  await app.keyboard.press("Escape");
+
+  // A click in a page in another pane never reaches this document; the backend reports it as browser-focus.
+  await app.getByRole("button", { name: "右に分割" }).click();
+  await expect(app.locator(".dpane")).toHaveCount(2);
+  await list(app).locator(".row").nth(1).click();
+  const chip = app.locator(".dpane").nth(1).locator(".art-chips").getByRole("button", { name: "＋ グループ" });
+  const picker = app.getByRole("dialog", { name: "グループ" });
   await chip.click();
   await expect(picker).toBeVisible();
-  await app.evaluate(() => window.__e2e.emit("browser-focus", { tab: "page-in-another-pane" }));
+  await app.evaluate((t) => window.__e2e.emit("browser-focus", { tab: t }), tab);
   await expect(picker).toHaveCount(0);
 });
 
