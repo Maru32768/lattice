@@ -632,6 +632,7 @@ lattice-cli --format text get 42
 | `tags` | タグと記事数です。 |
 | `genres` | ジャンルと記事数です。 |
 | `feeds` | 登録したフィードとそのフォルダです。 |
+| `collections` | グループとその ID・記事数です。 |
 | `jobs` | 待機中・実行中・失敗したジョブです。 |
 | `ask 質問` | 保存した記事をもとに、引用付きで回答します。アプリで設定した AI プロバイダを使います。`--scope`。 |
 | `save URL` | URL を保存します。書き込みの許可が必要です。`--run` を付けると、アプリに任せずにその場で取得します。 |
@@ -658,14 +659,14 @@ lattice-cli --format text get 42
 | `unread` | 未読の記事 |
 | `favorites` | お気に入りの記事 |
 | `tag:名前` | そのタグの記事 |
-| `genre:名前` | そのジャンルの記事 |
-| `feed:ID` | そのフィードの記事 |
+| `genre:名前` | そのジャンルの記事（`genre:none` で未分類の記事） |
+| `feed:ID` | そのフィードの記事（`feed:none` で手動で追加した記事） |
 | `folder:ID` | そのフォルダのフィードの記事 |
-| `group:ID` | そのグループの記事 |
-| `important` か `important:下限` | 重要度が下限（既定 4）以上の記事 |
+| `collection:ID` | そのグループの記事（`group:ID` も使えます） |
+| `important` か `important:下限` | 重要度が下限（既定は **設定 › 重要度** のしきい値）以上の記事 |
 | `article:ID` か `article:3,7` | 指定した記事 |
 
-フィードの ID は `feeds` で分かります。フォルダの ID は `--format json` のときに出ます。
+フィードの ID は `feeds` で分かります。フォルダの ID は `--format json` のときに出ます。グループの ID は `collections` で分かります。
 
 ### CLI でできること・できないこと
 
@@ -681,7 +682,7 @@ lattice-cli --format text get 42
 claude mcp add lattice -- lattice-cli mcp
 ```
 
-エージェントは `search`・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask` を tool として使えます。`save`・`tag`・`read`・`favorite` も渡すには、`mcp` の後に `--allow-write` を付けます。
+エージェントは `search`・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`collections`・`jobs`・`ask` を tool として使えます。`save`・`tag`・`read`・`favorite` も渡すには、`mcp` の後に `--allow-write` を付けます。
 
 ### prompt injection に注意する
 

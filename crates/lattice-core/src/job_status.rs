@@ -86,30 +86,22 @@ pub fn overview(store: &Store) -> Result<JobOverview, String> {
     Ok(JobOverview { counts, issues })
 }
 
-/// Re-queues one job now, as `Store::enqueue_job` does for a dedup key (status pending, backoff
-/// and error cleared, a fresh set of attempts). Returns its type, to wake the right runner; None if running or gone.
+/// Manual retry: ready now, error cleared. A failed job gets a fresh set of attempts; one waiting
+/// out a backoff keeps its count, so the try counts and a new failure shows as the next attempt.
+const REQUEUE: &str = "status = 'pending', attempt_count = CASE WHEN status = 'failed' THEN 0 ELSE attempt_count END, last_error = NULL, next_run_at = NULL";
+
+/// Re-queues one job now (see `REQUEUE`). Returns its type, to wake the right runner; None if running or gone.
 pub fn retry(store: &Store, id: i64) -> Result<Option<String>, String> {
     store
         .conn()
-        .query_row(
-            "UPDATE processing_jobs SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
-             WHERE id = ?1 AND status != 'running' RETURNING type",
-            [id],
-            |r| r.get(0),
-        )
+        .query_row(&format!("UPDATE processing_jobs SET {REQUEUE} WHERE id = ?1 AND status != 'running' RETURNING type"), [id], |r| r.get(0))
         .optional()
         .map_err(err)
 }
 
 /// Re-queues every failed or backing-off job, of `job_type` only when given.
 pub fn retry_failed(store: &Store, job_type: Option<&str>) -> Result<usize, String> {
-    store
-        .conn()
-        .execute(
-            &format!("UPDATE processing_jobs AS j SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL WHERE {ISSUE} AND (?1 IS NULL OR j.type = ?1)"),
-            params![job_type],
-        )
-        .map_err(err)
+    store.conn().execute(&format!("UPDATE processing_jobs AS j SET {REQUEUE} WHERE {ISSUE} AND (?1 IS NULL OR j.type = ?1)"), params![job_type]).map_err(err)
 }
 
 /// Deletes a pending or failed job; a running one finishes first. Returns whether it was deleted.
@@ -168,7 +160,7 @@ mod tests {
         assert_eq!(retry_failed(&s, None).unwrap(), 2);
         assert!(overview(&s).unwrap().issues.is_empty());
         let attempts: i64 = s.conn().query_row("SELECT sum(attempt_count) FROM processing_jobs WHERE type = 'classify'", [], |r| r.get(0)).unwrap();
-        assert_eq!(attempts, 0, "retried jobs get a full set of attempts");
+        assert_eq!(attempts, 2, "the failed job gets a full set of attempts, the waiting ones keep theirs");
 
         let ok = Providers { llm: Fake::new(), embedder: NoEmbed, http: crate::fetch::client() };
         assert!(run_next(&s, &ok, &[classify::JOB_TYPE], &|_| {}).await.unwrap());

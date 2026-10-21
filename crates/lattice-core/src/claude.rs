@@ -56,9 +56,12 @@ impl ClaudeCli {
     }
 
     async fn run(&self, system: &str, input: &str, schema: &Value) -> Result<Value, LlmError> {
+        // An empty working directory, like Codex: nothing for the CLI to read or pick up.
+        let cwd = std::env::temp_dir().join("lattice-claude");
+        std::fs::create_dir_all(&cwd).map_err(|e| LlmError::Failed(e.to_string()))?;
         let mut cmd = Command::new(&self.program);
         cmd.args(self.args(system, schema));
-        cmd.current_dir(std::env::temp_dir()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+        cmd.current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash from the GUI app
 

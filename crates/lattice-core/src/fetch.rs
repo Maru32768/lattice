@@ -75,12 +75,25 @@ fn is_public(ip: IpAddr) -> bool {
 }
 
 /// reqwest's own message hides the cause (e.g. a refused private address); append the innermost source.
+/// Common network failures become a plain message, with that raw text kept as `detail`.
 pub(crate) fn request_error(e: reqwest::Error) -> String {
-    let mut cause: &dyn std::error::Error = &e;
-    while let Some(next) = cause.source() {
-        cause = next;
+    let chain = || std::iter::successors(Some(&e as &(dyn std::error::Error + 'static)), |c| c.source());
+    let cause = chain().last().expect("the error itself");
+    let detail = format!("request failed: {e}: {cause}");
+    let io_kind = |c: &(dyn std::error::Error + 'static)| c.downcast_ref::<std::io::Error>().map(std::io::Error::kind);
+    let kinds: Vec<_> = chain().filter_map(io_kind).collect();
+    if chain().any(|c| c.is::<native_tls::Error>()) {
+        crate::msg!("fetch.tls", detail = detail)
+    } else if chain().any(|c| c.to_string() == "dns error") && cause.is::<std::io::Error>() {
+        // hyper-util's resolver failure; `PublicDns` refusing a private address is not an io::Error.
+        crate::msg!("fetch.dns", detail = detail)
+    } else if kinds.contains(&std::io::ErrorKind::ConnectionRefused) {
+        crate::msg!("fetch.refused", detail = detail)
+    } else if e.is_timeout() || kinds.contains(&std::io::ErrorKind::TimedOut) {
+        crate::msg!("fetch.timeout", detail = detail)
+    } else {
+        detail
     }
-    format!("request failed: {e}: {cause}")
 }
 
 struct PublicDns;
@@ -213,6 +226,42 @@ mod tests {
             let e = fetch(&c, url).await.err().unwrap();
             assert!(e.contains("private") || e.contains("public address"), "{url}: {e}");
         }
+    }
+
+    #[tokio::test]
+    async fn names_common_network_failures() {
+        use tokio::io::AsyncWriteExt;
+        struct NoSuchHost;
+        impl reqwest::dns::Resolve for NoSuchHost {
+            fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+                Box::pin(async { Err(std::io::Error::other("No such host is known.").into()) })
+            }
+        }
+        let code = |e: &str| serde_json::from_str::<serde_json::Value>(e).map(|v| v["code"].as_str().unwrap_or_default().to_string()).unwrap_or_default();
+        let get = |c: reqwest::Client, url: String| async move { request_error(c.get(url).send().await.unwrap_err()) };
+        let with = |ms: u64| reqwest::Client::builder().timeout(Duration::from_millis(ms));
+
+        let e = get(with(10_000).dns_resolver(NoSuchHost).build().unwrap(), "http://nowhere.example/".into()).await;
+        assert_eq!(code(&e), "fetch.dns", "{e}");
+        assert!(e.contains("No such host is known."), "the raw detail is kept: {e}");
+
+        let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap();
+        let e = get(with(10_000).build().unwrap(), format!("http://{closed}/")).await;
+        assert_eq!(code(&e), "fetch.refused", "{e}");
+
+        let silent = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = silent.local_addr().unwrap();
+        let e = get(with(300).build().unwrap(), format!("http://{addr}/")).await;
+        assert_eq!(code(&e), "fetch.timeout", "{e}");
+
+        // Plain HTTP where TLS is expected: the handshake fails.
+        tokio::spawn(async move {
+            while let Ok((mut s, _)) = silent.accept().await {
+                let _ = s.write_all(b"HTTP/1.1 400 Bad Request\r\n\r\n").await;
+            }
+        });
+        let e = get(with(10_000).build().unwrap(), format!("https://{addr}/")).await;
+        assert_eq!(code(&e), "fetch.tls", "{e}");
     }
 
     #[test]

@@ -570,7 +570,7 @@ mod tests {
         let dated = |url: &str, d: &str| Entry { url: url.to_string(), published: Some(d.to_string()), ..Default::default() };
         let entries = [
             dated("https://blog.dev/early", "2024-01-01T00:00:00Z"),
-            dated("https://blog.dev/plain", "2024-02-01T00:00:00Z"),
+            Entry { title: Some("Plain post".into()), ..dated("https://blog.dev/plain", "2024-02-01T00:00:00Z") },
             dated("https://blog.dev/meta", "2024-03-01T00:00:00Z"),
         ];
         import(&s, feed, &entries).unwrap();
@@ -584,6 +584,9 @@ mod tests {
         assert_eq!(published("https://blog.dev/early").as_deref(), Some("2024-01-01T00:00:00Z"));
         assert_eq!(published("https://blog.dev/plain").as_deref(), Some("2024-02-01T00:00:00Z"));
         assert_eq!(published("https://blog.dev/meta").as_deref(), Some("2023-12-24T10:00:00+09:00"), "the page's own date wins");
+        let title = |u: &str| s.article_row(id_of(u)).unwrap().unwrap().title;
+        assert_eq!(title("https://blog.dev/plain").as_deref(), Some("Plain post"), "the entry's title beats the page <title>");
+        assert_eq!(title("https://blog.dev/meta").as_deref(), Some("T"), "no entry title: the page's");
     }
 
     /// Medium-style feed: full text in `content:encoded`, links tagged `?source=rss…`.

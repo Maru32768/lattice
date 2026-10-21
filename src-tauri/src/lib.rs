@@ -275,10 +275,12 @@ fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     classify::set_genre(&app.store, id, &name)
 }
 
-/// Manual choice (1-5), pinned against auto runs; `None` clears it.
+/// Manual choice (1-5), pinned against auto runs; `None` clears it and queues a re-estimate.
 #[tauri::command(async)]
 fn set_difficulty(app: State<'_, App>, id: i64, level: Option<i64>) -> Result<(), String> {
-    classify::set_difficulty(&app.store, id, level)
+    classify::set_difficulty(&app.store, id, level)?;
+    app.wake_llm.notify_one();
+    Ok(())
 }
 
 #[tauri::command(async)]
@@ -1060,7 +1062,8 @@ pub fn run() {
             // Created here rather than from the config so a portable install can give it its own
             // WebView2 profile folder (tauri.conf.json has `create: false`).
             let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
-            let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?;
+            // Hidden until it is moved to where it last was (`restore_main`, once the store is open).
+            let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.visible(false);
             if let Some(d) = loc.webview_dir() {
                 main = main.data_directory(d);
             }
@@ -1144,6 +1147,7 @@ pub fn run() {
                 data_dir: dir,
                 picked_dir: Mutex::new(None),
             });
+            popout::restore_main(app.handle(), &app.state::<App>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

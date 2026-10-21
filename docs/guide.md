@@ -632,6 +632,7 @@ lattice-cli --format text get 42
 | `tags` | Tags with their article counts |
 | `genres` | Genres with their article counts |
 | `feeds` | Subscribed feeds, with their folders |
+| `collections` | Collections with their ids and article counts |
 | `jobs` | Queued, running and failed jobs |
 | `ask QUESTION` | Answers from your saved articles with citations, through the app's AI providers. `--scope`. |
 | `save URL` | Saves a URL. Needs write access. `--run` fetches it now instead of leaving it to the app. |
@@ -658,14 +659,14 @@ These options work with every command:
 | `unread` | Unread articles |
 | `favorites` | Starred articles |
 | `tag:NAME` | Articles with this tag |
-| `genre:NAME` | Articles in this genre |
-| `feed:ID` | Articles from this feed |
+| `genre:NAME` | Articles in this genre (`genre:none` for unclassified ones) |
+| `feed:ID` | Articles from this feed (`feed:none` for articles added by hand) |
 | `folder:ID` | Articles from the feeds in this folder |
-| `group:ID` | Articles in this collection |
-| `important` or `important:MIN` | Articles rated at least MIN (4 by default) |
+| `collection:ID` | Articles in this collection (`group:ID` also works) |
+| `important` or `important:MIN` | Articles rated at least MIN (by default the threshold in **Settings › Importance**) |
 | `article:ID` or `article:3,7` | These articles |
 
-`feeds` shows the feed ids, and with `--format json` the folder ids too.
+`feeds` shows the feed ids, and with `--format json` the folder ids too. `collections` shows the collection ids.
 
 ### What the CLI does and does not do
 
@@ -681,7 +682,7 @@ These options work with every command:
 claude mcp add lattice -- lattice-cli mcp
 ```
 
-This gives the agent `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
+This gives the agent `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
 
 ### Prompt injection
 

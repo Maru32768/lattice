@@ -13,6 +13,7 @@ feed-rs = "3.0.0"
 flate2 = "1.1.10"
 futures = "0.3.34"
 log = "0.4.34"
+native-tls = "0.2.18" # reqwest's TLS backend: only to recognize its errors
 pdf-extract = "0.12.1"
 pulldown-cmark = { version = "0.13", default-features = false }
 quick-xml = "0.42.0"

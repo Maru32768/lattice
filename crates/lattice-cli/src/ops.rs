@@ -10,7 +10,7 @@ use lattice_core::ir::BlockKind;
 use lattice_core::jobs::{self, LOCAL_JOBS, NET_JOBS, Providers};
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock};
 use lattice_core::url_norm::normalize;
-use lattice_core::{classify, feeds, ingest, job_status, search, summarize, translate};
+use lattice_core::{classify, feeds, groups, ingest, job_status, relevance, search, summarize, translate};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -33,7 +33,7 @@ pub enum Op {
     /// Hybrid search (full text and meaning) over the blocks of saved articles
     Search {
         query: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, genre:none, feed:ID, feed:none, folder:ID, collection:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -55,7 +55,7 @@ pub enum Op {
     },
     /// Saved articles, newest first
     List {
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, genre:none, feed:ID, feed:none, folder:ID, collection:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -71,12 +71,14 @@ pub enum Op {
     Genres {},
     /// Subscribed feeds
     Feeds {},
+    /// Collections with their ids and article counts (for --scope collection:ID)
+    Collections {},
     /// Queued, running and failed background jobs
     Jobs {},
     /// Ask a question answered from saved articles, with citations (uses the app's LLM chain)
     Ask {
         question: String,
-        /// all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]
+        /// all, unread, favorites, tag:NAME, genre:NAME, genre:none, feed:ID, feed:none, folder:ID, collection:ID, important[:MIN] or article:ID[,ID...]
         #[arg(long)]
         #[serde(default)]
         scope: Option<String>,
@@ -119,17 +121,21 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
-fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
+/// `important` without a minimum uses the app's threshold (Settings › Importance).
+fn parse_scope(store: &Store, scope: Option<&str>) -> Result<Scope, String> {
     let filter = match scope.map(|s| s.split_once(':').unwrap_or((s, ""))) {
         None | Some(("all", "")) => ArticleFilter::All,
         Some(("unread", "")) => ArticleFilter::Unread,
         Some(("favorites", "")) => ArticleFilter::Favorites,
         Some(("tag", name)) if !name.is_empty() => ArticleFilter::Tag { name: name.into() },
+        Some(("genre", "none")) => ArticleFilter::Genre { name: None },
         Some(("genre", name)) if !name.is_empty() => ArticleFilter::Genre { name: Some(name.into()) },
+        Some(("feed", "none")) => ArticleFilter::Feed { id: None },
         Some(("feed", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Feed { id: id.parse().ok() },
-        Some(("group", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Group { id: id.parse().map_err(err)? },
+        // `group` is the older name, kept for existing scripts.
+        Some(("collection" | "group", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Group { id: id.parse().map_err(err)? },
         Some(("folder", id)) if id.parse::<i64>().is_ok() => ArticleFilter::Folder { id: id.parse().map_err(err)? },
-        Some(("important", "")) => ArticleFilter::Important { min: 4 },
+        Some(("important", "")) => ArticleFilter::Important { min: relevance::threshold(store)? },
         Some(("important", min)) if matches!(min.parse::<i64>(), Ok(1..=5)) => ArticleFilter::Important { min: min.parse().map_err(err)? },
         Some(("article", ids)) => {
             if let Ok(mut ids) = ids.split(',').map(str::parse).collect::<Result<Vec<i64>, _>>() {
@@ -139,7 +145,7 @@ fn parse_scope(scope: Option<&str>) -> Result<Scope, String> {
         }
         _ => {
             return Err(format!(
-                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, feed:ID, folder:ID, group:ID, important[:MIN] or article:ID[,ID...]",
+                "unknown scope {:?}: use all, unread, favorites, tag:NAME, genre:NAME, genre:none, feed:ID, feed:none, folder:ID, collection:ID, important[:MIN] or article:ID[,ID...]",
                 scope.unwrap_or_default()
             ));
         }
@@ -196,7 +202,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
     let store = &ctx.store;
     match op {
         Op::Search { query, scope, limit } => {
-            let ids = store.scope_articles(&parse_scope(scope.as_deref())?).map_err(err)?;
+            let ids = store.scope_articles(&parse_scope(store, scope.as_deref())?).map_err(err)?;
             let r = search::search(store, &ctx.providers.embedder, &query, ids.as_deref(), &translate::target(store)?, limit.max(1)).await?;
             let mode = if r.semantic_error.is_some() { "full_text" } else { "hybrid" };
             let mut text = r.semantic_error.as_ref().map(|e| format!("(full text only: {e})\n\n")).unwrap_or_default();
@@ -237,11 +243,16 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                     json["translation"] = json!(joined(&v.blocks, translated));
                 }
             }
-            text += &format!("\n{}\n", joined(&v.blocks, if translation { translated } else { source }));
+            let pick = if translation { translated } else { source };
+            text += &if blocks {
+                format!("\n{}\n", lines(&v.blocks, |b| format!("[block {}] {}: {}", b.id, b.block.kind.as_str(), pick(b))))
+            } else {
+                format!("\n{}\n", joined(&v.blocks, pick))
+            };
             Ok(Out { json, text })
         }
         Op::List { scope, limit } => {
-            let rows = match parse_scope(scope.as_deref())? {
+            let rows = match parse_scope(store, scope.as_deref())? {
                 Scope::Article { id } => vec![article(store, id)?],
                 Scope::Articles { ids } => ids.into_iter().map(|id| article(store, id)).collect::<Result<_, _>>()?,
                 Scope::Filter { filter } => store.list_articles_sorted(&filter, ArticleSort::SavedDesc).map_err(err)?,
@@ -273,6 +284,10 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             });
             Ok(Out { json: json!(feeds), text })
         }
+        Op::Collections {} => {
+            let groups = groups::list(store)?;
+            Ok(Out { text: lines(&groups, |g| format!("{:>4}  {}  {} articles", g.id, g.name, g.count)), json: json!(groups) })
+        }
         Op::Jobs {} => {
             let o = job_status::overview(store)?;
             let mut text = lines(&o.counts, |c| format!("{}\t{}\t{}", c.job_type, c.state, c.count));
@@ -283,7 +298,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             Ok(Out { json: json!(o), text })
         }
         Op::Ask { question, scope } => {
-            let mut m = chat::ask(store, &ctx.providers.llm, &ctx.providers.embedder, None, &question, parse_scope(scope.as_deref())?).await?;
+            let mut m = chat::ask(store, &ctx.providers.llm, &ctx.providers.embedder, None, &question, parse_scope(store, scope.as_deref())?).await?;
             if m.mode == "none" {
                 m.answer = NO_SOURCES.into();
             }
@@ -336,27 +351,81 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 mod tests {
     use super::*;
 
+    /// An empty in-memory library with no LLM or embedding model behind it.
+    fn ctx() -> Ctx {
+        let store = Store::open_in_memory().unwrap();
+        let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
+        let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));
+        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, allow_write: true }
+    }
+
     #[test]
     fn scopes_parse_into_the_apps_filters() {
-        let f = |s| match parse_scope(Some(s)).unwrap() {
+        let s = Store::open_in_memory().unwrap();
+        let f = |scope| match parse_scope(&s, Some(scope)).unwrap() {
             Scope::Filter { filter } => filter,
             other => panic!("{other:?}"),
         };
-        assert_eq!(parse_scope(None).unwrap(), Scope::Filter { filter: ArticleFilter::All });
+        assert_eq!(parse_scope(&s, None).unwrap(), Scope::Filter { filter: ArticleFilter::All });
         assert_eq!(f("unread"), ArticleFilter::Unread);
         assert_eq!(f("tag:db:mvcc"), ArticleFilter::Tag { name: "db:mvcc".into() }, "only the first colon splits");
         assert_eq!(f("genre:データベース"), ArticleFilter::Genre { name: Some("データベース".into()) });
+        assert_eq!(f("genre:none"), ArticleFilter::Genre { name: None });
         assert_eq!(f("feed:3"), ArticleFilter::Feed { id: Some(3) });
-        assert_eq!(f("group:4"), ArticleFilter::Group { id: 4 });
+        assert_eq!(f("feed:none"), ArticleFilter::Feed { id: None });
+        assert_eq!(f("collection:4"), ArticleFilter::Group { id: 4 });
+        assert_eq!(f("group:4"), ArticleFilter::Group { id: 4 }, "the older name still works");
         assert_eq!(f("folder:5"), ArticleFilter::Folder { id: 5 });
         assert_eq!(f("important"), ArticleFilter::Important { min: 4 });
+        relevance::set_threshold(&s, 3).unwrap();
+        assert_eq!(f("important"), ArticleFilter::Important { min: 3 }, "the app's threshold");
         assert_eq!(f("important:5"), ArticleFilter::Important { min: 5 });
-        assert_eq!(parse_scope(Some("article:7")).unwrap(), Scope::Article { id: 7 });
-        assert_eq!(parse_scope(Some("article:7,3")).unwrap(), Scope::Articles { ids: vec![7, 3] });
-        for bad in ["tag:", "feed:x", "folder:", "folder:x", "group:", "group:x", "important:9", "article:", "article:7,", "article:7,x", "starred", "unread:1"]
-        {
-            assert!(parse_scope(Some(bad)).is_err(), "{bad}");
+        assert_eq!(parse_scope(&s, Some("article:7")).unwrap(), Scope::Article { id: 7 });
+        assert_eq!(parse_scope(&s, Some("article:7,3")).unwrap(), Scope::Articles { ids: vec![7, 3] });
+        for bad in [
+            "tag:",
+            "feed:x",
+            "folder:",
+            "folder:x",
+            "group:",
+            "group:x",
+            "collection:x",
+            "important:9",
+            "article:",
+            "article:7,",
+            "article:7,x",
+            "starred",
+            "unread:1",
+        ] {
+            assert!(parse_scope(&s, Some(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[tokio::test]
+    async fn lists_collections_and_prints_blocks_with_ids() {
+        let ctx = ctx();
+        let s = &ctx.store;
+        let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let html = "<html><head><title>A</title></head><body><article><h2>Why</h2><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.</p></article></body></html>";
+        ingest::store_fetched(
+            s,
+            id,
+            &lattice_core::fetch::Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html: html.into() },
+        )
+        .unwrap();
+        let g = groups::create(s, "Reading").unwrap();
+        groups::add(s, g, &[id]).unwrap();
+
+        let out = run(&ctx, Op::Collections {}).await.unwrap();
+        assert_eq!(out.text, format!("{g:>4}  Reading  1 articles"));
+        assert_eq!(out.json[0]["id"], g);
+        let listed = run(&ctx, Op::List { scope: Some(format!("collection:{g}")), limit: 10 }).await.unwrap();
+        assert_eq!(listed.json["total"], 1);
+
+        let out = run(&ctx, Op::Get { id, blocks: true, translation: false }).await.unwrap();
+        let first = out.json["blocks"][0]["id"].as_i64().unwrap();
+        assert!(out.text.contains(&format!("[block {first}] heading: Why")), "{}", out.text);
+        assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false }).await.unwrap().text.contains("[block "));
     }
 
     #[test]
