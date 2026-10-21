@@ -1,7 +1,13 @@
+import { isWrittenIn, type Target } from "./overlay/logic.ts";
+
 export type LanguageMode = "original" | "translated" | "mixed";
 
 /** Mirrors ir.rs PROSE_KINDS. */
 export const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "blockquote", "caption"]);
+
+/** A block the translate job would still send: untranslated prose not already in `target` (as translate.rs skips). */
+export const needsTranslation = (b: { kind: string; text: string; translation: string | null }, target: Target) =>
+  TRANSLATABLE.has(b.kind) && b.translation == null && !isWrittenIn(b.text, target);
 
 /**
  * Whether picking `mode` should start the article's translation: there is prose without a

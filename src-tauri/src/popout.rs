@@ -4,18 +4,28 @@
 //! the windows where they last were, keeps their page webviews alive while they close, and quits
 //! the app with the main window.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, Webview, WebviewUrl, WebviewWindowBuilder, Window, WindowEvent};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent};
 
 use crate::location::Location;
-use crate::{App, browser, err};
+use crate::{App, browser, err, tabdrag};
 
 pub const MAIN: &str = "main";
 const DEFAULT_SIZE: (f64, f64) = (960.0, 720.0);
+/// A pop-out shows once its UI has mounted (`window_ready`), so it never flashes empty; this is
+/// how long it waits for that before showing anyway.
+const REVEAL_AFTER: Duration = Duration::from_secs(3);
+
+/// A document window's label: `doc-<n>`.
+pub fn is_doc(label: &str) -> bool {
+    label.strip_prefix("doc-").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
 
 /// A pop-out's label: `doc-<n>` or `chat`. Nothing else is created on the UI's request.
 fn is_popout(label: &str) -> bool {
-    label == "chat" || label.strip_prefix("doc-").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+    label == "chat" || is_doc(label)
 }
 
 /// Physical pixels, as the window reports them (a logical size differs per monitor).
@@ -55,41 +65,34 @@ fn saved_geometry(app: &App, label: &str) -> Option<Geometry> {
     serde_json::from_str(&app.store.setting(&setting_key(label)).ok()??).ok()
 }
 
-/// A point in physical screen pixels (the UI maps its pointer through `inner_position`).
-#[derive(Debug, Clone, Copy, Deserialize)]
-pub struct Point {
-    x: f64,
-    y: f64,
-}
-
-/// Where the first tab's center sits in a fresh document window, in logical pixels: the title bar
-/// (32) plus half the strip, and half a tab from the left edge.
-const TAB_GRAB: (f64, f64) = (56.0, 51.0);
-
-/// The origin of a window torn off at `at`, so the tab lands under the pointer that dropped it.
-fn torn_off_origin(at: Point, scale: f64) -> PhysicalPosition<i32> {
-    PhysicalPosition::new((at.x - TAB_GRAB.0 * scale).round() as i32, (at.y - TAB_GRAB.1 * scale).round() as i32)
-}
-
 /// Opens pop-out `label` where it last was (centered when that spot is on no monitor now), or
-/// brings it to the front if it is open. With `at`, the window goes there instead (a tab dragged
-/// away from every strip; an open window moves there).
+/// brings it to the front if it is open.
 #[tauri::command]
-pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, Location>, label: String, at: Option<Point>) -> Result<(), String> {
+pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, Location>, label: String) -> Result<(), String> {
     if !is_popout(&label) {
         return Err("not a pop-out window".into());
     }
-    let dropped = match at {
-        Some(p) => Some(torn_off_origin(p, app.monitor_from_point(p.x, p.y).map_err(err)?.map_or(1.0, |m| m.scale_factor()))),
-        None => None,
+    let Some(w) = create(&app, &loc, &label)? else {
+        return app.get_webview_window(&label).map_or(Ok(()), |w| w.set_focus().map_err(err));
     };
-    if let Some(w) = app.get_webview_window(&label) {
-        if let Some(pos) = dropped {
-            w.set_position(pos).map_err(err)?;
+    let monitors: Vec<MonitorRect> = app.available_monitors().map_err(err)?.iter().map(|m| (*m.position(), *m.size())).collect();
+    match saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors)) {
+        Some(g) => {
+            w.set_position(PhysicalPosition::new(g.x, g.y)).map_err(err)?;
+            w.set_size(PhysicalSize::new(g.width, g.height)).map_err(err)?;
         }
-        return w.set_focus().map_err(err);
+        None => w.center().map_err(err)?,
     }
-    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::default())
+    Ok(())
+}
+
+/// Creates pop-out `label`, hidden until `ready`. None when it is open already (asked twice before
+/// the first finished, as a double click does: the first one wins).
+pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<WebviewWindow>, String> {
+    if app.get_webview_window(label).is_some() {
+        return Ok(None);
+    }
+    let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::default())
         .title("Lattice")
         .decorations(false)
         .inner_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1)
@@ -97,22 +100,41 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
     if let Some(d) = loc.webview_dir() {
         builder = builder.data_directory(d);
     }
-    let w = match builder.build() {
-        Ok(w) => w,
-        // Asked twice before the first finished (a double click): the first one wins.
-        Err(tauri::Error::WindowLabelAlreadyExists(_)) => return app.get_webview_window(&label).map_or(Ok(()), |w| w.set_focus().map_err(err)),
-        Err(e) => return Err(err(e)),
-    };
-    let monitors: Vec<MonitorRect> = app.available_monitors().map_err(err)?.iter().map(|m| (*m.position(), *m.size())).collect();
-    match (dropped, saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors))) {
-        (Some(pos), _) => w.set_position(pos).map_err(err)?,
-        (None, Some(g)) => {
-            w.set_position(PhysicalPosition::new(g.x, g.y)).map_err(err)?;
-            w.set_size(PhysicalSize::new(g.width, g.height)).map_err(err)?;
+    match builder.build() {
+        Ok(w) => {
+            let (app, label) = (app.clone(), label.to_string());
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(REVEAL_AFTER).await;
+                // A window following a drag shows when the drag says, and only once it holds the tab.
+                if !tabdrag::follows(&app, &label) {
+                    show(&app, &label);
+                }
+            });
+            Ok(Some(w))
         }
-        (None, None) => w.center().map_err(err)?,
+        Err(tauri::Error::WindowLabelAlreadyExists(_)) => Ok(None),
+        Err(e) => Err(err(e)),
     }
-    w.show().map_err(err)
+}
+
+fn show(app: &AppHandle, label: &str) {
+    let Some(w) = app.get_webview_window(label) else { return };
+    // Showing an already visible window would take the focus.
+    if !w.is_visible().unwrap_or(true)
+        && let Err(e) = w.show()
+    {
+        log::warn!("showing {label}: {e}");
+    }
+}
+
+/// The calling pop-out has mounted its UI: it shows, unless it is following a tab drag (which shows it).
+#[tauri::command]
+pub async fn window_ready(app: AppHandle, webview: Webview) -> Result<(), String> {
+    let label = webview.window().label().to_string();
+    if !tabdrag::claim_ready(&app, &label) {
+        show(&app, &label);
+    }
+    Ok(())
 }
 
 /// Closes the calling pop-out. Its page webviews close with it; the UI moves their tabs to the
@@ -164,14 +186,6 @@ mod tests {
         for other in ["main", "doc-", "doc-x", "doc-1-2", "browser-abc", "renderer", ""] {
             assert!(!is_popout(other), "{other:?}");
         }
-    }
-
-    #[test]
-    fn a_torn_off_window_puts_its_tab_under_the_pointer_at_the_monitor_scale() {
-        assert_eq!(torn_off_origin(Point { x: 1000.0, y: 500.0 }, 1.0), PhysicalPosition::new(944, 449));
-        assert_eq!(torn_off_origin(Point { x: 1000.0, y: 500.0 }, 2.0), PhysicalPosition::new(888, 398));
-        let p: Point = serde_json::from_str(r#"{"x":12.5,"y":-3}"#).unwrap();
-        assert_eq!((p.x, p.y), (12.5, -3.0), "the UI sends plain x/y, possibly left of the primary monitor");
     }
 
     #[test]

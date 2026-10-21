@@ -80,7 +80,7 @@ test("with 表示を切り替えたら自動で翻訳 off, switching the view tr
 
   await open(app, untranslated.title!);
   await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
-  await expect(app.getByRole("button", { name: "英語に翻訳" }).or(app.getByRole("button", { name: "日本語に翻訳" }))).toBeVisible();
+  await expect(app.getByRole("button", { name: "翻訳する", exact: true })).toHaveAttribute("title", "日本語に訳します");
   expect(await callsOf(app, "translate_article")).toEqual([]);
 });
 

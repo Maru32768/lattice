@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, browser, isLocal, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
+import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
 import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
 
@@ -14,6 +14,7 @@ import { QuizReview } from "./QuizReview";
 import { VocabView } from "./VocabView";
 import { wordMarks } from "./vocab";
 import { ChatPane } from "./ChatPane";
+import { mergeDocs, openDocs, type OpenDoc } from "./chat";
 import { filterGroups, filterKey } from "./scopes";
 import { flatten, groupArticles, type Group } from "./groups";
 import { NO_FACETS, NO_KEPT, activeDims, countBy, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
@@ -42,7 +43,6 @@ import {
   save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
-import type { Drop, Point } from "./tabDrag";
 import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
 import { NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history";
@@ -215,6 +215,7 @@ export default function App() {
       listen<PageLang>("page-lang", (e) => setPageLangState(e.payload)),
       listen<{ id: number; title: string } | null>("doc-current", (e) => setRemoteArticle(e.payload)),
       ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
+      ...(HOST.kind === "chat" ? [listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload))] : []),
     ];
     if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
     if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
@@ -396,6 +397,24 @@ export default function App() {
     if (IS_MAIN) void emit("doc-current", chatArticle);
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per article
   }, [chatArticle?.id, chatArticle?.title]);
+  // The chat's 開いている記事: main's tabs and each document window's (they report theirs), sent on to the chat window.
+  const ownOpen = useMemo(() => openDocs(allTabs(layout), (id) => {
+    const a = views.get(id)?.article ?? articleById.get(id);
+    return a ? a.title ?? a.original_url : null;
+  }), [layout, views, articleById]);
+  const [docWindowsOpen, setDocWindowsOpen] = useState<Record<string, OpenDoc[]>>({});
+  const [mainOpen, setMainOpen] = useState<OpenDoc[]>([]);
+  const chatOpenDocs = useMemo(() => (HOST.kind === "chat" ? mainOpen : mergeDocs([ownOpen, ...Object.values(docWindowsOpen)])), [ownOpen, docWindowsOpen, mainOpen]);
+  const ownOpenKey = JSON.stringify(ownOpen);
+  const chatOpenKey = JSON.stringify(chatOpenDocs);
+  useEffect(() => {
+    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: ownOpen });
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
+  }, [ownOpenKey]);
+  useEffect(() => {
+    if (IS_MAIN) void emit("open-docs", chatOpenDocs);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
+  }, [chatOpenKey]);
 
   // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
   const listView = viewKey(scope, facets);
@@ -669,25 +688,31 @@ export default function App() {
     forgetOpened(t.key);
   }
 
-  /** A new document window showing `doc`, placed under the pointer when dropped `at` (physical pixels); its layout waits in storage until it loads. False if it could not be stored. */
-  function popOutDoc(doc: Doc, at?: Point): boolean {
+  /** A new document window's label, its layout showing `doc` stored for it to load; null if it could not be stored. */
+  function storeDocWindow(doc: Doc): string | null {
     const label = nextDocLabel(openWindows(storageKeys()));
     try {
       localStorage.setItem(windowKey(label), serialize(open(single(), doc, "new")));
     } catch (e) {
       fail(e);
-      return false;
+      return null;
     }
-    windows.open(label, at).catch(fail);
-    return true;
+    return label;
   }
 
-  /** The tab moves to a new document window. A document window dragging its only tab away just moves there. */
-  function popOutTab(tab: Id, at?: Point) {
+  /** A new document window showing `doc`. False if it could not be stored. */
+  function popOutDoc(doc: Doc): boolean {
+    const label = storeDocWindow(doc);
+    if (label) windows.open(label).catch(fail);
+    return label != null;
+  }
+
+  /** The tab moves to a new document window; `drag`: torn off a strip, so the drag creates and places the window (design-review §26). */
+  function popOutTab(tab: Id, drag = false) {
     const hit = tabById(layoutRef.current, tab);
-    if (!hit) return;
-    if (at && HOST.kind === "doc" && allTabs(layoutRef.current).length === 1) return void windows.open(HOST.label, at).catch(fail);
-    if (!popOutDoc(docOf(hit.tab), at)) return;
+    const label = hit && storeDocWindow(docOf(hit.tab));
+    if (!hit || !label) return;
+    (drag ? tabDrag.float(label) : windows.open(label)).catch(fail);
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
   }
@@ -704,11 +729,9 @@ export default function App() {
   /** Document window: the tab goes back to the main window's focused pane. */
   const returnTab = (tab: Id) => sendTab(tab, MAIN);
 
-  /** A tab dragged onto another window's strip, or away from every strip (design-review §26). */
-  const moveTabOut = (tab: Id, to: Drop) => (to.kind === "strip" ? sendTab(tab, to.label, { pane: to.pane, index: to.index }) : popOutTab(tab, { x: to.x, y: to.y }));
-
   /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
   function closeWindow() {
+    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: [] });
     try {
       localStorage.removeItem(STORAGE);
     } catch {
@@ -717,14 +740,20 @@ export default function App() {
     windows.close().catch(() => {});
   }
 
-  /** × or Alt+F4 on a pop-out: a document window hands its tabs back, the chat window docks back. */
+  /** × or Alt+F4 on a pop-out: a document window hands its tabs back; the chat window just closes. */
   function closeRequested() {
     if (HOST.kind === "doc") {
       const docs = allTabs(layoutRef.current).map(docOf);
       if (docs.length) void toMain({ kind: "open", docs });
     } else if (HOST.kind === "chat") {
-      void toMain({ kind: "chatDocked" });
+      void toMain({ kind: "chatClosed" });
     }
+    closeWindow();
+  }
+
+  /** The chat window's メインウィンドウに戻す: the pane docks back in main. */
+  function dockChat() {
+    void toMain({ kind: "chatDocked" });
     closeWindow();
   }
 
@@ -749,7 +778,10 @@ export default function App() {
       case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d, i) => open(acc, d, "new", r.at?.pane, r.at && r.at.index + i), l)); break;
       case "chat": openChat(r.scopeKey); return;
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
-      case "chatReady": void emit("doc-current", chatArticle); return;
+      // Closed, not docked: the next 対話 opens the dock, as after a restart.
+      case "chatClosed": setChatWindow(false); return;
+      case "chatReady": void emit("doc-current", chatArticle); void emit("open-docs", chatOpenDocs); return;
+      case "openDocs": setDocWindowsOpen((m) => ({ ...m, [r.label]: r.docs })); return;
       case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation); break;
       case "screen": setScreen(r.screen); break;
@@ -773,6 +805,7 @@ export default function App() {
     // The pop-outs that were open last time come back; the chat window is restored from its key too.
     if (IS_MAIN) for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
     else {
+      windows.ready().catch(() => {});
       subs.push(getCurrentWindow().onCloseRequested((e) => {
         e.preventDefault();
         closeRef.current();
@@ -1137,7 +1170,7 @@ export default function App() {
         <div className="shell">
           <TitleBar />
           <div className="app solo" data-kb-pane={kbPane ?? undefined}>
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} closeLabel={t("chatPane.popIn")} current={null} />
+            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} onPopIn={dockChat} current={null} />
           </div>
         </div>
       </CoverContext.Provider>
@@ -1190,7 +1223,8 @@ export default function App() {
               </div>
             )}
             <WordMarksContext.Provider value={marks}>
-              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane)} windowAction={windowAction} onMoveOut={moveTabOut} />
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane)} windowAction={windowAction}
+                movable={HOST.kind === "doc"} onSend={sendTab} onTear={(tab) => popOutTab(tab, true)} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (
@@ -1213,7 +1247,7 @@ export default function App() {
           )}
           {chatOpen && splitter("chat", "right")}
           {chatOpen && (
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
+            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
               current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
           )}
         </div>

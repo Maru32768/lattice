@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tab-drag-float"
+description = "Enables the tab_drag_float command without any pre-configured scope."
+commands.allow = ["tab_drag_float"]
+
+[[permission]]
+identifier = "deny-tab-drag-float"
+description = "Denies the tab_drag_float command without any pre-configured scope."
+commands.deny = ["tab_drag_float"]

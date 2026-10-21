@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tab-drag-release"
+description = "Enables the tab_drag_release command without any pre-configured scope."
+commands.allow = ["tab_drag_release"]
+
+[[permission]]
+identifier = "deny-tab-drag-release"
+description = "Denies the tab_drag_release command without any pre-configured scope."
+commands.deny = ["tab_drag_release"]

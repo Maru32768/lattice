@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { PageKeys } from "./keys";
+import type { DragStart, WindowGeom } from "./tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
@@ -213,7 +214,7 @@ export interface SearchResult {
 }
 
 /** Mirrors chat.rs. Every article filter is a chat scope. */
-export type ChatScope = { kind: "article"; id: number } | { kind: "filter"; filter: ArticleFilter };
+export type ChatScope = { kind: "article"; id: number } | { kind: "articles"; ids: number[] } | { kind: "filter"; filter: ArticleFilter };
 /** How much of the scope one chat question sends (`chat::Budget`). */
 export type ChatBudget = "small" | "standard" | "large";
 
@@ -623,12 +624,24 @@ export const browser = {
 };
 
 /**
- * Pop-out windows (G52): `open` also brings an open one to the front, and with `at` (a physical
- * screen point) puts the window there, its first tab under the point; `close` closes the calling pop-out.
+ * Pop-out windows (G52): `open` also brings an open one to the front; `close` closes the calling
+ * pop-out. A pop-out is created hidden and shown once it says `ready` (its UI has mounted).
  */
 export const windows = {
-  open: (label: string, at?: { x: number; y: number }) => invoke<void>("open_window", { label, at }),
+  open: (label: string) => invoke<void>("open_window", { label }),
   close: () => invoke<void>("close_window"),
+  ready: () => invoke<void>("window_ready"),
+};
+
+/** Tab drags across windows, which the backend runs (design-review §26, `src/tabDrag.ts`). */
+export const tabDrag = {
+  start: (start: DragStart) => invoke<void>("tab_drag_start", { start }),
+  /** This window's strips, while a drag is on. */
+  strips: (geom: WindowGeom) => invoke<void>("tab_drag_strips", { geom }),
+  /** The dragged tab was torn off into new document window `label` (its layout stored): the backend creates and places it. */
+  float: (label: string) => invoke<void>("tab_drag_float", { label }),
+  /** The button came up, or Escape (`cancel`: the tab goes back). */
+  release: (cancel: boolean) => invoke<void>("tab_drag_release", { cancel }),
 };
 
 /** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */

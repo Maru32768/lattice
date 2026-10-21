@@ -3,7 +3,7 @@ import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLa
 import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
 import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "./Reader";
-import { QuizPanel } from "./QuizPanel";
+import { QuizPanel, useQuizOpen } from "./QuizPanel";
 import { Menu, intersects, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
@@ -127,7 +127,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   tabRef.current = tab;
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
-  const [quiz, setQuiz] = useState(false);
+  const [quiz, setQuiz] = useQuizOpen(saved?.id ?? 0);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = async () => {
     const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
