@@ -389,8 +389,6 @@ export const ja = {
   "listPane.hintRead": " 既読",
   "listPane.rail": "記事一覧（折りたたみ）",
   "listPane.open": "記事一覧を開く",
-  "listPane.prev": "前の記事へカーソル (k)",
-  "listPane.next": "次の記事へカーソル (j)",
   "facetPopover.count": "件数",
   "facetPopover.popular": "この集合で多い",
   "facetPopover.inSet": "この集合に含まれる",

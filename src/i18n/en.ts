@@ -393,8 +393,6 @@ export const en = {
   "listPane.hintRead": " read",
   "listPane.rail": "Article list (collapsed)",
   "listPane.open": "Open the article list",
-  "listPane.prev": "Cursor to the previous article (k)",
-  "listPane.next": "Cursor to the next article (j)",
   "facetPopover.count": "Count",
   "facetPopover.popular": "Common in this set",
   "facetPopover.inSet": "In this set",

@@ -16,7 +16,7 @@ import { wordMarks } from "./vocab";
 import { ChatPane } from "./ChatPane";
 import { filterGroups, filterKey } from "./scopes";
 import { flatten, groupArticles, type Group } from "./groups";
-import { NO_FACETS, NO_KEPT, activeDims, countBy, facetLabel, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
+import { NO_FACETS, NO_KEPT, activeDims, countBy, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "./library";
 import { filterHits, groupHits, terms, type SearchMethod } from "./search";
 import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, WordMarksContext, type Focus } from "./Reader";
@@ -1177,8 +1177,7 @@ export default function App() {
                 onRescore={relevance?.has_profile && (sort === "relevance_desc" || scope.kind === "important" || facets.relevance.length > 0)
                   ? () => api.rescoreRelevance(shown.map((a) => a.id)) : undefined}
                 noProfile={relevance != null && !relevance.has_profile} />
-            : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, groupRows, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
-                count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
+            : <ListRail onOpen={() => setListOpen(true)} />)}
           {IS_MAIN && screen === "library" && !search && listOpen && splitter("list")}
           {screen === "library" && <div className="doc-area-wrap" onContextMenu={tabMenu}>
             {error && (
