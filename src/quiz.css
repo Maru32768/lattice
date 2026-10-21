@@ -26,7 +26,6 @@
 .qz-opts { display: flex; flex-direction: column; gap: 6px; }
 .qz-opt { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); text-align: left; font-size: 13px; line-height: 1.6; color: var(--ink); }
 .qz-opt:hover:not(:disabled) { border-color: var(--chip-hover); background: var(--foot); }
-.qz-opt:disabled { cursor: default; }
 .qz-opt .k { flex: none; width: 18px; font: 500 11.5px/22px var(--mono); color: var(--ink3); }
 .qz-opt.right { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, var(--raise)); }
 .qz-opt.right .k { color: var(--ok-ink); }

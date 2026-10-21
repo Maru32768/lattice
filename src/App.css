@@ -55,7 +55,7 @@
 .nav-search .kbds { margin-left: auto; }
 .nav-search > span:not(.kbds) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-sub { display: flex; flex-direction: column; padding-left: 16px; }
-.ni.sub { height: 26px; font-size: 12.5px; }
+.ni.sub { height: 26px; font-size: 12px; }
 .ni.mono-ni { font-family: var(--mono); font-size: 12px; }
 .ni .push { margin-left: auto; }
 /* A sidebar group: the scope button, and its ⋯ menu shown on hover or focus. */
