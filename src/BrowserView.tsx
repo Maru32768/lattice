@@ -290,7 +290,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
       </div>
       <div className={`page-progress${loading ? " on" : ""}`} role={loading ? "progressbar" : undefined} aria-label={loading ? t("browserView.loading") : undefined}><b /></div>
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
-      {summary && shown && !failedOf(shown) && <div className="page-summary"><Summary view={shown} onSummarize={act!.onSummarize} initiallyOpen /></div>}
+      {summary && shown && !failedOf(shown) && <div className="page-summary"><Summary view={shown} onSummarize={act!.onSummarize} /></div>}
       <div className="doc-body">
       {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
       <div ref={host} className="page-host">

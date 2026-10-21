@@ -103,6 +103,10 @@ test("a saved article's summary shows in a strip above its page; it can be gener
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
   const strip = app.locator(".page-summary");
+  // Closed at first: the summary's first line, opened to the whole on a click.
+  const row = strip.locator(".summary-row");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await row.click();
   await expect(strip).toContainText("write skew は防げない");
   // The strip sits above the placeholder the webview follows.
   expect((await strip.boundingBox())!.y).toBeLessThan((await app.locator(".page-host").boundingBox())!.y);
