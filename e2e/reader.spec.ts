@@ -56,7 +56,9 @@ test("picking 訳文 on an untranslated article starts its translation and shows
   await open(app, untranslated.title!);
   const seg = app.getByRole("group", { name: "表示言語" });
   await seg.getByRole("button", { name: "訳文", exact: true }).click();
-  await expect(app.locator(".tr-prog")).toContainText("翻訳待ち 0 /");
+  // The Reader and the list row count the same blocks.
+  await expect(app.locator(".tr-prog")).toHaveText("翻訳待ち 0 / 4 ブロック");
+  await expect(list(app).locator(".row").filter({ hasText: untranslated.title! })).toContainText("翻訳中 0/4");
   await seg.getByRole("button", { name: /混在/ }).click();
   expect(await callsOf(app, "translate_article"), "queued once; the waiting job is not queued again").toEqual([{ id: untranslated.id }]);
 

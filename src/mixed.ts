@@ -9,6 +9,23 @@ export const TRANSLATABLE = new Set(["heading", "paragraph", "list_item", "block
 export const needsTranslation = (b: { kind: string; text: string; translation: string | null }, target: Target) =>
   TRANSLATABLE.has(b.kind) && b.translation == null && !isWrittenIn(b.text, target);
 
+/** Translated blocks and the total once the job is done, as both the Reader and the list show them. */
+export function translationProgress(blocks: { kind: string; text: string; translation: string | null }[], target: Target) {
+  const done = blocks.filter((b) => b.translation != null).length;
+  // Blocks already in the target language are never translated, so they are not counted as left.
+  return { done, total: done + blocks.filter((b) => needsTranslation(b, target)).length };
+}
+
+/**
+ * Why an extracted article offers no Translate: it has no prose at all (an RFC that is one <pre>),
+ * or its prose is all in the target language. Null while there is something to translate.
+ */
+export function nothingToTranslate(blocks: { kind: string; text: string; translation: string | null }[], target: Target) {
+  const { done, total } = translationProgress(blocks, target);
+  if (blocks.length === 0 || done > 0 || total > 0) return null;
+  return blocks.some((b) => TRANSLATABLE.has(b.kind)) ? "reader.alreadyInTarget" as const : "reader.noProse" as const;
+}
+
 /**
  * Whether picking `mode` should start the article's translation: there is prose without a
  * translation and no translate job is queued, running or waiting to retry. A finished job with blocks

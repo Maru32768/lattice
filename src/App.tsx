@@ -4,7 +4,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type FolderRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "./api";
 import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "./BrowserView";
-import { TRANSLATABLE, autoTranslates, translateOnSwitch, type LanguageMode } from "./mixed";
+import { autoTranslates, translateOnSwitch, translationProgress, type LanguageMode } from "./mixed";
 
 import { ImportView, type ImportTab } from "./ImportView";
 import { SettingsView, type SettingsSection } from "./SettingsView";
@@ -1100,9 +1100,10 @@ export default function App() {
   const title = scopeLabel(scope, articles, groupRows, t, folders);
   // Only the open article's job progress is known to the UI (the list has no per-article job data).
   const tjob = curView?.jobs.find((j) => j.type === "translate");
+  const tprog = curView ? translationProgress(curView.blocks, curView.target_language) : { done: 0, total: 0 };
   const translatingRow = curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error)) ? {
     id: curView.article.id,
-    label: t("app.translating", { length: curView.blocks.filter((b) => b.translation != null).length, length2: curView.blocks.filter((b) => TRANSLATABLE.has(b.kind)).length }),
+    label: t("app.translating", { length: tprog.done, length2: tprog.total }),
   } : null;
   const docHits = search && cur?.kind === "reader" ? flatHits.filter((h) => h.article_id === cur.articleId) : [];
   const readerMatches = docHits.length > 0 && cur?.kind === "reader" ? {
