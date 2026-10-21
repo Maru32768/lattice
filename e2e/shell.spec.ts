@@ -40,3 +40,32 @@ test("on Page, a still captured when the pointer reaches ⋯ lets the menu hide 
   expect(await callsOf(app, "browser_capture")).toHaveLength(1);
   await expect(app.locator(".page-still")).toBeVisible();
 });
+
+const commandCenter = (page: Page) => page.getByRole("banner").getByRole("button", { name: "検索・コマンド・URL" });
+const palette = (page: Page) => page.getByRole("dialog", { name: "コマンドパレット" });
+
+test("the search and command box sits in the title bar, not in the nav (H9)", async ({ app }) => {
+  await expect(app.locator(".nav").getByText("検索・コマンド・URL")).toHaveCount(0);
+  await commandCenter(app).click();
+  await expect(palette(app).getByRole("combobox")).toBeFocused();
+  await app.keyboard.press("Escape");
+  await expect(palette(app)).toBeHidden();
+
+  // The box is centered on the window.
+  const box = (await commandCenter(app).boundingBox())!;
+  expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThan(2);
+
+  await app.locator(".nav").getByRole("button", { name: "ナビゲーションを閉じる" }).click();
+  await expect(app.locator(".nav-rail").getByRole("button")).toHaveCount(4);
+  await expect(app.locator(".nav-rail").getByRole("button", { name: /検索/ })).toHaveCount(0);
+});
+
+test("a document window has the command center, the chat window does not (H9)", async ({ shell }) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.window.doc-1", JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 })));
+  await shell.goto("/?window=doc-1");
+  await commandCenter(shell).click();
+  await expect(palette(shell)).toBeVisible();
+  await shell.goto("/?window=chat");
+  await expect(shell.getByLabel("質問", { exact: true })).toBeVisible();
+  await expect(commandCenter(shell)).toHaveCount(0);
+});

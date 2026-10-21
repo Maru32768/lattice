@@ -3,7 +3,7 @@ import type { FeedRow, GroupRow } from "./api";
 import { feedName } from "./groups";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Menu } from "./Popover";
-import { Icon, Kbd, type IconName } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { Favicon, hostOf } from "./Favicon";
 import { NavGroups } from "./NavGroups";
 import { useT, type PlainKey } from "./i18n";
@@ -32,7 +32,7 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen, onPalette,
+export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
   onOpenUrl, onMarkdown, onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onCollapse, importantMin }: {
   screen: Screen;
   /** null while a management screen is shown. */
@@ -48,7 +48,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   recentSearches: string[];
   onScope: (s: Scope) => void;
   onScreen: (s: Screen) => void;
-  onPalette: () => void;
   onOpenUrl: () => void;
   onMarkdown: () => void;
   onChat: () => void;
@@ -90,11 +89,6 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
         ]} />
         <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}><Icon name="panel" /></button>
       </div>
-      <button className={`nav-search${searching ? " on" : ""}`} onClick={onPalette}>
-        <Icon name="search" />
-        <span>{searching ? t("nav.searching") : t("nav.searchPlaceholder")}</span>
-        <span className="kbds">{searching ? <Kbd>/</Kbd> : <Kbd>Ctrl K</Kbd>}</span>
-      </button>
 
       <div className="sec">{t("nav.library")}</div>
       {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
@@ -144,8 +138,8 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
   );
 }
 
-export function NavRail({ scope, chatOpen, onOpen, onPalette, onScope, onChat }: {
-  scope: Scope | null; chatOpen: boolean; onOpen: () => void; onPalette: () => void; onScope: (s: Scope) => void; onChat: () => void;
+export function NavRail({ scope, chatOpen, onOpen, onScope, onChat }: {
+  scope: Scope | null; chatOpen: boolean; onOpen: () => void; onScope: (s: Scope) => void; onChat: () => void;
 }) {
   const t = useT();
   const btn = (s: Scope, label: string, icon: IconName) => (
@@ -154,7 +148,6 @@ export function NavRail({ scope, chatOpen, onOpen, onPalette, onScope, onChat }:
   return (
     <nav className="nav-rail" aria-label={t("nav.rail")} data-pane="nav">
       <button className="ib" onClick={onOpen} aria-label={t("nav.open")} title={t("nav.open")}><Icon name="panel" /></button>
-      <button className="ib" onClick={onPalette} aria-label={t("nav.railSearch")} title={t("nav.railSearchHint")}><Icon name="search" /></button>
       {btn({ kind: "unread" }, t("common.unread"), "unread")}
       {btn({ kind: "favorites" }, t("common.favorites"), "star")}
       <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label={t("common.chat")} title={t("common.chat")} aria-pressed={chatOpen}><Icon name="chat" /></button>

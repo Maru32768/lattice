@@ -1066,12 +1066,12 @@ export default function App() {
   );
   const nav = navOpen
     ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
-        chatOpen={chatOpen || chatWindow} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen} onPalette={() => setPalette("")}
+        chatOpen={chatOpen || chatWindow} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen}
         onOpenUrl={() => setPalette("")} onMarkdown={importMarkdown} onChat={toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
         onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
         onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
-    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)} onPalette={() => setPalette("")}
+    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)}
         onScope={setScope} onChat={toggleChat} />;
 
   const labelOf = (t: Tab): TabLabel => {
@@ -1143,7 +1143,7 @@ export default function App() {
   return (
     <CoverContext.Provider value={coverRect}>
       <div className="shell">
-        <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} />
+        <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} onPalette={() => setPalette("")} />
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"

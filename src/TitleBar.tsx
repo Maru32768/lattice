@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
 import { useT } from "./i18n";
-import { Icon } from "./Icon";
+import { ActionKey, Icon } from "./Icon";
 import { keyLabel, useBindings } from "./keys";
 
 // Windows 11 caption glyphs, 10×10.
@@ -15,11 +15,13 @@ const GLYPHS = {
 
 /**
  * The undecorated window's title bar: press anywhere but the caption buttons to drag the window,
- * double-click to maximize.
+ * double-click to maximize. In the middle, like VS Code's command center, the palette opener (H9).
  */
-export function TitleBar({ history }: {
+export function TitleBar({ history, onPalette }: {
   /** In-app back / forward (H4); absent in the chat window. */
   history?: { back: boolean; forward: boolean; onGo: (d: 1 | -1) => void };
+  /** Opens the palette; absent in the chat window, which has none. */
+  onPalette?: () => void;
 }) {
   const t = useT();
   const bindings = useBindings();
@@ -63,6 +65,11 @@ export function TitleBar({ history }: {
         <button className="ib tb-hist" onClick={() => history.onGo(1)} disabled={!history.forward} aria-label={t("titleBar.forward")} title={withKey(t("titleBar.forward"), bindings.forward)}><Icon name="right" /></button>
       </>}
       <span className="grow" />
+      {onPalette && (
+        <button className="tb-cmd" onClick={onPalette} aria-haspopup="dialog">
+          <Icon name="search" /><span className="lbl">{t("nav.searchPlaceholder")}</span><ActionKey id="palette" />
+        </button>
+      )}
       {caption("min", t("titleBar.minimize"), () => getCurrentWindow().minimize())}
       {caption(maximized ? "restore" : "max", maximized ? t("titleBar.restore") : t("titleBar.maximize"), () => getCurrentWindow().toggleMaximize())}
       {caption("close", t("common.close"), () => getCurrentWindow().close(), " close")}
