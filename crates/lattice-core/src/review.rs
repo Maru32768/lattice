@@ -1,9 +1,7 @@
 //! Today's review (G32, G56): one queue over the quiz cards (`quiz.rs`) and the vocabulary
 //! cards (`vocab.rs`). Both kinds share the daily limits of Settings › 復習: the limits are the
-//! user's time for the day, whatever the cards hold. Of a word's two cards, at most one comes
-//! up a day (Anki's sibling burying), so the cloze does not give away the meaning card.
-
-use std::collections::HashSet;
+//! user's time for the day, whatever the cards hold. A word has one card (word → meaning), so
+//! there are no siblings to bury.
 
 use rusqlite::{Connection, params};
 use serde::Serialize;
@@ -35,12 +33,10 @@ enum Due {
 }
 
 /// Every card not suspended, with what decides its place: `src` 'q' (quiz question) or 'v'
-/// (vocabulary card), the word it belongs to, and whether a sibling was answered today.
-const CARDS: &str = "SELECT 'q' AS src, question_id AS id, NULL AS entry_id, interval_minutes, due_at, 0 AS buried FROM review_cards
+/// (vocabulary card).
+const CARDS: &str = "SELECT 'q' AS src, question_id AS id, interval_minutes, due_at FROM review_cards
     UNION ALL
-    SELECT 'v', c.id, c.entry_id, c.interval_minutes, c.due_at,
-        EXISTS (SELECT 1 FROM vocab_log l JOIN vocab_cards s ON s.id = l.card_id WHERE s.entry_id = c.entry_id AND s.id != c.id AND l.reviewed_at >= ?1)
-    FROM vocab_cards c JOIN vocab_entries e ON e.id = c.entry_id WHERE NOT e.suspended";
+    SELECT 'v', c.id, c.interval_minutes, c.due_at FROM vocab_cards c JOIN vocab_entries e ON e.id = c.entry_id WHERE NOT e.suspended";
 
 /// Today's cards in order: due reviews (oldest due first), then new cards, each within what is
 /// left of its daily limit. A day-scale card is due all day on its due date, as in Anki; a card
@@ -56,29 +52,21 @@ fn due(c: &Connection, s: &Settings, now: i64) -> rusqlite::Result<Vec<Due>> {
     )?;
     let left = |limit: u32, done: i64| (i64::from(limit) - done).max(0) as usize;
     let mut out = Vec::new();
-    let mut words = HashSet::new();
     let mut take = |sql: &str, args: &[&dyn rusqlite::ToSql], limit: usize| -> rusqlite::Result<()> {
-        let mut st = c.prepare(&format!("SELECT src, id, entry_id FROM ({CARDS}) WHERE NOT buried AND {sql} ORDER BY due_at, src, id"))?;
-        let mut rows = st.query(args)?;
-        let mut n = 0;
-        while n < limit
-            && let Some(r) = rows.next()?
-        {
-            let (src, id, entry): (String, i64, Option<i64>) = (r.get(0)?, r.get(1)?, r.get(2)?);
-            if entry.is_some_and(|e| !words.insert(e)) {
-                continue;
-            }
+        let mut st = c.prepare(&format!("SELECT src, id FROM ({CARDS}) WHERE {sql} ORDER BY due_at, src, id LIMIT {limit}"))?;
+        let rows = st.query_map(args, |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        for row in rows {
+            let (src, id) = row?;
             out.push(if src == "q" { Due::Question(id) } else { Due::Vocab(id) });
-            n += 1;
         }
         Ok(())
     };
     take(
-        "interval_minutes > 0 AND (due_at <= ?2 OR (interval_minutes >= ?3 AND due_at < ?4))",
-        params![start, now, srs::DAY, end],
+        "interval_minutes > 0 AND (due_at <= ?1 OR (interval_minutes >= ?2 AND due_at < ?3))",
+        params![now, srs::DAY, end],
         left(s.reviews_per_day, reviews_done),
     )?;
-    take("interval_minutes = 0", params![start], left(s.new_per_day, new_done))?;
+    take("interval_minutes = 0", params![], left(s.new_per_day, new_done))?;
     Ok(out)
 }
 
@@ -125,20 +113,14 @@ pub fn overview(store: &Store, now: i64) -> Result<Overview, String> {
     let s = quiz::settings(store)?;
     let c = store.conn();
     let due = due(&c, &s, now).map_err(err)?;
-    let (start, _) = local_day(&c, now).map_err(err)?;
     let ids = |want: fn(&Due) -> Option<i64>| json!(due.iter().filter_map(want).collect::<Vec<_>>()).to_string();
     let next_due_at = c
         .query_row(
             &format!(
-                "SELECT min(due_at) FROM ({CARDS}) WHERE due_at > ?2
-                 AND NOT (src = 'q' AND id IN (SELECT value FROM json_each(?3))) AND NOT (src = 'v' AND id IN (SELECT value FROM json_each(?4)))"
+                "SELECT min(due_at) FROM ({CARDS}) WHERE due_at > ?1
+                 AND NOT (src = 'q' AND id IN (SELECT value FROM json_each(?2))) AND NOT (src = 'v' AND id IN (SELECT value FROM json_each(?3)))"
             ),
-            params![
-                start,
-                now,
-                ids(|d| if let Due::Question(id) = d { Some(*id) } else { None }),
-                ids(|d| if let Due::Vocab(id) = d { Some(*id) } else { None })
-            ],
+            params![now, ids(|d| if let Due::Question(id) = d { Some(*id) } else { None }), ids(|d| if let Due::Vocab(id) = d { Some(*id) } else { None })],
             |r| r.get(0),
         )
         .map_err(err)?;

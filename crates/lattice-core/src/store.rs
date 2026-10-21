@@ -516,6 +516,11 @@ ALTER TABLE feed_items ADD COLUMN filter_reason TEXT;
 ALTER TABLE feed_items ADD COLUMN filter_input TEXT;
 CREATE INDEX feed_items_filter ON feed_items(filter_status, feed_id) WHERE filter_status IN ('rejected', 'pending');
 "#,
+    r#"
+-- Vocabulary cards are Anki's basic word -> meaning only (H20, vocab.rs): the cloze cards go, with
+-- their log. The meaning cards keep their schedule and log.
+DELETE FROM vocab_cards WHERE kind = 'cloze';
+"#,
 ];
 /// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
 /// `source=rss…`, and feed entries must keep matching the articles and items saved before.
@@ -1676,6 +1681,38 @@ mod tests {
         let s = Store::init(conn).unwrap();
         assert!(crate::vocab::list(&s).unwrap().is_empty());
         assert_eq!(crate::review::overview(&s, 0).unwrap().due, 1, "the quiz card is still due");
+    }
+
+    #[test]
+    fn cloze_cards_go_and_meaning_cards_keep_their_history() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("DELETE FROM vocab_cards WHERE kind = 'cloze'")).unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64).unwrap();
+        conn.execute_batch(
+            "INSERT INTO vocab_entries (id, headword, state, meaning) VALUES (1, 'skew', 'ready', '歪み');
+             INSERT INTO vocab_contexts (entry_id, surface, sentence) VALUES (1, 'skew', 'Write skew.');
+             INSERT INTO vocab_cards (id, entry_id, kind, ease, interval_minutes, reps, lapses, due_at) VALUES
+                 (10, 1, 'cloze', 2500, 1440, 1, 0, 100), (11, 1, 'meaning', 2600, 4320, 2, 0, 200);
+             INSERT INTO vocab_log (card_id, grade, prev_interval_minutes, interval_minutes, ease, reviewed_at) VALUES
+                 (10, 'good', 0, 1440, 2500, 50), (11, 'good', 0, 1440, 2500, 60), (11, 'easy', 1440, 4320, 2600, 70);",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let c = s.conn();
+        let cards: Vec<(i64, String, i64, i64, i64)> = c
+            .prepare("SELECT id, kind, ease, interval_minutes, due_at FROM vocab_cards")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(cards, [(11, "meaning".to_string(), 2600, 4320, 200)]);
+        let log: Vec<i64> =
+            c.prepare("SELECT reviewed_at FROM vocab_log ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert_eq!(log, [60, 70], "the cloze card's answer went with it");
     }
 
     #[test]
