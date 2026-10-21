@@ -89,3 +89,11 @@ test("the closed list is one button that opens it again; j / k still move the cu
   await rail.getByRole("button", { name: "記事一覧を開く" }).click();
   await expect(list(app).locator(".row").nth(1)).toHaveClass(/(^| )cur( |$)/);
 });
+
+test("the tab strip's ＋ opens the search engine's start page in a new tab (H12)", async ({ app }) => {
+  await list(app).locator(".row").first().click();
+  await app.locator(".dpane").getByRole("button", { name: "新しいタブ" }).click();
+  await expect(app.locator(".dpane").getByRole("tab")).toHaveCount(2);
+  await expect(palette(app)).toBeHidden();
+  await expect.poll(async () => ((await callsOf(app, "browser_open")).at(-1) as { url: string } | undefined)?.url).toBe("https://duckduckgo.com/");
+});

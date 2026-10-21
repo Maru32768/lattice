@@ -312,7 +312,7 @@ export const ja = {
   "tabStrip.closeTitle": "{title} を閉じる",
   "tabStrip.closeHint": "閉じる (Ctrl+W)",
   "tabStrip.newTab": "新しいタブ",
-  "tabStrip.newTabHint": "新しいタブ (Ctrl+T)",
+  "tabStrip.newTabHint": "新しいタブで検索エンジンを開く",
   "tabStrip.splitRight": "右に分割",
   "tabStrip.splitRightHint": "右に分割 (Ctrl+\\)",
   "tabStrip.splitDown": "下に分割",

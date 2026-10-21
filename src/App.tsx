@@ -22,6 +22,7 @@ import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
+import { getEngine, homeOf } from "./engines";
 import { ContextMenu, CoverContext, coverRect, menuPoint, openOverlays, useCover, type MenuItem } from "./Popover";
 import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
@@ -163,7 +164,7 @@ export default function App() {
   const [now, setNow] = useState(() => Date.now());
   /** Open palette's initial query. */
   const [palette, setPalette] = useState<string | null>(null);
-  /** The palette was opened for a new tab (Ctrl+T, the strip's +): its pick opens in one. Cleared once it has closed (its pick runs first). */
+  /** The palette was opened for a new tab (Ctrl+T): its pick opens in one. Cleared once it has closed (its pick runs first). */
   const paletteNew = useRef(false);
   useEffect(() => { if (palette == null) paletteNew.current = false; }, [palette]);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
@@ -786,9 +787,8 @@ export default function App() {
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- closeWindow reads only constants
   }, [layout]);
 
-  /** The palette for a new tab in `pane`: what it opens goes into a new tab there. */
-  function newTab(pane?: Id) {
-    if (pane != null) setLayout((l) => focusLayout(l, pane));
+  /** The palette for a new tab (Ctrl+T): what it opens goes into a new tab in the focused pane. */
+  function newTab() {
     paletteNew.current = true;
     setPalette("");
   }
@@ -1187,7 +1187,7 @@ export default function App() {
               </div>
             )}
             <WordMarksContext.Provider value={marks}>
-              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={newTab} windowAction={windowAction} onMoveOut={moveTabOut} />
+              <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane)} windowAction={windowAction} onMoveOut={moveTabOut} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (

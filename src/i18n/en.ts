@@ -316,7 +316,7 @@ export const en = {
   "tabStrip.closeTitle": "Close {title}",
   "tabStrip.closeHint": "Close (Ctrl+W)",
   "tabStrip.newTab": "New tab",
-  "tabStrip.newTabHint": "New tab (Ctrl+T)",
+  "tabStrip.newTabHint": "Open the search engine in a new tab",
   "tabStrip.splitRight": "Split right",
   "tabStrip.splitRightHint": "Split right (Ctrl+\\)",
   "tabStrip.splitDown": "Split down",
