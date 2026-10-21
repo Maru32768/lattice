@@ -125,7 +125,8 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
           </div>
         )];
       })}
-      {here >= pane.tabs.length && arriving}
+      {/* An empty pane (a fresh split) has no tab to draw the marker on. */}
+      {here >= pane.tabs.length && (arriving || (!pane.tabs.length && <span className="tab-mark" aria-hidden />))}
       <button className="ib" onClick={onNew} aria-label={t("tabStrip.newTab")} title={t("tabStrip.newTabHint")}><Icon name="plus" /></button>
       <span className="grow" />
       <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}><Icon name="vsplit" /></button>

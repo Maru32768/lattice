@@ -5,6 +5,8 @@ import type { Focus } from "./Reader";
 
 export type Id = number;
 export type Dir = "row" | "column";
+/** Where a tab dropped on a pane's body goes: into the pane, or into a new pane split off on that side. */
+export type Zone = "center" | "left" | "right" | "top" | "bottom";
 
 export interface ReaderTab {
   kind: "reader";
@@ -224,21 +226,30 @@ export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
   return focus(out, to);
 }
 
-/** Splits pane `id` along `dir`; the new, empty pane takes half and the focus. */
-export function split(l: Layout, id: Id, dir: Dir): Layout {
+/** Splits pane `id` along `dir`; the new, empty pane takes half (after it, or `before`) and the focus. */
+export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
   const fresh: Pane = { kind: "pane", id: l.next, tabs: [], active: null };
   const rec = (n: Node): Node => {
-    if (n.kind === "pane") return n.id !== id ? n : { kind: "split", id: l.next + 1, dir, children: [n, fresh], sizes: [0.5, 0.5] };
+    if (n.kind === "pane") return n.id !== id ? n : { kind: "split", id: l.next + 1, dir, children: before ? [fresh, n] : [n, fresh], sizes: [0.5, 0.5] };
     const i = n.children.findIndex((c) => c.kind === "pane" && c.id === id);
     // Same direction as the parent: a sibling, not a nested split.
     if (i >= 0 && n.dir === dir) {
       const half = n.sizes[i] / 2;
-      return { ...n, children: spliced(n.children, i + 1, 0, fresh), sizes: spliced(n.sizes, i, 1, half, half) };
+      return { ...n, children: spliced(n.children, before ? i : i + 1, 0, fresh), sizes: spliced(n.sizes, i, 1, half, half) };
     }
     return { ...n, children: n.children.map(rec) };
   };
   if (!paneById(l, id)) return l;
   return { root: rec(l.root), focused: fresh.id, next: l.next + 2 };
+}
+
+/** Tab `tab` dropped on pane `pane`'s body: its center moves the tab to the end of that pane (its own pane: nothing), an edge into a new pane split off on that side. */
+export function dropOn(l: Layout, tab: Id, pane: Id, zone: Zone): Layout {
+  const target = paneById(l, pane);
+  if (!target || !tabById(l, tab)) return l;
+  if (zone === "center") return target.tabs.some((t) => t.id === tab) ? l : move(l, tab, pane, target.tabs.length);
+  const s = split(l, pane, zone === "left" || zone === "right" ? "row" : "column", zone === "left" || zone === "top");
+  return move(s, tab, s.focused, 0);
 }
 
 export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) ? removePane(l, id) : l);

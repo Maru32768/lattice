@@ -111,6 +111,116 @@ test("the window holding the tab when the drag ends moves it in its own strips o
   await app.mouse.up();
 });
 
+test("split into panes, a tab dropped on the other pane's strip moves there, and an empty strip marks the slot", async ({ app }) => {
+  await openTwo(app);
+  await app.getByRole("button", { name: "右に分割" }).click();
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(2);
+  const right = Number(await panes.nth(1).getAttribute("data-pane-id"));
+  await dragSecond(app);
+  const [start] = await callsOf(app, "tab_drag_start") as { start: { geom: { strips: { pane: number }[] } } }[];
+  expect(start.start.geom.strips.map((s) => s.pane), "both strips are reported").toEqual([1, right]);
+
+  await emit(app, "tab-drag-over", { pane: right, index: 0 });
+  await expect(panes.nth(1).locator(".tab-mark")).toHaveCount(1);
+  await emit(app, "tab-drag-drop", { label: "main", pane: right, index: 0 });
+  await expect(panes.nth(0).locator(".tab-t")).toHaveText([a.title!]);
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([b.title!]);
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
+  await expect(app.locator(".tab-mark")).toHaveCount(0);
+});
+
+/** Opens a and b in the first pane and c in a pane split off to its right; returns that pane's id. */
+async function splitThree(app: Page) {
+  await openTwo(app);
+  await app.getByRole("button", { name: "右に分割" }).click();
+  await row(app, c.title!).click();
+  const panes = app.locator(".dpane");
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([c.title!]);
+  return Number(await panes.nth(1).getAttribute("data-pane-id"));
+}
+
+test("split into panes, the window reports each pane's body under its strip, and draws the zone a drag is over", async ({ app }) => {
+  const right = await splitThree(app);
+  const panes = app.locator(".dpane");
+  await dragSecond(app);
+  const [start] = await callsOf(app, "tab_drag_start") as { start: { geom: { strips: { pane: number; y: number; height: number; body: { x: number; y: number; width: number; height: number } }[] } } }[];
+  const pane = (await panes.nth(1).boundingBox())!;
+  const strip = start.start.geom.strips.find((s) => s.pane === right)!;
+  expect(strip.body.y).toBeCloseTo(strip.y + strip.height, 0);
+  expect(strip.body.x).toBeCloseTo(pane.x, 0);
+  expect(strip.body.width).toBeCloseTo(pane.width, 0);
+  expect(strip.body.y + strip.body.height).toBeCloseTo(pane.y + pane.height, 0);
+
+  const zone = panes.nth(1).locator(".drop-zone");
+  await emit(app, "tab-drag-over", { pane: right, zone: "center" });
+  await expect(zone).toHaveClass(/center/);
+  const whole = (await zone.boundingBox())!;
+  expect(whole.y).toBeCloseTo(strip.body.y, 0);
+  expect(whole.height).toBeCloseTo(strip.body.height, 0);
+  await emit(app, "tab-drag-over", { pane: right, zone: "right" });
+  const half = (await zone.boundingBox())!;
+  expect(half.width).toBeCloseTo(whole.width / 2, 0);
+  expect(half.x + half.width).toBeCloseTo(whole.x + whole.width, 0);
+  await expect(panes.nth(1).locator(".tab.drop-before, .tab.drop-after"), "no strip marker").toHaveCount(0);
+  await emit(app, "tab-drag-over", null);
+  await expect(app.locator(".drop-zone")).toHaveCount(0);
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
+});
+
+test("dropped on another pane's center the tab joins that pane; on an edge it splits that pane and takes the new one", async ({ app }) => {
+  const right = await splitThree(app);
+  const panes = app.locator(".dpane");
+  await dragSecond(app);
+  await emit(app, "tab-drag-drop", { label: "main", pane: right, zone: "center" });
+  await expect(panes.nth(0).locator(".tab-t")).toHaveText([a.title!]);
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([c.title!, b.title!]);
+  await expect(panes.nth(1).getByRole("tab", { name: b.title! })).toHaveAttribute("aria-selected", "true");
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
+
+  const box = (await panes.nth(1).getByRole("tab").nth(1).boundingBox())!;
+  await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await app.mouse.down();
+  await app.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 });
+  await emit(app, "tab-drag-drop", { label: "main", pane: right, zone: "bottom" });
+  await expect(panes).toHaveCount(3);
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([c.title!]);
+  await expect(panes.nth(2).locator(".tab-t")).toHaveText([b.title!]);
+  await expect(panes.nth(2)).toHaveClass(/focused/);
+  await expect(app.getByRole("separator", { name: "ペインの高さ" }), "split down").toBeVisible();
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
+});
+
+test("a pop-out split into panes moves a tab between them the same way", async ({ shell }) => {
+  const split = {
+    root: { kind: "split", id: 9, dir: "row", sizes: [0.5, 0.5], children: [
+      { kind: "pane", id: 1, active: 2, tabs: [{ kind: "reader", id: 2, articleId: a.id }, { kind: "reader", id: 3, articleId: b.id }] },
+      { kind: "pane", id: 4, active: 5, tabs: [{ kind: "reader", id: 5, articleId: c.id }] },
+    ] },
+    focused: 1,
+  };
+  await shell.addInitScript(([k, v]) => localStorage.setItem(k, v), ["lattice.window.doc-1", JSON.stringify(split)]);
+  await shell.goto("/?window=doc-1");
+  const panes = shell.locator(".dpane");
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([c.title!]);
+  await dragSecond(shell);
+  await expect.poll(() => callsOf(shell, "tab_drag_start")).toHaveLength(1);
+  await emit(shell, "tab-drag-over", { pane: 4, zone: "left" });
+  await expect(panes.nth(1).locator(".drop-zone.left")).toHaveCount(1);
+  await emit(shell, "tab-drag-drop", { label: "doc-1", pane: 4, zone: "left" });
+  await expect(panes).toHaveCount(3);
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([b.title!]);
+  await emit(shell, "tab-drag-drop", { label: "doc-1", pane: 4, index: 0 });
+  await expect(panes, "its emptied pane is gone").toHaveCount(2);
+  await expect(panes.nth(1).locator(".tab-t"), "then onto the other pane's strip").toHaveText([b.title!, c.title!]);
+  await shell.mouse.up();
+  await emit(shell, "tab-drag-end");
+});
+
 test("a window opens what is dropped on it at that slot", async ({ app }) => {
   await openTwo(app);
   await emit(app, "main-request", { kind: "open", docs: [{ kind: "reader", articleId: c.id }], at: { pane: 1, index: 0 } });

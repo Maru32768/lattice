@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MIN_SIZE, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus, focusedPane, move, navigated, open, pageByKey, panes, parse, resize, serialize, single, split,
+  MIN_SIZE, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, dropOn, focus, focusedPane, move, navigated, open, pageByKey, panes, parse, resize, serialize, single, split,
   tabById, type Layout,
 } from "./layout.ts";
 
@@ -106,6 +106,33 @@ test("move: within a pane reorders around the gap; across panes shows it there a
   l = move(l, 3, right, 0);
   assert.deepEqual(picture(l), ["2* 1 3"], "the emptied left pane is gone");
   assert.equal(l.root.kind, "pane");
+});
+
+test("dropOn: a body's center takes the tab at the end, an edge splits that pane on its side and puts the tab there", () => {
+  let l = open(open(open(single(), reader(1)), reader(2), "new"), reader(3), "new");
+  const id = (a: number) => allTabs(l).find((t) => t.kind === "reader" && t.articleId === a)!.id;
+  const first = panes(l.root)[0].id;
+  assert.equal(dropOn(l, id(3), first, "center"), l, "its own pane's center: nothing");
+  l = dropOn(l, id(3), first, "right");
+  assert.deepEqual(picture(l), ["1* 2", "3*"]);
+  assert.equal(l.root.kind === "split" && l.root.dir, "row");
+  l = dropOn(l, id(1), l.focused, "center");
+  assert.deepEqual(picture(l), ["2*", "3 1*"]);
+  l = dropOn(l, id(2), l.focused, "top");
+  assert.deepEqual(picture(l), ["2*", "3 1*"], "the emptied pane is gone, the new one above");
+  assert.equal(l.root.kind === "split" && l.root.dir, "column");
+  l = dropOn(l, id(3), panes(l.root)[1].id, "left");
+  assert.deepEqual(picture(l), ["2*", "3*", "1*"]);
+  const bottom = l.root.kind === "split" && l.root.children[1];
+  assert.equal(bottom && bottom.kind === "split" && bottom.dir, "row", "split off on the left, in its own row");
+  assert.equal(focusedPane(l).tabs[0].id, id(3));
+  assert.equal(dropOn(l, 99, first, "left"), l, "an unknown tab");
+
+  let m = open(open(open(single(), reader(1)), reader(2), "new"), reader(3), "new");
+  m = dropOn(m, 4, 1, "right");
+  m = dropOn(m, 3, m.focused, "left");
+  assert.deepEqual(picture(m), ["1*", "2*", "3*"]);
+  assert.deepEqual(m.root.kind === "split" && m.root.sizes, [0.5, 0.25, 0.25], "split off on the left of a pane in a row: a sibling before it");
 });
 
 test("cycle wraps; focus ignores unknown panes", () => {

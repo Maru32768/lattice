@@ -1,9 +1,9 @@
 import { Fragment, useContext, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { MIN_SIZE, activate, close, closePane, focusedPane, move, panes, resize, split, tabById, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
+import { MIN_SIZE, activate, close, closePane, dropOn, focusedPane, move, panes, resize, split, tabById, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
 import { TabStrip, type DropTarget, type TabDrag, type TabLabel, type WindowAction } from "./TabStrip";
-import { TAB_DRAG_DROP, TAB_DRAG_END, TAB_DRAG_OVER, TAB_DRAG_START, TAB_DRAG_TEAR, measure, type Incoming, type Slot } from "./tabDrag";
+import { TAB_DRAG_DROP, TAB_DRAG_END, TAB_DRAG_OVER, TAB_DRAG_START, TAB_DRAG_TEAR, measure, type Incoming, type Over, type Slot, type ZoneTarget } from "./tabDrag";
 import { tabDrag } from "./api";
 import { CoverContext } from "./Popover";
 import { Favicon } from "./Favicon";
@@ -63,7 +63,7 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   );
 }
 
-function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, dragging, onDrag, onDrop, index, title }: {
+function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, body, dragging, onDrag, onDrop, index, title }: {
   n: Node;
   layout: Layout;
   onLayout: Update;
@@ -72,6 +72,8 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   onNew: (pane: Id) => void;
   windowAction: WindowAction;
   drop: Incoming | null;
+  /** The pane body a drag is over, and which zone of it. */
+  body: ZoneTarget | null;
   dragging: Id | null;
   onDrag: (d: TabDrag) => void;
   onDrop: () => void;
@@ -99,7 +101,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
                   })} />
               )}
               <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} title={title} />
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} title={title} />
               </div>
             </Fragment>
           );
@@ -116,6 +118,8 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
         onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}
         onDrag={onDrag} onDrop={onDrop} onTitleDrag={title?.top.has(n.id) ? dragWindow : undefined} end={title?.corner === n.id && <WindowControls />} />
       {renderPane(n)}
+      {/* Over the page stills that stand in for the webviews during a drag. */}
+      {body?.pane === n.id && <div className={`drop-zone ${body.zone}`} aria-hidden />}
     </section>
   );
 }
@@ -147,7 +151,7 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   /** The tab was pulled off every strip: it leaves for a new document window, which the drag places. */
   onTear: (tab: Id) => void;
 }) {
-  const [drop, setDrop] = useState<Incoming | null>(null);
+  const [drop, setDrop] = useState<Over | null>(null);
   const [ghost, setGhost] = useState<TabDrag | null>(null);
   const [own, setOwnState] = useState<Own | null>(null);
   // Read by the pointer moves that come before the next render.
@@ -174,7 +178,9 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
     const all = panes(layout.root).flatMap((p) => p.tabs);
     const tab = ownRef.current?.tab ?? (all.length === 1 ? all[0].id : null);
     if (tab == null) return;
-    if (to.label === me) onLayout((l) => move(l, tab, to.pane, to.index));
+    // A pane body is a target only in the window dragging the tab.
+    if ("zone" in to) onLayout((l) => (to.label === me ? dropOn(l, tab, to.pane, to.zone) : l));
+    else if (to.label === me) onLayout((l) => move(l, tab, to.pane, to.index));
     else onSend(tab, to.label, { pane: to.pane, index: to.index });
   }
 
@@ -189,7 +195,7 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
         setReporting(true);
       }),
       listen(TAB_DRAG_END, () => handlers.current.finish()),
-      win.listen<Incoming | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
+      win.listen<Over | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
       win.listen(TAB_DRAG_TEAR, () => handlers.current.tear()),
       win.listen<Slot>(TAB_DRAG_DROP, (e) => handlers.current.dropped(e.payload)),
     ];
@@ -234,8 +240,8 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   const ghostLabel = ghostTab && labelOf(ghostTab);
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
-      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop}
-        dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0}
+      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction}
+        drop={drop && "index" in drop ? drop : null} body={drop && "zone" in drop ? drop : null} dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0}
         title={movable ? topStrips(layout.root) : null} />
       {ghost && ghostTab && ghostLabel && (
         <div className="tab-ghost" aria-hidden style={{ left: ghost.x - ghost.dx, top: ghost.y - ghost.dy }}>

@@ -30,7 +30,13 @@
 .split { flex: 1; min-width: 0; min-height: 0; display: flex; }
 .split.down { flex-direction: column; }
 .split > .cell { min-width: 0; min-height: 0; display: flex; }
-.dpane { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }
+.dpane { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }
+/* A tab dragged onto a pane's body (VS Code's drop overlay): the whole body, or the half an edge splits off. Below the 34 px strip. */
+.drop-zone { position: absolute; inset: 34px 0 0; z-index: 5; background: color-mix(in srgb, var(--acc) 16%, transparent); outline: 2px solid var(--acc); outline-offset: -2px; pointer-events: none; }
+.drop-zone.left { right: 50%; }
+.drop-zone.right { left: 50%; }
+.drop-zone.top { bottom: calc(50% - 17px); }
+.drop-zone.bottom { top: calc(50% + 17px); }
 .doc-area.multi .dpane.focused { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
 .tabs { height: 34px; flex: none; display: flex; align-items: stretch; gap: 2px; padding: 5px 6px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .tab { position: relative; display: flex; align-items: center; gap: 6px; min-width: 56px; max-width: 200px; padding: 0 4px 0 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; font-size: 12px; color: var(--ink2); user-select: none; touch-action: none; }
@@ -39,6 +45,7 @@
 .tab.dragging { opacity: .5; }
 .tab.drop-before::before, .tab.drop-after::after { content: ""; position: absolute; top: 4px; bottom: 2px; width: 2px; background: var(--acc); }
 .tab.drop-before::before { left: -2px; }
+.tabs > .tab-mark { width: 2px; flex: none; margin: 4px 0 2px; background: var(--acc); }
 .tab.drop-after::after { right: -2px; }
 /* Another window's tab, drawn at the slot a drag is over (it arrives when the drag ends). */
 .tab.incoming { padding-right: 10px; pointer-events: none; }
