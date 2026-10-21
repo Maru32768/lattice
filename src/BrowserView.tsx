@@ -12,6 +12,16 @@ import { useT, type T } from "./i18n";
 const opened = new Map<string, number>();
 /** The tab left this window with its webview: a return opens (attaches) it again rather than only resizing it. */
 export const forgetOpened = (key: string) => void opened.delete(key);
+/**
+ * Tabs whose view just unmounted. Their webview is hidden after the current task unless the same
+ * tab mounts again first (StrictMode's second mount, a move to another pane): a hide sent between
+ * two shows could reach the backend last and leave the page blank until the next resize.
+ */
+const leaving = new Set<string>();
+/** A WebView2 shown again needs a moment to draw; the still under it stays until then. */
+const SHOW_SETTLE_MS = 150;
+/** How long the bounds are checked every frame after the placeholder appears or resizes (layout settling, fonts, banners). */
+const FOLLOW_MS = 600;
 
 export interface PageLang {
   mode: LanguageMode;
@@ -104,12 +114,28 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
       void sync();
     });
   };
+  /** The bounds last sent; `follow` sends again only on a change. */
+  const sent = useRef("");
   const sync = async () => {
     const b = bounds();
     if (!b || coveredRef.current || opening.current) return;
+    sent.current = JSON.stringify(b);
     const exists = await browser.setBounds(id, b).catch(() => true); // also re-shows it
     // Evicted while hidden, or restored from the saved layout: the tab reopens its URL.
     if (!exists && !opening.current) await open(b);
+  };
+  /** The placeholder can move without resizing (a pane appearing beside it), which no ResizeObserver reports. */
+  const followUntil = useRef(0);
+  const follow = () => {
+    const running = followUntil.current > performance.now();
+    followUntil.current = performance.now() + FOLLOW_MS;
+    if (running) return;
+    const frame = () => {
+      if (!host.current) return;
+      if (JSON.stringify(bounds()) !== sent.current) void sync();
+      if (performance.now() < followUntil.current) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
   };
 
   useLayoutEffect(() => {
@@ -121,12 +147,17 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   }, [tab.seq]);
 
   useEffect(() => {
+    let live = true;
     if (!covered) {
-      void sync().then(() => setStill(null));
-      return;
+      void (async () => {
+        await sync();
+        follow();
+        await new Promise((r) => setTimeout(r, SHOW_SETTLE_MS));
+        if (live) setStill(null);
+      })();
+      return () => { live = false; };
     }
     // The still is painted under the webview before it hides, so no blank frame shows in between.
-    let live = true;
     void (async () => {
       const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
       if (png && live) {
@@ -143,17 +174,27 @@ export function BrowserView({ tab, saved, saving, lang, overlays, onNavigate, on
   }, [covered]);
 
   useEffect(() => {
-    const resize = () => void sync();
+    const resize = () => {
+      void sync();
+      follow();
+    };
     const ro = new ResizeObserver(resize);
     ro.observe(host.current!);
     window.addEventListener("resize", resize);
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", resize);
-      browser.hide(id).catch(() => {});
+      followUntil.current = 0;
     };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
+  useLayoutEffect(() => {
+    leaving.delete(id);
+    return () => {
+      leaving.add(id);
+      queueMicrotask(() => { if (leaving.delete(id)) browser.hide(id).catch(() => {}); });
+    };
+  }, [id]);
 
   const { url, loading } = tab;
   const resave = saved && (saved.thin || saved.fetch_status === "failed" || saved.extraction_status === "failed");

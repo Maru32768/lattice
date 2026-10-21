@@ -4,7 +4,7 @@
 //!
 //! Trust boundary: the pages are remote and untrusted. Their webviews (labels `browser-<tab>`)
 //! get only the capability in `capabilities/browser.json` (overlay_config / overlay_translate /
-//! overlay_snapshot / overlay_history / overlay_key / overlay_vocab), translate calls are refused
+//! overlay_snapshot / overlay_history / overlay_key / overlay_vocab / overlay_print), translate calls are refused
 //! unless the user has switched translation on, snapshots unless the app asked for one, and word
 //! captures unless the page is on screen and the last one is a moment ago. The background
 //! renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Rect, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
 use tokio::sync::oneshot;
 
 /// Labels of the page webviews: `browser-<tab key>`. The key (`PageTab.key` in `src/layout.ts`)
@@ -200,8 +200,9 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
     match bounds.filter(|_| wanted) {
         Some(b) => {
             let (x, y) = if loading { PARKED } else { (b.x, b.y) };
-            wv.set_position(LogicalPosition::new(x, y))?;
-            wv.set_size(LogicalSize::new(b.width.max(1.0), b.height.max(1.0)))?;
+            // One message: set_position then set_size each read the webview's current rect and
+            // write it back whole, so the second could put back a position the first had not applied yet.
+            wv.set_bounds(Rect { position: LogicalPosition::new(x, y).into(), size: LogicalSize::new(b.width.max(1.0), b.height.max(1.0)).into() })?;
             wv.show()
         }
         None => wv.hide(),
@@ -628,6 +629,38 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
     }
     emit_tab(&webview, "browser-key", Key { key });
     Ok(())
+}
+
+/// Called by the overlay for Ctrl+P and `window.print()`. WebView2's own print preview is drawn
+/// inside the page's child webview and showed up behind the page; the system dialog is a window of
+/// its own. Exposed to remote pages, which can call print() anyway; only while the page is on
+/// screen. False off Windows, where the overlay falls back to the page's own print.
+#[tauri::command]
+pub async fn overlay_print(browser: State<'_, Browser>, webview: Webview) -> Result<bool, String> {
+    if !is_browser(webview.label()) {
+        return Err("not a browser webview".into());
+    }
+    if !browser.with_tab(webview.label(), |t| t.visibility.wanted && !t.visibility.loading) {
+        return Err("print refused".into());
+    }
+    #[cfg(windows)]
+    {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM, ICoreWebView2_16};
+        use windows::core::Interface;
+        webview
+            .with_webview(|pw| {
+                let shown = unsafe {
+                    pw.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_16>()).and_then(|c| c.ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM))
+                };
+                if let Err(e) = shown {
+                    log::warn!("ShowPrintUI: {e}");
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+    #[cfg(not(windows))]
+    Ok(false)
 }
 
 /// A page can call overlay_vocab on its own, so captures are spaced at least this far apart:

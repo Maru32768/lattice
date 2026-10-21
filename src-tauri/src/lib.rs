@@ -1222,6 +1222,7 @@ pub fn run() {
             browser::overlay_history,
             browser::browser_set_keys,
             browser::overlay_key,
+            browser::overlay_print,
             popout::open_window,
             popout::close_window,
             update::update_info,

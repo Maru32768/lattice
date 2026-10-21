@@ -454,8 +454,14 @@ function forward(key: string, armed: boolean) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (!keys || e.isComposing) return;
+  if (e.isComposing) return;
   const key = keyOf(e);
+  if (key === "Ctrl+P") {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return window.print();
+  }
+  if (!keys) return;
   const armed = Date.now() < prefixUntil;
   // composedPath: the field itself, not its shadow host.
   const route = routeKey(keys, key, inField(e.composedPath()[0]), armed);
@@ -506,6 +512,9 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
 
 if (window.top === window && !window.__lattice) {
   window.__lattice = { configure, setKeys, scrollToText, snapshot };
+  // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
+  const pagePrint = window.print.bind(window);
+  window.print = () => void invoke("overlay_print").then((shown) => shown || pagePrint(), () => pagePrint());
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
   // After the selection settles (a click inside it collapses it only after mouseup).

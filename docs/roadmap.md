@@ -89,6 +89,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | # | 項目 | 状態 | 方針 |
 |---|---|---|---|
 | H1 | 翻訳が壊れて見える | 済 | (1) Page の 訳文 / 混在 が効かない: overlay の設定は backend で全 webview 共通なのに、どのウィンドウも起動時に自分の既定（原文）を `browser_set_translation` していた。後から開いた pop-out・対話ウィンドウが全ページの翻訳を切っていた。送るのはメインだけにし、文書ウィンドウは起動時にメインへ今の選択を尋ねる（`main-request` の `pageLang`）。(2) Reader で 混在 / 訳文 を選んだとき、未翻訳で翻訳 job がなければ翻訳を始めて進み具合を出す（設定 › 翻訳「表示を切り替えたら自動で翻訳」、既定オン）。「保存した記事を自動で翻訳」（既定オフ、日本語の記事は対象外）。(3)「訳し直す」は訳が 1 つでもあれば ⋯ に説明付きで出す。 |
+| H2 | ページ表示のちらつき・重なり・印刷 | 済 | 原因は、ページの view が mount し直すたびに（React の StrictMode の 2 回目の mount、ペインの移動）webview の hide が 2 つの show の間に送られていたこと（e2e で show, show, hide, show, show を確認）。設定・処理状況から戻ったときの一瞬の表示崩れと、hide が最後に届いた場合の白いままのペイン（推定）。unmount の hide は microtask まで待ち、同じタブがすぐ mount し直したら送らない。⋯ メニューを閉じたときは、webview を表示し直してから描き終わるまで（150 ms）静止画を残す。位置と大きさは 1 つの `set_bounds` で送る（`set_position` と `set_size` はそれぞれ今の矩形を読んで書き戻すので、後の方が古い位置を書き戻しうる）。placeholder が現れた・大きさが変わった後 600 ms は毎フレーム位置も見て追従する（ResizeObserver は位置の変化を知らせない）。印刷（Ctrl+P・ページの `window.print()`）は overlay が `overlay_print` を呼び、Windows では WebView2 の `ShowPrintUI(SYSTEM)` でシステムの印刷ダイアログを出す（それ以外はページの印刷のまま）。 |
 
 ## 3. 要件定義の未実装項目
 

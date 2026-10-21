@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-overlay-print"
+description = "Enables the overlay_print command without any pre-configured scope."
+commands.allow = ["overlay_print"]
+
+[[permission]]
+identifier = "deny-overlay-print"
+description = "Denies the overlay_print command without any pre-configured scope."
+commands.deny = ["overlay_print"]
