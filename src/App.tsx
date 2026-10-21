@@ -30,7 +30,7 @@ import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
-import { placeFeeds, type FeedOrder } from "./feedFolders";
+import { feedGroups, folderTree, placeFeeds, type FeedOrder } from "./feedFolders";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
 import { keyOf } from "./keyname";
 import { focusPane, paneAfter, paneOf, stepNav } from "./panes";
@@ -361,8 +361,10 @@ export default function App() {
 
   // ---- derived library --------------------------------------------------------------------
   const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
+  // The sidebar's order: each folder's feeds, then the loose ones.
+  const feedOrder = useMemo(() => feedGroups(folderTree(feeds, folders, new Map())).flatMap((o) => o.ids), [feeds, folders]);
   const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t)), [shown, group, t]);
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t, feedOrder)), [shown, group, t, feedOrder]);
   const order = useMemo(() => flatten(groups), [groups]);
   // 重要 shows once there is a profile to judge against (or scores from an earlier one).
   const importantMin = relevance && (relevance.has_profile || relevance.scored > 0) ? relevance.threshold : null;
