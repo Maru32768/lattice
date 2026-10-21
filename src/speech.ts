@@ -14,15 +14,9 @@ export function englishVoice<V extends Voice>(voices: readonly V[]): V | null {
 const synth = (): SpeechSynthesis | null => (typeof speechSynthesis === "undefined" ? null : speechSynthesis);
 
 let voice: SpeechSynthesisVoice | null = null;
-let read = false;
-// The list fills in asynchronously: Chromium returns [] until `voiceschanged`.
-const current = () => {
-  if (!read) {
-    read = true;
-    voice = englishVoice(synth()?.getVoices() ?? []);
-  }
-  return voice;
-};
+// The list fills in asynchronously: Chromium returns [] until `voiceschanged`, which may fire before
+// anyone listens. So an empty answer is not kept: it is asked again until a voice turns up.
+const current = () => (voice ??= englishVoice(synth()?.getVoices() ?? []));
 function subscribe(changed: () => void) {
   const s = synth();
   const on = () => {
@@ -30,6 +24,8 @@ function subscribe(changed: () => void) {
     changed();
   };
   s?.addEventListener("voiceschanged", on);
+  // The list may have filled between the first read and now.
+  if (!voice && current()) changed();
   return () => s?.removeEventListener("voiceschanged", on);
 }
 
