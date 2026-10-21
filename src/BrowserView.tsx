@@ -4,7 +4,7 @@ import type { LanguageMode } from "./mixed";
 import type { PageTab } from "./layout";
 import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "./Reader";
 import { QuizPanel, useQuizOpen } from "./QuizPanel";
-import { Menu, intersects, useOverlays } from "./Popover";
+import { Menu, intersects, pageDrawn, useOverlays } from "./Popover";
 import { Icon } from "./Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "./i18n";
@@ -190,6 +190,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   useEffect(() => {
     let live = true;
     if (!covered) {
+      pageDrawn(id, () => host.current?.getBoundingClientRect());
       void (async () => {
         await sync();
         follow();
@@ -207,7 +208,10 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
         setStill(png);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       }
-      if (live) await browser.hide(id).catch(() => {});
+      if (!live) return;
+      await browser.hide(id).catch(() => {});
+      // Overlays over the page wait for this before they show (H22).
+      if (live) pageDrawn(id, null);
     })();
     return () => { live = false; };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
@@ -230,14 +234,22 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
   useEffect(() => {
-    const over = (e: PointerEvent) => {
-      const el = (e.target as Element).closest?.("[aria-haspopup]");
-      if (!el || coveredRef.current || OFF_PAGE.has(el.closest("[data-pane]")?.getAttribute("data-pane") ?? "")) return;
-      if (warm.current && performance.now() - warm.current.at < WARM_MS / 2) return;
+    const warmUp = () => {
+      if (coveredRef.current || (warm.current && performance.now() - warm.current.at < WARM_MS / 2)) return;
       warm.current = { png: grab(), at: performance.now() };
     };
+    const over = (e: PointerEvent) => {
+      const el = (e.target as Element).closest?.("[aria-haspopup]");
+      if (el && !OFF_PAGE.has(el.closest("[data-pane]")?.getAttribute("data-pane") ?? "")) warmUp();
+    };
+    // A context menu opens when the right button is released, anywhere a row or a tab is: start on the press.
+    const press = (e: PointerEvent) => void (e.button === 2 && warmUp());
     document.addEventListener("pointerover", over);
-    return () => document.removeEventListener("pointerover", over);
+    document.addEventListener("pointerdown", press);
+    return () => {
+      document.removeEventListener("pointerover", over);
+      document.removeEventListener("pointerdown", press);
+    };
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); grab reads refs
   }, []);
   // A still of the previous page must not stand in for the next one.
@@ -246,6 +258,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   useLayoutEffect(() => {
     leaving.delete(id);
     return () => {
+      pageDrawn(id, null);
       leaving.add(id);
       queueMicrotask(() => { if (leaving.delete(id)) browser.hide(id).catch(() => {}); });
     };

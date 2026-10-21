@@ -24,6 +24,7 @@
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/noto-serif-jp": "^5.3.1",
     "@tauri-apps/api": "^2",
+    "radix-ui": "^1.7.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },

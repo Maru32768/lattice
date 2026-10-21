@@ -5,7 +5,7 @@ import { flatten, type Group } from "./groups";
 import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
 import { GroupPicker } from "./GroupPicker";
-import { Menu, menuPoint } from "./Popover";
+import { Menu } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
@@ -172,7 +172,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   onGroupMembers: (group: number, ids: number[], add: boolean) => void;
   onCreateGroup: (name: string) => Promise<number>;
   /** A row's context menu, for that row or, when it is one of the picked rows, for all of them. */
-  onRowMenu: (rows: ArticleRow[], at: { x: number; y: number }, from: HTMLElement) => void;
+  onRowMenu: (rows: ArticleRow[], from: HTMLElement) => void;
   onCollapse: () => void;
   /** 「重要度を付け直す」 for the shown articles, resolving to how many were queued; absent when importance is not in view or there is no profile. */
   onRescore?: () => Promise<number>;
@@ -203,11 +203,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
         : g.articles.map((a) => (
           <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={(t) => onOpen(a, t)} onCursor={() => onCursor(a.id)}
             translating={translating?.id === a.id ? translating.label : null} picked={picked ? picked.includes(a.id) : undefined} onPick={onPick(a.id)}
-            onMenu={(e) => {
-              e.preventDefault();
-              const from = e.currentTarget;
-              onRowMenu(picked?.includes(a.id) ? pickedRows : [a], menuPoint(e, from), from);
-            }} />
+            onMenu={(e) => onRowMenu(picked?.includes(a.id) ? pickedRows : [a], e.currentTarget)} />
         ))}
     </div>
   );

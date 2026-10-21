@@ -25,7 +25,7 @@ import { Reader, WordMarksContext, type DocActions, type Focus } from "./Reader"
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
 import { getEngine, homeOf } from "./engines";
-import { ContextMenu, CoverContext, coverRect, menuPoint, openOverlays, useCover, type MenuItem } from "./Popover";
+import { ContextMenu, CoverContext, coverRect, openOverlays, useCover, type MenuItem } from "./Popover";
 import { articleMenu, type ArticleActions } from "./articleMenu";
 import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
@@ -81,6 +81,8 @@ function loadMarks(): boolean {
 const JOB_POLL_MS = 10_000;
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
 const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
+/** What has a right-click menu: list rows and document tabs (H3). */
+const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab]";
 
 /** States board #8: an empty library. */
 function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
@@ -175,7 +177,8 @@ export default function App() {
   /** The article waiting for delete confirmation, and the view that asked. */
   const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
   /** An open context menu (a list row, a tab), and what gets focus back when it closes. */
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: (MenuItem | string)[]; from: HTMLElement } | null>(null);
+  /** The items of the right-click menu, set by the row or tab it opens on. */
+  const [ctxItems, setCtxItems] = useState<(MenuItem | string)[]>([]);
   /** グループに追加… from a context menu: the picker under the row or tab. */
   const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
 
@@ -277,6 +280,10 @@ export default function App() {
       listen<{ tab: string; title: string }>("browser-title", (e) => onPage(e.payload.tab, (l, t) => update(l, t.id, { title: e.payload.title }))),
       // A click in a page focuses its pane, as a click in a Reader does through pointerdown.
       listen<{ tab: string }>("browser-focus", (e) => {
+        // The click never reached this document: replay it as a press outside every open menu and
+        // popover (Radix dismisses a left press on its click).
+        document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        document.body.click();
         const t = pageByKey(layoutRef.current, e.payload.tab);
         const hit = t && tabById(layoutRef.current, t.id);
         if (!hit) return;
@@ -566,15 +573,14 @@ export default function App() {
     copyUrl: (a) => copyUrl(a.original_url),
     remove: (a) => setDeleting({ article: a, page: false }),
   });
-  const openRowMenu = (rows: ArticleRow[], at: { x: number; y: number }, from: HTMLElement) =>
-    setCtxMenu({ ...at, items: articleMenu(rows, articleActions(from), t), from });
+  const openRowMenu = (rows: ArticleRow[], from: HTMLElement) => setCtxItems(articleMenu(rows, articleActions(from), t));
 
   /** Right-click (or the menu key) on a tab: its article's menu, or for an unsaved page what applies to a URL. */
   function tabMenu(e: React.MouseEvent) {
     const el = (e.target as Element).closest<HTMLElement>("[role='tab'][data-tab]");
     const hit = el && tabById(layoutRef.current, Number(el.dataset.tab));
-    if (!el || !hit) return;
-    e.preventDefault();
+    // Not a tab of this window's layout: no menu at all.
+    if (!el || !hit) return e.preventDefault();
     const tab = hit.tab;
     const a = tab.kind === "reader" ? (viewsRef.current.get(tab.articleId)?.article ?? articleById.get(tab.articleId)) : savedOf(tab);
     const again = () => (tab.kind === "page" ? openPage(tab.url, undefined, a ?? undefined, "new", hit.pane.id) : openReader(tab.articleId, undefined, "new", hit.pane.id));
@@ -585,7 +591,7 @@ export default function App() {
         ...(IS_MAIN ? [{ label: t("tabStrip.popOut"), onSelect: () => popOutTab(tab.id) }] : []),
         ...(tab.kind === "page" ? [{ label: t("articleMenu.copyUrl"), onSelect: () => copyUrl(tab.url) }] : []),
       ];
-    setCtxMenu({ ...menuPoint(e, el), items, from: el });
+    setCtxItems(items);
   }
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
 
@@ -1025,11 +1031,13 @@ export default function App() {
       }
       // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
       if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
-        const on = (e.target as Element).closest?.<HTMLElement>(".row[data-id], [role='tab'][data-tab]") ?? document.querySelector<HTMLElement>(".row.cur");
+        const on = (e.target as Element).closest?.<HTMLElement>(MENU_TARGETS) ?? document.querySelector<HTMLElement>(".row.cur");
         if (!on) return;
         e.preventDefault();
         on.focus();
-        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+        // The menu opens at the event's point: under the start of the element.
+        const r = on.getBoundingClientRect();
+        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 16, clientY: r.bottom }));
         return;
       }
       const action = actionFor(getBindings(), key);
@@ -1184,6 +1192,7 @@ export default function App() {
         {/* A pop-out's top tab strips are its title bar (H19, DocArea). */}
         {HOST.kind !== "doc" && <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} onPalette={() => setPalette("")} />}
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
+        <ContextMenu label={t("articleMenu.label")} items={ctxItems} targets={MENU_TARGETS}>
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"
             ? <SettingsView section={settingsSection} onSection={setSettingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
@@ -1242,7 +1251,6 @@ export default function App() {
             </ConfirmDialog>
           )}
           {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
-          {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} label={t("articleMenu.label")} items={ctxMenu.items} from={ctxMenu.from} onClose={() => setCtxMenu(null)} />}
           {groupPick && (
             <GroupPicker groups={groupRows} anchor={groupPick.el} onCreate={createGroup} onClose={() => setGroupPick(null)}
               selected={groupRows.filter((g) => groupPick.ids.every((id) => articleById.get(id)?.groups.includes(g.id))).map((g) => g.id)}
@@ -1254,6 +1262,7 @@ export default function App() {
               current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
           )}
         </div>
+        </ContextMenu>
       </div>
     </CoverContext.Provider>
   );

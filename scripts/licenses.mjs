@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const RULE = "-".repeat(79);
+/** Packages that ship no license file: the license file of a package by the same author under the same license (package.json). */
+const SIBLING = { "react-remove-scroll-bar": "react-remove-scroll" };
 
 /** Production packages as `{ name, version, license, text }`, grouped later by identical text. */
 export function npmPackages(root) {
@@ -15,12 +17,13 @@ export function npmPackages(root) {
   return Object.entries(lock.packages)
     .filter(([path, p]) => path.startsWith("node_modules/") && !p.dev && !p.devOptional)
     .map(([path, p]) => {
-      const dir = join(root, path);
+      const name = path.slice("node_modules/".length);
+      const dir = join(root, SIBLING[name] ? `node_modules/${SIBLING[name]}` : path);
       // LICENSE, LICENSE.txt, or one file per license of a dual license (LICENSE-MIT, LICENSE-APACHE-2.0).
       const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^licen[cs]e(-[\w.-]+)?(\.(md|txt))?$/i.test(f)) : [];
       if (!files.length) throw new Error(`no license file in ${path}; run npm install, or add the text by hand`);
       const text = files.map((f) => readFileSync(join(dir, f), "utf8").trim()).join("\n\n");
-      return { name: path.slice("node_modules/".length), version: p.version, license: p.license, text };
+      return { name, version: p.version, license: p.license, text };
     });
 }
 

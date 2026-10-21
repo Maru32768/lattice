@@ -153,7 +153,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
     <>
       <aside className="chat" aria-label={t("common.chat")} data-pane="chat">
         <header className="chat-h">
-          <Menu className="thread-btn" label={t("chatPane.pickThread")} title={t("chatPane.saved")} trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}
+          <Menu className="thread-btn" menuClass="threads" label={t("chatPane.pickThread")} title={t("chatPane.saved")} trigger={<><span className="thread-title">{title}</span><Icon name="down" /></>}
             items={[
               { label: t("chatPane.newChat"), onSelect: () => void openThread(null), checked: threadId == null, disabled: !!pending },
               ...(threads.length ? [t("chatPane.savedGroup")] : []),
