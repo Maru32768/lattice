@@ -1,4 +1,4 @@
-// List grouping (グループ: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
+// List grouping (まとめ方: ソース / ジャンル). Articles arrive already filtered and sorted; grouping keeps that order.
 import type { T } from "./i18n/index.ts";
 
 interface Groupable {

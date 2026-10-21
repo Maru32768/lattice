@@ -25,7 +25,7 @@ test("重要 lists the important articles, which carry a mark with the reason", 
 });
 
 test("sorting and filtering by importance; the Reader shows the reason", async ({ app }) => {
-  await list(app).getByRole("button", { name: "並び順とグループ" }).click();
+  await list(app).getByRole("button", { name: "並び順とまとめ方" }).click();
   await app.getByRole("menuitemradio", { name: /重要度・高い順/ }).click();
   await expect(list(app).locator(".row").first()).toContainText(top.title!);
   const note = list(app).getByText("「自分について」がないため重要度は判定していません");
