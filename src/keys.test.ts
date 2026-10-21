@@ -45,6 +45,7 @@ test("pageKeys: Ctrl keys of in-field actions go from page fields too; named key
   assert.deepEqual(k.inFields, ["Ctrl+K", "Ctrl+B", "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+\\", "Ctrl+-", "Ctrl+Shift+N"]);
   assert.deepEqual(k.outside, ["/", "J", "K", "S", "M", "F", "V", "[", "]"]);
   assert.deepEqual(k.prefix, ["Ctrl+B"]);
+  assert.ok(![...k.inFields, ...k.outside].some((x) => x.startsWith("Alt+Arrow")), "back / forward over a page are the page's own history");
   const custom = pageKeys(merge({ palette: ["P"], favorite: ["Ctrl+S"], next: ["Shift+J", "Space"] }));
   assert.ok(custom.outside.includes("P") && !custom.inFields.includes("P"), "a plain key never from a field");
   assert.ok(custom.outside.includes("Ctrl+S"), "an action that skips the app's fields skips the page's");

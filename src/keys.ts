@@ -6,7 +6,7 @@ import type { T } from "./i18n/index.ts";
 
 export type ActionId =
   | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "popOut";
+  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "popOut" | "back" | "forward";
 
 export interface ActionDef {
   id: ActionId;
@@ -38,7 +38,12 @@ export const ACTIONS: ActionDef[] = [
   { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
   { id: "saveWord", keys: ["W"] },
   { id: "popOut", keys: ["Ctrl+Shift+N"], inFields: true },
+  { id: "back", keys: ["Alt+ArrowLeft"] },
+  { id: "forward", keys: ["Alt+ArrowRight"] },
 ];
+
+/** The page's own history while it has focus: its Alt+← / Alt+→ (and mouse side buttons) stay in the page. */
+const PAGE_OWN = new Set<ActionId>(["saveWord", "back", "forward"]);
 
 export type Bindings = Record<ActionId, string[]>;
 /** The action's name in Settings, the palette and the shortcut help (`keys.<id>` in the catalogs). */
@@ -93,8 +98,8 @@ const MODIFIED = /^(Ctrl|Alt)\+/;
 export function pageKeys(b: Bindings): PageKeys {
   const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
   for (const a of ACTIONS) {
-    // A selection in the page is saved with the overlay's own button; the app's Reader has none there.
-    if (a.id === "saveWord") continue;
+    // A selection in the page is saved with the overlay's own button; back / forward are the page's history.
+    if (PAGE_OWN.has(a.id)) continue;
     for (const k of b[a.id]) {
       const mod = MODIFIED.test(k);
       // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.

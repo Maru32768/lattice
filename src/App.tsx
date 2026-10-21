@@ -37,12 +37,13 @@ import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } fro
 import { DocArea } from "./DocArea";
 import { hostOf as siteOf } from "./Favicon";
 import {
-  LAYOUT_KEY, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
+  LAYOUT_KEY, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
   save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
 import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "./i18n";
+import { NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history";
 import "./App.css";
 
 /** Which window this frontend runs in (design-review §26): the main shell, a document pop-out (one pane tree) or the chat window. */
@@ -814,6 +815,60 @@ export default function App() {
     addToGroup: cur?.kind === "reader" ? () => setGroupRequest((r) => ({ tab: cur.id, seq: (r?.seq ?? 0) + 1 })) : null,
   };
 
+  // ---- in-app history (H4) ------------------------------------------------------------------
+  // Every change of screen, settings section, scope, facets or the focused tab's document is a
+  // visit; back / forward restore one. The chat window has nothing to go back to.
+  const [hist, setHist] = useState(NO_HISTORY);
+  const histTab = activeTab(focusedPane(layout));
+  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, facets, doc: histTab && placeDoc(histTab) };
+  const here = placeKey(place);
+  /** Set by a back / forward step: the place it lands on replaces that entry rather than cutting the ones ahead. */
+  const stepping = useRef(false);
+  useEffect(() => {
+    if (HOST.kind === "chat") return;
+    setHist((h) => (stepping.current ? arrived(h, place) : visit(h, place)));
+    stepping.current = false;
+  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per visited place
+  }, [here]);
+  function goHistory(d: 1 | -1) {
+    const next = go(hist, d);
+    if (!next) return;
+    const p = next.stack[next.at];
+    setHist(next);
+    if (placeKey(p) === here) return;
+    stepping.current = true;
+    setScreenState(p.screen);
+    if (p.section) setSettingsSection(p.section);
+    setScopeState(p.scope);
+    setFacets(p.facets);
+    const doc = p.doc;
+    // Back to the tab that showed it if it still does, else the document opens in the focused tab.
+    if (doc) setLayout((l) => {
+      const hit = tabById(l, doc.tab);
+      return hit && placeDoc(hit.tab).key === doc.key ? activate(l, doc.tab) : open(l, doc.doc, "active");
+    });
+  }
+  const historyRef = useRef(goHistory);
+  historyRef.current = goHistory;
+  // The mouse's side buttons (XButton1 / XButton2). Over a page they never reach here: the page's
+  // webview takes them for its own history.
+  useEffect(() => {
+    if (HOST.kind === "chat") return;
+    const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
+    const down = (e: MouseEvent) => { if (side(e)) e.preventDefault(); };
+    const up = (e: MouseEvent) => {
+      if (!side(e)) return;
+      e.preventDefault();
+      historyRef.current(e.button === 3 ? -1 : 1);
+    };
+    window.addEventListener("mousedown", down);
+    window.addEventListener("mouseup", up);
+    return () => {
+      window.removeEventListener("mousedown", down);
+      window.removeEventListener("mouseup", up);
+    };
+  }, []);
+
   // ---- keyboard -----------------------------------------------------------------------------
   const bindings = useBindings();
   useEffect(() => { browser.setKeys(pageKeys(bindings)).catch(() => {}); }, [bindings]);
@@ -914,6 +969,8 @@ export default function App() {
       const t = activeTab(focusedPane(layoutRef.current));
       if (t) (IS_MAIN ? popOutTab : returnTab)(t.id);
     },
+    back: () => goHistory(-1),
+    forward: () => goHistory(1),
   };
   const keyState = useRef({ actions, paneKey, prefix, overlays: overlays.length });
   keyState.current = { actions, paneKey, prefix, overlays: overlays.length };
@@ -1083,11 +1140,11 @@ export default function App() {
   return (
     <CoverContext.Provider value={cover}>
       <div className="shell">
-        <TitleBar />
+        <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} />
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"
-            ? <SettingsView initialSection={settingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
+            ? <SettingsView section={settingsSection} onSection={setSettingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
             : nav)}
           {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (

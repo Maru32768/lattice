@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
 import { useT } from "./i18n";
+import { Icon } from "./Icon";
+import { keyLabel, useBindings } from "./keys";
 
 // Windows 11 caption glyphs, 10×10.
 const GLYPHS = {
@@ -15,8 +17,13 @@ const GLYPHS = {
  * The undecorated window's title bar: press anywhere but the caption buttons to drag the window,
  * double-click to maximize.
  */
-export function TitleBar() {
+export function TitleBar({ history }: {
+  /** In-app back / forward (H4); absent in the chat window. */
+  history?: { back: boolean; forward: boolean; onGo: (d: 1 | -1) => void };
+}) {
   const t = useT();
+  const bindings = useBindings();
+  const withKey = (label: string, keys: string[]) => (keys[0] ? `${label} (${keyLabel(keys[0])})` : label);
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     const w = getCurrentWindow();
@@ -51,6 +58,10 @@ export function TitleBar() {
     <header className="titlebar" onMouseDown={press}>
       <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} />
       <span className="tb-name">Lattice</span>
+      {history && <>
+        <button className="ib tb-hist" onClick={() => history.onGo(-1)} disabled={!history.back} aria-label={t("titleBar.back")} title={withKey(t("titleBar.back"), bindings.back)}><Icon name="left" /></button>
+        <button className="ib tb-hist" onClick={() => history.onGo(1)} disabled={!history.forward} aria-label={t("titleBar.forward")} title={withKey(t("titleBar.forward"), bindings.forward)}><Icon name="right" /></button>
+      </>}
       <span className="grow" />
       {caption("min", t("titleBar.minimize"), () => getCurrentWindow().minimize())}
       {caption(maximized ? "restore" : "max", maximized ? t("titleBar.restore") : t("titleBar.maximize"), () => getCurrentWindow().toggleMaximize())}
