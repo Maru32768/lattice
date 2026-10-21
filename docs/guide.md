@@ -413,7 +413,7 @@ Fetching, rendering, translating and the other slow work runs in the background 
 | **Importance** (`relevance`) | Rates articles against your profile, up to 20 per call. |
 | **Import filter** (`feed_filter`) | Decides with the LLM which new feed entries to import, up to 20 per call. |
 
-The Jobs screen lists each type by the ID in parentheses. Hover the ID for the name. The ⓘ next to each type explains it in the app too.
+The Jobs screen lists each type by its name. Hover the name for the ID in parentheses. The ⓘ next to each type explains it in the app too.
 
 A job is **Pending**, **Running**, **Waiting to retry** or **Failed**. A job that fails waits and retries by itself after 2, 4, 8 and 16 minutes. After 5 attempts it is **Failed** and stops. **Retry now** runs a waiting job at once, **Retry** runs a failed one again, and **Retry failed** or **Retry all failed** does it for a type or for everything. **Cancel** removes a job that is waiting to retry or failed. A running job cannot be cancelled.
 
