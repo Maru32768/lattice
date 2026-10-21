@@ -252,7 +252,8 @@ export function dropOn(l: Layout, tab: Id, pane: Id, zone: Zone): Layout {
   return move(s, tab, s.focused, 0);
 }
 
-export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) ? removePane(l, id) : l);
+/** The only pane stays: closing it would close every tab, which Ctrl+W does one at a time. */
+export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) && l.root.kind === "split" ? removePane(l, id) : l);
 
 /** Sets child `i` of a split to `size` (a fraction of the split); child `i + 1` takes the difference, both within MIN_SIZE. */
 export function resize(l: Layout, splitId: Id, i: number, size: number): Layout {
