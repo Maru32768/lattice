@@ -166,6 +166,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .menu > button { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 0 10px; border: 0; border-radius: 5px; background: none; font-size: 12.5px; color: var(--ink); text-align: left; white-space: nowrap; }
 .menu > button:hover:not(:disabled), .menu > button:focus-visible { background: var(--opt-act); outline: none; }
 .menu > button:disabled { color: var(--ink3); }
+.menu > button.danger { color: var(--err); }
 .menu .mi { display: flex; flex-direction: column; gap: 1px; padding: 5px 0; white-space: normal; }
 .menu .mi-hint { font-size: 11px; color: var(--ink3); line-height: 1.4; }
 .menu > .sep { height: 1px; margin: 4px 0; background: var(--line); }

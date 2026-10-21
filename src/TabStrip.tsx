@@ -98,7 +98,7 @@ export function TabStrip({ pane, multi, labelOf, drop, windowAction, onActivate,
         const { title, domain, feed } = labelOf(tab);
         const on = tab.id === pane.active;
         return (
-          <div key={tab.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title}
+          <div key={tab.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title} data-tab={tab.id}
             className={`tab${on ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
             onPointerDown={(e) => down(e, tab.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, tab.id)} onPointerCancel={(e) => up(e, tab.id)}
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(tab.id); } }}>

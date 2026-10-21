@@ -5,7 +5,7 @@ import { flatten, type Group } from "./groups";
 import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
 import { GroupPicker } from "./GroupPicker";
-import { Menu } from "./Popover";
+import { Menu, menuPoint } from "./Popover";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
@@ -49,9 +49,9 @@ function Importance({ a }: { a: ArticleRow }) {
  * while rows are picked for a bulk action: a click then picks instead of opening (Shift+click
  * starts picking).
  */
-export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen, onPick, onCursor }: {
+export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen, onPick, onCursor, onMenu }: {
   a: ArticleRow; sel: boolean; cur: boolean; sort: ArticleSort; translating: string | null; picked?: boolean;
-  onOpen: (newTab: boolean) => void; onPick?: (range: boolean) => void; onCursor: () => void;
+  onOpen: (newTab: boolean) => void; onPick?: (range: boolean) => void; onCursor: () => void; onMenu?: (e: React.MouseEvent<HTMLElement>) => void;
 }) {
   const t = useT();
   const b = badge(a, translating);
@@ -59,7 +59,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen,
   return (
     <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}${picked !== undefined ? " picking" : ""}`}
       onClick={(e) => (onPick && (picked !== undefined || e.shiftKey) ? onPick(e.shiftKey) : onOpen(e.ctrlKey || e.metaKey))}
-      {...onMiddle(() => onOpen(true))} onFocus={onCursor}
+      {...onMiddle(() => onOpen(true))} onFocus={onCursor} onContextMenu={onMenu}
       aria-current={sel || undefined} aria-pressed={picked} data-id={a.id}>
       {picked !== undefined && <span className={`cb${picked ? " on" : ""}`} aria-hidden="true">{picked && "✓"}</span>}
       {unread && <span className="dot" aria-label={t("common.unread")} />}
@@ -145,7 +145,7 @@ export function SortMenu({ sort, onSort, group, onGroup }: {
 }
 
 export function ListPane({ title, count, total, facets, onFacets, scoped, all, groups, groupRows, sort, onSort, group, onGroup, selectedId, cursorId, onCursor,
-  translating, relax, onRelax, onOpen, onGroupMembers, onCreateGroup, onCollapse, onRescore, noProfile }: {
+  translating, relax, onRelax, onOpen, onGroupMembers, onCreateGroup, onRowMenu, onCollapse, onRescore, noProfile }: {
   title: string;
   count: number;
   total: number;
@@ -171,6 +171,8 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   onOpen: (a: ArticleRow, newTab: boolean) => void;
   onGroupMembers: (group: number, ids: number[], add: boolean) => void;
   onCreateGroup: (name: string) => Promise<number>;
+  /** A row's context menu, for that row or, when it is one of the picked rows, for all of them. */
+  onRowMenu: (rows: ArticleRow[], at: { x: number; y: number }, from: HTMLElement) => void;
   onCollapse: () => void;
   /** 「重要度を付け直す」 for the shown articles, resolving to how many were queued; absent when importance is not in view or there is no profile. */
   onRescore?: () => Promise<number>;
@@ -200,7 +202,12 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
         ? g.children.map((c) => renderGroup(c, depth + 1))
         : g.articles.map((a) => (
           <ArticleRowView key={a.id} a={a} sel={a.id === selectedId} cur={a.id === cursorId} sort={sort} onOpen={(t) => onOpen(a, t)} onCursor={() => onCursor(a.id)}
-            translating={translating?.id === a.id ? translating.label : null} picked={picked ? picked.includes(a.id) : undefined} onPick={onPick(a.id)} />
+            translating={translating?.id === a.id ? translating.label : null} picked={picked ? picked.includes(a.id) : undefined} onPick={onPick(a.id)}
+            onMenu={(e) => {
+              e.preventDefault();
+              const from = e.currentTarget;
+              onRowMenu(picked?.includes(a.id) ? pickedRows : [a], menuPoint(e, from), from);
+            }} />
         ))}
     </div>
   );

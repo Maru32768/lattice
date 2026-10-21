@@ -85,6 +85,8 @@ export interface MenuItem {
   checked?: boolean;
   /** A line under the label saying what the item does. */
   hint?: string;
+  /** Destructive (delete): drawn in the error color. */
+  danger?: boolean;
 }
 
 /** `.menu` min-width; a wider menu grows away from the aligned edge. */
@@ -93,6 +95,63 @@ const MENU_WIDTH = 220;
 function menuPlace(btn: HTMLElement, align: "left" | "right") {
   const p = place(btn, MENU_WIDTH, align);
   return align === "left" ? { left: p.left, top: p.top } : { right: window.innerWidth - p.left - p.width, top: p.top };
+}
+
+/**
+ * The open menu: arrows move, Esc and a pick close it and return focus to `back`, a press outside
+ * dismisses it. `at` is a point (a context menu) clamped into the window before the first paint.
+ */
+function MenuBody({ label, items, style, at, anchor, back, onClose }: {
+  label: string;
+  items: (MenuItem | string)[];
+  style?: React.CSSProperties;
+  at?: { x: number; y: number };
+  /** Toggles the menu itself, so a press on it is not a dismissal. */
+  anchor: HTMLElement | null;
+  back: HTMLElement | null;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!at || !el) return;
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.max(8, Math.min(at.x, window.innerWidth - r.width - 8))}px`;
+    el.style.top = `${Math.max(8, at.y + r.height > window.innerHeight - 8 ? at.y - r.height : at.y)}px`;
+  }, [at]);
+  // After the placement above: the rectangle reported is where the menu is drawn.
+  useCover(ref, true);
+  useDismiss(ref, anchor, onClose);
+  useEffect(() => { ref.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus(); }, []);
+
+  function close() {
+    onClose();
+    back?.focus();
+  }
+
+  function arrows(e: React.KeyboardEvent) {
+    const d = listStep(e, false);
+    if (!d) return escape(close)(e);
+    e.preventDefault();
+    const all = [...ref.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    all[(i + d + all.length) % all.length]?.focus();
+  }
+
+  return (
+    <div ref={ref} className="menu" role="menu" aria-label={label} onKeyDown={arrows} style={at ? { left: at.x, top: at.y } : style}>
+      {items.map((it, i) =>
+        it === "-" ? <div key={i} className="sep" role="separator" />
+        : typeof it === "string" ? <div key={i} className="cap">{it}</div>
+        : (
+          <button key={i} role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked} className={it.danger ? "danger" : undefined}
+            disabled={it.disabled} title={it.hint} onClick={() => { close(); it.onSelect(); }}>
+            {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
+            {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
+          </button>
+        ))}
+    </div>
+  );
 }
 
 /** A trigger button plus an anchored menu. `items` entries of "-" are separators, strings are captions. */
@@ -107,44 +166,31 @@ export function Menu({ trigger, label, className, items, align = "left", title }
 }) {
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  useCover(ref, open);
-  useDismiss(ref, btn.current, () => setOpen(false));
-  useEffect(() => { if (open) ref.current?.querySelector<HTMLElement>("button:not(:disabled)")?.focus(); }, [open]);
-
-  function close() {
-    setOpen(false);
-    btn.current?.focus();
-  }
-
-  function arrows(e: React.KeyboardEvent) {
-    const d = listStep(e, false);
-    if (!d) return escape(close)(e);
-    e.preventDefault();
-    const all = [...ref.current!.querySelectorAll<HTMLElement>("button:not(:disabled)")];
-    const i = all.indexOf(document.activeElement as HTMLElement);
-    all[(i + d + all.length) % all.length]?.focus();
-  }
-
   return (
     <span style={{ display: "inline-flex" }}>
       <button ref={btn} className={className} aria-label={label} title={title ?? label} aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((o) => !o)}>{trigger}</button>
-      {open && (
-        <div ref={ref} className="menu" role="menu" aria-label={label} onKeyDown={arrows}
-          style={menuPlace(btn.current!, align)}>
-          {items.map((it, i) =>
-            it === "-" ? <div key={i} className="sep" role="separator" />
-            : typeof it === "string" ? <div key={i} className="cap">{it}</div>
-            : (
-              <button key={i} role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked}
-                disabled={it.disabled} title={it.hint} onClick={() => { close(); it.onSelect(); }}>
-                {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
-                {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
-              </button>
-            ))}
-        </div>
-      )}
+      {open && <MenuBody label={label} items={items} style={menuPlace(btn.current!, align)} anchor={btn.current} back={btn.current} onClose={() => setOpen(false)} />}
     </span>
   );
 }
+
+/** A menu at a point: right-click, or the menu key / Shift+F10 on the element `from` (which gets focus back). */
+export function ContextMenu({ x, y, label, items, from, onClose }: {
+  x: number;
+  y: number;
+  label: string;
+  items: (MenuItem | string)[];
+  from: HTMLElement | null;
+  onClose: () => void;
+}) {
+  const at = useMemo(() => ({ x, y }), [x, y]);
+  return <MenuBody label={label} items={items} at={at} anchor={null} back={from} onClose={onClose} />;
+}
+
+/** Where a context menu opened from the keyboard goes: under the start of the element. */
+export const menuPoint = (e: React.MouseEvent | MouseEvent, el: HTMLElement) => {
+  if (e.clientX || e.clientY) return { x: e.clientX, y: e.clientY };
+  const r = el.getBoundingClientRect();
+  return { x: r.left + 16, y: r.bottom };
+};

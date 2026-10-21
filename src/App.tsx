@@ -22,7 +22,9 @@ import { MATCH_LABEL, SearchPane } from "./SearchPane";
 import { Reader, WordMarksContext, type Focus } from "./Reader";
 import { Nav, NavRail, type NavCounts, type Screen } from "./Nav";
 import { ListPane, ListRail, type Grouping } from "./ListPane";
-import { CoverContext, useCover } from "./Popover";
+import { ContextMenu, CoverContext, menuPoint, useCover, type MenuItem } from "./Popover";
+import { articleMenu, type ArticleActions } from "./articleMenu";
+import { GroupPicker } from "./GroupPicker";
 import { UpdateNotice } from "./Update";
 import { Kbd } from "./Icon";
 import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "./keys";
@@ -36,7 +38,7 @@ import { DocArea } from "./DocArea";
 import { hostOf as siteOf } from "./Favicon";
 import {
   LAYOUT_KEY, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
-  save as saveLayout, serialize, single, split, tabById, update, type Id, type Layout, type Pane, type PageTab, type Tab,
+  save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
 } from "./layout";
 import type { TabLabel } from "./TabStrip";
 import { CHAT, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, windowKey, type MainRequest } from "./windows";
@@ -174,6 +176,10 @@ export default function App() {
   const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
   /** The article waiting for delete confirmation, and the view that asked. */
   const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
+  /** An open context menu (a list row, a tab), and what gets focus back when it closes. */
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; items: (MenuItem | string)[]; from: HTMLElement } | null>(null);
+  /** グループに追加… from a context menu: the picker under the row or tab. */
+  const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
 
   // Search mode of the list pane
   const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
@@ -527,6 +533,43 @@ export default function App() {
     }
   }
   const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
+  /** A bulk change from a context menu; the open Readers of those articles reload too. */
+  const actOn = (ids: number[], task: (id: number) => Promise<unknown>) =>
+    act(() => Promise.all(ids.map(task))).then(() => ids.forEach((id) => viewsRef.current.has(id) && void loadView(id)));
+  const copyUrl = (url: string) => void navigator.clipboard.writeText(url).catch(fail);
+
+  /** What an article's context menu does; `from` is the row or tab it opened on. */
+  const articleActions = (from: HTMLElement): ArticleActions => ({
+    favorite: (ids, on) => void actOn(ids, (id) => api.setFavorite(id, on)),
+    read: (ids, read) => void actOn(ids, (id) => api.setRead(id, read)),
+    group: (ids) => setGroupPick({ el: from, ids }),
+    openNew: (a) => openArticle(a, true),
+    popOut: IS_MAIN ? (a) => void popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
+    page: (a) => openPage(a.original_url, undefined, a),
+    copyUrl: (a) => copyUrl(a.original_url),
+    remove: (a) => setDeleting({ article: a, page: false }),
+  });
+  const openRowMenu = (rows: ArticleRow[], at: { x: number; y: number }, from: HTMLElement) =>
+    setCtxMenu({ ...at, items: articleMenu(rows, articleActions(from), t), from });
+
+  /** Right-click (or the menu key) on a tab: its article's menu, or for an unsaved page what applies to a URL. */
+  function tabMenu(e: React.MouseEvent) {
+    const el = (e.target as Element).closest<HTMLElement>("[role='tab'][data-tab]");
+    const hit = el && tabById(layoutRef.current, Number(el.dataset.tab));
+    if (!el || !hit) return;
+    e.preventDefault();
+    const tab = hit.tab;
+    const a = tab.kind === "reader" ? (viewsRef.current.get(tab.articleId)?.article ?? articleById.get(tab.articleId)) : savedOf(tab);
+    const again = () => (tab.kind === "page" ? openPage(tab.url, undefined, a ?? undefined, "new", hit.pane.id) : openReader(tab.articleId, undefined, "new", hit.pane.id));
+    const items: (MenuItem | string)[] = a
+      ? articleMenu([a], { ...articleActions(el), openNew: again, popOut: IS_MAIN ? () => popOutTab(tab.id) : undefined }, t)
+      : [
+        { label: t("articleMenu.openNewTab"), onSelect: again },
+        ...(IS_MAIN ? [{ label: t("tabStrip.popOut"), onSelect: () => popOutTab(tab.id) }] : []),
+        ...(tab.kind === "page" ? [{ label: t("articleMenu.copyUrl"), onSelect: () => copyUrl(tab.url) }] : []),
+      ];
+    setCtxMenu({ ...menuPoint(e, el), items, from: el });
+  }
   const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
 
   // ---- groups (G53) -------------------------------------------------------------------------
@@ -629,19 +672,25 @@ export default function App() {
     forgetOpened(t.key);
   }
 
-  /** Main: the tab moves to a new document window, whose layout waits in storage until it loads. */
-  function popOutTab(tab: Id) {
-    const hit = tabById(layoutRef.current, tab);
-    if (!hit) return;
+  /** Main: a new document window showing `doc`, whose layout waits in storage until it loads. False if it could not be stored. */
+  function popOutDoc(doc: Doc): boolean {
     const label = nextDocLabel(openWindows(storageKeys()));
     try {
-      localStorage.setItem(windowKey(label), serialize(open(single(), docOf(hit.tab), "new")));
+      localStorage.setItem(windowKey(label), serialize(open(single(), doc, "new")));
     } catch (e) {
-      return fail(e);
+      fail(e);
+      return false;
     }
+    windows.open(label).catch(fail);
+    return true;
+  }
+
+  /** Main: the tab moves to a new document window. */
+  function popOutTab(tab: Id) {
+    const hit = tabById(layoutRef.current, tab);
+    if (!hit || !popOutDoc(docOf(hit.tab))) return;
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
-    windows.open(label).catch(fail);
   }
 
   /** Document window: the tab goes back to the main window's focused pane. */
@@ -879,6 +928,15 @@ export default function App() {
         s.paneKey(key);
         return;
       }
+      // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
+      if ((key === "ContextMenu" || key === "Shift+F10") && !s.overlays) {
+        const on = (e.target as Element).closest?.<HTMLElement>(".row[data-id], [role='tab'][data-tab]") ?? document.querySelector<HTMLElement>(".row.cur");
+        if (!on) return;
+        e.preventDefault();
+        on.focus();
+        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+        return;
+      }
       const action = actionFor(getBindings(), key);
       if (!action) return;
       // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
@@ -1055,14 +1113,14 @@ export default function App() {
             ? <ListPane title={title} count={shown.length} total={scoped.length} facets={facets} onFacets={setFacets} scoped={scoped}
                 all={articles} groups={groups} groupRows={groupRows} sort={sort} onSort={setSort} group={group} onGroup={setGroup} selectedId={selectedId} cursorId={cursor} onCursor={setCursor}
                 translating={translatingRow} relax={relax} onRelax={(r) => { setScopeState(r.scope); setFacets(r.facets); }} onOpen={openArticle}
-                onGroupMembers={groupMembers} onCreateGroup={createGroup} onCollapse={() => setListOpen(false)}
+                onGroupMembers={groupMembers} onCreateGroup={createGroup} onRowMenu={openRowMenu} onCollapse={() => setListOpen(false)}
                 onRescore={relevance?.has_profile && (sort === "relevance_desc" || scope.kind === "important" || facets.relevance.length > 0)
                   ? () => api.rescoreRelevance(shown.map((a) => a.id)) : undefined}
                 noProfile={relevance != null && !relevance.has_profile} />
             : <ListRail label={[title, ...activeDims(facets).map((d) => facetLabel(facets, d, articles, groupRows, t))].join(" · ")} index={order.findIndex((a) => a.id === (cursor ?? selectedId)) + 1}
                 count={order.length} onOpen={() => setListOpen(true)} onPrev={() => moveCursor(-1)} onNext={() => moveCursor(1)} />)}
           {IS_MAIN && screen === "library" && !search && listOpen && splitter("list")}
-          {screen === "library" && <div className="doc-area-wrap">
+          {screen === "library" && <div className="doc-area-wrap" onContextMenu={tabMenu}>
             {error && (
               <div className="banner" role="alert">
                 <span className="grow">{t.msg(error)}</span>
@@ -1085,6 +1143,12 @@ export default function App() {
             </ConfirmDialog>
           )}
           {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+          {ctxMenu && <ContextMenu x={ctxMenu.x} y={ctxMenu.y} label={t("articleMenu.label")} items={ctxMenu.items} from={ctxMenu.from} onClose={() => setCtxMenu(null)} />}
+          {groupPick && (
+            <GroupPicker groups={groupRows} anchor={groupPick.el} onCreate={createGroup} onClose={() => setGroupPick(null)}
+              selected={groupRows.filter((g) => groupPick.ids.every((id) => articleById.get(id)?.groups.includes(g.id))).map((g) => g.id)}
+              onToggle={(g, on) => void groupMembers(g, groupPick.ids, on)} />
+          )}
           {chatOpen && splitter("chat", "right")}
           {chatOpen && (
             <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
