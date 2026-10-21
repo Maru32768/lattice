@@ -71,9 +71,10 @@ impl Target {
 
     /// Whether `plain` is already in this language, so there is nothing to translate. Errs toward
     /// translating: any kana or kanji keeps text from counting as English, however many English
-    /// identifiers it holds (「GitHub Actionsによる自動化」), and kana make it Japanese.
+    /// identifiers it holds (「GitHub Actionsによる自動化」), and only kana make it Japanese, so
+    /// Chinese (kanji without kana) is translated.
     pub fn is_written_in(&self, plain: &str) -> bool {
-        if self.language == "ja" { plain.chars().any(is_kana) || is_cjk_dominant(plain) } else { !plain.chars().any(is_cjk) }
+        if self.language == "ja" { plain.chars().any(is_kana) } else { !plain.chars().any(is_cjk) }
     }
 }
 
@@ -81,7 +82,8 @@ impl Target {
 pub fn is_japanese(declared: Option<&str>, text: &str) -> bool {
     match declared.map(|l| l.trim().to_ascii_lowercase()).filter(|l| !l.is_empty()) {
         Some(l) => l == "ja" || l.starts_with("ja-") || l.starts_with("ja_"),
-        None => is_cjk_dominant(text),
+        // Kana tell Japanese from Chinese, which is translated into Japanese like any other language.
+        None => is_cjk_dominant(text) && text.chars().any(is_kana),
     }
 }
 
@@ -482,6 +484,7 @@ pub(crate) mod tests {
         assert!(!is_japanese(Some("en"), "日本語の本文です"));
         assert!(is_japanese(Some(" "), "日本語の本文で MVCC を説明する"), "blank: decided by the text");
         assert!(!is_japanese(None, "MVCC と WAL を English で explain する paragraph"));
+        assert!(!is_japanese(None, "这是一篇关于数据库并发控制的中文文章"), "kanji without kana is Chinese");
 
         let ja = Target::default();
         let en = ja.for_source(true);
@@ -493,6 +496,7 @@ pub(crate) mod tests {
         assert!(!en.is_written_in("GitHub Actionsによる自動化") && ja.is_written_in("GitHub Actionsによる自動化"));
         assert!(!en.is_written_in("SRE業務") && !ja.is_written_in("the word 改善 (kaizen)"));
         assert!(en.is_written_in("2026/10/21 — v1.2 beta") && !ja.is_written_in("Tokyo・Osaka"));
+        assert!(!ja.is_written_in("多版本并发控制让读写互不阻塞。"), "Chinese is translated into Japanese");
 
         for prompt in [translation_prompt, resplit_prompt] {
             let (keep, plain) = (prompt(&en), prompt(&Target { keep_terms: false, ..en.clone() }));

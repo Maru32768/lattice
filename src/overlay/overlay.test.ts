@@ -38,11 +38,13 @@ test("Japanese pages translate into English, others into Japanese", () => {
   assert.equal(pageTarget("en", "日本語の本文です"), "ja");
   assert.equal(pageTarget("", "日本語の本文で MVCC を説明する"), "en", "no lang: decided by the text");
   assert.equal(pageTarget("", "An English page about MVCC"), "ja");
+  assert.equal(pageTarget("", "这是一篇关于数据库并发控制的中文文章"), "ja", "kanji without kana is Chinese");
   assert.ok(isWrittenIn("スナップショット分離", "ja") && !isWrittenIn("スナップショット分離", "en"));
   assert.ok(isWrittenIn("Snapshot isolation", "en") && !isWrittenIn("Snapshot isolation", "ja"));
   assert.ok(!isWrittenIn("GitHub Actionsによる自動化", "en") && isWrittenIn("GitHub Actionsによる自動化", "ja"));
   assert.ok(!isWrittenIn("SRE業務", "en") && !isWrittenIn("the word 改善 (kaizen)", "ja"));
   assert.ok(isWrittenIn("2026/10/21 — v1.2 beta", "en") && !isWrittenIn("Tokyo・Osaka", "ja"));
+  assert.ok(!isWrittenIn("多版本并发控制让读写互不阻塞。", "ja"), "Chinese is translated into Japanese");
 });
 
 test("splitByLineBreaks splits on blank lines and after sentence ends only", () => {
