@@ -11,6 +11,9 @@
 //! and tells each window what to draw (`tab-drag-over`), the source to tear the tab off
 //! (`tab-drag-tear`), and the window holding the tab where it goes when the drag ends
 //! (`tab-drag-drop`). Page webviews move only then, so passing over strips never reloads a page.
+//!
+//! In a window split into panes the tab can also go onto a pane's body, as in VS Code: its center
+//! moves the tab into that pane, its edges split the pane that way (`Zone`).
 
 use std::sync::Mutex;
 use std::thread;
@@ -30,6 +33,8 @@ const DETACH: f64 = 30.0;
 /// Where the first tab's center sits in a fresh document window, in logical pixels: the title bar
 /// (32) plus half the strip, and half a tab from the left edge.
 const TAB_GRAB: (f64, f64) = (56.0, 51.0);
+/// How far into a pane's body, as a fraction of its width or height, an edge reaches.
+const EDGE: f64 = 0.25;
 
 /// A point in physical screen pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -38,7 +43,8 @@ pub struct Point {
     y: f64,
 }
 
-/// One pane's tab strip in the CSS pixels of its window; `mids` are its tabs' horizontal centers.
+/// One pane's tab strip in the CSS pixels of its window; `mids` are its tabs' horizontal centers,
+/// `body` the rest of the pane below the strip.
 #[derive(Debug, Clone, Deserialize)]
 struct Strip {
     pane: u64,
@@ -47,6 +53,49 @@ struct Strip {
     width: f64,
     height: f64,
     mids: Vec<f64>,
+    body: Rect,
+}
+
+/// A rectangle in the CSS pixels of a window.
+#[derive(Debug, Clone, Copy, Deserialize)]
+struct Rect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl Rect {
+    /// Where `c` falls on this pane body: the nearest edge when it is within `EDGE` of one, else the center.
+    fn zone(&self, c: Point) -> Option<Zone> {
+        let (fx, fy) = ((c.x - self.x) / self.width, (c.y - self.y) / self.height);
+        // Also false for NaN: a body of no size has no zones.
+        if !((0.0..1.0).contains(&fx) && (0.0..1.0).contains(&fy)) {
+            return None;
+        }
+        let edges = [(fx, Zone::Left), (1.0 - fx, Zone::Right), (fy, Zone::Top), (1.0 - fy, Zone::Bottom)];
+        let (d, z) = edges.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))?;
+        Some(if d < EDGE { z } else { Zone::Center })
+    }
+}
+
+/// A part of a pane's body: the center takes the tab, an edge splits the pane on that side.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Zone {
+    Center,
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+/// Where in a pane the tab goes: before its `index`-th tab, or onto its body.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum At {
+    Index(usize),
+    Zone(Zone),
 }
 
 /// A window's client area in physical pixels, its scale, and its strips (`measure` in `src/tabDrag.ts`).
@@ -72,12 +121,13 @@ impl Geom {
     }
 }
 
-/// A place in some window's strip: before the `index`-th tab of pane `pane`.
+/// A place in pane `pane` of window `label`: `{index}` in its strip or `{zone}` on its body.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Slot {
     label: String,
     pane: u64,
-    index: usize,
+    #[serde(flatten)]
+    at: At,
 }
 
 fn index_at(mids: &[f64], x: f64) -> usize {
@@ -93,7 +143,7 @@ fn slot_at(p: Point, wins: &[Geom], skip: Option<&str>, attached: Option<&Slot>)
     if let Some(w) = wins().find(|w| w.contains(p)) {
         let c = w.client(p);
         if let Some(s) = w.strips.iter().find(|s| c.x >= s.x && c.y >= s.y && c.x < s.x + s.width && c.y < s.y + s.height) {
-            return Some(Slot { label: w.label.clone(), pane: s.pane, index: index_at(&s.mids, c.x) });
+            return Some(Slot { label: w.label.clone(), pane: s.pane, at: At::Index(index_at(&s.mids, c.x)) });
         }
     }
     let a = attached?;
@@ -101,14 +151,16 @@ fn slot_at(p: Point, wins: &[Geom], skip: Option<&str>, attached: Option<&Slot>)
     let s = w.strips.iter().find(|s| s.pane == a.pane)?;
     let c = w.client(p);
     let near = c.x >= s.x && c.x < s.x + s.width && c.y >= s.y - DETACH && c.y < s.y + s.height + DETACH;
-    near.then(|| Slot { label: a.label.clone(), pane: a.pane, index: index_at(&s.mids, c.x) })
+    near.then(|| Slot { label: a.label.clone(), pane: a.pane, at: At::Index(index_at(&s.mids, c.x)) })
 }
 
-/// What a strip draws at its slot: a marker in the window that has the tab, the tab itself elsewhere.
+/// What a pane draws at its slot: in its strip a marker in the window that has the tab, the tab
+/// itself elsewhere; on its body the zone's overlay.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct Over {
     pane: u64,
-    index: usize,
+    #[serde(flatten)]
+    at: At,
     #[serde(skip_serializing_if = "Option::is_none")]
     tab: Option<Value>,
 }
@@ -125,7 +177,7 @@ struct Float {
     at: Option<PhysicalPosition<i32>>,
 }
 
-/// Where the tab ends up: a strip slot, where its window is now, or (Escape on a window that
+/// Where the tab ends up: a slot, where its window is now, or (Escape on a window that
 /// followed the cursor) back where that window was.
 #[derive(Debug, Clone, PartialEq)]
 enum Final {
@@ -171,7 +223,7 @@ impl Session {
     fn new(id: u64, source: Geom, tab: Value, origin: (u64, usize), at: Point, alone: Option<PhysicalPosition<i32>>) -> Self {
         let label = source.label.clone();
         let float = alone.map(|o| Float { label: label.clone(), grab: (at.x - o.x as f64, at.y - o.y as f64), ready: true, shown: true, at: Some(o) });
-        let origin = Slot { label: label.clone(), pane: origin.0, index: origin.1 };
+        let origin = Slot { label: label.clone(), pane: origin.0, at: At::Index(origin.1) };
         Session { id, source: label, tab, origin, home: alone, wins: vec![source], float, torn: false, over: None, last: at, ended: false, pending: None }
     }
 
@@ -204,7 +256,8 @@ impl Session {
         }
         self.last = p;
         let skip = self.float.as_ref().map(|f| f.label.clone());
-        let at = slot_at(p, &self.wins, skip.as_deref(), self.over.as_ref());
+        let attached = self.over.as_ref().filter(|o| matches!(o.at, At::Index(_)));
+        let at = slot_at(p, &self.wins, skip.as_deref(), attached).or_else(|| self.body_at(p));
         let mut fx = vec![];
         if at != self.over {
             if let Some(o) = &self.over
@@ -214,7 +267,7 @@ impl Session {
             }
             if let Some(a) = &at {
                 let tab = (!self.holds(&a.label)).then(|| self.tab.clone());
-                fx.push(Effect::Over(a.label.clone(), Some(Over { pane: a.pane, index: a.index, tab })));
+                fx.push(Effect::Over(a.label.clone(), Some(Over { pane: a.pane, at: a.at, tab })));
             }
             self.over = at;
         }
@@ -237,6 +290,18 @@ impl Session {
     fn between_panes(&self, p: Point) -> bool {
         let source = &self.wins[0];
         source.strips.len() > 1 && source.contains(p)
+    }
+
+    /// The pane body under `p` while the tab is still in a source split into panes. The center of
+    /// the tab's own pane is where it already is.
+    fn body_at(&self, p: Point) -> Option<Slot> {
+        if self.torn || !self.between_panes(p) {
+            return None;
+        }
+        let w = &self.wins[0];
+        let c = w.client(p);
+        let (pane, zone) = w.strips.iter().find_map(|s| Some((s.pane, s.body.zone(c)?)))?;
+        (pane != self.origin.pane || zone != Zone::Center).then(|| Slot { label: w.label.clone(), pane, at: At::Zone(zone) })
     }
 
     /// The following window goes to the cursor, and shows once it has loaded.
@@ -498,8 +563,9 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn strip(pane: u64, y: f64, width: f64, mids: &[f64]) -> Strip {
-        Strip { pane, x: 0.0, y, width, height: 34.0, mids: mids.to_vec() }
+    /// A strip 34 px high at the left edge, its pane's body `body` px high below it.
+    fn strip(pane: u64, y: f64, width: f64, mids: &[f64], body: f64) -> Strip {
+        Strip { pane, x: 0.0, y, width, height: 34.0, mids: mids.to_vec(), body: Rect { x: 0.0, y: y + 34.0, width, height: body } }
     }
     fn p(x: f64, y: f64) -> Point {
         Point { x, y }
@@ -508,7 +574,10 @@ mod tests {
         PhysicalPosition::new(x, y)
     }
     fn slot(label: &str, pane: u64, index: usize) -> Slot {
-        Slot { label: label.into(), pane, index }
+        Slot { label: label.into(), pane, at: At::Index(index) }
+    }
+    fn zone(label: &str, pane: u64, zone: Zone) -> Slot {
+        Slot { label: label.into(), pane, at: At::Zone(zone) }
     }
     /// The main window at the origin with two panes stacked; a document window to its right at double scale.
     fn main_win() -> Geom {
@@ -519,17 +588,20 @@ mod tests {
             width: 1200.0,
             height: 800.0,
             scale: 1.0,
-            strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0]), strip(2, 420.0, 1200.0, &[])],
+            strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 354.0), strip(2, 420.0, 1200.0, &[], 346.0)],
         }
     }
     fn doc_win() -> Geom {
-        Geom { label: "doc-1".into(), x: 1300.0, y: 100.0, width: 960.0, height: 720.0, scale: 2.0, strips: vec![strip(1, 32.0, 480.0, &[60.0])] }
+        Geom { label: "doc-1".into(), x: 1300.0, y: 100.0, width: 960.0, height: 720.0, scale: 2.0, strips: vec![strip(1, 32.0, 480.0, &[60.0], 294.0)] }
     }
     fn label() -> Value {
         json!({ "title": "B", "domain": "b.example" })
     }
     fn over(pane: u64, index: usize, tab: bool) -> Option<Over> {
-        Some(Over { pane, index, tab: tab.then(label) })
+        Some(Over { pane, at: At::Index(index), tab: tab.then(label) })
+    }
+    fn over_body(pane: u64, z: Zone) -> Option<Over> {
+        Some(Over { pane, at: At::Zone(z), tab: None })
     }
     /// A drag of main's second tab (pane 1, index 1), with doc-1's strips reported.
     fn from_main() -> Session {
@@ -579,7 +651,7 @@ mod tests {
     fn a_tab_torn_off_follows_the_cursor_in_its_window_hides_over_a_strip_and_comes_back() {
         let mut s = from_main();
         assert_eq!(s.step(p(170.0, 45.0)), vec![Effect::Over("main".into(), over(1, 2, false))], "its own strip: a marker");
-        assert_eq!(s.step(p(170.0, 300.0)), vec![Effect::Over("main".into(), None)], "main has two panes: still inside it");
+        assert_eq!(s.step(p(600.0, 200.0)), vec![Effect::Over("main".into(), None)], "main has two panes: still inside it, over its own pane");
         assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Tear("main".into())]);
         assert_eq!(s.step(p(1251.0, 300.0)), vec![], "asked once");
         s.floated("doc-2".into(), 1.0);
@@ -604,15 +676,42 @@ mod tests {
     }
 
     #[test]
+    fn a_body_is_its_center_and_an_edge_quarter_on_each_side() {
+        let r = Rect { x: 0.0, y: 100.0, width: 400.0, height: 200.0 };
+        assert_eq!(r.zone(p(200.0, 200.0)), Some(Zone::Center));
+        assert_eq!(r.zone(p(99.0, 200.0)), Some(Zone::Left));
+        assert_eq!(r.zone(p(101.0, 200.0)), Some(Zone::Center));
+        assert_eq!(r.zone(p(301.0, 200.0)), Some(Zone::Right));
+        assert_eq!(r.zone(p(200.0, 149.0)), Some(Zone::Top));
+        assert_eq!(r.zone(p(200.0, 251.0)), Some(Zone::Bottom));
+        assert_eq!(r.zone(p(10.0, 140.0)), Some(Zone::Left), "a corner: the nearer edge");
+        assert_eq!(r.zone(p(200.0, 99.0)), None, "the strip above");
+        assert_eq!(r.zone(p(400.0, 200.0)), None, "the next pane's");
+        assert_eq!(Rect { width: 0.0, ..r }.zone(p(0.0, 200.0)), None, "no size, no zones");
+    }
+
+    #[test]
     fn in_a_window_split_into_panes_the_tab_moves_between_them_and_comes_out_only_outside_it() {
         let mut s = from_main();
-        assert_eq!(s.step(p(170.0, 300.0)), vec![], "between main's two strips");
+        // Pane 1's body spans y 66..420, pane 2's 454..800, both x 0..1200.
+        assert_eq!(s.step(p(600.0, 200.0)), vec![], "its own pane's center: where it is");
         assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0, false))]);
-        assert_eq!(s.step(p(300.0, 600.0)), vec![Effect::Over("main".into(), None)]);
-        assert_eq!(s.release(false), vec![Effect::End], "dropped on a pane's content: it stays");
+        assert_eq!(s.step(p(600.0, 600.0)), vec![Effect::Over("main".into(), over_body(2, Zone::Center))], "the other pane's body");
+        assert_eq!(s.step(p(100.0, 600.0)), vec![Effect::Over("main".into(), over_body(2, Zone::Left))]);
+        assert_eq!(s.step(p(600.0, 380.0)), vec![Effect::Over("main".into(), over_body(1, Zone::Bottom))], "its own pane's edge");
+        assert_eq!(s.step(p(600.0, 200.0)), vec![Effect::Over("main".into(), None)]);
+        assert_eq!(s.release(false), vec![Effect::End], "dropped on its own pane's center: it stays");
         let mut s = from_main();
-        assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Tear("main".into())], "out of the window");
-        let mut s = Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0])], ..main_win() }, label(), (1, 1), p(160.0, 40.0), None);
+        s.step(p(1100.0, 600.0));
+        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), zone("main", 2, Zone::Right)), Effect::End]);
+        let mut s = from_main();
+        s.step(p(600.0, 600.0));
+        assert_eq!(s.release(true), vec![Effect::Drop("main".into(), slot("main", 1, 1)), Effect::End], "Escape over a body");
+        let mut s = from_main();
+        s.step(p(600.0, 600.0));
+        assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Tear("main".into())], "out of the window");
+        assert_eq!(s.step(p(600.0, 600.0)), vec![], "torn off: a body is no target");
+        let mut s = Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 734.0)], ..main_win() }, label(), (1, 1), p(160.0, 40.0), None);
         assert_eq!(s.step(p(170.0, 300.0)), vec![Effect::Tear("main".into())], "one pane: as soon as it is off the strip");
     }
 
@@ -691,11 +790,14 @@ mod tests {
     #[test]
     fn the_ui_reports_plain_numbers() {
         let g: Geom = serde_json::from_str(
-            r#"{"label":"x","x":-1920,"y":0.5,"width":800,"height":600,"scale":1.25,"strips":[{"pane":3,"x":0,"y":32,"width":800,"height":34,"mids":[50.5]}]}"#,
+            r#"{"label":"x","x":-1920,"y":0.5,"width":800,"height":600,"scale":1.25,"strips":[{"pane":3,"x":0,"y":32,"width":800,"height":34,"mids":[50.5],"body":{"x":0,"y":66,"width":800,"height":534}}]}"#,
         )
         .unwrap();
         assert_eq!((g.x, g.strips[0].pane, g.strips[0].mids.clone()), (-1920.0, 3, vec![50.5]));
-        let o = serde_json::to_value(Over { pane: 1, index: 2, tab: None }).unwrap();
+        let o = serde_json::to_value(Over { pane: 1, at: At::Index(2), tab: None }).unwrap();
         assert_eq!(o, json!({ "pane": 1, "index": 2 }), "a marker carries no tab");
+        assert_eq!(serde_json::to_value(over_body(2, Zone::Left)).unwrap(), json!({ "pane": 2, "zone": "left" }));
+        assert_eq!(serde_json::to_value(zone("main", 2, Zone::Center)).unwrap(), json!({ "label": "main", "pane": 2, "zone": "center" }));
+        assert_eq!(serde_json::to_value(slot("main", 1, 0)).unwrap(), json!({ "label": "main", "pane": 1, "index": 0 }));
     }
 }
