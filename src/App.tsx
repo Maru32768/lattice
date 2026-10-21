@@ -722,14 +722,20 @@ export default function App() {
     windows.close().catch(() => {});
   }
 
-  /** × or Alt+F4 on a pop-out: a document window hands its tabs back, the chat window docks back. */
+  /** × or Alt+F4 on a pop-out: a document window hands its tabs back; the chat window just closes. */
   function closeRequested() {
     if (HOST.kind === "doc") {
       const docs = allTabs(layoutRef.current).map(docOf);
       if (docs.length) void toMain({ kind: "open", docs });
     } else if (HOST.kind === "chat") {
-      void toMain({ kind: "chatDocked" });
+      void toMain({ kind: "chatClosed" });
     }
+    closeWindow();
+  }
+
+  /** The chat window's メインウィンドウに戻す: the pane docks back in main. */
+  function dockChat() {
+    void toMain({ kind: "chatDocked" });
     closeWindow();
   }
 
@@ -754,6 +760,8 @@ export default function App() {
       case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d, i) => open(acc, d, "new", r.at?.pane, r.at && r.at.index + i), l)); break;
       case "chat": openChat(r.scopeKey); return;
       case "chatDocked": setChatWindow(false); setChatOpen(true); break;
+      // Closed, not docked: the next 対話 opens the dock, as after a restart.
+      case "chatClosed": setChatWindow(false); return;
       case "chatReady": void emit("doc-current", chatArticle); return;
       case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation); break;
@@ -1140,7 +1148,7 @@ export default function App() {
         <div className="shell">
           <TitleBar />
           <div className="app solo" data-kb-pane={kbPane ?? undefined}>
-            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} closeLabel={t("chatPane.popIn")} current={null} />
+            <ChatPane article={chatArticle} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} onPopIn={dockChat} current={null} />
           </div>
         </div>
       </CoverContext.Provider>

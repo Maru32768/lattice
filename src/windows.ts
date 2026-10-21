@@ -56,6 +56,7 @@ export type MainRequest =
   | { kind: "open"; docs: Doc[]; at?: { pane: Id; index: number } }
   | { kind: "chat"; scopeKey?: string }
   | { kind: "chatDocked" }
+  | { kind: "chatClosed" }
   /** The chat window is listening: send it the current article (`doc-current`). */
   | { kind: "chatReady" }
   /** A document window started: send it the Page language (`page-lang`). */

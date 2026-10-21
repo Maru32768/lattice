@@ -97,6 +97,24 @@ test("the chat window is the pane alone; its citations and its close go to the m
   expect(await stored(shell, CHAT)).toBeNull();
 });
 
+test("closing the chat window only closes it: main does not dock it, and 対話 then opens the dock", async ({ shell }) => {
+  await seed(shell, { [CHAT]: "1" });
+  await shell.goto("/?window=chat");
+  await shell.getByRole("button", { name: "対話ペインを閉じる" }).click();
+  await expect.poll(async () => (await requests(shell)).at(-1)).toEqual({ kind: "chatClosed" });
+  await expect.poll(() => callsOf(shell, "close_window")).toHaveLength(1);
+  expect(await stored(shell, CHAT), "not restored at the next start").toBeNull();
+
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.evaluate(() => window.__e2e.emit("main-request", { kind: "chatClosed" }));
+  await expect(shell.locator(".chat")).toHaveCount(0);
+  const chatButton = shell.locator(".nav").getByRole("button", { name: "対話" });
+  await expect(chatButton).toHaveAttribute("aria-pressed", "false");
+  await chatButton.click();
+  await expect(shell.locator(".chat")).toBeVisible();
+});
+
 test("only the main window sends the Page language to the pages; a pop-out takes main's choice instead of resetting it", async ({ shell }) => {
   const layout = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
   await seed(shell, { [DOC]: JSON.stringify(layout) });

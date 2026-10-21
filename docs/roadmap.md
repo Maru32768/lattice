@@ -94,6 +94,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | H4 | アプリ内の戻る・進む | 済 | 画面（ライブラリ・処理状況・フィード・設定の各セクションなど）、scope と facet、フォーカスされたタブの文書の移り変わりを、上限 50 の履歴（`src/history.ts`、純粋な reducer）に積む。マウスのサイドボタン（XButton1 / XButton2）、`Alt+←` / `Alt+→`（ショートカットの一覧に追加）、タイトルバーの ‹ › で戻る・進む。ページにフォーカスがあるときのサイドボタンと Alt+矢印はページ自身の履歴（WebView2 の既定。overlay は転送しない）。 |
 | H5 | 処理状況の job の説明 | 済 | 種類ごとに ⓘ（`InfoTip`）。hover とキーボードのフォーカスで何をする job かの tooltip を出し、Esc で閉じる。文は ⓘ の `aria-describedby`。ja / en。 |
 | H6 | CSS の細部 | 済 | 押せるもの（button・select・summary・タブ・チェックボックス・ファイル選択を開く label）は `cursor: pointer`、disabled は `not-allowed`（title はそのまま）。ボタンの文字の上寄りは計測して直した（下の design-review）。サイドバーと記事一覧は `user-select: none`（入力欄は選べる）。 |
+| H16 | 対話ウィンドウの閉じる | 済 | 対話ウィンドウの ×・Alt+F4 は閉じるだけ（以前はメインにドックし直していた）。ヘッダーに「メインウィンドウに戻す」を追加。閉じた後の 対話 はドックに開く。 |
 
 ## 3. 要件定義の未実装項目
 
