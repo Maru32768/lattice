@@ -83,6 +83,9 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
   await list(app).getByRole("button", { name: "選択を終了" }).click();
   await rows.nth(3).click({ modifiers: ["Shift"] });
   await expect(list(app).getByRole("toolbar")).toContainText("1 件を選択");
+  await app.keyboard.press("Escape");
+  await expect(list(app).getByRole("toolbar")).toHaveCount(0);
+  await expect(list(app).getByRole("button", { name: "選択", exact: true })).toBeVisible();
 });
 
 test("a group is a facet, a search scope and a chat scope (このグループ)", async ({ app }) => {

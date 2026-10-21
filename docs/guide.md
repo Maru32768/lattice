@@ -290,7 +290,7 @@ The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in
 
 ### Act on several articles
 
-Click **Select** above the list, then click articles to pick them. `Shift`+click picks a range. `Shift`+click also starts picking without the button. Right-click a picked article for the actions that apply to all of them: favorite, read or unread, and **Add to collection…**. Click **Done** to stop.
+Click **Select** above the list, then click articles to pick them. `Shift`+click picks a range. `Shift`+click also starts picking without the button. Right-click a picked article for the actions that apply to all of them: favorite, read or unread, and **Add to collection…**. Click **Done** or press `Esc` to stop.
 
 ### Remove an article from the Index
 

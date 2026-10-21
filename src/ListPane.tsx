@@ -5,7 +5,9 @@ import { flatten, type Group } from "./groups";
 import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
 import { GroupPicker } from "./GroupPicker";
-import { Menu } from "./Popover";
+import { Menu, openOverlays } from "./Popover";
+import { actionFor, getBindings } from "./keys";
+import { keyOf } from "./keyname";
 import { ActionKey, Dif, Icon, Kbd } from "./Icon";
 import { Favicon } from "./Favicon";
 import { onMiddle } from "./middle";
@@ -187,6 +189,20 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   const [anchor, setAnchor] = useState<number | null>(null);
   const [picker, setPicker] = useState<HTMLElement | null>(null);
   useEffect(() => { setPicked(null); setPicker(null); }, [title]);
+  // Esc ends picking before it clears the filters (the shell's Esc); an open popover closes first.
+  const picking = picked != null;
+  useEffect(() => {
+    if (!picking) return;
+    const esc = (e: KeyboardEvent) => {
+      const key = keyOf(e);
+      if (e.defaultPrevented || !key || actionFor(getBindings(), key)?.id !== "escape" || openOverlays()) return;
+      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable='true']")) return;
+      e.preventDefault();
+      setPicked(null);
+    };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [picking]);
   const order = flatten(groups);
   const pickedRows = order.filter((a) => picked?.includes(a.id));
   const ids = pickedRows.map((a) => a.id);
@@ -223,7 +239,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
               onClick={(e) => { const el = e.currentTarget; setPicker((p) => (p ? null : el)); }}>
               <Icon name="folder" size="sm" />{t("listPane.addToGroup")}
             </button>
-            <button className="btn sm ghost push" onClick={() => { setPicked(null); setPicker(null); }}>{t("listPane.endPicking")}</button>
+            <button className="btn sm ghost push" onClick={() => { setPicked(null); setPicker(null); }}>{t("listPane.endPicking")}<ActionKey id="escape" /></button>
           </div>
         ) : (
           <div className="list-tools">
