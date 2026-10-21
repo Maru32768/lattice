@@ -42,7 +42,7 @@ const DRAG_PX = 4;
  * pane's strip, to another window or out of every window (the backend runs the drag across
  * windows; see DocArea), + for a new tab, and the pane's split and close buttons.
  */
-export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop }: {
+export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop, onTitleDrag, end }: {
   pane: Pane;
   /** More than one pane: this one can be closed. */
   multi: boolean;
@@ -61,6 +61,10 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
   onDrag: (d: TabDrag) => void;
   /** The pointer was released after a drag. */
   onDrop: () => void;
+  /** In a pop-out the strip is the title bar (H19): a press on its empty space. */
+  onTitleDrag?: (e: React.MouseEvent) => void;
+  /** After the strip's buttons: the window controls, on the pop-out's top-right strip. */
+  end?: React.ReactNode;
 }) {
   const t = useT();
   const press = useRef<(TabDrag & { moved: boolean }) | null>(null);
@@ -106,7 +110,7 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
     </div>
   );
   return (
-    <div className="tabs" role="tablist" aria-label={t("tabStrip.tabs")}>
+    <div className="tabs" role="tablist" aria-label={t("tabStrip.tabs")} onMouseDown={onTitleDrag}>
       {pane.tabs.flatMap((tab, i) => {
         const { title, domain, feed } = labelOf(tab);
         const on = tab.id === pane.active;
@@ -128,6 +132,7 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
       <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}><Icon name="hsplit" /></button>
       {pane.active != null && <button className="ib" onClick={() => windowAction.onSelect(pane.active!)} aria-label={windowAction.label} title={windowAction.hint}><Icon name={windowAction.icon} /></button>}
       {multi && <button className="ib" onClick={onClosePane} aria-label={t("tabStrip.closePane")} title={t("tabStrip.closePane")}><Icon name="x" /></button>}
+      {end}
     </div>
   );
 }

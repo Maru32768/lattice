@@ -14,12 +14,15 @@
 .tb-cmd { position: absolute; left: 50%; top: 4px; transform: translateX(-50%); width: min(440px, calc(100% - 340px)); height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 1px solid var(--line2); border-radius: 6px; background: var(--raise); color: var(--ink3); font-size: 12px; }
 .tb-cmd:hover { border-color: var(--chip-hover); color: var(--ink2); }
 .tb-cmd .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.titlebar .cap { width: 46px; height: 32px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
-.titlebar .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
-.titlebar .cap:hover { background: var(--hover); color: var(--ink); }
-.titlebar .cap:active { background: var(--active); }
-.titlebar .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
-.titlebar .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
+.caps { display: flex; flex: none; align-self: stretch; }
+/* In a pop-out the top-right tab strip is the title bar (H19): the captions reach its top and right edges. */
+.tabs > .caps { position: sticky; right: -6px; margin: -5px -6px 0 4px; background: var(--panel); }
+.caps .cap { width: 46px; height: 100%; flex: none; display: flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--ink2); }
+.caps .cap svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+.caps .cap:hover { background: var(--hover); color: var(--ink); }
+.caps .cap:active { background: var(--active); }
+.caps .cap.close:hover { background: var(--cap-close); color: var(--cap-close-ink); }
+.caps .cap.close:active { background: var(--cap-close-down); color: var(--cap-close-ink); }
 .main { flex: 1 1 auto; min-width: 360px; display: flex; flex-direction: column; background: var(--doc); }
 /* The document area: a tree of splits over panes, each with a tab strip (G33 / G34). */
 .doc-area-wrap { flex: 1 1 auto; min-width: 360px; min-height: 0; display: flex; flex-direction: column; background: var(--doc); }

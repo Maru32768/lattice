@@ -63,11 +63,7 @@ test("the search and command box sits in the title bar, not in the nav (H9)", as
   await expect(app.locator(".nav-rail").getByRole("button", { name: /検索/ })).toHaveCount(0);
 });
 
-test("a document window has the command center, the chat window does not (H9)", async ({ shell }) => {
-  await shell.addInitScript(() => localStorage.setItem("lattice.window.doc-1", JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 })));
-  await shell.goto("/?window=doc-1");
-  await commandCenter(shell).click();
-  await expect(palette(shell)).toBeVisible();
+test("the chat window has no command center (H9)", async ({ shell }) => {
   await shell.goto("/?window=chat");
   await expect(shell.getByLabel("質問", { exact: true })).toBeVisible();
   await expect(commandCenter(shell)).toHaveCount(0);
@@ -158,4 +154,48 @@ test("an unsaved page's ⋯ copies its URL (H14)", async ({ app }) => {
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   await more(app).click();
   await expect(app.getByRole("menu").getByRole("menuitem")).toHaveText(["URL をコピー"]);
+});
+
+test("a document window's tab strips are its title bar: they drag it, and the top-right one holds the window controls (H19)", async ({ shell }) => {
+  const tabs = [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }];
+  await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify({ root: { kind: "pane", id: 1, tabs, active: 3 }, focused: 1 }));
+  await shell.goto("/?window=doc-1");
+  const strips = shell.locator(".dpane .tabs");
+  await expect(strips).toHaveCount(1);
+  await expect(shell.locator(".titlebar")).toHaveCount(0);
+  await expect(shell.getByText("Lattice", { exact: true })).toHaveCount(0);
+  const close = strips.getByRole("button", { name: "閉じる", exact: true });
+  await expect(close).toBeVisible();
+  // The controls sit at the window's top-right corner.
+  const box = (await close.boundingBox())!;
+  expect(box.y).toBe(0);
+  expect(box.x + box.width).toBe(1440);
+
+  const drags = async () => (await callsOf(shell, "plugin:window|start_dragging")).length;
+  const maximizes = async () => (await callsOf(shell, "plugin:window|toggle_maximize")).length;
+  const empty = strips.locator(".grow");
+  await empty.click();
+  expect(await drags()).toBe(1);
+  await empty.dblclick();
+  await expect.poll(maximizes).toBe(1);
+  // A press on a tab is the tab's (activate, drag the tab), not the window's.
+  const before = await drags();
+  await strips.getByRole("tab").first().click();
+  expect(await drags()).toBe(before);
+
+  // Split side by side: both strips drag the window, and the controls move to the right one.
+  await strips.getByRole("button", { name: "右に分割" }).click();
+  await expect(strips).toHaveCount(2);
+  await expect(strips.nth(0).getByRole("button", { name: "閉じる", exact: true })).toHaveCount(0);
+  await expect(strips.nth(1).getByRole("button", { name: "閉じる", exact: true })).toBeVisible();
+  await strips.nth(0).locator(".grow").click();
+  expect(await drags()).toBe(before + 1);
+});
+
+test("the main window keeps its title bar and its strips do not drag the window (H19)", async ({ app }) => {
+  await list(app).locator(".row").first().click();
+  await expect(app.locator(".titlebar")).toHaveCount(1);
+  await expect(app.locator(".dpane .tabs .caps")).toHaveCount(0);
+  await app.locator(".dpane .tabs .grow").click();
+  expect(await callsOf(app, "plugin:window|start_dragging")).toHaveLength(0);
 });

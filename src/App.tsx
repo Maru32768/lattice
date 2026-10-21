@@ -1179,7 +1179,8 @@ export default function App() {
   return (
     <CoverContext.Provider value={coverRect}>
       <div className="shell">
-        <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} onPalette={() => setPalette("")} />
+        {/* A pop-out's top tab strips are its title bar (H19, DocArea). */}
+        {HOST.kind !== "doc" && <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} onPalette={() => setPalette("")} />}
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"
