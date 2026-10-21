@@ -17,9 +17,11 @@ const ICON_TYPES = ".png,.jpg,.jpeg,.gif,.webp,.svg,.ico,image/png,image/jpeg,im
 /** Display name and icon of one feed, below its row in the table. */
 function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }) {
   const t = useT();
-  const [name, setName] = useState(f.custom_title ?? "");
-  const [error, setError] = useState<string | null>(null);
   const own = f.title ?? bare(f.url);
+  // The field starts with the name shown now, to edit rather than retype; the feed's own name (or
+  // an empty field) saves as no custom name.
+  const [name, setName] = useState(f.custom_title ?? own);
+  const [error, setError] = useState<string | null>(null);
 
   async function act(task: () => Promise<void>) {
     setError(null);
@@ -43,12 +45,12 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
   };
 
   return (
-    <form className="feed-edit" aria-label={t("feedsView.editorTitle", { feedName: feedName(f) })} onSubmit={(e) => { e.preventDefault(); void rename(name); }}>
+    <form className="feed-edit" aria-label={t("feedsView.editorTitle", { feedName: feedName(f) })} onSubmit={(e) => { e.preventDefault(); void rename([own, ""].includes(name.trim()) ? null : name); }}>
       <label htmlFor={`feed-name-${f.id}`}>{t("feedsView.displayName")}</label>
       <div className="line">
         <input id={`feed-name-${f.id}`} className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={own} maxLength={200} autoFocus />
-        <button type="submit" className="btn sm pri" disabled={name.trim() === (f.custom_title ?? "")}>{t("common.save")}</button>
-        {f.custom_title && <button type="button" className="btn sm" onClick={() => { setName(""); void rename(null); }}>{t("feedsView.revert")}</button>}
+        <button type="submit" className="btn sm pri" disabled={(name.trim() || own) === (f.custom_title ?? own)}>{t("common.save")}</button>
+        {f.custom_title && <button type="button" className="btn sm" onClick={() => { setName(own); void rename(null); }}>{t("feedsView.revert")}</button>}
       </div>
       <div className="fs">{t("feedsView.ownName", { own })}</div>
       <span className="lbl">{t("feedsView.icon")}</span>
