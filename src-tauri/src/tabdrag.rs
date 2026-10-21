@@ -617,6 +617,14 @@ mod tests {
     }
 
     #[test]
+    fn released_over_another_panes_strip_in_its_own_window_the_tab_moves_there() {
+        let mut s = from_main();
+        s.step(p(170.0, 300.0));
+        assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0, false))], "the empty pane's strip marks its slot");
+        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), slot("main", 2, 0)), Effect::End]);
+    }
+
+    #[test]
     fn released_over_a_strip_the_window_holding_the_tab_sends_it_there() {
         let mut s = from_main();
         s.step(p(1250.0, 300.0));

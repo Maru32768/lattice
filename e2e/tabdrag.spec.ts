@@ -111,6 +111,26 @@ test("the window holding the tab when the drag ends moves it in its own strips o
   await app.mouse.up();
 });
 
+test("split into panes, a tab dropped on the other pane's strip moves there, and an empty strip marks the slot", async ({ app }) => {
+  await openTwo(app);
+  await app.getByRole("button", { name: "右に分割" }).click();
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(2);
+  const right = Number(await panes.nth(1).getAttribute("data-pane-id"));
+  await dragSecond(app);
+  const [start] = await callsOf(app, "tab_drag_start") as { start: { geom: { strips: { pane: number }[] } } }[];
+  expect(start.start.geom.strips.map((s) => s.pane), "both strips are reported").toEqual([1, right]);
+
+  await emit(app, "tab-drag-over", { pane: right, index: 0 });
+  await expect(panes.nth(1).locator(".tab-mark")).toHaveCount(1);
+  await emit(app, "tab-drag-drop", { label: "main", pane: right, index: 0 });
+  await expect(panes.nth(0).locator(".tab-t")).toHaveText([a.title!]);
+  await expect(panes.nth(1).locator(".tab-t")).toHaveText([b.title!]);
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
+  await expect(app.locator(".tab-mark")).toHaveCount(0);
+});
+
 test("a window opens what is dropped on it at that slot", async ({ app }) => {
   await openTwo(app);
   await emit(app, "main-request", { kind: "open", docs: [{ kind: "reader", articleId: c.id }], at: { pane: 1, index: 0 } });

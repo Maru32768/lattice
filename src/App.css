@@ -39,6 +39,7 @@
 .tab.dragging { opacity: .5; }
 .tab.drop-before::before, .tab.drop-after::after { content: ""; position: absolute; top: 4px; bottom: 2px; width: 2px; background: var(--acc); }
 .tab.drop-before::before { left: -2px; }
+.tabs > .tab-mark { width: 2px; flex: none; margin: 4px 0 2px; background: var(--acc); }
 .tab.drop-after::after { right: -2px; }
 /* Another window's tab, drawn at the slot a drag is over (it arrives when the drag ends). */
 .tab.incoming { padding-right: 10px; pointer-events: none; }
