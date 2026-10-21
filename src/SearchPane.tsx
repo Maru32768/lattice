@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { siteOf, type ArticleRow, type FeedRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
+import { siteOf, type ArticleRow, type GroupRow, type SearchHit, type SearchResult } from "./api";
 import { DIM_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets, type Scope } from "./library";
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar, mmdd } from "./ListPane";
 import { ActionKey, Icon, Kbd } from "./Icon";
 import { onMiddle } from "./middle";
+import { FilterOptgroups } from "./FilterOptgroups";
+import type { FilterGroup } from "./scopes";
 import { useT, type PlainKey } from "./i18n";
 
 export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<string, PlainKey>;
@@ -17,8 +19,8 @@ export function Marked({ text, ts }: { text: string; ts: string[] }) {
 }
 
 /** 範囲: the scope search runs in, as a chip-styled select. */
-function ScopeSelect({ scope, onScope, genres, feeds, groups }: {
-  scope: Scope; onScope: (s: Scope) => void; genres: (string | null)[]; feeds: [number | null, string][]; groups: GroupRow[];
+function ScopeSelect({ scope, onScope, filters, importantMin }: {
+  scope: Scope; onScope: (s: Scope) => void; filters: FilterGroup[]; importantMin: number | null;
 }) {
   const t = useT();
   return (
@@ -29,17 +31,9 @@ function ScopeSelect({ scope, onScope, genres, feeds, groups }: {
         <option value={JSON.stringify({ kind: "recent" })}>{t("library.recent")}</option>
         <option value={JSON.stringify({ kind: "unread" })}>{t("common.unread")}</option>
         <option value={JSON.stringify({ kind: "favorites" })}>{t("common.favorites")}</option>
-        {groups.length > 0 && (
-          <optgroup label={t("common.group")}>
-            {groups.map((g) => <option key={g.id} value={JSON.stringify({ kind: "group", id: g.id })}>{g.name}</option>)}
-          </optgroup>
-        )}
-        <optgroup label={t("common.genre")}>
-          {genres.map((g) => <option key={String(g)} value={JSON.stringify({ kind: "genre", name: g })}>{g ?? t("common.unclassified")}</option>)}
-        </optgroup>
-        <optgroup label={t("common.source")}>
-          {feeds.map(([id, name]) => <option key={String(id)} value={JSON.stringify({ kind: "feed", id })}>{name}</option>)}
-        </optgroup>
+        {importantMin != null && <option value={JSON.stringify({ kind: "important", min: importantMin })}>{t("library.important")}</option>}
+        {/* The group / genre / feed / folder filters are list scopes of the same shape. */}
+        <FilterOptgroups groups={filters} />
       </select>
       <Icon name="down" size="sm" />
     </label>
@@ -47,14 +41,12 @@ function ScopeSelect({ scope, onScope, genres, feeds, groups }: {
 }
 
 export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, open, onSearch, onOpen, onExit,
-  scope, onScope, facets, onFacets, scoped, all, feeds, groups, articleById, focusSeq }: {
+  scope, onScope, filters, importantMin, facets, onFacets, scoped, all, groups, articleById, focusSeq }: {
   initial: string;
   result: SearchResult | null;
   busy: boolean;
   method: SearchMethod;
   onMethod: (m: SearchMethod) => void;
-  /** In the user's order (H26), which the scope picker follows. */
-  feeds: FeedRow[];
   /** Hits after the method filter and scope ∧ facets, grouped by article. */
   hits: { article_id: number; hits: SearchHit[] }[];
   /** The cursor (j / k, ↑ ↓) over the flat hit list. */
@@ -68,6 +60,10 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   onExit: () => void;
   scope: Scope;
   onScope: (s: Scope) => void;
+  /** The scope picker's options, from the chat's (`filterGroups`) without tags, which are not a list scope. */
+  filters: FilterGroup[];
+  /** 重要's threshold; null hides it, as in the sidebar. */
+  importantMin: number | null;
   facets: Facets;
   onFacets: (f: Facets) => void;
   scoped: ArticleRow[];
@@ -112,10 +108,6 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  // Manual saves last; a feed not loaded yet just before them.
-  const rank = (id: number | null) => (id == null ? feeds.length + 2 : feeds.findIndex((f) => f.id === id) + 1 || feeds.length + 1);
-  const feedNames: [number | null, string][] = [...new Set(all.map((a) => a.feed_id))].sort((a, b) => rank(a) - rank(b))
-    .map((id) => [id, id == null ? t("common.manual") : valueLabel("feeds", id, all, groups, t)]);
   let n = 0;
   return (
     <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
@@ -131,7 +123,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
           </div>
         </div>
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groups} dims={["genres", "tags", "groups", "feeds"]}>
-          <ScopeSelect scope={scope} onScope={onScope} genres={[...countBy(all, "genres").keys()]} feeds={feedNames} groups={groups} />
+          <ScopeSelect scope={scope} onScope={onScope} filters={filters} importantMin={importantMin} />
         </FacetBar>
         <div className="search-count mono">{busy ? t("searchPane.searching") : result ? t("searchPane.count", { length: flat.length, length2: hits.length }) : ""}</div>
         {result && hitArticles.length > 0 && (

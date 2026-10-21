@@ -303,7 +303,7 @@ Choose **Remove from Index…** in the ⋯ menu or the right-click menu, and con
 Press `/` to search your saved articles. Search is hybrid. It combines full-text matching with semantic matching, so a Japanese query finds English passages and the other way round. It searches the original text and the translations.
 
 - Results are passages grouped by article. `j` and `k` move between them, `Enter` opens the article in the Reader at that passage, and `Shift+Enter` opens it in Page. `Esc` goes back to the list.
-- The scope menu limits the search to **Recently added**, **Unread**, **Favorites**, a collection, a genre or a feed. The filter chips narrow the results further.
+- The scope menu limits the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow the results further.
 - **Search method** filters the results by kind of match: **Hybrid**, **Full text** or **Meaning**. The search itself always runs both ways. Each result says how it matched: **Full text**, **Meaning** or **Full text + meaning**.
 - Recent searches appear in the navigation while you search.
 

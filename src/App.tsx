@@ -398,6 +398,7 @@ export default function App() {
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
   const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
+  const searchGroups = useMemo(() => filterGroups(groupRows, genres, feeds, [], t, folders), [groupRows, genres, feeds, t, folders]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.
   const cur = activeTab(focusedPane(layout));
@@ -1241,7 +1242,7 @@ export default function App() {
           {IS_MAIN && screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
               hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
-              scope={scope} onScope={setScope} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} feeds={feeds} groups={groupRows} articleById={articleById}
+              scope={scope} onScope={setScope} filters={searchGroups} importantMin={importantMin} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
           {IS_MAIN && screen === "library" && search && listOpen && splitter("search")}
