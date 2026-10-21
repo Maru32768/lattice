@@ -77,11 +77,10 @@ export function Nav({ screen, scope, counts, feeds, groups, jobFailures, reviewD
 
   return (
     <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
-      <div className="nav-top">
+      <div className="sec nav-head">
+        {t("nav.library")}
         <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}><Icon name="panel" /></button>
       </div>
-
-      <div className="sec">{t("nav.library")}</div>
       {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
       {importantMin != null && item({ kind: "important", min: importantMin }, t("library.important"), counts.important, <Icon name="flag" />)}
 

@@ -336,7 +336,8 @@ pub struct TabDrag(Mutex<Drags>);
 
 fn apply(app: &AppHandle, fx: Vec<Effect>) {
     for e in fx {
-        let win = |l: &str| app.get_webview_window(l);
+        // Not `get_webview_window`: a window holding a page webview has two webviews, and that finds none.
+        let win = |l: &str| app.get_window(l);
         let r = match &e {
             Effect::Over(l, o) => app.emit_to(l.as_str(), "tab-drag-over", o),
             Effect::Tear(l) => app.emit_to(l.as_str(), "tab-drag-tear", ()),

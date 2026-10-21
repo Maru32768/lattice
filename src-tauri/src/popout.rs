@@ -73,7 +73,7 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
         return Err("not a pop-out window".into());
     }
     let Some(w) = create(&app, &loc, &label)? else {
-        return app.get_webview_window(&label).map_or(Ok(()), |w| w.set_focus().map_err(err));
+        return app.get_window(&label).map_or(Ok(()), |w| w.set_focus().map_err(err));
     };
     let monitors: Vec<MonitorRect> = app.available_monitors().map_err(err)?.iter().map(|m| (*m.position(), *m.size())).collect();
     match saved_geometry(&state, &label).filter(|g| on_a_monitor(g, &monitors)) {
@@ -89,7 +89,7 @@ pub async fn open_window(app: AppHandle, state: State<'_, App>, loc: State<'_, L
 /// Creates pop-out `label`, hidden until `ready`. None when it is open already (asked twice before
 /// the first finished, as a double click does: the first one wins).
 pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<WebviewWindow>, String> {
-    if app.get_webview_window(label).is_some() {
+    if app.get_window(label).is_some() {
         return Ok(None);
     }
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::default())
@@ -112,13 +112,13 @@ pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<Web
             });
             Ok(Some(w))
         }
-        Err(tauri::Error::WindowLabelAlreadyExists(_)) => Ok(None),
+        Err(tauri::Error::WindowLabelAlreadyExists(_) | tauri::Error::WebviewLabelAlreadyExists(_)) => Ok(None),
         Err(e) => Err(err(e)),
     }
 }
 
 fn show(app: &AppHandle, label: &str) {
-    let Some(w) = app.get_webview_window(label) else { return };
+    let Some(w) = app.get_window(label) else { return };
     // Showing an already visible window would take the focus.
     if !w.is_visible().unwrap_or(true)
         && let Err(e) = w.show()

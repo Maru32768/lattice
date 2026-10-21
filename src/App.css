@@ -59,7 +59,9 @@
 .doc-empty { margin: auto; font-size: 13px; }
 
 .nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }
-.nav-top { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 0 0 8px; }
+/* The close button shares the first section's row, so the nav starts without an empty band. */
+.nav-head { padding-top: 0; }
+.nav-head .ib { margin: 0 -4px 0 auto; }
 .nav-sub { display: flex; flex-direction: column; padding-left: 16px; }
 .ni.sub { height: 26px; font-size: 12px; }
 .ni.mono-ni { font-family: var(--mono); font-size: 12px; }

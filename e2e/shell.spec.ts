@@ -70,8 +70,8 @@ test("the chat window has no command center (H9)", async ({ shell }) => {
 });
 
 test("the nav's top holds only its close button; what the ＋ opened is in the palette (H10)", async ({ app }) => {
-  await expect(app.locator(".nav-top").getByRole("button")).toHaveCount(1);
-  await expect(app.locator(".nav-top").getByRole("button")).toHaveAccessibleName("ナビゲーションを閉じる");
+  await expect(app.locator(".nav-head").getByRole("button")).toHaveCount(1);
+  await expect(app.locator(".nav-head").getByRole("button")).toHaveAccessibleName("ナビゲーションを閉じる");
   await commandCenter(app).click();
   await app.keyboard.type(">");
   for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
