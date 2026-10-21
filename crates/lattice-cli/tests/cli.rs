@@ -199,7 +199,7 @@ fn serves_mcp_over_stdio() {
     assert!(init["capabilities"]["tools"].is_object());
 
     let tools: Vec<&str> = replies[1]["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(tools, ["search", "get", "list", "summary", "tags", "genres", "feeds", "jobs", "ask"]);
+    assert_eq!(tools, ["search", "get", "list", "summary", "tags", "genres", "feeds", "collections", "jobs", "ask"]);
     assert_eq!(replies[1]["result"]["tools"][0]["inputSchema"]["required"], json!(["query"]));
 
     let text = |r: &Value| r["result"]["content"][0]["text"].as_str().unwrap().to_string();
@@ -213,6 +213,7 @@ fn serves_mcp_over_stdio() {
 
     assert_eq!(replies[4]["result"]["isError"], true, "write tools are refused without the opt-in");
     assert!(text(&replies[4]).contains("--allow-write"));
+    assert!(text(&replies[4]).starts_with(UNTRUSTED_START), "errors are marked too: {}", text(&replies[4]));
     assert_eq!(replies[5]["error"]["code"], -32601);
     assert_eq!(replies[6]["result"]["isError"], true, "a missing argument is a tool error");
     assert!(ok(&dir, &["tags"]).to_string().contains("\"db\"") && !ok(&dir, &["tags"]).to_string().contains("\"x\""));
@@ -222,7 +223,7 @@ fn serves_mcp_over_stdio() {
 fn mcp_write_tools_need_the_opt_in() {
     let (dir, id) = library("mcp-write");
     let replies = mcp(&dir, true, &[json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }), call(2, "tag", json!({ "id": id, "name": "later" }))]);
-    assert_eq!(replies[0]["result"]["tools"].as_array().unwrap().len(), 13);
+    assert_eq!(replies[0]["result"]["tools"].as_array().unwrap().len(), 14);
     assert_eq!(replies[1]["result"]["isError"], false);
     assert_eq!(ok(&dir, &["get", &id.to_string()])["article"]["tags"], json!(["db", "later"]));
 }
