@@ -4,6 +4,7 @@ import { genreSwatch, sameScope, type Scope } from "./library";
 import { Icon, type IconName } from "./Icon";
 import { NavGroups } from "./NavGroups";
 import { NavFolders } from "./NavFolders";
+import type { FeedOrder } from "./feedFolders";
 import type { MenuItem } from "./Popover";
 import { useT, type PlainKey } from "./i18n";
 
@@ -31,7 +32,7 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 const n = (v: number) => v.toLocaleString();
 
 export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
-  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onRenameFolder, onDeleteFolder, onMenu, onCollapse, importantMin }: {
+  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onRenameFolder, onDeleteFolder, onReorderFeeds, onReorderFolders, onMenu, onCollapse, importantMin }: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
@@ -55,6 +56,8 @@ export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures
   onDeleteGroup: (id: number) => void;
   onRenameFolder: (id: number, name: string) => void;
   onDeleteFolder: (id: number) => void;
+  onReorderFeeds: (order: FeedOrder) => void;
+  onReorderFolders: (ids: number[]) => void;
   /** Sets the app's context menu items (a folder row's menu). */
   onMenu: (items: MenuItem[]) => void;
   onCollapse: () => void;
@@ -108,7 +111,7 @@ export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures
       {feedsOpen && (
         <div className="nav-sub">
           <NavFolders feeds={feeds} folders={folders} unread={counts.feedUnread} scope={scope} onScope={onScope}
-            onRename={onRenameFolder} onDelete={onDeleteFolder} onMenu={onMenu} />
+            onRename={onRenameFolder} onDelete={onDeleteFolder} onMenu={onMenu} onReorderFeeds={onReorderFeeds} onReorderFolders={onReorderFolders} />
         </div>
       )}
       {item({ kind: "feed", id: null }, t("common.manual"), counts.manual, <Icon name="manual" />)}

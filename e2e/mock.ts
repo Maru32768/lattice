@@ -7,6 +7,7 @@ import type {
   VocabCapture, VocabEntry, VocabReviewItem,
 } from "../src/api.ts";
 import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, FOLDERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
+import { folderTree, placeFeeds } from "../src/feedFolders.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);
@@ -16,6 +17,14 @@ const folders = structuredClone(FOLDERS);
 function syncFolders() {
   for (const f of feeds) f.folder = folders.find((x) => x.id === f.folder_id)?.name ?? null;
   for (const a of articles) a.folder_id = feeds.find((f) => f.id === a.feed_id)?.folder_id ?? null;
+}
+/** Feeds last in `into`, as the backend moves them; ones already there stay put. */
+function toEnd(ids: number[], into: number | null) {
+  for (const id of ids) {
+    const i = feeds.findIndex((f) => f.id === id && f.folder_id !== into);
+    if (i >= 0) feeds.push({ ...feeds.splice(i, 1)[0], folder_id: into });
+  }
+  syncFolders();
 }
 const folder = (id: number) => folders.find((x) => x.id === id) ?? reject("feedFolders.notFound");
 function folderName(name: string, id: number | null): string {
@@ -407,13 +416,16 @@ export const handlers = {
     if (!store.custom.profile.trim()) reject("relevance.noProfile");
     return ids?.length ?? articles.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
   },
-  list_feeds: () => feeds,
+  // The backend's order: each folder's feeds in their order, then the feeds in none.
+  list_feeds: () => {
+    const tree = folderTree(feeds, folders, new Map());
+    return [...tree.folders.flatMap((n) => n.feeds), ...tree.loose];
+  },
   add_feed: ({ url, folder: into }: { url: string; folder: number | null }): number => {
     if (into != null) folder(into);
     const known = feeds.find((f) => f.url === url);
     if (known) {
-      if (into != null) known.folder_id = into;
-      syncFolders();
+      if (into != null) toEnd([known.id], into);
       return known.id;
     }
     const id = Math.max(...feeds.map((f) => f.id)) + 1;
@@ -440,7 +452,11 @@ export const handlers = {
   },
   move_feeds_to_folder: ({ feeds: ids, folder: into }: { feeds: number[]; folder: number | null }) => {
     if (into != null) folder(into);
-    for (const f of feeds) if (ids.includes(f.id)) f.folder_id = into;
+    toEnd(ids, into);
+  },
+  reorder_feeds: ({ folder: into, ids }: { folder: number | null; ids: number[] }) => {
+    if (into != null) folder(into);
+    feeds.splice(0, feeds.length, ...placeFeeds(feeds, { folder: into, ids }));
     syncFolders();
   },
   // Outlines with xmlUrl are feeds; their innermost enclosing outline without one is the folder.

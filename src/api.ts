@@ -607,7 +607,9 @@ export const api = {
   /** Its feeds stay, without a folder. */
   deleteFeedFolder: (id: number) => invoke<void>("delete_feed_folder", { id }),
   reorderFeedFolders: (ids: number[]) => invoke<void>("reorder_feed_folders", { ids }),
-  /** `folder` null takes the feeds out of their folders. */
+  /** `ids` first in `folder` (null: the feeds in none), in this order, moved there from any other folder (H26). */
+  reorderFeeds: (folder: number | null, ids: number[]) => invoke<void>("reorder_feeds", { folder, ids }),
+  /** `folder` null takes the feeds out of their folders; moved ones go last there. */
   moveFeedsToFolder: (feeds: number[], folder: number | null) => invoke<void>("move_feeds_to_folder", { feeds, folder }),
   /** The feeds of an OPML file with their folders (created by name); subscribing is `addFeed`'s. */
   importOpml: (xml: string) => invoke<OpmlFeed[]>("import_opml", { xml }),
