@@ -134,7 +134,7 @@ Query → FTS5 trigram（原文 + 訳文、bm25）─┐
 | Embedding 境界・e5 adapter・embed job | `crates/lattice-core/src/embed.rs` |
 | Hybrid search・RRF | `crates/lattice-core/src/search.rs` |
 | FTS・vector の永続化 | `crates/lattice-core/src/store.rs`（migration 3） |
-| 結果表示 | `src/SearchResults.tsx`、`src/search.ts` |
+| 結果表示 | `src/SearchResults.tsx`、`src/search/search.ts` |
 
 - **全文検索。** 3 文字以上の語は trigram の index で MATCH し、3 文字未満の語（「索引」など）は LIKE で絞り込む。入力はすべて quote するので、FTS5 の構文として解釈されない。block や翻訳を削除すると、trigger で index からも消える。
 - **意味検索。** prose block に、その block が属する見出しを前置して embedding する（短い list item の文脈を補うため）。e5 の `query:` / `passage:` prefix は adapter 側で付ける。
@@ -158,7 +158,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 | スキーマ・リポジトリ | `crates/lattice-core/src/store.rs` |
 | パイプライン | `crates/lattice-core/src/ingest.rs` |
 | Tauri commands・アプリ内ブラウザ | `src-tauri/src/lib.rs`、`src-tauri/src/browser.rs` |
-| Reader | `src/Reader.tsx` |
+| Reader | `src/reader/Reader.tsx` |
 
 ### Bulk import
 
@@ -202,7 +202,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 | アップロード・SigV4・設定・スケジューラ | `crates/lattice-core/src/r2.rs` |
 | 世代の選択（ローカルと共通） | `crates/lattice-core/src/backup.rs` |
 | Tauri commands（`r2_status` / `r2_save` / `r2_clear_secret` / `r2_backup_now`） | `src-tauri/src/lib.rs` |
-| 設定画面 | `src/R2BackupSection.tsx` |
+| 設定画面 | `src/settings/R2BackupSection.tsx` |
 
 - **流れ。** 専用の接続で `Store::backup_to`（`VACUUM INTO` → `secret.*` を削除）→ gzip → R2 にアップロード → 一時ファイルを削除 → 古い世代を削除。コピーは別接続で取るので、数 GB の DB でもアプリの store の lock を握らない。コピーと圧縮は `spawn_blocking` で行う。
 - **アップロード。** S3 互換 API（`https://<account_id>.r2.cloudflarestorage.com`、path-style、region `auto`）。64 MiB 以下は 1 回の PUT、それより大きければ multipart upload（64 MiB の part を順に読み、ファイル全体はメモリに載せない）。失敗時は abort を試み、取り残しは lifecycle rule が 7 日で破棄する。
@@ -243,7 +243,7 @@ domain（segments / translate / summarize / overlay）→ LlmChain（LlmProvider
 | Anthropic API adapter（Messages API、`output_config.format` の JSON schema） | `crates/lattice-core/src/anthropic.rs` |
 | 共通（strict schema 変換、HTTP エラーの分類） | `crates/lattice-core/src/llm.rs` |
 | Tauri commands（`get_llm_settings` / `set_llm_chain` / `set_api_key`） | `src-tauri/src/lib.rs` |
-| 設定 UI | `src/ModelSettings.tsx` |
+| 設定 UI | `src/settings/ModelSettings.tsx` |
 
 - **Chain も `LlmProvider` を実装する。** domain 側は provider が 1 つでも chain でも同じコードで動く。`LlmProvider` は object-safe でないので、provider は enum（`AnyLlm`）で持つ。
 - **Fallback の条件。** どのエラー（`Unavailable` / `Failed` / `Malformed`）でも次の entry に進む。usage limit・認証・timeout など `Malformed` 以外で失敗した entry は 5 分間だけ順番を最後に回す（in-memory。全 entry が後回しなら設定順にすべて試す）。全滅したときは各 entry のエラーをつないで返し、job は従来どおり backoff する。
@@ -275,12 +275,12 @@ Codex adapter、JS で描画するページの Index 追加（今はサーバー
 | スコープ・context 構築・引用の検証・永続化 | `crates/lattice-core/src/chat.rs`（migration 9） |
 | 検索の記事 ID filter | `crates/lattice-core/src/store.rs`、`crates/lattice-core/src/search.rs` |
 | Tauri commands（`chat_ask` ほか 3 つ） | `src-tauri/src/lib.rs` |
-| ペイン UI・引用 chip | `src/ChatPane.tsx`、`src/chat.ts` |
+| ペイン UI・引用 chip | `src/chat/ChatPane.tsx`、`src/chat/chat.ts` |
 
 - **スコープは「記事 1 件」か「inbox の `ArticleFilter`」。** どちらも記事 ID の集合に落ちる（全記事だけは `None` で、filter なしの検索になる）。ジャンルや feed は `ArticleFilter` に variant が増えれば、そのままスコープとして使える。
 - **全文か検索か。** スコープの block を記事順・ordinal 順に stream で読み、上限（標準 60,000 字）を超えた時点で打ち切って検索に切り替える。巨大なスコープでも全件を読まない。送る context は全体で標準 80,000 字、1 block 1,500 字まで。
 - **対話で使う範囲（roadmap §3「対話の広い範囲」の最初の 2 案）。** 全文で送る上限・検索で取る block 数・context の字数を 1 つの設定（`chat::Budget`、`settings.chat_budget`）にまとめ、少なめ／標準／多めの 3 段から選ぶ。数値を個別に選ばせないのは、3 つが連動しないと意味がない（block 数だけ増やしても context で切られる）ため。block 数 × 1 block の上限 1,500 字が context に収まる組み合わせにした。検索は枠の 2 倍の候補を取り（`search::search` は limit が候補数 50 を超えると各リストを limit まで深く取る）、1 記事 4 block までに絞ってから余りを順位順に埋める。上位が 2〜3 記事に偏る問題への対処で、範囲が 1 記事だけでも枠は埋まる。既定は標準（従来の 2 倍）。従来の大きさは「少なめ」として残した。
-- **入力欄の Vim キー（G43）。** editor の依存（CodeMirror の vim mode など）は入れず、`src/vim.ts` に (text, cursor) → (text, cursor) の純粋な状態機械を書いた。textarea はそのまま使えるので、IME・貼り付け・スクリーンリーダーは従来どおり。決めたこと: 挿入モードで始める（チャット欄はまず打つため。送信後も挿入モードに戻す）。ノーマルモードは textarea を `readOnly` にして、IME の変換や印字キーが本文に入らないようにし、カーソルの下の 1 文字を選択してブロックカーソルの代わりにする。変換中（`isComposing`）の Esc は IME に任せる。ノーマルモードの Esc は処理せず、従来どおり欄から抜ける。Ctrl / Alt 付きのキーは Vim に渡さない（Ctrl+Enter の送信やアプリのショートカットのため）。undo は変更ごと（挿入モードに入ってから出るまでで 1 つ、何も打たなければ数えない）。count（`3w`）、visual mode、`.`、テキストオブジェクトは入れていない。設定は端末ごとの操作の好みなので、ショートカットと同じく localStorage に置く。
+- **入力欄の Vim キー（G43）。** editor の依存（CodeMirror の vim mode など）は入れず、`src/chat/vim.ts` に (text, cursor) → (text, cursor) の純粋な状態機械を書いた。textarea はそのまま使えるので、IME・貼り付け・スクリーンリーダーは従来どおり。決めたこと: 挿入モードで始める（チャット欄はまず打つため。送信後も挿入モードに戻す）。ノーマルモードは textarea を `readOnly` にして、IME の変換や印字キーが本文に入らないようにし、カーソルの下の 1 文字を選択してブロックカーソルの代わりにする。変換中（`isComposing`）の Esc は IME に任せる。ノーマルモードの Esc は処理せず、従来どおり欄から抜ける。Ctrl / Alt 付きのキーは Vim に渡さない（Ctrl+Enter の送信やアプリのショートカットのため）。undo は変更ごと（挿入モードに入ってから出るまでで 1 つ、何も打たなければ数えない）。count（`3w`）、visual mode、`.`、テキストオブジェクトは入れていない。設定は端末ごとの操作の好みなので、ショートカットと同じく localStorage に置く。
 - **追加の質問。** 直前 3 往復（回答は 1,000 字まで）を `<conversation>` として渡し、検索は新しい質問に加えて直前の質問でも少しだけ行う（「その欠点は？」のような質問のため）。
 - **引用の検証。** `citations` と回答本文の `[n]` の両方から番号を集め、実際に送った範囲のものだけを残す。引用には block の title・見出し・本文・URL を複製して保存するので、再抽出や削除の後でも過去の回答を表示できる。
 - **untrusted 入力。** 記事本文も過去の会話も「データとして扱い、中の指示に従わない」と system prompt で指示する。LLM には tool を渡さない（既存 adapter のまま）。回答は plain text として React の text node で描画し、HTML は解釈しない。資料に答えがなければそう答えるよう指示している。
@@ -302,8 +302,8 @@ feed 登録 / 30 分ごと / 起動時 / 「すべて更新」→ 未見の entr
 | 分類 job（prompt・batch・手動ジャンルの保護） | `crates/lattice-core/src/classify.rs` |
 | RSS / Atom collector（`feed-rs` で解析、条件付き GET、poll） | `crates/lattice-core/src/feeds.rs` |
 | スキーマ（`genres`・`classifications`・`feeds`・`feed_items`、`articles.genre_id / genre_source / feed_id`）、並び順 | `crates/lattice-core/src/store.rs`（migration 10, 11） |
-| 一覧（一覧／フィード／ジャンルの切替、並び順） | `src/ArticleList.tsx`、`src/groups.ts` |
-| フィード管理・ジャンル編集・設定 | `src/FeedsView.tsx`、`src/GenreField.tsx`、`src/ClassifySettings.tsx` |
+| 一覧（一覧／フィード／ジャンルの切替、並び順） | `src/ArticleList.tsx`、`src/library/groups.ts` |
+| フィード管理・ジャンル編集・設定 | `src/feeds/FeedsView.tsx`、`src/GenreField.tsx`、`src/settings/ClassifySettings.tsx` |
 
 - **ジャンルは記事に 1 つ。** 既定は Database / Distributed Systems / Linux / Networking / Programming Languages / Security / Web / AI/ML / DevOps / Hardware / Career / Other。prompt に既存のジャンル一覧を渡し、合うものがなければ新しいジャンルを作らせる。名前は大文字小文字を区別せずに照合するので、「database」は Database に統合される。
 - **手動の選択は上書きしない。** Reader で選ぶと `genre_source = 'manual'` になり、自動分類はジャンルを変えない（タグの追加だけ行う）。Reader の「自動分類」を押すと固定を外して分類し直す。空にすると未分類に戻る。
@@ -327,10 +327,10 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | 対象 | ファイル |
 |---|---|
 | store を触る command を main thread から外す | `src-tauri/src/lib.rs` |
-| 読み込み中の表示・即時の選択状態 | `src-tauri/src/browser.rs`（`Visibility`）、`src/App.tsx`、`src/BrowserView.tsx` |
+| 読み込み中の表示・即時の選択状態 | `src-tauri/src/browser.rs`（`Visibility`）、`src/app/App.tsx`、`src/browser/BrowserView.tsx` |
 | 描画後の DOM の保存 | `src/overlay/index.ts`（`snapshot`）、`browser.rs`（`snapshot` / `overlay_snapshot`）、`ingest::save_rendered` |
 | 同一ホストの並列制限 | `Store::claim_next_job` |
-| 再抽出と block ID の再利用 | `ingest::reextract`、`store::replace_blocks`、`src/Reader.tsx` |
+| 再抽出と block ID の再利用 | `ingest::reextract`、`store::replace_blocks`、`src/reader/Reader.tsx` |
 
 §5「未実装（意図的）」のうち、JS で描画するページの Index 追加、bulk import の同一ホスト宛て並列数の制限、re-extract コマンド（block ID の再利用を含む）はこの節で実装した。
 
@@ -346,10 +346,10 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 
 | 対象 | ファイル |
 |---|---|
-| ジョブの集計・一覧・再実行・取り消し | `crates/lattice-core/src/job_status.rs`、`src/JobsView.tsx` |
+| ジョブの集計・一覧・再実行・取り消し | `crates/lattice-core/src/job_status.rs`、`src/jobs/JobsView.tsx` |
 | runner の起こし分け | `src-tauri/src/lib.rs`（`wake`） |
 | `(status, type, next_run_at)` index | `crates/lattice-core/src/store.rs`（migration 13） |
-| JSON エクスポート | `crates/lattice-core/src/export.rs`、`src/SettingsView.tsx` |
+| JSON エクスポート | `crates/lattice-core/src/export.rs`、`src/settings/SettingsView.tsx` |
 
 - **状態は 4 つ。** 待機（pending で実行可能）、再試行待ち（pending で `next_run_at` が未来）、実行中、失敗（`MAX_ATTEMPTS` に達して自動再試行が止まったもの）。succeeded は数えない。集計は `(status, type, next_run_at)` の covering index だけで済み、表の行を読まない。一覧は失敗と再試行待ちを終了時刻の新しい順に 200 件まで返す（件数は集計の方にある）。
 - **再実行は enqueue と同じ操作。** `status = 'pending', next_run_at = NULL`（running は除く）で、`attempt_count` は残す。`Store::enqueue_job` が dedup key の既存 job に対して行うのと同じなので、再実行は 1 回だけ試し、失敗すればまた「失敗」に戻る（自動の backoff を最初からやり直さない）。種類から `LLM_JOBS` / `LOCAL_JOBS` / `NET_JOBS` を引いて該当する runner を起こす。「失敗をすべて再実行」（種類ごとにも可）は失敗と再試行待ちの両方を対象にする。
@@ -369,9 +369,9 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | 対象 | ファイル |
 |---|---|
 | ジャンル・フィードの絞り込み、記事 ID だけの query | `store::ArticleFilter`（`Genre` / `Feed`）、`filter_cond`、`Store::article_ids` |
-| 対話の範囲 | `chat::Store::scope_articles`、`src/ChatPane.tsx` |
-| 検索の範囲 | `search_blocks`（`filter`）、`src/App.tsx` |
-| 範囲の選択肢 | `src/scopes.ts`、`src/FilterOptgroups.tsx` |
+| 対話の範囲 | `chat::Store::scope_articles`、`src/chat/ChatPane.tsx` |
+| 検索の範囲 | `search_blocks`（`filter`）、`src/app/App.tsx` |
+| 範囲の選択肢 | `src/library/scopes.ts`、`src/library/FilterOptgroups.tsx` |
 
 - **絞り込みの種類。** `ArticleFilter` に `Genre { name }`（`null` は未分類）と `Feed { id }`（`null` は手動追加）を追加した。条件は `filter_cond` の 1 か所で組み立て、一覧（`list_articles_sorted`）と `article_ids` が共有する。ジャンル名は `genres.name` の `COLLATE NOCASE` で照合する。
 - **範囲は記事 ID の集合。** `article_ids` は `All` なら `None`（制限なし）を返すので、絞り込まない検索・対話は従来どおりの速い経路を通る。それ以外は `SELECT id` だけを取る（以前の対話は一覧と同じ全列を読んでいた）。集合が空なら、検索は 0 件、対話はモデルを呼ばずに「見つかりませんでした」と答える。
@@ -389,7 +389,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | スキーマ（`articles.difficulty / difficulty_source`、`classifications.difficulty`）、難易度順 | `crates/lattice-core/src/store.rs`（migration 14） |
 | 翻訳モード（prompt・cache key） | `crates/lattice-core/src/segments.rs`、`crates/lattice-core/src/translate.rs` |
 | Tauri commands（`set_difficulty` / `get_translate_keep_terms` / `set_translate_keep_terms`） | `src-tauri/src/lib.rs` |
-| UI | `src/DifficultyField.tsx`、`src/TranslationSettings.tsx`、`src/ArticleList.tsx`、`src/Reader.tsx` |
+| UI | `src/DifficultyField.tsx`、`src/settings/TranslationSettings.tsx`、`src/ArticleList.tsx`、`src/reader/Reader.tsx` |
 
 - **難易度は classify job で一緒に出す。** §4.6 の `estimate_difficulty` を別 job にせず、分類と同じ入力（タイトル・ドメイン・要約か冒頭 1200 字）・同じ batch（最大 20 件で 1 回の LLM 呼び出し）で返させる。入力が同じなので、別 job にすると LLM 呼び出しが倍になるだけになる。prompt_version は `classify-v2`。
 - **尺度。** 1〜5 の整数（入門／初級／中級／上級／専門）。「その分野が専門ではない現役のソフトウェアエンジニア」にとっての難しさで判定させる。範囲外や欠落は保存しない（未判定のまま）。結果は `classifications.difficulty` にも provider / model 付きで残す。
@@ -415,7 +415,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | 非表示 webview の runner | `src-tauri/src/renderer.rs` |
 | label ごとの snapshot nonce | `browser.rs`（`Snapshots` / `snapshot_of` / `overlay_snapshot`） |
 | DOM が落ち着くまで待つ | `src/overlay/dom.ts`（`settle`）、`src/overlay/index.ts`（`snapshot`） |
-| 手動操作と設定 | `src/Reader.tsx`（`RenderAction`）、`src/RenderSettings.tsx` |
+| 手動操作と設定 | `src/reader/Reader.tsx`（`RenderAction`）、`src/settings/RenderSettings.tsx` |
 
 §9 では、描画後の DOM を保存できるのはユーザーが開いたページだけだった。bulk import と RSS の記事はサーバーの HTML しか取得しないので、SPA の記事は `thin` のまま残っていた。
 
@@ -438,7 +438,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | スキーマ（`images` / `article_images` / GC trigger） | `crates/lattice-core/src/store.rs`（migration 15） |
 | job の投入（抽出のたび） | `crates/lattice-core/src/ingest.rs`（`extract_into`） |
 | Tauri commands（`article_image` / `get_image_settings` / `set_image_settings`） | `src-tauri/src/lib.rs` |
-| 表示と設定 | `src/Reader.tsx`（`ImageBlock`）、`src/ImageSettings.tsx` |
+| 表示と設定 | `src/reader/Reader.tsx`（`ImageBlock`）、`src/settings/ImageSettings.tsx` |
 
 - **保存先は SQLite。** `images(hash, mime, bytes)` は中身の sha256 を主キーにし、記事をまたいで重複を除く。`article_images(article_id, src, hash, error)` は記事が参照する画像 URL ごとに 1 行で、保存できなかった理由も残す。1 ファイルのバックアップ（§17）と R2 にそのまま入る。
 - **block ID ではなく (記事, URL) で対応づける。** 再抽出では block を text（画像なら alt。空のことが多い）の hash で照合するので、画像 block の ID は入れ替わりうる。URL で引けば、ID の再利用とは関係なく対応が正しく保たれる。
@@ -464,10 +464,10 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 |---|---|
 | 自動検出（`discover`・`feed_links`）、entry の日付 | `crates/lattice-core/src/feeds.rs` |
 | `feed_items.published_at`（migration 16）、抽出時の補完 | `crates/lattice-core/src/store.rs`（`save_fetched`） |
-| ジャンルの改名・統合・削除 | `crates/lattice-core/src/classify.rs`（`rename_genre` / `delete_genre`）、`src/GenreSettings.tsx`（設定画面） |
+| ジャンルの改名・統合・削除 | `crates/lattice-core/src/classify.rs`（`rename_genre` / `delete_genre`）、`src/settings/GenreSettings.tsx`（設定画面） |
 | Tauri commands（`discover_feeds` / `rename_genre` / `delete_genre`） | `src-tauri/src/lib.rs` |
-| 登録 UI・候補の選択 | `src/FeedsView.tsx` |
-| サイドバーのジャンル・フィード絞り込み | `src/App.tsx` |
+| 登録 UI・候補の選択 | `src/feeds/FeedsView.tsx` |
+| サイドバーのジャンル・フィード絞り込み | `src/app/App.tsx` |
 
 - **自動検出。** 「登録」はまず `discover_feeds` を呼ぶ。URL そのものが feed として読めればそれを使う。読めなければ HTML として `<link rel="alternate" type="application/rss+xml | atom+xml | feed+json" href>` を探す（rel・type は大文字小文字を区別しない。href はリダイレクト後の URL を基準に解決し、http(s) 以外と重複は捨てる）。1 つもなければ同じホストの `/feed`・`/rss.xml`・`/atom.xml`・`/index.xml` を順に試し、最初に読めたものを使う。取得はすべて `fetch::client()` と `check_public` を通る（private アドレスには行かない）。
 - **候補が複数なら選ばせる。** 1 件ならそのまま登録し、複数なら一覧を出して 1 件ずつ「登録」できる（登録したものは一覧から消える）。0 件ならそう表示する。`<link>` の候補は登録時に従来どおり取得し、読めなければ登録しない。feed の URL を直接入れた場合は検出と登録で 2 回取得する（登録時だけなので許容した）。OPML の読み込みは feed の URL なので検出を通さない。
@@ -495,15 +495,15 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 - **分類のバックフィル。** 自動分類が入る前に保存した記事には classify job がない。起動時、自動分類がオンなら、ジャンルか難易度がなく classify job を一度も持たなかった抽出済みの記事に job を積む（`classify::enqueue_missing`。dedup key `classify:{id}` で `ON CONFLICT DO NOTHING`）。「未分類をすべて分類」と違って既存の job は再投入しないので、失敗した分類や結果の出なかった分類を起動のたびに LLM に送り直すことはない。
 - **翻訳の追加の指示。** 設定「翻訳」の「追加の指示」（`settings.translate_instructions`、2000 文字まで、空なら保存しない）を、翻訳と re-split の prompt の末尾（信頼しない入力についての注意の直前）に「ユーザーからの追加の指示」として付ける。記事の翻訳もページ表示の overlay も同じ prompt を通るので両方に効く。`Target` が指示を持ち、`key()` に指示の sha256 の先頭 12 桁を `-x-instr-` で付けるので、指示を変えると別の cache になる（空の指示は従来の key のまま）。translate job は params に key と指示の本文を持ち、queue に入れたときの指示で訳す。設定画面には、指示が拡張する組み込みの prompt（英語→日本語、現在の専門用語モード）を読み取り専用で表示する。
 - **記事の削除。** `Store::delete_article`（command `delete_article`）が記事と、そこから派生したものを 1 transaction で消す。snapshot・block（FTS の行と embedding も）・job・タグ付け・要約・分類履歴・画像の対応行は FK の cascade で消え、どの記事も使わなくなった画像の bytes は既存の trigger が消す。訳文の cache（`segment_translations`）は記事から独立しているので、消す記事の block の hash のうち、他の記事の block が使っていないものだけを消す（FTS の行は trigger で消える。ページ表示でしか使っていない訳は記事を消すと失われる）。どの記事も使わなくなったタグも消す。残すもの: `feed_items`（残さないとフィードの次の取得で同じ記事を取り込み直す）、対話の回答（引用は block のテキストをコピーして持つので表示でき、引用元を開くと記事がないためページで開く）。実行中の job が消した記事に書き込もうとしても FK で失敗するだけで、job は失敗として記録される。
-  - UI: Reader の ⋯ に「記事を削除…」、ページ表示で Index 済みのときの ⋯ に「Index から削除…」。どちらも確認ダイアログ（`src/ConfirmDialog.tsx`。`alertdialog`、初期フォーカスは「キャンセル」、Tab はダイアログ内を巡回、Esc と背景のクリックでキャンセル、キーはアプリのショートカットに届かない、ネイティブの webview は隠す）を通す。削除後は文書を閉じて一覧を読み直す。
+  - UI: Reader の ⋯ に「記事を削除…」、ページ表示で Index 済みのときの ⋯ に「Index から削除…」。どちらも確認ダイアログ（`src/ui/ConfirmDialog.tsx`。`alertdialog`、初期フォーカスは「キャンセル」、Tab はダイアログ内を巡回、Esc と背景のクリックでキャンセル、キーはアプリのショートカットに届かない、ネイティブの webview は隠す）を通す。削除後は文書を閉じて一覧を読み直す。
 - **アプリ内ブラウザ。**
   - ページを切り替えると前のページが一瞬見えていた。原因は 2 つ。(1) Page 表示に入ると UI の `browser_set_bounds`（同期 command）が非同期の `browser_open` より先に走り、読み込み済み扱いのままの前のページを表示していた。`BrowserView` は open の応答までは bounds を送らない。(2) 読み込み中は `hide()` していたが、非表示の WebView2 は描画を止めるので、表示し直した瞬間に前のページの最後のフレームが出る。読み込み中は隠さずにウィンドウ外（-20000, -20000。renderer と同じ）に置き、描画を続けさせる。読み込み中の扱いは、アプリから開いたときだけでなく、ページ内のリンク・戻る・進む・再読み込みを含むすべての読み込み（`PageLoadEvent::Started` から `Finished` まで）に広げた。その間は下の placeholder が「読み込み中…」を出す。読み込みが完了しない遷移（ダウンロードなど `Finished` が来ない場合）ではページが出ないままになりうる（実機では未確認）。
   - 戻る・進むは、履歴がない方向を disabled にする。`browser-page` イベントの `can_go_back` / `can_go_forward` は、Windows では WebView2 の `CanGoBack` / `CanGoForward` を読む。ページの Navigation API（`navigation.canGoBack`）は同じ origin の履歴しか数えないので、別サイトから移ってきたページでは「戻れない」と答えてしまう。overlay は読み込み時と同一文書内の遷移（`currententrychange`）で `overlay_history` を呼び、それがイベントを出し直すきっかけになる（Windows 以外では overlay の値をそのまま使う）。読み込み開始時と、API がないときは両方有効のままにする。`overlay_history` はリモートのページから呼べるが、browser webview からの呼び出しだけを受け付け、ツールバーのボタンの状態しか変えない。
   - overlay は aside を訳す対象に含める（`SKIP` から外した。nav / header / footer は従来どおり除く）。抽出でも、Readability（dom_smoothie）はすべての `<aside>` と「sidebar」のような class を持つ要素を boilerplate として消すので、本文（`article` / `main` / `[role=main]` / `[itemprop=articleBody]`）の中の aside は parse の前に `<div>` にし、その中の class / id を外す（code と pre の class は言語を持つので残す）。本文の外の aside は従来どおり消える。`EXTRACTION_VERSION` は 2。
   - ページ上の訳文の点線の下線をやめた（hover の背景と吹き出しは残す）。
-  - URL バー（G36）。URL をクリックすると入力欄になり、URL 全体を選択する。Enter で開き（IME の変換確定の Enter は除く）、Esc とフォーカスが外れたときは表示に戻す。入力の解釈は `src/engines.ts` の `toNavigation`: `http(s)://` で始まればその URL、空白がなくホストらしい（`localhost`・IP・英字の TLD で終わるドット区切り。ポートとパスが続いてもよい）なら `https://` を付けたもの、それ以外は検索エンジンの URL の `%s` に `encodeURIComponent` した入力を入れたもの。`javascript:` や `file:` などは検索語になるので、開くのは常に http(s)（`browser.rs` の `is_http` も従来どおり）。`v1.2` のような数字の TLD は検索、`node.js` のような英字の TLD はホストとして開く（公開 TLD の一覧は持たない）。開くのは `openPage` なので、アプリから開くときと同じく保存済みの記事の判定などが走る。検索エンジンは設定「ブラウザ」で選び、ショートカットと同じく UI の localStorage（`lattice.searchEngine`）に置く（DB のバックアップには入らない）。カスタムは `%s` を含む http(s) の URL で、使えない間は DuckDuckGo を使う。ホームはエンジンのトップページ（カスタムは URL の origin）。
+  - URL バー（G36）。URL をクリックすると入力欄になり、URL 全体を選択する。Enter で開き（IME の変換確定の Enter は除く）、Esc とフォーカスが外れたときは表示に戻す。入力の解釈は `src/browser/engines.ts` の `toNavigation`: `http(s)://` で始まればその URL、空白がなくホストらしい（`localhost`・IP・英字の TLD で終わるドット区切り。ポートとパスが続いてもよい）なら `https://` を付けたもの、それ以外は検索エンジンの URL の `%s` に `encodeURIComponent` した入力を入れたもの。`javascript:` や `file:` などは検索語になるので、開くのは常に http(s)（`browser.rs` の `is_http` も従来どおり）。`v1.2` のような数字の TLD は検索、`node.js` のような英字の TLD はホストとして開く（公開 TLD の一覧は持たない）。開くのは `openPage` なので、アプリから開くときと同じく保存済みの記事の判定などが走る。検索エンジンは設定「ブラウザ」で選び、ショートカットと同じく UI の localStorage（`lattice.searchEngine`）に置く（DB のバックアップには入らない）。カスタムは `%s` を含む http(s) の URL で、使えない間は DuckDuckGo を使う。ホームはエンジンのトップページ（カスタムは URL の origin）。
   - ページにフォーカスがある間のショートカット（G50）。native webview がキーを受け取るので、overlay が window の keydown を capture で拾い、アプリのショートカットなら `overlay_key` で送る。アプリは `browser-key` を受けて自分の keydown と同じ操作を実行する。送るキーは UI が `pageKeys(bindings)` で作り、`browser_set_keys` で backend に置く（overlay は `overlay_config` の応答で受け取り、変更は eval で届く）。振り分け（`routeKey`）: 入力欄でも動く操作の Ctrl / Alt キー（`Ctrl+K`・`Ctrl+B`）は入力欄からも送り、ページの handler とブラウザの既定動作を止める。ほかのキーは入力欄（input・textarea・select・contenteditable）の外でだけ送る。修飾なしのキーは、ページの handler が走り終わってから（`setTimeout`）`defaultPrevented` でなければ送る（ページが自分の `/` や j を持つサイトではページを優先する。capture の時点ではページの handler はまだ走っていない）。Enter・Esc・矢印・Space などの名前付きキーは修飾なしなら送らない（ページの操作・スクロールに使う）。`Ctrl+B` を送ったあとは `PREFIX_MS` の間、次のキーを無条件に送る。アプリ側では、ページ由来のキーは文書ペインから押したものとして扱い（ペイン移動の起点は文書ペイン、アプリ内で最後にフォーカスのあった要素は blur する）、パレット・検索・Reader / Page 切り替え・ペイン移動のときは `setFocus` で main webview にキーボードを戻す。`overlay_key` もリモートのページから呼べるが、browser webview から、表示中（読み込み中でない）の間だけ受け付ける。ページが自分でアプリのショートカットを押せてしまう点は許容する（できることはユーザーのキー操作と同じ）。
-- **favicon。** フィード（フィード画面の表・サイドバー）、記事の行、Reader の meta 行で、名前の左にサイトのアイコンを出す（`src/Favicon.tsx`。16px、角丸 3px。アイコンがない間はドメインの頭文字を中立色の四角で出す）。取得はバックエンドだけで行う（main webview の CSP は `img-src 'self' data:` のまま）。
+- **favicon。** フィード（フィード画面の表・サイドバー）、記事の行、Reader の meta 行で、名前の左にサイトのアイコンを出す（`src/ui/Favicon.tsx`。16px、角丸 3px。アイコンがない間はドメインの頭文字を中立色の四角で出す）。取得はバックエンドだけで行う（main webview の CSP は `img-src 'self' data:` のまま）。
   - 保存先は `favicons(domain, mime, bytes, error, fetched_at)`（migration 17）。取得できなかった理由も 1 行として残す。`favicon(domain)` command は保存済みのアイコンを `data:` URL で返し、行がないか 1 週間より古ければ `favicon` job（network runner、記事を持たない job。dedup key `favicon:{domain}`）を積む。古い行は再取得が終わるまでそのまま返す。job が終わると `favicon-changed`（ドメイン）を emit し、UI はそのドメインだけを聞き直す。UI はドメインごとの Promise を module 内に持つので、1,000 行の一覧でも呼び出しはドメインごとに 1 回になる（harness で確認）。ドメインは「初めて見たとき」＝UI が初めて聞いたときに取得する（取り込み時には積まない）。
   - 取得の順序: そのドメインの記事の最新 snapshot の `<link rel~=icon href>`、snapshot がない（またはリンクがない）ときはサイトの root（`https://{domain}/`）の HTML のリンク、最後に `/favicon.ico`。最初に取得できたものを保存する。取得は記事画像の `download`（`check_public` で private address を拒否、Content-Type と magic number の検査、受信中のサイズ確認）を通し、上限は 1 MB。SVG は保存しない。ICO を magic number の判定に加えた（記事画像でも ICO を保存するようになる）。timeout・5xx・429 だけのときは何も保存せず job を失敗させ、backoff で再試行する。ほかの失敗は理由を保存し、1 週間後に聞かれるまで再取得しない。root は https だけを試す。
 
@@ -517,8 +517,8 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | フィードの本文での取り込み | `crates/lattice-core/src/ingest.rs`（`store_fetch_result`・`from_feed`） |
 | 取得を拒否された記事の裏描画 | `crates/lattice-core/src/render.rs`（`enqueue_if_auto`） |
 | スキーマ、URL の正規化のやり直し | `crates/lattice-core/src/store.rs`（migration 18, 19）、`url_norm.rs` |
-| 表示名・アイコン | `crates/lattice-core/src/feeds.rs`（`rename`・`set_icon`・`icon`）、`src/FeedsView.tsx`（`FeedEditor`）、`src/Favicon.tsx` |
-| 表示 | `src/Reader.tsx` |
+| 表示名・アイコン | `crates/lattice-core/src/feeds.rs`（`rename`・`set_icon`・`icon`）、`src/feeds/FeedsView.tsx`（`FeedEditor`）、`src/ui/Favicon.tsx` |
+| 表示 | `src/reader/Reader.tsx` |
 
 - **きっかけ。** Medium がホストするフィード（例: `techblog.netflix.com/feeds/posts/default` → `medium.com/feed/netflix-techblog`）の記事は、ブラウザ以外の取得に 403 を返す（bot 対策。ブラウザの user agent の curl でも 403）。記事はすべて「取得失敗」になり、タイトルも URL のままだった。フィードには entry の title と、`content:encoded` に本文の HTML 全体が入っている。
 - **entry の保存。** `feed_items` に `title` と `content`（deflate した HTML）を足した（migration 18）。本文は RSS の `content:encoded`・Atom の `content` と、HTML の `description` / `summary` のうち長い方で、タグを除いた文字数が 500 未満なら抜粋として保存しない。poll のたびに、取り込み済みの entry も含めて title と本文を上書きする（フィードが本文を載せなくなっても、保存済みの本文は残す）。migration 18 はすべてのフィードの ETag / Last-Modified を消すので、更新後の最初の poll は 304 にならず、以前の entry にも本文が入る。
@@ -571,7 +571,7 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 |---|---|
 | 生成 job・保存・今日のキュー・設定 | `crates/lattice-core/src/quiz.rs` |
 | SM-2 のスケジュール（純粋関数） | `crates/lattice-core/src/srs.rs` |
-| UI | `src/QuizPanel.tsx`（Reader の右パネル）・`src/QuizCard.tsx`（1 問）・`src/QuizReview.tsx`（今日の復習）・`src/QuizSettings.tsx`・`src/quiz.ts` |
+| UI | `src/quiz/QuizPanel.tsx`（Reader の右パネル）・`src/quiz/QuizCard.tsx`（1 問）・`src/quiz/QuizReview.tsx`（今日の復習）・`src/settings/QuizSettings.tsx`・`src/quiz/quiz.ts` |
 
 - **生成。** 要約と同じく prose block を送り、各 block に `[n]` を付けて出典を番号で返させ、保存時に block id に戻す（範囲外の番号は捨てる）。種類は `options` の数で決める（空なら記述、4 つで答えを含み重複がなければ 4 択、それ以外の問いは捨てる）。enum を schema に書かないのは provider ごとの structured output の差を避けるため。使える問いが 0 なら job を失敗にする（再試行される）。8 問を超えたら切る。要約の追加の指示は使わず、「自分について」だけを反映する（prompt version に hash を付け、変わると stale）。
 - **世代。** 作り直しても古いクイズは消さない（要約と同じ。新しいものが current）。カードは問いに付くので、作り直しただけでは復習中のカードは変わらない。新しいクイズで「復習に追加」すると、その記事の古い世代のカードを外して置き換える。
@@ -585,10 +585,10 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 
 | 対象 | ファイル |
 |---|---|
-| レイアウトのデータモデルと操作 | `src/layout.ts`（テスト `src/layout.test.ts`） |
-| ペインの木とタブ列の描画・ドラッグ・区切り | `src/DocArea.tsx`、`src/TabStrip.tsx` |
+| レイアウトのデータモデルと操作 | `src/layout/layout.ts`（テスト `src/layout/layout.test.ts`） |
+| ペインの木とタブ列の描画・ドラッグ・区切り | `src/layout/DocArea.tsx`、`src/layout/TabStrip.tsx` |
 | ラベル付き webview | `src-tauri/src/browser.rs` |
-| ペイン間のキーボード移動（上下を含む） | `src/panes.ts` |
+| ペイン間のキーボード移動（上下を含む） | `src/layout/panes.ts` |
 
 - **データモデルは木。** `Layout = { root, focused }`。節は `Split`（`dir: row | column`、`children`、割合の `sizes`）か `Pane`（`tabs` の列と `active`）。タブは `ReaderTab`（記事 id と検索一致などの `focus`）か `PageTab`（今の URL・題名・明示的な移動の回数 `seq`・読み込み中・履歴の可否・Index 済み記事の id）。ペインとタブの id は 1 つの連番。操作（開く・閉じる・切り替え・移動・分割・ペインを閉じる・比率・フォーカス・ページ状態の更新）はすべて `(Layout, …) => Layout` の純粋関数で、`useState` の関数更新で呼ぶ。空になったペインは木から外し、子が 1 つになった split はその子に畳む（root は空のまま残す）。
 - **開く先。** 一覧のクリック・パレット・検索一致・引用・Reader のリンクは、フォーカスされたペインのアクティブなタブを置き換える（同じ記事・同じ URL ならそのまま）。Ctrl / middle クリックは新しいタブに開く。Page タブを別の文書で置き換えても id は変わらないので、webview はそのまま次の URL へ移動する。
@@ -604,7 +604,7 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 | 対象 | ファイル |
 |---|---|
 | カタログと翻訳関数 | `src/i18n/ja.ts`（キーの元）、`src/i18n/en.ts`、`src/i18n/index.ts`（テスト `src/i18n/*.test.ts`） |
-| 表示言語の設定 | `src/LanguageSettings.tsx`、`src-tauri/src/lib.rs`（`get_ui_language` / `set_ui_language`） |
+| 表示言語の設定 | `src/settings/LanguageSettings.tsx`、`src-tauri/src/lib.rs`（`get_ui_language` / `set_ui_language`） |
 | backend のメッセージコード | `crates/lattice-core/src/msg.rs`（`msg!`） |
 | 抽出・書き換えの道具 | `scripts/i18n-extract.mjs` |
 
@@ -629,9 +629,9 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 |---|---|
 | 登録・LLM job・単語帳・CSV・カードの評価 | `crates/lattice-core/src/vocab.rs` |
 | 今日の復習のキュー（quiz と単語） | `crates/lattice-core/src/review.rs` |
-| 文の切り出し・語の位置・記事中の目印・一覧の絞り込み（純粋関数） | `src/vocab.ts`（テスト `src/vocab.test.ts`） |
-| 発音（Web Speech API の声の選択・自動再生の設定） | `src/speech.ts`（テスト `src/speech.test.ts`） |
-| UI | `src/Reader.tsx`（選択と目印）・`src/VocabCard.tsx`・`src/VocabView.tsx`（単語帳）・`src/QuizReview.tsx`・`src/overlay/index.ts`（Page の選択） |
+| 文の切り出し・語の位置・記事中の目印・一覧の絞り込み（純粋関数） | `src/vocab/vocab.ts`（テスト `src/vocab/vocab.test.ts`） |
+| 発音（Web Speech API の声の選択・自動再生の設定） | `src/vocab/speech.ts`（テスト `src/vocab/speech.test.ts`） |
+| UI | `src/reader/Reader.tsx`（選択と目印）・`src/vocab/VocabCard.tsx`・`src/vocab/VocabView.tsx`（単語帳）・`src/quiz/QuizReview.tsx`・`src/overlay/index.ts`（Page の選択） |
 
 - **データ。** 追加の migration: `vocab_entries`（見出し語・状態 pending / ready / failed・品詞・意味・定義・IPA・例文・停止）、`vocab_contexts`（使われた形 `surface`・文・記事・block・URL）、`vocab_cards`（語ごとに meaning の 1 枚、`review_cards` と同じ列。H20 で cloze を外した）、`vocab_log`。記事を消しても単語は残り、記事と block は NULL になって URL が残る。block が NULL の文脈（Page で登録した保存済み記事）は、読むときに記事の中で文を含む block を探す。
 - **登録と統合。** 同じ形（見出し語か、前に登録した形。大文字小文字は区別しない）があればその項目に文脈を足し、なければ pending の項目を作る。同じ文をもう一度登録しても何も増えない。LLM が返した見出し語がすでに ready の項目にあれば、文脈をそちらへ移して pending の項目を消す（「ran」と「running」が「run」にまとまる）。意味は最初の文脈でのもの（項目に 1 つ）。
@@ -686,8 +686,8 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 | 対象 | ファイル |
 |---|---|
 | グループと所属 | `crates/lattice-core/src/groups.rs`、`store.rs`（`ArticleFilter::Group`、`ArticleRow.groups`、migration） |
-| サイドバー・ピッカー | `src/NavGroups.tsx`、`src/GroupPicker.tsx`（`GroupPicker`・Reader の `GroupChips`） |
-| 範囲・ファセット | `src/library.ts`、`src/scopes.ts`、一覧のまとめて選択 `src/selection.ts` |
+| サイドバー・ピッカー | `src/library/NavGroups.tsx`、`src/library/GroupPicker.tsx`（`GroupPicker`・Reader の `GroupChips`） |
+| 範囲・ファセット | `src/library/library.ts`、`src/library/scopes.ts`、一覧のまとめて選択 `src/library/selection.ts` |
 | エクスポート | `crates/lattice-core/src/export.rs` |
 
 - **データ。** `groups`（`name` は `COLLATE NOCASE` で一意、`color` / `description` は列だけ用意して UI はまだない）と `group_articles`（`group_id`・`article_id`・`added_at`、両方に `ON DELETE CASCADE`）。記事を消すと所属が消え、グループを消しても記事は残る。分類のような自動の割り当てはしない。記事の行（`ArticleRow.groups`）がグループ id の列を持つので、UI の範囲・ファセット・件数はタグと同じく一覧から計算し、「記事の所属グループ」を返す command は作らなかった。
@@ -708,9 +708,9 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 | 対象 | ファイル |
 |---|---|
 | 重要度の job・設定・付け直し | `crates/lattice-core/src/relevance.rs`（プロフィールの hash は `instructions.rs`） |
-| UI | `src/RelevanceSettings.tsx`（設定 › 重要度）・`src/library.ts`（scope「重要」・facet「重要度」）・`src/ListPane.tsx`（目印・並び順・表示中の付け直し）・`src/Reader.tsx`（理由の行） |
+| UI | `src/settings/RelevanceSettings.tsx`（設定 › 重要度）・`src/library/library.ts`（scope「重要」・facet「重要度」）・`src/library/ListPane.tsx`（目印・並び順・表示中の付け直し）・`src/reader/Reader.tsx`（理由の行） |
 | 取り込みフィルタ（ルール・LLM・除外の記録） | `crates/lattice-core/src/feed_filter.rs`（poll からは `feeds::import`） |
-| フィルタの UI | `src/FeedFilterEditor.tsx`（ルールの編集・除外された記事）・`src/feedFilter.ts`（理由の文） |
+| フィルタの UI | `src/feeds/FeedFilterEditor.tsx`（ルールの編集・除外された記事）・`src/feeds/feedFilter.ts`（理由の文） |
 
 - **重要度の判定（G54）。** 分類と同じ batched job（最大 20 件、要約があれば要約、なければ本文の冒頭 1500 字）。prompt は「自分について」を system prompt に入れ、untrusted input の注意を最後に置く。返り値は 1〜5 の整数と理由 1 行で、範囲外・理由が空・知らない `i` は捨てる（その記事の job は失敗して再試行される）。理由はプロフィールの言語で書かせ、200 字で切る。
 - **最新だけを保存。** 分類（`classifications`）と違い履歴は残さない（`relevance` 表は記事ごとに 1 行）。並び順・facet・scope は最新の点数しか使わない。
@@ -727,18 +727,18 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 
 | 対象 | ファイル |
 |---|---|
-| ウィンドウの種類・レイアウトの保存場所・ウィンドウ間の依頼 | `src/windows.ts`（テスト `src/windows.test.ts`） |
-| ウィンドウごとの殻（メイン・文書・対話） | `src/App.tsx`（`HOST`）、`src/TabStrip.tsx`（別ウィンドウへ / メインへ）、`src/ChatPane.tsx` |
+| ウィンドウの種類・レイアウトの保存場所・ウィンドウ間の依頼 | `src/app/windows.ts`（テスト `src/app/windows.test.ts`） |
+| ウィンドウごとの殻（メイン・文書・対話） | `src/app/App.tsx`（`HOST`）、`src/layout/TabStrip.tsx`（別ウィンドウへ / メインへ）、`src/chat/ChatPane.tsx` |
 | ウィンドウの作成・位置の保存・終了 | `src-tauri/src/popout.rs` |
 | page webview の付け替え | `src-tauri/src/browser.rs`（`attach`） |
-| ウィンドウ間のタブのドラッグ | `src-tauri/src/tabdrag.rs`（判定とテスト）、`src/tabDrag.ts`、`src/DocArea.tsx` |
+| ウィンドウ間のタブのドラッグ | `src-tauri/src/tabdrag.rs`（判定とテスト）、`src/layout/tabDrag.ts`、`src/layout/DocArea.tsx` |
 
 - **ウィンドウはラベルで決まる。** `main`、文書ウィンドウ `doc-<n>`、対話ウィンドウ `chat`。どのウィンドウも同じ `index.html` を読み、`getCurrentWindow().label` から何を映すかを決める（query ではなくラベルにしたのは、Rust がウィンドウを作るときにも、UI が自分を知るときにも、同じ 1 つの名前で済むため）。capability `default` の `webviews` は `main`・`doc-*`・`chat`。
 - **ウィンドウごとに独立した React の木。** 同じ `App` が走り、ライブラリのデータは各ウィンドウが backend から読む（`article-changed` などの変更イベントは `emit` で全ウィンドウに届く）。レイアウト・開いている overlay・キーボードの状態・パレットはウィンドウのもの。文書ウィンドウのレイアウトは `localStorage` の `lattice.window.doc-<n>`（メインは従来の `lattice.layout`）、対話ウィンドウは `lattice.window.chat`（中身はない）。**このキーがあること = そのウィンドウが開いていること**で、メインは起動時にキーを列挙して `open_window` で開き直し、ウィンドウは最後のタブを閉じる・メインに戻すときに自分のキーを消す。書き手はウィンドウ自身だけ（作るときにメインが初期値を書く）。
 - **ショートカットと表示言語はウィンドウをまたぐ。** `localStorage` の `storage` イベントで他のウィンドウの変更を読む（`keys.ts`・`i18n/index.ts`）。Page の言語（原文 / 混在 / 訳文）は backend の overlay 設定が全 webview 共通なので、変えたウィンドウが `page-lang` を `emit` して全ウィンドウの表示を揃える。
 - **page webview はタブの鍵で名付ける。** タブの id はウィンドウごとの連番なのでウィンドウをまたぐと衝突する。Page タブは作られたときに鍵（`key`、英数字の短い乱数）を持ち、webview のラベルは `browser-<key>`。タブがウィンドウを移っても鍵は変わらない。webview は作ったウィンドウに置き、タブが別のウィンドウに移ったら閉じて、移った先で同じ URL を開き直す（`browser_set_bounds` は別ウィンドウの webview に false を返し、UI が開き直す。`browser_open` は別ウィンドウの webview を閉じてから作る）。`Webview::reparent` は実機の Windows で WebView2 の位置が元のウィンドウ基準のままずれ、ページが新しいウィンドウからはみ出したので使わない。代わりに移ったページは読み込み直しになり、履歴とスクロール位置は引き継がない。イベント（`browser-page` / `browser-title` / `browser-key` / `browser-focus`）は webview のいるウィンドウに送る。`browser_open` は同じウィンドウの webview がすでにその URL を表示していて scroll 先の指定もなければ移動し直さない。overlay の capability は webview のラベルで決まるので、どのウィンドウにあっても `browser-*` のまま。
 - **タブを出す・戻す。** タブ列の「別ウィンドウで開く」（`Ctrl+Shift+N`、パレットからも）: メインがそのタブだけの レイアウトを `lattice.window.doc-<n>` に書き、`open_window` を呼び、自分のレイアウトからタブを外す（Page タブの webview は閉じずに忘れる）。文書ウィンドウの「メインウィンドウに戻す」（同じキー）と ×・Alt+F4（`onCloseRequested`）: タブを `Doc`（Page なら `key` 付き）にしてメインに `main-request` で送り、メインがフォーカスされたペインの新しいタブに開く。最後のタブがなくなった文書ウィンドウは自分を閉じる（`close_window`。Rust が残っている page webview をメインに隠して付け替えてから壊すので、戻る途中の webview がウィンドウと一緒に消えない）。
-- **ウィンドウ間のドラッグ（H7。`src-tauri/src/tabdrag.rs`、`src/tabDrag.ts`、e2e `tabdrag.spec.ts`）。** Chrome と同じく、ドラッグ中にその場でタブがウィンドウを出入りする。タブ列から上下に 30 px（CSS px）離すと、その場でタブが新しい文書ウィンドウに出て、そのウィンドウがポインタについて動く（文書ウィンドウの唯一のタブなら、新しいウィンドウは作らずそのウィンドウ自身が最初から動く。メインは動かさないので、メインの最後のタブは新しいウィンドウに出る）。ペインに分割したウィンドウでは、別のペインのタブ列へ移す途中で外れないよう、元のウィンドウの外に出たときに外す（ペインの中身の上で離しても何も動かない。以前はそこで新しいウィンドウに出た）。ついて動くウィンドウが別のウィンドウのタブ列（元のウィンドウを含む）の上に来ると、ウィンドウを隠してそのタブ列のポインタの下の slot にタブを描き、外れるとまた出す。離したところで終わる: タブ列の外ならウィンドウはそこに残って前に出て、タブ列の上ならタブはその slot に入る（ついて動いていたウィンドウは空になって閉じる）。Esc は元に戻す（新しいウィンドウに出たタブは元のウィンドウの元の slot へ、自分で動いていたウィンドウは元の位置へ）。同じウィンドウの中の並べ替えとペイン間の移動も同じ仕組み（マーカーと DOM のゴーストは従来どおり）。
+- **ウィンドウ間のドラッグ（H7。`src-tauri/src/tabdrag.rs`、`src/layout/tabDrag.ts`、e2e `tabdrag.spec.ts`）。** Chrome と同じく、ドラッグ中にその場でタブがウィンドウを出入りする。タブ列から上下に 30 px（CSS px）離すと、その場でタブが新しい文書ウィンドウに出て、そのウィンドウがポインタについて動く（文書ウィンドウの唯一のタブなら、新しいウィンドウは作らずそのウィンドウ自身が最初から動く。メインは動かさないので、メインの最後のタブは新しいウィンドウに出る）。ペインに分割したウィンドウでは、別のペインのタブ列へ移す途中で外れないよう、元のウィンドウの外に出たときに外す（ペインの中身の上で離しても何も動かない。以前はそこで新しいウィンドウに出た）。ついて動くウィンドウが別のウィンドウのタブ列（元のウィンドウを含む）の上に来ると、ウィンドウを隠してそのタブ列のポインタの下の slot にタブを描き、外れるとまた出す。離したところで終わる: タブ列の外ならウィンドウはそこに残って前に出て、タブ列の上ならタブはその slot に入る（ついて動いていたウィンドウは空になって閉じる）。Esc は元に戻す（新しいウィンドウに出たタブは元のウィンドウの元の slot へ、自分で動いていたウィンドウは元の位置へ）。同じウィンドウの中の並べ替えとペイン間の移動も同じ仕組み（マーカーと DOM のゴーストは従来どおり）。
 - **ドラッグは backend が回す。** 押したウィンドウのポインタイベントには頼らない: タブを外すと pointer capture を持っていたタブ要素が消え、新しいウィンドウを表示するとアクティブがそちらに移る。ドラッグが始まると（4 px 動いたら）元ウィンドウが `tab_drag_start`（タブの題名・ドメイン・フィード、元の pane と index、唯一のタブか、自分の幾何）を送り、Rust のスレッドが 8 ms ごとに `GetCursorPos` と `GetAsyncKeyState`（主ボタン。左右を入れ替える設定なら物理的な右ボタン。と Esc）を読む。各ウィンドウは `tab-drag-start` を聞くと、クライアント領域の物理座標・`devicePixelRatio`・各ペインのタブ列の矩形とタブの中心 x（CSS px、描いただけのタブは数えない）を `tab_drag_strips` で送り、ドラッグ中にタブが変わったら送り直す（元ウィンドウはタブが抜けた後）。判定（どのウィンドウのどのタブ列のどの slot か、30 px の吸着、外すか入れるか、終わったら誰が何をするか）は `Session` の純粋な状態遷移で、Rust のテストがある。結果はイベントで伝える: `tab-drag-over`（そのウィンドウに描く slot。タブを持っているウィンドウには挿入マーカー、それ以外にはタブそのもの）、`tab-drag-tear`（元ウィンドウにタブを外させる。元ウィンドウはレイアウトを `lattice.window.doc-<n>` に書いて自分から消し、`tab_drag_float` で Rust にウィンドウを作らせる）、`tab-drag-drop`（終わったときにタブを持っているウィンドウに行き先を伝える。自分の slot なら `move`、他のウィンドウなら `main-request` の `open` に `at`。外したウィンドウは自分の唯一のタブを送る）、`tab-drag-end`（全ウィンドウ。マーカー・描いたタブ・ゴーストを消す）。重なりの順は以前と同じ（元ウィンドウが一番上、他は報告順）、ついて動くウィンドウは落とし先にならない。対話ウィンドウはタブ列を持たないので落とし先にならない。Windows 以外ではボタンと Esc を読まず、元ウィンドウの pointerup と Esc（`tab_drag_release`）で終わる（Windows でも両方届き、先に来た方で終わる）。
 - **OS の移動ループは使わなかった。** `start_dragging`（`WM_NCLBUTTONDOWN` + `HTCAPTION`）でウィンドウを OS に動かさせる案は、モーダルなループなのでタブ列に入るたびに `WM_CANCELMODE` で抜け、外れるたびにボタンを押したまま入り直す必要がある。ボタンを押したのは別プロセス（WebView2）のウィンドウで、マウスのキャプチャもそこにある。tao は `WM_MOVING` を出さないので、ループ中にタブ列の上かを知るには結局カーソルのポーリングが要る。ポーリングなら 1 つの仕組みで外す・入れる・また外す・Esc を扱え、キャプチャやフォーカスがどこにあってもボタンと Esc が読める。代わりに Aero Snap（画面の端への吸着）は効かず、ウィンドウはカーソルに最大 1 tick（8 ms）遅れる。
 - **タブの中身はドラッグの終わりに移る。** 別のウィンドウのタブ列の上では描くだけ（題名とアイコンを、アクティブなタブの見た目で）で、移した先の内容（Reader・Page）は離したときに開く。ウィンドウの上を通り過ぎるたびに Page の webview を作り直さないため（Page はウィンドウを移るたびに読み込み直しになる。上の方針）。外したタブは新しいウィンドウで 1 回、そこからさらに別のウィンドウのタブ列で離すともう 1 回読み込み直す。ついて動くウィンドウは隠すだけで閉じないので、入れて・外してを繰り返しても作り直さない。150 ms の待ち（デバウンス）は入れなかった: 隠す・出すだけなので webview は作り直さず、Chrome も待たない。
@@ -760,14 +760,14 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 ## 27. フィードバック対応（2026-10-21、H1〜H6）
 
 - **Page の言語はメインが backend に送る（H1）。** overlay の設定（`browser_set_translation`）は全 page webview で 1 つ。以前はどのウィンドウも自分の `pageLang` を送っていたので、後から起動した pop-out・対話ウィンドウが既定の「原文」で全ページの翻訳を切っていた（実機で `overlay_translate` が 1 回も来なかった）。送るのはメインだけ（`pageLangOnStart`）。どのウィンドウで選んでも `page-lang` を emit し、メインがそれを受けて送る。文書ウィンドウは起動時に `main-request` `pageLang` で今の選択を尋ね、メインが `page-lang` で答える。対話ウィンドウはページを持たないので何もしない。
-- **表示を切り替えたら翻訳する（H1）。** Reader で 混在 / 訳文 を選んだ（ボタン・`[` `]`・パレット）とき、訳のない prose block があり、翻訳 job が待機・実行・再試行待ちでなければ `translate_article` を積む（`autoTranslates`、`src/mixed.ts`）。成功した job の後で訳のない block が残る記事は積まない（多くは訳す必要のない、すでに訳先の言語の段落。続きはツールバーの「続き」）。失敗で終わった job は選び直すと再試行する。設定は端末ごとの好みなので localStorage（`lattice.translateOnSwitch`、既定オン）。「保存した記事を自動で翻訳」は backend の `auto_translate`（既定オフ）で、取り込み・Page からの保存・描画の後に `translate::enqueue_if_auto` が積む。日本語の記事は英語に訳しても読む人の役に立たず使用量だけかかるので積まない。
+- **表示を切り替えたら翻訳する（H1）。** Reader で 混在 / 訳文 を選んだ（ボタン・`[` `]`・パレット）とき、訳のない prose block があり、翻訳 job が待機・実行・再試行待ちでなければ `translate_article` を積む（`autoTranslates`、`src/reader/mixed.ts`）。成功した job の後で訳のない block が残る記事は積まない（多くは訳す必要のない、すでに訳先の言語の段落。続きはツールバーの「続き」）。失敗で終わった job は選び直すと再試行する。設定は端末ごとの好みなので localStorage（`lattice.translateOnSwitch`、既定オン）。「保存した記事を自動で翻訳」は backend の `auto_translate`（既定オフ）で、取り込み・Page からの保存・描画の後に `translate::enqueue_if_auto` が積む。日本語の記事は英語に訳しても読む人の役に立たず使用量だけかかるので積まない。
 - **訳し直すの場所（H1）。** ⋯ の「訳し直す」は訳が 1 つでもあれば有効で出し、その下に何をするか（`MenuItem.hint`）を書く。訳がない記事には出さない（押せない項目を並べない）。全部訳し終えた記事ではツールバーにも出る（従来どおり）。
 - **ページの webview の表示（H2）。** 表示と非表示は UI が `browser_set_bounds`（表示を兼ねる）と `browser_hide` で送る。ページの view は画面の切り替え（設定・処理状況）で unmount し、戻ると mount し直す。以前は unmount の cleanup が hide を送っていたので、StrictMode の 2 回目の mount やペインの移動では show・hide・show の順に送られていた。一瞬の表示崩れになり、hide が最後に処理されればペインは次のリサイズまで白いまま（IPC の順序は保証されないので推定。e2e `pageview.spec.ts` で hide が show の間に入らないことを見る）。今は hide を microtask まで遅らせ、同じタブがその間に mount したら送らない。app の overlay（⋯ メニューなど）が閉じたら、webview を表示してから 150 ms 静止画を残す（非表示から戻った WebView2 は描き終わるまで何も出さず、すぐに静止画を消すと下の空の placeholder が見えていた）。重なる overlay がなければ静止画も hide もない（従来どおり）。backend は位置と大きさを 1 つの `set_bounds` で送る。tauri の `set_position` / `set_size` はそれぞれ webview の今の矩形を読んで書き戻すので、別々に送ると後の方が古い値を書き戻しうる。placeholder が現れた・大きさが変わった後 600 ms は毎フレーム矩形を比べ、位置だけが変わっても送り直す（起動直後に右端からはみ出した件。実機での再現は未確認）。
 - **印刷（H2）。** ページの Ctrl+P と `window.print()` は overlay が受けて `overlay_print` を呼ぶ。Windows では `ICoreWebView2_16::ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM)` でシステムの印刷ダイアログ（別のウィンドウ）を出す。WebView2 の印刷プレビューは子 webview の中に描かれ、ページの下に隠れていた。`overlay_print` はリモートのページから呼べるが、browser webview から、画面に出ている間だけ受ける（ページはもともと `print()` を呼べる）。Windows 以外は false を返し、overlay はページの印刷に戻す。
-- **右クリックメニュー（H3）。** 中身は `articleMenu`（`src/articleMenu.ts`、純粋関数）が行の配列から作る。1 件ならすべて、「選択」中に選んだ行の上なら全部にまとめて効くものだけ（お気に入り・既読 / 未読はすべてが既にそうなら外す方に切り替わる）。表示は `ContextMenu`（`Popover.tsx`。ボタンに付くメニューと同じ本体 `MenuBody` を点に置き、描く前にウィンドウ内に収める。矢印・Esc・外のクリック、閉じたら開いた行かタブにフォーカスを戻す。ページの webview と重なれば他の overlay と同じく静止画に替える）。キーボードはメニューキーと Shift+F10。フォーカスのある行・タブ、なければ一覧のカーソルの行に `contextmenu` を送り、マウスと同じ経路で開く（位置は要素の左下）。タブの要素は `data-tab` に id を持ち、App が文書エリアの `contextmenu` を受けて開く（タブ列のコードは触らない）。「別ウィンドウで開く」は、行ではその記事の新しい文書ウィンドウ、タブではそのタブを移す。pop-out の中では出さない（タブ列の「メインウィンドウに戻す」がある）。保存していないページのタブには記事の操作がない。
+- **右クリックメニュー（H3）。** 中身は `articleMenu`（`src/library/articleMenu.ts`、純粋関数）が行の配列から作る。1 件ならすべて、「選択」中に選んだ行の上なら全部にまとめて効くものだけ（お気に入り・既読 / 未読はすべてが既にそうなら外す方に切り替わる）。表示は `ContextMenu`（`Popover.tsx`。ボタンに付くメニューと同じ本体 `MenuBody` を点に置き、描く前にウィンドウ内に収める。矢印・Esc・外のクリック、閉じたら開いた行かタブにフォーカスを戻す。ページの webview と重なれば他の overlay と同じく静止画に替える）。キーボードはメニューキーと Shift+F10。フォーカスのある行・タブ、なければ一覧のカーソルの行に `contextmenu` を送り、マウスと同じ経路で開く（位置は要素の左下）。タブの要素は `data-tab` に id を持ち、App が文書エリアの `contextmenu` を受けて開く（タブ列のコードは触らない）。「別ウィンドウで開く」は、行ではその記事の新しい文書ウィンドウ、タブではそのタブを移す。pop-out の中では出さない（タブ列の「メインウィンドウに戻す」がある）。保存していないページのタブには記事の操作がない。
 - **アプリ内の履歴（H4）。** 「場所」（`Place`）は 画面・設定のセクション・scope・facet・フォーカスされたペインのアクティブなタブの文書。文書の同一性は Reader なら記事、Page ならタブとその明示的な移動（`seq`）で、ページの中でのリンク移動は場所を変えない（それはページの履歴）。場所が変わるたびに `visit`（同じ場所は積まない、先の履歴は捨てる、50 件まで）。戻る・進むはその場所の state を戻し、文書は「そのタブがまだその文書を出していればそのタブに切り替え、なければフォーカスされたタブに開く」。Page を開き直すと `seq` が変わるので、着いた場所は新しい訪問ではなく今の項目の置き換え（`arrived`）にして、先の履歴を残す。検索モードと一覧のカーソルは場所に含めない（j / k のたびに積まない）。履歴はウィンドウごと（文書ウィンドウはタブの履歴だけ、対話ウィンドウは持たない）。
 - **ページとアプリの履歴の分担（H4）。** マウスのサイドボタンは WebView2 で `mouseup`（button 3 / 4）になる。アプリの webview に来たものはアプリの履歴に使い、既定の動作（webview の history.back）は止める。ページの webview の上で押したものはアプリに届かず、WebView2 がそのページの履歴で戻る・進む。`Alt+←` / `Alt+→` も同じ分担にするため、`pageKeys` は back / forward を overlay に渡さない（ページにフォーカスがあればページの戻る・進む、アプリにフォーカスを戻せばアプリの戻る・進む）。Page のツールバーの ‹ › はこれまでどおりページの履歴、タイトルバーの ‹ › はアプリの履歴。
-- **job の説明（H5）。** 処理状況の表の種類名の横に ⓘ（`src/InfoTip.tsx`）。フォーカスできる要素（`tabIndex=0`、`role="img"`、名前は「X について」）で、説明文は常に DOM にある tooltip 要素を `aria-describedby` で指すので、表示しなくても読み上げられる。表示は hover とフォーカスの間、Esc で閉じる（画面の Esc より先に止める）。表は横スクロールの箱に入っているので、tooltip は body に fixed で描く（箱で切れない）。後から増えた未知の種類には出さない。
+- **job の説明（H5）。** 処理状況の表の種類名の横に ⓘ（`src/ui/InfoTip.tsx`）。フォーカスできる要素（`tabIndex=0`、`role="img"`、名前は「X について」）で、説明文は常に DOM にある tooltip 要素を `aria-describedby` で指すので、表示しなくても読み上げられる。表示は hover とフォーカスの間、Esc で閉じる（画面の Esc より先に止める）。表は横スクロールの箱に入っているので、tooltip は body に fixed で描く（箱で切れない）。後から増えた未知の種類には出さない。
 - **ボタンの文字の縦位置（H6）。** スクリーンショットから文字のインクの上端・下端を取り、ボタンの縦の中央との差を 100・125・150 % で測った。IBM Plex Sans JP は、行の箱が端数（12.5px × 1.5 = 18.75px、13px × 1.5 = 19.5px）になると flex で中央に置いた文字のかなが 1.5〜2.5px 上に寄る（`.btn`・メニューの項目 −2〜−2.5px、サイドバー −1〜−2.4px）。12px（行の箱 18px）の `.tb`・`.chip`・Reader / Page などの切り替えは ±0.5px に収まっていた。→ `.btn` とメニューの項目を 12px（ツールバーの部品と同じ）、サイドバーの `.ni` は 13px のまま `line-height: 20px`、`.ni.sub` は 12px。修正後はどれも ±0.5px 前後（125 % の `.tb` だけ −1.2px で、変更していない）。チップの 2px の補正（以前のもの）は測ると中央（0〜+0.7px）なので残した。
 - **カーソルと選択（H6）。** `button` だけだった `cursor: pointer` を select・summary・タブ・チェックボックス / ラジオ・ファイル選択を開く `label`（「OPML を読み込む」など）に広げた。disabled は `cursor: not-allowed`（`!important`。`.stg .tg` などの個別の指定より強くするため）。disabled のボタンも title の tooltip は出る。復習の選択肢（回答後に disabled）も同じ。サイドバー（設定画面の分類も）と記事一覧は `user-select: none`、その中の入力欄だけは選べる。Reader・対話・設定の入力・フィードの表の URL は今までどおり選べる。
 
@@ -794,11 +794,11 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **対話ウィンドウの閉じる（H16）。** 以前は対話ウィンドウの ×（ヘッダー・タイトルバー・Alt+F4 はどれも `closeRequested`）がメインに `chatDocked` を送り、メインがペインを右に出し直していた。今は閉じるだけ（メインには `chatClosed` を送り、メインは「対話は別ウィンドウ」の状態を外すだけでペインは出さない）。ドックに戻すのはヘッダーの「メインウィンドウに戻す」（文書ウィンドウのタブ列と同じアイコン）で、これが `chatDocked` を送る。閉じた後にメインで 対話 を押すとドックに開く。再起動の後と同じ（閉じたウィンドウの storage key は消える）で、別ウィンドウに戻したければ ⧉ を押し直す。
 - **理解度チェックの状態（H17）。** 文書エリアは ライブラリ 以外の画面（処理状況・設定など）では描かれず、Reader が unmount する。理解度チェックの開閉は Reader の、進み具合（今の問題・答えた評価）は `QuizPanel` の state だったので、画面を戻ると閉じて最初からになっていた。開閉と進み具合を記事 id ごとにモジュールの変数（`QuizPanel.tsx` の `openPanels`・`progress`）に置き、Reader と パネルは mount のたびにそこから始める。文書エリアを隠したまま mount しておく案は、ページの webview（ネイティブ）の表示と非表示を画面の切り替えに合わせ直す必要があり（H2）、範囲が広いので採らなかった。進み具合は quiz の id に付くので、作り直したクイズは最初から。タブで別の記事を開いて戻っても同じように続きから。アプリを再起動すると消える（保存はしない）。回答前の選択（選んだ選択肢・「答えを見る」の状態）は QuizCard の中なので残らない。
 - **翻訳ボタンの名前（H18）。** 「英語に翻訳」は日本語の記事（訳先が英語）で、translate job がまだない記事に出ていた。実機の記事（LINEヤフーの技術ブログ、`language = ja`）は判定どおり日本語で、言語の誤判定ではない。ただ 64 block のうち 39 はページ表示（overlay）の翻訳で共有キャッシュに訳があり、押して始まるのは「残り」だった。名前は何をするかにする。訳がまだなければ「翻訳する」（title に「日本語の記事なので英語に訳します」/「日本語に訳します」）、訳が一部あれば「残りを翻訳」（以前の「続きを翻訳」も同じ名前にまとめた）。全部訳してあれば job がなくても件数と「訳し直す」（以前は何も訳さない job を積むボタンが出ていた）。失敗した job には「再試行」だけ（「続き」と同じ動作のボタンが 2 つ並んでいた）。§27 の表示切り替えでの自動翻訳と 訳し直す はそのまま。
-- **翻訳が 63 / 64 で止まる（H18）。** 実機の DB（読み取り専用のコピー）では job は 8 分で成功していた（12 block ずつ 2 回、codex-cli で 1 回 3〜5 分）。止まったのは最後の 1 block、見出し「GitHub Actionsによる自動化」。訳不要の判定（`Target::is_written_in`）が「CJK の文字が英数字の半分以上なら日本語」だったので、英語の識別子が多い日本語の見出しを英語と見なして送らなかった。Reader はこの block を残りに数えるので、job が成功しても 63 / 64 のまま「続き」が出て、押しても何も送らない job が成功するだけだった。判定を誤りにくい側に変えた。訳先が英語なら、かなか漢字が 1 文字でもあれば訳す。訳先が日本語なら、かながあるか CJK が多数なら訳さない（overlay の `isWrittenIn` も同じ規則）。Reader の残りの数も同じ判定（`needsTranslation`、`src/mixed.ts`）で、job が送らない block（すでに訳先の言語の段落）は数えない。両者が食い違うと、また押しても進まない残りができる。
+- **翻訳が 63 / 64 で止まる（H18）。** 実機の DB（読み取り専用のコピー）では job は 8 分で成功していた（12 block ずつ 2 回、codex-cli で 1 回 3〜5 分）。止まったのは最後の 1 block、見出し「GitHub Actionsによる自動化」。訳不要の判定（`Target::is_written_in`）が「CJK の文字が英数字の半分以上なら日本語」だったので、英語の識別子が多い日本語の見出しを英語と見なして送らなかった。Reader はこの block を残りに数えるので、job が成功しても 63 / 64 のまま「続き」が出て、押しても何も送らない job が成功するだけだった。判定を誤りにくい側に変えた。訳先が英語なら、かなか漢字が 1 文字でもあれば訳す。訳先が日本語なら、かながあるか CJK が多数なら訳さない（overlay の `isWrittenIn` も同じ規則）。Reader の残りの数も同じ判定（`needsTranslation`、`src/reader/mixed.ts`）で、job が送らない block（すでに訳先の言語の段落）は数えない。両者が食い違うと、また押しても進まない残りができる。
 - **ログ（H18）。** `%LOCALAPPDATA%\dev.lattice.app\logs\Lattice.log` の最後は 10/18。設定（tauri-plugin-log、`LogDir`、`lattice.log`。Windows では大文字小文字を区別しないので同じファイル）は 10/17 から変わっておらず、壊れてはいない（コードからの推定。アプリを起動して確かめてはいない）。書かれていなかったのは、Info 以上のログが手動のバックアップと job の失敗にしかなく、その後どちらも起きなかったため（DB の job はすべて成功）。今は LLM の job が終わるたびに所要時間を Info で書く（`job 140 (translate) article Some(29) done in 482s`）。「止まった」ときに、遅いのか止まったのかをログで分けられる。
-- **文書ウィンドウのタイトルバーはタブ列（H19）。** Chrome と同じく、文書ウィンドウ（pop-out）では別の行のタイトルバーをやめ、タブ列をタイトルバーにした。アイコンと「Lattice」は出さない。分割したときは、ウィンドウの上端に接するタブ列（横に並んだペインはすべて、縦に重ねたペインは上のものだけ。`topStrips`、`src/chrome.ts`）の空いた所でウィンドウをドラッグでき、ダブルクリックで最大化 / 元に戻す。最小化・最大化・閉じるは右上の角のペインのタブ列の右端（VS Code・Chrome と同じ位置）。上端の列がそろって 1 本のヘッダに見え、操作ボタンはいつもウィンドウの右上にある、という一番単純な形を選んだ。押下の処理はメインのタイトルバーと共通（`dragWindow`、`TitleBar.tsx`）で、ボタンとタブの上の押下は除く（タブのドラッグ・切り替えはタブのまま）。ドラッグの直後のクリックを最大化と取り違えない画面上の位置の判定もそのまま。操作ボタンはタブ列の中で右端に `sticky`（タブが多くて列がスクロールしても隠れない）。タブのドラッグが報告する列の矩形（`tab_drag_strips`）は列全体のままで、操作ボタンの上に落とすと列の末尾に入る。TabStrip には `onTitleDrag` と `end` の 2 つの省略可能な prop を足しただけ。メインウィンドウと対話ウィンドウはタイトルバーのまま。文書ウィンドウにはタイトルバーの ‹ › とコマンドセンターがなくなる（履歴は Alt+← / → とマウスのサイドボタン、パレットは Ctrl+K）。
+- **文書ウィンドウのタイトルバーはタブ列（H19）。** Chrome と同じく、文書ウィンドウ（pop-out）では別の行のタイトルバーをやめ、タブ列をタイトルバーにした。アイコンと「Lattice」は出さない。分割したときは、ウィンドウの上端に接するタブ列（横に並んだペインはすべて、縦に重ねたペインは上のものだけ。`topStrips`、`src/layout/chrome.ts`）の空いた所でウィンドウをドラッグでき、ダブルクリックで最大化 / 元に戻す。最小化・最大化・閉じるは右上の角のペインのタブ列の右端（VS Code・Chrome と同じ位置）。上端の列がそろって 1 本のヘッダに見え、操作ボタンはいつもウィンドウの右上にある、という一番単純な形を選んだ。押下の処理はメインのタイトルバーと共通（`dragWindow`、`TitleBar.tsx`）で、ボタンとタブの上の押下は除く（タブのドラッグ・切り替えはタブのまま）。ドラッグの直後のクリックを最大化と取り違えない画面上の位置の判定もそのまま。操作ボタンはタブ列の中で右端に `sticky`（タブが多くて列がスクロールしても隠れない）。タブのドラッグが報告する列の矩形（`tab_drag_strips`）は列全体のままで、操作ボタンの上に落とすと列の末尾に入る。TabStrip には `onTitleDrag` と `end` の 2 つの省略可能な prop を足しただけ。メインウィンドウと対話ウィンドウはタイトルバーのまま。文書ウィンドウにはタイトルバーの ‹ › とコマンドセンターがなくなる（履歴は Alt+← / → とマウスのサイドボタン、パレットは Ctrl+K）。
 - **単語カードを Anki の基本形に（H20）。** 復習は 単語 → 意味 のカード 1 枚だけにした。表は見出し語（大きく）と IPA・品詞、裏は英語の「意味」（学習者向け英英辞典の 1 文）と「例文」（学習用に作った文）、その下に小さく日本語の意味と登録した文・出典。穴埋めのカードは append-only の migration で消した（その回答の記録も。意味のカードの予定と記録は残る。migration の test は内容で探す）。語ごとの 1 日 1 枚（sibling の埋め込み）は要らなくなったので消した。`vocab` job の prompt は「意味」を英英辞典の文体で、例文を登録した文でない新しい文で求め、定義と例文が無い・例文が登録した文と同じ答えは失敗にする。カードが出たら見出し語を読み上げる（Web Speech API の Windows の英語の声、オフライン。スピーカーのボタンと `r` でもう一度、設定 › 復習 で自動再生を切れる。英語の声がなければボタンを出さない）。既存の項目は一括で聞き直さず、単語帳の ⋯ に「意味と例文を再生成」を足した（実機の項目は 1 つで、古い定義でも読める）。CSV の裏もカードと同じ並び。詳細は §22。
-- **実機で見つけたもの（H7・H19・H20）。** ページの webview を持つウィンドウは webview が 2 つになり、`get_webview_window` では見つからない。ドラッグ中のウィンドウが動かず隠れもしなかった原因で、pop-out を開き直すと同じ名前で作り直そうとして「a webview with label `doc-1` already exists」になっていた。ウィンドウは `get_window` で探す（`tabdrag.rs`・`popout.rs`）。単語カードの音声ボタンは、最初の描画で声の一覧が空だとそれを覚えたままで出なかった（Chromium は一覧を後から埋め、`voiceschanged` は購読より先に来ることがある）。空の答えは覚えず、購読するときにもう一度見る（`src/speech.ts`）。ナビの閉じるボタンはライブラリの見出しの行に置き、上の空白をなくした。開発時は Vite が `.claude` を見ないようにした（agent の worktree を作るとアプリが再読み込みされていた）。
+- **実機で見つけたもの（H7・H19・H20）。** ページの webview を持つウィンドウは webview が 2 つになり、`get_webview_window` では見つからない。ドラッグ中のウィンドウが動かず隠れもしなかった原因で、pop-out を開き直すと同じ名前で作り直そうとして「a webview with label `doc-1` already exists」になっていた。ウィンドウは `get_window` で探す（`tabdrag.rs`・`popout.rs`）。単語カードの音声ボタンは、最初の描画で声の一覧が空だとそれを覚えたままで出なかった（Chromium は一覧を後から埋め、`voiceschanged` は購読より先に来ることがある）。空の答えは覚えず、購読するときにもう一度見る（`src/vocab/speech.ts`）。ナビの閉じるボタンはライブラリの見出しの行に置き、上の空白をなくした。開発時は Vite が `.claude` を見ないようにした（agent の worktree を作るとアプリが再読み込みされていた）。
 
 ## 29. フィードバック対応 3（2026-10-21）
 
@@ -807,8 +807,8 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 - **UI ライブラリ（H23）。** メニュー・右クリックのメニュー・ポップオーバーを Radix UI の primitive（`radix-ui` 1.7.0、スタイルなし、React 19 対応）に移した。`Menu`（⋯ とメニューのボタン: Reader / Page のツールバー・一覧の並び順・ナビのグループ・対話のスレッド・復習と単語帳の ⋯）は `DropdownMenu`、記事の行とタブの右クリック（H3、メニューキー・Shift+F10 も）は `ContextMenu`、`GroupPicker` とファセットのポップオーバーは `Popover`。`Popover.tsx` の `Menu`・`ContextMenu`・`Popover`・`MenuItem` は呼び出し側から見て同じ形のまま中身を差し替え、手書きの配置・外側の押下・Esc・フォーカスの処理は消した（`menuPoint` も）。見た目は既存の `.menu`・`.pv` を Radix の部品に付けて保つ。項目は `asChild` で `button` のまま。位置は Radix の fixed の wrapper が持つので、`.menu`・`.pv` 自身の `position: fixed` は外した。位置合わせと衝突の処理は Radix（Floating UI）。ポップオーバーとメニューは従来どおりアンカーのペインの中に収める（一覧から開いたものがページに重ならない）。右クリックは App の `.app` 全体を 1 つの `ContextMenu.Trigger` にし、行とタブ（`MENU_TARGETS`）の上の押下だけを受け、ほかの所は WebView 自身のメニューのまま。メニューキー・Shift+F10 は従来どおりその行・タブに contextmenu を送り、位置（要素の左下）をその event に入れる。j / k でもメニューの中を動ける（Radix が受けるのは矢印と先頭の文字だけなので、そこだけ足した）。対話のスレッドのメニューの幅は、portal で `.chat-h` の外に描かれるので `.menu.threads` に移した。Radix でできなかったこと: `onPlaced` は Menu と Popover の型から外されている（実行時は Popper に渡るので使っている。すべての e2e のメニューの spec がこれに依る）。`ContextMenu` には `open` の prop がなく、開くのは contextmenu の event だけ。`RadioItem` は `RadioGroup` が要るので、並び順などの選択は `Item` に `role="menuitemradio"` を付けた。bundle の JS は 666.46 kB（gzip 198.54 kB）から 768.83 kB（gzip 230.58 kB）。`react-remove-scroll-bar` は license のファイルを持たないので、`THIRD_PARTY_LICENSES` には同じ作者の `react-remove-scroll` の MIT の文を使う（`scripts/licenses.mjs`）。
 - **ポップオーバーの外側を押して閉じる（H23）。** e2e（mock）では、以前の `GroupPicker` も DOM の中の外側の押下では閉じていた（Reader のグループのチップ、行・タブの右クリック、パレットのどこから開いても）。閉じなかったのは押下がアプリの document に届かない所、つまりページの webview（ネイティブ）の上と考えている（推定。実機では確かめていない）。ページのクリックは backend が `browser-focus`（WebView2 の GotFocus）で知らせるので、App はそれを外側の押下（pointerdown と click）として流し直し、開いているメニューとポップオーバーはすべて閉じる。外側の押下と Esc で閉じるのは Radix の DismissableLayer。Esc は Radix が `preventDefault` するので、App の Esc（フィルタの解除など）は動かない（e2e）。アンカーのボタン（グループのチップ）の押下は外側に数えない（押せば閉じるトグルのまま）。閉じた後のフォーカスは、閉じる操作が別の所へ移していなければ元の場所（トリガー・行・タブ）に戻る。項目から開いたダイアログやポップオーバーからは奪わない。
 - **ナビのグループの ⋯（H24）。** 以前は右端ぞろえ（メニューの右端を ⋯ の右端に）で、ナビのペインの中に収めていた。`.menu` の最小幅 220px はナビの幅（既定 228px、狭められる）とほぼ同じなので、メニューはナビの左端まで伸び、ナビを狭めるとウィンドウの左の外まで出ていた（e2e で測ると ⋯ は x = 196〜218、メニューは x = 0〜220）。ナビのメニューはペインに収めず（`Menu` の `inPane={false}`）、⋯ の左端から右へ、一覧の上に開く。メニューの左端は ⋯ の左端から 8px 以内（e2e、ナビを 170px に狭めても同じ）。一覧を閉じていて Page の上に出るときは H22 の待ちが効く。そのため、ナビの `aria-haspopup` に乗ったときもページの静止画を先に撮る（以前はナビは撮らないペインだった）。
-- **ページを隠すとページにフォーカスが来る（H22・H23、実機）。** 実機ではメニューが一瞬（不透明度 0 のまま）開いて閉じ、まったく出なかった。メニューのためにページを静止画の後ろに隠すと WebView2 が GotFocus を出し（押してから約 100 ms）、`browser-focus` を「ページのクリック」として外側の押下に置き換えていたので、そのメニューを閉じていた。置き換えるのは、そのページが描かれていて、どの overlay も重なっていないときだけ（`pageClickable`、`src/Popover.tsx`）。重なっているページは隠れているので、押されることはない。実機の画面を約 120 fps で撮って確かめた: ⋯ はホバーの後に押すと 57 ms で一度に出る（ホバーなしでは静止画の取得を待つので約 260 ms）。タブの右クリックは 78 ms で一度に出る。
-- **メニューがページの裏に出る（H22、実機）。** Radix は位置を DOM に反映する前に `onPlaced` を呼ぶことがある（実機のマウス操作で、面はまだ窓の上に退避した位置 `(0, -200)` にある）。そこで測った矩形はどのページにも重ならないので、ページを隠さずにそのまま出し、ページの上の部分が裏に回っていた。退避位置にある間は次のフレームで測り直す（`useSurface`、`src/Popover.tsx`）。CDP のクリックや mock では最初から正しい位置で呼ばれて再現しないので、e2e はなく、実機（マウスで右クリックと ⋯）で確かめた。
+- **ページを隠すとページにフォーカスが来る（H22・H23、実機）。** 実機ではメニューが一瞬（不透明度 0 のまま）開いて閉じ、まったく出なかった。メニューのためにページを静止画の後ろに隠すと WebView2 が GotFocus を出し（押してから約 100 ms）、`browser-focus` を「ページのクリック」として外側の押下に置き換えていたので、そのメニューを閉じていた。置き換えるのは、そのページが描かれていて、どの overlay も重なっていないときだけ（`pageClickable`、`src/ui/Popover.tsx`）。重なっているページは隠れているので、押されることはない。実機の画面を約 120 fps で撮って確かめた: ⋯ はホバーの後に押すと 57 ms で一度に出る（ホバーなしでは静止画の取得を待つので約 260 ms）。タブの右クリックは 78 ms で一度に出る。
+- **メニューがページの裏に出る（H22、実機）。** Radix は位置を DOM に反映する前に `onPlaced` を呼ぶことがある（実機のマウス操作で、面はまだ窓の上に退避した位置 `(0, -200)` にある）。そこで測った矩形はどのページにも重ならないので、ページを隠さずにそのまま出し、ページの上の部分が裏に回っていた。退避位置にある間は次のフレームで測り直す（`useSurface`、`src/ui/Popover.tsx`）。CDP のクリックや mock では最初から正しい位置で呼ばれて再現しないので、e2e はなく、実機（マウスで右クリックと ⋯）で確かめた。
 - **フィードのフォルダ（H25）。** TechFeed はチャンネルごとに RSS を出すので、フィードが数十件になってもまとめて扱えるようにした。記事を集める「グループ」（G53、多対多）とは別物で、フィードを分けるだけ。多くの RSS リーダーと同じく、1 つのフィードは高々 1 つのフォルダに入り、フォルダは名前と順序を持ち入れ子にしない（`feed_folders` テーブルと `feeds.folder_id`、`ON DELETE SET NULL` なのでフォルダを消してもフィードは残りフォルダなしになる。名前は大文字小文字を区別せず一意）。ナビの「ソース › フィード」の中で、フォルダは開閉できる行として先に並び、配下のフィードをその下に字下げして出す。フォルダの数は配下のフィードの未読の合計（フィードの行と同じく未読。全件数は title に「未読 X 件 / 全 Y 件」）。フォルダなしのフィードはその後に並び、5 件を超えると従来どおり「すべてのフィード…」。フォルダの行を押すと一覧はそのフィードすべての記事になる（新しい scope `folder:ID`、`ArticleFilter::Folder`。`ArticleRow.folder_id` はフィードのフォルダを引くので、フィードを移せば記事もついてくる）。開閉はこの端末の localStorage（`lattice.feedFolders.collapsed`）。フォルダの行の右クリック（App の Radix `ContextMenu` の対象 `MENU_TARGETS` に `[data-folder]` を足した。ナビは `.app` の中なので、入れ子の ContextMenu は外側の capture に止められて開かない）と ⋯ で名前の変更と削除（確認ダイアログ）。フィードの管理画面に「フォルダ」の欄（作成・名前の変更・上下で並べ替え・削除）と、表にフォルダの列（select）と選択のチェックボックスを足し、選んだフィードを「フォルダへ移動…」でまとめて移せる。ナビへのドラッグ＆ドロップは見送った（select と一括移動で足りるため）。追加の欄は textarea にして、URL が 2 行以上なら検出を通さずそれぞれを feed の URL として順に登録する（「N 件を登録」。TechFeed のチャンネルの RSS は feed の URL そのもの）。1 行なら従来どおり検出して候補から登録。どちらも「追加先のフォルダ」（既定はフォルダなし）に入れる。すでに購読しているフィードもフォルダを指定すればそこへ移す。OPML の読み込みは backend（quick-xml）で `xmlUrl` を持つ outline を拾い、それを囲む `xmlUrl` のない outline の `text`（なければ `title`）を名前としてフォルダを作る（同じ名前があればそれに入れる。入れ子なら一番内側。同じ URL は 1 度だけ）。登録は従来どおり UI が 1 件ずつ行う。書き出し（新設の「OPML に書き出す」）は `exports/lattice-feeds-<UTC>.opml` に、フォルダを順に outline として配下のフィードを入れ、その後にフォルダなしのフィードを書く。パレットはフォルダを見つける（「フォルダ: 名前」のコマンドと `@` のソース。Tab で配下のフィードをソースのファセットに積む）。対話と検索の範囲の選択にもフォルダを出す。一覧のファセット「ソース」はフォルダで絞らない。ファセットは記事ごとの 1 つの値で OR を取り、値ごとの件数を出す形で、フォルダはソースの値をいくつも束ねたものなのでこの形に乗らない（別の次元を足すほどではなく、フォルダの scope とソースのファセットは組み合わせられる）。CLI と MCP は `--scope folder:ID`、`feeds` の出力に `folder_id` と `folder`（名前）。JSON エクスポートは `feed_folder` の行と、`feed` の `folder_id`、記事の `folder_id` を持つ。DB のバックアップはテーブルごと写すので変更なし。
 - **フォント（H27）。** 利用者の NoodleMap と同じ書体にした: 本文は Noto Sans JP（可変ウェイト、`@fontsource-variable/noto-sans-jp`）、明朝（記事のタイトル・Reader の本文・単語カード）は Shippori Mincho（400・600）、等幅は JetBrains Mono のまま。IBM Plex Sans JP・Source Serif 4・Noto Serif JP は外した。英文も Shippori Mincho の欧文で表示する。H6 のチップの 2 px の補正は IBM Plex Sans JP の字面が上に寄るためのものだったので外した（外さないと Noto Sans JP では 1.5〜2 px 下に寄る）。外した後、e2e のスクリーンショットから字面の上端・下端を取ると、チップ・ツールバー・ナビ・切り替えのどれも縦の中央から 1 px 以内。overlay（ページの中の翻訳）は IBM Plex Sans JP を名指ししていたのをやめた（ページの origin にはアプリのフォントが無い）。
 - **フィードの並べ替え（H26）。** フィードに `position` を足し、フォルダごと（フォルダなしのフィードはその中で）に順番を持たせた。追記の migration で既存のフィードには今の表示順（`coalesce(custom_title, title, url) COLLATE NOCASE`、同名は id）で番号を振るので、更新しても何も動かない。新しいフィードはフォルダなしの末尾、フォルダを指定すればそのフォルダの末尾。別のフォルダへ移したフィード（表の select、一括移動、購読し直し）も移った先の末尾で、もともとそこにあるものは動かない。`reorder_feeds(folder, ids)` は ids をその順でそのフォルダの先頭に置き（ほかのフォルダから移すのも同じ命令）、残りはその後に今の順で続く（フォルダの `reorder` と同じ形）。`feeds::list` がフォルダの順 → フィードの順 → フォルダなしで返すので、ナビ・パレット・範囲の選択・OPML の書き出し・CLI の `feeds` は何もしなくても同じ順になる（検索の範囲の選択は記事から作っていたので、フィードの順に並べるようにした）。ナビは「ソース › フィード」の行をひとつの縦の並びとして dnd-kit で並べ替える。フィードをフィードの上に落とすとその位置（上へ動かせばその前、下へならその後。フォルダをまたいでも同じ）、フォルダの行の上に落とすとそのフォルダの末尾（閉じたフォルダにも入れられる。フォルダの上に持っている間は行をずらさず、フォルダを強調する）。フォルダなしのフィードがひとつもないときは、ドラッグの間だけ末尾に「ここに置くとフォルダから出します」の枠を出す。フォルダの行も同じ並びの中でドラッグでき、落とした位置のフォルダの順になる（配下のフィードはついてくる。管理画面の上下ボタンは残した）。ドラッグは PointerSensor が 5px 動いてから始めるので、押して離すだけなら従来どおり範囲が切り替わり、ドラッグの後のクリックは dnd-kit が止める。キーボードは dnd-kit の KeyboardSensor を使わない（Space / Enter で持ち上げると、行のボタンを押す操作とぶつかる）。代わりにフォーカスした行が Alt+↑ / Alt+↓ で 1 つ動く（`keys.ts` に `moveUp` / `moveDown` として登録し、設定のショートカットで変えられる。Alt+↑↓ はほかに使っておらず、ページへは転送しない）。フィードはフォルダの端を越えると隣のフォルダへ（上なら前のフォルダの末尾、下なら次のフォルダの先頭、最後のフォルダの次はフォルダなし）入り、閉じたフォルダなら開き、フォーカスは動いた行に残る。並べ替えは画面にすぐ反映してから保存する（App が `placeFeeds` で手元の配列を並べ替え、保存後に読み直す）。dnd-kit の読み上げは使わず、読み上げ用の live region はページの外の要素へ出す（サイドバーは全画面に出るので、空の `status` が毎画面ふえるのを避けた）。管理画面の表は同じ順に並び、フォルダが 1 つでもあればフォルダの見出しの行を挟む。各行に上下ボタン（Alt+↑↓ と同じ動き）。ナビで並べ替えると管理画面も読み直す。順番の決め方（`feedStep`・`feedDrop`・`folderDrop`・`placeFeeds`）は `feedFolders.ts` の純粋な関数で、unit test がある。

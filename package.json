@@ -9,7 +9,7 @@
     "build": "tsc && npm run build:overlay && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "node --test src/*.test.ts src/i18n/*.test.ts src/overlay/*.test.ts scripts/*.test.mjs e2e/*.test.ts",
+    "test": "node --test src/**/*.test.ts scripts/*.test.mjs e2e/*.test.ts",
     "bump": "node scripts/version.mjs",
     "e2e": "tsc -p e2e && playwright test",
     "build:overlay": "vite build -c vite.overlay.config.ts",

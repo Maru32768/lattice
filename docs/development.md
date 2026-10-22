@@ -90,7 +90,8 @@ mise exec -- cargo install --path crates/lattice-cli
 | `crates/lattice-core` | Domain logic without Tauri: fetching, extraction, storage, jobs, translation, search, chat, backup. |
 | `crates/lattice-cli` | The `lattice-cli` command and its MCP server, on `lattice-core` alone. |
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser, pop-out windows. |
-| `src` | The React frontend. |
+| `src` | The React frontend, one folder per feature (`library`, `reader`, `browser`, `chat`, `search`, `feeds`, `import`, `quiz`, `vocab`, `jobs`, `settings`), the app shell (`app`) and pane layout (`layout`), with shared UI parts in `ui` and helpers in `lib`. `api.ts` (the IPC client) and `main.tsx` stay at the top. |
+| `src/i18n` | The UI text catalogs and the translation functions. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots, shortcut forwarding). |
 | `e2e` | Browser tests: the mock backend, sample data and Playwright specs. |
 | `infra/r2` | Terraform for the R2 backup bucket. |

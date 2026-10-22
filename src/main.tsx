@@ -8,7 +8,7 @@ import "@fontsource/shippori-mincho/600.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
 import "./theme.css";
-import App from "./App";
+import App from "./app/App";
 import { ja } from "./i18n/ja";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

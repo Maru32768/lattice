@@ -98,7 +98,7 @@ enum At {
     Zone(Zone),
 }
 
-/// A window's client area in physical pixels, its scale, and its strips (`measure` in `src/tabDrag.ts`).
+/// A window's client area in physical pixels, its scale, and its strips (`measure` in `src/layout/tabDrag.ts`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct Geom {
     #[serde(default)]

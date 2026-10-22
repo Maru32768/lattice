@@ -7,7 +7,7 @@ import type {
   VocabCapture, VocabEntry, VocabReviewItem,
 } from "../src/api.ts";
 import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, FOLDERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
-import { folderTree, placeFeeds } from "../src/feedFolders.ts";
+import { folderTree, placeFeeds } from "../src/feeds/feedFolders.ts";
 
 const articles = structuredClone(ARTICLES);
 const feeds = structuredClone(FEEDS);

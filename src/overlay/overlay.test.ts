@@ -15,7 +15,7 @@ Object.assign(globalThis, {
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
 const { assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
-const { DEFAULT_BINDINGS, pageKeys } = await import("../keys.ts");
+const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
 
 test("settle waits for DOM mutations to stop, up to a cap", async () => {
   const root = document.createElement("div");

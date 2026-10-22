@@ -15,10 +15,10 @@
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
 import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
-import type { PageKeys } from "../keys.ts";
+import type { PageKeys } from "../lib/keys.ts";
 import type { OverlayLabels } from "../api.ts";
-import { keyOf } from "../keyname.ts";
-import { captureIn, collapse, isWord } from "../vocab.ts";
+import { keyOf } from "../lib/keyname.ts";
+import { captureIn, collapse, isWord } from "../vocab/vocab.ts";
 
 interface Unit {
   source: string;

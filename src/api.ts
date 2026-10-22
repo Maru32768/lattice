@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PageKeys } from "./keys";
-import type { DragStart, WindowGeom } from "./tabDrag";
+import type { PageKeys } from "./lib/keys";
+import type { DragStart, WindowGeom } from "./layout/tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
@@ -669,7 +669,7 @@ export const windows = {
   ready: () => invoke<void>("window_ready"),
 };
 
-/** Tab drags across windows, which the backend runs (design-review §26, `src/tabDrag.ts`). */
+/** Tab drags across windows, which the backend runs (design-review §26, `src/layout/tabDrag.ts`). */
 export const tabDrag = {
   start: (start: DragStart) => invoke<void>("tab_drag_start", { start }),
   /** This window's strips, while a drag is on. */

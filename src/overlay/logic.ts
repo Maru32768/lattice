@@ -4,7 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
-import type { PageKeys } from "../keys.ts";
+import type { PageKeys } from "../lib/keys.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;

@@ -1,6 +1,6 @@
 //! Pop-out windows (G52, design-review §26): document windows (`doc-<n>`, one pane tree of tabs)
 //! and the chat window (`chat`). Each loads the same frontend, which reads its own label to know
-//! what to show (`src/windows.ts`) and keeps what it holds in its own storage. This module creates
+//! what to show (`src/app/windows.ts`) and keeps what it holds in its own storage. This module creates
 //! the windows where they last were, keeps their page webviews alive while they close, and quits
 //! the app with the main window.
 

@@ -18,12 +18,12 @@ use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Rect, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
 use tokio::sync::oneshot;
 
-/// Labels of the page webviews: `browser-<tab key>`. The key (`PageTab.key` in `src/layout.ts`)
+/// Labels of the page webviews: `browser-<tab key>`. The key (`PageTab.key` in `src/layout/layout.ts`)
 /// names the tab across windows and restarts; the UI's numeric tab ids are per window.
 const PREFIX: &str = "browser-";
 pub const RENDER_LABEL: &str = "renderer";
 pub(crate) const OVERLAY_JS: &str = include_str!("../overlay-dist/overlay.js");
-/// Keys are short and alphanumeric (`newKey` in `src/layout.ts`); anything else is not a tab of ours.
+/// Keys are short and alphanumeric (`newKey` in `src/layout/layout.ts`); anything else is not a tab of ours.
 const MAX_KEY: usize = 32;
 
 /// Hidden tabs keep their webview (instant switching, history and scroll kept) up to this many;
@@ -67,7 +67,7 @@ pub struct OverlayLabels {
     saved_word: String,
 }
 
-/// The app shortcuts the overlay forwards (`PageKeys` in `src/keys.ts`), passed through to the page.
+/// The app shortcuts the overlay forwards (`PageKeys` in `src/lib/keys.ts`), passed through to the page.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageKeys {
