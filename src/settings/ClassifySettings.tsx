@@ -9,7 +9,7 @@ export function ClassifySettings() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.autoClassify().then(setOn).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.autoClassify().then(setOn).catch((e: unknown) => setError(String(e))); }, []);
 
   async function toggle(value: boolean) {
     setOn(value);

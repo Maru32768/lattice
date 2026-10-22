@@ -21,6 +21,7 @@ export function useHistory(place: Place, restore: (p: Place) => void, enabled: b
     const next = go(hist, d);
     if (!next) return;
     const p = next.stack[next.at];
+    if (!p) return;
     setHist(next);
     if (placeKey(p) === here) return;
     setStepping(true);

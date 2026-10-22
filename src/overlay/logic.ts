@@ -157,7 +157,8 @@ export function assignTranslated(sources: string[], percent: number, seed: strin
   const out = Array.from({ length: n }, (_, i) => i < count);
   for (let i = n - 1; i > 0; i--) {
     const j = Math.abs(Math.trunc(s * (i + 1) * 2654435761)) % (i + 1);
-    [out[i], out[j]] = [out[j], out[i]];
+    const [a, b] = [out[i], out[j]];
+    if (a !== undefined && b !== undefined) [out[i], out[j]] = [b, a];
   }
   return out;
 }

@@ -46,7 +46,7 @@ export function UpdateNotice({ onOpenUrl }: { onOpenUrl: (url: string) => void }
       const info = await updates.info();
       const version = info.configured ? await updates.check() : null;
       if (version) setFound({ version, portable: info.portable });
-    })().catch((e) => console.warn("update check failed", e)); // offline at startup is normal; Settings shows errors
+    })().catch((e: unknown) => console.warn("update check failed", e)); // offline at startup is normal; Settings shows errors
   }, []);
 
   if (!found) return null;
@@ -69,7 +69,7 @@ export function UpdateSection({ onOpenUrl }: { onOpenUrl: (url: string) => void 
   const [error, setError] = useState<string | null>(null);
   const { percent, error: installError, install } = useInstall();
 
-  useEffect(() => { updates.info().then(setInfo).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { updates.info().then(setInfo).catch((e: unknown) => setError(String(e))); }, []);
 
   async function check() {
     setError(null);

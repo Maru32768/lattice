@@ -8,7 +8,7 @@ export function RenderSettings() {
   const [on, setOn] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.autoRender().then(setOn).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.autoRender().then(setOn).catch((e: unknown) => setError(String(e))); }, []);
 
   async function toggle(value: boolean) {
     setOn(value);

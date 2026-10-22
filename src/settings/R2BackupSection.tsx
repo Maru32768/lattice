@@ -21,7 +21,7 @@ export function R2BackupSection() {
   }
 
   useEffect(() => {
-    r2.status().then((s) => { setStatus(s); setForm(formOf(s)); }).catch((e) => setError(String(e)));
+    r2.status().then((s) => { setStatus(s); setForm(formOf(s)); }).catch((e: unknown) => setError(String(e)));
   }, []);
 
   // A backup started by the scheduler or the button can take minutes; follow it until it ends.

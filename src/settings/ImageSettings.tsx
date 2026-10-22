@@ -8,7 +8,7 @@ export function ImageSettings() {
   const [value, setValue] = useState<Value>({ save: true, max_mb: 5 });
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.imageSettings().then(setValue).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.imageSettings().then(setValue).catch((e: unknown) => setError(String(e))); }, []);
 
   async function save(next: Value) {
     setValue(next);

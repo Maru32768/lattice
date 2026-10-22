@@ -10,6 +10,7 @@ import { Favicon } from "../ui/Favicon";
 import { useT } from "../i18n";
 import { topStrips } from "./chrome";
 import { WindowControls, dragWindow } from "../app/TitleBar";
+import { withStarts } from "../lib/runs";
 
 type Update = (f: (l: Layout) => Layout) => void;
 
@@ -84,23 +85,23 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
 }) {
   const t = useT();
   if (n.kind === "split") {
-    const firsts = [index];
-    for (const c of n.children) firsts.push(firsts[firsts.length - 1] + panes(c).length);
+    // `sizes` has one share per child (layout.ts keeps them together).
+    const sizeOf = (i: number) => n.sizes[i] ?? 1 / n.children.length;
     return (
       <div className={`split ${n.dir === "row" ? "across" : "down"}`}>
-        {n.children.map((c, i) => {
-          const size = n.sizes[i - 1];
+        {withStarts(n.children, (c) => panes(c).length, index).map(({ item: c, start }, i) => {
+          const size = sizeOf(i - 1);
           return (
             <Fragment key={c.id}>
               {i > 0 && (
                 <SplitHandle dir={n.dir} size={size}
                   onSize={(s) => onLayout((l) => {
-                    const even = (size + n.sizes[i]) / 2;
+                    const even = (size + sizeOf(i)) / 2;
                     return resize(l, n.id, i - 1, Number.isNaN(s) ? even : s);
                   })} />
               )}
-              <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={firsts[i]} title={title} />
+              <div className="cell" style={{ flex: `${sizeOf(i)} 1 0px` }}>
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={start} title={title} />
               </div>
             </Fragment>
           );
@@ -175,7 +176,8 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   /** Where the drag ended, told to the window holding the tab: this window's dragged tab, or a torn-off window's only one. */
   function dropped(to: Slot) {
     const all = panes(layout.root).flatMap((p) => p.tabs);
-    const tab = ownRef.current?.tab ?? (all.length === 1 ? all[0].id : null);
+    const only = all.length === 1 ? all[0] : undefined;
+    const tab = ownRef.current?.tab ?? only?.id ?? null;
     if (tab == null) return;
     // A pane body is a target only in the window dragging the tab.
     if ("zone" in to) onLayout((l) => (to.label === me ? dropOn(l, tab, to.pane, to.zone) : l));

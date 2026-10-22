@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    /* Tests index results they just asserted on. */
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/**/*.test.ts", "src/vite-env.d.ts"],
+  "exclude": [],
+  "references": []
+}

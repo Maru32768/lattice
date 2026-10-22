@@ -2,6 +2,8 @@
   "extends": "../tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    /* Tests index results they just asserted on. */
+    "noUncheckedIndexedAccess": false,
     "types": ["node"]
   },
   "include": [".", "../src/vite-env.d.ts", "../playwright.config.ts"],

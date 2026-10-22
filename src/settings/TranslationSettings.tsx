@@ -18,9 +18,9 @@ export function TranslationSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.translateKeepTerms().then(setOn).catch((e) => setError(String(e)));
-    api.autoTranslate().then(setOnSave).catch((e) => setError(String(e)));
-    api.translateInstructions().then((text) => { setInstructions(text); setSaved(text); }).catch((e) => setError(String(e)));
+    api.translateKeepTerms().then(setOn).catch((e: unknown) => setError(String(e)));
+    api.autoTranslate().then(setOnSave).catch((e: unknown) => setError(String(e)));
+    api.translateInstructions().then((text) => { setInstructions(text); setSaved(text); }).catch((e: unknown) => setError(String(e)));
     api.translationPrompt().then(setPrompt).catch(() => {});
   }, []);
 

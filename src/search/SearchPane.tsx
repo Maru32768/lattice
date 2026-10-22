@@ -8,6 +8,7 @@ import { onMiddle } from "../lib/middle";
 import { FilterOptgroups } from "../library/FilterOptgroups";
 import type { FilterGroup } from "../library/scopes";
 import { useT, type PlainKey } from "../i18n";
+import { withStarts } from "../lib/runs";
 
 export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<string, PlainKey>;
 const METHODS: [SearchMethod, PlainKey][] = [["hybrid", "searchPane.hybrid"], ["lexical", "searchPane.lexical"], ["semantic", "searchPane.semantic"]];
@@ -88,9 +89,6 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   useEffect(() => { body.current?.querySelectorAll(".hit")[sel]?.scrollIntoView({ block: "nearest" }); }, [sel]);
 
   const flat = hits.flatMap((g) => g.hits);
-  /** Each article's first hit in `flat`. */
-  const starts = [0];
-  for (const g of hits) starts.push(starts[starts.length - 1] + g.hits.length);
   const ts = terms(result ? initial : "");
   const semanticOff = !!result?.semantic_error;
 
@@ -174,18 +172,18 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
       </header>
       <div className="list-body" ref={body}>
         {result && hits.length === 0 && !busy && <div className="empty"><div className="muted">{t("searchPane.none")}</div></div>}
-        {hits.map((g, gi) => {
+        {withStarts(hits, (g) => g.hits.length).map(({ item: g, start }) => {
           const a = articleById.get(g.article_id);
           return (
             <div className="sgrp" key={g.article_id}>
-              <div className="at">{a?.title ?? g.hits[0].article_title}</div>
+              <div className="at">{a?.title ?? g.hits[0]?.article_title}</div>
               <div className="am">
                 {a && <span>{a.feed_title ?? a.site_name ?? siteOf(a, t)}</span>}
                 {a && <span>{mmdd(a.saved_at)}</span>}
                 <span>{t("searchPane.matches", { length: g.hits.length })}</span>
               </div>
               {g.hits.map((h, hi) => {
-                const i = starts[gi] + hi;
+                const i = start + hi;
                 return (
                   <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
                     onClick={(e) => { onSel(i); onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey); }} {...onMiddle(() => onOpen(h, false, true))}

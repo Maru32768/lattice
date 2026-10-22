@@ -5,6 +5,7 @@ import { Popover } from "../ui/Popover";
 import { ActionKey, Icon, Kbd } from "../ui/Icon";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
+import { withStarts } from "../lib/runs";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
 
@@ -89,7 +90,7 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
       setQ(active.label);
     } else if (k === "Backspace" && !q && selected.length > 0) {
       e.preventDefault();
-      pick(selected[selected.length - 1]);
+      pick(selected.at(-1)!);
     }
   }
 
@@ -107,9 +108,6 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
     );
   };
 
-  /** Each section's first option in `flat`. */
-  const starts = [0];
-  for (const s of sections) starts.push(starts[starts.length - 1] + s.opts.length);
   return (
     <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={isTags ? 372 : 300} onClose={onClose}>
       <div onKeyDown={keys} className="facet-pv" tabIndex={isTags ? undefined : -1} data-autofocus={isTags ? undefined : true}>
@@ -144,10 +142,10 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
           </>
         )}
         <div className="pv-list">
-          {sections.map((s, si) => (
+          {withStarts(sections, (s) => s.opts.length).map(({ item: s, start }) => (
             <div key={s.title} role="group" aria-label={s.title || t(DIM_LABELS[dim])}>
               {s.title && <div className="ph">{s.title}<span>{s.note}</span></div>}
-              {s.opts.map((o, oi) => option(o, starts[si] + oi))}
+              {s.opts.map((o, oi) => option(o, start + oi))}
               {"hidden" in s && s.hidden! > 0 && <button className="opt zero more" onClick={() => setMore(true)}>{t("facetPopover.showMore", { hidden: s.hidden! })}</button>}
               {s.opts.length === 0 && <div className="pv-empty">{t("facetPopover.none")}</div>}
             </div>

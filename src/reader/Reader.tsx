@@ -490,7 +490,7 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
     await api.vocabAdd(c.capture).then((r) => {
       setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
       onVocabChanged();
-    }).catch((e) => setCap({ ...c, error: String(e) }));
+    }).catch((e: unknown) => setCap({ ...c, error: String(e) }));
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
 
@@ -585,7 +585,7 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
             <GroupChips groups={groups} ids={a.groups} onToggle={onGroup} onCreate={onCreateGroup} request={groupRequest} />
             {!failed && (
               <label className="chip sel-chip" title={t("reader.difficultyHint")}>
-                <Dif d={a.difficulty} />{a.difficulty ? t(DIFFICULTY_LABELS[a.difficulty - 1]) : t("common.difficulty")}
+                <Dif d={a.difficulty} />{t(DIFFICULTY_LABELS[(a.difficulty ?? 0) - 1] ?? "common.difficulty")}
                 <select value={a.difficulty ?? ""} aria-label={t("common.difficulty")} onChange={(e) => onDifficulty(e.target.value ? Number(e.target.value) : null)}>
                   <option value="">{t("library.difficultyNone")}</option>
                   {DIFFICULTY_LABELS.map((l, i) => <option key={l} value={i + 1}>{i + 1} {t(l)}</option>)}

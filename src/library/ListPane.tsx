@@ -218,7 +218,7 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
     setPicked((p) => (p ? pick(order.map((a) => a.id), p, anchor, id, range) : [id]));
     setAnchor(id);
   };
-  const rescore = (run: () => Promise<number>) => run().then((n) => setRescored(t("listPane.rescoreQueued", { n })), (e) => setRescored(t.msg(String(e))));
+  const rescore = (run: () => Promise<number>) => run().then((n) => setRescored(t("listPane.rescoreQueued", { n })), (e: unknown) => setRescored(t.msg(String(e))));
   const renderGroup = (g: Group<ArticleRow>, depth: number): React.ReactNode => (
     <div key={g.key} role="group" aria-label={g.label || undefined}>
       {g.label && <div className={`grp-h d${depth}`}><span className="label">{g.label}</span><span className="n">{g.articles.length}</span></div>}

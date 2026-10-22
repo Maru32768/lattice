@@ -93,7 +93,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
 
   const fail = (e: unknown) => setError(String(e));
   const loadThreads = () => api.chatThreads().then(setThreads).catch(fail);
-  useEffect(() => { api.chatThreads().then(setThreads).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.chatThreads().then(setThreads).catch((e: unknown) => setError(String(e))); }, []);
   // oxlint-disable-next-line react/exhaustive-effect-dependencies -- new turns are drawn below: follow them
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages, pending]);
   const [requestSeq, setRequestSeq] = useState(request?.seq);
@@ -121,7 +121,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
   async function openThread(id: number | null) {
     setError(null);
     setThreadId(id);
-    setMessages(id == null ? [] : await api.chatMessages(id).catch((e) => { fail(e); return []; }));
+    setMessages(id == null ? [] : await api.chatMessages(id).catch((e: unknown) => { fail(e); return []; }));
   }
 
   async function removeThread() {
@@ -136,7 +136,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
 
   const scope = () => scopeOf(scopeKey, article, open);
 
-  async function ask(e: React.FormEvent) {
+  async function ask(e: React.SyntheticEvent) {
     e.preventDefault();
     const q = question.trim();
     const s = scope();

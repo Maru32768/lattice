@@ -42,7 +42,7 @@ export function groupArticles<A extends Groupable>(articles: A[], mode: "feed" |
   if (mode === "genre") return byGenre(articles, t);
   const rank = (id: number | null) => (id == null ? -1 : feedOrder.indexOf(id) + 1 || feedOrder.length + 1);
   return groupBy(articles, (a) => [`f:${a.feed_id ?? ""}`, a.feed_title ?? t("common.manual")])
-    .sort((x, y) => rank(x.articles[0].feed_id) - rank(y.articles[0].feed_id) || x.label.localeCompare(y.label))
+    .sort((x, y) => rank(x.articles[0]?.feed_id ?? null) - rank(y.articles[0]?.feed_id ?? null) || x.label.localeCompare(y.label))
     .map((f) => ({ ...f, children: byGenre(f.articles, t) }));
 }
 

@@ -133,7 +133,7 @@ export function ModelSettings() {
   }
 
   useEffect(() => {
-    api.llmSettings().then((s) => { setLlm(s); setSlots(toSlots(s.chain)); }).catch((e) => setError(String(e)));
+    api.llmSettings().then((s) => { setLlm(s); setSlots(toSlots(s.chain)); }).catch((e: unknown) => setError(String(e)));
   }, []);
 
   function update(i: number, patch: Partial<Slot>) {

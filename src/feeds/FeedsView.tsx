@@ -62,7 +62,7 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
           {t("feedsView.pickImage")}
           <input type="file" className="vh" accept={ICON_TYPES} onChange={(e) => { pick(e.target.files?.[0]); e.target.value = ""; }} />
         </label>
-        {f.has_icon && <button type="button" className="btn sm" onClick={() => setIcon(async () => null)}>{t("feedsView.siteIcon")}</button>}
+        {f.has_icon && <button type="button" className="btn sm" onClick={() => setIcon(() => Promise.resolve(null))}>{t("feedsView.siteIcon")}</button>}
         <span className="muted">{t("feedsView.iconFormats")}</span>
       </div>
       {error && <p role="alert" className="error-text">{t.msg(error)}</p>}
@@ -99,7 +99,7 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   const [confirming, setConfirming] = useState<number | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
 
-  const load = () => Promise.all([api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders)]).catch((e) => setError(String(e)));
+  const load = () => Promise.all([api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders)]).catch((e: unknown) => setError(String(e)));
 
   async function run(task: () => Promise<string | null>, fail = setError) {
     setBusy(true);
@@ -109,7 +109,7 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
     try {
       setStatus(await task());
     } catch (e) {
-      fail(String(e));
+      fail(e instanceof Error ? e.message : String(e));
     }
     setBusy(false);
     void load();
@@ -120,9 +120,10 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   const detect = (u: string) => run(async () => {
     setCandidates([]);
     const found = await api.discoverFeeds(u.trim());
-    if (found.length === 0) throw t("feedsView.notFound");
+    const [first] = found;
+    if (!first) throw new Error(t("feedsView.notFound"));
     setCandidates(found);
-    setPicked(found[0].url);
+    setPicked(first.url);
     return null;
   }, setAddError);
 
@@ -319,7 +320,7 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
             <tbody>
               {shown.length === 0 && <tr><td colSpan={7} className="muted">{feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}</td></tr>}
               {shown.map((f, i) => [
-                folders.length > 0 && f.folder_id !== (i > 0 ? shown[i - 1].folder_id : undefined) && (
+                folders.length > 0 && f.folder_id !== shown[i - 1]?.folder_id && (
                   <tr key={`folder-${f.folder_id}`} className="grp">
                     <th colSpan={7} scope="colgroup"><Icon name="folder" size="sm" />{f.folder ?? t("feedsView.noFolder")}</th>
                   </tr>

@@ -17,7 +17,7 @@ export function FilterEditor({ feedId, onSaved }: { feedId: number | null; onSav
   const id = feedId ?? "global";
 
   useEffect(() => {
-    api.feedFilter(feedId).then((v) => { setF(v); setSaved(v); }).catch((e) => setError(String(e)));
+    api.feedFilter(feedId).then((v) => { setF(v); setSaved(v); }).catch((e: unknown) => setError(String(e)));
   }, [feedId]);
 
   const setRule = (i: number, r: Partial<FilterRule>) => setF((x) => ({ ...x, rules: x.rules.map((old, j) => (j === i ? { ...old, ...r } : old)) }));
@@ -110,9 +110,9 @@ export function RejectedList({ feed, onChanged }: { feed: FeedRow; onChanged: ()
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => api.feedRejected(feed.id).then(setRows).catch((e) => setError(String(e)));
+  const load = () => api.feedRejected(feed.id).then(setRows).catch((e: unknown) => setError(String(e)));
   useEffect(() => {
-    api.feedRejected(feed.id).then(setRows).catch((e) => setError(String(e)));
+    api.feedRejected(feed.id).then(setRows).catch((e: unknown) => setError(String(e)));
   // oxlint-disable-next-line react/exhaustive-effect-dependencies -- a new count (a poll, a re-evaluation) means a new list
   }, [feed.id, feed.rejected]);
 

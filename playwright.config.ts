@@ -20,5 +20,6 @@ export default defineConfig({
     { name: "chromium", use: { locale: "ja-JP" }, testIgnore: "english.spec.ts" },
     { name: "english", use: { locale: "en-US" }, testMatch: "english.spec.ts" },
   ],
+  globalSetup: "./e2e/warm.ts",
   webServer: { command: "npx vite -c e2e/vite.config.ts", url: `http://localhost:${port}`, reuseExistingServer: !process.env.CI },
 });

@@ -1,8 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import * as extract from "../../scripts/i18n-extract.mjs";
-
-const { scan, sourceFiles } = extract as unknown as { scan: (file: string) => { file: string; line: number; ja: string }[]; sourceFiles: () => string[] };
+import { scan, sourceFiles } from "../../scripts/i18n-extract.mjs";
 
 /** Japanese that is data, not UI text: it stays the same in every display language. */
 const ALLOWED: Record<string, string[]> = {};

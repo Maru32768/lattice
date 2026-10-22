@@ -361,7 +361,7 @@ function ensureSaveButton() {
         btn.textContent = state.config.labels.saved_word;
         saveTimer = window.setTimeout(hideSave, 1200);
       })
-      .catch((e) => {
+      .catch((e: unknown) => {
         console.warn("[lattice] save word failed", e);
         hideSave();
       });
@@ -507,7 +507,7 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
   shown.forEach(renderOriginal);
   const html = `<!DOCTYPE html>${document.documentElement.outerHTML}`;
   shown.forEach(render);
-  invoke("overlay_snapshot", { nonce, html }).catch((e) => console.warn("[lattice] snapshot failed", e));
+  invoke("overlay_snapshot", { nonce, html }).catch((e: unknown) => console.warn("[lattice] snapshot failed", e));
 }
 
 if (window.top === window && !window.__lattice) {

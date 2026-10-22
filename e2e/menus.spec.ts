@@ -47,7 +47,10 @@ test("a menu over no webview is drawn in the frame it first appears (H22)", asyn
   const first = app.evaluate(() => new Promise<string>((done) => {
     const frame = () => {
       const m = document.querySelector(".menu");
-      if (!m) return requestAnimationFrame(frame);
+      if (!m) {
+        requestAnimationFrame(frame);
+        return;
+      }
       done(getComputedStyle(m).opacity);
     };
     requestAnimationFrame(frame);

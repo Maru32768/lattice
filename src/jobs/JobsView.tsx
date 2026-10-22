@@ -46,7 +46,7 @@ export function JobsView() {
   const [error, setError] = useState<string | null>(null);
   const [only, setOnly] = useState<string | null>(null);
 
-  const load = () => api.jobOverview().then(setData).catch((e) => setError(String(e)));
+  const load = () => api.jobOverview().then(setData).catch((e: unknown) => setError(String(e)));
   const reload = useEffectEvent(() => void load());
   // Jobs report every article; coalesce reloads. The poll catches backoffs that expire silently.
   useEffect(() => {

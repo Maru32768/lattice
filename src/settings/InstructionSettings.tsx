@@ -35,7 +35,7 @@ export function InstructionSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.customInstructions().then((v) => { setValue(v); setSaved(v); }).catch((e) => setError(String(e)));
+    api.customInstructions().then((v) => { setValue(v); setSaved(v); }).catch((e: unknown) => setError(String(e)));
   }, []);
 
   async function save() {

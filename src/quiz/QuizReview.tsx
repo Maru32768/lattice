@@ -50,7 +50,7 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
     setAnswered([]);
   });
   useEffect(() => {
-    Promise.all([api.reviewQueue(), api.reviewOverview()]).then(([q, o]) => { setItems(q); setOverview(o); }).catch((e) => setError(String(e)));
+    Promise.all([api.reviewQueue(), api.reviewOverview()]).then(([q, o]) => { setItems(q); setOverview(o); }).catch((e: unknown) => setError(String(e)));
   }, []);
 
   const item = items?.[at];

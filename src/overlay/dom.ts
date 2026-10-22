@@ -115,7 +115,7 @@ function normalizeStream(tokens: Token[]): { text: string; chars: Char[] } {
       if (s && e) for (const c of t.text) push(c, s, e);
     } else {
       // Index by UTF-16 offset: Range offsets into Text nodes are UTF-16 based.
-      for (let i = 0; i < t.text.length; i++) push(t.text[i], { container: t.node, offset: i }, { container: t.node, offset: i + 1 });
+      for (let i = 0; i < t.text.length; i++) push(t.text.charAt(i), { container: t.node, offset: i }, { container: t.node, offset: i + 1 });
     }
   }
   if (ws) chars.push({ value: " ", start: (ws as { start: Boundary }).start, end: (ws as { end: Boundary }).end });
@@ -255,7 +255,8 @@ function hydrate(span: SentenceSpan): DocumentFragment {
   const f = cloneFragment(span.latticeOriginal!);
   const numbers = span.latticeAtomNumbers ?? [];
   collectAtoms(f).forEach((clone, i) => {
-    const live = span.latticeAtoms?.get(numbers[i]);
+    const n = numbers[i];
+    const live = n === undefined ? undefined : span.latticeAtoms?.get(n);
     if (live) clone.replaceWith(live);
   });
   return f;

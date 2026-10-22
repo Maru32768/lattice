@@ -221,7 +221,8 @@ export default function App() {
       if (flatHits.length) setHitSel(Math.max(0, Math.min(flatHits.length - 1, hitSel + d)));
     } else if (order.length) {
       const i = order.findIndex((a) => a.id === (cursor ?? selectedId));
-      setCursor(order[i < 0 ? (d > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + d))].id);
+      const next = order[i < 0 ? (d > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + d))];
+      if (next) setCursor(next.id);
     }
     revealCursor();
   }
@@ -570,6 +571,7 @@ export default function App() {
     onStep: (d: 1 | -1) => {
       const at = docHits.findIndex((h) => h.block_id === cur.focus?.block);
       const h = docHits[Math.max(0, Math.min(docHits.length - 1, at + d))];
+      if (!h) return;
       setHitSel(flatHits.indexOf(h));
       openHit(h);
     },

@@ -6,14 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build:overlay && vite",
-    "build": "tsc && npm run build:overlay && vite build",
+    "build": "tsc && tsc -p tsconfig.test.json && npm run build:overlay && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "node --test src/**/*.test.ts scripts/*.test.mjs e2e/*.test.ts",
     "bump": "node scripts/version.mjs",
     "e2e": "tsc -p e2e && playwright test",
     "build:overlay": "vite build -c vite.overlay.config.ts",
-    "lint": "oxlint --deny-warnings"
+    "lint": "oxlint --deny-warnings && node scripts/react-compiler.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

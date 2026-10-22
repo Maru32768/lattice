@@ -10,7 +10,7 @@ export function ExportSection() {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   /** Export only this group's articles; null for the whole library. */
   const [group, setGroup] = useState<number | null>(null);
-  useEffect(() => { api.listGroups().then(setGroups).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.listGroups().then(setGroups).catch((e: unknown) => setError(String(e))); }, []);
 
   async function exportJson() {
     setError(null);

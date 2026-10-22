@@ -6,11 +6,11 @@ import { useT } from "../i18n";
 
 /** Keys 1–4 grade a revealed card (outside text fields). */
 export function gradeKey(e: React.KeyboardEvent, shown: boolean, onGrade: (g: Grade) => void) {
-  const i = "1234".indexOf(e.key);
-  if (!shown || i < 0 || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) return;
+  const g = GRADES["1234".indexOf(e.key)];
+  if (!shown || !g || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) return;
   e.preventDefault();
   e.stopPropagation();
-  onGrade(GRADES[i].grade);
+  onGrade(g.grade);
 }
 
 /** もう一度 / 難しい / 正解 / 簡単, with the next intervals in review; `hint` is preselected and focused (else 正解). */
@@ -18,12 +18,15 @@ export function GradeRow({ hint, previews, onGrade }: { hint: Grade | null; prev
   const t = useT();
   return (
     <div className="qz-grades" role="group" aria-label={hint ? t("quizCard.gradeChange") : t("quizCard.gradeAsk")}>
-      {GRADES.map(({ grade, label }, i) => (
-        <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
-          title={`${label} (${i + 1})`}>
-          {t(label)}{previews && <span className="ivl">{formatInterval(previews[i], t)}</span>}
-        </button>
-      ))}
+      {GRADES.map(({ grade, label }, i) => {
+        const preview = previews?.[i];
+        return (
+          <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
+            title={`${label} (${i + 1})`}>
+            {t(label)}{preview !== undefined && <span className="ivl">{formatInterval(preview, t)}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }

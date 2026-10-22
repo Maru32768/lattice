@@ -27,7 +27,7 @@ const lineEnd = (t: string, i: number) => {
 const clamp = (t: string, i: number) => Math.max(lineStart(t, i), Math.min(i, lineEnd(t, i) - 1));
 const firstNonBlank = (t: string, i: number) => {
   let j = lineStart(t, i);
-  while (j < lineEnd(t, i) && /\s/.test(t[j])) j++;
+  while (j < lineEnd(t, i) && /\s/.test(t.charAt(j))) j++;
   return j;
 };
 
@@ -129,7 +129,8 @@ export function vimKey(vim: Vim, buf: Buffer, key: string): Result {
   }
   if (vim.pending) return same();
 
-  if (key in motions) return same({}, { text: t, cursor: motions[key](t, i) });
+  const motion = motions[key];
+  if (motion) return same({}, { text: t, cursor: motion(t, i) });
   switch (key) {
     case "d": case "c": case "y": case "g": return same({ pending: key });
     case "i": return insert(i);
@@ -141,7 +142,7 @@ export function vimKey(vim: Vim, buf: Buffer, key: string): Result {
     case "x": {
       if (i >= lineEnd(t, i)) return same();
       const text = splice(t, i, i + 1);
-      return edit({ text, cursor: clamp(text, i) }, { register: { text: t[i], linewise: false } });
+      return edit({ text, cursor: clamp(text, i) }, { register: { text: t.charAt(i), linewise: false } });
     }
     case "p": {
       const r = vim.register;

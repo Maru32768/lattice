@@ -86,8 +86,19 @@ export function panes(n: Node): Pane[] {
   return n.kind === "pane" ? [n] : n.children.flatMap(panes);
 }
 
+/** The first pane in reading order. */
+function firstPane(n: Node): Pane {
+  for (let at: Node = n; ; ) {
+    if (at.kind === "pane") return at;
+    const [child] = at.children;
+    // `without` collapses a split left with fewer than two children, and parsing refuses one.
+    if (!child) throw new Error(`split ${at.id} has no children`);
+    at = child;
+  }
+}
+
 export const paneById = (l: Layout, id: Id) => panes(l.root).find((p) => p.id === id);
-export const focusedPane = (l: Layout) => paneById(l, l.focused) ?? panes(l.root)[0];
+export const focusedPane = (l: Layout) => paneById(l, l.focused) ?? firstPane(l.root);
 export const activeTab = (p: Pane | undefined) => p?.tabs.find((t) => t.id === p.active);
 /** The pane holding tab `id`, and the tab. */
 export function tabById(l: Layout, id: Id): { pane: Pane; tab: Tab } | undefined {
@@ -116,7 +127,8 @@ function without(n: Node, id: Id): Node | null {
   if (kept.length === n.children.length) {
     return kept.every(([c], i) => c === n.children[i]) ? n : { ...n, children: kept.map(([c]) => c) };
   }
-  if (kept.length === 1) return kept[0][0];
+  const [first, second] = kept;
+  if (first && !second) return first[0];
   const total = kept.reduce((s, [, w]) => s + w, 0);
   return { ...n, children: kept.map(([c]) => c), sizes: kept.map(([, w]) => w / total) };
 }
@@ -126,7 +138,7 @@ function removePane(l: Layout, id: Id): Layout {
   const i = before.findIndex((p) => p.id === id);
   const root = without(l.root, id) ?? { kind: "pane" as const, id, tabs: [], active: null };
   const after = panes(root);
-  const focused = l.focused === id ? (after[Math.min(i, after.length - 1)] ?? after[0]).id : l.focused;
+  const focused = l.focused === id ? (after[Math.min(i, after.length - 1)] ?? firstPane(root)).id : l.focused;
   return { ...l, root, focused };
 }
 
@@ -183,7 +195,8 @@ export function cycle(l: Layout, d: 1 | -1): Layout {
   const n = p.tabs.length;
   if (n < 2) return l;
   const i = p.tabs.findIndex((t) => t.id === p.active);
-  return activate(l, p.tabs[(i + d + n) % n].id);
+  const next = p.tabs[(i + d + n) % n];
+  return next ? activate(l, next.id) : l;
 }
 
 export function close(l: Layout, tab: Id): Layout {
@@ -193,7 +206,7 @@ export function close(l: Layout, tab: Id): Layout {
   const i = pane.tabs.findIndex((t) => t.id === tab);
   const tabs = pane.tabs.toSpliced(i, 1);
   if (tabs.length === 0) return removePane(l, pane.id);
-  const active = pane.active === tab ? (tabs[i] ?? tabs[i - 1]).id : pane.active;
+  const active = pane.active === tab ? (tabs[i] ?? tabs[i - 1])?.id ?? null : pane.active;
   return replacePane(l, { ...pane, tabs, active });
 }
 
@@ -215,7 +228,8 @@ export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
   }
   let out = replacePane(l, { ...target, tabs: target.tabs.toSpliced(index, 0, hit.tab), active: tab });
   const rest = from.tabs.filter((t) => t.id !== tab);
-  out = rest.length ? replacePane(out, { ...from, tabs: rest, active: from.active === tab ? rest[0].id : from.active }) : removePane(out, from.id);
+  const [first] = rest;
+  out = first ? replacePane(out, { ...from, tabs: rest, active: from.active === tab ? first.id : from.active }) : removePane(out, from.id);
   return focus(out, to);
 }
 
@@ -227,7 +241,7 @@ export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
     const i = n.children.findIndex((c) => c.kind === "pane" && c.id === id);
     // Same direction as the parent: a sibling, not a nested split.
     if (i >= 0 && n.dir === dir) {
-      const half = n.sizes[i] / 2;
+      const half = (n.sizes[i] ?? 1 / n.children.length) / 2;
       return { ...n, children: n.children.toSpliced(before ? i : i + 1, 0, fresh), sizes: n.sizes.toSpliced(i, 1, half, half) };
     }
     return { ...n, children: n.children.map(rec) };
@@ -334,7 +348,7 @@ export function parse(json: string): Layout | null {
     if (!root) return null;
     const all = panes(root);
     const f = s.focused;
-    const focused = isNum(f) && all.some((p) => p.id === f) ? f : all[0].id;
+    const focused = isNum(f) && all.some((p) => p.id === f) ? f : firstPane(root).id;
     return { root, focused, next: Math.max(0, ...ids) + 1 };
   } catch {
     return null;

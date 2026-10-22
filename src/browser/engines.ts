@@ -3,7 +3,9 @@
 
 export type EngineId = "google" | "duckduckgo" | "bing" | "brave" | "kagi" | "custom";
 
-export const ENGINES: { id: Exclude<EngineId, "custom">; label: string; search: string; home: string }[] = [
+type Engine = { id: Exclude<EngineId, "custom">; label: string; search: string; home: string };
+/** The first is the default. */
+export const ENGINES: [Engine, ...Engine[]] = [
   { id: "duckduckgo", label: "DuckDuckGo", search: "https://duckduckgo.com/?q=%s", home: "https://duckduckgo.com/" },
   { id: "google", label: "Google", search: "https://www.google.com/search?q=%s", home: "https://www.google.com/" },
   { id: "bing", label: "Bing", search: "https://www.bing.com/search?q=%s", home: "https://www.bing.com/" },

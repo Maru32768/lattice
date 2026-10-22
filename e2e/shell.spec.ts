@@ -24,7 +24,10 @@ test("the ⋯ menu draws its text in the frame it first appears (H8)", async ({ 
   const first = app.evaluate(() => new Promise<boolean>((done) => {
     const frame = () => {
       const m = document.querySelector(".menu");
-      if (!m) return requestAnimationFrame(frame);
+      if (!m) {
+        requestAnimationFrame(frame);
+        return;
+      }
       done([...m.querySelectorAll("button")].every((b) => document.fonts.check(`12px "IBM Plex Sans JP"`, b.textContent ?? "")));
     };
     requestAnimationFrame(frame);

@@ -9,7 +9,7 @@ const row = (id: number, p: Partial<ArticleRow> = {}): ArticleRow => ({
   id, original_url: `https://x.dev/${id}`, canonical_url: null, domain: "x.dev", title: `T${id}`, author: null, site_name: null,
   published_at: null, language: null, saved_at: "2026-10-16T00:00:00.000Z", fetch_status: "ok", extraction_status: "ok",
   last_error: null, read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null,
-  difficulty_manual: false, feed_id: null, feed_title: null, folder_id: null, thin: false, relevance: null, relevance_reason: null, relevance_stale: false, ...p,
+  difficulty_manual: false, feed_id: null, feed_title: null, folder_id: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...p,
 });
 const all = [
   row(1, { genre: "Database", tags: ["postgres", "mvcc"], feed_id: 7, feed_title: "Planet PostgreSQL", difficulty: 4, groups: [1, 2] }),
@@ -98,7 +98,7 @@ test("labels and backend filters", () => {
 test("kept: an article read while listed stays in that view only", () => {
   const unread = { kind: "unread" } as const;
   const state = f({ state: ["unread"] });
-  const read1 = all.map((a) => (a.id === 1 ? { ...a, read_status: "read" } : a));
+  const read1 = all.map((a): ArticleRow => (a.id === 1 ? { ...a, read_status: "read" } : a));
   assert.deepEqual(ids(listed(read1, unread, NO_FACETS, NOW, NO_KEPT).shown), [3, 4]);
   const k = keep(NO_KEPT, viewKey(unread, NO_FACETS), 1);
   assert.deepEqual(ids(listed(read1, unread, NO_FACETS, NOW, k).shown), [1, 3, 4]);

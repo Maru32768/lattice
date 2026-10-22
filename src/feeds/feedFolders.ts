@@ -44,9 +44,7 @@ export function moved(ids: number[], id: number, d: -1 | 1): number[] {
   const i = ids.indexOf(id);
   const j = i + d;
   if (i < 0 || j < 0 || j >= ids.length) return ids;
-  const out = [...ids];
-  [out[i], out[j]] = [out[j], out[i]];
-  return out;
+  return ids.toSpliced(i, 1).toSpliced(j, 0, id);
 }
 
 /** One folder's feeds in order (`folder` null: the feeds in none), as `reorder_feeds` takes them (H26). */
@@ -70,9 +68,10 @@ function placed(o: FeedOrder, feed: number, at: number): FeedOrder {
 /** Alt+↑ / ↓ on a feed: one place in its folder, and past either end into the next group (last there going up, first going down); null at the very ends. */
 export function feedStep(groups: FeedOrder[], feed: number, d: -1 | 1): FeedOrder | null {
   const g = groups.findIndex((o) => o.ids.includes(feed));
-  if (g < 0) return null;
-  const i = groups[g].ids.indexOf(feed) + d;
-  if (i >= 0 && i < groups[g].ids.length) return placed(groups[g], feed, i);
+  const group = groups[g];
+  if (!group) return null;
+  const i = group.ids.indexOf(feed) + d;
+  if (i >= 0 && i < group.ids.length) return placed(group, feed, i);
   const next = groups[g + d];
   return next ? placed(next, feed, d < 0 ? next.ids.length : 0) : null;
 }

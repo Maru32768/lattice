@@ -19,7 +19,7 @@ export function QuizSettings() {
   const [error, setError] = useState<string | null>(null);
   const [auto, setAuto] = useState(autoplay);
 
-  useEffect(() => { api.reviewSettings().then(setValue).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.reviewSettings().then(setValue).catch((e: unknown) => setError(String(e))); }, []);
 
   async function save(next: ReviewSettings) {
     setValue(next);

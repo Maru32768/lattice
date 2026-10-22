@@ -10,8 +10,8 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => api.listGenres().then(setGenres).catch((e) => setError(String(e)));
-  useEffect(() => { api.listGenres().then(setGenres).catch((e) => setError(String(e))); }, []);
+  const load = () => api.listGenres().then(setGenres).catch((e: unknown) => setError(String(e)));
+  useEffect(() => { api.listGenres().then(setGenres).catch((e: unknown) => setError(String(e))); }, []);
 
   async function act(task: Promise<void>, done: string) {
     setError(null);

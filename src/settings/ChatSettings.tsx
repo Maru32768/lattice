@@ -17,7 +17,7 @@ export function ChatSettings() {
   const [vim, setVim] = useState(vimEnabled);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.chatBudget().then(setBudget).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.chatBudget().then(setBudget).catch((e: unknown) => setError(String(e))); }, []);
 
   async function save(b: ChatBudget) {
     setBudget(b);

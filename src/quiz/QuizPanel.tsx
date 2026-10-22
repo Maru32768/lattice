@@ -48,10 +48,10 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   const restart = () => quiz && keep({ quizId: quiz.id, at: 0, grades: new Map() });
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => api.quiz(id).then(setQuiz, (e) => setError(String(e)));
+  const load = () => api.quiz(id).then(setQuiz, (e: unknown) => setError(String(e)));
   // The job's progress reaches the view by article-changed; reload the quiz when it moves.
   useEffect(() => {
-    api.quiz(id).then(setQuiz, (e) => setError(String(e)));
+    api.quiz(id).then(setQuiz, (e: unknown) => setError(String(e)));
   // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the job's state is the trigger, not an input
   }, [id, job?.status, job?.attempt_count]);
 

@@ -14,7 +14,7 @@ export function StorageSection() {
   const [moving, setMoving] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
 
-  useEffect(() => { api.settings().then(setSettings).catch((e) => setError(String(e))); }, []);
+  useEffect(() => { api.settings().then(setSettings).catch((e: unknown) => setError(String(e))); }, []);
 
   async function pick() {
     setError(null);
@@ -53,7 +53,7 @@ export function StorageSection() {
       {moved && (
         <div role="status" className="msg moved">
           <p>{t.rich("storageSection.moved", { code: <code>{moved}</code>, code2: <code>{settings?.data_dir}</code> })}</p>
-          <button className="btn pri" onClick={() => api.restart().catch((e) => setError(String(e)))}>{t("storageSection.restartNow")}</button>
+          <button className="btn pri" onClick={() => api.restart().catch((e: unknown) => setError(String(e)))}>{t("storageSection.restartNow")}</button>
         </div>
       )}
       {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}

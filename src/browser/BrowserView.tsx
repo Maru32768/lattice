@@ -161,7 +161,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   const open = useEffectEvent((b: Bounds, focus?: string) => {
     opening.current = true;
     opened.set(id, tab.seq);
-    return browser.open(id, tab.url, b, focus).catch((e) => onError(String(e))).finally(() => {
+    return browser.open(id, tab.url, b, focus).catch((e: unknown) => onError(String(e))).finally(() => {
       opening.current = false;
     });
   });
@@ -268,7 +268,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
 
   const { url, loading } = tab;
   const shown = saved && view && act && view.article.id === saved.id ? view : null;
-  const copyUrl = () => navigator.clipboard.writeText(url).catch((e) => onError(String(e)));
+  const copyUrl = () => navigator.clipboard.writeText(url).catch((e: unknown) => onError(String(e)));
   return (
     <div className="doc">
       <div className="docbar pg">

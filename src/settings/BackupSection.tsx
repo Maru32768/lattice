@@ -11,7 +11,7 @@ export function BackupSection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.settings().then((s) => { setSettings(s); setKeep(s.backup_keep); }).catch((e) => setError(String(e)));
+    api.settings().then((s) => { setSettings(s); setKeep(s.backup_keep); }).catch((e: unknown) => setError(String(e)));
   }, []);
 
   async function backup() {

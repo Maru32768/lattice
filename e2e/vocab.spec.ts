@@ -119,7 +119,7 @@ async function speech(page: Page, voices: { name: string; lang: string; localSer
       cancel: () => {},
     });
     Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
-    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { constructor(public text: string) {} }, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { text: string; constructor(text: string) { this.text = text; } }, configurable: true });
   }, voices);
   await page.goto("/");
   await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });

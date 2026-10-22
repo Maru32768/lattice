@@ -19,6 +19,28 @@ export default defineConfig({
     "typescript/no-unsafe-member-access": "error",
     "typescript/no-unsafe-return": "error",
     "typescript/switch-exhaustiveness-check": ["error", { considerDefaultExhaustiveForUnions: true }],
+    // Type-aware checks beyond the categories: values that stringify as [object Object], throws of non-errors.
+    "typescript/no-base-to-string": "error",
+    "typescript/restrict-template-expressions": "error",
+    "typescript/restrict-plus-operands": "error",
+    "typescript/only-throw-error": "error",
+    "typescript/prefer-promise-reject-errors": "error",
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/require-await": "error",
+    "typescript/return-await": "error",
+    "typescript/no-deprecated": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/unbound-method": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-redundant-type-constituents": "error",
+    "typescript/no-duplicate-type-constituents": "error",
+    "typescript/no-meaningless-void-operator": "error",
+    "typescript/no-unnecessary-boolean-literal-compare": "error",
+    "typescript/no-unnecessary-template-expression": "error",
+    "typescript/no-unnecessary-type-arguments": "error",
+    "eslint/eqeqeq": ["error", "always", { null: "ignore" }],
+    "react/no-danger": "error",
+    "react/jsx-no-target-blank": "error",
 
     // The new JSX transform needs no React in scope; CSS and font imports are side effects.
     "react/react-in-jsx-scope": "off",
@@ -42,6 +64,11 @@ export default defineConfig({
       rules: {
         "eslint/no-restricted-imports": ["error", { paths: [{ name: "../i18n", importNames: ["t"], message: "Render code takes the translator from useT(), or text goes stale after a language switch." }] }],
       },
+    },
+    {
+      // The mock backend rejects as Tauri's invoke does: with the error string.
+      files: ["e2e/mock.ts"],
+      rules: { "typescript/only-throw-error": "off" },
     },
     {
       // node:test tracks the promise test() returns.

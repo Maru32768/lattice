@@ -37,7 +37,8 @@ export function GroupPicker({ groups, selected, onToggle, onCreate, anchor, onCl
   }
 
   const pick = (i: number) => {
-    if (i < shown.length) onToggle(shown[i].id, !selected.includes(shown[i].id));
+    const g = shown[i];
+    if (g) onToggle(g.id, !selected.includes(g.id));
     else if (canCreate) void create();
   };
 
