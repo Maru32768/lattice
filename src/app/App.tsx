@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { emit, emitTo, listen } from "@tauri-apps/api/event";
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, browser, isLocal, tabDrag, windows, type ArticleRow, type ArticleSort, type ArticleView, type Citation, type FeedRow, type FolderRow, type GroupRow, type RelevanceStatus, type SearchHit, type SearchResult, type VocabContext, type VocabEntry } from "../api";
-import { BrowserView, forgetOpened, overlayLabels, overlayOf, type PageLang } from "../browser/BrowserView";
+import { api, isLocal, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
+import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, translationProgress, type LanguageMode } from "../reader/mixed";
 
 import { ImportView, type ImportTab } from "../import/ImportView";
@@ -12,28 +11,24 @@ import { FeedsView } from "../feeds/FeedsView";
 import { JobsView } from "../jobs/JobsView";
 import { QuizReview } from "../quiz/QuizReview";
 import { VocabView } from "../vocab/VocabView";
-import { wordMarks } from "../vocab/vocab";
 import { replayWord } from "../vocab/speech";
 import { ChatPane } from "../chat/ChatPane";
-import { mergeDocs, openDocs, type OpenDoc } from "../chat/chat";
+import { openDocs } from "../chat/chat";
 import { filterGroups, filterKey } from "../library/scopes";
-import { flatten, groupArticles, type Group } from "../library/groups";
-import { NO_FACETS, NO_KEPT, activeDims, countBy, inScope, keep, listed, relaxations, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "../library/library";
-import { filterHits, groupHits, terms, type SearchMethod } from "../search/search";
+import { NO_FACETS, NO_KEPT, activeDims, keep, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "../library/library";
+import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
 import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
-import { Nav, NavRail, type NavCounts, type Screen } from "../library/Nav";
+import { Nav, NavRail, type Screen } from "../library/Nav";
 import { ListPane, ListRail, type Grouping } from "../library/ListPane";
 import { getEngine, homeOf } from "../browser/engines";
-import { ContextMenu, CoverContext, coverRect, openOverlays, pageClickable, useCover, type MenuItem } from "../ui/Popover";
+import { ContextMenu, CoverContext, coverRect, type MenuItem } from "../ui/Popover";
 import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
-import { Kbd } from "../ui/Icon";
-import { feedGroups, folderTree, placeFeeds, type FeedOrder } from "../feeds/feedFolders";
-import { PREFIX_MS, actionFor, getBindings, keyLabel, pageKeys, useBindings, type ActionId } from "../lib/keys";
-import { keyOf } from "../lib/keyname";
-import { focusPane, paneAfter, paneOf, stepNav } from "../layout/panes";
+import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
+import { keyLabel, type ActionId } from "../lib/keys";
+import { paneOf, stepNav } from "../layout/panes";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TitleBar } from "./TitleBar";
@@ -41,87 +36,26 @@ import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } fro
 import { DocArea } from "../layout/DocArea";
 import { hostOf as siteOf } from "../ui/Favicon";
 import {
-  LAYOUT_KEY, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, focus as focusLayout, focusedPane, load as loadLayout, navigated, open, pageByKey,
-  save as saveLayout, serialize, single, split, tabById, update, type Doc, type Id, type Layout, type Pane, type PageTab, type Tab,
+  activate, activeTab, allTabs, close, closeWhere, cycle, focusedPane, open, split, tabById, update, type Id, type Pane, type PageTab, type Tab,
 } from "../layout/layout";
 import type { TabLabel } from "../layout/TabStrip";
-import { CHAT, MAIN, MAIN_REQUEST, hostOf, nextDocLabel, openWindows, pageLangOnStart, storageKeys, toMain, toWindow, windowKey, type MainRequest } from "./windows";
+import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
-import { NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history";
+import { placeDoc, type Place } from "./history";
+import { HOST, IS_MAIN, type Where } from "./host";
+import { FirstRun, PrefixHint } from "./FirstRun";
+import { useLibrary } from "./useLibrary";
+import { importantMinOf, useLibraryView } from "./useLibraryView";
+import { useActivity, useUnreadBadge } from "./useActivity";
+import { useVocab } from "./useVocab";
+import { useSearch } from "./useSearch";
+import { useDocuments } from "./useDocuments";
+import { usePageLang } from "./usePageLang";
+import { useChatBridge } from "./useChatBridge";
+import { dockChat, useWindows } from "./useWindows";
+import { useHistory } from "./useHistory";
+import { MENU_TARGETS, usePaneFocus, usePrefix, useShortcuts } from "./useKeyboard";
 import "./App.css";
-
-/** Which window this frontend runs in (design-review §26): the main shell, a document pop-out (one pane tree) or the chat window. */
-const HOST = hostOf(getCurrentWindow().label);
-const IS_MAIN = HOST.kind === "main";
-/** Where this window's layout lives; a pop-out's key also marks it as open. */
-const STORAGE = HOST.kind === "main" ? LAYOUT_KEY : windowKey(HOST.kind === "doc" ? HOST.label : CHAT);
-
-/** Where a document opens: the focused pane's active tab, or a new tab (Ctrl / middle click, Ctrl+T). */
-type Where = "active" | "new";
-
-const RECENT_KEY = "lattice.recentSearches";
-function loadRecent(): string[] {
-  try {
-    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
-    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-const MARKS_KEY = "lattice.vocabMarks";
-/** Whether saved words are underlined in the Reader (default on). */
-function loadMarks(): boolean {
-  try {
-    return localStorage.getItem(MARKS_KEY) !== "off";
-  } catch {
-    return true;
-  }
-}
-
-const JOB_POLL_MS = 10_000;
-/** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
-/** What has a right-click menu: list rows and document tabs (H3). */
-const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
-
-/** States board #8: an empty library. */
-function FirstRun({ onPaste, onFeeds, onImport, onMarkdown, onSettings }: {
-  onPaste: () => void; onFeeds: () => void; onImport: () => void; onMarkdown: () => void; onSettings: () => void;
-}) {
-  const t = useT();
-  return (
-    <section className="first-run" aria-label={t("app.firstRun")}>
-      <h1>{t("app.firstRun")}</h1>
-      <div className="first-cards">
-        <button className="btn" onClick={onPaste}><span className="h">{t("app.pasteUrl")}</span><span className="muted"><Kbd>Ctrl</Kbd><Kbd>K</Kbd>{t("app.pasteHint")}</span></button>
-        <button className="btn" onClick={onFeeds}><span className="h">{t("common.addFeed")}</span><span className="muted">{t("app.feedHint")}</span></button>
-        <button className="btn" onClick={onImport}><span className="h">{t("common.bulkImport")}</span><span className="muted">{t("app.bulkHint")}</span></button>
-        <button className="btn" onClick={onMarkdown}><span className="h">{t("common.importMarkdown")}</span><span className="muted">{t("app.markdownHint")}</span></button>
-      </div>
-      <p className="muted">{t.rich("app.needsProvider", { link: <button className="linkish" onClick={onSettings}>{t("app.setUp")}</button> })}</p>
-    </section>
-  );
-}
-
-/** Shown while the pane prefix is armed. */
-function PrefixHint({ prefix }: { prefix: string }) {
-  const t = useT();
-  const ref = useRef<HTMLDivElement>(null);
-  useCover(ref, true);
-  return (
-    <div ref={ref} className="prefix-hint" role="status">
-      <Kbd>{prefix}</Kbd>
-      <span><Kbd>←</Kbd><Kbd>→</Kbd><Kbd>↑</Kbd><Kbd>↓</Kbd> <Kbd>h</Kbd><Kbd>j</Kbd><Kbd>k</Kbd><Kbd>l</Kbd>{t("app.prefixMove")}</span>
-      <span><Kbd>o</Kbd>{t("app.prefixNext")}</span>
-      <span><Kbd>%</Kbd>{t("app.prefixSplitRight")}</span>
-      <span><Kbd>"</Kbd>{t("app.prefixSplitDown")}</span>
-      <span><Kbd>x</Kbd>{t("app.prefixClose")}</span>
-      <span><Kbd>c</Kbd><Kbd>n</Kbd><Kbd>p</Kbd>{t("app.prefixTabs")}</span>
-      <span><Kbd>z</Kbd>{t("app.prefixFocus")}</span>
-    </div>
-  );
-}
 
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
@@ -130,23 +64,22 @@ export default function App() {
     // The backend's choice wins over the cached one; the first start stores the detected language.
     api.uiLanguage().then((l) => (isLang(l) ? setDisplayLang(l) : api.setUiLanguage(displayLang()))).catch(() => {});
   }, []);
-  const [articles, setArticles] = useState<ArticleRow[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [feeds, setFeeds] = useState<FeedRow[]>([]);
-  /** Feed folders (H25), in the user's order. */
-  const [folders, setFolders] = useState<FolderRow[]>([]);
-  const [tags, setTags] = useState<{ name: string; count: number }[]>([]);
-  const [genres, setGenres] = useState<{ name: string; count: number }[]>([]);
-  /** The user's groups (G53); `groups` below is the list's grouping. */
-  const [groupRows, setGroupRows] = useState<GroupRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const fail = (e: unknown) => setError(String(e));
+
+  const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } = useLibrary(fail);
+  const { jobFailures, reviewDue, loadReview } = useActivity();
+  const { vocab, marksOn, setMarks, marks, loadVocab, saveWordSeq, saveWord } = useVocab(() => void loadReview());
+  const { layout, setLayout, layoutRef, views, setViews, viewsRef, loadView, refreshSaved, forgetPage } = useDocuments(fail);
+  const [pageLang, setPageLang] = usePageLang(t, fail);
+
   /** The palette asked this Reader tab to open its group picker; `seq` grows with each ask. */
   const [groupRequest, setGroupRequest] = useState<{ tab: Id; seq: number } | null>(null);
-  const [relevance, setRelevance] = useState<RelevanceStatus | null>(null);
-  const [sort, setSort] = useState<ArticleSort>("saved_desc");
-  const sortRef = useRef(sort);
-  sortRef.current = sort;
   const [group, setGroup] = useState<Grouping>("none");
-  const [scope, setScopeState] = useState<Scope>({ kind: "all" });
+  const [scopeState, setScopeState] = useState<Scope>({ kind: "all" });
+  const importantMin = importantMinOf(relevance);
+  // 重要 always uses the current threshold, also when it was picked under an earlier one.
+  const scope: Scope = scopeState.kind === "important" && importantMin != null && scopeState.min !== importantMin ? { kind: "important", min: importantMin } : scopeState;
   const [facets, setFacets] = useState<Facets>(NO_FACETS);
   const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreenState] = useState<Screen>("library");
@@ -157,248 +90,32 @@ export default function App() {
   };
   const [navOpen, setNavOpen] = useState(true);
   const [listOpen, setListOpen] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
-  /** The chat is in its own window (main only; restored from storage at startup). */
-  const [chatWindow, setChatWindow] = useState(() => IS_MAIN && openWindows(storageKeys()).includes(CHAT));
-  /** The chat window's この記事: the article open in the main window, as it announces it. */
-  const [remoteArticle, setRemoteArticle] = useState<{ id: number; title: string } | null>(null);
   const [widths, setWidths] = useState<PaneWidths>(loadWidths);
-  useEffect(() => saveWidths(widths), [widths]);
-  const [jobFailures, setJobFailures] = useState(0);
-  const [reviewDue, setReviewDue] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  /** Open palette's initial query. */
-  const [palette, setPalette] = useState<string | null>(null);
-  /** The palette was opened for a new tab (Ctrl+T): its pick opens in one. Cleared once it has closed (its pick runs first). */
-  const paletteNew = useRef(false);
-  useEffect(() => { if (palette == null) paletteNew.current = false; }, [palette]);
+  const setWidth = (pane: Resizable, w: number) => {
+    const next = { ...widths, [pane]: w };
+    setWidths(next);
+    saveWidths(next);
+  };
+  /** The open palette's initial query, and whether it was opened for a new tab (Ctrl+T): its pick opens in one. */
+  const [palette, setPalette] = useState<{ initial: string; newTab: boolean } | null>(null);
+  const openPalette = () => setPalette({ initial: "", newTab: false });
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
   const [importTab, setImportTab] = useState<ImportTab>("urls");
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
-  const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
   /** The article waiting for delete confirmation, and the view that asked. */
   const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
-  /** An open context menu (a list row, a tab), and what gets focus back when it closes. */
   /** The items of the right-click menu, set by the row or tab it opens on. */
   const [ctxItems, setCtxItems] = useState<(MenuItem | string)[]>([]);
   /** グループに追加… from a context menu: the picker under the row or tab. */
   const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
-
-  // Search mode of the list pane
-  const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
-  const [method, setMethod] = useState<SearchMethod>("hybrid");
-  const [hitSel, setHitSel] = useState(0);
-  const [searchFocus, setSearchFocus] = useState(0);
-  const [recent, setRecent] = useState<string[]>(loadRecent);
-
-  // Documents: the pane tree with its tabs, the loaded article views, the pages' state
-  const [layout, setLayout] = useState<Layout>(() => loadLayout(STORAGE));
-  useEffect(() => { if (HOST.kind !== "chat") saveLayout(layout, STORAGE); }, [layout]);
-  const layoutRef = useRef(layout);
-  layoutRef.current = layout;
-  /** Article views of the open Reader tabs, by article id. */
-  const [views, setViews] = useState<Map<number, ArticleView>>(() => new Map());
-  const viewsRef = useRef(views);
-  viewsRef.current = views;
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
-  const [pageLang, setPageLangState] = useState<PageLang>({ mode: "original", percent: 70 });
-  /** One choice for every window's pages (the overlay config is shared): a change is announced to the others, main sends it on. */
-  const setPageLang = (l: PageLang) => {
-    setPageLangState(l);
-    void emit("page-lang", l);
-  };
-  // Every page's overlay follows the Page language choice, its tooltips the display language.
-  useEffect(() => {
-    if (pageLangOnStart(HOST) !== "send") return;
-    const o = overlayOf(pageLang);
-    browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch((e) => setError(String(e)));
-  }, [pageLang, t]);
-  // Broadcasts (`emit`) reach every window's `listen`; what is addressed to one window (`emitTo`) is
-  // heard through that window's own listener, since a global `listen` matches any target.
-  useEffect(() => {
-    const subs = [
-      listen<PageLang>("page-lang", (e) => setPageLangState(e.payload)),
-      listen<{ id: number; title: string } | null>("doc-current", (e) => setRemoteArticle(e.payload)),
-      ...(HOST.kind === "chat" ? [getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 })))] : []),
-      ...(HOST.kind === "chat" ? [listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload))] : []),
-    ];
-    if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
-    if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
-    return () => subs.forEach((s) => void s.then((f) => f()));
-  }, []);
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const [percent, setPercent] = useState(70);
 
-  const fail = (e: unknown) => setError(String(e));
-  const refresh = () => {
-    setNow(Date.now());
-    return Promise.all([
-      api.listArticles({ kind: "all" }, sortRef.current).then((a) => { setArticles(a); setLoaded(true); }),
-      api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders), api.listTags().then(setTags), api.listGenres().then(setGenres), api.listGroups().then(setGroupRows), api.relevanceStatus().then(setRelevance),
-    ]).catch(fail);
-  };
-  /** Whether the page a tab shows is in the Index. */
-  const refreshSaved = (tab: Id, url: string) =>
-    api.articleForUrl(url).then((a) => setLayout((l) => update(l, tab, { saved: a?.id ?? null }))).catch(() => {});
-  /** A page event names its tab by webview key; the layout op takes the tab id. */
-  const onPage = (key: string, f: (l: Layout, tab: PageTab) => Layout) => setLayout((l) => {
-    const t = pageByKey(l, key);
-    return t ? f(l, t) : l;
-  });
-  // Background jobs (bulk import fetches) report every article; throttle list reloads to one
-  // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
-  const refreshTimer = useRef(0);
-  const refreshSoon = () => {
-    if (refreshTimer.current) return;
-    refreshTimer.current = window.setTimeout(() => { refreshTimer.current = 0; void refresh(); }, 500);
-  };
-  const loadView = (id: number) => api.getArticle(id).then((v) => {
-    if (v) setViews((m) => new Map(m).set(id, v));
-    // Gone from the library (deleted elsewhere): its tabs go too.
-    else setLayout((l) => closeWhere(l, (t) => t.kind === "reader" && t.articleId === id));
-  }).catch(fail);
-  const loadJobs = () => api.jobOverview()
-    .then((o) => setJobFailures(o.counts.filter((c) => c.state === "failed").reduce((n, c) => n + c.count, 0)))
-    .catch(() => {});
-
-  useEffect(() => {
-    void loadJobs();
-    const poll = window.setInterval(loadJobs, JOB_POLL_MS);
-    let jobTimer = 0;
-    const subs = [
-      listen<number>("article-changed", (e) => {
-        if (viewsRef.current.has(e.payload)) void loadView(e.payload);
-        refreshSoon();
-        clearTimeout(jobTimer);
-        jobTimer = window.setTimeout(loadJobs, 1000);
-      }),
-      listen<{ tab: string; url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }>("browser-page", (e) => {
-        const { tab, url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = e.payload;
-        onPage(tab, (l, t) => navigated(l, t.id, { url, loading, canGoBack, canGoForward }));
-        const t = pageByKey(layoutRef.current, tab);
-        if (!loading && t) void refreshSaved(t.id, url);
-      }),
-      listen<{ tab: string; title: string }>("browser-title", (e) => onPage(e.payload.tab, (l, t) => update(l, t.id, { title: e.payload.title }))),
-      // A click in a page focuses its pane, as a click in a Reader does through pointerdown.
-      listen<{ tab: string }>("browser-focus", (e) => {
-        // The click never reached this document: replay it as a press outside every open menu and
-        // popover (Radix dismisses a left press on its click). Not for a page under an overlay: hiding
-        // it behind its still gives it the focus too, which would close the menu that hid it.
-        if (pageClickable(e.payload.tab)) {
-          document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-          document.body.click();
-        }
-        const t = pageByKey(layoutRef.current, e.payload.tab);
-        const hit = t && tabById(layoutRef.current, t.id);
-        if (!hit) return;
-        setLayout((l) => focusLayout(l, hit.pane.id));
-        setKbPane(null);
-        pointerPane.current = "doc";
-      }),
-    ];
-    return () => {
-      clearInterval(poll);
-      clearTimeout(jobTimer);
-      subs.forEach((s) => void s.then((f) => f()));
-    };
-  }, []);
-  useEffect(() => { void refresh(); }, [sort]);
-  const loadReview = () => api.reviewOverview().then((o) => setReviewDue(o.due)).catch(() => {});
-  useEffect(() => {
-    void loadReview();
-    const poll = window.setInterval(loadReview, JOB_POLL_MS);
-    return () => clearInterval(poll);
-  }, []);
-
-  // Vocabulary (G56): the book, its marks in the Reader, and the 単語を登録 shortcut.
-  const [vocab, setVocab] = useState<VocabEntry[]>([]);
-  const [marksOn, setMarksOn] = useState(loadMarks);
-  const [saveWordSeq, setSaveWordSeq] = useState(0);
-  const marks = useMemo(() => (marksOn ? wordMarks(vocab) : null), [vocab, marksOn]);
-  const loadVocab = () => {
-    void api.vocabList().then(setVocab).catch(() => {});
-    void loadReview();
-  };
-  const setMarks = (on: boolean) => {
-    setMarksOn(on);
-    try {
-      localStorage.setItem(MARKS_KEY, on ? "on" : "off");
-    } catch {
-      // Blocked storage: the choice lasts for this session only.
-    }
-  };
-  useEffect(() => {
-    loadVocab();
-    // The job filled in meanings, or a page's overlay saved a word.
-    const sub = listen("vocab-changed", loadVocab);
-    return () => void sub.then((f) => f());
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once
-  }, []);
-  const openContext = (c: VocabContext) => {
-    if (c.article_id != null) openReader(c.article_id, c.block_id == null ? undefined : { block: c.block_id, label: t("vocabCard.sourceLabel"), terms: [], tone: "cite" });
-    else if (c.url) openPage(c.url, c.sentence);
-  };
-
-  // Reader tabs and saved Page tabs (their summary, H13) need their article views; views of closed tabs are dropped.
-  const readerIds = useMemo(() => [...new Set(allTabs(layout).flatMap((t) => (t.kind === "reader" ? [t.articleId] : t.saved != null ? [t.saved] : [])))], [layout]);
-  const readerKey = readerIds.join(",");
-  useEffect(() => {
-    for (const id of readerIds) if (!viewsRef.current.has(id)) void loadView(id);
-    setViews((m) => ([...m.keys()].every((id) => readerIds.includes(id)) ? m : new Map([...m].filter(([id]) => readerIds.includes(id)))));
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the set of open articles
-  }, [readerKey]);
-  // Page tabs that closed (or show a Reader now) give up their webview.
-  const pageIds = useMemo(() => allTabs(layout).filter((t) => t.kind === "page").map((t) => t.key), [layout]);
-  const pageKey = pageIds.join(",");
-  const prevPages = useRef<string[]>([]);
-  useEffect(() => {
-    for (const id of prevPages.current) if (!pageIds.includes(id)) browser.close(id).catch(() => {});
-    prevPages.current = pageIds;
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the set of page tabs
-  }, [pageKey]);
-
-  // ---- derived library --------------------------------------------------------------------
-  const { scoped, shown } = useMemo(() => listed(articles, scope, facets, now, kept), [articles, scope, facets, now, kept]);
-  // The sidebar's order: each folder's feeds, then the loose ones.
-  const feedOrder = useMemo(() => feedGroups(folderTree(feeds, folders, new Map())).flatMap((o) => o.ids), [feeds, folders]);
-  const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t, feedOrder)), [shown, group, t, feedOrder]);
-  const order = useMemo(() => flatten(groups), [groups]);
-  // 重要 shows once there is a profile to judge against (or scores from an earlier one).
-  const importantMin = relevance && (relevance.has_profile || relevance.scored > 0) ? relevance.threshold : null;
-  useEffect(() => {
-    if (scope.kind === "important" && importantMin != null && scope.min !== importantMin) setScopeState({ kind: "important", min: importantMin });
-  }, [scope, importantMin]);
-  const counts: NavCounts = useMemo(() => {
-    const unread = articles.filter((a) => a.read_status === "unread");
-    return {
-      recent: articles.filter((a) => inScope(a, { kind: "recent" }, now)).length,
-      important: importantMin == null ? 0 : articles.filter((a) => inScope(a, { kind: "important", min: importantMin }, now)).length,
-      unread: unread.length,
-      favorites: articles.filter((a) => a.favorite).length,
-      all: articles.length,
-      manual: articles.filter((a) => a.feed_id == null).length,
-      genres: [...countBy(articles, "genres")].sort((a, b) => (a[0] == null ? 1 : b[0] == null ? -1 : b[1] - a[1])),
-      feedUnread: countBy(unread, "feeds"),
-    };
-  }, [articles, now, importantMin]);
-  // The taskbar badge follows the unread count; reading through a list changes it in bursts.
-  useEffect(() => {
-    if (!loaded || !IS_MAIN) return;
-    const t = window.setTimeout(() => api.setUnreadBadge(counts.unread).catch(() => {}), 500);
-    return () => window.clearTimeout(t);
-  }, [counts.unread, loaded]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds]);
-  const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
-  const hitGroups = useMemo(() => {
-    if (!search?.result) return [];
-    const ids = new Set(shown.map((a) => a.id));
-    return groupHits(filterHits(search.result.hits, method, ids));
-  }, [search, method, shown]);
-  const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
+  const { scoped, shown, groups, order, counts, relax, articleById } = useLibraryView({ articles, feeds, folders, groupRows, scope, facets, kept, group, importantMin, now, t });
+  useUnreadBadge(counts.unread, loaded && IS_MAIN);
+  const { search, exit: exitSearch, method, setMethod, hitSel, setHitSel, searchFocus, recent, start: startSearch, enter, hitGroups, flatHits } = useSearch(shown, fail);
   const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
   const searchGroups = useMemo(() => filterGroups(groupRows, genres, feeds, [], t, folders), [groupRows, genres, feeds, t, folders]);
 
@@ -408,44 +125,29 @@ export default function App() {
   const savedOf = (t: PageTab) => (t.saved == null ? null : articleById.get(t.saved) ?? null);
   const current: ArticleRow | null = cur?.kind === "reader" ? curView?.article ?? articleById.get(cur.articleId) ?? null : cur?.kind === "page" ? savedOf(cur) : null;
   const selectedId = current?.id ?? null;
-  const chatArticle = HOST.kind === "chat" ? remoteArticle : current && { id: current.id, title: current.title ?? current.original_url };
-  // The chat window's この記事 follows the main window's open article.
-  useEffect(() => {
-    if (IS_MAIN) void emit("doc-current", chatArticle);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per article
-  }, [chatArticle?.id, chatArticle?.title]);
-  // The chat's 開いている記事: main's tabs and each document window's (they report theirs), sent on to the chat window.
   const ownOpen = useMemo(() => openDocs(allTabs(layout), (id) => {
     const a = views.get(id)?.article ?? articleById.get(id);
     return a ? a.title ?? a.original_url : null;
   }), [layout, views, articleById]);
-  const [docWindowsOpen, setDocWindowsOpen] = useState<Record<string, OpenDoc[]>>({});
-  const [mainOpen, setMainOpen] = useState<OpenDoc[]>([]);
-  const chatOpenDocs = useMemo(() => (HOST.kind === "chat" ? mainOpen : mergeDocs([ownOpen, ...Object.values(docWindowsOpen)])), [ownOpen, docWindowsOpen, mainOpen]);
-  const ownOpenKey = JSON.stringify(ownOpen);
-  const chatOpenKey = JSON.stringify(chatOpenDocs);
-  useEffect(() => {
-    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: ownOpen });
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
-  }, [ownOpenKey]);
-  useEffect(() => {
-    if (IS_MAIN) void emit("open-docs", chatOpenDocs);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per change of the list
-  }, [chatOpenKey]);
+  const chat = useChatBridge({ article: current && { id: current.id, title: current.title ?? current.original_url }, docs: ownOpen });
+  const win = useWindows({ layout, setLayout, forgetPage, fail });
 
-  // Opening an article reads it; a row it had in the list stays there (kept) until the view changes.
+  // Opening an article reads it; a row it had in the list stays there (kept) until the view or the screen changes.
   const listView = viewKey(scope, facets);
-  useEffect(() => setKept(NO_KEPT), [listView, screen]);
-  const openId = selectedId;
+  const keptFor = `${screen}\n${listView}`;
+  const [keptKey, setKeptKey] = useState(keptFor);
+  if (keptKey !== keptFor) {
+    setKeptKey(keptFor);
+    setKept(NO_KEPT);
+  }
   const [cursor, setCursor] = useState<number | null>(null);
-  useEffect(() => { if (openId != null) setCursor(openId); }, [openId]);
-  useEffect(() => {
-    const a = openId == null ? undefined : articleById.get(openId);
-    if (a?.read_status !== "unread") return;
-    if (shown.some((x) => x.id === a.id)) setKept((k) => keep(k, listView, a.id));
-    void act(() => api.setRead(a.id, true), a.id);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- mark read once per opened article
-  }, [openId]);
+  const [openedId, setOpenedId] = useState<number | null>(null);
+  if (openedId !== selectedId) {
+    setOpenedId(selectedId);
+    const a = selectedId == null ? undefined : articleById.get(selectedId);
+    if (selectedId != null) setCursor(selectedId);
+    if (a?.read_status === "unread" && shown.some((x) => x.id === a.id)) setKept((k) => keep(k, listView, a.id));
+  }
 
   // ---- navigation -------------------------------------------------------------------------
   function setScope(s: Scope) {
@@ -460,30 +162,14 @@ export default function App() {
     if (!IS_MAIN) return void toMain({ kind: "search", query: q });
     setScreen("library");
     setListOpen(true);
-    setHitSel(0);
-    setSearch({ query: q, result: null, busy: true });
-    const next = [q, ...recent.filter((x) => x !== q)].slice(0, 5);
-    setRecent(next);
-    try {
-      localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-    } catch {
-      // Blocked storage: recent searches are simply not kept.
-    }
-    try {
-      const result = await api.search(q, toFilter(s));
-      setSearch((cur) => (cur?.query === q ? { query: q, result, busy: false } : cur));
-    } catch (e) {
-      fail(e);
-      setSearch((cur) => cur && { ...cur, busy: false });
-    }
+    await startSearch(q, s);
   }
 
   function enterSearch() {
     if (!IS_MAIN) return void toMain({ kind: "search" });
     setScreen("library");
     setListOpen(true);
-    setSearch((s) => s ?? { query: "", result: null, busy: false });
-    setSearchFocus((n) => n + 1);
+    enter();
   }
 
   function openHit(h: SearchHit, page = false, newTab = false) {
@@ -514,6 +200,11 @@ export default function App() {
     if (cur?.kind === "page") openPage(a.original_url, undefined, a, where);
     else openReader(a.id, undefined, where);
   }
+
+  const openContext = (c: VocabContext) => {
+    if (c.article_id != null) openReader(c.article_id, c.block_id == null ? undefined : { block: c.block_id, label: t("vocabCard.sourceLabel"), terms: [], tone: "cite" });
+    else if (c.url) openPage(c.url, c.sentence);
+  };
 
   // ---- cursor: j / k move it through the list (or the search hits) without opening; Enter opens it.
   /** After the cursor moves: keep it in view, and keep DOM focus on it while the list pane has focus. */
@@ -558,15 +249,20 @@ export default function App() {
 
   // ---- article actions ----------------------------------------------------------------------
   async function act(task: () => Promise<unknown>, id?: number) {
-    try {
-      await task();
+    await task().then(() => {
       const pages = allTabs(layoutRef.current).filter((t): t is PageTab => t.kind === "page");
-      await Promise.all([refresh(), id != null && viewsRef.current.has(id) && loadView(id), ...pages.map((t) => refreshSaved(t.id, t.url))]);
-    } catch (e) {
-      fail(e);
-    }
+      return Promise.all([refresh(), id != null && viewsRef.current.has(id) && loadView(id), ...pages.map((t) => refreshSaved(t.id, t.url))]);
+    }).catch(fail);
   }
+  // Opening an article reads it.
+  const markRead = useEffectEvent((id: number) => {
+    if (articleById.get(id)?.read_status === "unread") void act(() => api.setRead(id, true), id);
+  });
+  useEffect(() => {
+    if (selectedId != null) markRead(selectedId);
+  }, [selectedId]);
   const toggleFavorite = (a: ArticleRow) => act(() => api.setFavorite(a.id, !a.favorite), a.id);
+  const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
   /** A bulk change from a context menu; the open Readers of those articles reload too. */
   const actOn = (ids: number[], task: (id: number) => Promise<unknown>) =>
     act(() => Promise.all(ids.map(task))).then(() => ids.forEach((id) => viewsRef.current.has(id) && void loadView(id)));
@@ -578,7 +274,7 @@ export default function App() {
     read: (ids, read) => void actOn(ids, (id) => api.setRead(id, read)),
     group: (ids) => setGroupPick({ el: from, ids }),
     openNew: (a) => openArticle(a, true),
-    popOut: IS_MAIN ? (a) => void popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
+    popOut: IS_MAIN ? (a) => void win.popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
     page: (a) => openPage(a.original_url, undefined, a),
     copyUrl: (a) => copyUrl(a.original_url),
     remove: (a) => setDeleting({ article: a, page: false }),
@@ -588,22 +284,21 @@ export default function App() {
   /** Right-click (or the menu key) on a tab: its article's menu, or for an unsaved page what applies to a URL. */
   function tabMenu(e: React.MouseEvent) {
     const el = (e.target as Element).closest<HTMLElement>("[role='tab'][data-tab]");
-    const hit = el && tabById(layoutRef.current, Number(el.dataset.tab));
+    const hit = el && tabById(layout, Number(el.dataset.tab));
     // Not a tab of this window's layout: no menu at all.
     if (!el || !hit) return e.preventDefault();
     const tab = hit.tab;
-    const a = tab.kind === "reader" ? (viewsRef.current.get(tab.articleId)?.article ?? articleById.get(tab.articleId)) : savedOf(tab);
+    const a = tab.kind === "reader" ? (views.get(tab.articleId)?.article ?? articleById.get(tab.articleId)) : savedOf(tab);
     const again = () => (tab.kind === "page" ? openPage(tab.url, undefined, a ?? undefined, "new", hit.pane.id) : openReader(tab.articleId, undefined, "new", hit.pane.id));
     const items: (MenuItem | string)[] = a
-      ? articleMenu([a], { ...articleActions(el), openNew: again, popOut: IS_MAIN ? () => popOutTab(tab.id) : undefined }, t)
+      ? articleMenu([a], { ...articleActions(el), openNew: again, popOut: IS_MAIN ? () => win.popOutTab(tab.id) : undefined }, t)
       : [
         { label: t("articleMenu.openNewTab"), onSelect: again },
-        ...(IS_MAIN ? [{ label: t("tabStrip.popOut"), onSelect: () => popOutTab(tab.id) }] : []),
+        ...(IS_MAIN ? [{ label: t("tabStrip.popOut"), onSelect: () => win.popOutTab(tab.id) }] : []),
         ...(tab.kind === "page" ? [{ label: t("articleMenu.copyUrl"), onSelect: () => copyUrl(tab.url) }] : []),
       ];
     setCtxItems(items);
   }
-  const toggleRead = (a: ArticleRow) => act(() => api.setRead(a.id, a.read_status !== "read"), a.id);
 
   // ---- groups (G53) -------------------------------------------------------------------------
   async function createGroup(name: string) {
@@ -638,31 +333,25 @@ export default function App() {
 
   async function deleteArticle(a: ArticleRow) {
     setDeleting(null);
-    try {
-      await api.deleteArticle(a.id);
-      setViews((m) => { const n = new Map(m); n.delete(a.id); return n; });
+    await api.deleteArticle(a.id).then(() => {
+      setViews((m) => {
+        const n = new Map(m);
+        n.delete(a.id);
+        return n;
+      });
       setLayout((l) => {
         const kept = closeWhere(l, (t) => t.kind === "reader" && t.articleId === a.id);
         return allTabs(kept).filter((t) => t.kind === "page" && t.saved === a.id).reduce((acc, t) => update(acc, t.id, { saved: null }), kept);
       });
-      await refresh();
-    } catch (e) {
-      fail(e);
-    }
+      return refresh();
+    }).catch(fail);
   }
 
   async function savePage(t: PageTab) {
     setSaving(t.id);
-    try {
-      await api.savePage(t.key);
-      await Promise.all([refresh(), refreshSaved(t.id, t.url)]);
-    } catch (e) {
-      fail(e);
-    } finally {
-      setSaving(null);
-    }
+    await api.savePage(t.key).then(() => Promise.all([refresh(), refreshSaved(t.id, t.url)])).catch(fail);
+    setSaving(null);
   }
-
 
   function nudgeRatio(delta: number) {
     if (cur?.kind === "page") setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
@@ -682,13 +371,13 @@ export default function App() {
 
   function openChat(key?: string) {
     if (!IS_MAIN) return void toMain({ kind: "chat", scopeKey: key });
-    if (chatWindow) {
+    if (win.chatWindow) {
       if (key) void emitTo(CHAT, "chat-request", { key });
       windows.open(CHAT).catch(fail);
       return;
     }
-    setChatOpen(true);
-    if (key) setChatScope((c) => ({ key, seq: (c?.seq ?? 0) + 1 }));
+    win.setChatOpen(true);
+    if (key) chat.askScope(key);
   }
 
   function setLang(m: LanguageMode, p?: number) {
@@ -713,107 +402,17 @@ export default function App() {
   }
 
   // ---- windows (G52) ------------------------------------------------------------------------
-  /** The tab leaves this window with its webview, which is not closed: the next window attaches it. */
-  function forgetPage(t: Tab) {
-    if (t.kind !== "page") return;
-    prevPages.current = prevPages.current.filter((k) => k !== t.key);
-    forgetOpened(t.key);
-  }
-
-  /** A new document window's label, its layout showing `doc` stored for it to load; null if it could not be stored. */
-  function storeDocWindow(doc: Doc): string | null {
-    const label = nextDocLabel(openWindows(storageKeys()));
-    try {
-      localStorage.setItem(windowKey(label), serialize(open(single(), doc, "new")));
-    } catch (e) {
-      fail(e);
-      return null;
-    }
-    return label;
-  }
-
-  /** A new document window showing `doc`. False if it could not be stored. */
-  function popOutDoc(doc: Doc): boolean {
-    const label = storeDocWindow(doc);
-    if (label) windows.open(label).catch(fail);
-    return label != null;
-  }
-
-  /** The tab moves to a new document window; `drag`: torn off a strip, so the drag creates and places the window (design-review §26). */
-  function popOutTab(tab: Id, drag = false) {
-    const hit = tabById(layoutRef.current, tab);
-    const label = hit && storeDocWindow(docOf(hit.tab));
-    if (!hit || !label) return;
-    (drag ? tabDrag.float(label) : windows.open(label)).catch(fail);
-    forgetPage(hit.tab);
-    setLayout((l) => close(l, tab));
-  }
-
-  /** The tab goes to window `label`: its focused pane, or the slot `at` it was dropped on. */
-  function sendTab(tab: Id, label: string, at?: { pane: Id; index: number }) {
-    const hit = tabById(layoutRef.current, tab);
-    if (!hit) return;
-    forgetPage(hit.tab);
-    setLayout((l) => close(l, tab));
-    void toWindow(label, { kind: "open", docs: [docOf(hit.tab)], at });
-  }
-
-  /** Document window: the tab goes back to the main window's focused pane. */
-  const returnTab = (tab: Id) => sendTab(tab, MAIN);
-
-  /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
-  function closeWindow() {
-    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: [] });
-    try {
-      localStorage.removeItem(STORAGE);
-    } catch {
-      // Then it comes back at the next start, which is the lesser harm.
-    }
-    windows.close().catch(() => {});
-  }
-
-  /** × or Alt+F4 on a pop-out: a document window hands its tabs back; the chat window just closes. */
-  function closeRequested() {
-    if (HOST.kind === "doc") {
-      const docs = allTabs(layoutRef.current).map(docOf);
-      if (docs.length) void toMain({ kind: "open", docs });
-    } else if (HOST.kind === "chat") {
-      void toMain({ kind: "chatClosed" });
-    }
-    closeWindow();
-  }
-
-  /** The chat window's メインウィンドウに戻す: the pane docks back in main. */
-  function dockChat() {
-    void toMain({ kind: "chatDocked" });
-    closeWindow();
-  }
-
-  /** Main: the chat dock moves to its own window. */
-  function popOutChat() {
-    try {
-      localStorage.setItem(windowKey(CHAT), "1");
-    } catch (e) {
-      return fail(e);
-    }
-    setChatOpen(false);
-    setChatWindow(true);
-    windows.open(CHAT).catch(fail);
-  }
-
-  const toggleChat = () => (chatWindow ? void windows.open(CHAT).catch(fail) : setChatOpen((o) => !o));
-
   /** What another window asked this one to do (only `open` reaches a document window); it comes to the front for it. */
   function onRequest(r: MainRequest) {
     if (!IS_MAIN && r.kind !== "open") return;
     switch (r.kind) {
       case "open": setScreen("library"); setLayout((l) => r.docs.reduce((acc, d, i) => open(acc, d, "new", r.at?.pane, r.at && r.at.index + i), l)); break;
       case "chat": openChat(r.scopeKey); return;
-      case "chatDocked": setChatWindow(false); setChatOpen(true); break;
+      case "chatDocked": win.setChatWindow(false); win.setChatOpen(true); break;
       // Closed, not docked: the next 対話 opens the dock, as after a restart.
-      case "chatClosed": setChatWindow(false); return;
-      case "chatReady": void emit("doc-current", chatArticle); void emit("open-docs", chatOpenDocs); return;
-      case "openDocs": setDocWindowsOpen((m) => ({ ...m, [r.label]: r.docs })); return;
+      case "chatClosed": win.setChatWindow(false); return;
+      case "chatReady": chat.resend(); return;
+      case "openDocs": chat.docWindowOpen(r.label, r.docs); return;
       case "pageLang": void emit("page-lang", pageLang); return;
       case "cite": openCitation(r.citation, r.newTab); break;
       case "screen": setScreen(r.screen); break;
@@ -828,40 +427,24 @@ export default function App() {
     }
     getCurrentWindow().setFocus().catch(() => {});
   }
-  const requestRef = useRef(onRequest);
-  requestRef.current = onRequest;
-  const closeRef = useRef(closeRequested);
-  closeRef.current = closeRequested;
+  const onMainRequest = useEffectEvent(onRequest);
+  const onStartError = useEffectEvent(fail);
   useEffect(() => {
-    const subs = [getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => requestRef.current(e.payload))];
+    const sub = getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => onMainRequest(e.payload));
     // The pop-outs that were open last time come back; the chat window is restored from its key too.
-    if (IS_MAIN) for (const label of openWindows(storageKeys())) windows.open(label).catch(fail);
-    else {
-      windows.ready().catch(() => {});
-      subs.push(getCurrentWindow().onCloseRequested((e) => {
-        e.preventDefault();
-        closeRef.current();
-      }));
-    }
-    return () => subs.forEach((s) => void s.then((f) => f()));
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once; the handlers are read through refs
+    if (IS_MAIN) for (const label of openWindows(storageKeys())) windows.open(label).catch(onStartError);
+    else windows.ready().catch(() => {});
+    return () => void sub.then((f) => f());
   }, []);
-  // A document window with nothing left closes (its last tab was closed or sent back).
-  useEffect(() => {
-    if (HOST.kind === "doc" && allTabs(layout).length === 0) closeWindow();
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- closeWindow reads only constants
-  }, [layout]);
 
-  /** The palette for a new tab (Ctrl+T): what it opens goes into a new tab in the focused pane. */
-  function newTab() {
-    paletteNew.current = true;
-    setPalette("");
-  }
-  const whereFromPalette = (newTab?: boolean): Where => (newTab || paletteNew.current ? "new" : "active");
-
+  const whereFromPalette = (newTab?: boolean): Where => (newTab || palette?.newTab ? "new" : "active");
   const paletteActions: PaletteActions = {
     scope: setScope,
-    facets: (f) => { if (!IS_MAIN) return void toMain({ kind: "facets", facets: f }); setFacets(f); setScreen("library"); },
+    facets: (f) => {
+      if (!IS_MAIN) return void toMain({ kind: "facets", facets: f });
+      setFacets(f);
+      setScreen("library");
+    },
     open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
     page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
     index: (url, group) => {
@@ -872,7 +455,11 @@ export default function App() {
         openReader(id, undefined, where);
       });
     },
-    discover: (url) => { if (!IS_MAIN) return void toMain({ kind: "discover", url }); setFeedsUrl(url); setScreen("feeds"); },
+    discover: (url) => {
+      if (!IS_MAIN) return void toMain({ kind: "discover", url });
+      setFeedsUrl(url);
+      setScreen("feeds");
+    },
     search: (q) => void runSearch(q),
     screen: setScreen,
     importMarkdown,
@@ -886,128 +473,42 @@ export default function App() {
   // ---- in-app history (H4) ------------------------------------------------------------------
   // Every change of screen, settings section, scope, facets or the focused tab's document is a
   // visit; back / forward restore one. The chat window has nothing to go back to.
-  const [hist, setHist] = useState(NO_HISTORY);
-  const histTab = activeTab(focusedPane(layout));
-  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, facets, doc: histTab && placeDoc(histTab) };
-  const here = placeKey(place);
-  /** Set by a back / forward step: the place it lands on replaces that entry rather than cutting the ones ahead. */
-  const stepping = useRef(false);
-  useEffect(() => {
-    if (HOST.kind === "chat") return;
-    setHist((h) => (stepping.current ? arrived(h, place) : visit(h, place)));
-    stepping.current = false;
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per visited place
-  }, [here]);
-  function goHistory(d: 1 | -1) {
-    const next = go(hist, d);
-    if (!next) return;
-    const p = next.stack[next.at];
-    setHist(next);
-    if (placeKey(p) === here) return;
-    stepping.current = true;
+  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, facets, doc: cur && placeDoc(cur) };
+  const history = useHistory(place, (p) => {
     setScreenState(p.screen);
     if (p.section) setSettingsSection(p.section);
     setScopeState(p.scope);
     setFacets(p.facets);
     const doc = p.doc;
     // Back to the tab that showed it if it still does, else the document opens in the focused tab.
-    if (doc) setLayout((l) => {
-      const hit = tabById(l, doc.tab);
-      return hit && placeDoc(hit.tab).key === doc.key ? activate(l, doc.tab) : open(l, doc.doc, "active");
-    });
-  }
-  const historyRef = useRef(goHistory);
-  historyRef.current = goHistory;
-  // The mouse's side buttons (XButton1 / XButton2). Over a page they never reach here: the page's
-  // webview takes them for its own history.
-  useEffect(() => {
-    if (HOST.kind === "chat") return;
-    const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
-    const down = (e: MouseEvent) => { if (side(e)) e.preventDefault(); };
-    const up = (e: MouseEvent) => {
-      if (!side(e)) return;
-      e.preventDefault();
-      historyRef.current(e.button === 3 ? -1 : 1);
-    };
-    window.addEventListener("mousedown", down);
-    window.addEventListener("mouseup", up);
-    return () => {
-      window.removeEventListener("mousedown", down);
-      window.removeEventListener("mouseup", up);
-    };
-  }, []);
+    if (doc) {
+      setLayout((l) => {
+        const hit = tabById(l, doc.tab);
+        return hit && placeDoc(hit.tab).key === doc.key ? activate(l, doc.tab) : open(l, doc.doc, "active");
+      });
+    }
+  }, HOST.kind !== "chat");
 
   // ---- keyboard -----------------------------------------------------------------------------
-  const bindings = useBindings();
-  useEffect(() => { browser.setKeys(pageKeys(bindings)).catch(() => {}); }, [bindings]);
-  /** tmux-style prefix (Ctrl+B): armed until the next key or PREFIX_MS. */
-  const [prefix, setPrefix] = useState(false);
-  const prefixTimer = useRef(0);
-  /** The pane keyboard focus was moved to, outlined until the pointer is used. */
-  const [kbPane, setKbPane] = useState<string | null>(null);
-  /** The pane last clicked; arrows scroll there instead of moving the list cursor when it is the document or chat. */
-  const pointerPane = useRef<string | null>(null);
-  useEffect(() => {
-    const focusin = (e: FocusEvent) => setKbPane((p) => p && (paneOf(e.target as Element)?.dataset.pane ?? null));
-    const pointer = (e: PointerEvent) => {
-      setKbPane(null);
-      const p = paneOf(e.target as Element);
-      pointerPane.current = p?.dataset.pane ?? null;
-      // A click in a document pane focuses it: that is where the next document opens.
-      if (p?.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
-    };
-    window.addEventListener("focusin", focusin);
-    window.addEventListener("pointerdown", pointer, true);
-    return () => {
-      window.removeEventListener("focusin", focusin);
-      window.removeEventListener("pointerdown", pointer, true);
-    };
-  }, []);
-
-  /** tmux keys after the prefix that act on panes and tabs rather than move. */
-  const PREFIXED: Record<string, ActionId | "closePane"> = { '"': "splitDown", "%": "splitRight", X: "closePane", C: "newTab", N: "nextTab", P: "prevTab", Z: "focus" };
-
-  /** True when focus moved to another pane. */
-  function paneKey(key: string, from = paneOf(document.activeElement)): boolean {
-    clearTimeout(prefixTimer.current);
-    setPrefix(false);
-    const act = PREFIXED[key];
-    if (act === "closePane") {
-      setLayout((l) => closePane(l, l.focused));
-      return false;
-    }
-    if (act) {
-      actions[act]();
-      return false;
-    }
-    const p = paneAfter(key, from);
-    if (!p) return false;
-    focusPane(p);
-    setKbPane(p.dataset.pane!);
-    if (p.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
-    return true;
-  }
+  const paneFocus = usePaneFocus(layout, setLayout);
+  const prefix = usePrefix();
 
   const step = (d: 1 | -1) => {
     const nav = paneOf(document.activeElement);
     if (nav?.dataset.pane === "nav") {
       stepNav(nav, d);
-      setKbPane("nav");
+      paneFocus.setKbPane("nav");
     } else moveCursor(d);
   };
 
   const actions: Record<ActionId, () => void> = {
-    palette: () => setPalette((p) => (p == null ? "" : null)),
+    palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
     search: enterSearch,
     next: () => step(1),
     prev: () => step(-1),
     open: () => openCursor(false),
     openPage: () => openCursor(true),
-    pane: () => {
-      setPrefix(true);
-      clearTimeout(prefixTimer.current);
-      prefixTimer.current = window.setTimeout(() => setPrefix(false), PREFIX_MS);
-    },
+    pane: prefix.arm,
     favorite: () => void (current && toggleFavorite(current)),
     read: () => void (current && toggleRead(current)),
     focus: () => {
@@ -1020,98 +521,38 @@ export default function App() {
     more: () => nudgeRatio(10),
     escape: () => {
       if (screen !== "library") setScreen("library");
-      else if (search) setSearch(null);
+      else if (search) exitSearch();
       else setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
     },
-    newTab: () => newTab(),
+    // The palette for a new tab (Ctrl+T): what it opens goes into a new tab in the focused pane.
+    newTab: () => setPalette({ initial: "", newTab: true }),
     closeTab: () => setLayout((l) => {
       const t = activeTab(focusedPane(l));
       return t ? close(l, t.id) : l;
     }),
     nextTab: () => setLayout((l) => cycle(l, 1)),
     prevTab: () => setLayout((l) => cycle(l, -1)),
-    splitRight: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "row")); },
-    splitDown: () => { setScreen("library"); setLayout((l) => split(l, l.focused, "column")); },
-    saveWord: () => setSaveWordSeq((n) => n + 1),
+    splitRight: () => {
+      setScreen("library");
+      setLayout((l) => split(l, l.focused, "row"));
+    },
+    splitDown: () => {
+      setScreen("library");
+      setLayout((l) => split(l, l.focused, "column"));
+    },
+    saveWord,
     speak: replayWord,
     popOut: () => {
-      const t = activeTab(focusedPane(layoutRef.current));
-      if (t) (IS_MAIN ? popOutTab : returnTab)(t.id);
+      const t = activeTab(focusedPane(layout));
+      if (t) (IS_MAIN ? win.popOutTab : win.returnTab)(t.id);
     },
-    back: () => goHistory(-1),
-    forward: () => goHistory(1),
+    back: () => history.step(-1),
+    forward: () => history.step(1),
     // The focused sidebar row moves itself (NavFolders); nowhere else has rows to move.
     moveUp: () => {},
     moveDown: () => {},
   };
-  const keyState = useRef({ actions, paneKey, prefix });
-  keyState.current = { actions, paneKey, prefix };
-  useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || e.isComposing) return;
-      const key = keyOf(e);
-      if (!key) return;
-      const s = keyState.current;
-      if (s.prefix) {
-        e.preventDefault();
-        s.paneKey(key);
-        return;
-      }
-      // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
-      if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
-        const on = (e.target as Element).closest?.<HTMLElement>(MENU_TARGETS) ?? document.querySelector<HTMLElement>(".row.cur");
-        if (!on) return;
-        e.preventDefault();
-        on.focus();
-        // The menu opens at the event's point: under the start of the element.
-        const r = on.getBoundingClientRect();
-        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 16, clientY: r.bottom }));
-        return;
-      }
-      const action = actionFor(getBindings(), key);
-      if (!action) return;
-      // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
-      if (openOverlays() && action.id !== "palette") return;
-      const t = e.target as HTMLElement;
-      // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
-      if (t.closest("[aria-roledescription='sortable']")) return;
-      const inField = t.closest("input, textarea, select, [contenteditable='true']");
-      if (inField && !action.inFields) return;
-      const focused = document.activeElement !== document.body ? paneOf(document.activeElement)?.dataset.pane : pointerPane.current;
-      if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) return;
-      // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
-      if (inField && action.id === "escape") return t.blur();
-      // Enter on a control activates it; on a list row or search hit it opens the cursor.
-      if ((action.id === "open" || action.id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) return;
-      // Plain keys on a focused button would also activate it.
-      e.preventDefault();
-      s.actions[action.id]();
-    };
-    // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
-    const fromPage = ({ tab, key }: { tab: string; key: string }) => {
-      const s = keyState.current;
-      const focusApp = () => getCurrentWebview().setFocus().catch(() => {});
-      // What the app focused last is stale (j / k in the nav would step the nav).
-      (document.activeElement as HTMLElement | null)?.blur();
-      const page = pageByKey(layoutRef.current, tab);
-      const pane = page && tabById(layoutRef.current, page.id)?.pane.id;
-      if (pane != null) setLayout((l) => focusLayout(l, pane));
-      if (s.prefix) {
-        if (s.paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) void focusApp();
-        return;
-      }
-      const action = actionFor(getBindings(), key);
-      if (!action || (openOverlays() && action.id !== "palette")) return;
-      if (LEAVES_PAGE.has(action.id)) void focusApp();
-      s.actions[action.id]();
-    };
-    window.addEventListener("keydown", down);
-    const unlisten = listen<{ tab: string; key: string }>("browser-key", (e) => fromPage(e.payload));
-    return () => {
-      window.removeEventListener("keydown", down);
-      void unlisten.then((f) => f());
-    };
-  }, []);
+  const bindings = useShortcuts({ actions, prefix, layout, setLayout, focus: paneFocus });
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
@@ -1134,19 +575,20 @@ export default function App() {
     },
   } : undefined;
   const splitter = (pane: Resizable, side: "left" | "right" = "left") => (
-    <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidths((ws) => ({ ...ws, [pane]: w }))} />
+    <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidth(pane, w)} />
   );
+  const chatShown = win.chatOpen || win.chatWindow;
   const nav = navOpen
     ? <><Nav screen={screen} scope={screen === "library" ? scope : null} counts={counts} feeds={feeds} folders={folders} groups={groupRows} jobFailures={jobFailures} reviewDue={reviewDue}
-        chatOpen={chatOpen || chatWindow} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen}
-        onChat={toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
+        chatOpen={chatShown} searching={!!search} recentSearches={recent} onScope={setScope} onScreen={setScreen}
+        onChat={win.toggleChat} onRecent={(q) => runSearch(q)} onGenres={() => { setSettingsSection("genres"); setScreen("settings"); }}
         onCreateGroup={(name) => createGroup(name).then((id) => setScope({ kind: "group", id })).catch(fail)}
         onRenameGroup={(id, name) => act(() => api.renameGroup(id, name))} onDeleteGroup={deleteGroup}
         onRenameFolder={(id, name) => act(() => api.renameFeedFolder(id, name))} onDeleteFolder={deleteFolder}
         onReorderFeeds={reorderFeeds} onReorderFolders={reorderFolders} onMenu={setCtxItems}
         onCollapse={() => setNavOpen(false)} importantMin={importantMin} />{splitter("nav")}</>
-    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatOpen || chatWindow} onOpen={() => setNavOpen(true)}
-        onScope={setScope} onChat={toggleChat} />;
+    : <NavRail scope={screen === "library" ? scope : null} chatOpen={chatShown} onOpen={() => setNavOpen(true)}
+        onScope={setScope} onChat={win.toggleChat} />;
 
   const labelOf = (t: Tab): TabLabel => {
     if (t.kind === "page") return { title: t.title || siteOf(t.url) || t.url, domain: siteOf(t.url) };
@@ -1159,15 +601,15 @@ export default function App() {
     if (HOST.kind === "doc") getCurrentWindow().setTitle(windowTitle ? `${windowTitle} - Lattice` : "Lattice").catch(() => {});
   }, [windowTitle]);
   const windowAction = IS_MAIN
-    ? { label: t("tabStrip.popOut"), hint: t("tabStrip.popOutHint"), icon: "popout" as const, onSelect: popOutTab }
-    : { label: t("tabStrip.popIn"), hint: t("tabStrip.popInHint"), icon: "popin" as const, onSelect: returnTab };
+    ? { label: t("tabStrip.popOut"), hint: t("tabStrip.popOutHint"), icon: "popout" as const, onSelect: win.popOutTab }
+    : { label: t("tabStrip.popIn"), hint: t("tabStrip.popInHint"), icon: "popin" as const, onSelect: win.returnTab };
 
   const renderPane = (pane: Pane) => {
     const tab = activeTab(pane);
     if (!tab) {
       if (!loaded) return null;
       if (articles.length || layout.root.kind === "split") return <p className="doc-empty muted">{t("app.pickArticle")}</p>;
-      return <FirstRun onPaste={() => setPalette("")} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
+      return <FirstRun onPaste={openPalette} onFeeds={() => setScreen("feeds")} onImport={() => { setImportTab("urls"); setScreen("import"); }} onMarkdown={importMarkdown}
         onSettings={() => { setSettingsSection("provider"); setScreen("settings"); }} />;
     }
     /** What both toolbars do with the article `a` (H14); `page`: asked from the Page view. */
@@ -1210,8 +652,8 @@ export default function App() {
       <CoverContext.Provider value={coverRect}>
         <div className="shell">
           <TitleBar />
-          <div className="app solo" data-kb-pane={kbPane ?? undefined}>
-            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={closeRequested} onPopIn={dockChat} current={null} />
+          <div className="app solo" data-kb-pane={paneFocus.kbPane ?? undefined}>
+            <ChatPane article={chat.article} open={chat.docs} groups={chatGroups} request={chat.chatScope} onCite={openCitation} onClose={win.closeRequested} onPopIn={dockChat} current={null} />
           </div>
         </div>
       </CoverContext.Provider>
@@ -1221,10 +663,10 @@ export default function App() {
     <CoverContext.Provider value={coverRect}>
       <div className="shell">
         {/* A pop-out's top tab strips are its title bar (H19, DocArea). */}
-        {HOST.kind !== "doc" && <TitleBar history={{ back: canGo(hist, -1), forward: canGo(hist, 1), onGo: goHistory }} onPalette={() => setPalette("")} />}
+        {HOST.kind !== "doc" && <TitleBar history={{ back: history.back, forward: history.forward, onGo: history.step }} onPalette={openPalette} />}
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <ContextMenu label={t("articleMenu.label")} items={ctxItems} targets={MENU_TARGETS}>
-        <div className="app" data-kb-pane={kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
+        <div className="app" data-kb-pane={paneFocus.kbPane ?? undefined} style={{ "--nav-w": `${widths.nav}px`, "--list-w": `${widths.list}px`, "--search-w": `${widths.search}px`, "--chat-w": `${widths.chat}px` } as React.CSSProperties}>
           {IS_MAIN && (screen === "settings"
             ? <SettingsView section={settingsSection} onSection={setSettingsSection} onBack={() => setScreen("library")} onFeeds={() => setScreen("feeds")} onChanged={refresh}
                 onOpenUrl={(url) => openPage(url)} />
@@ -1243,7 +685,7 @@ export default function App() {
           )}
           {IS_MAIN && screen === "library" && search && listOpen && (
             <SearchPane initial={search.query} result={search.result} busy={search.busy} method={method} onMethod={setMethod}
-              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={() => setSearch(null)}
+              hits={hitGroups} sel={hitSel} onSel={setHitSel} open={cur?.kind === "reader" && cur.focus?.tone === "hit" ? { id: cur.articleId, block: cur.focus.block } : null} onSearch={(q) => runSearch(q)} onOpen={openHit} onExit={exitSearch}
               scope={scope} onScope={setScope} filters={searchGroups} importantMin={importantMin} facets={facets} onFacets={setFacets} scoped={scoped} all={articles} groups={groupRows} articleById={articleById}
               focusSeq={searchFocus} />
           )}
@@ -1267,11 +709,11 @@ export default function App() {
             )}
             <WordMarksContext.Provider value={marks}>
               <DocArea layout={layout} onLayout={setLayout} labelOf={labelOf} renderPane={renderPane} onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane)} windowAction={windowAction}
-                movable={HOST.kind === "doc"} onSend={sendTab} onTear={(tab) => popOutTab(tab, true)} />
+                movable={HOST.kind === "doc"} onSend={win.sendTab} onTear={(tab) => win.popOutTab(tab, true)} />
             </WordMarksContext.Provider>
           </div>}
           {palette != null && (
-            <Palette initial={palette} all={articles} shown={shown} feeds={feeds} folders={folders} groups={groupRows} scope={scope} facets={facets} actions={paletteActions}
+            <Palette initial={palette.initial} all={articles} shown={shown} feeds={feeds} folders={folders} groups={groupRows} scope={scope} facets={facets} actions={paletteActions}
               onClose={() => setPalette(null)} />
           )}
           {deleting && (
@@ -1281,15 +723,15 @@ export default function App() {
               <p>{t("app.deleteDesc")}</p>
             </ConfirmDialog>
           )}
-          {prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+          {prefix.prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
           {groupPick && (
             <GroupPicker groups={groupRows} anchor={groupPick.el} onCreate={createGroup} onClose={() => setGroupPick(null)}
               selected={groupRows.filter((g) => groupPick.ids.every((id) => articleById.get(id)?.groups.includes(g.id))).map((g) => g.id)}
               onToggle={(g, on) => void groupMembers(g, groupPick.ids, on)} />
           )}
-          {chatOpen && splitter("chat", "right")}
-          {chatOpen && (
-            <ChatPane article={chatArticle} open={chatOpenDocs} groups={chatGroups} request={chatScope} onCite={openCitation} onClose={() => setChatOpen(false)} onPopOut={popOutChat}
+          {win.chatOpen && splitter("chat", "right")}
+          {win.chatOpen && (
+            <ChatPane article={chat.article} open={chat.docs} groups={chatGroups} request={chat.chatScope} onCite={openCitation} onClose={() => win.setChatOpen(false)} onPopOut={win.popOutChat}
               current={scope.kind === "all" || scope.kind === "recent" ? null : { key: filterKey(toFilter(scope)), label: title }} />
           )}
         </div>
