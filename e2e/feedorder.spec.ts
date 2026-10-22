@@ -3,7 +3,10 @@ import type { Locator, Page } from "@playwright/test";
 
 const nav = (app: Page) => app.locator(".nav");
 const inFolder = (app: Page, name: string) =>
-  nav(app).locator(".nav-folder").filter({ has: app.locator(".ni-row .label").getByText(name, { exact: true }) }).locator(".nav-sub .label");
+  nav(app)
+    .locator(".nav-folder")
+    .filter({ has: app.locator(".ni-row .label").getByText(name, { exact: true }) })
+    .locator(".nav-sub .label");
 /** The feeds in no folder: the sidebar's feed rows outside the folders. */
 const loose = (app: Page) => nav(app).locator(".nav-sub:not(.nav-folder > .nav-sub) > .ni[data-feed] .label");
 
@@ -63,10 +66,14 @@ test("dragging feeds in the sidebar reorders them and moves them between folders
   const table = app.locator("main.manage .tbl tbody");
   // A feed's name cell starts with its icon's letter.
   const names = (ns: string[]) => ns.map((n) => new RegExp(`${n.replace(".", "\\.")}$`));
-  await expect(table.locator("tr.grp, .fn")).toHaveText(names(["TechFeed", "Rust Blog", "Postgres Weekly", "Zenn", "フォルダなし", "web.dev", "LWN.net", "Netflix TechBlog"]));
+  await expect(table.locator("tr.grp, .fn")).toHaveText(
+    names(["TechFeed", "Rust Blog", "Postgres Weekly", "Zenn", "フォルダなし", "web.dev", "LWN.net", "Netflix TechBlog"]),
+  );
   await expect(app.getByLabel("Rust Blog を上へ")).toBeDisabled();
   await app.getByLabel("Zenn を下へ").click();
-  await expect(table.locator(".fn"), "down past the last in a folder: first in the next group").toHaveText(names(["Rust Blog", "Postgres Weekly", "Zenn", "web.dev", "LWN.net", "Netflix TechBlog"]));
+  await expect(table.locator(".fn"), "down past the last in a folder: first in the next group").toHaveText(
+    names(["Rust Blog", "Postgres Weekly", "Zenn", "web.dev", "LWN.net", "Netflix TechBlog"]),
+  );
   await expect(loose(app)).toHaveText(["Zenn", "web.dev", "LWN.net", "Netflix TechBlog"]);
   await app.getByLabel("Zenn を上へ").click();
   await expect(inFolder(app, "TechFeed"), "up past the first in none: last in the folder above").toHaveText(["Rust Blog", "Postgres Weekly", "Zenn"]);

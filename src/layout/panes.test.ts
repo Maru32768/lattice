@@ -12,7 +12,11 @@ const { neighbor, paneAfter, stepNav } = await import("./panes.ts");
 
 // nav | list | doc 1 over doc 2 | chat; jsdom lays nothing out, so each pane gets its rectangle here.
 const RECTS: Record<string, [number, number, number, number]> = {
-  nav: [0, 0, 200, 800], list: [200, 0, 400, 800], "doc:1": [600, 0, 600, 400], "doc:2": [600, 400, 600, 400], chat: [1200, 0, 400, 800],
+  nav: [0, 0, 200, 800],
+  list: [200, 0, 400, 800],
+  "doc:1": [600, 0, 600, 400],
+  "doc:2": [600, 400, 600, 400],
+  chat: [1200, 0, 400, 800],
 };
 for (const el of document.querySelectorAll<HTMLElement>("[data-pane]")) {
   const [x, y, w, h] = RECTS[el.dataset.paneId ? `doc:${el.dataset.paneId}` : el.dataset.pane!];

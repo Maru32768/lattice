@@ -23,9 +23,34 @@ import { UpdateSection } from "../app/Update";
 import "../ui/manage.css";
 import { useT, type PlainKey, type T } from "../i18n";
 
-export type SettingsSection = "language" | "provider" | "translation" | "instructions" | "classify" | "relevance" | "feedFilter" | "genres" | "render" | "images" | "review" | "shortcuts" | "browser" | "taskbar" | "backup" | "r2" | "export" | "storage" | "update";
+export type SettingsSection =
+  | "language"
+  | "provider"
+  | "translation"
+  | "instructions"
+  | "classify"
+  | "relevance"
+  | "feedFilter"
+  | "genres"
+  | "render"
+  | "images"
+  | "review"
+  | "shortcuts"
+  | "browser"
+  | "taskbar"
+  | "backup"
+  | "r2"
+  | "export"
+  | "storage"
+  | "update";
 
-const GROUPS = { ai: "settingsView.groupAi", library: "settingsView.groupLibrary", controls: "settingsView.groupControls", data: "settingsView.groupData", app: "settingsView.groupApp" } as const satisfies Record<string, PlainKey>;
+const GROUPS = {
+  ai: "settingsView.groupAi",
+  library: "settingsView.groupLibrary",
+  controls: "settingsView.groupControls",
+  data: "settingsView.groupData",
+  app: "settingsView.groupApp",
+} as const satisfies Record<string, PlainKey>;
 type Group = keyof typeof GROUPS;
 
 /** `lead` is a key, or rendered (text with markup). */
@@ -53,29 +78,66 @@ const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: Pla
 
 function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: () => void; onOpenUrl: (url: string) => void }) {
   switch (id) {
-    case "provider": return <ModelSettings />;
-    case "translation": return <TranslationSettings />;
-    case "instructions": return <><InstructionSettings /><ChatSettings /></>;
-    case "classify": return <ClassifySettings />;
-    case "relevance": return <RelevanceSettings onChanged={onChanged} />;
-    case "genres": return <GenreSettings onChanged={onChanged} />;
-    case "render": return <RenderSettings />;
-    case "feedFilter": return <div className="grp"><div className="set wide"><FilterEditor feedId={null} onSaved={onChanged} /></div></div>;
-    case "images": return <ImageSettings />;
-    case "review": return <QuizSettings />;
-    case "language": return <LanguageSettings />;
-    case "shortcuts": return <ShortcutSettings />;
-    case "browser": return <BrowserSettings />;
-    case "taskbar": return <TaskbarSettings />;
-    case "backup": return <BackupSection />;
-    case "r2": return <R2BackupSection />;
-    case "export": return <ExportSection />;
-    case "storage": return <StorageSection />;
-    case "update": return <UpdateSection onOpenUrl={onOpenUrl} />;
+    case "provider":
+      return <ModelSettings />;
+    case "translation":
+      return <TranslationSettings />;
+    case "instructions":
+      return (
+        <>
+          <InstructionSettings />
+          <ChatSettings />
+        </>
+      );
+    case "classify":
+      return <ClassifySettings />;
+    case "relevance":
+      return <RelevanceSettings onChanged={onChanged} />;
+    case "genres":
+      return <GenreSettings onChanged={onChanged} />;
+    case "render":
+      return <RenderSettings />;
+    case "feedFilter":
+      return (
+        <div className="grp">
+          <div className="set wide">
+            <FilterEditor feedId={null} onSaved={onChanged} />
+          </div>
+        </div>
+      );
+    case "images":
+      return <ImageSettings />;
+    case "review":
+      return <QuizSettings />;
+    case "language":
+      return <LanguageSettings />;
+    case "shortcuts":
+      return <ShortcutSettings />;
+    case "browser":
+      return <BrowserSettings />;
+    case "taskbar":
+      return <TaskbarSettings />;
+    case "backup":
+      return <BackupSection />;
+    case "r2":
+      return <R2BackupSection />;
+    case "export":
+      return <ExportSection />;
+    case "storage":
+      return <StorageSection />;
+    case "update":
+      return <UpdateSection onOpenUrl={onOpenUrl} />;
   }
 }
 
-export function SettingsView({ section, onSection, onBack, onFeeds, onChanged, onOpenUrl }: {
+export function SettingsView({
+  section,
+  onSection,
+  onBack,
+  onFeeds,
+  onChanged,
+  onOpenUrl,
+}: {
   section: SettingsSection;
   onSection: (s: SettingsSection) => void;
   onBack: () => void;
@@ -89,12 +151,14 @@ export function SettingsView({ section, onSection, onBack, onFeeds, onChanged, o
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
-    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setCounts({
-      models: llm.status === "fulfilled" ? llm.value.chain.length : undefined,
-      genres: genres.status === "fulfilled" ? genres.value.length : undefined,
-      r2Failed: r2s.status === "fulfilled" && !!r2s.value.last_error,
-    }));
-  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the section is the trigger, not an input
+    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) =>
+      setCounts({
+        models: llm.status === "fulfilled" ? llm.value.chain.length : undefined,
+        genres: genres.status === "fulfilled" ? genres.value.length : undefined,
+        r2Failed: r2s.status === "fulfilled" && !!r2s.value.last_error,
+      }),
+    );
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the section is the trigger, not an input
   }, [section]);
   const badges: Partial<Record<SettingsSection, ReactNode>> = {
     provider: counts.models != null ? t("settingsView.models", { length: counts.models }) : null,
@@ -107,19 +171,32 @@ export function SettingsView({ section, onSection, onBack, onFeeds, onChanged, o
     <div className="stg">
       <nav aria-label={t("settingsView.categories")} data-pane="nav">
         <button className="ni back" onClick={onBack}>
-          <svg className="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
-          {t("settingsView.backToLibrary")}<span className="kbd">Esc</span>
+          <svg className="ico" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 6l-6 6 6 6" />
+          </svg>
+          {t("settingsView.backToLibrary")}
+          <span className="kbd">Esc</span>
         </button>
         {(Object.keys(GROUPS) as Group[]).map((g) => (
           <Fragment key={g}>
             <div className="sec">{t(GROUPS[g])}</div>
             {SECTIONS.filter((s) => s.group === g).map((s) => (
-              <button key={s.id} className={`ni${s.id === section ? " on" : ""}`} title={t(s.title)} aria-current={s.id === section ? "page" : undefined} onClick={() => onSection(s.id)}>
+              <button
+                key={s.id}
+                className={`ni${s.id === section ? " on" : ""}`}
+                title={t(s.title)}
+                aria-current={s.id === section ? "page" : undefined}
+                onClick={() => onSection(s.id)}
+              >
                 <span className="label">{t(s.title)}</span>
                 {badges[s.id] != null && <span className="n">{badges[s.id]}</span>}
               </button>
             ))}
-            {g === "library" && <button className="ni" onClick={onFeeds}>{t("settingsView.feeds")}</button>}
+            {g === "library" && (
+              <button className="ni" onClick={onFeeds}>
+                {t("settingsView.feeds")}
+              </button>
+            )}
           </Fragment>
         ))}
       </nav>

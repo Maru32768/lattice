@@ -42,7 +42,23 @@ const DRAG_PX = 4;
  * pane's strip, to another window or out of every window (the backend runs the drag across
  * windows; see DocArea), + for a new tab, and the pane's split and close buttons.
  */
-export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, onActivate, onClose, onNew, onSplit, onClosePane, onDrag, onDrop, onTitleDrag, end }: {
+export function TabStrip({
+  pane,
+  multi,
+  labelOf,
+  drop,
+  dragging,
+  windowAction,
+  onActivate,
+  onClose,
+  onNew,
+  onSplit,
+  onClosePane,
+  onDrag,
+  onDrop,
+  onTitleDrag,
+  end,
+}: {
   pane: Pane;
   /** More than one pane: this one can be closed. */
   multi: boolean;
@@ -71,8 +87,12 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
 
   function down(e: React.PointerEvent, tab: Id) {
     // A middle press would start Chromium's autoscroll (and then no auxclick comes); see middle.ts.
-    if (e.button === 1) return e.preventDefault();
-    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    if (e.button === 1) {
+      return e.preventDefault();
+    }
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) {
+      return;
+    }
     const r = e.currentTarget.getBoundingClientRect();
     press.current = { tab, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -80,8 +100,12 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
 
   function moveP(e: React.PointerEvent) {
     const p = press.current;
-    if (!p) return;
-    if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_PX) return;
+    if (!p) {
+      return;
+    }
+    if (!p.moved && Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_PX) {
+      return;
+    }
     p.moved = true;
     p.x = e.clientX;
     p.y = e.clientY;
@@ -89,11 +113,17 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
   }
 
   function up(e: React.PointerEvent, tab: Id) {
-    if (e.button === 1) return onClose(tab);
+    if (e.button === 1) {
+      return onClose(tab);
+    }
     const p = press.current;
     press.current = null;
-    if (!p) return;
-    if (!p.moved) return onActivate(p.tab);
+    if (!p) {
+      return;
+    }
+    if (!p.moved) {
+      return onActivate(p.tab);
+    }
     onDrop();
   }
 
@@ -114,25 +144,63 @@ export function TabStrip({ pane, multi, labelOf, drop, dragging, windowAction, o
       {pane.tabs.flatMap((tab, i) => {
         const { title, domain, feed } = labelOf(tab);
         const on = tab.id === pane.active;
-        return [here === i && arriving, (
-          <div key={tab.id} role="tab" aria-selected={on} tabIndex={on ? 0 : -1} title={title} data-tab={tab.id}
+        return [
+          here === i && arriving,
+          <div
+            key={tab.id}
+            role="tab"
+            aria-selected={on}
+            tabIndex={on ? 0 : -1}
+            title={title}
+            data-tab={tab.id}
             className={`tab${on && !incoming ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i && !incoming ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 && !incoming ? " drop-after" : ""}`}
-            onPointerDown={(e) => down(e, tab.id)} onPointerMove={moveP} onPointerUp={(e) => up(e, tab.id)} onLostPointerCapture={lost}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(tab.id); } }}>
+            onPointerDown={(e) => down(e, tab.id)}
+            onPointerMove={moveP}
+            onPointerUp={(e) => up(e, tab.id)}
+            onLostPointerCapture={lost}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onActivate(tab.id);
+              }
+            }}
+          >
             {tab.kind === "page" ? <Favicon domain={domain} /> : <Favicon domain={domain} feed={feed} />}
             <span className="tab-t">{title}</span>
-            <button className="x" onClick={() => onClose(tab.id)} aria-label={t("tabStrip.closeTitle", { title })} title={t("tabStrip.closeHint")} tabIndex={-1}><Icon name="x" size="sm" /></button>
-          </div>
-        )];
+            <button
+              className="x"
+              onClick={() => onClose(tab.id)}
+              aria-label={t("tabStrip.closeTitle", { title })}
+              title={t("tabStrip.closeHint")}
+              tabIndex={-1}
+            >
+              <Icon name="x" size="sm" />
+            </button>
+          </div>,
+        ];
       })}
       {/* An empty pane (a fresh split) has no tab to draw the marker on. */}
       {here >= pane.tabs.length && (arriving || (!pane.tabs.length && <span className="tab-mark" aria-hidden />))}
-      <button className="ib" onClick={onNew} aria-label={t("tabStrip.newTab")} title={t("tabStrip.newTabHint")}><Icon name="plus" /></button>
+      <button className="ib" onClick={onNew} aria-label={t("tabStrip.newTab")} title={t("tabStrip.newTabHint")}>
+        <Icon name="plus" />
+      </button>
       <span className="grow" />
-      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}><Icon name="vsplit" /></button>
-      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}><Icon name="hsplit" /></button>
-      {pane.active != null && <button className="ib" onClick={() => windowAction.onSelect(pane.active!)} aria-label={windowAction.label} title={windowAction.hint}><Icon name={windowAction.icon} /></button>}
-      {multi && <button className="ib" onClick={onClosePane} aria-label={t("tabStrip.closePane")} title={t("tabStrip.closePane")}><Icon name="x" /></button>}
+      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}>
+        <Icon name="vsplit" />
+      </button>
+      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}>
+        <Icon name="hsplit" />
+      </button>
+      {pane.active != null && (
+        <button className="ib" onClick={() => windowAction.onSelect(pane.active!)} aria-label={windowAction.label} title={windowAction.hint}>
+          <Icon name={windowAction.icon} />
+        </button>
+      )}
+      {multi && (
+        <button className="ib" onClick={onClosePane} aria-label={t("tabStrip.closePane")} title={t("tabStrip.closePane")}>
+          <Icon name="x" />
+        </button>
+      )}
       {end}
     </div>
   );

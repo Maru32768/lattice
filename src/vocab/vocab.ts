@@ -25,8 +25,9 @@ export function sentenceAt(text: string, start: number, end: number): string {
   let to = text.length;
   for (const m of text.matchAll(END)) {
     const after = m.index + m[0].length;
-    if (after <= start) from = after;
-    else if (m.index >= end) {
+    if (after <= start) {
+      from = after;
+    } else if (m.index >= end) {
       to = after;
       break;
     }
@@ -38,20 +39,34 @@ export function sentenceAt(text: string, start: number, end: number): string {
 /** The capture of `selected` in `text`: the occurrence nearest `near` (where the DOM puts the selection). */
 export function captureIn(text: string, selected: string, near: number): { surface: string; sentence: string } | null {
   const needle = selected.trim();
-  if (!needle) return null;
+  if (!needle) {
+    return null;
+  }
   let best = -1;
   for (let i = text.indexOf(needle); i >= 0; i = text.indexOf(needle, i + 1)) {
-    if (best < 0 || Math.abs(i - near) < Math.abs(best - near)) best = i;
+    if (best < 0 || Math.abs(i - near) < Math.abs(best - near)) {
+      best = i;
+    }
   }
   return best < 0 ? null : { surface: collapse(needle), sentence: sentenceAt(text, best, best + needle.length) };
 }
 
 /** A form as a pattern: case-insensitive, any run of spaces between words, not inside a longer word. */
-const pattern = (forms: string[]) => `(?<![\\p{L}\\p{N}])(?:${forms.map((f) => collapse(f).split(" ").map((w) => RegExp.escape(w)).join("\\s+")).join("|")})(?![\\p{L}\\p{N}])`;
+const pattern = (forms: string[]) =>
+  `(?<![\\p{L}\\p{N}])(?:${forms
+    .map((f) =>
+      collapse(f)
+        .split(" ")
+        .map((w) => RegExp.escape(w))
+        .join("\\s+"),
+    )
+    .join("|")})(?![\\p{L}\\p{N}])`;
 
 /** Where `form` occurs in `text` as a whole word, case-insensitively: [start, end) pairs. */
 export function findWord(text: string, form: string): [number, number][] {
-  if (!collapse(form)) return [];
+  if (!collapse(form)) {
+    return [];
+  }
   return [...text.matchAll(new RegExp(pattern([form]), "giu"))].map((m) => [m.index, m.index + m[0].length]);
 }
 
@@ -67,10 +82,18 @@ const key = (form: string) => collapse(form).toLowerCase();
 export function wordMarks(entries: VocabEntry[]): WordMarks | null {
   const meanings = new Map<string, string>();
   for (const e of entries) {
-    if (e.state !== "ready" || !e.meaning) continue;
-    for (const f of [e.headword, ...e.contexts.map((c) => c.surface)]) if (key(f) && !meanings.has(key(f))) meanings.set(key(f), e.meaning);
+    if (e.state !== "ready" || !e.meaning) {
+      continue;
+    }
+    for (const f of [e.headword, ...e.contexts.map((c) => c.surface)]) {
+      if (key(f) && !meanings.has(key(f))) {
+        meanings.set(key(f), e.meaning);
+      }
+    }
   }
-  if (meanings.size === 0) return null;
+  if (meanings.size === 0) {
+    return null;
+  }
   // Longest first: "write skew" wins over "write".
   const forms = [...meanings.keys()].sort((a, b) => b.length - a.length);
   return { re: new RegExp(pattern(forms), "giu"), meanings };
@@ -78,15 +101,21 @@ export function wordMarks(entries: VocabEntry[]): WordMarks | null {
 
 /** `text` in pieces; a saved word carries its meaning. */
 export function markWords(text: string, m: WordMarks | null): { v: string; meaning?: string }[] {
-  if (!m) return [{ v: text }];
+  if (!m) {
+    return [{ v: text }];
+  }
   const out: { v: string; meaning?: string }[] = [];
   let at = 0;
   for (const hit of text.matchAll(m.re)) {
-    if (hit.index > at) out.push({ v: text.slice(at, hit.index) });
+    if (hit.index > at) {
+      out.push({ v: text.slice(at, hit.index) });
+    }
     out.push({ v: hit[0], meaning: m.meanings.get(key(hit[0])) });
     at = hit.index + hit[0].length;
   }
-  if (at < text.length || out.length === 0) out.push({ v: text.slice(at) });
+  if (at < text.length || out.length === 0) {
+    out.push({ v: text.slice(at) });
+  }
   return out;
 }
 

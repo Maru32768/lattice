@@ -8,27 +8,33 @@ export const ja = {
   "settingsView.groupData": "データ",
   "settingsView.groupApp": "アプリ",
   "settingsView.provider": "AI プロバイダ",
-  "settingsView.providerLead": "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。",
+  "settingsView.providerLead":
+    "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます（失敗した段は 5 分間後回し）。",
   "settingsView.translation": "翻訳",
   "settingsView.translationLead": "記事の翻訳とページ表示の翻訳の両方に効きます。",
   "settingsView.instructions": "要約・対話",
-  "settingsView.instructionsLead": "要約と対話の回答に、あなたの関心や前提知識を反映させます。記事の本文は信頼しない入力として扱い、その中の指示には従わせません。",
+  "settingsView.instructionsLead":
+    "要約と対話の回答に、あなたの関心や前提知識を反映させます。記事の本文は信頼しない入力として扱い、その中の指示には従わせません。",
   "settingsView.classify": "自動分類",
   "settingsView.genres": "ジャンル",
-  "settingsView.genresLead": "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。",
+  "settingsView.genresLead":
+    "名前を既存のジャンル名に変えると、そのジャンルに統合します（記事を移動。Reader で選んだジャンルは手動のまま固定されます）。記事のないジャンルは削除できます。自動分類は次回から新しい名前を使います。",
   "settingsView.render": "取り込み・JS 描画",
   "settingsView.images": "画像",
   "settingsView.review": "復習",
-  "settingsView.reviewLead": "理解度チェックで「復習に追加」した問題と単語帳の単語を、Anki と同じ SM-2 方式で間隔を空けて「今日の復習」に出します。正解するたびに間隔が伸び（1 日、6 日、その後は約 2.5 倍ずつ）、「もう一度」で最短間隔に戻ります。",
+  "settingsView.reviewLead":
+    "理解度チェックで「復習に追加」した問題と単語帳の単語を、Anki と同じ SM-2 方式で間隔を空けて「今日の復習」に出します。正解するたびに間隔が伸び（1 日、6 日、その後は約 2.5 倍ずつ）、「もう一度」で最短間隔に戻ります。",
   "settingsView.shortcuts": "ショートカット",
   "settingsView.shortcutsLead": "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。",
   "settingsView.browser": "ブラウザ",
   "settingsView.browserLead": "ページ表示（アプリ内ブラウザ）の URL バーとホームボタン。",
   "settingsView.taskbar": "タスクバー",
   "settingsView.backup": "バックアップ",
-  "settingsView.backupLead": "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。",
+  "settingsView.backupLead":
+    "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。",
   "settingsView.r2": "クラウドバックアップ（R2）",
-  "settingsView.r2Lead": "DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は {code} の Terraform で管理します。",
+  "settingsView.r2Lead":
+    "DB のコピー（API キーは除く）を gzip 圧縮して Cloudflare R2 にアップロードします。アップロードに成功するたびに、この端末のバックアップを新しいものから指定した世代数だけ残して古いものを削除します（日数では消さないので、しばらく使わなくても消えません）。bucket は {code} の Terraform で管理します。",
   "settingsView.export": "エクスポート",
   "settingsView.storage": "ログ・保存場所",
   "settingsView.update": "アップデート",
@@ -44,7 +50,8 @@ export const ja = {
   "backupSection.local": "ローカルバックアップ",
   "backupSection.backUpNow": "今すぐバックアップ",
   "backupSection.keep": "残す世代数",
-  "backupSection.keepDesc": "バックアップを作るたびに、新しいものから指定した世代数だけ残して古い {code} を削除します。日数では消さないので、しばらく使わなくても消えません。",
+  "backupSection.keepDesc":
+    "バックアップを作るたびに、新しいものから指定した世代数だけ残して古い {code} を削除します。日数では消さないので、しばらく使わなくても消えません。",
   "common.save": "保存",
   "browserSettings.engine": "検索エンジン",
   "browserSettings.engineDesc": "URL バーに URL でない語を入力したときの検索と、ホームボタンで開くページ。",
@@ -55,9 +62,11 @@ export const ja = {
   "chatSettings.standard": "標準（約 8 万字）",
   "chatSettings.large": "多め（約 15 万字）",
   "chatSettings.budget": "対話で使う範囲",
-  "chatSettings.budgetDesc": "1 回の質問で LLM に渡す記事の量。範囲が収まれば全文を、収まらなければ検索で選んだ箇所を、まず 1 記事 4 箇所までにして多くの記事から集め、余裕があれば同じ記事から足します。多いほど網羅的に答えられますが、1 回のコスト（API の料金や CLI の usage）と待ち時間が増えます。次の質問から効きます。",
+  "chatSettings.budgetDesc":
+    "1 回の質問で LLM に渡す記事の量。範囲が収まれば全文を、収まらなければ検索で選んだ箇所を、まず 1 記事 4 箇所までにして多くの記事から集め、余裕があれば同じ記事から足します。多いほど網羅的に答えられますが、1 回のコスト（API の料金や CLI の usage）と待ち時間が増えます。次の質問から効きます。",
   "chatSettings.vim": "質問の入力欄で Vim キーバインドを使う",
-  "chatSettings.vimDesc": "Esc でノーマルモード、i・a・o などで挿入モード。h j k l w b e 0 $ gg G で移動し、x dd dw cw yy p u で編集します。送信はどちらのモードでも Ctrl + Enter。",
+  "chatSettings.vimDesc":
+    "Esc でノーマルモード、i・a・o などで挿入モード。h j k l w b e 0 $ gg G で移動し、x dd dw cw yy p u で編集します。送信はどちらのモードでも Ctrl + Enter。",
   "classifySettings.queued": "{x} 件を分類キューに追加しました",
   "classifySettings.auto": "保存した記事を LLM でジャンル分けし、タグを付ける",
   "classifySettings.autoDesc": "最大 20 件をまとめて 1 回の LLM 呼び出しで分類します。Reader で選んだジャンルは自動分類で上書きしません。",
@@ -82,7 +91,8 @@ export const ja = {
   "genreSettings.deleteLabel": "{name} を削除",
   "genreSettings.none": "ジャンルはまだありません。",
   "imageSettings.save": "画像を保存する",
-  "imageSettings.saveDesc": "記事の画像（PNG・JPEG・GIF・WebP・AVIF）を取り込み後にダウンロードし、データベースに保存します。元の URL が消えても読めて、バックアップにも入ります。SVG は保存せずリンクのままにします。オフにしても保存済みの画像は消えません。",
+  "imageSettings.saveDesc":
+    "記事の画像（PNG・JPEG・GIF・WebP・AVIF）を取り込み後にダウンロードし、データベースに保存します。元の URL が消えても読めて、バックアップにも入ります。SVG は保存せずリンクのままにします。オフにしても保存済みの画像は消えません。",
   "imageSettings.maxMb": "1 枚あたりの上限",
   "imageSettings.maxMbDesc": "記事 1 件あたりは 30 MB まで。",
   "instructionSettings.profile": "自分について",
@@ -98,19 +108,22 @@ export const ja = {
   "quizSettings.hours": "時間",
   "quizSettings.minutes": "分",
   "quizSettings.newPerDay": "1 日の新規カード",
-  "quizSettings.newPerDayDesc": "まだ一度も答えていないカードを 1 日に出す上限。記事の理解度チェックで答えてから追加したカードは、その答えが 1 回目になります。",
+  "quizSettings.newPerDayDesc":
+    "まだ一度も答えていないカードを 1 日に出す上限。記事の理解度チェックで答えてから追加したカードは、その答えが 1 回目になります。",
   "quizSettings.cards": "枚",
   "quizSettings.reviewsPerDay": "1 日の復習",
   "quizSettings.reviewsPerDayDesc": "一度答えたカードを 1 日に出す上限。",
   "quizSettings.minInterval": "最短間隔",
-  "quizSettings.minIntervalDesc": "「もう一度」と、新しいカードに初めて正解したときの間隔。すべての間隔はこれ以上になります。1 日より短くすると、その日のうちにもう一度出題します（Anki の学習ステップ）。",
+  "quizSettings.minIntervalDesc":
+    "「もう一度」と、新しいカードに初めて正解したときの間隔。すべての間隔はこれ以上になります。1 日より短くすると、その日のうちにもう一度出題します（Anki の学習ステップ）。",
   "quizSettings.minIntervalUnit": "最短間隔の単位",
   "quizSettings.maxInterval": "最長間隔",
   "quizSettings.maxIntervalDesc": "間隔はこれより長くなりません。",
   "quizSettings.autoplay": "単語カードの発音を自動で再生",
   "quizSettings.autoplayDesc": "カードが出たときに見出し語を読み上げます（Windows の英語の音声。オフライン）。",
   "renderSettings.auto": "JS ページを自動で描画",
-  "renderSettings.autoDesc": "一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。",
+  "renderSettings.autoDesc":
+    "一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。",
   "taskbarSettings.badge": "未読数をタスクバーに表示",
   "taskbarSettings.badgeDesc": "タスクバーのアプリのボタンに未読の記事数を重ねて表示します（100 件以上は 99+、0 件のときは表示しません）。",
   "translationSettings.onSwitch": "表示を切り替えたら自動で翻訳",
@@ -118,14 +131,17 @@ export const ja = {
   "translationSettings.onSave": "保存した記事を自動で翻訳",
   "translationSettings.onSaveDesc": "記事を保存して本文を取り出したら、すぐに翻訳します。記事ごとに LLM の使用量がかかります。日本語の記事は訳しません。",
   "translationSettings.keepTerms": "専門用語を英語のまま残す",
-  "translationSettings.keepTermsDesc": "MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります（元の設定に戻せば以前の訳文が表示されます）。",
+  "translationSettings.keepTermsDesc":
+    "MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります（元の設定に戻せば以前の訳文が表示されます）。",
   "translationSettings.instructions": "追加の指示",
-  "translationSettings.instructionsDesc": "翻訳の prompt の末尾に付け加えます（例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」）。記事の翻訳とページ表示の翻訳の両方に効きます。 訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
+  "translationSettings.instructionsDesc":
+    "翻訳の prompt の末尾に付け加えます（例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」）。記事の翻訳とページ表示の翻訳の両方に効きます。 訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
   "translationSettings.showPrompt": "組み込みの prompt（英語→日本語）を見る",
   "translationSettings.prompt": "組み込みの prompt",
   "backupSection.location": "保存先: {path}",
   "browserSettings.invalidTemplate": "{code} を含む http(s) の URL を入力してください。それまでは DuckDuckGo を使います。",
-  "exportSection.jsonDesc": "{code} フォルダに、1 行 1 オブジェクトの gzip で書き出します。記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。",
+  "exportSection.jsonDesc":
+    "{code} フォルダに、1 行 1 オブジェクトの gzip で書き出します。記事・ブロック・訳・要約・タグ・ジャンル・フィード・対話が入ります。API キーなどの設定と取得した HTML は含まないので、HTML まで残すにはバックアップを使ってください。",
   "modelSettings.cliDefault": "CLI の既定",
   "modelSettings.haiku": "Haiku（速い・安い）",
   "modelSettings.sonnet": "Sonnet（バランス）",
@@ -160,9 +176,11 @@ export const ja = {
   "modelSettings.effortHint": "Reasoning effort（考える深さ）。上げると品質が上がることがある代わりに遅く、高くなります",
   "modelSettings.removeStep": "{x} 段目を削除",
   "modelSettings.saved": "モデルを保存しました",
-  "modelSettings.chainNote": "Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルと低い effort がおすすめです。モデルが対応しない effort を選ぶと、その段は失敗して次の段に進みます。",
+  "modelSettings.chainNote":
+    "Claude CLI と Codex CLI は各 CLI のログインを使います。大量に翻訳するなら速いモデルと低い effort がおすすめです。モデルが対応しない effort を選ぶと、その段は失敗して次の段に進みます。",
   "modelSettings.apiKeys": "API キー",
-  "modelSettings.apiKeysDesc": "キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 {code} / {code2} / {code3} を使います。値は表示しません。",
+  "modelSettings.apiKeysDesc":
+    "キーはローカルの DB に保存し、バックアップには含めません。未設定なら環境変数 {code} / {code2} / {code3} を使います。値は表示しません。",
   "modelSettings.replaceKey": "新しいキーで置き換える",
   "modelSettings.apiKey": "{label} API キー",
   "modelSettings.keySaved": "{label} API キーを保存しました",
@@ -220,8 +238,10 @@ export const ja = {
   "update.downloadPage": "ダウンロードページ",
   "update.releaseNotes": "リリースノート",
   "update.later": "後で",
-  "update.notConfigured": "このビルドでは自動更新が設定されていません（署名用の公開鍵がありません）。新しいバージョンは GitHub の Releases から入手してください。",
-  "update.availablePortable": "Lattice {version} が利用できます。ポータブル版は、Releases の zip を展開して {code} を置き換えてください（{code2} フォルダはそのまま使えます）。",
+  "update.notConfigured":
+    "このビルドでは自動更新が設定されていません（署名用の公開鍵がありません）。新しいバージョンは GitHub の Releases から入手してください。",
+  "update.availablePortable":
+    "Lattice {version} が利用できます。ポータブル版は、Releases の zip を展開して {code} を置き換えてください（{code2} フォルダはそのまま使えます）。",
   "update.availableInstall": "Lattice {version} が利用できます。ダウンロードして署名を確かめ、インストール後に再起動します。",
   "update.latest": "最新のバージョンです。",
   "update.checkedAtStart": "起動時にも確認し、新しいバージョンがあれば画面上部に表示します。",
@@ -241,7 +261,7 @@ export const ja = {
   "keys.less": "訳文の割合を下げる",
   "keys.more": "訳文の割合を上げる",
   "keys.escape": "戻る・絞り込みを解除",
-  "keys.pane": "ペイン移動のプレフィックス（続けて ← → ↑ ↓ / h j k l・o・z・\" %・x・c n p）",
+  "keys.pane": 'ペイン移動のプレフィックス（続けて ← → ↑ ↓ / h j k l・o・z・" %・x・c n p）',
   "keys.newTab": "新しいタブ",
   "keys.closeTab": "タブを閉じる",
   "keys.nextTab": "次のタブ",
@@ -250,7 +270,8 @@ export const ja = {
   "keys.splitDown": "ペインを下に分割",
   "modelSettings.keyPill": "キー: {source}",
   "r2BackupSection.latest": "最新のオブジェクト: {key}",
-  "storageSection.locationDesc": "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップ・エクスポート・検索モデルも同じフォルダに置きます（{kind}）: {path}",
+  "storageSection.locationDesc":
+    "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップ・エクスポート・検索モデルも同じフォルダに置きます（{kind}）: {path}",
   "storageSection.portableDesc": "。exe の隣に {file} ファイルがあるので、ページ表示のログイン情報やログも含めてここに保存します。",
   "storageSection.logsDesc": "取得や翻訳ジョブの失敗はログに記録されます: {path}",
   "storageSection.hasData": "{path} には既に Lattice のデータがあります。コピーはせず、再起動後はそのデータを使います。",
@@ -471,7 +492,8 @@ export const ja = {
   "quizReview.continue": "続ける（{due} 枚）",
   "quizReview.done": "今日の復習は終わりです。",
   "quizReview.next": "次のカードは {when}に出題します。",
-  "quizReview.empty": "復習するカードはまだありません。記事の「理解度チェック」で問題を解いて「復習に追加」するか、英単語を選択して「単語を登録」すると、間隔を空けてここで出題します。",
+  "quizReview.empty":
+    "復習するカードはまだありません。記事の「理解度チェック」で問題を解いて「復習に追加」するか、英単語を選択して「単語を登録」すると、間隔を空けてここで出題します。",
   "quizReview.articles": "復習中の記事",
   "common.article": "記事",
   "quizReview.cards": "カード",
@@ -590,9 +612,12 @@ export const ja = {
   "jobsView.feedFilterHint": "フィードごと、最大 20 件を 1 呼び出しに",
   "jobsView.pending": "待機",
   "jobsView.running": "実行中",
-  "importView.urlsDesc": "URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。",
-  "importView.pdfDesc": "論文などの PDF を 1 つの記事として取り込みます。本文の文字を読み取り、2 段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します（文字のない画像だけの PDF は取り込めません）。arXiv の …/pdf/… のような PDF の URL は、普通の URL と同じように保存やフィードから取り込めます。元の PDF は保存しておき、再抽出に使います。",
-  "importView.markdownDesc": "Markdown を 1 つの記事として取り込みます。タイトルは最初の見出し（# ）、なければファイル名か最初の行です。画像は、URL のものは保存し、相対パスのものはファイルから取り込んだときだけ同じフォルダから読み込みます（貼り付けたときは代替テキストを表示）。HTML タグは取り込みません。",
+  "importView.urlsDesc":
+    "URL 一覧、ブラウザのブックマーク（HTML）、CSV、JSON など、URL を含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。",
+  "importView.pdfDesc":
+    "論文などの PDF を 1 つの記事として取り込みます。本文の文字を読み取り、2 段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します（文字のない画像だけの PDF は取り込めません）。arXiv の …/pdf/… のような PDF の URL は、普通の URL と同じように保存やフィードから取り込めます。元の PDF は保存しておき、再抽出に使います。",
+  "importView.markdownDesc":
+    "Markdown を 1 つの記事として取り込みます。タイトルは最初の見出し（# ）、なければファイル名か最初の行です。画像は、URL のものは保存し、相対パスのものはファイルから取り込んだときだけ同じフォルダから読み込みます（貼り付けたときは代替テキストを表示）。HTML タグは取り込みません。",
   "feedsView.added": "{name} を登録しました。新しい記事をバックグラウンドで取得します。",
   "feedsView.opmlDone": "{total} 件中 {ok} 件を登録",
   "feedsView.opmlFailed": "・失敗: {urls}",
@@ -766,7 +791,8 @@ export const ja = {
   "reader.flipPop": "クリック / {kbd} で反転",
   "reader.quizSource": "クイズの出典",
   "reader.confirmRetranslate": "訳し直しますか？",
-  "reader.confirmRetranslateDesc": "この記事の訳文 {done} block を捨てて、今のプロバイダと設定で訳し直します。同じ段落を含むほかの記事やページ表示も新しい訳になります。",
+  "reader.confirmRetranslateDesc":
+    "この記事の訳文 {done} block を捨てて、今のプロバイダと設定で訳し直します。同じ段落を含むほかの記事やページ表示も新しい訳になります。",
   "reader.image": "画像: {name}",
   "reader.translate": "翻訳する",
   "reader.translateRest": "残りを翻訳",
@@ -774,7 +800,8 @@ export const ja = {
   "reader.translateIntoJa": "日本語に訳します",
   "reader.translatedCount": "翻訳 {done}/{total}",
   "reader.generated": "{date} 生成",
-  "reader.thin": "抽出できた本文は {n} 文字だけです。元ページの一部しか取れていない可能性があります（JavaScript で描画するページかもしれません）。 Page で開いて読み込み後に「表示中のページで取り込み直す」こともできます。",
+  "reader.thin":
+    "抽出できた本文は {n} 文字だけです。元ページの一部しか取れていない可能性があります（JavaScript で描画するページかもしれません）。 Page で開いて読み込み後に「表示中のページで取り込み直す」こともできます。",
   "palette.commands": "コマンド",
   "common.articles": "記事",
   "palette.tags": "タグ",
@@ -959,7 +986,8 @@ export const ja = {
   "vocabView.export": "CSV に書き出す",
   "vocabView.exportHint": "Anki に読み込める CSV（表・裏・タグ）を exports フォルダに書き出します",
   "vocabView.exported": "書き出しました: {path}",
-  "vocabView.empty": "まだ単語がありません。Reader やページで分からない英単語・熟語を選択して「単語を登録」を押すと、その文と一緒にここに入ります。意味は AI が文脈に合わせて付け、「今日の復習」で単語から意味を思い出すカードとして出題します。",
+  "vocabView.empty":
+    "まだ単語がありません。Reader やページで分からない英単語・熟語を選択して「単語を登録」を押すと、その文と一緒にここに入ります。意味は AI が文脈に合わせて付け、「今日の復習」で単語から意味を思い出すカードとして出題します。",
   "vocabView.noMatch": "一致する単語はありません。",
   "vocabView.word": "単語",
   "vocabView.meaning": "意味",
@@ -997,7 +1025,8 @@ export const ja = {
   "be.vocab.gone": "この単語は削除されています",
   // @i18n-append
   "settingsView.relevance": "重要度",
-  "settingsView.relevanceLead": "「要約・対話」の「自分について」を基準に、LLM が記事ごとに重要度（1〜5）と理由を 1 行で付けます。一覧の「重要度順」、facet「重要度」、サイドバーの「重要」に使います。プロフィールを書き換えると、それまでの判定は「以前のプロフィールで判定」になります。",
+  "settingsView.relevanceLead":
+    "「要約・対話」の「自分について」を基準に、LLM が記事ごとに重要度（1〜5）と理由を 1 行で付けます。一覧の「重要度順」、facet「重要度」、サイドバーの「重要」に使います。プロフィールを書き換えると、それまでの判定は「以前のプロフィールで判定」になります。",
   "relevanceSettings.noProfile": "「自分について」が空なので、重要度は判定しません。設定 › 要約・対話 で、仕事や関心を書くと判定を始めます。",
   "relevanceSettings.auto": "新しく保存した記事の重要度を判定する",
   "relevanceSettings.autoDesc": "「自分について」があるときだけ動きます。最大 20 件をまとめて 1 回の LLM 呼び出しで判定します。",
@@ -1005,7 +1034,8 @@ export const ja = {
   "relevanceSettings.thresholdDesc": "サイドバーの「重要」に、この重要度以上の記事を出します。",
   "relevanceSettings.atLeast": "{n} 以上",
   "relevanceSettings.rescore": "重要度を付け直す",
-  "relevanceSettings.counts": "判定済み {scored} 件（うち以前のプロフィールで判定 {stale} 件）・未判定 {unscored} 件。未判定と以前のプロフィールの記事を判定キューに追加します。",
+  "relevanceSettings.counts":
+    "判定済み {scored} 件（うち以前のプロフィールで判定 {stale} 件）・未判定 {unscored} 件。未判定と以前のプロフィールの記事を判定キューに追加します。",
   "relevanceSettings.rescoreAll": "重要度を付け直す",
   "relevanceSettings.queued": "{n} 件を判定キューに追加しました",
   "common.relevance": "重要度",
@@ -1027,7 +1057,8 @@ export const ja = {
   "be.relevance.noProfile": "「自分について」が空なので、重要度は判定できません",
   "be.relevance.thresholdRange": "重要度は 1〜5 で選んでください（{min}）",
   "settingsView.feedFilter": "取り込みフィルタ",
-  "settingsView.feedFilterLead": "フィードの新着を取り込む前に絞り込みます。ここはすべてのフィードに効く全体の設定で、フィードごとの設定は「フィードを管理」の「編集」にあります。記事は全体とフィードの両方を通ったものだけ取り込みます。ルールを先に当て、残ったものだけを LLM に回します。除外した記事は「フィードを管理」の「除外された記事」に理由つきで残り、手で取り込めます。",
+  "settingsView.feedFilterLead":
+    "フィードの新着を取り込む前に絞り込みます。ここはすべてのフィードに効く全体の設定で、フィードごとの設定は「フィードを管理」の「編集」にあります。記事は全体とフィードの両方を通ったものだけ取り込みます。ルールを先に当て、残ったものだけを LLM に回します。除外した記事は「フィードを管理」の「除外された記事」に理由つきで残り、手で取り込めます。",
   "feedsView.rejected": "除外 {n} 件",
   "feedsView.rejectedOf": "{feedName} の除外された記事 {n} 件",
   "feedFilter.title": "このフィードの取り込みフィルタ",
@@ -1054,7 +1085,8 @@ export const ja = {
   "feedFilter.minChars": "本文の最短文字数",
   "feedFilter.minCharsHint": "本文を載せているフィードの記事だけに効きます（抜粋だけのフィードでは判定しません）",
   "feedFilter.llm": "ルールを通った記事を LLM で判定する",
-  "feedFilter.llmHint": "タイトル・抜粋と「自分について」、下の指示から取り込むか決めます（最大 20 件をまとめて 1 回の呼び出し）。LLM が失敗したときは取り込みます。",
+  "feedFilter.llmHint":
+    "タイトル・抜粋と「自分について」、下の指示から取り込むか決めます（最大 20 件をまとめて 1 回の呼び出し）。LLM が失敗したときは取り込みます。",
   "feedFilter.instruction": "取り込む記事の指示",
   "feedFilter.instructionPlaceholder": "例: データベースの内部実装の記事だけ。製品の宣伝やイベント告知は除く",
   "feedFilter.minRelevance": "重要度の下限",

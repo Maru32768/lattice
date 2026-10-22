@@ -21,12 +21,32 @@ export function InfoTip({ label, text }: { label: string; text: string }) {
   const hide = () => setAt(null);
   return (
     <>
-      <span ref={ref} className="info-i" tabIndex={0} role="img" aria-label={label} aria-describedby={id}
-        onMouseEnter={show} onMouseLeave={hide} onFocus={show} onBlur={hide}
-        onKeyDown={(e) => { if (e.key === "Escape" && at) { e.stopPropagation(); hide(); } }}>
+      <span
+        ref={ref}
+        className="info-i"
+        tabIndex={0}
+        role="img"
+        aria-label={label}
+        aria-describedby={id}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && at) {
+            e.stopPropagation();
+            hide();
+          }
+        }}
+      >
         <Icon name="info" size="sm" />
       </span>
-      {createPortal(<span id={id} role="tooltip" className="info-tip" hidden={!at} style={at ?? undefined}>{text}</span>, document.body)}
+      {createPortal(
+        <span id={id} role="tooltip" className="info-tip" hidden={!at} style={at ?? undefined}>
+          {text}
+        </span>,
+        document.body,
+      )}
     </>
   );
 }

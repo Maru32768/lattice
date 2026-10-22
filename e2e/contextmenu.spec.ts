@@ -12,8 +12,14 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
   await row(app, a.title!).click({ button: "right" });
   const m = menu(app);
   await expect(m.getByRole("menuitem")).toHaveText([
-    a.favorite ? "お気に入りを解除" : "お気に入り", a.read_status === "read" ? "未読に戻す" : "既読にする", "グループに追加…",
-    "新しいタブで開く", "別ウィンドウで開く", "Page で開く", "URL をコピー", "Index から削除…",
+    a.favorite ? "お気に入りを解除" : "お気に入り",
+    a.read_status === "read" ? "未読に戻す" : "既読にする",
+    "グループに追加…",
+    "新しいタブで開く",
+    "別ウィンドウで開く",
+    "Page で開く",
+    "URL をコピー",
+    "Index から削除…",
   ]);
   await m.getByRole("menuitem", { name: /お気に入り/ }).click();
   await expect(m).toBeHidden();
@@ -60,8 +66,15 @@ test("with rows picked, the menu applies the bulk actions to all of them", async
 
   await row(app, a.title!).click({ button: "right" });
   const read = [a, b].every((x) => x.read_status === "read");
-  await menu(app).getByRole("menuitem", { name: read ? "未読に戻す" : "既読にする" }).click();
-  expect(await callsOf(app, "set_read")).toEqual(expect.arrayContaining([{ id: a.id, read: !read }, { id: b.id, read: !read }]));
+  await menu(app)
+    .getByRole("menuitem", { name: read ? "未読に戻す" : "既読にする" })
+    .click();
+  expect(await callsOf(app, "set_read")).toEqual(
+    expect.arrayContaining([
+      { id: a.id, read: !read },
+      { id: b.id, read: !read },
+    ]),
+  );
 });
 
 test("right-click on a tab: the article's menu; an unsaved page's tab offers what applies to its URL", async ({ app }) => {

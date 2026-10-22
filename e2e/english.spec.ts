@@ -6,7 +6,9 @@ const JAPANESE = /[぀-ヿ一-鿿]/;
 test("an English WebView starts in English and stores the choice", async ({ app }) => {
   expect(await callsOf(app, "set_ui_language")).toContainEqual({ lang: "en" });
   await expect(app.locator("html")).toHaveAttribute("lang", "en");
-  for (const label of ["Recently added", "Unread", "Favorites", "All articles", "Added by hand"]) await expect(navItem(app, label)).toBeVisible();
+  for (const label of ["Recently added", "Unread", "Favorites", "All articles", "Added by hand"]) {
+    await expect(navItem(app, label)).toBeVisible();
+  }
   await expect(app.getByRole("button", { name: "Sort and group" })).toContainText("Date added, newest first");
   await expect(list(app).locator(".count")).toBeVisible();
 });
@@ -35,9 +37,31 @@ test("every settings section has an English title, and a backend error is shown 
   await app.locator(".nav").getByRole("button", { name: "Settings" }).click();
   const nav = app.getByRole("navigation", { name: "Settings categories" });
   expect(await nav.innerText(), "no Japanese left in the settings navigation").not.toMatch(JAPANESE);
-  for (const title of ["AI providers", "Translation", "Summaries & chat", "Auto-classification", "Importance", "Genres", "Import & JS rendering", "Import filters", "Images", "Review",
-    "Display language", "Shortcuts", "Browser", "Taskbar", "Backup", "Cloud backup (R2)", "Export", "Logs & storage", "Updates"]) {
-    await nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) }).click();
+  for (const title of [
+    "AI providers",
+    "Translation",
+    "Summaries & chat",
+    "Auto-classification",
+    "Importance",
+    "Genres",
+    "Import & JS rendering",
+    "Import filters",
+    "Images",
+    "Review",
+    "Display language",
+    "Shortcuts",
+    "Browser",
+    "Taskbar",
+    "Backup",
+    "Cloud backup (R2)",
+    "Export",
+    "Logs & storage",
+    "Updates",
+  ]) {
+    await nav
+      .locator(".ni")
+      .filter({ has: app.locator(".label").getByText(title, { exact: true }) })
+      .click();
     await expect(app.locator(".stg main h1")).toHaveText(title);
   }
   await nav.getByRole("button", { name: "Review" }).click();

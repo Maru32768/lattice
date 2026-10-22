@@ -13,11 +13,19 @@ const tenths = (n: number) => String(Math.round(n * 10) / 10);
 
 /** A review interval: "10分", "4時間", "6日", "1.5か月", "2年" (ja). */
 export function formatInterval(minutes: number, t: T): string {
-  if (minutes < 60) return t("quiz.minutes", { n: minutes });
-  if (minutes < 24 * 60) return t("quiz.hours", { n: Math.round(minutes / 60) });
+  if (minutes < 60) {
+    return t("quiz.minutes", { n: minutes });
+  }
+  if (minutes < 24 * 60) {
+    return t("quiz.hours", { n: Math.round(minutes / 60) });
+  }
   const days = Math.round(minutes / (24 * 60));
-  if (days < 31) return t("quiz.days", { n: days });
-  if (days < 365) return t("quiz.months", { n: tenths(days / 30) });
+  if (days < 31) {
+    return t("quiz.days", { n: days });
+  }
+  if (days < 365) {
+    return t("quiz.months", { n: tenths(days / 30) });
+  }
   return t("quiz.years", { n: tenths(days / 365) });
 }
 

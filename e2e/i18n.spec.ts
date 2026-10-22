@@ -24,7 +24,6 @@ test("the display language switches live in Settings and is stored in the backen
   await navEn.getByRole("button", { name: "AI providers" }).click();
   await expect(app.getByLabel("Provider for step 1")).toBeVisible();
 
-
   await app.keyboard.press("Escape");
   await expect(navItem(app, "All articles")).toBeVisible();
   await expect(app.getByRole("region", { name: "Articles" }).locator(".row").first()).toBeVisible();

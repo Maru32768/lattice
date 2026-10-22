@@ -88,11 +88,15 @@ export function panes(n: Node): Pane[] {
 
 /** The first pane in reading order. */
 function firstPane(n: Node): Pane {
-  for (let at: Node = n; ; ) {
-    if (at.kind === "pane") return at;
+  for (let at: Node = n; ;) {
+    if (at.kind === "pane") {
+      return at;
+    }
     const [child] = at.children;
     // `without` collapses a split left with fewer than two children, and parsing refuses one.
-    if (!child) throw new Error(`split ${at.id} has no children`);
+    if (!child) {
+      throw new Error(`split ${at.id} has no children`);
+    }
     at = child;
   }
 }
@@ -104,7 +108,9 @@ export const activeTab = (p: Pane | undefined) => p?.tabs.find((t) => t.id === p
 export function tabById(l: Layout, id: Id): { pane: Pane; tab: Tab } | undefined {
   for (const pane of panes(l.root)) {
     const tab = pane.tabs.find((t) => t.id === id);
-    if (tab) return { pane, tab };
+    if (tab) {
+      return { pane, tab };
+    }
   }
   return undefined;
 }
@@ -122,13 +128,17 @@ const replacePane = (l: Layout, p: Pane): Layout => ({ ...l, root: mapPanes(l.ro
 
 /** Without pane `id`; a split left with one child becomes that child. The root pane only empties. */
 function without(n: Node, id: Id): Node | null {
-  if (n.kind === "pane") return n.id === id ? null : n;
+  if (n.kind === "pane") {
+    return n.id === id ? null : n;
+  }
   const kept = n.children.map((c, i) => [without(c, id), n.sizes[i]] as const).filter((x): x is [Node, number] => x[0] != null);
   if (kept.length === n.children.length) {
     return kept.every(([c], i) => c === n.children[i]) ? n : { ...n, children: kept.map(([c]) => c) };
   }
   const [first, second] = kept;
-  if (first && !second) return first[0];
+  if (first && !second) {
+    return first[0];
+  }
   const total = kept.reduce((s, [, w]) => s + w, 0);
   return { ...n, children: kept.map(([c]) => c), sizes: kept.map(([, w]) => w / total) };
 }
@@ -148,19 +158,23 @@ export const focus = (l: Layout, pane: Id): Layout => (paneById(l, pane) && l.fo
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   if (doc.kind === "reader") {
-    const seq = (prev?.kind === "reader" ? prev.focus?.seq ?? 0 : 0) + 1;
+    const seq = (prev?.kind === "reader" ? (prev.focus?.seq ?? 0) : 0) + 1;
     return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq } };
   }
   const seq = (prev?.kind === "page" ? prev.seq : 0) + 1;
   // A page replacing a page keeps the webview; one arriving from another window brings its own.
-  const key = prev?.kind === "page" ? prev.key : doc.key ?? newKey();
+  const key = prev?.kind === "page" ? prev.key : (doc.key ?? newKey());
   return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, loading: true, saved: doc.saved ?? null };
 }
 
 /** True when `t` already shows `doc` and nothing asks to jump inside it. */
 function shows(t: Tab, doc: Doc): boolean {
-  if (doc.focus) return false;
-  if (t.kind === "reader") return doc.kind === "reader" && t.articleId === doc.articleId;
+  if (doc.focus) {
+    return false;
+  }
+  if (t.kind === "reader") {
+    return doc.kind === "reader" && t.articleId === doc.articleId;
+  }
   // Also after a redirect, by the saved article the page turned out to be.
   return doc.kind === "page" && (t.url === doc.url || (doc.saved != null && t.saved === doc.saved));
 }
@@ -174,7 +188,9 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
   const p = paneById(l, pane) ?? focusedPane(l);
   const cur = activeTab(p);
   if (cur && where === "active") {
-    if (shows(cur, doc)) return focus(l, p.id);
+    if (shows(cur, doc)) {
+      return focus(l, p.id);
+    }
     const tab = tabFor(doc, cur.id, cur);
     return focus(replacePane(l, { ...p, tabs: p.tabs.map((t) => (t.id === cur.id ? tab : t)) }), p.id);
   }
@@ -185,7 +201,9 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
 
 export function activate(l: Layout, tab: Id): Layout {
   const hit = tabById(l, tab);
-  if (!hit) return l;
+  if (!hit) {
+    return l;
+  }
   return focus(replacePane(l, { ...hit.pane, active: tab }), hit.pane.id);
 }
 
@@ -193,7 +211,9 @@ export function activate(l: Layout, tab: Id): Layout {
 export function cycle(l: Layout, d: 1 | -1): Layout {
   const p = focusedPane(l);
   const n = p.tabs.length;
-  if (n < 2) return l;
+  if (n < 2) {
+    return l;
+  }
   const i = p.tabs.findIndex((t) => t.id === p.active);
   const next = p.tabs[(i + d + n) % n];
   return next ? activate(l, next.id) : l;
@@ -201,25 +221,33 @@ export function cycle(l: Layout, d: 1 | -1): Layout {
 
 export function close(l: Layout, tab: Id): Layout {
   const hit = tabById(l, tab);
-  if (!hit) return l;
+  if (!hit) {
+    return l;
+  }
   const { pane } = hit;
   const i = pane.tabs.findIndex((t) => t.id === tab);
   const tabs = pane.tabs.toSpliced(i, 1);
-  if (tabs.length === 0) return removePane(l, pane.id);
-  const active = pane.active === tab ? (tabs[i] ?? tabs[i - 1])?.id ?? null : pane.active;
+  if (tabs.length === 0) {
+    return removePane(l, pane.id);
+  }
+  const active = pane.active === tab ? ((tabs[i] ?? tabs[i - 1])?.id ?? null) : pane.active;
   return replacePane(l, { ...pane, tabs, active });
 }
 
 /** Closes every tab `pred` accepts (an article that was deleted, …). */
 export function closeWhere(l: Layout, pred: (t: Tab) => boolean): Layout {
-  return allTabs(l).filter(pred).reduce((acc, t) => close(acc, t.id), l);
+  return allTabs(l)
+    .filter(pred)
+    .reduce((acc, t) => close(acc, t.id), l);
 }
 
 /** Moves a tab to position `index` of pane `to` (its own pane included) and shows it there. */
 export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
   const hit = tabById(l, tab);
   const target = paneById(l, to);
-  if (!hit || !target) return l;
+  if (!hit || !target) {
+    return l;
+  }
   const from = hit.pane;
   if (from.id === to) {
     const i = from.tabs.indexOf(hit.tab);
@@ -237,7 +265,9 @@ export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
 export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
   const fresh: Pane = { kind: "pane", id: l.next, tabs: [], active: null };
   const rec = (n: Node): Node => {
-    if (n.kind === "pane") return n.id !== id ? n : { kind: "split", id: l.next + 1, dir, children: before ? [fresh, n] : [n, fresh], sizes: [0.5, 0.5] };
+    if (n.kind === "pane") {
+      return n.id !== id ? n : { kind: "split", id: l.next + 1, dir, children: before ? [fresh, n] : [n, fresh], sizes: [0.5, 0.5] };
+    }
     const i = n.children.findIndex((c) => c.kind === "pane" && c.id === id);
     // Same direction as the parent: a sibling, not a nested split.
     if (i >= 0 && n.dir === dir) {
@@ -246,15 +276,21 @@ export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
     }
     return { ...n, children: n.children.map(rec) };
   };
-  if (!paneById(l, id)) return l;
+  if (!paneById(l, id)) {
+    return l;
+  }
   return { root: rec(l.root), focused: fresh.id, next: l.next + 2 };
 }
 
 /** Tab `tab` dropped on pane `pane`'s body: its center moves the tab to the end of that pane (its own pane: nothing), an edge into a new pane split off on that side. */
 export function dropOn(l: Layout, tab: Id, pane: Id, zone: Zone): Layout {
   const target = paneById(l, pane);
-  if (!target || !tabById(l, tab)) return l;
-  if (zone === "center") return target.tabs.some((t) => t.id === tab) ? l : move(l, tab, pane, target.tabs.length);
+  if (!target || !tabById(l, tab)) {
+    return l;
+  }
+  if (zone === "center") {
+    return target.tabs.some((t) => t.id === tab) ? l : move(l, tab, pane, target.tabs.length);
+  }
   const s = split(l, pane, zone === "left" || zone === "right" ? "row" : "column", zone === "left" || zone === "top");
   return move(s, tab, s.focused, 0);
 }
@@ -265,10 +301,16 @@ export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) && l.ro
 /** Sets child `i` of a split to `size` (a fraction of the split); child `i + 1` takes the difference, both within MIN_SIZE. */
 export function resize(l: Layout, splitId: Id, i: number, size: number): Layout {
   const rec = (n: Node): Node => {
-    if (n.kind === "pane") return n;
-    if (n.id !== splitId) return { ...n, children: n.children.map(rec) };
+    if (n.kind === "pane") {
+      return n;
+    }
+    if (n.id !== splitId) {
+      return { ...n, children: n.children.map(rec) };
+    }
     const [a, b] = [n.sizes[i], n.sizes[i + 1]];
-    if (a == null || b == null) return n;
+    if (a == null || b == null) {
+      return n;
+    }
     const next = Math.max(MIN_SIZE, Math.min(a + b - MIN_SIZE, size));
     return { ...n, sizes: n.sizes.toSpliced(i, 2, next, a + b - next) };
   };
@@ -278,14 +320,18 @@ export function resize(l: Layout, splitId: Id, i: number, size: number): Layout 
 /** Changes a page tab (a navigation, a title, the Index state); nothing when the tab is gone or a Reader now. */
 export function update(l: Layout, tab: Id, patch: Partial<Omit<PageTab, "kind" | "id">>): Layout {
   const hit = tabById(l, tab);
-  if (hit?.tab.kind !== "page") return l;
+  if (hit?.tab.kind !== "page") {
+    return l;
+  }
   return replacePane(l, { ...hit.pane, tabs: hit.pane.tabs.map((t) => (t.id === tab && t.kind === "page" ? { ...t, ...patch } : t)) });
 }
 
 /** The page reported where it is: a new URL drops the old title until the page sets its own. */
 export function navigated(l: Layout, tab: Id, e: { url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }): Layout {
   const t = tabById(l, tab)?.tab;
-  if (t?.kind !== "page") return l;
+  if (t?.kind !== "page") {
+    return l;
+  }
   return update(l, tab, { ...e, title: t.url === e.url ? t.title : "" });
 }
 
@@ -297,12 +343,16 @@ export const LAYOUT_KEY = "lattice.layout";
 type Stored = { root: unknown; focused: unknown };
 
 function strip(n: Node): unknown {
-  if (n.kind === "split") return { kind: "split", id: n.id, dir: n.dir, children: n.children.map(strip), sizes: n.sizes };
+  if (n.kind === "split") {
+    return { kind: "split", id: n.id, dir: n.dir, children: n.children.map(strip), sizes: n.sizes };
+  }
   return {
     kind: "pane",
     id: n.id,
     active: n.active,
-    tabs: n.tabs.map((t) => (t.kind === "reader" ? { kind: "reader", id: t.id, articleId: t.articleId } : { kind: "page", id: t.id, key: t.key, url: t.url, title: t.title })),
+    tabs: n.tabs.map((t) =>
+      t.kind === "reader" ? { kind: "reader", id: t.id, articleId: t.articleId } : { kind: "page", id: t.id, key: t.key, url: t.url, title: t.title },
+    ),
   };
 }
 
@@ -313,30 +363,58 @@ const isStr = (v: unknown): v is string => typeof v === "string";
 
 /** `ids` collects every id seen, for the counter. Null when the shape is not one this version wrote. */
 function parseNode(v: unknown, ids: number[]): Node | null {
-  if (typeof v !== "object" || v === null) return null;
+  if (typeof v !== "object" || v === null) {
+    return null;
+  }
   const o = v as Record<string, unknown>;
-  if (!isNum(o.id)) return null;
+  if (!isNum(o.id)) {
+    return null;
+  }
   ids.push(o.id);
   if (o.kind === "split") {
-    if (!Array.isArray(o.children) || !Array.isArray(o.sizes) || o.children.length < 2 || o.sizes.length !== o.children.length) return null;
+    if (!Array.isArray(o.children) || !Array.isArray(o.sizes) || o.children.length < 2 || o.sizes.length !== o.children.length) {
+      return null;
+    }
     const sizes = o.sizes.filter(isNum);
-    if ((o.dir !== "row" && o.dir !== "column") || sizes.length !== o.children.length) return null;
+    if ((o.dir !== "row" && o.dir !== "column") || sizes.length !== o.children.length) {
+      return null;
+    }
     const children = o.children.map((c) => parseNode(c, ids)).filter((c) => c != null);
-    if (children.length !== o.children.length) return null;
+    if (children.length !== o.children.length) {
+      return null;
+    }
     const total = sizes.reduce((s, x) => s + x, 0);
     return { kind: "split", id: o.id, dir: o.dir, children, sizes: sizes.map((x) => x / total) };
   }
-  if (o.kind !== "pane" || !Array.isArray(o.tabs)) return null;
+  if (o.kind !== "pane" || !Array.isArray(o.tabs)) {
+    return null;
+  }
   const tabs: Tab[] = [];
   for (const t of o.tabs as Record<string, unknown>[]) {
-    if (!isNum(t?.id)) return null;
+    if (!isNum(t?.id)) {
+      return null;
+    }
     ids.push(t.id);
-    if (t.kind === "reader" && isNum(t.articleId)) tabs.push({ kind: "reader", id: t.id, articleId: t.articleId });
+    if (t.kind === "reader" && isNum(t.articleId)) {
+      tabs.push({ kind: "reader", id: t.id, articleId: t.articleId });
+    }
     // Layouts written before G52 have no key: the tab gets a fresh webview, as a restored tab does anyway.
-    else if (t.kind === "page" && isStr(t.url)) tabs.push({ kind: "page", id: t.id, key: isStr(t.key) ? t.key : newKey(), url: t.url, title: isStr(t.title) ? t.title : "", seq: 0, loading: false, saved: null });
-    else return null;
+    else if (t.kind === "page" && isStr(t.url)) {
+      tabs.push({
+        kind: "page",
+        id: t.id,
+        key: isStr(t.key) ? t.key : newKey(),
+        url: t.url,
+        title: isStr(t.title) ? t.title : "",
+        seq: 0,
+        loading: false,
+        saved: null,
+      });
+    } else {
+      return null;
+    }
   }
-  const active = isNum(o.active) && tabs.some((t) => t.id === o.active) ? o.active : tabs[0]?.id ?? null;
+  const active = isNum(o.active) && tabs.some((t) => t.id === o.active) ? o.active : (tabs[0]?.id ?? null);
   return { kind: "pane", id: o.id, tabs, active };
 }
 
@@ -345,7 +423,9 @@ export function parse(json: string): Layout | null {
     const s = JSON.parse(json) as Stored;
     const ids: number[] = [];
     const root = parseNode(s.root, ids);
-    if (!root) return null;
+    if (!root) {
+      return null;
+    }
     const all = panes(root);
     const f = s.focused;
     const focused = isNum(f) && all.some((p) => p.id === f) ? f : firstPane(root).id;

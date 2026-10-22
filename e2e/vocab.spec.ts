@@ -12,22 +12,27 @@ async function openSnapshot(page: Page) {
 
 /** Selects `word` inside block `block` as a mouse would, ending with mouseup. */
 async function select(page: Page, block: number, word: string) {
-  await page.evaluate(({ block, word }) => {
-    const root = document.getElementById(`b-${block}`)!;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-      const i = n.textContent!.indexOf(word);
-      if (i < 0) continue;
-      const range = document.createRange();
-      range.setStart(n, i);
-      range.setEnd(n, i + word.length);
-      getSelection()!.removeAllRanges();
-      getSelection()!.addRange(range);
-      root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-      return;
-    }
-    throw new Error(`${word} not in block ${block}`);
-  }, { block, word });
+  await page.evaluate(
+    ({ block, word }) => {
+      const root = document.getElementById(`b-${block}`)!;
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const i = n.textContent!.indexOf(word);
+        if (i < 0) {
+          continue;
+        }
+        const range = document.createRange();
+        range.setStart(n, i);
+        range.setEnd(n, i + word.length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+        root.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        return;
+      }
+      throw new Error(`${word} not in block ${block}`);
+    },
+    { block, word },
+  );
 }
 
 test("単語を登録: select a word in the Reader, save it with its sentence, and see it marked", async ({ app }) => {
@@ -39,9 +44,17 @@ test("単語を登録: select a word in the Reader, save it with its sentence, a
   await select(app, 102, "consistent");
   await app.getByRole("button", { name: /単語を登録/ }).click();
   await expect(app.locator(".vw-cap")).toHaveText("「consistent」を単語帳に登録しました");
-  expect(await callsOf(app, "vocab_add")).toEqual([{
-    capture: { surface: "consistent", sentence: "Every transaction reads from a consistent snapshot taken when it starts.", article_id: SNAPSHOT_ID, block_id: 102, url: ARTICLES[0].original_url },
-  }]);
+  expect(await callsOf(app, "vocab_add")).toEqual([
+    {
+      capture: {
+        surface: "consistent",
+        sentence: "Every transaction reads from a consistent snapshot taken when it starts.",
+        article_id: SNAPSHOT_ID,
+        block_id: 102,
+        url: ARTICLES[0].original_url,
+      },
+    },
+  ]);
   await expect(app.locator("#b-102 .vw")).toHaveText("consistent");
 
   // The shortcut saves the selection too; a form already in the book gains the sentence.
@@ -119,7 +132,15 @@ async function speech(page: Page, voices: { name: string; lang: string; localSer
       cancel: () => {},
     });
     Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
-    Object.defineProperty(window, "SpeechSynthesisUtterance", { value: class { text: string; constructor(text: string) { this.text = text; } }, configurable: true });
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      value: class {
+        text: string;
+        constructor(text: string) {
+          this.text = text;
+        }
+      },
+      configurable: true,
+    });
   }, voices);
   await page.goto("/");
   await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
@@ -150,7 +171,10 @@ async function reviewWord(page: Page, word: string, beforeStart?: () => Promise<
 }
 
 test("今日の復習: a saved word is a word → meaning card, said aloud", async ({ shell: app }) => {
-  await speech(app, [{ name: "Haruka", lang: "ja-JP", localService: true }, { name: "Zira", lang: "en-US", localService: true }]);
+  await speech(app, [
+    { name: "Haruka", lang: "ja-JP", localService: true },
+    { name: "Zira", lang: "en-US", localService: true },
+  ]);
   const session = await reviewWord(app, "block", async () => {
     await app.waitForTimeout(300);
     expect(await spoken(app), "nothing is said before the review starts").toEqual([]);
@@ -183,7 +207,10 @@ test("今日の復習: a saved word is a word → meaning card, said aloud", asy
 });
 
 test("without an offline English voice the card is silent and has no audio buttons", async ({ shell: app }) => {
-  await speech(app, [{ name: "Haruka", lang: "ja-JP", localService: true }, { name: "Aria Online", lang: "en-US", localService: false }]);
+  await speech(app, [
+    { name: "Haruka", lang: "ja-JP", localService: true },
+    { name: "Aria Online", lang: "en-US", localService: false },
+  ]);
   const session = await reviewWord(app, "block");
   await expect(session.locator(".vc-word")).toHaveText("block");
   await expect(session.getByRole("button", { name: "発音を聞く" })).toHaveCount(0);

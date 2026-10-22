@@ -13,7 +13,9 @@ test("job types show their names, with the ID on hover", async ({ app }) => {
 
 test("each job type's ⓘ explains it on hover and on keyboard focus, and describes the icon", async ({ app }) => {
   await navItem(app, "処理状況").click();
-  for (const label of LABELS) await expect(app.getByRole("img", { name: `${label}について` })).toHaveCount(1);
+  for (const label of LABELS) {
+    await expect(app.getByRole("img", { name: `${label}について` })).toHaveCount(1);
+  }
 
   const info = app.getByRole("img", { name: "翻訳について" });
   await expect(info).toHaveAccessibleDescription(/LLM で翻訳します/);

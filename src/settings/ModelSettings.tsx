@@ -78,7 +78,9 @@ function toSlots(chain: ChainEntry[]): Slot[] {
     // Only the preset values are read, which are the same in every language.
     return { id: nextId++, kind, model: m, custom: !presets(translatorFor("ja"))[kind].some((p) => p.value === m), effort: effort ?? "" };
   });
-  while (slots.length < 3) slots.push(empty());
+  while (slots.length < 3) {
+    slots.push(empty());
+  }
   return slots;
 }
 
@@ -98,9 +100,13 @@ function ChainRow({ slot, children }: { slot: Slot; children: React.ReactNode })
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: slot.id, disabled: !slot.kind });
   return (
     <div ref={setNodeRef} className={`chain${isDragging ? " dragging" : ""}`} style={{ transform: CSS.Translate.toString(transform), transition }}>
-      {slot.kind
-        ? <button ref={setActivatorNodeRef} className="grip" aria-label={t("modelSettings.drag")} title={t("modelSettings.drag")} {...attributes} {...listeners}>⋮⋮</button>
-        : <span />}
+      {slot.kind ? (
+        <button ref={setActivatorNodeRef} className="grip" aria-label={t("modelSettings.drag")} title={t("modelSettings.drag")} {...attributes} {...listeners}>
+          ⋮⋮
+        </button>
+      ) : (
+        <span />
+      )}
       {children}
     </div>
   );
@@ -112,9 +118,21 @@ function keyLabel(source: KeySource, env: string, t: T) {
 
 function KeyPill({ kind, llm }: { kind: ProviderKind; llm: LlmSettings | null }) {
   const t = useT();
-  if (kind === "claude_cli" || kind === "codex_cli") return <span className="pill cli"><i />{t("modelSettings.cliLogin")}</span>;
+  if (kind === "claude_cli" || kind === "codex_cli") {
+    return (
+      <span className="pill cli">
+        <i />
+        {t("modelSettings.cliLogin")}
+      </span>
+    );
+  }
   const source = llm?.[`${kind}_key`] ?? null;
-  return <span className={`pill${source ? "" : " off"}`}><i />{t("modelSettings.keyPill", { source: source === "stored" ? "DB" : source === "env" ? t("modelSettings.envVar") : t("common.notSet") })}</span>;
+  return (
+    <span className={`pill${source ? "" : " off"}`}>
+      <i />
+      {t("modelSettings.keyPill", { source: source === "stored" ? "DB" : source === "env" ? t("modelSettings.envVar") : t("common.notSet") })}
+    </span>
+  );
 }
 
 export function ModelSettings() {
@@ -133,7 +151,13 @@ export function ModelSettings() {
   }
 
   useEffect(() => {
-    api.llmSettings().then((s) => { setLlm(s); setSlots(toSlots(s.chain)); }).catch((e: unknown) => setError(String(e)));
+    api
+      .llmSettings()
+      .then((s) => {
+        setLlm(s);
+        setSlots(toSlots(s.chain));
+      })
+      .catch((e: unknown) => setError(String(e)));
   }, []);
 
   function update(i: number, patch: Partial<Slot>) {
@@ -143,9 +167,15 @@ export function ModelSettings() {
   const remove = (i: number) => setSlots((prev) => [...prev.filter((_, j) => j !== i), empty()]);
 
   function drop({ active, over }: DragEndEvent) {
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) {
+      return;
+    }
     setSlots((prev) => {
-      const moved = arrayMove(prev, prev.findIndex((s) => s.id === active.id), prev.findIndex((s) => s.id === over.id));
+      const moved = arrayMove(
+        prev,
+        prev.findIndex((s) => s.id === active.id),
+        prev.findIndex((s) => s.id === over.id),
+      );
       // Filled rows first: the first row has no "なし" option.
       return [...moved.filter((s) => s.kind), ...moved.filter((s) => !s.kind)];
     });
@@ -167,15 +197,26 @@ export function ModelSettings() {
   return (
     <>
       <section className="card" aria-label="Fallback chain">
-        <div className="chain-head">Fallback chain<span>{t("modelSettings.chainHint")}</span></div>
+        <div className="chain-head">
+          Fallback chain<span>{t("modelSettings.chainHint")}</span>
+        </div>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop} accessibility={dndText(t)}>
           <SortableContext items={slots.map((s) => s.id)} strategy={verticalListSortingStrategy}>
             {slots.map((s, i) => (
               <ChainRow key={s.id} slot={s}>
                 <span className="k">{i + 1}</span>
-                <select className="select" value={s.kind} onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false, effort: "" })} aria-label={t("modelSettings.provider", { x: i + 1 })}>
+                <select
+                  className="select"
+                  value={s.kind}
+                  onChange={(e) => update(i, { kind: e.target.value as ProviderKind | "", model: "", custom: false, effort: "" })}
+                  aria-label={t("modelSettings.provider", { x: i + 1 })}
+                >
                   {i > 0 && <option value="">{t("common.none")}</option>}
-                  {PROVIDERS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                  {PROVIDERS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
                 </select>
                 <span className="model">
                   {s.kind && (
@@ -185,25 +226,52 @@ export function ModelSettings() {
                       onChange={(e) => update(i, e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false })}
                       aria-label={t("modelSettings.model", { x: i + 1 })}
                     >
-                      {presets(t)[s.kind].map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                      {presets(t)[s.kind].map((p) => (
+                        <option key={p.value} value={p.value}>
+                          {p.label}
+                        </option>
+                      ))}
                       <option value={CUSTOM}>{t("modelSettings.other")}</option>
                     </select>
                   )}
                   {s.kind && s.custom && (
-                    <input className="input sm mono" value={s.model} onChange={(e) => update(i, { model: e.target.value })} placeholder={t("modelSettings.modelId")} aria-label={t("modelSettings.modelIdLabel", { x: i + 1 })} spellCheck={false} />
+                    <input
+                      className="input sm mono"
+                      value={s.model}
+                      onChange={(e) => update(i, { model: e.target.value })}
+                      placeholder={t("modelSettings.modelId")}
+                      aria-label={t("modelSettings.modelIdLabel", { x: i + 1 })}
+                      spellCheck={false}
+                    />
                   )}
                   {s.kind && (
-                    <select className="select effort" value={s.effort} onChange={(e) => update(i, { effort: e.target.value as Effort | "" })}
-                      aria-label={t("modelSettings.effort", { x: i + 1 })} title={t("modelSettings.effortHint")}>
+                    <select
+                      className="select effort"
+                      value={s.effort}
+                      onChange={(e) => update(i, { effort: e.target.value as Effort | "" })}
+                      aria-label={t("modelSettings.effort", { x: i + 1 })}
+                      title={t("modelSettings.effortHint")}
+                    >
                       <option value="">effort: {t(EFFORTS[s.kind].label)}</option>
-                      {EFFORTS[s.kind].values.map((v) => <option key={v} value={v}>effort: {v}</option>)}
+                      {EFFORTS[s.kind].values.map((v) => (
+                        <option key={v} value={v}>
+                          effort: {v}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </span>
                 <span className="kp">{s.kind && <KeyPill kind={s.kind} llm={llm} />}</span>
                 <span>
                   {s.kind && (
-                    <button className="btn ghost" onClick={() => remove(i)} disabled={chain.length <= 1} aria-label={t("modelSettings.removeStep", { x: i + 1 })}>{t("common.delete")}</button>
+                    <button
+                      className="btn ghost"
+                      onClick={() => remove(i)}
+                      disabled={chain.length <= 1}
+                      aria-label={t("modelSettings.removeStep", { x: i + 1 })}
+                    >
+                      {t("common.delete")}
+                    </button>
                   )}
                 </span>
               </ChainRow>
@@ -212,13 +280,21 @@ export function ModelSettings() {
         </DndContext>
       </section>
       <div className="btn-row">
-        <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), t("modelSettings.saved"))}>{t("common.save")}</button>
+        <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), t("modelSettings.saved"))}>
+          {t("common.save")}
+        </button>
         <span className="muted">{t("modelSettings.chainNote")}</span>
       </div>
 
       <section aria-labelledby="api-keys">
         <h2 id="api-keys">{t("modelSettings.apiKeys")}</h2>
-        <p className="sec-d">{t.rich("modelSettings.apiKeysDesc", { code: <code>OPENAI_API_KEY</code>, code2: <code>GEMINI_API_KEY</code>, code3: <code>ANTHROPIC_API_KEY</code> })}</p>
+        <p className="sec-d">
+          {t.rich("modelSettings.apiKeysDesc", {
+            code: <code>OPENAI_API_KEY</code>,
+            code2: <code>GEMINI_API_KEY</code>,
+            code3: <code>ANTHROPIC_API_KEY</code>,
+          })}
+        </p>
         <div className="grp">
           {(["openai", "gemini", "anthropic"] as const).map((kind) => {
             const source = llm?.[`${kind}_key`] ?? null;
@@ -237,11 +313,26 @@ export function ModelSettings() {
                 <button
                   className="btn"
                   disabled={!keys[kind].trim()}
-                  onClick={() => run(async () => { await api.setApiKey(kind, keys[kind]); setKeys((k) => ({ ...k, [kind]: "" })); }, t("modelSettings.keySaved", { label }))}
+                  onClick={() =>
+                    run(
+                      async () => {
+                        await api.setApiKey(kind, keys[kind]);
+                        setKeys((k) => ({ ...k, [kind]: "" }));
+                      },
+                      t("modelSettings.keySaved", { label }),
+                    )
+                  }
                 >
                   {t("common.save")}
                 </button>
-                <button className="btn ghost" disabled={source !== "stored"} onClick={() => run(() => api.setApiKey(kind, null), t("modelSettings.keyDeleted", { label }))} aria-label={t("modelSettings.deleteKey", { label })}>{t("common.delete")}</button>
+                <button
+                  className="btn ghost"
+                  disabled={source !== "stored"}
+                  onClick={() => run(() => api.setApiKey(kind, null), t("modelSettings.keyDeleted", { label }))}
+                  aria-label={t("modelSettings.deleteKey", { label })}
+                >
+                  {t("common.delete")}
+                </button>
               </SetRow>
             );
           })}
@@ -256,8 +347,16 @@ export function ModelSettings() {
           </SetRow>
         </div>
       </section>
-      {status && <p role="status" className="msg">{status}</p>}
-      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
+      {status && (
+        <p role="status" className="msg">
+          {status}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="msg error-text">
+          {t.msg(error)}
+        </p>
+      )}
     </>
   );
 }

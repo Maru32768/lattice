@@ -8,7 +8,12 @@ export function RenderSettings() {
   const [on, setOn] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.autoRender().then(setOn).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .autoRender()
+      .then(setOn)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function toggle(value: boolean) {
     setOn(value);
@@ -22,11 +27,14 @@ export function RenderSettings() {
 
   return (
     <div className="grp">
-      <SetRow title={t("renderSettings.auto")} htmlFor="auto-render"
-        desc={t("renderSettings.autoDesc")}>
+      <SetRow title={t("renderSettings.auto")} htmlFor="auto-render" desc={t("renderSettings.autoDesc")}>
         <Switch id="auto-render" checked={on} onChange={toggle} />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,12 +1,61 @@
 // The mock backend: one handler per command in src/api.ts, over an in-memory copy of the
 // fixtures. `commands.test.ts` fails when api.ts calls a command this table does not answer.
 import type {
-  ArticleFilter, ArticleRow, ArticleSort, ArticleView, ChainEntry, ChatBudget, ChatMessage, ChatScope, CustomInstructions, FeedCandidate, FeedFilter, FolderRow, GroupRow, ImageSettings, OpmlFeed,
-  Reevaluated, RejectedEntry,
-  Grade, LlmSettings, Quiz, QuizReviewItem, R2Settings, R2Status, RelevanceStatus, ReviewItem, ReviewOverview, ReviewSettings, SearchHit, SearchResult, Settings, TagCount, UpdateInfo,
-  VocabCapture, VocabEntry, VocabReviewItem,
+  ArticleFilter,
+  ArticleRow,
+  ArticleSort,
+  ArticleView,
+  ChainEntry,
+  ChatBudget,
+  ChatMessage,
+  ChatScope,
+  CustomInstructions,
+  FeedCandidate,
+  FeedFilter,
+  FolderRow,
+  GroupRow,
+  ImageSettings,
+  OpmlFeed,
+  Reevaluated,
+  RejectedEntry,
+  Grade,
+  LlmSettings,
+  Quiz,
+  QuizReviewItem,
+  R2Settings,
+  R2Status,
+  RelevanceStatus,
+  ReviewItem,
+  ReviewOverview,
+  ReviewSettings,
+  SearchHit,
+  SearchResult,
+  Settings,
+  TagCount,
+  UpdateInfo,
+  VocabCapture,
+  VocabEntry,
+  VocabReviewItem,
 } from "../src/api.ts";
-import { ARTICLES, CHAT_MESSAGES, CHAT_THREADS, FEEDS, FEED_FILTERS, FOLDERS, GROUPS, JOBS, NEW_PREVIEWS, NOW, QUIZ, REJECTED, REVIEW, SUMMARIES, VOCAB, blocksOf, jobsOf } from "./fixtures.ts";
+import {
+  ARTICLES,
+  CHAT_MESSAGES,
+  CHAT_THREADS,
+  FEEDS,
+  FEED_FILTERS,
+  FOLDERS,
+  GROUPS,
+  JOBS,
+  NEW_PREVIEWS,
+  NOW,
+  QUIZ,
+  REJECTED,
+  REVIEW,
+  SUMMARIES,
+  VOCAB,
+  blocksOf,
+  jobsOf,
+} from "./fixtures.ts";
 import { folderTree, placeFeeds } from "../src/feeds/feedFolders.ts";
 
 const articles = structuredClone(ARTICLES);
@@ -15,22 +64,32 @@ const groups = structuredClone(GROUPS);
 const folders = structuredClone(FOLDERS);
 /** A feed's folder, on the feed and on its articles, as the backend joins it. */
 function syncFolders() {
-  for (const f of feeds) f.folder = folders.find((x) => x.id === f.folder_id)?.name ?? null;
-  for (const a of articles) a.folder_id = feeds.find((f) => f.id === a.feed_id)?.folder_id ?? null;
+  for (const f of feeds) {
+    f.folder = folders.find((x) => x.id === f.folder_id)?.name ?? null;
+  }
+  for (const a of articles) {
+    a.folder_id = feeds.find((f) => f.id === a.feed_id)?.folder_id ?? null;
+  }
 }
 /** Feeds last in `into`, as the backend moves them; ones already there stay put. */
 function toEnd(ids: number[], into: number | null) {
   for (const id of ids) {
     const i = feeds.findIndex((f) => f.id === id && f.folder_id !== into);
-    if (i >= 0) feeds.push({ ...feeds.splice(i, 1)[0], folder_id: into });
+    if (i >= 0) {
+      feeds.push({ ...feeds.splice(i, 1)[0], folder_id: into });
+    }
   }
   syncFolders();
 }
 const folder = (id: number) => folders.find((x) => x.id === id) ?? reject("feedFolders.notFound");
 function folderName(name: string, id: number | null): string {
   const n = name.trim();
-  if (!n) reject("feedFolders.emptyName");
-  if (folders.some((x) => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) reject("feedFolders.exists", { name: n });
+  if (!n) {
+    reject("feedFolders.emptyName");
+  }
+  if (folders.some((x) => x.id !== id && x.name.toLowerCase() === n.toLowerCase())) {
+    reject("feedFolders.exists", { name: n });
+  }
   return n;
 }
 function createFolder(name: string): number {
@@ -71,13 +130,28 @@ const store = {
   images: { save: true, max_mb: 5 } as ImageSettings,
   backupKeep: 5,
   llm: {
-    chain: [{ kind: "claude_cli", model: null, effort: null }, { kind: "openai", model: "gpt-5-mini", effort: "low" }],
-    openai_key: "env", gemini_key: null, anthropic_key: "stored",
+    chain: [
+      { kind: "claude_cli", model: null, effort: null },
+      { kind: "openai", model: "gpt-5-mini", effort: "low" },
+    ],
+    openai_key: "env",
+    gemini_key: null,
+    anthropic_key: "stored",
   } as LlmSettings,
   review: { new_per_day: 20, reviews_per_day: 200, min_interval_minutes: 1440, max_interval_days: 365 },
   r2: {
-    enabled: false, account_id: "", bucket: "", access_key_id: "", interval_hours: 24, keep_generations: 7, has_secret: false,
-    last_success: null, last_key: null, last_error: null, last_prune_error: null, running: false,
+    enabled: false,
+    account_id: "",
+    bucket: "",
+    access_key_id: "",
+    interval_hours: 24,
+    keep_generations: 7,
+    has_secret: false,
+    last_success: null,
+    last_key: null,
+    last_error: null,
+    last_prune_error: null,
+    running: false,
   } as R2Status,
 };
 
@@ -88,22 +162,35 @@ function reject(code: string, params: Record<string, unknown> = {}): never {
 
 const article = (id: number) => {
   const a = articles.find((x) => x.id === id);
-  if (!a) throw new Error(`no article ${id}`);
+  if (!a) {
+    throw new Error(`no article ${id}`);
+  }
   return a;
 };
 
 function matches(a: ArticleRow, f: ArticleFilter | null): boolean {
-  if (!f) return true;
+  if (!f) {
+    return true;
+  }
   switch (f.kind) {
-    case "all": return true;
-    case "unread": return a.read_status === "unread";
-    case "favorites": return a.favorite;
-    case "tag": return a.tags.includes(f.name);
-    case "genre": return a.genre === f.name;
-    case "feed": return a.feed_id === f.id;
-    case "group": return a.groups.includes(f.id);
-    case "important": return (a.relevance ?? 0) >= f.min;
-    case "folder": return feeds.find((x) => x.id === a.feed_id)?.folder_id === f.id;
+    case "all":
+      return true;
+    case "unread":
+      return a.read_status === "unread";
+    case "favorites":
+      return a.favorite;
+    case "tag":
+      return a.tags.includes(f.name);
+    case "genre":
+      return a.genre === f.name;
+    case "feed":
+      return a.feed_id === f.id;
+    case "group":
+      return a.groups.includes(f.id);
+    case "important":
+      return (a.relevance ?? 0) >= f.min;
+    case "folder":
+      return feeds.find((x) => x.id === a.feed_id)?.folder_id === f.id;
   }
 }
 
@@ -117,7 +204,11 @@ const SORTERS: Record<ArticleSort, (a: ArticleRow, b: ArticleRow) => number> = {
 
 const counts = (values: (string | null)[]): TagCount[] => {
   const m = new Map<string, number>();
-  for (const v of values) if (v != null) m.set(v, (m.get(v) ?? 0) + 1);
+  for (const v of values) {
+    if (v != null) {
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+  }
   return [...m].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 };
 
@@ -130,11 +221,19 @@ function search(query: string, filter: ArticleFilter | null): SearchResult {
     for (const b of blocks) {
       const lexical = b.text.toLowerCase().includes(q);
       const semantic = !!b.translation?.toLowerCase().includes(q);
-      if (!q || (!lexical && !semantic)) continue;
+      if (!q || (!lexical && !semantic)) {
+        continue;
+      }
       const heading = blocks.find((h) => h.id === b.heading_id)?.text ?? null;
       hits.push({
-        block_id: b.id, article_id: a.id, article_title: a.title ?? a.original_url, heading, text: b.text, translation: b.translation,
-        source: lexical && semantic ? "both" : lexical ? "lexical" : "semantic", score: lexical ? 1 : 0.82,
+        block_id: b.id,
+        article_id: a.id,
+        article_title: a.title ?? a.original_url,
+        heading,
+        text: b.text,
+        translation: b.translation,
+        source: lexical && semantic ? "both" : lexical ? "lexical" : "semantic",
+        score: lexical ? 1 : 0.82,
       });
     }
   }
@@ -146,14 +245,19 @@ const translating = new Set<number>();
 
 function view(id: number): ArticleView | null {
   const a = articles.find((x) => x.id === id);
-  if (!a) return null;
+  if (!a) {
+    return null;
+  }
   const summary = SUMMARIES[id];
   return {
     article: a,
     target_language: a.language === "ja" ? "en" : "ja",
     blocks: blocksOf(a),
     jobs: translating.has(id)
-      ? [...jobsOf(a).filter((j) => j.type !== "translate"), { id: 2000 + id, type: "translate", article_id: id, params: null, status: "pending", attempt_count: 0, last_error: null, next_run_at: null }]
+      ? [
+          ...jobsOf(a).filter((j) => j.type !== "translate"),
+          { id: 2000 + id, type: "translate", article_id: id, params: null, status: "pending", attempt_count: 0, last_error: null, next_run_at: null },
+        ]
       : jobsOf(a),
     summary: summary ? { text: summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
   };
@@ -165,20 +269,34 @@ const articleCards = (id: number) => [...cards.values()].filter((c) => c.item.ar
 function generateQuiz(id: number): Quiz {
   const blocks = blocksOf(article(id)).filter((b) => b.kind === "paragraph");
   return {
-    id: 100 + id, created_at: new Date(NOW).toISOString(), stale: false, in_review: 0,
-    questions: blocks.map((b, i) => ({ id: id * 1000 + i, kind: "recall", question: `${i + 1} 段落目の要点は？`, answer: b.text, explanation: "", block_ids: [b.id] })),
+    id: 100 + id,
+    created_at: new Date(NOW).toISOString(),
+    stale: false,
+    in_review: 0,
+    questions: blocks.map((b, i) => ({
+      id: id * 1000 + i,
+      kind: "recall",
+      question: `${i + 1} 段落目の要点は？`,
+      answer: b.text,
+      explanation: "",
+      block_ids: [b.id],
+    })),
   };
 }
 
 function reviewOverview(): ReviewOverview {
   const byArticle = new Map<number, QuizReviewItem[]>();
-  for (const { item } of cards.values()) byArticle.set(item.article_id, [...(byArticle.get(item.article_id) ?? []), item]);
+  for (const { item } of cards.values()) {
+    byArticle.set(item.article_id, [...(byArticle.get(item.article_id) ?? []), item]);
+  }
   const tomorrow = NOW / 1000 + 86_400;
   return {
     due: [...cards.values()].filter((c) => c.due).length + dueVocab().length,
     next_due_at: [...cards.values()].some((c) => !c.due) ? tomorrow : null,
     articles: [...byArticle].map(([id, items]) => ({
-      article_id: id, title: items[0].article_title, cards: items.length,
+      article_id: id,
+      title: items[0].article_title,
+      cards: items.length,
       next_due_at: articleCards(id).some((c) => c.due) ? NOW / 1000 : tomorrow,
     })),
   };
@@ -188,10 +306,37 @@ let nextId = 1000;
 function addArticle(url: string, title: string | null, extra: Partial<ArticleRow> = {}): number {
   const id = nextId++;
   articles.push({
-    id, original_url: url, canonical_url: null, domain: URL.parse(url)?.hostname ?? "", title, author: null, site_name: null, published_at: null,
-    language: "en", saved_at: new Date(NOW).toISOString(), fetch_status: "pending", extraction_status: "pending", last_error: null,
-    read_status: "unread", favorite: false, tags: [], groups: [], genre: null, genre_manual: false, difficulty: null, difficulty_manual: false,
-    feed_id: null, feed_title: null, folder_id: null, thin: false, from_feed: false, pdf: false, relevance: null, relevance_reason: null, relevance_stale: false, ...extra,
+    id,
+    original_url: url,
+    canonical_url: null,
+    domain: URL.parse(url)?.hostname ?? "",
+    title,
+    author: null,
+    site_name: null,
+    published_at: null,
+    language: "en",
+    saved_at: new Date(NOW).toISOString(),
+    fetch_status: "pending",
+    extraction_status: "pending",
+    last_error: null,
+    read_status: "unread",
+    favorite: false,
+    tags: [],
+    groups: [],
+    genre: null,
+    genre_manual: false,
+    difficulty: null,
+    difficulty_manual: false,
+    feed_id: null,
+    feed_title: null,
+    folder_id: null,
+    thin: false,
+    from_feed: false,
+    pdf: false,
+    relevance: null,
+    relevance_reason: null,
+    relevance_stale: false,
+    ...extra,
   });
   return id;
 }
@@ -217,41 +362,64 @@ export const handlers = {
   set_favorite: ({ id, favorite }: { id: number; favorite: boolean }) => void (article(id).favorite = favorite),
   add_tag: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
-    if (!a.tags.includes(name)) a.tags = [...a.tags, name];
+    if (!a.tags.includes(name)) {
+      a.tags = [...a.tags, name];
+    }
   },
   remove_tag: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
     a.tags = a.tags.filter((t) => t !== name);
   },
-  list_groups: (): GroupRow[] => groups.map((g) => ({ ...g, count: articles.filter((a) => a.groups.includes(g.id)).length }))
-    .sort((a, b) => a.name.localeCompare(b.name)),
+  list_groups: (): GroupRow[] =>
+    groups.map((g) => ({ ...g, count: articles.filter((a) => a.groups.includes(g.id)).length })).sort((a, b) => a.name.localeCompare(b.name)),
   create_group: ({ name }: { name: string }): number => {
     const n = name.trim();
-    if (!n) reject("groups.emptyName");
-    if (groups.some((g) => g.name.toLowerCase() === n.toLowerCase())) reject("groups.exists", { name: n });
+    if (!n) {
+      reject("groups.emptyName");
+    }
+    if (groups.some((g) => g.name.toLowerCase() === n.toLowerCase())) {
+      reject("groups.exists", { name: n });
+    }
     const id = Math.max(0, ...groups.map((g) => g.id)) + 1;
     groups.push({ id, name: n, created_at: new Date(NOW).toISOString(), count: 0 });
     return id;
   },
   rename_group: ({ id, name }: { id: number; name: string }) => {
     const n = name.trim();
-    if (groups.some((g) => g.id !== id && g.name.toLowerCase() === n.toLowerCase())) reject("groups.exists", { name: n });
+    if (groups.some((g) => g.id !== id && g.name.toLowerCase() === n.toLowerCase())) {
+      reject("groups.exists", { name: n });
+    }
     groups.find((g) => g.id === id)!.name = n;
   },
   delete_group: ({ id }: { id: number }) => {
-    groups.splice(groups.findIndex((g) => g.id === id), 1);
-    for (const a of articles) a.groups = a.groups.filter((g) => g !== id);
+    groups.splice(
+      groups.findIndex((g) => g.id === id),
+      1,
+    );
+    for (const a of articles) {
+      a.groups = a.groups.filter((g) => g !== id);
+    }
   },
   group_add: ({ id, articles: ids }: { id: number; articles: number[] }) => {
-    for (const a of articles) if (ids.includes(a.id) && !a.groups.includes(id)) a.groups = [...a.groups, id].sort((x, y) => x - y);
+    for (const a of articles) {
+      if (ids.includes(a.id) && !a.groups.includes(id)) {
+        a.groups = [...a.groups, id].sort((x, y) => x - y);
+      }
+    }
   },
   group_remove: ({ id, articles: ids }: { id: number; articles: number[] }) => {
-    for (const a of articles) if (ids.includes(a.id)) a.groups = a.groups.filter((g) => g !== id);
+    for (const a of articles) {
+      if (ids.includes(a.id)) {
+        a.groups = a.groups.filter((g) => g !== id);
+      }
+    }
   },
   get_article: ({ id }: { id: number }): ArticleView | null => view(id),
   delete_article: ({ id }: { id: number }): boolean => {
     const i = articles.findIndex((a) => a.id === id);
-    if (i >= 0) articles.splice(i, 1);
+    if (i >= 0) {
+      articles.splice(i, 1);
+    }
     return i >= 0;
   },
   translate_article: ({ id }: { id: number }) => void translating.add(id),
@@ -265,71 +433,122 @@ export const handlers = {
     const [id, quiz] = [...quizzes].find(([, q]) => q.id === quizId)!;
     const a = article(id);
     for (const q of quiz.questions) {
-      if (cards.has(q.id)) continue;
+      if (cards.has(q.id)) {
+        continue;
+      }
       const answered = answers.some((x) => x.question_id === q.id);
-      cards.set(q.id, { item: { ...q, type: "quiz", article_id: id, article_title: a.title ?? a.original_url, new: !answered, previews: NEW_PREVIEWS }, due: !answered });
+      cards.set(q.id, {
+        item: { ...q, type: "quiz", article_id: id, article_title: a.title ?? a.original_url, new: !answered, previews: NEW_PREVIEWS },
+        due: !answered,
+      });
     }
     return articleCards(id).length;
   },
   review_grade: ({ questionId }: { questionId: number }) => {
     const c = cards.get(questionId);
-    if (!c) reject("quiz.cardRemoved");
+    if (!c) {
+      reject("quiz.cardRemoved");
+    }
     c.due = false;
   },
   review_remove_card: ({ questionId }: { questionId: number }) => void cards.delete(questionId),
   review_remove_article: ({ articleId }: { articleId: number }) => {
-    for (const c of articleCards(articleId)) cards.delete(c.item.id);
+    for (const c of articleCards(articleId)) {
+      cards.delete(c.item.id);
+    }
   },
   review_queue: (): ReviewItem[] => [...[...cards.values()].filter((c) => c.due).map((c) => c.item), ...dueVocab().map(([id, c]) => vocabItem(id, c))],
   review_overview: reviewOverview,
   get_review_settings: (): ReviewSettings => store.review,
   set_review_settings: ({ settings }: { settings: ReviewSettings }) => {
-    if (settings.min_interval_minutes < 1) reject("quiz.minRange");
+    if (settings.min_interval_minutes < 1) {
+      reject("quiz.minRange");
+    }
     store.review = settings;
   },
   vocab_add: ({ capture: c }: { capture: VocabCapture }): { entry_id: number; new: boolean } => {
-    if (!/[A-Za-z]/.test(c.surface)) reject("vocab.notEnglish");
-    if (!c.sentence.includes(c.surface)) reject("vocab.notInSentence");
+    if (!/[A-Za-z]/.test(c.surface)) {
+      reject("vocab.notEnglish");
+    }
+    if (!c.sentence.includes(c.surface)) {
+      reject("vocab.notInSentence");
+    }
     const a = c.article_id == null ? null : article(c.article_id);
-    const context = { surface: c.surface, sentence: c.sentence, article_id: c.article_id ?? null, block_id: c.block_id ?? null, url: c.url ?? null, title: a?.title ?? null };
+    const context = {
+      surface: c.surface,
+      sentence: c.sentence,
+      article_id: c.article_id ?? null,
+      block_id: c.block_id ?? null,
+      url: c.url ?? null,
+      title: a?.title ?? null,
+    };
     const known = vocab.find((e) => [e.headword, ...e.contexts.map((x) => x.surface)].some((f) => f.toLowerCase() === c.surface.toLowerCase()));
     if (known) {
-      if (!known.contexts.some((x) => x.sentence === c.sentence)) known.contexts.push(context);
+      if (!known.contexts.some((x) => x.sentence === c.sentence)) {
+        known.contexts.push(context);
+      }
       return { entry_id: known.id, new: false };
     }
     const id = Math.max(0, ...vocab.map((e) => e.id)) + 1;
     vocab.push({
-      id, headword: c.surface.toLowerCase(), pos: "noun", meaning: `${c.surface} の意味`, definition: `${c.surface} is a word the mock explains.`, ipa: "",
+      id,
+      headword: c.surface.toLowerCase(),
+      pos: "noun",
+      meaning: `${c.surface} の意味`,
+      definition: `${c.surface} is a word the mock explains.`,
+      ipa: "",
       example: `An example sentence with ${c.surface}.`,
-      state: "ready", suspended: false, created_at: new Date(NOW).toISOString(), due_at: NOW / 1000, contexts: [context],
+      state: "ready",
+      suspended: false,
+      created_at: new Date(NOW).toISOString(),
+      due_at: NOW / 1000,
+      contexts: [context],
     });
     vocabCards.set(100 + id, { entry_id: id, due: true });
     return { entry_id: id, new: true };
   },
   vocab_list: (): VocabEntry[] => [...vocab].sort((a, b) => b.id - a.id),
   vocab_set_meaning: ({ id, meaning }: { id: number; meaning: string }) => {
-    if (!meaning.trim()) reject("vocab.meaningLength", { max: 300 });
+    if (!meaning.trim()) {
+      reject("vocab.meaningLength", { max: 300 });
+    }
     Object.assign(entry(id), { meaning: meaning.trim(), state: "ready" });
   },
   vocab_suspend: ({ id, suspended }: { id: number; suspended: boolean }) => void (entry(id).suspended = suspended),
   vocab_delete: ({ id }: { id: number }) => {
     vocab.splice(vocab.indexOf(entry(id)), 1);
-    for (const [k, c] of vocabCards) if (c.entry_id === id) vocabCards.delete(k);
+    for (const [k, c] of vocabCards) {
+      if (c.entry_id === id) {
+        vocabCards.delete(k);
+      }
+    }
   },
   vocab_retry: ({ id }: { id: number }) => void (entry(id).state = "pending"),
   vocab_grade: ({ cardId }: { cardId: number }) => {
     const c = vocabCards.get(cardId);
-    if (!c) reject("quiz.cardRemoved");
+    if (!c) {
+      reject("quiz.cardRemoved");
+    }
     c.due = false;
   },
   export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-vocab-20261020T030000Z.csv",
   search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),
   chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
     const thread = threadId ?? Math.max(0, ...threads.map((t) => t.id)) + 1;
-    if (threadId == null) threads.unshift({ id: thread, title: question, updated_at: new Date(NOW).toISOString() });
+    if (threadId == null) {
+      threads.unshift({ id: thread, title: question, updated_at: new Date(NOW).toISOString() });
+    }
     const m: ChatMessage = {
-      id: messages.length + 1, thread_id: thread, question, answer: "保存した記事には、この質問に答える記述が見つかりませんでした。", citations: [], scope,
-      mode: "retrieval", provider: "claude_cli", model: null, created_at: new Date(NOW).toISOString(),
+      id: messages.length + 1,
+      thread_id: thread,
+      question,
+      answer: "保存した記事には、この質問に答える記述が見つかりませんでした。",
+      citations: [],
+      scope,
+      mode: "retrieval",
+      provider: "claude_cli",
+      model: null,
+      created_at: new Date(NOW).toISOString(),
     };
     messages.push(m);
     return m;
@@ -339,7 +558,10 @@ export const handlers = {
   set_chat_budget: ({ budget }: { budget: ChatBudget }) => void (store.chatBudget = budget),
   chat_messages: ({ threadId }: { threadId: number }): ChatMessage[] => messages.filter((m) => m.thread_id === threadId),
   chat_delete_thread: ({ threadId }: { threadId: number }) => {
-    threads.splice(threads.findIndex((t) => t.id === threadId), 1);
+    threads.splice(
+      threads.findIndex((t) => t.id === threadId),
+      1,
+    );
   },
   set_read: ({ id, read }: { id: number; read: boolean }) => void (article(id).read_status = read ? "read" : "unread"),
   db_path: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\lattice.db",
@@ -381,7 +603,11 @@ export const handlers = {
     a.genre_manual = true;
   },
   rename_genre: ({ from, to }: { from: string; to: string }) => {
-    for (const a of articles) if (a.genre === from) a.genre = to;
+    for (const a of articles) {
+      if (a.genre === from) {
+        a.genre = to;
+      }
+    }
   },
   delete_genre: none,
   set_difficulty: ({ id, level }: { id: number; level: number | null }) => {
@@ -405,15 +631,20 @@ export const handlers = {
   relevance_status: (): RelevanceStatus => {
     const done = articles.filter((a) => a.extraction_status === "ok");
     return {
-      has_profile: store.custom.profile.trim() !== "", auto: store.autoRelevance, threshold: store.relevanceThreshold,
-      scored: done.filter((a) => a.relevance != null).length, stale: done.filter((a) => a.relevance_stale).length,
+      has_profile: store.custom.profile.trim() !== "",
+      auto: store.autoRelevance,
+      threshold: store.relevanceThreshold,
+      scored: done.filter((a) => a.relevance != null).length,
+      stale: done.filter((a) => a.relevance_stale).length,
       unscored: done.filter((a) => a.relevance == null).length,
     };
   },
   set_auto_relevance: ({ on }: { on: boolean }) => void (store.autoRelevance = on),
   set_relevance_threshold: ({ min }: { min: number }) => void (store.relevanceThreshold = min),
   rescore_relevance: ({ ids }: { ids: number[] | null }): number => {
-    if (!store.custom.profile.trim()) reject("relevance.noProfile");
+    if (!store.custom.profile.trim()) {
+      reject("relevance.noProfile");
+    }
     return ids?.length ?? articles.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
   },
   // The backend's order: each folder's feeds in their order, then the feeds in none.
@@ -422,16 +653,32 @@ export const handlers = {
     return [...tree.folders.flatMap((n) => n.feeds), ...tree.loose];
   },
   add_feed: ({ url, folder: into }: { url: string; folder: number | null }): number => {
-    if (into != null) folder(into);
+    if (into != null) {
+      folder(into);
+    }
     const known = feeds.find((f) => f.url === url);
     if (known) {
-      if (into != null) toEnd([known.id], into);
+      if (into != null) {
+        toEnd([known.id], into);
+      }
       return known.id;
     }
     const id = Math.max(...feeds.map((f) => f.id)) + 1;
     feeds.push({
-      id, url, title: null, custom_title: null, has_icon: false, site_url: null, last_fetched_at: null, last_error: null, article_count: 0,
-      rejected: 0, filtered: false, filter_note: null, folder_id: into, folder: null,
+      id,
+      url,
+      title: null,
+      custom_title: null,
+      has_icon: false,
+      site_url: null,
+      last_fetched_at: null,
+      last_error: null,
+      article_count: 0,
+      rejected: 0,
+      filtered: false,
+      filter_note: null,
+      folder_id: into,
+      folder: null,
     });
     syncFolders();
     return id;
@@ -443,32 +690,49 @@ export const handlers = {
     syncFolders();
   },
   delete_feed_folder: ({ id }: { id: number }) => {
-    folders.splice(folders.findIndex((x) => x.id === id), 1);
-    for (const f of feeds) if (f.folder_id === id) f.folder_id = null;
+    folders.splice(
+      folders.findIndex((x) => x.id === id),
+      1,
+    );
+    for (const f of feeds) {
+      if (f.folder_id === id) {
+        f.folder_id = null;
+      }
+    }
     syncFolders();
   },
   reorder_feed_folders: ({ ids }: { ids: number[] }) => {
     folders.sort((a, b) => (ids.indexOf(a.id) + 1 || Infinity) - (ids.indexOf(b.id) + 1 || Infinity));
   },
   move_feeds_to_folder: ({ feeds: ids, folder: into }: { feeds: number[]; folder: number | null }) => {
-    if (into != null) folder(into);
+    if (into != null) {
+      folder(into);
+    }
     toEnd(ids, into);
   },
   reorder_feeds: ({ folder: into, ids }: { folder: number | null; ids: number[] }) => {
-    if (into != null) folder(into);
+    if (into != null) {
+      folder(into);
+    }
     feeds.splice(0, feeds.length, ...placeFeeds(feeds, { folder: into, ids }));
     syncFolders();
   },
   // Outlines with xmlUrl are feeds; their innermost enclosing outline without one is the folder.
   import_opml: ({ xml }: { xml: string }): OpmlFeed[] => {
     const doc = new DOMParser().parseFromString(xml, "application/xml");
-    if (doc.querySelector("parsererror")) reject("feeds.badOpml", { error: "parse error" });
+    if (doc.querySelector("parsererror")) {
+      reject("feeds.badOpml", { error: "parse error" });
+    }
     const out: OpmlFeed[] = [];
     for (const o of doc.querySelectorAll("outline[xmlUrl]")) {
       const url = o.getAttribute("xmlUrl")!;
-      if (out.some((x) => x.url === url)) continue;
+      if (out.some((x) => x.url === url)) {
+        continue;
+      }
       let p = o.parentElement;
-      while (p && p.tagName === "outline" && p.hasAttribute("xmlUrl")) p = p.parentElement;
+      while (p && p.tagName === "outline" && p.hasAttribute("xmlUrl")) {
+        p = p.parentElement;
+      }
       const name = p?.tagName === "outline" ? (p.getAttribute("text") ?? p.getAttribute("title")) : null;
       const known = name ? folders.find((x) => x.name.toLowerCase() === name.trim().toLowerCase()) : undefined;
       out.push({ url, folder: name ? (known?.id ?? createFolder(name)) : null });
@@ -478,12 +742,17 @@ export const handlers = {
   export_opml: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-feeds-20261020T030000Z.opml",
   discover_feeds: ({ url }: { url: string }): FeedCandidate[] => [{ url: new URL("/feed.xml", url).href, title: "Discovered feed" }],
   remove_feed: ({ id }: { id: number }) => {
-    feeds.splice(feeds.findIndex((f) => f.id === id), 1);
+    feeds.splice(
+      feeds.findIndex((f) => f.id === id),
+      1,
+    );
   },
   refresh_feeds: (): number => feeds.length,
   rename_feed: ({ id, name }: { id: number; name: string | null }) => {
     const f = feeds.find((x) => x.id === id);
-    if (f) f.custom_title = name?.trim() || null;
+    if (f) {
+      f.custom_title = name?.trim() || null;
+    }
   },
   set_feed_icon: none,
   get_feed_filter: ({ feedId }: { feedId: number | null }): FeedFilter => filters.get(feedId ?? 0) ?? NO_FILTER,
@@ -497,14 +766,21 @@ export const handlers = {
     }
     filters.set(feedId ?? 0, { ...filter, rules: filter.rules.filter((r) => r.pattern.trim()), instruction: filter.instruction.trim() });
     const f = feeds.find((x) => x.id === feedId);
-    if (f) f.filtered = true;
+    if (f) {
+      f.filtered = true;
+    }
   },
   feed_rejected: ({ feedId }: { feedId: number }): RejectedEntry[] => rejected.get(feedId) ?? [],
   import_rejected: ({ feedId, url }: { feedId: number; url: string }): number => {
     const list = rejected.get(feedId) ?? [];
     const r = list.find((x) => x.url === url);
-    if (!r) reject("feedFilter.notRejected");
-    rejected.set(feedId, list.filter((x) => x !== r));
+    if (!r) {
+      reject("feedFilter.notRejected");
+    }
+    rejected.set(
+      feedId,
+      list.filter((x) => x !== r),
+    );
     feeds.find((x) => x.id === feedId)!.rejected -= 1;
     addArticle(url, r.title, { feed_id: feedId });
     return 1;
@@ -513,13 +789,19 @@ export const handlers = {
   reevaluate_rejected: ({ feedId }: { feedId: number | null }): Reevaluated => {
     const out = { imported: 0, asked: 0, rejected: 0 };
     for (const [id, list] of rejected) {
-      if (feedId != null && id !== feedId) continue;
+      if (feedId != null && id !== feedId) {
+        continue;
+      }
       const keep = list.filter((r) => {
-        if (r.reason?.kind !== "excluded") return true;
+        if (r.reason?.kind !== "excluded") {
+          return true;
+        }
         const rule = r.reason.rule;
         return (filters.get(r.reason.scope === "global" ? 0 : id)?.rules ?? []).some((x) => JSON.stringify(x) === JSON.stringify(rule));
       });
-      for (const r of list.filter((x) => !keep.includes(x))) addArticle(r.url, r.title, { feed_id: id });
+      for (const r of list.filter((x) => !keep.includes(x))) {
+        addArticle(r.url, r.title, { feed_id: id });
+      }
       out.imported += list.length - keep.length;
       out.rejected += keep.length;
       rejected.set(id, keep);
@@ -581,7 +863,9 @@ export const pluginHandlers: Record<string, () => unknown> = {
 
 export function handle(cmd: string, args: unknown): unknown {
   const h = (handlers as Record<string, (a: unknown) => unknown>)[cmd] ?? pluginHandlers[cmd];
-  if (!h) throw new Error(`unmocked command: ${cmd}`);
+  if (!h) {
+    throw new Error(`unmocked command: ${cmd}`);
+  }
   // Results cross the IPC boundary as JSON: callers never share the mock's objects.
   return structuredClone(h(args) ?? null);
 }

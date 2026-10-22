@@ -19,11 +19,17 @@ export function useHistory(place: Place, restore: (p: Place) => void, enabled: b
 
   function step(d: 1 | -1) {
     const next = go(hist, d);
-    if (!next) return;
+    if (!next) {
+      return;
+    }
     const p = next.stack[next.at];
-    if (!p) return;
+    if (!p) {
+      return;
+    }
     setHist(next);
-    if (placeKey(p) === here) return;
+    if (placeKey(p) === here) {
+      return;
+    }
     setStepping(true);
     restore(p);
   }
@@ -32,13 +38,19 @@ export function useHistory(place: Place, restore: (p: Place) => void, enabled: b
   // webview takes them for its own history.
   const onSide = useEffectEvent(step);
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
     const side = (e: MouseEvent) => e.button === 3 || e.button === 4;
     const down = (e: MouseEvent) => {
-      if (side(e)) e.preventDefault();
+      if (side(e)) {
+        e.preventDefault();
+      }
     };
     const up = (e: MouseEvent) => {
-      if (!side(e)) return;
+      if (!side(e)) {
+        return;
+      }
       e.preventDefault();
       onSide(e.button === 3 ? -1 : 1);
     };

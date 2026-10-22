@@ -7,7 +7,10 @@ const [plain, , , custom] = FEEDS;
 
 async function edit(app: Page, title: string) {
   await app.locator("nav").getByRole("button", { name: "管理" }).click();
-  await app.getByRole("row", { name: new RegExp(title) }).getByRole("button", { name: "編集" }).click();
+  await app
+    .getByRole("row", { name: new RegExp(title) })
+    .getByRole("button", { name: "編集" })
+    .click();
   return app.getByLabel("表示名");
 }
 
@@ -25,6 +28,9 @@ test("a custom name starts the field; the feed's own name or an empty field save
   const input = await edit(app, custom.custom_title!);
   await expect(input).toHaveValue(custom.custom_title!);
   await input.fill(custom.title!);
-  await app.getByRole("form", { name: /の名前とアイコン/ }).getByRole("button", { name: "保存" }).click();
+  await app
+    .getByRole("form", { name: /の名前とアイコン/ })
+    .getByRole("button", { name: "保存" })
+    .click();
   await expect.poll(async () => (await callsOf(app, "rename_feed")).at(-1)).toEqual({ id: custom.id, name: null });
 });

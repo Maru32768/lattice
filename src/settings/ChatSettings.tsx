@@ -17,7 +17,12 @@ export function ChatSettings() {
   const [vim, setVim] = useState(vimEnabled);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.chatBudget().then(setBudget).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .chatBudget()
+      .then(setBudget)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function save(b: ChatBudget) {
     setBudget(b);
@@ -31,17 +36,30 @@ export function ChatSettings() {
 
   return (
     <div className="grp">
-      <SetRow title={t("chatSettings.budget")} htmlFor="chat-budget"
-        desc={t("chatSettings.budgetDesc")}>
+      <SetRow title={t("chatSettings.budget")} htmlFor="chat-budget" desc={t("chatSettings.budgetDesc")}>
         <select id="chat-budget" className="select" value={budget} onChange={(e) => void save(e.target.value as ChatBudget)}>
-          {BUDGETS.map((b) => <option key={b.id} value={b.id}>{t(b.label)}</option>)}
+          {BUDGETS.map((b) => (
+            <option key={b.id} value={b.id}>
+              {t(b.label)}
+            </option>
+          ))}
         </select>
       </SetRow>
-      <SetRow title={t("chatSettings.vim")} htmlFor="chat-vim"
-        desc={t("chatSettings.vimDesc")}>
-        <Switch id="chat-vim" checked={vim} onChange={(on) => { setVim(on); setVimEnabled(on); }} />
+      <SetRow title={t("chatSettings.vim")} htmlFor="chat-vim" desc={t("chatSettings.vimDesc")}>
+        <Switch
+          id="chat-vim"
+          checked={vim}
+          onChange={(on) => {
+            setVim(on);
+            setVimEnabled(on);
+          }}
+        />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

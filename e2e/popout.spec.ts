@@ -10,13 +10,17 @@ const CHAT = "lattice.window.chat";
 const row = (page: Page, title: string) => list(page).locator(".row", { hasText: title });
 const titles = (page: Page) => page.locator(".dpane").first().getByRole("tab").locator(".tab-t");
 const stored = (page: Page, key: string) => page.evaluate((k) => localStorage.getItem(k), key);
-const seed = (page: Page, entries: Record<string, string>) => page.addInitScript((e) => {
-  for (const [k, v] of Object.entries(e)) localStorage.setItem(k, v);
-}, entries);
+const seed = (page: Page, entries: Record<string, string>) =>
+  page.addInitScript((e) => {
+    for (const [k, v] of Object.entries(e)) {
+      localStorage.setItem(k, v);
+    }
+  }, entries);
 /** The payloads of the `main-request` events this window sent to the main window. */
 const requests = async (page: Page) =>
-  (await callsOf(page, "plugin:event|emit_to") as { target: { label: string }; event: string; payload: unknown }[])
-    .filter((c) => c.event === "main-request" && c.target.label === "main").map((c) => c.payload);
+  ((await callsOf(page, "plugin:event|emit_to")) as { target: { label: string }; event: string; payload: unknown }[])
+    .filter((c) => c.event === "main-request" && c.target.label === "main")
+    .map((c) => c.payload);
 
 test("別ウィンドウで開く moves the tab to a new document window whose layout waits in storage", async ({ app }) => {
   await row(app, a.title!).click();
@@ -32,18 +36,32 @@ test("別ウィンドウで開く moves the tab to a new document window whose l
 });
 
 test("a document window shows only its tabs, hands one back to the main window, and closes when empty", async ({ shell }) => {
-  const layout = { root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }, { kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 2 }, focused: 1 };
+  const layout = {
+    root: {
+      kind: "pane",
+      id: 1,
+      tabs: [
+        { kind: "reader", id: 2, articleId: a.id },
+        { kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" },
+      ],
+      active: 2,
+    },
+    focused: 1,
+  };
   await seed(shell, { [DOC]: JSON.stringify(layout) });
   await shell.goto("/?window=doc-1");
   await expect(shell.locator(".art-title")).toHaveText(a.title!);
   await expect(shell.locator(".nav, [data-pane='list'], .chat")).toHaveCount(0);
   await expect(shell.getByRole("button", { name: "別ウィンドウで開く" })).toHaveCount(0);
   const reported = async () => (await requests(shell)).filter((r) => (r as { kind: string }).kind === "openDocs").at(-1);
-  await expect.poll(reported, "its saved articles, for the chat; the page not in the Index is left out")
+  await expect
+    .poll(reported, "its saved articles, for the chat; the page not in the Index is left out")
     .toEqual({ kind: "openDocs", label: "doc-1", docs: [{ id: a.id, title: a.title }] });
 
   await shell.getByRole("button", { name: "メインウィンドウに戻す" }).click();
-  expect((await requests(shell)).filter((r) => !["pageLang", "openDocs"].includes((r as { kind: string }).kind))).toEqual([{ kind: "open", docs: [{ kind: "reader", articleId: a.id }] }]);
+  expect((await requests(shell)).filter((r) => !["pageLang", "openDocs"].includes((r as { kind: string }).kind))).toEqual([
+    { kind: "open", docs: [{ kind: "reader", articleId: a.id }] },
+  ]);
   await expect(titles(shell)).toHaveText(["P"]);
   // The page's webview is attached here, not reloaded: the window asked to open it by its key.
   expect(await callsOf(shell, "browser_open")).toEqual([expect.objectContaining({ tab: "k1", url: "https://example.com/p" })]);
@@ -92,7 +110,12 @@ test("the chat window is the pane alone; its citations and its close go to the m
   await expect(shell.locator(".dpane, .nav, [data-pane='list']")).toHaveCount(0);
   await shell.evaluate(() => window.__e2e.emit("doc-current", { id: 1, title: "From main" }));
   await expect(shell.getByLabel("質問の範囲").locator("option", { hasText: "From main" })).toHaveCount(1);
-  await shell.evaluate(() => window.__e2e.emit("open-docs", [{ id: 1, title: "From main" }, { id: 2, title: "From doc-1" }]));
+  await shell.evaluate(() =>
+    window.__e2e.emit("open-docs", [
+      { id: 1, title: "From main" },
+      { id: 2, title: "From doc-1" },
+    ]),
+  );
   await expect(shell.getByLabel("質問の範囲").locator("optgroup[label='開いている記事'] option")).toHaveText(["From main", "From doc-1"]);
 
   await shell.getByRole("button", { name: "メインウィンドウに戻す" }).click();
@@ -127,7 +150,10 @@ test("only the main window sends the Page language to the pages; a pop-out takes
   await shell.goto("/?window=doc-1");
   const lang = shell.getByRole("group", { name: "このページを翻訳" });
   await expect(lang).toBeVisible();
-  expect(new Set((await requests(shell)).filter((r) => (r as { kind: string }).kind !== "openDocs").map((r) => JSON.stringify(r))), "asked main for its choice on start").toEqual(new Set(['{"kind":"pageLang"}']));
+  expect(
+    new Set((await requests(shell)).filter((r) => (r as { kind: string }).kind !== "openDocs").map((r) => JSON.stringify(r))),
+    "asked main for its choice on start",
+  ).toEqual(new Set(['{"kind":"pageLang"}']));
   // Main answers with its choice (訳文): the pop-out shows it and never turns the shared overlay off.
   await shell.evaluate(() => window.__e2e.emit("page-lang", { mode: "translated", percent: 70 }));
   await expect(lang.getByRole("button", { name: "訳文", exact: true })).toHaveAttribute("aria-pressed", "true");

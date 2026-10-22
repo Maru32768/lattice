@@ -112,7 +112,10 @@ test("OPML outlines become folders on import; the palette finds folders", async 
   const opml = `<?xml version="1.0"?><opml version="2.0"><body>
     <outline text="TechFeed"><outline text="Rust" xmlUrl="https://techfeed.io/feeds/rust"/><outline text="Go" xmlUrl="https://techfeed.io/feeds/go"/></outline>
     <outline text="Loose" xmlUrl="https://loose.dev/feed"/></body></opml>`;
-  await app.locator("label", { hasText: "OPML を読み込む" }).locator("input").setInputFiles({ name: "techfeed.opml", mimeType: "text/xml", buffer: Buffer.from(opml) });
+  await app
+    .locator("label", { hasText: "OPML を読み込む" })
+    .locator("input")
+    .setInputFiles({ name: "techfeed.opml", mimeType: "text/xml", buffer: Buffer.from(opml) });
   await expect(app.getByRole("status")).toHaveText("3 件中 3 件を登録");
   const calls = await callsOf(app, "add_feed");
   expect(calls.map((c) => (c as { folder: number | null }).folder === null)).toEqual([false, false, true]);

@@ -21,5 +21,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
 // drew its box a frame or more before its text (H8). Fetch the ones the UI's own text needs up front.
 const uiText = [...new Set(Object.values(ja).join(""))].join("");
 requestIdleCallback(() => {
-  for (const w of [400, 500, 600]) document.fonts.load(`${w} 12px "Noto Sans JP Variable"`, uiText).catch(() => {});
+  for (const w of [400, 500, 600]) {
+    document.fonts.load(`${w} 12px "Noto Sans JP Variable"`, uiText).catch(() => {});
+  }
 });

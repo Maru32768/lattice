@@ -10,7 +10,12 @@ export function ExportSection() {
   const [groups, setGroups] = useState<GroupRow[]>([]);
   /** Export only this group's articles; null for the whole library. */
   const [group, setGroup] = useState<number | null>(null);
-  useEffect(() => { api.listGroups().then(setGroups).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .listGroups()
+      .then(setGroups)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function exportJson() {
     setError(null);
@@ -26,19 +31,37 @@ export function ExportSection() {
   return (
     <>
       <div className="grp">
-        <SetRow title={t("exportSection.json")}
-          desc={t.rich("exportSection.jsonDesc", { code: <code>exports</code> })}>
+        <SetRow title={t("exportSection.json")} desc={t.rich("exportSection.jsonDesc", { code: <code>exports</code> })}>
           {groups.length > 0 && (
-            <select className="select" value={group ?? ""} onChange={(e) => setGroup(e.target.value ? Number(e.target.value) : null)} aria-label={t("exportSection.scope")}>
+            <select
+              className="select"
+              value={group ?? ""}
+              onChange={(e) => setGroup(e.target.value ? Number(e.target.value) : null)}
+              aria-label={t("exportSection.scope")}
+            >
               <option value="">{t("common.allArticles")}</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{t("exportSection.group", { name: g.name })}</option>)}
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {t("exportSection.group", { name: g.name })}
+                </option>
+              ))}
             </select>
           )}
-          <button className="btn" onClick={exportJson}>{t("exportSection.export")}</button>
+          <button className="btn" onClick={exportJson}>
+            {t("exportSection.export")}
+          </button>
         </SetRow>
       </div>
-      {status && <p role="status" className="msg">{status}</p>}
-      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
+      {status && (
+        <p role="status" className="msg">
+          {status}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="msg error-text">
+          {t.msg(error)}
+        </p>
+      )}
     </>
   );
 }

@@ -4,7 +4,11 @@ import type { FilterGroup } from "./scopes";
 export function FilterOptgroups({ groups }: { groups: FilterGroup[] }) {
   return groups.map((g) => (
     <optgroup key={g.label} label={g.label}>
-      {g.options.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+      {g.options.map((o) => (
+        <option key={o.key} value={o.key}>
+          {o.label}
+        </option>
+      ))}
     </optgroup>
   ));
 }

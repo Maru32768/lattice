@@ -11,7 +11,13 @@ export function BackupSection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.settings().then((s) => { setSettings(s); setKeep(s.backup_keep); }).catch((e: unknown) => setError(String(e)));
+    api
+      .settings()
+      .then((s) => {
+        setSettings(s);
+        setKeep(s.backup_keep);
+      })
+      .catch((e: unknown) => setError(String(e)));
   }, []);
 
   async function backup() {
@@ -19,7 +25,9 @@ export function BackupSection() {
     try {
       const b = await api.backup();
       setStatus(t("backupSection.created", { path: b.path }));
-      if (b.warning) setError(b.warning);
+      if (b.warning) {
+        setError(b.warning);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -39,16 +47,27 @@ export function BackupSection() {
     <>
       <div className="grp">
         <SetRow title={t("backupSection.local")} desc={t.rich("backupSection.location", { path: <code>{settings?.backup_dir}</code> })}>
-          <button className="btn" onClick={backup}>{t("backupSection.backUpNow")}</button>
+          <button className="btn" onClick={backup}>
+            {t("backupSection.backUpNow")}
+          </button>
         </SetRow>
-        <SetRow title={t("backupSection.keep")} htmlFor="backup-keep"
-          desc={<>{t.rich("backupSection.keepDesc", { code: <code>lattice-*.db</code> })}</>}>
+        <SetRow title={t("backupSection.keep")} htmlFor="backup-keep" desc={<>{t.rich("backupSection.keepDesc", { code: <code>lattice-*.db</code> })}</>}>
           <input id="backup-keep" className="input sm num" type="number" min={1} max={1000} value={keep} onChange={(e) => setKeep(Number(e.target.value))} />
-          <button className="btn" onClick={saveKeep}>{t("common.save")}</button>
+          <button className="btn" onClick={saveKeep}>
+            {t("common.save")}
+          </button>
         </SetRow>
       </div>
-      {status && <p role="status" className="msg">{status}</p>}
-      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
+      {status && (
+        <p role="status" className="msg">
+          {status}
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="msg error-text">
+          {t.msg(error)}
+        </p>
+      )}
     </>
   );
 }

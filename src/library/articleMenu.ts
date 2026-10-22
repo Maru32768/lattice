@@ -30,14 +30,16 @@ export function articleMenu(rows: ArticleRow[], act: ArticleActions, t: T): (Men
     { label: favorite ? t("articleMenu.unfavorite") : t("articleMenu.favorite"), onSelect: () => act.favorite(ids, !favorite) },
     { label: read ? t("reader.markUnread") : t("reader.markRead"), onSelect: () => act.read(ids, !read) },
     { label: t("articleMenu.addToGroup"), onSelect: () => act.group(ids) },
-    ...(one ? [
-      "-",
-      { label: t("articleMenu.openNewTab"), onSelect: () => act.openNew(one) },
-      ...(act.popOut ? [{ label: t("tabStrip.popOut"), onSelect: () => act.popOut!(one) }] : []),
-      { label: t("articleMenu.openPage"), onSelect: () => act.page(one), disabled: local },
-      { label: t("articleMenu.copyUrl"), onSelect: () => act.copyUrl(one), disabled: local },
-      "-",
-      { label: t("browserView.remove"), onSelect: () => act.remove(one), danger: true },
-    ] : []),
+    ...(one
+      ? [
+          "-",
+          { label: t("articleMenu.openNewTab"), onSelect: () => act.openNew(one) },
+          ...(act.popOut ? [{ label: t("tabStrip.popOut"), onSelect: () => act.popOut!(one) }] : []),
+          { label: t("articleMenu.openPage"), onSelect: () => act.page(one), disabled: local },
+          { label: t("articleMenu.copyUrl"), onSelect: () => act.copyUrl(one), disabled: local },
+          "-",
+          { label: t("browserView.remove"), onSelect: () => act.remove(one), danger: true },
+        ]
+      : []),
   ];
 }

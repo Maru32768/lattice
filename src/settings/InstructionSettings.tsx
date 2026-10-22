@@ -35,7 +35,13 @@ export function InstructionSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.customInstructions().then((v) => { setValue(v); setSaved(v); }).catch((e: unknown) => setError(String(e)));
+    api
+      .customInstructions()
+      .then((v) => {
+        setValue(v);
+        setSaved(v);
+      })
+      .catch((e: unknown) => setError(String(e)));
   }, []);
 
   async function save() {
@@ -57,20 +63,45 @@ export function InstructionSettings() {
     <div className="grp">
       {FIELDS.map(({ key, label, desc, placeholder }) => (
         <div className="set wide" key={key}>
-          <label className="h" htmlFor={`ci-${key}`}>{t(label)}</label>
+          <label className="h" htmlFor={`ci-${key}`}>
+            {t(label)}
+          </label>
           <div className="d">{t(desc)}</div>
-          <textarea id={`ci-${key}`} value={value[key]} rows={key === "profile" ? 5 : 3} maxLength={MAX_CHARS} placeholder={t(placeholder)}
-            onChange={(e) => { setValue((v) => ({ ...v, [key]: e.target.value })); setStatus(null); }} />
-          <div className="acts"><span className="muted">{value[key].length} / {MAX_CHARS}</span></div>
+          <textarea
+            id={`ci-${key}`}
+            value={value[key]}
+            rows={key === "profile" ? 5 : 3}
+            maxLength={MAX_CHARS}
+            placeholder={t(placeholder)}
+            onChange={(e) => {
+              setValue((v) => ({ ...v, [key]: e.target.value }));
+              setStatus(null);
+            }}
+          />
+          <div className="acts">
+            <span className="muted">
+              {value[key].length} / {MAX_CHARS}
+            </span>
+          </div>
         </div>
       ))}
       <div className="set wide">
         <div className="acts">
-          <button className="btn sm" onClick={save} disabled={!changed}>{t("common.save")}</button>
-          {status && <span className="muted" role="status">{status}</span>}
+          <button className="btn sm" onClick={save} disabled={!changed}>
+            {t("common.save")}
+          </button>
+          {status && (
+            <span className="muted" role="status">
+              {status}
+            </span>
+          )}
         </div>
       </div>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

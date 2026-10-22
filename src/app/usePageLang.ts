@@ -18,13 +18,17 @@ export function usePageLang(t: T, fail: (e: unknown) => void): [PageLang, (l: Pa
   };
   const onError = useEffectEvent(fail);
   useEffect(() => {
-    if (pageLangOnStart(HOST) !== "send") return;
+    if (pageLangOnStart(HOST) !== "send") {
+      return;
+    }
     const o = overlayOf(pageLang);
     browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch(onError);
   }, [pageLang, t]);
   useEffect(() => {
     const sub = listen<PageLang>("page-lang", (e) => setPageLangState(e.payload));
-    if (pageLangOnStart(HOST) === "ask") void toMain({ kind: "pageLang" });
+    if (pageLangOnStart(HOST) === "ask") {
+      void toMain({ kind: "pageLang" });
+    }
     return () => void sub.then((f) => f());
   }, []);
   return [pageLang, setPageLang];

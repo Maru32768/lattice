@@ -4,13 +4,9 @@ import type { DragStart, WindowGeom } from "./layout/tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 
 // Mirrors lattice-core's serde types (ir.rs / store.rs).
-export type Inline =
-  | { t: "text"; v: string }
-  | { t: "code"; v: string }
-  | { t: "link"; v: string; href: string };
+export type Inline = { t: "text"; v: string } | { t: "code"; v: string } | { t: "link"; v: string; href: string };
 
-export type BlockKind =
-  | "heading" | "paragraph" | "list_item" | "blockquote" | "code" | "table" | "image" | "caption";
+export type BlockKind = "heading" | "paragraph" | "list_item" | "blockquote" | "code" | "table" | "image" | "caption";
 
 export interface Block {
   id: number;
@@ -91,8 +87,14 @@ export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("co
 
 /** `genre` null: 未分類; `feed` null: 手動追加; `important`: importance at least `min`. */
 export type ArticleFilter =
-  | { kind: "all" } | { kind: "unread" } | { kind: "favorites" } | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null } | { kind: "feed"; id: number | null } | { kind: "group"; id: number } | { kind: "important"; min: number }
+  | { kind: "all" }
+  | { kind: "unread" }
+  | { kind: "favorites" }
+  | { kind: "tag"; name: string }
+  | { kind: "genre"; name: string | null }
+  | { kind: "feed"; id: number | null }
+  | { kind: "group"; id: number }
+  | { kind: "important"; min: number }
   | { kind: "folder"; id: number };
 
 export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc" | "relevance_desc";
@@ -538,8 +540,7 @@ export const api = {
   /** Writes an Anki-importable CSV into the exports folder; returns its path. */
   exportVocabCsv: () => invoke<string>("export_vocab_csv"),
   search: (query: string, filter?: ArticleFilter) => invoke<SearchResult>("search_blocks", { query, filter: filter ?? null }),
-  chatAsk: (threadId: number | null, question: string, scope: ChatScope) =>
-    invoke<ChatMessage>("chat_ask", { threadId, question, scope }),
+  chatAsk: (threadId: number | null, question: string, scope: ChatScope) => invoke<ChatMessage>("chat_ask", { threadId, question, scope }),
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),
@@ -646,8 +647,7 @@ export const api = {
  * element in whichever window calls. `tab` is the tab's webview key (`PageTab.key`).
  */
 export const browser = {
-  open: (tab: string, url: string, bounds: Bounds, focusText?: string) =>
-    invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null }),
+  open: (tab: string, url: string, bounds: Bounds, focusText?: string) => invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null }),
   /** Also shows the webview, in the calling window. False when the tab has none (evicted or restored): open it again. */
   setBounds: (tab: string, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
   hide: (tab: string) => invoke<void>("browser_hide", { tab }),

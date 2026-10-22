@@ -14,7 +14,10 @@ test("formatInterval: minutes, hours, days, then months and years to a tenth", (
   assert.equal(formatInterval(30 * day, ja), "30日");
   assert.equal(formatInterval(45 * day, ja), "1.5か月");
   assert.equal(formatInterval(365 * day, ja), "1年");
-  assert.deepEqual([10, 90, day, 6 * day, 45 * day, 730 * day].map((m) => formatInterval(m, en)), ["10 min", "2 hr", "1 day", "6 days", "1.5 mo", "2 yr"]);
+  assert.deepEqual(
+    [10, 90, day, 6 * day, 45 * day, 730 * day].map((m) => formatInterval(m, en)),
+    ["10 min", "2 hr", "1 day", "6 days", "1.5 mo", "2 yr"],
+  );
 });
 
 test("a multiple-choice answer suggests 正解 or もう一度; recall has no suggestion", () => {

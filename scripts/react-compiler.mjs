@@ -10,8 +10,9 @@ let compiled = 0;
 for (const file of files) {
   const logger = {
     logEvent(_filename, e) {
-      if (e.kind === "CompileSuccess") compiled++;
-      else if (e.kind === "CompileError" || e.kind === "PipelineError") {
+      if (e.kind === "CompileSuccess") {
+        compiled++;
+      } else if (e.kind === "CompileError" || e.kind === "PipelineError") {
         const reason = e.detail?.reason ?? e.detail?.options?.reason ?? e.data ?? "";
         skipped.push(`${file}:${e.fnLoc?.start?.line ?? "?"} ${reason}`);
       }

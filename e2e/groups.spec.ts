@@ -33,7 +33,9 @@ test("a sidebar group is a scope; groups are created, renamed and deleted there 
   await expect(list(app).locator("h1")).toHaveText("論文 2026");
 
   await navItem(app, mvcc.name).click();
-  await nav(app).getByRole("button", { name: `${mvcc.name} の操作` }).click();
+  await nav(app)
+    .getByRole("button", { name: `${mvcc.name} の操作` })
+    .click();
   await app.getByRole("menuitem", { name: "削除" }).click();
   const dialog = app.getByRole("alertdialog", { name: `グループ「${mvcc.name}」を削除しますか？` });
   await dialog.getByRole("button", { name: "削除", exact: true }).click();
@@ -49,7 +51,9 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
   await expect(chips.locator(".chip", { hasText: mvcc.name })).toBeVisible();
 
   await chips.getByRole("button", { name: "＋ グループ" }).click();
-  await picker(app).getByRole("button", { name: new RegExp(rust.name) }).click();
+  await picker(app)
+    .getByRole("button", { name: new RegExp(rust.name) })
+    .click();
   await expect(chips.locator(".chip", { hasText: rust.name })).toBeVisible();
   await expect(navItem(app, rust.name).locator(".n")).toHaveText(String(members(rust.id).length + 1));
 
@@ -82,7 +86,9 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
   await expect(app.locator(".art-title")).toHaveCount(0);
 
   await list(app).getByRole("button", { name: "グループに追加" }).click();
-  await picker(app).getByRole("button", { name: new RegExp(empty.name) }).click();
+  await picker(app)
+    .getByRole("button", { name: new RegExp(empty.name) })
+    .click();
   await expect.poll(() => callsOf(app, "group_add")).toEqual([{ id: empty.id, articles: [ids[0], ids[2]] }]);
   await expect(navItem(app, empty.name).locator(".n")).toHaveText("2");
 
@@ -96,7 +102,10 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
 
 test("a group is a facet, a search scope and a chat scope (このグループ)", async ({ app }) => {
   await list(app).getByRole("button", { name: "グループ", exact: true }).click();
-  await app.getByRole("dialog", { name: "グループで絞り込む" }).getByRole("button", { name: new RegExp(rust.name) }).click();
+  await app
+    .getByRole("dialog", { name: "グループで絞り込む" })
+    .getByRole("button", { name: new RegExp(rust.name) })
+    .click();
   await expect(listCount(app)).toHaveText(`${members(rust.id).length} / ${all}`);
   await app.keyboard.press("Escape");
 
@@ -109,7 +118,8 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
   await scope.selectOption({ label: `このグループ: ${mvcc.name}` });
   await app.getByLabel("質問", { exact: true }).fill("MVCC とは？");
   await app.getByRole("button", { name: "送信" }).click();
-  await expect.poll(async () => (await callsOf(app, "chat_ask")).map((c) => (c as { scope: unknown }).scope))
+  await expect
+    .poll(async () => (await callsOf(app, "chat_ask")).map((c) => (c as { scope: unknown }).scope))
     .toEqual([{ kind: "filter", filter: { kind: "group", id: mvcc.id } }]);
 
   await app.keyboard.press("Control+k");
@@ -126,8 +136,12 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
   const field = app.locator(".import-groups");
   await expect(field.getByRole("button")).toHaveText(rust.name);
   await field.getByRole("button").click();
-  await picker(app).getByRole("button", { name: new RegExp(rust.name) }).click();
-  await picker(app).getByRole("button", { name: new RegExp(empty.name) }).click();
+  await picker(app)
+    .getByRole("button", { name: new RegExp(rust.name) })
+    .click();
+  await picker(app)
+    .getByRole("button", { name: new RegExp(empty.name) })
+    .click();
   await app.keyboard.press("Escape");
   await expect(field.getByRole("button")).toHaveText(empty.name);
 
@@ -138,7 +152,7 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
   await expect(app.getByRole("status")).toContainText("2 件中 1 件");
   await expect(app.getByRole("status")).toContainText("・1 行は http(s) でないため無視・1 行は URL がないため無視");
   await expect(text).toHaveValue("");
-  const [call] = await callsOf(app, "group_add") as { id: number; articles: number[] }[];
+  const [call] = (await callsOf(app, "group_add")) as { id: number; articles: number[] }[];
   expect(call.id).toBe(empty.id);
   expect(call.articles[0]).toBe(ARTICLES[0].id);
   expect(call.articles).toHaveLength(2);
@@ -162,7 +176,7 @@ test("the palette opens a group, adds the open article to one, and saves a URL i
   await app.keyboard.type("https://example.com/into-group");
   await app.getByRole("option", { name: `Index に追加してグループ「${rust.name}」に入れる` }).click();
   await expect.poll(() => callsOf(app, "group_add")).toHaveLength(1);
-  const [call] = await callsOf(app, "group_add") as { id: number; articles: number[] }[];
+  const [call] = (await callsOf(app, "group_add")) as { id: number; articles: number[] }[];
   expect(call.id).toBe(rust.id);
   await expect(navItem(app, rust.name).locator(".n")).toHaveText(String(members(rust.id).length + 1));
 });
@@ -171,6 +185,9 @@ test("the JSON export can be limited to a group", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("エクスポート", { exact: true }).click();
   await app.getByLabel("エクスポートする範囲").selectOption({ label: `グループ: ${mvcc.name}` });
-  await app.locator(".set", { has: app.getByLabel("エクスポートする範囲") }).getByRole("button", { name: "エクスポート", exact: true }).click();
+  await app
+    .locator(".set", { has: app.getByLabel("エクスポートする範囲") })
+    .getByRole("button", { name: "エクスポート", exact: true })
+    .click();
   await expect.poll(() => callsOf(app, "export_json")).toEqual([{ group: mvcc.id }]);
 });

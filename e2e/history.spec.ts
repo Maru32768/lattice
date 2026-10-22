@@ -6,7 +6,10 @@ import type { Page } from "@playwright/test";
 const titled = ARTICLES.filter((a) => a.title && a.fetch_status === "ok");
 /** XButton1 (3) is back, XButton2 (4) forward; WebView2 reports them as mouseup with these buttons. */
 const side = (page: Page, button: 3 | 4) =>
-  page.evaluate((b) => { document.body.dispatchEvent(new MouseEvent("mousedown", { button: b, bubbles: true })); document.body.dispatchEvent(new MouseEvent("mouseup", { button: b, bubbles: true })); }, button);
+  page.evaluate((b) => {
+    document.body.dispatchEvent(new MouseEvent("mousedown", { button: b, bubbles: true }));
+    document.body.dispatchEvent(new MouseEvent("mouseup", { button: b, bubbles: true }));
+  }, button);
 const back = (page: Page) => page.getByRole("banner").getByRole("button", { name: "戻る" });
 const forward = (page: Page) => page.getByRole("banner").getByRole("button", { name: "進む" });
 const listTitle = (page: Page) => list(page).locator(".list-title h1");
@@ -62,7 +65,9 @@ test("articles opened in the focused tab come back in order; a tab switch is und
   await app.keyboard.press("Alt+ArrowRight");
   await expect(title).toHaveText(b.title!);
 
-  await list(app).locator(".row", { hasText: a.title! }).click({ modifiers: ["Control"] });
+  await list(app)
+    .locator(".row", { hasText: a.title! })
+    .click({ modifiers: ["Control"] });
   const tabs = app.locator(".dpane").first().getByRole("tab");
   await expect(tabs).toHaveCount(2);
   await back(app).click();

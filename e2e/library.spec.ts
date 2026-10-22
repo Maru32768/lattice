@@ -51,19 +51,26 @@ test("facets AND across dimensions, show counts in the set, and clear", async ({
 
   await list(app).getByRole("button", { name: "ソースの絞り込みを解除" }).click();
   await expect(listCount(app)).toHaveText(`${count((a) => a.difficulty === 4)} / ${all}`);
-  await list(app).getByRole("button", { name: /クリア/ }).click();
+  await list(app)
+    .getByRole("button", { name: /クリア/ })
+    .click();
   await expect(listCount(app)).toHaveText(`${all} / ${all}`);
 });
 
 test("an empty result offers to drop one condition", async ({ app }) => {
   await navItem(app, "お気に入り").click();
   await list(app).getByRole("button", { name: "ソース", exact: true }).click();
-  await app.getByRole("dialog", { name: "ソースで絞り込む" }).getByRole("button", { name: /web\.dev/ }).click();
+  await app
+    .getByRole("dialog", { name: "ソースで絞り込む" })
+    .getByRole("button", { name: /web\.dev/ })
+    .click();
   await app.keyboard.press("Escape");
   await expect(list(app).getByText("この条件の記事はありません")).toBeVisible();
 
   const webDev = count((a) => a.feed_id === 3);
-  await list(app).getByRole("button", { name: `お気に入り → すべての記事 → ${webDev} 件` }).click();
+  await list(app)
+    .getByRole("button", { name: `お気に入り → すべての記事 → ${webDev} 件` })
+    .click();
   await expect(list(app).getByRole("heading", { level: 1 })).toHaveText("すべての記事");
   await expect(listCount(app)).toHaveText(`${webDev} / ${all}`);
 });

@@ -37,15 +37,20 @@ export function useCovered(ref: React.RefObject<HTMLElement | null>) {
 }
 /** The Page view reports its webview as drawn (`rect`) or as hidden behind its still (null). */
 export function pageDrawn(key: string, rect: (() => DOMRect | undefined) | null) {
-  if (rect) pages.set(key, rect);
-  else pages.delete(key);
+  if (rect) {
+    pages.set(key, rect);
+  } else {
+    pages.delete(key);
+  }
   notify();
 }
 
 export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean) {
   const cover = useContext(CoverContext);
   useLayoutEffect(() => {
-    if (!open || !ref.current) return;
+    if (!open || !ref.current) {
+      return;
+    }
     return cover(ref.current.getBoundingClientRect());
   }, [open, cover, ref]);
 }
@@ -56,10 +61,11 @@ export function pageClickable(key: string) {
   const b = pages.get(key)?.();
   return !!b && !rects.some((r) => intersects(r, b));
 }
-const underPage = (r: DOMRect) => [...pages.values()].some((p) => {
-  const b = p();
-  return !!b && intersects(b, r);
-});
+const underPage = (r: DOMRect) =>
+  [...pages.values()].some((p) => {
+    const b = p();
+    return !!b && intersects(b, r);
+  });
 
 /** Invisible but focusable: Radix moves focus into the surface while it waits. */
 const WAITING: React.CSSProperties = { opacity: 0, pointerEvents: "none" };
@@ -74,16 +80,23 @@ function useSurface() {
   const ref = useRef<HTMLDivElement>(null);
   const [clear, setClear] = useState(false);
   const undo = useRef<(() => void)[]>([]);
-  useEffect(() => () => {
-    undo.current.forEach((f) => f());
-    undo.current = [];
-  }, []);
+  useEffect(
+    () => () => {
+      undo.current.forEach((f) => f());
+      undo.current = [];
+    },
+    [],
+  );
   const onPlaced = () => {
-    if (undo.current.length || !ref.current) return;
+    if (undo.current.length || !ref.current) {
+      return;
+    }
     const r = ref.current.getBoundingClientRect();
     // Radix can report the placement before its position reaches the DOM: the surface is still
     // parked above the window (translate(0, -200%)), which overlaps no page. Measure where it lands.
-    if (r.bottom <= 0) return void requestAnimationFrame(onPlaced);
+    if (r.bottom <= 0) {
+      return void requestAnimationFrame(onPlaced);
+    }
     const check = () => !underPage(r) && setClear(true);
     undo.current.push(cover(r), watch(check));
     check();
@@ -95,11 +108,19 @@ function useSurface() {
 
 /** Radix puts focus back where it was when a surface closes; not when the close already moved it (a press on another control, a picked item that opened a dialog). */
 function keepFocus(e: Event) {
-  if (document.activeElement && document.activeElement !== document.body) e.preventDefault();
+  if (document.activeElement && document.activeElement !== document.body) {
+    e.preventDefault();
+  }
 }
 
 /** A dialog anchored below `anchor`, kept inside the anchor's pane; focus returns to the anchor (or its first button) on close. */
-export function Popover({ anchor, label, width, onClose, children }: {
+export function Popover({
+  anchor,
+  label,
+  width,
+  onClose,
+  children,
+}: {
   anchor: HTMLElement;
   label: string;
   width: number;
@@ -114,7 +135,14 @@ export function Popover({ anchor, label, width, onClose, children }: {
     <PV.Root open onOpenChange={(o) => !o && onClose()}>
       <PV.Anchor virtualRef={{ current: anchor }} />
       <PV.Portal>
-        <PV.Content {...s} className="pv" aria-label={label} align="start" sideOffset={4} collisionBoundary={pane} collisionPadding={8}
+        <PV.Content
+          {...s}
+          className="pv"
+          aria-label={label}
+          align="start"
+          sideOffset={4}
+          collisionBoundary={pane}
+          collisionPadding={8}
           style={{ ...s.style, width: w, maxHeight: "var(--radix-popover-content-available-height)" }}
           onOpenAutoFocus={(e) => {
             e.preventDefault();
@@ -122,12 +150,15 @@ export function Popover({ anchor, label, width, onClose, children }: {
           }}
           onCloseAutoFocus={(e) => {
             keepFocus(e);
-            if (e.defaultPrevented) return;
+            if (e.defaultPrevented) {
+              return;
+            }
             e.preventDefault();
             (anchor.querySelector("button") ?? anchor).focus();
           }}
           // The anchor toggles the popover itself: a press on it is not a press outside.
-          onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}>
+          onInteractOutside={(e) => anchor.contains(e.target as Node) && e.preventDefault()}
+        >
           {children}
         </PV.Content>
       </PV.Portal>
@@ -148,9 +179,13 @@ export interface MenuItem {
 
 /** j / k (the list bindings) step through a menu as the arrows do; Radix handles the arrows. */
 function stepKeys(e: React.KeyboardEvent<HTMLElement>) {
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    return;
+  }
   const d = listStep(e, false);
-  if (!d) return;
+  if (!d) {
+    return;
+  }
   e.preventDefault();
   const all = [...e.currentTarget.querySelectorAll<HTMLElement>("[role^='menuitem']:not([data-disabled])")];
   const i = all.indexOf(document.activeElement as HTMLElement);
@@ -160,31 +195,66 @@ function stepKeys(e: React.KeyboardEvent<HTMLElement>) {
 /** The parts both menus share; `items` entries of "-" are separators, other strings captions. */
 function MenuItems({ parts: P, items }: { parts: Pick<typeof DM, "Item" | "Label" | "Separator">; items: (MenuItem | string)[] }) {
   return items.map((it, i) =>
-    it === "-" ? <P.Separator key={i} className="sep" />
-    : typeof it === "string" ? <P.Label key={i} className="cap">{it}</P.Label>
-    : (
+    it === "-" ? (
+      <P.Separator key={i} className="sep" />
+    ) : typeof it === "string" ? (
+      <P.Label key={i} className="cap">
+        {it}
+      </P.Label>
+    ) : (
       <P.Item key={i} asChild disabled={it.disabled} onSelect={it.onSelect}>
-        <button role={it.checked === undefined ? "menuitem" : "menuitemradio"} aria-checked={it.checked} className={it.danger ? "danger" : undefined}
-          disabled={it.disabled} title={it.hint}>
-          {it.checked !== undefined && <span className="check" aria-hidden="true">{it.checked ? "✓" : ""}</span>}
-          {it.hint ? <span className="mi">{it.label}<span className="mi-hint">{it.hint}</span></span> : it.label}
+        <button
+          role={it.checked === undefined ? "menuitem" : "menuitemradio"}
+          aria-checked={it.checked}
+          className={it.danger ? "danger" : undefined}
+          disabled={it.disabled}
+          title={it.hint}
+        >
+          {it.checked !== undefined && (
+            <span className="check" aria-hidden="true">
+              {it.checked ? "✓" : ""}
+            </span>
+          )}
+          {it.hint ? (
+            <span className="mi">
+              {it.label}
+              <span className="mi-hint">{it.hint}</span>
+            </span>
+          ) : (
+            it.label
+          )}
         </button>
       </P.Item>
-    ));
+    ),
+  );
 }
 
 /** The content's props both menus share. */
 const menuProps = (label: string, s: ReturnType<typeof useSurface>, height: string) => ({
-  ...s, className: "menu", "aria-label": label, loop: true, collisionPadding: 8,
+  ...s,
+  className: "menu",
+  "aria-label": label,
+  loop: true,
+  collisionPadding: 8,
   style: { ...s.style, maxHeight: `var(${height})`, overflowY: "auto" as const },
-  onCloseAutoFocus: keepFocus, onKeyDown: stepKeys,
+  onCloseAutoFocus: keepFocus,
+  onKeyDown: stepKeys,
 });
 
 /**
  * A trigger button plus an anchored menu, kept inside the trigger's pane unless `inPane` is false
  * (the nav is narrower than a menu: its menus open beside their trigger, over the list).
  */
-export function Menu({ trigger, label, className, items, align, title, inPane, menuClass }: {
+export function Menu({
+  trigger,
+  label,
+  className,
+  items,
+  align,
+  title,
+  inPane,
+  menuClass,
+}: {
   trigger: React.ReactNode;
   label: string;
   className: string;
@@ -200,17 +270,30 @@ export function Menu({ trigger, label, className, items, align, title, inPane, m
   return (
     <span style={{ display: "inline-flex" }}>
       <DM.Root modal={false}>
-        <DM.Trigger ref={setBtn} className={className} aria-label={label} title={title ?? label}>{trigger}</DM.Trigger>
+        <DM.Trigger ref={setBtn} className={className} aria-label={label} title={title ?? label}>
+          {trigger}
+        </DM.Trigger>
         <DM.Portal>
-          <MenuContent label={label} items={items} align={align === "right" ? "end" : "start"} menuClass={menuClass}
-            boundary={inPane === false ? null : btn?.closest("[data-pane]") ?? null} />
+          <MenuContent
+            label={label}
+            items={items}
+            align={align === "right" ? "end" : "start"}
+            menuClass={menuClass}
+            boundary={inPane === false ? null : (btn?.closest("[data-pane]") ?? null)}
+          />
         </DM.Portal>
       </DM.Root>
     </span>
   );
 }
 
-function MenuContent({ label, items, align, boundary, menuClass }: {
+function MenuContent({
+  label,
+  items,
+  align,
+  boundary,
+  menuClass,
+}: {
   label: string;
   items: (MenuItem | string)[];
   align: "start" | "end";
@@ -230,7 +313,12 @@ function MenuContent({ label, items, align, boundary, menuClass }: {
  * contextmenu handler sets `items`. A press anywhere else gets the WebView's menu. The menu key and
  * Shift+F10 dispatch a contextmenu event at the focused target (App).
  */
-export function ContextMenu({ label, items, targets, children }: {
+export function ContextMenu({
+  label,
+  items,
+  targets,
+  children,
+}: {
   label: string;
   items: (MenuItem | string)[];
   targets: string;
@@ -238,9 +326,16 @@ export function ContextMenu({ label, items, targets, children }: {
 }) {
   return (
     <CM.Root modal={false}>
-      <CM.Trigger asChild onContextMenuCapture={(e) => {
-        if (!(e.target as Element).closest(targets)) e.stopPropagation();
-      }}>{children}</CM.Trigger>
+      <CM.Trigger
+        asChild
+        onContextMenuCapture={(e) => {
+          if (!(e.target as Element).closest(targets)) {
+            e.stopPropagation();
+          }
+        }}
+      >
+        {children}
+      </CM.Trigger>
       <CM.Portal>
         <ContextContent label={label} items={items} />
       </CM.Portal>

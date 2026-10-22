@@ -12,10 +12,10 @@ test("isWord: short English selections on one line", () => {
 });
 
 test("sentenceAt: the sentence around the word, across closing quotes and line breaks", () => {
-  const text = "First one. It said \"ran fast.\" Then it ran again! Last?";
+  const text = 'First one. It said "ran fast." Then it ran again! Last?';
   const at = text.indexOf("ran again");
   assert.equal(sentenceAt(text, at, at + 3), "Then it ran again!");
-  assert.equal(sentenceAt(text, text.indexOf("ran fast"), text.indexOf("ran fast") + 3), "It said \"ran fast.\"");
+  assert.equal(sentenceAt(text, text.indexOf("ran fast"), text.indexOf("ran fast") + 3), 'It said "ran fast."');
   assert.equal(sentenceAt("Heading\nBody  with   word here", 15, 19), "Body with word here");
   assert.equal(sentenceAt("v1.2 is out", 0, 4), "v1.2 is out", "a dot inside a token is no end");
   const long = `${"x ".repeat(400)}word ${"y ".repeat(400)}`;
@@ -31,14 +31,27 @@ test("captureIn picks the occurrence the selection is at", () => {
 });
 
 test("findWord finds the form used, as a whole word, case-insensitively", () => {
-  assert.deepEqual(findWord("She ran the tests and Ran them again.", "ran"), [[4, 7], [22, 25]]);
+  assert.deepEqual(findWord("She ran the tests and Ran them again.", "ran"), [
+    [4, 7],
+    [22, 25],
+  ]);
   assert.deepEqual(findWord("Rerun and run.", "run"), [[10, 13]], "not inside rerun");
   assert.deepEqual(findWord("write  skew happens", "write skew"), [[0, 11]], "any spaces between words");
   assert.deepEqual(findWord("x", ""), []);
 });
 
 const entry = (id: number, headword: string, meaning: string, surfaces: string[], extra: Partial<VocabEntry> = {}): VocabEntry => ({
-  id, headword, meaning, pos: "", definition: "", ipa: "", example: "", state: "ready", suspended: false, created_at: "", due_at: null,
+  id,
+  headword,
+  meaning,
+  pos: "",
+  definition: "",
+  ipa: "",
+  example: "",
+  state: "ready",
+  suspended: false,
+  created_at: "",
+  due_at: null,
   contexts: surfaces.map((surface) => ({ surface, sentence: surface, article_id: null, block_id: null, url: null, title: null })),
   ...extra,
 });
@@ -64,9 +77,25 @@ test("wordMarks marks every saved form, longest first, with its meaning", () => 
 });
 
 test("shownEntries searches every form and sorts by added or due", () => {
-  const es = [entry(1, "run", "走る", ["ran"], { due_at: 50 }), entry(2, "skew", "歪み", [], { due_at: null }), entry(3, "flaky", "不安定", [], { due_at: 10 })];
-  assert.deepEqual(shownEntries(es, "", "added").map((e) => e.id), [3, 2, 1]);
-  assert.deepEqual(shownEntries(es, "", "due").map((e) => e.id), [3, 1, 2]);
-  assert.deepEqual(shownEntries(es, " RAN ", "added").map((e) => e.id), [1]);
-  assert.deepEqual(shownEntries(es, "歪", "added").map((e) => e.id), [2]);
+  const es = [
+    entry(1, "run", "走る", ["ran"], { due_at: 50 }),
+    entry(2, "skew", "歪み", [], { due_at: null }),
+    entry(3, "flaky", "不安定", [], { due_at: 10 }),
+  ];
+  assert.deepEqual(
+    shownEntries(es, "", "added").map((e) => e.id),
+    [3, 2, 1],
+  );
+  assert.deepEqual(
+    shownEntries(es, "", "due").map((e) => e.id),
+    [3, 1, 2],
+  );
+  assert.deepEqual(
+    shownEntries(es, " RAN ", "added").map((e) => e.id),
+    [1],
+  );
+  assert.deepEqual(
+    shownEntries(es, "歪", "added").map((e) => e.id),
+    [2],
+  );
 });

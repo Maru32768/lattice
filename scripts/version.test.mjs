@@ -11,7 +11,9 @@ const FILES = ["package.json", "package-lock.json", "Cargo.toml", "Cargo.lock"];
 
 function copyRepo() {
   const dir = mkdtempSync(join(tmpdir(), "lattice-version-"));
-  for (const f of FILES) copyFileSync(join(ROOT, f), join(dir, f));
+  for (const f of FILES) {
+    copyFileSync(join(ROOT, f), join(dir, f));
+  }
   return dir;
 }
 
@@ -27,7 +29,10 @@ test("setVersion rewrites every source and leaves dependencies alone", () => {
   const dir = copyRepo();
   const lockBefore = readFileSync(join(dir, "Cargo.lock"), "utf8");
   assert.equal(setVersion(dir, "2.3.4-beta.1"), "2.3.4-beta.1");
-  assert.deepEqual(readVersions(dir).map((f) => f.versions.every((v) => v === "2.3.4-beta.1")), [true, true, true, true]);
+  assert.deepEqual(
+    readVersions(dir).map((f) => f.versions.every((v) => v === "2.3.4-beta.1")),
+    [true, true, true, true],
+  );
   const changed = lockBefore.split("\n").filter((l, i) => l !== readFileSync(join(dir, "Cargo.lock"), "utf8").split("\n")[i]);
   assert.equal(changed.length, 3, "lattice, lattice-core and lattice-cli");
 });

@@ -47,7 +47,9 @@ export function useSearch(shown: ArticleRow[], fail: (e: unknown) => void) {
   }
 
   const hitGroups = useMemo(() => {
-    if (!search?.result) return [];
+    if (!search?.result) {
+      return [];
+    }
     const ids = new Set(shown.map((a) => a.id));
     return groupHits(filterHits(search.result.hits, method, ids));
   }, [search, method, shown]);

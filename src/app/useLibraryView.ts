@@ -11,7 +11,19 @@ import type { Grouping } from "../library/ListPane";
 export const importantMinOf = (r: RelevanceStatus | null) => (r && (r.has_profile || r.scored > 0) ? r.threshold : null);
 
 /** What the list, the sidebar and the empty-list hints show of the library for the current scope and facets. */
-export function useLibraryView({ articles, feeds, folders, groupRows, scope, facets, kept, group, importantMin, now, t }: {
+export function useLibraryView({
+  articles,
+  feeds,
+  folders,
+  groupRows,
+  scope,
+  facets,
+  kept,
+  group,
+  importantMin,
+  now,
+  t,
+}: {
   articles: ArticleRow[];
   feeds: FeedRow[];
   folders: FolderRow[];
@@ -28,7 +40,9 @@ export function useLibraryView({ articles, feeds, folders, groupRows, scope, fac
   // The sidebar's order: each folder's feeds, then the loose ones.
   const feedOrder = useMemo(() => feedGroups(folderTree(feeds, folders, new Map())).flatMap((o) => o.ids), [feeds, folders]);
   const groups: Group<ArticleRow>[] = useMemo(
-    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t, feedOrder)), [shown, group, t, feedOrder]);
+    () => (group === "none" ? [{ key: "all", label: "", articles: shown }] : groupArticles(shown, group, t, feedOrder)),
+    [shown, group, t, feedOrder],
+  );
   const order = useMemo(() => flatten(groups), [groups]);
   const counts: NavCounts = useMemo(() => {
     const unread = articles.filter((a) => a.read_status === "unread");
@@ -43,8 +57,10 @@ export function useLibraryView({ articles, feeds, folders, groupRows, scope, fac
       feedUnread: countBy(unread, "feeds"),
     };
   }, [articles, now, importantMin]);
-  const relax = useMemo(() => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds]);
+  const relax = useMemo(
+    () => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
+    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds],
+  );
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
   return { scoped, shown, groups, order, counts, relax, articleById };
 }

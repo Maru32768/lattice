@@ -31,6 +31,9 @@ export function filterGroups(groups: GroupRow[], genres: TagCount[], feeds: Feed
         ...feeds.map((f) => opt({ kind: "feed", id: f.id }, t("scopes.option", { name: feedName(f), count: f.article_count }))),
       ],
     },
-    { label: t("common.tag"), options: tags.map((tag) => opt({ kind: "tag", name: tag.name }, t("scopes.option", { name: `#${tag.name}`, count: tag.count }))) },
+    {
+      label: t("common.tag"),
+      options: tags.map((tag) => opt({ kind: "tag", name: tag.name }, t("scopes.option", { name: `#${tag.name}`, count: tag.count }))),
+    },
   ].filter((g) => g.options.length > 0);
 }

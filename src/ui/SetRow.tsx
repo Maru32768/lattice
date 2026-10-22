@@ -4,7 +4,13 @@ import type { ReactNode } from "react";
 export function SetRow({ title, desc, htmlFor, children }: { title: ReactNode; desc?: ReactNode; htmlFor?: string; children?: ReactNode }) {
   return (
     <div className="set">
-      {htmlFor ? <label className="h" htmlFor={htmlFor}>{title}</label> : <div className="h">{title}</div>}
+      {htmlFor ? (
+        <label className="h" htmlFor={htmlFor}>
+          {title}
+        </label>
+      ) : (
+        <div className="h">{title}</div>
+      )}
       {desc && <div className="d">{desc}</div>}
       {children && <div className="ctl">{children}</div>}
     </div>

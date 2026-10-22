@@ -54,7 +54,9 @@ test("splitByLineBreaks splits on blank lines and after sentence ends only", () 
 
 test("assignTranslated is exact by count and deterministic", () => {
   const src = Array.from({ length: 10 }, (_, i) => `s${i}`);
-  for (const p of [0, 30, 70, 100]) assert.equal(assignTranslated(src, p, "seed").filter(Boolean).length, p / 10);
+  for (const p of [0, 30, 70, 100]) {
+    assert.equal(assignTranslated(src, p, "seed").filter(Boolean).length, p / 10);
+  }
   assert.deepEqual(assignTranslated(src, 50, "seed"), assignTranslated(src, 50, "seed"));
 });
 

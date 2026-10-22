@@ -21,17 +21,20 @@ test("the ⋯ menu draws its text in the frame it first appears (H8)", async ({ 
   // The UI's font subsets are fetched while idle after startup.
   await app.evaluate(() => document.fonts.ready);
   await app.waitForTimeout(500);
-  const first = app.evaluate(() => new Promise<boolean>((done) => {
-    const frame = () => {
-      const m = document.querySelector(".menu");
-      if (!m) {
+  const first = app.evaluate(
+    () =>
+      new Promise<boolean>((done) => {
+        const frame = () => {
+          const m = document.querySelector(".menu");
+          if (!m) {
+            requestAnimationFrame(frame);
+            return;
+          }
+          done([...m.querySelectorAll("button")].every((b) => document.fonts.check(`12px "IBM Plex Sans JP"`, b.textContent ?? "")));
+        };
         requestAnimationFrame(frame);
-        return;
-      }
-      done([...m.querySelectorAll("button")].every((b) => document.fonts.check(`12px "IBM Plex Sans JP"`, b.textContent ?? "")));
-    };
-    requestAnimationFrame(frame);
-  }));
+      }),
+  );
   await more(app).click();
   expect(await first, "the menu's glyphs were loaded when it was first drawn").toBe(true);
 });
@@ -77,7 +80,9 @@ test("the nav's top holds only its close button; what the ＋ opened is in the p
   await expect(app.locator(".nav-head").getByRole("button")).toHaveAccessibleName("ナビゲーションを閉じる");
   await commandCenter(app).click();
   await app.keyboard.type(">");
-  for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
+  for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) {
+    await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
+  }
 });
 
 test("the closed list is one button that opens it again; j / k still move the cursor (H11)", async ({ app }) => {
@@ -153,7 +158,8 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   // The quiz opens beside the page, as it does beside the Reader.
   await app.locator(".docbar").getByRole("button", { name: "理解度チェック" }).click();
   await expect(app.locator(".qz-panel")).toBeVisible();
-  const host = (await app.locator(".page-host").boundingBox())!, panel = (await app.locator(".qz-panel").boundingBox())!;
+  const host = (await app.locator(".page-host").boundingBox())!,
+    panel = (await app.locator(".qz-panel").boundingBox())!;
   expect(host.x + host.width).toBeLessThanOrEqual(panel.x);
 });
 
@@ -165,7 +171,10 @@ test("an unsaved page's ⋯ copies its URL (H14)", async ({ app }) => {
 
 test("a document window's tab strips are its title bar: they drag it, and the top-right one holds the window controls (H19)", async ({ shell }) => {
   const tabs = [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }];
-  await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify({ root: { kind: "pane", id: 1, tabs, active: 3 }, focused: 1 }));
+  await shell.addInitScript(
+    (l) => localStorage.setItem("lattice.window.doc-1", l),
+    JSON.stringify({ root: { kind: "pane", id: 1, tabs, active: 3 }, focused: 1 }),
+  );
   await shell.goto("/?window=doc-1");
   const strips = shell.locator(".dpane .tabs");
   await expect(strips).toHaveCount(1);

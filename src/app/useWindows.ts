@@ -7,7 +7,9 @@ import { CHAT, MAIN, nextDocLabel, openWindows, storageKeys, toMain, toWindow, w
 
 /** This pop-out is done: its storage key goes first, so it is not restored at the next start. */
 function closeWindow() {
-  if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: [] });
+  if (HOST.kind === "doc") {
+    void toMain({ kind: "openDocs", label: HOST.label, docs: [] });
+  }
   try {
     localStorage.removeItem(STORAGE);
   } catch {
@@ -27,7 +29,12 @@ export function dockChat() {
  * in main or in its own window, and a pop-out closing. `layout` is this window's, `forgetPage`
  * lets a page tab leave with its webview.
  */
-export function useWindows({ layout, setLayout, forgetPage, fail }: {
+export function useWindows({
+  layout,
+  setLayout,
+  forgetPage,
+  fail,
+}: {
   layout: Layout;
   setLayout: (f: (l: Layout) => Layout) => void;
   forgetPage: (t: Tab) => void;
@@ -52,7 +59,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
   /** A new document window showing `doc`. False if it could not be stored. */
   function popOutDoc(doc: Doc): boolean {
     const label = storeDocWindow(doc);
-    if (label) windows.open(label).catch(fail);
+    if (label) {
+      windows.open(label).catch(fail);
+    }
     return label != null;
   }
 
@@ -60,7 +69,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
   function popOutTab(tab: Id, drag = false) {
     const hit = tabById(layout, tab);
     const label = hit && storeDocWindow(docOf(hit.tab));
-    if (!hit || !label) return;
+    if (!hit || !label) {
+      return;
+    }
     (drag ? tabDrag.float(label) : windows.open(label)).catch(fail);
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
@@ -69,7 +80,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
   /** The tab goes to window `label`: its focused pane, or the slot `at` it was dropped on. */
   function sendTab(tab: Id, label: string, at?: { pane: Id; index: number }) {
     const hit = tabById(layout, tab);
-    if (!hit) return;
+    if (!hit) {
+      return;
+    }
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
     void toWindow(label, { kind: "open", docs: [docOf(hit.tab)], at });
@@ -82,7 +95,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
   function closeRequested() {
     if (HOST.kind === "doc") {
       const docs = allTabs(layout).map(docOf);
-      if (docs.length) void toMain({ kind: "open", docs });
+      if (docs.length) {
+        void toMain({ kind: "open", docs });
+      }
     } else if (HOST.kind === "chat") {
       void toMain({ kind: "chatClosed" });
     }
@@ -105,7 +120,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
 
   const onCloseRequested = useEffectEvent(closeRequested);
   useEffect(() => {
-    if (IS_MAIN) return;
+    if (IS_MAIN) {
+      return;
+    }
     const sub = getCurrentWindow().onCloseRequested((e) => {
       e.preventDefault();
       onCloseRequested();
@@ -116,7 +133,9 @@ export function useWindows({ layout, setLayout, forgetPage, fail }: {
   // A document window with nothing left closes (its last tab was closed or sent back).
   const empty = HOST.kind === "doc" && allTabs(layout).length === 0;
   useEffect(() => {
-    if (empty) closeWindow();
+    if (empty) {
+      closeWindow();
+    }
   }, [empty]);
 
   return { chatOpen, setChatOpen, chatWindow, setChatWindow, popOutDoc, popOutTab, sendTab, returnTab, closeRequested, popOutChat, toggleChat };

@@ -25,7 +25,9 @@ function subscribe(changed: () => void) {
   };
   s?.addEventListener("voiceschanged", on);
   // The list may have filled between the first read and now.
-  if (!voice && current()) changed();
+  if (!voice && current()) {
+    changed();
+  }
   return () => s?.removeEventListener("voiceschanged", on);
 }
 
@@ -34,7 +36,9 @@ export const useEnglishVoice = () => useSyncExternalStore(subscribe, current);
 
 export function speak(text: string, v: SpeechSynthesisVoice) {
   const s = synth();
-  if (!s) return;
+  if (!s) {
+    return;
+  }
   s.cancel();
   const u = new SpeechSynthesisUtterance(text);
   u.voice = v;
@@ -63,6 +67,10 @@ let replay: (() => void) | null = null;
 /** The card on screen says its word again on the `speak` shortcut; returns the unregister. */
 export function onReplay(f: () => void) {
   replay = f;
-  return () => { if (replay === f) replay = null; };
+  return () => {
+    if (replay === f) {
+      replay = null;
+    }
+  };
 }
 export const replayWord = () => replay?.();

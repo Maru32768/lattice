@@ -11,11 +11,20 @@ const dueReviews = () => api.reviewOverview().then((o) => o.due);
 export function useActivity() {
   const [jobFailures, setJobFailures] = useState(0);
   const [reviewDue, setReviewDue] = useState(0);
-  const loadReview = () => dueReviews().then(setReviewDue).catch(() => {});
+  const loadReview = () =>
+    dueReviews()
+      .then(setReviewDue)
+      .catch(() => {});
 
   useEffect(() => {
-    const loadJobs = () => void failedJobs().then(setJobFailures).catch(() => {});
-    const loadDue = () => void dueReviews().then(setReviewDue).catch(() => {});
+    const loadJobs = () =>
+      void failedJobs()
+        .then(setJobFailures)
+        .catch(() => {});
+    const loadDue = () =>
+      void dueReviews()
+        .then(setReviewDue)
+        .catch(() => {});
     loadJobs();
     loadDue();
     const polls = [window.setInterval(loadJobs, POLL_MS), window.setInterval(loadDue, POLL_MS)];
@@ -37,7 +46,9 @@ export function useActivity() {
 /** The taskbar badge follows the unread count; reading through a list changes it in bursts. */
 export function useUnreadBadge(unread: number, enabled: boolean) {
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      return;
+    }
     const t = window.setTimeout(() => api.setUnreadBadge(unread).catch(() => {}), 500);
     return () => window.clearTimeout(t);
   }, [unread, enabled]);

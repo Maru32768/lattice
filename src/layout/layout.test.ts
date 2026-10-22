@@ -1,8 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MIN_SIZE, activate, activeTab, allTabs, close, closePane, closeWhere, cycle, docOf, dropOn, focus, focusedPane, move, navigated, open, pageByKey, panes, parse, resize, serialize, single, split,
-  tabById, type Layout,
+  MIN_SIZE,
+  activate,
+  activeTab,
+  allTabs,
+  close,
+  closePane,
+  closeWhere,
+  cycle,
+  docOf,
+  dropOn,
+  focus,
+  focusedPane,
+  move,
+  navigated,
+  open,
+  pageByKey,
+  panes,
+  parse,
+  resize,
+  serialize,
+  single,
+  split,
+  tabById,
+  type Layout,
 } from "./layout.ts";
 
 const reader = (articleId: number) => ({ kind: "reader" as const, articleId });
@@ -192,8 +214,14 @@ test("serialize round-trips the tree, drops runtime page state, and rejects othe
   assert.deepEqual(p.kind === "page" && [p.title, p.seq, p.loading, p.saved, p.canGoBack], ["A", 0, false, null, undefined]);
   const before = tabById(l, 3)!.tab;
   assert.equal(p.kind === "page" && before.kind === "page" && p.key, before.kind === "page" && before.key, "the webview key survives a restart");
-  const legacy = parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 2, url: "https://x.example/", title: "" }], active: 2 }, focused: 1 }))!;
-  assert.match(pageByKey(legacy, allTabs(legacy).map((t) => (t.kind === "page" ? t.key : ""))[0])!.key, /^[0-9a-z]{6,}$/, "a layout saved before keys gets a fresh one");
+  const legacy = parse(
+    JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 2, url: "https://x.example/", title: "" }], active: 2 }, focused: 1 }),
+  )!;
+  assert.match(
+    pageByKey(legacy, allTabs(legacy).map((t) => (t.kind === "page" ? t.key : ""))[0])!.key,
+    /^[0-9a-z]{6,}$/,
+    "a layout saved before keys gets a fresh one",
+  );
   assert.equal(parse("nonsense"), null);
   assert.equal(parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "video", id: 2 }] }, focused: 1 })), null);
   const fixed = parse(JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: 5 }], active: 99 }, focused: 42 }))!;

@@ -4,9 +4,10 @@ import type { Page } from "@playwright/test";
 
 const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
 /** set_bounds (shows the webview) and hide calls for the tab, in the order they were sent. */
-const shows = (page: Page) => page.evaluate(() => window.__e2e.calls
-  .filter((c) => c.cmd === "browser_set_bounds" || c.cmd === "browser_hide")
-  .map((c) => (c.cmd === "browser_hide" ? "hide" : "show")));
+const shows = (page: Page) =>
+  page.evaluate(() =>
+    window.__e2e.calls.filter((c) => c.cmd === "browser_set_bounds" || c.cmd === "browser_hide").map((c) => (c.cmd === "browser_hide" ? "hide" : "show")),
+  );
 
 test("leaving the library hides the page, and coming back shows it with no hide sent after the show", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));

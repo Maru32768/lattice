@@ -31,8 +31,34 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 
 const n = (v: number) => v.toLocaleString();
 
-export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures, reviewDue, chatOpen, searching, recentSearches, onScope, onScreen,
-  onChat, onRecent, onGenres, onCreateGroup, onRenameGroup, onDeleteGroup, onRenameFolder, onDeleteFolder, onReorderFeeds, onReorderFolders, onMenu, onCollapse, importantMin }: {
+export function Nav({
+  screen,
+  scope,
+  counts,
+  feeds,
+  folders,
+  groups,
+  jobFailures,
+  reviewDue,
+  chatOpen,
+  searching,
+  recentSearches,
+  onScope,
+  onScreen,
+  onChat,
+  onRecent,
+  onGenres,
+  onCreateGroup,
+  onRenameGroup,
+  onDeleteGroup,
+  onRenameFolder,
+  onDeleteFolder,
+  onReorderFeeds,
+  onReorderFolders,
+  onMenu,
+  onCollapse,
+  importantMin,
+}: {
   screen: Screen;
   /** null while a management screen is shown. */
   scope: Scope | null;
@@ -70,12 +96,16 @@ export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures
   const on = (s: Scope) => (scope && sameScope(scope, s) ? " on" : "");
   const item = (s: Scope, label: React.ReactNode, count: number, lead: React.ReactNode, extra = "") => (
     <button key={JSON.stringify(s)} className={`ni${on(s)}${extra}`} onClick={() => onScope(s)} aria-current={on(s) ? "page" : undefined}>
-      {lead}<span className="label">{label}</span><span className="n">{n(count)}</span>
+      {lead}
+      <span className="label">{label}</span>
+      <span className="n">{n(count)}</span>
     </button>
   );
   const tool = (s: Screen, label: string, icon: IconName, badge?: React.ReactNode) => (
     <button className={`ni${screen === s ? " on" : ""}`} onClick={() => onScreen(s)} aria-current={screen === s ? "page" : undefined}>
-      <Icon name={icon} /><span className="label">{label}</span>{badge}
+      <Icon name={icon} />
+      <span className="label">{label}</span>
+      {badge}
     </button>
   );
   const genres = allGenres ? counts.genres : counts.genres.slice(0, GENRES_SHOWN);
@@ -84,42 +114,87 @@ export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures
     <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
       <div className="sec nav-head">
         {t("nav.library")}
-        <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}><Icon name="panel" /></button>
+        <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}>
+          <Icon name="panel" />
+        </button>
       </div>
       {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
       {importantMin != null && item({ kind: "important", min: importantMin }, t("library.important"), counts.important, <Icon name="flag" />)}
 
       <NavGroups groups={groups} scope={scope} onScope={onScope} onCreate={onCreateGroup} onRename={onRenameGroup} onDelete={onDeleteGroup} />
 
-      <div className="sec">{t("common.genre")}<button className="link" onClick={onGenres}>{t("nav.edit")}</button></div>
-      {genres.map(([g, c]) => item({ kind: "genre", name: g }, g ?? t("common.unclassified"), c, <span className="sw" style={{ background: genreSwatch(g) }} />))}
+      <div className="sec">
+        {t("common.genre")}
+        <button className="link" onClick={onGenres}>
+          {t("nav.edit")}
+        </button>
+      </div>
+      {genres.map(([g, c]) =>
+        item({ kind: "genre", name: g }, g ?? t("common.unclassified"), c, <span className="sw" style={{ background: genreSwatch(g) }} />),
+      )}
       {counts.genres.length > GENRES_SHOWN && (
         <button className="ni dim" onClick={() => setAllGenres((v) => !v)} aria-expanded={allGenres}>
-          <Icon name={allGenres ? "up" : "right"} />{allGenres ? t("nav.collapse") : t("nav.moreGenres", { x: counts.genres.length - GENRES_SHOWN })}
+          <Icon name={allGenres ? "up" : "right"} />
+          {allGenres ? t("nav.collapse") : t("nav.moreGenres", { x: counts.genres.length - GENRES_SHOWN })}
         </button>
       )}
 
-      {searching && recentSearches.length > 0 && <>
-        <div className="sec">{t("nav.recentSearches")}</div>
-        {recentSearches.map((q) => <button key={q} className="ni mono-ni" onClick={() => onRecent(q)}><span className="label">{q}</span></button>)}
-      </>}
+      {searching && recentSearches.length > 0 && (
+        <>
+          <div className="sec">{t("nav.recentSearches")}</div>
+          {recentSearches.map((q) => (
+            <button key={q} className="ni mono-ni" onClick={() => onRecent(q)}>
+              <span className="label">{q}</span>
+            </button>
+          ))}
+        </>
+      )}
 
-      <div className="sec">{t("common.source")}<button className="link" onClick={() => onScreen("feeds")}>{t("nav.manage")}</button></div>
+      <div className="sec">
+        {t("common.source")}
+        <button className="link" onClick={() => onScreen("feeds")}>
+          {t("nav.manage")}
+        </button>
+      </div>
       <button className="ni" onClick={() => setFeedsOpen((v) => !v)} aria-expanded={feedsOpen}>
-        <Icon name={feedsOpen ? "down" : "right"} /><span className="label">{t("nav.feeds")}</span><span className="n">{n(feeds.length)}</span>
+        <Icon name={feedsOpen ? "down" : "right"} />
+        <span className="label">{t("nav.feeds")}</span>
+        <span className="n">{n(feeds.length)}</span>
       </button>
       {feedsOpen && (
         <div className="nav-sub">
-          <NavFolders feeds={feeds} folders={folders} unread={counts.feedUnread} scope={scope} onScope={onScope}
-            onRename={onRenameFolder} onDelete={onDeleteFolder} onMenu={onMenu} onReorderFeeds={onReorderFeeds} onReorderFolders={onReorderFolders} />
+          <NavFolders
+            feeds={feeds}
+            folders={folders}
+            unread={counts.feedUnread}
+            scope={scope}
+            onScope={onScope}
+            onRename={onRenameFolder}
+            onDelete={onDeleteFolder}
+            onMenu={onMenu}
+            onReorderFeeds={onReorderFeeds}
+            onReorderFolders={onReorderFolders}
+          />
         </div>
       )}
       {item({ kind: "feed", id: null }, t("common.manual"), counts.manual, <Icon name="manual" />)}
       {screen === "feeds" && tool("feeds", t("nav.manageFeeds"), "gear")}
 
       <div className="sec">{t("nav.tools")}</div>
-      <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}><Icon name="chat" /><span className="label">{t("common.chat")}</span></button>
-      {tool("review", t("common.todaysReview"), "review", reviewDue > 0 && <span className="bd run push" aria-label={t("nav.due", { reviewDue })}>{n(reviewDue)}</span>)}
+      <button className={`ni${chatOpen ? " on" : ""}`} onClick={onChat} aria-pressed={chatOpen}>
+        <Icon name="chat" />
+        <span className="label">{t("common.chat")}</span>
+      </button>
+      {tool(
+        "review",
+        t("common.todaysReview"),
+        "review",
+        reviewDue > 0 && (
+          <span className="bd run push" aria-label={t("nav.due", { reviewDue })}>
+            {n(reviewDue)}
+          </span>
+        ),
+      )}
       {tool("vocab", t("vocabView.title"), "vocab")}
       {tool("jobs", t("common.jobs"), "jobs", jobFailures > 0 && <span className="bd err push">{t("nav.failed", { n: n(jobFailures) })}</span>)}
       {tool("import", t("common.bulkImport"), "import")}
@@ -129,19 +204,35 @@ export function Nav({ screen, scope, counts, feeds, folders, groups, jobFailures
   );
 }
 
-export function NavRail({ scope, chatOpen, onOpen, onScope, onChat }: {
-  scope: Scope | null; chatOpen: boolean; onOpen: () => void; onScope: (s: Scope) => void; onChat: () => void;
+export function NavRail({
+  scope,
+  chatOpen,
+  onOpen,
+  onScope,
+  onChat,
+}: {
+  scope: Scope | null;
+  chatOpen: boolean;
+  onOpen: () => void;
+  onScope: (s: Scope) => void;
+  onChat: () => void;
 }) {
   const t = useT();
   const btn = (s: Scope, label: string, icon: IconName) => (
-    <button className={`ib${scope && sameScope(scope, s) ? " on" : ""}`} onClick={() => onScope(s)} aria-label={label} title={label}><Icon name={icon} /></button>
+    <button className={`ib${scope && sameScope(scope, s) ? " on" : ""}`} onClick={() => onScope(s)} aria-label={label} title={label}>
+      <Icon name={icon} />
+    </button>
   );
   return (
     <nav className="nav-rail" aria-label={t("nav.rail")} data-pane="nav">
-      <button className="ib" onClick={onOpen} aria-label={t("nav.open")} title={t("nav.open")}><Icon name="panel" /></button>
+      <button className="ib" onClick={onOpen} aria-label={t("nav.open")} title={t("nav.open")}>
+        <Icon name="panel" />
+      </button>
       {btn({ kind: "unread" }, t("common.unread"), "unread")}
       {btn({ kind: "favorites" }, t("common.favorites"), "star")}
-      <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label={t("common.chat")} title={t("common.chat")} aria-pressed={chatOpen}><Icon name="chat" /></button>
+      <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label={t("common.chat")} title={t("common.chat")} aria-pressed={chatOpen}>
+        <Icon name="chat" />
+      </button>
     </nav>
   );
 }

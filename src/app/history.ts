@@ -41,14 +41,18 @@ export const placeKey = (p: Place) => JSON.stringify([p.screen, p.section ?? nul
 /** A new place: the forward entries go, the oldest beyond the limit too; the same place again is no new entry. */
 export function visit(h: History, p: Place): History {
   const cur = h.stack[h.at];
-  if (cur && placeKey(cur) === placeKey(p)) return h;
+  if (cur && placeKey(cur) === placeKey(p)) {
+    return h;
+  }
   const stack = [...h.stack.slice(0, h.at + 1), p].slice(-HISTORY_LIMIT);
   return { stack, at: stack.length - 1 };
 }
 
 /** Where a back / forward step actually arrived (a document may reopen under a new key): it takes the current entry's place. */
 export function arrived(h: History, p: Place): History {
-  if (h.at < 0) return visit(h, p);
+  if (h.at < 0) {
+    return visit(h, p);
+  }
   return { ...h, stack: h.stack.map((x, i) => (i === h.at ? p : x)) };
 }
 

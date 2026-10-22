@@ -4,7 +4,11 @@ import { autoplay, setAutoplay } from "../vocab/speech";
 import { api, type ReviewSettings } from "../api";
 import { useT } from "../i18n";
 
-const UNITS = [["quizSettings.days", 24 * 60], ["quizSettings.hours", 60], ["quizSettings.minutes", 1]] as const;
+const UNITS = [
+  ["quizSettings.days", 24 * 60],
+  ["quizSettings.hours", 60],
+  ["quizSettings.minutes", 1],
+] as const;
 
 /** The largest unit the minutes divide into evenly: 1440 → 1 日, 90 → 90 分. */
 const split = (minutes: number) => {
@@ -19,7 +23,12 @@ export function QuizSettings() {
   const [error, setError] = useState<string | null>(null);
   const [auto, setAuto] = useState(autoplay);
 
-  useEffect(() => { api.reviewSettings().then(setValue).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .reviewSettings()
+      .then(setValue)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function save(next: ReviewSettings) {
     setValue(next);
@@ -31,37 +40,77 @@ export function QuizSettings() {
     }
   }
 
-  if (!value) return error ? <p className="msg error-text" role="alert">{t.msg(error)}</p> : null;
+  if (!value) {
+    return error ? (
+      <p className="msg error-text" role="alert">
+        {t.msg(error)}
+      </p>
+    ) : null;
+  }
   const min = split(value.min_interval_minutes);
   const num = (id: string, key: keyof ReviewSettings, max: number) => (
-    <input id={id} className="input sm num" type="number" min={0} max={max} value={value[key]}
-      onChange={(e) => void save({ ...value, [key]: Number(e.target.value) })} />
+    <input
+      id={id}
+      className="input sm num"
+      type="number"
+      min={0}
+      max={max}
+      value={value[key]}
+      onChange={(e) => void save({ ...value, [key]: Number(e.target.value) })}
+    />
   );
 
   return (
     <div className="grp">
       <SetRow title={t("quizSettings.newPerDay")} htmlFor="review-new" desc={t("quizSettings.newPerDayDesc")}>
-        {num("review-new", "new_per_day", 9999)}<span className="muted">{t("quizSettings.cards")}</span>
+        {num("review-new", "new_per_day", 9999)}
+        <span className="muted">{t("quizSettings.cards")}</span>
       </SetRow>
       <SetRow title={t("quizSettings.reviewsPerDay")} htmlFor="review-max" desc={t("quizSettings.reviewsPerDayDesc")}>
-        {num("review-max", "reviews_per_day", 9999)}<span className="muted">{t("quizSettings.cards")}</span>
+        {num("review-max", "reviews_per_day", 9999)}
+        <span className="muted">{t("quizSettings.cards")}</span>
       </SetRow>
-      <SetRow title={t("quizSettings.minInterval")} htmlFor="review-min"
-        desc={t("quizSettings.minIntervalDesc")}>
-        <input id="review-min" className="input sm num" type="number" min={1} value={min.n}
-          onChange={(e) => void save({ ...value, min_interval_minutes: Number(e.target.value) * min.size })} />
-        <select className="select" aria-label={t("quizSettings.minIntervalUnit")} value={min.size}
-          onChange={(e) => void save({ ...value, min_interval_minutes: min.n * Number(e.target.value) })}>
-          {UNITS.map(([label, size]) => <option key={size} value={size}>{t(label)}</option>)}
+      <SetRow title={t("quizSettings.minInterval")} htmlFor="review-min" desc={t("quizSettings.minIntervalDesc")}>
+        <input
+          id="review-min"
+          className="input sm num"
+          type="number"
+          min={1}
+          value={min.n}
+          onChange={(e) => void save({ ...value, min_interval_minutes: Number(e.target.value) * min.size })}
+        />
+        <select
+          className="select"
+          aria-label={t("quizSettings.minIntervalUnit")}
+          value={min.size}
+          onChange={(e) => void save({ ...value, min_interval_minutes: min.n * Number(e.target.value) })}
+        >
+          {UNITS.map(([label, size]) => (
+            <option key={size} value={size}>
+              {t(label)}
+            </option>
+          ))}
         </select>
       </SetRow>
       <SetRow title={t("quizSettings.maxInterval")} htmlFor="review-longest" desc={t("quizSettings.maxIntervalDesc")}>
-        {num("review-longest", "max_interval_days", 36500)}<span className="muted">{t("quizSettings.days")}</span>
+        {num("review-longest", "max_interval_days", 36500)}
+        <span className="muted">{t("quizSettings.days")}</span>
       </SetRow>
       <SetRow title={t("quizSettings.autoplay")} htmlFor="review-autoplay" desc={t("quizSettings.autoplayDesc")}>
-        <Switch id="review-autoplay" checked={auto} onChange={(on) => { setAuto(on); setAutoplay(on); }} />
+        <Switch
+          id="review-autoplay"
+          checked={auto}
+          onChange={(on) => {
+            setAuto(on);
+            setAutoplay(on);
+          }}
+        />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

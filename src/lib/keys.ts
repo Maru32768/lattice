@@ -5,9 +5,33 @@ import { keyOf } from "./keyname.ts";
 import type { T } from "../i18n/index.ts";
 
 export type ActionId =
-  | "palette" | "search" | "next" | "prev" | "open" | "openPage" | "favorite" | "read" | "focus" | "view" | "less" | "more"
-  | "escape" | "pane" | "newTab" | "closeTab" | "nextTab" | "prevTab" | "splitRight" | "splitDown" | "saveWord" | "speak" | "popOut" | "back" | "forward"
-  | "moveUp" | "moveDown";
+  | "palette"
+  | "search"
+  | "next"
+  | "prev"
+  | "open"
+  | "openPage"
+  | "favorite"
+  | "read"
+  | "focus"
+  | "view"
+  | "less"
+  | "more"
+  | "escape"
+  | "pane"
+  | "newTab"
+  | "closeTab"
+  | "nextTab"
+  | "prevTab"
+  | "splitRight"
+  | "splitDown"
+  | "saveWord"
+  | "speak"
+  | "popOut"
+  | "back"
+  | "forward"
+  | "moveUp"
+  | "moveDown";
 
 export interface ActionDef {
   id: ActionId;
@@ -83,7 +107,11 @@ export function actionFor(b: Bindings, key: string): ActionDef | undefined {
 /** Keys bound to more than one action, with those actions in registry order. */
 export function conflicts(b: Bindings): Map<string, ActionId[]> {
   const by = new Map<string, ActionId[]>();
-  for (const a of ACTIONS) for (const k of b[a.id]) by.set(k, [...(by.get(k) ?? []), a.id]);
+  for (const a of ACTIONS) {
+    for (const k of b[a.id]) {
+      by.set(k, [...(by.get(k) ?? []), a.id]);
+    }
+  }
   return new Map([...by].filter(([, ids]) => ids.length > 1));
 }
 
@@ -107,11 +135,15 @@ export function pageKeys(b: Bindings): PageKeys {
   const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
   for (const a of ACTIONS) {
     // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
-    if (PAGE_OWN.has(a.id)) continue;
+    if (PAGE_OWN.has(a.id)) {
+      continue;
+    }
     for (const k of b[a.id]) {
       const mod = MODIFIED.test(k);
       // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.
-      if (!mod && k.replace(/^Shift\+/, "").length > 1) continue;
+      if (!mod && k.replace(/^Shift\+/, "").length > 1) {
+        continue;
+      }
       (mod && a.inFields ? out.inFields : out.outside).push(k);
     }
   }
@@ -129,7 +161,9 @@ function load(): Partial<Bindings> {
     const out: Partial<Bindings> = {};
     for (const a of ACTIONS) {
       const v = raw[a.id];
-      if (Array.isArray(v) && v.every((k) => typeof k === "string")) out[a.id] = v;
+      if (Array.isArray(v) && v.every((k) => typeof k === "string")) {
+        out[a.id] = v;
+      }
     }
     return out;
   } catch {
@@ -155,7 +189,9 @@ function commit(next: Partial<Bindings>) {
 // Another window (a pop-out, G52) changed the shortcuts: follow it.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key !== STORAGE_KEY) return;
+    if (e.key !== STORAGE_KEY) {
+      return;
+    }
     overrides = load();
     bindings = merge(overrides);
     listeners.forEach((f) => f());
@@ -174,7 +210,9 @@ export function setKeys(id: ActionId, keys: string[]) {
 
 /** One action back to its default keys, or every action when `id` is omitted. */
 export function resetKeys(id?: ActionId) {
-  if (!id) return commit({});
+  if (!id) {
+    return commit({});
+  }
   const { [id]: _, ...rest } = overrides;
   commit(rest);
 }
@@ -188,9 +226,15 @@ export function useBindings(): Bindings {
 
 /** Up / down inside a popover list: the arrows, plus next / prev keys that are not text input when `typing`. */
 export function listStep(e: React.KeyboardEvent, typing: boolean): 1 | -1 | 0 {
-  if (e.key === "ArrowDown") return 1;
-  if (e.key === "ArrowUp") return -1;
+  if (e.key === "ArrowDown") {
+    return 1;
+  }
+  if (e.key === "ArrowUp") {
+    return -1;
+  }
   const k = keyOf(e.nativeEvent);
-  if (!k || (typing && k.length === 1)) return 0;
+  if (!k || (typing && k.length === 1)) {
+    return 0;
+  }
   return bindings.next.includes(k) ? 1 : bindings.prev.includes(k) ? -1 : 0;
 }

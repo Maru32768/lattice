@@ -28,7 +28,12 @@ export function useLibrary(fail: (e: unknown) => void) {
         setArticles(a);
         setLoaded(true);
       }),
-      api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders), api.listTags().then(setTags), api.listGenres().then(setGenres), api.listGroups().then(setGroupRows), api.relevanceStatus().then(setRelevance),
+      api.listFeeds().then(setFeeds),
+      api.listFeedFolders().then(setFolders),
+      api.listTags().then(setTags),
+      api.listGenres().then(setGenres),
+      api.listGroups().then(setGroupRows),
+      api.relevanceStatus().then(setRelevance),
     ]).catch(fail);
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
@@ -39,7 +44,9 @@ export function useLibrary(fail: (e: unknown) => void) {
   // per 500 ms (a debounce would starve under a steady event stream). The pending call covers later events.
   const refreshTimer = useRef(0);
   const refreshSoon = () => {
-    if (refreshTimer.current) return;
+    if (refreshTimer.current) {
+      return;
+    }
     refreshTimer.current = window.setTimeout(() => {
       refreshTimer.current = 0;
       void refresh();

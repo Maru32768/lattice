@@ -24,7 +24,9 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
     const held = new Promise<void>((r) => (w.release = r));
     w.hides = 0;
     w.__TAURI_INTERNALS__.invoke = (cmd, args, options) => {
-      if (cmd !== "browser_hide") return invoke(cmd, args, options);
+      if (cmd !== "browser_hide") {
+        return invoke(cmd, args, options);
+      }
       w.hides++;
       return held.then(() => invoke(cmd, args, options));
     };
@@ -44,17 +46,20 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
 });
 
 test("a menu over no webview is drawn in the frame it first appears (H22)", async ({ app }) => {
-  const first = app.evaluate(() => new Promise<string>((done) => {
-    const frame = () => {
-      const m = document.querySelector(".menu");
-      if (!m) {
+  const first = app.evaluate(
+    () =>
+      new Promise<string>((done) => {
+        const frame = () => {
+          const m = document.querySelector(".menu");
+          if (!m) {
+            requestAnimationFrame(frame);
+            return;
+          }
+          done(getComputedStyle(m).opacity);
+        };
         requestAnimationFrame(frame);
-        return;
-      }
-      done(getComputedStyle(m).opacity);
-    };
-    requestAnimationFrame(frame);
-  }));
+      }),
+  );
   await list(app).getByRole("button", { name: "並び順とまとめ方" }).click();
   expect(await first).toBe("1");
 });
@@ -109,7 +114,10 @@ test("a click in a page in another pane closes a popover; the focus a page gets 
 test("Esc closes a popover without also clearing the filters (H23)", async ({ app }) => {
   const [g] = GROUPS;
   await list(app).getByRole("button", { name: "グループ", exact: true }).click();
-  await app.getByRole("dialog", { name: "グループで絞り込む" }).getByRole("button", { name: new RegExp(g.name) }).click();
+  await app
+    .getByRole("dialog", { name: "グループで絞り込む" })
+    .getByRole("button", { name: new RegExp(g.name) })
+    .click();
   const filtered = await listCount(app).textContent();
   await app.keyboard.press("Escape");
   await expect(app.getByRole("dialog")).toHaveCount(0);
@@ -125,7 +133,8 @@ test("a nav group's ⋯ menu opens beside its trigger, not at the window's left 
   await trigger.click();
   const menu = app.getByRole("menu");
   await expect.poll(() => opacity(menu)).toBe("1");
-  const t = (await trigger.boundingBox())!, m = (await menu.boundingBox())!;
+  const t = (await trigger.boundingBox())!,
+    m = (await menu.boundingBox())!;
   expect(Math.abs(m.x - t.x), "the menu's left edge lines up with the trigger's").toBeLessThanOrEqual(8);
   expect(m.y).toBeGreaterThanOrEqual(t.y + t.height);
 
@@ -134,6 +143,7 @@ test("a nav group's ⋯ menu opens beside its trigger, not at the window's left 
   await app.evaluate(() => document.querySelector<HTMLElement>(".app")!.style.setProperty("--nav-w", "170px"));
   await item.hover();
   await trigger.click();
-  const t2 = (await trigger.boundingBox())!, m2 = (await menu.boundingBox())!;
+  const t2 = (await trigger.boundingBox())!,
+    m2 = (await menu.boundingBox())!;
   expect(Math.abs(m2.x - t2.x)).toBeLessThanOrEqual(8);
 });

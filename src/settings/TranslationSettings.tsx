@@ -18,10 +18,25 @@ export function TranslationSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.translateKeepTerms().then(setOn).catch((e: unknown) => setError(String(e)));
-    api.autoTranslate().then(setOnSave).catch((e: unknown) => setError(String(e)));
-    api.translateInstructions().then((text) => { setInstructions(text); setSaved(text); }).catch((e: unknown) => setError(String(e)));
-    api.translationPrompt().then(setPrompt).catch(() => {});
+    api
+      .translateKeepTerms()
+      .then(setOn)
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .autoTranslate()
+      .then(setOnSave)
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .translateInstructions()
+      .then((text) => {
+        setInstructions(text);
+        setSaved(text);
+      })
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .translationPrompt()
+      .then(setPrompt)
+      .catch(() => {});
   }, []);
 
   async function toggle(value: boolean) {
@@ -62,24 +77,41 @@ export function TranslationSettings() {
   return (
     <div className="grp">
       <SetRow title={t("translationSettings.onSwitch")} htmlFor="tr-on-switch" desc={t("translationSettings.onSwitchDesc")}>
-        <Switch id="tr-on-switch" checked={onSwitch} onChange={(v) => { setOnSwitch(v); setTranslateOnSwitch(v); }} />
+        <Switch
+          id="tr-on-switch"
+          checked={onSwitch}
+          onChange={(v) => {
+            setOnSwitch(v);
+            setTranslateOnSwitch(v);
+          }}
+        />
       </SetRow>
       <SetRow title={t("translationSettings.onSave")} htmlFor="tr-on-save" desc={t("translationSettings.onSaveDesc")}>
         <Switch id="tr-on-save" checked={onSave} onChange={toggleOnSave} />
       </SetRow>
-      <SetRow title={t("translationSettings.keepTerms")} htmlFor="keep-terms"
-        desc={t("translationSettings.keepTermsDesc")}>
+      <SetRow title={t("translationSettings.keepTerms")} htmlFor="keep-terms" desc={t("translationSettings.keepTermsDesc")}>
         <Switch id="keep-terms" checked={on} onChange={toggle} />
       </SetRow>
       <div className="set wide">
-        <label className="h" htmlFor="tr-instructions">{t("translationSettings.instructions")}</label>
-        <div className="d">
-          {t("translationSettings.instructionsDesc")}
-        </div>
-        <textarea id="tr-instructions" value={instructions} rows={4} maxLength={MAX_INSTRUCTIONS} placeholder={t("common.none")}
-          onChange={(e) => { setInstructions(e.target.value); setStatus(null); }} />
+        <label className="h" htmlFor="tr-instructions">
+          {t("translationSettings.instructions")}
+        </label>
+        <div className="d">{t("translationSettings.instructionsDesc")}</div>
+        <textarea
+          id="tr-instructions"
+          value={instructions}
+          rows={4}
+          maxLength={MAX_INSTRUCTIONS}
+          placeholder={t("common.none")}
+          onChange={(e) => {
+            setInstructions(e.target.value);
+            setStatus(null);
+          }}
+        />
         <div className="acts">
-          <button className="btn sm" onClick={saveInstructions} disabled={instructions.trim() === saved}>{t("common.save")}</button>
+          <button className="btn sm" onClick={saveInstructions} disabled={instructions.trim() === saved}>
+            {t("common.save")}
+          </button>
           <span className="muted">{status ?? `${instructions.length} / ${MAX_INSTRUCTIONS}`}</span>
         </div>
         <details>
@@ -87,7 +119,11 @@ export function TranslationSettings() {
           <pre aria-label={t("translationSettings.prompt")}>{prompt}</pre>
         </details>
       </div>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

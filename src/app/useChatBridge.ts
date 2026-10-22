@@ -12,7 +12,9 @@ function useSendOnChange<V>(value: V, send: (v: V) => void) {
   const sent = useRef<string | null>(null);
   useEffect(() => {
     const key = JSON.stringify(value);
-    if (key === sent.current) return;
+    if (key === sent.current) {
+      return;
+    }
     sent.current = key;
     send(value);
   });
@@ -34,13 +36,19 @@ export function useChatBridge(own: { article: DocRef; docs: OpenDoc[] }) {
   const article = HOST.kind === "chat" ? remoteArticle : own.article;
   const docs = HOST.kind === "chat" ? mainOpen : mergeDocs([own.docs, ...Object.values(docWindowsOpen)]);
   useSendOnChange(article, (a) => {
-    if (IS_MAIN) void emit("doc-current", a);
+    if (IS_MAIN) {
+      void emit("doc-current", a);
+    }
   });
   useSendOnChange(own.docs, (d) => {
-    if (HOST.kind === "doc") void toMain({ kind: "openDocs", label: HOST.label, docs: d });
+    if (HOST.kind === "doc") {
+      void toMain({ kind: "openDocs", label: HOST.label, docs: d });
+    }
   });
   useSendOnChange(docs, (d) => {
-    if (IS_MAIN) void emit("open-docs", d);
+    if (IS_MAIN) {
+      void emit("open-docs", d);
+    }
   });
 
   // Broadcasts (`emit`) reach every window's `listen`; what is addressed to one window (`emitTo`) is
@@ -48,12 +56,16 @@ export function useChatBridge(own: { article: DocRef; docs: OpenDoc[] }) {
   useEffect(() => {
     const subs = [
       listen<DocRef>("doc-current", (e) => setRemoteArticle(e.payload)),
-      ...(HOST.kind === "chat" ? [
-        getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 }))),
-        listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload)),
-      ] : []),
+      ...(HOST.kind === "chat"
+        ? [
+            getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 }))),
+            listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload)),
+          ]
+        : []),
     ];
-    if (HOST.kind === "chat") void toMain({ kind: "chatReady" });
+    if (HOST.kind === "chat") {
+      void toMain({ kind: "chatReady" });
+    }
     return () => subs.forEach((s) => void s.then((f) => f()));
   }, []);
 

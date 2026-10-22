@@ -19,17 +19,26 @@ const fieldLabel = (f: FilterField, t: T) => t(FIELDS.find(([x]) => x === f)![1]
 
 /** 「タイトルに sponsored を含むものを除く」 */
 export const ruleText = (r: FilterRule, t: T) =>
-  t(r.action === "include" ? "feedFilter.ruleInclude" : "feedFilter.ruleExclude", { field: fieldLabel(r.field, t), pattern: r.regex ? `/${r.pattern}/` : r.pattern });
+  t(r.action === "include" ? "feedFilter.ruleInclude" : "feedFilter.ruleExclude", {
+    field: fieldLabel(r.field, t),
+    pattern: r.regex ? `/${r.pattern}/` : r.pattern,
+  });
 
 /** Why the filters kept an entry out. */
 export function reasonText(r: FilterReason | null, t: T): string {
-  if (!r) return t("feedFilter.reasonUnknown");
+  if (!r) {
+    return t("feedFilter.reasonUnknown");
+  }
   const scope = r.kind === "llm" ? "" : t(r.scope === "global" ? "feedFilter.scopeGlobal" : "feedFilter.scopeFeed");
   switch (r.kind) {
-    case "excluded": return t("feedFilter.reasonExcluded", { scope, rule: ruleText(r.rule, t) });
-    case "not_included": return t("feedFilter.reasonNotIncluded", { scope });
-    case "too_short": return t("feedFilter.reasonTooShort", { scope, chars: r.chars, min: r.min });
-    case "llm": return r.score == null ? t("feedFilter.reasonLlm", { reason: r.reason }) : t("feedFilter.reasonLlmScore", { reason: r.reason, score: r.score });
+    case "excluded":
+      return t("feedFilter.reasonExcluded", { scope, rule: ruleText(r.rule, t) });
+    case "not_included":
+      return t("feedFilter.reasonNotIncluded", { scope });
+    case "too_short":
+      return t("feedFilter.reasonTooShort", { scope, chars: r.chars, min: r.min });
+    case "llm":
+      return r.score == null ? t("feedFilter.reasonLlm", { reason: r.reason }) : t("feedFilter.reasonLlmScore", { reason: r.reason, score: r.score });
   }
 }
 

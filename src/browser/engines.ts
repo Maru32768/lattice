@@ -37,7 +37,9 @@ export const validTemplate = (t: string) => t.includes("%s") && !!httpUrl(fill(t
 
 /** An unusable custom template searches with the default engine. */
 function resolve(e: SearchEngine): { search: string; home: string } {
-  if (e.id === "custom" && validTemplate(e.custom)) return { search: e.custom.trim(), home: `${httpUrl(fill(e.custom.trim(), ""))!.origin}/` };
+  if (e.id === "custom" && validTemplate(e.custom)) {
+    return { search: e.custom.trim(), home: `${httpUrl(fill(e.custom.trim(), ""))!.origin}/` };
+  }
   return ENGINES.find((x) => x.id === e.id) ?? ENGINES[0];
 }
 
@@ -49,9 +51,15 @@ const HOST_LIKE = /^(localhost|\[[0-9a-f:.]+\]|\d{1,3}(\.\d{1,3}){3}|([a-z0-9-]+
 /** What the URL bar opens for `input`: an http(s) URL as typed, https:// + a host, otherwise a search. Null: nothing. */
 export function toNavigation(input: string, e: SearchEngine): string | null {
   const s = input.trim();
-  if (!s) return null;
-  if (/^https?:\/\//i.test(s)) return httpUrl(s)?.href ?? null;
-  if (HOST_LIKE.test(s)) return httpUrl(`https://${s}`)?.href ?? null;
+  if (!s) {
+    return null;
+  }
+  if (/^https?:\/\//i.test(s)) {
+    return httpUrl(s)?.href ?? null;
+  }
+  if (HOST_LIKE.test(s)) {
+    return httpUrl(`https://${s}`)?.href ?? null;
+  }
   return fill(resolve(e).search, encodeURIComponent(s));
 }
 
@@ -61,7 +69,9 @@ function load(): SearchEngine {
   try {
     const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<SearchEngine> | null;
     const known = v?.id === "custom" || ENGINES.some((x) => x.id === v?.id);
-    if (v && known && typeof v.custom === "string") return { id: v.id!, custom: v.custom };
+    if (v && known && typeof v.custom === "string") {
+      return { id: v.id!, custom: v.custom };
+    }
   } catch {
     // Blocked storage or a damaged value: the default engine.
   }

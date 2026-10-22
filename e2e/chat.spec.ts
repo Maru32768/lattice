@@ -3,7 +3,10 @@ import { ARTICLES } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const section = (app: Page, title: string) =>
-  app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
+  app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText(title, { exact: true }) });
 
 test("the chat budget is a setting under 要約・対話 and persists", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
@@ -64,7 +67,9 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
 test("the chat scope offers each open article and all of them, and follows the tabs", async ({ app }) => {
   const [a, b, c] = ARTICLES;
   await list(app).locator(".row", { hasText: a.title! }).click();
-  await list(app).locator(".row", { hasText: b.title! }).click({ modifiers: ["Control"] });
+  await list(app)
+    .locator(".row", { hasText: b.title! })
+    .click({ modifiers: ["Control"] });
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const scope = app.getByLabel("質問の範囲");
   const opened = scope.locator("optgroup[label='開いている記事'] option");
@@ -78,7 +83,8 @@ test("the chat scope offers each open article and all of them, and follows the t
   const q = app.locator("#chat-q");
   await q.fill("共通点は？");
   await q.press("Control+Enter");
-  await expect.poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
+  await expect
+    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
     .toEqual([{ kind: "articles", ids: [a.id, b.id, c.id] }]);
 
   // One of them, until its tab closes: then the scope widens to what is still open.

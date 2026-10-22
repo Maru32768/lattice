@@ -43,10 +43,16 @@ test("理解度チェック: answer, see the source, then add the answers to rev
 
   await panel.locator(".qz-done").getByRole("button", { name: "復習に追加" }).click();
   await expect(panel.locator(".qz-done")).toContainText("復習中です（3 枚）");
-  expect(await callsOf(app, "review_add")).toEqual([{
-    quizId: QUIZ.id,
-    answers: [{ question_id: 11, grade: "hard" }, { question_id: 12, grade: "good" }, { question_id: 13, grade: "good" }],
-  }]);
+  expect(await callsOf(app, "review_add")).toEqual([
+    {
+      quizId: QUIZ.id,
+      answers: [
+        { question_id: 11, grade: "hard" },
+        { question_id: 12, grade: "good" },
+        { question_id: 13, grade: "good" },
+      ],
+    },
+  ]);
   // Answered cards are scheduled from these answers, so today's count does not grow.
   await expect(review(app).locator(".bd")).toHaveText(String(REVIEW.length));
 
@@ -78,10 +84,16 @@ test("理解度チェック stays open with its progress across another screen a
   await panel.getByRole("button", { name: /妨げない/ }).click();
   await panel.getByRole("button", { name: "正解" }).click();
   await panel.locator(".qz-done").getByRole("button", { name: "復習に追加" }).click();
-  expect(await callsOf(app, "review_add"), "the answer given before leaving counts").toEqual([{
-    quizId: QUIZ.id,
-    answers: [{ question_id: 11, grade: "hard" }, { question_id: 12, grade: "good" }, { question_id: 13, grade: "good" }],
-  }]);
+  expect(await callsOf(app, "review_add"), "the answer given before leaving counts").toEqual([
+    {
+      quizId: QUIZ.id,
+      answers: [
+        { question_id: 11, grade: "hard" },
+        { question_id: 12, grade: "good" },
+        { question_id: 13, grade: "good" },
+      ],
+    },
+  ]);
 });
 
 test("an article without a quiz offers to make one", async ({ app }) => {

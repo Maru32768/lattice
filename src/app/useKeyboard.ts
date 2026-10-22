@@ -13,7 +13,15 @@ const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "c
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** tmux keys after the prefix that act on panes and tabs rather than move. */
-const PREFIXED: Record<string, ActionId | "closePane"> = { '"': "splitDown", "%": "splitRight", X: "closePane", C: "newTab", N: "nextTab", P: "prevTab", Z: "focus" };
+const PREFIXED: Record<string, ActionId | "closePane"> = {
+  '"': "splitDown",
+  "%": "splitRight",
+  X: "closePane",
+  C: "newTab",
+  N: "nextTab",
+  P: "prevTab",
+  Z: "focus",
+};
 
 type SetLayout = (f: (l: Layout) => Layout) => void;
 
@@ -31,7 +39,9 @@ export function usePaneFocus(layout: Layout, setLayout: SetLayout) {
       setKbPane(null);
       const p = paneOf(e.target as Element);
       pointerPane.current = p?.dataset.pane ?? null;
-      if (p?.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+      if (p?.dataset.paneId) {
+        setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+      }
     };
     window.addEventListener("focusin", focusin);
     window.addEventListener("pointerdown", pointer, true);
@@ -51,7 +61,9 @@ export function usePaneFocus(layout: Layout, setLayout: SetLayout) {
     }
     const t = pageByKey(layout, tab);
     const hit = t && tabById(layout, t.id);
-    if (!hit) return;
+    if (!hit) {
+      return;
+    }
     setLayout((l) => focusLayout(l, hit.pane.id));
     setKbPane(null);
     pointerPane.current = "doc";
@@ -85,7 +97,13 @@ export function usePrefix() {
  * prefix armed the next key acts on panes; otherwise the bound action runs, unless a field, an
  * open overlay or a control owns the key. Also sends the page overlay the keys it forwards.
  */
-export function useShortcuts({ actions, prefix, layout, setLayout, focus }: {
+export function useShortcuts({
+  actions,
+  prefix,
+  layout,
+  setLayout,
+  focus,
+}: {
   actions: Record<ActionId, () => void>;
   prefix: ReturnType<typeof usePrefix>;
   layout: Layout;
@@ -110,17 +128,25 @@ export function useShortcuts({ actions, prefix, layout, setLayout, focus }: {
       return false;
     }
     const p = paneAfter(key, from);
-    if (!p) return false;
+    if (!p) {
+      return false;
+    }
     focusPane(p);
     focus.setKbPane(p.dataset.pane!);
-    if (p.dataset.paneId) setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+    if (p.dataset.paneId) {
+      setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+    }
     return true;
   }
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.isComposing) return;
+    if (e.defaultPrevented || e.isComposing) {
+      return;
+    }
     const key = keyOf(e);
-    if (!key) return;
+    if (!key) {
+      return;
+    }
     if (prefix.prefix) {
       e.preventDefault();
       paneKey(key);
@@ -129,7 +155,9 @@ export function useShortcuts({ actions, prefix, layout, setLayout, focus }: {
     // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
     if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
       const on = (e.target as Element).closest?.<HTMLElement>(MENU_TARGETS) ?? document.querySelector<HTMLElement>(".row.cur");
-      if (!on) return;
+      if (!on) {
+        return;
+      }
       e.preventDefault();
       on.focus();
       // The menu opens at the event's point: under the start of the element.
@@ -138,20 +166,34 @@ export function useShortcuts({ actions, prefix, layout, setLayout, focus }: {
       return;
     }
     const action = actionFor(getBindings(), key);
-    if (!action) return;
+    if (!action) {
+      return;
+    }
     // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
-    if (openOverlays() && action.id !== "palette") return;
+    if (openOverlays() && action.id !== "palette") {
+      return;
+    }
     const t = e.target as HTMLElement;
     // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
-    if (t.closest("[aria-roledescription='sortable']")) return;
+    if (t.closest("[aria-roledescription='sortable']")) {
+      return;
+    }
     const inField = t.closest("input, textarea, select, [contenteditable='true']");
-    if (inField && !action.inFields) return;
+    if (inField && !action.inFields) {
+      return;
+    }
     const focused = document.activeElement !== document.body ? paneOf(document.activeElement)?.dataset.pane : focus.pointerPane.current;
-    if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) return;
+    if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) {
+      return;
+    }
     // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
-    if (inField && action.id === "escape") return t.blur();
+    if (inField && action.id === "escape") {
+      return t.blur();
+    }
     // Enter on a control activates it; on a list row or search hit it opens the cursor.
-    if ((action.id === "open" || action.id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) return;
+    if ((action.id === "open" || action.id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) {
+      return;
+    }
     // Plain keys on a focused button would also activate it.
     e.preventDefault();
     actions[action.id]();
@@ -159,19 +201,30 @@ export function useShortcuts({ actions, prefix, layout, setLayout, focus }: {
 
   // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
   const onPageKey = useEffectEvent(({ tab, key }: { tab: string; key: string }) => {
-    const focusApp = () => getCurrentWebview().setFocus().catch(() => {});
+    const focusApp = () =>
+      getCurrentWebview()
+        .setFocus()
+        .catch(() => {});
     // What the app focused last is stale (j / k in the nav would step the nav).
     (document.activeElement as HTMLElement | null)?.blur();
     const page = pageByKey(layout, tab);
     const pane = page && tabById(layout, page.id)?.pane.id;
-    if (pane != null) setLayout((l) => focusLayout(l, pane));
+    if (pane != null) {
+      setLayout((l) => focusLayout(l, pane));
+    }
     if (prefix.prefix) {
-      if (paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) void focusApp();
+      if (paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) {
+        void focusApp();
+      }
       return;
     }
     const action = actionFor(getBindings(), key);
-    if (!action || (openOverlays() && action.id !== "palette")) return;
-    if (LEAVES_PAGE.has(action.id)) void focusApp();
+    if (!action || (openOverlays() && action.id !== "palette")) {
+      return;
+    }
+    if (LEAVES_PAGE.has(action.id)) {
+      void focusApp();
+    }
     actions[action.id]();
   });
 

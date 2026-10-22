@@ -28,7 +28,11 @@ export function loadWidths(): PaneWidths {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}") as Partial<PaneWidths>;
     const out = { ...DEFAULT_WIDTHS };
-    for (const p of Object.keys(out) as Resizable[]) if (typeof saved[p] === "number") out[p] = clamp(p, saved[p]);
+    for (const p of Object.keys(out) as Resizable[]) {
+      if (typeof saved[p] === "number") {
+        out[p] = clamp(p, saved[p]);
+      }
+    }
     return out;
   } catch {
     return { ...DEFAULT_WIDTHS };
@@ -47,12 +51,7 @@ export function saveWidths(w: PaneWidths) {
  * Drag handle on one edge of a pane (Conversation board's dock divider). `side` is where the pane
  * sits: "left" grows the pane as the handle moves right, "right" (the chat dock) as it moves left.
  */
-export function Splitter({ pane, side, width, onWidth }: {
-  pane: Resizable;
-  side: "left" | "right";
-  width: number;
-  onWidth: (w: number) => void;
-}) {
+export function Splitter({ pane, side, width, onWidth }: { pane: Resizable; side: "left" | "right"; width: number; onWidth: (w: number) => void }) {
   const t = useT();
   const [drag, setDrag] = useState<{ x: number; w: number } | null>(null);
   const shield = useRef<HTMLDivElement>(null);
@@ -60,7 +59,9 @@ export function Splitter({ pane, side, width, onWidth }: {
   useCover(shield, !!drag && !LIVE_RESIZE);
   const onMove = useEffectEvent((d: { x: number; w: number }, e: MouseEvent) => onWidth(clamp(pane, d.w + dir * (e.clientX - d.x))));
   useEffect(() => {
-    if (!drag) return;
+    if (!drag) {
+      return;
+    }
     const move = (e: MouseEvent) => onMove(drag, e);
     const up = () => setDrag(null);
     window.addEventListener("mousemove", move);
@@ -74,15 +75,22 @@ export function Splitter({ pane, side, width, onWidth }: {
   }, [drag]);
 
   function down(e: React.MouseEvent) {
-    if (e.button !== 0) return;
+    if (e.button !== 0) {
+      return;
+    }
     e.preventDefault();
     // Counted on mousedown: the drag shield takes the second click, so dblclick never reaches the handle.
-    if (e.detail === 2) onWidth(DEFAULT_WIDTHS[pane]);
-    else setDrag({ x: e.clientX, w: width });
+    if (e.detail === 2) {
+      onWidth(DEFAULT_WIDTHS[pane]);
+    } else {
+      setDrag({ x: e.clientX, w: width });
+    }
   }
 
   function keys(e: React.KeyboardEvent) {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     onWidth(clamp(pane, width + dir * (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 64 : 16)));
@@ -92,9 +100,19 @@ export function Splitter({ pane, side, width, onWidth }: {
   const label = t(LIMITS[pane].label);
   return (
     <>
-      <div className={`splitter at-${pane}${drag ? " on" : ""}`} role="separator" aria-orientation="vertical" aria-label={label}
-        aria-valuenow={width} aria-valuemin={min} aria-valuemax={max} tabIndex={0} title={t("splitter.handle", { label })}
-        onMouseDown={down} onKeyDown={keys}>
+      <div
+        className={`splitter at-${pane}${drag ? " on" : ""}`}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={label}
+        aria-valuenow={width}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        tabIndex={0}
+        title={t("splitter.handle", { label })}
+        onMouseDown={down}
+        onKeyDown={keys}
+      >
         <span />
       </div>
       {drag && <div ref={shield} className="drag-shield" />}

@@ -5,7 +5,11 @@ import { ja } from "./ja.ts";
 import { translatorFor } from "./index.ts";
 
 const ROOTS = ["crates/lattice-core/src", "src-tauri/src"].map((d) => new URL(`../../${d}/`, import.meta.url));
-const rust = ROOTS.flatMap((root) => readdirSync(root).filter((f) => f.endsWith(".rs") && f !== "msg.rs").map((f) => ({ file: f, text: readFileSync(new URL(f, root), "utf8") })));
+const rust = ROOTS.flatMap((root) =>
+  readdirSync(root)
+    .filter((f) => f.endsWith(".rs") && f !== "msg.rs")
+    .map((f) => ({ file: f, text: readFileSync(new URL(f, root), "utf8") })),
+);
 
 /** Every `msg!("code", name = expr, …)` call: its code and param names (top-level commas only). */
 function msgCalls(text: string) {
@@ -18,17 +22,24 @@ function msgCalls(text: string) {
     for (let j = i + 5; j < text.length; j++) {
       const c = text[j];
       if (str) {
-        if (c === "\\") cur += c + text[++j];
-        else {
-          if (c === '"') str = false;
+        if (c === "\\") {
+          cur += c + text[++j];
+        } else {
+          if (c === '"') {
+            str = false;
+          }
           cur += c;
         }
         continue;
       }
-      if (c === '"') str = true;
-      else if ("([{".includes(c)) depth++;
-      else if (")]}".includes(c)) {
-        if (depth === 0) break;
+      if (c === '"') {
+        str = true;
+      } else if ("([{".includes(c)) {
+        depth++;
+      } else if (")]}".includes(c)) {
+        if (depth === 0) {
+          break;
+        }
         depth--;
       } else if (c === "," && depth === 0) {
         parts.push(cur);
@@ -39,7 +50,16 @@ function msgCalls(text: string) {
     }
     parts.push(cur);
     const code = /^\s*"([\w.]+)"\s*$/.exec(parts[0])?.[1];
-    if (code) calls.push({ code, params: parts.slice(1).map((p) => /^\s*(\w+)\s*=/.exec(p)?.[1] ?? "").filter(Boolean).sort() });
+    if (code) {
+      calls.push({
+        code,
+        params: parts
+          .slice(1)
+          .map((p) => /^\s*(\w+)\s*=/.exec(p)?.[1] ?? "")
+          .filter(Boolean)
+          .sort(),
+      });
+    }
   }
   return calls;
 }
@@ -59,7 +79,10 @@ test("every backend message code has a catalog entry with the same params", () =
 
 test("every be.* catalog entry is a code the backend uses", () => {
   const all = rust.map((r) => r.text).join("\n");
-  assert.deepEqual(beKeys.filter((k) => !all.includes(`"${k.slice(3)}"`)), []);
+  assert.deepEqual(
+    beKeys.filter((k) => !all.includes(`"${k.slice(3)}"`)),
+    [],
+  );
 });
 
 test("t.msg translates coded messages, nested codes in params too, and passes plain text through", () => {

@@ -17,5 +17,8 @@ test("relTime: past and future in the largest whole unit, null and garbage as �
   assert.equal(relTime(at(-90 * min), ja, now), "1 時間前");
   assert.equal(relTime(at(-4 * 24 * 60 * min), ja, now), "4 日前");
   assert.equal(relTime(at(-40 * 24 * 60 * min), ja, now), new Date(now - 40 * 24 * 60 * min).toLocaleDateString("ja-JP"));
-  assert.deepEqual([at(-30_000), at(-12 * min), at(3 * min + 20_000), at(-min * 60)].map((x) => relTime(x, en, now)), ["just now", "12 minutes ago", "in 3 minutes", "1 hour ago"]);
+  assert.deepEqual(
+    [at(-30_000), at(-12 * min), at(3 * min + 20_000), at(-min * 60)].map((x) => relTime(x, en, now)),
+    ["just now", "12 minutes ago", "in 3 minutes", "1 hour ago"],
+  );
 });

@@ -12,10 +12,13 @@ test("en has every key of ja, with the same params", () => {
   for (const key of Object.keys(ja) as Key[]) {
     const params = names(ja[key]);
     const m = en[key] as string | ((p: Record<string, number>) => string);
-    if (typeof m === "string") assert.deepEqual(names(m), params, key);
-    else for (const n of [1, 2]) {
-      const out = m(Object.fromEntries(params.map((p) => [p, n])));
-      assert.ok(out && !/\{\w+\}/.test(out), `${key}: ${out}`);
+    if (typeof m === "string") {
+      assert.deepEqual(names(m), params, key);
+    } else {
+      for (const n of [1, 2]) {
+        const out = m(Object.fromEntries(params.map((p) => [p, n])));
+        assert.ok(out && !/\{\w+\}/.test(out), `${key}: ${out}`);
+      }
     }
   }
 });

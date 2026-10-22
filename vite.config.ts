@@ -13,8 +13,7 @@ export default defineConfig(() => ({
     {
       name: "woff2-only",
       enforce: "pre" as const,
-      transform: (code: string, id: string) =>
-        /@fontsource.*\.css$/.test(id) ? code.replace(/,\s*url\([^)]+\.woff\) format\('woff'\)/g, "") : undefined,
+      transform: (code: string, id: string) => (/@fontsource.*\.css$/.test(id) ? code.replace(/,\s*url\([^)]+\.woff\) format\('woff'\)/g, "") : undefined),
     },
   ],
 

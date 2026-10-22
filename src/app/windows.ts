@@ -15,8 +15,12 @@ export type Host = { kind: "main" } | { kind: "doc"; label: string } | { kind: "
 
 /** What a window shows, from its label: `main`, `doc-<n>` (one pane tree of tabs) or `chat`. Anything else is the main shell. */
 export function hostOf(label: string): Host {
-  if (label === CHAT) return { kind: "chat" };
-  if (/^doc-\d+$/.test(label)) return { kind: "doc", label };
+  if (label === CHAT) {
+    return { kind: "chat" };
+  }
+  if (/^doc-\d+$/.test(label)) {
+    return { kind: "doc", label };
+  }
   return { kind: "main" };
 }
 
@@ -34,11 +38,18 @@ export const pageLangOnStart = (h: Host): "send" | "ask" | "none" => (h.kind ===
 
 /** The pop-outs that are (or were, before a restart) open, from the storage keys. */
 export const openWindows = (keys: string[]) =>
-  keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length)).filter((l) => hostOf(l).kind !== "main");
+  keys
+    .filter((k) => k.startsWith(PREFIX))
+    .map((k) => k.slice(PREFIX.length))
+    .filter((l) => hostOf(l).kind !== "main");
 
 /** The lowest document-window label not in `open`. */
 export function nextDocLabel(open: string[]): string {
-  for (let n = 1; ; n++) if (!open.includes(`doc-${n}`)) return `doc-${n}`;
+  for (let n = 1; ; n++) {
+    if (!open.includes(`doc-${n}`)) {
+      return `doc-${n}`;
+    }
+  }
 }
 
 export function storageKeys(): string[] {

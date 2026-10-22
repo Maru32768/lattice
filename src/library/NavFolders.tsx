@@ -25,8 +25,10 @@ const QUIET = {
   container: document.createElement("div"),
 };
 // A feed held over a folder (or the drop target) goes into it: the rows stay put and the folder lights up.
-const strategy = (rows: NavRow[]): SortingStrategy => (args) =>
-  rows[args.activeIndex]?.kind === "feed" && rows[args.overIndex]?.kind !== "feed" ? null : verticalListSortingStrategy(args);
+const strategy =
+  (rows: NavRow[]): SortingStrategy =>
+  (args) =>
+    rows[args.activeIndex]?.kind === "feed" && rows[args.overIndex]?.kind !== "feed" ? null : verticalListSortingStrategy(args);
 
 /** A draggable row; the pointer drags it once it moves a few pixels, so a click stays a click. */
 function useRow(r: NavRow) {
@@ -40,29 +42,58 @@ type Drag = ReturnType<typeof useRow>["listeners"];
 function FeedItem({ f, on, unread, onScope, onKey }: { f: FeedRow; on: boolean; unread: number; onScope: () => void; onKey: (e: KeyboardEvent) => void }) {
   const { ref, style, listeners, cls } = useRow({ kind: "feed", id: f.id, folder: f.folder_id });
   return (
-    <button ref={ref} style={style} {...listeners} className={`ni sub${on ? " on" : ""}${cls}`} onClick={onScope} onKeyDown={onKey}
-      aria-current={on ? "page" : undefined} data-feed={f.id}>
-      <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} /><span className="label">{feedName(f)}</span><span className="n">{unread.toLocaleString()}</span>
+    <button
+      ref={ref}
+      style={style}
+      {...listeners}
+      className={`ni sub${on ? " on" : ""}${cls}`}
+      onClick={onScope}
+      onKeyDown={onKey}
+      aria-current={on ? "page" : undefined}
+      data-feed={f.id}
+    >
+      <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />
+      <span className="label">{feedName(f)}</span>
+      <span className="n">{unread.toLocaleString()}</span>
     </button>
   );
 }
 
 function FolderHeader({ id, children }: { id: number; children: (drag: Drag) => ReactNode }) {
   const { ref, style, listeners, cls } = useRow({ kind: "folder", id });
-  return <div ref={ref} style={style} className={`ni-row${cls}`}>{children(listeners)}</div>;
+  return (
+    <div ref={ref} style={style} className={`ni-row${cls}`}>
+      {children(listeners)}
+    </div>
+  );
 }
 
 function LooseTarget() {
   const t = useT();
   const { ref, style, cls } = useRow({ kind: "loose" });
-  return <div ref={ref} style={style} className={`ni sub dim nav-drop${cls}`}>{t("nav.outOfFolders")}</div>;
+  return (
+    <div ref={ref} style={style} className={`ni sub dim nav-drop${cls}`}>
+      {t("nav.outOfFolders")}
+    </div>
+  );
 }
 
 /**
  * The sidebar's feeds (H25): each folder a collapsible scope summing its feeds' unread articles,
  * its feeds under it, then the feeds in no folder. ⋯ and the context menu rename or delete a folder.
  */
-export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, onDelete, onMenu, onReorderFeeds, onReorderFolders }: {
+export function NavFolders({
+  feeds,
+  folders,
+  unread,
+  scope,
+  onScope,
+  onRename,
+  onDelete,
+  onMenu,
+  onReorderFeeds,
+  onReorderFolders,
+}: {
   feeds: FeedRow[];
   folders: FolderRow[];
   unread: ReadonlyMap<number | null, number>;
@@ -100,7 +131,9 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
   const keys = rows.map(rowKey);
   const rowOrder = keys.join(" ");
   useEffect(() => {
-    if (!refocus.current || refocus.current.from === rowOrder) return;
+    if (!refocus.current || refocus.current.from === rowOrder) {
+      return;
+    }
     document.querySelector<HTMLElement>(refocus.current.row)?.focus();
     refocus.current = null;
   }, [rowOrder]);
@@ -108,18 +141,27 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
   const drop = ({ active, over }: DragEndEvent) => {
     setDraggingFeed(false);
     const [from, to] = [keys.indexOf(String(active.id)), over ? keys.indexOf(String(over.id)) : -1];
-    if (from < 0 || to < 0) return;
+    if (from < 0 || to < 0) {
+      return;
+    }
     const order = feedDrop(rows, groups, from, to);
-    if (order) return onReorderFeeds(order);
+    if (order) {
+      return onReorderFeeds(order);
+    }
     const ids = folderDrop(rows, from, to);
-    if (ids) onReorderFolders(ids);
+    if (ids) {
+      onReorderFolders(ids);
+    }
   };
-  const toggle = (id: number) => setCollapsed((c) => {
-    const next = new Set(c);
-    if (!next.delete(id)) next.add(id);
-    saveCollapsed(next);
-    return next;
-  });
+  const toggle = (id: number) =>
+    setCollapsed((c) => {
+      const next = new Set(c);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      saveCollapsed(next);
+      return next;
+    });
   /** Alt+↑ / ↓ (the `moveUp` / `moveDown` keys) on a focused row. */
   const step = (e: KeyboardEvent): -1 | 1 | 0 => {
     const k = keyOf(e.nativeEvent);
@@ -133,10 +175,16 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
   const stepFeed = (f: FeedRow) => (e: KeyboardEvent) => {
     const d = step(e);
     const order = d ? feedStep(groups, f.id, d) : null;
-    if (!order) return;
+    if (!order) {
+      return;
+    }
     // Keep the moved feed in view: open its new folder, or show all the feeds in none.
-    if (order.folder != null && collapsed.has(order.folder)) toggle(order.folder);
-    if (order.folder == null && order.ids.indexOf(f.id) >= FEEDS_SHOWN) setAllFeeds(true);
+    if (order.folder != null && collapsed.has(order.folder)) {
+      toggle(order.folder);
+    }
+    if (order.folder == null && order.ids.indexOf(f.id) >= FEEDS_SHOWN) {
+      setAllFeeds(true);
+    }
     refocus.current = { row: `[data-feed="${f.id}"]`, from: rowOrder };
     onReorderFeeds(order);
   };
@@ -144,7 +192,9 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
     const d = step(e);
     const ids = folders.map((x) => x.id);
     const next = d ? moved(ids, f.id, d) : ids;
-    if (next === ids) return;
+    if (next === ids) {
+      return;
+    }
     refocus.current = { row: `[data-folder="${f.id}"]`, from: rowOrder };
     onReorderFolders(next);
   };
@@ -155,48 +205,105 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
   ];
   const isOn = (s: Scope) => !!scope && sameScope(scope, s);
   const feedItem = (f: FeedRow) => (
-    <FeedItem key={f.id} f={f} on={isOn({ kind: "feed", id: f.id })} unread={unread.get(f.id) ?? 0} onScope={() => onScope({ kind: "feed", id: f.id })} onKey={stepFeed(f)} />
+    <FeedItem
+      key={f.id}
+      f={f}
+      on={isOn({ kind: "feed", id: f.id })}
+      unread={unread.get(f.id) ?? 0}
+      onScope={() => onScope({ kind: "feed", id: f.id })}
+      onKey={stepFeed(f)}
+    />
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} measuring={{ droppable: { strategy: MeasuringStrategy.Always } }} accessibility={QUIET}
-      onDragStart={({ active }) => setDraggingFeed(String(active.id).startsWith("feed:"))} onDragEnd={drop} onDragCancel={() => setDraggingFeed(false)}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      accessibility={QUIET}
+      onDragStart={({ active }) => setDraggingFeed(String(active.id).startsWith("feed:"))}
+      onDragEnd={drop}
+      onDragCancel={() => setDraggingFeed(false)}
+    >
       <SortableContext items={keys} strategy={strategy(rows)}>
-      {tree.folders.map(({ folder: f, feeds: mine, unread: n, total }) => {
-        const open = !collapsed.has(f.id);
-        if (naming === f.id) {
-          const commit = (value: string) => {
-            setNaming(null);
-            if (value.trim() && value.trim() !== f.name) onRename(f.id, value.trim());
-          };
+        {tree.folders.map(({ folder: f, feeds: mine, unread: n, total }) => {
+          const open = !collapsed.has(f.id);
+          if (naming === f.id) {
+            const commit = (value: string) => {
+              setNaming(null);
+              if (value.trim() && value.trim() !== f.name) {
+                onRename(f.id, value.trim());
+              }
+            };
+            return (
+              <FolderHeader key={f.id} id={f.id}>
+                {() => (
+                  <form
+                    className="ni-edit"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      commit(new FormData(e.currentTarget).get("name") as string);
+                    }}
+                  >
+                    <input
+                      name="name"
+                      className="input sm"
+                      defaultValue={f.name}
+                      autoFocus
+                      aria-label={t("nav.folderName")}
+                      onBlur={() => setNaming(null)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setNaming(null);
+                        }
+                      }}
+                    />
+                  </form>
+                )}
+              </FolderHeader>
+            );
+          }
+          const s: Scope = { kind: "folder", id: f.id };
           return (
-            <FolderHeader key={f.id} id={f.id}>{() => (
-            <form className="ni-edit" onSubmit={(e) => { e.preventDefault(); commit(new FormData(e.currentTarget).get("name") as string); }}>
-              <input name="name" className="input sm" defaultValue={f.name} autoFocus aria-label={t("nav.folderName")} onBlur={() => setNaming(null)}
-                onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setNaming(null); } }} />
-            </form>
-            )}</FolderHeader>
+            <div key={f.id} className="nav-folder">
+              <FolderHeader id={f.id}>
+                {(drag) => (
+                  <>
+                    <button className="ib ni-fold" onClick={() => toggle(f.id)} aria-expanded={open} aria-label={t("nav.toggleFolder", { name: f.name })}>
+                      <Icon name={open ? "down" : "right"} size="sm" />
+                    </button>
+                    <button
+                      {...drag}
+                      className={`ni sub${isOn(s) ? " on" : ""}`}
+                      onClick={() => onScope(s)}
+                      aria-current={isOn(s) ? "page" : undefined}
+                      data-folder={f.id}
+                      title={t("nav.folderCount", { unread: n, total })}
+                      onContextMenu={() => onMenu(menu(f))}
+                      onKeyDown={stepFolder(f)}
+                    >
+                      <Icon name="folder" />
+                      <span className="label">{f.name}</span>
+                      <span className="n">{n.toLocaleString()}</span>
+                    </button>
+                    <Menu
+                      className="ib ni-menu"
+                      label={t("nav.folderMenu", { name: f.name })}
+                      inPane={false}
+                      trigger={<Icon name="more" size="sm" />}
+                      items={menu(f)}
+                    />
+                  </>
+                )}
+              </FolderHeader>
+              {open && mine.length > 0 && <div className="nav-sub">{mine.map(feedItem)}</div>}
+            </div>
           );
-        }
-        const s: Scope = { kind: "folder", id: f.id };
-        return (
-          <div key={f.id} className="nav-folder">
-            <FolderHeader id={f.id}>{(drag) => <>
-              <button className="ib ni-fold" onClick={() => toggle(f.id)} aria-expanded={open} aria-label={t("nav.toggleFolder", { name: f.name })}>
-                <Icon name={open ? "down" : "right"} size="sm" />
-              </button>
-              <button {...drag} className={`ni sub${isOn(s) ? " on" : ""}`} onClick={() => onScope(s)} aria-current={isOn(s) ? "page" : undefined}
-                data-folder={f.id} title={t("nav.folderCount", { unread: n, total })} onContextMenu={() => onMenu(menu(f))} onKeyDown={stepFolder(f)}>
-                <Icon name="folder" /><span className="label">{f.name}</span><span className="n">{n.toLocaleString()}</span>
-              </button>
-              <Menu className="ib ni-menu" label={t("nav.folderMenu", { name: f.name })} inPane={false} trigger={<Icon name="more" size="sm" />} items={menu(f)} />
-            </>}</FolderHeader>
-            {open && mine.length > 0 && <div className="nav-sub">{mine.map(feedItem)}</div>}
-          </div>
-        );
-      })}
-      {loose.map(feedItem)}
-      {draggingFeed && loose.length === 0 && <LooseTarget />}
+        })}
+        {loose.map(feedItem)}
+        {draggingFeed && loose.length === 0 && <LooseTarget />}
       </SortableContext>
       {tree.loose.length > FEEDS_SHOWN && (
         <button className="ni sub dim" onClick={() => setAllFeeds((v) => !v)} aria-expanded={allFeeds}>
@@ -204,8 +311,15 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
         </button>
       )}
       {deleting && (
-        <ConfirmDialog title={t("nav.deleteFolder", { name: deleting.name })} confirm={t("common.delete")}
-          onConfirm={() => { onDelete(deleting.id); setDeleting(null); }} onCancel={() => setDeleting(null)}>
+        <ConfirmDialog
+          title={t("nav.deleteFolder", { name: deleting.name })}
+          confirm={t("common.delete")}
+          onConfirm={() => {
+            onDelete(deleting.id);
+            setDeleting(null);
+          }}
+          onCancel={() => setDeleting(null)}
+        >
           <p>{t("nav.deleteFolderDesc")}</p>
         </ConfirmDialog>
       )}

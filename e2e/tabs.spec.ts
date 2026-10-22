@@ -120,7 +120,10 @@ test("a chat citation and a palette article open in a new tab on Ctrl / middle c
   await app.getByRole("button", { name: "会話を選ぶ" }).click();
   await app.getByRole("menuitemradio", { name: "MVCC と VACUUM の関係" }).click();
   // [1] cites the second article; a plain click would replace the active tab.
-  await app.locator(".chat .answer > p .cite").first().click({ modifiers: ["Control"] });
+  await app
+    .locator(".chat .answer > p .cite")
+    .first()
+    .click({ modifiers: ["Control"] });
   await expect(titles(app)).toHaveText([a.title!, b.title!]);
   await app.locator(".chat .source").first().click({ button: "middle" });
   await expect(titles(app)).toHaveText([a.title!, b.title!, b.title!]);

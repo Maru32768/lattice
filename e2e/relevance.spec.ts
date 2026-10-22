@@ -9,7 +9,11 @@ const low = ARTICLES.find((a) => a.relevance === 2)!;
 
 async function openSettings(page: import("@playwright/test").Page, title: string) {
   await page.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await page.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni").filter({ has: page.locator(".label").getByText(title, { exact: true }) }).click();
+  await page
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: page.locator(".label").getByText(title, { exact: true }) })
+    .click();
 }
 
 test("重要 lists the important articles, which carry a mark with the reason", async ({ app }) => {
@@ -40,7 +44,9 @@ test("sorting and filtering by importance; the Reader shows the reason", async (
   await app.getByRole("dialog", { name: "重要度で絞り込む" }).getByRole("button", { name: /必読/ }).click();
   await app.keyboard.press("Escape");
   await expect(listCount(app)).toHaveText(`1 / ${all}`);
-  await list(app).getByRole("button", { name: /クリア/ }).click();
+  await list(app)
+    .getByRole("button", { name: /クリア/ })
+    .click();
 
   await list(app).locator(".row", { hasText: stale.title! }).click();
   const line = app.locator(".art-relevance");

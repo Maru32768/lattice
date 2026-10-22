@@ -25,8 +25,6 @@ test("j / k move the cursor without opening; Enter opens it in the Reader", asyn
 test("Shift+Enter opens the cursor's article as a page", async ({ app }) => {
   await app.keyboard.press("j");
   await app.keyboard.press("Shift+Enter");
-  await expect.poll(() => callsOf(app, "browser_open")).toEqual([
-    expect.objectContaining({ url: order[0].original_url }),
-  ]);
+  await expect.poll(() => callsOf(app, "browser_open")).toEqual([expect.objectContaining({ url: order[0].original_url })]);
   await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toHaveAttribute("aria-pressed", "true");
 });

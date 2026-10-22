@@ -9,7 +9,12 @@ export function ClassifySettings() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.autoClassify().then(setOn).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .autoClassify()
+      .then(setOn)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function toggle(value: boolean) {
     setOn(value);
@@ -32,15 +37,24 @@ export function ClassifySettings() {
 
   return (
     <div className="grp">
-      <SetRow title={t("classifySettings.auto")} htmlFor="auto-classify"
-        desc={t("classifySettings.autoDesc")}>
+      <SetRow title={t("classifySettings.auto")} htmlFor="auto-classify" desc={t("classifySettings.autoDesc")}>
         <Switch id="auto-classify" checked={on} onChange={toggle} />
       </SetRow>
       <SetRow title={t("classifySettings.unclassified")} desc={t("classifySettings.unclassifiedDesc")}>
-        <button className="btn" onClick={classifyAll}>{t("classifySettings.classifyAll")}</button>
+        <button className="btn" onClick={classifyAll}>
+          {t("classifySettings.classifyAll")}
+        </button>
       </SetRow>
-      {status && <p role="status" className="msg">{status}</p>}
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {status && (
+        <p role="status" className="msg">
+          {status}
+        </p>
+      )}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

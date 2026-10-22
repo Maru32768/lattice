@@ -14,7 +14,12 @@ export function StorageSection() {
   const [moving, setMoving] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
 
-  useEffect(() => { api.settings().then(setSettings).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .settings()
+      .then(setSettings)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function pick() {
     setError(null);
@@ -26,7 +31,9 @@ export function StorageSection() {
   }
 
   async function apply() {
-    if (!picked) return;
+    if (!picked) {
+      return;
+    }
     setPicked(null);
     setMoving(true);
     try {
@@ -41,31 +48,59 @@ export function StorageSection() {
   return (
     <>
       <div className="grp">
-        <SetRow title={t("storageSection.location")}
-          desc={<>{t.rich("storageSection.locationDesc", { kind: settings ? t(LOCATION[settings.location]) : "", path: <code>{settings?.data_dir}</code> })}
-            {portable && t.rich("storageSection.portableDesc", { file: <code>portable</code> })}</>}>
-          {!portable && <button className="btn" onClick={pick} disabled={moving || !!moved}>{moving ? t("storageSection.copying") : t("storageSection.change")}</button>}
+        <SetRow
+          title={t("storageSection.location")}
+          desc={
+            <>
+              {t.rich("storageSection.locationDesc", { kind: settings ? t(LOCATION[settings.location]) : "", path: <code>{settings?.data_dir}</code> })}
+              {portable && t.rich("storageSection.portableDesc", { file: <code>portable</code> })}
+            </>
+          }
+        >
+          {!portable && (
+            <button className="btn" onClick={pick} disabled={moving || !!moved}>
+              {moving ? t("storageSection.copying") : t("storageSection.change")}
+            </button>
+          )}
         </SetRow>
         <SetRow title={t("storageSection.database")} desc={<code>{settings?.db_path}</code>} />
         <SetRow title={t("storageSection.logs")} desc={t.rich("storageSection.logsDesc", { path: <code>{settings?.log_dir}</code> })} />
       </div>
-      {settings?.location_warning && <p role="alert" className="msg error-text">{t.msg(settings.location_warning)}</p>}
+      {settings?.location_warning && (
+        <p role="alert" className="msg error-text">
+          {t.msg(settings.location_warning)}
+        </p>
+      )}
       {moved && (
         <div role="status" className="msg moved">
           <p>{t.rich("storageSection.moved", { code: <code>{moved}</code>, code2: <code>{settings?.data_dir}</code> })}</p>
-          <button className="btn pri" onClick={() => api.restart().catch((e: unknown) => setError(String(e)))}>{t("storageSection.restartNow")}</button>
+          <button className="btn pri" onClick={() => api.restart().catch((e: unknown) => setError(String(e)))}>
+            {t("storageSection.restartNow")}
+          </button>
         </div>
       )}
-      {error && <p role="alert" className="msg error-text">{t.msg(error)}</p>}
-      {picked && (picked.has_data
-        ? <ConfirmDialog title={t("storageSection.useData")} confirm={t("storageSection.switch")} onConfirm={apply} onCancel={() => setPicked(null)}>
+      {error && (
+        <p role="alert" className="msg error-text">
+          {t.msg(error)}
+        </p>
+      )}
+      {picked &&
+        (picked.has_data ? (
+          <ConfirmDialog title={t("storageSection.useData")} confirm={t("storageSection.switch")} onConfirm={apply} onCancel={() => setPicked(null)}>
             <p>{t.rich("storageSection.hasData", { path: <code>{picked.path}</code> })}</p>
             <p>{t.rich("storageSection.dataStays", { code: <code>{settings?.data_dir}</code> })}</p>
           </ConfirmDialog>
-        : <ConfirmDialog title={t("storageSection.changeLocation")} confirm={t("storageSection.copyAndChange")} onConfirm={apply} onCancel={() => setPicked(null)}>
+        ) : (
+          <ConfirmDialog
+            title={t("storageSection.changeLocation")}
+            confirm={t("storageSection.copyAndChange")}
+            onConfirm={apply}
+            onCancel={() => setPicked(null)}
+          >
             <p>{t.rich("storageSection.copyDesc", { code: <code>{picked.path}</code> })}</p>
             <p>{t("storageSection.copyWarning")}</p>
-          </ConfirmDialog>)}
+          </ConfirmDialog>
+        ))}
     </>
   );
 }

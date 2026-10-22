@@ -70,7 +70,11 @@ test("picking 訳文 on an untranslated article starts its translation and shows
 
 test("with 表示を切り替えたら自動で翻訳 off, switching the view translates nothing", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni").filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) }).click();
+  await app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) })
+    .click();
   const onSwitch = app.getByRole("switch", { name: "表示を切り替えたら自動で翻訳" });
   await expect(onSwitch).toBeChecked();
   await onSwitch.uncheck();

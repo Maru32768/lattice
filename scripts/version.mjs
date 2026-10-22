@@ -55,7 +55,9 @@ export function checkVersions(root) {
 }
 
 export function setVersion(root, version) {
-  if (!SEMVER.test(version)) throw new Error(`not a semver version: ${version}`);
+  if (!SEMVER.test(version)) {
+    throw new Error(`not a semver version: ${version}`);
+  }
   for (const s of SOURCES) {
     const path = join(root, s.file);
     writeFileSync(path, s.write(readFileSync(path, "utf8"), version));
@@ -69,12 +71,16 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     if (arg === "--check") {
       const v = checkVersions(root);
-      if (tag && tag !== `v${v}`) throw new Error(`tag ${tag} does not match version ${v}`);
+      if (tag && tag !== `v${v}`) {
+        throw new Error(`tag ${tag} does not match version ${v}`);
+      }
       console.log(v);
     } else if (arg) {
       console.log(`version set to ${setVersion(root, arg)}`);
     } else {
-      for (const f of readVersions(root)) console.log(`${f.file}: ${f.versions.join(", ")}`);
+      for (const f of readVersions(root)) {
+        console.log(`${f.file}: ${f.versions.join(", ")}`);
+      }
     }
   } catch (e) {
     console.error(e.message);

@@ -10,8 +10,15 @@ import type { FilterGroup } from "../library/scopes";
 import { useT, type PlainKey } from "../i18n";
 import { withStarts } from "../lib/runs";
 
-export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<string, PlainKey>;
-const METHODS: [SearchMethod, PlainKey][] = [["hybrid", "searchPane.hybrid"], ["lexical", "searchPane.lexical"], ["semantic", "searchPane.semantic"]];
+export const MATCH_LABEL = { lexical: "searchPane.lexical", semantic: "searchPane.semantic", both: "searchPane.both" } as const satisfies Record<
+  string,
+  PlainKey
+>;
+const METHODS: [SearchMethod, PlainKey][] = [
+  ["hybrid", "searchPane.hybrid"],
+  ["lexical", "searchPane.lexical"],
+  ["semantic", "searchPane.semantic"],
+];
 const COMPACT: Dim[] = ["genres", "tags", "groups", "feeds", "state"];
 const SHOWN_VALUES = 3;
 
@@ -20,8 +27,16 @@ export function Marked({ text, ts }: { text: string; ts: string[] }) {
 }
 
 /** 範囲: the scope search runs in, as a chip-styled select. */
-function ScopeSelect({ scope, onScope, filters, importantMin }: {
-  scope: Scope; onScope: (s: Scope) => void; filters: FilterGroup[]; importantMin: number | null;
+function ScopeSelect({
+  scope,
+  onScope,
+  filters,
+  importantMin,
+}: {
+  scope: Scope;
+  onScope: (s: Scope) => void;
+  filters: FilterGroup[];
+  importantMin: number | null;
 }) {
   const t = useT();
   return (
@@ -41,8 +56,31 @@ function ScopeSelect({ scope, onScope, filters, importantMin }: {
   );
 }
 
-export function SearchPane({ initial, result, busy, method, onMethod, hits, sel, onSel, open, onSearch, onOpen, onExit,
-  scope, onScope, filters, importantMin, facets, onFacets, scoped, all, groups, articleById, focusSeq }: {
+export function SearchPane({
+  initial,
+  result,
+  busy,
+  method,
+  onMethod,
+  hits,
+  sel,
+  onSel,
+  open,
+  onSearch,
+  onOpen,
+  onExit,
+  scope,
+  onScope,
+  filters,
+  importantMin,
+  facets,
+  onFacets,
+  scoped,
+  all,
+  groups,
+  articleById,
+  focusSeq,
+}: {
   initial: string;
   result: SearchResult | null;
   busy: boolean;
@@ -84,9 +122,14 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     setPrevInitial(initial);
     setQ(initial);
   }
-  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- each bump of focusSeq (the `/` key) is a request to focus
-  useEffect(() => { input.current?.focus(); input.current?.select(); }, [focusSeq]);
-  useEffect(() => { body.current?.querySelectorAll(".hit")[sel]?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  useEffect(() => {
+    input.current?.focus();
+    input.current?.select();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- each bump of focusSeq (the `/` key) is a request to focus
+  }, [focusSeq]);
+  useEffect(() => {
+    body.current?.querySelectorAll(".hit")[sel]?.scrollIntoView({ block: "nearest" });
+  }, [sel]);
 
   const flat = hits.flatMap((g) => g.hits);
   const ts = terms(result ? initial : "");
@@ -100,17 +143,24 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
 
   function keys(e: React.KeyboardEvent) {
     const t = e.target as HTMLElement;
-    if (e.defaultPrevented || t.tagName === "SELECT") return;
+    if (e.defaultPrevented || t.tagName === "SELECT") {
+      return;
+    }
     if (e.key === "Escape") {
       e.preventDefault();
       onExit();
     } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (flat.length) onSel(Math.max(0, Math.min(flat.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1))));
+      if (flat.length) {
+        onSel(Math.max(0, Math.min(flat.length - 1, sel + (e.key === "ArrowDown" ? 1 : -1))));
+      }
     } else if (e.key === "Enter" && t === input.current && !e.nativeEvent.isComposing) {
       e.preventDefault();
-      if (q.trim() && q.trim() !== initial) onSearch(q.trim());
-      else if (flat[sel]) onOpen(flat[sel], e.shiftKey);
+      if (q.trim() && q.trim() !== initial) {
+        onSearch(q.trim());
+      } else if (flat[sel]) {
+        onOpen(flat[sel], e.shiftKey);
+      }
     }
   }
 
@@ -118,25 +168,39 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
       <header className="list-h">
         <div className="search-q">
-          <label className="vh" htmlFor="search-q">{t("searchPane.terms")}</label>
+          <label className="vh" htmlFor="search-q">
+            {t("searchPane.terms")}
+          </label>
           <input id="search-q" ref={input} className="input lg" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("searchPane.searchSaved")} />
           <div className="seg" role="group" aria-label={t("searchPane.method")} title={t("searchPane.methodHint")}>
             {METHODS.map(([m, label]) => (
-              <button key={m} className={method === m ? "on" : ""} aria-pressed={method === m} onClick={() => onMethod(m)}
-                disabled={m === "semantic" && semanticOff}>{t(label)}</button>
+              <button
+                key={m}
+                className={method === m ? "on" : ""}
+                aria-pressed={method === m}
+                onClick={() => onMethod(m)}
+                disabled={m === "semantic" && semanticOff}
+              >
+                {t(label)}
+              </button>
             ))}
           </div>
         </div>
         <FacetBar facets={facets} onFacets={onFacets} scoped={scoped} all={all} groups={groups} dims={["genres", "tags", "groups", "feeds"]}>
           <ScopeSelect scope={scope} onScope={onScope} filters={filters} importantMin={importantMin} />
         </FacetBar>
-        <div className="search-count mono">{busy ? t("searchPane.searching") : result ? t("searchPane.count", { length: flat.length, length2: hits.length }) : ""}</div>
+        <div className="search-count mono">
+          {busy ? t("searchPane.searching") : result ? t("searchPane.count", { length: flat.length, length2: hits.length }) : ""}
+        </div>
         {result && hitArticles.length > 0 && (
           <div className="ftab">
             {COMPACT.map((d) => {
-              const counts = [...countBy(hitArticles, d)].filter(([v]) => d !== "state" || v === "unread" || v === "favorite" || v === "issue")
+              const counts = [...countBy(hitArticles, d)]
+                .filter(([v]) => d !== "state" || v === "unread" || v === "favorite" || v === "issue")
                 .sort((a, b) => b[1] - a[1]);
-              if (counts.length === 0) return null;
+              if (counts.length === 0) {
+                return null;
+              }
               const open = moreDims.has(d);
               const shown = open ? counts : counts.slice(0, SHOWN_VALUES);
               return (
@@ -152,7 +216,18 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                       );
                     })}
                     {counts.length > SHOWN_VALUES && (
-                      <button className="more" onClick={() => setMoreDims((s) => { const x = new Set(s); if (!x.delete(d)) x.add(d); return x; })}>
+                      <button
+                        className="more"
+                        onClick={() =>
+                          setMoreDims((s) => {
+                            const x = new Set(s);
+                            if (!x.delete(d)) {
+                              x.add(d);
+                            }
+                            return x;
+                          })
+                        }
+                      >
                         {open ? t("common.close") : `+${counts.length - SHOWN_VALUES}`}
                       </button>
                     )}
@@ -166,12 +241,18 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
           <div className="note warn center">
             <Icon name="offline" />
             <span className="grow">{t("searchPane.lexicalOnly", { semantic_error: t.msg(result.semantic_error) })}</span>
-            <button className="btn sm" onClick={() => onSearch(initial)}>{t("searchPane.retry")}</button>
+            <button className="btn sm" onClick={() => onSearch(initial)}>
+              {t("searchPane.retry")}
+            </button>
           </div>
         )}
       </header>
       <div className="list-body" ref={body}>
-        {result && hits.length === 0 && !busy && <div className="empty"><div className="muted">{t("searchPane.none")}</div></div>}
+        {result && hits.length === 0 && !busy && (
+          <div className="empty">
+            <div className="muted">{t("searchPane.none")}</div>
+          </div>
+        )}
         {withStarts(hits, (g) => g.hits.length).map(({ item: g, start }) => {
           const a = articleById.get(g.article_id);
           return (
@@ -185,13 +266,29 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
               {g.hits.map((h, hi) => {
                 const i = start + hi;
                 return (
-                  <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
-                    onClick={(e) => { onSel(i); onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey); }} {...onMiddle(() => onOpen(h, false, true))}
-                    onFocus={() => onSel(i)}>
+                  <button
+                    key={h.block_id}
+                    className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
+                    onClick={(e) => {
+                      onSel(i);
+                      onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey);
+                    }}
+                    {...onMiddle(() => onOpen(h, false, true))}
+                    onFocus={() => onSel(i)}
+                  >
                     <span className="sh">{h.heading && h.heading !== h.text ? h.heading : t("searchPane.top")}</span>
-                    <span className={`mt ${h.source}`}>{t(MATCH_LABEL[h.source])}{h.source === "semantic" && ` ${h.score.toFixed(2)}`}</span>
-                    <span className="tx"><Marked text={h.text} ts={ts} /></span>
-                    {h.translation && <span className="tx tr"><Marked text={h.translation} ts={ts} /></span>}
+                    <span className={`mt ${h.source}`}>
+                      {t(MATCH_LABEL[h.source])}
+                      {h.source === "semantic" && ` ${h.score.toFixed(2)}`}
+                    </span>
+                    <span className="tx">
+                      <Marked text={h.text} ts={ts} />
+                    </span>
+                    {h.translation && (
+                      <span className="tx tr">
+                        <Marked text={h.translation} ts={ts} />
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -200,10 +297,24 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
         })}
       </div>
       <footer className="list-f hints">
-        <span><ActionKey id="next" /><ActionKey id="prev" />{t("searchPane.hintMatches")}</span>
-        <span><Kbd>Enter</Kbd>{t("searchPane.hintReader")}</span>
-        <span><Kbd>Shift</Kbd><Kbd>Enter</Kbd>{t("searchPane.hintPage")}</span>
-        <span className="r"><Kbd>Esc</Kbd>{t("searchPane.hintBack")}</span>
+        <span>
+          <ActionKey id="next" />
+          <ActionKey id="prev" />
+          {t("searchPane.hintMatches")}
+        </span>
+        <span>
+          <Kbd>Enter</Kbd>
+          {t("searchPane.hintReader")}
+        </span>
+        <span>
+          <Kbd>Shift</Kbd>
+          <Kbd>Enter</Kbd>
+          {t("searchPane.hintPage")}
+        </span>
+        <span className="r">
+          <Kbd>Esc</Kbd>
+          {t("searchPane.hintBack")}
+        </span>
       </footer>
     </section>
   );

@@ -11,7 +11,9 @@ import { useT } from "../i18n";
 /** The sentence with the captured form emphasized. */
 function Sentence({ c }: { c: VocabContext }) {
   const spans = findWord(c.sentence, c.surface);
-  if (spans.length === 0) return <>{c.sentence}</>;
+  if (spans.length === 0) {
+    return <>{c.sentence}</>;
+  }
   const out: React.ReactNode[] = [];
   let at = 0;
   spans.forEach(([s, e], i) => {
@@ -28,7 +30,11 @@ function Sentence({ c }: { c: VocabContext }) {
  * the sentence it was captured in. Then the grade, as for a quiz question. Remount (key) per card.
  * Words, meanings and sentences come from pages and the LLM: text nodes only.
  */
-export function VocabCard({ item, onGrade, onSource }: {
+export function VocabCard({
+  item,
+  onGrade,
+  onSource,
+}: {
   item: VocabReviewItem;
   onGrade: (g: Grade) => void;
   /** Opens where the word was captured. */
@@ -43,20 +49,30 @@ export function VocabCard({ item, onGrade, onSource }: {
   const answer = item.definition || item.meaning;
 
   useEffect(() => {
-    if (!voice) return;
-    if (!said.current && autoplay()) speak(item.headword, voice);
+    if (!voice) {
+      return;
+    }
+    if (!said.current && autoplay()) {
+      speak(item.headword, voice);
+    }
     said.current = true;
     return onReplay(() => speak(item.headword, voice));
   }, [voice, item.headword]);
 
-  const say = (text: string, label: string) => voice && (
-    <button className="ib vc-say" onClick={() => speak(text, voice)} aria-label={label} title={label}><Icon name="speaker" /></button>
-  );
+  const say = (text: string, label: string) =>
+    voice && (
+      <button className="ib vc-say" onClick={() => speak(text, voice)} aria-label={label} title={label}>
+        <Icon name="speaker" />
+      </button>
+    );
 
   return (
     <div className="qz-card" onKeyDown={(e) => gradeKey(e, shown, onGrade)}>
       <div className="vc-front">
-        <p className="vc-word"><span lang="en">{item.headword}</span>{say(item.headword, t("vocabCard.sayWord"))}</p>
+        <p className="vc-word">
+          <span lang="en">{item.headword}</span>
+          {say(item.headword, t("vocabCard.sayWord"))}
+        </p>
         {(item.ipa || item.pos) && (
           <p className="vc-sub">
             {item.ipa && <span className="vc-ipa">/{item.ipa}/</span>}
@@ -64,25 +80,44 @@ export function VocabCard({ item, onGrade, onSource }: {
           </p>
         )}
       </div>
-      {!shown && <button className="btn pri vc-show" autoFocus onClick={() => setShown(true)}>{t("quizCard.reveal")}</button>}
+      {!shown && (
+        <button className="btn pri vc-show" autoFocus onClick={() => setShown(true)}>
+          {t("quizCard.reveal")}
+        </button>
+      )}
       {shown && (
         <div className="qz-reveal vc-back">
           <section className="vc-field" aria-label={t("vocabCard.meaning")}>
             <span className="cap">{t("vocabCard.meaning")}</span>
-            <p className="vc-def" role="status" lang={item.definition ? "en" : undefined}>{answer}</p>
+            <p className="vc-def" role="status" lang={item.definition ? "en" : undefined}>
+              {answer}
+            </p>
           </section>
           {item.example && (
             <section className="vc-field" aria-label={t("vocabCard.example")}>
               <span className="cap">{t("vocabCard.example")}</span>
-              <p className="vc-example"><span lang="en">{item.example}</span>{say(item.example, t("vocabCard.sayExample"))}</p>
+              <p className="vc-example">
+                <span lang="en">{item.example}</span>
+                {say(item.example, t("vocabCard.sayExample"))}
+              </p>
             </section>
           )}
           <div className="vc-more">
-            {item.definition && item.meaning && <p className="vc-gloss"><span className="cap">{t("vocabCard.gloss")}</span>{item.meaning}</p>}
-            <p className="vc-context" lang="en"><span className="cap">{t("vocabCard.context")}</span><Sentence c={c} /></p>
+            {item.definition && item.meaning && (
+              <p className="vc-gloss">
+                <span className="cap">{t("vocabCard.gloss")}</span>
+                {item.meaning}
+              </p>
+            )}
+            <p className="vc-context" lang="en">
+              <span className="cap">{t("vocabCard.context")}</span>
+              <Sentence c={c} />
+            </p>
             {(c.article_id != null || c.url) && (
               <div className="qz-src">
-                <button className="chip" onClick={onSource} title={c.title ?? c.url ?? undefined}>{t("vocabCard.source")}</button>
+                <button className="chip" onClick={onSource} title={c.title ?? c.url ?? undefined}>
+                  {t("vocabCard.source")}
+                </button>
               </div>
             )}
           </div>

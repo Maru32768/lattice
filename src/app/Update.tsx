@@ -30,9 +30,15 @@ function useInstall() {
 
 function InstallButton({ percent, onInstall }: { percent: number | null; onInstall: () => void }) {
   const t = useT();
-  return percent == null
-    ? <button className="btn pri" onClick={onInstall}>{t("update.install")}</button>
-    : <span className="muted" role="status">{percent < 100 ? t("update.downloading", { percent }) : t("update.installing")}</span>;
+  return percent == null ? (
+    <button className="btn pri" onClick={onInstall}>
+      {t("update.install")}
+    </button>
+  ) : (
+    <span className="muted" role="status">
+      {percent < 100 ? t("update.downloading", { percent }) : t("update.installing")}
+    </span>
+  );
 }
 
 /** Checks once at startup and, when a newer version exists, shows a bar under the title bar. */
@@ -45,18 +51,31 @@ export function UpdateNotice({ onOpenUrl }: { onOpenUrl: (url: string) => void }
     (async () => {
       const info = await updates.info();
       const version = info.configured ? await updates.check() : null;
-      if (version) setFound({ version, portable: info.portable });
+      if (version) {
+        setFound({ version, portable: info.portable });
+      }
     })().catch((e: unknown) => console.warn("update check failed", e)); // offline at startup is normal; Settings shows errors
   }, []);
 
-  if (!found) return null;
+  if (!found) {
+    return null;
+  }
   return (
     <div className="update-bar" role="status">
-      <span className="grow">{t("update.available", { version: found.version })}{found.portable && t("update.portableNote")}</span>
+      <span className="grow">
+        {t("update.available", { version: found.version })}
+        {found.portable && t("update.portableNote")}
+      </span>
       {error && <span className="error-text">{t.msg(error)}</span>}
-      <button className="btn ghost" onClick={() => onOpenUrl(releaseUrl(found.version))}>{found.portable ? t("update.downloadPage") : t("update.releaseNotes")}</button>
+      <button className="btn ghost" onClick={() => onOpenUrl(releaseUrl(found.version))}>
+        {found.portable ? t("update.downloadPage") : t("update.releaseNotes")}
+      </button>
       {!found.portable && <InstallButton percent={percent} onInstall={install} />}
-      {percent == null && <button className="btn ghost" onClick={() => setFound(null)}>{t("update.later")}</button>}
+      {percent == null && (
+        <button className="btn ghost" onClick={() => setFound(null)}>
+          {t("update.later")}
+        </button>
+      )}
     </div>
   );
 }
@@ -69,7 +88,12 @@ export function UpdateSection({ onOpenUrl }: { onOpenUrl: (url: string) => void 
   const [error, setError] = useState<string | null>(null);
   const { percent, error: installError, install } = useInstall();
 
-  useEffect(() => { updates.info().then(setInfo).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    updates
+      .info()
+      .then(setInfo)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function check() {
     setError(null);
@@ -82,24 +106,41 @@ export function UpdateSection({ onOpenUrl }: { onOpenUrl: (url: string) => void 
     setChecking(false);
   }
 
-  const desc = !info ? null
-    : !info.configured ? t("update.notConfigured")
-    : result?.version && info.portable ? <>{t.rich("update.availablePortable", { version: result.version, code: <code>Lattice.exe</code>, code2: <code>data</code> })}</>
-    : result?.version ? <>{t("update.availableInstall", { version: result.version })}</>
-    : result ? t("update.latest")
-    : t("update.checkedAtStart");
+  const desc = !info ? null : !info.configured ? (
+    t("update.notConfigured")
+  ) : result?.version && info.portable ? (
+    <>{t.rich("update.availablePortable", { version: result.version, code: <code>Lattice.exe</code>, code2: <code>data</code> })}</>
+  ) : result?.version ? (
+    <>{t("update.availableInstall", { version: result.version })}</>
+  ) : result ? (
+    t("update.latest")
+  ) : (
+    t("update.checkedAtStart")
+  );
 
   return (
     <>
       <div className="grp">
         <SetRow title={t("update.version", { x: info?.current ?? "" })} desc={desc}>
-          {result?.version && <button className="btn ghost" onClick={() => onOpenUrl(releaseUrl(result.version!))}>{t("update.releaseNotes")}</button>}
-          {result?.version
-            ? !info?.portable && <InstallButton percent={percent} onInstall={install} />
-            : <button className="btn" onClick={check} disabled={!info?.configured || checking}>{checking ? t("update.checking") : t("update.check")}</button>}
+          {result?.version && (
+            <button className="btn ghost" onClick={() => onOpenUrl(releaseUrl(result.version!))}>
+              {t("update.releaseNotes")}
+            </button>
+          )}
+          {result?.version ? (
+            !info?.portable && <InstallButton percent={percent} onInstall={install} />
+          ) : (
+            <button className="btn" onClick={check} disabled={!info?.configured || checking}>
+              {checking ? t("update.checking") : t("update.check")}
+            </button>
+          )}
         </SetRow>
       </div>
-      {(error ?? installError) && <p role="alert" className="msg error-text">{t.msg(error ?? installError)}</p>}
+      {(error ?? installError) && (
+        <p role="alert" className="msg error-text">
+          {t.msg(error ?? installError)}
+        </p>
+      )}
     </>
   );
 }

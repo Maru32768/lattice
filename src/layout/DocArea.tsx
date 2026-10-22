@@ -1,9 +1,38 @@
 import { Fragment, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { MIN_SIZE, activate, close, closePane, dropOn, focusedPane, move, panes, resize, split, tabById, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
+import {
+  MIN_SIZE,
+  activate,
+  close,
+  closePane,
+  dropOn,
+  focusedPane,
+  move,
+  panes,
+  resize,
+  split,
+  tabById,
+  type Dir,
+  type Id,
+  type Layout,
+  type Node,
+  type Pane,
+  type Tab,
+} from "./layout";
 import { TabStrip, type DropTarget, type TabDrag, type TabLabel, type WindowAction } from "./TabStrip";
-import { TAB_DRAG_DROP, TAB_DRAG_END, TAB_DRAG_OVER, TAB_DRAG_START, TAB_DRAG_TEAR, measure, type Incoming, type Over, type Slot, type ZoneTarget } from "./tabDrag";
+import {
+  TAB_DRAG_DROP,
+  TAB_DRAG_END,
+  TAB_DRAG_OVER,
+  TAB_DRAG_START,
+  TAB_DRAG_TEAR,
+  measure,
+  type Incoming,
+  type Over,
+  type Slot,
+  type ZoneTarget,
+} from "./tabDrag";
 import { tabDrag } from "../api";
 import { CoverContext } from "../ui/Popover";
 import { Favicon } from "../ui/Favicon";
@@ -22,9 +51,13 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   const t = useT();
   const [drag, setDrag] = useState<{ at: number; size: number; len: number } | null>(null);
   const row = dir === "row";
-  const onMove = useEffectEvent((d: { at: number; size: number; len: number }, e: MouseEvent) => onSize(d.size + ((row ? e.clientX : e.clientY) - d.at) / d.len));
+  const onMove = useEffectEvent((d: { at: number; size: number; len: number }, e: MouseEvent) =>
+    onSize(d.size + ((row ? e.clientX : e.clientY) - d.at) / d.len),
+  );
   useEffect(() => {
-    if (!drag) return;
+    if (!drag) {
+      return;
+    }
     const moveM = (e: MouseEvent) => onMove(drag, e);
     const up = () => setDrag(null);
     window.addEventListener("mousemove", moveM);
@@ -38,17 +71,24 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   }, [drag]);
 
   function down(e: React.MouseEvent) {
-    if (e.button !== 0) return;
+    if (e.button !== 0) {
+      return;
+    }
     e.preventDefault();
     const r = e.currentTarget.parentElement!.getBoundingClientRect();
     // Counted on mousedown, as the pane splitters do: a double-click evens the two out.
-    if (e.detail === 2) onSize(NaN);
-    else setDrag({ at: row ? e.clientX : e.clientY, size, len: row ? r.width : r.height });
+    if (e.detail === 2) {
+      onSize(NaN);
+    } else {
+      setDrag({ at: row ? e.clientX : e.clientY, size, len: row ? r.width : r.height });
+    }
   }
 
   function keys(e: React.KeyboardEvent) {
     const d = row ? { ArrowLeft: -1, ArrowRight: 1 }[e.key] : { ArrowUp: -1, ArrowDown: 1 }[e.key];
-    if (!d) return;
+    if (!d) {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     onSize(size + d * (e.shiftKey ? 0.08 : 0.02));
@@ -56,15 +96,40 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
 
   const label = row ? t("docArea.paneWidth") : t("docArea.paneHeight");
   return (
-    <div className={`splitter at-pane${row ? "" : " h"}${drag ? " on" : ""}`} role="separator" aria-orientation={row ? "vertical" : "horizontal"} aria-label={label}
-      aria-valuenow={Math.round(size * 100)} aria-valuemin={Math.round(MIN_SIZE * 100)} aria-valuemax={Math.round((1 - MIN_SIZE) * 100)} tabIndex={0}
-      title={t("docArea.handle", { label, x: row ? "← →" : "↑ ↓" })} onMouseDown={down} onKeyDown={keys}>
+    <div
+      className={`splitter at-pane${row ? "" : " h"}${drag ? " on" : ""}`}
+      role="separator"
+      aria-orientation={row ? "vertical" : "horizontal"}
+      aria-label={label}
+      aria-valuenow={Math.round(size * 100)}
+      aria-valuemin={Math.round(MIN_SIZE * 100)}
+      aria-valuemax={Math.round((1 - MIN_SIZE) * 100)}
+      tabIndex={0}
+      title={t("docArea.handle", { label, x: row ? "← →" : "↑ ↓" })}
+      onMouseDown={down}
+      onKeyDown={keys}
+    >
       <span />
     </div>
   );
 }
 
-function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowAction, drop, body, dragging, onDrag, onDrop, index, title }: {
+function NodeView({
+  n,
+  layout,
+  onLayout,
+  labelOf,
+  renderPane,
+  onNew,
+  windowAction,
+  drop,
+  body,
+  dragging,
+  onDrag,
+  onDrop,
+  index,
+  title,
+}: {
   n: Node;
   layout: Layout;
   onLayout: Update;
@@ -94,14 +159,34 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
           return (
             <Fragment key={c.id}>
               {i > 0 && (
-                <SplitHandle dir={n.dir} size={size}
-                  onSize={(s) => onLayout((l) => {
-                    const even = (size + sizeOf(i)) / 2;
-                    return resize(l, n.id, i - 1, Number.isNaN(s) ? even : s);
-                  })} />
+                <SplitHandle
+                  dir={n.dir}
+                  size={size}
+                  onSize={(s) =>
+                    onLayout((l) => {
+                      const even = (size + sizeOf(i)) / 2;
+                      return resize(l, n.id, i - 1, Number.isNaN(s) ? even : s);
+                    })
+                  }
+                />
               )}
               <div className="cell" style={{ flex: `${sizeOf(i)} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={start} title={title} />
+                <NodeView
+                  n={c}
+                  layout={layout}
+                  onLayout={onLayout}
+                  labelOf={labelOf}
+                  renderPane={renderPane}
+                  onNew={onNew}
+                  windowAction={windowAction}
+                  drop={drop}
+                  body={body}
+                  dragging={dragging}
+                  onDrag={onDrag}
+                  onDrop={onDrop}
+                  index={start}
+                  title={title}
+                />
               </div>
             </Fragment>
           );
@@ -113,10 +198,23 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
   const multi = layout.root.kind === "split";
   return (
     <section className={`dpane${focused ? " focused" : ""}`} data-pane="doc" data-pane-id={n.id} aria-label={t("docArea.document", { x: index + 1 })}>
-      <TabStrip pane={n} multi={multi} labelOf={labelOf} drop={drop} dragging={dragging} windowAction={windowAction}
-        onActivate={(t) => onLayout((l) => activate(l, t))} onClose={(t) => onLayout((l) => close(l, t))} onNew={() => onNew(n.id)}
-        onSplit={(dir) => onLayout((l) => split(l, n.id, dir))} onClosePane={() => onLayout((l) => closePane(l, n.id))}
-        onDrag={onDrag} onDrop={onDrop} onTitleDrag={title?.top.has(n.id) ? dragWindow : undefined} end={title?.corner === n.id && <WindowControls />} />
+      <TabStrip
+        pane={n}
+        multi={multi}
+        labelOf={labelOf}
+        drop={drop}
+        dragging={dragging}
+        windowAction={windowAction}
+        onActivate={(t) => onLayout((l) => activate(l, t))}
+        onClose={(t) => onLayout((l) => close(l, t))}
+        onNew={() => onNew(n.id)}
+        onSplit={(dir) => onLayout((l) => split(l, n.id, dir))}
+        onClosePane={() => onLayout((l) => closePane(l, n.id))}
+        onDrag={onDrag}
+        onDrop={onDrop}
+        onTitleDrag={title?.top.has(n.id) ? dragWindow : undefined}
+        end={title?.corner === n.id && <WindowControls />}
+      />
       {renderPane(n)}
       {/* Over the page stills that stand in for the webviews during a drag. */}
       {body?.pane === n.id && <div className={`drop-zone ${body.zone}`} aria-hidden />}
@@ -135,7 +233,17 @@ interface Own {
  * pane. Tab drags across windows run in the backend (design-review §26): this window reports its
  * strips while any window drags, draws the slot it is told, and does what it is told with the tab.
  */
-export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAction, movable, onSend, onTear }: {
+export function DocArea({
+  layout,
+  onLayout,
+  labelOf,
+  renderPane,
+  onNew,
+  windowAction,
+  movable,
+  onSend,
+  onTear,
+}: {
   layout: Layout;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
@@ -178,11 +286,17 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
     const all = panes(layout.root).flatMap((p) => p.tabs);
     const only = all.length === 1 ? all[0] : undefined;
     const tab = ownRef.current?.tab ?? only?.id ?? null;
-    if (tab == null) return;
+    if (tab == null) {
+      return;
+    }
     // A pane body is a target only in the window dragging the tab.
-    if ("zone" in to) onLayout((l) => (to.label === me ? dropOn(l, tab, to.pane, to.zone) : l));
-    else if (to.label === me) onLayout((l) => move(l, tab, to.pane, to.index));
-    else onSend(tab, to.label, { pane: to.pane, index: to.index });
+    if ("zone" in to) {
+      onLayout((l) => (to.label === me ? dropOn(l, tab, to.pane, to.zone) : l));
+    } else if (to.label === me) {
+      onLayout((l) => move(l, tab, to.pane, to.index));
+    } else {
+      onSend(tab, to.label, { pane: to.pane, index: to.index });
+    }
   }
 
   const onEnd = useEffectEvent(finish);
@@ -204,16 +318,25 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   }, []);
 
   useEffect(() => {
-    if (!reporting) return;
-    void getCurrentWindow().innerPosition().then((p) => tabDrag.strips(measure(me, p))).catch(() => {});
-  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- measure reads the strips from the DOM, which follows the layout
+    if (!reporting) {
+      return;
+    }
+    void getCurrentWindow()
+      .innerPosition()
+      .then((p) => tabDrag.strips(measure(me, p)))
+      .catch(() => {});
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- measure reads the strips from the DOM, which follows the layout
   }, [reporting, layout, me]);
 
   // Escape puts the tab back (on Windows the backend sees the key too); it is the drag's, not the app's.
   useEffect(() => {
-    if (!own) return;
+    if (!own) {
+      return;
+    }
     const key = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape") {
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       void tabDrag.release(true).catch(() => {});
@@ -226,25 +349,47 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
     let o = ownRef.current;
     if (!o) {
       const hit = tabById(layout, d.tab);
-      if (!hit) return;
+      if (!hit) {
+        return;
+      }
       o = { tab: d.tab, alone: movable && panes(layout.root).flatMap((p) => p.tabs).length === 1 };
       setOwn(o);
       // The page webviews are drawn above this document: a still of each stands in so the ghost stays visible.
-      if (!o.alone) uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
+      if (!o.alone) {
+        uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
+      }
       const start = { tab: labelOf(hit.tab), pane: hit.pane.id, index: hit.pane.tabs.indexOf(hit.tab), alone: o.alone };
-      void getCurrentWindow().innerPosition().then((p) => tabDrag.start({ ...start, geom: measure(me, p) })).catch(() => finish());
+      void getCurrentWindow()
+        .innerPosition()
+        .then((p) => tabDrag.start({ ...start, geom: measure(me, p) }))
+        .catch(() => finish());
     }
     // A window that follows the cursor carries its tab along: no ghost.
-    if (!o.alone) setGhost(d);
+    if (!o.alone) {
+      setGhost(d);
+    }
   }
 
   const ghostTab = ghost && tabById(layout, ghost.tab)?.tab;
   const ghostLabel = ghostTab && labelOf(ghostTab);
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
-      <NodeView n={layout.root} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction}
-        drop={drop && "index" in drop ? drop : null} body={drop && "zone" in drop ? drop : null} dragging={own && !own.alone ? own.tab : null} onDrag={drag} onDrop={() => void tabDrag.release(false).catch(() => {})} index={0}
-        title={movable ? topStrips(layout.root) : null} />
+      <NodeView
+        n={layout.root}
+        layout={layout}
+        onLayout={onLayout}
+        labelOf={labelOf}
+        renderPane={renderPane}
+        onNew={onNew}
+        windowAction={windowAction}
+        drop={drop && "index" in drop ? drop : null}
+        body={drop && "zone" in drop ? drop : null}
+        dragging={own && !own.alone ? own.tab : null}
+        onDrag={drag}
+        onDrop={() => void tabDrag.release(false).catch(() => {})}
+        index={0}
+        title={movable ? topStrips(layout.root) : null}
+      />
       {ghost && ghostTab && ghostLabel && (
         <div className="tab-ghost" aria-hidden style={{ left: ghost.x - ghost.dx, top: ghost.y - ghost.dy }}>
           <Favicon domain={ghostLabel.domain} feed={ghostTab.kind === "page" ? undefined : ghostLabel.feed} />

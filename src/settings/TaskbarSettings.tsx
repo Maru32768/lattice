@@ -8,7 +8,12 @@ export function TaskbarSettings() {
   const [on, setOn] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { api.taskbarBadge().then(setOn).catch((e: unknown) => setError(String(e))); }, []);
+  useEffect(() => {
+    api
+      .taskbarBadge()
+      .then(setOn)
+      .catch((e: unknown) => setError(String(e)));
+  }, []);
 
   async function toggle(value: boolean) {
     setOn(value);
@@ -22,11 +27,14 @@ export function TaskbarSettings() {
 
   return (
     <div className="grp">
-      <SetRow title={t("taskbarSettings.badge")} htmlFor="taskbar-badge"
-        desc={t("taskbarSettings.badgeDesc")}>
+      <SetRow title={t("taskbarSettings.badge")} htmlFor="taskbar-badge" desc={t("taskbarSettings.badgeDesc")}>
         <Switch id="taskbar-badge" checked={on} onChange={toggle} />
       </SetRow>
-      {error && <p className="msg error-text" role="alert">{t.msg(error)}</p>}
+      {error && (
+        <p className="msg error-text" role="alert">
+          {t.msg(error)}
+        </p>
+      )}
     </div>
   );
 }

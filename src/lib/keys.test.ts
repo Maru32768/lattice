@@ -3,8 +3,14 @@ import assert from "node:assert/strict";
 import { DEFAULT_BINDINGS, actionFor, conflicts, getBindings, isCustom, keyLabel, merge, pageKeys, resetKeys, setKeys } from "./keys.ts";
 import { keyOf } from "./keyname.ts";
 
-const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) =>
-  ({ key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
+  key,
+  ctrlKey: false,
+  metaKey: false,
+  altKey: false,
+  shiftKey: false,
+  ...mods,
+});
 
 test("keyOf: canonical keys; Shift only where the key does not print it", () => {
   assert.equal(keyOf(ev("j")), "J");

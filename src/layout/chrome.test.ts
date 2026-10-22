@@ -4,8 +4,17 @@ import { topStrips } from "./chrome.ts";
 import type { Node } from "./layout.ts";
 
 const pane = (id: number): Node => ({ kind: "pane", id, tabs: [], active: null });
-const split = (id: number, dir: "row" | "column", ...children: Node[]): Node => ({ kind: "split", id, dir, children, sizes: children.map(() => 1 / children.length) });
-const of = (n: Node) => { const s = topStrips(n); return { top: [...s.top].sort((a, b) => a - b), corner: s.corner }; };
+const split = (id: number, dir: "row" | "column", ...children: Node[]): Node => ({
+  kind: "split",
+  id,
+  dir,
+  children,
+  sizes: children.map(() => 1 / children.length),
+});
+const of = (n: Node) => {
+  const s = topStrips(n);
+  return { top: [...s.top].sort((a, b) => a - b), corner: s.corner };
+};
 
 test("topStrips: a single pane is the whole title bar", () => {
   assert.deepEqual(of(pane(1)), { top: [1], corner: 1 });

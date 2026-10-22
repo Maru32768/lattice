@@ -16,7 +16,15 @@ const SUB: Record<ImportTab, PlainKey> = {
 
 /** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), one
  *  Markdown document (from a file or pasted), or one PDF file. */
-export function ImportView({ tab, onTab, onImported, onOpen, groups, initialGroups, onCreateGroup }: {
+export function ImportView({
+  tab,
+  onTab,
+  onImported,
+  onOpen,
+  groups,
+  initialGroups,
+  onCreateGroup,
+}: {
   tab: ImportTab;
   onTab: (t: ImportTab) => void;
   onImported: () => void;
@@ -31,7 +39,9 @@ export function ImportView({ tab, onTab, onImported, onOpen, groups, initialGrou
   const [into, setInto] = useState(initialGroups);
   /** Puts imported articles into the chosen groups (already-saved ones too). */
   const fileInto = async (ids: number[]) => {
-    for (const g of into) await api.groupAdd(g, ids);
+    for (const g of into) {
+      await api.groupAdd(g, ids);
+    }
   };
   return (
     <main className="manage">
@@ -43,22 +53,42 @@ export function ImportView({ tab, onTab, onImported, onOpen, groups, initialGrou
           </div>
           <div className="acts">
             <div className="seg" role="group" aria-label={t("importView.kind")}>
-              <button className={tab === "urls" ? "on" : ""} aria-pressed={tab === "urls"} onClick={() => onTab("urls")}>{t("importView.urls")}</button>
-              <button className={tab === "markdown" ? "on" : ""} aria-pressed={tab === "markdown"} onClick={() => onTab("markdown")}>Markdown</button>
-              <button className={tab === "pdf" ? "on" : ""} aria-pressed={tab === "pdf"} onClick={() => onTab("pdf")}>PDF</button>
+              <button className={tab === "urls" ? "on" : ""} aria-pressed={tab === "urls"} onClick={() => onTab("urls")}>
+                {t("importView.urls")}
+              </button>
+              <button className={tab === "markdown" ? "on" : ""} aria-pressed={tab === "markdown"} onClick={() => onTab("markdown")}>
+                Markdown
+              </button>
+              <button className={tab === "pdf" ? "on" : ""} aria-pressed={tab === "pdf"} onClick={() => onTab("pdf")}>
+                PDF
+              </button>
             </div>
           </div>
         </header>
         <GroupField groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} />
-        {tab === "urls" ? <UrlImport onImported={onImported} fileInto={fileInto} /> : tab === "markdown" ? <MarkdownImport onOpen={onOpen} fileInto={fileInto} /> : <PdfImport onOpen={onOpen} fileInto={fileInto} />}
+        {tab === "urls" ? (
+          <UrlImport onImported={onImported} fileInto={fileInto} />
+        ) : tab === "markdown" ? (
+          <MarkdownImport onOpen={onOpen} fileInto={fileInto} />
+        ) : (
+          <PdfImport onOpen={onOpen} fileInto={fileInto} />
+        )}
       </div>
     </main>
   );
 }
 
 /** グループ: where imported articles go; none by default. */
-function GroupField({ groups, into, onInto, onCreate }: {
-  groups: GroupRow[]; into: number[]; onInto: (ids: number[]) => void; onCreate: (name: string) => Promise<number>;
+function GroupField({
+  groups,
+  into,
+  onInto,
+  onCreate,
+}: {
+  groups: GroupRow[];
+  into: number[];
+  onInto: (ids: number[]) => void;
+  onCreate: (name: string) => Promise<number>;
 }) {
   const t = useT();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -66,13 +96,28 @@ function GroupField({ groups, into, onInto, onCreate }: {
   return (
     <div className="import-groups">
       <span className="muted">{t("common.group")}</span>
-      <button className={`chip${names.length ? " on" : " dashed"}`} aria-haspopup="dialog" aria-expanded={!!anchor}
-        onClick={(e) => { const el = e.currentTarget; setAnchor((a) => (a ? null : el)); }}>
-        <Icon name="folder" size="sm" />{names.length ? names.join(" · ") : t("importView.noGroup")}<Icon name="down" size="sm" />
+      <button
+        className={`chip${names.length ? " on" : " dashed"}`}
+        aria-haspopup="dialog"
+        aria-expanded={!!anchor}
+        onClick={(e) => {
+          const el = e.currentTarget;
+          setAnchor((a) => (a ? null : el));
+        }}
+      >
+        <Icon name="folder" size="sm" />
+        {names.length ? names.join(" · ") : t("importView.noGroup")}
+        <Icon name="down" size="sm" />
       </button>
       {anchor && (
-        <GroupPicker groups={groups} selected={into} anchor={anchor} onClose={() => setAnchor(null)} onCreate={onCreate}
-          onToggle={(id, on) => onInto(on ? [...into, id] : into.filter((x) => x !== id))} />
+        <GroupPicker
+          groups={groups}
+          selected={into}
+          anchor={anchor}
+          onClose={() => setAnchor(null)}
+          onCreate={onCreate}
+          onToggle={(id, on) => onInto(on ? [...into, id] : into.filter((x) => x !== id))}
+        />
       )}
     </div>
   );
@@ -88,7 +133,9 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
   const [error, setError] = useState<string | null>(null);
 
   async function loadFile(file: File | undefined) {
-    if (file) setText(await file.text());
+    if (file) {
+      setText(await file.text());
+    }
   }
 
   async function run() {
@@ -114,10 +161,19 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
           <input type="file" className="vh" accept=".txt,.csv,.json,.html,.htm,.md" onChange={(e) => loadFile(e.target.files?.[0])} />
         </label>
       </div>
-      <textarea className="paste" value={text} onChange={(e) => setText(e.target.value)} rows={14} aria-label={t("importView.text")}
-        placeholder={"https://example.com/post-1\nhttps://example.com/post-2"} spellCheck={false} />
+      <textarea
+        className="paste"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={14}
+        aria-label={t("importView.text")}
+        placeholder={"https://example.com/post-1\nhttps://example.com/post-2"}
+        spellCheck={false}
+      />
       <div className="line">
-        <button className="btn pri lg" onClick={run} disabled={busy || !text.trim()}>{busy ? t("importView.adding") : t("importView.import")}</button>
+        <button className="btn pri lg" onClick={run} disabled={busy || !text.trim()}>
+          {busy ? t("importView.adding") : t("importView.import")}
+        </button>
         {result && (
           <span role="status" className="msg">
             {t("importView.queued", { found: result.found, queued: result.queued })}
@@ -127,7 +183,11 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
             {result.noUrl > 0 && t("common.skippedNoUrl", { n: result.noUrl })}
           </span>
         )}
-        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
+        {error && (
+          <span role="alert" className="msg error-text">
+            {t.msg(error)}
+          </span>
+        )}
       </div>
     </section>
   );
@@ -157,13 +217,28 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
   return (
     <section className="card add" aria-label="Markdown">
       <div>
-        <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>{t("importView.chooseFileEllipsis")}</button>
+        <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>
+          {t("importView.chooseFileEllipsis")}
+        </button>
       </div>
-      <textarea className="paste" value={text} onChange={(e) => setText(e.target.value)} rows={14} aria-label="Markdown"
-        placeholder={t("importView.markdownPlaceholder")} spellCheck={false} />
+      <textarea
+        className="paste"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={14}
+        aria-label="Markdown"
+        placeholder={t("importView.markdownPlaceholder")}
+        spellCheck={false}
+      />
       <div className="line">
-        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>{busy ? t("importView.importing") : t("importView.importMarkdown")}</button>
-        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
+        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>
+          {busy ? t("importView.importing") : t("importView.importMarkdown")}
+        </button>
+        {error && (
+          <span role="alert" className="msg error-text">
+            {t.msg(error)}
+          </span>
+        )}
       </div>
     </section>
   );
@@ -192,8 +267,14 @@ function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInt
   return (
     <section className="card add" aria-label="PDF">
       <div className="line">
-        <button className="btn pri lg" onClick={run} disabled={busy}>{busy ? t("importView.importing") : t("importView.choosePdf")}</button>
-        {error && <span role="alert" className="msg error-text">{t.msg(error)}</span>}
+        <button className="btn pri lg" onClick={run} disabled={busy}>
+          {busy ? t("importView.importing") : t("importView.choosePdf")}
+        </button>
+        {error && (
+          <span role="alert" className="msg error-text">
+            {t.msg(error)}
+          </span>
+        )}
       </div>
     </section>
   );

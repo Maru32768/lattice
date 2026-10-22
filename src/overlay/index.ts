@@ -38,7 +38,12 @@ type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
 declare global {
   interface Window {
-    __lattice?: { configure(c: Partial<Config>): void; setKeys(k: PageKeys | null): void; scrollToText(text: string): boolean; snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void> };
+    __lattice?: {
+      configure(c: Partial<Config>): void;
+      setKeys(k: PageKeys | null): void;
+      scrollToText(text: string): boolean;
+      snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
+    };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
 }
@@ -56,7 +61,11 @@ const BATCH_CHARS = 6000;
 const MAX_INFLIGHT = 3;
 
 const state = {
-  config: { enabled: false, percent: 70, labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" } } as Config,
+  config: {
+    enabled: false,
+    percent: 70,
+    labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" },
+  } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
   pending: [] as Pending[],
@@ -68,8 +77,7 @@ const state = {
   mo: null as MutationObserver | null,
 };
 
-const invoke: Invoke = (cmd, args) =>
-  window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC"));
+const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC")));
 
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
 const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display);
@@ -77,10 +85,15 @@ const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display)
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
   const walk = (el: Element) => {
-    if (el.matches(SKIP) || (el instanceof HTMLElement && el.dataset.latticeBlock)) return;
+    if (el.matches(SKIP) || (el instanceof HTMLElement && el.dataset.latticeBlock)) {
+      return;
+    }
     const kids = Array.from(el.children);
-    if (kids.some(isBlock)) kids.forEach(walk);
-    else if (el instanceof HTMLElement && (el.textContent ?? "").trim().length >= 2) out.push(el);
+    if (kids.some(isBlock)) {
+      kids.forEach(walk);
+    } else if (el instanceof HTMLElement && (el.textContent ?? "").trim().length >= 2) {
+      out.push(el);
+    }
   };
   walk(root);
   return out;
@@ -89,17 +102,28 @@ function findLeafBlocks(root: Element): HTMLElement[] {
 // ---- translation pipeline -------------------------------------------------------------
 
 function processRoot(root: Element) {
-  if (!state.config.enabled || root.closest(SKIP)) return;
+  if (!state.config.enabled || root.closest(SKIP)) {
+    return;
+  }
   state.io ??= new IntersectionObserver(
-    (entries) => entries.forEach((e) => {
-      if (!e.isIntersecting) return;
-      state.io!.unobserve(e.target);
-      enqueue(e.target as HTMLElement);
-    }),
+    (entries) =>
+      entries.forEach((e) => {
+        if (!e.isIntersecting) {
+          return;
+        }
+        state.io!.unobserve(e.target);
+        enqueue(e.target as HTMLElement);
+      }),
     { rootMargin: "1000px" },
   );
   const blocks = findLeafBlocks(root);
-  state.target ??= pageTarget(document.documentElement.lang, blocks.slice(0, 30).map((b) => b.textContent ?? "").join(" "));
+  state.target ??= pageTarget(
+    document.documentElement.lang,
+    blocks
+      .slice(0, 30)
+      .map((b) => b.textContent ?? "")
+      .join(" "),
+  );
   for (const el of blocks) {
     el.dataset.latticeBlock = "pending";
     bindBlockHover(el);
@@ -108,7 +132,9 @@ function processRoot(root: Element) {
 }
 
 function enqueue(el: HTMLElement) {
-  if (!el.isConnected || !state.config.enabled) return;
+  if (!el.isConnected || !state.config.enabled) {
+    return;
+  }
   if (isWrittenIn(el.textContent ?? "", state.target ?? "ja")) {
     el.dataset.latticeBlock = "skip";
     return;
@@ -126,7 +152,8 @@ function enqueue(el: HTMLElement) {
 
 function flush() {
   let batch: Pending[] = [];
-  let parts = 0, chars = 0;
+  let parts = 0,
+    chars = 0;
   for (const p of state.pending.splice(0)) {
     const len = p.parts.reduce((n, s) => n + s.length, 0);
     if (batch.length && (parts + p.parts.length > BATCH_PARTS || chars + len > BATCH_CHARS)) {
@@ -138,7 +165,9 @@ function flush() {
     parts += p.parts.length;
     chars += len;
   }
-  if (batch.length) state.queue.push(batch);
+  if (batch.length) {
+    state.queue.push(batch);
+  }
   pump();
 }
 
@@ -165,7 +194,9 @@ async function translateBatch(batch: Pending[]) {
   for (const p of batch) {
     const mine = results.slice(offset, offset + p.parts.length);
     offset += p.parts.length;
-    if (!p.el.isConnected) continue;
+    if (!p.el.isConnected) {
+      continue;
+    }
     if (mine.length !== p.parts.length || mine.some((r) => !r?.length)) {
       p.el.dataset.latticeBlock = "failed";
       continue;
@@ -180,7 +211,9 @@ function apply(el: HTMLElement, units: Unit[]) {
   for (const u of units) {
     const plain = plainText(sanitize(u.source));
     const loc = locate(el, tokenize(el, isSentence), plain, from);
-    if (!loc) break; // page changed under us or the model altered the source; keep the rest original
+    if (!loc) {
+      break;
+    } // page changed under us or the model altered the source; keep the rest original
     const range = document.createRange();
     range.setStart(loc.start.container, loc.start.offset);
     range.setEnd(loc.end.container, loc.end.offset);
@@ -203,14 +236,21 @@ function spansOf(el: Element): SentenceSpan[] {
 
 function render(span: SentenceSpan) {
   const translated = state.config.enabled && (span.dataset.manual ? span.dataset.manual === "t" : span.dataset.default === "t");
-  if (translated) renderVariant(span, span.dataset.translation ?? "");
-  else renderOriginal(span);
+  if (translated) {
+    renderVariant(span, span.dataset.translation ?? "");
+  } else {
+    renderOriginal(span);
+  }
   span.dataset.shown = translated ? "t" : "o";
 }
 
 function assignBlock(el: Element) {
   const spans = spansOf(el);
-  const picks = assignTranslated(spans.map((s) => s.dataset.source ?? ""), state.config.percent, location.href);
+  const picks = assignTranslated(
+    spans.map((s) => s.dataset.source ?? ""),
+    state.config.percent,
+    location.href,
+  );
   spans.forEach((s, i) => {
     s.dataset.default = picks[i] ? "t" : "o";
     render(s);
@@ -227,10 +267,13 @@ function refreshAll() {
 // ---- tooltip --------------------------------------------------------------------------------
 
 let tip: { host: HTMLElement; box: HTMLElement; target: Element | null; onClick: (() => void) | null } | null = null;
-let showTimer = 0, hideTimer = 0;
+let showTimer = 0,
+  hideTimer = 0;
 
 function ensureTip() {
-  if (tip) return tip;
+  if (tip) {
+    return tip;
+  }
   const host = document.createElement("div");
   host.dataset.latticeUi = "1";
   const root = host.attachShadow({ mode: "closed" });
@@ -265,7 +308,9 @@ function showTip(target: Element, label: string, text: string, hint: string, onC
   if (label || hint) {
     const head = document.createElement("div");
     head.className = "head";
-    for (const v of [label, hint]) head.append(Object.assign(document.createElement("span"), { textContent: v }));
+    for (const v of [label, hint]) {
+      head.append(Object.assign(document.createElement("span"), { textContent: v }));
+    }
     t.box.append(head);
   }
   t.box.append(text);
@@ -299,14 +344,23 @@ function bindSentenceHover(span: SentenceSpan) {
     clearTimeout(showTimer);
     clearTimeout(hideTimer);
     showTimer = window.setTimeout(() => {
-      if (!state.config.enabled || !span.matches(":hover")) return;
+      if (!state.config.enabled || !span.matches(":hover")) {
+        return;
+      }
       const translated = span.dataset.shown === "t";
-      const other = translated ? span.dataset.source ?? "" : plainText(span.dataset.translation ?? "");
+      const other = translated ? (span.dataset.source ?? "") : plainText(span.dataset.translation ?? "");
       const l = state.config.labels;
-      showTip(span, translated ? l.original : l.translated, other, l.flip, () => {
-        span.dataset.manual = translated ? "o" : "t";
-        render(span);
-      }, at);
+      showTip(
+        span,
+        translated ? l.original : l.translated,
+        other,
+        l.flip,
+        () => {
+          span.dataset.manual = translated ? "o" : "t";
+          render(span);
+        },
+        at,
+      );
     }, HOVER_MS);
   });
   span.addEventListener("mouseleave", () => {
@@ -318,17 +372,31 @@ function bindSentenceHover(span: SentenceSpan) {
 function bindBlockHover(el: HTMLElement) {
   el.addEventListener("mouseenter", (e) => {
     const s = el.dataset.latticeBlock;
-    if (!state.config.enabled || (s !== "translating" && s !== "failed")) return;
+    if (!state.config.enabled || (s !== "translating" && s !== "failed")) {
+      return;
+    }
     clearTimeout(hideTimer);
     const l = state.config.labels;
-    if (s === "translating") showTip(el, "", l.translating, "", null, { x: e.clientX, y: e.clientY });
-    else showTip(el, "", l.failed, l.retry, () => {
-      el.dataset.latticeBlock = "pending";
-      enqueue(el);
-    }, { x: e.clientX, y: e.clientY });
+    if (s === "translating") {
+      showTip(el, "", l.translating, "", null, { x: e.clientX, y: e.clientY });
+    } else {
+      showTip(
+        el,
+        "",
+        l.failed,
+        l.retry,
+        () => {
+          el.dataset.latticeBlock = "pending";
+          enqueue(el);
+        },
+        { x: e.clientX, y: e.clientY },
+      );
+    }
   });
   el.addEventListener("mouseleave", () => {
-    if (tip?.target === el) scheduleHide();
+    if (tip?.target === el) {
+      scheduleHide();
+    }
   });
 }
 
@@ -340,7 +408,9 @@ let saveTimer = 0;
 let offered: { selection: string; sentence: string } | null = null;
 
 function ensureSaveButton() {
-  if (saveBtn) return saveBtn;
+  if (saveBtn) {
+    return saveBtn;
+  }
   const host = document.createElement("div");
   host.dataset.latticeUi = "1";
   const root = host.attachShadow({ mode: "closed" });
@@ -354,7 +424,9 @@ function ensureSaveButton() {
   // Keep the page's selection when the button is pressed.
   btn.addEventListener("mousedown", (e) => e.preventDefault());
   btn.addEventListener("click", () => {
-    if (!offered) return;
+    if (!offered) {
+      return;
+    }
     btn.disabled = true;
     invoke("overlay_vocab", offered)
       .then(() => {
@@ -373,18 +445,26 @@ function ensureSaveButton() {
 
 function hideSave() {
   clearTimeout(saveTimer);
-  if (saveBtn) saveBtn.btn.style.display = "none";
+  if (saveBtn) {
+    saveBtn.btn.style.display = "none";
+  }
 }
 
 /** The selected word and its sentence, cut from the nearest block around it. */
 function selectedWord(): { selection: string; sentence: string; rect: DOMRect } | null {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(sel.toString())) return null;
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(sel.toString())) {
+    return null;
+  }
   const range = sel.getRangeAt(0);
   const node = range.commonAncestorContainer;
   let block = node instanceof Element ? node : node.parentElement;
-  if (!block || block.closest("input, textarea, [contenteditable=''], [contenteditable='true'], [data-lattice-ui]")) return null;
-  while (block.parentElement && block !== document.body && !isBlock(block)) block = block.parentElement;
+  if (!block || block.closest("input, textarea, [contenteditable=''], [contenteditable='true'], [data-lattice-ui]")) {
+    return null;
+  }
+  while (block.parentElement && block !== document.body && !isBlock(block)) {
+    block = block.parentElement;
+  }
   const before = document.createRange();
   before.setStart(block, 0);
   before.setEnd(range.startContainer, range.startOffset);
@@ -395,7 +475,9 @@ function selectedWord(): { selection: string; sentence: string; rect: DOMRect } 
 
 function offerSave() {
   const word = state.config.labels.save_word ? selectedWord() : null;
-  if (!word) return hideSave();
+  if (!word) {
+    return hideSave();
+  }
   const { btn } = ensureSaveButton();
   clearTimeout(saveTimer);
   btn.textContent = state.config.labels.save_word;
@@ -409,7 +491,9 @@ function offerSave() {
 // ---- public API -------------------------------------------------------------------------------
 
 function start() {
-  if (state.started) return processRoot(document.body);
+  if (state.started) {
+    return processRoot(document.body);
+  }
   state.started = true;
   const style = document.createElement("style");
   style.dataset.latticeUi = "1";
@@ -420,7 +504,9 @@ function start() {
   state.mo ??= new MutationObserver((records) => {
     for (const r of records) {
       r.addedNodes.forEach((n) => {
-        if (n instanceof Element && !n.closest("[data-lattice-block],[data-lattice-ui]")) processRoot(n);
+        if (n instanceof Element && !n.closest("[data-lattice-block],[data-lattice-ui]")) {
+          processRoot(n);
+        }
       });
     }
   });
@@ -430,7 +516,9 @@ function start() {
 /** Back/forward availability for the toolbar, from Chromium's Navigation API (absent: both stay enabled). */
 function reportHistory() {
   const nav = (window as { navigation?: { canGoBack?: unknown; canGoForward?: unknown } }).navigation;
-  if (typeof nav?.canGoBack !== "boolean" || typeof nav.canGoForward !== "boolean") return;
+  if (typeof nav?.canGoBack !== "boolean" || typeof nav.canGoForward !== "boolean") {
+    return;
+  }
   invoke("overlay_history", { canGoBack: nav.canGoBack, canGoForward: nav.canGoForward }).catch(() => {});
 }
 
@@ -445,8 +533,7 @@ function setKeys(k: PageKeys | null) {
   keys = k;
 }
 
-const inField = (t: EventTarget | undefined) =>
-  t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select"));
+const inField = (t: EventTarget | undefined) => t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select"));
 
 function forward(key: string, armed: boolean) {
   prefixUntil = !armed && keys?.prefix.includes(key) ? Date.now() + keys.prefixMs : 0;
@@ -454,14 +541,18 @@ function forward(key: string, armed: boolean) {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.isComposing) return;
+  if (e.isComposing) {
+    return;
+  }
   const key = keyOf(e);
   if (key === "Ctrl+P") {
     e.preventDefault();
     e.stopImmediatePropagation();
     return window.print();
   }
-  if (!keys) return;
+  if (!keys) {
+    return;
+  }
   const armed = Date.now() < prefixUntil;
   // composedPath: the field itself, not its shadow host.
   const route = routeKey(keys, key, inField(e.composedPath()[0]), armed);
@@ -477,18 +568,28 @@ function onKey(e: KeyboardEvent) {
 function configure(c: Partial<Config>) {
   const was = state.config;
   state.config = { ...was, ...c };
-  if (state.config.enabled && !was.enabled && document.body) start();
-  if (was.enabled !== state.config.enabled || was.percent !== state.config.percent) refreshAll();
-  if (!state.config.enabled) hideTip();
+  if (state.config.enabled && !was.enabled && document.body) {
+    start();
+  }
+  if (was.enabled !== state.config.enabled || was.percent !== state.config.percent) {
+    refreshAll();
+  }
+  if (!state.config.enabled) {
+    hideTip();
+  }
 }
 
 function scrollToText(text: string): boolean {
   const needle = normalizeText(text).slice(0, 80);
-  if (!needle) return false;
+  if (!needle) {
+    return false;
+  }
   const el = findLeafBlocks(document.body)
     .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
     .find((b) => normalizeText(b.textContent ?? "").includes(needle));
-  if (!el) return false;
+  if (!el) {
+    return false;
+  }
   el.scrollIntoView({ block: "center" });
   el.classList.add("lattice-flash");
   setTimeout(() => el.classList.remove("lattice-flash"), 2000);
@@ -501,8 +602,12 @@ function scrollToText(text: string): boolean {
  */
 async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null) {
   // The PDF viewer's DOM is not the document: an empty answer has the app fetch the file instead.
-  if (document.contentType === "application/pdf") return void invoke("overlay_snapshot", { nonce, html: "" }).catch(() => {});
-  if (wait) await settle(document.documentElement, wait.quietMs, wait.maxMs);
+  if (document.contentType === "application/pdf") {
+    return void invoke("overlay_snapshot", { nonce, html: "" }).catch(() => {});
+  }
+  if (wait) {
+    await settle(document.documentElement, wait.quietMs, wait.maxMs);
+  }
   const shown = Array.from(document.querySelectorAll<SentenceSpan>(`span.${SENTENCE}[data-shown='t']`));
   shown.forEach(renderOriginal);
   const html = `<!DOCTYPE html>${document.documentElement.outerHTML}`;
@@ -514,13 +619,33 @@ if (window.top === window && !window.__lattice) {
   window.__lattice = { configure, setKeys, scrollToText, snapshot };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);
-  window.print = () => void invoke("overlay_print").then((shown) => shown || pagePrint(), () => pagePrint());
+  window.print = () =>
+    void invoke("overlay_print").then(
+      (shown) => shown || pagePrint(),
+      () => pagePrint(),
+    );
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
   // After the selection settles (a click inside it collapses it only after mouseup).
-  document.addEventListener("mouseup", (e) => { if (!e.composedPath().some((n) => n === saveBtn?.host)) setTimeout(offerSave); });
-  document.addEventListener("selectionchange", () => { if (saveBtn && !saveBtn.btn.disabled && window.getSelection()?.isCollapsed) hideSave(); });
-  window.addEventListener("scroll", () => { if (!saveBtn?.btn.disabled) hideSave(); }, { passive: true });
+  document.addEventListener("mouseup", (e) => {
+    if (!e.composedPath().some((n) => n === saveBtn?.host)) {
+      setTimeout(offerSave);
+    }
+  });
+  document.addEventListener("selectionchange", () => {
+    if (saveBtn && !saveBtn.btn.disabled && window.getSelection()?.isCollapsed) {
+      hideSave();
+    }
+  });
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!saveBtn?.btn.disabled) {
+        hideSave();
+      }
+    },
+    { passive: true },
+  );
   const boot = () =>
     void invoke("overlay_config")
       .then((c) => {
@@ -529,8 +654,11 @@ if (window.top === window && !window.__lattice) {
         configure(config);
       })
       .catch(() => {});
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
-  else boot();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
   reportHistory();
   // Same-document navigations (pushState, fragments) fire no page-load event.
   (window as { navigation?: EventTarget }).navigation?.addEventListener("currententrychange", reportHistory);

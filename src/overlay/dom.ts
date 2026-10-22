@@ -30,9 +30,13 @@ export function isIgnored(n: Node): boolean {
 }
 
 export function isAtom(n: Node | null | undefined): boolean {
-  if (!(n instanceof Element)) return false;
+  if (!(n instanceof Element)) {
+    return false;
+  }
   const m = n as Element & Meta;
-  if (typeof m.latticeAtom === "boolean") return m.latticeAtom;
+  if (typeof m.latticeAtom === "boolean") {
+    return m.latticeAtom;
+  }
   return ATOM_TAGS.has(tag(n)) || (n.textContent ?? "").trim() === "";
 }
 
@@ -43,7 +47,9 @@ interface Boundary {
 
 const before = (n: Node): Boundary | null => {
   const p = n.parentNode;
-  if (!p) return null;
+  if (!p) {
+    return null;
+  }
   const offset = children(p).indexOf(n);
   return offset < 0 ? null : { container: p, offset };
 };
@@ -64,12 +70,18 @@ export function tokenize(block: Element, isSentence: (n: Node) => boolean = () =
   let atoms = 0;
   const visit = (n: Node) => {
     if (n instanceof Text) {
-      if (n.data) out.push({ type: "text", node: n, text: n.data });
+      if (n.data) {
+        out.push({ type: "text", node: n, text: n.data });
+      }
       return;
     }
-    if (!(n instanceof Element) && n.nodeType !== 11) return;
+    if (!(n instanceof Element) && n.nodeType !== 11) {
+      return;
+    }
     if (n instanceof Element) {
-      if (isIgnored(n)) return;
+      if (isIgnored(n)) {
+        return;
+      }
       if (!isSentence(n)) {
         const atom = ATOM_TAGS.has(tag(n)) || (n.textContent ?? "").trim() === "";
         (n as Element & Meta).latticeAtom = atom;
@@ -99,8 +111,11 @@ function normalizeStream(tokens: Token[]): { text: string; chars: Char[] } {
   let ws: { start: Boundary; end: Boundary } | null = null;
   const push = (value: string, start: Boundary, end: Boundary) => {
     if (/\s/u.test(value)) {
-      if (ws) ws.end = end;
-      else ws = { start, end };
+      if (ws) {
+        ws.end = end;
+      } else {
+        ws = { start, end };
+      }
       return;
     }
     if (ws) {
@@ -111,14 +126,23 @@ function normalizeStream(tokens: Token[]): { text: string; chars: Char[] } {
   };
   for (const t of tokens) {
     if (t.type === "atom") {
-      const s = before(t.node), e = after(t.node);
-      if (s && e) for (const c of t.text) push(c, s, e);
+      const s = before(t.node),
+        e = after(t.node);
+      if (s && e) {
+        for (const c of t.text) {
+          push(c, s, e);
+        }
+      }
     } else {
       // Index by UTF-16 offset: Range offsets into Text nodes are UTF-16 based.
-      for (let i = 0; i < t.text.length; i++) push(t.text.charAt(i), { container: t.node, offset: i }, { container: t.node, offset: i + 1 });
+      for (let i = 0; i < t.text.length; i++) {
+        push(t.text.charAt(i), { container: t.node, offset: i }, { container: t.node, offset: i + 1 });
+      }
     }
   }
-  if (ws) chars.push({ value: " ", start: (ws as { start: Boundary }).start, end: (ws as { end: Boundary }).end });
+  if (ws) {
+    chars.push({ value: " ", start: (ws as { start: Boundary }).start, end: (ws as { end: Boundary }).end });
+  }
   return { text: chars.map((c) => c.value).join(""), chars };
 }
 
@@ -154,11 +178,17 @@ function atElementEdge(b: Boundary, el: Element, edge: "start" | "end"): boolean
   let { container, offset } = b;
   while (container !== el) {
     const len = container instanceof Text ? container.data.length : children(container).length;
-    if (offset !== (edge === "start" ? 0 : len)) return false;
+    if (offset !== (edge === "start" ? 0 : len)) {
+      return false;
+    }
     const p = container.parentNode;
-    if (!p) return false;
+    if (!p) {
+      return false;
+    }
     const idx = children(p).indexOf(container);
-    if (idx !== (edge === "start" ? 0 : children(p).length - 1)) return false;
+    if (idx !== (edge === "start" ? 0 : children(p).length - 1)) {
+      return false;
+    }
     container = p;
     offset = edge === "start" ? 0 : children(p).length;
   }
@@ -169,19 +199,27 @@ const inside = (b: Boundary, el: Element) => el.contains(b.container);
 
 /** Expand a range to whole inline elements it fully covers, so wrapping never splits them. */
 function promote(start: Boundary, end: Boundary, root: Element): [Boundary, Boundary] {
-  if (start.container instanceof Text && start.offset === 0) start = before(start.container) ?? start;
-  if (end.container instanceof Text && end.offset === end.container.data.length) end = after(end.container) ?? end;
-  for (let changed = true; changed; ) {
+  if (start.container instanceof Text && start.offset === 0) {
+    start = before(start.container) ?? start;
+  }
+  if (end.container instanceof Text && end.offset === end.container.data.length) {
+    end = after(end.container) ?? end;
+  }
+  for (let changed = true; changed;) {
     changed = false;
     const sc = start.container;
     if (sc instanceof Element && sc !== root && start.offset === 0 && (!inside(end, sc) || atElementEdge(end, sc, "end"))) {
       const b = before(sc);
-      if (b) [start, changed] = [b, true];
+      if (b) {
+        [start, changed] = [b, true];
+      }
     }
     const ec = end.container;
     if (ec instanceof Element && ec !== root && end.offset === children(ec).length && (!inside(start, ec) || atElementEdge(start, ec, "start"))) {
       const a = after(ec);
-      if (a) [end, changed] = [a, true];
+      if (a) {
+        [end, changed] = [a, true];
+      }
     }
   }
   return [start, end];
@@ -190,12 +228,19 @@ function promote(start: Boundary, end: Boundary, root: Element): [Boundary, Boun
 /** Finds `plain` (a unit's source text) in the block, searching from `fromIndex`. */
 export function locate(block: Element, tokens: Token[], plain: string, fromIndex = 0): Located | null {
   const source = normalizeText(plain);
-  if (!source) return null;
+  if (!source) {
+    return null;
+  }
   const { text, chars } = normalizeStream(tokens);
   const at = text.indexOf(source, Math.max(0, fromIndex));
-  if (at < 0) return null;
-  const first = chars[at], last = chars[at + source.length - 1];
-  if (!first || !last) return null;
+  if (at < 0) {
+    return null;
+  }
+  const first = chars[at],
+    last = chars[at + source.length - 1];
+  if (!first || !last) {
+    return null;
+  }
   const [start, end] = promote(first.start, last.end, block);
   return { start, end, nextIndex: at + source.length };
 }
@@ -203,8 +248,11 @@ export function locate(block: Element, tokens: Token[], plain: string, fromIndex
 function collectAtoms(root: Node): Element[] {
   const out: Element[] = [];
   const visit = (n: Node) => {
-    if (n instanceof Element && isAtom(n)) out.push(n);
-    else children(n).forEach(visit);
+    if (n instanceof Element && isAtom(n)) {
+      out.push(n);
+    } else {
+      children(n).forEach(visit);
+    }
   };
   children(root).forEach(visit);
   return out;
@@ -213,7 +261,9 @@ function collectAtoms(root: Node): Element[] {
 function copyMeta(src: Node, dst: Node) {
   if (src instanceof Element && dst instanceof Element) {
     const m = (src as Element & Meta).latticeAtom;
-    if (typeof m === "boolean") (dst as Element & Meta).latticeAtom = m;
+    if (typeof m === "boolean") {
+      (dst as Element & Meta).latticeAtom = m;
+    }
   }
   const d = children(dst);
   children(src).forEach((c, i) => d[i] && copyMeta(c, d[i]));
@@ -257,7 +307,9 @@ function hydrate(span: SentenceSpan): DocumentFragment {
   collectAtoms(f).forEach((clone, i) => {
     const n = numbers[i];
     const live = n === undefined ? undefined : span.latticeAtoms?.get(n);
-    if (live) clone.replaceWith(live);
+    if (live) {
+      clone.replaceWith(live);
+    }
   });
   return f;
 }
@@ -266,7 +318,9 @@ function elements(root: Node): Element[] {
   const out: Element[] = [];
   const visit = (n: Node) => {
     if (n instanceof Element) {
-      if (isAtom(n)) return;
+      if (isAtom(n)) {
+        return;
+      }
       out.push(n);
     }
     children(n).forEach(visit);
@@ -287,12 +341,16 @@ function insertText(doc: Document, parent: Node, ref: Node | null, text: string,
   const frag = doc.createDocumentFragment();
   let cursor = 0;
   for (const m of text.matchAll(PLACEHOLDER)) {
-    if (m.index > cursor) frag.append(doc.createTextNode(text.slice(cursor, m.index)));
+    if (m.index > cursor) {
+      frag.append(doc.createTextNode(text.slice(cursor, m.index)));
+    }
     const atom = atoms.get(Number(m[1]));
     frag.append(atom ?? doc.createTextNode(m[0]));
     cursor = m.index + m[0].length;
   }
-  if (cursor < text.length) frag.append(doc.createTextNode(text.slice(cursor)));
+  if (cursor < text.length) {
+    frag.append(doc.createTextNode(text.slice(cursor)));
+  }
   parent.insertBefore(frag, ref && ref.parentNode === parent ? ref : null);
 }
 
@@ -308,7 +366,8 @@ export function renderVariant(span: SentenceSpan, html: string) {
   const tpl = doc.createElement("template");
   tpl.innerHTML = html;
   const variant = tpl.content;
-  const oEls = elements(original), vEls = elements(variant);
+  const oEls = elements(original),
+    vEls = elements(variant);
   const sameShape = oEls.length === vEls.length && oEls.every((e, i) => tag(e) === tag(vEls[i]));
   if (sameShape) {
     const vIndex = new Map(vEls.map((e, i) => [e, i] as const));
@@ -316,10 +375,12 @@ export function renderVariant(span: SentenceSpan, html: string) {
     removeText(original);
     for (const t of placements) {
       const vp = t.parentNode;
-      const target = vp instanceof Element ? oEls[vIndex.get(vp) ?? -1] ?? original : original;
+      const target = vp instanceof Element ? (oEls[vIndex.get(vp) ?? -1] ?? original) : original;
       let next = t.nextSibling;
-      while (next && (!(next instanceof Element) || isAtom(next))) next = next.nextSibling;
-      const ref = next instanceof Element ? oEls[vIndex.get(next) ?? -1] ?? null : null;
+      while (next && (!(next instanceof Element) || isAtom(next))) {
+        next = next.nextSibling;
+      }
+      const ref = next instanceof Element ? (oEls[vIndex.get(next) ?? -1] ?? null) : null;
       insertText(doc, target, ref, t.data, atoms);
     }
   } else {

@@ -39,6 +39,8 @@ export default defineConfig({
     "typescript/no-unnecessary-template-expression": "error",
     "typescript/no-unnecessary-type-arguments": "error",
     "eslint/eqeqeq": ["error", "always", { null: "ignore" }],
+    // Every if / else / loop body in braces, even one line (Prettier then puts it on lines of its own).
+    "eslint/curly": ["error", "all"],
     "react/no-danger": "error",
     "react/jsx-no-target-blank": "error",
 
@@ -62,7 +64,14 @@ export default defineConfig({
       // The module-level `t` is fixed at the call; React Compiler keeps render output that read it until inputs change.
       files: ["src/**/*.tsx"],
       rules: {
-        "eslint/no-restricted-imports": ["error", { paths: [{ name: "../i18n", importNames: ["t"], message: "Render code takes the translator from useT(), or text goes stale after a language switch." }] }],
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            paths: [
+              { name: "../i18n", importNames: ["t"], message: "Render code takes the translator from useT(), or text goes stale after a language switch." },
+            ],
+          },
+        ],
       },
     },
     {

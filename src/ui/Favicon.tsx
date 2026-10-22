@@ -32,9 +32,16 @@ function icon(key: string) {
 function useIcon(key: string): string | null | undefined {
   const [got, setGot] = useState<{ key: string; url: string | null } | null>(null);
   useEffect(() => {
-    if (!key) return;
+    if (!key) {
+      return;
+    }
     let live = true;
-    const load = () => void icon(key).then((url) => { if (live) setGot({ key, url }); });
+    const load = () =>
+      void icon(key).then((url) => {
+        if (live) {
+          setGot({ key, url });
+        }
+      });
     load();
     const set = waiting.get(key) ?? new Set();
     waiting.set(key, set);
@@ -56,8 +63,23 @@ export function Favicon({ domain, feed }: { domain: string; feed?: number | null
   const site = useIcon(feed == null || custom === null ? domain : "");
   const url = custom ?? site;
   // A picked icon may be SVG: shown only through <img> from a data: URL, where it runs no script.
-  if (url) return <img className="favicon" src={url} alt="" width={16} height={16} />;
+  if (url) {
+    return <img className="favicon" src={url} alt="" width={16} height={16} />;
+  }
   // No domain: imported Markdown, a local document.
-  if (!domain) return <span className="favicon letter" aria-hidden="true"><Icon name="reader" size="sm" /></span>;
-  return <span className="favicon letter" aria-hidden="true">{domain.replace(/^www\./, "").charAt(0).toUpperCase()}</span>;
+  if (!domain) {
+    return (
+      <span className="favicon letter" aria-hidden="true">
+        <Icon name="reader" size="sm" />
+      </span>
+    );
+  }
+  return (
+    <span className="favicon letter" aria-hidden="true">
+      {domain
+        .replace(/^www\./, "")
+        .charAt(0)
+        .toUpperCase()}
+    </span>
+  );
 }

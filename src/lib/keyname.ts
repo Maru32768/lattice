@@ -5,7 +5,9 @@ const MODIFIERS = new Set(["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsL
 
 /** Canonical key ("Ctrl+K", "Shift+Enter", "J", "/", "ArrowDown"); null for a lone modifier. */
 export function keyOf(e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): string | null {
-  if (MODIFIERS.has(e.key)) return null;
+  if (MODIFIERS.has(e.key)) {
+    return null;
+  }
   const k = e.key === " " ? "Space" : e.key.length === 1 ? e.key.toUpperCase() : e.key;
   // A printed symbol already carries Shift ("?" is Shift+/); letters and named keys keep it.
   const shift = e.shiftKey && (e.key.length > 1 || e.key === " " || /^[a-z]$/i.test(e.key));

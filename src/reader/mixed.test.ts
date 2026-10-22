@@ -12,19 +12,27 @@ test("modes", () => {
 
 test("mixed ratio is exact by count and evenly spread", () => {
   const ten = blocks.map((b) => ({ ...b, translation: "t" }));
-  for (const p of [0, 10, 30, 50, 70, 100]) assert.equal(translatedBlockIds(ten, "mixed", p).size, p / 10);
+  for (const p of [0, 10, 30, 50, 70, 100]) {
+    assert.equal(translatedBlockIds(ten, "mixed", p).size, p / 10);
+  }
   assert.deepEqual([...translatedBlockIds(ten, "mixed", 30)], [3, 6, 9]);
   assert.equal(translatedBlockIds(blocks, "mixed", 100).has(9), false, "untranslated blocks never flip");
 });
 
 test("splitBackticks", () => {
   assert.deepEqual(splitBackticks("ログ（`WAL`）は"), [
-    { code: false, v: "ログ（" }, { code: true, v: "WAL" }, { code: false, v: "）は" },
+    { code: false, v: "ログ（" },
+    { code: true, v: "WAL" },
+    { code: false, v: "）は" },
   ]);
 });
 
 test("picking 混在 or 訳文 starts a translation only when prose is untranslated and no job is on it", () => {
-  const fresh = [{ kind: "heading", translation: null }, { kind: "paragraph", translation: null }, { kind: "code", translation: null }];
+  const fresh = [
+    { kind: "heading", translation: null },
+    { kind: "paragraph", translation: null },
+    { kind: "code", translation: null },
+  ];
   const done = fresh.map((b) => ({ ...b, translation: b.kind === "code" ? null : "訳" }));
   assert.equal(autoTranslates("translated", fresh, undefined), true);
   assert.equal(autoTranslates("mixed", fresh, undefined), true);
@@ -48,8 +56,11 @@ test("the Reader counts only blocks the job would translate", () => {
 test("the list and the Reader count the same blocks left to translate", () => {
   const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
   const blocks = [
-    b("heading", "MVCC", "MVCC"), b("paragraph", "Readers never block writers."), b("paragraph", "多版本并发控制让读写互不阻塞。"),
-    b("paragraph", "すでに日本語の段落"), b("code", "SELECT 1;"),
+    b("heading", "MVCC", "MVCC"),
+    b("paragraph", "Readers never block writers."),
+    b("paragraph", "多版本并发控制让读写互不阻塞。"),
+    b("paragraph", "すでに日本語の段落"),
+    b("code", "SELECT 1;"),
   ];
   assert.deepEqual(translationProgress(blocks, "ja"), { done: 1, total: 3 }, "Chinese is left to translate; Japanese and code are not");
   assert.deepEqual(translationProgress([b("code", "RFC 8446 ...")], "ja"), { done: 0, total: 0 });

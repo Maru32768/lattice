@@ -9,8 +9,11 @@ function type(start: string, keys: string, mode: Vim["mode"] = "normal") {
   for (const key of keys.match(/<Esc>|./gsu) ?? []) {
     const r = vimKey(vim, buf, key === "<Esc>" ? "Escape" : key);
     // An unhandled key in insert mode is typed by the textarea.
-    if (!r.handled && vim.mode === "insert") buf = { text: buf.text.slice(0, buf.cursor) + key + buf.text.slice(buf.cursor), cursor: buf.cursor + 1 };
-    else ({ vim, buf } = r);
+    if (!r.handled && vim.mode === "insert") {
+      buf = { text: buf.text.slice(0, buf.cursor) + key + buf.text.slice(buf.cursor), cursor: buf.cursor + 1 };
+    } else {
+      ({ vim, buf } = r);
+    }
   }
   return `${buf.text.slice(0, buf.cursor)}|${buf.text.slice(buf.cursor)}${vim.mode === "insert" ? " -- INSERT" : ""}`;
 }
@@ -74,7 +77,11 @@ test("normal mode swallows other printable keys; Esc, arrows and Tab are left to
   assert.equal(type("a|bc", "zq!"), "a|bc");
   const vim = { ...initialVim(), mode: "normal" as const };
   const buf = { text: "abc", cursor: 1 };
-  for (const key of ["Escape", "ArrowLeft", "Tab", "Home"]) assert.equal(vimKey(vim, buf, key).handled, false, key);
-  for (const key of ["Enter", "Backspace", "Process"]) assert.equal(vimKey(vim, buf, key).handled, true, key);
+  for (const key of ["Escape", "ArrowLeft", "Tab", "Home"]) {
+    assert.equal(vimKey(vim, buf, key).handled, false, key);
+  }
+  for (const key of ["Enter", "Backspace", "Process"]) {
+    assert.equal(vimKey(vim, buf, key).handled, true, key);
+  }
   assert.equal(vimKey({ ...vim, pending: "d" }, buf, "Escape").vim.pending, "", "Esc cancels a pending operator");
 });

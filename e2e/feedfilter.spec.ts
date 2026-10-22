@@ -55,7 +55,13 @@ test("rules are edited per feed, and a bad regex is refused with the reason", as
   await expect(filter.getByRole("status")).toHaveText("保存しました");
   expect((await callsOf(app, "set_feed_filter")).at(-1)).toEqual({
     feedId: 5,
-    filter: { rules: [{ field: "title", action: "include", pattern: "release|edition", regex: true }], min_chars: 400, llm: false, instruction: "", min_relevance: null },
+    filter: {
+      rules: [{ field: "title", action: "include", pattern: "release|edition", regex: true }],
+      min_chars: 400,
+      llm: false,
+      instruction: "",
+      min_relevance: null,
+    },
   });
   await filter.getByRole("button", { name: "除外分を再評価" }).click();
   await expect(filter.getByRole("status")).toHaveText("再評価: 取り込み 0 件・LLM の判定待ち 0 件・除外のまま 0 件");
@@ -71,7 +77,8 @@ test("the global filter lives in Settings › 取り込みフィルタ", async (
   await filter.getByRole("button", { name: "保存", exact: true }).click();
   await expect(filter.getByRole("status")).toHaveText("保存しました");
   expect((await callsOf(app, "set_feed_filter")).at(-1)).toEqual({
-    feedId: null, filter: { rules: [], min_chars: null, llm: true, instruction: "求人と広告は除く", min_relevance: 3 },
+    feedId: null,
+    filter: { rules: [], min_chars: null, llm: true, instruction: "求人と広告は除く", min_relevance: 3 },
   });
   await filter.getByRole("button", { name: "除外分を再評価" }).click();
   expect(await callsOf(app, "reevaluate_rejected")).toEqual([{ feedId: null }]);

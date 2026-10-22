@@ -19,7 +19,8 @@ export const ALLOWED_TAGS = new Set(["a", "b", "i", "em", "strong", "span", "img
 
 /** Split at blank lines always, and at single newlines/<br> after sentence-ending punctuation. */
 export function splitByLineBreaks(html: string): { parts: string[]; separators: string[] } {
-  const raw: string[] = [], rawSep: string[] = [];
+  const raw: string[] = [],
+    rawSep: string[] = [];
   let last = 0;
   for (const m of html.matchAll(BREAKS)) {
     const count = (m[0].match(ONE_BREAK) ?? []).length;
@@ -31,24 +32,34 @@ export function splitByLineBreaks(html: string): { parts: string[]; separators: 
     }
   }
   raw.push(html.slice(last));
-  const parts: string[] = [], separators: string[] = [];
+  const parts: string[] = [],
+    separators: string[] = [];
   let pending = "";
   raw.forEach((p, i) => {
     if (p.trim()) {
-      if (parts.length > 0) separators.push(pending);
+      if (parts.length > 0) {
+        separators.push(pending);
+      }
       parts.push(p);
       pending = "";
     }
-    if (i < rawSep.length) pending += rawSep[i];
+    if (i < rawSep.length) {
+      pending += rawSep[i];
+    }
   });
   return { parts, separators };
 }
 
 export function isCjkDominant(text: string): boolean {
-  let cjk = 0, alnum = 0;
+  let cjk = 0,
+    alnum = 0;
   for (const c of text) {
-    if (CJK.test(c)) cjk++;
-    if (ALNUM.test(c)) alnum++;
+    if (CJK.test(c)) {
+      cjk++;
+    }
+    if (ALNUM.test(c)) {
+      alnum++;
+    }
   }
   return cjk > 0 && cjk * 2 >= alnum;
 }
@@ -68,13 +79,14 @@ export function pageTarget(lang: string, sample: string): Target {
  * toward translating: any kana or kanji keeps text from counting as English ("GitHub Actionsによる自動化"),
  * and only kana make it Japanese, so Chinese (kanji without kana) is translated.
  */
-export const isWrittenIn = (text: string, target: Target) =>
-  target === "ja" ? KANA.test(text) : ![...text].some((c) => CJK.test(c));
+export const isWrittenIn = (text: string, target: Target) => (target === "ja" ? KANA.test(text) : ![...text].some((c) => CJK.test(c)));
 
 const safeUrl = (v: string, allowData: boolean) => {
   const s = v.trim().replace(/[\p{C}\s]+/gu, "");
   const scheme = /^([a-z][a-z0-9+.-]*):/iu.exec(s)?.[1]?.toLowerCase();
-  if (allowData && /^data:image\//iu.test(s)) return true;
+  if (allowData && /^data:image\//iu.test(s)) {
+    return true;
+  }
   return scheme === undefined || scheme === "http" || scheme === "https";
 };
 
@@ -92,9 +104,13 @@ export function sanitize(html: string, doc: Document = document): string {
       }
       for (const a of Array.from(el.attributes)) {
         const n = a.name.toLowerCase();
-        const keep = (name === "a" && n === "href" && safeUrl(a.value, false)) ||
-          (name === "img" && n === "src" && safeUrl(a.value, true)) || (name === "img" && n === "alt");
-        if (!keep) el.removeAttribute(a.name);
+        const keep =
+          (name === "a" && n === "href" && safeUrl(a.value, false)) ||
+          (name === "img" && n === "src" && safeUrl(a.value, true)) ||
+          (name === "img" && n === "alt");
+        if (!keep) {
+          el.removeAttribute(a.name);
+        }
       }
     }
   };
@@ -112,22 +128,34 @@ export function snippetHtml(block: Element): string {
   const doc = block.ownerDocument;
   let atoms = 0;
   const clone = (n: Node): Node | null => {
-    if (n instanceof Text) return doc.createTextNode(n.data);
-    if (!(n instanceof Element) || isIgnored(n)) return null;
-    if (isAtom(n)) return doc.createTextNode(`⟦${++atoms}⟧`);
+    if (n instanceof Text) {
+      return doc.createTextNode(n.data);
+    }
+    if (!(n instanceof Element) || isIgnored(n)) {
+      return null;
+    }
+    if (isAtom(n)) {
+      return doc.createTextNode(`⟦${++atoms}⟧`);
+    }
     const el = doc.createElement(ALLOWED_TAGS.has(n.tagName.toLowerCase()) ? n.tagName.toLowerCase() : "span");
     const href = n.tagName.toLowerCase() === "a" ? n.getAttribute("href") : null;
-    if (href && safeUrl(href, false)) el.setAttribute("href", href);
+    if (href && safeUrl(href, false)) {
+      el.setAttribute("href", href);
+    }
     n.childNodes.forEach((c) => {
       const k = clone(c);
-      if (k) el.append(k);
+      if (k) {
+        el.append(k);
+      }
     });
     return el;
   };
   const root = doc.createElement("div");
   block.childNodes.forEach((c) => {
     const k = clone(c);
-    if (k) root.append(k);
+    if (k) {
+      root.append(k);
+    }
   });
   return root.innerHTML;
 }
@@ -140,7 +168,9 @@ export function plainText(html: string, doc: Document = document): string {
 
 export function hashString(input: string): number {
   let h = 0;
-  for (let i = 0; i < input.length; i++) h = ((h << 5) - h + input.charCodeAt(i)) | 0;
+  for (let i = 0; i < input.length; i++) {
+    h = ((h << 5) - h + input.charCodeAt(i)) | 0;
+  }
   return Math.abs(h);
 }
 
@@ -158,7 +188,9 @@ export function assignTranslated(sources: string[], percent: number, seed: strin
   for (let i = n - 1; i > 0; i--) {
     const j = Math.abs(Math.trunc(s * (i + 1) * 2654435761)) % (i + 1);
     const [a, b] = [out[i], out[j]];
-    if (a !== undefined && b !== undefined) [out[i], out[j]] = [b, a];
+    if (a !== undefined && b !== undefined) {
+      [out[i], out[j]] = [b, a];
+    }
   }
   return out;
 }
@@ -169,9 +201,15 @@ export function assignTranslated(sources: string[], percent: number, seed: strin
  * (sites with their own "/" or "j" keep them). Null: the page's.
  */
 export function routeKey(keys: PageKeys, key: string | null, inField: boolean, prefixArmed: boolean): "take" | "unlessHandled" | null {
-  if (!key) return null;
-  if (prefixArmed) return "take";
-  if (!keys.inFields.includes(key) && (inField || !keys.outside.includes(key))) return null;
+  if (!key) {
+    return null;
+  }
+  if (prefixArmed) {
+    return "take";
+  }
+  if (!keys.inFields.includes(key) && (inField || !keys.outside.includes(key))) {
+    return null;
+  }
   // A plain key has no browser default to suppress; a Ctrl / Alt one may (Ctrl+S, Ctrl+P).
   return /^(Ctrl|Alt)\+/.test(key) ? "take" : "unlessHandled";
 }

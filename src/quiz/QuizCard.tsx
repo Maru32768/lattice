@@ -7,7 +7,9 @@ import { useT } from "../i18n";
 /** Keys 1–4 grade a revealed card (outside text fields). */
 export function gradeKey(e: React.KeyboardEvent, shown: boolean, onGrade: (g: Grade) => void) {
   const g = GRADES["1234".indexOf(e.key)];
-  if (!shown || !g || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) return;
+  if (!shown || !g || e.target instanceof HTMLTextAreaElement || e.ctrlKey || e.altKey || e.metaKey) {
+    return;
+  }
   e.preventDefault();
   e.stopPropagation();
   onGrade(g.grade);
@@ -21,9 +23,15 @@ export function GradeRow({ hint, previews, onGrade }: { hint: Grade | null; prev
       {GRADES.map(({ grade, label }, i) => {
         const preview = previews?.[i];
         return (
-          <button key={grade} className={`btn${hint === grade ? " pri" : ""}`} autoFocus={hint ? hint === grade : i === 2} onClick={() => onGrade(grade)}
-            title={`${label} (${i + 1})`}>
-            {t(label)}{preview !== undefined && <span className="ivl">{formatInterval(preview, t)}</span>}
+          <button
+            key={grade}
+            className={`btn${hint === grade ? " pri" : ""}`}
+            autoFocus={hint ? hint === grade : i === 2}
+            onClick={() => onGrade(grade)}
+            title={`${label} (${i + 1})`}
+          >
+            {t(label)}
+            {preview !== undefined && <span className="ivl">{formatInterval(preview, t)}</span>}
           </button>
         );
       })}
@@ -38,7 +46,12 @@ export function GradeRow({ hint, previews, onGrade }: { hint: Grade | null; prev
  * keys 1–4 pick a grade. Remount (key) per question.
  * Question text is model output over an untrusted page: text nodes only.
  */
-export function QuizCard({ q, previews, onGrade, onSource }: {
+export function QuizCard({
+  q,
+  previews,
+  onGrade,
+  onSource,
+}: {
   q: QuizQuestion;
   /** Minutes until the next review after each grade (review only). */
   previews?: number[];
@@ -61,31 +74,58 @@ export function QuizCard({ q, previews, onGrade, onSource }: {
             const tone = shown && o === q.answer ? " right" : chosen === o ? " wrong" : "";
             return (
               <button key={i} className={`qz-opt${tone}`} disabled={shown} aria-pressed={chosen === o} onClick={() => setChosen(o)}>
-                <span className="k" aria-hidden="true">{"ABCD"[i]}</span><span>{o}</span>
+                <span className="k" aria-hidden="true">
+                  {"ABCD"[i]}
+                </span>
+                <span>{o}</span>
               </button>
             );
           })}
         </div>
-      ) : !revealed && (
-        <div className="qz-recall">
-          <textarea className="qz-draft" rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} aria-label={t("quizCard.yourAnswer")}
-            placeholder={t("quizCard.yourAnswerPlaceholder")} />
-          <button className="btn pri" onClick={() => setRevealed(true)}>{t("quizCard.reveal")}</button>
-        </div>
+      ) : (
+        !revealed && (
+          <div className="qz-recall">
+            <textarea
+              className="qz-draft"
+              rows={2}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              aria-label={t("quizCard.yourAnswer")}
+              placeholder={t("quizCard.yourAnswerPlaceholder")}
+            />
+            <button className="btn pri" onClick={() => setRevealed(true)}>
+              {t("quizCard.reveal")}
+            </button>
+          </div>
+        )
       )}
       {shown && (
         <div className="qz-reveal">
-          {q.kind === "choice"
-            ? <p className={`qz-verdict ${chosen === q.answer ? "ok" : "ng"}`} role="status">{chosen === q.answer ? t("quizCard.correct") : t("quizCard.wrong", { answer: q.answer })}</p>
-            : <>
-                {draft.trim() && <p className="qz-mine"><span className="cap">{t("quizCard.yourAnswer")}</span>{draft}</p>}
-                <p className="qz-answer" role="status"><span className="cap">{t("quizCard.answer")}</span>{q.answer}</p>
-              </>}
+          {q.kind === "choice" ? (
+            <p className={`qz-verdict ${chosen === q.answer ? "ok" : "ng"}`} role="status">
+              {chosen === q.answer ? t("quizCard.correct") : t("quizCard.wrong", { answer: q.answer })}
+            </p>
+          ) : (
+            <>
+              {draft.trim() && (
+                <p className="qz-mine">
+                  <span className="cap">{t("quizCard.yourAnswer")}</span>
+                  {draft}
+                </p>
+              )}
+              <p className="qz-answer" role="status">
+                <span className="cap">{t("quizCard.answer")}</span>
+                {q.answer}
+              </p>
+            </>
+          )}
           {q.explanation && <p className="qz-expl">{q.explanation}</p>}
           {q.block_ids.length > 0 && (
             <div className="qz-src">
               {q.block_ids.map((b, i) => (
-                <button key={b} className="chip" onClick={() => onSource(b)} title={t("quizCard.sourceHint")}>{t.rich("quizCard.source", { x: q.block_ids.length > 1 ? ` ${i + 1}` : "" })}</button>
+                <button key={b} className="chip" onClick={() => onSource(b)} title={t("quizCard.sourceHint")}>
+                  {t.rich("quizCard.source", { x: q.block_ids.length > 1 ? ` ${i + 1}` : "" })}
+                </button>
               ))}
             </div>
           )}

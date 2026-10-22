@@ -21,7 +21,9 @@ export function npmPackages(root) {
       const dir = join(root, SIBLING[name] ? `node_modules/${SIBLING[name]}` : path);
       // LICENSE, LICENSE.txt, or one file per license of a dual license (LICENSE-MIT, LICENSE-APACHE-2.0).
       const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^licen[cs]e(-[\w.-]+)?(\.(md|txt))?$/i.test(f)) : [];
-      if (!files.length) throw new Error(`no license file in ${path}; run npm install, or add the text by hand`);
+      if (!files.length) {
+        throw new Error(`no license file in ${path}; run npm install, or add the text by hand`);
+      }
       const text = files.map((f) => readFileSync(join(dir, f), "utf8").trim()).join("\n\n");
       return { name, version: p.version, license: p.license, text };
     });
@@ -29,7 +31,9 @@ export function npmPackages(root) {
 
 export function renderNpm(packages) {
   const groups = new Map();
-  for (const p of packages) groups.set(p.text, [...(groups.get(p.text) ?? []), p]);
+  for (const p of packages) {
+    groups.set(p.text, [...(groups.get(p.text) ?? []), p]);
+  }
   return [...groups].map(([text, ps]) => [RULE, ps[0].license, "Used by:", ...ps.map((p) => `  ${p.name} ${p.version}`), "", text].join("\n")).join("\n\n");
 }
 

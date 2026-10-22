@@ -1,0 +1,12 @@
+dist/
+src-tauri/
+target/
+test-results/
+playwright-report/
+node_modules/
+*.css
+*.md
+*.html
+*.json
+*.yml
+*.yaml

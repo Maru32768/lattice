@@ -20,7 +20,10 @@ export function useVocab(onChanged: () => void) {
   const [saveWordSeq, setSaveWordSeq] = useState(0);
   const marks = useMemo(() => (marksOn ? wordMarks(vocab) : null), [vocab, marksOn]);
   const loadVocab = () => {
-    void api.vocabList().then(setVocab).catch(() => {});
+    void api
+      .vocabList()
+      .then(setVocab)
+      .catch(() => {});
     onChanged();
   };
   const setMarks = (on: boolean) => {

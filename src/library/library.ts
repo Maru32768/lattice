@@ -7,7 +7,9 @@ import type { PlainKey, T } from "../i18n/index.ts";
 /** NAVIGATION layer: exactly one, chosen in the sidebar; replaces the previous one. */
 export type Scope =
   | { kind: "recent" } // saved within the last 7 days
-  | { kind: "unread" } | { kind: "favorites" } | { kind: "all" }
+  | { kind: "unread" }
+  | { kind: "favorites" }
+  | { kind: "all" }
   | { kind: "genre"; name: string | null } // null = 未分類
   | { kind: "feed"; id: number | null } // null = 手動追加
   | { kind: "group"; id: number }
@@ -33,16 +35,32 @@ export type DimValue<D extends Dim> = Facets[D][number];
 
 export const DIMS: Dim[] = ["genres", "tags", "groups", "feeds", "difficulty", "relevance", "state"];
 export const DIM_LABELS: Record<Dim, PlainKey> = {
-  genres: "common.genre", tags: "common.tag", groups: "common.group", feeds: "common.source", difficulty: "common.difficulty",
-  relevance: "common.relevance", state: "library.state",
+  genres: "common.genre",
+  tags: "common.tag",
+  groups: "common.group",
+  feeds: "common.source",
+  difficulty: "common.difficulty",
+  relevance: "common.relevance",
+  state: "library.state",
 };
 export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], groups: [], difficulty: [], relevance: [], state: [] };
 
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
-export const DIFFICULTY_LABELS: PlainKey[] = ["library.difficulty1", "library.difficulty2", "library.difficulty3", "library.difficulty4", "library.difficulty5"];
+export const DIFFICULTY_LABELS: PlainKey[] = [
+  "library.difficulty1",
+  "library.difficulty2",
+  "library.difficulty3",
+  "library.difficulty4",
+  "library.difficulty5",
+];
 /** Mirrors relevance.rs SCORES (1-5), judged against the 「自分について」 profile. */
 export const RELEVANCE_LABELS: PlainKey[] = ["library.relevance1", "library.relevance2", "library.relevance3", "library.relevance4", "library.relevance5"];
-export const STATE_LABELS: Record<ArticleState, PlainKey> = { unread: "common.unread", read: "library.read", favorite: "common.favorites", issue: "library.issue" };
+export const STATE_LABELS: Record<ArticleState, PlainKey> = {
+  unread: "common.unread",
+  read: "library.read",
+  favorite: "common.favorites",
+  issue: "library.issue",
+};
 
 const RECENT_MS = 7 * 24 * 3600 * 1000;
 
@@ -50,15 +68,24 @@ export const hasIssue = (a: ArticleRow) => a.fetch_status === "failed" || a.extr
 
 export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
   switch (s.kind) {
-    case "all": return true;
-    case "recent": return now - Date.parse(a.saved_at) <= RECENT_MS;
-    case "unread": return a.read_status === "unread";
-    case "favorites": return a.favorite;
-    case "genre": return a.genre === s.name;
-    case "feed": return a.feed_id === s.id;
-    case "group": return a.groups.includes(s.id);
-    case "folder": return a.folder_id === s.id;
-    case "important": return (a.relevance ?? 0) >= s.min;
+    case "all":
+      return true;
+    case "recent":
+      return now - Date.parse(a.saved_at) <= RECENT_MS;
+    case "unread":
+      return a.read_status === "unread";
+    case "favorites":
+      return a.favorite;
+    case "genre":
+      return a.genre === s.name;
+    case "feed":
+      return a.feed_id === s.id;
+    case "group":
+      return a.groups.includes(s.id);
+    case "folder":
+      return a.folder_id === s.id;
+    case "important":
+      return (a.relevance ?? 0) >= s.min;
   }
 }
 
@@ -66,13 +93,20 @@ export function inScope(a: ArticleRow, s: Scope, now: number): boolean {
 export function valuesOf<D extends Dim>(a: ArticleRow, dim: D): DimValue<D>[] {
   const v = ((): unknown[] => {
     switch (dim) {
-      case "genres": return [a.genre];
-      case "tags": return a.tags;
-      case "groups": return a.groups;
-      case "feeds": return [a.feed_id];
-      case "difficulty": return [a.difficulty];
-      case "relevance": return [a.relevance];
-      case "state": return [a.read_status, ...(a.favorite ? ["favorite"] : []), ...(hasIssue(a) ? ["issue"] : [])];
+      case "genres":
+        return [a.genre];
+      case "tags":
+        return a.tags;
+      case "groups":
+        return a.groups;
+      case "feeds":
+        return [a.feed_id];
+      case "difficulty":
+        return [a.difficulty];
+      case "relevance":
+        return [a.relevance];
+      case "state":
+        return [a.read_status, ...(a.favorite ? ["favorite"] : []), ...(hasIssue(a) ? ["issue"] : [])];
     }
   })();
   return v as DimValue<D>[];
@@ -80,9 +114,13 @@ export function valuesOf<D extends Dim>(a: ArticleRow, dim: D): DimValue<D>[] {
 
 function matchesDim(a: ArticleRow, f: Facets, dim: Dim): boolean {
   const want = f[dim] as unknown[];
-  if (want.length === 0) return true;
+  if (want.length === 0) {
+    return true;
+  }
   const have = valuesOf(a, dim) as unknown[];
-  if (dim === "tags" && f.tagMode === "all") return want.every((t) => have.includes(t));
+  if (dim === "tags" && f.tagMode === "all") {
+    return want.every((t) => have.includes(t));
+  }
   return have.some((v) => want.includes(v));
 }
 
@@ -124,7 +162,11 @@ export function toggle<D extends Dim>(f: Facets, dim: D, v: DimValue<D>): Facets
 /** Count of articles in `rows` per value of one dimension. */
 export function countBy<D extends Dim>(rows: ArticleRow[], dim: D): Map<DimValue<D>, number> {
   const m = new Map<DimValue<D>, number>();
-  for (const a of rows) for (const v of valuesOf(a, dim)) m.set(v, (m.get(v) ?? 0) + 1);
+  for (const a of rows) {
+    for (const v of valuesOf(a, dim)) {
+      m.set(v, (m.get(v) ?? 0) + 1);
+    }
+  }
   return m;
 }
 
@@ -143,29 +185,42 @@ export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((
 /** `feeds` names a feed none of `all` comes from yet. */
 export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T, folders: FolderRow[] = [], feeds: FeedRow[] = []): string {
   switch (s.kind) {
-    case "recent": return t("library.recent");
-    case "unread": return t("common.unread");
-    case "favorites": return t("common.favorites");
-    case "all": return t("common.allArticles");
-    case "genre": return s.name ?? t("common.unclassified");
+    case "recent":
+      return t("library.recent");
+    case "unread":
+      return t("common.unread");
+    case "favorites":
+      return t("common.favorites");
+    case "all":
+      return t("common.allArticles");
+    case "genre":
+      return s.name ?? t("common.unclassified");
     case "feed": {
       const f = s.id == null ? undefined : feeds.find((x) => x.id === s.id);
       return f ? feedName(f) : valueLabel("feeds", s.id, all, groups, t);
     }
-    case "group": return groupName(s.id, groups, t);
-    case "folder": return folders.find((f) => f.id === s.id)?.name ?? t("common.folder");
-    case "important": return t("library.important");
+    case "group":
+      return groupName(s.id, groups, t);
+    case "folder":
+      return folders.find((f) => f.id === s.id)?.name ?? t("common.folder");
+    case "important":
+      return t("library.important");
   }
 }
 
 /** Display name of a facet value; feed names come from the articles' feed_title (none left: the feed was deleted). */
 export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRow[], groups: GroupRow[], t: T): string {
   switch (dim) {
-    case "genres": return (v as string | null) ?? t("common.unclassified");
-    case "tags": return v as string;
-    case "groups": return groupName(v as number, groups, t);
+    case "genres":
+      return (v as string | null) ?? t("common.unclassified");
+    case "tags":
+      return v as string;
+    case "groups":
+      return groupName(v as number, groups, t);
     case "feeds": {
-      if (v == null) return t("common.manual");
+      if (v == null) {
+        return t("common.manual");
+      }
       return all.find((a) => a.feed_id === v)?.feed_title ?? t("library.feedDeleted");
     }
     case "difficulty": {
@@ -176,7 +231,8 @@ export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRo
       const label = v == null ? "library.relevanceNone" : RELEVANCE_LABELS[(v as number) - 1];
       return label ? t(label) : String(v);
     }
-    default: return t(STATE_LABELS[v as ArticleState]);
+    default:
+      return t(STATE_LABELS[v as ArticleState]);
   }
 }
 
@@ -194,7 +250,16 @@ export interface Relaxation {
 }
 
 /** Empty-state suggestions: for each active facet (and the scope if not "all"), the count if it alone were removed. */
-export function relaxations(all: ArticleRow[], groups: GroupRow[], s: Scope, f: Facets, now: number, t: T, folders: FolderRow[] = [], feeds: FeedRow[] = []): Relaxation[] {
+export function relaxations(
+  all: ArticleRow[],
+  groups: GroupRow[],
+  s: Scope,
+  f: Facets,
+  now: number,
+  t: T,
+  folders: FolderRow[] = [],
+  feeds: FeedRow[] = [],
+): Relaxation[] {
   const count = (scope: Scope, facets: Facets) => all.filter((a) => inScope(a, scope, now) && matches(a, facets)).length;
   const out: Relaxation[] = activeDims(f).map((d) => {
     const facets = without(f, d);
@@ -216,8 +281,12 @@ export const sameScope = (a: Scope, b: Scope) => JSON.stringify(a) === JSON.stri
 
 /** Stable swatch per genre name, from the boards' palette (genres have no stored color). */
 export function genreSwatch(name: string | null): string {
-  if (name == null) return "var(--line2)";
+  if (name == null) {
+    return "var(--line2)";
+  }
   let h = 0;
-  for (const c of name) h = (h * 31 + c.codePointAt(0)!) >>> 0;
+  for (const c of name) {
+    h = (h * 31 + c.codePointAt(0)!) >>> 0;
+  }
   return `var(--sw${(h % 6) + 1})`;
 }

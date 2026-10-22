@@ -29,7 +29,9 @@ export const isLang = (v: unknown): v is Lang => v === "ja" || v === "en";
 function initial(): Lang {
   try {
     const v = localStorage.getItem(STORAGE);
-    if (isLang(v)) return v;
+    if (isLang(v)) {
+      return v;
+    }
   } catch {
     // no storage: fall through to the WebView's language
   }
@@ -38,15 +40,23 @@ function initial(): Lang {
 
 let current: Lang = initial();
 const listeners = new Set<() => void>();
-if (typeof document !== "undefined") document.documentElement.lang = current;
+if (typeof document !== "undefined") {
+  document.documentElement.lang = current;
+}
 
 export const displayLang = () => current;
 
 function apply(lang: Lang) {
-  if (lang === current) return;
+  if (lang === current) {
+    return;
+  }
   current = lang;
-  if (typeof document !== "undefined") document.documentElement.lang = lang;
-  for (const l of listeners) l();
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = lang;
+  }
+  for (const l of listeners) {
+    l();
+  }
 }
 
 /** Switches the UI live; the caller persists the choice in the backend (`api.setUiLanguage`). */
@@ -62,7 +72,9 @@ export function setDisplayLang(lang: Lang) {
 // Another window (a pop-out, G52) switched the language: follow it.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE && isLang(e.newValue)) apply(e.newValue);
+    if (e.key === STORAGE && isLang(e.newValue)) {
+      apply(e.newValue);
+    }
   });
 }
 
@@ -73,7 +85,9 @@ const numbers = { ja: new Intl.NumberFormat("ja-JP"), en: new Intl.NumberFormat(
 
 function format(lang: Lang, key: Key, params?: Record<string, Value>): string {
   const m = CATALOGS[lang][key] as string | ((p: Record<string, Value>) => string);
-  if (typeof m === "function") return m(params ?? {});
+  if (typeof m === "function") {
+    return m(params ?? {});
+  }
   return m.replace(/\{(\w+)\}/g, (all, name: string) => {
     const v = params?.[name];
     return v === undefined ? all : typeof v === "number" ? numbers[lang].format(v) : v;
@@ -81,10 +95,15 @@ function format(lang: Lang, key: Key, params?: Record<string, Value>): string {
 }
 
 /** A coded backend message: `{"code":"backup.keepRange","params":{"max":30}}`. */
-interface Coded { code: string; params?: Record<string, Value> }
+interface Coded {
+  code: string;
+  params?: Record<string, Value>;
+}
 
 function parseCoded(s: string): Coded | null {
-  if (!s.startsWith('{"code":')) return null;
+  if (!s.startsWith('{"code":')) {
+    return null;
+  }
   try {
     const v = JSON.parse(s) as Coded;
     return typeof v.code === "string" ? v : null;
@@ -98,7 +117,9 @@ function backendText(lang: Lang, x: unknown): string {
   const coded = parseCoded(s);
   const key = coded && `be.${coded.code}`;
   // A code this UI does not know (or plain text: provider and network errors) is shown as is.
-  if (!coded || !key || !(key in ja)) return s;
+  if (!coded || !key || !(key in ja)) {
+    return s;
+  }
   const params = Object.fromEntries(Object.entries(coded.params ?? {}).map(([k, v]) => [k, typeof v === "string" ? backendText(lang, v) : v]));
   return format(lang, key as Key, params);
 }
@@ -116,7 +137,9 @@ function translator(lang: Lang): T {
   const t = (<K extends Key>(key: K, ...[p]: Args<K>) => format(lang, key, p)) as T;
   t.rich = (key, params) => {
     const nodes = params as Record<string, ReactNode>;
-    const parts = format(lang, key).split(/\{(\w+)\}/).map((s, i) => (i % 2 ? nodes[s] : s));
+    const parts = format(lang, key)
+      .split(/\{(\w+)\}/)
+      .map((s, i) => (i % 2 ? nodes[s] : s));
     return createElement(Fragment, null, ...parts);
   };
   t.msg = (x) => backendText(lang, x);
@@ -130,14 +153,11 @@ const TRANSLATORS: Record<Lang, T> = { ja: translator("ja"), en: translator("en"
  * The translator for the display language at the time of the call. Code that runs during render
  * should use `useT()` so it re-renders, and memos that build text depend on the `t` it returns.
  */
-export const t = Object.defineProperties(
-  <K extends Key>(key: K, ...args: Args<K>) => TRANSLATORS[current](key, ...args),
-  {
-    rich: { value: ((key, params) => TRANSLATORS[current].rich(key, params)) as T["rich"] },
-    msg: { value: (x: unknown) => TRANSLATORS[current].msg(x) },
-    lang: { get: () => current },
-  },
-) as T;
+export const t = Object.defineProperties(<K extends Key>(key: K, ...args: Args<K>) => TRANSLATORS[current](key, ...args), {
+  rich: { value: ((key, params) => TRANSLATORS[current].rich(key, params)) as T["rich"] },
+  msg: { value: (x: unknown) => TRANSLATORS[current].msg(x) },
+  lang: { get: () => current },
+}) as T;
 
 const subscribe = (l: () => void) => {
   listeners.add(l);

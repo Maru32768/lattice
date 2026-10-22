@@ -43,7 +43,9 @@ export function saveCollapsed(ids: ReadonlySet<number>) {
 export function moved(ids: number[], id: number, d: -1 | 1): number[] {
   const i = ids.indexOf(id);
   const j = i + d;
-  if (i < 0 || j < 0 || j >= ids.length) return ids;
+  if (i < 0 || j < 0 || j >= ids.length) {
+    return ids;
+  }
   return ids.toSpliced(i, 1).toSpliced(j, 0, id);
 }
 
@@ -69,9 +71,13 @@ function placed(o: FeedOrder, feed: number, at: number): FeedOrder {
 export function feedStep(groups: FeedOrder[], feed: number, d: -1 | 1): FeedOrder | null {
   const g = groups.findIndex((o) => o.ids.includes(feed));
   const group = groups[g];
-  if (!group) return null;
+  if (!group) {
+    return null;
+  }
   const i = group.ids.indexOf(feed) + d;
-  if (i >= 0 && i < group.ids.length) return placed(group, feed, i);
+  if (i >= 0 && i < group.ids.length) {
+    return placed(group, feed, i);
+  }
   const next = groups[g + d];
   return next ? placed(next, feed, d < 0 ? next.ids.length : 0) : null;
 }
@@ -87,19 +93,26 @@ export type NavRow = { kind: "folder"; id: number } | { kind: "feed"; id: number
  */
 export function feedDrop(rows: NavRow[], groups: FeedOrder[], from: number, to: number): FeedOrder | null {
   const [row, over] = [rows[from], rows[to]];
-  if (row?.kind !== "feed" || !over || from === to) return null;
+  if (row?.kind !== "feed" || !over || from === to) {
+    return null;
+  }
   const folder = over.kind === "folder" ? over.id : over.kind === "loose" ? null : over.folder;
   const group = groups.find((o) => o.folder === folder) ?? { folder, ids: [] };
-  const at = over.kind === "feed"
-    ? arrayMove(rows, from, to).slice(0, to).filter((r) => r.kind === "feed" && r.folder === folder).length
-    : group.ids.length;
+  const at =
+    over.kind === "feed"
+      ? arrayMove(rows, from, to)
+          .slice(0, to)
+          .filter((r) => r.kind === "feed" && r.folder === folder).length
+      : group.ids.length;
   const out = placed(group, row.id, at);
   return row.folder === folder && out.ids.every((id, i) => id === group.ids[i]) ? null : out;
 }
 
 /** The folder order after a folder is dragged from row `from` to row `to`, or null when it stays. */
 export function folderDrop(rows: NavRow[], from: number, to: number): number[] | null {
-  if (rows[from]?.kind !== "folder" || from === to) return null;
+  if (rows[from]?.kind !== "folder" || from === to) {
+    return null;
+  }
   const ids = (xs: NavRow[]) => xs.flatMap((r) => (r.kind === "folder" ? [r.id] : []));
   const before = ids(rows);
   const after = ids(arrayMove(rows, from, to));
@@ -116,4 +129,11 @@ export function placeFeeds(feeds: FeedRow[], { folder, ids }: FeedOrder): FeedRo
 }
 
 /** The feed URLs in pasted text: one per line, blank lines and repeats skipped. */
-export const feedUrls = (text: string) => [...new Set(text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean))];
+export const feedUrls = (text: string) => [
+  ...new Set(
+    text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean),
+  ),
+];

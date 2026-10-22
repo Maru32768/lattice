@@ -48,7 +48,13 @@ Keys saved in the app (Settings › AI providers) take precedence over these env
 mise run test
 ```
 
-`mise run test` runs `mise run lint` (rustfmt, clippy with `-D warnings`, oxlint), then the Rust and frontend unit tests, and type-checks and builds the frontend.
+`mise run test` runs `mise run lint` (rustfmt, clippy with `-D warnings`, oxlint, Prettier, and a check that React Compiler compiled every component), then the Rust and frontend unit tests, and type-checks (the unit tests too) and builds the frontend.
+
+```bash
+mise exec -- npm run format
+```
+
+formats the TypeScript with Prettier (`.prettierrc.json`); `npm run lint` fails on unformatted files.
 
 ```bash
 mise exec -- npx playwright install chromium
