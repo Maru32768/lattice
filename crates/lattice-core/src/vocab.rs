@@ -491,7 +491,7 @@ pub fn grade(store: &Store, card_id: i64, grade: Grade, now: i64) -> Result<(), 
 // ---- export -------------------------------------------------------------------------------
 
 fn html(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    quick_xml::escape::escape(s).into_owned()
 }
 
 fn csv_field(s: &str) -> String {

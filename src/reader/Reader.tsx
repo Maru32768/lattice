@@ -184,13 +184,11 @@ const RETRANSLATE_CONFIRM_BLOCKS = 50;
 function useRetranslate(done: number, onRetranslate: () => void): [() => void, React.ReactNode] {
   const t = useT();
   const [asking, setAsking] = useState(false);
-  // On body: inside the toolbar it would be clipped by the toolbar's overflow.
-  const dialog = asking && createPortal(
+  const dialog = asking && (
     <ConfirmDialog title={t("reader.confirmRetranslate")} confirm={t("reader.retranslate")}
       onConfirm={() => { setAsking(false); onRetranslate(); }} onCancel={() => setAsking(false)}>
       <p>{t("reader.confirmRetranslateDesc", { done })}</p>
-    </ConfirmDialog>,
-    document.body,
+    </ConfirmDialog>
   );
   return [() => (done > RETRANSLATE_CONFIRM_BLOCKS ? setAsking(true) : onRetranslate()), dialog];
 }

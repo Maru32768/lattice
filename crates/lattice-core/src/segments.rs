@@ -342,16 +342,14 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
 /// text escaped, inline code as <code>, links as <a href>.
 pub fn snippet_from_inlines(text: &str, inlines: &[crate::ir::Inline]) -> String {
     use crate::ir::Inline;
-    fn esc(s: &str) -> String {
-        s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
-    }
+    use quick_xml::escape::escape as esc;
     if inlines.is_empty() {
-        return esc(text);
+        return esc(text).into_owned();
     }
     inlines
         .iter()
         .map(|i| match i {
-            Inline::Text { v } => esc(v),
+            Inline::Text { v } => esc(v).into_owned(),
             Inline::Code { v } => format!("<code>{}</code>", esc(v)),
             Inline::Link { v, href } => format!("<a href=\"{}\">{}</a>", esc(href), esc(v)),
         })

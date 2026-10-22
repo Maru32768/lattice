@@ -6,7 +6,6 @@
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 use crate::fetch::{check_public, request_error};
 use crate::msg;
@@ -156,7 +155,7 @@ pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Re
 
 /// Stores `bytes` once per content hash and maps `src` of the article to it.
 pub(crate) fn save(store: &Store, article_id: i64, src: &str, mime: &str, bytes: &[u8]) -> Result<(), String> {
-    let hash: String = Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect();
+    let hash = crate::store::sha256_hex(bytes);
     {
         let c = store.conn();
         c.execute("INSERT INTO images (hash, mime, bytes) VALUES (?1, ?2, ?3) ON CONFLICT(hash) DO NOTHING", params![hash, mime, bytes]).map_err(err)?;
@@ -256,15 +255,8 @@ pub fn data_url(store: &Store, block_id: i64) -> Result<Option<String>, String> 
 }
 
 pub fn base64(b: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut s = String::with_capacity(b.len().div_ceil(3) * 4);
-    for c in b.chunks(3) {
-        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
-        for i in 0..4 {
-            s.push(if i <= c.len() { T[(n >> (18 - 6 * i) & 63) as usize] as char } else { '=' });
-        }
-    }
-    s
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(b)
 }
 
 #[cfg(test)]
@@ -298,15 +290,6 @@ mod tests {
         for src in ["ftp://example.com/a.png", "data:image/png;base64,AAAA", "http://127.0.0.1/a.png", "http://[::1]/a.png"] {
             assert!(matches!(download(&c, src, "https://example.com/", MB).await, Err(Fail::Permanent(_))), "{src}");
         }
-    }
-
-    #[test]
-    fn encodes_base64() {
-        let cases = [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")];
-        for (i, o) in cases {
-            assert_eq!(base64(i.as_bytes()), o);
-        }
-        assert_eq!(base64(&[0xff, 0xfe]), "//4=");
     }
 
     fn article(s: &Store, url: &str, srcs: &[&str]) -> i64 {
@@ -349,7 +332,7 @@ mod tests {
         assert_eq!(data_url(&s, svg).unwrap(), None, "not stored: the Reader shows the link");
         let mut out = Vec::new();
         crate::export::export_to(&s, &mut out, None).unwrap();
-        let hash: String = Sha256::digest(PNG).iter().map(|b| format!("{b:02x}")).collect();
+        let hash = crate::store::sha256_hex(PNG);
         assert_eq!(String::from_utf8(out).unwrap().matches(&format!("\"image_hash\":\"{hash}\"")).count(), 2, "export lists hashes, not bytes");
 
         // Re-extraction drops the PNG from a; b still uses the bytes. Nothing is pending, so no network.

@@ -1,4 +1,5 @@
 // Feed folders (H25) in the sidebar: each folder with its feeds, then the feeds in none.
+import { arrayMove } from "@dnd-kit/sortable";
 import type { FeedRow, FolderRow } from "../api.ts";
 
 export interface FolderNode {
@@ -79,12 +80,6 @@ export function feedStep(groups: FeedOrder[], feed: number, d: -1 | 1): FeedOrde
 /** A row of the sidebar's feed tree as dragged: a folder, a feed, or the drop target after the feeds in none. */
 export type NavRow = { kind: "folder"; id: number } | { kind: "feed"; id: number; folder: number | null } | { kind: "loose" };
 
-function arrayMoved<T>(xs: T[], from: number, to: number): T[] {
-  const out = [...xs];
-  out.splice(to, 0, ...out.splice(from, 1));
-  return out;
-}
-
 /**
  * A feed dragged from row `from` onto row `to` of the shown rows: the group it lands in and that
  * group's new order, or null when nothing changes. Onto a feed it takes that feed's slot; onto a
@@ -97,7 +92,7 @@ export function feedDrop(rows: NavRow[], groups: FeedOrder[], from: number, to: 
   const folder = over.kind === "folder" ? over.id : over.kind === "loose" ? null : over.folder;
   const group = groups.find((o) => o.folder === folder) ?? { folder, ids: [] };
   const at = over.kind === "feed"
-    ? arrayMoved(rows, from, to).slice(0, to).filter((r) => r.kind === "feed" && r.folder === folder).length
+    ? arrayMove(rows, from, to).slice(0, to).filter((r) => r.kind === "feed" && r.folder === folder).length
     : group.ids.length;
   const out = placed(group, row.id, at);
   return row.folder === folder && out.ids.every((id, i) => id === group.ids[i]) ? null : out;
@@ -108,7 +103,7 @@ export function folderDrop(rows: NavRow[], from: number, to: number): number[] |
   if (rows[from]?.kind !== "folder" || from === to) return null;
   const ids = (xs: NavRow[]) => xs.flatMap((r) => (r.kind === "folder" ? [r.id] : []));
   const before = ids(rows);
-  const after = ids(arrayMoved(rows, from, to));
+  const after = ids(arrayMove(rows, from, to));
   return after.every((id, i) => id === before[i]) ? null : after;
 }
 

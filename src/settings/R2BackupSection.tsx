@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { r2, type R2Settings, type R2Status } from "../api";
 import { SetRow, Switch } from "../ui/SetRow";
-import { useT } from "../i18n";
+import { locale, useT } from "../i18n";
 
-const time = (secs: number) => new Date(secs * 1000).toLocaleString("ja-JP");
+const time = (secs: number) => new Date(secs * 1000).toLocaleString(locale());
 
 /** Settings section for the automatic Cloudflare R2 backup. */
 export function R2BackupSection() {

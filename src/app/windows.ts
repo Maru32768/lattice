@@ -25,7 +25,6 @@ const PREFIX = "lattice.window.";
 /** A pop-out's storage key (its layout; the chat window's is empty). The key's presence means the window is open, so main restores it at startup. */
 export const windowKey = (label: string) => PREFIX + label;
 
-/** The pop-outs that are (or were, before a restart) open, from the storage keys. */
 /**
  * What a window does with the Page language when it starts. The overlay config in the backend is
  * one for every page webview, so only the main window sends it; a document window asks main for
@@ -33,6 +32,7 @@ export const windowKey = (label: string) => PREFIX + label;
  */
 export const pageLangOnStart = (h: Host): "send" | "ask" | "none" => (h.kind === "main" ? "send" : h.kind === "doc" ? "ask" : "none");
 
+/** The pop-outs that are (or were, before a restart) open, from the storage keys. */
 export const openWindows = (keys: string[]) =>
   keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length)).filter((l) => hostOf(l).kind !== "main");
 

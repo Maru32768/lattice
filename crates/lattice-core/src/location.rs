@@ -47,17 +47,10 @@ struct Bootstrap {
     data_dir: PathBuf,
 }
 
-/// The folder Tauri's `app_data_dir` gives the app, found without Tauri (the CLI).
+/// The folder Tauri's `app_data_dir` gives the app, found without Tauri (the CLI): Tauri builds
+/// it from the same `dirs` crate.
 pub fn default_dir() -> Option<PathBuf> {
-    let var = |k| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
-    let base = if cfg!(windows) {
-        var("APPDATA")
-    } else if cfg!(target_os = "macos") {
-        var("HOME").map(|h| h.join("Library").join("Application Support"))
-    } else {
-        var("XDG_DATA_HOME").or_else(|| var("HOME").map(|h| h.join(".local").join("share")))
-    };
-    Some(base?.join(APP_IDENTIFIER))
+    Some(dirs::data_dir()?.join(APP_IDENTIFIER))
 }
 
 /// `bootstrap`: the bootstrap file's text, `None` when there is no such file.

@@ -940,7 +940,11 @@ fn article_is_japanese(c: &Connection, id: i64) -> Result<bool> {
 }
 
 pub fn sha256_hex(s: impl AsRef<[u8]>) -> String {
-    Sha256::digest(s.as_ref()).iter().map(|b| format!("{b:02x}")).collect()
+    hex(&Sha256::digest(s.as_ref()))
+}
+
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn json<T: Serialize>(v: &T) -> String {

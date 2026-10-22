@@ -196,13 +196,10 @@ fn parse_opml(xml: &str) -> Result<Vec<(String, Option<String>)>, String> {
     Ok(out)
 }
 
-fn escape(s: &str) -> std::borrow::Cow<'_, str> {
-    quick_xml::escape::escape(s)
-}
-
 /// OPML 2.0 of every feed: folders as outlines holding their feeds, in the user's order, then
 /// the feeds without a folder.
 pub fn export_opml(store: &Store) -> Result<String, String> {
+    use quick_xml::escape::escape;
     let feeds = crate::feeds::list(store)?;
     let outline = |f: &crate::feeds::FeedRow, indent: &str| {
         let name = f.custom_title.as_deref().or(f.title.as_deref()).unwrap_or(&f.url);

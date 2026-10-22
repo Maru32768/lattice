@@ -13,8 +13,7 @@ export function excerpt(text: string, ts: string[], max = 220): string {
 
 /** Splits text into plain/marked segments for case-insensitive term highlighting. */
 export function highlight(text: string, ts: string[]): { mark: boolean; v: string }[] {
-  const special = new Set(".*+?^${}()|[]\\/".split(""));
-  const pats = ts.map((t) => [...t].map((c) => (special.has(c) ? `\\${c}` : c)).join(""));
+  const pats = ts.map((t) => RegExp.escape(t));
   if (!pats.length) return [{ mark: false, v: text }];
   // A capturing split puts the matches at odd indices.
   return text.split(new RegExp(`(${pats.join("|")})`, "i"))

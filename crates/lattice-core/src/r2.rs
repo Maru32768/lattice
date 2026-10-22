@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 
 use crate::backup;
 use crate::msg;
-use crate::store::Store;
+use crate::store::{Store, hex, sha256_hex};
 
 pub const SECRET_KEY: &str = "secret.r2_secret_access_key";
 const ENABLED: &str = "r2.enabled";
@@ -428,7 +428,7 @@ fn truncate(s: &str) -> &str {
 }
 
 async fn send(http: &reqwest::Client, c: &Creds, method: &str, key: &str, query: &[(&str, &str)], body: Vec<u8>) -> Result<reqwest::Response, String> {
-    let req = build(c, method, key, query, &hex(&Sha256::digest(&body)), unix_now());
+    let req = build(c, method, key, query, &sha256_hex(&body), unix_now());
     let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
     let mut rb = http.request(method, &req.url).body(body);
     for (k, v) in &req.headers {
@@ -507,7 +507,7 @@ fn authorization(
     let signed_headers = headers.iter().map(|(k, _)| *k).collect::<Vec<_>>().join(";");
     let request = format!("{method}\n{path}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}");
     let scope = format!("{}/{region}/s3/aws4_request", &amz_date[..8]);
-    let to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}", hex(&Sha256::digest(request.as_bytes())));
+    let to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{}", sha256_hex(&request));
     let mut key = hmac(format!("AWS4{secret}").as_bytes(), &amz_date.as_bytes()[..8]);
     for part in [region, "s3", "aws4_request"] {
         key = hmac(&key, part.as_bytes());
@@ -527,10 +527,6 @@ fn hmac(key: &[u8], msg: &[u8]) -> [u8; 32] {
     let pad = |x: u8| k.iter().map(|b| b ^ x).collect::<Vec<u8>>();
     let inner = Sha256::new().chain_update(pad(0x36)).chain_update(msg).finalize();
     Sha256::new().chain_update(pad(0x5c)).chain_update(inner).finalize().into()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]

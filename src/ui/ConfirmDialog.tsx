@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { createPortal } from "react-dom";
+import { AlertDialog as AD } from "radix-ui";
 import { useCover } from "./Popover";
 import { useT } from "../i18n";
 
 /**
- * A modal confirmation for a destructive action. Focus starts on キャンセル and stays inside;
- * Esc, the scrim and キャンセル cancel. Keys never reach the app's shortcuts behind it.
+ * A modal confirmation for a destructive action, on body so no toolbar's overflow clips it. Focus
+ * starts on キャンセル; Esc, the scrim and キャンセル cancel. Keys never reach the app's shortcuts behind it.
  */
 export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }: {
   title: string;
@@ -15,39 +17,23 @@ export function ConfirmDialog({ title, confirm, onConfirm, onCancel, children }:
   children: React.ReactNode;
 }) {
   const t = useT();
-  const ref = useRef<HTMLDivElement>(null);
-  const cancel = useRef<HTMLButtonElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
   useCover(scrim, true);
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    cancel.current?.focus();
-    return () => before?.focus();
-  }, []);
-
-  function keys(e: React.KeyboardEvent) {
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      e.preventDefault();
-      onCancel();
-    } else if (e.key === "Tab") {
-      const buttons = [...ref.current!.querySelectorAll<HTMLElement>("button")];
-      const i = buttons.indexOf(document.activeElement as HTMLElement);
-      e.preventDefault();
-      buttons[(i + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
-    }
-  }
-
-  return (
-    <div ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div ref={ref} className="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-title" aria-describedby="dlg-body" onKeyDown={keys}>
-        <h2 id="dlg-title">{title}</h2>
-        <div id="dlg-body" className="dlg-body">{children}</div>
-        <div className="dlg-acts">
-          <button ref={cancel} className="btn" onClick={onCancel}>{t("common.cancel")}</button>
-          <button className="btn danger" onClick={onConfirm}>{confirm}</button>
-        </div>
-      </div>
-    </div>
+  // Not AD.Portal: it mounts a render late, after useCover has measured.
+  return createPortal(
+    <AD.Root open onOpenChange={(open) => { if (!open) onCancel(); }}>
+      <AD.Overlay ref={scrim} className="pal-scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+        <AD.Content className="dlg" onKeyDown={(e) => e.stopPropagation()}>
+          <AD.Title asChild><h2>{title}</h2></AD.Title>
+          <AD.Description asChild><div className="dlg-body">{children}</div></AD.Description>
+          <div className="dlg-acts">
+            <AD.Cancel className="btn">{t("common.cancel")}</AD.Cancel>
+            {/* Not AD.Action: it would also close, calling onCancel after onConfirm. */}
+            <button className="btn danger" onClick={onConfirm}>{confirm}</button>
+          </div>
+        </AD.Content>
+      </AD.Overlay>
+    </AD.Root>,
+    document.body,
   );
 }

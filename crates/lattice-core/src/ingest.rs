@@ -5,6 +5,7 @@ use crate::extract::extract;
 use crate::fetch::{Fetched, Resource, fetch_resource};
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
+use quick_xml::escape::escape;
 use rusqlite::OptionalExtension;
 
 pub const JOB_TYPE: &str = "ingest";
@@ -88,10 +89,6 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
         )
         .map_err(|e| e.to_string())?;
     Ok(true)
-}
-
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 #[derive(Debug, Default, PartialEq, serde::Serialize)]

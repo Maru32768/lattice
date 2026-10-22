@@ -46,9 +46,8 @@ export function captureIn(text: string, selected: string, near: number): { surfa
   return best < 0 ? null : { surface: collapse(needle), sentence: sentenceAt(text, best, best + needle.length) };
 }
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 /** A form as a pattern: case-insensitive, any run of spaces between words, not inside a longer word. */
-const pattern = (forms: string[]) => `(?<![\\p{L}\\p{N}])(?:${forms.map((f) => collapse(f).split(" ").map(escape).join("\\s+")).join("|")})(?![\\p{L}\\p{N}])`;
+const pattern = (forms: string[]) => `(?<![\\p{L}\\p{N}])(?:${forms.map((f) => collapse(f).split(" ").map((w) => RegExp.escape(w)).join("\\s+")).join("|")})(?![\\p{L}\\p{N}])`;
 
 /** Where `form` occurs in `text` as a whole word, case-insensitively: [start, end) pairs. */
 export function findWord(text: string, form: string): [number, number][] {

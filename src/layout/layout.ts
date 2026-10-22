@@ -77,13 +77,6 @@ export interface Layout {
 /** A child of a split is never thinner than this fraction of it. */
 export const MIN_SIZE = 0.15;
 
-/** `Array.prototype.toSpliced` (the app's lib is ES2020). */
-function spliced<T>(a: readonly T[], start: number, del: number, ...items: T[]): T[] {
-  const out = [...a];
-  out.splice(start, del, ...items);
-  return out;
-}
-
 export const single = (): Layout => ({ root: { kind: "pane", id: 1, tabs: [], active: null }, focused: 1, next: 2 });
 
 // ---- queries ------------------------------------------------------------------------------------
@@ -175,7 +168,7 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
   }
   const tab = tabFor(doc, l.next);
   const at = index ?? (cur ? p.tabs.indexOf(cur) + 1 : p.tabs.length);
-  return focus({ ...replacePane(l, { ...p, tabs: spliced(p.tabs, at, 0, tab), active: tab.id }), next: l.next + 1 }, p.id);
+  return focus({ ...replacePane(l, { ...p, tabs: p.tabs.toSpliced(at, 0, tab), active: tab.id }), next: l.next + 1 }, p.id);
 }
 
 export function activate(l: Layout, tab: Id): Layout {
@@ -198,7 +191,7 @@ export function close(l: Layout, tab: Id): Layout {
   if (!hit) return l;
   const { pane } = hit;
   const i = pane.tabs.findIndex((t) => t.id === tab);
-  const tabs = spliced(pane.tabs, i, 1);
+  const tabs = pane.tabs.toSpliced(i, 1);
   if (tabs.length === 0) return removePane(l, pane.id);
   const active = pane.active === tab ? (tabs[i] ?? tabs[i - 1]).id : pane.active;
   return replacePane(l, { ...pane, tabs, active });
@@ -218,9 +211,9 @@ export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
   if (from.id === to) {
     const i = from.tabs.indexOf(hit.tab);
     const at = index > i ? index - 1 : index;
-    return activate(replacePane(l, { ...from, tabs: spliced(spliced(from.tabs, i, 1), at, 0, hit.tab) }), tab);
+    return activate(replacePane(l, { ...from, tabs: from.tabs.toSpliced(i, 1).toSpliced(at, 0, hit.tab) }), tab);
   }
-  let out = replacePane(l, { ...target, tabs: spliced(target.tabs, index, 0, hit.tab), active: tab });
+  let out = replacePane(l, { ...target, tabs: target.tabs.toSpliced(index, 0, hit.tab), active: tab });
   const rest = from.tabs.filter((t) => t.id !== tab);
   out = rest.length ? replacePane(out, { ...from, tabs: rest, active: from.active === tab ? rest[0].id : from.active }) : removePane(out, from.id);
   return focus(out, to);
@@ -235,7 +228,7 @@ export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
     // Same direction as the parent: a sibling, not a nested split.
     if (i >= 0 && n.dir === dir) {
       const half = n.sizes[i] / 2;
-      return { ...n, children: spliced(n.children, before ? i : i + 1, 0, fresh), sizes: spliced(n.sizes, i, 1, half, half) };
+      return { ...n, children: n.children.toSpliced(before ? i : i + 1, 0, fresh), sizes: n.sizes.toSpliced(i, 1, half, half) };
     }
     return { ...n, children: n.children.map(rec) };
   };
@@ -263,7 +256,7 @@ export function resize(l: Layout, splitId: Id, i: number, size: number): Layout 
     const [a, b] = [n.sizes[i], n.sizes[i + 1]];
     if (a == null || b == null) return n;
     const next = Math.max(MIN_SIZE, Math.min(a + b - MIN_SIZE, size));
-    return { ...n, sizes: spliced(n.sizes, i, 2, next, a + b - next) };
+    return { ...n, sizes: n.sizes.toSpliced(i, 2, next, a + b - next) };
   };
   return { ...l, root: rec(l.root) };
 }
