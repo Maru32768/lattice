@@ -489,7 +489,7 @@ fn uri_encode(s: &str, keep_slash: bool) -> String {
 }
 
 /// SigV4 `Authorization` header for service `s3`. `headers` are the signed headers, lowercase.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "the SigV4 inputs, named as in the AWS spec")]
 fn authorization(
     method: &str,
     path: &str,

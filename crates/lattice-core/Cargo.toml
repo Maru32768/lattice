@@ -4,6 +4,9 @@ version.workspace = true
 edition = "2024"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 base64 = "0.22.1"
 dirs = "7.0.0"

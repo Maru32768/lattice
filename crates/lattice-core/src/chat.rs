@@ -233,7 +233,7 @@ impl Store {
     }
 
     /// Appends a turn, creating the thread (titled by the question) when `thread_id` is None.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, reason = "the parts of one request, each used once")]
     fn save_chat_message(
         &self,
         thread_id: Option<i64>,

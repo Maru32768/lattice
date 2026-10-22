@@ -9,6 +9,8 @@
 //! captures unless the page is on screen and the last one is a moment ago. The background
 //! renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
 
+#![allow(unsafe_code, reason = "WebView2 and COM calls through the windows crate")]
+
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -254,6 +256,7 @@ fn emit_page(wv: &Webview, browser: &Browser, url: String) {
     // The page's `navigation` API only sees same-origin entries, so after moving to another site
     // it reports no way back; WebView2 knows the whole history.
     #[cfg(windows)]
+    // SAFETY: with_webview runs this on the main thread with wry's live controller.
     if let Err(e) = wv.with_webview(move |pw| send(unsafe { native_history(&pw) }.unwrap_or(reported))) {
         log::warn!("reading the page history: {e}");
     }
@@ -261,10 +264,14 @@ fn emit_page(wv: &Webview, browser: &Browser, url: String) {
     send(reported);
 }
 
+/// # Safety
+/// On the main thread, with `pw` from `with_webview` (its controller is alive there).
 #[cfg(windows)]
 unsafe fn native_history(pw: &tauri::webview::PlatformWebview) -> windows::core::Result<(bool, bool)> {
+    // SAFETY: the caller's contract: a live controller on its own thread.
     let core = unsafe { pw.controller().CoreWebView2()? };
     let (mut back, mut forward) = (windows::core::BOOL::default(), windows::core::BOOL::default());
+    // SAFETY: `core` is alive for this call; the out-pointers are locals that outlive it.
     unsafe {
         core.CanGoBack(&mut back)?;
         core.CanGoForward(&mut forward)?;
@@ -285,6 +292,7 @@ fn watch_focus(wv: &Webview) {
             Ok(())
         }));
         let mut token = 0i64;
+        // SAFETY: on the main thread with wry's live controller; `token` outlives the call.
         if let Err(e) = unsafe { pw.controller().add_GotFocus(&handler, &mut token) } {
             log::warn!("GotFocus: {e}");
         }
@@ -470,6 +478,8 @@ async fn capture_png(wv: &Webview) -> Result<Vec<u8>, String> {
     use windows::Win32::UI::Shell::SHCreateMemStream;
 
     let (tx, rx) = oneshot::channel();
+    // SAFETY: on the main thread with wry's live controller; the stream and handler are owned
+    // COM references that WebView2 keeps until the capture completes.
     wv.with_webview(move |pw| unsafe {
         let Some(stream) = SHCreateMemStream(None) else { return };
         let out = stream.clone();
@@ -487,11 +497,14 @@ async fn capture_png(wv: &Webview) -> Result<Vec<u8>, String> {
     rx.await.map_err(|_| "capture failed".to_string())?.map_err(|e| e.to_string())
 }
 
+/// # Safety
+/// `s` must be a live stream no other thread uses meanwhile.
 #[cfg(windows)]
 unsafe fn read_stream(s: &windows::Win32::System::Com::IStream) -> windows::core::Result<Vec<u8>> {
     use windows::Win32::System::Com::STREAM_SEEK_SET;
     let mut out = Vec::new();
     let mut buf = vec![0u8; 1 << 16];
+    // SAFETY: the caller's contract for `s`; Read writes at most `buf.len()` bytes into `buf`.
     unsafe {
         s.Seek(0, STREAM_SEEK_SET, None)?;
         loop {
@@ -649,6 +662,7 @@ pub async fn overlay_print(browser: State<'_, Browser>, webview: Webview) -> Res
         use windows::core::Interface;
         webview
             .with_webview(|pw| {
+                // SAFETY: on the main thread with wry's live controller.
                 let shown = unsafe {
                     pw.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_16>()).and_then(|c| c.ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND_SYSTEM))
                 };
@@ -771,7 +785,7 @@ mod tests {
         for i in 0..6u32 {
             let mut t = TabState::default();
             t.visibility.wanted = i == 0; // tab 0 is on screen
-            t.parked = Some(now - Duration::from_secs(i as u64)); // higher i: hidden longer
+            t.parked = now.checked_sub(Duration::from_secs(i as u64)); // higher i: hidden longer
             tabs.insert(label(&i.to_string()).unwrap(), t);
         }
         let mut gone = to_evict(&tabs);

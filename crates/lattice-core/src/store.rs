@@ -1008,7 +1008,7 @@ impl Store {
         Ok(Some(SummarySource { title, content_hash, blocks }))
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, reason = "the columns of one row")]
     pub fn insert_summary(
         &self,
         article_id: i64,

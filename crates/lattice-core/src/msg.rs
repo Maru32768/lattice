@@ -12,7 +12,7 @@ pub fn coded(code: &str, params: serde_json::Map<String, serde_json::Value>) -> 
 #[macro_export]
 macro_rules! msg {
     ($code:literal $(, $name:ident = $value:expr)* $(,)?) => {{
-        #[allow(unused_mut)]
+        #[allow(unused_mut, reason = "a message without parameters never inserts")]
         let mut params = serde_json::Map::new();
         $(params.insert(stringify!($name).to_string(), serde_json::json!($value));)*
         $crate::msg::coded($code, params)

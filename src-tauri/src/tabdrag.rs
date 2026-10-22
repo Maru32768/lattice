@@ -15,6 +15,8 @@
 //! In a window split into panes the tab can also go onto a pane's body, as in VS Code: its center
 //! moves the tab into that pane, its edges split the pane that way (`Zone`).
 
+#![allow(unsafe_code, reason = "Win32 input polling through the windows crate")]
+
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
@@ -431,9 +433,12 @@ fn sample(_app: &AppHandle) -> Option<Sample> {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VIRTUAL_KEY, VK_ESCAPE, VK_LBUTTON, VK_RBUTTON};
     use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetSystemMetrics, SM_SWAPBUTTON};
     let mut p = POINT::default();
+    // SAFETY: `p` is a local the call writes into.
     unsafe { GetCursorPos(&mut p) }.ok()?;
+    // SAFETY: takes a key code by value and reads global state only.
     let down = |k: VIRTUAL_KEY| unsafe { GetAsyncKeyState(i32::from(k.0)) } as u16 & 0x8000 != 0;
     // The async state is the physical button: swapped buttons make the right one primary.
+    // SAFETY: reads a system setting, no pointers.
     let primary = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 { VK_RBUTTON } else { VK_LBUTTON };
     Some(Sample { at: Point { x: f64::from(p.x), y: f64::from(p.y) }, down: down(primary), escape: down(VK_ESCAPE) })
 }

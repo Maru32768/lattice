@@ -1,4 +1,5 @@
 //! The built `lattice-cli` binary against a temporary data folder.
+#![allow(clippy::unwrap_used, reason = "a failed step fails the test")]
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

@@ -6,6 +6,19 @@ members = ["crates/lattice-core", "crates/lattice-cli", "src-tauri"]
 [workspace.package]
 version = "0.1.0"
 
+# Safety lints beyond clippy's defaults; CI denies warnings. Tests may unwrap, index and panic (clippy.toml).
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[workspace.lints.clippy]
+allow_attributes_without_reason = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unchecked_time_subtraction = "warn"
+undocumented_unsafe_blocks = "warn"
+unimplemented = "warn"
+unwrap_used = "warn"
+
 [profile.release]
 codegen-units = 1
 lto = true
