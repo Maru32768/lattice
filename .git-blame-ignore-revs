@@ -1,3 +1,5 @@
 # Mechanical reformatting; `git config blame.ignoreRevsFile .git-blame-ignore-revs` skips it in blame.
 # Prettier and eslint/curly over the TypeScript
 332b7160b225b2df2400290ecaa9661717082916
+# rustfmt with one-line blocks broken onto lines of their own
+40997c7d1b363d4fb4439af63fdec740269f99ef
