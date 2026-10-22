@@ -62,7 +62,11 @@ pub fn create(store: &Store, name: &str) -> Result<i64, String> {
 pub fn rename(store: &Store, id: i64, name: &str) -> Result<(), String> {
     let name = clean(name)?;
     let n = store.conn().execute("UPDATE feed_folders SET name = ?2 WHERE id = ?1", params![id, name]).map_err(taken(name))?;
-    if n == 0 { Err(msg!("feedFolders.notFound")) } else { Ok(()) }
+    if n == 0 {
+        Err(msg!("feedFolders.notFound"))
+    } else {
+        Ok(())
+    }
 }
 
 /// Deletes the folder; its feeds stay, without a folder (`ON DELETE SET NULL`).
@@ -190,7 +194,11 @@ fn parse_opml(xml: &str) -> Result<Vec<(String, Option<String>)>, String> {
             out.push((u.clone(), stack.iter().rev().find_map(Clone::clone)));
         }
         if open {
-            stack.push(if url.is_some() { None } else { attr(e, "text").or_else(|| attr(e, "title")) });
+            stack.push(if url.is_some() {
+                None
+            } else {
+                attr(e, "text").or_else(|| attr(e, "title"))
+            });
         }
     }
     Ok(out)

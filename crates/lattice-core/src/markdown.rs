@@ -121,7 +121,11 @@ impl Conv {
                 Some(false) => self.skip = self.skip.saturating_sub(1),
                 None => {}
             },
-            Event::TaskListMarker(done) => self.text(if done { "☑ " } else { "☐ " }),
+            Event::TaskListMarker(done) => self.text(if done {
+                "☑ "
+            } else {
+                "☐ "
+            }),
             Event::Rule => self.flush(),
             // Raw HTML (and math or footnote syntax, not enabled) never reaches the IR.
             _ => {}
@@ -214,7 +218,9 @@ impl Conv {
                 }
             }
             TagEnd::Link => {
-                let Some((href, text)) = self.link.take() else { return };
+                let Some((href, text)) = self.link.take() else {
+                    return;
+                };
                 let v = collapse(&text).trim().to_string();
                 match &mut self.cell {
                     Some(cell) => cell.push_str(&text),
@@ -223,7 +229,9 @@ impl Conv {
                 }
             }
             TagEnd::Image => {
-                let Some((src, alt)) = self.image.take() else { return };
+                let Some((src, alt)) = self.image.take() else {
+                    return;
+                };
                 let alt = collapse(&alt).trim().to_string();
                 if self.cell.is_some() || self.heading.is_some() {
                     self.text(&alt);
@@ -297,19 +305,27 @@ fn image_src(src: &str) -> Option<String> {
 /// raster images within the size limits. The rest keep their alt text.
 fn store_local_images(store: &Store, id: i64, dir: &Path, ir: &ArticleIr) -> Result<(), String> {
     let settings = images::settings(store)?;
-    let Ok(base) = Url::from_directory_path(dir) else { return Ok(()) };
+    let Ok(base) = Url::from_directory_path(dir) else {
+        return Ok(());
+    };
     if !settings.save {
         return Ok(());
     }
     let cap = u64::from(settings.max_mb) * 1024 * 1024;
     let mut used = 0;
     for src in ir.blocks.iter().filter_map(|b| b.attrs.src.as_deref()).filter(|s| !is_http(s)) {
-        let Some(path) = base.join(src).ok().and_then(|u| u.to_file_path().ok()).filter(|p| p.starts_with(dir)) else { continue };
+        let Some(path) = base.join(src).ok().and_then(|u| u.to_file_path().ok()).filter(|p| p.starts_with(dir)) else {
+            continue;
+        };
         if std::fs::metadata(&path).map_or(true, |m| !m.is_file() || m.len() > cap) {
             continue;
         }
-        let Ok(bytes) = std::fs::read(&path) else { continue };
-        let Some(mime) = images::sniff(&bytes) else { continue };
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        let Some(mime) = images::sniff(&bytes) else {
+            continue;
+        };
         if used + bytes.len() > images::ARTICLE_CAP {
             break;
         }

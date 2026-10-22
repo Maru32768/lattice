@@ -66,7 +66,11 @@ pub fn create(store: &Store, name: &str) -> Result<i64, String> {
 pub fn rename(store: &Store, id: i64, name: &str) -> Result<(), String> {
     let name = clean(name)?;
     let n = store.conn().execute("UPDATE groups SET name = ?2 WHERE id = ?1", params![id, name]).map_err(taken(name))?;
-    if n == 0 { Err(msg!("groups.notFound")) } else { Ok(()) }
+    if n == 0 {
+        Err(msg!("groups.notFound"))
+    } else {
+        Ok(())
+    }
 }
 
 /// Deletes the group; its articles stay in the library.

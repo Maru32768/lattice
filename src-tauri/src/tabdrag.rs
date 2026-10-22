@@ -77,7 +77,11 @@ impl Rect {
         }
         let edges = [(fx, Zone::Left), (1.0 - fx, Zone::Right), (fy, Zone::Top), (1.0 - fy, Zone::Bottom)];
         let (d, z) = edges.into_iter().min_by(|a, b| a.0.total_cmp(&b.0))?;
-        Some(if d < EDGE { z } else { Zone::Center })
+        Some(if d < EDGE {
+            z
+        } else {
+            Zone::Center
+        })
     }
 }
 
@@ -309,7 +313,9 @@ impl Session {
     /// The following window goes to the cursor, and shows once it has loaded.
     fn follow(&mut self) -> Vec<Effect> {
         let p = self.last;
-        let Some(f) = self.float.as_mut() else { return vec![] };
+        let Some(f) = self.float.as_mut() else {
+            return vec![];
+        };
         let mut fx = vec![];
         let to = PhysicalPosition::new((p.x - f.grab.0).round() as i32, (p.y - f.grab.1).round() as i32);
         if f.at != Some(to) {
@@ -341,8 +347,12 @@ impl Session {
     }
 
     fn deliver(&mut self) -> Vec<Effect> {
-        let Some(h) = self.holder() else { return vec![] };
-        let Some(end) = self.pending.take() else { return vec![] };
+        let Some(h) = self.holder() else {
+            return vec![];
+        };
+        let Some(end) = self.pending.take() else {
+            return vec![];
+        };
         let mut fx = match end {
             Final::To(s) => return vec![Effect::Drop(h, s)],
             // Never torn off, and off every strip: nothing moves.
@@ -374,7 +384,11 @@ impl Session {
             return Some(vec![]);
         }
         f.ready = true;
-        let mut fx = if !self.ended && self.over.is_none() { self.follow() } else { vec![] };
+        let mut fx = if !self.ended && self.over.is_none() {
+            self.follow()
+        } else {
+            vec![]
+        };
         fx.extend(self.deliver());
         Some(fx)
     }
@@ -439,7 +453,11 @@ fn sample(_app: &AppHandle) -> Option<Sample> {
     let down = |k: VIRTUAL_KEY| unsafe { GetAsyncKeyState(i32::from(k.0)) } as u16 & 0x8000 != 0;
     // The async state is the physical button: swapped buttons make the right one primary.
     // SAFETY: reads a system setting, no pointers.
-    let primary = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 { VK_RBUTTON } else { VK_LBUTTON };
+    let primary = if unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0 {
+        VK_RBUTTON
+    } else {
+        VK_LBUTTON
+    };
     Some(Sample { at: Point { x: f64::from(p.x), y: f64::from(p.y) }, down: down(primary), escape: down(VK_ESCAPE) })
 }
 
@@ -456,10 +474,14 @@ fn poll(app: AppHandle, id: u64) {
     thread::spawn(move || {
         loop {
             thread::sleep(TICK);
-            let Some(s) = sample(&app) else { continue };
+            let Some(s) = sample(&app) else {
+                continue;
+            };
             let drag = app.state::<TabDrag>();
             let mut g = lock(&drag.0);
-            let Some(d) = g.now.as_mut().filter(|d| d.id == id && !d.ended) else { break };
+            let Some(d) = g.now.as_mut().filter(|d| d.id == id && !d.ended) else {
+                break;
+            };
             let fx = if s.escape {
                 d.release(true)
             } else if !s.down {
@@ -512,7 +534,11 @@ pub async fn tab_drag_start(app: AppHandle, drag: State<'_, TabDrag>, webview: W
     let label = w.label().to_string();
     let at = sample(&app).ok_or("the cursor position is unknown")?.at;
     // The main window keeps its place: its only tab tears off like any other.
-    let home = if start.alone && popout::is_doc(&label) { Some(w.outer_position().map_err(err)?) } else { None };
+    let home = if start.alone && popout::is_doc(&label) {
+        Some(w.outer_position().map_err(err)?)
+    } else {
+        None
+    };
     let source = Geom { label, ..start.geom };
     let id = {
         let mut g = lock(&drag.0);

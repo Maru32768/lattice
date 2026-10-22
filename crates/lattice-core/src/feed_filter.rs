@@ -96,7 +96,14 @@ impl Input {
     pub fn from_entry(e: &Entry) -> Self {
         let language = e.language.clone().filter(|l| !l.trim().is_empty()).or_else(|| {
             let sample = format!("{} {}", e.title.as_deref().unwrap_or_default(), e.excerpt);
-            (!sample.trim().is_empty()).then(|| if crate::segments::is_japanese(None, &sample) { "ja" } else { "en" }.to_string())
+            (!sample.trim().is_empty()).then(|| {
+                if crate::segments::is_japanese(None, &sample) {
+                    "ja"
+                } else {
+                    "en"
+                }
+                .to_string()
+            })
         });
         Input {
             url: e.url.clone(),
@@ -157,7 +164,11 @@ enum Pattern {
 
 fn pattern(r: &Rule) -> Result<Pattern, regex::Error> {
     let p = r.pattern.trim();
-    Ok(if r.regex { Pattern::Regex(regex::RegexBuilder::new(p).case_insensitive(true).size_limit(1 << 20).build()?) } else { Pattern::Text(p.to_lowercase()) })
+    Ok(if r.regex {
+        Pattern::Regex(regex::RegexBuilder::new(p).case_insensitive(true).size_limit(1 << 20).build()?)
+    } else {
+        Pattern::Text(p.to_lowercase())
+    })
 }
 
 fn values(field: Field, input: &Input) -> Vec<String> {
@@ -413,7 +424,9 @@ pub fn import_rejected(store: &Store, feed_id: i64, url: &str) -> Result<usize, 
         )
         .optional()
         .map_err(err)?;
-    let Some(input) = input else { return Err(msg!("feedFilter.notRejected")) };
+    let Some(input) = input else {
+        return Err(msg!("feedFilter.notRejected"));
+    };
     let input = input.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| Input { url: url.to_string(), ..Input::default() });
     import(store, feed_id, &[&input])
 }

@@ -176,7 +176,11 @@ impl Store {
     /// text exceeds `max_chars` (rows stream, so a huge scope stops early).
     pub fn scope_sources(&self, articles: Option<&[i64]>, max_chars: usize) -> Result<Option<Vec<Source>>> {
         let c = self.conn();
-        let cond = if articles.is_some() { "b.article_id IN (SELECT value FROM json_each(?2))" } else { "?2 IS NULL" };
+        let cond = if articles.is_some() {
+            "b.article_id IN (SELECT value FROM json_each(?2))"
+        } else {
+            "?2 IS NULL"
+        };
         let mut st = c.prepare(&format!(
             "SELECT b.id, b.article_id, coalesce(a.title, a.original_url), h.text, b.kind = 'heading', b.text
              FROM blocks b JOIN articles a ON a.id = b.article_id LEFT JOIN blocks h ON h.id = b.heading_id

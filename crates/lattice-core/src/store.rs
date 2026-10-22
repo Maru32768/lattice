@@ -1567,7 +1567,11 @@ impl Store {
                 format!("WHERE block_id IN (SELECT id FROM blocks WHERE article_id IN (SELECT value FROM json_each(?{})))", args.len())
             }
         };
-        let rank = if long.is_empty() { "0" } else { "bm25({t})" };
+        let rank = if long.is_empty() {
+            "0"
+        } else {
+            "bm25({t})"
+        };
         let branch = |t: &str| format!("WHERE {}", conds.join(" AND ")).replace("{t}", t);
         let sql = format!(
             "SELECT block_id FROM (
@@ -1635,7 +1639,17 @@ impl Store {
     }
 
     pub fn set_read_status(&self, id: i64, read: bool) -> Result<()> {
-        self.conn().execute("UPDATE articles SET read_status = ?2 WHERE id = ?1", params![id, if read { "read" } else { "unread" }])?;
+        self.conn().execute(
+            "UPDATE articles SET read_status = ?2 WHERE id = ?1",
+            params![
+                id,
+                if read {
+                    "read"
+                } else {
+                    "unread"
+                }
+            ],
+        )?;
         Ok(())
     }
 }

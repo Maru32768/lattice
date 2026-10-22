@@ -180,7 +180,9 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
 
 async fn rate<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> Result<HashMap<i64, Result<(), String>>, String> {
     // The profile was removed after these were queued: nothing to judge against, nothing to retry.
-    let Some((profile, hash)) = current_profile(store)? else { return Ok(ids.iter().map(|&id| (id, Ok(()))).collect()) };
+    let Some((profile, hash)) = current_profile(store)? else {
+        return Ok(ids.iter().map(|&id| (id, Ok(()))).collect());
+    };
     let mut out = HashMap::new();
     let mut items: Vec<(i64, Value)> = Vec::new();
     for &id in ids {
@@ -199,8 +201,12 @@ async fn rate<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> Resul
     let input = json!({"articles": items.iter().map(|(_, v)| v).collect::<Vec<_>>()});
     let c = provider.complete_json(&system(&profile), &input.to_string(), &schema()).await.map_err(err)?;
     for it in c.value["items"].as_array().into_iter().flatten() {
-        let Some(&(id, _)) = it["i"].as_u64().and_then(|i| items.get(i as usize)) else { continue };
-        let Some((score, reason)) = parse_item(it) else { continue };
+        let Some(&(id, _)) = it["i"].as_u64().and_then(|i| items.get(i as usize)) else {
+            continue;
+        };
+        let Some((score, reason)) = parse_item(it) else {
+            continue;
+        };
         if let std::collections::hash_map::Entry::Vacant(e) = out.entry(id) {
             e.insert(apply(store, id, score, &reason, &hash, &c.provider, c.model.as_deref()).map_err(err));
         }

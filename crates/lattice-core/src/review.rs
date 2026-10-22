@@ -57,7 +57,11 @@ fn due(c: &Connection, s: &Settings, now: i64) -> rusqlite::Result<Vec<Due>> {
         let rows = st.query_map(args, |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
         for row in rows {
             let (src, id) = row?;
-            out.push(if src == "q" { Due::Question(id) } else { Due::Vocab(id) });
+            out.push(if src == "q" {
+                Due::Question(id)
+            } else {
+                Due::Vocab(id)
+            });
         }
         Ok(())
     };
@@ -120,7 +124,19 @@ pub fn overview(store: &Store, now: i64) -> Result<Overview, String> {
                 "SELECT min(due_at) FROM ({CARDS}) WHERE due_at > ?1
                  AND NOT (src = 'q' AND id IN (SELECT value FROM json_each(?2))) AND NOT (src = 'v' AND id IN (SELECT value FROM json_each(?3)))"
             ),
-            params![now, ids(|d| if let Due::Question(id) = d { Some(*id) } else { None }), ids(|d| if let Due::Vocab(id) = d { Some(*id) } else { None })],
+            params![
+                now,
+                ids(|d| if let Due::Question(id) = d {
+                    Some(*id)
+                } else {
+                    None
+                }),
+                ids(|d| if let Due::Vocab(id) = d {
+                    Some(*id)
+                } else {
+                    None
+                })
+            ],
             |r| r.get(0),
         )
         .map_err(err)?;

@@ -122,7 +122,9 @@ pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Re
             .map_err(err)?;
         (page, pending, used as usize)
     };
-    let Some(page) = page else { return Ok(()) };
+    let Some(page) = page else {
+        return Ok(());
+    };
     let s = settings(store)?;
     if !s.save || pending.is_empty() {
         return Ok(());
@@ -183,9 +185,19 @@ pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str,
     // Many sites refuse hotlinked images without a Referer from their own pages. Imported
     // Markdown has no page to name.
     let req = client.get(src);
-    let req = if referer.starts_with("http") { req.header(reqwest::header::REFERER, referer) } else { req };
+    let req = if referer.starts_with("http") {
+        req.header(reqwest::header::REFERER, referer)
+    } else {
+        req
+    };
     let sent = req.send().await;
-    let mut resp = sent.map_err(|e| if e.is_timeout() { Fail::Transient(request_error(e)) } else { Fail::Permanent(request_error(e)) })?;
+    let mut resp = sent.map_err(|e| {
+        if e.is_timeout() {
+            Fail::Transient(request_error(e))
+        } else {
+            Fail::Permanent(request_error(e))
+        }
+    })?;
     let status = resp.status();
     if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         return Err(Fail::Transient(format!("HTTP {status}")));

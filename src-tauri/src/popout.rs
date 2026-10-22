@@ -97,7 +97,9 @@ fn place(app: &AppHandle, state: &App, w: &WebviewWindow) -> Result<(), String> 
 
 /// Shows the (hidden) main window where it last was; at tauri.conf.json's size until it has been closed once.
 pub fn restore_main(app: &AppHandle, state: &App) {
-    let Some(w) = app.get_webview_window(MAIN) else { return };
+    let Some(w) = app.get_webview_window(MAIN) else {
+        return;
+    };
     if saved_geometry(state, MAIN).is_some()
         && let Err(e) = place(app, state, &w)
     {
@@ -140,7 +142,9 @@ pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<Web
 }
 
 fn show(app: &AppHandle, label: &str) {
-    let Some(w) = app.get_window(label) else { return };
+    let Some(w) = app.get_window(label) else {
+        return;
+    };
     // Showing an already visible window would take the focus.
     if !w.is_visible().unwrap_or(true)
         && let Err(e) = w.show()

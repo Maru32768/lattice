@@ -47,26 +47,49 @@ impl Target {
     /// Stored as `target_language`: one cache, FTS row and Reader join per target. Changing the
     /// instructions changes the key, so translations made under other instructions are not reused.
     pub fn key(&self) -> String {
-        let terms = if self.keep_terms { "" } else { TRANSLATED_TERMS };
+        let terms = if self.keep_terms {
+            ""
+        } else {
+            TRANSLATED_TERMS
+        };
         let instructions = self.instructions.trim();
-        let instructions = if instructions.is_empty() { String::new() } else { format!("{INSTRUCTIONS}{}", &sha256_hex(instructions)[..12]) };
+        let instructions = if instructions.is_empty() {
+            String::new()
+        } else {
+            format!("{INSTRUCTIONS}{}", &sha256_hex(instructions)[..12])
+        };
         format!("{}{terms}{instructions}", self.language)
     }
 
     /// Inverse of `key`, given the instructions it was made with.
     pub fn from_key(key: &str, instructions: &str) -> Self {
-        let language = if key.split("-x-").next() == Some("en") { "en" } else { "ja" };
+        let language = if key.split("-x-").next() == Some("en") {
+            "en"
+        } else {
+            "ja"
+        };
         Self { language, keep_terms: !key.contains(TRANSLATED_TERMS), instructions: instructions.to_string() }
     }
 
     /// The same mode for an article (or page) that is Japanese or not.
     pub fn for_source(&self, japanese: bool) -> Self {
-        Self { language: if japanese { "en" } else { "ja" }, ..self.clone() }
+        Self {
+            language: if japanese {
+                "en"
+            } else {
+                "ja"
+            },
+            ..self.clone()
+        }
     }
 
     /// The language translated from. Non-Japanese sources are treated as English.
     pub fn source(&self) -> &'static str {
-        if self.language == "en" { "ja" } else { "en" }
+        if self.language == "en" {
+            "ja"
+        } else {
+            "en"
+        }
     }
 
     /// Whether `plain` is already in this language, so there is nothing to translate. Errs toward
@@ -74,7 +97,11 @@ impl Target {
     /// identifiers it holds (「GitHub Actionsによる自動化」), and only kana make it Japanese, so
     /// Chinese (kanji without kana) is translated.
     pub fn is_written_in(&self, plain: &str) -> bool {
-        if self.language == "ja" { plain.chars().any(is_kana) } else { !plain.chars().any(is_cjk) }
+        if self.language == "ja" {
+            plain.chars().any(is_kana)
+        } else {
+            !plain.chars().any(is_cjk)
+        }
     }
 }
 
@@ -165,7 +192,11 @@ pub fn is_cjk_dominant(plain: &str) -> bool {
 
 pub fn is_long_unit(source_html: &str) -> bool {
     let plain = plain_text(source_html);
-    let limit = if is_cjk_dominant(&plain) { CJK_LONG_UNIT_LIMIT } else { OTHER_LONG_UNIT_LIMIT };
+    let limit = if is_cjk_dominant(&plain) {
+        CJK_LONG_UNIT_LIMIT
+    } else {
+        OTHER_LONG_UNIT_LIMIT
+    };
     plain.chars().count() > limit
 }
 
@@ -316,7 +347,9 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
 
     let resplit = resplit_prompt(to);
     for slot in out.results.iter_mut() {
-        let Some((units, origin)) = slot.take() else { continue };
+        let Some((units, origin)) = slot.take() else {
+            continue;
+        };
         let parts = join_all(units.into_iter().map(|u| {
             let resplit = &resplit;
             async move {

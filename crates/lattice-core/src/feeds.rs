@@ -142,7 +142,9 @@ const COMMON_PATHS: [&str; 4] = ["/feed", "/rss.xml", "/atom.xml", "/index.xml"]
 
 /// `<link rel="alternate" type="…rss/atom/feed+json" href>` on a page, hrefs resolved against `base`.
 pub fn feed_links(html: &str, base: &str) -> Vec<Candidate> {
-    let Ok(base) = url::Url::parse(base) else { return Vec::new() };
+    let Ok(base) = url::Url::parse(base) else {
+        return Vec::new();
+    };
     let doc = dom_query::Document::from(html);
     let mut out: Vec<Candidate> = Vec::new();
     for link in doc.select("link[href]").iter() {
@@ -150,7 +152,9 @@ pub fn feed_links(html: &str, base: &str) -> Vec<Candidate> {
         if !attr("rel").split_ascii_whitespace().any(|r| r == "alternate") || !FEED_TYPES.contains(&attr("type").as_str()) {
             continue;
         }
-        let Some(url) = link.attr("href").and_then(|h| base.join(h.trim()).ok()) else { continue };
+        let Some(url) = link.attr("href").and_then(|h| base.join(h.trim()).ok()) else {
+            continue;
+        };
         if matches!(url.scheme(), "http" | "https") && !out.iter().any(|c| c.url == url.as_str()) {
             let title = link.attr("title").map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
             out.push(Candidate { url: url.to_string(), title });
@@ -173,7 +177,9 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
     }
     let base = url::Url::parse(&got.url).map_err(err)?;
     for path in COMMON_PATHS {
-        let Ok(u) = base.join(path) else { continue };
+        let Ok(u) = base.join(path) else {
+            continue;
+        };
         if let Ok(Some(g)) = fetch(client, u.as_str(), None, None).await
             && let Ok(p) = parse(&g.body, u.as_str())
         {
@@ -293,7 +299,9 @@ pub async fn refresh(store: &Store, client: &HttpClient, id: i64) -> Result<usiz
         .query_row("SELECT url, etag, last_modified FROM feeds WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
         .optional()
         .map_err(err)?;
-    let Some((url, etag, modified)) = row else { return Err("feed no longer exists".into()) };
+    let Some((url, etag, modified)) = row else {
+        return Err("feed no longer exists".into());
+    };
     let result = match fetch(client, &url, etag.as_deref(), modified.as_deref()).await {
         Ok(None) => mark_fetched(store, id, None, None, None).map(|_| 0),
         Ok(Some(g)) => parse(&g.body, &url).and_then(|p| {
@@ -347,14 +355,20 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
         let c = store.conn();
         let mut seen = c.prepare("SELECT 1 FROM feed_items WHERE feed_id = ?1 AND normalized_url = ?2").map_err(err)?;
         for e in entries {
-            let Ok(norm) = normalize(&e.url) else { continue };
+            let Ok(norm) = normalize(&e.url) else {
+                continue;
+            };
             let norm = norm.to_string();
             if !unseen.iter().any(|(_, n)| *n == norm) && !seen.exists(params![feed_id, norm]).map_err(err)? {
                 unseen.push((e, norm));
             }
         }
     }
-    let take = if first { FIRST_IMPORT } else { unseen.len() };
+    let take = if first {
+        FIRST_IMPORT
+    } else {
+        unseen.len()
+    };
     let rules = feed_filter::Rules::load(store, feed_id)?;
     // (status, reason, input) per judged entry; entries past the first-fetch cap are only seen.
     let mut judged: std::collections::HashMap<&str, (&str, Option<String>, String)> = std::collections::HashMap::new();
@@ -400,7 +414,9 @@ pub fn import(store: &Store, feed_id: i64, entries: &[Entry]) -> Result<usize, S
             .map_err(err)?;
         let mut done = std::collections::HashSet::new();
         for e in entries {
-            let Ok(norm) = normalize(&e.url) else { continue };
+            let Ok(norm) = normalize(&e.url) else {
+                continue;
+            };
             let norm = norm.to_string();
             if !done.insert(norm.clone()) {
                 continue;
@@ -592,7 +608,11 @@ mod tests {
     /// Medium-style feed: full text in `content:encoded`, links tagged `?source=rss…`.
     fn blocked_feed(with_content: bool) -> String {
         let para = "<p>Snapshot isolation prevents dirty reads but still permits write skew, which is why serializable snapshot isolation exists at all. </p>";
-        let full = if with_content { format!("<content:encoded><![CDATA[<h3>Why</h3>{}]]></content:encoded>", para.repeat(6)) } else { String::new() };
+        let full = if with_content {
+            format!("<content:encoded><![CDATA[<h3>Why</h3>{}]]></content:encoded>", para.repeat(6))
+        } else {
+            String::new()
+        };
         format!(
             r#"<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel><title>Tech</title>
             <item><title><![CDATA[Evolving the ads event pipeline for live — Part II]]></title><link>https://blog.dev/full-1a2b?source=rss----abc---4</link>

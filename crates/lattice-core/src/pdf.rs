@@ -168,7 +168,9 @@ impl OutputDev for Glyphs {
         // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose.
         let upright = trm.m11 > 0. && trm.m22 > 0. && trm.m12.abs() < 1e-3 * trm.m11 && trm.m21.abs() < 1e-3 * trm.m22;
         let size = font_size.abs() * (trm.m11 * trm.m22).sqrt();
-        let Some(page) = self.pages.last_mut().filter(|_| upright && size > 0.5) else { return Ok(()) };
+        let Some(page) = self.pages.last_mut().filter(|_| upright && size > 0.5) else {
+            return Ok(());
+        };
         let x = trm.m31 - self.origin.0;
         page.glyphs.push(Glyph { x, y: page.height - (trm.m32 - self.origin.1), end: x + width * size, size, text: text.to_string() });
         Ok(())
@@ -386,8 +388,12 @@ struct Front {
 /// addresses) are dropped from the body; the first of them is taken as the author line.
 fn take_front_matter(lines: &mut Vec<Line>, body: f64, half: f64) -> Front {
     let top = |l: &Line| l.page == 0 && l.y < half;
-    let Some(max) = lines.iter().filter(|l| top(l)).map(|l| l.size).reduce(f64::max).filter(|&m| m >= body * 1.3) else { return Front::default() };
-    let Some(start) = lines.iter().position(|l| top(l) && l.size >= max - 0.5) else { return Front::default() };
+    let Some(max) = lines.iter().filter(|l| top(l)).map(|l| l.size).reduce(f64::max).filter(|&m| m >= body * 1.3) else {
+        return Front::default();
+    };
+    let Some(start) = lines.iter().position(|l| top(l) && l.size >= max - 0.5) else {
+        return Front::default();
+    };
     let end = start + lines[start..].iter().take_while(|l| l.page == 0 && l.size >= max - 0.5).count();
     let mut title = String::new();
     for l in &lines[start..end] {
@@ -468,7 +474,14 @@ fn to_blocks(lines: &[Line], body: f64) -> Vec<Block> {
             d.lines.push(l);
             drafts.push(d);
         } else {
-            drafts.push(Draft { kind: start.unwrap_or(if refs.is_some() { Kind::Reference } else { Kind::Paragraph }), lines: vec![l] });
+            drafts.push(Draft {
+                kind: start.unwrap_or(if refs.is_some() {
+                    Kind::Reference
+                } else {
+                    Kind::Paragraph
+                }),
+                lines: vec![l],
+            });
         }
     }
     drop_figure_labels(&mut drafts);
@@ -647,7 +660,11 @@ fn section_number(tok: &str) -> Option<usize> {
 
 fn is_references(heading: &str) -> bool {
     let (first, rest) = heading.split_once(' ').unwrap_or(("", heading));
-    let name = if section_number(first).is_some() { rest } else { heading };
+    let name = if section_number(first).is_some() {
+        rest
+    } else {
+        heading
+    };
     matches!(name.trim_end_matches(['.', ':']).to_lowercase().as_str(), "references" | "bibliography" | "literature cited" | "works cited")
 }
 
@@ -667,7 +684,11 @@ fn ref_style(after: &[Line], body: f64) -> RefStyle {
         return RefStyle::Numbered;
     }
     let indented = section.iter().filter(|l| l.x0 > l.left + 0.8 * l.size).count();
-    if indented * 5 >= section.len() && indented > 0 { RefStyle::Hanging } else { RefStyle::Spaced }
+    if indented * 5 >= section.len() && indented > 0 {
+        RefStyle::Hanging
+    } else {
+        RefStyle::Spaced
+    }
 }
 
 fn ref_number(t: &str) -> bool {
@@ -680,7 +701,9 @@ fn ref_number(t: &str) -> bool {
 
 /// "Figure 3:", "Fig. 2.", "Table 1:" open a caption.
 fn is_caption(t: &str) -> bool {
-    let Some(rest) = ["Figure", "Fig.", "Table", "Algorithm"].iter().find_map(|p| t.strip_prefix(p)) else { return false };
+    let Some(rest) = ["Figure", "Fig.", "Table", "Algorithm"].iter().find_map(|p| t.strip_prefix(p)) else {
+        return false;
+    };
     let rest = rest.trim_start();
     let n = rest.chars().take_while(|c| c.is_ascii_digit() || matches!(c, 'I' | 'V' | 'X')).count();
     n > 0 && rest[n..].starts_with(['.', ':'])
@@ -703,7 +726,9 @@ fn info(doc: &Document, key: &[u8]) -> Option<String> {
         Object::Dictionary(d) => d,
         _ => return None,
     };
-    let Object::String(bytes, _) = dict.get(key).ok()? else { return None };
+    let Object::String(bytes, _) = dict.get(key).ok()? else {
+        return None;
+    };
     let text = match bytes.strip_prefix(&[0xfe, 0xff]) {
         Some(be) => String::from_utf16_lossy(&be.as_chunks::<2>().0.iter().map(|&c| u16::from_be_bytes(c)).collect::<Vec<_>>()),
         // PDFDocEncoding matches Latin-1 for everything a title uses.

@@ -139,7 +139,11 @@ fn parse_scope(store: &Store, scope: Option<&str>) -> Result<Scope, String> {
         Some(("important", min)) if matches!(min.parse::<i64>(), Ok(1..=5)) => ArticleFilter::Important { min: min.parse().map_err(err)? },
         Some(("article", ids)) => {
             if let Ok(mut ids) = ids.split(',').map(str::parse).collect::<Result<Vec<i64>, _>>() {
-                return Ok(if ids.len() == 1 { Scope::Article { id: ids.remove(0) } } else { Scope::Articles { ids } });
+                return Ok(if ids.len() == 1 {
+                    Scope::Article { id: ids.remove(0) }
+                } else {
+                    Scope::Articles { ids }
+                });
             }
             return Err(format!("unknown scope {:?}: article takes ids separated by commas", scope.unwrap_or_default()));
         }
@@ -159,7 +163,11 @@ fn article(store: &Store, id: i64) -> Result<ArticleRow, String> {
 
 fn row_line(a: &ArticleRow) -> String {
     let title = a.title.as_deref().unwrap_or(&a.original_url);
-    let mark = if a.read_status == "read" { " " } else { "*" };
+    let mark = if a.read_status == "read" {
+        " "
+    } else {
+        "*"
+    };
     format!("{mark} {:>6}  {title}  <{}>", a.id, a.original_url)
 }
 
@@ -204,7 +212,11 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
         Op::Search { query, scope, limit } => {
             let ids = store.scope_articles(&parse_scope(store, scope.as_deref())?).map_err(err)?;
             let r = search::search(store, &ctx.providers.embedder, &query, ids.as_deref(), &translate::target(store)?, limit.max(1)).await?;
-            let mode = if r.semantic_error.is_some() { "full_text" } else { "hybrid" };
+            let mode = if r.semantic_error.is_some() {
+                "full_text"
+            } else {
+                "hybrid"
+            };
             let mut text = r.semantic_error.as_ref().map(|e| format!("(full text only: {e})\n\n")).unwrap_or_default();
             text += &lines(&r.hits, |h| {
                 let d = &h.detail;
@@ -243,7 +255,11 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                     json["translation"] = json!(joined(&v.blocks, translated));
                 }
             }
-            let pick = if translation { translated } else { source };
+            let pick = if translation {
+                translated
+            } else {
+                source
+            };
             text += &if blocks {
                 format!("\n{}\n", lines(&v.blocks, |b| format!("[block {}] {}: {}", b.id, b.block.kind.as_str(), pick(b))))
             } else {
@@ -312,7 +328,15 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             let id = store.find_article_by_url(norm.as_str()).map_err(err)?.ok_or("the article was not saved")?;
             let ran = if run {
                 // Embedding runs here only if the app has already downloaded the model.
-                let types: Vec<&str> = NET_JOBS.iter().chain(if ctx.providers.embedder.is_downloaded() { LOCAL_JOBS } else { &[] }).copied().collect();
+                let types: Vec<&str> = NET_JOBS
+                    .iter()
+                    .chain(if ctx.providers.embedder.is_downloaded() {
+                        LOCAL_JOBS
+                    } else {
+                        &[]
+                    })
+                    .copied()
+                    .collect();
                 jobs::run_article(store, &ctx.providers, &types, id).await?
             } else {
                 0

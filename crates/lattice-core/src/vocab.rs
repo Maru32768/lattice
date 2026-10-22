@@ -138,7 +138,11 @@ pub fn enqueue(store: &Store) -> Result<(), String> {
 /// At startup: a capture that raced the job's last look is asked about now.
 pub fn enqueue_missing(store: &Store) -> Result<(), String> {
     let any: bool = store.conn().query_row("SELECT EXISTS (SELECT 1 FROM vocab_entries WHERE state = 'pending')", [], |r| r.get(0)).map_err(err)?;
-    if any { enqueue(store) } else { Ok(()) }
+    if any {
+        enqueue(store)
+    } else {
+        Ok(())
+    }
 }
 
 // ---- enrichment ---------------------------------------------------------------------------
@@ -204,7 +208,9 @@ pub fn parse(v: &Value, sentences: &[&str]) -> Vec<Option<Sense>> {
     let mut out = vec![None; sentences.len()];
     for w in v["words"].as_array().into_iter().flatten() {
         let text = |k: &str| collapse(w[k].as_str().unwrap_or_default());
-        let Some(i) = w["n"].as_u64().and_then(|n| (n as usize).checked_sub(1)).filter(|&i| i < sentences.len()) else { continue };
+        let Some(i) = w["n"].as_u64().and_then(|n| (n as usize).checked_sub(1)).filter(|&i| i < sentences.len()) else {
+            continue;
+        };
         let sense = Sense {
             headword: text("lemma"),
             pos: text("pos"),
@@ -517,9 +523,17 @@ pub fn to_csv(entries: &[Entry]) -> String {
     let mut out = String::from("#separator:comma\n#html:true\n#tags column:3\n");
     for e in entries.iter().filter(|e| !e.sense.meaning.is_empty()) {
         let s = &e.sense;
-        let front = if s.ipa.is_empty() { html(&s.headword) } else { format!("{}<br>/{}/", html(&s.headword), html(&s.ipa)) };
+        let front = if s.ipa.is_empty() {
+            html(&s.headword)
+        } else {
+            format!("{}<br>/{}/", html(&s.headword), html(&s.ipa))
+        };
         // A meaning typed by hand, without a definition, is the answer itself.
-        let (answer, gloss) = if s.definition.is_empty() { (&s.meaning, None) } else { (&s.definition, Some(html(&s.meaning))) };
+        let (answer, gloss) = if s.definition.is_empty() {
+            (&s.meaning, None)
+        } else {
+            (&s.definition, Some(html(&s.meaning)))
+        };
         let mut back = vec![html(answer)];
         if !s.example.is_empty() {
             back.push(format!("<i>{}</i>", html(&s.example)));

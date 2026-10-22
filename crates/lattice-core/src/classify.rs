@@ -46,7 +46,11 @@ pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
         .optional()
         .map_err(err)?
         .unwrap_or(false);
-    if wanted && auto_enabled(store)? { enqueue(store, article_id) } else { Ok(()) }
+    if wanted && auto_enabled(store)? {
+        enqueue(store, article_id)
+    } else {
+        Ok(())
+    }
 }
 
 /// Manual "分類": unpins a user-chosen genre and difficulty so the result may replace them.
@@ -126,7 +130,11 @@ pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
 pub fn delete_genre(store: &Store, name: &str) -> Result<(), String> {
     let n =
         store.conn().execute("DELETE FROM genres WHERE name = ?1 AND NOT EXISTS (SELECT 1 FROM articles WHERE genre_id = genres.id)", [name]).map_err(err)?;
-    if n == 0 { Err(msg!("classify.notDeletable", name = name)) } else { Ok(()) }
+    if n == 0 {
+        Err(msg!("classify.notDeletable", name = name))
+    } else {
+        Ok(())
+    }
 }
 
 /// The user's choice, pinned against auto runs. Empty clears the genre and unpins it.
@@ -157,7 +165,11 @@ pub fn set_difficulty(store: &Store, article_id: i64, level: Option<i64>) -> Res
             params![article_id, level],
         )
         .map_err(err)?;
-    if level.is_none() { enqueue_if_auto(store, article_id) } else { Ok(()) }
+    if level.is_none() {
+        enqueue_if_auto(store, article_id)
+    } else {
+        Ok(())
+    }
 }
 
 fn clean(s: &str) -> String {
@@ -257,7 +269,9 @@ async fn classify<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> R
     let input = json!({"genres": genres, "articles": items.iter().map(|(_, v)| v).collect::<Vec<_>>()});
     let c = provider.complete_json(SYSTEM, &input.to_string(), &schema()).await.map_err(err)?;
     for it in c.value["items"].as_array().into_iter().flatten() {
-        let Some(&(id, _)) = it["i"].as_u64().and_then(|i| items.get(i as usize)) else { continue };
+        let Some(&(id, _)) = it["i"].as_u64().and_then(|i| items.get(i as usize)) else {
+            continue;
+        };
         let genre = clean(it["genre"].as_str().unwrap_or_default());
         if genre.is_empty() || out.contains_key(&id) {
             continue;

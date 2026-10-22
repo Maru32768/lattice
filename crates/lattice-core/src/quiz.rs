@@ -103,7 +103,11 @@ pub fn input_text(title: &str, blocks: &[(i64, String, String)]) -> (String, Vec
     let mut ids = Vec::new();
     for (id, kind, text) in blocks {
         let n = ids.len() + 1;
-        let line = if kind == "heading" { format!("\n[{n}] ## {text}\n") } else { format!("[{n}] {text}\n") };
+        let line = if kind == "heading" {
+            format!("\n[{n}] ## {text}\n")
+        } else {
+            format!("[{n}] {text}\n")
+        };
         if out.chars().count() + line.chars().count() > MAX_INPUT_CHARS {
             out.push_str("\n[…truncated]\n");
             break;

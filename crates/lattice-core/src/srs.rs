@@ -63,13 +63,23 @@ pub struct Limits {
 
 /// Day-scale intervals are whole days, as in Anki; shorter ones whole minutes.
 fn round(minutes: f64) -> i64 {
-    if minutes >= DAY as f64 { (minutes / DAY as f64).round() as i64 * DAY } else { minutes.round() as i64 }
+    if minutes >= DAY as f64 {
+        (minutes / DAY as f64).round() as i64 * DAY
+    } else {
+        minutes.round() as i64
+    }
 }
 
 /// The card after each grade, indexed by `Grade` (again, hard, good, easy). Hard < Good < Easy for cards in review.
 pub fn schedule(card: Card, l: Limits) -> [Card; 4] {
     let review = card.reps > 0;
-    let ease = |delta: i64| if review { (card.ease + delta).max(MIN_EASE) } else { card.ease };
+    let ease = |delta: i64| {
+        if review {
+            (card.ease + delta).max(MIN_EASE)
+        } else {
+            card.ease
+        }
+    };
     let clamp = |m: i64| m.clamp(l.min, l.max);
     let again = Card { ease: ease(-200), interval: clamp(l.min), reps: 0, lapses: card.lapses + i64::from(review) };
     let passed = |interval: i64, delta: i64, reps: i64| Card { ease: ease(delta), interval: clamp(interval), reps, lapses: card.lapses };
@@ -78,7 +88,12 @@ pub fn schedule(card: Card, l: Limits) -> [Card; 4] {
         return [again, passed(l.min, 0, 0), passed(l.min, 0, 1), passed(EASY_FIRST.max(l.min), 0, 1)];
     }
     let hard = round(card.interval as f64 * HARD_FACTOR);
-    let good = if card.reps == 1 { SECOND_INTERVAL } else { round((card.interval * card.ease) as f64 / 1000.0) }.max(hard + DAY);
+    let good = if card.reps == 1 {
+        SECOND_INTERVAL
+    } else {
+        round((card.interval * card.ease) as f64 / 1000.0)
+    }
+    .max(hard + DAY);
     let easy = round(good as f64 * EASY_BONUS).max(good + DAY);
     let reps = card.reps + 1;
     [again, passed(hard, -150, reps), passed(good, 0, reps), passed(easy, 150, reps)]

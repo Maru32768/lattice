@@ -128,7 +128,9 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
     };
     let mut n = 0;
     for id in ids {
-        let Some(article) = store.article_row(id).map_err(err)? else { continue }; // deleted meanwhile
+        let Some(article) = store.article_row(id).map_err(err)? else {
+            continue;
+        }; // deleted meanwhile
         let (blocks, summaries, quizzes): (String, String, String) = {
             let c = store.conn();
             let q = |sql: &str| c.query_row(sql, [id], |r| r.get::<_, String>(0)).map_err(err);

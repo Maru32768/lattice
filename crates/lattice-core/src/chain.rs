@@ -93,7 +93,9 @@ pub fn save_config(store: &Store, entries: Vec<ChainEntry>) -> Result<Vec<ChainE
 
 /// API key from settings, else the environment. Returns the key and where it came from.
 pub fn api_key(store: &Store, kind: ProviderKind) -> Result<Option<(String, &'static str)>, String> {
-    let Some((setting, env)) = kind.key_names() else { return Ok(None) };
+    let Some((setting, env)) = kind.key_names() else {
+        return Ok(None);
+    };
     if let Some(k) = store.setting(&setting).map_err(|e| e.to_string())?.filter(|k| !k.is_empty()) {
         return Ok(Some((k, "stored")));
     }

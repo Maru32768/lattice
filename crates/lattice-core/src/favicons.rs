@@ -39,7 +39,11 @@ pub fn get(store: &Store, domain: &str) -> Result<(Option<String>, bool), String
         )
         .optional()
         .map_err(err)?;
-    let queued = if row.as_ref().is_none_or(|r| r.2) { enqueue(store, domain)? } else { false };
+    let queued = if row.as_ref().is_none_or(|r| r.2) {
+        enqueue(store, domain)?
+    } else {
+        false
+    };
     let icon = row.and_then(|(mime, bytes, _)| Some(format!("data:{};base64,{}", mime?, base64(&bytes?))));
     Ok((icon, queued))
 }
@@ -62,7 +66,9 @@ fn enqueue(store: &Store, domain: &str) -> Result<bool, String> {
 /// `<link rel~=icon href>` targets of a page, in document order: http(s) only, no SVG (it can
 /// carry script, as for article images).
 fn icon_links(html: &str, base: &str) -> Vec<String> {
-    let Ok(base) = Url::parse(base) else { return Vec::new() };
+    let Ok(base) = Url::parse(base) else {
+        return Vec::new();
+    };
     let doc = dom_query::Document::from(html);
     let mut out: Vec<String> = Vec::new();
     for link in doc.select("link[rel][href]").iter() {
@@ -70,7 +76,9 @@ fn icon_links(html: &str, base: &str) -> Vec<String> {
         if !lower("rel").split_ascii_whitespace().any(|r| r == "icon") || lower("type").contains("svg") {
             continue;
         }
-        let Some(url) = link.attr("href").and_then(|h| base.join(h.trim()).ok()) else { continue };
+        let Some(url) = link.attr("href").and_then(|h| base.join(h.trim()).ok()) else {
+            continue;
+        };
         let svg = url.path().to_ascii_lowercase().ends_with(".svg");
         if matches!(url.scheme(), "http" | "https") && !svg && !out.contains(&url.to_string()) {
             out.push(url.to_string());
@@ -86,7 +94,9 @@ fn snapshot(store: &Store, domain: &str) -> Result<Option<(String, String)>, Str
         .query_row("SELECT id FROM articles WHERE domain = ?1 AND fetch_status = 'ok' ORDER BY id DESC LIMIT 1", [domain], |r| r.get(0))
         .optional()
         .map_err(err)?;
-    let Some(id) = id else { return Ok(None) };
+    let Some(id) = id else {
+        return Ok(None);
+    };
     Ok(store.latest_snapshot(id).map_err(err)?.map(|s| {
         let html = s.html();
         (s.final_url, html)

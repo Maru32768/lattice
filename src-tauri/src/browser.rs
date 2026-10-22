@@ -130,7 +130,11 @@ impl Snapshots {
     /// The reply channel, if `nonce` is the outstanding request of `label`.
     fn take(&self, label: &str, nonce: &str) -> Option<SnapshotReply> {
         let mut pending = lock(&self.0);
-        if pending.get(label).is_some_and(|(n, _)| n == nonce) { pending.remove(label).map(|(_, tx)| tx) } else { None }
+        if pending.get(label).is_some_and(|(n, _)| n == nonce) {
+            pending.remove(label).map(|(_, tx)| tx)
+        } else {
+            None
+        }
     }
 }
 
@@ -195,13 +199,21 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
     let (wanted, loading, bounds) = browser.with_tab(wv.label(), |t| {
         f(&mut t.visibility);
         let v = &t.visibility;
-        t.parked = if v.wanted { None } else { t.parked.or_else(|| Some(Instant::now())) };
+        t.parked = if v.wanted {
+            None
+        } else {
+            t.parked.or_else(|| Some(Instant::now()))
+        };
         (v.wanted, v.loading, v.bounds)
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
     match bounds.filter(|_| wanted) {
         Some(b) => {
-            let (x, y) = if loading { PARKED } else { (b.x, b.y) };
+            let (x, y) = if loading {
+                PARKED
+            } else {
+                (b.x, b.y)
+            };
             // One message: set_position then set_size each read the webview's current rect and
             // write it back whole, so the second could put back a position the first had not applied yet.
             wv.set_bounds(Rect { position: LogicalPosition::new(x, y).into(), size: LogicalSize::new(b.width.max(1.0), b.height.max(1.0)).into() })?;
@@ -247,7 +259,9 @@ fn emit_tab<T: Serialize + Clone>(wv: &Webview, event: &str, body: T) {
 }
 
 fn emit_page(wv: &Webview, browser: &Browser, url: String) {
-    let Some(tab) = tab_of(wv.label()).map(str::to_string) else { return };
+    let Some(tab) = tab_of(wv.label()).map(str::to_string) else {
+        return;
+    };
     let (loading, reported) = browser.with_tab(wv.label(), |t| (t.visibility.loading, t.history));
     let (app, host) = (wv.app_handle().clone(), wv.window().label().to_string());
     let send = move |(can_go_back, can_go_forward): (bool, bool)| {
@@ -481,7 +495,9 @@ async fn capture_png(wv: &Webview) -> Result<Vec<u8>, String> {
     // SAFETY: on the main thread with wry's live controller; the stream and handler are owned
     // COM references that WebView2 keeps until the capture completes.
     wv.with_webview(move |pw| unsafe {
-        let Some(stream) = SHCreateMemStream(None) else { return };
+        let Some(stream) = SHCreateMemStream(None) else {
+            return;
+        };
         let out = stream.clone();
         // Fires later on this (main) thread; if CapturePreview fails, dropping it closes the channel.
         let done = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
@@ -573,7 +589,9 @@ pub fn overlay_history(browser: State<'_, Browser>, webview: Webview, can_go_bac
 
 #[tauri::command]
 pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(), String> {
-    let Some(wv) = app.get_webview(&label(&tab)?) else { return Ok(()) };
+    let Some(wv) = app.get_webview(&label(&tab)?) else {
+        return Ok(());
+    };
     match action.as_str() {
         "back" => wv.eval("history.back()"),
         "forward" => wv.eval("history.forward()"),

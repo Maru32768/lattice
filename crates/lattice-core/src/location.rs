@@ -59,11 +59,16 @@ pub fn resolve(portable: bool, exe_dir: &Path, default_dir: &Path, bootstrap: Op
     if portable {
         return Location { kind: Kind::Portable, dir: exe_dir.join("data"), warning: None };
     }
-    let Some(text) = bootstrap else { return default(None) };
-    let parsed = text
-        .map_err(|e| e.to_string())
-        .and_then(|t| serde_json::from_str::<Bootstrap>(&t).map_err(|e| e.to_string()))
-        .and_then(|b| if b.data_dir.is_absolute() { Ok(b.data_dir) } else { Err(msg!("location.notAbsolute")) });
+    let Some(text) = bootstrap else {
+        return default(None);
+    };
+    let parsed = text.map_err(|e| e.to_string()).and_then(|t| serde_json::from_str::<Bootstrap>(&t).map_err(|e| e.to_string())).and_then(|b| {
+        if b.data_dir.is_absolute() {
+            Ok(b.data_dir)
+        } else {
+            Err(msg!("location.notAbsolute"))
+        }
+    });
     match parsed {
         Ok(dir) => Location { kind: Kind::Custom, dir, warning: None },
         Err(e) => default(Some(msg!("location.unreadable", path = default_dir.join(BOOTSTRAP_FILE).display().to_string(), error = e))),

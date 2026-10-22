@@ -72,10 +72,14 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let Some((url, title, content, current)) = row.filter(|r| r.3 < THIN_TEXT_CHARS) else { return Ok(false) };
+    let Some((url, title, content, current)) = row.filter(|r| r.3 < THIN_TEXT_CHARS) else {
+        return Ok(false);
+    };
     let content = crate::store::inflate("deflate", &content).map_err(|e| e.to_string())?;
     let html = format!("<html><head><title>{}</title></head><body><article>{content}</article></body></html>", escape(title.as_deref().unwrap_or("")));
-    let Ok(ir) = extract(&html, &url) else { return Ok(false) };
+    let Ok(ir) = extract(&html, &url) else {
+        return Ok(false);
+    };
     if ir.blocks.iter().map(|b| b.text.chars().count() as i64).sum::<i64>() <= current {
         return Ok(false);
     }

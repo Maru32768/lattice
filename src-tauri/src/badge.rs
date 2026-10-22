@@ -84,7 +84,9 @@ fn draw(text: &str, size: u32) -> Vec<u8> {
 }
 
 fn show(handle: &AppHandle, count: i64) -> Result<(), String> {
-    let Some(window) = handle.get_window("main") else { return Ok(()) };
+    let Some(window) = handle.get_window("main") else {
+        return Ok(());
+    };
     #[cfg(windows)]
     {
         // Overlay icons are small-icon sized: 16 px at 100 %.
@@ -103,7 +105,14 @@ fn show(handle: &AppHandle, count: i64) -> Result<(), String> {
 #[tauri::command(async)]
 pub fn set_unread_badge(app: State<'_, App>, badge: State<'_, Badge>, handle: AppHandle, count: i64) -> Result<(), String> {
     *badge.0.lock().unwrap_or_else(|e| e.into_inner()) = count;
-    show(&handle, if enabled(&app)? { count } else { 0 })
+    show(
+        &handle,
+        if enabled(&app)? {
+            count
+        } else {
+            0
+        },
+    )
 }
 
 #[tauri::command(async)]
@@ -115,7 +124,14 @@ pub fn get_taskbar_badge(app: State<'_, App>) -> Result<bool, String> {
 pub fn set_taskbar_badge(app: State<'_, App>, badge: State<'_, Badge>, handle: AppHandle, on: bool) -> Result<(), String> {
     app.store.set_setting(SETTING, (!on).then_some("off")).map_err(err)?;
     let count = *badge.0.lock().unwrap_or_else(|e| e.into_inner());
-    show(&handle, if on { count } else { 0 })
+    show(
+        &handle,
+        if on {
+            count
+        } else {
+            0
+        },
+    )
 }
 
 #[cfg(test)]

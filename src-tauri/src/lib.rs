@@ -113,7 +113,11 @@ fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
 
 /// A native dialog's title in the display language.
 fn ui_text(app: &App, ja: &'static str, en: &'static str) -> &'static str {
-    if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") { en } else { ja }
+    if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") {
+        en
+    } else {
+        ja
+    }
 }
 
 /// Index every saved article; it is local and free, unlike translation.
@@ -180,7 +184,9 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
     dialog.pick_file(move |p| {
         let _ = tx.send(p);
     });
-    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let Some(picked) = rx.await.map_err(err)? else {
+        return Ok(None);
+    };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > markdown::MAX_FILE_BYTES {
         return Err(msg!("file.tooLarge", max = markdown::MAX_FILE_BYTES / 1024 / 1024));
@@ -203,7 +209,9 @@ async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Resul
     dialog.pick_file(move |p| {
         let _ = tx.send(p);
     });
-    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let Some(picked) = rx.await.map_err(err)? else {
+        return Ok(None);
+    };
     let path = picked.into_path().map_err(err)?;
     if std::fs::metadata(&path).map_err(err)?.len() > pdf::MAX_BYTES as u64 {
         return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
@@ -586,7 +594,9 @@ fn delete_article(app: State<'_, App>, id: i64) -> Result<bool, String> {
 
 #[tauri::command(async)]
 fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow>, String> {
-    let Ok(norm) = normalize(&url) else { return Ok(None) };
+    let Ok(norm) = normalize(&url) else {
+        return Ok(None);
+    };
     match app.store.find_article_by_url(norm.as_str()).map_err(err)? {
         Some(id) => app.store.article_row(id).map_err(err),
         None => Ok(None),
@@ -878,7 +888,9 @@ async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: ta
     dialog.pick_folder(move |p| {
         let _ = tx.send(p);
     });
-    let Some(picked) = rx.await.map_err(err)? else { return Ok(None) };
+    let Some(picked) = rx.await.map_err(err)? else {
+        return Ok(None);
+    };
     let path = picked.into_path().map_err(err)?;
     let canonical = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     location::check_target(&canonical(&app.data_dir), &canonical(&path))?;

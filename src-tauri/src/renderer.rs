@@ -45,7 +45,9 @@ pub async fn run(app: AppHandle, store: Arc<Store>, embed_model: String, wake: A
 }
 
 async fn run_next(app: &AppHandle, store: &Store, embed_model: &str, on_change: &impl Fn(i64)) -> Result<bool, String> {
-    let Some(job) = store.claim_next_job(render::JOBS).map_err(err)? else { return Ok(false) };
+    let Some(job) = store.claim_next_job(render::JOBS).map_err(err)? else {
+        return Ok(false);
+    };
     let id = job.article_id.unwrap_or_default();
     on_change(id);
     // Render failures are recorded on the article; only storage errors fail (and retry) the job.

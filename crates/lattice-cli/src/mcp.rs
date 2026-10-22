@@ -84,7 +84,11 @@ fn result_text(body: &str) -> String {
 }
 
 fn call(ctx: &Ctx, rt: &Runtime, params: &Value) -> Value {
-    let arguments = if params["arguments"].is_object() { params["arguments"].clone() } else { json!({}) };
+    let arguments = if params["arguments"].is_object() {
+        params["arguments"].clone()
+    } else {
+        json!({})
+    };
     let op = serde_json::from_value::<Op>(json!({ "name": params["name"], "arguments": arguments })).map_err(|e| e.to_string());
     // Errors can quote untrusted content too (a page's text in a provider error, a feed title).
     let (text, is_error) = match op.and_then(|op| rt.block_on(ops::run(ctx, op))) {

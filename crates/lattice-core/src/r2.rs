@@ -281,7 +281,11 @@ fn unix_now() -> u64 {
 fn device_name() -> String {
     let raw = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
     let name: String = raw.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').take(63).collect();
-    if name.is_empty() { "device".into() } else { name.to_ascii_lowercase() }
+    if name.is_empty() {
+        "device".into()
+    } else {
+        name.to_ascii_lowercase()
+    }
 }
 
 fn device_prefix(device: &str) -> String {
@@ -372,7 +376,11 @@ fn amz_date(secs: u64) -> String {
     let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let m = if mp < 10 {
+        mp + 3
+    } else {
+        mp - 9
+    };
     let y = yoe + era * 400 + i64::from(m <= 2);
     format!("{y:04}{m:02}{d:02}T{:02}{:02}{:02}Z", rem / 3600, rem % 3600 / 60, rem % 60)
 }
@@ -401,7 +409,11 @@ async fn upload(http: &reqwest::Client, c: &Creds, key: &str, path: &Path) -> Re
         let done = send(http, c, "POST", key, &[("uploadId", &upload_id)], xml.into_bytes()).await?;
         // S3 may report a failed completion with 200 and an <Error> body.
         let body = done.text().await.map_err(|e| e.to_string())?;
-        if body.contains("<Error>") { Err(format!("CompleteMultipartUpload failed: {}", truncate(&body))) } else { Ok(()) }
+        if body.contains("<Error>") {
+            Err(format!("CompleteMultipartUpload failed: {}", truncate(&body)))
+        } else {
+            Ok(())
+        }
     }
     .await;
     if parts.is_err() {
@@ -454,7 +466,11 @@ struct Signed {
 fn build(c: &Creds, method: &str, key: &str, query: &[(&str, &str)], payload_hash: &str, now: u64) -> Signed {
     let host = format!("{}.r2.cloudflarestorage.com", c.account_id);
     let bucket = uri_encode(&c.bucket, false);
-    let path = if key.is_empty() { format!("/{bucket}") } else { format!("/{bucket}/{}", uri_encode(key, true)) };
+    let path = if key.is_empty() {
+        format!("/{bucket}")
+    } else {
+        format!("/{bucket}/{}", uri_encode(key, true))
+    };
     let query = canonical_query(query);
     let date = amz_date(now);
     let auth = authorization(
@@ -468,7 +484,11 @@ fn build(c: &Creds, method: &str, key: &str, query: &[(&str, &str)], payload_has
         &c.access_key_id,
         &c.secret,
     );
-    let url = if query.is_empty() { format!("https://{host}{path}") } else { format!("https://{host}{path}?{query}") };
+    let url = if query.is_empty() {
+        format!("https://{host}{path}")
+    } else {
+        format!("https://{host}{path}?{query}")
+    };
     Signed { url, headers: vec![("x-amz-date", date), ("x-amz-content-sha256", payload_hash.to_string()), ("authorization", auth)] }
 }
 

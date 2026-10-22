@@ -1,3 +1,6 @@
 # Matches the long lines the code base was written with, so formatting moved as little as possible.
 max_width = 160
 use_small_heuristics = "Max"
+# A block goes on lines of its own even when it fits on one (`if a { b } else { c }`, `let … else { return };`).
+single_line_if_else_max_width = 0
+single_line_let_else_max_width = 0

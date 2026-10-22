@@ -20,7 +20,11 @@ pub struct LocalBackup {
 }
 
 pub fn check_keep(n: u64) -> Result<(), String> {
-    if (1..=MAX_KEEP).contains(&n) { Ok(()) } else { Err(msg!("backup.keepRange", max = MAX_KEEP)) }
+    if (1..=MAX_KEEP).contains(&n) {
+        Ok(())
+    } else {
+        Err(msg!("backup.keepRange", max = MAX_KEEP))
+    }
 }
 
 pub fn keep_generations(store: &Store) -> Result<u64, String> {

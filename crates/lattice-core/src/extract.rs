@@ -90,7 +90,9 @@ impl Walker {
                 push_text(&mut self.para, &child.text());
                 continue;
             }
-            let Some(name) = child.node_name() else { continue };
+            let Some(name) = child.node_name() else {
+                continue;
+            };
             let name = name.as_ref();
             if INLINE.contains(&name) {
                 self.inline_into_para(&child);
@@ -186,7 +188,9 @@ impl Walker {
     }
 
     fn image(&mut self, img: &NodeRef) {
-        let Some(src) = img.attr("src").and_then(|s| http_url(&self.base, &s)) else { return };
+        let Some(src) = img.attr("src").and_then(|s| http_url(&self.base, &s)) else {
+            return;
+        };
         let alt = collapse(&img.attr("alt").unwrap_or_default()).trim().to_string();
         self.blocks.push(Block { kind: BlockKind::Image, text: alt, inlines: Vec::new(), attrs: BlockAttrs { src: Some(src), ..Default::default() } });
     }
