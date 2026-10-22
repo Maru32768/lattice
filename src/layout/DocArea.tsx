@@ -1,4 +1,4 @@
-import { Fragment, useContext, useEffect, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { MIN_SIZE, activate, close, closePane, dropOn, focusedPane, move, panes, resize, split, tabById, type Dir, type Id, type Layout, type Node, type Pane, type Tab } from "./layout";
@@ -21,9 +21,10 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   const t = useT();
   const [drag, setDrag] = useState<{ at: number; size: number; len: number } | null>(null);
   const row = dir === "row";
+  const onMove = useEffectEvent((d: { at: number; size: number; len: number }, e: MouseEvent) => onSize(d.size + ((row ? e.clientX : e.clientY) - d.at) / d.len));
   useEffect(() => {
     if (!drag) return;
-    const moveM = (e: MouseEvent) => onSize(drag.size + ((row ? e.clientX : e.clientY) - drag.at) / drag.len);
+    const moveM = (e: MouseEvent) => onMove(drag, e);
     const up = () => setDrag(null);
     window.addEventListener("mousemove", moveM);
     window.addEventListener("mouseup", up);
@@ -33,7 +34,6 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
       window.removeEventListener("mouseup", up);
       window.removeEventListener("blur", up);
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- listeners live for one drag, during which dir and onSize do not change
   }, [drag]);
 
   function down(e: React.MouseEvent) {
@@ -84,12 +84,11 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
 }) {
   const t = useT();
   if (n.kind === "split") {
-    let at = index;
+    const firsts = [index];
+    for (const c of n.children) firsts.push(firsts[firsts.length - 1] + panes(c).length);
     return (
       <div className={`split ${n.dir === "row" ? "across" : "down"}`}>
         {n.children.map((c, i) => {
-          const first = at;
-          at += panes(c).length;
           const size = n.sizes[i - 1];
           return (
             <Fragment key={c.id}>
@@ -101,7 +100,7 @@ function NodeView({ n, layout, onLayout, labelOf, renderPane, onNew, windowActio
                   })} />
               )}
               <div className="cell" style={{ flex: `${n.sizes[i]} 1 0px` }}>
-                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={first} title={title} />
+                <NodeView n={c} layout={layout} onLayout={onLayout} labelOf={labelOf} renderPane={renderPane} onNew={onNew} windowAction={windowAction} drop={drop} body={body} dragging={dragging} onDrag={onDrag} onDrop={onDrop} index={firsts[i]} title={title} />
               </div>
             </Fragment>
           );
@@ -184,9 +183,9 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
     else onSend(tab, to.label, { pane: to.pane, index: to.index });
   }
 
-  const tear = () => ownRef.current && onTear(ownRef.current.tab);
-  const handlers = useRef({ finish, dropped, tear });
-  handlers.current = { finish, dropped, tear };
+  const onEnd = useEffectEvent(finish);
+  const onDropped = useEffectEvent(dropped);
+  const onTorn = useEffectEvent(() => ownRef.current && onTear(ownRef.current.tab));
   useEffect(() => {
     const win = getCurrentWindow();
     const subs = [
@@ -194,10 +193,10 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
         setDrop(null);
         setReporting(true);
       }),
-      listen(TAB_DRAG_END, () => handlers.current.finish()),
+      listen(TAB_DRAG_END, () => onEnd()),
       win.listen<Over | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
-      win.listen(TAB_DRAG_TEAR, () => handlers.current.tear()),
-      win.listen<Slot>(TAB_DRAG_DROP, (e) => handlers.current.dropped(e.payload)),
+      win.listen(TAB_DRAG_TEAR, () => onTorn()),
+      win.listen<Slot>(TAB_DRAG_DROP, (e) => onDropped(e.payload)),
     ];
     return () => subs.forEach((s) => void s.then((f) => f()));
   }, []);
@@ -205,6 +204,7 @@ export function DocArea({ layout, onLayout, labelOf, renderPane, onNew, windowAc
   useEffect(() => {
     if (!reporting) return;
     void getCurrentWindow().innerPosition().then((p) => tabDrag.strips(measure(me, p))).catch(() => {});
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- measure reads the strips from the DOM, which follows the layout
   }, [reporting, layout, me]);
 
   // Escape puts the tab back (on Windows the backend sees the key too); it is the drag's, not the app's.

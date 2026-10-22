@@ -4,7 +4,7 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from "@dnd-kit/utilities";
 import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderKind } from "../api";
 import { SetRow } from "../ui/SetRow";
-import { t, useT, type PlainKey, type T } from "../i18n";
+import { translatorFor, useT, type PlainKey, type T } from "../i18n";
 
 const PROVIDERS: { value: ProviderKind; label: string }[] = [
   { value: "claude_cli", label: "Claude CLI" },
@@ -75,7 +75,8 @@ const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false, e
 function toSlots(chain: ChainEntry[]): Slot[] {
   const slots = chain.slice(0, 3).map(({ kind, model, effort }): Slot => {
     const m = model ?? "";
-    return { id: nextId++, kind, model: m, custom: !presets(t)[kind].some((p) => p.value === m), effort: effort ?? "" };
+    // Only the preset values are read, which are the same in every language.
+    return { id: nextId++, kind, model: m, custom: !presets(translatorFor("ja"))[kind].some((p) => p.value === m), effort: effort ?? "" };
   });
   while (slots.length < 3) slots.push(empty());
   return slots;
@@ -105,7 +106,7 @@ function ChainRow({ slot, children }: { slot: Slot; children: React.ReactNode })
   );
 }
 
-function keyLabel(source: KeySource, env: string) {
+function keyLabel(source: KeySource, env: string, t: T) {
   return source === "stored" ? t("modelSettings.keyStored") : source === "env" ? t("modelSettings.keyFromEnv", { env }) : t("modelSettings.keyNone");
 }
 
@@ -132,7 +133,7 @@ export function ModelSettings() {
   }
 
   useEffect(() => {
-    load().then((s) => setSlots(toSlots(s.chain))).catch((e) => setError(String(e)));
+    api.llmSettings().then((s) => { setLlm(s); setSlots(toSlots(s.chain)); }).catch((e) => setError(String(e)));
   }, []);
 
   function update(i: number, patch: Partial<Slot>) {
@@ -223,7 +224,7 @@ export function ModelSettings() {
             const source = llm?.[`${kind}_key`] ?? null;
             const [label, env] = KEYS[kind];
             return (
-              <SetRow key={kind} title={label} desc={keyLabel(source, env)}>
+              <SetRow key={kind} title={label} desc={keyLabel(source, env, t)}>
                 <input
                   className="input sm"
                   type="password"

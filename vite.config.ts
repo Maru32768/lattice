@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-// @ts-expect-error type error without @types/node package
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
@@ -8,6 +8,7 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [
     react(),
+    babel({ presets: [reactCompilerPreset()] }),
     // Every Tauri webview reads woff2; dropping fontsource's woff fallbacks halves the bundled fonts.
     {
       name: "woff2-only",

@@ -11,7 +11,7 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.listGenres().then(setGenres).catch((e) => setError(String(e)));
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { api.listGenres().then(setGenres).catch((e) => setError(String(e))); }, []);
 
   async function act(task: Promise<void>, done: string) {
     setError(null);

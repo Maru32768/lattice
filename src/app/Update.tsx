@@ -22,9 +22,8 @@ function useInstall() {
     } catch (e) {
       setError(String(e));
       setPercent(null);
-    } finally {
-      off();
     }
+    off();
   }
   return { percent, error, install };
 }
@@ -79,9 +78,8 @@ export function UpdateSection({ onOpenUrl }: { onOpenUrl: (url: string) => void 
       setResult({ version: await updates.check() });
     } catch (e) {
       setError(String(e));
-    } finally {
-      setChecking(false);
     }
+    setChecking(false);
   }
 
   const desc = !info ? null

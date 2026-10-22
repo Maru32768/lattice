@@ -9,9 +9,9 @@ import { Menu } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
 import "../ui/manage.css";
 import "./quiz.css";
-import { t, useT } from "../i18n";
+import { useT, type T } from "../i18n";
 
-const when = (unix: number | null) => (unix == null ? "—" : unix * 1000 <= Date.now() ? t("quizReview.dueNow") : relTime(new Date(unix * 1000).toISOString(), t));
+const when = (unix: number | null, t: T) => (unix == null ? "—" : unix * 1000 <= Date.now() ? t("quizReview.dueNow") : relTime(new Date(unix * 1000).toISOString(), t));
 
 const same = (a: ReviewItem, b: ReviewItem) => a.type === b.type && a.id === b.id;
 
@@ -49,20 +49,20 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
     setAt(0);
     setAnswered([]);
   });
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once on open
-  useEffect(() => { void start(); }, []);
+  useEffect(() => {
+    Promise.all([api.reviewQueue(), api.reviewOverview()]).then(([q, o]) => { setItems(q); setOverview(o); }).catch((e) => setError(String(e)));
+  }, []);
 
   const item = items?.[at];
   const finished = items != null && !item;
-  // The summary shows when the next cards come due, so it re-reads the overview at the end.
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per session end
-  useEffect(() => { if (finished && answered.length > 0) void refreshOverview(); }, [finished]);
 
   const grade = (g: Grade) => item && run(async () => {
     await (item.type === "quiz" ? api.reviewGrade(item.id, g) : api.vocabGrade(item.id, g));
     setAnswered((a) => [...a, g]);
     setAt((n) => n + 1);
     onChanged();
+    // The summary shows when the next cards come due, so the last card re-reads the overview.
+    if (at + 1 === items?.length) setOverview(await api.reviewOverview());
   });
   const dropCard = () => item && run(async () => {
     // A word's cards are suspended together (単語帳 resumes them).
@@ -137,7 +137,7 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
             {overview && overview.due > 0
               ? <button className="btn pri" onClick={() => void start()}>{t("quizReview.continue", { due: overview.due })}</button>
               : articles.length > 0
-                ? <p className="muted">{t("quizReview.done")}{overview?.next_due_at != null && t("quizReview.next", { when: when(overview.next_due_at) })}</p>
+                ? <p className="muted">{t("quizReview.done")}{overview?.next_due_at != null && t("quizReview.next", { when: when(overview.next_due_at, t) })}</p>
                 : <p className="muted">{t("quizReview.empty")}</p>}
           </section>
         )}
@@ -153,7 +153,7 @@ export function QuizReview({ onOpen, onOpenPage, onChanged }: {
                     <tr key={a.article_id}>
                       <td className="art"><button className="linkish" onClick={() => onOpen(a.article_id)}>{a.title}</button></td>
                       <td className="r m">{a.cards}</td>
-                      <td className="m">{when(a.next_due_at)}</td>
+                      <td className="m">{when(a.next_due_at, t)}</td>
                       <td className="r"><button className="btn sm ghost" onClick={() => void dropArticle(a.article_id)} aria-label={t("quizReview.removeTitle", { title: a.title })}>{t("quizReview.remove")}</button></td>
                     </tr>
                   ))}

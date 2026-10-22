@@ -86,7 +86,8 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
   const t = useT();
   const [q, setQ] = useState(initial);
   const [act, setAct] = useState(0);
-  const [known, setKnown] = useState<ArticleRow | null>(null);
+  /** The saved article at `url`, once asked. */
+  const [lookup, setLookup] = useState<{ url: string; article: ArticleRow | null } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
@@ -100,12 +101,12 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
   const raw = q.trim();
   const url = URLISH.test(raw) && !raw.startsWith("#") ? (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`) : null;
   useEffect(() => {
-    setKnown(null);
     if (!url) return;
     let live = true;
-    api.articleForUrl(url).then((a) => { if (live) setKnown(a); }).catch(() => {});
+    api.articleForUrl(url).then((article) => { if (live) setLookup({ url, article }); }).catch(() => {});
     return () => { live = false; };
   }, [url]);
+  const known = lookup && lookup.url === url ? lookup.article : null;
 
   const tagCounts = useMemo(() => [...countBy(all, "tags")].sort((a, b) => b[1] - a[1]), [all]);
   const genreCounts = useMemo(() => [...countBy(all, "genres")].sort((a, b) => b[1] - a[1]), [all]);
@@ -220,8 +221,13 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
     return out;
   }, [raw, url, known, commands, all, shown, feeds, folders, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
 
-  useEffect(() => setAct(0), [raw]);
-  useEffect(() => { list.current?.querySelector(".it.act")?.scrollIntoView({ block: "nearest" }); }, [act]);
+  useEffect(() => { list.current?.querySelectorAll(".it")[act]?.scrollIntoView({ block: "nearest" }); }, [act]);
+
+  /** A new query starts at its first result. */
+  function edit(next: string) {
+    if (next.trim() !== raw) setAct(0);
+    setQ(next);
+  }
 
   function run(it: Item | undefined, newTab = false) {
     if (!it) return;
@@ -251,7 +257,7 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
     } else if (k === "Tab" && items[act]?.stack) {
       e.preventDefault();
       items[act].stack();
-      setQ("");
+      edit("");
     }
   }
 
@@ -263,7 +269,7 @@ export function Palette({ initial, all, shown, feeds, folders, groups, scope, fa
         <label className="pal-q">
           <Icon name="search" />
           <span className="vh">{t("nav.searchPlaceholder")}</span>
-          <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("palette.placeholder")}
+          <input ref={input} value={q} onChange={(e) => edit(e.target.value)} placeholder={t("palette.placeholder")}
             role="combobox" aria-expanded="true" aria-controls="pal-list" aria-activedescendant={items.length ? `pal-${act}` : undefined} />
           <span className="pal-where">{t("palette.where", { where })}</span>
         </label>

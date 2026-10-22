@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type JobIssue, type JobOverview, type JobState } from "../api";
 import { relTime } from "../lib/time";
@@ -47,18 +47,19 @@ export function JobsView() {
   const [only, setOnly] = useState<string | null>(null);
 
   const load = () => api.jobOverview().then(setData).catch((e) => setError(String(e)));
+  const reload = useEffectEvent(() => void load());
   // Jobs report every article; coalesce reloads. The poll catches backoffs that expire silently.
-  const timer = useRef(0);
   useEffect(() => {
-    void load();
-    const poll = window.setInterval(load, POLL_MS);
+    let timer = 0;
+    reload();
+    const poll = window.setInterval(() => reload(), POLL_MS);
     const sub = listen("article-changed", () => {
-      clearTimeout(timer.current);
-      timer.current = window.setTimeout(load, 1000);
+      clearTimeout(timer);
+      timer = window.setTimeout(() => reload(), 1000);
     });
     return () => {
       clearInterval(poll);
-      clearTimeout(timer.current);
+      clearTimeout(timer);
       void sub.then((f) => f());
     };
   }, []);

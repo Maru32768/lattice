@@ -31,21 +31,19 @@ function icon(key: string) {
 /** The icon's data URL; null when there is none, undefined while asking (or for an empty key). */
 function useIcon(key: string): string | null | undefined {
   const [got, setGot] = useState<{ key: string; url: string | null } | null>(null);
-  const [seq, setSeq] = useState(0);
-  useEffect(() => {
-    if (!key) return;
-    const set = waiting.get(key) ?? new Set();
-    waiting.set(key, set);
-    const bump = () => setSeq((n) => n + 1);
-    set.add(bump);
-    return () => { set.delete(bump); };
-  }, [key]);
   useEffect(() => {
     if (!key) return;
     let live = true;
-    void icon(key).then((url) => { if (live) setGot({ key, url }); });
-    return () => { live = false; };
-  }, [key, seq]);
+    const load = () => void icon(key).then((url) => { if (live) setGot({ key, url }); });
+    load();
+    const set = waiting.get(key) ?? new Set();
+    waiting.set(key, set);
+    set.add(load);
+    return () => {
+      live = false;
+      set.delete(load);
+    };
+  }, [key]);
   return got?.key === key ? got.url : undefined;
 }
 

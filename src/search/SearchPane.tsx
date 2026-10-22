@@ -78,11 +78,19 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
   const [moreDims, setMoreDims] = useState<Set<Dim>>(new Set());
   const input = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  useEffect(() => { setQ(initial); }, [initial]);
+  const [prevInitial, setPrevInitial] = useState(initial);
+  if (prevInitial !== initial) {
+    setPrevInitial(initial);
+    setQ(initial);
+  }
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- each bump of focusSeq (the `/` key) is a request to focus
   useEffect(() => { input.current?.focus(); input.current?.select(); }, [focusSeq]);
-  useEffect(() => { body.current?.querySelector(".hit.cur")?.scrollIntoView({ block: "nearest" }); }, [sel]);
+  useEffect(() => { body.current?.querySelectorAll(".hit")[sel]?.scrollIntoView({ block: "nearest" }); }, [sel]);
 
   const flat = hits.flatMap((g) => g.hits);
+  /** Each article's first hit in `flat`. */
+  const starts = [0];
+  for (const g of hits) starts.push(starts[starts.length - 1] + g.hits.length);
   const ts = terms(result ? initial : "");
   const semanticOff = !!result?.semantic_error;
 
@@ -108,7 +116,6 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
     }
   }
 
-  let n = 0;
   return (
     <section className="list search" aria-label={t("searchPane.results")} data-pane="list" onKeyDown={keys}>
       <header className="list-h">
@@ -167,7 +174,7 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
       </header>
       <div className="list-body" ref={body}>
         {result && hits.length === 0 && !busy && <div className="empty"><div className="muted">{t("searchPane.none")}</div></div>}
-        {hits.map((g) => {
+        {hits.map((g, gi) => {
           const a = articleById.get(g.article_id);
           return (
             <div className="sgrp" key={g.article_id}>
@@ -177,8 +184,8 @@ export function SearchPane({ initial, result, busy, method, onMethod, hits, sel,
                 {a && <span>{mmdd(a.saved_at)}</span>}
                 <span>{t("searchPane.matches", { length: g.hits.length })}</span>
               </div>
-              {g.hits.map((h) => {
-                const i = n++;
+              {g.hits.map((h, hi) => {
+                const i = starts[gi] + hi;
                 return (
                   <button key={h.block_id} className={`hit${i === sel ? " cur" : ""}${open?.id === h.article_id && open.block === h.block_id ? " sel" : ""}`}
                     onClick={(e) => { onSel(i); onOpen(h, e.shiftKey, e.ctrlKey || e.metaKey); }} {...onMiddle(() => onOpen(h, false, true))}

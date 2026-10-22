@@ -41,14 +41,19 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
   const [kept, setKept] = useState(() => progress.get(id) ?? null);
   // Progress belongs to one quiz: a regenerated quiz starts from its first question.
   const { at, grades } = quiz && kept?.quizId === quiz.id ? kept : { at: 0, grades: new Map<number, Grade>() };
-  const restart = () => quiz && setKept({ quizId: quiz.id, at: 0, grades: new Map() });
-  useEffect(() => { if (kept) progress.set(id, kept); }, [id, kept]);
+  const keep = (p: Progress) => {
+    progress.set(id, p);
+    setKept(p);
+  };
+  const restart = () => quiz && keep({ quizId: quiz.id, at: 0, grades: new Map() });
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.quiz(id).then(setQuiz, (e) => setError(String(e)));
   // The job's progress reaches the view by article-changed; reload the quiz when it moves.
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- load reads only id
-  useEffect(() => { void load(); }, [id, job?.status, job?.attempt_count]);
+  useEffect(() => {
+    api.quiz(id).then(setQuiz, (e) => setError(String(e)));
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the job's state is the trigger, not an input
+  }, [id, job?.status, job?.attempt_count]);
 
   const generating = !failure && (running || (requested !== false && (quiz?.id ?? null) === requested));
   async function generate() {
@@ -67,8 +72,9 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
     if (!quiz) return;
     setError(null);
     try {
-      const n = add ? await api.reviewAdd(quiz.id, [...grades].map(([question_id, grade]) => ({ question_id, grade }))) : 0;
-      if (!add) await api.reviewRemoveArticle(id);
+      let n = 0;
+      if (add) n = await api.reviewAdd(quiz.id, [...grades].map(([question_id, grade]) => ({ question_id, grade })));
+      else await api.reviewRemoveArticle(id);
       setQuiz({ ...quiz, in_review: n });
       onReviewChanged();
     } catch (e) {
@@ -97,7 +103,7 @@ export function QuizPanel({ view, onSource, onReviewChanged, onClose }: {
             {generating ? <p className="muted" role="status">{t("quizPanel.generating")}</p> : <button className="btn pri" onClick={generate}>{t("quizPanel.generate")}</button>}
           </div>
         )}
-        {quiz && q && <QuizCard key={q.id} q={q} onSource={onSource} onGrade={(g) => setKept({ quizId: quiz.id, at: at + 1, grades: new Map(grades).set(q.id, g) })} />}
+        {quiz && q && <QuizCard key={q.id} q={q} onSource={onSource} onGrade={(g) => keep({ quizId: quiz.id, at: at + 1, grades: new Map(grades).set(q.id, g) })} />}
         {quiz && !q && (
           <div className="qz-done" role="status">
             <p className="qz-score">{t.rich("quizPanel.score", { known: <b>{knownCount(grades.values())}</b>, total })}</p>

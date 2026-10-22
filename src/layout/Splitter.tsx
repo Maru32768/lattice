@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useCover } from "../ui/Popover";
 import { useT, type PlainKey } from "../i18n";
 
@@ -58,9 +58,10 @@ export function Splitter({ pane, side, width, onWidth }: {
   const shield = useRef<HTMLDivElement>(null);
   const dir = side === "left" ? 1 : -1;
   useCover(shield, !!drag && !LIVE_RESIZE);
+  const onMove = useEffectEvent((d: { x: number; w: number }, e: MouseEvent) => onWidth(clamp(pane, d.w + dir * (e.clientX - d.x))));
   useEffect(() => {
     if (!drag) return;
-    const move = (e: MouseEvent) => onWidth(clamp(pane, drag.w + dir * (e.clientX - drag.x)));
+    const move = (e: MouseEvent) => onMove(drag, e);
     const up = () => setDrag(null);
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
@@ -70,7 +71,6 @@ export function Splitter({ pane, side, width, onWidth }: {
       window.removeEventListener("mouseup", up);
       window.removeEventListener("blur", up);
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- listeners live for one drag, during which pane, side and onWidth do not change
   }, [drag]);
 
   function down(e: React.MouseEvent) {

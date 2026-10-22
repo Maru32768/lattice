@@ -33,9 +33,8 @@ export function StorageSection() {
       setMoved(await api.setDataDir(!picked.has_data));
     } catch (e) {
       setError(String(e));
-    } finally {
-      setMoving(false);
     }
+    setMoving(false);
   }
 
   const portable = settings?.location === "portable";

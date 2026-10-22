@@ -12,15 +12,11 @@ export function RelevanceSettings({ onChanged }: { onChanged: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.relevanceStatus().then(setSt).catch((e) => setError(String(e)));
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { api.relevanceStatus().then(setSt).catch((e) => setError(String(e))); }, []);
 
   async function run(task: () => Promise<string | null | void>) {
     setError(null);
-    try {
-      setStatus((await task()) ?? null);
-    } catch (e) {
-      setError(String(e));
-    }
+    await task().then((done) => setStatus(done ?? null), (e) => setError(String(e)));
     void load();
     onChanged();
   }

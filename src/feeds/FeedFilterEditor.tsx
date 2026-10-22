@@ -111,8 +111,10 @@ export function RejectedList({ feed, onChanged }: { feed: FeedRow; onChanged: ()
   const [error, setError] = useState<string | null>(null);
 
   const load = () => api.feedRejected(feed.id).then(setRows).catch((e) => setError(String(e)));
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- reload when the count changes (a poll, a re-evaluation)
-  useEffect(() => { void load(); }, [feed.id, feed.rejected]);
+  useEffect(() => {
+    api.feedRejected(feed.id).then(setRows).catch((e) => setError(String(e)));
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- a new count (a poll, a re-evaluation) means a new list
+  }, [feed.id, feed.rejected]);
 
   async function run(task: () => Promise<string | null>) {
     setError(null);

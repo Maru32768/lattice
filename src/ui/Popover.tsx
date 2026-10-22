@@ -28,8 +28,12 @@ export function coverRect(r: DOMRect) {
 export const CoverContext = createContext<(r: DOMRect) => () => void>(coverRect);
 /** How many overlays are open now. */
 export const openOverlays = () => rects.length;
-export function useOverlays() {
-  return useSyncExternalStore(watch, () => rects);
+/** Whether an open overlay overlaps `ref`'s element. */
+export function useCovered(ref: React.RefObject<HTMLElement | null>) {
+  return useSyncExternalStore(watch, () => {
+    const b = ref.current?.getBoundingClientRect();
+    return !!b && rects.some((r) => intersects(r, b));
+  });
 }
 /** The Page view reports its webview as drawn (`rect`) or as hidden behind its still (null). */
 export function pageDrawn(key: string, rect: (() => DOMRect | undefined) | null) {
@@ -43,11 +47,10 @@ export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean
   useLayoutEffect(() => {
     if (!open || !ref.current) return;
     return cover(ref.current.getBoundingClientRect());
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the rectangle is reported once per opening; cover and ref are stable
-  }, [open]);
+  }, [open, cover, ref]);
 }
 
-export const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 /** Page `key` is drawn and no overlay covers it, so a focus it reports came from a click on it. */
 export function pageClickable(key: string) {
   const b = pages.get(key)?.();
@@ -181,7 +184,7 @@ const menuProps = (label: string, s: ReturnType<typeof useSurface>, height: stri
  * A trigger button plus an anchored menu, kept inside the trigger's pane unless `inPane` is false
  * (the nav is narrower than a menu: its menus open beside their trigger, over the list).
  */
-export function Menu({ trigger, label, className, items, align = "left", title, inPane = true, menuClass }: {
+export function Menu({ trigger, label, className, items, align, title, inPane, menuClass }: {
   trigger: React.ReactNode;
   label: string;
   className: string;
@@ -193,14 +196,14 @@ export function Menu({ trigger, label, className, items, align = "left", title, 
   /** A class added to the open menu (it is drawn in a portal, outside the trigger's subtree). */
   menuClass?: string;
 }) {
-  const btn = useRef<HTMLButtonElement>(null);
+  const [btn, setBtn] = useState<HTMLButtonElement | null>(null);
   return (
     <span style={{ display: "inline-flex" }}>
       <DM.Root modal={false}>
-        <DM.Trigger ref={btn} className={className} aria-label={label} title={title ?? label}>{trigger}</DM.Trigger>
+        <DM.Trigger ref={setBtn} className={className} aria-label={label} title={title ?? label}>{trigger}</DM.Trigger>
         <DM.Portal>
-          <MenuContent label={label} items={items} align={align === "left" ? "start" : "end"} menuClass={menuClass}
-            boundary={inPane ? btn.current?.closest("[data-pane]") ?? null : null} />
+          <MenuContent label={label} items={items} align={align === "right" ? "end" : "start"} menuClass={menuClass}
+            boundary={inPane === false ? null : btn?.closest("[data-pane]") ?? null} />
         </DM.Portal>
       </DM.Root>
     </span>

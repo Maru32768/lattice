@@ -102,9 +102,8 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
       onImported();
     } catch (e) {
       setError(String(e));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   return (
@@ -145,14 +144,14 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
     setError(null);
     try {
       const id = await load();
-      if (id == null) return;
-      await fileInto([id]);
-      onOpen(id);
+      if (id != null) {
+        await fileInto([id]);
+        onOpen(id);
+      }
     } catch (e) {
       setError(String(e));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   return (
@@ -180,14 +179,14 @@ function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInt
     setError(null);
     try {
       const id = await api.importPdfFile();
-      if (id == null) return;
-      await fileInto([id]);
-      onOpen(id);
+      if (id != null) {
+        await fileInto([id]);
+        onOpen(id);
+      }
     } catch (e) {
       setError(String(e));
-    } finally {
-      setBusy(false);
     }
+    setBusy(false);
   }
 
   return (

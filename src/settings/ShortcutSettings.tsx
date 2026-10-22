@@ -24,7 +24,7 @@ export function ShortcutSettings() {
   return (
     <>
       <div className="btn-row">
-        <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id))}>{t("shortcutSettings.resetAll")}</button>
+        <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>{t("shortcutSettings.resetAll")}</button>
         <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
       <div className="grp">
@@ -48,7 +48,7 @@ export function ShortcutSettings() {
                   onBlur={() => setRecording((r) => (r === a.id ? null : r))}>
                   {recording === a.id ? t("shortcutSettings.pressKey") : t("shortcutSettings.addKey")}
                 </button>
-                <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id)}>{t("shortcutSettings.reset")}</button>
+                <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>{t("shortcutSettings.reset")}</button>
               </span>
             </div>
           );

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type ArticleRow, type FeedCandidate, type FeedRow, type FolderRow } from "../api";
 import { relTime } from "../lib/time";
@@ -100,14 +100,6 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
   const [editing, setEditing] = useState<number | null>(null);
 
   const load = () => Promise.all([api.listFeeds().then(setFeeds), api.listFeedFolders().then(setFolders)]).catch((e) => setError(String(e)));
-  useEffect(() => {
-    if (initialUrl?.trim()) void detect(initialUrl);
-    const sub = listen("feeds-changed", () => { void load(); onChanged(); });
-    return () => { void sub.then((f) => f()); };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount only: the view is keyed on initialUrl
-  }, []);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- load only reads setters
-  useEffect(() => void load(), [navFeeds]); // on mount too
 
   async function run(task: () => Promise<string | null>, fail = setError) {
     setBusy(true);
@@ -118,11 +110,10 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
       setStatus(await task());
     } catch (e) {
       fail(String(e));
-    } finally {
-      setBusy(false);
-      void load();
-      onChanged();
     }
+    setBusy(false);
+    void load();
+    onChanged();
   }
 
   // A site or article URL works too: the backend finds the feeds it links.
@@ -134,6 +125,23 @@ export function FeedsView({ articles, navFeeds, onChanged, onShowFeed, initialUr
     setPicked(found[0].url);
     return null;
   }, setAddError);
+
+  const onMount = useEffectEvent(() => {
+    if (initialUrl?.trim()) void detect(initialUrl);
+  });
+  const onFeedsChanged = useEffectEvent(() => {
+    void load();
+    onChanged();
+  });
+  const reload = useEffectEvent(() => void load());
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- the opener's URL (the palette's discover) is found as if Find were pressed
+    onMount();
+    const sub = listen("feeds-changed", () => onFeedsChanged());
+    return () => { void sub.then((f) => f()); };
+  }, []);
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the sidebar's copy changing is the trigger (and mount)
+  useEffect(() => reload(), [navFeeds]);
 
   const subscribe = () => {
     const c = candidates.find((x) => x.url === picked);

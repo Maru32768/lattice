@@ -21,15 +21,16 @@ export function TranslationSettings() {
     api.translateKeepTerms().then(setOn).catch((e) => setError(String(e)));
     api.autoTranslate().then(setOnSave).catch((e) => setError(String(e)));
     api.translateInstructions().then((text) => { setInstructions(text); setSaved(text); }).catch((e) => setError(String(e)));
+    api.translationPrompt().then(setPrompt).catch(() => {});
   }, []);
-  // The built-in prompt depends on the term mode.
-  useEffect(() => { api.translationPrompt().then(setPrompt).catch(() => {}); }, [on]);
 
   async function toggle(value: boolean) {
     setOn(value);
     setError(null);
     try {
       await api.setTranslateKeepTerms(value);
+      // The built-in prompt depends on the term mode.
+      setPrompt(await api.translationPrompt().catch(() => prompt));
     } catch (e) {
       setError(String(e));
     }

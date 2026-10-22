@@ -1,4 +1,4 @@
-import { Fragment, createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "../api";
 import { type LanguageMode, TRANSLATABLE, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed";
@@ -12,7 +12,7 @@ import { QuizPanel, useQuizOpen } from "../quiz/QuizPanel";
 import { GroupChips } from "../library/GroupPicker";
 import { onMiddle } from "../lib/middle";
 import { captureIn, isWord, markWords, type WordMarks } from "../vocab/vocab";
-import { locale, t, useT } from "../i18n";
+import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
 
 // Article content is untrusted: it is rendered only as React text nodes, never as HTML,
@@ -65,6 +65,7 @@ function Inlines({ block, translated, ts }: { block: Block; translated: boolean;
 /** Stored copy only (as a data: URL, loaded when scrolled near); the app never loads remote images.
  * `imagesJob` changes when the download job progresses, so a block still showing the link retries. */
 function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) {
+  const t = useT();
   const ref = useRef<HTMLElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -77,6 +78,7 @@ function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) 
     }, { rootMargin: "600px" });
     io.observe(el);
     return () => io.disconnect();
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- a new imagesJob is the retry trigger
   }, [block.id, imagesJob, url]);
   const src = block.attrs.src;
   return (
@@ -159,13 +161,13 @@ export function ViewSeg({ page, onReader, onPage, readerDisabled, pageDisabled }
 }
 
 /** 原文 / 混在 NN% / − / + / 訳文, shared by Reader and Page. */
-export function LangSeg({ mode, percent, onChange, label = t("reader.language") }: {
+export function LangSeg({ mode, percent, onChange, label }: {
   mode: LanguageMode; percent: number; onChange: (m: LanguageMode, p: number) => void; label?: string;
 }) {
   const t = useT();
   const step = (d: number) => onChange("mixed", Math.max(0, Math.min(100, percent + d)));
   return (
-    <div className="seg" role="group" aria-label={label}>
+    <div className="seg" role="group" aria-label={label ?? t("reader.language")}>
       <button className={mode === "original" ? "on" : ""} aria-pressed={mode === "original"} onClick={() => onChange("original", percent)}>{t("reader.original")}</button>
       <button className={mode === "mixed" ? "on" : ""} aria-pressed={mode === "mixed"} onClick={() => onChange("mixed", percent)}>
         {t("reader.mixed")}<span className="mono">{percent}%</span>
@@ -320,15 +322,22 @@ function GenreChip({ genre, classifying, onGenre, onClassify }: {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(genre ?? "");
   const [genres, setGenres] = useState<string[]>([]);
-  useEffect(() => { setValue(genre ?? ""); }, [genre]);
-  useEffect(() => { if (editing) api.listGenres().then((g) => setGenres(g.map((x) => x.name))).catch(() => {}); }, [editing]);
+  const [prevGenre, setPrevGenre] = useState(genre);
+  if (prevGenre !== genre) {
+    setPrevGenre(genre);
+    setValue(genre ?? "");
+  }
+  const edit = () => {
+    setEditing(true);
+    api.listGenres().then((g) => setGenres(g.map((x) => x.name))).catch(() => {});
+  };
   const commit = () => {
     setEditing(false);
     if (value.trim() !== (genre ?? "")) onGenre(value.trim());
   };
   if (!editing) {
     return (
-      <button className="chip" onClick={() => setEditing(true)} title={t("reader.changeGenre")}>
+      <button className="chip" onClick={edit} title={t("reader.changeGenre")}>
         <span className="sw" style={{ background: genreSwatch(genre) }} />{genre ?? t("common.unclassified")}
       </button>
     );
@@ -450,10 +459,11 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
   const rendering = busy(view.jobs.find((j) => j.type === "render"));
   const chars = blocks.reduce((n, b) => n + b.text.length, 0);
 
+  const focusBlock = focus?.block;
   useEffect(() => {
-    if (focus) document.getElementById(`b-${focus.block}`)?.scrollIntoView({ block: "center" });
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- scroll once per focus request (seq), and again when the blocks arrive
-  }, [focus?.seq, blocks.length]);
+    if (focusBlock != null) document.getElementById(`b-${focusBlock}`)?.scrollIntoView({ block: "center" });
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- scroll once per focus request (seq), and again when the blocks arrive
+  }, [focusBlock, focus?.seq, blocks.length]);
 
   const shows = (b: Block) => b.translation != null && selected.has(b.id) !== flipped.has(b.id);
 
@@ -477,13 +487,10 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
 
   async function saveWord(c: { capture: VocabCapture; x: number; y: number }) {
     clearTimeout(timers.current.cap);
-    try {
-      const r = await api.vocabAdd(c.capture);
+    await api.vocabAdd(c.capture).then((r) => {
       setCap({ ...c, status: t(r.new ? "vocab.saved" : "vocab.added", { word: c.capture.surface }) });
       onVocabChanged();
-    } catch (e) {
-      setCap({ ...c, error: String(e) });
-    }
+    }).catch((e) => setCap({ ...c, error: String(e) }));
     timers.current.cap = window.setTimeout(() => setCap(null), 2000);
   }
 
@@ -500,10 +507,12 @@ export function Reader({ view, act, focus, matches, mode, percent, onLang, onPag
       clearTimeout(t.cap);
     };
   }, []);
-  useEffect(() => {
-    const c = saveWordSeq ? selectionCapture() : null;
+  const onSaveWordKey = useEffectEvent(() => {
+    const c = selectionCapture();
     if (c) void saveWord(c);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- once per shortcut press
+  });
+  useEffect(() => {
+    if (saveWordSeq) onSaveWordKey();
   }, [saveWordSeq]);
 
   function setLang(m: LanguageMode, p: number) {

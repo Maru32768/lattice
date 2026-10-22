@@ -79,42 +79,43 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
-  const picked = useRef(request != null);
+  const [picked, setPicked] = useState(request != null);
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vimOn, setVimOn] = useState(vimEnabled);
   const [vim, setVim] = useState(initialVim);
   // Where a Vim command left the cursor, applied once React has rendered the new text.
-  const [cursor, setCursor] = useState<{ at: number } | null>(null);
+  const [cursor, setCursor] = useState<{ at: number; end: number } | null>(null);
   const log = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const normal = vimOn && vim.mode === "normal";
 
   const fail = (e: unknown) => setError(String(e));
   const loadThreads = () => api.chatThreads().then(setThreads).catch(fail);
-  useEffect(() => { void loadThreads(); }, []);
+  useEffect(() => { api.chatThreads().then(setThreads).catch((e) => setError(String(e))); }, []);
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- new turns are drawn below: follow them
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages, pending]);
-  useEffect(() => {
-    if (!request) return;
-    picked.current = true;
+  const [requestSeq, setRequestSeq] = useState(request?.seq);
+  if (request && request.seq !== requestSeq) {
+    setRequestSeq(request.seq);
+    setPicked(true);
     setScopeKey(request.key);
-    input.current?.focus();
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- a request applies once per seq
-  }, [request?.seq]);
+  }
+  useEffect(() => {
+    if (requestSeq != null) input.current?.focus();
+  }, [requestSeq]);
   // The chat window learns the current article after it mounts: take it while the user has not picked a scope.
   const hasArticle = article != null;
-  useEffect(() => {
-    if (hasArticle && !picked.current) setScopeKey((k) => (k === "all" ? "article" : k));
-  }, [hasArticle]);
+  const [hadArticle, setHadArticle] = useState(hasArticle);
+  if (hasArticle !== hadArticle) {
+    setHadArticle(hasArticle);
+    if (hasArticle && !picked && scopeKey === "all") setScopeKey("article");
+  }
   // A picked article whose tab closed: the scope widens to what is still open.
-  const gone = scopeKey.startsWith("open:") && !open.some((d) => openKey(d.id) === scopeKey);
-  useEffect(() => { if (gone) setScopeKey(open.length ? OPEN_ALL : "all"); }, [gone, open.length]);
+  if (scopeKey.startsWith("open:") && !open.some((d) => openKey(d.id) === scopeKey)) setScopeKey(open.length ? OPEN_ALL : "all");
   useLayoutEffect(() => {
-    const t = input.current;
-    // Normal mode selects the character under the cursor, drawn like Vim's block cursor.
-    if (cursor && t) t.setSelectionRange(cursor.at, normal ? Math.min(cursor.at + 1, t.value.length) : cursor.at);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- a command's cursor applies once
+    if (cursor) input.current?.setSelectionRange(cursor.at, cursor.end);
   }, [cursor]);
 
   async function openThread(id: number | null) {
@@ -152,9 +153,8 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
     } catch (e) {
       fail(e);
       setQuestion(q);
-    } finally {
-      setPending(null);
     }
+    setPending(null);
   }
 
   const title = threads.find((t) => t.id === threadId)?.title ?? t("chatPane.newChat");
@@ -180,7 +180,7 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
         <div className="chat-scope">
           {t("chatPane.scope")}
           <label className="chip scope-chip">
-            <select value={scopeKey} onChange={(e) => { picked.current = true; setScopeKey(e.target.value); }} aria-label={t("chatPane.scopeLabel")}>
+            <select value={scopeKey} onChange={(e) => { setPicked(true); setScopeKey(e.target.value); }} aria-label={t("chatPane.scopeLabel")}>
               <option value="article" disabled={!article}>{t("chatPane.thisArticle")}{article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}</option>
               <option value={OPEN_ALL} disabled={open.length === 0}>{t("chatPane.allOpen", { n: open.length })}</option>
               <option value="all">{t("chatPane.allArticles")}</option>
@@ -230,7 +230,8 @@ export function ChatPane({ article, open, groups, current, request, onCite, onCl
               e.preventDefault();
               setVim(r.vim);
               setQuestion(r.buf.text);
-              setCursor({ at: r.buf.cursor });
+              // Normal mode selects the character under the cursor, drawn like Vim's block cursor.
+              setCursor({ at: r.buf.cursor, end: r.vim.mode === "normal" ? Math.min(r.buf.cursor + 1, r.buf.text.length) : r.buf.cursor });
             }} />
           <div className="chat-f-row">
             {vimOn && (

@@ -23,11 +23,6 @@ export default defineConfig({
     // The new JSX transform needs no React in scope; CSS and font imports are side effects.
     "react/react-in-jsx-scope": "off",
     "import/no-unassigned-import": "off",
-    // React Compiler rules; the app does not use the compiler, and exhaustive-deps covers effects.
-    "react/exhaustive-effect-dependencies": "off",
-    "react/set-state-in-effect": "off",
-    "react/refs": "off",
-    "react/immutability": "off",
     // DOM narrowing (`e.target as HTMLElement`) and effects that return a cleanup only sometimes are the norm here.
     "typescript/no-unsafe-type-assertion": "off",
     "typescript/consistent-return": "off",
@@ -41,6 +36,13 @@ export default defineConfig({
     "unicorn/consistent-function-scoping": "off",
   },
   overrides: [
+    {
+      // The module-level `t` is fixed at the call; React Compiler keeps render output that read it until inputs change.
+      files: ["src/**/*.tsx"],
+      rules: {
+        "eslint/no-restricted-imports": ["error", { paths: [{ name: "../i18n", importNames: ["t"], message: "Render code takes the translator from useT(), or text goes stale after a language switch." }] }],
+      },
+    },
     {
       // node:test tracks the promise test() returns.
       files: ["src/**/*.test.ts", "e2e/*.test.ts", "scripts/*.test.mjs"],

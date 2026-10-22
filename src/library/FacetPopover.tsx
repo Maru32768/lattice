@@ -107,7 +107,9 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
     );
   };
 
-  let n = 0;
+  /** Each section's first option in `flat`. */
+  const starts = [0];
+  for (const s of sections) starts.push(starts[starts.length - 1] + s.opts.length);
   return (
     <Popover anchor={anchor} label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })} width={isTags ? 372 : 300} onClose={onClose}>
       <div onKeyDown={keys} className="facet-pv" tabIndex={isTags ? undefined : -1} data-autofocus={isTags ? undefined : true}>
@@ -142,10 +144,10 @@ export function FacetPopover({ dim, facets, onFacets, base, all, groups, anchor,
           </>
         )}
         <div className="pv-list">
-          {sections.map((s) => (
+          {sections.map((s, si) => (
             <div key={s.title} role="group" aria-label={s.title || t(DIM_LABELS[dim])}>
               {s.title && <div className="ph">{s.title}<span>{s.note}</span></div>}
-              {s.opts.map((o) => option(o, n++))}
+              {s.opts.map((o, oi) => option(o, starts[si] + oi))}
               {"hidden" in s && s.hidden! > 0 && <button className="opt zero more" onClick={() => setMore(true)}>{t("facetPopover.showMore", { hidden: s.hidden! })}</button>}
               {s.opts.length === 0 && <div className="pv-empty">{t("facetPopover.none")}</div>}
             </div>

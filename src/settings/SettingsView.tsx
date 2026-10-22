@@ -85,16 +85,22 @@ export function SettingsView({ section, onSection, onBack, onFeeds, onChanged, o
   onOpenUrl: (url: string) => void;
 }) {
   const t = useT();
-  const [badges, setBadges] = useState<Partial<Record<SettingsSection, ReactNode>>>({});
+  const [counts, setCounts] = useState<{ models?: number; genres?: number; r2Failed?: boolean }>({});
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
-    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setBadges({
-      provider: llm.status === "fulfilled" ? t("settingsView.models", { length: llm.value.chain.length }) : null,
-      genres: genres.status === "fulfilled" ? genres.value.length : null,
-      r2: r2s.status === "fulfilled" && r2s.value.last_error ? <span className="error-text">{t("common.error")}</span> : null,
+    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) => setCounts({
+      models: llm.status === "fulfilled" ? llm.value.chain.length : undefined,
+      genres: genres.status === "fulfilled" ? genres.value.length : undefined,
+      r2Failed: r2s.status === "fulfilled" && !!r2s.value.last_error,
     }));
-  }, [section, t]);
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- the section is the trigger, not an input
+  }, [section]);
+  const badges: Partial<Record<SettingsSection, ReactNode>> = {
+    provider: counts.models != null ? t("settingsView.models", { length: counts.models }) : null,
+    genres: counts.genres,
+    r2: counts.r2Failed ? <span className="error-text">{t("common.error")}</span> : null,
+  };
 
   const current = SECTIONS.find((s) => s.id === section)!;
   return (

@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "../api";
 import type { LanguageMode } from "../reader/mixed";
 import type { PageTab } from "../layout/layout";
 import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "../reader/Reader";
 import { QuizPanel, useQuizOpen } from "../quiz/QuizPanel";
-import { Menu, intersects, pageDrawn, useOverlays } from "../ui/Popover";
+import { Menu, pageDrawn, useCovered } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "../i18n";
@@ -27,6 +27,11 @@ const FOLLOW_MS = 600;
 const WARM_MS = 10_000;
 /** Panes whose popovers and menus stay inside the pane, off the page webview (the nav's open beside it). */
 const OFF_PAGE = new Set(["list", "chat"]);
+
+function boundsOf(el: HTMLElement | null): Bounds | null {
+  const r = el?.getBoundingClientRect();
+  return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
+}
 
 const failedOf = (v: ArticleView) => v.article.fetch_status === "failed" || v.article.extraction_status === "failed";
 const SUMMARY_KEY = "lattice.pageSummary";
@@ -113,79 +118,87 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
   const t = useT();
   const id = tab.key;
   const host = useRef<HTMLDivElement>(null);
-  const bounds = (): Bounds | null => {
-    const r = host.current?.getBoundingClientRect();
-    return r ? { x: r.left, y: r.top, width: r.width, height: r.height } : null;
-  };
   // Open app overlays (palette, popover, menu): the native webview would hide any it overlaps, so a still of it stands in.
-  const overlays = useOverlays();
-  const hostRect = host.current?.getBoundingClientRect();
-  const covered = !!hostRect && overlays.some((r) => intersects(r, hostRect));
-  const coveredRef = useRef(covered);
-  coveredRef.current = covered;
-  const tabRef = useRef(tab);
-  tabRef.current = tab;
+  const covered = useCovered(host);
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
   const [quiz, setQuiz] = useQuizOpen(saved?.id ?? 0);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
-  const grab = async () => {
-    const png = tabRef.current.loading ? null : await browser.capture(id).catch(() => null);
+  const grab = useEffectEvent(async () => {
+    const png = tab.loading ? null : await browser.capture(id).catch(() => null);
     if (png) {
       const img = new Image();
       img.src = png;
       await img.decode().catch(() => {});
     }
     return png;
-  };
+  });
   /**
    * A capture takes a few hundred ms, and the overlay stays under the webview until it is done.
    * So a still is taken when the pointer reaches a control that opens one (`aria-haspopup`), and
    * the overlay that follows uses it (or waits for it, already under way) (H8).
    */
-  const warm = useRef<{ png: Promise<string | null>; at: number } | null>(null);
+  const warm = useRef<{ png: Promise<string | null>; at: number; page: string } | null>(null);
+  // A still of the previous page must not stand in for the next one.
+  const page = `${tab.seq}:${tab.loading}`;
+  const warmFor = (maxAge: number) => {
+    const w = warm.current;
+    return w && w.page === page && performance.now() - w.at < maxAge ? w : null;
+  };
+  const warmUp = useEffectEvent(() => {
+    if (covered || warmFor(WARM_MS / 2)) return;
+    warm.current = { png: grab(), at: performance.now(), page };
+  });
+  const takeStill = useEffectEvent(() => {
+    const w = warmFor(WARM_MS);
+    warm.current = null;
+    return w ? w.png : grab();
+  });
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
-  const open = (b: Bounds, focus?: string) => {
+  /** Opens the tab's URL at `b`; the caller places the webview again once it is done. */
+  const open = useEffectEvent((b: Bounds, focus?: string) => {
     opening.current = true;
-    opened.set(id, tabRef.current.seq);
-    return browser.open(id, tabRef.current.url, b, focus).catch((e) => onError(String(e))).finally(() => {
+    opened.set(id, tab.seq);
+    return browser.open(id, tab.url, b, focus).catch((e) => onError(String(e))).finally(() => {
       opening.current = false;
-      void sync();
     });
-  };
+  });
+  const placeable = useEffectEvent(() => !covered && !opening.current);
   /** The bounds last sent; `follow` sends again only on a change. */
   const sent = useRef("");
-  const sync = async () => {
-    const b = bounds();
-    if (!b || coveredRef.current || opening.current) return;
-    sent.current = JSON.stringify(b);
-    const exists = await browser.setBounds(id, b).catch(() => true); // also re-shows it
-    // Evicted while hidden, or restored from the saved layout: the tab reopens its URL.
-    if (!exists && !opening.current) await open(b);
-  };
+  const sync = useEffectEvent(async () => {
+    while (true) {
+      const b = boundsOf(host.current);
+      if (!b || !placeable()) return;
+      sent.current = JSON.stringify(b);
+      const exists = await browser.setBounds(id, b).catch(() => true); // also re-shows it
+      // Evicted while hidden, or restored from the saved layout: the tab reopens its URL.
+      if (exists || opening.current) return;
+      await open(b);
+    }
+  });
   /** The placeholder can move without resizing (a pane appearing beside it), which no ResizeObserver reports. */
   const followUntil = useRef(0);
-  const follow = () => {
+  const follow = useEffectEvent(() => {
     const running = followUntil.current > performance.now();
     followUntil.current = performance.now() + FOLLOW_MS;
     if (running) return;
     const frame = () => {
       if (!host.current) return;
-      if (JSON.stringify(bounds()) !== sent.current) void sync();
+      if (JSON.stringify(boundsOf(host.current)) !== sent.current) void sync();
       if (performance.now() < followUntil.current) requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
-  };
+  });
 
   useLayoutEffect(() => {
     // Open each navigation once: showing the tab again (or a StrictMode re-run) must not
     // reload the page, which would also cancel the first load and lose its scroll target.
     if ((opened.get(id) ?? -1) >= tab.seq) return;
-    void open(bounds()!, tab.focus);
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- each navigation opens once; onError only reports
-  }, [tab.seq]);
+    void open(boundsOf(host.current)!, tab.focus).then(() => sync());
+  }, [id, tab.seq, tab.focus]);
 
   useEffect(() => {
     let live = true;
@@ -201,9 +214,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
     }
     // The still is painted under the webview before it hides, so no blank frame shows in between.
     void (async () => {
-      const w = warm.current;
-      warm.current = null;
-      const png = await (w && performance.now() - w.at < WARM_MS ? w.png : grab());
+      const png = await takeStill();
       if (png && live) {
         setStill(png);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -214,8 +225,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
       if (live) pageDrawn(id, null);
     })();
     return () => { live = false; };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
-  }, [covered]);
+  }, [id, covered]);
 
   useEffect(() => {
     const resize = () => {
@@ -231,13 +241,8 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
       window.removeEventListener("resize", resize);
       followUntil.current = 0;
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); sync reads refs
   }, []);
   useEffect(() => {
-    const warmUp = () => {
-      if (coveredRef.current || (warm.current && performance.now() - warm.current.at < WARM_MS / 2)) return;
-      warm.current = { png: grab(), at: performance.now() };
-    };
     const over = (e: PointerEvent) => {
       const el = (e.target as Element).closest?.("[aria-haspopup]");
       if (el && !OFF_PAGE.has(el.closest("[data-pane]")?.getAttribute("data-pane") ?? "")) warmUp();
@@ -250,10 +255,7 @@ export function BrowserView({ tab, saved, view, act, saving, lang, onNavigate, o
       document.removeEventListener("pointerover", over);
       document.removeEventListener("pointerdown", press);
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps -- the tab key is fixed per instance (keyed by id); grab reads refs
   }, []);
-  // A still of the previous page must not stand in for the next one.
-  useEffect(() => { warm.current = null; }, [tab.seq, tab.loading]);
 
   useLayoutEffect(() => {
     leaving.delete(id);

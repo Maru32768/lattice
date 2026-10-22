@@ -38,9 +38,9 @@ function useRow(r: NavRow) {
 type Drag = ReturnType<typeof useRow>["listeners"];
 
 function FeedItem({ f, on, unread, onScope, onKey }: { f: FeedRow; on: boolean; unread: number; onScope: () => void; onKey: (e: KeyboardEvent) => void }) {
-  const row = useRow({ kind: "feed", id: f.id, folder: f.folder_id });
+  const { ref, style, listeners, cls } = useRow({ kind: "feed", id: f.id, folder: f.folder_id });
   return (
-    <button ref={row.ref} style={row.style} {...row.listeners} className={`ni sub${on ? " on" : ""}${row.cls}`} onClick={onScope} onKeyDown={onKey}
+    <button ref={ref} style={style} {...listeners} className={`ni sub${on ? " on" : ""}${cls}`} onClick={onScope} onKeyDown={onKey}
       aria-current={on ? "page" : undefined} data-feed={f.id}>
       <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} /><span className="label">{feedName(f)}</span><span className="n">{unread.toLocaleString()}</span>
     </button>
@@ -48,14 +48,14 @@ function FeedItem({ f, on, unread, onScope, onKey }: { f: FeedRow; on: boolean; 
 }
 
 function FolderHeader({ id, children }: { id: number; children: (drag: Drag) => ReactNode }) {
-  const row = useRow({ kind: "folder", id });
-  return <div ref={row.ref} style={row.style} className={`ni-row${row.cls}`}>{children(row.listeners)}</div>;
+  const { ref, style, listeners, cls } = useRow({ kind: "folder", id });
+  return <div ref={ref} style={style} className={`ni-row${cls}`}>{children(listeners)}</div>;
 }
 
 function LooseTarget() {
   const t = useT();
-  const row = useRow({ kind: "loose" });
-  return <div ref={row.ref} style={row.style} className={`ni sub dim nav-drop${row.cls}`}>{t("nav.outOfFolders")}</div>;
+  const { ref, style, cls } = useRow({ kind: "loose" });
+  return <div ref={ref} style={style} className={`ni sub dim nav-drop${cls}`}>{t("nav.outOfFolders")}</div>;
 }
 
 /**
@@ -84,13 +84,8 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
   const [draggingFeed, setDraggingFeed] = useState(false);
   const bindings = useBindings();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-  /** The row to focus again once a keyboard move has re-rendered the tree. */
-  const refocus = useRef<string | null>(null);
-  useEffect(() => {
-    if (!refocus.current) return;
-    document.querySelector<HTMLElement>(refocus.current)?.focus();
-    refocus.current = null;
-  }, [feeds, folders, collapsed, allFeeds]);
+  /** The row to focus again once a keyboard move has changed the rows' order (`from`). */
+  const refocus = useRef<{ row: string; from: string } | null>(null);
   const tree = folderTree(feeds, folders, unread);
   const loose = allFeeds ? tree.loose : tree.loose.slice(0, FEEDS_SHOWN);
   const groups = feedGroups(tree);
@@ -103,6 +98,12 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
     ...(draggingFeed && loose.length === 0 ? [{ kind: "loose" } as const] : []),
   ];
   const keys = rows.map(rowKey);
+  const rowOrder = keys.join(" ");
+  useEffect(() => {
+    if (!refocus.current || refocus.current.from === rowOrder) return;
+    document.querySelector<HTMLElement>(refocus.current.row)?.focus();
+    refocus.current = null;
+  }, [rowOrder]);
 
   const drop = ({ active, over }: DragEndEvent) => {
     setDraggingFeed(false);
@@ -136,7 +137,7 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
     // Keep the moved feed in view: open its new folder, or show all the feeds in none.
     if (order.folder != null && collapsed.has(order.folder)) toggle(order.folder);
     if (order.folder == null && order.ids.indexOf(f.id) >= FEEDS_SHOWN) setAllFeeds(true);
-    refocus.current = `[data-feed="${f.id}"]`;
+    refocus.current = { row: `[data-feed="${f.id}"]`, from: rowOrder };
     onReorderFeeds(order);
   };
   const stepFolder = (f: FolderRow) => (e: KeyboardEvent) => {
@@ -144,7 +145,7 @@ export function NavFolders({ feeds, folders, unread, scope, onScope, onRename, o
     const ids = folders.map((x) => x.id);
     const next = d ? moved(ids, f.id, d) : ids;
     if (next === ids) return;
-    refocus.current = `[data-folder="${f.id}"]`;
+    refocus.current = { row: `[data-folder="${f.id}"]`, from: rowOrder };
     onReorderFolders(next);
   };
 

@@ -4,6 +4,7 @@ import { SetRow, Switch } from "../ui/SetRow";
 import { locale, useT } from "../i18n";
 
 const time = (secs: number) => new Date(secs * 1000).toLocaleString(locale());
+const formOf = (s: R2Status): R2Settings => ({ enabled: s.enabled, account_id: s.account_id, bucket: s.bucket, access_key_id: s.access_key_id, interval_hours: s.interval_hours, keep_generations: s.keep_generations, secret_access_key: "" });
 
 /** Settings section for the automatic Cloudflare R2 backup. */
 export function R2BackupSection() {
@@ -16,19 +17,17 @@ export function R2BackupSection() {
   async function reload(resetForm: boolean) {
     const s = await r2.status();
     setStatus(s);
-    if (resetForm) {
-      setForm({ enabled: s.enabled, account_id: s.account_id, bucket: s.bucket, access_key_id: s.access_key_id, interval_hours: s.interval_hours, keep_generations: s.keep_generations, secret_access_key: "" });
-    }
+    if (resetForm) setForm(formOf(s));
   }
 
   useEffect(() => {
-    reload(true).catch((e) => setError(String(e)));
+    r2.status().then((s) => { setStatus(s); setForm(formOf(s)); }).catch((e) => setError(String(e)));
   }, []);
 
   // A backup started by the scheduler or the button can take minutes; follow it until it ends.
   useEffect(() => {
     if (!status?.running) return;
-    const t = setInterval(() => reload(false).catch(() => {}), 3000);
+    const t = setInterval(() => r2.status().then(setStatus).catch(() => {}), 3000);
     return () => clearInterval(t);
   }, [status?.running]);
 
@@ -64,10 +63,9 @@ export function R2BackupSection() {
     } catch (e) {
       setMessage(null);
       setError(String(e));
-    } finally {
-      clearTimeout(poll);
-      await reload(false).catch(() => {});
     }
+    clearTimeout(poll);
+    await reload(false).catch(() => {});
   }
 
   if (!form) return error ? <p className="msg error-text" role="alert">{t.msg(error)}</p> : null;

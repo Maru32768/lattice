@@ -163,7 +163,8 @@ if (typeof window !== "undefined") {
 }
 
 export const getBindings = () => bindings;
-export const isCustom = (id: ActionId) => id in overrides;
+/** Pass the bindings a component rendered with, so a memoized render follows a change. */
+export const isCustom = (id: ActionId, b: Bindings = bindings) => b[id] !== DEFAULT_BINDINGS[id];
 
 export function setKeys(id: ActionId, keys: string[]) {
   const same = keys.length === DEFAULT_BINDINGS[id].length && keys.every((k, i) => k === DEFAULT_BINDINGS[id][i]);

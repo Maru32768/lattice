@@ -11,7 +11,7 @@ import { keyOf } from "../lib/keyname";
 import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
 import { onMiddle } from "../lib/middle";
-import { t, useT, type PlainKey } from "../i18n";
+import { useT, type PlainKey, type T } from "../i18n";
 
 export type Grouping = "none" | "feed" | "genre";
 
@@ -30,7 +30,7 @@ export const mmdd = (s: string) => {
 };
 
 /** A status badge only when something is abnormal. */
-function badge(a: ArticleRow, translating: string | null): [string, string] | null {
+function badge(a: ArticleRow, translating: string | null, t: T): [string, string] | null {
   if (a.fetch_status === "pending") return ["run", t("listPane.fetching")];
   if (a.fetch_status === "failed") return ["err", t("listPane.fetchFailed")];
   if (a.extraction_status === "failed") return ["err", t("listPane.extractFailed")];
@@ -56,7 +56,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen,
   onOpen: (newTab: boolean) => void; onPick?: (range: boolean) => void; onCursor: () => void; onMenu?: (e: React.MouseEvent<HTMLElement>) => void;
 }) {
   const t = useT();
-  const b = badge(a, translating);
+  const b = badge(a, translating, t);
   const unread = a.read_status === "unread";
   return (
     <button className={`row${sel ? " sel" : ""}${cur ? " cur" : ""}${unread ? "" : " read"}${picked !== undefined ? " picking" : ""}`}
@@ -80,7 +80,7 @@ export function ArticleRowView({ a, sel, cur, sort, translating, picked, onOpen,
 }
 
 /** Active facets as removable chips, inactive dimensions as popover openers. */
-export function FacetBar({ facets, onFacets, scoped, all, groups, dims = DIMS, children }: {
+export function FacetBar({ facets, onFacets, scoped, all, groups, dims: shownDims, children }: {
   facets: Facets;
   onFacets: (f: Facets) => void;
   scoped: ArticleRow[];
@@ -91,7 +91,7 @@ export function FacetBar({ facets, onFacets, scoped, all, groups, dims = DIMS, c
 }) {
   const t = useT();
   // Without groups the dimension would only open an empty popover.
-  if (groups.length === 0) dims = dims.filter((d) => d !== "groups");
+  const dims = (shownDims ?? DIMS).filter((d) => groups.length > 0 || d !== "groups");
   const [open, setOpen] = useState<{ dim: Dim; el: HTMLElement } | null>(null);
   const active = activeDims(facets);
   const toggleOpen = (dim: Dim) => (e: React.MouseEvent<HTMLElement>) => {
@@ -190,7 +190,13 @@ export function ListPane({ title, count, total, facets, onFacets, scoped, all, g
   const [picked, setPicked] = useState<number[] | null>(null);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [picker, setPicker] = useState<HTMLElement | null>(null);
-  useEffect(() => { setPicked(null); setPicker(null); }, [title]);
+  // Another list (its title) ends picking.
+  const [prevTitle, setPrevTitle] = useState(title);
+  if (prevTitle !== title) {
+    setPrevTitle(title);
+    setPicked(null);
+    setPicker(null);
+  }
   // Esc ends picking before it clears the filters (the shell's Esc); an open popover closes first.
   const picking = picked != null;
   useEffect(() => {
