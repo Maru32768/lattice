@@ -16,9 +16,13 @@ test("highlight is case-insensitive and regex-safe", () => {
 test("excerpt centers on the first hit", () => {
   const text = "x".repeat(500) + "WAL" + "y".repeat(500);
   const e = excerpt(text, ["wal"], 90);
-  assert.ok(e.startsWith("…") && e.endsWith("…") && e.includes("WAL"), e);
+  assert.equal(e, "…" + "x".repeat(30) + "WAL" + "y".repeat(57) + "…");
+  assert.equal(e.length, 92, "90 characters plus the two omission marks");
+  assert.equal(excerpt(text + "LATE", ["late", "wal"], 90), e, "the first occurrence wins, not the first query term");
+  assert.equal(excerpt("WAL" + "y".repeat(100), ["wal"], 12), "WAL" + "y".repeat(9) + "…");
+  assert.equal(excerpt("x".repeat(100) + "WAL", ["wal"], 12), "…" + "x".repeat(9) + "WAL");
   assert.equal(excerpt("short", ["wal"]), "short");
-  assert.ok(excerpt("z".repeat(300), ["none"], 100).startsWith("zzz"));
+  assert.equal(excerpt("z".repeat(300), ["none"], 100), "z".repeat(100) + "…");
 });
 
 test("hits: method filters by match source, scope by article; grouped by article in rank order", () => {

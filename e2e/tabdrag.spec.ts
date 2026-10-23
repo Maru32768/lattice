@@ -283,7 +283,3 @@ test("a document window dragged by its only tab follows the cursor itself; a tor
   expect(await sentTabs(shell)).toEqual([["main", { kind: "open", docs: [{ kind: "reader", articleId: a.id }], at: { pane: 1, index: 2 } }]]);
   await expect.poll(() => callsOf(shell, "close_window"), "its last tab left").toHaveLength(1);
 });
-
-test("the main window is shown by its configuration: it does not report ready", async ({ app }) => {
-  expect(await callsOf(app, "window_ready")).toEqual([]);
-});

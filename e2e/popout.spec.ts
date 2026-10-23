@@ -1,7 +1,7 @@
 // Pop-out windows (G52) over the mock: each window is one page started as `?window=<label>`; what
 // crosses windows (the window commands, `emit_to` requests, storage keys) is read from the calls.
 import { test, expect, list, callsOf } from "./harness.ts";
-import { ARTICLES } from "./fixtures.ts";
+import { ARTICLES, CHAT_MESSAGES } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const [a, b] = ARTICLES;
@@ -94,7 +94,7 @@ test("the main window restores pop-outs at startup, keeps the chat in its window
   await expect(shell.getByRole("button", { name: "別ウィンドウで開く" }).last()).toBeVisible();
 });
 
-test("the chat dock pops out from its header; the chat window docks back through the main window", async ({ app }) => {
+test("the chat dock pops out from its header and saves the open-window marker", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   await app.locator(".chat").getByRole("button", { name: "別ウィンドウで開く" }).click();
   await expect(app.locator(".chat")).toHaveCount(0);
@@ -102,7 +102,7 @@ test("the chat dock pops out from its header; the chat window docks back through
   expect(await stored(app, CHAT)).toBe("1");
 });
 
-test("the chat window is the pane alone; its citations and its close go to the main window", async ({ shell }) => {
+test("the chat window syncs article scopes, sends citations to main and docks back", async ({ shell }) => {
   await seed(shell, { [CHAT]: "1" });
   await shell.goto("/?window=chat");
   const q = shell.getByLabel("質問", { exact: true });
@@ -117,6 +117,13 @@ test("the chat window is the pane alone; its citations and its close go to the m
     ]),
   );
   await expect(shell.getByLabel("質問の範囲").locator("optgroup[label='開いている記事'] option")).toHaveText(["From main", "From doc-1"]);
+
+  await shell.getByRole("button", { name: "会話を選ぶ" }).click();
+  await shell.getByRole("menuitemradio", { name: "MVCC と VACUUM の関係" }).click();
+  await shell.locator(".chat .answer > p .cite").first().click();
+  await expect
+    .poll(async () => (await requests(shell)).filter((r) => typeof r === "object" && r !== null && "kind" in r && r.kind === "cite"))
+    .toEqual([{ kind: "cite", citation: CHAT_MESSAGES[0].citations[0], newTab: false }]);
 
   await shell.getByRole("button", { name: "メインウィンドウに戻す" }).click();
   const sent = await requests(shell);

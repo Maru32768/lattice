@@ -1,6 +1,6 @@
 import { test, expect, callsOf, navItem } from "./harness.ts";
 
-test("the display language switches live in Settings and is stored in the backend", async ({ app }) => {
+test("the display language switches live in Settings and sends the backend setting", async ({ app }) => {
   expect(await callsOf(app, "set_ui_language"), "the first start stores the detected language").toContainEqual({ lang: "ja" });
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });

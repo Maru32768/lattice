@@ -11,6 +11,7 @@ const SECTIONS = [
   "取り込みフィルタ",
   "画像",
   "復習",
+  "表示言語",
   "ショートカット",
   "ブラウザ",
   "起動・タスクバー",
@@ -18,12 +19,14 @@ const SECTIONS = [
   "クラウドバックアップ（R2）",
   "エクスポート",
   "ログ・保存場所",
+  "アップデート",
 ];
 
 test("every settings section renders, and Esc goes back to the library", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
   const heading = app.locator(".stg main h1");
+  await expect(nav.locator(".ni .label")).toHaveText(SECTIONS);
   const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
   for (const title of SECTIONS) {
     await section(title).click();

@@ -17,20 +17,45 @@ const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = a
 const { assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
 const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
 
-test("settle waits for DOM mutations to stop, up to a cap", async () => {
+test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const root = document.createElement("div");
-  const t0 = Date.now();
-  const tick = setInterval(() => root.append("x"), 10);
-  setTimeout(() => clearInterval(tick), 120);
-  await settle(root, 50, 1000);
-  const quietAfter = Date.now() - t0;
-  assert.ok(quietAfter >= 140 && quietAfter < 600, `waited ${quietAfter} ms`);
+  let finished = false;
+  const pending = settle(root, 50, 1000).then(() => {
+    finished = true;
+  });
+  t.mock.timers.tick(49);
+  await Promise.resolve();
+  assert.equal(finished, false, "the initial quiet period is not over");
+  root.append("x");
+  await Promise.resolve();
+  t.mock.timers.tick(49);
+  await Promise.resolve();
+  assert.equal(finished, false, "a mutation restarts the entire quiet period");
+  t.mock.timers.tick(1);
+  await pending;
+  assert.equal(finished, true);
+});
 
-  const busy = setInterval(() => root.append("y"), 10);
-  const t1 = Date.now();
-  await settle(root, 50, 150);
-  clearInterval(busy);
-  assert.ok(Date.now() - t1 < 400, "capped while the page keeps changing");
+test("settle reaches its cap while DOM mutations continue", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const root = document.createElement("div");
+  let finished = false;
+  const pending = settle(root, 50, 150).then(() => {
+    finished = true;
+  });
+  for (let i = 0; i < 14; i++) {
+    t.mock.timers.tick(10);
+    root.append("y");
+    await Promise.resolve();
+    assert.equal(finished, false, "neither the cap nor a quiet period has elapsed");
+  }
+  t.mock.timers.tick(9);
+  await Promise.resolve();
+  assert.equal(finished, false, "149 ms is still before the cap");
+  t.mock.timers.tick(1);
+  await pending;
+  assert.equal(finished, true);
 });
 
 test("Japanese pages translate into English, others into Japanese", () => {

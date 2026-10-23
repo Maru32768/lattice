@@ -665,21 +665,18 @@ mod tests {
     fn signs_list_and_delete_requests() {
         let c = test_creds();
         let host = "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com";
-        let headers = [("host", host), ("x-amz-content-sha256", EMPTY_SHA), ("x-amz-date", "20130524T000000Z")];
-        let expect =
-            |method, path, query| signature(&authorization(method, path, query, &headers, EMPTY_SHA, "20130524T000000Z", "auto", "AKID", "s")).to_string();
-
+        // Fixed vectors calculated independently with Node crypto's SHA-256/HMAC, region auto,
+        // service s3, the empty body hash, and the canonical GET/DELETE requests below.
         let list = build(&c, "GET", "", &[("list-type", "2"), ("prefix", "lattice/pc/"), ("continuation-token", "1x/y+z=")], EMPTY_SHA, 1_369_353_600);
         let query = "continuation-token=1x%2Fy%2Bz%3D&list-type=2&prefix=lattice%2Fpc%2F";
         assert_eq!(list.url, format!("https://{host}/lattice-backup?{query}"));
-        assert_eq!(signature(&list.headers[2].1), expect("GET", "/lattice-backup", query));
+        assert_eq!(signature(&list.headers[2].1), "83029a423a9ba72b09d90e6807bcf5a355757e9b7155ee02e8c372ea1bde9f7b");
 
         let key = "lattice/pc/lattice-20130524T000000Z.db.gz";
         let path = format!("/lattice-backup/{key}");
         let del = build(&c, "DELETE", key, &[], EMPTY_SHA, 1_369_353_600);
         assert_eq!(del.url, format!("https://{host}{path}"));
-        assert_eq!(signature(&del.headers[2].1), expect("DELETE", &path, ""));
-        assert_ne!(signature(&del.headers[2].1), expect("GET", &path, ""), "method is signed");
+        assert_eq!(signature(&del.headers[2].1), "ab6b504a8aee9c80af7fda3263fc43a8c74f4671acd13799e1a6923e53663fc7");
     }
 
     #[test]

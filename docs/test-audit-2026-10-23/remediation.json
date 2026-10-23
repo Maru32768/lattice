@@ -1,0 +1,299 @@
+{
+  "date": "2026-10-23",
+  "originalAuditTests": 463,
+  "findingsResolved": 14,
+  "originalTestsAddressed": 20,
+  "verification": {
+    "nodePassed": 121,
+    "browserPassed": 130,
+    "rustPassed": 214,
+    "ignored": 1,
+    "mutationChecksRejected": 2
+  },
+  "fixes": [
+    {
+      "id": "F01",
+      "status": "対応済み",
+      "change": "実際のfont-family・loaded face・必要glyphを初回frameで検証。冷cacheでfont取得を遅延させた負例も追加。固定500ms待機を除去。",
+      "originalTests": [
+        "T279"
+      ],
+      "checks": [
+        {
+          "file": "e2e/shell.spec.ts",
+          "name": "the ⋯ menu draws its text in the frame it first appears (H8)",
+          "line": 41
+        },
+        {
+          "file": "e2e/shell.spec.ts",
+          "name": "the menu font check rejects delayed font files on a cold page (H8)",
+          "line": 53
+        }
+      ]
+    },
+    {
+      "id": "F02",
+      "status": "対応済み",
+      "change": "抜粋の正確な内容・長さ・両端・無hit・複数語を検証。全文返却と後続hit優先の両変異を拒否。",
+      "originalTests": [
+        "T455"
+      ],
+      "checks": [
+        {
+          "file": "src/search/search.test.ts",
+          "name": "excerpt centers on the first hit",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "F03",
+      "status": "対応済み",
+      "change": "コピー項目を実クリックし、Chromium clipboardから未保存URLを読み戻して確認。",
+      "originalTests": [
+        "T289"
+      ],
+      "checks": [
+        {
+          "file": "e2e/shell.spec.ts",
+          "name": "an unsaved page's ⋯ copies its URL (H14)",
+          "line": 202
+        }
+      ]
+    },
+    {
+      "id": "F04",
+      "status": "対応済み",
+      "change": "Rustをtoken化し、コメント・文字列内の見かけの呼出し・cfg(test)を除外。core/CLI/Tauriを再帰走査。動的field codeは明示契約として検証。",
+      "originalTests": [
+        "T383"
+      ],
+      "checks": [
+        {
+          "file": "src/i18n/backend.test.ts",
+          "name": "every be.* catalog entry is a code the backend uses",
+          "line": 35
+        },
+        {
+          "file": "scripts/rust-messages.test.mjs",
+          "name": "Rust message uses exclude comments, literal lookalikes and cfg(test) items",
+          "line": 5
+        },
+        {
+          "file": "scripts/rust-messages.test.mjs",
+          "name": "Rust message scan keeps production cfg branches and excludes gated helper methods",
+          "line": 24
+        }
+      ]
+    },
+    {
+      "id": "F05",
+      "status": "対応済み",
+      "change": "Node cryptoで独立計算したGET/DELETEの固定署名値へ変更。AWS既知vectorとURL/escapeのassertionは維持。",
+      "originalTests": [
+        "T133"
+      ],
+      "checks": [
+        {
+          "file": "crates/lattice-core/src/r2.rs",
+          "name": "signs_list_and_delete_requests",
+          "line": 665
+        }
+      ]
+    },
+    {
+      "id": "F06",
+      "status": "対応済み",
+      "change": "Nodeのmock timersで静穏期間のreset、cap直前未完了・到達時完了を検証。実時間の許容幅とintervalを除去。",
+      "originalTests": [
+        "T436"
+      ],
+      "checks": [
+        {
+          "file": "src/overlay/overlay.test.ts",
+          "name": "settle waits for a full quiet period after the last DOM mutation",
+          "line": 20
+        },
+        {
+          "file": "src/overlay/overlay.test.ts",
+          "name": "settle reaches its cap while DOM mutations continue",
+          "line": 40
+        }
+      ]
+    },
+    {
+      "id": "F07",
+      "status": "対応済み",
+      "change": "設定送信・同一セッション再表示という実際の保証へ3テストを改名。DB耐久性は既存の境界記録を維持。",
+      "originalTests": [
+        "T190",
+        "T203",
+        "T231"
+      ],
+      "checks": [
+        {
+          "file": "e2e/chat.spec.ts",
+          "name": "the chat budget sends the setting and keeps it when the section is reopened",
+          "line": 11
+        },
+        {
+          "file": "e2e/english.spec.ts",
+          "name": "an English WebView starts in English and sends the language choice",
+          "line": 6
+        },
+        {
+          "file": "e2e/i18n.spec.ts",
+          "name": "the display language switches live in Settings and sends the backend setting",
+          "line": 3
+        }
+      ]
+    },
+    {
+      "id": "F08",
+      "status": "対応済み",
+      "change": "日本語の全19カテゴリを列挙し、実navigation全体の集合・順序と一致してから全見出しを確認。",
+      "originalTests": [
+        "T277"
+      ],
+      "checks": [
+        {
+          "file": "e2e/settings.spec.ts",
+          "name": "every settings section renders, and Esc goes back to the library",
+          "line": 25
+        }
+      ]
+    },
+    {
+      "id": "F09",
+      "status": "対応済み",
+      "change": "カスタム名を再設定してから空欄解除を操作し、元名/カスタム名/空欄のrename引数列を確認。",
+      "originalTests": [
+        "T217"
+      ],
+      "checks": [
+        {
+          "file": "e2e/feedname.spec.ts",
+          "name": "a custom name starts the field; the feed's own name or an empty field saves as no custom name",
+          "line": 27
+        }
+      ]
+    },
+    {
+      "id": "F10",
+      "status": "対応済み",
+      "change": "別窓化/復帰の名称を実操作へ修正し、chat窓の引用をクリックしてmainへのcitation payloadとnewTabを確認。",
+      "originalTests": [
+        "T255",
+        "T256"
+      ],
+      "checks": [
+        {
+          "file": "e2e/popout.spec.ts",
+          "name": "the chat dock pops out from its header and saves the open-window marker",
+          "line": 97
+        },
+        {
+          "file": "e2e/popout.spec.ts",
+          "name": "the chat window syncs article scopes, sends citations to main and docks back",
+          "line": 105
+        }
+      ]
+    },
+    {
+      "id": "F11",
+      "status": "対応済み",
+      "change": "URL保存テストを改名。Pageへbrowser-titleを送り、題名表示と別tab開閉後の保持を確認。",
+      "originalTests": [
+        "T247",
+        "T310"
+      ],
+      "checks": [
+        {
+          "file": "e2e/palette.spec.ts",
+          "name": "Ctrl+Enter saves a pasted URL to the Index",
+          "line": 36
+        },
+        {
+          "file": "e2e/tabs.spec.ts",
+          "name": "a Page tab gets its own webview, titled by its host until the page names itself",
+          "line": 91
+        }
+      ]
+    },
+    {
+      "id": "F12",
+      "status": "対応済み",
+      "change": "外側クリックの名称をapp DOM内へ限定。別のbrowser-focus分岐試験は維持。",
+      "originalTests": [
+        "T240"
+      ],
+      "checks": [
+        {
+          "file": "e2e/menus.spec.ts",
+          "name": "a press outside in the app DOM closes the group picker and a menu (H23)",
+          "line": 67
+        }
+      ]
+    },
+    {
+      "id": "F13",
+      "status": "対応済み",
+      "change": "needsTranslation/translationProgressのhelper契約と分かる名称へ修正。TS/Rust一致まで保証する表現を除去。",
+      "originalTests": [
+        "T451",
+        "T452"
+      ],
+      "checks": [
+        {
+          "file": "src/reader/mixed.test.ts",
+          "name": "needsTranslation excludes target-language prose, translated blocks and code",
+          "line": 48
+        },
+        {
+          "file": "src/reader/mixed.test.ts",
+          "name": "translationProgress counts translated and eligible prose blocks",
+          "line": 56
+        }
+      ]
+    },
+    {
+      "id": "F14",
+      "status": "対応済み",
+      "change": "固定badgeをジョブ試験へ、mainのno-readyをmain shell試験開始へ移動。assertionを残して独立2シナリオを統合。",
+      "originalTests": [
+        "T237",
+        "T305"
+      ],
+      "checks": [
+        {
+          "file": "e2e/jobs.spec.ts",
+          "name": "job types show their names, with the ID on hover",
+          "line": 6
+        },
+        {
+          "file": "e2e/shell.spec.ts",
+          "name": "the main window keeps its title bar and its strips do not drag the window (H19)",
+          "line": 250
+        }
+      ]
+    }
+  ],
+  "logs": [
+    {
+      "file": ".local/test-remediation-node.log",
+      "sha256": "6766d94643002060cca5a08009545c2aec564a6fde087b5a0bcfd7486a87bf09"
+    },
+    {
+      "file": ".local/test-remediation-e2e.log",
+      "sha256": "24cce6b31520c98a19522535b4a02695fc8748a08315cda33f70abce832ee63a"
+    },
+    {
+      "file": ".local/test-remediation-rust.log",
+      "sha256": "a1600ebb105bbd2c63cd259c4e8dbc7443bd4ea859b81de4dbb1a94453a77ce7"
+    },
+    {
+      "file": ".local/test-remediation-probes.log",
+      "sha256": "16ef6f76d97dbc02ff04d5cdae1789be28cb303276c403909df4462b8e1064ea"
+    }
+  ]
+}

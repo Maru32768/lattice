@@ -4,6 +4,7 @@ import { test, expect, navItem } from "./harness.ts";
 const LABELS = ["取り込みフィルタ", "取得", "描画", "画像", "サイトアイコン", "検索 index", "翻訳", "要約", "クイズ", "単語の意味", "分類", "重要度"];
 
 test("job types show their names, with the ID on hover", async ({ app }) => {
+  await expect(app.locator(".nav").getByText("2 失敗")).toBeVisible();
   await navItem(app, "処理状況").click();
   const filter = app.getByRole("button", { name: "翻訳 2" });
   await expect(filter).toHaveAttribute("title", "translate");

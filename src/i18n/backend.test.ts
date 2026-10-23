@@ -3,84 +3,48 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { ja } from "./ja.ts";
 import { translatorFor } from "./index.ts";
+import { rustMessageUsage } from "../../scripts/rust-messages.mjs";
 
-const ROOTS = ["crates/lattice-core/src", "src-tauri/src"].map((d) => new URL(`../../${d}/`, import.meta.url));
-const rust = ROOTS.flatMap((root) =>
-  readdirSync(root)
-    .filter((f) => f.endsWith(".rs") && f !== "msg.rs")
-    .map((f) => ({ file: f, text: readFileSync(new URL(f, root), "utf8") })),
-);
-
-/** Every `msg!("code", name = expr, …)` call: its code and param names (top-level commas only). */
-function msgCalls(text: string) {
-  const calls: { code: string; params: string[] }[] = [];
-  for (let i = text.indexOf("msg!("); i >= 0; i = text.indexOf("msg!(", i + 1)) {
-    const parts: string[] = [];
-    let depth = 0;
-    let cur = "";
-    let str = false;
-    for (let j = i + 5; j < text.length; j++) {
-      const c = text[j];
-      if (str) {
-        if (c === "\\") {
-          cur += c + text[++j];
-        } else {
-          if (c === '"') {
-            str = false;
-          }
-          cur += c;
-        }
-        continue;
-      }
-      if (c === '"') {
-        str = true;
-      } else if ("([{".includes(c)) {
-        depth++;
-      } else if (")]}".includes(c)) {
-        if (depth === 0) {
-          break;
-        }
-        depth--;
-      } else if (c === "," && depth === 0) {
-        parts.push(cur);
-        cur = "";
-        continue;
-      }
-      cur += c;
+function readRust(dir: string): { file: string; usage: ReturnType<typeof rustMessageUsage> }[] {
+  const root = new URL(`../../${dir}/`, import.meta.url);
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const file = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      return readRust(file);
     }
-    parts.push(cur);
-    const code = /^\s*"([\w.]+)"\s*$/.exec(parts[0])?.[1];
-    if (code) {
-      calls.push({
-        code,
-        params: parts
-          .slice(1)
-          .map((p) => /^\s*(\w+)\s*=/.exec(p)?.[1] ?? "")
-          .filter(Boolean)
-          .sort(),
-      });
-    }
-  }
-  return calls;
+    return entry.name.endsWith(".rs") ? [{ file, usage: rustMessageUsage(readFileSync(new URL(entry.name, root), "utf8")) }] : [];
+  });
 }
+const rust = ["crates/lattice-core/src", "crates/lattice-cli/src", "src-tauri/src"].flatMap(readRust);
+const catalog = new Map<string, string>(Object.entries(ja));
 
 const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 const beKeys = Object.keys(ja).filter((k) => k.startsWith("be."));
 
 test("every backend message code has a catalog entry with the same params", () => {
-  const calls = rust.flatMap((r) => msgCalls(r.text).map((c) => ({ ...c, file: r.file })));
+  const calls = rust.flatMap((r) => r.usage.calls.map((c) => ({ ...c, file: r.file })));
   assert.ok(calls.length > 50, "found the msg! calls");
   for (const c of calls) {
     const key = `be.${c.code}`;
-    assert.ok(key in ja, `${c.file}: ${key} is missing from src/i18n/ja.ts`);
-    assert.deepEqual(c.params, names(ja[key as keyof typeof ja]), `${c.file}: params of ${key}`);
+    const message = catalog.get(key);
+    assert.ok(message, `${c.file}: ${key} is missing from src/i18n/ja.ts`);
+    assert.deepEqual(c.params, names(message), `${c.file}: params of ${key}`);
   }
 });
 
 test("every be.* catalog entry is a code the backend uses", () => {
-  const all = rust.map((r) => r.text).join("\n");
+  const used = new Set(rust.flatMap((r) => r.usage.calls.map((c) => c.code)));
+  // Field labels passed through msg::coded(field, ...) from the settings table.
+  const fields = ["instructions.profile", "instructions.summary", "instructions.chat"];
+  for (const r of rust.filter((r) => r.usage.dynamicField)) {
+    assert.equal(r.file, "crates/lattice-core/src/instructions.rs", "declare new dynamic message sites explicitly");
+    for (const code of fields) {
+      assert.ok(r.usage.strings.has(code), `${r.file}: dynamic field ${code} was removed`);
+      used.add(code);
+    }
+  }
   assert.deepEqual(
-    beKeys.filter((k) => !all.includes(`"${k.slice(3)}"`)),
+    beKeys.filter((k) => !used.has(k.slice(3))),
     [],
   );
 });

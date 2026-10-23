@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-23",
+  "command": "mise exec -- node scripts/test-audit-2026-10-23/verify-results.mjs",
+  "matchedDeclarations": 463,
+  "execution": {
+    "passed": 462,
+    "ignored": 1
+  },
+  "checkedLinks": 837,
+  "logs": [
+    {
+      "file": ".local/test-audit-node.log",
+      "sha256": "8994173484697dee0c01b434c841f63d6f1745e6850c0a509db2f46f799276c9"
+    },
+    {
+      "file": ".local/test-audit-rust-full.log",
+      "sha256": "23693a01743918f20fdef25bbfe0911d3563e2486d5de56ca7f89685f52b6342"
+    },
+    {
+      "file": ".local/test-audit-e2e.log",
+      "sha256": "1759cb0ef9e880449d48aac093646dd0898c5ee3e41be25059971ce0c113d0e6"
+    }
+  ],
+  "evidence": "Nodeは名前、Rustはmodule付き名前、Playwrightはfile:lineで全宣言と成功/ignoreログを突合した"
+}

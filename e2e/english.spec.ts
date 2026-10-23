@@ -3,7 +3,7 @@ import { test, expect, callsOf, list, navItem } from "./harness.ts";
 
 const JAPANESE = /[぀-ヿ一-鿿]/;
 
-test("an English WebView starts in English and stores the choice", async ({ app }) => {
+test("an English WebView starts in English and sends the language choice", async ({ app }) => {
   expect(await callsOf(app, "set_ui_language")).toContainEqual({ lang: "en" });
   await expect(app.locator("html")).toHaveAttribute("lang", "en");
   for (const label of ["Recently added", "Unread", "Favorites", "All articles", "Added by hand"]) {

@@ -16,27 +16,63 @@ async function openPage(app: Page, title?: string) {
   await app.evaluate((p) => window.__e2e.emit("browser-page", p), { tab, url, loading: false, can_go_back: false, can_go_forward: false });
 }
 
+/** Serialized into the page: check the actual face and glyph subsets, without loading them from the test. */
+function firstMenuFonts(): Promise<boolean> {
+  return new Promise((done) => {
+    const frame = () => {
+      const buttons = [...document.querySelectorAll(".menu button")];
+      if (!buttons.length) {
+        requestAnimationFrame(frame);
+        return;
+      }
+      done(
+        buttons.every((button) => {
+          const style = getComputedStyle(button);
+          const family = style.fontFamily.split(",")[0].trim().replaceAll('"', "");
+          const loadedFace = [...document.fonts].some((face) => face.family.replaceAll('"', "") === family && face.status === "loaded");
+          return loadedFace && document.fonts.check(`${style.fontWeight} ${style.fontSize} "${family}"`, button.textContent ?? "");
+        }),
+      );
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
 test("the ⋯ menu draws its text in the frame it first appears (H8)", async ({ app }) => {
   await list(app).locator(".row").first().click();
   // The UI's font subsets are fetched while idle after startup.
-  await app.evaluate(() => document.fonts.ready);
-  await app.waitForTimeout(500);
-  const first = app.evaluate(
-    () =>
-      new Promise<boolean>((done) => {
-        const frame = () => {
-          const m = document.querySelector(".menu");
-          if (!m) {
-            requestAnimationFrame(frame);
-            return;
-          }
-          done([...m.querySelectorAll("button")].every((b) => document.fonts.check(`12px "IBM Plex Sans JP"`, b.textContent ?? "")));
-        };
-        requestAnimationFrame(frame);
-      }),
-  );
+  await app.evaluate(async () => {
+    await new Promise<void>((done) => requestIdleCallback(() => done()));
+    await document.fonts.ready;
+  });
+  const first = app.evaluate(firstMenuFonts);
   await more(app).click();
   expect(await first, "the menu's glyphs were loaded when it was first drawn").toBe(true);
+});
+
+test("the menu font check rejects delayed font files on a cold page (H8)", async ({ shell }) => {
+  let release = () => {};
+  const gate = new Promise<void>((done) => {
+    release = done;
+  });
+  let requests = 0;
+  await shell.route(/\.(woff2?|ttf)(\?|$)/, async (route) => {
+    requests++;
+    await gate;
+    await route.continue();
+  });
+  try {
+    await shell.goto("/", { waitUntil: "domcontentloaded" });
+    await expect.poll(() => requests).toBeGreaterThan(0);
+    await list(shell).locator(".row").first().click();
+    const first = shell.evaluate(firstMenuFonts);
+    await more(shell).click();
+    expect(await first, "the actual font is still unavailable").toBe(false);
+  } finally {
+    release();
+    await shell.unrouteAll({ behavior: "wait" });
+    await shell.evaluate(() => document.fonts.ready);
+  }
 });
 
 test("on Page, a still captured when the pointer reaches ⋯ lets the menu hide the webview without a new capture (H8)", async ({ app }) => {
@@ -164,9 +200,12 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
 });
 
 test("an unsaved page's ⋯ copies its URL (H14)", async ({ app }) => {
+  await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   await more(app).click();
   await expect(app.getByRole("menu").getByRole("menuitem")).toHaveText(["URL をコピー"]);
+  await app.getByRole("menuitem", { name: "URL をコピー" }).click();
+  await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).toBe("https://example.com/unsaved");
 });
 
 test("a document window's tab strips are its title bar: they drag it, and the top-right one holds the window controls (H19)", async ({ shell }) => {
@@ -209,6 +248,7 @@ test("a document window's tab strips are its title bar: they drag it, and the to
 });
 
 test("the main window keeps its title bar and its strips do not drag the window (H19)", async ({ app }) => {
+  expect(await callsOf(app, "window_ready"), "main is not waiting for a ready command").toEqual([]);
   await list(app).locator(".row").first().click();
   await expect(app.locator(".titlebar")).toHaveCount(1);
   await expect(app.locator(".dpane .tabs .caps")).toHaveCount(0);

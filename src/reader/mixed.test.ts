@@ -45,7 +45,7 @@ test("picking 混在 or 訳文 starts a translation only when prose is untransla
   assert.equal(autoTranslates("translated", [], undefined), false, "nothing extracted");
 });
 
-test("the Reader counts only blocks the job would translate", () => {
+test("needsTranslation excludes target-language prose, translated blocks and code", () => {
   const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
   assert.equal(needsTranslation(b("heading", "GitHub Actionsによる自動化"), "en"), true, "Japanese with English identifiers");
   assert.equal(needsTranslation(b("paragraph", "npm install lattice"), "en"), false, "already English: the job skips it");
@@ -53,7 +53,7 @@ test("the Reader counts only blocks the job would translate", () => {
   assert.equal(needsTranslation(b("code", "SELECT 1;"), "ja"), false, "code is never translated");
 });
 
-test("the list and the Reader count the same blocks left to translate", () => {
+test("translationProgress counts translated and eligible prose blocks", () => {
   const b = (kind: string, text: string, translation: string | null = null) => ({ kind, text, translation });
   const blocks = [
     b("heading", "MVCC", "MVCC"),

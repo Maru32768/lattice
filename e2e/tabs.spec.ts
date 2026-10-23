@@ -98,11 +98,13 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   expect(opens).toHaveLength(1);
   expect(opens[0]).toMatchObject({ tab: expect.stringMatching(/^[0-9a-z]+$/), url });
   const first = opens[0].tab;
+  await app.evaluate((tab) => window.__e2e.emit("browser-title", { tab, title: "The page's own title" }), first);
+  await expect(titles(app)).toHaveText(["The page's own title"]);
 
   await app.keyboard.press("Control+t");
   await app.keyboard.insertText("https://example.org/other");
   await app.keyboard.press("Enter");
-  await expect(titles(app)).toHaveText(["example.com", "example.org"]);
+  await expect(titles(app)).toHaveText(["The page's own title", "example.org"]);
   const keys = ((await callsOf(app, "browser_open")) as { tab: string }[]).map((o) => o.tab);
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(first);
@@ -110,7 +112,7 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab: first });
 
   await app.keyboard.press("Control+w");
-  await expect(titles(app)).toHaveText(["example.com"]);
+  await expect(titles(app)).toHaveText(["The page's own title"]);
   await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab: keys[1] }]);
 });
 

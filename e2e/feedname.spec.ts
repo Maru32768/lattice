@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 const [plain, , , custom] = FEEDS;
 
 async function edit(app: Page, title: string) {
-  await app.locator("nav").getByRole("button", { name: "管理" }).click();
+  await app.locator("nav").getByRole("button", { name: "管理", exact: true }).click();
   await app
     .getByRole("row", { name: new RegExp(title) })
     .getByRole("button", { name: "編集" })
@@ -33,4 +33,20 @@ test("a custom name starts the field; the feed's own name or an empty field save
     .getByRole("button", { name: "保存" })
     .click();
   await expect.poll(async () => (await callsOf(app, "rename_feed")).at(-1)).toEqual({ id: custom.id, name: null });
+
+  // Restore the custom name so the empty-input branch starts from the same overridden state.
+  const save = app.getByRole("form", { name: /の名前とアイコン/ }).getByRole("button", { name: "保存" });
+  await expect(save).toBeDisabled();
+  await input.fill(custom.custom_title!);
+  await save.click();
+  await expect(save).toBeDisabled();
+  await input.fill("");
+  await save.click();
+  await expect
+    .poll(() => callsOf(app, "rename_feed"))
+    .toEqual([
+      { id: custom.id, name: null },
+      { id: custom.id, name: custom.custom_title! },
+      { id: custom.id, name: null },
+    ]);
 });

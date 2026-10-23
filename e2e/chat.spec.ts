@@ -8,7 +8,7 @@ const section = (app: Page, title: string) =>
     .locator(".ni")
     .filter({ has: app.locator(".label").getByText(title, { exact: true }) });
 
-test("the chat budget is a setting under 要約・対話 and persists", async ({ app }) => {
+test("the chat budget sends the setting and keeps it when the section is reopened", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await section(app, "要約・対話").click();
   const budget = app.getByLabel("対話で使う範囲");

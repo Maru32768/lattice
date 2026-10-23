@@ -64,7 +64,7 @@ test("a menu over no webview is drawn in the frame it first appears (H22)", asyn
   expect(await first).toBe("1");
 });
 
-test("a press outside closes the group picker and a menu; so does a click in a page webview (H23)", async ({ app }) => {
+test("a press outside in the app DOM closes the group picker and a menu (H23)", async ({ app }) => {
   const a = ARTICLES.find((x) => x.groups.includes(GROUPS[0].id))!;
   await list(app).locator(".row", { hasText: a.title! }).click();
   const chip = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });

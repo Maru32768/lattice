@@ -74,7 +74,3 @@ test("an empty result offers to drop one condition", async ({ app }) => {
   await expect(list(app).getByRole("heading", { level: 1 })).toHaveText("すべての記事");
   await expect(listCount(app)).toHaveText(`${webDev} / ${all}`);
 });
-
-test("the failed-jobs badge reflects the job overview", async ({ app }) => {
-  await expect(app.locator(".nav").getByText("2 失敗")).toBeVisible();
-});

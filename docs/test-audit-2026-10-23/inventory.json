@@ -1,0 +1,3491 @@
+[
+  {
+    "file": "crates/lattice-cli/src/main.rs",
+    "line": 116,
+    "name": "coded_errors_stay_structured",
+    "layer": "rust",
+    "id": "T001"
+  },
+  {
+    "file": "crates/lattice-cli/src/mcp.rs",
+    "line": 150,
+    "name": "tool_schemas_match_the_command_arguments",
+    "layer": "rust",
+    "id": "T002"
+  },
+  {
+    "file": "crates/lattice-cli/src/mcp.rs",
+    "line": 168,
+    "name": "results_carry_the_note_and_stay_within_the_cap",
+    "layer": "rust",
+    "id": "T003"
+  },
+  {
+    "file": "crates/lattice-cli/src/ops.rs",
+    "line": 386,
+    "name": "scopes_parse_into_the_apps_filters",
+    "layer": "rust",
+    "id": "T004"
+  },
+  {
+    "file": "crates/lattice-cli/src/ops.rs",
+    "line": 428,
+    "name": "lists_collections_and_prints_blocks_with_ids",
+    "layer": "rust",
+    "id": "T005"
+  },
+  {
+    "file": "crates/lattice-cli/src/ops.rs",
+    "line": 455,
+    "name": "mcp_calls_and_arguments_parse_into_the_same_ops",
+    "layer": "rust",
+    "id": "T006"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 65,
+    "name": "reads_the_library",
+    "layer": "rust",
+    "id": "T007"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 99,
+    "name": "a_folder_scopes_to_its_feeds_and_feeds_name_their_folder",
+    "layer": "rust",
+    "id": "T008"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 115,
+    "name": "a_question_without_sources_is_answered_without_the_llm",
+    "layer": "rust",
+    "id": "T009"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 123,
+    "name": "writes_need_the_opt_in",
+    "layer": "rust",
+    "id": "T010"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 152,
+    "name": "a_missing_database_is_an_error_and_is_not_created",
+    "layer": "rust",
+    "id": "T011"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 180,
+    "name": "serves_mcp_over_stdio",
+    "layer": "rust",
+    "id": "T012"
+  },
+  {
+    "file": "crates/lattice-cli/tests/cli.rs",
+    "line": 223,
+    "name": "mcp_write_tools_need_the_opt_in",
+    "layer": "rust",
+    "id": "T013"
+  },
+  {
+    "file": "crates/lattice-core/src/anthropic.rs",
+    "line": 74,
+    "name": "builds_request_and_parses_response",
+    "layer": "rust",
+    "id": "T014"
+  },
+  {
+    "file": "crates/lattice-core/src/anthropic.rs",
+    "line": 99,
+    "name": "missing_key_is_unavailable",
+    "layer": "rust",
+    "id": "T015"
+  },
+  {
+    "file": "crates/lattice-core/src/backup.rs",
+    "line": 99,
+    "name": "stale_keeps_newest_and_current",
+    "layer": "rust",
+    "id": "T016"
+  },
+  {
+    "file": "crates/lattice-core/src/backup.rs",
+    "line": 109,
+    "name": "local_names",
+    "layer": "rust",
+    "id": "T017"
+  },
+  {
+    "file": "crates/lattice-core/src/backup.rs",
+    "line": 119,
+    "name": "backup_prunes_only_old_backups",
+    "layer": "rust",
+    "id": "T018"
+  },
+  {
+    "file": "crates/lattice-core/src/chain.rs",
+    "line": 230,
+    "name": "falls_back_and_cools_down_failed_entry",
+    "layer": "rust",
+    "id": "T019"
+  },
+  {
+    "file": "crates/lattice-core/src/chain.rs",
+    "line": 249,
+    "name": "config_migrates_legacy_model_and_keys",
+    "layer": "rust",
+    "id": "T020"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 523,
+    "name": "search_filter_restricts_to_articles",
+    "layer": "rust",
+    "id": "T021"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 536,
+    "name": "article_scope_sends_full_text_validates_citations_and_persists",
+    "layer": "rust",
+    "id": "T022"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 574,
+    "name": "large_scope_retrieves_within_scope_only",
+    "layer": "rust",
+    "id": "T023"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 609,
+    "name": "budget_setting_sizes_the_context",
+    "layer": "rust",
+    "id": "T024"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 629,
+    "name": "diversify_caps_blocks_per_article_then_fills",
+    "layer": "rust",
+    "id": "T025"
+  },
+  {
+    "file": "crates/lattice-core/src/chat.rs",
+    "line": 641,
+    "name": "input_respects_context_cap",
+    "layer": "rust",
+    "id": "T026"
+  },
+  {
+    "file": "crates/lattice-core/src/classify.rs",
+    "line": 330,
+    "name": "batches_reuses_genres_and_keeps_manual_choice",
+    "layer": "rust",
+    "id": "T027"
+  },
+  {
+    "file": "crates/lattice-core/src/classify.rs",
+    "line": 381,
+    "name": "renames_merges_and_deletes_genres",
+    "layer": "rust",
+    "id": "T028"
+  },
+  {
+    "file": "crates/lattice-core/src/classify.rs",
+    "line": 417,
+    "name": "startup_backfill_queues_articles_that_never_had_a_job",
+    "layer": "rust",
+    "id": "T029"
+  },
+  {
+    "file": "crates/lattice-core/src/classify.rs",
+    "line": 437,
+    "name": "failures_finish_every_batched_job",
+    "layer": "rust",
+    "id": "T030"
+  },
+  {
+    "file": "crates/lattice-core/src/claude.rs",
+    "line": 115,
+    "name": "parses_structured_output",
+    "layer": "rust",
+    "id": "T031"
+  },
+  {
+    "file": "crates/lattice-core/src/claude.rs",
+    "line": 128,
+    "name": "passes_model_and_effort_only_when_set",
+    "layer": "rust",
+    "id": "T032"
+  },
+  {
+    "file": "crates/lattice-core/src/codex.rs",
+    "line": 157,
+    "name": "parses_exec_events",
+    "layer": "rust",
+    "id": "T033"
+  },
+  {
+    "file": "crates/lattice-core/src/codex.rs",
+    "line": 175,
+    "name": "effort_defaults_to_low",
+    "layer": "rust",
+    "id": "T034"
+  },
+  {
+    "file": "crates/lattice-core/src/codex.rs",
+    "line": 183,
+    "name": "live_codex_exec",
+    "layer": "rust",
+    "id": "T035"
+  },
+  {
+    "file": "crates/lattice-core/src/embed.rs",
+    "line": 126,
+    "name": "offline_never_downloads_and_sees_the_cached_model",
+    "layer": "rust",
+    "id": "T036"
+  },
+  {
+    "file": "crates/lattice-core/src/export.rs",
+    "line": 197,
+    "name": "exports_articles_translations_and_chat_without_secrets_or_html",
+    "layer": "rust",
+    "id": "T037"
+  },
+  {
+    "file": "crates/lattice-core/src/export.rs",
+    "line": 259,
+    "name": "a_group_export_has_its_articles_and_every_article_its_groups",
+    "layer": "rust",
+    "id": "T038"
+  },
+  {
+    "file": "crates/lattice-core/src/export.rs",
+    "line": 285,
+    "name": "feeds_carry_their_folder",
+    "layer": "rust",
+    "id": "T039"
+  },
+  {
+    "file": "crates/lattice-core/src/extract.rs",
+    "line": 326,
+    "name": "keeps_asides_inside_the_article_body",
+    "layer": "rust",
+    "id": "T040"
+  },
+  {
+    "file": "crates/lattice-core/src/extract.rs",
+    "line": 337,
+    "name": "segments_article_into_blocks",
+    "layer": "rust",
+    "id": "T041"
+  },
+  {
+    "file": "crates/lattice-core/src/favicons.rs",
+    "line": 154,
+    "name": "finds_icon_links",
+    "layer": "rust",
+    "id": "T042"
+  },
+  {
+    "file": "crates/lattice-core/src/favicons.rs",
+    "line": 167,
+    "name": "rejects_anything_but_a_bare_host",
+    "layer": "rust",
+    "id": "T043"
+  },
+  {
+    "file": "crates/lattice-core/src/favicons.rs",
+    "line": 175,
+    "name": "queues_once_serves_and_refetches_weekly",
+    "layer": "rust",
+    "id": "T044"
+  },
+  {
+    "file": "crates/lattice-core/src/favicons.rs",
+    "line": 196,
+    "name": "private_hosts_are_refused_and_the_failure_stored",
+    "layer": "rust",
+    "id": "T045"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 582,
+    "name": "exclusions_win_and_any_include_must_match_in_each_scope",
+    "layer": "rust",
+    "id": "T046"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 600,
+    "name": "author_category_language_and_length",
+    "layer": "rust",
+    "id": "T047"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 627,
+    "name": "validation_tidies_and_rejects_bad_regexes",
+    "layer": "rust",
+    "id": "T048"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 648,
+    "name": "parsed_entries_carry_what_the_rules_read",
+    "layer": "rust",
+    "id": "T049"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 688,
+    "name": "a_poll_keeps_rejected_entries_with_their_reason_and_never_judges_them_again",
+    "layer": "rust",
+    "id": "T050"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_filter.rs",
+    "line": 726,
+    "name": "the_llm_judges_what_the_rules_let_through_and_fails_open",
+    "layer": "rust",
+    "id": "T051"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_folders.rs",
+    "line": 252,
+    "name": "folders_are_named_ordered_and_deleting_one_keeps_its_feeds",
+    "layer": "rust",
+    "id": "T052"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_folders.rs",
+    "line": 287,
+    "name": "feeds_keep_the_users_order_within_their_folder",
+    "layer": "rust",
+    "id": "T053"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_folders.rs",
+    "line": 316,
+    "name": "a_folder_scopes_lists_and_search_to_its_feeds_articles",
+    "layer": "rust",
+    "id": "T054"
+  },
+  {
+    "file": "crates/lattice-core/src/feed_folders.rs",
+    "line": 340,
+    "name": "opml_round_trips_folders",
+    "layer": "rust",
+    "id": "T055"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 531,
+    "name": "parses_rss_and_atom",
+    "layer": "rust",
+    "id": "T056"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 545,
+    "name": "finds_feed_links_on_a_page",
+    "layer": "rust",
+    "id": "T057"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 568,
+    "name": "entry_dates_fill_missing_published_at",
+    "layer": "rust",
+    "id": "T058"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 625,
+    "name": "keeps_entry_titles_and_only_full_content",
+    "layer": "rust",
+    "id": "T059"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 633,
+    "name": "refused_pages_fall_back_to_the_feed_text_or_a_render",
+    "layer": "rust",
+    "id": "T060"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 675,
+    "name": "articles_that_failed_before_the_feed_text_was_kept_recover_once",
+    "layer": "rust",
+    "id": "T061"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 704,
+    "name": "an_article_that_failed_while_its_feed_text_was_being_stored_is_retried",
+    "layer": "rust",
+    "id": "T062"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 721,
+    "name": "names_and_icons_override_the_feeds_own",
+    "layer": "rust",
+    "id": "T063"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 751,
+    "name": "an_entry_listed_twice_in_one_poll_is_queued_once",
+    "layer": "rust",
+    "id": "T064"
+  },
+  {
+    "file": "crates/lattice-core/src/feeds.rs",
+    "line": 761,
+    "name": "imports_only_unseen_entries_and_caps_first_import",
+    "layer": "rust",
+    "id": "T065"
+  },
+  {
+    "file": "crates/lattice-core/src/fetch.rs",
+    "line": 196,
+    "name": "classifies_addresses",
+    "layer": "rust",
+    "id": "T066"
+  },
+  {
+    "file": "crates/lattice-core/src/fetch.rs",
+    "line": 226,
+    "name": "refuses_private_targets",
+    "layer": "rust",
+    "id": "T067"
+  },
+  {
+    "file": "crates/lattice-core/src/fetch.rs",
+    "line": 235,
+    "name": "names_common_network_failures",
+    "layer": "rust",
+    "id": "T068"
+  },
+  {
+    "file": "crates/lattice-core/src/fetch.rs",
+    "line": 271,
+    "name": "tells_pdfs_from_pages",
+    "layer": "rust",
+    "id": "T069"
+  },
+  {
+    "file": "crates/lattice-core/src/fetch.rs",
+    "line": 284,
+    "name": "detects_charset",
+    "layer": "rust",
+    "id": "T070"
+  },
+  {
+    "file": "crates/lattice-core/src/gemini.rs",
+    "line": 69,
+    "name": "builds_request_and_parses_response",
+    "layer": "rust",
+    "id": "T071"
+  },
+  {
+    "file": "crates/lattice-core/src/groups.rs",
+    "line": 124,
+    "name": "membership_is_many_to_many_and_filters_lists_and_search",
+    "layer": "rust",
+    "id": "T072"
+  },
+  {
+    "file": "crates/lattice-core/src/groups.rs",
+    "line": 145,
+    "name": "names_are_trimmed_and_unique_ignoring_case",
+    "layer": "rust",
+    "id": "T073"
+  },
+  {
+    "file": "crates/lattice-core/src/groups.rs",
+    "line": 161,
+    "name": "deleting_a_group_keeps_its_articles_and_deleting_an_article_leaves_its_groups",
+    "layer": "rust",
+    "id": "T074"
+  },
+  {
+    "file": "crates/lattice-core/src/images.rs",
+    "line": 282,
+    "name": "filters_by_type_and_size",
+    "layer": "rust",
+    "id": "T075"
+  },
+  {
+    "file": "crates/lattice-core/src/images.rs",
+    "line": 299,
+    "name": "refuses_other_schemes_and_private_hosts",
+    "layer": "rust",
+    "id": "T076"
+  },
+  {
+    "file": "crates/lattice-core/src/images.rs",
+    "line": 329,
+    "name": "dedups_serves_and_collects_garbage",
+    "layer": "rust",
+    "id": "T077"
+  },
+  {
+    "file": "crates/lattice-core/src/images.rs",
+    "line": 359,
+    "name": "backfill_skips_tried_urls_and_respects_the_setting",
+    "layer": "rust",
+    "id": "T078"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 202,
+    "name": "extracts_urls_from_any_format",
+    "layer": "rust",
+    "id": "T079"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 222,
+    "name": "enqueue_counts_and_is_idempotent",
+    "layer": "rust",
+    "id": "T080"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 249,
+    "name": "stores_blocks_and_dedups",
+    "layer": "rust",
+    "id": "T081"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 272,
+    "name": "one_fetch_per_host_at_a_time",
+    "layer": "rust",
+    "id": "T082"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 286,
+    "name": "rendered_save_replaces_thin_extraction_and_reextract_keeps_ids",
+    "layer": "rust",
+    "id": "T083"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 306,
+    "name": "resaving_an_extracted_article_never_merges_it_away",
+    "layer": "rust",
+    "id": "T084"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 322,
+    "name": "a_pdf_url_becomes_an_article_of_that_url",
+    "layer": "rust",
+    "id": "T085"
+  },
+  {
+    "file": "crates/lattice-core/src/ingest.rs",
+    "line": 347,
+    "name": "extraction_failure_is_recorded_and_retryable",
+    "layer": "rust",
+    "id": "T086"
+  },
+  {
+    "file": "crates/lattice-core/src/instructions.rs",
+    "line": 107,
+    "name": "saves_trims_and_limits",
+    "layer": "rust",
+    "id": "T087"
+  },
+  {
+    "file": "crates/lattice-core/src/instructions.rs",
+    "line": 120,
+    "name": "untrusted_rule_stays_last_and_version_tracks_the_text",
+    "layer": "rust",
+    "id": "T088"
+  },
+  {
+    "file": "crates/lattice-core/src/job_status.rs",
+    "line": 142,
+    "name": "lists_failures_and_retries_batched_classify_jobs",
+    "layer": "rust",
+    "id": "T089"
+  },
+  {
+    "file": "crates/lattice-core/src/job_status.rs",
+    "line": 175,
+    "name": "a_running_job_is_neither_cancelled_nor_retried",
+    "layer": "rust",
+    "id": "T090"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 184,
+    "name": "translates_prose_blocks_and_is_idempotent",
+    "layer": "rust",
+    "id": "T091"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 234,
+    "name": "saved_articles_are_translated_only_when_asked_and_not_when_japanese",
+    "layer": "rust",
+    "id": "T092"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 255,
+    "name": "retranslate_drops_the_cache_and_translates_again",
+    "layer": "rust",
+    "id": "T093"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 277,
+    "name": "japanese_articles_translate_into_english",
+    "layer": "rust",
+    "id": "T094"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 304,
+    "name": "failure_backs_off_and_manual_retry_resumes",
+    "layer": "rust",
+    "id": "T095"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 319,
+    "name": "summarizes_and_marks_stale_after_content_change",
+    "layer": "rust",
+    "id": "T096"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 334,
+    "name": "summary_follows_the_users_instructions_and_goes_stale_when_they_change",
+    "layer": "rust",
+    "id": "T097"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 363,
+    "name": "favicon_jobs_need_no_article",
+    "layer": "rust",
+    "id": "T098"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 375,
+    "name": "run_article_runs_only_that_articles_jobs",
+    "layer": "rust",
+    "id": "T099"
+  },
+  {
+    "file": "crates/lattice-core/src/jobs.rs",
+    "line": 389,
+    "name": "recovers_jobs_left_running",
+    "layer": "rust",
+    "id": "T100"
+  },
+  {
+    "file": "crates/lattice-core/src/llm.rs",
+    "line": 105,
+    "name": "strict_schema_closes_objects",
+    "layer": "rust",
+    "id": "T101"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 141,
+    "name": "the_portable_marker_wins_over_everything",
+    "layer": "rust",
+    "id": "T102"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 149,
+    "name": "without_marker_or_bootstrap_the_default_folder_is_used",
+    "layer": "rust",
+    "id": "T103"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 156,
+    "name": "a_valid_bootstrap_names_the_folder",
+    "layer": "rust",
+    "id": "T104"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 163,
+    "name": "an_invalid_bootstrap_falls_back_with_a_warning",
+    "layer": "rust",
+    "id": "T105"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 172,
+    "name": "the_bootstrap_round_trips_and_choosing_the_default_removes_it",
+    "layer": "rust",
+    "id": "T106"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 185,
+    "name": "a_chosen_folder_without_a_database_falls_back_to_the_default",
+    "layer": "rust",
+    "id": "T107"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 203,
+    "name": "an_unwritable_bootstrap_is_an_error",
+    "layer": "rust",
+    "id": "T108"
+  },
+  {
+    "file": "crates/lattice-core/src/location.rs",
+    "line": 212,
+    "name": "the_default_folder_is_named_by_the_identifier",
+    "layer": "rust",
+    "id": "T109"
+  },
+  {
+    "file": "crates/lattice-core/src/markdown.rs",
+    "line": 375,
+    "name": "converts_markdown_to_blocks",
+    "layer": "rust",
+    "id": "T110"
+  },
+  {
+    "file": "crates/lattice-core/src/markdown.rs",
+    "line": 410,
+    "name": "joins_japanese_lines_and_drops_inline_script_text",
+    "layer": "rust",
+    "id": "T111"
+  },
+  {
+    "file": "crates/lattice-core/src/markdown.rs",
+    "line": 426,
+    "name": "title_falls_back_to_name_then_first_line",
+    "layer": "rust",
+    "id": "T112"
+  },
+  {
+    "file": "crates/lattice-core/src/markdown.rs",
+    "line": 434,
+    "name": "imports_once_per_text_and_reextracts_in_place",
+    "layer": "rust",
+    "id": "T113"
+  },
+  {
+    "file": "crates/lattice-core/src/markdown.rs",
+    "line": 450,
+    "name": "reads_relative_images_only_inside_the_picked_folder",
+    "layer": "rust",
+    "id": "T114"
+  },
+  {
+    "file": "crates/lattice-core/src/msg.rs",
+    "line": 24,
+    "name": "codes_and_params_are_json",
+    "layer": "rust",
+    "id": "T115"
+  },
+  {
+    "file": "crates/lattice-core/src/openai.rs",
+    "line": 72,
+    "name": "builds_request_and_parses_response",
+    "layer": "rust",
+    "id": "T116"
+  },
+  {
+    "file": "crates/lattice-core/src/pdf.rs",
+    "line": 883,
+    "name": "rebuilds_a_two_column_paper",
+    "layer": "rust",
+    "id": "T117"
+  },
+  {
+    "file": "crates/lattice-core/src/pdf.rs",
+    "line": 918,
+    "name": "title_falls_back_to_metadata_then_name",
+    "layer": "rust",
+    "id": "T118"
+  },
+  {
+    "file": "crates/lattice-core/src/pdf.rs",
+    "line": 929,
+    "name": "helpers",
+    "layer": "rust",
+    "id": "T119"
+  },
+  {
+    "file": "crates/lattice-core/src/pdf.rs",
+    "line": 943,
+    "name": "imports_once_per_file_and_reextracts_in_place",
+    "layer": "rust",
+    "id": "T120"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 510,
+    "name": "parse_keeps_well_formed_questions_and_maps_sources",
+    "layer": "rust",
+    "id": "T121"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 528,
+    "name": "the_job_stores_a_quiz_that_goes_stale_with_the_text_or_the_profile",
+    "layer": "rust",
+    "id": "T122"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 557,
+    "name": "a_reply_without_usable_questions_fails_the_job",
+    "layer": "rust",
+    "id": "T123"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 577,
+    "name": "adding_to_review_counts_reader_answers_and_queues_the_rest_as_new",
+    "layer": "rust",
+    "id": "T124"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 614,
+    "name": "daily_limits_and_due_times",
+    "layer": "rust",
+    "id": "T125"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 642,
+    "name": "settings_are_validated",
+    "layer": "rust",
+    "id": "T126"
+  },
+  {
+    "file": "crates/lattice-core/src/quiz.rs",
+    "line": 660,
+    "name": "deleting_the_article_removes_its_quizzes_cards_and_log",
+    "layer": "rust",
+    "id": "T127"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 568,
+    "name": "sigv4_matches_aws_examples",
+    "layer": "rust",
+    "id": "T128"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 575,
+    "name": "builds_path_style_r2_request",
+    "layer": "rust",
+    "id": "T129"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 594,
+    "name": "utc_dates_and_keys",
+    "layer": "rust",
+    "id": "T130"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 606,
+    "name": "settings_hide_secret_and_drive_schedule",
+    "layer": "rust",
+    "id": "T131"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 643,
+    "name": "generations_and_clearing_secret",
+    "layer": "rust",
+    "id": "T132"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 664,
+    "name": "signs_list_and_delete_requests",
+    "layer": "rust",
+    "id": "T133"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 685,
+    "name": "parses_list_pages",
+    "layer": "rust",
+    "id": "T134"
+  },
+  {
+    "file": "crates/lattice-core/src/r2.rs",
+    "line": 704,
+    "name": "selects_old_generations_of_this_device_only",
+    "layer": "rust",
+    "id": "T135"
+  },
+  {
+    "file": "crates/lattice-core/src/relevance.rs",
+    "line": 266,
+    "name": "reasons_and_scores_are_validated",
+    "layer": "rust",
+    "id": "T136"
+  },
+  {
+    "file": "crates/lattice-core/src/relevance.rs",
+    "line": 275,
+    "name": "rates_in_one_batch_and_goes_stale_when_the_profile_changes",
+    "layer": "rust",
+    "id": "T137"
+  },
+  {
+    "file": "crates/lattice-core/src/relevance.rs",
+    "line": 322,
+    "name": "auto_rating_and_threshold_settings",
+    "layer": "rust",
+    "id": "T138"
+  },
+  {
+    "file": "crates/lattice-core/src/render.rs",
+    "line": 117,
+    "name": "thin_fetch_queues_one_render_and_rendering_never_requeues",
+    "layer": "rust",
+    "id": "T139"
+  },
+  {
+    "file": "crates/lattice-core/src/render.rs",
+    "line": 136,
+    "name": "full_fetch_or_setting_off_queues_nothing",
+    "layer": "rust",
+    "id": "T140"
+  },
+  {
+    "file": "crates/lattice-core/src/render.rs",
+    "line": 148,
+    "name": "failed_or_shorter_rendering_keeps_the_article",
+    "layer": "rust",
+    "id": "T141"
+  },
+  {
+    "file": "crates/lattice-core/src/search.rs",
+    "line": 147,
+    "name": "rrf_prefers_agreement",
+    "layer": "rust",
+    "id": "T142"
+  },
+  {
+    "file": "crates/lattice-core/src/search.rs",
+    "line": 196,
+    "name": "lexical_semantic_and_fallbacks",
+    "layer": "rust",
+    "id": "T143"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 492,
+    "name": "plain_text_matches_block_text",
+    "layer": "rust",
+    "id": "T144"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 500,
+    "name": "term_mode_changes_prompt_not_language",
+    "layer": "rust",
+    "id": "T145"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 512,
+    "name": "japanese_sources_translate_into_english",
+    "layer": "rust",
+    "id": "T146"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 540,
+    "name": "user_instructions_extend_the_prompt_and_the_key",
+    "layer": "rust",
+    "id": "T147"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 556,
+    "name": "long_unit_limits",
+    "layer": "rust",
+    "id": "T148"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 564,
+    "name": "reconcile_rejects_duplicates_and_garbage",
+    "layer": "rust",
+    "id": "T149"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 577,
+    "name": "batch_retry_and_resplit",
+    "layer": "rust",
+    "id": "T150"
+  },
+  {
+    "file": "crates/lattice-core/src/segments.rs",
+    "line": 611,
+    "name": "origin_is_per_snippet",
+    "layer": "rust",
+    "id": "T151"
+  },
+  {
+    "file": "crates/lattice-core/src/srs.rs",
+    "line": 121,
+    "name": "good_every_time_follows_sm2_and_stops_at_the_maximum",
+    "layer": "rust",
+    "id": "T152"
+  },
+  {
+    "file": "crates/lattice-core/src/srs.rs",
+    "line": 130,
+    "name": "a_lapse_relearns_from_the_minimum_with_lower_ease",
+    "layer": "rust",
+    "id": "T153"
+  },
+  {
+    "file": "crates/lattice-core/src/srs.rs",
+    "line": 140,
+    "name": "hard_and_easy_adjust_ease_within_bounds",
+    "layer": "rust",
+    "id": "T154"
+  },
+  {
+    "file": "crates/lattice-core/src/srs.rs",
+    "line": 151,
+    "name": "short_minimum_interval_acts_as_a_learning_step",
+    "layer": "rust",
+    "id": "T155"
+  },
+  {
+    "file": "crates/lattice-core/src/srs.rs",
+    "line": 161,
+    "name": "previews_order_hard_good_easy_even_for_short_intervals",
+    "layer": "rust",
+    "id": "T156"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1662,
+    "name": "snapshot_migration_keeps_old_rows",
+    "layer": "rust",
+    "id": "T157"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1679,
+    "name": "upgrades_a_database_from_the_last_release_schema",
+    "layer": "rust",
+    "id": "T158"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1701,
+    "name": "quiz_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T159"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1716,
+    "name": "vocab_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T160"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1736,
+    "name": "cloze_cards_go_and_meaning_cards_keep_their_history",
+    "layer": "rust",
+    "id": "T161"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1768,
+    "name": "group_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T162"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1784,
+    "name": "relevance_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T163"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1799,
+    "name": "feed_folder_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T164"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1820,
+    "name": "feed_order_migration_keeps_the_order_by_name",
+    "layer": "rust",
+    "id": "T165"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1841,
+    "name": "feed_filter_migration_upgrades_an_existing_library",
+    "layer": "rust",
+    "id": "T166"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1859,
+    "name": "medium_feed_links_are_normalized_again",
+    "layer": "rust",
+    "id": "T167"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1886,
+    "name": "translation_migration_keeps_rows_searchable",
+    "layer": "rust",
+    "id": "T168"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1909,
+    "name": "re_extraction_reuses_ids_of_unchanged_blocks",
+    "layer": "rust",
+    "id": "T169"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 1949,
+    "name": "deleting_an_article_leaves_nothing_orphaned",
+    "layer": "rust",
+    "id": "T170"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2002,
+    "name": "re_enqueue_gives_a_failed_job_fresh_attempts",
+    "layer": "rust",
+    "id": "T171"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2021,
+    "name": "a_job_that_keeps_failing_backs_off_doubling_then_fails_for_good",
+    "layer": "rust",
+    "id": "T172"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2048,
+    "name": "only_fetch_jobs_wait_for_a_running_fetch_on_the_same_host",
+    "layer": "rust",
+    "id": "T173"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2067,
+    "name": "inbox_filters_and_tags",
+    "layer": "rust",
+    "id": "T174"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2091,
+    "name": "genre_and_feed_filters_restrict_lists_and_search",
+    "layer": "rust",
+    "id": "T175"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2127,
+    "name": "sorts_by_saved_and_published",
+    "layer": "rust",
+    "id": "T176"
+  },
+  {
+    "file": "crates/lattice-core/src/store.rs",
+    "line": 2142,
+    "name": "settings_and_backup",
+    "layer": "rust",
+    "id": "T177"
+  },
+  {
+    "file": "crates/lattice-core/src/summarize.rs",
+    "line": 90,
+    "name": "formats_and_truncates",
+    "layer": "rust",
+    "id": "T178"
+  },
+  {
+    "file": "crates/lattice-core/src/url_norm.rs",
+    "line": 36,
+    "name": "strips_tracking_and_fragment",
+    "layer": "rust",
+    "id": "T179"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 616,
+    "name": "captures_are_bounded_english_and_inside_their_sentence",
+    "layer": "rust",
+    "id": "T180"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 630,
+    "name": "parse_keeps_usable_senses_by_number",
+    "layer": "rust",
+    "id": "T181"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 648,
+    "name": "parse_needs_the_definition_and_a_new_example",
+    "layer": "rust",
+    "id": "T182"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 664,
+    "name": "the_job_merges_forms_of_one_lemma_into_one_entry",
+    "layer": "rust",
+    "id": "T183"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 703,
+    "name": "a_capture_while_the_job_runs_is_queued_again_when_it_finishes",
+    "layer": "rust",
+    "id": "T184"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 716,
+    "name": "editing_suspending_and_deleting",
+    "layer": "rust",
+    "id": "T185"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 744,
+    "name": "words_join_todays_review_as_one_card_within_the_shared_limits",
+    "layer": "rust",
+    "id": "T186"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 775,
+    "name": "regenerating_redoes_the_sense_and_keeps_the_card",
+    "layer": "rust",
+    "id": "T187"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 808,
+    "name": "contexts_link_to_the_article_and_survive_its_deletion",
+    "layer": "rust",
+    "id": "T188"
+  },
+  {
+    "file": "crates/lattice-core/src/vocab.rs",
+    "line": 834,
+    "name": "csv_is_escaped_for_anki_and_backs_like_the_card",
+    "layer": "rust",
+    "id": "T189"
+  },
+  {
+    "file": "e2e/chat.spec.ts",
+    "line": 11,
+    "end": 22,
+    "name": "the chat budget is a setting under 要約・対話 and persists",
+    "layer": "browser-mock",
+    "id": "T190"
+  },
+  {
+    "file": "e2e/chat.spec.ts",
+    "line": 24,
+    "end": 65,
+    "name": "Vim keys in the chat input: off by default, modes, motions, edits, undo, Ctrl+Enter sends",
+    "layer": "browser-mock",
+    "id": "T191"
+  },
+  {
+    "file": "e2e/chat.spec.ts",
+    "line": 67,
+    "end": 97,
+    "name": "the chat scope offers each open article and all of them, and follows the tabs",
+    "layer": "browser-mock",
+    "id": "T192"
+  },
+  {
+    "file": "e2e/commands.test.ts",
+    "line": 6,
+    "end": 21,
+    "name": "the e2e mock answers exactly the commands src/api.ts invokes",
+    "layer": "node",
+    "id": "T193"
+  },
+  {
+    "file": "e2e/contextmenu.spec.ts",
+    "line": 10,
+    "end": 37,
+    "name": "right-click on a row: favorite, read state, a new tab, and delete with confirmation",
+    "layer": "browser-mock",
+    "id": "T194"
+  },
+  {
+    "file": "e2e/contextmenu.spec.ts",
+    "line": 39,
+    "end": 52,
+    "name": "the menu key and Shift+F10 open the cursor row's menu; Esc returns to the row",
+    "layer": "browser-mock",
+    "id": "T195"
+  },
+  {
+    "file": "e2e/contextmenu.spec.ts",
+    "line": 54,
+    "end": 78,
+    "name": "with rows picked, the menu applies the bulk actions to all of them",
+    "layer": "browser-mock",
+    "id": "T196"
+  },
+  {
+    "file": "e2e/contextmenu.spec.ts",
+    "line": 80,
+    "end": 93,
+    "name": "right-click on a tab: the article's menu; an unsaved page's tab offers what applies to its URL",
+    "layer": "browser-mock",
+    "id": "T197"
+  },
+  {
+    "file": "e2e/css.spec.ts",
+    "line": 7,
+    "end": 18,
+    "name": "clickable controls show the hand; the nav and the list do not select as text, the Reader does",
+    "layer": "browser-mock",
+    "id": "T198"
+  },
+  {
+    "file": "e2e/css.spec.ts",
+    "line": 20,
+    "end": 25,
+    "name": "a disabled button shows not-allowed and keeps its tooltip",
+    "layer": "browser-mock",
+    "id": "T199"
+  },
+  {
+    "file": "e2e/cursor.spec.ts",
+    "line": 8,
+    "end": 23,
+    "name": "j / k move the cursor without opening; Enter opens it in the Reader",
+    "layer": "browser-mock",
+    "id": "T200"
+  },
+  {
+    "file": "e2e/cursor.spec.ts",
+    "line": 25,
+    "end": 30,
+    "name": "Shift+Enter opens the cursor's article as a page",
+    "layer": "browser-mock",
+    "id": "T201"
+  },
+  {
+    "file": "e2e/delete.spec.ts",
+    "line": 4,
+    "end": 28,
+    "name": "deleting an article asks first; Esc keeps it, 削除 removes it",
+    "layer": "browser-mock",
+    "id": "T202"
+  },
+  {
+    "file": "e2e/english.spec.ts",
+    "line": 6,
+    "end": 14,
+    "name": "an English WebView starts in English and stores the choice",
+    "layer": "browser-mock",
+    "id": "T203"
+  },
+  {
+    "file": "e2e/english.spec.ts",
+    "line": 16,
+    "end": 34,
+    "name": "the Reader, jobs, feeds and review screens read in English",
+    "layer": "browser-mock",
+    "id": "T204"
+  },
+  {
+    "file": "e2e/english.spec.ts",
+    "line": 36,
+    "end": 70,
+    "name": "every settings section has an English title, and a backend error is shown in English",
+    "layer": "browser-mock",
+    "id": "T205"
+  },
+  {
+    "file": "e2e/english.spec.ts",
+    "line": 72,
+    "end": 78,
+    "name": "the command palette matches English commands",
+    "layer": "browser-mock",
+    "id": "T206"
+  },
+  {
+    "file": "e2e/english.spec.ts",
+    "line": 80,
+    "end": 87,
+    "name": "Vocabulary reads in English",
+    "layer": "browser-mock",
+    "id": "T207"
+  },
+  {
+    "file": "e2e/feedfilter.spec.ts",
+    "line": 12,
+    "end": 37,
+    "name": "a feed's rejected entries show why, and can be imported or let in by dropping the rule",
+    "layer": "browser-mock",
+    "id": "T208"
+  },
+  {
+    "file": "e2e/feedfilter.spec.ts",
+    "line": 39,
+    "end": 68,
+    "name": "rules are edited per feed, and a bad regex is refused with the reason",
+    "layer": "browser-mock",
+    "id": "T209"
+  },
+  {
+    "file": "e2e/feedfilter.spec.ts",
+    "line": 70,
+    "end": 85,
+    "name": "the global filter lives in Settings › 取り込みフィルタ",
+    "layer": "browser-mock",
+    "id": "T210"
+  },
+  {
+    "file": "e2e/feedfolders.spec.ts",
+    "line": 21,
+    "end": 58,
+    "name": "feeds move into a folder; the nav shows it as a scope over its feeds, with their unread summed",
+    "layer": "browser-mock",
+    "id": "T211"
+  },
+  {
+    "file": "e2e/feedfolders.spec.ts",
+    "line": 60,
+    "end": 83,
+    "name": "several feed URLs, one per line, are subscribed into the chosen folder",
+    "layer": "browser-mock",
+    "id": "T212"
+  },
+  {
+    "file": "e2e/feedfolders.spec.ts",
+    "line": 85,
+    "end": 108,
+    "name": "a nav folder's context menu renames it and deletes it, keeping its feeds",
+    "layer": "browser-mock",
+    "id": "T213"
+  },
+  {
+    "file": "e2e/feedfolders.spec.ts",
+    "line": 110,
+    "end": 133,
+    "name": "OPML outlines become folders on import; the palette finds folders",
+    "layer": "browser-mock",
+    "id": "T214"
+  },
+  {
+    "file": "e2e/feedfolders.spec.ts",
+    "line": 135,
+    "end": 144,
+    "name": "a failed Find shows its error under the field, and editing the field clears it",
+    "layer": "browser-mock",
+    "id": "T215"
+  },
+  {
+    "file": "e2e/feedname.spec.ts",
+    "line": 17,
+    "end": 25,
+    "name": "the name field starts with the feed's own name, to edit rather than retype",
+    "layer": "browser-mock",
+    "id": "T216"
+  },
+  {
+    "file": "e2e/feedname.spec.ts",
+    "line": 27,
+    "end": 36,
+    "name": "a custom name starts the field; the feed's own name or an empty field saves as no custom name",
+    "layer": "browser-mock",
+    "id": "T217"
+  },
+  {
+    "file": "e2e/feedorder.spec.ts",
+    "line": 41,
+    "end": 80,
+    "name": "dragging feeds in the sidebar reorders them and moves them between folders, without opening them",
+    "layer": "browser-mock",
+    "id": "T218"
+  },
+  {
+    "file": "e2e/feedorder.spec.ts",
+    "line": 82,
+    "end": 114,
+    "name": "Alt+↑ / ↓ move the focused feed or folder, across folders; folders drag too",
+    "layer": "browser-mock",
+    "id": "T219"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 11,
+    "end": 45,
+    "name": "a sidebar group is a scope; groups are created, renamed and deleted there (articles stay)",
+    "layer": "browser-mock",
+    "id": "T220"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 47,
+    "end": 70,
+    "name": "the Reader's group chips: pick a group, create one, remove one",
+    "layer": "browser-mock",
+    "id": "T221"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 72,
+    "end": 76,
+    "name": "an empty scope shows no filters, sort or Select",
+    "layer": "browser-mock",
+    "id": "T222"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 78,
+    "end": 101,
+    "name": "list rows picked with 選択 and Shift+click go into a group together",
+    "layer": "browser-mock",
+    "id": "T223"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 103,
+    "end": 129,
+    "name": "a group is a facet, a search scope and a chat scope (このグループ)",
+    "layer": "browser-mock",
+    "id": "T224"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 131,
+    "end": 160,
+    "name": "imports land in the chosen groups; the list's group is chosen first",
+    "layer": "browser-mock",
+    "id": "T225"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 162,
+    "end": 182,
+    "name": "the palette opens a group, adds the open article to one, and saves a URL into the list's group",
+    "layer": "browser-mock",
+    "id": "T226"
+  },
+  {
+    "file": "e2e/groups.spec.ts",
+    "line": 184,
+    "end": 193,
+    "name": "the JSON export can be limited to a group",
+    "layer": "browser-mock",
+    "id": "T227"
+  },
+  {
+    "file": "e2e/history.spec.ts",
+    "line": 17,
+    "end": 39,
+    "name": "screens and scopes: the side buttons, Alt+arrows and the title bar go back and forward",
+    "layer": "browser-mock",
+    "id": "T228"
+  },
+  {
+    "file": "e2e/history.spec.ts",
+    "line": 41,
+    "end": 55,
+    "name": "settings sections are places of their own",
+    "layer": "browser-mock",
+    "id": "T229"
+  },
+  {
+    "file": "e2e/history.spec.ts",
+    "line": 57,
+    "end": 77,
+    "name": "articles opened in the focused tab come back in order; a tab switch is undone by switching back",
+    "layer": "browser-mock",
+    "id": "T230"
+  },
+  {
+    "file": "e2e/i18n.spec.ts",
+    "line": 3,
+    "end": 36,
+    "name": "the display language switches live in Settings and is stored in the backend",
+    "layer": "browser-mock",
+    "id": "T231"
+  },
+  {
+    "file": "e2e/jobs.spec.ts",
+    "line": 6,
+    "end": 12,
+    "name": "job types show their names, with the ID on hover",
+    "layer": "browser-mock",
+    "id": "T232"
+  },
+  {
+    "file": "e2e/jobs.spec.ts",
+    "line": 14,
+    "end": 34,
+    "name": "each job type's ⓘ explains it on hover and on keyboard focus, and describes the icon",
+    "layer": "browser-mock",
+    "id": "T233"
+  },
+  {
+    "file": "e2e/library.spec.ts",
+    "line": 11,
+    "end": 33,
+    "name": "sidebar counts each scope, and a scope narrows the list",
+    "layer": "browser-mock",
+    "id": "T234"
+  },
+  {
+    "file": "e2e/library.spec.ts",
+    "line": 35,
+    "end": 58,
+    "name": "facets AND across dimensions, show counts in the set, and clear",
+    "layer": "browser-mock",
+    "id": "T235"
+  },
+  {
+    "file": "e2e/library.spec.ts",
+    "line": 60,
+    "end": 76,
+    "name": "an empty result offers to drop one condition",
+    "layer": "browser-mock",
+    "id": "T236"
+  },
+  {
+    "file": "e2e/library.spec.ts",
+    "line": 78,
+    "end": 80,
+    "name": "the failed-jobs badge reflects the job overview",
+    "layer": "browser-mock",
+    "id": "T237"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 17,
+    "end": 46,
+    "name": "a menu over the page webview stays invisible until the webview is hidden, then shows whole (H22)",
+    "layer": "browser-mock",
+    "id": "T238"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 48,
+    "end": 65,
+    "name": "a menu over no webview is drawn in the frame it first appears (H22)",
+    "layer": "browser-mock",
+    "id": "T239"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 67,
+    "end": 88,
+    "name": "a press outside closes the group picker and a menu; so does a click in a page webview (H23)",
+    "layer": "browser-mock",
+    "id": "T240"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 90,
+    "end": 112,
+    "name": "a click in a page in another pane closes a popover; the focus a page gets when a menu hides it does not (H23)",
+    "layer": "browser-mock",
+    "id": "T241"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 114,
+    "end": 127,
+    "name": "Esc closes a popover without also clearing the filters (H23)",
+    "layer": "browser-mock",
+    "id": "T242"
+  },
+  {
+    "file": "e2e/menus.spec.ts",
+    "line": 129,
+    "end": 149,
+    "name": "a nav group's ⋯ menu opens beside its trigger, not at the window's left edge (H24)",
+    "layer": "browser-mock",
+    "id": "T243"
+  },
+  {
+    "file": "e2e/pageview.spec.ts",
+    "line": 12,
+    "end": 29,
+    "name": "leaving the library hides the page, and coming back shows it with no hide sent after the show",
+    "layer": "browser-mock",
+    "id": "T244"
+  },
+  {
+    "file": "e2e/palette.spec.ts",
+    "line": 6,
+    "end": 23,
+    "name": "Ctrl+K toggles the palette; > lists commands only",
+    "layer": "browser-mock",
+    "id": "T245"
+  },
+  {
+    "file": "e2e/palette.spec.ts",
+    "line": 25,
+    "end": 34,
+    "name": "Tab stacks a tag as a facet and keeps the palette open",
+    "layer": "browser-mock",
+    "id": "T246"
+  },
+  {
+    "file": "e2e/palette.spec.ts",
+    "line": 36,
+    "end": 44,
+    "name": "a pasted URL opens as a page, or Ctrl+Enter saves it to the Index",
+    "layer": "browser-mock",
+    "id": "T247"
+  },
+  {
+    "file": "e2e/palette.spec.ts",
+    "line": 46,
+    "end": 53,
+    "name": "a pasted URL of a saved article offers its Reader view first",
+    "layer": "browser-mock",
+    "id": "T248"
+  },
+  {
+    "file": "e2e/panes.spec.ts",
+    "line": 3,
+    "end": 17,
+    "name": "a pane keeps the width it was dragged to across a reload",
+    "layer": "browser-mock",
+    "id": "T249"
+  },
+  {
+    "file": "e2e/panes.spec.ts",
+    "line": 19,
+    "end": 31,
+    "name": "the keyboard resizes within limits, and a double-click restores the default",
+    "layer": "browser-mock",
+    "id": "T250"
+  },
+  {
+    "file": "e2e/pdf.spec.ts",
+    "line": 3,
+    "end": 20,
+    "name": "a PDF picked on the import screen opens in the Reader, without Page or rendering",
+    "layer": "browser-mock",
+    "id": "T251"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 25,
+    "end": 36,
+    "name": "別ウィンドウで開く moves the tab to a new document window whose layout waits in storage",
+    "layer": "browser-mock",
+    "id": "T252"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 38,
+    "end": 74,
+    "name": "a document window shows only its tabs, hands one back to the main window, and closes when empty",
+    "layer": "browser-mock",
+    "id": "T253"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 76,
+    "end": 95,
+    "name": "the main window restores pop-outs at startup, keeps the chat in its window, and opens what comes back",
+    "layer": "browser-mock",
+    "id": "T254"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 97,
+    "end": 103,
+    "name": "the chat dock pops out from its header; the chat window docks back through the main window",
+    "layer": "browser-mock",
+    "id": "T255"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 105,
+    "end": 127,
+    "name": "the chat window is the pane alone; its citations and its close go to the main window",
+    "layer": "browser-mock",
+    "id": "T256"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 129,
+    "end": 145,
+    "name": "closing the chat window only closes it: main does not dock it, and 対話 then opens the dock",
+    "layer": "browser-mock",
+    "id": "T257"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 147,
+    "end": 168,
+    "name": "only the main window sends the Page language to the pages; a pop-out takes main's choice instead of resetting it",
+    "layer": "browser-mock",
+    "id": "T258"
+  },
+  {
+    "file": "e2e/popout.spec.ts",
+    "line": 170,
+    "end": 174,
+    "name": "the main window sends the Page language to the pages, and a choice made in a pop-out",
+    "layer": "browser-mock",
+    "id": "T259"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 12,
+    "end": 61,
+    "name": "理解度チェック: answer, see the source, then add the answers to review",
+    "layer": "browser-mock",
+    "id": "T260"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 63,
+    "end": 97,
+    "name": "理解度チェック stays open with its progress across another screen and another tab",
+    "layer": "browser-mock",
+    "id": "T261"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 99,
+    "end": 107,
+    "name": "an article without a quiz offers to make one",
+    "layer": "browser-mock",
+    "id": "T262"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 109,
+    "end": 139,
+    "name": "今日の復習: due cards one by one with their next intervals, then a summary",
+    "layer": "browser-mock",
+    "id": "T263"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 141,
+    "end": 150,
+    "name": "a card's source opens the Reader at the passage",
+    "layer": "browser-mock",
+    "id": "T264"
+  },
+  {
+    "file": "e2e/quiz.spec.ts",
+    "line": 152,
+    "end": 161,
+    "name": "Settings › 復習 sets the minimum interval with a unit",
+    "layer": "browser-mock",
+    "id": "T265"
+  },
+  {
+    "file": "e2e/reader.spec.ts",
+    "line": 17,
+    "end": 40,
+    "name": "the language segment switches every block; a block flips on its own",
+    "layer": "browser-mock",
+    "id": "T266"
+  },
+  {
+    "file": "e2e/reader.spec.ts",
+    "line": 42,
+    "end": 51,
+    "name": "the summary expands, and imported Markdown has no Page view",
+    "layer": "browser-mock",
+    "id": "T267"
+  },
+  {
+    "file": "e2e/reader.spec.ts",
+    "line": 55,
+    "end": 69,
+    "name": "picking 訳文 on an untranslated article starts its translation and shows the progress",
+    "layer": "browser-mock",
+    "id": "T268"
+  },
+  {
+    "file": "e2e/reader.spec.ts",
+    "line": 71,
+    "end": 91,
+    "name": "with 表示を切り替えたら自動で翻訳 off, switching the view translates nothing",
+    "layer": "browser-mock",
+    "id": "T269"
+  },
+  {
+    "file": "e2e/reader.spec.ts",
+    "line": 93,
+    "end": 107,
+    "name": "訳し直す is in the ⋯ menu, with what it does, as soon as an article has a translation",
+    "layer": "browser-mock",
+    "id": "T270"
+  },
+  {
+    "file": "e2e/relevance.spec.ts",
+    "line": 19,
+    "end": 29,
+    "name": "重要 lists the important articles, which carry a mark with the reason",
+    "layer": "browser-mock",
+    "id": "T271"
+  },
+  {
+    "file": "e2e/relevance.spec.ts",
+    "line": 31,
+    "end": 56,
+    "name": "sorting and filtering by importance; the Reader shows the reason",
+    "layer": "browser-mock",
+    "id": "T272"
+  },
+  {
+    "file": "e2e/relevance.spec.ts",
+    "line": 58,
+    "end": 82,
+    "name": "without a profile nothing is rated and settings say why; with one, scores can be redone",
+    "layer": "browser-mock",
+    "id": "T273"
+  },
+  {
+    "file": "e2e/search.spec.ts",
+    "line": 9,
+    "end": 32,
+    "name": "search groups hits by article, filters by match type, and Esc leaves it",
+    "layer": "browser-mock",
+    "id": "T274"
+  },
+  {
+    "file": "e2e/search.spec.ts",
+    "line": 34,
+    "end": 47,
+    "name": "the arrows move through the hits and Enter opens the Reader at the hit block",
+    "layer": "browser-mock",
+    "id": "T275"
+  },
+  {
+    "file": "e2e/search.spec.ts",
+    "line": 49,
+    "end": 58,
+    "name": "the search scope picker shows the list's scope, with the chat's groups but no tags",
+    "layer": "browser-mock",
+    "id": "T276"
+  },
+  {
+    "file": "e2e/settings.spec.ts",
+    "line": 23,
+    "end": 40,
+    "name": "every settings section renders, and Esc goes back to the library",
+    "layer": "browser-mock",
+    "id": "T277"
+  },
+  {
+    "file": "e2e/settings.spec.ts",
+    "line": 42,
+    "end": 55,
+    "name": "in a narrow window the provider chain wraps instead of squeezing its selects to nothing",
+    "layer": "browser-mock",
+    "id": "T278"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 19,
+    "end": 40,
+    "name": "the ⋯ menu draws its text in the frame it first appears (H8)",
+    "layer": "browser-mock",
+    "id": "T279"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 42,
+    "end": 51,
+    "name": "on Page, a still captured when the pointer reaches ⋯ lets the menu hide the webview without a new capture (H8)",
+    "layer": "browser-mock",
+    "id": "T280"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 56,
+    "end": 70,
+    "name": "the search and command box sits in the title bar, not in the nav (H9)",
+    "layer": "browser-mock",
+    "id": "T281"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 72,
+    "end": 76,
+    "name": "the chat window has no command center (H9)",
+    "layer": "browser-mock",
+    "id": "T282"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 78,
+    "end": 86,
+    "name": "the nav's top holds only its close button; what the ＋ opened is in the palette (H10)",
+    "layer": "browser-mock",
+    "id": "T283"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 88,
+    "end": 98,
+    "name": "the closed list is one button that opens it again; j / k still move the cursor (H11)",
+    "layer": "browser-mock",
+    "id": "T284"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 100,
+    "end": 106,
+    "name": "the tab strip's ＋ opens the search engine's start page in a new tab (H12)",
+    "layer": "browser-mock",
+    "id": "T285"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 108,
+    "end": 126,
+    "name": "a saved article's summary shows in a strip above its page; it can be generated there (H13)",
+    "layer": "browser-mock",
+    "id": "T286"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 128,
+    "end": 133,
+    "name": "an unsaved page has no summary (H13)",
+    "layer": "browser-mock",
+    "id": "T287"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 145,
+    "end": 164,
+    "name": "the Reader and the Page toolbars carry the same article actions in the same order (H14)",
+    "layer": "browser-mock",
+    "id": "T288"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 166,
+    "end": 170,
+    "name": "an unsaved page's ⋯ copies its URL (H14)",
+    "layer": "browser-mock",
+    "id": "T289"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 172,
+    "end": 209,
+    "name": "a document window's tab strips are its title bar: they drag it, and the top-right one holds the window controls (H19)",
+    "layer": "browser-mock",
+    "id": "T290"
+  },
+  {
+    "file": "e2e/shell.spec.ts",
+    "line": 211,
+    "end": 217,
+    "name": "the main window keeps its title bar and its strips do not drag the window (H19)",
+    "layer": "browser-mock",
+    "id": "T291"
+  },
+  {
+    "file": "e2e/shortcuts.spec.ts",
+    "line": 12,
+    "end": 34,
+    "name": "a recorded key runs the action, survives a reload, and can be removed",
+    "layer": "browser-mock",
+    "id": "T292"
+  },
+  {
+    "file": "e2e/shortcuts.spec.ts",
+    "line": 36,
+    "end": 49,
+    "name": "a key bound to two actions is flagged, and Esc cancels recording",
+    "layer": "browser-mock",
+    "id": "T293"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 34,
+    "end": 53,
+    "name": "a drag starts in the backend with the tab, its slot and this window's strips, and ends when the backend says so",
+    "layer": "browser-mock",
+    "id": "T294"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 55,
+    "end": 72,
+    "name": "a window draws the slot it is told: a marker for its own tab, the tab itself for another window's",
+    "layer": "browser-mock",
+    "id": "T295"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 74,
+    "end": 88,
+    "name": "every window reports its strips while any window drags, and again when its tabs change",
+    "layer": "browser-mock",
+    "id": "T296"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 90,
+    "end": 103,
+    "name": "torn off, the tab leaves for a new document window that the backend creates and places",
+    "layer": "browser-mock",
+    "id": "T297"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 105,
+    "end": 118,
+    "name": "the window holding the tab when the drag ends moves it in its own strips or sends it to the slot in another window",
+    "layer": "browser-mock",
+    "id": "T298"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 120,
+    "end": 141,
+    "name": "split into panes, a tab dropped on the other pane's strip moves there, and an empty strip marks the slot",
+    "layer": "browser-mock",
+    "id": "T299"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 153,
+    "end": 182,
+    "name": "split into panes, the window reports each pane's body under its strip, and draws the zone a drag is over",
+    "layer": "browser-mock",
+    "id": "T300"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 184,
+    "end": 207,
+    "name": "dropped on another pane's center the tab joins that pane; on an edge it splits that pane and takes the new one",
+    "layer": "browser-mock",
+    "id": "T301"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 209,
+    "end": 247,
+    "name": "a pop-out split into panes moves a tab between them the same way",
+    "layer": "browser-mock",
+    "id": "T302"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 249,
+    "end": 254,
+    "name": "a window opens what is dropped on it at that slot",
+    "layer": "browser-mock",
+    "id": "T303"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 256,
+    "end": 285,
+    "name": "a document window dragged by its only tab follows the cursor itself; a torn-off window drops its only tab",
+    "layer": "browser-mock",
+    "id": "T304"
+  },
+  {
+    "file": "e2e/tabdrag.spec.ts",
+    "line": 287,
+    "end": 289,
+    "name": "the main window is shown by its configuration: it does not report ready",
+    "layer": "browser-mock",
+    "id": "T305"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 10,
+    "end": 27,
+    "name": "Ctrl-click opens a second tab; Ctrl+Tab cycles; Ctrl+W closes back to one",
+    "layer": "browser-mock",
+    "id": "T306"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 29,
+    "end": 44,
+    "name": "a tab reorders by drag; middle-click closes it",
+    "layer": "browser-mock",
+    "id": "T307"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 46,
+    "end": 77,
+    "name": "split right makes a focused empty pane; the next click opens there; closing it merges back",
+    "layer": "browser-mock",
+    "id": "T308"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 79,
+    "end": 89,
+    "name": "the layout with its tabs survives a reload",
+    "layer": "browser-mock",
+    "id": "T309"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 91,
+    "end": 115,
+    "name": "a Page tab gets its own webview, titled by its host until the page names itself",
+    "layer": "browser-mock",
+    "id": "T310"
+  },
+  {
+    "file": "e2e/tabs.spec.ts",
+    "line": 117,
+    "end": 135,
+    "name": "a chat citation and a palette article open in a new tab on Ctrl / middle click",
+    "layer": "browser-mock",
+    "id": "T311"
+  },
+  {
+    "file": "e2e/tags.spec.ts",
+    "line": 10,
+    "end": 39,
+    "name": "tag popover: search, AND / any, Backspace drops the last tag",
+    "layer": "browser-mock",
+    "id": "T312"
+  },
+  {
+    "file": "e2e/tags.spec.ts",
+    "line": 41,
+    "end": 57,
+    "name": "tag popover keyboard: arrows move, Space toggles, Ctrl+Enter applies",
+    "layer": "browser-mock",
+    "id": "T313"
+  },
+  {
+    "file": "e2e/tags.spec.ts",
+    "line": 59,
+    "end": 81,
+    "name": "closing a facet popover returns focus to its chip, also after the first pick replaced the chip",
+    "layer": "browser-mock",
+    "id": "T314"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 38,
+    "end": 73,
+    "name": "単語を登録: select a word in the Reader, save it with its sentence, and see it marked",
+    "layer": "browser-mock",
+    "id": "T315"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 75,
+    "end": 119,
+    "name": "単語帳: search, edit a meaning, suspend, export and delete",
+    "layer": "browser-mock",
+    "id": "T316"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 173,
+    "end": 207,
+    "name": "今日の復習: a saved word is a word → meaning card, said aloud",
+    "layer": "browser-mock",
+    "id": "T317"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 209,
+    "end": 222,
+    "name": "without an offline English voice the card is silent and has no audio buttons",
+    "layer": "browser-mock",
+    "id": "T318"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 224,
+    "end": 237,
+    "name": "auto-play can be turned off in Settings › 復習; the buttons still speak",
+    "layer": "browser-mock",
+    "id": "T319"
+  },
+  {
+    "file": "e2e/vocab.spec.ts",
+    "line": 239,
+    "end": 256,
+    "name": "a word's card opens the passage it came from",
+    "layer": "browser-mock",
+    "id": "T320"
+  },
+  {
+    "file": "scripts/licenses.test.mjs",
+    "line": 6,
+    "end": 12,
+    "name": "every bundled npm package has a license text, and dev tools are left out",
+    "layer": "node",
+    "id": "T321"
+  },
+  {
+    "file": "scripts/licenses.test.mjs",
+    "line": 14,
+    "end": 22,
+    "name": "packages with the same text share one copy of it",
+    "layer": "node",
+    "id": "T322"
+  },
+  {
+    "file": "scripts/version.test.mjs",
+    "line": 20,
+    "end": 22,
+    "name": "every version file in the repository agrees",
+    "layer": "node",
+    "id": "T323"
+  },
+  {
+    "file": "scripts/version.test.mjs",
+    "line": 24,
+    "end": 26,
+    "name": "tauri.conf.json takes its version from Cargo.toml",
+    "layer": "node",
+    "id": "T324"
+  },
+  {
+    "file": "scripts/version.test.mjs",
+    "line": 28,
+    "end": 38,
+    "name": "setVersion rewrites every source and leaves dependencies alone",
+    "layer": "node",
+    "id": "T325"
+  },
+  {
+    "file": "scripts/version.test.mjs",
+    "line": 40,
+    "end": 46,
+    "name": "drift and bad input are reported",
+    "layer": "node",
+    "id": "T326"
+  },
+  {
+    "file": "src-tauri/src/badge.rs",
+    "line": 141,
+    "name": "labels_cap_at_99_plus",
+    "layer": "rust",
+    "id": "T327"
+  },
+  {
+    "file": "src-tauri/src/badge.rs",
+    "line": 146,
+    "name": "draws_white_digits_on_an_accent_disc",
+    "layer": "rust",
+    "id": "T328"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 737,
+    "name": "labels_name_their_tab_and_nothing_else_passes",
+    "layer": "rust",
+    "id": "T329"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 750,
+    "name": "snapshot_nonces_are_per_label_and_single_use",
+    "layer": "rust",
+    "id": "T330"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 764,
+    "name": "page_keys_keep_the_overlay_shape",
+    "layer": "rust",
+    "id": "T331"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 775,
+    "name": "tab_events_carry_the_tab_beside_the_body",
+    "layer": "rust",
+    "id": "T332"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 786,
+    "name": "a_page_captures_words_only_on_screen_and_not_in_bursts",
+    "layer": "rust",
+    "id": "T333"
+  },
+  {
+    "file": "src-tauri/src/browser.rs",
+    "line": 799,
+    "name": "eviction_takes_the_longest_hidden_webviews_beyond_the_cap_and_never_a_shown_one",
+    "layer": "rust",
+    "id": "T334"
+  },
+  {
+    "file": "src-tauri/src/location.rs",
+    "line": 63,
+    "name": "the_cli_finds_the_folder_this_identifier_names",
+    "layer": "rust",
+    "id": "T335"
+  },
+  {
+    "file": "src-tauri/src/location.rs",
+    "line": 69,
+    "name": "targets_inside_the_current_folder_are_refused",
+    "layer": "rust",
+    "id": "T336"
+  },
+  {
+    "file": "src-tauri/src/location.rs",
+    "line": 78,
+    "name": "copy_data_copies_the_database_and_folders_and_keeps_the_source",
+    "layer": "rust",
+    "id": "T337"
+  },
+  {
+    "file": "src-tauri/src/popout.rs",
+    "line": 209,
+    "name": "only_document_and_chat_labels_are_pop_outs",
+    "layer": "rust",
+    "id": "T338"
+  },
+  {
+    "file": "src-tauri/src/popout.rs",
+    "line": 217,
+    "name": "a_saved_position_is_kept_only_while_its_monitor_is_there",
+    "layer": "rust",
+    "id": "T339"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 644,
+    "name": "the_slot_is_the_number_of_tab_centers_left_of_the_pointer",
+    "layer": "rust",
+    "id": "T340"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 652,
+    "name": "a_strip_is_found_in_its_own_windows_scale_and_the_source_is_on_top",
+    "layer": "rust",
+    "id": "T341"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 669,
+    "name": "a_tab_stays_in_its_strip_until_it_is_pulled_detach_px_above_or_below_it",
+    "layer": "rust",
+    "id": "T342"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 681,
+    "name": "a_tab_torn_off_follows_the_cursor_in_its_window_hides_over_a_strip_and_comes_back",
+    "layer": "rust",
+    "id": "T343"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 709,
+    "name": "a_body_is_its_center_and_an_edge_quarter_on_each_side",
+    "layer": "rust",
+    "id": "T344"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 724,
+    "name": "in_a_window_split_into_panes_the_tab_moves_between_them_and_comes_out_only_outside_it",
+    "layer": "rust",
+    "id": "T345"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 749,
+    "name": "released_over_another_panes_strip_in_its_own_window_the_tab_moves_there",
+    "layer": "rust",
+    "id": "T346"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 757,
+    "name": "released_over_a_strip_the_window_holding_the_tab_sends_it_there",
+    "layer": "rust",
+    "id": "T347"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 774,
+    "name": "escape_puts_the_tab_back_where_it_started",
+    "layer": "rust",
+    "id": "T348"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 785,
+    "name": "a_release_before_the_torn_off_window_loads_waits_for_it",
+    "layer": "rust",
+    "id": "T349"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 801,
+    "name": "a_window_dragged_by_its_only_tab_follows_the_cursor_and_escape_puts_it_back",
+    "layer": "rust",
+    "id": "T350"
+  },
+  {
+    "file": "src-tauri/src/tabdrag.rs",
+    "line": 821,
+    "name": "the_ui_reports_plain_numbers",
+    "layer": "rust",
+    "id": "T351"
+  },
+  {
+    "file": "src-tauri/src/update.rs",
+    "line": 94,
+    "name": "only_a_real_key_turns_the_updater_on",
+    "layer": "rust",
+    "id": "T352"
+  },
+  {
+    "file": "src/app/history.test.ts",
+    "line": 8,
+    "end": 17,
+    "name": "visits stack up; the same place twice is one entry",
+    "layer": "node",
+    "id": "T353"
+  },
+  {
+    "file": "src/app/history.test.ts",
+    "line": 19,
+    "end": 34,
+    "name": "back and forward move the cursor and stop at the ends; a new visit drops what was ahead",
+    "layer": "node",
+    "id": "T354"
+  },
+  {
+    "file": "src/app/history.test.ts",
+    "line": 36,
+    "end": 44,
+    "name": "the stack is bounded: the oldest entries go",
+    "layer": "node",
+    "id": "T355"
+  },
+  {
+    "file": "src/app/history.test.ts",
+    "line": 46,
+    "end": 56,
+    "name": "where a step arrived replaces its entry instead of cutting the forward ones",
+    "layer": "node",
+    "id": "T356"
+  },
+  {
+    "file": "src/app/history.test.ts",
+    "line": 58,
+    "end": 67,
+    "name": "a page's document is its explicit navigation, not where the page moved on its own",
+    "layer": "node",
+    "id": "T357"
+  },
+  {
+    "file": "src/app/windows.test.ts",
+    "line": 5,
+    "end": 11,
+    "name": "a window's label says what it shows; anything unexpected is the main shell",
+    "layer": "node",
+    "id": "T358"
+  },
+  {
+    "file": "src/app/windows.test.ts",
+    "line": 13,
+    "end": 18,
+    "name": "open pop-outs are the window keys in storage; the next document window takes the lowest free number",
+    "layer": "node",
+    "id": "T359"
+  },
+  {
+    "file": "src/app/windows.test.ts",
+    "line": 20,
+    "end": 24,
+    "name": "only the main window sends the shared overlay config; a document window takes main's Page language",
+    "layer": "node",
+    "id": "T360"
+  },
+  {
+    "file": "src/browser/engines.test.ts",
+    "line": 7,
+    "end": 19,
+    "name": "toNavigation: URLs as typed, hosts get https://, everything else is searched",
+    "layer": "node",
+    "id": "T361"
+  },
+  {
+    "file": "src/browser/engines.test.ts",
+    "line": 21,
+    "end": 26,
+    "name": "toNavigation never leaves http(s)",
+    "layer": "node",
+    "id": "T362"
+  },
+  {
+    "file": "src/browser/engines.test.ts",
+    "line": 28,
+    "end": 38,
+    "name": "engines: built-in and custom search and home pages",
+    "layer": "node",
+    "id": "T363"
+  },
+  {
+    "file": "src/chat/chat.test.ts",
+    "line": 5,
+    "end": 8,
+    "name": "only validated citation numbers become chips",
+    "layer": "node",
+    "id": "T364"
+  },
+  {
+    "file": "src/chat/chat.test.ts",
+    "line": 10,
+    "end": 48,
+    "name": "the open articles: saved ones once each, in tab order; unsaved pages and unknown articles left out",
+    "layer": "node",
+    "id": "T365"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 21,
+    "end": 35,
+    "name": "motions: h l stay on the line, j k keep the column, w b e by word class",
+    "layer": "node",
+    "id": "T366"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 37,
+    "end": 42,
+    "name": "motions: 0 $ gg G",
+    "layer": "node",
+    "id": "T367"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 44,
+    "end": 52,
+    "name": "entering insert: i a I A o O; Esc steps back one like Vim",
+    "layer": "node",
+    "id": "T368"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 54,
+    "end": 66,
+    "name": "edits: x dd dw cw yy p",
+    "layer": "node",
+    "id": "T369"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 68,
+    "end": 74,
+    "name": "u undoes one change at a time; an insert that typed nothing is not a change",
+    "layer": "node",
+    "id": "T370"
+  },
+  {
+    "file": "src/chat/vim.test.ts",
+    "line": 76,
+    "end": 87,
+    "name": "normal mode swallows other printable keys; Esc, arrows and Tab are left to the page",
+    "layer": "node",
+    "id": "T371"
+  },
+  {
+    "file": "src/feeds/feedFilter.test.ts",
+    "line": 10,
+    "end": 21,
+    "name": "every rejection reason reads as a sentence in both languages",
+    "layer": "node",
+    "id": "T372"
+  },
+  {
+    "file": "src/feeds/feedFilter.test.ts",
+    "line": 23,
+    "end": 27,
+    "name": "removing a rule takes out only the first equal one",
+    "layer": "node",
+    "id": "T373"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 8,
+    "end": 37,
+    "name": "folders hold their feeds with summed counts; the rest stay loose",
+    "layer": "node",
+    "id": "T374"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 39,
+    "end": 43,
+    "name": "moving a folder swaps it with its neighbour, never past the ends",
+    "layer": "node",
+    "id": "T375"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 45,
+    "end": 47,
+    "name": "pasted feed URLs: one per line, blanks and repeats dropped",
+    "layer": "node",
+    "id": "T376"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 64,
+    "end": 70,
+    "name": "feed groups: the folders' feeds in order, then the feeds in none",
+    "layer": "node",
+    "id": "T377"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 72,
+    "end": 80,
+    "name": "Alt+arrows step a feed one place, across into the neighbouring folder at either end",
+    "layer": "node",
+    "id": "T378"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 82,
+    "end": 97,
+    "name": "dropping a feed: onto a feed it takes that slot, onto a folder it goes last there",
+    "layer": "node",
+    "id": "T379"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 99,
+    "end": 104,
+    "name": "dropping a folder reorders the folders; its feeds follow it",
+    "layer": "node",
+    "id": "T380"
+  },
+  {
+    "file": "src/feeds/feedFolders.test.ts",
+    "line": 106,
+    "end": 125,
+    "name": "placing feeds shows a move before the backend answers",
+    "layer": "node",
+    "id": "T381"
+  },
+  {
+    "file": "src/i18n/backend.test.ts",
+    "line": 70,
+    "end": 78,
+    "name": "every backend message code has a catalog entry with the same params",
+    "layer": "node",
+    "id": "T382"
+  },
+  {
+    "file": "src/i18n/backend.test.ts",
+    "line": 80,
+    "end": 86,
+    "name": "every be.* catalog entry is a code the backend uses",
+    "layer": "node",
+    "id": "T383"
+  },
+  {
+    "file": "src/i18n/backend.test.ts",
+    "line": 88,
+    "end": 99,
+    "name": "t.msg translates coded messages, nested codes in params too, and passes plain text through",
+    "layer": "node",
+    "id": "T384"
+  },
+  {
+    "file": "src/i18n/i18n.test.ts",
+    "line": 10,
+    "end": 24,
+    "name": "en has every key of ja, with the same params",
+    "layer": "node",
+    "id": "T385"
+  },
+  {
+    "file": "src/i18n/i18n.test.ts",
+    "line": 26,
+    "end": 32,
+    "name": "en keeps ja's leading and trailing spaces (text placed next to markup; English may add its own)",
+    "layer": "node",
+    "id": "T386"
+  },
+  {
+    "file": "src/i18n/i18n.test.ts",
+    "line": 34,
+    "end": 41,
+    "name": "English text has no Japanese in it",
+    "layer": "node",
+    "id": "T387"
+  },
+  {
+    "file": "src/i18n/i18n.test.ts",
+    "line": 43,
+    "end": 49,
+    "name": "t fills params, formats numbers per language and pluralizes English",
+    "layer": "node",
+    "id": "T388"
+  },
+  {
+    "file": "src/i18n/literals.test.ts",
+    "line": 8,
+    "end": 16,
+    "name": "UI code has no Japanese text outside the catalogs (src/i18n)",
+    "layer": "node",
+    "id": "T389"
+  },
+  {
+    "file": "src/layout/chrome.test.ts",
+    "line": 19,
+    "end": 21,
+    "name": "topStrips: a single pane is the whole title bar",
+    "layer": "node",
+    "id": "T390"
+  },
+  {
+    "file": "src/layout/chrome.test.ts",
+    "line": 23,
+    "end": 25,
+    "name": "topStrips: side by side, every pane's strip is on top and the rightmost holds the controls",
+    "layer": "node",
+    "id": "T391"
+  },
+  {
+    "file": "src/layout/chrome.test.ts",
+    "line": 27,
+    "end": 32,
+    "name": "topStrips: stacked, only the upper pane reaches the top; nested splits follow the same rule",
+    "layer": "node",
+    "id": "T392"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 36,
+    "end": 52,
+    "name": "open: fills the empty pane, then replaces the active tab; a new tab goes right after it",
+    "layer": "node",
+    "id": "T393"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 54,
+    "end": 65,
+    "name": "open: a page in its own tab keeps the webview (same id) and bumps seq; the same URL is a no-op",
+    "layer": "node",
+    "id": "T394"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 67,
+    "end": 77,
+    "name": "close: the neighbour becomes active; the last tab removes the pane, except the root",
+    "layer": "node",
+    "id": "T395"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 79,
+    "end": 105,
+    "name": "split and merge: the new pane is empty and focused; same-direction splits become siblings",
+    "layer": "node",
+    "id": "T396"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 107,
+    "end": 115,
+    "name": "close of the last tab in a split pane merges the pane away and refocuses",
+    "layer": "node",
+    "id": "T397"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 117,
+    "end": 132,
+    "name": "move: within a pane reorders around the gap; across panes shows it there and drops an emptied pane",
+    "layer": "node",
+    "id": "T398"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 134,
+    "end": 159,
+    "name": "dropOn: a body's center takes the tab at the end, an edge splits that pane on its side and puts the tab there",
+    "layer": "node",
+    "id": "T399"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 161,
+    "end": 169,
+    "name": "cycle wraps; focus ignores unknown panes",
+    "layer": "node",
+    "id": "T400"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 171,
+    "end": 183,
+    "name": "resize sets a child's fraction, its neighbour takes the rest, and both stop at MIN_SIZE",
+    "layer": "node",
+    "id": "T401"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 185,
+    "end": 194,
+    "name": "navigated keeps the title on the same URL and clears it on another; a Reader tab ignores page events",
+    "layer": "node",
+    "id": "T402"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 196,
+    "end": 202,
+    "name": "closeWhere drops every tab of a deleted article",
+    "layer": "node",
+    "id": "T403"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 204,
+    "end": 230,
+    "name": "serialize round-trips the tree, drops runtime page state, and rejects other shapes",
+    "layer": "node",
+    "id": "T404"
+  },
+  {
+    "file": "src/layout/layout.test.ts",
+    "line": 232,
+    "end": 246,
+    "name": "a page keeps its webview key when replaced in place, and docOf carries it to another pane or window",
+    "layer": "node",
+    "id": "T405"
+  },
+  {
+    "file": "src/layout/panes.test.ts",
+    "line": 29,
+    "end": 42,
+    "name": "paneAfter: neighbours by geometry stop at the edges, up / down reach stacked panes, o cycles",
+    "layer": "node",
+    "id": "T406"
+  },
+  {
+    "file": "src/layout/panes.test.ts",
+    "line": 44,
+    "end": 53,
+    "name": "neighbor skips panes that only touch at a corner and panes behind the start",
+    "layer": "node",
+    "id": "T407"
+  },
+  {
+    "file": "src/layout/panes.test.ts",
+    "line": 55,
+    "end": 67,
+    "name": "stepNav: skips disabled items and stops at both ends",
+    "layer": "node",
+    "id": "T408"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 15,
+    "end": 25,
+    "name": "keyOf: canonical keys; Shift only where the key does not print it",
+    "layer": "node",
+    "id": "T409"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 27,
+    "end": 29,
+    "name": "keyLabel: display form",
+    "layer": "node",
+    "id": "T410"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 31,
+    "end": 40,
+    "name": "actionFor: defaults, several keys per action, overrides replace an action's keys",
+    "layer": "node",
+    "id": "T411"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 42,
+    "end": 47,
+    "name": "conflicts: a key bound to two actions, first in registry order wins",
+    "layer": "node",
+    "id": "T412"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 49,
+    "end": 59,
+    "name": "pageKeys: Ctrl keys of in-field actions go from page fields too; named keys stay the page's",
+    "layer": "node",
+    "id": "T413"
+  },
+  {
+    "file": "src/lib/keys.test.ts",
+    "line": 61,
+    "end": 73,
+    "name": "custom keys: setting an action's defaults back clears its override; reset restores one action or all",
+    "layer": "node",
+    "id": "T414"
+  },
+  {
+    "file": "src/lib/runs.test.ts",
+    "line": 5,
+    "end": 21,
+    "name": "withStarts: each run starts where the ones before it end",
+    "layer": "node",
+    "id": "T415"
+  },
+  {
+    "file": "src/lib/time.test.ts",
+    "line": 8,
+    "end": 24,
+    "name": "relTime: past and future in the largest whole unit, null and garbage as —",
+    "layer": "node",
+    "id": "T416"
+  },
+  {
+    "file": "src/lib/urlLines.test.ts",
+    "line": 6,
+    "end": 10,
+    "name": "pasted lines without an http(s) URL are counted by why",
+    "layer": "node",
+    "id": "T417"
+  },
+  {
+    "file": "src/library/articleMenu.test.ts",
+    "line": 15,
+    "end": 34,
+    "name": "one article gets every action; picked ones only those that apply to all at once",
+    "layer": "node",
+    "id": "T418"
+  },
+  {
+    "file": "src/library/articleMenu.test.ts",
+    "line": 36,
+    "end": 44,
+    "name": "favorite and read flip only when every article already has them",
+    "layer": "node",
+    "id": "T419"
+  },
+  {
+    "file": "src/library/articleMenu.test.ts",
+    "line": 46,
+    "end": 58,
+    "name": "an imported file has no page and no URL to copy; a pop-out has no new window to offer",
+    "layer": "node",
+    "id": "T420"
+  },
+  {
+    "file": "src/library/groups.test.ts",
+    "line": 11,
+    "end": 21,
+    "name": "genre mode: by name, unclassified last, order kept within",
+    "layer": "node",
+    "id": "T421"
+  },
+  {
+    "file": "src/library/groups.test.ts",
+    "line": 23,
+    "end": 41,
+    "name": "feed mode: manual first, then feeds, each split by genre",
+    "layer": "node",
+    "id": "T422"
+  },
+  {
+    "file": "src/library/groups.test.ts",
+    "line": 43,
+    "end": 49,
+    "name": "feed mode follows the user's feed order; a feed not in it goes last",
+    "layer": "node",
+    "id": "T423"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 73,
+    "end": 80,
+    "name": "scopes: recent is the last 7 days; genre/feed null are 未分類/手動追加",
+    "layer": "node",
+    "id": "T424"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 82,
+    "end": 104,
+    "name": "groups: a scope by id and a facet dimension (OR within, AND with the others), labelled by name",
+    "layer": "node",
+    "id": "T425"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 106,
+    "end": 114,
+    "name": "importance: 重要 keeps scores at or above its minimum, the facet has 未判定, and both reach the backend as is",
+    "layer": "node",
+    "id": "T426"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 116,
+    "end": 124,
+    "name": "facets: AND across dimensions, OR within, tags by tagMode",
+    "layer": "node",
+    "id": "T427"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 126,
+    "end": 146,
+    "name": "popover counts: own dimension removed, except tags in all mode",
+    "layer": "node",
+    "id": "T428"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 148,
+    "end": 164,
+    "name": "relaxations: one per active facet, plus the scope unless all",
+    "layer": "node",
+    "id": "T429"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 166,
+    "end": 176,
+    "name": "labels and backend filters",
+    "layer": "node",
+    "id": "T430"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 178,
+    "end": 192,
+    "name": "kept: an article read while listed stays in that view only",
+    "layer": "node",
+    "id": "T431"
+  },
+  {
+    "file": "src/library/library.test.ts",
+    "line": 194,
+    "end": 200,
+    "name": "a feed folder scope holds its feeds' articles and is named after the folder",
+    "layer": "node",
+    "id": "T432"
+  },
+  {
+    "file": "src/library/scopes.test.ts",
+    "line": 7,
+    "end": 62,
+    "name": "filter groups: empty genres dropped, 未分類/手動追加 always offered, keys round-trip",
+    "layer": "node",
+    "id": "T433"
+  },
+  {
+    "file": "src/library/scopes.test.ts",
+    "line": 64,
+    "end": 73,
+    "name": "feed folders are offered as scopes beside their feeds",
+    "layer": "node",
+    "id": "T434"
+  },
+  {
+    "file": "src/library/selection.test.ts",
+    "line": 7,
+    "end": 14,
+    "name": "a click toggles one row; Shift+click adds the span from the last clicked row, either way",
+    "layer": "node",
+    "id": "T435"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 20,
+    "end": 34,
+    "name": "settle waits for DOM mutations to stop, up to a cap",
+    "layer": "node",
+    "id": "T436"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 36,
+    "end": 48,
+    "name": "Japanese pages translate into English, others into Japanese",
+    "layer": "node",
+    "id": "T437"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 50,
+    "end": 53,
+    "name": "splitByLineBreaks splits on blank lines and after sentence ends only",
+    "layer": "node",
+    "id": "T438"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 55,
+    "end": 61,
+    "name": "assignTranslated is exact by count and deterministic",
+    "layer": "node",
+    "id": "T439"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 63,
+    "end": 66,
+    "name": "sanitize drops scripts, handlers and unsafe URLs",
+    "layer": "node",
+    "id": "T440"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 68,
+    "end": 74,
+    "name": "sanitize keeps http(s) links and image data URLs only, however the scheme is disguised",
+    "layer": "node",
+    "id": "T441"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 83,
+    "end": 87,
+    "name": "snippetHtml strips attributes, keeps links and numbers atoms",
+    "layer": "node",
+    "id": "T442"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 89,
+    "end": 123,
+    "name": "sentences are wrapped in place and swapped without losing page elements",
+    "layer": "node",
+    "id": "T443"
+  },
+  {
+    "file": "src/overlay/overlay.test.ts",
+    "line": 125,
+    "end": 136,
+    "name": "routeKey: which keys pressed in the page go to the app, and when",
+    "layer": "node",
+    "id": "T444"
+  },
+  {
+    "file": "src/quiz/quiz.test.ts",
+    "line": 9,
+    "end": 21,
+    "name": "formatInterval: minutes, hours, days, then months and years to a tenth",
+    "layer": "node",
+    "id": "T445"
+  },
+  {
+    "file": "src/quiz/quiz.test.ts",
+    "line": 23,
+    "end": 31,
+    "name": "a multiple-choice answer suggests 正解 or もう一度; recall has no suggestion",
+    "layer": "node",
+    "id": "T446"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 8,
+    "end": 11,
+    "name": "modes",
+    "layer": "node",
+    "id": "T447"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 13,
+    "end": 20,
+    "name": "mixed ratio is exact by count and evenly spread",
+    "layer": "node",
+    "id": "T448"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 22,
+    "end": 28,
+    "name": "splitBackticks",
+    "layer": "node",
+    "id": "T449"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 30,
+    "end": 46,
+    "name": "picking 混在 or 訳文 starts a translation only when prose is untranslated and no job is on it",
+    "layer": "node",
+    "id": "T450"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 48,
+    "end": 54,
+    "name": "the Reader counts only blocks the job would translate",
+    "layer": "node",
+    "id": "T451"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 56,
+    "end": 67,
+    "name": "the list and the Reader count the same blocks left to translate",
+    "layer": "node",
+    "id": "T452"
+  },
+  {
+    "file": "src/reader/mixed.test.ts",
+    "line": 69,
+    "end": 76,
+    "name": "an article with nothing to translate says why",
+    "layer": "node",
+    "id": "T453"
+  },
+  {
+    "file": "src/search/search.test.ts",
+    "line": 5,
+    "end": 14,
+    "name": "highlight is case-insensitive and regex-safe",
+    "layer": "node",
+    "id": "T454"
+  },
+  {
+    "file": "src/search/search.test.ts",
+    "line": 16,
+    "end": 22,
+    "name": "excerpt centers on the first hit",
+    "layer": "node",
+    "id": "T455"
+  },
+  {
+    "file": "src/search/search.test.ts",
+    "line": 24,
+    "end": 48,
+    "name": "hits: method filters by match source, scope by article; grouped by article in rank order",
+    "layer": "node",
+    "id": "T456"
+  },
+  {
+    "file": "src/vocab/speech.test.ts",
+    "line": 7,
+    "end": 18,
+    "name": "englishVoice takes an offline en-US voice first, then other English, never a cloud one",
+    "layer": "node",
+    "id": "T457"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 6,
+    "end": 12,
+    "name": "isWord: short English selections on one line",
+    "layer": "node",
+    "id": "T458"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 14,
+    "end": 24,
+    "name": "sentenceAt: the sentence around the word, across closing quotes and line breaks",
+    "layer": "node",
+    "id": "T459"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 26,
+    "end": 31,
+    "name": "captureIn picks the occurrence the selection is at",
+    "layer": "node",
+    "id": "T460"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 33,
+    "end": 41,
+    "name": "findWord finds the form used, as a whole word, case-insensitively",
+    "layer": "node",
+    "id": "T461"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 59,
+    "end": 77,
+    "name": "wordMarks marks every saved form, longest first, with its meaning",
+    "layer": "node",
+    "id": "T462"
+  },
+  {
+    "file": "src/vocab/vocab.test.ts",
+    "line": 79,
+    "end": 101,
+    "name": "shownEntries searches every form and sorts by added or due",
+    "layer": "node",
+    "id": "T463"
+  }
+]

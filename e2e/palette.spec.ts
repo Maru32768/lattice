@@ -33,7 +33,7 @@ test("Tab stacks a tag as a facet and keeps the palette open", async ({ app }) =
   await expect(listCount(app)).toHaveText(`${kafka} / ${ARTICLES.length}`);
 });
 
-test("a pasted URL opens as a page, or Ctrl+Enter saves it to the Index", async ({ app }) => {
+test("Ctrl+Enter saves a pasted URL to the Index", async ({ app }) => {
   const url = "https://example.com/new-post";
   await app.keyboard.press("Control+k");
   await app.keyboard.insertText(url);
