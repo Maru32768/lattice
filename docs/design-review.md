@@ -507,7 +507,8 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
   - 保存先は `favicons(domain, mime, bytes, error, fetched_at)`（migration 17）。取得できなかった理由も 1 行として残す。`favicon(domain)` command は保存済みのアイコンを `data:` URL で返し、行がないか 1 週間より古ければ `favicon` job（network runner、記事を持たない job。dedup key `favicon:{domain}`）を積む。古い行は再取得が終わるまでそのまま返す。job が終わると `favicon-changed`（ドメイン）を emit し、UI はそのドメインだけを聞き直す。UI はドメインごとの Promise を module 内に持つので、1,000 行の一覧でも呼び出しはドメインごとに 1 回になる（harness で確認）。ドメインは「初めて見たとき」＝UI が初めて聞いたときに取得する（取り込み時には積まない）。
   - 取得の順序: そのドメインの記事の最新 snapshot の `<link rel~=icon href>`、snapshot がない（またはリンクがない）ときはサイトの root（`https://{domain}/`）の HTML のリンク、最後に `/favicon.ico`。最初に取得できたものを保存する。取得は記事画像の `download`（`check_public` で private address を拒否、Content-Type と magic number の検査、受信中のサイズ確認）を通し、上限は 1 MB。SVG は保存しない。ICO を magic number の判定に加えた（記事画像でも ICO を保存するようになる）。timeout・5xx・429 だけのときは何も保存せず job を失敗させ、backoff で再試行する。ほかの失敗は理由を保存し、1 週間後に聞かれるまで再取得しない。root は https だけを試す。
 
-- **タスクバーの未読数（G46）。** Windows には badge の API がないので、未読数を描いた画像をウィンドウの overlay icon にする（`src-tauri/src/badge.rs`。他の OS は `set_badge_count`）。画像は 16 px × 表示倍率の accent 色の円に、3×5 px の数字を整数倍で白く描く（ぼけない）。100 件以上は「99+」、0 件なら消す。未読数は UI が既に数えている `counts.unread` を、変わってから 500 ms 待って `set_unread_badge` で渡す（既読にしていくと続けて変わるため）。backend は最後の数を覚えていて、設定「タスクバー」でオフ（`settings.taskbar_badge = 'off'`、既定はオン）にすると消し、オンに戻すとその数を出す。
+- **タスクバーの未読数（G46）。** Windows には badge の API がないので、未読数を描いた画像をウィンドウの overlay icon にする（`src-tauri/src/badge.rs`。他の OS は `set_badge_count`）。画像は 16 px × 表示倍率の accent 色の円に、3×5 px の数字を整数倍で白く描く（ぼけない）。100 件以上は「99+」、0 件なら消す。未読数は UI が既に数えている `counts.unread` を、変わってから 500 ms 待って `set_unread_badge` で渡す（既読にしていくと続けて変わるため）。backend は最後の数を覚えていて、設定「起動・タスクバー」でオフ（`settings.taskbar_badge = 'off'`、既定はオン）にすると消し、オンに戻すとその数を出す。
+- **Windows 起動時の自動起動。** `tauri-plugin-autostart` が HKCU の `Run` キーに exe を登録する。オン・オフは DB に持たず OS の登録をそのまま読む（タスク マネージャーの「スタートアップ アプリ」で無効にすると `StartupApproved` に記録され、設定画面もオフになる）。既定はオフ。起動時は通常どおりウィンドウを開く。
 
 ## 17. 取得できない記事とフィードの表示名・アイコン
 

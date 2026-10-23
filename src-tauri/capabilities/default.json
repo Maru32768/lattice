@@ -34,6 +34,8 @@
     "allow-set-unread-badge",
     "allow-get-taskbar-badge",
     "allow-set-taskbar-badge",
+    "allow-get-autostart",
+    "allow-set-autostart",
     "allow-get-ui-language",
     "allow-set-ui-language",
     "allow-article-image",

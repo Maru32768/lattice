@@ -510,7 +510,9 @@ Lists every shortcut. **+ Add key** records the next key you press, with modifie
 
 **Search engine** is used for text typed in the URL bar and for the home button: DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For a custom engine, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
 
-### Taskbar
+### Startup & taskbar
+
+**Start Lattice when Windows starts** opens Lattice when you sign in. It is off by default. Turning Lattice off in Task Manager's Startup apps also turns this switch off.
 
 **Show the unread count on the taskbar** puts the number of unread articles on Lattice's taskbar button. It shows 99+ from 100 up and nothing at zero.
 

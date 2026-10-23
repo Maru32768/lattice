@@ -28,7 +28,7 @@ export const ja = {
   "settingsView.shortcutsLead": "キーボードの操作。キーを追加するとそのキーを記録します（修飾キーとの組み合わせも可）。",
   "settingsView.browser": "ブラウザ",
   "settingsView.browserLead": "ページ表示（アプリ内ブラウザ）の URL バーとホームボタン。",
-  "settingsView.taskbar": "タスクバー",
+  "settingsView.taskbar": "起動・タスクバー",
   "settingsView.backup": "バックアップ",
   "settingsView.backupLead":
     "記事・訳・要約・画像・検索 index など、すべてのデータは 1 つの SQLite ファイルにあり、バックアップはそのファイルのコピーです（場所は「ログ・保存場所」）。",
@@ -124,6 +124,9 @@ export const ja = {
   "renderSettings.auto": "JS ページを自動で描画",
   "renderSettings.autoDesc":
     "一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します（1 件あたり最大 20 秒ほど）。",
+  "taskbarSettings.autostart": "Windows の起動時に Lattice を起動",
+  "taskbarSettings.autostartDesc":
+    "サインインしたときに Lattice を自動で開きます。タスク マネージャーの「スタートアップ アプリ」で無効にした場合もここに反映されます。",
   "taskbarSettings.badge": "未読数をタスクバーに表示",
   "taskbarSettings.badgeDesc": "タスクバーのアプリのボタンに未読の記事数を重ねて表示します（100 件以上は 99+、0 件のときは表示しません）。",
   "translationSettings.onSwitch": "表示を切り替えたら自動で翻訳",

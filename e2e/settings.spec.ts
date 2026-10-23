@@ -13,7 +13,7 @@ const SECTIONS = [
   "復習",
   "ショートカット",
   "ブラウザ",
-  "タスクバー",
+  "起動・タスクバー",
   "バックアップ",
   "クラウドバックアップ（R2）",
   "エクスポート",
@@ -37,6 +37,19 @@ test("every settings section renders, and Esc goes back to the library", async (
   await app.keyboard.press("Escape");
   await expect(nav).toBeHidden();
   await expect(navItem(app, "すべての記事")).toBeVisible();
+});
+
+test("the launch-at-sign-in switch keeps what was chosen", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
+  await section("起動・タスクバー").click();
+  const autostart = app.getByRole("switch", { name: "Windows の起動時に Lattice を起動" });
+  await expect(autostart).not.toBeChecked();
+  await autostart.click();
+  await section("ブラウザ").click();
+  await section("起動・タスクバー").click();
+  await expect(autostart).toBeChecked();
 });
 
 test("in a narrow window the provider chain wraps instead of squeezing its selects to nothing", async ({ app }) => {

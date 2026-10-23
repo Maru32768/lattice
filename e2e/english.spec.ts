@@ -51,7 +51,7 @@ test("every settings section has an English title, and a backend error is shown 
     "Display language",
     "Shortcuts",
     "Browser",
-    "Taskbar",
+    "Startup & taskbar",
     "Backup",
     "Cloud backup (R2)",
     "Export",

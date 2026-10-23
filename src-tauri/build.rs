@@ -125,6 +125,8 @@ const COMMANDS: &[&str] = &[
     "pick_data_dir",
     "set_data_dir",
     "restart_app",
+    "get_autostart",
+    "set_autostart",
     "browser_open",
     "browser_set_bounds",
     "browser_hide",

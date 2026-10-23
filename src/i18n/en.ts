@@ -33,7 +33,7 @@ export const en = {
   "settingsView.shortcutsLead": "Keyboard controls. Adding a key records the next key you press (combinations with modifier keys work too).",
   "settingsView.browser": "Browser",
   "settingsView.browserLead": "The URL bar and home button of the Page view (the in-app browser).",
-  "settingsView.taskbar": "Taskbar",
+  "settingsView.taskbar": "Startup & taskbar",
   "settingsView.backup": "Backup",
   "settingsView.backupLead":
     "All data (articles, translations, summaries, images, the search index) lives in one SQLite file, and a backup is a copy of that file (see Logs & storage for where it is).",
@@ -131,6 +131,8 @@ export const en = {
   "renderSettings.auto": "Render JS pages automatically",
   "renderSettings.autoDesc":
     "Articles that came out nearly empty (from bulk import, RSS and so on) are rendered one at a time in a hidden background browser and imported again (up to about 20 seconds each).",
+  "taskbarSettings.autostart": "Start Lattice when Windows starts",
+  "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps shows here too.",
   "taskbarSettings.badge": "Show the unread count on the taskbar",
   "taskbarSettings.badgeDesc": "Overlays the number of unread articles on the app's taskbar button (99+ from 100 on, nothing at 0).",
   "translationSettings.onSwitch": "Translate when I switch the view",

@@ -30,6 +30,7 @@ use lattice_core::{
     translate, vocab,
 };
 use tauri::{Emitter, Manager, State, Webview};
+use tauri_plugin_autostart::ManagerExt as _;
 use tokio::sync::{Notify, Semaphore};
 
 use browser::{Browser, lock};
@@ -927,6 +928,24 @@ fn restart_app(handle: tauri::AppHandle) {
     handle.restart()
 }
 
+/// Launch at sign-in. The OS registration is the only record, so turning it off in Task
+/// Manager's Startup apps shows here too.
+#[tauri::command(async)]
+fn get_autostart(handle: tauri::AppHandle) -> Result<bool, String> {
+    handle.autolaunch().is_enabled().map_err(err)
+}
+
+#[tauri::command(async)]
+fn set_autostart(handle: tauri::AppHandle, on: bool) -> Result<(), String> {
+    let launch = handle.autolaunch();
+    if on {
+        launch.enable()
+    } else {
+        launch.disable()
+    }
+    .map_err(err)
+}
+
 /// Fallback chain plus where each API key comes from ("stored" / "env"); never the keys.
 #[derive(serde::Serialize)]
 struct LlmSettings {
@@ -1048,6 +1067,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
@@ -1285,6 +1305,8 @@ pub fn run() {
             pick_data_dir,
             set_data_dir,
             restart_app,
+            get_autostart,
+            set_autostart,
             overlay_translate,
             badge::set_unread_badge,
             badge::get_taskbar_badge,

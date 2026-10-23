@@ -570,6 +570,9 @@ export const api = {
   setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
   taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),
   setTaskbarBadge: (on: boolean) => invoke<void>("set_taskbar_badge", { on }),
+  /** Whether Windows launches the app at sign-in (read from the OS, not the DB). */
+  autostart: () => invoke<boolean>("get_autostart"),
+  setAutostart: (on: boolean) => invoke<void>("set_autostart", { on }),
   /** The display language; null until the UI first stores the one it detected. */
   uiLanguage: () => invoke<Lang | null>("get_ui_language"),
   setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),
