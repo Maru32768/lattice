@@ -89,6 +89,12 @@ The CLI can be installed from source:
 mise exec -- cargo install --path crates/lattice-cli
 ```
 
+The app icon is drawn in `src-tauri/icons/icon*.svg`: `icon.svg` for 64px and up, and its own pixel-grid source for each of 16, 24, 32 and 48px so the weave stays sharp. After editing them, regenerate the PNG / ICO / ICNS set and the title bar logo (`src/app/logo.svg`):
+
+```bash
+mise exec -- node scripts/icons.mjs
+```
+
 ## Project layout
 
 | Path | Contents |
@@ -101,7 +107,7 @@ mise exec -- cargo install --path crates/lattice-cli
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots, shortcut forwarding). |
 | `e2e` | Browser tests: the mock backend, sample data and Playwright specs. |
 | `infra/r2` | Terraform for the R2 backup bucket. |
-| `scripts` | Version bump, license list, i18n extraction. |
+| `scripts` | Version bump, license list, i18n extraction, icon generation. |
 
 ## Design notes
 
