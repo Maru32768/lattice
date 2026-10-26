@@ -5,26 +5,31 @@ use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 
 use crate::store::Store;
+use ts_rs::TS;
 
 const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 /// Failed jobs and pending ones waiting out a backoff (`next_run_at` in the future).
 const ISSUE: &str = "(j.status = 'failed' OR (j.status = 'pending' AND j.next_run_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')))";
 const MAX_ISSUES: i64 = 200;
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, TS)]
+#[ts(export)]
 pub struct JobCount {
     pub job_type: String,
     /// pending (ready) / backoff / running / failed. Succeeded jobs are not counted.
+    #[ts(type = "\"pending\" | \"backoff\" | \"running\" | \"failed\"")]
     pub state: String,
     pub count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct JobIssue {
     pub id: i64,
     pub job_type: String,
     pub article_id: Option<i64>,
     pub article_title: Option<String>,
+    #[ts(type = "\"pending\" | \"failed\"")]
     pub status: String,
     pub attempt_count: i64,
     pub last_error: Option<String>,
@@ -34,7 +39,8 @@ pub struct JobIssue {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct JobOverview {
     pub counts: Vec<JobCount>,
     /// Newest first, at most `MAX_ISSUES`; `counts` has the totals.

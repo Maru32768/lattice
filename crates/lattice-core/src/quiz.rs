@@ -16,6 +16,7 @@ use crate::llm::LlmProvider;
 use crate::msg;
 use crate::srs::{self, Card, Grade};
 use crate::store::Store;
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "quiz";
 pub const PROMPT_VERSION: &str = "quiz-v1";
@@ -32,7 +33,7 @@ pub fn enqueue(store: &Store, article_id: i64) -> Result<(), String> {
     store.enqueue_job(JOB_TYPE, article_id, "{}", &format!("{JOB_TYPE}:{article_id}")).map_err(err)
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Form {
     /// Answered in a word or a sentence, then self-graded.
@@ -41,7 +42,7 @@ pub enum Form {
     Choice { options: Vec<String> },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
 pub struct Content {
     #[serde(flatten)]
     pub form: Form,
@@ -52,7 +53,8 @@ pub struct Content {
     pub block_ids: Vec<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, rename = "QuizQuestion")]
 pub struct Question {
     /// Also the id of its review card.
     pub id: i64,
@@ -223,7 +225,8 @@ fn question_row(r: &rusqlite::Row) -> rusqlite::Result<Question> {
     Ok(Question { id: r.get(0)?, content: Content { form, question: r.get(2)?, answer: r.get(4)?, explanation: r.get(5)?, block_ids: json_col(r, 6)? } })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "Quiz")]
 pub struct QuizView {
     pub id: i64,
     pub questions: Vec<Question>,
@@ -265,7 +268,8 @@ pub fn get(store: &Store, article_id: i64) -> Result<Option<QuizView>, String> {
 // ---- review -------------------------------------------------------------------------------
 
 /// Settings › 復習.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "ReviewSettings")]
 pub struct Settings {
     /// Cards answered for the first time per day.
     pub new_per_day: u32,
@@ -306,7 +310,8 @@ pub fn set_settings(store: &Store, s: &Settings) -> Result<(), String> {
 }
 
 /// A grade given while taking the quiz in the Reader.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[ts(export, rename = "ReviewAnswer")]
 pub struct Answer {
     pub question_id: i64,
     pub grade: Grade,
@@ -402,7 +407,8 @@ pub fn remove_article(store: &Store, article_id: i64) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "QuizReviewItem")]
 pub struct ReviewItem {
     #[serde(flatten)]
     pub question: Question,

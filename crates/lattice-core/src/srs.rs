@@ -6,6 +6,7 @@
 //! steps never drift, and only changes for cards in review, as in Anki.
 
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 pub const DAY: i64 = 24 * 60;
 pub const START_EASE: i64 = 2500;
@@ -17,7 +18,8 @@ const EASY_FIRST: i64 = 4 * DAY;
 const HARD_FACTOR: f64 = 1.2;
 const EASY_BONUS: f64 = 1.3;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum Grade {
     Again,

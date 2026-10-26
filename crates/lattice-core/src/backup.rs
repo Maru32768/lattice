@@ -7,12 +7,14 @@ use serde::Serialize;
 
 use crate::msg;
 use crate::store::Store;
+use ts_rs::TS;
 
 const KEEP: &str = "backup.keep_generations";
 pub const DEFAULT_KEEP: u64 = 30;
 const MAX_KEEP: u64 = 1000;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct LocalBackup {
     pub path: String,
     /// Set when the backup was written but pruning older ones failed.

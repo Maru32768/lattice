@@ -12,6 +12,7 @@ use crate::msg;
 use crate::store::{Store, deflate};
 use crate::url_norm::normalize;
 use crate::{feed_filter, ingest};
+use ts_rs::TS;
 
 pub const POLL_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// Entries imported on the first fetch of a feed; older ones are only marked seen,
@@ -25,7 +26,8 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct FeedRow {
     pub id: i64,
     pub url: String,
@@ -77,7 +79,8 @@ pub struct Entry {
 }
 
 /// A feed found on a page (autodiscovery), or the URL itself when it is one.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, TS)]
+#[ts(export, rename = "FeedCandidate")]
 pub struct Candidate {
     pub url: String,
     pub title: Option<String>,

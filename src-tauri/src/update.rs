@@ -6,6 +6,7 @@ use tauri_plugin_updater::UpdaterExt;
 
 use crate::location::{Kind, Location};
 use lattice_core::msg;
+use ts_rs::TS;
 
 /// tauri.conf.json ships this in place of the signing public key; until it is replaced the
 /// updater stays off instead of failing every check (docs/release.md).
@@ -25,7 +26,8 @@ fn pubkey(app: &AppHandle) -> Option<String> {
     app.config().plugins.0.get("updater")?.get("pubkey")?.as_str().map(str::to_owned)
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, TS)]
+#[ts(export)]
 pub struct UpdateInfo {
     current: String,
     configured: bool,

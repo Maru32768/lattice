@@ -9357,6 +9357,8 @@ Used by:
   tauri-plugin-fs 2.7.1
   tauri-plugin-log 2.10.1
   tauri-plugin-updater 2.14.0
+  ts-rs-macros 12.0.1
+  ts-rs 12.0.1
   type1-encoding-parser 0.1.1
   webview2-com-macros 0.8.1
   webview2-com-sys 0.39.1
@@ -10036,6 +10038,7 @@ Used by:
   aho-corasick 1.1.5
   byteorder 1.5.0
   memchr 2.8.3
+  termcolor 1.4.1
   walkdir 2.5.0
 
 The MIT License (MIT)

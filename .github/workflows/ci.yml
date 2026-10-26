@@ -47,6 +47,9 @@ jobs:
       - name: clippy
         run: mise exec -- cargo clippy --workspace --all-targets -- -D warnings
 
+      - name: TypeScript bindings match the Rust types
+        run: mise exec -- node scripts/bindings.mjs --check
+
       - name: Rust tests
         run: mise exec -- cargo test --workspace
 

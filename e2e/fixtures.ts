@@ -12,7 +12,6 @@ import type {
   JobRow,
   Quiz,
   QuizQuestion,
-  QuizReviewItem,
   RejectedEntry,
   ReviewItem,
   VocabEntry,
@@ -509,7 +508,10 @@ export const QUIZ: Quiz = {
 /** A new card's intervals (minutes) after again / hard / good / easy with the default settings. */
 export const NEW_PREVIEWS: ReviewItem["previews"] = [1440, 1440, 1440, 5760];
 
-const card = (a: ArticleRow, q: QuizQuestion): QuizReviewItem => ({
+/** A quiz card in the review queue, tagged as `review_queue` sends it. */
+export type QuizCard = Extract<ReviewItem, { type: "quiz" }>;
+
+const card = (a: ArticleRow, q: QuizQuestion): QuizCard => ({
   ...q,
   type: "quiz",
   article_id: a.id,
@@ -519,7 +521,7 @@ const card = (a: ArticleRow, q: QuizQuestion): QuizReviewItem => ({
 });
 
 /** Today's review: two due cards from the VACUUM article. */
-export const REVIEW: QuizReviewItem[] = [
+export const REVIEW: QuizCard[] = [
   card(ARTICLES[1], {
     id: 21,
     kind: "recall",

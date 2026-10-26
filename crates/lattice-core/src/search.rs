@@ -10,11 +10,13 @@ use serde::Serialize;
 use crate::embed::{EmbeddingProvider, Purpose};
 use crate::segments::Target;
 use crate::store::{HitDetail, Store};
+use ts_rs::TS;
 
 const CANDIDATES: usize = 50;
 const RRF_K: f64 = 60.0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum MatchSource {
     Lexical,
@@ -22,7 +24,8 @@ pub enum MatchSource {
     Both,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct SearchHit {
     #[serde(flatten)]
     pub detail: HitDetail,
@@ -30,7 +33,8 @@ pub struct SearchHit {
     pub score: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct SearchResult {
     pub hits: Vec<SearchHit>,
     /// Set when semantic search could not run (model not downloaded yet, ...): results are lexical only.

@@ -18,7 +18,11 @@ run = [
 [tasks.test]
 description = "Lint, Rust tests, frontend tests and typecheck"
 depends = ["lint"]
-run = ["cargo test --workspace", "npm test", "npm run build"]
+run = ["node scripts/bindings.mjs --check", "cargo test --workspace", "npm test", "npm run build"]
+
+[tasks.bindings]
+description = "Regenerate src/bindings: the TypeScript types of the Rust IPC types (ts-rs)"
+run = "node scripts/bindings.mjs"
 
 [tasks.e2e]
 description = "Browser tests of the frontend over a mock backend (Playwright, Chromium)"

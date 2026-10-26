@@ -13,6 +13,7 @@ use crate::instructions::{self, PROFILE_HASH_SETTING};
 use crate::llm::LlmProvider;
 use crate::msg;
 use crate::store::Store;
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "relevance";
 pub const PROMPT_VERSION: &str = "relevance-v1";
@@ -31,7 +32,8 @@ fn err(e: impl ToString) -> String {
 }
 
 /// What the settings screen shows: why nothing is rated, or how many ratings are out of date.
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, TS)]
+#[ts(export, rename = "RelevanceStatus")]
 pub struct Status {
     pub has_profile: bool,
     pub auto: bool,

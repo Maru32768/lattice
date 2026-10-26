@@ -19,10 +19,9 @@ import type {
   OpmlFeed,
   Reevaluated,
   RejectedEntry,
-  Grade,
+  ReviewAnswer,
   LlmSettings,
   Quiz,
-  QuizReviewItem,
   R2Settings,
   R2Status,
   RelevanceStatus,
@@ -36,7 +35,6 @@ import type {
   UpdateInfo,
   VocabCapture,
   VocabEntry,
-  VocabReviewItem,
 } from "../src/api.ts";
 import {
   ARTICLES,
@@ -56,6 +54,7 @@ import {
   VOCAB,
   blocksOf,
   jobsOf,
+  type QuizCard,
 } from "./fixtures.ts";
 import { folderTree, placeFeeds } from "../src/feeds/feedFolders.ts";
 
@@ -106,12 +105,12 @@ const messages = structuredClone(CHAT_MESSAGES);
 const jobs = structuredClone(JOBS);
 /** Quizzes by article; review cards by question id (`due`: in today's queue). */
 const quizzes = new Map<number, Quiz>([[1, structuredClone(QUIZ)]]);
-const cards = new Map<number, { item: QuizReviewItem; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
+const cards = new Map<number, { item: QuizCard; due: boolean }>(REVIEW.map((r) => [r.id, { item: structuredClone(r), due: true }]));
 /** The vocabulary, and its cards by id: a saved word's card, due at once, stands in for the enrichment job. */
 const vocab = structuredClone(VOCAB);
 const vocabCards = new Map<number, { entry_id: number; due: boolean }>([[31, { entry_id: 2, due: false }]]);
 const entry = (id: number) => vocab.find((e) => e.id === id) ?? reject("vocab.gone");
-const vocabItem = (id: number, c: { entry_id: number }): VocabReviewItem => {
+const vocabItem = (id: number, c: { entry_id: number }): Extract<ReviewItem, { type: "vocab" }> => {
   const { id: _, state: _s, suspended: _u, created_at: _c, due_at: _d, contexts, ...sense } = entry(c.entry_id);
   return { ...sense, type: "vocab", id, entry_id: c.entry_id, context: contexts[0], new: true, previews: NEW_PREVIEWS };
 };
@@ -235,6 +234,7 @@ function search(query: string, filter: ArticleFilter | null, ids: number[] | nul
         heading,
         text: b.text,
         translation: b.translation,
+        ordinal: b.ordinal,
         source: lexical && semantic ? "both" : lexical ? "lexical" : "semantic",
         score: lexical ? 1 : 0.82,
       });
@@ -288,7 +288,7 @@ function generateQuiz(id: number): Quiz {
 }
 
 function reviewOverview(): ReviewOverview {
-  const byArticle = new Map<number, QuizReviewItem[]>();
+  const byArticle = new Map<number, QuizCard[]>();
   for (const { item } of cards.values()) {
     byArticle.set(item.article_id, [...(byArticle.get(item.article_id) ?? []), item]);
   }
@@ -439,7 +439,7 @@ export const handlers = {
     const q = quizzes.get(id);
     return q ? { ...q, in_review: articleCards(id).length } : null;
   },
-  review_add: ({ quizId, answers }: { quizId: number; answers: { question_id: number; grade: Grade }[] }): number => {
+  review_add: ({ quizId, answers }: { quizId: number; answers: ReviewAnswer[] }): number => {
     const [id, quiz] = [...quizzes].find(([, q]) => q.id === quizId)!;
     const a = article(id);
     for (const q of quiz.questions) {

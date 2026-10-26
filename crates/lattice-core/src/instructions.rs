@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::msg;
 use crate::store::{Store, sha256_hex};
+use ts_rs::TS;
 
 pub const MAX_CHARS: usize = 2000;
 const PROFILE_SETTING: &str = "user_profile";
@@ -15,7 +16,8 @@ const CHAT_SETTING: &str = "chat_instructions";
 pub const PROFILE_HASH_SETTING: &str = "user_profile_hash";
 
 /// Everything the settings screen edits; blank means none.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "CustomInstructions")]
 pub struct Settings {
     pub profile: String,
     pub summary: String,

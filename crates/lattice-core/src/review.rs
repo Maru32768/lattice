@@ -11,6 +11,7 @@ use crate::quiz::{self, Settings};
 use crate::srs;
 use crate::store::Store;
 use crate::vocab;
+use ts_rs::TS;
 
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -74,7 +75,8 @@ fn due(c: &Connection, s: &Settings, now: i64) -> rusqlite::Result<Vec<Due>> {
     Ok(out)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "ReviewItem")]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Item {
     Quiz(quiz::ReviewItem),
@@ -95,7 +97,8 @@ pub fn queue(store: &Store, now: i64) -> Result<Vec<Item>, String> {
         .map_err(err)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ReviewArticle {
     pub article_id: i64,
     pub title: String,
@@ -103,7 +106,8 @@ pub struct ReviewArticle {
     pub next_due_at: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "ReviewOverview")]
 pub struct Overview {
     /// Cards in today's queue now (the nav badge).
     pub due: usize,

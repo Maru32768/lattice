@@ -5,6 +5,7 @@
 use std::future::Future;
 
 use serde_json::Value;
+use ts_rs::TS;
 
 #[derive(Debug, Clone)]
 pub struct Completion {
@@ -27,7 +28,8 @@ pub enum LlmError {
 }
 
 /// Reasoning effort of one chain entry; each provider accepts a subset (`ProviderKind::efforts`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum Effort {
     Low,

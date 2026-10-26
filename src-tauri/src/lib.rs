@@ -37,6 +37,7 @@ use tokio::sync::{Notify, Semaphore};
 use browser::{Browser, lock};
 use lattice_core::msg;
 use location::{Kind, Location};
+use ts_rs::TS;
 
 /// Interactive (page overlay) LLM calls in flight at once; jobs run separately.
 const OVERLAY_LLM_CONCURRENCY: usize = 3;
@@ -852,7 +853,8 @@ fn db_path(app: State<'_, App>) -> String {
     app.db_path.clone()
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, TS)]
+#[ts(export)]
 struct Settings {
     db_path: String,
     data_dir: String,
@@ -881,7 +883,8 @@ fn get_settings(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::Ap
     })
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, TS)]
+#[ts(export)]
 struct PickedDir {
     path: String,
     /// It already holds a Lattice database, which `set_data_dir` can switch to instead of copying.
@@ -961,11 +964,15 @@ fn set_autostart(handle: tauri::AppHandle, on: bool) -> Result<(), String> {
 }
 
 /// Fallback chain plus where each API key comes from ("stored" / "env"); never the keys.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, TS)]
+#[ts(export)]
 struct LlmSettings {
     chain: Vec<ChainEntry>,
+    #[ts(type = "\"stored\" | \"env\" | null")]
     openai_key: Option<&'static str>,
+    #[ts(type = "\"stored\" | \"env\" | null")]
     gemini_key: Option<&'static str>,
+    #[ts(type = "\"stored\" | \"env\" | null")]
     anthropic_key: Option<&'static str>,
 }
 

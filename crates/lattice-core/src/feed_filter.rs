@@ -15,6 +15,7 @@ use crate::feeds::Entry;
 use crate::llm::LlmProvider;
 use crate::store::Store;
 use crate::{ingest, instructions, msg};
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "feed_filter";
 const GLOBAL_SETTING: &str = "feed_filter";
@@ -31,7 +32,8 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FilterField")]
 #[serde(rename_all = "snake_case")]
 pub enum Field {
     Title,
@@ -45,7 +47,8 @@ pub enum Field {
     Language,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FilterAction")]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Include,
@@ -54,7 +57,8 @@ pub enum Action {
 
 /// Keyword rules match case-insensitively as a substring (Domain / Language as described on
 /// `Field`); regex rules are case-insensitive and match anywhere unless anchored.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FilterRule")]
 pub struct Rule {
     pub field: Field,
     pub action: Action,
@@ -64,7 +68,8 @@ pub struct Rule {
 }
 
 /// One filter: the global defaults (settings) or a feed's own (`feeds.filter`).
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FeedFilter")]
 #[serde(default)]
 pub struct Filter {
     pub rules: Vec<Rule>,
@@ -117,7 +122,8 @@ impl Input {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FilterScope")]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
     Global,
@@ -125,7 +131,8 @@ pub enum Scope {
 }
 
 /// Why an entry was not imported (`feed_items.filter_reason`, JSON).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "FilterReason")]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Reason {
     /// An exclude rule matched.
@@ -380,7 +387,8 @@ fn entries(store: &Store, feed_id: Option<i64>, status: &str, limit: i64) -> Res
     Ok(out)
 }
 
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Serialize, PartialEq, TS)]
+#[ts(export, rename = "RejectedEntry")]
 pub struct Rejected {
     /// Normalized: the key for `import_rejected`.
     pub url: String,
@@ -431,7 +439,8 @@ pub fn import_rejected(store: &Store, feed_id: i64, url: &str) -> Result<usize, 
     import(store, feed_id, &[&input])
 }
 
-#[derive(Debug, Default, Serialize, PartialEq)]
+#[derive(Debug, Default, Serialize, PartialEq, TS)]
+#[ts(export)]
 pub struct Reevaluated {
     pub imported: usize,
     /// Passed the rules again and wait for the LLM.

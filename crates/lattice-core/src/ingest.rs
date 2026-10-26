@@ -7,6 +7,7 @@ use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use quick_xml::escape::escape;
 use rusqlite::OptionalExtension;
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "ingest";
 
@@ -95,7 +96,8 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
     Ok(true)
 }
 
-#[derive(Debug, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Default, PartialEq, serde::Serialize, TS)]
+#[ts(export)]
 pub struct ImportSummary {
     pub found: usize,
     pub queued: usize,

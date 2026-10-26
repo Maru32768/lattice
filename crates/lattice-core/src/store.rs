@@ -14,6 +14,7 @@ use crate::fetch::Fetched;
 use crate::ingest::FEED_CONTENT_TYPE;
 use crate::ir::{ArticleIr, Block, Inline};
 use crate::segments::{Target, Unit, plain_text};
+use ts_rs::TS;
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[
@@ -619,7 +620,8 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ArticleRow {
     pub id: i64,
     pub original_url: String,
@@ -631,9 +633,12 @@ pub struct ArticleRow {
     pub published_at: Option<String>,
     pub language: Option<String>,
     pub saved_at: String,
+    #[ts(type = "\"pending\" | \"ok\" | \"failed\"")]
     pub fetch_status: String,
+    #[ts(type = "\"pending\" | \"ok\" | \"failed\"")]
     pub extraction_status: String,
     pub last_error: Option<String>,
+    #[ts(type = "\"unread\" | \"read\"")]
     pub read_status: String,
     pub favorite: bool,
     pub tags: Vec<String>,
@@ -663,7 +668,8 @@ pub struct ArticleRow {
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
-#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize, TS)]
+#[ts(export)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ArticleFilter {
     All,
@@ -712,7 +718,8 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum ArticleSort {
     #[default]
@@ -726,13 +733,15 @@ pub enum ArticleSort {
     RelevanceDesc,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct TagCount {
     pub name: String,
     pub count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "Block")]
 pub struct StoredBlock {
     pub id: i64,
     pub ordinal: i64,
@@ -743,20 +752,23 @@ pub struct StoredBlock {
     pub translation: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct JobRow {
     pub id: i64,
     #[serde(rename = "type")]
     pub job_type: String,
     pub article_id: Option<i64>,
     pub params: Option<String>,
+    #[ts(type = "\"pending\" | \"running\" | \"succeeded\" | \"failed\"")]
     pub status: String,
     pub attempt_count: i64,
     pub last_error: Option<String>,
     pub next_run_at: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct SummaryView {
     pub text: String,
     pub created_at: String,
@@ -767,10 +779,12 @@ pub struct SummaryView {
     pub prompt_version: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ArticleView {
     pub article: ArticleRow,
     /// Language of `blocks[].translation`: "en" for a Japanese article, else "ja".
+    #[ts(type = "\"ja\" | \"en\"")]
     pub target_language: &'static str,
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
@@ -805,7 +819,7 @@ pub struct EmbedSource {
     pub heading: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
 pub struct HitDetail {
     pub block_id: i64,
     pub article_id: i64,

@@ -7,10 +7,12 @@ use serde::Serialize;
 
 use crate::msg;
 use crate::store::Store;
+use ts_rs::TS;
 
 pub const MAX_NAME_CHARS: usize = 100;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct GroupRow {
     pub id: i64,
     pub name: String,

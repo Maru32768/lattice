@@ -16,6 +16,7 @@ use crate::llm::{Completion, Effort, LlmError, LlmProvider};
 use crate::msg;
 use crate::openai::OpenAi;
 use crate::store::{SECRET_PREFIX, Store};
+use ts_rs::TS;
 
 pub const CHAIN_SETTING: &str = "llm_chain";
 /// Single-model setting from before the chain; becomes the first entry until the chain is saved.
@@ -23,7 +24,8 @@ const LEGACY_MODEL_SETTING: &str = "claude_model";
 pub const MAX_ENTRIES: usize = 3;
 const COOLDOWN: Duration = Duration::from_secs(300);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     ClaudeCli,
@@ -55,7 +57,8 @@ impl ProviderKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ChainEntry {
     pub kind: ProviderKind,
     /// None uses the provider's default model.

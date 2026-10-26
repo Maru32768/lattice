@@ -3,489 +3,63 @@ import type { PageKeys } from "./lib/keys";
 import type { DragStart, WindowGeom } from "./layout/tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 
-// Mirrors lattice-core's serde types (ir.rs / store.rs).
-export type Inline = { t: "text"; v: string } | { t: "code"; v: string } | { t: "link"; v: string; href: string };
+import type {
+  ArticleFilter,
+  ArticleRow,
+  ArticleSort,
+  ArticleView,
+  Bounds,
+  ChainEntry,
+  ChatBudget,
+  ChatMessage,
+  ChatScope,
+  ChatThread,
+  CustomInstructions,
+  FeedCandidate,
+  FeedFilter,
+  FeedRow,
+  FolderRow,
+  Grade,
+  GroupRow,
+  ImageSettings,
+  ImportSummary,
+  JobCount,
+  JobOverview,
+  LlmSettings,
+  LocalBackup,
+  NetworkSettings,
+  OpmlFeed,
+  OverlayLabels,
+  PickedDir,
+  Quiz,
+  R2Settings,
+  R2Status,
+  Reevaluated,
+  RejectedEntry,
+  RelevanceStatus,
+  ReviewAnswer,
+  ReviewItem,
+  ReviewOverview,
+  ReviewSettings,
+  SearchResult,
+  Settings,
+  TagCount,
+  UpdateInfo,
+  VocabAdded,
+  VocabCapture,
+  VocabEntry,
+} from "./bindings";
+export type * from "./bindings";
 
-export type BlockKind = "heading" | "paragraph" | "list_item" | "blockquote" | "code" | "table" | "image" | "caption";
-
-export interface Block {
-  id: number;
-  ordinal: number;
-  heading_id: number | null;
-  kind: BlockKind;
-  text: string;
-  inlines?: Inline[];
-  attrs: {
-    level?: number;
-    ordered?: boolean;
-    depth?: number;
-    lang?: string;
-    src?: string;
-    rows?: string[][];
-  };
-  translation: string | null;
-}
-
-export interface JobRow {
-  id: number;
-  type: string;
-  article_id: number | null;
-  params: string | null;
-  status: "pending" | "running" | "succeeded" | "failed";
-  attempt_count: number;
-  last_error: string | null;
-  next_run_at: string | null;
-}
-
-export interface ArticleRow {
-  id: number;
-  /** `local:md/<hash>` / `local:pdf/<hash>` for an imported Markdown or PDF file (see `isLocal`). */
-  original_url: string;
-  canonical_url: string | null;
-  domain: string;
-  title: string | null;
-  author: string | null;
-  site_name: string | null;
-  published_at: string | null;
-  language: string | null;
-  saved_at: string;
-  fetch_status: "pending" | "ok" | "failed";
-  extraction_status: "pending" | "ok" | "failed";
-  last_error: string | null;
-  read_status: "unread" | "read";
-  favorite: boolean;
-  tags: string[];
-  /** Ids of the groups the article is in (`GroupRow`). */
-  groups: number[];
-  genre: string | null;
-  genre_manual: boolean;
-  /** 1 (入門) to 5 (専門); see DifficultyField.tsx. */
-  difficulty: number | null;
-  difficulty_manual: boolean;
-  feed_id: number | null;
-  feed_title: string | null;
-  /** The folder of the article's feed. */
-  folder_id: number | null;
-  /** Extracted, but almost no text: probably rendered by JS. Re-save it from the browser. */
-  thin: boolean;
-  /** The text is the feed entry's copy: the page was refused or empty (`last_error` says why). */
-  from_feed: boolean;
-  /** Extracted from a PDF (a URL's or an imported file's); there is no HTML page to render. */
-  pdf: boolean;
-  /** Importance for the reader, 1-5, judged against the 「自分について」 profile (relevance.rs), and why. */
-  relevance: number | null;
-  relevance_reason: string | null;
-  /** Judged against an earlier profile. */
-  relevance_stale: boolean;
-}
+/** Where an API key comes from; the key itself never reaches the UI. */
+export type KeySource = LlmSettings["openai_key"];
+export type JobState = JobCount["state"];
 
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
 export const isLocal = (url: string) => url.startsWith("local:");
 
 /** The site shown for an article: its domain, or "local" for an imported file. */
 export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
-
-/** `genre` null: 未分類; `feed` null: 手動追加; `important`: importance at least `min`. */
-export type ArticleFilter =
-  | { kind: "all" }
-  | { kind: "unread" }
-  | { kind: "favorites" }
-  | { kind: "tag"; name: string }
-  | { kind: "genre"; name: string | null }
-  | { kind: "feed"; id: number | null }
-  | { kind: "group"; id: number }
-  | { kind: "important"; min: number }
-  | { kind: "folder"; id: number };
-
-export type ArticleSort = "saved_desc" | "saved_asc" | "published_desc" | "difficulty_asc" | "relevance_desc";
-
-/** Mirrors relevance.rs Status. */
-export interface RelevanceStatus {
-  has_profile: boolean;
-  auto: boolean;
-  /** The lowest score in 重要. */
-  threshold: number;
-  scored: number;
-  /** Judged against an earlier profile. */
-  stale: number;
-  unscored: number;
-}
-
-export interface FeedRow {
-  id: number;
-  url: string;
-  /** The feed's own title; see `feedName`. */
-  title: string | null;
-  /** The user's name for the feed, shown in place of `title`. */
-  custom_title: string | null;
-  /** The user picked an icon (`api.feedIcon`), shown in place of the site's favicon. */
-  has_icon: boolean;
-  site_url: string | null;
-  last_fetched_at: string | null;
-  last_error: string | null;
-  article_count: number;
-  /** Entries the import filters kept out (`api.feedRejected`). */
-  rejected: number;
-  /** The feed has import filters of its own. */
-  filtered: boolean;
-  /** Why the LLM filter last let entries through unjudged (a coded message). */
-  filter_note: string | null;
-  /** The feed's folder (`FolderRow`), and its name. */
-  folder_id: number | null;
-  folder: string | null;
-}
-
-/** A feed folder (H25): named, in the user's order, not nested; a feed is in at most one. */
-export interface FolderRow {
-  id: number;
-  name: string;
-  /** Feeds in the folder. */
-  feeds: number;
-}
-
-/** One subscription of an OPML file, its folder created by name. */
-export interface OpmlFeed {
-  url: string;
-  folder: number | null;
-}
-
-/** Mirrors feed_filter.rs. */
-export type FilterField = "title" | "url" | "author" | "category" | "domain" | "language";
-export interface FilterRule {
-  field: FilterField;
-  action: "include" | "exclude";
-  pattern: string;
-  regex: boolean;
-}
-
-/** One import filter: the global defaults (feedId null) or a feed's own. */
-export interface FeedFilter {
-  rules: FilterRule[];
-  /** Entries whose feed carries their full text need at least this many characters of it. */
-  min_chars: number | null;
-  llm: boolean;
-  instruction: string;
-  /** Import only entries the LLM rates at least this relevant to 「自分について」 (1-5). */
-  min_relevance: number | null;
-}
-
-export type FilterScope = "global" | "feed";
-export type FilterReason =
-  | { kind: "excluded"; scope: FilterScope; rule: FilterRule }
-  | { kind: "not_included"; scope: FilterScope }
-  | { kind: "too_short"; scope: FilterScope; min: number; chars: number }
-  | { kind: "llm"; reason: string; score: number | null };
-
-export interface RejectedEntry {
-  /** Normalized; the key for `api.importRejected`. */
-  url: string;
-  title: string | null;
-  published_at: string | null;
-  excerpt: string;
-  reason: FilterReason | null;
-}
-
-export interface Reevaluated {
-  imported: number;
-  /** Passed the rules and wait for the LLM. */
-  asked: number;
-  rejected: number;
-}
-
-export interface FeedCandidate {
-  url: string;
-  title: string | null;
-}
-
-/** A user-made collection of articles (G53); an article can be in many. */
-export interface GroupRow {
-  id: number;
-  name: string;
-  created_at: string;
-  count: number;
-}
-
-export interface TagCount {
-  name: string;
-  count: number;
-}
-
-export interface ArticleView {
-  article: ArticleRow;
-  /** Language of `blocks[].translation`: Japanese articles are translated into English. */
-  target_language: "ja" | "en";
-  blocks: Block[];
-  jobs: JobRow[];
-  summary: { text: string; created_at: string; stale: boolean } | null;
-}
-
-export interface SearchHit {
-  block_id: number;
-  article_id: number;
-  article_title: string;
-  heading: string | null;
-  text: string;
-  translation: string | null;
-  source: "lexical" | "semantic" | "both";
-  score: number;
-}
-
-export interface SearchResult {
-  hits: SearchHit[];
-  semantic_error: string | null;
-}
-
-/** Mirrors chat.rs. Every article filter is a chat scope. */
-export type ChatScope = { kind: "article"; id: number } | { kind: "articles"; ids: number[] } | { kind: "filter"; filter: ArticleFilter };
-/** How much of the scope one chat question sends (`chat::Budget`). */
-export type ChatBudget = "small" | "standard" | "large";
-
-export interface Citation {
-  n: number;
-  block_id: number;
-  article_id: number;
-  url: string;
-  title: string;
-  heading: string | null;
-  text: string;
-}
-
-export interface ChatMessage {
-  id: number;
-  thread_id: number;
-  question: string;
-  answer: string;
-  citations: Citation[];
-  scope: ChatScope;
-  mode: "full" | "retrieval" | "none";
-  provider: string | null;
-  model: string | null;
-  created_at: string;
-}
-
-export interface ChatThread {
-  id: number;
-  title: string;
-  updated_at: string;
-}
-
-export interface ImportSummary {
-  found: number;
-  queued: number;
-  existing: number;
-  invalid: number;
-  /** The articles the valid URLs are, new and already saved. */
-  ids: number[];
-}
-
-export interface NetworkSettings {
-  mode: "public" | "unrestricted" | "allowlist";
-  allow: string[];
-  deny: string[];
-}
-
-export interface ImageSettings {
-  save: boolean;
-  /** Per-image size cap in MB. */
-  max_mb: number;
-}
-
-export interface Settings {
-  db_path: string;
-  /** The folder with the database, backups, exports and the search model. */
-  data_dir: string;
-  /** default: %APPDATA%; custom: chosen in settings; portable: `data` next to the exe. */
-  location: "default" | "custom" | "portable";
-  /** Why the chosen folder is not in use (the default folder is used instead). */
-  location_warning: string | null;
-  log_dir: string;
-  backup_dir: string;
-  backup_keep: number;
-}
-
-/** Mirrors lattice-core's backup::LocalBackup. */
-export interface LocalBackup {
-  path: string;
-  /** The backup was written but deleting old generations failed. */
-  warning: string | null;
-}
-
-export type ProviderKind = "claude_cli" | "codex_cli" | "openai" | "gemini" | "anthropic";
-
-/** The user's context for summaries and chat answers; blank means none. */
-export interface CustomInstructions {
-  profile: string;
-  summary: string;
-  chat: string;
-}
-
-export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
-
-export interface ChainEntry {
-  kind: ProviderKind;
-  model: string | null;
-  /** Absent or null: the provider's default. */
-  effort?: Effort | null;
-}
-
-/** Where an API key comes from; the key itself never reaches the UI. */
-export type KeySource = "stored" | "env" | null;
-
-export interface LlmSettings {
-  chain: ChainEntry[];
-  openai_key: KeySource;
-  gemini_key: KeySource;
-  anthropic_key: KeySource;
-}
-
-/** Mirrors lattice-core's job_status.rs. */
-export type JobState = "pending" | "backoff" | "running" | "failed";
-
-export interface JobCount {
-  job_type: string;
-  state: JobState;
-  count: number;
-}
-
-export interface JobIssue {
-  id: number;
-  job_type: string;
-  article_id: number | null;
-  article_title: string | null;
-  status: "pending" | "failed";
-  attempt_count: number;
-  last_error: string | null;
-  next_run_at: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-}
-
-export interface JobOverview {
-  counts: JobCount[];
-  issues: JobIssue[];
-}
-
-/** Mirrors lattice-core's quiz.rs / srs.rs. A question's id is also its review card's id. */
-export type Grade = "again" | "hard" | "good" | "easy";
-
-export type QuizQuestion = {
-  id: number;
-  question: string;
-  answer: string;
-  explanation: string;
-  /** Blocks the answer comes from. */
-  block_ids: number[];
-} & ({ kind: "recall" } | { kind: "choice"; options: string[] });
-
-export interface Quiz {
-  id: number;
-  questions: QuizQuestion[];
-  created_at: string;
-  /** The article's text or the 「自分について」 profile changed since generation. */
-  stale: boolean;
-  /** Cards in review from this article. */
-  in_review: number;
-}
-
-/** Mirrors review.rs Item: today's queue holds quiz questions and vocabulary cards. */
-export type ReviewItem = QuizReviewItem | VocabReviewItem;
-
-export type QuizReviewItem = QuizQuestion & {
-  type: "quiz";
-  article_id: number;
-  article_title: string;
-  /** Never answered. */
-  new: boolean;
-  /** Minutes until the next review after again / hard / good / easy. */
-  previews: [number, number, number, number];
-};
-
-export interface ReviewOverview {
-  /** Cards in today's queue now. */
-  due: number;
-  /** Unix seconds. */
-  next_due_at: number | null;
-  articles: { article_id: number; title: string; cards: number; next_due_at: number }[];
-}
-
-/** Mirrors lattice-core's vocab.rs. */
-export interface VocabSense {
-  headword: string;
-  pos: string;
-  /** A short Japanese gloss, as used in the first capture. */
-  meaning: string;
-  /** One plain English sentence, learner's-dictionary style: the card's answer. */
-  definition: string;
-  ipa: string;
-  /** A sentence written for learning, not the captured one. */
-  example: string;
-}
-
-/** Where a word was captured. */
-export interface VocabContext {
-  surface: string;
-  sentence: string;
-  article_id: number | null;
-  block_id: number | null;
-  url: string | null;
-  title: string | null;
-}
-
-export interface VocabEntry extends VocabSense {
-  id: number;
-  /** pending: waiting for the LLM; failed: it gave no usable answer. */
-  state: "pending" | "ready" | "failed";
-  suspended: boolean;
-  created_at: string;
-  /** Unix seconds; null before the word has a meaning. */
-  due_at: number | null;
-  contexts: VocabContext[];
-}
-
-export interface VocabCapture {
-  surface: string;
-  sentence: string;
-  article_id?: number | null;
-  block_id?: number | null;
-  url?: string | null;
-}
-
-export type VocabReviewItem = VocabSense & {
-  type: "vocab";
-  /** The card's id. */
-  id: number;
-  entry_id: number;
-  context: VocabContext;
-  new: boolean;
-  previews: [number, number, number, number];
-};
-
-export interface ReviewSettings {
-  new_per_day: number;
-  reviews_per_day: number;
-  min_interval_minutes: number;
-  max_interval_days: number;
-}
-
-/** Mirrors browser.rs OverlayLabels: the in-page overlay's tooltip text. */
-export interface OverlayLabels {
-  original: string;
-  translated: string;
-  flip: string;
-  translating: string;
-  failed: string;
-  retry: string;
-  save_word: string;
-  saved_word: string;
-}
-
-export interface Bounds {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
 
 export const api = {
   saveUrl: (url: string) => invoke<number>("save_url", { url }),
@@ -528,7 +102,7 @@ export const api = {
   /** The article's newest quiz. */
   quiz: (id: number) => invoke<Quiz | null>("get_quiz", { id }),
   /** Adds the quiz's questions to review; `answers` count as their first review. Returns the article's cards in review. */
-  reviewAdd: (quizId: number, answers: { question_id: number; grade: Grade }[]) => invoke<number>("review_add", { quizId, answers }),
+  reviewAdd: (quizId: number, answers: ReviewAnswer[]) => invoke<number>("review_add", { quizId, answers }),
   reviewGrade: (questionId: number, grade: Grade) => invoke<void>("review_grade", { questionId, grade }),
   reviewRemoveCard: (questionId: number) => invoke<void>("review_remove_card", { questionId }),
   reviewRemoveArticle: (articleId: number) => invoke<void>("review_remove_article", { articleId }),
@@ -537,7 +111,7 @@ export const api = {
   reviewOverview: () => invoke<ReviewOverview>("review_overview"),
   reviewSettings: () => invoke<ReviewSettings>("get_review_settings"),
   setReviewSettings: (settings: ReviewSettings) => invoke<void>("set_review_settings", { settings }),
-  vocabAdd: (capture: VocabCapture) => invoke<{ entry_id: number; new: boolean }>("vocab_add", { capture }),
+  vocabAdd: (capture: VocabCapture) => invoke<VocabAdded>("vocab_add", { capture }),
   vocabList: () => invoke<VocabEntry[]>("vocab_list"),
   vocabSetMeaning: (id: number, meaning: string) => invoke<void>("vocab_set_meaning", { id, meaning }),
   vocabSuspend: (id: number, suspended: boolean) => invoke<void>("vocab_suspend", { id, suspended }),
@@ -562,7 +136,7 @@ export const api = {
   setApiKey: (kind: "openai" | "gemini" | "anthropic", key: string | null) => invoke<void>("set_api_key", { kind, key }),
   backup: () => invoke<LocalBackup>("backup_db"),
   /** Native folder picker; null when cancelled. `has_data`: the folder already holds a Lattice database. */
-  pickDataDir: () => invoke<{ path: string; has_data: boolean } | null>("pick_data_dir"),
+  pickDataDir: () => invoke<PickedDir | null>("pick_data_dir"),
   /** Uses the picked folder from the next start, copying the current data there or switching to the data in it. */
   setDataDir: (copy: boolean) => invoke<string>("set_data_dir", { copy }),
   restart: () => invoke<void>("restart_app"),
@@ -691,34 +265,6 @@ export const tabDrag = {
   release: (cancel: boolean) => invoke<void>("tab_drag_release", { cancel }),
 };
 
-/** Mirrors lattice-core's r2::R2Status. Secret values never reach the UI, only `has_secret`. */
-export interface R2Status {
-  enabled: boolean;
-  account_id: string;
-  bucket: string;
-  access_key_id: string;
-  interval_hours: number;
-  keep_generations: number;
-  has_secret: boolean;
-  last_success: number | null;
-  last_key: string | null;
-  last_error: string | null;
-  /** The last upload succeeded but deleting old generations failed. */
-  last_prune_error: string | null;
-  running: boolean;
-}
-
-export interface R2Settings {
-  enabled: boolean;
-  account_id: string;
-  bucket: string;
-  access_key_id: string;
-  interval_hours: number;
-  keep_generations: number;
-  /** null or empty keeps the stored secret. */
-  secret_access_key: string | null;
-}
-
 /** Automatic backup to Cloudflare R2. */
 export const r2 = {
   status: () => invoke<R2Status>("r2_status"),
@@ -726,14 +272,6 @@ export const r2 = {
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
 };
-
-export interface UpdateInfo {
-  current: string;
-  /** false while tauri.conf.json still has the placeholder public key (docs/release.md). */
-  configured: boolean;
-  /** Portable copies are updated by replacing them with the new zip, not by the installer. */
-  portable: boolean;
-}
 
 /** In-place updates from the GitHub releases. */
 export const updates = {

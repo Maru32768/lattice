@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use crate::backup;
 use crate::msg;
 use crate::store::{Store, hex, sha256_hex};
+use ts_rs::TS;
 
 pub const SECRET_KEY: &str = "secret.r2_secret_access_key";
 const ENABLED: &str = "r2.enabled";
@@ -39,7 +40,8 @@ const TMP_PREFIX: &str = "r2-upload-";
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct R2Status {
     pub enabled: bool,
     pub account_id: String,
@@ -56,7 +58,8 @@ pub struct R2Status {
     pub running: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub struct R2Settings {
     pub enabled: bool,
     pub account_id: String,

@@ -4,13 +4,15 @@ use std::net::IpAddr;
 
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 use url::{Host, Url};
 
 use crate::{msg, store::Store};
 
 const SETTING: &str = "network_policy";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "NetworkMode")]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
     #[default]
@@ -19,7 +21,8 @@ pub enum Mode {
     Allowlist,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(deny_unknown_fields)]
 pub struct NetworkSettings {
     pub mode: Mode,

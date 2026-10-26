@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Rect, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
 use tokio::sync::oneshot;
+use ts_rs::TS;
 
 /// Labels of the page webviews: `browser-<tab key>`. The key (`PageTab.key` in `src/layout/layout.ts`)
 /// names the tab across windows and restarts; the UI's numeric tab ids are per window.
@@ -56,7 +57,8 @@ pub struct OverlayConfig {
 }
 
 /// The overlay's tooltip text in the display language, from the UI's catalog (G51); empty until the UI sends it.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct OverlayLabels {
     original: String,
     translated: String,
@@ -223,7 +225,8 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, TS)]
+#[ts(export)]
 pub struct Bounds {
     x: f64,
     y: f64,

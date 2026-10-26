@@ -16,6 +16,7 @@ use crate::msg;
 use crate::search;
 use crate::segments::Target;
 use crate::store::{ArticleFilter, Result, Store};
+use ts_rs::TS;
 
 pub const PROMPT_VERSION: &str = "chat-v1";
 const BUDGET_SETTING: &str = "chat_budget";
@@ -28,7 +29,8 @@ const HISTORY_ANSWER_CHARS: usize = 1_000;
 const MAX_QUESTION_CHARS: usize = 4_000;
 
 /// How much of the scope one question sends (Settings › 要約・対話). Cost and latency grow with it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "ChatBudget")]
 #[serde(rename_all = "snake_case")]
 pub enum Budget {
     Small,
@@ -71,7 +73,8 @@ pub fn set_budget(store: &Store, b: Budget) -> std::result::Result<(), String> {
 
 /// What a question may draw on. Every kind reduces to a set of article ids (`None` = all);
 /// every inbox filter (tag, genre, feed, ...) is a scope.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "ChatScope")]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Scope {
     Article {
@@ -86,7 +89,8 @@ pub enum Scope {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Citation {
     /// The `[n]` marker used in the answer.
     pub n: usize,
@@ -98,7 +102,8 @@ pub struct Citation {
     pub text: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ChatMessage {
     pub id: i64,
     pub thread_id: i64,
@@ -107,13 +112,15 @@ pub struct ChatMessage {
     pub citations: Vec<Citation>,
     pub scope: Scope,
     /// "full" (whole scope sent), "retrieval" (top search hits) or "none" (nothing to send).
+    #[ts(type = "\"full\" | \"retrieval\" | \"none\"")]
     pub mode: String,
     pub provider: Option<String>,
     pub model: Option<String>,
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ChatThread {
     pub id: i64,
     pub title: String,

@@ -6,6 +6,7 @@
 
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::fetch::HttpClient;
 use crate::msg;
@@ -25,7 +26,8 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ImageSettings {
     pub save: bool,
     /// Per-image size cap in MB.

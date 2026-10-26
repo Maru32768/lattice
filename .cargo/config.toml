@@ -1,0 +1,4 @@
+# Ids and counts are i64 in Rust and numbers in the UI.
+[env]
+TS_RS_EXPORT_DIR = { value = "src/bindings", relative = true }
+TS_RS_LARGE_INT = "number"

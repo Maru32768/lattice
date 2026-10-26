@@ -54,7 +54,25 @@ Keys saved in the app (Settings › AI providers) take precedence over these env
 mise run test
 ```
 
-`mise run test` runs `mise run lint` (rustfmt, clippy with `-D warnings`, oxlint, Prettier, and a check that React Compiler compiled every component), then the Rust and frontend unit tests, and type-checks (the unit tests too) and builds the frontend.
+`mise run test` runs `mise run lint` (rustfmt, clippy with `-D warnings`, oxlint, Prettier, and a check that React Compiler compiled every component), checks the generated IPC types, then runs the Rust and frontend unit tests, and type-checks (the unit tests too) and builds the frontend.
+
+### IPC types
+
+Rust serde types that cross IPC derive `ts_rs::TS`. `src/api.ts` imports and re-exports the generated types in `src/bindings`; frontend callers keep importing from `src/api.ts`.
+After changing an IPC type, regenerate the bindings:
+
+```bash
+mise run bindings
+```
+
+Commit `src/bindings` with the Rust change. Do not edit the generated files. Include new IPC types with `#[derive(TS)]` and `#[ts(export)]`; use `#[ts(rename = "...")]` when the frontend name differs from Rust.
+The integer mapping in `.cargo/config.toml` keeps IDs and counts as JavaScript numbers. String fields with a fixed set of values use `#[ts(type = "...")]`; update these annotations when the allowed values change.
+
+```bash
+mise exec -- node scripts/bindings.mjs --check
+```
+
+The check generates into a temporary directory and fails for missing, changed, or obsolete bindings without changing `src/bindings`. CI runs it before Rust tests, because the export tests also write bindings.
 
 ```bash
 mise exec -- npm run format

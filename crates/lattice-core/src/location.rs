@@ -7,6 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::msg;
+use ts_rs::TS;
 
 pub const PORTABLE_MARKERS: [&str; 2] = ["portable", "lattice.portable"];
 /// In the default app data folder, whichever folder is in use.
@@ -21,7 +22,8 @@ pub const APP_IDENTIFIER: &str = if cfg!(debug_assertions) {
     RELEASE_APP_IDENTIFIER
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, TS)]
+#[ts(export, rename = "LocationKind")]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
     Default,

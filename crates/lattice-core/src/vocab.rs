@@ -17,6 +17,7 @@ use crate::llm::LlmProvider;
 use crate::msg;
 use crate::srs::{self, Card, Grade};
 use crate::store::Store;
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "vocab";
 /// Entries per LLM call.
@@ -36,15 +37,19 @@ fn unix_now() -> i64 {
 // ---- capture ------------------------------------------------------------------------------
 
 /// A word or phrase selected in the Reader or a page, with the sentence around it.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, TS)]
+#[ts(export, rename = "VocabCapture")]
 pub struct Capture {
     pub surface: String,
     pub sentence: String,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub article_id: Option<i64>,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub block_id: Option<i64>,
     #[serde(default)]
+    #[ts(optional = nullable)]
     pub url: Option<String>,
 }
 
@@ -71,7 +76,8 @@ pub fn validate(surface: &str, sentence: &str) -> Result<(String, String), Strin
     Ok((surface, sentence))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "VocabAdded")]
 pub struct Added {
     pub entry_id: i64,
     /// A new entry, not a context added to one already in the book.
@@ -148,7 +154,7 @@ pub fn enqueue_missing(store: &Store) -> Result<(), String> {
 // ---- enrichment ---------------------------------------------------------------------------
 
 /// What the LLM says about a word in its sentence.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, TS)]
 pub struct Sense {
     pub headword: String,
     pub pos: String,
@@ -317,7 +323,8 @@ fn add_card(c: &Connection, entry_id: i64, now: i64) -> rusqlite::Result<()> {
 
 /// Where a word was captured. `block_id` falls back to the article's block holding the sentence
 /// (a page capture of a saved article); `url` to the article's.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, rename = "VocabContext")]
 pub struct Context {
     pub surface: String,
     pub sentence: String,
@@ -343,12 +350,14 @@ fn context_row(r: &rusqlite::Row, at: usize) -> rusqlite::Result<Context> {
     })
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, rename = "VocabEntry")]
 pub struct Entry {
     pub id: i64,
     #[serde(flatten)]
     pub sense: Sense,
     /// pending (waiting for the LLM), ready, or failed (the LLM gave no usable answer).
+    #[ts(type = "\"pending\" | \"ready\" | \"failed\"")]
     pub state: String,
     pub suspended: bool,
     pub created_at: String,
@@ -436,7 +445,8 @@ pub fn retry(store: &Store, id: i64) -> Result<(), String> {
 
 // ---- review -------------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export, rename = "VocabReviewItem")]
 pub struct ReviewItem {
     /// The card's id.
     pub id: i64,
