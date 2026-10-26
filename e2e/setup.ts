@@ -2,14 +2,15 @@
 import { mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { emit } from "@tauri-apps/api/event";
 import { handle } from "./mock.ts";
+import { api } from "../src/api.ts";
 
 declare global {
   interface Window {
-    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit };
+    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; deleteArticle: typeof api.deleteArticle };
   }
 }
 
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit };
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, deleteArticle: api.deleteArticle };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");

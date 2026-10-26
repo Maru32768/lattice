@@ -53,7 +53,7 @@ jobs:
       - name: Frontend tests
         run: mise exec -- npm test
 
-      - name: oxlint
+      - name: Frontend lint, formatting and React Compiler
         run: mise exec -- npm run lint
 
       - name: Typecheck and build

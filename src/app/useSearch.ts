@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { api, type ArticleRow, type SearchResult } from "../api";
-import { toFilter, type Scope } from "../library/library";
 import { filterHits, groupHits, type SearchMethod } from "../search/search";
 
 const RECENT_KEY = "lattice.recentSearches";
+type Request = { query: string };
 function loadRecent(): string[] {
   try {
     const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
@@ -15,15 +15,53 @@ function loadRecent(): string[] {
 
 /** The list pane's search mode: the query and its hits among the `shown` articles, the selected hit, recent queries. */
 export function useSearch(shown: ArticleRow[], fail: (e: unknown) => void) {
-  const [search, setSearch] = useState<{ query: string; result: SearchResult | null; busy: boolean } | null>(null);
+  const [request, setRequest] = useState<Request | "idle" | null>(null);
+  const [response, setResponse] = useState<{ request: Request; articleIds: string; result: SearchResult | null } | null>(null);
   const [method, setMethod] = useState<SearchMethod>("hybrid");
   const [hitSel, setHitSel] = useState(0);
   const [searchFocus, setSearchFocus] = useState(0);
   const [recent, setRecent] = useState<string[]>(loadRecent);
 
-  async function start(q: string, scope: Scope) {
+  const articleIds = shown
+    .map((a) => a.id)
+    .sort((a, b) => a - b)
+    .join(",");
+  const onError = useEffectEvent(fail);
+  const submitted = request && request !== "idle" ? request : null;
+  const settled = response?.request === submitted && response.articleIds === articleIds ? response : null;
+  const search = useMemo(
+    () => (request === null ? null : { query: submitted?.query ?? "", result: settled?.result ?? null, busy: submitted !== null && settled === null }),
+    [request, submitted, settled],
+  );
+
+  useEffect(() => {
+    if (!submitted) {
+      return;
+    }
+    let active = true;
+    const { query } = submitted;
+    const articles = articleIds ? articleIds.split(",").map(Number) : [];
+    void api.search(query, articles).then(
+      (result) => {
+        if (active) {
+          setResponse({ request: submitted, articleIds, result });
+        }
+      },
+      (e: unknown) => {
+        if (active) {
+          onError(e);
+          setResponse({ request: submitted, articleIds, result: null });
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [submitted, articleIds]);
+
+  function start(q: string) {
     setHitSel(0);
-    setSearch({ query: q, result: null, busy: true });
+    setRequest({ query: q });
     const next = [q, ...recent.filter((x) => x !== q)].slice(0, 5);
     setRecent(next);
     try {
@@ -31,18 +69,11 @@ export function useSearch(shown: ArticleRow[], fail: (e: unknown) => void) {
     } catch {
       // Blocked storage: recent searches are simply not kept.
     }
-    try {
-      const result = await api.search(q, toFilter(scope));
-      setSearch((cur) => (cur?.query === q ? { query: q, result, busy: false } : cur));
-    } catch (e) {
-      fail(e);
-      setSearch((cur) => cur && { ...cur, busy: false });
-    }
   }
 
   /** Into search mode, focusing its field. */
   function enter() {
-    setSearch((s) => s ?? { query: "", result: null, busy: false });
+    setRequest((current) => current ?? "idle");
     setSearchFocus((n) => n + 1);
   }
 
@@ -55,5 +86,9 @@ export function useSearch(shown: ArticleRow[], fail: (e: unknown) => void) {
   }, [search, method, shown]);
   const flatHits = useMemo(() => hitGroups.flatMap((g) => g.hits), [hitGroups]);
 
-  return { search, exit: () => setSearch(null), method, setMethod, hitSel, setHitSel, searchFocus, recent, start, enter, hitGroups, flatHits };
+  function exit() {
+    setRequest(null);
+  }
+
+  return { search, exit, method, setMethod, hitSel, setHitSel, searchFocus, recent, start, enter, hitGroups, flatHits };
 }

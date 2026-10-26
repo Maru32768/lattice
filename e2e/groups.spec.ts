@@ -125,7 +125,14 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
   await app.keyboard.press("Control+k");
   await app.keyboard.type("?vacuum");
   await app.keyboard.press("Enter");
-  await expect.poll(async () => (await callsOf(app, "search_blocks")).at(-1)).toEqual({ query: "vacuum", filter: { kind: "group", id: mvcc.id } });
+  await expect
+    .poll(async () => (await callsOf(app, "search_blocks")).at(-1))
+    .toEqual({
+      query: "vacuum",
+      articles: members(mvcc.id)
+        .map((a) => a.id)
+        .sort((a, b) => a - b),
+    });
 });
 
 test("imports land in the chosen groups; the list's group is chosen first", async ({ app }) => {

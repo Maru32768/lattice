@@ -1,5 +1,6 @@
 // Runs in the "english" project (locale en-US): the display language follows the WebView's.
 import { test, expect, callsOf, list, navItem } from "./harness.ts";
+import { ARTICLES } from "./fixtures.ts";
 
 const JAPANESE = /[぀-ヿ一-鿿]/;
 
@@ -84,4 +85,23 @@ test("Vocabulary reads in English", async ({ app }) => {
   await expect(main.locator(".sub")).toHaveText("2 words");
   await expect(main.locator("tbody tr", { hasText: "bloat" })).toContainText("Lookup failed");
   expect((await main.innerText()).replace("書き込みスキュー", ""), "no Japanese but a word's meaning").not.toMatch(JAPANESE);
+});
+
+test("the empty library explains AI defaults and data sharing in English", async ({ app }) => {
+  await app.evaluate(
+    async (ids) => {
+      for (const id of ids) {
+        await window.__e2e.deleteArticle(id);
+      }
+      await window.__e2e.emit("article-changed", 0);
+    },
+    ARTICLES.map((article) => article.id),
+  );
+  const firstRun = app.getByRole("region", { name: "Add your first article" });
+  await expect(firstRun).toBeVisible();
+  await expect(firstRun).toContainText("Saving, reading and full-text search work without configuring AI.");
+  await expect(firstRun).toContainText("Install Claude CLI and sign in");
+  await expect(firstRun).toContainText("AI features, including automatic classification, send article text to your configured AI providers.");
+  await firstRun.getByRole("button", { name: "AI provider settings", exact: true }).click();
+  await expect(app.locator(".stg main h1")).toHaveText("AI providers");
 });

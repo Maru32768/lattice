@@ -216,10 +216,10 @@ const counts = (values: (string | null)[]): TagCount[] => {
 };
 
 /** Lexical: the query is in the original text; semantic: only in the translation. */
-function search(query: string, filter: ArticleFilter | null): SearchResult {
+function search(query: string, filter: ArticleFilter | null, ids: number[] | null): SearchResult {
   const q = query.trim().toLowerCase();
   const hits: SearchHit[] = [];
-  for (const a of articles.filter((x) => matches(x, filter))) {
+  for (const a of articles.filter((x) => (ids === null ? matches(x, filter) : ids.includes(x.id)))) {
     const blocks = blocksOf(a);
     for (const b of blocks) {
       const lexical = b.text.toLowerCase().includes(q);
@@ -240,7 +240,7 @@ function search(query: string, filter: ArticleFilter | null): SearchResult {
       });
     }
   }
-  return { hits, semantic_error: null };
+  return { hits: hits.slice(0, 30), semantic_error: null };
 }
 
 /** Articles whose translation was queued: their view shows the job waiting. */
@@ -542,7 +542,8 @@ export const handlers = {
     c.due = false;
   },
   export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-vocab-20261020T030000Z.csv",
-  search_blocks: ({ query, filter }: { query: string; filter: ArticleFilter | null }): SearchResult => search(query, filter),
+  search_blocks: ({ query, filter, articles }: { query: string; filter: ArticleFilter | null; articles?: number[] | null }): SearchResult =>
+    search(query, filter, articles ?? null),
   chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
     const thread = threadId ?? Math.max(0, ...threads.map((t) => t.id)) + 1;
     if (threadId == null) {

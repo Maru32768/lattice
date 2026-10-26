@@ -10,3 +10,4 @@ node_modules/
 *.json
 *.yml
 *.yaml
+scripts/about.hbs

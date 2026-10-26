@@ -43,6 +43,7 @@ export function FirstRun({
           <span className="muted">{t("app.markdownHint")}</span>
         </button>
       </div>
+      <p className="muted">{t("app.localFeatures")}</p>
       <p className="muted">
         {t.rich("app.needsProvider", {
           link: (
@@ -52,6 +53,7 @@ export function FirstRun({
           ),
         })}
       </p>
+      <p className="muted">{t("app.aiPrivacy")}</p>
     </section>
   );
 }

@@ -214,17 +214,17 @@ export default function App() {
     setFacets(NO_FACETS);
     setScreen("library");
     if (search?.query) {
-      void runSearch(search.query, s);
+      runSearch(search.query);
     }
   }
 
-  async function runSearch(q: string, s: Scope = scope) {
+  function runSearch(q: string) {
     if (!IS_MAIN) {
       return void toMain({ kind: "search", query: q });
     }
     setScreen("library");
     setListOpen(true);
-    await startSearch(q, s);
+    startSearch(q);
   }
 
   function enterSearch() {
@@ -601,7 +601,7 @@ export default function App() {
         break;
       case "search":
         if (r.query) {
-          void runSearch(r.query);
+          runSearch(r.query);
         } else {
           enterSearch();
         }
@@ -655,7 +655,7 @@ export default function App() {
       setFeedsUrl(url);
       setScreen("feeds");
     },
-    search: (q) => void runSearch(q),
+    search: (q) => runSearch(q),
     screen: setScreen,
     importMarkdown,
     importPdf,

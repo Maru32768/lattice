@@ -46,7 +46,7 @@ pub async fn search<E: EmbeddingProvider>(
     limit: usize,
 ) -> Result<SearchResult, String> {
     let query = query.trim();
-    if query.is_empty() {
+    if query.is_empty() || articles.is_some_and(<[i64]>::is_empty) {
         return Ok(SearchResult { hits: Vec::new(), semantic_error: None });
     }
     // A large limit (chat's wide budgets) needs deeper lists than the fused page itself.
@@ -192,6 +192,38 @@ pub(crate) mod tests {
         <p>PostgreSQL keeps tuple visibility in the heap, so pg_visibility inspects the visibility map rather than the index entries.</p>\
         <p>Edge-triggered polling with EPOLLET requires draining the socket until EAGAIN is returned by the kernel.</p>\
         <pre><code>SELECT * FROM pg_visibility_map('t');</code></pre>";
+
+    #[tokio::test]
+    async fn article_restriction_precedes_candidate_and_result_limits() {
+        let (s, selected) =
+            store_with("<p>Needle information relevant to the selected article about PostgreSQL visibility maps and asynchronous socket handling.</p>");
+        crate::embed::run(&s, &Letters, selected).await.unwrap();
+        for n in 0..=CANDIDATES {
+            let url = format!("https://example.com/distractor/{n}");
+            let (id, _) = s.upsert_pending(&url, &url, "example.com").unwrap();
+            let html = "<html><head><title>Distractor</title></head><body><article><p>Needle.</p></article></body></html>".into();
+            store_fetched(&s, id, &Fetched { final_url: url, status: 200, content_type: None, html }).unwrap();
+            crate::embed::run(&s, &Letters, id).await.unwrap();
+        }
+        let target = Target::default();
+        let all = search(&s, &Letters, "needle", None, &target, 30).await.unwrap();
+        assert_eq!(all.hits.len(), 30);
+        assert!(all.hits.iter().all(|hit| hit.detail.article_id != selected));
+
+        let ids = [selected];
+        let restricted = search(&s, &Letters, "needle", Some(&ids), &target, 30).await.unwrap();
+        assert_eq!(restricted.hits.len(), 1);
+        assert_eq!(restricted.hits[0].detail.article_id, selected);
+        assert_eq!(restricted.hits[0].source, MatchSource::Both);
+        let lexical = search(&s, &Offline, "needle", Some(&ids), &target, 30).await.unwrap();
+        assert_eq!(lexical.hits.len(), 1);
+        assert_eq!(lexical.hits[0].detail.article_id, selected);
+        assert_eq!(lexical.hits[0].source, MatchSource::Lexical);
+
+        let empty = search(&s, &Offline, "needle", Some(&[]), &target, 30).await.unwrap();
+        assert!(empty.hits.is_empty());
+        assert!(empty.semantic_error.is_none(), "an empty article set needs no embedding model");
+    }
 
     #[tokio::test]
     async fn lexical_semantic_and_fallbacks() {
