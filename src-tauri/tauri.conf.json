@@ -25,13 +25,17 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "NOT_CONFIGURED: replace with the public key from `tauri signer generate` (docs/release.md)",
-      "endpoints": ["https://github.com/Maru32768/lattice/releases/latest/download/latest.json"]
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCMkEzQkE4NDEwNkRGMjUKUldRbDN3WkJxRHNxZS85V2QzNEJ1OUlCeXEwQlBGTTVUZFFqRUQxdERnM1oycFVDcE1YeDJNRlgK",
+      "endpoints": [
+        "https://github.com/Maru32768/lattice/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "resources": {
       "../LICENSE": "LICENSE",
       "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",

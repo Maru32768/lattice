@@ -1,5 +1,5 @@
 # Builds a draft GitHub release for a `v*` tag: the NSIS installer, a portable zip (with lattice-cli), the
-# third-party license list and, when the signing key secret is set, the updater artifacts
+# third-party license list and signed updater artifacts
 # (the installer's .sig and latest.json). See docs/release.md.
 name: Release
 
@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -23,47 +24,35 @@ jobs:
 
       - uses: jdx/mise-action@v5
 
-      - name: Install npm packages
-        run: npm ci
-
-      - name: Check the tag against the app version
-        run: node scripts/version.mjs --check "${{ github.ref_name }}"
-
-      - name: Release notes from CHANGELOG.md
-        id: notes
-        shell: bash
+      - name: Require CI success for this exact commit
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          notes=$(awk -v h="## [${GITHUB_REF_NAME#v}]" 'index($0, "## [") == 1 { p = index($0, h) == 1; next } p' CHANGELOG.md)
-          if [ -z "$(echo "$notes" | tr -d '[:space:]')" ]; then
-            echo "::error::CHANGELOG.md has no section for ${GITHUB_REF_NAME#v}"
-            exit 1
-          fi
-          {
-            echo 'body<<LATTICE_NOTES'
-            echo "$notes"
-            echo 'LATTICE_NOTES'
-          } >> "$GITHUB_OUTPUT"
+          $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$env:GITHUB_SHA&per_page=100" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "Could not read CI status" }
+          $latest = $runs.workflow_runs | Where-Object { $_.head_sha -eq $env:GITHUB_SHA } | Sort-Object run_number -Descending | Select-Object -First 1
+          if (-not $latest -or $latest.status -ne 'completed' -or $latest.conclusion -ne 'success') {
+            throw "CI must pass on $env:GITHUB_SHA before releasing. Wait for CI, then rerun this release workflow."
+          }
+
+      - name: Install npm packages
+        run: mise exec -- npm ci
+
+      - name: Check version, release notes and signing prerequisites
+        id: notes
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: mise exec -- node scripts/release.mjs "${{ github.ref_name }}"
 
       - uses: Swatinem/rust-cache@v2
 
       - name: Install cargo-about
-        run: cargo install --locked cargo-about --features cli
+        run: mise exec -- cargo install --locked cargo-about --features cli
 
       - name: Regenerate the third-party license list
         run: mise run licenses
-
-      # Without the key, `createUpdaterArtifacts` would fail the build; the release then has no updater files.
-      - name: Turn on updater artifacts when the signing key is set
-        id: updater
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "args=--config ${GITHUB_WORKSPACE//\\//}/src-tauri/tauri.updater.conf.json" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: the release has no updater artifacts"
-          fi
 
       - uses: tauri-apps/tauri-action@v1
         env:
@@ -76,10 +65,10 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
-          args: ${{ steps.updater.outputs.args }}
+          args: --config src-tauri/tauri.updater.conf.json
 
       - name: Build the CLI
-        run: cargo build --release -p lattice-cli
+        run: mise exec -- cargo build --release -p lattice-cli
 
       - name: Portable zip and license list
         shell: pwsh

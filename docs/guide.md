@@ -715,6 +715,22 @@ Lattice keeps all its data in one SQLite file: articles, the fetched HTML, trans
 
 Some preferences are stored per computer instead of in the database: shortcuts, the search engine, **Translate when I switch the view**, the Vim setting, speech, underlines, recent searches, the Page view's summary button, folder expansion and the window layout. They are not in backups.
 
+### Restore a backup
+
+A local backup is a consistent SQLite snapshot named `backups/lattice-<Unix seconds>.db`. It contains articles, images, translations, vocabulary, review history and database settings. It excludes API keys and the R2 secret. Preferences stored in browser local storage, such as shortcuts and window layout, are not part of the database backup.
+
+Restore a backup while every process that uses the library is closed. Do not replace the database while Lattice, `lattice-cli` or an MCP server is running.
+
+1. In **Settings › Logs & storage**, note the full database path. Use this path if you moved the data folder or use a portable copy.
+2. Copy the chosen backup to a separate folder. Keep the original backup unchanged. If the file ends in `.db.gz`, extract it first. See [R2 backup retrieval](../infra/r2/README.md#3-復元) for downloading a cloud backup.
+3. Close all Lattice windows, CLI commands and MCP servers that use this database.
+4. Move the current `lattice.db` to a recovery folder. Move `lattice.db-wal` and `lattice.db-shm` there too if they exist. Keep these files together. Do not leave an old WAL or SHM file beside the restored database.
+5. Copy the backup database into the original database folder and name the copy `lattice.db`.
+6. Start Lattice. Check the articles, images, translations, words and review history.
+7. Re-enter the API keys and R2 Secret Access Key in Settings. Confirm that backups work again before deleting the recovery copy.
+
+If you need to return to the previous database, close all library processes again. Move the restored database and its current WAL and SHM files aside together, then return the complete original set from the recovery folder.
+
 ### What goes to AI providers
 
 Lattice sends text to the AI provider you set up only for these features:
