@@ -1,7 +1,43 @@
-use std::net::{IpAddr, SocketAddr};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-pub use reqwest::Client as HttpClient;
+use hyper_util::client::proxy::matcher::Matcher;
+use reqwest::header::{HeaderMap, LOCATION};
+
+use crate::network::{NetworkSettings, Policy};
+use crate::store::Store;
+
+#[derive(Clone)]
+pub struct HttpClient {
+    transport: Arc<RwLock<Arc<Transport>>>,
+}
+
+struct Transport {
+    policy: Arc<Policy>,
+    direct: reqwest::Client,
+    proxies: Matcher,
+    proxy_clients: Mutex<HashMap<String, reqwest::Client>>,
+}
+
+pub(crate) enum GetError {
+    Policy(String),
+    Request(reqwest::Error),
+}
+
+impl GetError {
+    pub(crate) fn is_timeout(&self) -> bool {
+        matches!(self, Self::Request(e) if e.is_timeout())
+    }
+
+    pub(crate) fn message(self) -> String {
+        match self {
+            Self::Policy(message) => message,
+            Self::Request(error) => request_error(error),
+        }
+    }
+}
 
 /// Web pages are untrusted: cap the body so a hostile server can't exhaust memory.
 pub const MAX_BODY: usize = 20 * 1024 * 1024;
@@ -13,69 +49,102 @@ pub struct Fetched {
     pub html: String,
 }
 
-/// Pages and feeds get fetched without the user vetting each URL (feed entries, bulk imports,
-/// redirects), so no fetch may reach this machine or the local network, typed URLs included.
-// shortcut: with a system proxy the proxy resolves target names, so only IP literals are checked; resolve via the proxy's view if proxies matter.
-pub fn client() -> reqwest::Client {
+fn builder() -> reqwest::ClientBuilder {
     reqwest::Client::builder()
         .user_agent(concat!("Lattice/", env!("CARGO_PKG_VERSION"), " (+local reader)"))
         .timeout(Duration::from_secs(30))
-        .dns_resolver(PublicDns)
-        .redirect(reqwest::redirect::Policy::custom(|a| {
-            if a.previous().len() > 10 {
-                a.error("too many redirects")
-            } else if !public_host(a.url()) {
-                a.error("redirect to a private address")
-            } else {
-                a.follow()
-            }
-        }))
-        .build()
-        .expect("static client config")
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
 }
 
-/// Names go through `PublicDns`; IP literals skip DNS and are checked here.
-pub fn check_public(url: &str) -> Result<(), String> {
-    let u = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
-    if public_host(&u) {
-        Ok(())
-    } else {
-        Err("refusing to fetch a private address".into())
+impl Transport {
+    fn new(settings: &NetworkSettings, proxies: Matcher) -> Result<Self, String> {
+        let policy = Arc::new(Policy::parse(settings)?);
+        let direct = builder().dns_resolver(PolicyDns(policy.clone())).build().map_err(request_error)?;
+        Ok(Self { policy, direct, proxies, proxy_clients: Mutex::new(HashMap::new()) })
     }
-}
 
-fn public_host(u: &reqwest::Url) -> bool {
-    match u.host() {
-        Some(url::Host::Ipv4(ip)) => is_public(ip.into()),
-        Some(url::Host::Ipv6(ip)) => is_public(ip.into()),
-        Some(url::Host::Domain(_)) => true,
-        None => false,
-    }
-}
-
-fn is_public(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let [a, b, ..] = v4.octets();
-            !(v4.is_loopback()
-                || v4.is_private()
-                || v4.is_link_local()
-                || v4.is_unspecified()
-                || v4.is_broadcast()
-                || v4.is_documentation()
-                || v4.is_multicast()
-                || a == 0
-                || a >= 240
-                || (a == 100 && (64..128).contains(&b)))
+    fn route(&self, url: &reqwest::Url) -> Result<reqwest::Client, String> {
+        let authority = &url[url::Position::BeforeHost..url::Position::AfterPort];
+        let uri = http::Uri::builder().scheme(url.scheme()).authority(authority).path_and_query("/").build().map_err(|e| e.to_string())?;
+        let Some(proxy) = self.proxies.intercept(&uri) else {
+            return Ok(self.direct.clone());
+        };
+        let mut clients = self.proxy_clients.lock().expect("proxy clients lock");
+        if let Some(client) = clients.get(url.scheme()) {
+            return Ok(client.clone());
         }
-        IpAddr::V6(v6) => match v6.to_ipv4() {
-            Some(v4) => is_public(v4.into()),
-            None => {
-                let s0 = v6.segments()[0];
-                !(v6.is_multicast() || s0 & 0xfe00 == 0xfc00 || s0 & 0xffc0 == 0xfe80)
-            }
-        },
+        let mut config = reqwest::Proxy::all(proxy.uri().to_string()).map_err(request_error)?;
+        if let Some(auth) = proxy.basic_auth() {
+            config = config.custom_http_auth(auth.clone());
+        }
+        let client = builder().proxy(config).build().map_err(request_error)?;
+        clients.insert(url.scheme().to_string(), client.clone());
+        Ok(client)
     }
+}
+
+impl HttpClient {
+    pub fn configured(settings: &NetworkSettings) -> Result<Self, String> {
+        Self::with_proxies(settings, Matcher::from_system())
+    }
+
+    fn with_proxies(settings: &NetworkSettings, proxies: Matcher) -> Result<Self, String> {
+        let transport = Transport::new(settings, proxies)?;
+        Ok(Self { transport: Arc::new(RwLock::new(Arc::new(transport))) })
+    }
+
+    /// New requests, including those from existing clones, use fresh connection pools.
+    /// Already started requests finish with the policy snapshot they captured.
+    pub fn set_settings(&self, store: &Store, settings: &NetworkSettings) -> Result<(), String> {
+        let next = Arc::new(Transport::new(settings, Matcher::from_system())?);
+        let mut transport = self.transport.write().expect("transport lock");
+        crate::network::save(store, settings)?;
+        *transport = next;
+        Ok(())
+    }
+
+    pub(crate) async fn get(&self, url: &str, mut headers: HeaderMap) -> Result<reqwest::Response, GetError> {
+        let transport = self.transport.read().expect("transport lock").clone();
+        let mut url = reqwest::Url::parse(url).map_err(|e| GetError::Policy(e.to_string()))?;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+        for hop in 0..=10 {
+            transport.policy.check_url(&url).map_err(GetError::Policy)?;
+            let client = transport.route(&url).map_err(GetError::Policy)?;
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(GetError::Policy(crate::msg!("network.redirectTimeout")));
+            }
+            let response = client.get(url.clone()).headers(headers.clone()).timeout(remaining).send().await.map_err(GetError::Request)?;
+            if !matches!(response.status().as_u16(), 301 | 302 | 303 | 307 | 308) {
+                return Ok(response);
+            }
+            let Some(location) = response.headers().get(LOCATION) else {
+                return Ok(response);
+            };
+            if hop == 10 {
+                return Err(GetError::Policy(crate::msg!("network.tooManyRedirects")));
+            }
+            let next = url.join(location.to_str().map_err(|e| GetError::Policy(e.to_string()))?).map_err(|e| GetError::Policy(e.to_string()))?;
+            if next.origin() != url.origin() {
+                for header in ["authorization", "cookie", "proxy-authorization", "referer", "if-none-match", "if-modified-since"] {
+                    headers.remove(header);
+                }
+            }
+            url = next;
+        }
+        unreachable!("redirect loop returns on its final hop")
+    }
+}
+
+pub fn client() -> HttpClient {
+    HttpClient::configured(&NetworkSettings::default()).expect("static client config")
+}
+
+/// The native renderer retains its separate default URL check, without configurable exceptions.
+pub fn check_public(url: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
+    Policy::parse(&NetworkSettings::default())?.check_url(&url)
 }
 
 /// reqwest's own message hides the cause (e.g. a refused private address); append the innermost source.
@@ -89,7 +158,6 @@ pub(crate) fn request_error(e: reqwest::Error) -> String {
     if chain().any(|c| c.is::<native_tls::Error>()) {
         crate::msg!("fetch.tls", detail = detail)
     } else if chain().any(|c| c.to_string() == "dns error") && cause.is::<std::io::Error>() {
-        // hyper-util's resolver failure; `PublicDns` refusing a private address is not an io::Error.
         crate::msg!("fetch.dns", detail = detail)
     } else if kinds.contains(&std::io::ErrorKind::ConnectionRefused) {
         crate::msg!("fetch.refused", detail = detail)
@@ -100,15 +168,16 @@ pub(crate) fn request_error(e: reqwest::Error) -> String {
     }
 }
 
-struct PublicDns;
+struct PolicyDns(Arc<Policy>);
 
-impl reqwest::dns::Resolve for PublicDns {
+impl reqwest::dns::Resolve for PolicyDns {
     fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
         let host = name.as_str().to_string();
+        let policy = self.0.clone();
         Box::pin(async move {
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0)).await?.filter(|a| is_public(a.ip())).collect();
+            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0)).await?.filter(|a| policy.allows_ip(&host, a.ip())).collect();
             if addrs.is_empty() {
-                return Err(format!("{host} has no public address").into());
+                return Err(crate::msg!("network.blocked", host = host).into());
             }
             Ok(Box::new(addrs.into_iter()) as reqwest::dns::Addrs)
         })
@@ -121,7 +190,7 @@ pub enum Resource {
     Pdf { final_url: String, bytes: Vec<u8> },
 }
 
-pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, String> {
+pub async fn fetch(client: &HttpClient, url: &str) -> Result<Fetched, String> {
     match fetch_resource(client, url).await? {
         Resource::Page(page) => Ok(page),
         Resource::Pdf { .. } => Err(format!("unsupported content type: {}", crate::pdf::CONTENT_TYPE)),
@@ -129,9 +198,8 @@ pub async fn fetch(client: &reqwest::Client, url: &str) -> Result<Fetched, Strin
 }
 
 /// A page, or a PDF (a paper's `…/pdf/…` link).
-pub async fn fetch_resource(client: &reqwest::Client, url: &str) -> Result<Resource, String> {
-    check_public(url)?;
-    let mut resp = client.get(url).send().await.map_err(request_error)?;
+pub async fn fetch_resource(client: &HttpClient, url: &str) -> Result<Resource, String> {
+    let mut resp = client.get(url, HeaderMap::new()).await.map_err(GetError::message)?;
     let status = resp.status();
     if !status.is_success() {
         return Err(format!("HTTP {status}"));
@@ -192,6 +260,7 @@ fn charset_label(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::{Mode, is_public};
 
     #[test]
     fn classifies_addresses() {
@@ -225,11 +294,135 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_private_targets() {
-        let c = client();
+        let c = HttpClient::with_proxies(&NetworkSettings::default(), Matcher::builder().build()).unwrap();
         for url in ["http://127.0.0.1:9/", "http://localhost:9/"] {
             let e = fetch(&c, url).await.err().unwrap();
-            assert!(e.contains("private") || e.contains("public address"), "{url}: {e}");
+            assert!(e.contains("network.blocked"), "{url}: {e}");
         }
+    }
+
+    struct Server {
+        addr: SocketAddr,
+        seen: tokio::sync::mpsc::UnboundedReceiver<String>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    impl Drop for Server {
+        fn drop(&mut self) {
+            self.task.abort();
+        }
+    }
+
+    async fn server(response: String) -> Server {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, seen) = tokio::sync::mpsc::unbounded_channel();
+        let task = tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let mut request = Vec::new();
+                let mut buf = [0; 1024];
+                while !request.ends_with(b"\r\n\r\n") && request.len() < 64 * 1024 {
+                    let size = stream.read(&mut buf).await.unwrap();
+                    if size == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buf[..size]);
+                }
+                let _ = tx.send(String::from_utf8_lossy(&request).to_string());
+                let _ = stream.write_all(response.as_bytes()).await;
+            }
+        });
+        Server { addr, seen, task }
+    }
+
+    fn response() -> String {
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".into()
+    }
+
+    #[tokio::test]
+    async fn local_exceptions_and_cloned_clients_follow_saved_changes() {
+        let mut local = server(response()).await;
+        let settings = NetworkSettings { mode: Mode::Public, allow: vec!["localhost".into()], deny: vec![] };
+        let c = HttpClient::with_proxies(&settings, Matcher::builder().build()).unwrap();
+        let cloned = c.clone();
+        let url = format!("http://localhost:{}/", local.addr.port());
+        assert_eq!(fetch(&cloned, &url).await.unwrap().html, "ok");
+        assert!(local.seen.recv().await.unwrap().starts_with("GET /"));
+        let store = Store::open_in_memory().unwrap();
+        let invalid = NetworkSettings { allow: vec!["https://bad.example".into()], ..settings };
+        assert!(c.set_settings(&store, &invalid).is_err());
+        assert_eq!(fetch(&cloned, &url).await.unwrap().html, "ok", "invalid edits preserve active settings");
+        local.seen.recv().await.unwrap();
+        c.set_settings(&store, &NetworkSettings::default()).unwrap();
+        assert_eq!(crate::network::settings(&store).unwrap(), NetworkSettings::default());
+        assert!(fetch(&cloned, &url).await.err().unwrap().contains("network.blocked"));
+        assert!(local.seen.try_recv().is_err(), "a previously cloned client cannot retain an allowed connection pool");
+    }
+
+    #[tokio::test]
+    async fn proxy_hostname_auth_and_remote_dns_work_but_direct_dns_stays_guarded() {
+        let mut proxy = server(response()).await;
+        let matcher = Matcher::builder().all(format!("http://user:pass@localhost:{}", proxy.addr.port())).no("localhost").build();
+        let c = HttpClient::with_proxies(&NetworkSettings::default(), matcher).unwrap();
+        assert_eq!(fetch(&c, "http://does-not-resolve.invalid/article").await.unwrap().html, "ok");
+        let request = proxy.seen.recv().await.unwrap();
+        assert!(request.starts_with("GET http://does-not-resolve.invalid/article HTTP/1.1"), "{request}");
+        assert!(request.to_lowercase().contains("proxy-authorization: basic dxnlcjpwyxnz"), "{request}");
+        assert!(fetch(&c, "http://localhost:9/").await.err().unwrap().contains("network.blocked"));
+        assert!(proxy.seen.try_recv().is_err(), "NO_PROXY traffic never uses the proxy client");
+
+        let mut tunnel = server("HTTP/1.1 407 Proxy Authentication Required\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into()).await;
+        let matcher = Matcher::builder().https(format!("http://user:pass@localhost:{}", tunnel.addr.port())).build();
+        let c = HttpClient::with_proxies(&NetworkSettings::default(), matcher).unwrap();
+        assert!(fetch(&c, "https://does-not-resolve.invalid/article").await.is_err());
+        let request = tunnel.seen.recv().await.unwrap();
+        assert!(request.starts_with("CONNECT does-not-resolve.invalid:443 HTTP/1.1"), "{request}");
+        assert!(request.to_lowercase().contains("proxy-authorization: basic dxnlcjpwyxnz"), "{request}");
+    }
+
+    #[tokio::test]
+    async fn redirects_recheck_rules_and_proxy_bypass_routes() {
+        let mut target = server(response()).await;
+        let mut proxy =
+            server(format!("HTTP/1.1 302 Found\r\nLocation: http://localhost:{}/secret\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", target.addr.port()))
+                .await;
+        let matcher = Matcher::builder().all(format!("http://localhost:{}", proxy.addr.port())).no("localhost").build();
+        let c = HttpClient::with_proxies(&NetworkSettings::default(), matcher).unwrap();
+        assert!(fetch(&c, "http://remote.invalid/start").await.err().unwrap().contains("network.blocked"));
+        proxy.seen.recv().await.unwrap();
+        assert!(target.seen.try_recv().is_err(), "proxy to direct redirect must not reach the local server");
+
+        let allowed = NetworkSettings { mode: Mode::Allowlist, allow: vec!["remote.invalid".into(), "localhost".into()], deny: vec![] };
+        let matcher = Matcher::builder().all(format!("http://localhost:{}", proxy.addr.port())).no("localhost").build();
+        let c = HttpClient::with_proxies(&allowed, matcher).unwrap();
+        let mut headers = HeaderMap::new();
+        for name in ["authorization", "cookie", "referer", "if-none-match"] {
+            headers.insert(reqwest::header::HeaderName::from_static(name), "secret".parse().unwrap());
+        }
+        let result = c.get("http://remote.invalid/start", headers).await.ok().unwrap();
+        assert_eq!(result.status(), 200);
+        let request = target.seen.recv().await.unwrap();
+        assert!(!request.contains("secret\r\n"), "sensitive headers must not cross origins: {request}");
+
+        let denied = NetworkSettings { deny: vec!["localhost".into()], ..allowed };
+        let matcher = Matcher::builder().all(format!("http://localhost:{}", proxy.addr.port())).build();
+        let c = HttpClient::with_proxies(&denied, matcher).unwrap();
+        assert!(fetch(&c, "http://remote.invalid/start").await.err().unwrap().contains("network.blocked"));
+        assert!(target.seen.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn redirect_loops_stop_at_the_limit() {
+        let mut local = server("HTTP/1.1 302 Found\r\nLocation: /again\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".into()).await;
+        let settings = NetworkSettings { mode: Mode::Unrestricted, ..NetworkSettings::default() };
+        let c = HttpClient::with_proxies(&settings, Matcher::builder().build()).unwrap();
+        assert!(fetch(&c, &format!("http://{}/", local.addr)).await.err().unwrap().contains("network.tooManyRedirects"));
+        let mut count = 0;
+        while local.seen.try_recv().is_ok() {
+            count += 1;
+        }
+        assert_eq!(count, 11);
     }
 
     #[tokio::test]

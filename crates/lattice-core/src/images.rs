@@ -7,7 +7,7 @@
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::{check_public, request_error};
+use crate::fetch::HttpClient;
 use crate::msg;
 use crate::store::Store;
 
@@ -93,7 +93,7 @@ pub(crate) enum Fail {
     Transient(String),
 }
 
-pub async fn run(store: &Store, client: &reqwest::Client, article_id: i64) -> Result<(), String> {
+pub async fn run(store: &Store, client: &HttpClient, article_id: i64) -> Result<(), String> {
     let (page, pending, mut used) = {
         let c = store.conn();
         c.execute(
@@ -177,25 +177,23 @@ fn record(store: &Store, article_id: i64, src: &str, hash: Option<&str>, error: 
     Ok(())
 }
 
-pub(crate) async fn download(client: &reqwest::Client, src: &str, referer: &str, cap: usize) -> Result<(&'static str, Vec<u8>), Fail> {
+pub(crate) async fn download(client: &HttpClient, src: &str, referer: &str, cap: usize) -> Result<(&'static str, Vec<u8>), Fail> {
     if !(src.starts_with("https://") || src.starts_with("http://")) {
         return Err(Fail::Permanent(msg!("images.notHttp")));
     }
-    check_public(src).map_err(Fail::Permanent)?;
     // Many sites refuse hotlinked images without a Referer from their own pages. Imported
     // Markdown has no page to name.
-    let req = client.get(src);
-    let req = if referer.starts_with("http") {
-        req.header(reqwest::header::REFERER, referer)
-    } else {
-        req
-    };
-    let sent = req.send().await;
+    let mut headers = reqwest::header::HeaderMap::new();
+    if referer.starts_with("http") {
+        let value = referer.parse().map_err(|e: reqwest::header::InvalidHeaderValue| Fail::Permanent(e.to_string()))?;
+        headers.insert(reqwest::header::REFERER, value);
+    }
+    let sent = client.get(src, headers).await;
     let mut resp = sent.map_err(|e| {
         if e.is_timeout() {
-            Fail::Transient(request_error(e))
+            Fail::Transient(e.message())
         } else {
-            Fail::Permanent(request_error(e))
+            Fail::Permanent(e.message())
         }
     })?;
     let status = resp.status();

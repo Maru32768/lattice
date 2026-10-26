@@ -278,6 +278,12 @@ export interface ImportSummary {
   ids: number[];
 }
 
+export interface NetworkSettings {
+  mode: "public" | "unrestricted" | "allowlist";
+  allow: string[];
+  deny: string[];
+}
+
 export interface ImageSettings {
   save: boolean;
   /** Per-image size cap in MB. */
@@ -496,6 +502,8 @@ export const api = {
   favicon: (domain: string) => invoke<string | null>("favicon", { domain }),
   imageSettings: () => invoke<ImageSettings>("get_image_settings"),
   setImageSettings: (settings: ImageSettings) => invoke<void>("set_image_settings", { settings }),
+  networkSettings: () => invoke<NetworkSettings>("get_network_settings"),
+  setNetworkSettings: (settings: NetworkSettings) => invoke<void>("set_network_settings", { settings }),
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),

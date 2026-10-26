@@ -745,7 +745,17 @@ Saved pages are written by other people, so Lattice treats their content as data
 - Web pages run in a separate browser that can only open http and https addresses and can reach only a few narrow Lattice functions.
 - AI providers never get tools. The CLI providers run with tools, MCP servers and user settings turned off, in an empty temporary folder. Every prompt tells the model to ignore instructions in the article.
 - Translations that go back into a page are cleaned of scripts and unsafe links first.
-- Lattice does not download images or site icons, or look for feeds, at private network addresses.
+- By default, direct HTTP fetches reject private network addresses. You can configure exceptions in **Settings › Network destinations**.
+
+### Allow an internal site or restrict downloads
+
+Open **Settings › Network destinations**. Public websites work by default. Add internal sites to **Allowed destinations**, one per line, then click **Save**. Use a hostname such as `localhost`, an IP address, or a CIDR range such as `192.168.1.0/24`. A hostname matches exactly. `*.example.com` matches subdomains but excludes `example.com`. Rules cover all ports and paths. Do not enter a full URL.
+
+**Denied destinations** wins over allowed entries in every mode. Under **Advanced settings**, select **Allowed destinations only** to block everything outside the allowlist. An empty allowlist blocks all fetches in that mode. Allow a URL containing a hostname by hostname. IP ranges also filter resolved addresses on direct connections. **Allow all** permits internal networks too, including requests triggered by fetched pages. Deny rules still apply.
+
+The rules cover article and PDF downloads, feeds, saved images, and site icons, including redirects. They do not govern the built-in browser, JavaScript rendering, AI providers, or backups. Changes apply to newly started fetches and all background workers. Active fetches keep their original settings. The CLI and MCP server read the saved policy at startup. Restart them after changing it.
+
+OS and environment proxy settings, including proxy bypass rules, remain enabled. A proxy resolves destination hostnames itself, so Lattice cannot verify its final destination IP. Hostname rules still apply, but IP and CIDR rules only apply to IP literals in URLs on that route. Configure the proxy's own access rules if you need to restrict addresses after DNS resolution.
 
 ## Troubleshooting
 

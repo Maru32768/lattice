@@ -13,12 +13,13 @@ use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
 use lattice_core::chat::{self, ChatMessage, ChatThread, Scope};
 use lattice_core::embed::{self, EmbeddingProvider, LocalE5};
 use lattice_core::feeds::{self, FeedRow};
-use lattice_core::fetch::client;
+use lattice_core::fetch::HttpClient;
 use lattice_core::groups::{self, GroupRow};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::job_status::{self, JobOverview};
 use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
+use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
 use lattice_core::srs::Grade;
@@ -255,6 +256,16 @@ fn set_image_settings(app: State<'_, App>, settings: images::ImageSettings) -> R
         app.wake_net.iter().for_each(|w| w.notify_one());
     }
     Ok(())
+}
+
+#[tauri::command(async)]
+fn get_network_settings(app: State<'_, App>) -> Result<network::NetworkSettings, String> {
+    network::settings(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_network_settings(app: State<'_, App>, settings: network::NetworkSettings) -> Result<(), String> {
+    app.providers.http.set_settings(&app.store, &settings)
 }
 
 #[tauri::command(async)]
@@ -1106,7 +1117,8 @@ pub fn run() {
             let path = dir.join(location::DB_FILE);
             let store = Arc::new(Store::open(&path)?);
             let llm = LlmChain::new(chain::load(&store)?);
-            let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http: client() });
+            let http = HttpClient::configured(&network::settings(&store)?)?;
+            let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http });
 
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
@@ -1199,6 +1211,8 @@ pub fn run() {
             favicon,
             get_image_settings,
             set_image_settings,
+            get_network_settings,
+            set_network_settings,
             list_articles,
             list_tags,
             list_genres,

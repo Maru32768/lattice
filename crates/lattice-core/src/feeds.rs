@@ -477,15 +477,14 @@ struct Got {
 /// `Ok(None)` when the server answers 304 Not Modified.
 async fn fetch(client: &HttpClient, url: &str, etag: Option<&str>, modified: Option<&str>) -> Result<Option<Got>, String> {
     use reqwest::header::{ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
-    crate::fetch::check_public(url)?;
-    let mut req = client.get(url);
+    let mut headers = reqwest::header::HeaderMap::new();
     if let Some(e) = etag {
-        req = req.header(IF_NONE_MATCH, e);
+        headers.insert(IF_NONE_MATCH, e.parse().map_err(|e: reqwest::header::InvalidHeaderValue| e.to_string())?);
     }
     if let Some(m) = modified {
-        req = req.header(IF_MODIFIED_SINCE, m);
+        headers.insert(IF_MODIFIED_SINCE, m.parse().map_err(|e: reqwest::header::InvalidHeaderValue| e.to_string())?);
     }
-    let mut resp = req.send().await.map_err(crate::fetch::request_error)?;
+    let mut resp = client.get(url, headers).await.map_err(crate::fetch::GetError::message)?;
     if resp.status() == reqwest::StatusCode::NOT_MODIFIED {
         return Ok(None);
     }

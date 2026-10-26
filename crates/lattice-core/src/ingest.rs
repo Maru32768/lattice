@@ -2,7 +2,7 @@
 //! a failed article stays visible and saving the same URL again retries it.
 
 use crate::extract::extract;
-use crate::fetch::{Fetched, Resource, fetch_resource};
+use crate::fetch::{Fetched, HttpClient, Resource, fetch_resource};
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use quick_xml::escape::escape;
@@ -10,7 +10,7 @@ use rusqlite::OptionalExtension;
 
 pub const JOB_TYPE: &str = "ingest";
 
-pub async fn save_url(store: &Store, client: &reqwest::Client, url: &str) -> Result<i64, String> {
+pub async fn save_url(store: &Store, client: &HttpClient, url: &str) -> Result<i64, String> {
     let norm = normalize(url)?;
     let domain = norm.host_str().unwrap_or_default().to_string();
     let (id, needs_work) = store.upsert_pending(url.trim(), norm.as_str(), &domain).map_err(|e| e.to_string())?;
@@ -21,14 +21,14 @@ pub async fn save_url(store: &Store, client: &reqwest::Client, url: &str) -> Res
 }
 
 /// Background half of bulk import: fetches an article registered by `enqueue_urls`.
-pub async fn process(store: &Store, client: &reqwest::Client, article_id: i64) -> Result<i64, String> {
+pub async fn process(store: &Store, client: &HttpClient, article_id: i64) -> Result<i64, String> {
     let url = store.article_url(article_id).map_err(|e| e.to_string())?.ok_or("article no longer exists")?;
     fetch_into(store, client, article_id, &url).await
 }
 
 /// A page that is refused (bot protection answers 403 to anything but a browser) or has no
 /// text falls back to the feed entry's copy, when its feed carries one.
-async fn fetch_into(store: &Store, client: &reqwest::Client, id: i64, url: &str) -> Result<i64, String> {
+async fn fetch_into(store: &Store, client: &HttpClient, id: i64, url: &str) -> Result<i64, String> {
     store_fetch_result(store, id, fetch_resource(client, url).await)
 }
 

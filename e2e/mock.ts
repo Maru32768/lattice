@@ -15,6 +15,7 @@ import type {
   FolderRow,
   GroupRow,
   ImageSettings,
+  NetworkSettings,
   OpmlFeed,
   Reevaluated,
   RejectedEntry,
@@ -115,6 +116,7 @@ const vocabItem = (id: number, c: { entry_id: number }): VocabReviewItem => {
   return { ...sense, type: "vocab", id, entry_id: c.entry_id, context: contexts[0], new: true, previews: NEW_PREVIEWS };
 };
 const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry_id).suspended);
+let network: NetworkSettings = { mode: "public", allow: [], deny: [] };
 const store = {
   autoRender: true,
   autoClassify: true,
@@ -355,6 +357,13 @@ export const handlers = {
   favicon: none,
   get_image_settings: (): ImageSettings => store.images,
   set_image_settings: ({ settings }: { settings: ImageSettings }) => void (store.images = settings),
+  get_network_settings: (): NetworkSettings => network,
+  set_network_settings: ({ settings }: { settings: NetworkSettings }) => {
+    if ([...settings.allow, ...settings.deny].some((rule) => rule.includes("://"))) {
+      reject("network.invalidRule", { rule: [...settings.allow, ...settings.deny].find((rule) => rule.includes("://")) });
+    }
+    network = settings;
+  },
   list_articles: ({ filter, sort }: { filter: ArticleFilter; sort: ArticleSort | null }): ArticleRow[] => {
     syncFolders();
     return articles.filter((a) => matches(a, filter)).sort(SORTERS[sort ?? "saved_desc"]);

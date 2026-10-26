@@ -20,6 +20,8 @@ const COMMANDS: &[&str] = &[
     "favicon",
     "get_image_settings",
     "set_image_settings",
+    "get_network_settings",
+    "set_network_settings",
     "list_articles",
     "list_tags",
     "list_genres",

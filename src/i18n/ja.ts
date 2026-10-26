@@ -1,6 +1,32 @@
 // Japanese UI text: the source of the keys (see index.ts). `{name}` is a parameter. Keys are
 // `<module>.<words>`; `common.*` is shared; `be.*` translates the backend's message codes.
 export const ja = {
+  "networkSettings.title": "通信先の制限",
+  "networkSettings.default": "標準では公開 Web を許可し、直接通信での localhost・LAN・リンクローカル宛ての取得を拒否します。",
+  "networkSettings.allow": "許可する通信先",
+  "networkSettings.allowDesc": "localhost や社内サイトなど、取得を許可したい通信先を 1 行に 1 件入力します。空欄でも公開 Web は取得できます。",
+  "networkSettings.deny": "拒否する通信先",
+  "networkSettings.denyDesc": "すべてのモードで拒否します。許可リストと重なる場合も拒否が優先されます。",
+  "networkSettings.rules":
+    "ホスト名、IP アドレス、CIDR を指定できます。例: localhost、192.168.1.0/24、*.example.com。ホスト名は完全一致、*. はサブドメインだけに一致します。URL・ポート・パスは指定できません。",
+  "networkSettings.advanced": "詳細設定",
+  "networkSettings.mode": "許可方式",
+  "networkSettings.public": "標準: 公開 Web と許可した通信先",
+  "networkSettings.allowlist": "許可リストの通信先だけ",
+  "networkSettings.unrestricted": "全許可: 内部ネットワークも含む",
+  "networkSettings.modeDesc":
+    "許可リスト方式は空欄ならすべて拒否します。ホスト名の URL はホスト名で許可してください。全許可は取得したページからの内部ネットワークへのアクセスも許します。拒否リストは常に有効です。",
+  "networkSettings.proxy":
+    "OS・環境変数のプロキシ設定を使用します。プロキシ経由では最終的な接続先 IP を確認できないため、IP・CIDR による制限は URL に IP が書かれた場合だけに適用されます。名前解決後のアクセス制限はプロキシ側の設定に依存します。",
+  "networkSettings.scope":
+    "記事・フィード・画像・サイトアイコンの HTTP 取得に適用します。内蔵ブラウザ・JS 描画・AI・バックアップの通信は対象外です。保存後に開始する取得から反映し、取得中の通信は元の設定で続行します。CLI・MCP は起動時に読み込みます。",
+  "networkSettings.saving": "保存中…",
+  "be.network.invalidSettings": "通信先の設定を読み込めませんでした（{detail}）",
+  "be.network.invalidRule": "通信先のルールが無効です: {rule}",
+  "be.network.tooManyRules": "許可・拒否リストはそれぞれ {max} 件までです",
+  "be.network.blocked": "通信先の制限により取得を拒否しました: {host}",
+  "be.network.redirectTimeout": "リダイレクトの途中で取得がタイムアウトしました",
+  "be.network.tooManyRedirects": "リダイレクトの回数が上限を超えました",
   "language.title": "表示言語",
   "language.desc": "メニュー・ボタン・メッセージの言語。記事の翻訳先（日本語の記事は英語へ、それ以外は日本語へ）は変わりません。",
   "settingsView.groupLibrary": "ライブラリ",

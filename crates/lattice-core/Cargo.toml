@@ -17,6 +17,9 @@ fastembed = { version = "7.1.1", default-features = false, features = ["ort-down
 feed-rs = "3.0.0"
 flate2 = "1.1.10"
 futures = "0.3.34"
+http = "1"
+hyper-util = { version = "0.1.21", features = ["client-proxy-system"] }
+ipnet = "2"
 log = "0.4.34"
 native-tls = "0.2.18" # reqwest's TLS backend: only to recognize its errors
 pdf-extract = "0.12.1"

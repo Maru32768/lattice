@@ -105,9 +105,9 @@ fn snapshot(store: &Store, domain: &str) -> Result<Option<(String, String)>, Str
 
 /// Background job: the icon links of a stored page of the site (else of its root page), then
 /// `/favicon.ico`; stores the first that downloads, or why none did. Downloads go through the
-/// article-image checks (public hosts only, size cap, raster formats by magic number). Transient
+/// article-image checks (destination policy, size cap, raster formats by magic number). Transient
 /// failures (timeouts, 5xx, 429) with nothing stored fail the job, so it retries with backoff.
-pub async fn run(store: &Store, client: &reqwest::Client, domain: &str) -> Result<(), String> {
+pub async fn run(store: &Store, client: &crate::fetch::HttpClient, domain: &str) -> Result<(), String> {
     let root = root(domain)?;
     let mut candidates = snapshot(store, domain)?.map(|(base, html)| icon_links(&html, &base)).unwrap_or_default();
     if candidates.is_empty()
@@ -198,6 +198,6 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         run(&s, &crate::fetch::client(), "127.0.0.1").await.unwrap();
         let error: Option<String> = s.conn().query_row("SELECT error FROM favicons WHERE domain = '127.0.0.1'", [], |r| r.get(0)).unwrap();
-        assert!(error.unwrap().contains("private"), "no request leaves for a private address");
+        assert!(error.unwrap().contains("network.blocked"), "no request leaves for a private address");
     }
 }

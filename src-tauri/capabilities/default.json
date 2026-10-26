@@ -59,6 +59,8 @@
     "allow-export-opml",
     "allow-get-image-settings",
     "allow-set-image-settings",
+    "allow-get-network-settings",
+    "allow-set-network-settings",
     "allow-list-articles",
     "allow-list-tags",
     "allow-list-genres",

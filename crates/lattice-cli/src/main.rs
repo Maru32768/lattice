@@ -12,9 +12,10 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand, ValueEnum};
 use lattice_core::chain::{self, LlmChain};
 use lattice_core::embed::LocalE5;
-use lattice_core::fetch::client;
+use lattice_core::fetch::HttpClient;
 use lattice_core::jobs::Providers;
 use lattice_core::location::{self, DB_FILE};
+use lattice_core::network;
 use lattice_core::store::Store;
 use serde_json::{Value, json};
 
@@ -66,7 +67,8 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
     }
     let store = Store::open(&db).map_err(|e| format!("opening {}: {e}", db.display()))?;
     let llm = LlmChain::new(chain::load(&store)?);
-    let providers = Providers { llm, embedder: LocalE5::offline(dir.join("models")), http: client() };
+    let http = HttpClient::configured(&network::settings(&store)?)?;
+    let providers = Providers { llm, embedder: LocalE5::offline(dir.join("models")), http };
     let allow_write = cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1");
     Ok(Ctx { store, providers, allow_write })
 }

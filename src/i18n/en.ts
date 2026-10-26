@@ -5,6 +5,32 @@ const numbers = new Intl.NumberFormat("en-US");
 const plural = (n: string | number, one: string, other: string) => `${numbers.format(Number(n))} ${Number(n) === 1 ? one : other}`;
 
 export const en = {
+  "networkSettings.title": "Network destinations",
+  "networkSettings.default": "By default, public websites are allowed. Direct fetches to localhost, LAN and link-local addresses are blocked.",
+  "networkSettings.allow": "Allowed destinations",
+  "networkSettings.allowDesc": "Enter one destination per line to allow localhost or internal sites. Public websites work with an empty list in standard mode.",
+  "networkSettings.deny": "Denied destinations",
+  "networkSettings.denyDesc": "Blocked in every mode. Deny rules take precedence over allow rules.",
+  "networkSettings.rules":
+    "Use hostnames, IP addresses or CIDR ranges, such as localhost, 192.168.1.0/24 or *.example.com. Hostnames match exactly; *. matches subdomains only. URLs, ports and paths are not accepted.",
+  "networkSettings.advanced": "Advanced settings",
+  "networkSettings.mode": "Allow mode",
+  "networkSettings.public": "Standard: public websites and allowed destinations",
+  "networkSettings.allowlist": "Allowed destinations only",
+  "networkSettings.unrestricted": "Allow all, including internal networks",
+  "networkSettings.modeDesc":
+    "An empty allowlist blocks everything in allowlist mode. Allow URLs with hostnames by hostname. Allow all also lets fetched pages access internal networks. Deny rules always apply.",
+  "networkSettings.proxy":
+    "Uses OS and environment proxy settings. Through a proxy, Lattice cannot verify the final destination IP. IP and CIDR rules apply only to IP literals in URLs. Restrictions after DNS resolution depend on the proxy's configuration.",
+  "networkSettings.scope":
+    "Applies to HTTP fetches for articles, feeds, images and site icons. The built-in browser, JS rendering, AI and backup traffic are outside this policy. Saved changes apply to newly started fetches; active fetches keep their original settings. CLI and MCP read settings at startup.",
+  "networkSettings.saving": "Saving…",
+  "be.network.invalidSettings": "Could not read network settings ({detail})",
+  "be.network.invalidRule": "Invalid destination rule: {rule}",
+  "be.network.tooManyRules": "Each allow or deny list can contain at most {max} rules",
+  "be.network.blocked": "Destination blocked by network settings: {host}",
+  "be.network.redirectTimeout": "The fetch timed out during redirects",
+  "be.network.tooManyRedirects": "Too many redirects",
   "language.title": "Display language",
   "language.desc":
     "The language of menus, buttons and messages. Article translation is unaffected: Japanese articles are translated into English, others into Japanese.",
