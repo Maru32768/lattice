@@ -12,8 +12,14 @@ pub const PORTABLE_MARKERS: [&str; 2] = ["portable", "lattice.portable"];
 /// In the default app data folder, whichever folder is in use.
 pub const BOOTSTRAP_FILE: &str = "data-location.json";
 pub const DB_FILE: &str = "lattice.db";
-/// The app's Tauri identifier (`tauri.conf.json`), which names its default data folder.
-pub const APP_IDENTIFIER: &str = "dev.lattice.app";
+/// The installed app's Tauri identifier (`tauri.conf.json`).
+pub const RELEASE_APP_IDENTIFIER: &str = "dev.lattice.app";
+/// Debug builds of the app and CLI share a separate default data folder.
+pub const APP_IDENTIFIER: &str = if cfg!(debug_assertions) {
+    "dev.lattice.app.debug"
+} else {
+    RELEASE_APP_IDENTIFIER
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -213,5 +219,33 @@ mod tests {
     fn the_default_folder_is_named_by_the_identifier() {
         let dir = default_dir().expect("the test environment has a home folder");
         assert!(dir.is_absolute() && dir.ends_with(APP_IDENTIFIER), "{dir:?}");
+    }
+
+    #[test]
+    fn the_build_profile_selects_the_default_folder() {
+        #[cfg(debug_assertions)]
+        assert_eq!(APP_IDENTIFIER, "dev.lattice.app.debug");
+        #[cfg(not(debug_assertions))]
+        assert_eq!(APP_IDENTIFIER, RELEASE_APP_IDENTIFIER);
+        assert_eq!(RELEASE_APP_IDENTIFIER, "dev.lattice.app");
+    }
+
+    #[test]
+    fn the_development_folder_does_not_follow_the_release_bootstrap() {
+        let root = temp("build-profiles");
+        let release = root.join(RELEASE_APP_IDENTIFIER);
+        let development = root.join("dev.lattice.app.debug");
+        let custom = root.join("custom");
+        std::fs::create_dir_all(&custom).unwrap();
+        std::fs::write(custom.join(DB_FILE), "release data").unwrap();
+        write_bootstrap(&release, &custom).unwrap();
+
+        let loc = detect(&development);
+        assert_eq!(loc, Location { kind: Kind::Default, dir: development.clone(), warning: None });
+        assert!(!development.join(BOOTSTRAP_FILE).exists());
+        assert!(!development.join(DB_FILE).exists());
+        assert_eq!(detect(&release), Location { kind: Kind::Custom, dir: custom.clone(), warning: None });
+        assert_eq!(std::fs::read_to_string(custom.join(DB_FILE)).unwrap(), "release data");
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

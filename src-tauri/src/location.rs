@@ -61,9 +61,9 @@ mod tests {
     }
 
     #[test]
-    fn the_cli_finds_the_folder_this_identifier_names() {
+    fn the_release_identifier_matches_the_bundle_config() {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        assert_eq!(conf["identifier"], APP_IDENTIFIER);
+        assert_eq!(conf["identifier"], RELEASE_APP_IDENTIFIER);
     }
 
     #[test]

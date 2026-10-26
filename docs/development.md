@@ -30,7 +30,13 @@ mise exec -- npm install
 mise run dev
 ```
 
-`mise run dev` starts the app with hot reload. The first build compiles the Rust workspace and takes several minutes. The dev build uses the same data folder as an installed copy (`%APPDATA%\dev.lattice.app`), so it opens your real library.
+`mise run dev` starts the app with hot reload. The first build compiles the Rust workspace and takes several minutes.
+
+Debug builds use `%APPDATA%\dev.lattice.app.debug`; release builds and installed copies use `%APPDATA%\dev.lattice.app`.
+The development library starts empty, with no automatic migration of release data or settings.
+Each build has its own saved data-folder selection, WebView2 profile, cache, and logs.
+A debug CLI uses the development folder; a release CLI uses the installed app's folder.
+Portable mode still uses `<exe dir>/data`, and the CLI's `--data-dir` still overrides the default.
 
 ### API keys in development
 

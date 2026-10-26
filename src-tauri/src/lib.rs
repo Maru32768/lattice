@@ -1075,6 +1075,8 @@ async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let mut context = tauri::generate_context!();
+    context.config_mut().identifier = location::APP_IDENTIFIER.into();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1349,6 +1351,6 @@ pub fn run() {
             update::update_check,
             update::update_install,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running tauri application");
 }
