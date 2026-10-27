@@ -13,7 +13,7 @@ test("the chat budget sends the setting and keeps it when the section is reopene
   await section(app, "要約・対話").click();
   const budget = app.getByLabel("対話で使う範囲");
   await expect(budget).toHaveValue("standard");
-  await budget.selectOption({ label: "多め（約 15 万字）" });
+  await budget.selectOption({ label: "多め (約 15 万字)" });
   expect(await callsOf(app, "set_chat_budget")).toEqual([{ budget: "large" }]);
 
   await section(app, "翻訳").click();
@@ -74,12 +74,12 @@ test("the chat scope offers each open article and all of them, and follows the t
   const scope = app.getByLabel("質問の範囲");
   const opened = scope.locator("optgroup[label='開いている記事'] option");
   await expect(opened).toHaveText([a.title!, b.title!]);
-  await expect(scope.locator("option", { hasText: "開いている記事すべて（2 件）" })).toBeEnabled();
+  await expect(scope.locator("option", { hasText: "開いている記事すべて (2 件)" })).toBeEnabled();
 
   // A document window reports its tabs to the main window.
   await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
   await expect(opened).toHaveText([a.title!, b.title!, c.title!]);
-  await scope.selectOption({ label: "開いている記事すべて（3 件）" });
+  await scope.selectOption({ label: "開いている記事すべて (3 件)" });
   const q = app.locator("#chat-q");
   await q.fill("共通点は？");
   await q.press("Control+Enter");

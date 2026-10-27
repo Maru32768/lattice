@@ -57,5 +57,6 @@ A command touches several places, and tests catch the misses:
 - **Migrations** in `store.rs` (`MIGRATIONS`) are append-only; a migration test finds its migration by content, not by index. Credential settings use the `secret.` prefix and are excluded from backups.
 - **React Compiler** must compile every component (`scripts/react-compiler.mjs`); it silently skips constructs like try/finally, so restructure rather than suppress.
 - **Formatting:** 160-column lines in both rustfmt and Prettier; rustfmt puts every `if/else` and `let … else` block on its own lines; every TS block is braced. Workspace clippy denies `unwrap_used`, `todo`, `dbg_macro` etc. outside tests; `#[allow]` needs a `reason`.
+- **Japanese text** (docs and `src/i18n/ja.ts`) uses half-width parentheses `()`, with a space between them and adjacent text as with alphanumerics: `残す世代数 (既定 30) を超えると`. UI labels quoted in the docs match the catalog exactly.
 - Comments explain *why* (constraints, past bugs), often citing roadmap ids like `F3`, `G51` or numbered sections in `docs/design-review.md`. A deliberate deferral is marked `// shortcut: …`.
 - The app version is shared by `package.json` and the workspace `Cargo.toml`; bump with `npm run bump -- <x.y.z>`. Releases: `docs/release.md`.

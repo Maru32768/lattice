@@ -114,7 +114,7 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
   const scope = app.getByLabel("質問の範囲");
   const key = JSON.stringify({ kind: "group", id: mvcc.id });
   await expect(scope.locator("option", { hasText: `このグループ: ${mvcc.name}` })).toHaveAttribute("value", key);
-  await expect(scope.locator(`optgroup[label="グループ"] option`)).toHaveText(GROUPS.map((g) => `${g.name}（${members(g.id).length}件）`));
+  await expect(scope.locator(`optgroup[label="グループ"] option`)).toHaveText(GROUPS.map((g) => `${g.name} (${members(g.id).length}件)`));
   await scope.selectOption({ label: `このグループ: ${mvcc.name}` });
   await app.getByLabel("質問", { exact: true }).fill("MVCC とは？");
   await app.getByRole("button", { name: "送信" }).click();

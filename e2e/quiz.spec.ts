@@ -42,7 +42,7 @@ test("理解度チェック: answer, see the source, then add the answers to rev
   await expect(panel.locator(".qz-score")).toHaveText("3 / 3 問 答えられました");
 
   await panel.locator(".qz-done").getByRole("button", { name: "復習に追加" }).click();
-  await expect(panel.locator(".qz-done")).toContainText("復習中です（3 枚）");
+  await expect(panel.locator(".qz-done")).toContainText("復習中です (3 枚)");
   expect(await callsOf(app, "review_add")).toEqual([
     {
       quizId: QUIZ.id,

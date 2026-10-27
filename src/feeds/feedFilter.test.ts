@@ -15,7 +15,7 @@ test("every rejection reason reads as a sentence in both languages", () => {
   );
   assert.equal(reasonText({ kind: "not_included", scope: "feed" }, ja), "このフィードの「含む」ルールのどれにも合わない");
   assert.equal(reasonText({ kind: "too_short", scope: "global", min: 500, chars: 120 }, en), "Text too short for the global rules: 120 of 500 characters");
-  assert.equal(reasonText({ kind: "llm", reason: "広告", score: 2 }, ja), "LLM: 広告（重要度 2）");
+  assert.equal(reasonText({ kind: "llm", reason: "広告", score: 2 }, ja), "LLM: 広告 (重要度 2)");
   assert.equal(reasonText({ kind: "llm", reason: "ad", score: null }, en), "LLM: ad");
   assert.equal(reasonText(null, en), "Rejected");
 });

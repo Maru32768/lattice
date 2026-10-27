@@ -22,7 +22,7 @@ test("a feed's rejected entries show why, and can be imported or let in by dropp
   const list = app.getByRole("region", { name: "除外された記事" });
   await expect(list.locator("li")).toHaveCount(2);
   await expect(list.locator("li", { hasText: sponsored.title! })).toContainText("このフィードのルール「タイトルに sponsored を含むものを除く」で除外");
-  await expect(list.locator("li", { hasText: meetup.title! })).toContainText("LLM: イベント告知で内部実装の記事ではない（重要度 2）");
+  await expect(list.locator("li", { hasText: meetup.title! })).toContainText("LLM: イベント告知で内部実装の記事ではない (重要度 2)");
 
   await list.getByRole("button", { name: `${meetup.title} を取り込む` }).click();
   await expect(list.getByRole("status")).toHaveText(`「${meetup.title}」を取り込みました`);

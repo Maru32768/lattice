@@ -123,7 +123,7 @@ test("the nav's top holds only its close button; what the ＋ opened is in the p
 
 test("the closed list is one button that opens it again; j / k still move the cursor (H11)", async ({ app }) => {
   await list(app).getByRole("button", { name: "記事一覧を閉じる" }).click();
-  const rail = app.getByRole("region", { name: "記事一覧（折りたたみ）" });
+  const rail = app.getByRole("region", { name: "記事一覧 (折りたたみ)" });
   await expect(rail.getByRole("button")).toHaveCount(1);
   await expect(rail).toHaveText("");
   await app.locator(".doc-area-wrap").click({ position: { x: 5, y: 200 } });
