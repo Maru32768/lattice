@@ -2,7 +2,7 @@
 
 A release is a `v<x.y.z>` tag. Pushing it runs `.github/workflows/release.yml`, which builds the Windows app and leaves a draft GitHub release for you to check and publish.
 
-Track the first release in [the 0.1.0 checklist](release-checklist-0.1.0.md). An unchecked requirement remains pending. Source preparation does not establish that a packaged application works.
+Source preparation does not establish that a packaged application works: test the draft's artifacts before publishing it.
 
 ## Version
 
@@ -41,8 +41,6 @@ Run without a version, `npm run bump` prints what each file holds. `npm test` fa
 
 The workflow copies the version's section into the release notes, and fails when the section is missing or empty.
 
-The prepared `0.1.0` section is undated while release checks remain open. Add the actual publication date before tagging. If the release is published on 2026-10-26 in Japan, use `## [0.1.0] - 2026-10-26`. Otherwise, use the actual publication date.
-
 ## Third-party licenses
 
 `THIRD_PARTY_LICENSES` lists the license of every Rust crate compiled into the app (by [cargo-about](https://github.com/EmbarkStudios/cargo-about), settings in `scripts/about.toml`) and every npm package bundled into the UI (`scripts/licenses.mjs`, from the non-dev packages in `package-lock.json`). Regenerate and commit it when dependencies change:
@@ -60,8 +58,6 @@ cargo-about fails on a license that is not in the `accepted` list of `scripts/ab
 ## Signed updates
 
 The app checks `https://github.com/Maru32768/lattice/releases/latest/download/latest.json` at startup and from Settings › アップデート, and installs an update only when its signature matches the public key built into the app. The release workflow requires the public key and both signing Secrets. A local development build can use a placeholder key, which disables update checks.
-
-Configure updates before the first public release.
 
 Automatic updates require the matching public key, repository Secrets and a tested signed update. A copy shipped with a placeholder public key requires a manual installation before it can receive signed updates.
 
@@ -107,17 +103,17 @@ To build signed artifacts locally, set the same two variables in the shell and r
 4. Tag only the verified commit and push the tag:
 
    ```bash
-   git tag v0.1.0 <verified-full-commit-sha>
+   git tag v0.2.0 <verified-full-commit-sha>
    ```
 
    ```bash
-   git push origin v0.1.0
+   git push origin v0.2.0
    ```
 
 5. Wait for the Release workflow to create the draft.
-6. Test the draft's installer and portable archive with the native checklist below. Record the artifact, OS, commit SHA and result in the release checklist.
+6. Test the draft's installer and portable archive with the native checklist below.
 7. Check the notes, license files, installer, portable archive, `latest.json` and installer signature. Confirm that the manifest names the intended version, URL and signature.
-8. Complete the release checklist, then publish the draft. Include supported Windows versions, AI setup, backup guidance and known limitations in the notes.
+8. Publish the draft once those checks pass. Include supported Windows versions, AI setup, backup guidance and known limitations in the notes.
 
 A tag with a hyphen (`v0.2.0-beta.1`) makes a prerelease.
 
@@ -141,7 +137,7 @@ Use a disposable test library or a restored backup. On both Windows 10 and Windo
 - Move the data directory and restart. Reinstall over the test installation and confirm that the library remains.
 - Use a separate test build and a controlled update endpoint to offer a newer signed package. Verify that an altered package is rejected and a valid package installs, restarts and preserves data. Confirm that portable mode links to the release page.
 
-The public `latest.json` cannot offer an update before the first release is published. Use a controlled endpoint and a disposable installation for this check. Keep the public endpoint and intended version in the release build.
+The public `latest.json` only offers a published release. Use a controlled endpoint and a disposable installation for this check. Keep the public endpoint and intended version in the release build.
 
 ## What the workflow produces
 
