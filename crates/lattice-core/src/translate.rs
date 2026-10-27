@@ -158,7 +158,57 @@ fn batches(blocks: Vec<PendingBlock>) -> Vec<Vec<PendingBlock>> {
     out
 }
 
-pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, target: &Target, on_progress: &(dyn Fn() + Send + Sync)) -> Result<(), String> {
+/// Bounds the translation calls in flight across every article to 並列実行数: a batch enters before
+/// it is sent and leaves when it returns. The limit is read at each entry, so a changed setting
+/// applies from the next batch.
+#[derive(Default)]
+pub struct Gate {
+    in_flight: std::sync::Mutex<usize>,
+    left: tokio::sync::Notify,
+}
+
+pub struct Pass<'a>(&'a Gate);
+
+impl Gate {
+    pub async fn enter(&self, limit: usize) -> Pass<'_> {
+        loop {
+            // Registered before the check, so a batch leaving in between is not missed.
+            let left = self.left.notified();
+            tokio::pin!(left);
+            left.as_mut().enable();
+            {
+                let mut n = self.in_flight.lock().unwrap_or_else(|e| e.into_inner());
+                if *n < limit.max(1) {
+                    *n += 1;
+                    return Pass(self);
+                }
+            }
+            left.await;
+        }
+    }
+
+    pub fn in_flight(&self) -> usize {
+        *self.in_flight.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl Drop for Pass<'_> {
+    fn drop(&mut self) {
+        *self.0.in_flight.lock().unwrap_or_else(|e| e.into_inner()) -= 1;
+        self.0.left.notify_waiters();
+    }
+}
+
+/// \`gate\` shares 並列実行数 with the other articles being translated; \`None\` (the reserved slot for the
+/// article on screen, the CLI) sends up to that many of this article's batches regardless.
+pub async fn run<P: LlmProvider>(
+    store: &Store,
+    provider: &P,
+    article_id: i64,
+    target: &Target,
+    gate: Option<&Gate>,
+    on_progress: &(dyn Fn() + Send + Sync),
+) -> Result<(), String> {
     let key = target.key();
     let mut pending = store.untranslated_blocks(article_id, &key, PROSE_KINDS).map_err(|e| e.to_string())?;
     // Same paragraph twice translates once; a paragraph already in the target language needs none.
@@ -169,8 +219,27 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
     // `buffered` keeps the article's order: the top of the article is saved (and shown) first.
     let mut done = stream::iter(batches(pending))
         .map(|batch| async move {
+            let queued = std::time::Instant::now();
+            let _pass = match gate {
+                Some(g) => Some(g.enter(parallel).await),
+                None => None,
+            };
+            let (waited, sent) = (queued.elapsed(), std::time::Instant::now());
             let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
             let t = segments::translate_snippets(provider, &snippets, target).await;
+            // Per batch, for tuning 並列実行数 and the batch size from real timings.
+            log::info!(
+                "translate article {article_id}: {} blocks, {} chars in {:.1?} (waited {:.1?} for a slot){}",
+                batch.len(),
+                snippets.iter().map(|s| s.chars().count()).sum::<usize>(),
+                sent.elapsed(),
+                waited,
+                if t.error.is_some() {
+                    ", with errors"
+                } else {
+                    ""
+                },
+            );
             (batch, t)
         })
         .buffered(parallel);
@@ -238,7 +307,7 @@ mod tests {
         assert!(set_parallel(&s, 0).is_err() && set_parallel(&s, MAX_PARALLEL + 1).is_err());
         set_parallel(&s, 2).unwrap();
 
-        run(&s, &slow, id, &Target::default(), &|| {
+        run(&s, &slow, id, &Target::default(), None, &|| {
             saved.fetch_add(1, Ordering::SeqCst);
         })
         .await
@@ -247,5 +316,28 @@ mod tests {
         assert_eq!(slow.most.load(Ordering::SeqCst), 2, "the setting caps the calls in flight");
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert!(v.blocks.iter().all(|b| b.translation.is_some()), "every batch saved");
+    }
+
+    #[tokio::test]
+    async fn the_gate_caps_the_calls_in_flight_across_articles() {
+        let s = Store::open_in_memory().unwrap();
+        let mut ids = vec![];
+        for n in 0..2 {
+            let url = format!("https://a.dev/{n}");
+            let (id, _) = s.upsert_pending(&url, &url, "a.dev").unwrap();
+            let paras: String = (0..36).map(|i| format!("<p>Paragraph {i} explains how snapshot isolation handles write skew in practice.</p>")).collect();
+            let html = format!("<html><body><article>{paras}</article></body></html>");
+            store_fetched(&s, id, &Fetched { final_url: url.clone(), status: 200, content_type: None, html }).unwrap();
+            ids.push(id);
+        }
+        set_parallel(&s, 2).unwrap();
+        let slow = Slow { fake: Fake::new(), now: AtomicUsize::new(0), most: AtomicUsize::new(0) };
+        let gate = Gate::default();
+        let target = Target::default();
+        let (a, b) = tokio::join!(run(&s, &slow, ids[0], &target, Some(&gate), &|| {}), run(&s, &slow, ids[1], &target, Some(&gate), &|| {}));
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(slow.most.load(Ordering::SeqCst), 2, "two articles of three batches each share the limit of 2");
+        assert_eq!(gate.in_flight(), 0, "every batch left");
     }
 }

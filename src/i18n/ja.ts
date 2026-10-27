@@ -172,7 +172,7 @@ export const ja = {
   "translationSettings.keepTerms": "専門用語を英語のまま残す",
   "translationSettings.parallel": "並列実行数",
   "translationSettings.parallelDesc":
-    "翻訳で、AI プロバイダへの呼び出しを同時にいくつまで実行するか (既定 3)。いまは 1 つの記事の中で並列に実行し、記事は 1 つずつ順に訳すので、処理状況の「実行中」は 1 件のままです。増やすと早く訳し終わりますが、使用量の上限や API の rate limit に早く当たり、Claude CLI・Codex CLI では同時に動くプロセスが増えます。",
+    "翻訳で、AI プロバイダへの呼び出しを同時にいくつまで実行するか (既定 3)。長い記事は段落のまとまりを並列に、短い記事は複数の記事を並列に訳します。表示中の記事はこの数とは別の枠ですぐに訳します。増やすと早く訳し終わりますが、使用量の上限や API の rate limit に早く当たり、Claude CLI・Codex CLI では同時に動くプロセスが増えます。",
   "translationSettings.keepTermsDesc":
     "MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります (元の設定に戻せば以前の訳文が表示されます)。",
   "translationSettings.instructions": "追加の指示",

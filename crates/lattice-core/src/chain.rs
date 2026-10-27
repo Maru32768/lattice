@@ -239,7 +239,22 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
         order.sort_by_key(|s| cooling(s)); // stable: configured order within each group
         let mut errors = Vec::new();
         for s in order {
-            match s.llm.complete_json(system, input, schema).await {
+            let started = Instant::now();
+            let result = s.llm.complete_json(system, input, schema).await;
+            // Every call's time, for tuning parallelism and batch sizes from real timings.
+            log::info!(
+                "{} ({}) {} in {:.1?} ({} chars in)",
+                s.llm.name(),
+                s.model.as_deref().unwrap_or("default"),
+                if result.is_ok() {
+                    "answered"
+                } else {
+                    "failed"
+                },
+                started.elapsed(),
+                input.chars().count()
+            );
+            match result {
                 Ok(mut c) => {
                     *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     c.model = c.model.or_else(|| s.model.clone());

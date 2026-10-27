@@ -18,7 +18,7 @@ use lattice_core::groups::{self, GroupRow};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, Providers};
+use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, OTHER_LLM_JOBS, Providers};
 use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
@@ -51,7 +51,8 @@ const NET_WORKERS: usize = 4;
 struct App {
     store: Arc<Store>,
     providers: Arc<Providers<LlmChain, LocalE5>>,
-    wake_llm: Arc<Notify>,
+    /// The general LLM runner first, then the translation pool's runners (`jobs::run_translate_worker`).
+    wake_llm: Vec<Arc<Notify>>,
     wake_local: Arc<Notify>,
     wake_net: Vec<Arc<Notify>>,
     wake_render: Arc<Notify>,
@@ -138,7 +139,7 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     classify::enqueue_if_auto(&app.store, id)?;
     relevance::enqueue_if_auto(&app.store, id)?;
     translate::enqueue_if_auto(&app.store, id)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(id)
 }
 
@@ -327,21 +328,21 @@ fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
 #[tauri::command(async)]
 fn set_difficulty(app: State<'_, App>, id: i64, level: Option<i64>) -> Result<(), String> {
     classify::set_difficulty(&app.store, id, level)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
 #[tauri::command(async)]
 fn classify_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     classify::enqueue_manual(&app.store, id)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
 #[tauri::command(async)]
 fn classify_unclassified(app: State<'_, App>) -> Result<usize, String> {
     let n = classify::enqueue_unclassified(&app.store)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(n)
 }
 
@@ -375,7 +376,7 @@ fn set_relevance_threshold(app: State<'_, App>, min: i64) -> Result<(), String> 
 #[tauri::command(async)]
 fn rescore_relevance(app: State<'_, App>, ids: Option<Vec<i64>>) -> Result<usize, String> {
     let n = relevance::rescore(&app.store, ids.as_deref())?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(n)
 }
 
@@ -533,7 +534,7 @@ fn import_rejected(app: State<'_, App>, feed_id: i64, url: String) -> Result<usi
 fn reevaluate_rejected(app: State<'_, App>, feed_id: Option<i64>) -> Result<feed_filter::Reevaluated, String> {
     let r = feed_filter::reevaluate(&app.store, feed_id)?;
     app.wake_net.iter().for_each(|w| w.notify_one());
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(r)
 }
 
@@ -720,14 +721,14 @@ async fn overlay_translate(
 #[tauri::command(async)]
 fn summarize_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     summarize::enqueue(&app.store, id)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
 #[tauri::command(async)]
 fn quiz_article(app: State<'_, App>, id: i64) -> Result<(), String> {
     quiz::enqueue(&app.store, id)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
@@ -773,7 +774,7 @@ fn review_overview(app: State<'_, App>) -> Result<review::Overview, String> {
 #[tauri::command(async)]
 fn vocab_add(app: State<'_, App>, capture: vocab::Capture) -> Result<vocab::Added, String> {
     let added = vocab::capture(&app.store, &capture)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(added)
 }
 
@@ -792,7 +793,7 @@ fn overlay_vocab(app: State<'_, App>, browser: State<'_, Browser>, webview: Webv
         Err(_) => None,
     };
     let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url: Some(url) })?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     let _ = webview.app_handle().emit("vocab-changed", ());
     Ok(added)
 }
@@ -820,7 +821,7 @@ fn vocab_delete(app: State<'_, App>, id: i64) -> Result<(), String> {
 #[tauri::command(async)]
 fn vocab_retry(app: State<'_, App>, id: i64) -> Result<(), String> {
     vocab::retry(&app.store, id)?;
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
@@ -852,7 +853,7 @@ fn translate_article(app: State<'_, App>, id: i64, fresh: Option<bool>) -> Resul
     } else {
         translate::enqueue(&app.store, id, &target)?;
     }
-    app.wake_llm.notify_one();
+    app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(())
 }
 
@@ -1085,7 +1086,7 @@ fn set_backup_keep(app: State<'_, App>, keep: u64) -> Result<(), String> {
 fn wake(app: &App, job_type: Option<&str>) {
     let is = |types: &[&str]| job_type.is_none_or(|t| types.contains(&t));
     if is(LLM_JOBS) {
-        app.wake_llm.notify_one();
+        app.wake_llm.iter().for_each(|w| w.notify_one());
     }
     if is(LOCAL_JOBS) {
         app.wake_local.notify_one();
@@ -1199,10 +1200,12 @@ pub fn run() {
             vocab::enqueue_missing(&store)?;
             feed_filter::enqueue_pending(&store)?;
 
-            let (wake_llm, wake_local) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+            let wake_llm: Vec<Arc<Notify>> = (0..=translate::MAX_PARALLEL).map(|_| Arc::new(Notify::new())).collect();
+            let wake_local = Arc::new(Notify::new());
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
             let wake_render = Arc::new(Notify::new());
-            let runners = [(LLM_JOBS, wake_llm.clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
+            let runners =
+                [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {
                 let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
                 let fetchers = wake_net.clone();
@@ -1223,7 +1226,7 @@ pub fn run() {
                     };
                     if types == NET_JOBS {
                         embedder_wake.notify_one(); // a fetched article has just queued its embed job
-                        llm_wake.notify_one(); // ... and maybe its classify job
+                        llm_wake.iter().for_each(|w| w.notify_one()); // ... and maybe its classify (and translate) job
                         render_wake.notify_one(); // ... and, if it came back thin, a render job
                     }
                 };
@@ -1234,10 +1237,21 @@ pub fn run() {
             let on_render = move |article_id: i64| {
                 let _ = handle.emit("article-changed", article_id);
                 embedder_wake.notify_one();
-                llm_wake.notify_one();
+                llm_wake.iter().for_each(|w| w.notify_one());
                 net_wake.iter().for_each(|w| w.notify_one()); // the stored rendering has queued its images job
             };
-            // The reserved slot for the articles on screen, beside the LLM runner above.
+            // Translation's own pool: 並列実行数 of its runners take an article each, sharing one gate.
+            let gate = Arc::new(translate::Gate::default());
+            for (index, wake) in wake_llm[1..].iter().enumerate() {
+                let handle = app.handle().clone();
+                let on_change = move |job: &JobRow| {
+                    if let Some(id) = job.article_id {
+                        let _ = handle.emit("article-changed", id);
+                    }
+                };
+                tauri::async_runtime::spawn(jobs::run_translate_worker(store.clone(), providers.clone(), index, gate.clone(), wake.clone(), on_change));
+            }
+            // The reserved slot for the articles on screen, beside the LLM runners above.
             let (on_screen, wake_foreground): (OnScreen, _) = (Arc::default(), Arc::new(Notify::new()));
             let shown = on_screen.clone();
             let ids = move || {

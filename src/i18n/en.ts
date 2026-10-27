@@ -178,7 +178,7 @@ export const en = {
   "translationSettings.keepTerms": "Keep technical terms in English",
   "translationSettings.parallel": "Parallel requests",
   "translationSettings.parallelDesc":
-    "How many translation requests to the AI provider run at the same time (default 3). For now they run within one article, and articles are still translated one at a time, so Jobs shows one running. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
+    "How many translation requests to the AI provider run at the same time (default 3), across the batches of a long article or several articles at once. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
   "translationSettings.keepTermsDesc":
     "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, on prefers the established English terms and off prefers plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
   "translationSettings.instructions": "Extra instructions",

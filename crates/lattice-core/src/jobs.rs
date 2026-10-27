@@ -19,6 +19,10 @@ use crate::{classify, favicons, feed_filter, images, quiz, relevance, render, su
 
 pub const LLM_JOBS: &[&str] =
     &[translate::JOB_TYPE, summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, vocab::JOB_TYPE, relevance::JOB_TYPE, feed_filter::JOB_TYPE];
+/// Translation has its own pool of runners (`run_translate_worker`), so the rest of the LLM jobs run
+/// on the general LLM runner without waiting behind it.
+pub const TRANSLATE_JOBS: &[&str] = &[translate::JOB_TYPE];
+pub const OTHER_LLM_JOBS: &[&str] = &[summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, vocab::JOB_TYPE, relevance::JOB_TYPE, feed_filter::JOB_TYPE];
 pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
@@ -60,6 +64,36 @@ pub async fn run_worker<L: LlmProvider, E: EmbeddingProvider>(
     }
 }
 
+/// Runner `index` of the translation pool: as many runners as 並列実行数 take an article each, and
+/// the articles' batches share `gate`, so the calls in flight stay within the setting however the
+/// work is split (one long article, or several short ones). The others wait.
+pub async fn run_translate_worker<L: LlmProvider, E: EmbeddingProvider>(
+    store: Arc<Store>,
+    providers: Arc<Providers<L, E>>,
+    index: usize,
+    gate: Arc<translate::Gate>,
+    wake: Arc<Notify>,
+    on_change: impl Fn(&JobRow) + Send + Sync + 'static,
+) {
+    loop {
+        let active = translate::parallel(&store).map(|n| index < n).unwrap_or(index == 0);
+        if active {
+            match store.claim_next_job(TRANSLATE_JOBS).map_err(|e| e.to_string()) {
+                Ok(Some(job)) => match run_claimed(&store, &providers, job, &on_change, Some(&gate)).await {
+                    Ok(_) => continue,
+                    Err(e) => log::error!("translation runner {index}: {e}"),
+                },
+                Ok(None) => {}
+                Err(e) => log::error!("translation runner {index}: {e}"),
+            }
+        }
+        tokio::select! {
+            _ = wake.notified() => {}
+            _ = tokio::time::sleep(IDLE_POLL) => {}
+        }
+    }
+}
+
 /// Claims and runs one ready job of `types`. Returns whether a job ran.
 pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
@@ -70,7 +104,7 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     let Some(job) = store.claim_next_job(types).map_err(|e| e.to_string())? else {
         return Ok(false);
     };
-    run_claimed(store, providers, job, on_change).await
+    run_claimed(store, providers, job, on_change, None).await
 }
 
 /// The reserved slot: runs the `FOREGROUND_JOBS` of the articles `on_screen` returns, beside
@@ -113,7 +147,7 @@ pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
 ) -> Result<usize, String> {
     let mut ran = 0;
     while let Some(job) = store.claim_article_job(types, article_id).map_err(|e| e.to_string())? {
-        run_claimed(store, providers, job, on_change).await?;
+        run_claimed(store, providers, job, on_change, None).await?;
         ran += 1;
     }
     Ok(ran)
@@ -124,10 +158,11 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     providers: &Providers<L, E>,
     job: JobRow,
     on_change: &(dyn Fn(&JobRow) + Send + Sync),
+    gate: Option<&translate::Gate>,
 ) -> Result<bool, String> {
     on_change(&job);
     let started = std::time::Instant::now();
-    let result = run_job(store, providers, &job, &|| on_change(&job)).await;
+    let result = run_job(store, providers, &job, gate, &|| on_change(&job)).await;
     match &result {
         Err(e) => log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count),
         // LLM jobs take minutes with the CLIs: their durations are what a "stuck" report needs.
@@ -150,6 +185,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     p: &Providers<L, E>,
     job: &JobRow,
+    gate: Option<&translate::Gate>,
     progress: &(dyn Fn() + Send + Sync),
 ) -> Result<(), String> {
     let params: serde_json::Value = job.params.as_deref().map(serde_json::from_str).transpose().map_err(|e| e.to_string())?.unwrap_or_default();
@@ -167,7 +203,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
         translate::JOB_TYPE => {
             let key = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
             let target = Target::from_key(key, params["instructions"].as_str().unwrap_or_default());
-            translate::run(store, &p.llm, article_id, &target, progress).await
+            translate::run(store, &p.llm, article_id, &target, gate, progress).await
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
@@ -248,6 +284,29 @@ mod tests {
         slot.abort();
         assert_eq!(status(shown), "succeeded", "the article on screen did not wait for the busy queue");
         assert_eq!((status(busy).as_str(), status(other).as_str()), ("running", "pending"), "the queue's jobs are left to the queue");
+    }
+
+    #[tokio::test]
+    async fn only_as_many_translation_runners_as_set_take_articles() {
+        let (s, id) = setup();
+        translate::set_parallel(&s, 1).unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
+        let s = Arc::new(s);
+        let p = Arc::new(with(Fake::new()));
+        let status = |s: &Store| s.get_article(id, "ja").unwrap().unwrap().jobs[0].status.clone();
+        let spare = tokio::spawn(run_translate_worker(s.clone(), p.clone(), 1, Arc::default(), Arc::new(Notify::new()), |_| {}));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(status(&s), "pending", "runner 1 waits while 並列実行数 is 1");
+        let first = tokio::spawn(run_translate_worker(s.clone(), p, 0, Arc::default(), Arc::new(Notify::new()), |_| {}));
+        for _ in 0..200 {
+            if status(&s) == "succeeded" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        spare.abort();
+        first.abort();
+        assert_eq!(status(&s), "succeeded");
     }
 
     #[tokio::test]
