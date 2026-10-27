@@ -165,7 +165,7 @@ With the keyboard, focus a feed or folder row and press `Alt+↑` or `Alt+↓` t
 
 In the feed manager, drag the ⋮⋮ handle on a row of the feed table or the **Folders** list. Dropping a feed on a feed in another folder moves it there. With the keyboard, focus ⋮⋮, press `Space` to pick the row up, move it with the arrow keys, and press `Space` again to drop it.
 
-The feed manager lists feeds by folder in the same order. Move them with the ↑ and ↓ buttons in each row.
+The feed manager lists feeds by folder in the same order.
 
 #### Name and icon
 
