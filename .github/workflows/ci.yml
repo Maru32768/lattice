@@ -21,6 +21,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The docs check diffs against the pushed range's or the PR's base commit.
+          fetch-depth: 0
 
       # Node and Rust at the versions in mise.toml; every command below runs through `mise exec`.
       - uses: jdx/mise-action@v5
@@ -58,6 +61,9 @@ jobs:
 
       - name: Frontend lint, formatting and React Compiler
         run: mise exec -- npm run lint
+
+      - name: English and Japanese docs change together
+        run: mise exec -- node scripts/doc-pairs.mjs ${{ github.event.pull_request.base.sha || github.event.before }}
 
       - name: Typecheck and build
         run: mise exec -- npm run build

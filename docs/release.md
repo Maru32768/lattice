@@ -41,6 +41,8 @@ Run without a version, `npm run bump` prints what each file holds. `npm test` fa
 
 The workflow copies the version's section into the release notes, and fails when the section is missing or empty.
 
+`CHANGELOG.ja.md` is its Japanese translation, line for line: make the same edits there (`scripts/doc-pairs.mjs` checks). The release notes come from `CHANGELOG.md` only.
+
 ## Third-party licenses
 
 `THIRD_PARTY_LICENSES` lists the license of every Rust crate compiled into the app (by [cargo-about](https://github.com/EmbarkStudios/cargo-about), settings in `scripts/about.toml`) and every npm package bundled into the UI (`scripts/licenses.mjs`, from the non-dev packages in `package-lock.json`). Regenerate and commit it when dependencies change:

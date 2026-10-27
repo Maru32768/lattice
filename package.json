@@ -13,7 +13,7 @@
     "bump": "node scripts/version.mjs",
     "e2e": "tsc -p e2e && playwright test",
     "build:overlay": "vite build -c vite.overlay.config.ts",
-    "lint": "oxlint --deny-warnings && prettier --check . && node scripts/react-compiler.mjs",
+    "lint": "oxlint --deny-warnings && prettier --check . && node scripts/react-compiler.mjs && node scripts/doc-pairs.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
