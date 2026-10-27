@@ -4,6 +4,10 @@
 
 Lattice is a Windows app for collecting technical articles, reading them with translation, and searching them later. It keeps each article's text and images on your computer, so you can still read an article after the original page is gone. Translations, summaries and answers to your questions come from the AI you choose: the Claude or Codex CLI, or the OpenAI, Gemini or Anthropic API.
 
+![Lattice showing a Rust Blog post in the Page view, with about 40% of the text in Japanese and the rest in English](docs/images/screenshot.png)
+
+<sub>The page shown is [Announcing Rust 1.99.0](https://blog.rust-lang.org/2026/10/01/Rust-1.99.0/) from the Rust Blog.</sub>
+
 ## Read with partial translation
 
 Lattice's main feature is that you don't have to translate a whole article. You can translate only part of it and read the rest in the original.
