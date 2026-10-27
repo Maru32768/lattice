@@ -2,9 +2,11 @@
 
 # Lattice user guide
 
-This guide explains everything Lattice does, for people who use it. The [README](../README.md) has the short tour, installation and first steps. Bold labels are the names the app shows when its display language is English.
+This guide explains Lattice's features and how to use them, one feature at a time. The [README](../README.md) covers installation and an overview.
 
-- [The screen](#the-screen)
+Names in **bold** are the buttons and menus you see when the display language is English. **Settings › Translation** means the **Translation** section of the **Settings** screen.
+
+- [Getting started](#getting-started)
 - [Collect articles](#collect-articles)
 - [Read an article](#read-an-article)
 - [Tabs, panes and windows](#tabs-panes-and-windows)
@@ -15,196 +17,317 @@ This guide explains everything Lattice does, for people who use it. The [README]
 - [Settings](#settings)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [CLI and MCP](#cli-and-mcp)
-- [Data, privacy and safety](#data-privacy-and-safety)
+- [Data and backups](#data-and-backups)
+- [Privacy and safety](#privacy-and-safety)
 - [Troubleshooting](#troubleshooting)
 
-## The screen
+## Getting started
 
-The main window has five areas, from left to right.
+### The screen
 
-- **Title bar.** The ‹ › buttons move back and forward through the places you visited in the app. The box in the middle (**Search, commands, URLs**, `Ctrl+K`) opens the command palette.
-- **Navigation.** The sidebar on the left. It holds the article lists (**Library**, **Collections**, **Genre**, **Source**), the **Tools** (**Chat**, **Today's review**, **Vocabulary**, **Jobs**, **Bulk import**) and **Settings** at the bottom.
-- **Article list.** The articles in the list you picked, with filters and sorting at the top.
-- **Document area.** Articles and web pages open here, in tabs. You can split it into several panes.
-- **Chat pane.** Opens on the right when you click **Chat**.
+The main window has these areas, from left to right.
 
-Drag the borders between the areas to change their widths. Double-click a border to reset it. Lattice remembers the widths. The panel button at the top of the navigation hides it, and the article list has a button that closes it. A closed list leaves a thin rail with one button that opens it again.
+| Area | What it holds |
+|---|---|
+| Navigation (the left sidebar) | The article lists (**Library**, **Collections**, **Genres**, **Source**), **Tools** (**Chat**, **Today's review**, **Vocabulary**, **Jobs**, **Bulk import**), and **Settings** at the bottom |
+| Article list | The articles of the list chosen in the navigation, with filters and sorting above them |
+| Document area | Articles and web pages open here in tabs. You can split it into several panes |
+| Chat pane | Opens at the right edge when you click **Chat** in the navigation |
 
-Feeds, jobs, the import screen, vocabulary and today's review take the place of the article list and the document area. Settings also takes the place of the navigation. Press `Esc` to go back to the library.
+The title bar at the top has back and forward buttons (‹ ›) for the places you visited in the app, and a box that opens the command palette (**Search, commands, URLs**, `Ctrl+K`).
 
-When the library is empty, the document area shows **Add your first article** with shortcuts to paste a URL, add a feed, run a bulk import and import Markdown. A notice there says which features need an AI provider. Saving, reading and full-text search work without one.
+- Drag the border between two areas to resize them. Double-click a border to restore its default width. Widths are kept for the next start.
+- Close the navigation with the button at its top, and the article list with its own button. A closed article list becomes a thin strip, and the same button opens it again.
+- **Manage feeds**, **Jobs**, **Bulk import**, **Vocabulary** and **Today's review** take the place of the article list and document area. **Settings** also takes the navigation's place. `Esc` returns to the library.
+
+When the library is empty, the document area shows **Add your first article**. From there you can paste a URL, subscribe to a feed, run a bulk import or import Markdown.
+
+### Set up an AI provider
+
+Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter and chat send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
+
+These providers are supported:
+
+| Provider | What you need |
+|---|---|
+| Claude CLI | The `claude` command, installed and signed in |
+| Codex CLI | The `codex` command, installed and signed in |
+| OpenAI API | An API key |
+| Gemini API | An API key |
+| Anthropic API | An API key |
+
+**Steps.** You can list up to three providers as steps. Lattice normally uses the first step. When a call fails (for example, because a usage limit was reached), it repeats the same work with the next step. A step that failed is skipped for the next 5 minutes. Drag the steps to reorder them. With the keyboard, press `Space` to pick a step up, move it with the arrow keys, and press `Space` again to drop it.
+
+**Model and effort.** Each step has a provider, a model and an effort. Effort sets how long the model thinks. Raising it can improve quality, but it is slower and costs more. For translating many articles, a fast model with low effort works well. To use a model that is not in the list, choose **Custom model ID** and enter its ID. If you choose an effort the model does not support, that step's calls fail and Lattice moves on to the next step.
+
+**API keys.** For an API provider, enter its key under **API keys**. Keys are stored in Lattice's database and never shown again after you save them. They are not included in backups or exports. When no key is saved, Lattice reads the `OPENAI_API_KEY`, `GEMINI_API_KEY` and `ANTHROPIC_API_KEY` environment variables.
+
+[What goes to AI providers](#what-goes-to-ai-providers) lists what each feature sends.
+
+### Write About you
+
+Write your job, interests and the knowledge you can take for granted in **About you** under **Settings › Summaries & chat**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
+
+- Summaries and chat answers
+- Quiz questions
+- Article [importance](#importance) (articles are not rated while **About you** is empty)
+- The LLM feed filter
 
 ## Collect articles
 
-Lattice stores each article's text, images and the HTML it was extracted from. It keeps working when the original page goes away.
+For each article, Lattice saves its text, its images and the HTML it was extracted from. You can still read a saved article after the original page changes or disappears. In Lattice, the set of articles you have saved is called the Index.
 
 ### Save a URL
 
-1. Press `Ctrl+K`.
+1. Press `Ctrl+K` to open the command palette.
 2. Paste the URL.
 3. Choose **Add to Index (import)**, or press `Ctrl+Enter`.
 
-The palette also offers **Open in Page**, which opens the page without saving it, and **Find and add its feed**. If the URL is already saved, **Open in Reader** opens the saved article. While a collection is open in the list, the palette also offers to save the URL into that collection.
+The page is fetched in the background.
 
-Lattice compares URLs in a normalized form that ignores tracking parameters, so saving a URL that is already in the library, even with different tracking parameters, opens the existing article. Saving an article whose fetch failed tries the fetch again.
+With a URL pasted, the palette also offers:
+
+- **Open in Page**: opens the page in the built-in browser without saving it.
+- **Find and add its feed**: looks for the site's feed and subscribes to it.
+- **Open in Reader**: opens the saved article when you have already saved the URL.
+- When the list shows a collection, an item that saves the URL into that collection.
+
+Lattice decides whether a URL is already saved after removing tracking parameters such as `utm_source`. A URL that differs only in those parameters opens the existing article instead of saving a new one. Saving the URL of an article whose fetch failed fetches it again.
 
 ### Save the page you are browsing
 
-The Page view is a built-in browser. To save the page it shows, click **Add to Index** in its toolbar. Lattice saves the page as your browser drew it, so pages built with JavaScript and pages behind your login come out complete. A saved page shows **Indexed** in the toolbar, and the Reader, tags, genres and favorites work for it.
-
-### Subscribe to feeds
-
-Lattice reads RSS and Atom feeds. Open **Manage feeds** from **Manage** next to **Source** in the navigation, or from the palette.
-
-**Find a site's feed.** Paste a site or article URL into the field and click **Find**. If the URL is a feed, Lattice offers it. Otherwise it looks for the feed links in the page and then tries common paths such as `/feed` and `/rss.xml`. Pick one of the candidates and click **Add and import the latest 20**.
-
-**Add many feeds at once.** Paste feed URLs one per line. Lattice subscribes to each of them without looking for links.
-
-**How feeds update.** Lattice checks every feed at startup and every 30 minutes. A new subscription imports the latest 20 entries, and after that only new entries come in. **Refresh all** checks now. Each feed row shows its state, the time of the last update, and its unread and total counts. **View articles →** opens the feed's articles. Deleting a feed keeps its articles under **Added by hand**.
-
-**Folders.** A folder groups feeds, for example the per-channel feeds of one news service. A feed is in at most one folder, and folders do not nest.
-
-- To create a folder, type a name under **Folders** and click **Create**. You can rename, reorder and delete folders there.
-- To move feeds, pick a folder in a feed's row. Or tick several feeds and choose **Move to folder…**.
-- To subscribe straight into a folder, choose it in the folder menu next to the field (it reads **No folder** until you do) before you add the feed. The menu appears once you have a folder.
-- In the navigation, a folder is a row you can expand and collapse. Its number is the unread total of its feeds. Clicking it lists the articles of all its feeds. Right-click it, or use its ⋯ button, to rename or delete it. Deleting a folder keeps its feeds.
-
-**Feed order.** Feeds keep the order you give them, within their folder and among the feeds in no folder. Every list of feeds in the app (the navigation, the Feeds screen, the palette, the scope pickers, OPML export and the CLI) uses that order.
-
-- Drag a feed in the navigation and drop it on another feed to take that place, in the same folder or another one.
-- Drop a feed on a folder row to put it last in that folder, even when the folder is collapsed.
-- To take a feed out of all folders, drop it among the feeds in no folder. If every feed is in a folder, a box reading **Drop here to take it out of its folder** appears at the end while you drag.
-- Drag a folder row to reorder the folders; their feeds come along.
-- With a feed or folder row focused, `Alt+↑` and `Alt+↓` move it one place. A feed moved past the first or last feed of its folder goes into the neighboring folder, which opens if it was collapsed.
-- On the Feeds screen, the feeds are grouped under their folders in the same order, and each row has ↑ and ↓ buttons.
-
-A short click on a feed or folder still opens it; only a drag moves it.
-
-**Names and icons.** Click **Edit** in a feed's row to set a **Display name** and an **Icon** (PNG, JPEG, GIF, WebP, SVG or ICO, up to 1 MB). **Revert** restores the feed's own name, and **Use the site's icon** removes your icon. Without your icon, Lattice shows the site's own icon.
-
-**Import filters.** A filter decides which new entries a feed imports. There is one global filter in **Settings › Import filters** and one per feed under **Edit**. An entry is imported only when it passes both.
-
-- **Rules** match a keyword or a regular expression against the **Title**, **URL**, **Author**, **Category**, **Domain** or **Language**, ignoring case. An entry that matches any skip rule is left out. If there are only-if rules, an entry must match at least one of them.
-- **Shortest text** leaves out entries whose text is shorter than you set. It applies only to feeds that carry the full text.
-- **Let the LLM judge what passes the rules** sends the title, the URL, the excerpt, your **About you** profile and your instructions in **What to import** to the AI provider. **Lowest importance** makes the decision a score from 1 to 5 instead. If the LLM call fails, the entries are imported anyway, and the feed shows why.
-- **Rejected entries** lists what a filter left out, with the reason. **Import** saves one of them, and **Remove this rule** deletes the rule that rejected it. Changed rules do not apply to past entries by themselves. **Judge rejected entries again** applies the current rules to them.
-
-**OPML.** **Import OPML** subscribes to the feeds in an OPML file. Outlines that contain feeds become folders. **Export OPML** writes your feeds, with their folders, to the `exports` folder.
+To save the page you are viewing in the Page view (the built-in browser), click **Add to Index** in the toolbar. Lattice saves the page as the browser shows it, so pages built with JavaScript and pages that need a login come in complete. Once saved, the toolbar shows **Indexed**, and the Reader, tags, genres and favorites become available.
 
 ### Import files
 
-Open **Bulk import** in **Tools**. The **Import** screen has three tabs. The **Collection** field above them puts the imported articles straight into collections.
+Open **Bulk import** under **Tools** in the navigation. The screen has three tabs: **URL list**, **Markdown** and **PDF**. Choose a collection in the **Collection** field above the tabs to put the imported articles in it.
 
-- **URL list** reads any text that contains URLs: a plain list, browser bookmarks (HTML), CSV, JSON, or the export of another read-later service. Paste the text or choose a file, then click **Import**. Lattice fetches the pages in the background and reports how many were new, already saved or invalid. A page that fails does not stop the others.
-- **Markdown** imports one Markdown file, or pasted text, as an article. The title is the first top-level heading (`# `), else the file name or the first line. Images with web URLs are saved. Images with relative paths are read from the file's folder, and only when you import a file. HTML tags are dropped. An imported file has no web page, so Page is not available for it.
-- **PDF** imports a paper as an article. Lattice reads the text and rebuilds the reading order of two-column pages, the headings, captions and references. A PDF that is only scanned images cannot be imported. A PDF URL, such as arXiv's `…/pdf/…`, can be saved like any other URL, and a feed can deliver PDFs too.
+**URL list.** Reads any text that contains URLs: a plain list of URLs, bookmarks exported from a browser (HTML), CSV, JSON, or an export from another read-later service. Paste the text or choose a file, then click **Import**. Fetching runs in the background, and the screen reports how many URLs were new, already saved or invalid. Pages that fail to fetch do not stop the rest of the import.
 
-### Pages built with JavaScript
+**Markdown.** Turns one Markdown file, or pasted text, into one article.
 
-Some pages send almost no text until JavaScript draws them. When a saved article comes out empty or short, Lattice marks it **Extraction failed** or **Little text** (under 300 characters) and, if **Render JS pages automatically** is on, loads the page in a hidden browser and imports it again. It does the same when a site refuses the fetch with an error a real browser may get past, such as 403 or 429. This takes up to about 20 seconds per article. A rendered import replaces the article only if it has more text.
+- The title is the first level-1 heading (`# `). Without one, Lattice uses the file name or the first line.
+- Images with a web URL such as `https://` are downloaded and saved. Images with a relative path are read from the file's folder, only when you import from a file.
+- HTML tags are not imported.
+- There is no original web page, so the Page view is not available.
 
-To do it by hand, choose **Render and import again** in the article's ⋯ menu. In the Page view, choose **Import again from the page as shown** instead: it uses the page as you see it, including content behind a login.
+**PDF.** Turns a PDF, such as a paper, into one article. Lattice reads the text in the PDF and rebuilds the reading order of two-column layouts, headings, figure and table captions, and references. A PDF without text data (a scan made only of images) cannot be imported.
 
-Some sites refuse automated fetches. When a feed carries the full text of its entries, Lattice imports that text instead and says so in the Reader. The Reader then offers **Retry**, which fetches the original page again.
+A PDF URL such as arXiv's `…/pdf/…` can be saved like any other URL, without this tab. PDFs in feeds are imported too.
+
+### Subscribe to feeds
+
+When you subscribe to an RSS or Atom feed, Lattice imports its new articles automatically. Open the feed manager with **Manage** next to **Source** in the navigation, or with **Manage feeds** in the palette.
+
+#### Subscribe
+
+Enter a site or article URL and click **Find**. Lattice looks for a feed:
+
+1. If the URL is a feed itself, it becomes the candidate.
+2. Otherwise, Lattice looks for links to feeds in the page.
+3. If there are none, it tries common places such as `/feed` and `/rss.xml`.
+
+Pick a candidate and click **Add and import the latest 20**.
+
+If you already know the feed URLs, paste them one per line to subscribe to all of them without searching for links.
+
+#### When feeds are checked
+
+Lattice checks every feed for new entries when it starts and every 30 minutes after that. A newly added feed imports its latest 20 entries; after that, only new entries are imported. **Refresh all** checks all feeds now.
+
+In the feed manager, each feed's row shows its status, last update, unread count and article count. **View articles →** opens the list of that feed's articles.
+
+Removing a feed keeps the articles it imported. They move to **Added by hand** in the navigation.
+
+#### Folders
+
+A folder groups feeds. It helps when one site has many feeds, such as a service with an RSS feed for every channel. A feed can be in only one folder, and folders cannot contain folders.
+
+- **Create.** Enter a name in the **Folders** field of the feed manager and click **Create**. You can rename, reorder and delete folders there too.
+- **Put a feed in a folder.** Choose the folder in the feed's row. To move several feeds at once, check them and click **Move to folder…**.
+- **File a feed as you add it.** Before adding it, choose the folder in the folder menu next to the input (it starts at **No folder**). This menu appears only when at least one folder exists.
+- **In the navigation.** A folder is a row you can expand and collapse, and its number is the total unread count of its feeds. Clicking a folder lists the articles of all its feeds. Right-click it or use ⋯ to rename or delete it. Deleting a folder keeps its feeds.
+
+#### Feed order
+
+Feeds keep the order you give them, within each folder and among the feeds outside any folder. The navigation, the feed manager, the palette, the scope menus, OPML export and the CLI all use this order.
+
+In the navigation, reorder by dragging:
+
+- Drop a feed on another feed to put it there. That feed can be in another folder.
+- Drop a feed on a folder's row to put it at the end of that folder, even when the folder is collapsed.
+- To take a feed out of its folder, drop it between feeds that are outside any folder. When every feed is in a folder, a **Drop here to take it out of its folder** area appears at the bottom while you drag.
+- Drag a folder's row to change the order of folders. Its feeds move with it.
+
+Only dragging changes the order. A short click still opens the feed or folder.
+
+With the keyboard, focus a feed or folder row and press `Alt+↑` or `Alt+↓` to move it one place. A feed moved past the start or end of its folder enters the neighboring folder, which opens if it was collapsed.
+
+The feed manager lists feeds by folder in the same order. Move them with the ↑ and ↓ buttons in each row.
+
+#### Name and icon
+
+**Edit** in a feed's row lets you change its **Display name** and **Icon**. The icon can be a PNG, JPEG, GIF, WebP, SVG or ICO image of up to 1 MB. Without one, the site's icon is shown. **Revert** restores the feed's own name, and **Use the site's icon** restores the site's icon.
+
+#### Import filters
+
+Filters decide which new entries from a feed get imported. You can set them in two places:
+
+- The global filter, in **Settings › Import filters**, applies to every feed.
+- A feed's own filter is in **Edit** in its row.
+
+An entry is imported only when it passes both. A filter can combine these conditions:
+
+- **Rules.** Match a keyword or regular expression against **Title**, **URL**, **Author**, **Category**, **Domain** or **Language**. Case is ignored. There are rules that skip entries and rules that import only matching entries. An entry that matches any skip rule is not imported. When there is at least one import-only rule, only entries that match one of them are imported.
+- **Shortest text.** Skips entries whose text is shorter than this many characters. It applies only to feeds that include the article text.
+- **LLM judgment.** With **Let the LLM judge what passes the rules** on, the AI provider judges the entries that passed the rules. Lattice sends the entry's title, URL and excerpt, **About you**, and **What to import**. When you choose **Lowest importance**, entries are imported when the AI's 1–5 score is at least that value. If the AI call fails, the entry is imported so that nothing is lost, and the feed shows why the call failed.
+
+Entries a filter skipped are kept under **Rejected entries**, with the reason.
+
+- **Import** imports one entry.
+- **Remove this rule** deletes the rule that skipped it.
+- Changing the rules does not import earlier rejections by itself. To judge them with the current rules, click **Judge rejected entries again**.
+
+#### OPML
+
+Use OPML to move feeds between Lattice and other feed readers.
+
+- **Import OPML** subscribes to the feeds in an OPML file. An outline element that contains feeds becomes a folder.
+- **Export OPML** writes the feed list, with its folders, to the `exports` folder.
+
+### Pages that don't extract well
+
+Some pages have almost no text in the HTML that is first downloaded and show their text only after JavaScript runs. When such a page is saved, its text is empty or under 300 characters, and the article list shows **Extraction failed** or **Little text**.
+
+**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before.
+
+**Import again by hand.** **Render and import again** in the article's ⋯ menu does the same on demand. In the Page view, **Import again from the page as shown** is also available. It imports from the page as it is on screen, so content you see after logging in is included.
+
+**Use the feed's text.** Some sites refuse requests that don't come from a browser. When the site's feed includes the article text, Lattice builds the article from the feed and says so in the Reader. **Retry** in the Reader fetches the original page again.
 
 ## Read an article
 
-### Reader and Page
+### Reader and Page view
 
-Every saved article has two views. Switch between them with **Reader** and **Page** at the left of the toolbar, or press `v`.
+A saved article can be read in two views. Switch with **Reader** and **Page** at the left end of the toolbar, or press `v`.
 
-- **Reader** shows the extracted text with its headings, lists, code, tables and saved images. It never loads anything from the web.
-- **Page** shows the live web page in the built-in browser, with the same translation and word tools.
+- The **Reader** shows the text extracted from the page, with headings, lists, code, tables and saved images. It never loads anything from the web to show it.
+- The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader.
 
-The two toolbars match. The right end has the same buttons in both: **Favorite**, **Mark as read**, **Ask**, **Quiz**, focus mode and the ⋯ menu. The ⋯ menu holds **Re-extract (from the saved HTML)**, the import-again action, **Auto-classify**, **Translate again**, **Summarize**, **Copy URL** and **Remove from Index…**.
+Imported Markdown and PDF files have no original web page, so they have no Page view. A PDF saved from a URL opens in the browser's PDF viewer in the Page view.
 
-Re-extract builds the article again from the saved HTML, PDF or Markdown, without the network. Use it after a Lattice update improves extraction.
+**The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, focus mode and the ⋯ menu. The ⋯ menu has:
 
-**The browser.** The Page toolbar has back, forward, reload and **Home (search engine)**. Click the URL to edit it. Press `Enter` to go, or `Esc` to cancel. Text that is not a URL is searched with the engine you choose in **Settings › Browser**. The browser keeps your logins between sessions.
+- **Re-extract**: rebuilds the article from the saved HTML, PDF or Markdown without going online. Use it after a Lattice update improves text extraction.
+- The import-again actions (see [Pages that don't extract well](#pages-that-dont-extract-well))
+- **Auto-classify**, **Translate again**, **Summarize**, **Copy URL** and **Remove from Index…**
 
-Imported Markdown and PDF files have no Page view. A PDF saved from a URL opens in the browser's PDF viewer.
+**The built-in browser.** The Page view's toolbar has back, forward, reload and **Home (search engine)**. Click the URL to edit it, press `Enter` to open it, or `Esc` to stop editing. Text that is not a URL is searched with the search engine chosen in **Settings › Browser**. Your logins to sites are kept after you quit Lattice.
 
-### Choose the language shown
+### Original, translated or mixed
 
-The language switch next to **Reader** and **Page** has three settings.
+The switch right of **Reader** and **Page** chooses the language of the text.
 
-- **Original** shows the text as written.
-- **Translated** shows the translation.
-- **Mixed** shows a mix. The percentage is the share of translated text. Press `[` and `]` to lower or raise it by 10 percent.
+- **Original**: the text as written.
+- **Translated**: the translation.
+- **Mixed**: only some paragraphs are translated. The percentage next to it is the share of translated paragraphs. Press `[` to lower it by 10% and `]` to raise it by 10%.
 
-Japanese articles are translated into English, and all other articles into Japanese. The display language of the app does not change this. In the Reader, the translated paragraphs are spread evenly through the article. In the Page view, Lattice picks the parts to translate from the page address and the text, so the same page always mixes the same way.
+The article's language sets the direction: Japanese articles are translated into English, and articles in any other language into Japanese. Switching the app's display language does not change this.
 
-The Reader and the Page view each keep their own setting. It applies to every article, or every page, until you change it. When Lattice starts, the Reader is at **Mixed** 70% and the Page view at **Original**.
+How **Mixed** picks the translated paragraphs:
 
-### Flip one block
+- In the Reader, they are spread evenly through the article.
+- In the Page view, they are picked from the page's address and text, so the same page always mixes the same paragraphs.
 
-Hover over a translated paragraph for a moment. A small popup shows the other language. Click the popup, or the small marker at the paragraph's edge, to flip that paragraph. With the keyboard, focus the paragraph and press `Enter`. In the Page view the same popup works sentence by sentence.
+The Reader and the Page view remember their choice separately. A choice applies to every article (every page, in the Page view) until you change it. When Lattice starts, the Reader is at **Mixed** 70% and the Page view at **Original**.
+
+### Switch one paragraph
+
+Rest the pointer on a translated paragraph and a bubble shows it in the other language. Click the bubble, or the small mark at the paragraph's edge, to switch only that paragraph. With the keyboard, focus the paragraph and press `Enter`.
+
+In the Page view, the same bubble appears for each sentence instead of each paragraph.
 
 ### Translate an article
 
-The Reader toolbar shows the translation state, for example **Translated 12/40**.
+The Reader's toolbar shows how far translation has gone (for example, **Translated 12/40**).
 
-- If **Translate when I switch the view** is on (the default), switching to **Mixed** or **Translated** starts the translation.
-- **Translate** starts it by hand. **Translate the rest** finishes a partly translated article. Hover the button to see which direction it translates.
-- **Translate again** drops this article's translations and translates it again with the current providers and settings. It is in the ⋯ menu once anything is translated, and in the toolbar once everything is. Lattice asks first if the article has more than 50 translated blocks. You cannot use it while the article's translation is running.
-- If a translation fails, the toolbar shows **failed**, the time of the next automatic retry, and **Retry**. A note above the text gives the error. Paragraphs already translated are kept, so a retry sends only the rest.
+- **Starting automatically.** With **Translate when I switch the view** on (the default), switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
+- **Starting by hand.** Click **Translate**. On a partly translated article, **Translate the rest** translates the remaining paragraphs. Hold the pointer over the button to see which language it translates into.
+- **Translating again.** **Translate again** drops this article's translations and translates it again with the current provider and settings. It is in the ⋯ menu once any paragraph is translated, and also in the toolbar once all of them are. Articles with more than 50 translated paragraphs ask you to confirm. It is unavailable while this article's translation is running.
+- **When it fails.** The toolbar shows **Failed**, the time of the next automatic retry and a **Retry** button, and a note above the text gives the error. Paragraphs that were already translated are kept, so a retry sends only the rest.
 
-Translations are shared by text. A paragraph translated in the Page view is already translated in the Reader, and the other way round. **Translate again** therefore also updates other articles and pages that contain the same paragraphs.
+**Shared translations.** Translations are stored per paragraph text. A paragraph translated in the Page view is translated in the Reader too, and the other way around. Other articles and pages that contain the same paragraph use that translation as well. So **Translate again** also renews the translation in other articles and pages that share the paragraph.
 
-In the Page view, **Mixed** and **Translated** translate the page as you read it. Paragraphs the page already has in the target language are left alone.
+**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider.
+
+**Translation settings.** **Settings › Translation** has these options. Each applies to translation in both the Reader and the Page view.
+
+| Setting | What it does |
+|---|---|
+| **Translate when I switch the view** | Starts translating when you switch to **Mixed** or **Translated**. On by default. Stored on this computer only. |
+| **Translate saved articles automatically** | Starts translating each article as soon as it is saved. Off by default, because it uses the AI provider for every saved article. Japanese articles are skipped. |
+| **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. When translating into English, uses the established English terms. On by default. |
+| **Extra instructions** | Instructions added to the end of the translation prompt, such as a preferred style or terms. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt they are added to. |
+
+Translations are stored separately for each combination of **Keep technical terms in English** and **Extra instructions**. After changing them, translate again the articles you want to read with the new settings. Changing the settings back shows the earlier translations again.
 
 ### Summaries
 
-The **Summary** section at the top of the Reader has **Summarize**. Once there is a summary, the section shows its first line; click it to read the whole summary. The summary takes your **About you** profile into account. If the article or your summary settings change later, the summary says so, and **Regenerate** in the opened summary, or **Regenerate the summary** in the ⋯ menu, applies the change. Lattice never rewrites a summary by itself.
+Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
 
-In the Page view of a saved article, the **Summary** button shows the same summary above the page.
+- Summaries reflect **About you**.
+- **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
+- If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
-### Find matches in an article
+In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page.
 
-When you open an article from search results, the Reader shows **Match 1 / 5**. The ↑ and ↓ buttons next to it move between the matching passages.
+### See search matches in an article
+
+When you open an article from search results, the Reader shows a counter such as **Match 1 / 5**. The ↑ and ↓ buttons next to it move between the matches.
 
 ### Focus mode
 
-Press `f`, or click the focus mode button, to hide the navigation and the article list together. Press `f` again to bring them back. While the list is hidden, `j` and `k` still move its cursor.
+`f` or the focus mode button hides the navigation and the article list together, giving the text more room. Press `f` again to bring them back. With the article list hidden, `j` and `k` still move to the next and previous article.
 
 ### Back and forward
 
-Lattice records where you go: screens, settings sections, lists, filters and the document in the focused tab. Go back and forward with the ‹ › buttons in the title bar, `Alt+←` and `Alt+→`, or the back and forward buttons of your mouse. The history holds 50 steps.
+Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list, the filters and the document in the focused tab. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
 
-While a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's own history instead. The ‹ › buttons in the Page toolbar always move through the page's history.
+When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history instead of Lattice's. ‹ › in the Page view's toolbar always move through the page's history.
 
 ### Print a page
 
-In the Page view, press `Ctrl+P`. Lattice opens the Windows print dialog.
+Press `Ctrl+P` in the Page view to open the Windows print dialog.
 
 ## Tabs, panes and windows
 
 ### Tabs
 
-Each pane of the document area has a row of tabs. A tab holds a Reader article or a web page.
+Each pane in the document area has a row of tabs. A tab holds an article in the Reader or a web page.
 
-- Clicking an article in the list, the palette, search results or a chat citation replaces the active tab of the focused pane.
-- `Ctrl`+click or middle-click opens it in a new tab.
-- **New tab** (the ＋ at the end of the tabs) opens your search engine's home page in a new tab. `Ctrl+T` opens the palette, and what you pick there opens in a new tab.
-- `Ctrl+W` closes the tab, and so do the × button and a middle-click on the tab. `Ctrl+Tab` and `Ctrl+Shift+Tab` switch tabs.
-- Drag a tab to reorder it.
+- Opening an article from the list, the palette, search results or a chat citation replaces the contents of the shown tab in the focused pane.
+- To open it in a new tab instead, `Ctrl`+click or middle-click.
+- **New tab** (+) at the end of the tab row opens the search engine's home page in a new tab. `Ctrl+T` opens the palette, and what you choose there opens in a new tab.
+- Close a tab with `Ctrl+W`, its ×, or a middle-click on it.
+- `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
+- Drag tabs to reorder them.
 
-Lattice restores your tabs and panes when it starts. Web pages in hidden tabs stay loaded, up to three of them, so switching back is instant and keeps your scroll position. Older hidden pages load again when you return to them.
+Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab.
 
 ### Split the document area
 
-- **Split right** and **Split down** in the tab row split the focused pane. The keys are `Ctrl+\` and `Ctrl+-`.
-- Drag the line between panes to resize them. Focus the line and use the arrow keys, or double-click it to make the panes equal.
-- **Close pane** closes the focused pane. A pane with no tabs left disappears.
-- Drag a tab to another pane's tab row to move it there. Within the window the drag started in, drop it on the middle of a pane to add it to that pane, or near an edge to split that pane and put the tab in the new half.
+- **Split right** and **Split down** in the tab row split the focused pane in two. The keys are `Ctrl+\` (right) and `Ctrl+-` (down).
+- Drag the line between panes to resize them. You can also focus the line and use the arrow keys. Double-click the line to make the panes equal.
+- **Close pane** closes the focused pane. A pane with no tabs left closes too.
+- Drag a tab to another pane's tab row to move it there. Within the same window, dropping it in the middle of a pane puts it in that pane, and dropping it near an edge splits that pane and puts the tab in the new side.
 
-The focused pane has an outline. Clicking in a pane focuses it, and new documents open there.
+The focused pane has a frame. Clicking inside a pane focuses it, and the next document you open goes there.
 
-### Move between panes with the keyboard
+### Control panes with the keyboard
 
-Press `Ctrl+B`, then one of these keys, the way tmux works:
+As in tmux, press `Ctrl+B` and then one of these keys. After `Ctrl+B`, the screen shows a guide to the keys.
 
-| Key after `Ctrl+B` | What it does |
+| Key after `Ctrl+B` | Action |
 |---|---|
 | `←` `→` `↑` `↓` or `h` `j` `k` `l` | Move to the pane in that direction |
 | `o` | Move to the next pane |
@@ -214,329 +337,338 @@ Press `Ctrl+B`, then one of these keys, the way tmux works:
 | `c` `n` `p` | New tab, next tab, previous tab |
 | `z` | Focus mode |
 
-A hint bar shows these keys while `Ctrl+B` waits for the next one.
-
 ### Open a tab in its own window
 
-- **Open in a new window** in the tab row, or `Ctrl+Shift+N`, moves the active tab to a new window.
-- Drag a tab away from the tab row. After about 30 pixels above or below the row it becomes a new window that follows the pointer. In a window split into panes, it does so when it leaves the window. Move it over another window's tab row to put it there. Press `Esc` during the drag to put it back.
+A tab can leave the main window and open in its own window (a document window).
 
-A document window uses its tab row as its title bar. Drag the empty part of the row to move the window. Double-click it to maximize. Each window has its own panes, tabs and palette.
+- **Open in a new window** in the tab row, or `Ctrl+Shift+N`, moves the shown tab to a new window.
+- Drag a tab about 30 pixels up or down out of the tab row and it becomes a new window that follows the pointer. In a window split into panes, the tab becomes a new window once you drag it outside the window.
+- Drop a dragged tab on another window's tab row to move it into that window. Press `Esc` while dragging to put it back.
 
-**Move back to the main window** (the same key) returns the tab to the main window. So does closing the document window. A document window closes when its last tab leaves.
+In a document window, the tab row is also the title bar. Drag an empty part of it to move the window, and double-click to maximize it. Each window has its own panes, tabs and palette.
 
-A web page loads again when its tab moves to another window. It does not keep its back and forward history.
+To return a tab to the main window, use **Move back to the main window** or `Ctrl+Shift+N`. Closing a document window also returns its tabs to the main window. A document window closes when its last tab leaves.
 
-The chat pane has its own **Open in a new window** button. Its **Move back to the main window** button docks it again, and closing the chat window just closes it.
+When a tab moves to another window, its web page reloads, and the back and forward history is not carried over.
 
-Lattice remembers the size and position of each window and opens your windows again at startup. Closing the main window quits Lattice.
+The chat pane also has **Open in a new window**. **Move back to the main window** returns it to its place. Closing the chat window closes the chat without returning it to the main window.
+
+Window positions and sizes are saved, and the windows that were open when you quit open again at the next start. Closing the main window quits Lattice.
 
 ## Organize your library
 
 ### Genres, tags and difficulty
 
-When you save an article, the AI provider gives it a genre, up to three tags and a difficulty. Genres are broad (Database, Security, Web and so on). The provider reuses your existing genres and creates a new one only when none fits. Difficulty runs from **Introductory** through **Beginner**, **Intermediate** and **Advanced** to **Expert**, rated for a working software engineer outside the article's field.
+When you save an article, the AI provider assigns it a genre, tags (up to three) and a difficulty.
 
-Change them in the line under the Reader's title.
+- A **genre** is a broad category such as Database, Security or Web. Lattice prefers existing genres and creates a new one only when none fits.
+- **Difficulty** has five levels: **Introductory**, **Beginner**, **Intermediate**, **Advanced** and **Expert**. It describes how hard the article is for a working software engineer who is not a specialist in its field.
 
-- Type or pick another genre in the genre field (a new name creates a genre), or pick another difficulty from its menu. A choice you make is kept: automatic classification will not change it. Set the difficulty back to **Not rated** to let it be estimated again.
-- **+ Tag** adds a tag, and the × on a tag removes it. Automatic classification only adds tags. It never removes yours.
-- **Auto-classify** in the ⋯ menu drops your genre and difficulty choices and classifies the article again.
+Classification groups up to 20 unclassified articles into one call. To stop it, turn off **Sort saved articles into genres and tag them with the LLM** in **Settings › Auto-classification** (it is on by default). **Classify all unclassified** on the same screen queues every article that has no genre or no difficulty.
 
-To rename a genre, open **Edit** next to **Genre** in the navigation (**Settings › Genres**). Renaming a genre to the name of another merges the two. A genre with no articles can be deleted.
+**Change them by hand** in the line under the title in the Reader.
+
+- For the genre, type in the field or pick a suggestion. Typing a new name creates that genre. Pick the difficulty from its menu.
+- A genre or difficulty you chose yourself is pinned, and auto-classification does not overwrite it. Setting the difficulty back to **Not rated** has it estimated again.
+- **+ Tag** adds a tag, and a tag's × removes it. Auto-classification only adds tags; it never removes tags you added.
+- **Auto-classify** in the ⋯ menu unpins the genre and difficulty and classifies the article again.
+
+**Edit genres.** **Edit** next to **Genres** in the navigation opens **Settings › Genres**, which lists every genre with its article count. You can rename a genre; giving it the name of another genre merges the two. A genre with no articles can be deleted.
 
 ### Importance
 
-If you describe yourself in **About you** (**Settings › Summaries & chat**), the AI provider rates each new article from 1 to 5 for how much it matters to you, with a one-line reason: **Unrelated**, **Marginal**, **Of interest**, **Important**, **Must read**.
+Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. The five levels are **Unrelated**, **Marginal**, **Of interest**, **Important** and **Must read**.
 
-- The article list marks articles rated 4 and 5. Hover the mark to read the reason. The Reader shows the score and the reason under the title.
-- **Important** in the navigation lists articles rated at or above a minimum, 4 unless you change it.
-- When you edit your profile, earlier ratings are marked as judged against an earlier profile. They still count until you rate again. **Rate again** in **Settings › Importance** rates every unrated and outdated article. **Rate again** above the list rates the articles shown.
+- In the article list, articles rated 4 or 5 have a mark. Hold the pointer over it to see the reason. The Reader shows the rating and reason under the title.
+- **Important** in the navigation lists articles rated at least **Lowest importance in Important** in **Settings › Importance** (4 by default).
+- To stop rating, turn off **Rate newly saved articles** in **Settings › Importance**.
+
+**After you change About you**, earlier ratings are marked **(judged against an earlier profile)**. Until they are rated again, their scores are still used. There are two ways to rate again:
+
+- **Rate again** in **Settings › Importance** rates every unrated article and every article rated against an earlier profile.
+- **Rate again** above the article list rates the articles shown in the list.
 
 ### Collections
 
-A collection is a set of articles you put together by hand, such as a project or a reading list. An article can be in several collections.
+A collection is a set of articles you pick yourself, such as material for a project or a reading list. An article can be in several collections.
 
-- Create one with **+ New** under **Collections** in the navigation. Its ⋯ menu renames or deletes it. Deleting a collection keeps its articles.
-- Add the open article with **+ Collection** in the Reader, with **Add this article to a collection…** in the palette, or with **Add to collection…** in the right-click menu.
-- Add several at once with **Select** above the list, then **Add to collection**.
-- Imports, and URLs you save while a collection is open, can go straight into a collection.
+- Create one with **+ New** under **Collections** in the navigation. A collection's ⋯ menu renames or deletes it. Deleting a collection keeps its articles.
+- Add the open article with **+ Collection** in the Reader, **Add this article to a collection…** in the palette, or **Add to collection…** in the right-click menu.
+- To add several articles, choose them with **Select** above the list and click **Add to collection**.
+- Articles from a bulk import, and URLs saved while the list shows a collection, can go into that collection as they are saved.
 
-A collection can also be the scope of a search, a chat or an export.
+Collections can also be chosen as the scope for search, chat and export.
 
 ### Read and favorites
 
-Opening an article marks it as read. It stays in the **Unread** list until you change the list or a filter, so the list does not shift while you work through it. `m` toggles read and unread, and `s` toggles the favorite star. **Favorites** in the navigation lists the starred articles.
+Opening an article marks it as read. While you are looking at the **Unread** list, though, opened articles stay in it until you change the list or the filters. That keeps the list from shifting while you work through it.
+
+`m` toggles read and unread, and `s` toggles the favorite star. Starred articles appear under **Favorites** in the navigation.
 
 ### Lists, filters and sorting
 
-What the article list shows is a list you pick in the navigation, narrowed by filters.
+The article list shows the list chosen in the navigation, narrowed by the filters.
 
-**Lists.** **Recently added** (saved in the last 7 days), **Unread**, **Favorites**, **All articles** and **Important**, then each collection, each genre, each feed folder, each feed and **Added by hand**. The navigation shows six genres at first, with a link to the rest.
+**Lists in the navigation.** From the top: **Recently added** (saved in the last 7 days), **Unread**, **Favorites**, **All articles** and **Important**, then collections, genres, feed folders, feeds and **Added by hand** (articles not from a feed). Only the first six genres are shown; a link shows the rest.
 
-**Filters.** The chips above the list filter by **Genre**, **Tag**, **Collection**, **Source**, **Difficulty**, **Importance** and **Status**. **Status** has **Unread**, **Read**, **Favorites** and **Needs attention** (fetch or extraction failed, or little text). Values in one filter combine with OR, and different filters combine with AND. Tags can require **All of them** or **Any of them**. The counts in a filter are counts within the current list. When nothing matches, the list suggests which filter to remove and how many articles that would bring back.
+**Filters.** The chips above the list add conditions on **Genres**, **Tags**, **Collections**, **Source**, **Difficulty**, **Importance** and **Status**.
 
-`Esc` clears the filters. The palette can add filters too.
+- **Status** has the values **Unread**, **Read**, **Favorites** and **Needs attention**. **Needs attention** covers articles whose fetch or text extraction failed and articles with little text.
+- Choosing several values in one filter shows articles that match any of them (OR). Different filters show articles that match all of them (AND).
+- Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
+- The counts next to the values are counts within the current list.
+- When nothing matches, the list shows which filter to remove to get how many articles.
 
-**Sorting.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. It can also group the list by **Source** or **Genre**.
+`Esc` clears the filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
-**Moving through the list.** `j` and `k` (or `↓` and `↑`) move the cursor. `Enter` opens the article, and `Shift+Enter` opens it in Page.
+**Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
+
+**Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view.
 
 ### The right-click menu
 
-Right-click an article in the list, or a Reader or Page tab, for its menu. The menu key and `Shift+F10` open it from the keyboard.
+Right-click an article in the list, or a Reader or Page tab, to open a menu of actions for that article. With the keyboard, press the menu key or `Shift+F10`.
 
-The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from Index…**. A tab with an unsaved page has only the items that make sense for it.
+The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from Index…**. For the tab of a page you have not saved, only the items that apply to it appear.
 
 ### Act on several articles
 
-Click **Select** above the list, then click articles to pick them. `Shift`+click picks a range. `Shift`+click also starts picking without the button. Right-click a picked article for the actions that apply to all of them: favorite, read or unread, and **Add to collection…**. Click **Done** or press `Esc` to stop.
+1. Click **Select** above the list.
+2. Click articles to select them. `Shift`+click selects a range. `Shift`+click also starts selecting without clicking **Select** first.
+3. Right-click the selection to get actions that apply to all of it: favorite, read and unread, and **Add to collection…**.
+
+**Done** or `Esc` ends the selection.
 
 ### Remove an article from the Index
 
-Choose **Remove from Index…** in the ⋯ menu or the right-click menu, and confirm. Lattice deletes the saved HTML, the text, the translations no other article uses, the summaries, tags, images and search entries. This cannot be undone. Chat answers keep their citations. If the article came from a feed, the feed does not import it again.
+Choose **Remove from Index…** in the ⋯ menu or the right-click menu, and confirm. This cannot be undone.
+
+- Removed: the saved HTML, text, summary, tags, images, search data, and translations no other article uses
+- Kept: citations in chat answers
+
+An article that came from a feed is not imported again from that feed.
 
 ## Search and ask
 
 ### Search
 
-Press `/` to search your saved articles. Search is hybrid. It combines full-text matching with semantic matching, so a Japanese query finds English passages and the other way round. It searches the original text and the translations.
+Press `/` to search your saved articles. Lattice's search is a hybrid of full-text search, which finds passages that contain your keywords, and semantic search, which finds passages close in meaning. Thanks to semantic search, a Japanese query finds the matching passage in an English article, and the other way around. Both the original text and translations are searched.
 
-- Results are passages grouped by article. `j` and `k` move between them, `Enter` opens the article in the Reader at that passage, and `Shift+Enter` opens it in Page. `Esc` goes back to the list.
-- The scope menu limits the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow the results further.
-- **Search method** filters the results by kind of match: **Hybrid**, **Full text** or **Meaning**. The search itself always runs both ways. Each result says how it matched: **Full text**, **Meaning** or **Full text + meaning**.
-- Recent searches appear in the navigation while you search.
+- Results list the matching passages, grouped by article. Move with `j` and `k`. `Enter` opens the passage in the Reader, and `Shift+Enter` in the Page view. `Esc` returns to the article list.
+- The scope menu narrows the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow it further.
+- Every search uses both methods. Each result shows whether it matched by **Full text**, **Meaning** or **Full text + meaning**. **Search method** (**Hybrid**, **Full text**, **Meaning**) filters the results shown by how they matched.
+- While you search, the navigation shows your recent searches.
 
-Semantic search runs on your computer with the multilingual-e5-small model (about 470 MB), which Lattice downloads the first time it needs it, usually when it indexes your first article. Until it is ready, results are full text only, and the results say why.
+**The semantic search model.** Semantic search runs the multilingual-e5-small model (about 470 MB) on your computer. Lattice downloads it the first time it is needed, usually when the first article is prepared for search. Until the model is ready, search shows only full-text results and says why in the results.
 
 ### The command palette
 
-`Ctrl+K`, or a click on the box in the title bar, opens the palette. Type to find articles by title, tags, sources, genres and commands at once.
+Press `Ctrl+K` or click the box in the title bar to open the palette. Type to search article titles, tags, sources, genres and commands together. Start with one of these to search only one kind:
 
-| Start with | To find |
+| Prefix | Searches |
 |---|---|
 | `#` | Tags |
-| `@` | Sources: feeds and folders |
+| `@` | Sources (feeds and folders) |
 | `g:` | Genres |
 | `>` | Commands only |
-| `?` | A search of your saved articles |
+| `?` | The text of your saved articles (search) |
 
-- `Enter` runs the highlighted item. `Ctrl`+click opens an article in a new tab.
-- `Tab` adds the highlighted tag, source or genre as a filter and keeps the palette open, so you can stack several.
-- `Ctrl+Enter` searches the text you typed.
-- A pasted URL offers **Open in Page**, **Add to Index (import)** and **Find and add its feed**.
-- Commands include the lists, **Language shown: mixed** (add a number such as `70` to set the percentage), **Language shown: original**, **Language shown: translated**, **Translate this article (queues a job)**, **Open today's review**, **Open vocabulary**, **Open jobs**, **Retry all failed jobs**, **Open chat**, **Manage feeds**, **Bulk import**, **Import Markdown**, **Import a PDF (paper)** and **Open settings**.
+- `Enter` runs the selected item. `Ctrl`+click an article to open it in a new tab.
+- `Tab` adds the selected tag, source or genre to the list's filters. The palette stays open, so you can add several in a row.
+- `Ctrl+Enter` searches for what you typed.
+- Pasting a URL offers **Open in Page**, **Add to Index (import)** and **Find and add its feed** (see [Save a URL](#save-a-url)).
+
+Besides switching lists, the commands include:
+
+- **Language shown: mixed** (add a number such as `70` to set the share too), **Language shown: original** and **Language shown: translated**
+- **Translate this article (queues a job)**
+- **Open today's review**, **Open vocabulary**, **Open jobs**, **Open chat**, **Manage feeds** and **Open settings**
+- **Bulk import**, **Import Markdown** and **Import a PDF (paper)**
+- **Retry all failed jobs**
 
 ### Chat with your articles
 
-**Chat** in the navigation opens the chat pane. Ask a question, and the answer comes from your saved articles only. Numbers in the answer are citations. Click one to open the passage it rests on. If the scope has nothing related, the answer says so instead of guessing.
+Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing.
 
-**Scope** chooses what the answer draws from.
+**Scope.** **Scope** chooses which articles the answer is based on.
 
-- **This article** is the article in the focused tab.
-- **All open articles (3)** covers the saved articles open in your tabs, in every window. Each open article is also listed on its own under **Open articles**.
-- **All articles**, the current list, a collection, a genre, a feed, a folder or a tag.
+- **This article**: the article in the focused tab
+- **All open articles**: the saved articles open in tabs in every window (you can also pick them one by one under it)
+- **All articles**, the current list, a collection, a genre, a feed, a folder or a tag
 
-When the scope's text fits, Lattice sends all of it. Otherwise it sends the passages that search finds most relevant, first at most four per article so the answer can draw on many articles, then more from the same articles if there is room. Each answer says which way it was made. **Context per question** in **Settings › Summaries & chat** sets how much text one question may send.
+**How much is sent.** When the full text of the articles in scope fits, all of it goes to the AI. When it does not fit, Lattice uses search to pick the passages most related to the question. It first takes up to 4 passages per article, from as many articles as possible, and then adds more passages from the same articles while there is room. The answer shows whether it was based on the full text or on excerpts.
 
-- Press `Ctrl+Enter` to send.
-- Follow-up questions see the last three exchanges.
-- Chats are saved. The chat title opens a menu of saved chats, **New chat** and **Delete this chat**.
-- **Ask** in the Reader opens the chat about that article.
-- **Open in a new window** in the chat pane moves the chat to its own window. See [Open a tab in its own window](#open-a-tab-in-its-own-window).
-- To type with Vim keys, turn on **Vim key bindings in the question box**.
+Choose the limit per question in **Context per question** in **Settings › Summaries & chat**: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More context lets the answer draw on more articles, but each question costs more and takes longer.
+
+**Conversations.**
+
+- Follow-up questions are answered with the last three exchanges in mind.
+- Chats are saved. The menu on the chat's title opens a saved chat, starts a **New chat** or runs **Delete this chat**.
+- **Ask** in the Reader starts a chat about that article.
+- **Open in a new window** in the chat pane moves the chat to its own window (see [Open a tab in its own window](#open-a-tab-in-its-own-window)).
+
+**Chat settings** are in **Settings › Summaries & chat**.
+
+| Setting | What it does |
+|---|---|
+| **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
+| **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
+| **Vim key bindings in the question box** | Use Vim keys in the question box. It starts in insert mode, and `Esc` switches to normal mode. `Ctrl+Enter` sends in either mode. Stored on this computer only. |
 
 ## Learn from what you read
 
 ### Quiz yourself
 
-**Quiz** in the Reader or Page toolbar opens a panel next to the article. **Generate a quiz** writes 3 to 8 questions about the article's key points, some open and some multiple choice.
+Click **Quiz** in the Reader or Page view toolbar to open a panel next to the article. **Generate a quiz** has the AI write 3 to 8 questions that check the article's main points. Questions are either short-answer or multiple choice.
 
-1. For a multiple-choice question, pick an option. For an open question, think of the answer (you can type it under **Your answer**; it is not saved) and click **Show answer**.
-2. Read the answer, its explanation and the source links, which jump to the passage.
-3. Grade yourself: **Again**, **Hard**, **Good** or **Easy**, or press `1` to `4`. A multiple-choice answer suggests a grade, which you can change.
+1. For multiple choice, pick an option. For short answer, think of your answer and click **Show answer**. You can type it in **Your answer** if you like (it is not saved).
+2. Read the answer, the explanation and the source. Click the source to jump to that place in the text.
+3. Rate yourself: **Again**, **Hard**, **Good** or **Easy**. The `1`–`4` keys work too. For multiple choice, the rating that matches your answer is preselected, and you can change it.
 
-At the end, **Add to review** sends the questions to [Today's review](#todays-review). The answers you gave count as their first review. **Try again** starts over. If the article or your profile changes, **Regenerate** writes new questions.
+When you have answered every question, **Add to review** puts them in [Today's review](#todays-review). Your ratings from this round count as the first review.
 
-The panel keeps its place when you switch to another screen or tab and come back. It forgets it when Lattice restarts.
+- **Try again** starts over.
+- When the article's text or **About you** has changed, **Regenerate** writes new questions.
+- The panel keeps its state when you move to another screen or tab and come back. It is cleared when you quit Lattice.
 
 ### Save words
 
-When you meet an English word or phrase you do not know, select it in the Reader and click **Save word**, or press `w`. In the Page view, selecting text shows the same button on the page. Lattice saves the word with the sentence it came from and the article.
+To save an unknown English word or phrase, select it in the Reader and click **Save word**, or press `w`. In the Page view, selecting text shows the same button above the page. The word is saved together with the sentence and article it came from.
 
-The AI provider then adds the dictionary form, part of speech, an English definition, an example sentence, the pronunciation (IPA) and the meaning in Japanese. Forms of one word come together: saving "ran" after "run" adds a sentence to "run".
+After you save it, the AI provider adds the headword, part of speech, English definition, example sentence, pronunciation (IPA) and Japanese meaning. Forms of the same word share one entry. For example, saving ran after run adds the sentence with ran to the run entry instead of creating a new one.
 
-Saved words are underlined in the Reader, with their meaning in a tooltip.
+Saved words are underlined in the Reader's text. Hold the pointer over one to see its meaning.
 
-A selection must contain English letters, stay on one line and be at most 64 characters.
+You can save up to 64 characters that contain a Latin letter and do not span a line break.
 
 ### Vocabulary
 
-**Vocabulary** in **Tools** lists your words.
+**Vocabulary** under **Tools** lists your saved words.
 
-- **Search words and meanings** filters the list. Sort by **Recently added** or **Due soonest**.
-- Each word's ⋯ menu has **Edit meaning**, **Go to source**, **Regenerate meaning and example**, **Suspend** (or **Resume**) and **Delete**. A word whose lookup failed has **Look up again**.
-- **Underline saved words in articles** turns the underlines off or on. Stored on this computer only.
-- **Export CSV** writes a CSV file that Anki can import (front, back, tags) to the `exports` folder.
+- **Search words and meanings** narrows the list. Sort by **Recently added** or **Due soonest**.
+- Each word's ⋯ menu has **Edit meaning**, **Go to source**, **Regenerate meaning and example**, **Suspend** (**Resume** when suspended) and **Delete**. A word whose lookup failed shows **Look up again**.
+- **Underline saved words in articles** turns the underlines in the text on or off. Stored on this computer only.
+- **Export CSV** writes a CSV that Anki can import (front, back and tags) to the `exports` folder.
 
 ### Today's review
 
-**Today's review** in the navigation shows how many cards are due. It shows quiz questions and word cards one at a time, spaced out with SM-2, the scheme Anki uses.
+Quiz questions and saved words are asked one card at a time. The intervals follow SM-2, the same method as Anki. Each correct answer makes the interval longer (1 day, then 6 days, then about 2.5 times the previous interval), and **Again** sends the card back to the shortest interval.
 
-Opening it first shows how many cards are due today, how many are questions and words, and how many are new. **Start review** shows the first card. Word cards speak only from then on; opening the screen makes no sound.
+**Today's review** in the navigation shows how many cards are due today. Opening it first shows today's count, split into questions and words, with the number of new cards. Click **Start review** to see the first card.
 
-- A word card shows the word, its IPA and part of speech, and reads the word aloud. The answer side has the English meaning, an example, the Japanese meaning, the sentence you saved and **Go to source**. **Hear the word** and **Hear the example** speak again, and so does `r`.
-- Each grade button shows when the card comes back. Grade with the buttons or `1` to `4`.
-- A card's ⋯ menu removes the card or its whole article from review. For a word, **Suspend this word (resume it in Vocabulary)** stops it.
-- When you finish, Lattice shows what you reviewed and when the next card is due. The list of articles in review lets you remove an article.
+- **Word cards.** The front shows the headword, IPA and part of speech, and the headword is read aloud. The back has the English meaning, example, Japanese meaning, the sentence you saved and **Go to source**. **Hear the word**, **Hear the example** or `r` play them again. Reading aloud starts only after you click **Start review**; opening the screen alone plays no sound.
+- **Rating.** Each rating button shows when the card would come back if you chose it. Rate with the buttons or `1`–`4`.
+- **Taking cards out.** A card's ⋯ menu takes that card, or all cards from its article, out of review. A word card can be stopped with **Suspend this word (resume it in Vocabulary)**.
+- **When you finish**, Lattice shows how many cards you reviewed and when the next card is due. You can also take articles out of review there, from the list of articles under review.
 
-Correct answers stretch the interval: 1 day, 6 days, then about 2.5 times longer each time. **Again** sends the card back to the shortest interval. Daily limits and intervals are in **Settings › Review**. The day changes at midnight on your computer.
+The day changes at midnight by your computer's clock.
 
-Speech uses the English voices of Windows and works offline. If Windows has no English voice, the speaker buttons do not appear.
+Words are read aloud with the English voices installed in Windows, so it works offline. On a computer without an English voice, the speaker buttons do not appear.
 
-## Background jobs
-
-Fetching, rendering, translating and the other slow work runs in the background as jobs. **Jobs** in **Tools** shows them, with a red count in the navigation when some failed.
-
-| Job | What it does |
-|---|---|
-| **Fetch** (`ingest`) | Fetches the page at the URL, extracts the article text and saves it. |
-| **Render** (`render`) | Loads pages whose text a plain fetch does not get in a hidden browser, and saves the rendered page. |
-| **Images** (`images`) | Downloads and stores the article's images. |
-| **Site icons** (`favicon`) | Fetches the site icons shown next to feeds and articles. |
-| **Search index** (`embed`) | Turns the article's paragraphs into vectors for search, on your computer. |
-| **Translation** (`translate`) | Translates the article's paragraphs with the AI provider. |
-| **Summary** (`summarize`) | Writes the article's summary. |
-| **Quiz** (`quiz`) | Writes comprehension questions about the article. |
-| **Word meanings** (`vocab`) | Adds the meaning, definition, pronunciation and example to saved words. |
-| **Classification** (`classify`) | Gives articles a genre, tags and a difficulty, up to 20 per call. |
-| **Importance** (`relevance`) | Rates articles against your profile, up to 20 per call. |
-| **Import filter** (`feed_filter`) | Decides with the LLM which new feed entries to import, up to 20 per call. |
-
-The Jobs screen lists each type by its name. Hover the name for the ID in parentheses. The ⓘ next to each type explains it in the app too.
-
-A job is **Pending**, **Running**, **Waiting to retry** or **Failed**. A job that fails waits and retries by itself after 2, 4, 8 and 16 minutes. After 5 attempts it is **Failed** and stops. **Retry now** runs a waiting job at once, **Retry** runs a failed one again, and **Retry failed** or **Retry all failed** does it for a type or for everything. **Cancel** removes a job that is waiting to retry or failed. A running job cannot be cancelled.
-
-Fetches to the same site run one at a time, so a bulk import does not flood a site.
-
-## Settings
-
-Open **Settings** at the bottom of the navigation. The sections are grouped under **AI**, **Library**, **Controls**, **Data** and **App**. **Feeds →** under **Library** opens **Manage feeds**.
-
-### AI providers
-
-Translation, summaries, classification, importance, quizzes, word meanings, the LLM import filter and chat need an AI provider. Lattice supports these:
-
-| Provider | What it needs |
-|---|---|
-| Claude CLI | The `claude` command, installed and signed in |
-| Codex CLI | The `codex` command, installed and signed in |
-| OpenAI API | An API key |
-| Gemini API | An API key |
-| Anthropic API | An API key |
-
-Set up to three steps. Lattice uses the first and moves to the next when a call fails, for example on a usage limit. A step that failed sits out for 5 minutes. Drag steps to reorder them, or use `Space`, the arrow keys and `Space` again.
-
-For each step, pick the provider, the model and the effort (how hard the model thinks). **Custom model ID** lets you type any model ID. Higher effort can improve quality but is slower and costs more. For translating in bulk, a fast model at low effort works well. If a model does not support the effort you pick, that step fails and the next one takes over.
-
-Under **API keys**, enter the keys for the API providers. Lattice stores them in its database, never shows them again, and leaves them out of backups and exports. Without a saved key, Lattice reads `OPENAI_API_KEY`, `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` from the environment.
-
-### Translation
-
-| Setting | What it does |
-|---|---|
-| **Translate when I switch the view** | Starts translating when you switch the Reader to **Mixed** or **Translated**. On by default. Stored on this computer only. |
-| **Translate saved articles automatically** | Translates every article as soon as it is saved. Off by default, because it uses the provider for every article. Japanese articles are skipped. |
-| **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. For translation into English, it prefers the established English terms. On by default. |
-| **Extra instructions** | Text added to the end of the translation prompt, such as a preferred register or glossary. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows what it adds to. |
-
-Both settings apply to the Reader and to translated pages. Lattice keeps translations separately for each setting. After a change, translate articles again to use it. Changing back shows the earlier translations.
-
-### Summaries & chat
-
-| Setting | What it does |
-|---|---|
-| **About you** | Your work, interests and what you already know. Summaries, chat answers, quizzes, importance and the LLM import filter take it into account. Up to 2,000 characters. |
-| **Extra instructions for summaries** | Added to summaries only. Existing summaries then show that regenerating applies it. |
-| **Extra instructions for chat** | Added to chat answers only, from the next question. |
-| **Context per question** | How much article text one chat question sends: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More text gives more thorough answers but costs more and takes longer. |
-| **Vim key bindings in the question box** | Vim keys in the chat box. It starts in insert mode. `Esc` switches to normal mode. `Ctrl+Enter` sends in either mode. Stored on this computer only. |
-
-### Auto-classification
-
-**Sort saved articles into genres and tag them with the LLM** is on by default. **Classify all unclassified** queues every article that has no genre or difficulty.
-
-### Importance
-
-**Rate newly saved articles** rates new articles while **About you** is filled in. **Lowest importance in Important** sets the minimum for **Important** in the navigation. **Rate again** queues the articles that are unrated or rated against an earlier profile.
-
-### Genres
-
-Lists every genre with its article count. Rename, merge or delete genres here. See [Genres, tags and difficulty](#genres-tags-and-difficulty).
-
-### Import & JS rendering
-
-**Render JS pages automatically** renders articles that came out nearly empty. See [Pages built with JavaScript](#pages-built-with-javascript).
-
-### Import filters
-
-The global filter for all feeds. See [Subscribe to feeds](#subscribe-to-feeds).
-
-### Images
-
-**Save images** downloads article images (PNG, JPEG, GIF, WebP and AVIF) and stores them in the database. SVG images stay links. **Size limit per image** is 5 MB by default and can be 1 to 20 MB. An article can store up to 30 MB of images. Turning this off keeps the images already saved.
-
-### Review
+**Review settings** are in **Settings › Review**.
 
 | Setting | Default |
 |---|---|
 | **New cards per day** | 20 |
 | **Reviews per day** | 200 |
-| **Shortest interval** | 1 day. Under a day, a card comes back the same day, like Anki's learning steps. |
+| **Shortest interval** | 1 day. Below 1 day, a card comes back again the same day (like Anki's learning steps). |
 | **Longest interval** | 365 days |
 | **Say word cards aloud** | On. Stored on this computer only. |
 
-The limits cover quiz cards and word cards together.
+The daily limits count quiz cards and word cards together.
+
+## Background jobs
+
+Slow work such as fetching, rendering and translating runs as background jobs. Check them in **Jobs** under **Tools**. When a job has failed, the navigation shows the count in red.
+
+These are the kinds of jobs. The **Jobs** screen shows each kind by name; hold the pointer over the name to see the ID in parentheses. The ⓘ next to each kind explains it too.
+
+| Job | What it does |
+|---|---|
+| **Fetch** (`ingest`) | Downloads a URL's page, extracts the text and saves it as an article. |
+| **Render** (`render`) | Renders a page whose text a plain download misses in a hidden browser, then saves it again. |
+| **Images** (`images`) | Downloads and saves an article's images. |
+| **Site icons** (`favicon`) | Fetches the site icons shown next to feeds and articles. |
+| **Search index** (`embed`) | Turns an article's paragraphs into vectors for semantic search. Runs on your computer. |
+| **Translation** (`translate`) | Translates an article's paragraphs with the AI provider. |
+| **Summary** (`summarize`) | Writes an article's summary. |
+| **Quiz** (`quiz`) | Writes quiz questions. |
+| **Word meanings** (`vocab`) | Adds meanings, definitions, pronunciation and examples to saved words. |
+| **Classification** (`classify`) | Assigns a genre, tags and a difficulty. Handles up to 20 articles per call. |
+| **Importance** (`relevance`) | Rates articles against **About you**. Handles up to 20 articles per call. |
+| **Import filter** (`feed_filter`) | Has the AI decide whether to import new feed entries. Handles up to 20 entries per call. |
+
+Jobs that use the AI provider, jobs that run on your computer (the search index) and jobs that use the network each wait in their own queue. A long queue of translations therefore never holds up importing. Fetches from the same site run one at a time, so a bulk import does not pile load onto one site.
+
+**Job states and retries.** A job is **Pending**, **Running**, **Waiting to retry** or **Failed**.
+
+- A job that fails goes to **Waiting to retry** and is retried automatically after 2, 4, 8 and 16 minutes. After 5 tries without success, it becomes **Failed** and stops.
+- **Retry now** runs a waiting job without waiting. **Retry** runs a failed job again.
+- **Retry failed** reruns the failed jobs of one kind, and **Retry all failed** the failed jobs of every kind.
+- **Cancel** deletes a waiting or failed job. A running job cannot be canceled.
+
+## Settings
+
+Open **Settings** at the bottom of the navigation. Settings are grouped into **AI**, **Library**, **Controls**, **Data** and **App**. Settings that belong to a feature are explained with that feature.
+
+| Group | Section | Explained in |
+|---|---|---|
+| AI | **AI providers** | [Set up an AI provider](#set-up-an-ai-provider) |
+| | **Translation** | [Translate an article](#translate-an-article) |
+| | **Summaries & chat** | [Write About you](#write-about-you), [Summaries](#summaries), [Chat with your articles](#chat-with-your-articles) |
+| | **Auto-classification** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
+| | **Importance** | [Importance](#importance) |
+| Library | **Genres** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
+| | **Import & JS rendering** | [Pages that don't extract well](#pages-that-dont-extract-well) |
+| | **Import filters** | [Import filters](#import-filters) |
+| | **Images** | [Images](#images) |
+| | **Review** | [Today's review](#todays-review) |
+| Controls | **Display language** | [Display language](#display-language) |
+| | **Shortcuts** | [Keyboard shortcuts](#keyboard-shortcuts) |
+| | **Browser** | [Browser](#browser) |
+| | **Startup & taskbar** | [Startup and taskbar](#startup-and-taskbar) |
+| Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
+| App | **Updates** | [Updates](#updates) |
+
+**Feeds →** in the **Library** group opens the feed manager.
+
+### Images
+
+With **Save images** on, Lattice downloads an article's images (PNG, JPEG, GIF, WebP, AVIF) and stores them in the database. SVG images are not saved; they stay links to their original location.
+
+- **Size limit per image** is 5 MB by default and can be set from 1 to 20 MB.
+- The images saved for one article total at most 30 MB.
+- Turning it off does not delete images already saved.
 
 ### Display language
 
-The app's language: Japanese or English. Lattice starts in your system's language and switches at once, without a restart. The display language does not change which way articles are translated.
+Choose Japanese or English for menus, buttons and messages. At first, Lattice follows the Windows language. The change takes effect at once, without a restart. The direction of article translation (Japanese articles into English, others into Japanese) does not change.
 
 ### Shortcuts
 
-Lists every shortcut. **+ Add key** records the next key you press, with modifier keys if you hold them. An action can have several keys. When a key belongs to two actions, the one higher in the list wins, and the list warns you. **Reset to default** resets one action, and **Reset all to defaults** resets all of them. Shortcuts are stored on this computer only.
+Lists every shortcut.
+
+- **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
+- When a key is assigned to two actions, the one higher in the list wins, and a warning appears.
+- **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys.
+
+Shortcuts are stored on this computer only.
 
 ### Browser
 
-**Search engine** is used for text typed in the URL bar and for the home button: DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For a custom engine, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
+**Search engine** is used when you type something other than a URL in the Page view's URL field, and for the home button. Choose DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For **Custom**, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
 
-### Startup & taskbar
+### Startup and taskbar
 
-**Start Lattice when Windows starts** opens Lattice when you sign in. It is off by default. Turning Lattice off in Task Manager's Startup apps also turns this switch off.
-
-**Show the unread count on the taskbar** puts the number of unread articles on Lattice's taskbar button. It shows 99+ from 100 up and nothing at zero.
-
-### Backup
-
-**Back up now** writes a copy of the database to the `backups` folder. **Backups to keep** sets how many copies to keep, 30 by default. Lattice deletes the oldest copies beyond that number and never deletes by age.
-
-### Cloud backup (R2)
-
-Uploads a gzip-compressed copy of the database, without API keys, to a Cloudflare R2 bucket on a schedule. Enter the Account ID, bucket, Access Key ID and Secret Access Key, turn on **Automatic backup**, and set **Interval (hours)** (24 by default) and **Backups to keep** (30 by default). **Back up to R2 now** runs one at once. Several computers can back up to the same bucket.
-
-The [`infra/r2`](../infra/r2/README.md) folder has Terraform that creates the bucket, and explains how to create the access key and how to restore. Restoring is manual.
-
-### Export
-
-**What to export** chooses the whole library or one collection. **Export** writes gzip-compressed JSON Lines to the `exports` folder: articles, blocks, translations, summaries, tags, genres, feeds and folders, collections, quizzes and chats. An export of one collection leaves the chats out. API keys, other settings, saved words, the fetched HTML, images and search vectors are not exported. To keep those, use a backup. For saved words, **Export CSV** in Vocabulary also works.
-
-### Logs & storage
-
-Shows where the database, backups, exports, search model and logs are. **Change…** moves the data to another folder. A portable copy has no **Change…**: its data stays next to `Lattice.exe`. See [Where your data is](#where-your-data-is).
+- **Start Lattice when Windows starts**: opens Lattice when you sign in to Windows. Off by default. Turning Lattice off in Task Manager's Startup apps also turns this setting off.
+- **Show the unread count on the taskbar**: shows the number of unread articles on Lattice's taskbar button. It shows 99+ from 100 up, and nothing at zero.
 
 ### Updates
 
-**Check for updates** looks for a new version on GitHub Releases. Lattice also checks at startup and shows a bar under the title bar when a new version is out, with **Release notes**, **Update and restart** and **Later**. The update is installed only after its signature checks out, and your data stays as it is. For a portable copy the bar has **Download page** instead: update it by replacing `Lattice.exe` with the one from the new zip.
+**Check for updates** looks for a new version on GitHub's Releases page. Lattice also checks when it starts, and shows a bar below the title bar when a new version is available.
+
+- **Installed copy.** **Update and restart** in the bar downloads the new version, verifies its signature, installs it and restarts. Your data stays as it is. **Release notes** shows what changed, and **Later** closes the bar.
+- **Portable copy.** It does not update itself. Use **Download page** in the bar to download the new zip, and replace your `Lattice.exe` with the one in it.
 
 ## Keyboard shortcuts
 
@@ -544,38 +676,38 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 
 ### Lists and navigation
 
-| Action | Default keys |
+| Action | Default key |
 |---|---|
 | Command palette | `Ctrl+K` |
 | Search | `/` |
 | Next item | `j`, `↓` |
 | Previous item | `k`, `↑` |
-| Open the article under the cursor | `Enter` |
-| Open the article under the cursor in Page | `Shift+Enter` |
-| Back / clear filters | `Esc` |
-| Back (in-app history) | `Alt+←` |
-| Forward (in-app history) | `Alt+→` |
+| Open the article at the cursor | `Enter` |
+| Open the article at the cursor in Page | `Shift+Enter` |
+| Back, clear filters | `Esc` |
+| Back (app history) | `Alt+←` |
+| Forward (app history) | `Alt+→` |
 | Move a feed or folder up (sidebar) | `Alt+↑` |
 | Move a feed or folder down (sidebar) | `Alt+↓` |
 
 ### Articles
 
-| Action | Default keys |
+| Action | Default key |
 |---|---|
-| Switch between Reader and Page | `v` |
+| Switch Reader / Page | `v` |
 | Less translated text | `[` |
 | More translated text | `]` |
 | Favorite | `s` |
 | Read / unread | `m` |
 | Focus mode | `f` |
 | Save the selected English word to Vocabulary | `w` |
-| Hear the word card again | `r` |
+| Hear a word card again | `r` |
 
-`[` and `]` change the share of translated text. For a Japanese article that is the share of English.
+`[` and `]` change the share of translated text. In a Japanese article the translation is English, so they change the share of English.
 
 ### Tabs, panes and windows
 
-| Action | Default keys |
+| Action | Default key |
 |---|---|
 | New tab | `Ctrl+T` |
 | Close tab | `Ctrl+W` |
@@ -584,38 +716,43 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Split pane right | `Ctrl+\` |
 | Split pane down | `Ctrl+-` |
 | Open the tab in a new window / move it back to the main window | `Ctrl+Shift+N` |
-| Pane prefix (then ← → ↑ ↓ / h j k l, o, z, " %, x, c n p) | `Ctrl+B` |
+| Pane prefix ([keys that follow](#control-panes-with-the-keyboard)) | `Ctrl+B` |
 
 ### Fixed keys
 
-These keys cannot be changed.
+These keys cannot be changed in **Settings › Shortcuts**.
 
-| Key | Where | What it does |
+| Key | Where | Action |
 |---|---|---|
-| `Enter` | A focused paragraph in the Reader | Flips it between the original and the translation |
-| `1` to `4` | A quiz or review card | Grades it |
-| `Ctrl+Enter` | The chat box | Sends the question |
-| `Tab` | The palette | Adds the highlighted item as a filter |
-| `Ctrl+Enter` | The palette | Searches, or saves a pasted URL |
-| Menu key, `Shift+F10` | A list row, a tab or a feed folder in the navigation | Opens its right-click menu |
-| `Ctrl+P` | A web page | Prints it |
-| `Esc` | A dragged tab | Puts it back |
-| Mouse back and forward buttons | Anywhere | In-app history, or the page's history over a page |
+| `Enter` | A focused paragraph in the Reader | Switch between original and translation |
+| `1`–`4` | Quiz and review cards | Rate |
+| `Ctrl+Enter` | The chat box | Send the question |
+| `Tab` | The palette | Add the selected item to the filters |
+| `Ctrl+Enter` | The palette | Search for what you typed, or save a pasted URL |
+| Menu key, `Shift+F10` | A list row, a tab, a feed folder in the navigation | Open the right-click menu |
+| `Ctrl+P` | A web page in the Page view | Print |
+| `Esc` | A tab being dragged | Cancel the drag and put it back |
+| Mouse back and forward buttons | Anywhere | Move through the app history (the page's history over a web page) |
 
-### Shortcuts while a web page has the focus
+### When a web page has the focus
 
-When you click into a web page, the page gets the keyboard. Lattice still catches its own shortcuts there.
+When you click a web page in the Page view, the keyboard goes to that page. Lattice's shortcuts still work under these conditions:
 
-- `Ctrl+K`, `Ctrl+B` and the other `Ctrl` shortcuts work everywhere, even in the page's text fields.
-- Single-letter shortcuts such as `j`, `s` and `v` work outside the page's text fields, unless the page uses the key itself.
-- `Enter`, `Esc`, the arrow keys and `Space` stay with the page, for scrolling and its own controls.
-- `Alt+←`, `Alt+→` and the mouse buttons move through the page's history. `w` and `r` do nothing there: use the button on the page to save a word.
+- Shortcuts with `Ctrl`, such as `Ctrl+K` and `Ctrl+B`, work even inside the page's text fields.
+- Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
+- `Enter`, `Esc`, the arrow keys and `Space` belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts.
+- `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
+- `w` and `r` do not work on a page. Save words with the button that appears above the page.
 
 ## CLI and MCP
 
-`lattice-cli` reads and adds to your library from a terminal, and serves it to AI agents such as Claude Code over MCP. Both the installer and portable zip include `lattice-cli.exe` next to the GUI executable. The installer defaults to `%LOCALAPPDATA%\Lattice` and does not add the CLI to PATH. It uses the same data as the app, including the portable data folder and a folder you chose in **Settings › Logs & storage**, and works while the app is running.
+`lattice-cli.exe` searches and reads your saved articles from a terminal. Run as an MCP server, it serves them to AI agents such as Claude Code.
 
-For a custom installation folder, replace the executable path in the examples below. For a portable copy, use `.\lattice-cli.exe` from its extracted folder. That copy uses its adjacent `data`, so use `--data-dir PATH` to access a different library. Stop MCP clients before updating or uninstalling Lattice so they release the CLI executable.
+- Both the installer and the portable zip put it in the same folder as `Lattice.exe`. The installer's default location is `%LOCALAPPDATA%\Lattice`. It is not added to PATH, so run it by its full path.
+- It uses the same data as the app, including a portable copy's `data` folder or a folder chosen in **Settings › Logs & storage**. It works while the app is running.
+- In a portable copy, run `.\lattice-cli.exe` from the unzipped folder. It uses the `data` folder next to it. Pass `--data-dir PATH` to use another library.
+- The examples below assume the default installation. If you installed elsewhere, change the path to the executable.
+- Before you update or uninstall Lattice, quit your MCP clients so that no CLI process is running.
 
 ### Commands
 
@@ -629,29 +766,29 @@ For a custom installation folder, replace the executable path in the examples be
 
 | Command | What it does |
 |---|---|
-| `search QUERY` | Hybrid search over the saved text. `--scope`, `--limit` (20 by default). |
-| `get ID` | One article: metadata, summary and text. `--blocks` lists the blocks with their ids. `--translation` adds the stored translation. |
-| `list` | Saved articles, newest first. `--scope`, `--limit` (50 by default). |
-| `summary ID` | An article's stored summary |
-| `tags` | Tags with their article counts |
-| `genres` | Genres with their article counts |
-| `feeds` | Subscribed feeds, with their folders |
-| `collections` | Collections with their ids and article counts |
-| `jobs` | Queued, running and failed jobs |
-| `ask QUESTION` | Answers from your saved articles with citations, through the app's AI providers. `--scope`. |
-| `save URL` | Saves a URL. Needs write access. `--run` fetches it now instead of leaving it to the app. |
-| `tag ID NAME` | Adds a tag. Needs write access. |
-| `read ID` | Marks an article as read. Needs write access. |
-| `favorite ID` | Stars an article. Needs write access. |
-| `mcp` | Serves the commands to agents as an MCP server over stdio |
+| `search QUERY` | Hybrid search over your saved articles. `--scope`, `--limit` (default 20). |
+| `get ID` | One article's metadata, summary and text. `--blocks` adds paragraphs with their IDs, and `--translation` adds saved translations. |
+| `list` | Saved articles, newest first. `--scope`, `--limit` (default 50). |
+| `summary ID` | An article's saved summary. |
+| `tags` | Tags with article counts. |
+| `genres` | Genres with article counts. |
+| `feeds` | Your feeds and their folders. |
+| `collections` | Collections with their IDs and article counts. |
+| `jobs` | Pending, running and failed jobs. |
+| `ask QUESTION` | Answers from your saved articles, with citations, using the AI provider set up in the app. `--scope`. |
+| `save URL` | Saves a URL. Needs write permission. With `--run`, the CLI fetches it on the spot instead of leaving it to the app. |
+| `tag ID NAME` | Adds a tag to an article. Needs write permission. |
+| `read ID` | Marks an article as read. Needs write permission. |
+| `favorite ID` | Marks an article as a favorite. Needs write permission. |
+| `mcp` | Serves these commands to agents as an MCP server over stdio. |
 
-These options work with every command:
+Options for every command:
 
-- `--format json` (the default) or `--format text`, which is easier to read.
-- `--data-dir PATH` uses another data folder.
-- `--allow-write` allows `save`, `tag`, `read` and `favorite`. Setting `LATTICE_ALLOW_WRITE=1` does the same.
+- `--format json` (the default) or `--format text` (easier for people to read)
+- `--data-dir PATH`: use another data folder.
+- `--allow-write`: allow `save`, `tag`, `read` and `favorite`. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
 
-`lattice-cli --help` lists everything.
+`lattice-cli --help` also lists the commands.
 
 ### Scopes
 
@@ -661,24 +798,24 @@ These options work with every command:
 |---|---|
 | `all` | Every article (the default) |
 | `unread` | Unread articles |
-| `favorites` | Starred articles |
-| `tag:NAME` | Articles with this tag |
-| `genre:NAME` | Articles in this genre (`genre:none` for unclassified ones) |
-| `feed:ID` | Articles from this feed (`feed:none` for articles added by hand) |
-| `folder:ID` | Articles from the feeds in this folder |
-| `collection:ID` | Articles in this collection (`group:ID` also works) |
-| `important` or `important:MIN` | Articles rated at least MIN (by default the threshold in **Settings › Importance**) |
-| `article:ID` or `article:3,7` | These articles |
+| `favorites` | Favorite articles |
+| `tag:NAME` | Articles with that tag |
+| `genre:NAME` | Articles in that genre (`genre:none` for unclassified articles) |
+| `feed:ID` | Articles from that feed (`feed:none` for articles added by hand) |
+| `folder:ID` | Articles from the feeds in that folder |
+| `collection:ID` | Articles in that collection (`group:ID` also works) |
+| `important` or `important:MIN` | Articles rated at least MIN (by default, the value chosen in **Settings › Importance**) |
+| `article:ID` or `article:3,7` | The given articles |
 
-`feeds` shows the feed ids, and with `--format json` the folder ids too. `collections` shows the collection ids.
+`feeds` shows feed IDs and `collections` shows collection IDs. Folder IDs appear with `--format json`.
 
 ### What the CLI does and does not do
 
-- Search works like the app's. If the app has not downloaded the semantic search model, the CLI does not download it: results are full text only, and the JSON says so.
-- A question from `ask` appears in the app's chat history.
-- `save` queues the fetch, and the running app picks it up within 30 seconds. With `--run`, the CLI fetches the page, its images and, if the model is there, its search vectors itself. Classification, importance, automatic translation and rendering still wait for the app.
-- Changes from `tag`, `read` and `favorite` show in the app the next time it reloads the list.
-- The CLI cannot unstar, mark as unread, remove tags or delete articles. Agents get only actions that are easy to undo.
+- Search gives the same results as the app. If the app has not downloaded the semantic search model yet, the CLI does not download it and answers with full-text search only. The JSON output says so.
+- Questions asked with `ask` also appear in the app's chat history.
+- `save` only queues the fetch; a running app fetches it within 30 seconds. With `--run`, the CLI itself fetches the page, its images and, if the model is present, the search vectors. In both cases, classification, importance, automatic translation and rendering are left to the app.
+- Changes made with `tag`, `read` and `favorite` show in the app the next time it reloads the list.
+- The CLI cannot remove favorites, mark articles unread, remove tags or delete articles. Agents are limited to actions that are easy to undo.
 
 ### Use Lattice from Claude Code
 
@@ -686,22 +823,24 @@ These options work with every command:
 claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
-This gives the agent `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
+With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
 
-### Prompt injection
+### Watch out for prompt injection
 
-Your saved articles are web pages written by other people. An agent that reads them can be steered by instructions hidden in the text. Every tool result starts with a note that the content is untrusted and must not be followed, and results are capped at 25,000 characters. That lowers the risk but does not remove it.
+Saved articles are web pages written by other people. An agent that reads them can follow instructions planted in the text (prompt injection).
 
-- Keep write access off unless you need it.
-- Do not give an agent session that reads your articles tools that can do damage, such as a shell, file writes or email.
+Lattice starts every tool result with a notice that the content is untrusted outside text and that instructions in it must not be followed. It also cuts each result at 25,000 characters. The risk remains anyway, so:
 
-## Data, privacy and safety
+- Don't allow writes (`--allow-write`) unless you need them.
+- Don't give an agent session that reads your articles risky tools at the same time, such as running shell commands, writing files or sending email.
+
+## Data and backups
 
 ### Where your data is
 
-Lattice keeps all its data in one SQLite file: articles, the fetched HTML, translations, summaries, images, the search index, chats, quizzes, words and settings.
+All of Lattice's data is in one SQLite database file: articles, the fetched HTML, translations, summaries, images, search data, chats, quizzes, words and settings. For an installed copy, the default locations are:
 
-| What | Where (installed version) |
+| What | Where |
 |---|---|
 | Database | `%APPDATA%\Lattice\lattice.db` |
 | Backups | `%APPDATA%\Lattice\backups\` |
@@ -709,121 +848,157 @@ Lattice keeps all its data in one SQLite file: articles, the fetched HTML, trans
 | Semantic search model | `%APPDATA%\Lattice\models\` |
 | Logs | `%LOCALAPPDATA%\Lattice\logs\` |
 
-**Settings › Logs & storage** shows the exact paths. **Open folder** opens the data folder currently in use, including custom and portable locations.
+**Settings › Logs & storage** shows the locations actually in use. **Open folder** opens the data folder in use.
 
-Development builds use a separate `Lattice Dev` folder. Data in identifier-based folders from older test builds is not moved automatically.
+- A **portable copy** keeps everything in the `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
+- **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
+- **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-Logs use `%LOCALAPPDATA%\Lattice\logs`, even when you move the library. Development logs use `%LOCALAPPDATA%\Lattice Dev\logs`. Historical logs remain in the old identifier folder. Changing the application identifier creates a new browser profile; logins from older test builds are not carried over.
+**Settings stored on this computer only.** These settings are stored on the computer instead of in the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
 
-**Portable copy.** The portable zip keeps everything in a `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
+### Move the data folder
 
-**Move the data.** In **Settings › Logs & storage**, click **Change…** and choose a folder. Lattice copies the database, backups, exports and the search model there and uses the new folder after a restart. Restart right away: anything changed after the copy stays behind. The old copy is not deleted. Delete it yourself when you no longer need it. If the folder already holds Lattice data, Lattice switches to it without copying. If the chosen folder cannot be used at startup, Lattice opens the default folder and the settings page says why.
+Click **Change…** in **Settings › Logs & storage** and choose a new folder (a portable copy has no such button).
 
-Some preferences are stored per computer instead of in the database: shortcuts, the search engine, **Translate when I switch the view**, the Vim setting, speech, underlines, recent searches, the Page view's summary button, folder expansion and the window layout. They are not in backups.
+1. Lattice copies the database, backups, exports and search model to the new folder. API keys are copied with the database.
+2. After a restart, Lattice uses the new folder. Anything added or changed after the copy stays behind, so restart as soon as the copy finishes.
+3. The data in the old folder is not deleted. Delete it yourself when you no longer need it.
+
+If the chosen folder already holds Lattice data, Lattice switches to that data without copying. If the chosen folder is missing or unusable at startup, Lattice starts with the default location and the settings screen says why.
+
+### Backup
+
+**Back up now** in **Settings › Backup** writes a copy of the database to the `backups` folder. Beyond **Backups to keep** (30 by default), the oldest copies are deleted. Copies are never deleted because of their age.
+
+A backup contains articles, images, translations, words, review history and the settings in the database. It does not contain API keys or the R2 Secret Access Key, nor the [settings stored on this computer only](#where-your-data-is).
+
+### Cloud backup (R2)
+
+**Settings › Cloud backup (R2)** uploads a copy of the database to a Cloudflare R2 bucket on a schedule. The copy is compressed with gzip and leaves out API keys.
+
+1. Enter the Account ID, bucket, Access Key ID and Secret Access Key.
+2. Turn on **Automatic backup**.
+3. Set **Interval (hours)** (24 by default) and **Backups to keep** (30 by default).
+
+**Back up to R2 now** uploads one right away. Several computers can back up to the same bucket.
+
+[`infra/r2`](../infra/r2/README.md) has Terraform that creates the bucket and explains how to create the access key and how to restore.
 
 ### Restore a backup
 
-A local backup is a consistent SQLite snapshot named `backups/lattice-<Unix seconds>.db`. It contains articles, images, translations, vocabulary, review history and database settings. It excludes API keys and the R2 secret. Preferences stored in browser local storage, such as shortcuts and window layout, are not part of the database backup.
+Restoring is done by hand. It replaces the database file, so keep every process that uses the library (Lattice, `lattice-cli`, MCP servers) stopped while you work. Do not replace the database while any of them is running.
 
-Restore a backup while every process that uses the library is closed. Do not replace the database while Lattice, `lattice-cli` or an MCP server is running.
+A local backup is a SQLite file named `backups/lattice-<Unix seconds>.db`, a database that can be used as it is.
 
-1. In **Settings › Logs & storage**, note the full database path. Use this path if you moved the data folder or use a portable copy.
-2. Copy the chosen backup to a separate folder. Keep the original backup unchanged. If the file ends in `.db.gz`, extract it first. See [R2 backup retrieval](../infra/r2/README.md#3-復元) for downloading a cloud backup.
-3. Close all Lattice windows, CLI commands and MCP servers that use this database.
-4. Move the current `lattice.db` to a recovery folder. Move `lattice.db-wal` and `lattice.db-shm` there too if they exist. Keep these files together. Do not leave an old WAL or SHM file beside the restored database.
-5. Copy the backup database into the original database folder and name the copy `lattice.db`.
-6. Start Lattice. Check the articles, images, translations, words and review history.
-7. Re-enter the API keys and R2 Secret Access Key in Settings. Confirm that backups work again before deleting the recovery copy.
+1. In **Settings › Logs & storage**, note the full path of the database. Use the path shown there even if you moved the data folder or use a portable copy.
+2. Copy the backup you want to restore to a separate folder. Leave the original backup untouched. If its name ends in `.db.gz`, extract it first. To download a backup from R2, see [R2 restore steps](../infra/r2/README.md#3-復元).
+3. Close every Lattice window, CLI command and MCP server that uses this database.
+4. Move the current `lattice.db` to a recovery folder. If `lattice.db-wal` and `lattice.db-shm` exist, move them with it. Don't leave an old WAL or SHM file in the original folder.
+5. Copy the backup database into the original folder and name it `lattice.db`.
+6. Start Lattice and check that the articles, images, translations, words and review history are there.
+7. Enter the API keys and the R2 Secret Access Key again in Settings. Keep the files in the recovery folder until you have confirmed that backups work again.
 
-If you need to return to the previous database, close all library processes again. Move the restored database and its current WAL and SHM files aside together, then return the complete original set from the recovery folder.
+To go back to the database from before the restore, first close every process that uses the library again. Then move the restored database and its WAL and SHM files aside together, and put back the complete set of original files from the recovery folder.
+
+### Export
+
+**Settings › Export** writes the library's contents as gzip-compressed JSON Lines to the `exports` folder, for using your data in other tools. **What to export** chooses the whole library or one collection.
+
+- **Included:** articles, paragraphs, translations, summaries, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
+- **Not included:** API keys and other settings, saved words, the fetched HTML, images and search vectors
+
+To keep what is not included, use a [backup](#backup). Saved words can also be exported with **Export CSV** in Vocabulary.
+
+## Privacy and safety
 
 ### What goes to AI providers
 
-Lattice sends text to the AI provider you set up only for these features:
+Lattice sends text to the AI provider you set up only when you use these features:
 
 | Feature | What is sent |
 |---|---|
-| Translation | The paragraphs to translate, and your translation instructions |
-| Translated pages | The paragraphs of the page you view, while **Mixed** or **Translated** is on |
+| Translation | The paragraphs to translate, and your translation **Extra instructions** |
+| Translation in the Page view | The paragraphs of the page you are viewing (only while **Mixed** or **Translated** is chosen) |
 | Summaries | The article text, **About you** and your summary instructions |
-| Classification | The title, domain, and the summary or the start of the text |
-| Importance | The title, domain, the summary or the start of the text, and **About you** |
+| Classification | The title, the domain, and the summary or the start of the text |
+| Importance | The title, the domain, the summary or the start of the text, and **About you** |
 | Quizzes | The article text and **About you** |
 | Word meanings | The word and the sentence you saved it with |
-| LLM import filter | Each entry's title, URL and excerpt, **About you** and your instructions |
-| Chat | Your question, the article text in the scope, the last three exchanges, **About you** and your chat instructions |
+| LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |
+| Chat | Your question, the text of the articles in scope, the last three exchanges, **About you** and your chat instructions |
 
-Semantic search, speech and extraction run on your computer. The CLI providers use your own sign-in to those tools.
+Semantic search, reading aloud and text extraction run only on your computer. The Claude CLI and Codex CLI providers use the accounts you signed in to those CLIs with.
 
 ### API keys
 
-API keys and the R2 secret are stored in the local database. They are never shown again, and they are left out of backups, R2 uploads and exports. **Change…** in **Settings › Logs & storage** copies them to the new folder with the rest of the database.
+API keys and the R2 Secret Access Key are stored in the local database. They are never shown after you save them, and are left out of backups, R2 uploads and exports. When you move the data folder with **Change…** in **Settings › Logs & storage**, they are copied to the new folder with the database.
 
 ### Article content is untrusted
 
-Saved pages are written by other people, so Lattice treats their content as data, never as instructions.
+Saved pages are written by other people. Lattice treats their content as data, never as instructions.
 
-- The app shows article text as plain text. Article HTML never runs inside Lattice's own window.
-- Web pages run in a separate browser that can only open http and https addresses and can reach only a few narrow Lattice functions.
-- AI providers never get tools. The CLI providers run with tools, MCP servers and user settings turned off, in an empty temporary folder. Every prompt tells the model to ignore instructions in the article.
-- Translations that go back into a page are cleaned of scripts and unsafe links first.
-- By default, direct HTTP fetches reject private network addresses.
+- Article text is shown as text. An article's HTML or scripts never run inside Lattice's own window.
+- Web pages are shown in a browser kept apart from Lattice itself. That browser can open only http and https addresses and can call only a few Lattice functions.
+- AI providers never get tools such as file access or running commands. The Claude CLI and Codex CLI run with tools, MCP servers and user settings turned off, in an empty temporary folder. Every prompt tells the AI not to follow instructions in the article.
+- Translations put back into a page in the Page view have scripts and unsafe links removed first.
 
-### Article download destinations
+### Article download restrictions
 
-The default restriction applies to direct HTTP downloads of articles, PDFs, feeds, saved images, and site icons, including redirects. It does not govern the built-in browser, JavaScript rendering, AI providers, backups, or semantic search model downloads.
+For what Lattice downloads directly over HTTP (articles, PDFs, feeds, images and site icons), it refuses private network addresses such as `localhost` and `192.168.x.x` by default. It also checks the address a redirect leads to.
 
-Version 0.1.0 has no settings UI for destination rules. Previously saved rules still apply. Configuration for internal sites is planned as [advanced article download settings](roadmap.md#記事取得の詳細設定).
-
-OS and environment proxy settings, including proxy bypass rules, remain enabled. A proxy resolves destination hostnames itself, so Lattice cannot verify its final destination IP. Use the proxy's own access rules when you need to restrict those addresses.
+- This restriction does not apply to the built-in browser, JavaScript rendering, AI providers, backups or the semantic search model download.
+- Version 0.1.0 has no screen for setting which destinations are allowed (rules saved by an earlier version still apply). Settings for allowing internal sites and similar exceptions are planned as [advanced article download settings](roadmap.md#記事取得の詳細設定).
+- OS and environment proxy settings, including addresses that bypass the proxy, are used as they are. Through a proxy, the proxy decides the final IP address, so Lattice cannot check it. To restrict where proxied connections go, set rules on the proxy.
 
 ## Troubleshooting
 
 ### Translation seems stuck
 
-- Open **Jobs**. A translation job that is **Running** is still working. With a CLI provider, one call can take several minutes for a long article. The log records how long each AI job took.
-- A **Waiting to retry** job failed and will try again, for example after a usage limit. **Retry now** runs it at once.
-- If the toolbar shows **Translate the rest**, part of the article is not translated yet. Click it.
-- A Japanese article is translated into English. That is expected, not a wrong language guess.
-- If nothing happens at all, check **Settings › AI providers**. Every feature that uses an AI provider needs at least one working step.
+- Open **Jobs**. If the translation job is **Running**, it is still working. With a CLI provider, one call for a long article can take several minutes. The time each AI job took is written to the log.
+- A job **Waiting to retry** has failed once and is waiting, for example for a usage limit to reset. **Retry now** runs it without waiting.
+- If the toolbar shows **Translate the rest**, some paragraphs are not translated yet. Click it to continue.
+- Japanese articles are translated into English. That is not a language detection mistake.
+- If nothing happens, check **Settings › AI providers**. At least one working provider step is needed.
 
 ### Search shows only full-text results
 
-The search results say that they show full-text matches only, and why. Usually the semantic search model is still downloading, or the computer was offline when it tried. **Retry** tries again. New articles join semantic search after their **Search index** job runs.
+The results say why only full-text results are shown. Usually the semantic search model is still downloading, or you were offline when Lattice tried to download it. **Retry** tries the download again. A newly saved article becomes findable by semantic search once its **Search index** job finishes.
 
 ### A page will not save, or saves with little text
 
-- An article marked **Fetch failed** could not be downloaded. Some sites refuse anything but a browser. Open it in Page and choose **Add to Index**, or **Import again from the page as shown** if it is already saved.
-- An article marked **Little text** may be drawn by JavaScript. Choose **Render and import again** in the ⋯ menu, or use the Page view as above.
-- If a site needs a login, sign in in the Page view first. The hidden browser that renders pages shares those logins.
-- A PDF that is only scanned images has no text to import.
+- An article marked **Fetch failed** could not be downloaded. Some sites refuse requests that don't come from a browser. Open it in the Page view and click **Add to Index**, or, for a saved article, choose **Import again from the page as shown**.
+- An article marked **Little text** may be a page built with JavaScript. Use **Render and import again** in the ⋯ menu, or the Page view method above.
+- For sites that need a login, log in in the Page view first. The hidden browser that renders pages uses the same login.
+- A PDF made only of scanned images has no text data, so there is no text to import.
+
+See [Pages that don't extract well](#pages-that-dont-extract-well) for details.
 
 ### A feed does not import what I expect
 
-- **Manage feeds** shows each feed's errors. **Refresh all** checks every feed now.
-- Check **Rejected entries** under **Edit** for entries a filter left out, with the reason.
-- A new feed imports only its latest 20 entries.
+- Check each feed's errors in the feed manager. **Refresh all** checks every feed now.
+- Look in **Rejected entries** under the feed's **Edit** for entries an import filter skipped, with the reason.
+- A newly added feed imports only its latest 20 entries. Older entries are not imported.
 
-### Shortcuts do nothing in a web page
+### Shortcuts do nothing on a web page
 
-The page has the keyboard. Single-letter shortcuts work only outside the page's text fields and only when the page does not use the key. `Ctrl+K` always works. Clicking anywhere outside the page gives the keyboard back to Lattice.
+The keyboard is going to the web page. Single-key shortcuts work only outside the page's text fields, and only when the page does not use that key itself. `Ctrl+K` always works. Click outside the page (the article list, for example) to give the keyboard back to Lattice.
 
-### A moved tab reloaded its page
+### A tab moved to another window reloaded its page
 
-A web page loads again when its tab moves to another window, and its back and forward history does not move with it. This is expected.
+That is expected. When a tab moves to another window, its web page reloads, and the back and forward history is not carried over.
 
 ### A menu over a web page appears a moment late
 
-Menus that open over a web page wait until the page is hidden behind a still image, then appear all at once. Hovering a ⋯ button before you click it makes this faster.
+A menu that overlaps a web page appears after the page is replaced by a still image and moved behind it, which takes a moment. Resting the pointer on the ⋯ button before clicking it makes the menu appear faster.
 
 ### Lattice opened an empty library
 
-If the data folder you chose cannot be found or used, Lattice starts with the default folder. **Settings › Logs & storage** shows the reason. Fix the folder, or choose it again with **Change…**.
+If the chosen data folder is missing or unusable, Lattice starts with the default location. **Settings › Logs & storage** shows why. Fix the folder, or choose another one with **Change…**.
 
-### Updates
+### Updates cannot be checked
 
-If **Settings › Updates** says automatic updates are not set up, this build cannot check for updates. Download new versions from the [Releases page](https://github.com/Maru32768/lattice/releases). A portable copy never updates itself: replace `Lattice.exe` with the one from the new zip.
+If **Settings › Updates** says automatic updates are not configured, that build cannot check for updates. Get new versions from the [Releases page](https://github.com/Maru32768/lattice/releases). A portable copy never updates itself; replace its `Lattice.exe` with the one from the new zip.
 
 ### Where are the logs?
 
-In `%LOCALAPPDATA%\Lattice\logs\`, or in `data\logs` for a portable copy. **Settings › Logs & storage** shows the active path. Failed jobs, backups and the duration of each AI job are logged there.
+Logs are in `%LOCALAPPDATA%\Lattice\logs\` (`data\logs` in a portable copy). **Settings › Logs & storage** shows the actual location. The logs record failed jobs, backup results and the time each AI job took.
