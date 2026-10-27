@@ -14,10 +14,10 @@ pub const PORTABLE_MARKERS: [&str; 2] = ["portable", "lattice.portable"];
 pub const BOOTSTRAP_FILE: &str = "data-location.json";
 pub const DB_FILE: &str = "lattice.db";
 /// The installed app's Tauri identifier (`tauri.conf.json`).
-pub const RELEASE_APP_IDENTIFIER: &str = "dev.lattice.app";
+pub const RELEASE_APP_IDENTIFIER: &str = "dev.marulabs.lattice";
 /// Debug builds of the app and CLI share a separate default data folder.
 pub const APP_IDENTIFIER: &str = if cfg!(debug_assertions) {
-    "dev.lattice.app.debug"
+    "dev.marulabs.lattice.debug"
 } else {
     RELEASE_APP_IDENTIFIER
 };
@@ -105,44 +105,13 @@ fn detect_at(exe_dir: &Path, data_root: &Path) -> io::Result<Location> {
         return Ok(loc);
     }
     let default_dir = data_root.join(APP_DATA_FOLDER);
-    let legacy_dir = data_root.join(APP_IDENTIFIER);
-    migrate_legacy(&legacy_dir, &default_dir)?;
     let bootstrap = match std::fs::read_to_string(default_dir.join(BOOTSTRAP_FILE)) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => None,
         r => Some(r),
     };
-    let mut loc = resolve(false, exe_dir, &default_dir, bootstrap);
-    if loc.kind == Kind::Custom
-        && !legacy_dir.try_exists()?
-        && let Ok(relative) = loc.dir.strip_prefix(&legacy_dir)
-    {
-        let relocated = default_dir.join(relative);
-        if relocated.join(DB_FILE).is_file() {
-            loc.dir = relocated;
-        }
-    }
-    let loc = in_use(loc, &default_dir);
+    let loc = in_use(resolve(false, exe_dir, &default_dir, bootstrap), &default_dir);
     std::fs::create_dir_all(&loc.dir)?;
     Ok(loc)
-}
-
-fn migrate_legacy(legacy: &Path, target: &Path) -> io::Result<()> {
-    let migrate = || -> io::Result<()> {
-        if target.try_exists()? || !legacy.try_exists()? {
-            return Ok(());
-        }
-        if !std::fs::metadata(legacy)?.is_dir() {
-            return Err(io::Error::other("the existing data location is not a directory"));
-        }
-        match std::fs::rename(legacy, target) {
-            Ok(()) => Ok(()),
-            Err(_) if target.is_dir() && !legacy.try_exists()? => Ok(()),
-            Err(e) => Err(e),
-        }
-    };
-    migrate().map_err(|e| {
-        io::Error::new(e.kind(), msg!("location.migrateFailed", from = legacy.display().to_string(), to = target.display().to_string(), error = e.to_string()))
-    })
 }
 
 fn in_use(loc: Location, default_dir: &Path) -> Location {
@@ -273,19 +242,19 @@ mod tests {
     #[test]
     fn the_build_profile_selects_the_default_folder() {
         #[cfg(debug_assertions)]
-        assert_eq!((APP_IDENTIFIER, APP_DATA_FOLDER), ("dev.lattice.app.debug", "Lattice Dev"));
+        assert_eq!((APP_IDENTIFIER, APP_DATA_FOLDER), ("dev.marulabs.lattice.debug", "Lattice Dev"));
         #[cfg(not(debug_assertions))]
         assert_eq!((APP_IDENTIFIER, APP_DATA_FOLDER), (RELEASE_APP_IDENTIFIER, "Lattice"));
-        assert_eq!(RELEASE_APP_IDENTIFIER, "dev.lattice.app");
+        assert_eq!(RELEASE_APP_IDENTIFIER, "dev.marulabs.lattice");
     }
 
     #[test]
     fn the_development_folder_does_not_follow_the_release_bootstrap() {
         let root = temp("build-profiles");
         let release = root.join(if cfg!(debug_assertions) {
-            RELEASE_APP_IDENTIFIER
+            "Lattice"
         } else {
-            "dev.lattice.app.debug"
+            "Lattice Dev"
         });
         let development = root.join(APP_DATA_FOLDER);
         let custom = root.join("custom");
@@ -303,91 +272,37 @@ mod tests {
     }
 
     #[test]
-    fn legacy_data_moves_together_and_repeated_detection_keeps_it() {
-        let root = temp("legacy-move");
-        let legacy = root.join(APP_IDENTIFIER);
-        std::fs::create_dir_all(legacy.join("models")).unwrap();
-        for name in [DB_FILE, "lattice.db-wal", "lattice.db-shm", "models/model.onnx"] {
-            std::fs::write(legacy.join(name), name).unwrap();
-        }
-        let first = detect_at(&root.join("exe"), &root).unwrap();
-        assert_eq!(first.dir, root.join(APP_DATA_FOLDER));
-        assert!(!legacy.exists());
-        for name in [DB_FILE, "lattice.db-wal", "lattice.db-shm", "models/model.onnx"] {
-            assert_eq!(std::fs::read_to_string(first.dir.join(name)).unwrap(), name);
-        }
-        assert_eq!(detect_at(&root.join("exe"), &root).unwrap(), first);
+    fn identifier_based_data_is_left_untouched() {
+        let root = temp("old-identifier");
+        let old = root.join("dev.lattice.app");
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join(DB_FILE), "old library").unwrap();
+        let loc = detect_at(&root.join("exe"), &root).unwrap();
+        assert_eq!(loc.dir, root.join(APP_DATA_FOLDER));
+        assert!(!loc.dir.join(DB_FILE).exists());
+        assert_eq!(std::fs::read_to_string(old.join(DB_FILE)).unwrap(), "old library");
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn legacy_custom_folder_selection_survives_the_move() {
-        let root = temp("legacy-custom");
-        let legacy = root.join(APP_IDENTIFIER);
+    fn detects_a_custom_library_recorded_in_the_current_default_folder() {
+        let root = temp("current-custom");
         let custom = root.join("custom");
         std::fs::create_dir_all(&custom).unwrap();
         std::fs::write(custom.join(DB_FILE), "custom library").unwrap();
-        write_bootstrap(&legacy, &custom).unwrap();
+        write_bootstrap(&root.join(APP_DATA_FOLDER), &custom).unwrap();
         let loc = detect_at(&root.join("exe"), &root).unwrap();
         assert_eq!((loc.kind, loc.dir), (Kind::Custom, custom));
-        assert!(root.join(APP_DATA_FOLDER).join(BOOTSTRAP_FILE).is_file());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
-    fn a_custom_folder_inside_the_legacy_folder_keeps_its_library_after_migration() {
-        let root = temp("legacy-nested-custom");
-        let legacy = root.join(APP_IDENTIFIER);
-        let custom = legacy.join("nested");
-        std::fs::create_dir_all(&custom).unwrap();
-        std::fs::write(custom.join(DB_FILE), "nested library").unwrap();
-        write_bootstrap(&legacy, &custom).unwrap();
-        let relocated = root.join(APP_DATA_FOLDER).join("nested");
-        let first = detect_at(&root.join("exe"), &root).unwrap();
-        assert_eq!((first.kind, &first.dir), (Kind::Custom, &relocated));
-        assert_eq!(std::fs::read_to_string(relocated.join(DB_FILE)).unwrap(), "nested library");
-        assert!(!root.join(APP_DATA_FOLDER).join(DB_FILE).exists());
-        assert_eq!(detect_at(&root.join("exe"), &root).unwrap(), first);
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn existing_destination_is_used_without_merging_or_overwriting_legacy_data() {
-        let root = temp("legacy-existing");
-        let legacy = root.join(APP_IDENTIFIER);
-        let target = root.join(APP_DATA_FOLDER);
-        for (dir, content) in [(&legacy, "old library"), (&target, "new library")] {
-            std::fs::create_dir_all(dir).unwrap();
-            std::fs::write(dir.join(DB_FILE), content).unwrap();
-        }
-        assert_eq!(detect_at(&root.join("exe"), &root).unwrap().dir, target);
-        assert_eq!(std::fs::read_to_string(legacy.join(DB_FILE)).unwrap(), "old library");
-        assert_eq!(std::fs::read_to_string(target.join(DB_FILE)).unwrap(), "new library");
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn a_failed_move_returns_an_error_without_creating_an_empty_library() {
-        let root = temp("legacy-failed");
-        let legacy = root.join(APP_IDENTIFIER);
-        std::fs::create_dir_all(&legacy).unwrap();
-        std::fs::write(legacy.join(DB_FILE), "old library").unwrap();
-        let blocked = root.join("file");
-        std::fs::write(&blocked, "not a directory").unwrap();
-        let target = blocked.join(APP_DATA_FOLDER);
-        assert!(migrate_legacy(&legacy, &target).is_err());
-        assert!(!target.exists());
-        assert_eq!(std::fs::read_to_string(legacy.join(DB_FILE)).unwrap(), "old library");
-        std::fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn portable_detection_does_not_touch_default_or_legacy_data() {
+    fn portable_detection_does_not_touch_installed_data() {
         let root = temp("portable-migration");
         let exe = root.join("exe");
         std::fs::create_dir_all(&exe).unwrap();
         std::fs::write(exe.join(PORTABLE_MARKERS[0]), "").unwrap();
-        let legacy = root.join(APP_IDENTIFIER);
+        let legacy = root.join("other-library");
         std::fs::create_dir_all(&legacy).unwrap();
         std::fs::write(legacy.join(DB_FILE), "installed library").unwrap();
         let loc = detect_at(&exe, &root).unwrap();

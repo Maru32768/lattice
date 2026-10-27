@@ -53,8 +53,8 @@ Record evidence for Windows 10 and Windows 11. Use a clean user profile without 
 - [ ] Verify the installed CLI next to the GUI, CLI and MCP read access, then explicitly enabled write access. Stop the MCP client and confirm that upgrade and uninstall also replace or remove the CLI.
 - [ ] Confirm that settings hide destination rules. Verify default private-address rejection for direct HTTP downloads and preservation of existing saved rules.
 - [ ] Verify debug and release data separation, portable `data` and CLI data-directory overrides.
-- [ ] Verify the `Lattice` / `Lattice Dev` defaults, preservation of the previous profile's data during rename, and Open folder for default, custom and portable storage.
-- [ ] Confirm that Settings reports the active file-log folder: `%LOCALAPPDATA%\Lattice\logs` in release, `%LOCALAPPDATA%\Lattice Dev\logs` in debug and `data\logs` in portable mode. Custom libraries keep profile-local logs. Verify new log output, preservation of old logs and browser profiles, and opt-in log deletion during uninstall without deleting an unrelated file in the installation folder.
+- [ ] Verify the `Lattice` / `Lattice Dev` defaults, profile separation and Open folder for default, custom and portable storage.
+- [ ] Confirm that Settings reports the active file-log folder: `%LOCALAPPDATA%\Lattice\logs` in release, `%LOCALAPPDATA%\Lattice Dev\logs` in debug and `data\logs` in portable mode. Custom libraries keep profile-local logs. Verify new log output, the new browser profile, and opt-in log deletion during uninstall without deleting an unrelated file in the installation folder.
 - [ ] Restore a backup with articles, images, translations, words and review history. Re-enter credentials and confirm the records.
 - [ ] Move the data directory and restart. Reinstall and confirm that the library remains.
 - [ ] Verify that portable update guidance preserves `data` and replaces the application binaries.

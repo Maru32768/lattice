@@ -711,9 +711,9 @@ Lattice keeps all its data in one SQLite file: articles, the fetched HTML, trans
 
 **Settings › Logs & storage** shows the exact paths. **Open folder** opens the data folder currently in use, including custom and portable locations.
 
-Older test builds used `%APPDATA%\dev.lattice.app`. Close old app and CLI processes before starting the new build. If the new default folder does not exist, Lattice renames the old folder and keeps its library and saved location. Existing destination folders are never overwritten or merged. Development builds use a separate `Lattice Dev` folder.
+Development builds use a separate `Lattice Dev` folder. Data in identifier-based folders from older test builds is not moved automatically.
 
-Logs use `%LOCALAPPDATA%\Lattice\logs`, even when you move the library. Development logs use `%LOCALAPPDATA%\Lattice Dev\logs`. Historical logs remain in the old identifier folder. Browser profiles keep their existing locations.
+Logs use `%LOCALAPPDATA%\Lattice\logs`, even when you move the library. Development logs use `%LOCALAPPDATA%\Lattice Dev\logs`. Historical logs remain in the old identifier folder. Changing the application identifier creates a new browser profile; logins from older test builds are not carried over.
 
 **Portable copy.** The portable zip keeps everything in a `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
 

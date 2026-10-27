@@ -979,7 +979,6 @@ export const ja = {
   "be.location.openFailed": "保存先フォルダを開けませんでした: {error}",
   "be.location.noDefaultFolder": "既定のデータ保存先を取得できませんでした",
   "be.location.noExecutableFolder": "アプリの実行フォルダを取得できませんでした",
-  "be.location.migrateFailed": "データ保存先を {from} から {to} に移動できませんでした: {error}",
   "be.location.pickAgain": "フォルダを選び直してください",
   "be.location.hasData": "選んだフォルダには既に Lattice のデータがあります",
   "be.location.noData": "選んだフォルダに Lattice のデータがありません",

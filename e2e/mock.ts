@@ -541,7 +541,7 @@ export const handlers = {
     }
     c.due = false;
   },
-  export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-vocab-20261020T030000Z.csv",
+  export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-vocab-20261020T030000Z.csv",
   search_blocks: ({ query, filter, articles }: { query: string; filter: ArticleFilter | null; articles?: number[] | null }): SearchResult =>
     search(query, filter, articles ?? null),
   chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
@@ -581,7 +581,7 @@ export const handlers = {
     data_dir: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice",
     location: "default",
     location_warning: null,
-    log_dir: "C:\\Users\\e2e\\AppData\\Local\\dev.lattice.app\\logs",
+    log_dir: "C:\\Users\\e2e\\AppData\\Local\\Lattice\\logs",
     backup_dir: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\backups",
     backup_keep: store.backupKeep,
   }),
@@ -752,7 +752,7 @@ export const handlers = {
     }
     return out;
   },
-  export_opml: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-feeds-20261020T030000Z.opml",
+  export_opml: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-feeds-20261020T030000Z.opml",
   discover_feeds: ({ url }: { url: string }): FeedCandidate[] => [{ url: new URL("/feed.xml", url).href, title: "Discovered feed" }],
   remove_feed: ({ id }: { id: number }) => {
     feeds.splice(
@@ -827,7 +827,7 @@ export const handlers = {
   retry_job: (): boolean => true,
   retry_failed_jobs: (): number => jobs.issues.filter((j) => j.status === "failed").length,
   cancel_job: (): boolean => true,
-  export_json: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\exports\\lattice-20261020.jsonl.gz",
+  export_json: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-20261020.jsonl.gz",
   browser_open: none,
   browser_set_bounds: (): boolean => true,
   browser_hide: none,

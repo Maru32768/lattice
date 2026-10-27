@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn targets_inside_the_current_folder_are_refused() {
-        let cur = Path::new(r"C:\Users\me\AppData\Roaming\dev.lattice.app");
+        let cur = Path::new(r"C:\Users\me\AppData\Roaming\Lattice");
         assert!(check_target(cur, cur).is_err());
         assert!(check_target(cur, &cur.join("sub")).is_err());
         assert!(check_target(cur, Path::new(r"D:\Lattice")).is_ok());

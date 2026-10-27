@@ -990,7 +990,6 @@ export const en = {
   "be.location.openFailed": "Could not open the data folder: {error}",
   "be.location.noDefaultFolder": "Could not find the default data folder",
   "be.location.noExecutableFolder": "Could not find the application executable folder",
-  "be.location.migrateFailed": "Could not move the data folder from {from} to {to}: {error}",
   "be.location.pickAgain": "Choose the folder again",
   "be.location.hasData": "The chosen folder already holds Lattice data",
   "be.location.noData": "The chosen folder holds no Lattice data",

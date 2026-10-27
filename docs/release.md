@@ -93,7 +93,7 @@ The following steps are the manual alternative. If the script already generated 
 
 The release workflow builds with `src-tauri/tauri.updater.conf.json`, which signs the installer, and the draft release gets `Lattice_<x.y.z>_x64-setup.exe.sig` and `latest.json`. Missing signing prerequisites stop the workflow before the build. Installed copies see an update only after you publish the draft: `releases/latest` ignores drafts and prereleases.
 
-An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\Lattice` is kept. Older test builds' `dev.lattice.app` data is renamed on first start only when the new default folder is absent.
+An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\Lattice` is kept. Identifier-based folders from older test builds are not moved automatically.
 
 Updater signatures verify the update package. Windows Authenticode code signing identifies the executable's publisher and is configured separately. Decide whether to sign the Windows executables and record the decision in the checklist. An updater signature alone does not remove Windows' unknown-publisher prompts.
 
