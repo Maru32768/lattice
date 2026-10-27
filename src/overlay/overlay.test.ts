@@ -162,12 +162,29 @@ test("sentences are wrapped in place and swapped without losing page elements", 
   // Different structure falls back to plain text but keeps the atom.
   renderVariant(spans[1], `データを<i>決して</i>失いません。`);
   assert.equal(spans[1].textContent, "データを決して失いません。");
+  assert.equal(spans[1].querySelector("b"), null, "the emptied <b> is not left behind as an empty box");
 
   renderOriginal(spans[0]);
   renderOriginal(spans[1]);
   assert.equal(p.textContent, "The WAL  is durable. It never loses data.");
   assert.equal(p.querySelector("b")!.textContent, "never");
   assert.equal(p.querySelector("img"), img);
+});
+
+test("a plain-text fallback leaves no empty inline code box, and keeps elements holding atoms", () => {
+  // Rust blog: "you can [get `rustup`](…) from …" translated without the link.
+  const p = block(`If you can, <a href="https://x.dev/i">get <code>rustup</code></a> from <a href="https://x.dev/h"><img src="i.png"></a> here.`);
+  const loc = locate(p, tokenize(p), "If you can, get rustup from ⟦1⟧ here.")!;
+  const r = document.createRange();
+  r.setStart(loc.start.container, loc.start.offset);
+  r.setEnd(loc.end.container, loc.end.offset);
+  const span = wrapRange(r, "s");
+  renderVariant(span, `可能なら⟦1⟧から<code>rustup</code>を入手してください。`);
+  assert.equal(span.querySelector("code"), null);
+  assert.equal(span.textContent, "可能ならからrustupを入手してください。");
+  assert.ok(span.querySelector("a > img"), "the link around the image survives");
+  renderOriginal(span);
+  assert.equal(p.querySelector("code")!.textContent, "rustup");
 });
 
 test("routeKey: which keys pressed in the page go to the app, and when", () => {

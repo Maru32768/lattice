@@ -387,6 +387,10 @@ export function renderVariant(span: SentenceSpan, html: string) {
     const first = textPlacements(original)[0];
     const parent = first?.parentNode ?? original;
     removeText(original);
+    // Emptied inline elements (a <code> inside a dropped link) would show as blank boxes; ones holding atoms stay.
+    elements(original)
+      .toReversed()
+      .forEach((e) => e !== parent && !e.contains(parent) && e.childNodes.length === 0 && e.remove());
     insertText(doc, parent, null, variant.textContent ?? "", atoms);
   }
   span.replaceChildren(original);
