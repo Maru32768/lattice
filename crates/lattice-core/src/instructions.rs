@@ -9,7 +9,7 @@ use crate::store::{Store, sha256_hex};
 use ts_rs::TS;
 
 pub const MAX_CHARS: usize = 2000;
-const PROFILE_SETTING: &str = "user_profile";
+pub(crate) const PROFILE_SETTING: &str = "user_profile";
 const SUMMARY_SETTING: &str = "summary_instructions";
 const CHAT_SETTING: &str = "chat_instructions";
 /// Hash of the current profile, so SQL can tell a relevance score judged against another one.

@@ -5,7 +5,7 @@
  */
 export type RelevanceStatus = { has_profile: boolean, auto: boolean, threshold: number, scored: number, 
 /**
- * Judged against an earlier profile.
+ * Judged against an earlier profile or with an earlier prompt.
  */
 stale: number, 
 /**

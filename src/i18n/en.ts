@@ -1093,7 +1093,7 @@ export const en = {
   // @i18n-append
   "settingsView.relevance": "Importance",
   "settingsView.relevanceLead":
-    "The LLM rates each article from 1 to 5 against “About you” (Summaries & chat), with a one-line reason. Used by the “Most important first” sort, the Importance filter and Important in the sidebar. After you edit your profile, earlier ratings are marked as judged against an earlier profile.",
+    "The LLM rates each article from 1 to 5 against “About you” (Summaries & chat), with a one-line reason. Used by the “Most important first” sort, the Importance filter and Important in the sidebar. Ratings weigh both how close an article is to your interests and what you would gain from reading it. After you edit your profile, or when an update changes how articles are rated, earlier ratings are marked as rated by earlier criteria.",
   "relevanceSettings.noProfile":
     "“About you” is empty, so articles are not rated. Describe your work and interests in Settings › Summaries & chat to start rating.",
   "relevanceSettings.auto": "Rate newly saved articles",
@@ -1103,15 +1103,15 @@ export const en = {
   "relevanceSettings.atLeast": "{n} or higher",
   "relevanceSettings.rescore": "Rate again",
   "relevanceSettings.counts": (p) =>
-    `${numbers.format(Number(p.scored))} rated (${numbers.format(Number(p.stale))} against an earlier profile), ${numbers.format(Number(p.unscored))} not rated. Queues the unrated ones and those judged against an earlier profile.`,
+    `${numbers.format(Number(p.scored))} rated (${numbers.format(Number(p.stale))} by earlier criteria), ${numbers.format(Number(p.unscored))} not rated. Queues the unrated ones and those rated by earlier criteria.`,
   "relevanceSettings.rescoreAll": "Rate again",
   "relevanceSettings.queued": (p) => `Queued ${plural(p.n, "article", "articles")} for rating`,
   "common.relevance": "Importance",
   "library.important": "Important",
-  "library.relevance1": "Unrelated",
-  "library.relevance2": "Marginal",
-  "library.relevance3": "Of interest",
-  "library.relevance4": "Important",
+  "library.relevance1": "Not for you",
+  "library.relevance2": "Low priority",
+  "library.relevance3": "Read if interested",
+  "library.relevance4": "Worth reading soon",
   "library.relevance5": "Must read",
   "library.relevanceNone": "Not rated",
   "listPane.relevanceDesc": "Most important first",
@@ -1121,7 +1121,7 @@ export const en = {
   "listPane.rescoreQueued": (p) => `Queued ${plural(p.n, "article", "articles")} for rating`,
   "listPane.noProfile": "Not rated: “About you” is empty",
   "reader.relevance": "Importance {score}/5",
-  "reader.relevanceStale": "(judged against an earlier profile)",
+  "reader.relevanceStale": "(rated by earlier criteria)",
   "be.relevance.noProfile": "“About you” is empty, so articles cannot be rated",
   "be.relevance.thresholdRange": "Pick an importance from 1 to 5 ({min})",
   "settingsView.feedFilter": "Import filters",

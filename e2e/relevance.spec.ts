@@ -52,7 +52,7 @@ test("sorting and filtering by importance; the Reader shows the reason", async (
   const line = app.locator(".art-relevance");
   await expect(line).toContainText(`重要度 ${stale.relevance}/5`);
   await expect(line).toContainText(stale.relevance_reason!);
-  await expect(line).toContainText("以前のプロフィールで判定");
+  await expect(line).toContainText("以前の基準で判定");
 });
 
 test("without a profile nothing is rated and settings say why; with one, scores can be redone", async ({ app }) => {

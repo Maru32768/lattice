@@ -47,6 +47,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00027_feed_position.sql"),
     include_str!("../db/migrations/00028_renormalize_https.sql"),
     include_str!("../db/migrations/00029_article_notes.sql"),
+    include_str!("../db/migrations/00030_relevance_axes.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -357,7 +358,8 @@ fn job_row(r: &rusqlite::Row) -> Result<JobRow> {
 }
 
 /// A not yet extracted article shows its feed entry's title.
-const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
+const ARTICLE_COLS: &str = concat!(
+    "id, original_url, canonical_url, domain,
     coalesce(title, (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)), author, site_name, published_at, language, saved_at, fetch_status, extraction_status, last_error, read_status, favorite,
     (SELECT json_group_array(name) FROM (SELECT t.name FROM article_tags x JOIN tags t ON t.id = x.tag_id WHERE x.article_id = articles.id ORDER BY t.name)),
     (SELECT name FROM genres WHERE id = articles.genre_id), genre_source IS 'manual', feed_id,
@@ -365,8 +367,11 @@ const ARTICLE_COLS: &str = "id, original_url, canonical_url, domain,
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
     (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id)),
     (SELECT score FROM relevance WHERE article_id = articles.id), (SELECT reason FROM relevance WHERE article_id = articles.id),
-    coalesce((SELECT profile_hash IS NOT (SELECT value FROM settings WHERE key = 'user_profile_hash') FROM relevance WHERE article_id = articles.id), 0),
-    (SELECT folder_id FROM feeds WHERE id = articles.feed_id)";
+    coalesce((SELECT NOT ",
+    crate::relevance::current_sql!(),
+    " FROM relevance WHERE article_id = articles.id), 0),
+    (SELECT folder_id FROM feeds WHERE id = articles.feed_id)"
+);
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     let snapshot_type: Option<String> = r.get(23)?;

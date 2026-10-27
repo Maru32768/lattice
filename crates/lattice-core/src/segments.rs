@@ -425,7 +425,7 @@ pub(crate) mod tests {
                     .unwrap()
                     .iter()
                     .map(|a| {
-                        json!({"i": a["i"], "score": match a["i"].as_u64() { Some(1) => 9, Some(2) => 5, _ => 4 }, "reason": "  Rust に関係する
+                        json!({"i": a["i"], "fit": 4, "value": 3, "score": match a["i"].as_u64() { Some(1) => 9, Some(2) => 5, _ => 4 }, "reason": "  Rust に関係する
 "})
                     })
                     .chain([json!({"i": 99, "score": 5, "reason": "injected"})])

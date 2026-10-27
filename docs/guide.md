@@ -377,15 +377,15 @@ Classification groups up to 20 unclassified articles into one call. To stop it, 
 
 ### Importance
 
-Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. The five levels are **Unrelated**, **Marginal**, **Of interest**, **Important** and **Must read**.
+Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. It weighs both how close the article is to your interests and what you would gain from reading it, judged by what About you says you value, so a basic article on one of your topics can rate lower than an insightful one from a neighboring field. The five levels are **Not for you**, **Low priority**, **Read if interested**, **Worth reading soon** and **Must read**.
 
 - In the article list, articles rated 4 or 5 have a mark. Hold the pointer over it to see the reason. The Reader shows the rating and reason under the title.
 - **Important** in the navigation lists articles rated at least **Lowest importance in Important** in **Settings › Importance** (4 by default).
 - To stop rating, turn off **Rate newly saved articles** in **Settings › Importance**.
 
-**After you change About you**, earlier ratings are marked **(judged against an earlier profile)**. Until they are rated again, their scores are still used. There are two ways to rate again:
+**After you change About you**, or when an update changes how articles are rated, earlier ratings are marked **(rated by earlier criteria)**. They are not rated again on their own. Until they are rated again, their scores are still used. There are two ways to rate again:
 
-- **Rate again** in **Settings › Importance** rates every unrated article and every article rated against an earlier profile.
+- **Rate again** in **Settings › Importance** rates every unrated article and every article rated by earlier criteria.
 - **Rate again** above the article list rates the articles shown in the list.
 
 ### Collections
@@ -943,7 +943,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 | Translation in the Page view | The paragraphs of the page you are viewing (only while **Mixed** or **Translated** is chosen) |
 | Summaries | The article text, **About you** and your summary instructions |
 | Classification | The title, the domain, and the summary or the start of the text |
-| Importance | The title, the domain, the summary or the start of the text, and **About you** |
+| Importance | The title, the domain, the summary, the headings, excerpts from the beginning, middle and end of the text, and **About you** |
 | Quizzes | The article text and **About you** |
 | Word meanings | The word and the sentence you saved it with |
 | LLM feed filter | The new entry's title, URL and excerpt, **About you**, and **What to import** |

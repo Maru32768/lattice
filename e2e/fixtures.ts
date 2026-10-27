@@ -208,7 +208,7 @@ const ROWS: Row[] = [
   ["HTTP/3 and QUIC in production", "blog.cloudflare.com", "ネットワーク", ["http", "performance"], 3, true, false, 35],
 ];
 
-/** Importance by article id: [score, reason, judged against an earlier profile]. */
+/** Importance by article id: [score, reason, rated by earlier criteria]. */
 const RELEVANCE: Record<number, [number, string, boolean]> = {
   1: [5, "PostgreSQL の MVCC を扱う仕事に直結する", false],
   2: [4, "VACUUM の運用はデータベース担当として重要", false],
