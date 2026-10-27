@@ -547,6 +547,14 @@ UPDATE feeds SET position = (
     r#"
 -- url_norm folds http into https: stored URLs are normalized again (RENORMALIZE_AT).
 "#,
+    r#"
+-- The user's own memo on an article, one per article (plain text, edited beside the Reader).
+CREATE TABLE article_notes (
+    article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    body       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+"#,
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -795,6 +803,8 @@ pub struct ArticleView {
     pub blocks: Vec<StoredBlock>,
     pub jobs: Vec<JobRow>,
     pub summary: Option<SummaryView>,
+    /// The user's memo (`set_note`).
+    pub note: Option<String>,
 }
 
 pub struct SummarySource {
@@ -1344,7 +1354,23 @@ impl Store {
                 |r| Ok(SummaryView { text: r.get(0)?, created_at: r.get(1)?, stale: r.get(2)?, prompt_version: r.get(3)? }),
             )
             .optional()?;
-        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary }))
+        let note = c.query_row("SELECT body FROM article_notes WHERE article_id = ?1", [id], |r| r.get(0)).optional()?;
+        Ok(Some(ArticleView { article, target_language: Target::from_key(target_language, "").language, blocks, jobs, summary, note }))
+    }
+
+    /// The user's memo on an article; a blank one is removed.
+    pub fn set_note(&self, article_id: i64, body: &str) -> Result<()> {
+        let c = self.conn();
+        if body.trim().is_empty() {
+            c.execute("DELETE FROM article_notes WHERE article_id = ?1", [article_id])?;
+        } else {
+            c.execute(
+                "INSERT INTO article_notes (article_id, body) VALUES (?1, ?2)
+                 ON CONFLICT(article_id) DO UPDATE SET body = excluded.body, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')",
+                params![article_id, body],
+            )?;
+        }
+        Ok(())
     }
 
     /// Translatable blocks of an article lacking a current translation in `target_language`.
@@ -1900,6 +1926,23 @@ mod tests {
         assert_eq!(item, "https://m.dev/a");
         let etag: Option<String> = s.conn().query_row("SELECT etag FROM feeds", [], |r| r.get(0)).unwrap();
         assert_eq!(etag, None, "the next poll fetches the feed in full");
+    }
+
+    #[test]
+    fn a_blank_note_is_removed() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.set_note(id, "first").unwrap();
+        s.set_note(id, "second").unwrap();
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("second"));
+        s.set_note(
+            id, "  
+",
+        )
+        .unwrap();
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note, None);
+        let rows: i64 = s.conn().query_row("SELECT count(*) FROM article_notes", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0);
     }
 
     /// A feed linking http:// saved its articles under http keys; the browser lands on https.

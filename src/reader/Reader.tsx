@@ -8,7 +8,8 @@ import { Menu, type MenuItem } from "../ui/Popover";
 import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-import { QuizPanel, useQuizOpen } from "../quiz/QuizPanel";
+import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
+import { NotePanel, hasNote } from "./NotePanel";
 import { GroupChips } from "../library/GroupPicker";
 import { onMiddle } from "../lib/middle";
 import { captureIn, isWord, markWords, type WordMarks } from "../vocab/vocab";
@@ -328,15 +329,16 @@ export interface DocActions {
 export function ArticleTools({
   view,
   act,
-  quizOpen,
-  onQuiz,
+  panel,
+  onPanel,
   rerender,
   children,
 }: {
   view: ArticleView;
   act: DocActions;
-  quizOpen: boolean;
-  onQuiz: () => void;
+  /** The panel open beside the article. */
+  panel: SidePanel | null;
+  onPanel: (p: SidePanel) => void;
   rerender?: MenuItem;
   children?: React.ReactNode;
 }) {
@@ -370,9 +372,9 @@ export function ArticleTools({
       </button>
       {!failed && (
         <button
-          className={`tb qz-btn${quizOpen ? " qz-open" : ""}`}
-          onClick={onQuiz}
-          aria-pressed={quizOpen}
+          className={`tb qz-btn${panel === "quiz" ? " qz-open" : ""}`}
+          onClick={() => onPanel("quiz")}
+          aria-pressed={panel === "quiz"}
           aria-label={t("quizPanel.title")}
           title={t("reader.quizHint")}
         >
@@ -380,6 +382,16 @@ export function ArticleTools({
           <span className="lbl">{t("quizPanel.title")}</span>
         </button>
       )}
+      <button
+        className={`tb qz-btn${panel === "note" ? " qz-open" : hasNote(view) ? " on" : ""}`}
+        onClick={() => onPanel("note")}
+        aria-pressed={panel === "note"}
+        aria-label={t("notePanel.title")}
+        title={t("reader.noteHint")}
+      >
+        <Icon name="note" />
+        <span className="lbl">{t("notePanel.title")}</span>
+      </button>
       {children}
       <button className="tb" onClick={act.onFocusMode} aria-pressed={act.focusMode} aria-label={t("reader.focus")} title={t("reader.focus")}>
         <Icon name="focus" />
@@ -768,7 +780,7 @@ export function Reader({
   // Per-block click overrides on top of the mode; App remounts Reader per article.
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
   const [pop, setPop] = useState<number | null>(null);
-  const [quizOpen, setQuizOpen] = useQuizOpen(a.id);
+  const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
   /** 単語を登録 over the selection, then what came of it. */
@@ -931,7 +943,7 @@ export function Reader({
             </button>
           </span>
         )}
-        <ArticleTools view={view} act={act} quizOpen={quizOpen} onQuiz={() => setQuizOpen((o) => !o)} />
+        <ArticleTools view={view} act={act} panel={panel} onPanel={togglePanel} />
       </div>
 
       <div className="doc-body">
@@ -1124,14 +1136,10 @@ export function Reader({
             </OpenLink.Provider>
           </article>
         </div>
-        {quizOpen && (
-          <QuizPanel
-            view={view}
-            onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))}
-            onReviewChanged={act.onReviewChanged}
-            onClose={() => setQuizOpen(false)}
-          />
+        {panel === "quiz" && (
+          <QuizPanel view={view} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={closePanel} />
         )}
+        {panel === "note" && <NotePanel key={a.id} view={view} onClose={closePanel} />}
       </div>
       {cap &&
         createPortal(

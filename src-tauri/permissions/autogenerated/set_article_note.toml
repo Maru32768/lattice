@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-article-note"
+description = "Enables the set_article_note command without any pre-configured scope."
+commands.allow = ["set_article_note"]
+
+[[permission]]
+identifier = "deny-set-article-note"
+description = "Denies the set_article_note command without any pre-configured scope."
+commands.deny = ["set_article_note"]

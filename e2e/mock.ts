@@ -243,6 +243,11 @@ function search(query: string, filter: ArticleFilter | null, ids: number[] | nul
   return { hits: hits.slice(0, 30), semantic_error: null };
 }
 
+/** Memos by article id. */
+const notes = new Map<number, string>();
+/** Genres added in settings ahead of any article. */
+const addedGenres = new Set<string>();
+
 /** Articles whose translation was queued: their view shows the job waiting. */
 const translating = new Set<number>();
 
@@ -263,6 +268,7 @@ function view(id: number): ArticleView | null {
         ]
       : jobsOf(a),
     summary: summary ? { text: summary, created_at: new Date(NOW).toISOString(), stale: false } : null,
+    note: notes.get(id) ?? null,
   };
 }
 
@@ -609,7 +615,13 @@ export const handlers = {
   get_ui_language: (): string | null => store.uiLanguage,
   set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
   article_for_url: ({ url }: { url: string }): ArticleRow | null => articles.find((a) => a.original_url === url) ?? null,
-  list_genres: (): TagCount[] => counts(articles.map((a) => a.genre)),
+  list_genres: (): TagCount[] => {
+    const used = counts(articles.map((a) => a.genre));
+    const extra = [...addedGenres].filter((g) => !used.some((u) => u.name.toLowerCase() === g.toLowerCase())).map((name) => ({ name, count: 0 }));
+    return [...used, ...extra];
+  },
+  add_genre: ({ name }: { name: string }) => void addedGenres.add(name.trim()),
+  set_article_note: ({ id, body }: { id: number; body: string }) => void (body.trim() ? notes.set(id, body) : notes.delete(id)),
   set_genre: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
     a.genre = name || null;

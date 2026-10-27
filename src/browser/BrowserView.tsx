@@ -3,7 +3,8 @@ import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLa
 import type { LanguageMode } from "../reader/mixed";
 import type { PageTab } from "../layout/layout";
 import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "../reader/Reader";
-import { QuizPanel, useQuizOpen } from "../quiz/QuizPanel";
+import { QuizPanel, useSidePanel } from "../quiz/QuizPanel";
+import { NotePanel } from "../reader/NotePanel";
 import { Menu, pageDrawn, useCovered } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
@@ -163,7 +164,7 @@ export function BrowserView({
   const covered = useCovered(host);
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
-  const [quiz, setQuiz] = useQuizOpen(saved?.id ?? 0);
+  const [panel, togglePanel, closePanel] = useSidePanel(saved?.id ?? 0);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = useEffectEvent(async () => {
     const png = tab.loading ? null : await browser.capture(id).catch(() => null);
@@ -395,8 +396,8 @@ export function BrowserView({
           <ArticleTools
             view={shown}
             act={act}
-            quizOpen={quiz}
-            onQuiz={() => setQuiz((q) => !q)}
+            panel={panel}
+            onPanel={togglePanel}
             rerender={{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }}
           >
             {!failedOf(shown) && (
@@ -448,14 +449,10 @@ export function BrowserView({
         <div ref={host} className="page-host">
           {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
         </div>
-        {quiz && shown && act && (
-          <QuizPanel
-            view={shown}
-            onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))}
-            onReviewChanged={act.onReviewChanged}
-            onClose={() => setQuiz(false)}
-          />
+        {panel === "quiz" && shown && act && (
+          <QuizPanel view={shown} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={closePanel} />
         )}
+        {panel === "note" && shown && <NotePanel key={shown.article.id} view={shown} onClose={closePanel} />}
       </div>
     </div>
   );

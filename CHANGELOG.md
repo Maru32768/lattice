@@ -4,6 +4,19 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
+- **Genres.** Add a genre in Settings › Genres before any article has it; auto classification can then choose it.
+
+### Changed
+
+- The feed manager reorders feeds and folders by dragging their ⋮⋮ handle, as the AI provider chain does, instead of up and down buttons.
+
+### Fixed
+
+- A page saved from a feed that links `http://` no longer shows **Add to Index** when opened in the built-in browser over `https://`.
+
 ## [0.1.0] - 2026-10-27
 
 The first public release. Everything below is new.

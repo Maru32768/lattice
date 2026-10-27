@@ -183,9 +183,17 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   const reader = await tools(app);
   await openPage(app, snapshot.title!);
   const page = await tools(app);
-  expect(reader.buttons).toEqual(["お気に入り (s)", "既読にする (m)", "質問", "理解度チェック", "フォーカスモード (f)", expect.stringMatching(/^その他/)]);
+  expect(reader.buttons).toEqual([
+    "お気に入り (s)",
+    "既読にする (m)",
+    "質問",
+    "理解度チェック",
+    "メモ",
+    "フォーカスモード (f)",
+    expect.stringMatching(/^その他/),
+  ]);
   // Page adds its summary strip's toggle before フォーカス.
-  expect(page.buttons).toEqual([...reader.buttons.slice(0, 4), "要約", ...reader.buttons.slice(4)]);
+  expect(page.buttons).toEqual([...reader.buttons.slice(0, 5), "要約", ...reader.buttons.slice(5)]);
   expect(reader.items[1]).toBe("描画して取り込み直す");
   expect(page.items[1]).toBe("表示中のページで取り込み直す");
   expect(page.items.toSpliced(1, 1)).toEqual(reader.items.toSpliced(1, 1));

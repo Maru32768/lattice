@@ -287,6 +287,11 @@ fn rename_genre(app: State<'_, App>, from: String, to: String) -> Result<(), Str
 }
 
 #[tauri::command(async)]
+fn add_genre(app: State<'_, App>, name: String) -> Result<(), String> {
+    classify::add_genre(&app.store, &name)
+}
+
+#[tauri::command(async)]
 fn delete_genre(app: State<'_, App>, name: String) -> Result<(), String> {
     classify::delete_genre(&app.store, &name)
 }
@@ -579,6 +584,12 @@ fn group_remove(app: State<'_, App>, id: i64, articles: Vec<i64>) -> Result<(), 
 #[tauri::command(async)]
 fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), String> {
     app.store.set_favorite(id, favorite).map_err(err)
+}
+
+/// The memo beside the Reader; blank removes it. No `article-changed`: the panel holds the text.
+#[tauri::command(async)]
+fn set_article_note(app: State<'_, App>, id: i64, body: String) -> Result<(), String> {
+    app.store.set_note(id, &body).map_err(err)
 }
 
 #[tauri::command(async)]
@@ -1232,7 +1243,9 @@ pub fn run() {
             list_genres,
             set_genre,
             rename_genre,
+            add_genre,
             delete_genre,
+            set_article_note,
             set_difficulty,
             classify_article,
             classify_unclassified,

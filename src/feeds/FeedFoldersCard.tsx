@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, arrayMove, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { api, type FolderRow } from "../api";
-import { moved } from "./feedFolders";
+import { SortableRow, rowDndText, useRowSensors } from "../ui/SortableRow";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
@@ -10,6 +12,7 @@ export function FeedFoldersCard({ folders, onChanged, onError }: { folders: Fold
   const t = useT();
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<FolderRow | null>(null);
+  const sensors = useRowSensors();
 
   /** Whether the task succeeded; the list reloads either way. */
   async function act(task: () => Promise<unknown>): Promise<boolean> {
@@ -28,16 +31,13 @@ export function FeedFoldersCard({ folders, onChanged, onError }: { folders: Fold
       void act(() => api.renameFeedFolder(f.id, value.trim()));
     }
   };
-  const move = (f: FolderRow, d: -1 | 1) =>
-    act(() =>
-      api.reorderFeedFolders(
-        moved(
-          folders.map((x) => x.id),
-          f.id,
-          d,
-        ),
-      ),
-    );
+  const drop = ({ active, over }: DragEndEvent) => {
+    const ids = folders.map((x) => x.id);
+    const [from, to] = [ids.indexOf(Number(active.id)), over ? ids.indexOf(Number(over.id)) : -1];
+    if (from >= 0 && to >= 0 && from !== to) {
+      void act(() => api.reorderFeedFolders(arrayMove(ids, from, to)));
+    }
+  };
 
   return (
     <section className="card folders" aria-label={t("feedsView.folders")}>
@@ -66,39 +66,42 @@ export function FeedFoldersCard({ folders, onChanged, onError }: { folders: Fold
       </form>
       {folders.length === 0 && <p className="muted">{t("feedsView.noFolders")}</p>}
       {folders.length > 0 && (
-        <ul>
-          {folders.map((f, i) => (
-            <li key={`${f.id}:${f.name}`}>
-              <Icon name="folder" />
-              <input
-                className="input sm"
-                defaultValue={f.name}
-                aria-label={t("feedsView.folderNameOf", { name: f.name })}
-                maxLength={100}
-                onBlur={(e) => rename(f, e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.currentTarget.blur();
-                  }
-                  if (e.key === "Escape") {
-                    e.currentTarget.value = f.name;
-                    e.currentTarget.blur();
-                  }
-                }}
-              />
-              <span className="muted">{t("feedsView.folderFeeds", { n: f.feeds })}</span>
-              <button className="ib" onClick={() => move(f, -1)} disabled={i === 0} aria-label={t("feedsView.folderUp", { name: f.name })}>
-                <Icon name="up" size="sm" />
-              </button>
-              <button className="ib" onClick={() => move(f, 1)} disabled={i === folders.length - 1} aria-label={t("feedsView.folderDown", { name: f.name })}>
-                <Icon name="down" size="sm" />
-              </button>
-              <button className="btn sm ghost" onClick={() => setDeleting(f)} aria-label={t("feedsView.deleteFolderOf", { name: f.name })}>
-                {t("common.delete")}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop} accessibility={rowDndText(t)}>
+          <SortableContext items={folders.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+            <ul>
+              {folders.map((f) => (
+                <SortableRow key={`${f.id}:${f.name}`} id={f.id} as="li" label={t("feedsView.dragFolder", { name: f.name })}>
+                  {(grip) => (
+                    <>
+                      {grip}
+                      <Icon name="folder" />
+                      <input
+                        className="input sm"
+                        defaultValue={f.name}
+                        aria-label={t("feedsView.folderNameOf", { name: f.name })}
+                        maxLength={100}
+                        onBlur={(e) => rename(f, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          }
+                          if (e.key === "Escape") {
+                            e.currentTarget.value = f.name;
+                            e.currentTarget.blur();
+                          }
+                        }}
+                      />
+                      <span className="muted">{t("feedsView.folderFeeds", { n: f.feeds })}</span>
+                      <button className="btn sm ghost" onClick={() => setDeleting(f)} aria-label={t("feedsView.deleteFolderOf", { name: f.name })}>
+                        {t("common.delete")}
+                      </button>
+                    </>
+                  )}
+                </SortableRow>
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
       )}
       {deleting && (
         <ConfirmDialog

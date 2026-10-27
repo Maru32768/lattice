@@ -5,7 +5,10 @@ import { relTime } from "../lib/time";
 import { Favicon, feedIconChanged, hostOf } from "../ui/Favicon";
 import { FilterEditor, RejectedList } from "./FeedFilterEditor";
 import { FeedFoldersCard } from "./FeedFoldersCard";
-import { feedGroups, feedStep, feedUrls, folderTree } from "./feedFolders";
+import { DndContext, closestCenter, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { feedDrop, feedGroups, feedUrls, folderTree, placeFeeds, type NavRow } from "./feedFolders";
+import { SortableRow, rowDndText, useRowSensors } from "../ui/SortableRow";
 import { Icon } from "../ui/Icon";
 import { skippedLines } from "../lib/urlLines";
 import "../ui/manage.css";
@@ -254,17 +257,7 @@ export function FeedsView({
       const name = folders.find((f) => f.id === folder)?.name;
       return name == null ? t("feedsView.movedOut", { n: ids.length }) : t("feedsView.moved", { n: ids.length, folder: name });
     });
-  // The sidebar's order (H26): ↑ ↓ move a feed one place, past a folder's ends into the next one.
-  const groups = feedGroups(folderTree(feeds, folders, new Map()));
-  const step = (f: FeedRow, d: -1 | 1) => {
-    const order = feedStep(groups, f.id, d);
-    if (order) {
-      void run(async () => {
-        await api.reorderFeeds(order.folder, order.ids);
-        return null;
-      });
-    }
-  };
+  const sensors = useRowSensors();
   const folderOptions = folders.map((f) => (
     <option key={f.id} value={f.id}>
       {f.name}
@@ -300,6 +293,20 @@ export function FeedsView({
   const shown = feeds.filter(
     (f) => (!onlyErrors || f.last_error) && (!needle || `${f.custom_title ?? ""} ${f.title ?? ""} ${f.url} ${f.site_url ?? ""}`.toLowerCase().includes(needle)),
   );
+
+  // The sidebar's order (H26): ⋮⋮ drags a feed within its folder, or onto a feed of another to move it there.
+  const drop = ({ active, over }: DragEndEvent) => {
+    const rows = shown.map((f): NavRow => ({ kind: "feed", id: f.id, folder: f.folder_id }));
+    const ids = shown.map((f) => f.id);
+    const order = over && feedDrop(rows, feedGroups(folderTree(feeds, folders, new Map())), ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
+    if (order) {
+      setFeeds(placeFeeds(feeds, order));
+      void run(async () => {
+        await api.reorderFeeds(order.folder, order.ids);
+        return null;
+      });
+    }
+  };
 
   return (
     <main className="manage">
@@ -482,204 +489,211 @@ export function FeedsView({
         )}
 
         <div className="card scroll">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th className="pick">
-                  <input
-                    type="checkbox"
-                    aria-label={t("feedsView.selectAll")}
-                    checked={shown.length > 0 && shown.every((f) => selected.has(f.id))}
-                    onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((f) => f.id)) : new Set())}
-                  />
-                </th>
-                <th>{t("common.feed")}</th>
-                <th>{t("common.folder")}</th>
-                <th>{t("jobsView.state")}</th>
-                <th>{t("feedsView.updated")}</th>
-                <th className="num">{t("feedsView.unreadTotal")}</th>
-                <th>
-                  <span className="vh">{t("common.actions")}</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.length === 0 && (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={drop} accessibility={rowDndText(t)}>
+            <table className="tbl">
+              <thead>
                 <tr>
-                  <td colSpan={7} className="muted">
-                    {feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}
-                  </td>
+                  <th className="pick">
+                    <input
+                      type="checkbox"
+                      aria-label={t("feedsView.selectAll")}
+                      checked={shown.length > 0 && shown.every((f) => selected.has(f.id))}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(shown.map((f) => f.id)) : new Set())}
+                    />
+                  </th>
+                  <th>{t("common.feed")}</th>
+                  <th>{t("common.folder")}</th>
+                  <th>{t("jobsView.state")}</th>
+                  <th>{t("feedsView.updated")}</th>
+                  <th className="num">{t("feedsView.unreadTotal")}</th>
+                  <th>
+                    <span className="vh">{t("common.actions")}</span>
+                  </th>
                 </tr>
-              )}
-              {shown.map((f, i) => [
-                folders.length > 0 && f.folder_id !== shown[i - 1]?.folder_id && (
-                  <tr key={`folder-${f.folder_id}`} className="grp">
-                    <th colSpan={7} scope="colgroup">
-                      <Icon name="folder" size="sm" />
-                      {f.folder ?? t("feedsView.noFolder")}
-                    </th>
-                  </tr>
-                ),
-                confirming === f.id ? (
-                  <tr key={f.id} className="confirm">
-                    <td colSpan={7}>
-                      <div className="confirm-line">
-                        <div>
-                          <div className="fn">{t("feedsView.confirmDelete", { feedName: feedName(f) })}</div>
-                          <div className="muted">{t("feedsView.deleteDesc", { article_count: f.article_count })}</div>
-                        </div>
-                        <div className="acts">
-                          <button className="btn sm" onClick={() => setConfirming(null)}>
-                            {t("common.cancel")}
-                          </button>
-                          <button className="btn sm danger" onClick={() => remove(f)}>
-                            {t("feedsView.delete")}
-                          </button>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  [
-                    <tr key={f.id} className={f.last_error ? "err" : undefined}>
-                      <td className="pick">
-                        <input
-                          type="checkbox"
-                          aria-label={t("feedsView.selectFeed", { feedName: feedName(f) })}
-                          checked={selected.has(f.id)}
-                          onChange={(e) =>
-                            setSelected((cur) => {
-                              const n = new Set(cur);
-                              if (e.target.checked) {
-                                n.add(f.id);
-                              } else {
-                                n.delete(f.id);
-                              }
-                              return n;
-                            })
-                          }
-                        />
+              </thead>
+              <SortableContext items={shown.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                <tbody>
+                  {shown.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="muted">
+                        {feeds.length === 0 ? t("feedsView.empty") : t("feedsView.noMatch")}
                       </td>
-                      <td>
-                        <div className="fn with-ico">
-                          <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />
-                          {feedName(f)}
-                        </div>
-                        <div className="fs">{bare(f.url)}</div>
-                      </td>
-                      <td>
-                        <select
-                          className="select"
-                          value={f.folder_id ?? ""}
-                          disabled={busy}
-                          aria-label={t("feedsView.folderOf", { feedName: feedName(f) })}
-                          onChange={(e) => void move([f.id], pickFolder(e.target.value))}
-                        >
-                          <option value="">{t("feedsView.noFolder")}</option>
-                          {folderOptions}
-                        </select>
-                      </td>
-                      <td>
-                        {f.last_error ? (
-                          <span className="st err">
-                            <i />
-                            {t.msg(f.last_error)}
-                          </span>
-                        ) : (
-                          <span className="st">
-                            <i />
-                            {t("feedsView.ok")}
-                          </span>
-                        )}
-                        {f.filter_note && <div className="st warn">{t.msg(f.filter_note)}</div>}
-                        {f.rejected > 0 && (
-                          <div>
-                            <button
-                              className="btn sm ghost"
-                              onClick={() => setEditing(f.id)}
-                              aria-label={t("feedsView.rejectedOf", { feedName: feedName(f), n: f.rejected })}
-                            >
-                              {t("feedsView.rejected", { n: f.rejected })}
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                      <td className="num when">{relTime(f.last_fetched_at, t)}</td>
-                      <td className="num">
-                        {unread.get(f.id) ?? 0} / {f.article_count}
-                      </td>
-                      <td className="row-acts">
-                        <button
-                          className="ib"
-                          onClick={() => step(f, -1)}
-                          disabled={busy || !feedStep(groups, f.id, -1)}
-                          aria-label={t("feedsView.feedUp", { feedName: feedName(f) })}
-                        >
-                          <Icon name="up" size="sm" />
-                        </button>
-                        <button
-                          className="ib"
-                          onClick={() => step(f, 1)}
-                          disabled={busy || !feedStep(groups, f.id, 1)}
-                          aria-label={t("feedsView.feedDown", { feedName: feedName(f) })}
-                        >
-                          <Icon name="down" size="sm" />
-                        </button>
-                        <button className="btn sm ghost" onClick={() => onShowFeed(f.id)} aria-label={t("feedsView.viewArticlesOf", { feedName: feedName(f) })}>
-                          {t("feedsView.viewArticles")}
-                        </button>
-                        <button
-                          className="btn sm ghost"
-                          onClick={() => setEditing(editing === f.id ? null : f.id)}
-                          aria-expanded={editing === f.id}
-                          aria-label={t("feedsView.editOf", { feedName: feedName(f) })}
-                        >
-                          {t("nav.edit")}
-                        </button>
-                        <button className="btn sm ghost" onClick={() => setConfirming(f.id)} aria-label={t("feedsView.deleteOf", { feedName: feedName(f) })}>
-                          {t("common.delete")}
-                        </button>
-                      </td>
-                    </tr>,
-                    editing === f.id && (
-                      <tr key={`${f.id}-edit`} className="edit">
+                    </tr>
+                  )}
+                  {shown.map((f, i) => [
+                    folders.length > 0 && f.folder_id !== shown[i - 1]?.folder_id && (
+                      <tr key={`folder-${f.folder_id}`} className="grp">
+                        <th colSpan={7} scope="colgroup">
+                          <Icon name="folder" size="sm" />
+                          {f.folder ?? t("feedsView.noFolder")}
+                        </th>
+                      </tr>
+                    ),
+                    confirming === f.id ? (
+                      <tr key={f.id} className="confirm">
                         <td colSpan={7}>
-                          <div className="feed-edit">
-                            <FeedEditor
-                              feed={f}
-                              onSaved={() => {
-                                void load();
-                                onChanged();
-                              }}
-                            />
-                            <FilterEditor
-                              feedId={f.id}
-                              onSaved={() => {
-                                void load();
-                                onChanged();
-                              }}
-                            />
-                            <RejectedList
-                              feed={f}
-                              onChanged={() => {
-                                void load();
-                                onChanged();
-                              }}
-                            />
+                          <div className="confirm-line">
                             <div>
-                              <button type="button" className="btn sm" onClick={() => setEditing(null)}>
-                                {t("common.close")}
+                              <div className="fn">{t("feedsView.confirmDelete", { feedName: feedName(f) })}</div>
+                              <div className="muted">{t("feedsView.deleteDesc", { article_count: f.article_count })}</div>
+                            </div>
+                            <div className="acts">
+                              <button className="btn sm" onClick={() => setConfirming(null)}>
+                                {t("common.cancel")}
+                              </button>
+                              <button className="btn sm danger" onClick={() => remove(f)}>
+                                {t("feedsView.delete")}
                               </button>
                             </div>
                           </div>
                         </td>
                       </tr>
+                    ) : (
+                      [
+                        <SortableRow
+                          key={f.id}
+                          id={f.id}
+                          as="tr"
+                          label={t("feedsView.dragFeed", { feedName: feedName(f) })}
+                          className={f.last_error ? "err" : undefined}
+                        >
+                          {(grip) => (
+                            <>
+                              <td className="pick">
+                                {grip}
+                                <input
+                                  type="checkbox"
+                                  aria-label={t("feedsView.selectFeed", { feedName: feedName(f) })}
+                                  checked={selected.has(f.id)}
+                                  onChange={(e) =>
+                                    setSelected((cur) => {
+                                      const n = new Set(cur);
+                                      if (e.target.checked) {
+                                        n.add(f.id);
+                                      } else {
+                                        n.delete(f.id);
+                                      }
+                                      return n;
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td>
+                                <div className="fn with-ico">
+                                  <Favicon domain={hostOf(f.site_url ?? f.url)} feed={f.id} />
+                                  {feedName(f)}
+                                </div>
+                                <div className="fs">{bare(f.url)}</div>
+                              </td>
+                              <td>
+                                <select
+                                  className="select"
+                                  value={f.folder_id ?? ""}
+                                  disabled={busy}
+                                  aria-label={t("feedsView.folderOf", { feedName: feedName(f) })}
+                                  onChange={(e) => void move([f.id], pickFolder(e.target.value))}
+                                >
+                                  <option value="">{t("feedsView.noFolder")}</option>
+                                  {folderOptions}
+                                </select>
+                              </td>
+                              <td>
+                                {f.last_error ? (
+                                  <span className="st err">
+                                    <i />
+                                    {t.msg(f.last_error)}
+                                  </span>
+                                ) : (
+                                  <span className="st">
+                                    <i />
+                                    {t("feedsView.ok")}
+                                  </span>
+                                )}
+                                {f.filter_note && <div className="st warn">{t.msg(f.filter_note)}</div>}
+                                {f.rejected > 0 && (
+                                  <div>
+                                    <button
+                                      className="btn sm ghost"
+                                      onClick={() => setEditing(f.id)}
+                                      aria-label={t("feedsView.rejectedOf", { feedName: feedName(f), n: f.rejected })}
+                                    >
+                                      {t("feedsView.rejected", { n: f.rejected })}
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="num when">{relTime(f.last_fetched_at, t)}</td>
+                              <td className="num">
+                                {unread.get(f.id) ?? 0} / {f.article_count}
+                              </td>
+                              <td className="row-acts">
+                                <button
+                                  className="btn sm ghost"
+                                  onClick={() => onShowFeed(f.id)}
+                                  aria-label={t("feedsView.viewArticlesOf", { feedName: feedName(f) })}
+                                >
+                                  {t("feedsView.viewArticles")}
+                                </button>
+                                <button
+                                  className="btn sm ghost"
+                                  onClick={() => setEditing(editing === f.id ? null : f.id)}
+                                  aria-expanded={editing === f.id}
+                                  aria-label={t("feedsView.editOf", { feedName: feedName(f) })}
+                                >
+                                  {t("nav.edit")}
+                                </button>
+                                <button
+                                  className="btn sm ghost"
+                                  onClick={() => setConfirming(f.id)}
+                                  aria-label={t("feedsView.deleteOf", { feedName: feedName(f) })}
+                                >
+                                  {t("common.delete")}
+                                </button>
+                              </td>
+                            </>
+                          )}
+                        </SortableRow>,
+                        editing === f.id && (
+                          <tr key={`${f.id}-edit`} className="edit">
+                            <td colSpan={7}>
+                              <div className="feed-edit">
+                                <FeedEditor
+                                  feed={f}
+                                  onSaved={() => {
+                                    void load();
+                                    onChanged();
+                                  }}
+                                />
+                                <FilterEditor
+                                  feedId={f.id}
+                                  onSaved={() => {
+                                    void load();
+                                    onChanged();
+                                  }}
+                                />
+                                <RejectedList
+                                  feed={f}
+                                  onChanged={() => {
+                                    void load();
+                                    onChanged();
+                                  }}
+                                />
+                                <div>
+                                  <button type="button" className="btn sm" onClick={() => setEditing(null)}>
+                                    {t("common.close")}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ),
+                      ]
                     ),
-                  ]
-                ),
-              ])}
-            </tbody>
-          </table>
+                  ])}
+                </tbody>
+              </SortableContext>
+            </table>
+          </DndContext>
         </div>
       </div>
     </main>

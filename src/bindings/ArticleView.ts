@@ -8,4 +8,8 @@ export type ArticleView = { article: ArticleRow,
 /**
  * Language of `blocks[].translation`: "en" for a Japanese article, else "ja".
  */
-target_language: "ja" | "en", blocks: Array<Block>, jobs: Array<JobRow>, summary: SummaryView | null, };
+target_language: "ja" | "en", blocks: Array<Block>, jobs: Array<JobRow>, summary: SummaryView | null, 
+/**
+ * The user's memo (`set_note`).
+ */
+note: string | null, };

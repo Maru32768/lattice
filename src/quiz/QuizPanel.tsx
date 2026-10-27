@@ -15,20 +15,24 @@ interface Progress {
 
 // The Reader unmounts when another screen (処理状況, 設定, …) or tab is shown; the open panels and
 // their progress outlive it here, by article id, until the app restarts.
-const openPanels = new Set<number>();
+const openPanels = new Map<number, SidePanel>();
 const progress = new Map<number, Progress>();
 
-/** Whether the article's 理解度チェック is open, remembered across Reader remounts. */
-export function useQuizOpen(id: number) {
-  const [open, setOpen] = useState(() => openPanels.has(id));
+/** The panels beside an article; one at a time, so the article keeps its width. */
+export type SidePanel = "quiz" | "note";
+
+/** Which panel (理解度チェック or メモ) is open beside the article, remembered across Reader remounts. */
+export function useSidePanel(id: number) {
+  const [open, setOpen] = useState<SidePanel | null>(() => openPanels.get(id) ?? null);
   useEffect(() => {
     if (open) {
-      openPanels.add(id);
+      openPanels.set(id, open);
     } else {
       openPanels.delete(id);
     }
   }, [id, open]);
-  return [open, setOpen] as const;
+  const toggle = (p: SidePanel) => setOpen((o) => (o === p ? null : p));
+  return [open, toggle, () => setOpen(null)] as const;
 }
 
 /** 理解度チェック beside the Reader: take the article's quiz, then optionally add it to review. */

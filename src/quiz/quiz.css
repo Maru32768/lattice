@@ -59,3 +59,8 @@
 .manage .tbl .linkish { text-align: left; overflow-wrap: anywhere; }
 .docbar .tb.qz-open { background: var(--active); color: var(--ink); }
 @container (max-width: 960px) { .docbar .tb.qz-btn .lbl { display: none; } }
+
+/* メモ (Reader side panel, src/reader/NotePanel.tsx): the same frame as the quiz */
+.note-text { flex: 1; min-height: 0; resize: none; border: 0; outline: none; padding: 14px 16px; background: transparent; color: var(--ink); font: 13px/1.8 var(--sans); }
+.note-text::placeholder { color: var(--ink3); }
+.note-error { padding: 0 16px 10px; }

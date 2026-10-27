@@ -1,4 +1,4 @@
-//! JSON export (§17): articles, their translations, summaries and quizzes (with review state),
+//! JSON export (§17): articles, their translations, summaries, quizzes, memos (with review state),
 //! groups, and chat, in an open format, so none of it lives only in this database or at an LLM provider. One JSON object per line,
 //! gzip-compressed, written article by article: 10^5 articles never sit in memory at once.
 //! Left out: settings (API keys and other secrets), raw HTML snapshots, image bytes, embeddings
@@ -8,6 +8,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use rusqlite::OptionalExtension;
 use serde_json::{Value, json};
 
 use crate::msg;
@@ -131,16 +132,23 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
         let Some(article) = store.article_row(id).map_err(err)? else {
             continue;
         }; // deleted meanwhile
-        let (blocks, summaries, quizzes): (String, String, String) = {
+        let (blocks, summaries, quizzes, note): (String, String, String, Option<Value>) = {
             let c = store.conn();
             let q = |sql: &str| c.query_row(sql, [id], |r| r.get::<_, String>(0)).map_err(err);
-            (q(BLOCKS)?, q(SUMMARIES)?, q(QUIZZES)?)
+            let note = c
+                .query_row("SELECT body, updated_at FROM article_notes WHERE article_id = ?1", [id], |r| {
+                    Ok(json!({"text": r.get::<_, String>(0)?, "updated_at": r.get::<_, String>(1)?}))
+                })
+                .optional()
+                .map_err(err)?;
+            (q(BLOCKS)?, q(SUMMARIES)?, q(QUIZZES)?, note)
         };
         let mut v = json!({"type": "article"});
         v.as_object_mut().expect("object").extend(serde_json::to_value(article).map_err(err)?.as_object().cloned().unwrap_or_default());
         v["blocks"] = serde_json::from_str(&blocks).map_err(err)?;
         v["summaries"] = serde_json::from_str(&summaries).map_err(err)?;
         v["quizzes"] = serde_json::from_str(&quizzes).map_err(err)?;
+        v["note"] = note.unwrap_or(Value::Null);
         line(out, &v)?;
         n += 1;
     }
@@ -208,6 +216,8 @@ mod tests {
         s.insert_segments("ja", "v1", &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
         s.insert_segments("ja", "v1", &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
         s.insert_summary(id, "normal", "要約", "old-hash", "fake", None, "s1").unwrap();
+        s.set_note(id, "SSI と比べる").unwrap();
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("SSI と比べる"));
         s.set_setting(&format!("{SECRET_PREFIX}openai"), Some("sk-TOPSECRET")).unwrap();
         s.exec_for_test(&format!(
             "INSERT INTO chat_threads (id, title) VALUES (1, 'q');
@@ -230,6 +240,8 @@ mod tests {
         assert!(!text.contains("sk-TOPSECRET") && !text.contains("<article>"), "{text}");
         let lines: Vec<Value> = text.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(lines[0]["format"], FORMAT);
+        let article = lines.iter().find(|l| l["type"] == "article").unwrap();
+        assert_eq!(article["note"]["text"], "SSI と比べる");
         let a = &lines[1];
         assert_eq!((a["type"].as_str(), a["title"].as_str(), a["tags"].clone()), (Some("article"), Some("Post"), json!(["mvcc"])));
         let intro = &a["blocks"][0];

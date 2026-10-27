@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { api, type TagCount } from "../api";
 import { useT } from "../i18n";
 
-/** Genres with counts: rename, merge (rename onto an existing genre), delete unused ones. */
+/** Genres with counts: add, rename, merge (rename onto an existing genre), delete unused ones. */
 export function GenreSettings({ onChanged }: { onChanged: () => void }) {
   const t = useT();
   const [genres, setGenres] = useState<TagCount[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  /** The name in ジャンルを追加. */
+  const [adding, setAdding] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,8 +86,36 @@ export function GenreSettings({ onChanged }: { onChanged: () => void }) {
     );
   }
 
+  const name = adding.trim();
+  const existing = genres.find((g) => g.name.toLowerCase() === name.toLowerCase());
   return (
     <>
+      <form
+        className="set"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name && !existing) {
+            setAdding("");
+            void act(api.addGenre(name), t("genreSettings.added", { name }));
+          }
+        }}
+      >
+        <div className="h">
+          <input
+            className="input sm"
+            value={adding}
+            placeholder={t("genreSettings.addPlaceholder")}
+            aria-label={t("genreSettings.addLabel")}
+            onChange={(e) => setAdding(e.target.value)}
+          />
+        </div>
+        <div className="d">{existing ? t("genreSettings.exists", { name: existing.name }) : t("genreSettings.addDesc")}</div>
+        <div className="ctl">
+          <button type="submit" className="btn" disabled={!name || !!existing}>
+            {t("genreSettings.add")}
+          </button>
+        </div>
+      </form>
       <datalist id="genre-manage-options">
         {genres.map((g) => (
           <option key={g.name} value={g.name} />

@@ -69,14 +69,20 @@ test("dragging feeds in the sidebar reorders them and moves them between folders
   await expect(table.locator("tr.grp, .fn")).toHaveText(
     names(["TechFeed", "Rust Blog", "Postgres Weekly", "Zenn", "フォルダなし", "web.dev", "LWN.net", "Netflix TechBlog"]),
   );
-  await expect(app.getByLabel("Rust Blog を上へ")).toBeDisabled();
-  await app.getByLabel("Zenn を下へ").click();
-  await expect(table.locator(".fn"), "down past the last in a folder: first in the next group").toHaveText(
-    names(["Rust Blog", "Postgres Weekly", "Zenn", "web.dev", "LWN.net", "Netflix TechBlog"]),
+  // The ⋮⋮ handles drag rows, as the AI provider chain's do.
+  const grip = (name: string) => app.getByLabel(`${name} をドラッグで並べ替え`);
+  await drag(app, grip("Zenn"), grip("web.dev"));
+  await expect(table.locator(".fn"), "dragged down onto a feed of another group: just after it").toHaveText(
+    names(["Rust Blog", "Postgres Weekly", "web.dev", "Zenn", "LWN.net", "Netflix TechBlog"]),
   );
-  await expect(loose(app)).toHaveText(["Zenn", "web.dev", "LWN.net", "Netflix TechBlog"]);
-  await app.getByLabel("Zenn を上へ").click();
-  await expect(inFolder(app, "TechFeed"), "up past the first in none: last in the folder above").toHaveText(["Rust Blog", "Postgres Weekly", "Zenn"]);
+  await expect(loose(app)).toHaveText(["web.dev", "Zenn", "LWN.net", "Netflix TechBlog"]);
+  await drag(app, grip("Zenn"), grip("Postgres Weekly"));
+  await expect(inFolder(app, "TechFeed"), "back into the folder at the feed it was dropped on").toHaveText(["Rust Blog", "Zenn", "Postgres Weekly"]);
+  await expect(table.locator(".fn")).toHaveText(names(["Rust Blog", "Zenn", "Postgres Weekly", "web.dev", "LWN.net", "Netflix TechBlog"]));
+  // Away from the scroll area's edge, where holding a row scrolls the table under it.
+  await grip("LWN.net").evaluate((e) => e.scrollIntoView({ block: "center" }));
+  await drag(app, grip("LWN.net"), grip("web.dev"));
+  await expect(loose(app), "within a group").toHaveText(["LWN.net", "web.dev", "Netflix TechBlog"]);
 });
 
 test("Alt+↑ / ↓ move the focused feed or folder, across folders; folders drag too", async ({ app }) => {
@@ -111,4 +117,6 @@ test("Alt+↑ / ↓ move the focused feed or folder, across folders; folders dra
   await drag(app, navItem(app, "News"), navItem(app, "Tech"));
   await expect(folders()).toHaveText(["News", "Tech"]);
   await expect(app.getByRole("region", { name: "フォルダ" }).locator("li input").first(), "the Feeds screen follows").toHaveValue("News");
+  await drag(app, app.getByLabel("Tech をドラッグで並べ替え"), app.getByLabel("News をドラッグで並べ替え"));
+  await expect(folders(), "the Feeds screen's folder list drags too").toHaveText(["Tech", "News"]);
 });

@@ -163,6 +163,8 @@ Only dragging changes the order. A short click still opens the feed or folder.
 
 With the keyboard, focus a feed or folder row and press `Alt+↑` or `Alt+↓` to move it one place. A feed moved past the start or end of its folder enters the neighboring folder, which opens if it was collapsed.
 
+In the feed manager, drag the ⋮⋮ handle on a row of the feed table or the **Folders** list. Dropping a feed on a feed in another folder moves it there. With the keyboard, focus ⋮⋮, press `Space` to pick the row up, move it with the arrow keys, and press `Space` again to drop it.
+
 The feed manager lists feeds by folder in the same order. Move them with the ↑ and ↓ buttons in each row.
 
 #### Name and icon
@@ -216,7 +218,7 @@ A saved article can be read in two views. Switch with **Reader** and **Page** at
 
 Imported Markdown and PDF files have no original web page, so they have no Page view. A PDF saved from a URL opens in the browser's PDF viewer in the Page view.
 
-**The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, focus mode and the ⋯ menu. The ⋯ menu has:
+**The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, **Note**, focus mode and the ⋯ menu. The ⋯ menu has:
 
 - **Re-extract**: rebuilds the article from the saved HTML, PDF or Markdown without going online. Use it after a Lattice update improves text extraction.
 - The import-again actions (see [Pages that don't extract well](#pages-that-dont-extract-well))
@@ -373,7 +375,7 @@ Classification groups up to 20 unclassified articles into one call. To stop it, 
 - **+ Tag** adds a tag, and a tag's × removes it. Auto-classification only adds tags; it never removes tags you added.
 - **Auto-classify** in the ⋯ menu unpins the genre and difficulty and classifies the article again.
 
-**Edit genres.** **Edit** next to **Genres** in the navigation opens **Settings › Genres**, which lists every genre with its article count. You can rename a genre; giving it the name of another genre merges the two. A genre with no articles can be deleted.
+**Edit genres.** **Edit** next to **Genres** in the navigation opens **Settings › Genres**, which lists every genre with its article count. You can rename a genre; giving it the name of another genre merges the two. A genre with no articles can be deleted. Add a genre in the field at the top, and auto classification can choose it from then on.
 
 ### Importance
 
@@ -530,6 +532,14 @@ When you have answered every question, **Add to review** puts them in [Today's r
 - **Try again** starts over.
 - When the article's text or **About you** has changed, **Regenerate** writes new questions.
 - The panel keeps its state when you move to another screen or tab and come back. It is cleared when you quit Lattice.
+
+### Notes
+
+Click **Note** on the Reader or Page toolbar to open a note beside the article. Each article has one note in plain text. Lattice saves it when you stop typing and shows **Saved** above it.
+
+- An article with a note has **Note** highlighted on its toolbar.
+- The note and the quiz open in the same place. Opening one closes the other.
+- Notes are in the JSON export and in backups. Clearing a note deletes it.
 
 ### Save words
 
@@ -904,7 +914,7 @@ To go back to the database from before the restore, first close every process th
 
 **Settings › Export** writes the library's contents as gzip-compressed JSON Lines to the `exports` folder, for using your data in other tools. **What to export** chooses the whole library or one collection.
 
-- **Included:** articles, paragraphs, translations, summaries, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
+- **Included:** articles, paragraphs, translations, summaries, notes, tags, genres, feeds and folders, collections, quizzes and chats (an export of one collection leaves the chats out)
 - **Not included:** API keys and other settings, saved words, the fetched HTML, images and search vectors
 
 To keep what is not included, use a [backup](#backup). Saved words can also be exported with **Export CSV** in Vocabulary.

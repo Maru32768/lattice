@@ -126,6 +126,17 @@ pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
     tx.commit().map_err(err)
 }
 
+/// A genre the user adds ahead of any article: classification offers it from then on. Adding an
+/// existing name (case-insensitive) changes nothing.
+pub fn add_genre(store: &Store, name: &str) -> Result<(), String> {
+    let name = clean(name);
+    if name.is_empty() {
+        return Err(msg!("classify.emptyName"));
+    }
+    store.conn().execute("INSERT INTO genres (name) VALUES (?1) ON CONFLICT(name) DO NOTHING", [name]).map_err(err)?;
+    Ok(())
+}
+
 /// Deletes a genre no article uses.
 pub fn delete_genre(store: &Store, name: &str) -> Result<(), String> {
     let n =

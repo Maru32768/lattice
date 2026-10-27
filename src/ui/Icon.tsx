@@ -151,6 +151,7 @@ const PATHS = {
   flag: <path d="M5 21V4M5 4h11l-2 4 2 4H5" />,
   offline: <path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5-2.7M14 10.3A10 10 0 0 1 19 13M12 20h.01" />,
   summary: <path d="M5 7h14M5 12h14M5 17h9" />,
+  note: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
   popout: (
     <>
       <path d="M14 4h6v6M20 4l-9 9" />
