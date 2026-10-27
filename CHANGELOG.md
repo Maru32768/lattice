@@ -11,6 +11,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- When an AI provider step fails and the next step answers instead, Settings › AI providers and Jobs show which step failed and why (for example, a CLI that is not installed). Before, only the log said so.
 - Automatic translation of saved articles skips articles written in the display language (before, it always skipped Japanese articles). Turn on **Also translate articles in the display language** to include them.
 - Translation sends several batches of an article at once, so long articles finish sooner. Set how many in Settings › Translation (default 3).
 - The feed manager reorders feeds and folders by dragging their ⋮⋮ handle, as the AI provider chain does, instead of up and down buttons.

@@ -21,6 +21,7 @@ import type {
   RejectedEntry,
   ReviewAnswer,
   LlmSettings,
+  ProviderHealth,
   Quiz,
   R2Settings,
   R2Status,
@@ -593,6 +594,13 @@ export const handlers = {
     backup_dir: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\backups",
     backup_keep: store.backupKeep,
   }),
+  // A Codex CLI step behaves as if the CLI were not installed; every other step answers.
+  llm_health: (): ProviderHealth[] =>
+    store.llm.chain.map((c) =>
+      c.kind === "codex_cli"
+        ? { provider: "codex-cli", model: c.model, error: "provider unavailable: codex: not found", failed_secs_ago: 30, cooling: true }
+        : { provider: c.kind, model: c.model, error: null, failed_secs_ago: null, cooling: false },
+    ),
   get_llm_settings: (): LlmSettings => store.llm,
   set_llm_chain: ({ chain }: { chain: ChainEntry[] }) => void (store.llm = { ...store.llm, chain }),
   set_api_key: none,

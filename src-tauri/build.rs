@@ -118,6 +118,7 @@ const COMMANDS: &[&str] = &[
     "get_settings",
     "get_llm_settings",
     "set_llm_chain",
+    "llm_health",
     "set_api_key",
     "backup_db",
     "set_backup_keep",

@@ -168,7 +168,25 @@ pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
 struct Slot<P> {
     llm: P,
     model: Option<String>,
-    failed_at: Mutex<Option<Instant>>,
+    /// When the last call failed (not cleared by malformed output, which says nothing about the entry
+    /// being usable), and why; a success clears it.
+    failed: Mutex<Option<(Instant, String)>>,
+}
+
+/// How a chain entry fared on its last call, for the UI: a fallback that answered hides a failed
+/// entry from everything but the log otherwise.
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export)]
+pub struct ProviderHealth {
+    /// `LlmProvider::name`, e.g. "codex-cli".
+    pub provider: String,
+    pub model: Option<String>,
+    /// Why its last call failed; `None` when it has not failed since it last answered (or was configured).
+    pub error: Option<String>,
+    #[ts(type = "number | null")]
+    pub failed_secs_ago: Option<u64>,
+    /// Tried after the other entries until `COOLDOWN` has passed.
+    pub cooling: bool,
 }
 
 pub struct LlmChain<P = AnyLlm> {
@@ -184,8 +202,28 @@ impl<P> LlmChain<P> {
 
     /// Replaces the chain; calls already in flight finish on the old one.
     pub fn set(&self, entries: Vec<(P, Option<String>)>) {
-        let slots = entries.into_iter().map(|(llm, model)| Slot { llm, model, failed_at: Mutex::new(None) }).collect();
+        let slots = entries.into_iter().map(|(llm, model)| Slot { llm, model, failed: Mutex::new(None) }).collect();
         *self.slots.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(slots);
+    }
+}
+
+impl<P: LlmProvider> LlmChain<P> {
+    /// Each entry in configured order.
+    pub fn health(&self) -> Vec<ProviderHealth> {
+        let slots = self.slots.read().unwrap_or_else(|e| e.into_inner()).clone();
+        slots
+            .iter()
+            .map(|s| {
+                let failed = s.failed.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                ProviderHealth {
+                    provider: s.llm.name().to_string(),
+                    model: s.model.clone(),
+                    failed_secs_ago: failed.as_ref().map(|(t, _)| t.elapsed().as_secs()),
+                    cooling: failed.as_ref().is_some_and(|(t, _)| t.elapsed() < COOLDOWN),
+                    error: failed.map(|(_, e)| e),
+                }
+            })
+            .collect()
     }
 }
 
@@ -196,14 +234,14 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
 
     async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
         let slots = self.slots.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let cooling = |s: &Slot<P>| s.failed_at.lock().unwrap_or_else(|e| e.into_inner()).is_some_and(|t| t.elapsed() < COOLDOWN);
+        let cooling = |s: &Slot<P>| s.failed.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(t, _)| t.elapsed() < COOLDOWN);
         let mut order: Vec<&Slot<P>> = slots.iter().collect();
         order.sort_by_key(|s| cooling(s)); // stable: configured order within each group
         let mut errors = Vec::new();
         for s in order {
             match s.llm.complete_json(system, input, schema).await {
                 Ok(mut c) => {
-                    *s.failed_at.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                    *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     c.model = c.model.or_else(|| s.model.clone());
                     return Ok(c);
                 }
@@ -211,7 +249,7 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
                     log::warn!("{} ({}) failed: {e}", s.llm.name(), s.model.as_deref().unwrap_or("default"));
                     // Malformed output is usually a one-off; limits, auth and timeouts persist.
                     if !matches!(e, LlmError::Malformed(_)) {
-                        *s.failed_at.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+                        *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), e.to_string()));
                     }
                     errors.push(e);
                 }
@@ -240,6 +278,10 @@ mod tests {
         chain.complete_json("translate", input, &schema).await.unwrap();
         let slots = chain.slots.read().unwrap().clone();
         assert_eq!((slots[0].llm.calls.lock().unwrap().len(), slots[1].llm.calls.lock().unwrap().len()), (1, 2), "failed entry skipped while cooling");
+        let health = chain.health();
+        assert_eq!(health.len(), 2);
+        assert!(health[0].cooling && health[0].error.as_deref().is_some_and(|e| e.contains("usage limit")), "{health:?}");
+        assert!(!health[1].cooling && health[1].error.is_none(), "the entry that answered is fine");
 
         let all_fail = LlmChain::new(vec![(Fake { fail: true, ..Fake::new() }, None), (Fake { fail: true, ..Fake::new() }, None)]);
         let e = all_fail.complete_json("translate", input, &schema).await.unwrap_err().to_string();

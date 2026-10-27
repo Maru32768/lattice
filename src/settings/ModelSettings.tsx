@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderKind } from "../api";
+import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderHealth, type ProviderKind } from "../api";
 import { SetRow } from "../ui/SetRow";
+import { ProviderHealthNotice } from "./ProviderHealth";
 import { translatorFor, useT, type PlainKey, type T } from "../i18n";
 
 const PROVIDERS: { value: ProviderKind; label: string }[] = [
@@ -138,6 +139,7 @@ function KeyPill({ kind, llm }: { kind: ProviderKind; llm: LlmSettings | null })
 export function ModelSettings() {
   const t = useT();
   const [llm, setLlm] = useState<LlmSettings | null>(null);
+  const [health, setHealth] = useState<ProviderHealth[]>([]);
   const [slots, setSlots] = useState<Slot[]>(() => [empty(), empty(), empty()]);
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const [keys, setKeys] = useState({ openai: "", gemini: "", anthropic: "" });
@@ -147,6 +149,7 @@ export function ModelSettings() {
   async function load() {
     const s = await api.llmSettings();
     setLlm(s);
+    setHealth(await api.llmHealth());
     return s;
   }
 
@@ -158,6 +161,10 @@ export function ModelSettings() {
         setSlots(toSlots(s.chain));
       })
       .catch((e: unknown) => setError(String(e)));
+    api
+      .llmHealth()
+      .then(setHealth)
+      .catch(() => {});
   }, []);
 
   function update(i: number, patch: Partial<Slot>) {
@@ -279,6 +286,7 @@ export function ModelSettings() {
           </SortableContext>
         </DndContext>
       </section>
+      <ProviderHealthNotice health={health} />
       <div className="btn-row">
         <button className="btn pri" onClick={() => run(() => api.setLlmChain(chain), t("modelSettings.saved"))}>
           {t("common.save")}

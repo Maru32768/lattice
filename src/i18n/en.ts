@@ -178,7 +178,7 @@ export const en = {
   "translationSettings.keepTerms": "Keep technical terms in English",
   "translationSettings.parallel": "Batches at once",
   "translationSettings.parallelDesc":
-    "How many batches of an article (up to 12 paragraphs each) are sent to the AI provider at the same time (default 3). More finishes long articles sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
+    "How many batches of an article (up to 12 paragraphs each) are sent to the AI provider at the same time (default 3). Articles are still translated one at a time, so Jobs shows one running. More finishes long articles sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
   "translationSettings.keepTermsDesc":
     "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, on prefers the established English terms and off prefers plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
   "translationSettings.instructions": "Extra instructions",
@@ -224,6 +224,10 @@ export const en = {
   "modelSettings.effortHint": "Reasoning effort: how hard the model thinks. Higher can improve quality, but is slower and costs more.",
   "modelSettings.removeStep": "Remove step {x}",
   "modelSettings.saved": "Models saved",
+  "providerHealth.failed": "The last call to {provider} ({model}) failed ({when})",
+  "providerHealth.defaultModel": "default model",
+  "providerHealth.cooling": "The other steps are tried first for 5 minutes. If it does not recover, fix or remove this step in Settings › AI providers.",
+  "providerHealth.retrying": "The next call tries this step first again.",
   "modelSettings.chainNote":
     "Claude CLI and Codex CLI use each CLI's own login. For translating in bulk, a fast model at low effort is recommended. If you pick an effort the model does not support, that step fails and the next one takes over.",
   "modelSettings.apiKeys": "API keys",

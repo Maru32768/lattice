@@ -27,6 +27,15 @@ pub enum LlmError {
     Malformed(String),
 }
 
+/// A CLI provider that could not be started; not installed (or not on PATH) is the usual case.
+pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> LlmError {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        LlmError::Unavailable(format!("{program}: not found. Install it (and sign in), or remove this step from the AI provider chain"))
+    } else {
+        LlmError::Unavailable(format!("{program}: {e}"))
+    }
+}
+
 /// Reasoning effort of one chain entry; each provider accepts a subset (`ProviderKind::efforts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, TS)]
 #[ts(export)]

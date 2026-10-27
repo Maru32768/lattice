@@ -1024,6 +1024,13 @@ fn get_llm_settings(app: State<'_, App>) -> Result<LlmSettings, String> {
     })
 }
 
+/// How each chain step fared on its last call: a step that fails while a later one answers is
+/// otherwise visible only in the log.
+#[tauri::command(async)]
+fn llm_health(app: State<'_, App>) -> Vec<chain::ProviderHealth> {
+    app.providers.llm.health()
+}
+
 #[tauri::command(async)]
 fn set_llm_chain(app: State<'_, App>, chain: Vec<ChainEntry>) -> Result<(), String> {
     chain::save_config(&app.store, chain)?;
@@ -1356,6 +1363,7 @@ pub fn run() {
             get_settings,
             get_llm_settings,
             set_llm_chain,
+            llm_health,
             set_api_key,
             backup_db,
             set_backup_keep,

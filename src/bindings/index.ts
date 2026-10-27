@@ -42,6 +42,7 @@ export type * from "./NetworkSettings";
 export type * from "./OpmlFeed";
 export type * from "./OverlayLabels";
 export type * from "./PickedDir";
+export type * from "./ProviderHealth";
 export type * from "./ProviderKind";
 export type * from "./Quiz";
 export type * from "./QuizQuestion";

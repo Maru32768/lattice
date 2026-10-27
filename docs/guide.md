@@ -56,7 +56,7 @@ These providers are supported:
 | Gemini API | An API key |
 | Anthropic API | An API key |
 
-**Steps.** You can list up to three providers as steps. Lattice normally uses the first step. When a call fails (for example, because a usage limit was reached), it repeats the same work with the next step. A step that failed is skipped for the next 5 minutes. Drag the steps to reorder them. With the keyboard, press `Space` to pick a step up, move it with the arrow keys, and press `Space` again to drop it.
+**Steps.** You can list up to three providers as steps. Lattice normally uses the first step. When a call fails (for example, because a usage limit was reached), it repeats the same work with the next step. A step that failed is skipped for the next 5 minutes. When a step fails while another answers, **Settings › AI providers** and **Jobs** show which step failed and why, for example a CLI that is not installed. Drag the steps to reorder them. With the keyboard, press `Space` to pick a step up, move it with the arrow keys, and press `Space` again to drop it.
 
 **Model and effort.** Each step has a provider, a model and an effort. Effort sets how long the model thinks. Raising it can improve quality, but it is slower and costs more. For translating many articles, a fast model with low effort works well. To use a model that is not in the list, choose **Custom model ID** and enter its ID. If you choose an effort the model does not support, that step's calls fail and Lattice moves on to the next step.
 

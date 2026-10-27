@@ -185,3 +185,9 @@
 .ff-title { font-weight: 500; }
 .ff-reason { font-size: 12px; color: var(--tr-ink); }
 .manage .st.warn { display: flex; margin-top: 4px; color: var(--tr-ink); white-space: normal; max-width: 300px; overflow-wrap: anywhere; }
+
+/* A chain step whose last call failed (src/settings/ProviderHealth.tsx) */
+.manage .provider-health { display: flex; flex-direction: column; gap: 10px; padding: 10px 14px; border-color: var(--err-line); background: var(--err-row); }
+.manage .provider-health .ph-h { font-size: 12.5px; color: var(--ink); }
+.manage .provider-health .ph-e { font-size: 12px; color: var(--ink2); overflow-wrap: anywhere; }
+.manage .provider-health .ph-d { font-size: 12px; }

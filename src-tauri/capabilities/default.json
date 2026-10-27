@@ -140,6 +140,7 @@
     "allow-get-settings",
     "allow-get-llm-settings",
     "allow-set-llm-chain",
+    "allow-llm-health",
     "allow-set-api-key",
     "allow-backup-db",
     "allow-set-backup-keep",

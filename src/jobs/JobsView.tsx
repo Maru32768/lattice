@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type JobIssue, type JobOverview, type JobState } from "../api";
+import { api, type JobIssue, type JobOverview, type JobState, type ProviderHealth } from "../api";
+import { ProviderHealthNotice } from "../settings/ProviderHealth";
 import { relTime } from "../lib/time";
 import { InfoTip } from "../ui/InfoTip";
 import "../ui/manage.css";
@@ -42,15 +43,12 @@ const time = (s: string | null, t: T) => (s ? new Date(s).toLocaleString(locale(
 export function JobsView() {
   const t = useT();
   const [data, setData] = useState<JobOverview | null>(null);
+  const [health, setHealth] = useState<ProviderHealth[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [only, setOnly] = useState<string | null>(null);
 
-  const load = () =>
-    api
-      .jobOverview()
-      .then(setData)
-      .catch((e: unknown) => setError(String(e)));
+  const load = () => Promise.all([api.jobOverview().then(setData), api.llmHealth().then(setHealth)]).catch((e: unknown) => setError(String(e)));
   const reload = useEffectEvent(() => void load());
   // Jobs report every article; coalesce reloads. The poll catches backoffs that expire silently.
   useEffect(() => {
@@ -115,6 +113,7 @@ export function JobsView() {
           <span className="live">{t("jobsView.live")}</span>
           <span className="aside">{t("jobsView.retryPolicy", { MAX_ATTEMPTS })}</span>
         </header>
+        <ProviderHealthNotice health={health} />
         {status && (
           <p role="status" className="msg muted">
             {status}

@@ -65,7 +65,7 @@ impl ClaudeCli {
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: no console flash from the GUI app
 
-        let mut child = cmd.spawn().map_err(|e| LlmError::Unavailable(format!("{}: {e}", self.program)))?;
+        let mut child = cmd.spawn().map_err(|e| crate::llm::spawn_error(&self.program, &e))?;
         let mut stdin = child.stdin.take().expect("stdin piped");
         // The write shares the timeout: a CLI that stops reading would otherwise hang the worker.
         let write = async move { stdin.write_all(input.as_bytes()).await };
