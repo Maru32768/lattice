@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "../api";
 import type { LanguageMode } from "../reader/mixed";
 import type { PageTab } from "../layout/layout";
@@ -74,10 +75,15 @@ export const overlayLabels = (t: T): OverlayLabels => ({
   saved_word: t("vocab.savedShort"),
 });
 
-/** https:// + host emphasized + the rest; a click edits it, with the whole URL selected. */
-function UrlBar({ url, onGo }: { url: string; onGo: (input: string) => void }) {
+/** https:// + host emphasized + the rest; a click (or a change of `editAt`) edits it, with the whole URL selected. */
+function UrlBar({ url, editAt, onGo }: { url: string; editAt: number; onGo: (input: string) => void }) {
   const t = useT();
   const [draft, setDraft] = useState<string | null>(null);
+  const [edited, setEdited] = useState(editAt);
+  if (edited !== editAt) {
+    setEdited(editAt);
+    setDraft(url);
+  }
   const input = useRef<HTMLInputElement>(null);
   const editing = draft != null;
   useEffect(() => {
@@ -165,6 +171,7 @@ export function BrowserView({
   const covered = useCovered(host);
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
+  const [editAt, setEditAt] = useState(0);
   const [panel, togglePanel, closePanel] = useSidePanel(saved?.id ?? 0);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = useEffectEvent(async () => {
@@ -259,8 +266,17 @@ export function BrowserView({
     if ((opened.get(id) ?? -1) >= tab.seq) {
       return;
     }
-    void open(boundsOf(host.current)!, tab.focus).then(() => sync());
-  }, [id, tab.seq, tab.focus]);
+    void open(boundsOf(host.current)!, tab.focus).then(async () => {
+      // The new webview takes the keyboard when it is created: take it back for the URL bar.
+      if (tab.edit) {
+        await getCurrentWebview()
+          .setFocus()
+          .catch(() => {});
+        setEditAt((n) => n + 1);
+      }
+      return sync();
+    });
+  }, [id, tab.seq, tab.focus, tab.edit]);
 
   useEffect(() => {
     let live = true;
@@ -380,6 +396,7 @@ export function BrowserView({
         </button>
         <UrlBar
           url={url}
+          editAt={editAt}
           onGo={(input) => {
             const next = toNavigation(input, getEngine());
             if (next) {

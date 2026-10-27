@@ -238,7 +238,7 @@ The article's language sets the direction: Japanese articles are translated into
 
 **Mixed** picks the translated sentences the same way in the Reader and the Page view: within each paragraph, so that the two languages alternate. The choice follows the article's (page's) address and text, so the same article always mixes the same sentences. A paragraph of one sentence (a heading, say) is shown whole in whichever language its sentence gets.
 
-The Reader and the Page view remember their choice separately. A choice applies to every article (every page, in the Page view) until you change it. When Lattice starts, the Reader is at **Mixed** 70% and the Page view at **Original**.
+The Reader and the Page view remember their choice of **Original**, **Mixed** or **Translated** separately, but share the **Mixed** percentage: changing it in one changes it in the other. A choice applies to every article (every page, in the Page view) until you change it. When Lattice starts, the Reader is at **Mixed** 70% and the Page view at **Original**.
 
 ### Switch one paragraph
 
@@ -307,7 +307,7 @@ Each pane in the document area has a row of tabs. A tab holds an article in the 
 
 - Opening an article from the list, the palette, search results or a chat citation replaces the contents of the shown tab in the focused pane.
 - To open it in a new tab instead, `Ctrl`+click or middle-click.
-- **New tab** (+) at the end of the tab row opens the search engine's home page in a new tab. `Ctrl+T` opens the palette, and what you choose there opens in a new tab.
+- **New tab** (+) at the end of the tab row opens the search engine's home page in a new tab, with its address selected in the address bar so you can paste or type another right away. `Ctrl+T` opens the palette, and what you choose there opens in a new tab.
 - Close a tab with `Ctrl+W`, its ×, or a middle-click on it.
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
 - Drag tabs to reorder them.

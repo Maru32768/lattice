@@ -27,6 +27,8 @@ export interface PageTab {
   seq: number;
   /** Text of a block to scroll to after load (search-result jumps). */
   focus?: string;
+  /** A new tab (the + button): its URL bar starts in edit, the URL selected, so a pasted one replaces it. */
+  edit?: boolean;
   loading: boolean;
   /** Unknown (undefined) leaves the toolbar button enabled. */
   canGoBack?: boolean;
@@ -42,7 +44,7 @@ export type Tab = ReaderTab | PageTab;
 /** What to open: a Reader of an article, or a Page of a URL (`key`: the webview of a tab moved from another window). */
 export type Doc =
   | { kind: "reader"; articleId: number; focus?: Omit<Focus, "seq"> }
-  | { kind: "page"; url: string; focus?: string; title?: string; saved?: number | null; key?: string };
+  | { kind: "page"; url: string; focus?: string; title?: string; saved?: number | null; key?: string; edit?: boolean };
 
 /** A fresh webview key: time plus a random tail, in the characters a webview label allows. */
 export const newKey = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -166,7 +168,7 @@ function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   const seq = (prev?.kind === "page" ? prev.seq : 0) + 1;
   // A page replacing a page keeps the webview; one arriving from another window brings its own.
   const key = prev?.kind === "page" ? prev.key : (doc.key ?? newKey());
-  return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, loading: true, saved: doc.saved ?? null };
+  return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, edit: doc.edit, loading: true, saved: doc.saved ?? null };
 }
 
 /** True when `t` already shows `doc` and nothing asks to jump inside it. */

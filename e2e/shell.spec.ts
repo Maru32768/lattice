@@ -139,6 +139,10 @@ test("the tab strip's ＋ opens the search engine's start page in a new tab (H12
   await expect(app.locator(".dpane").getByRole("tab")).toHaveCount(2);
   await expect(palette(app)).toBeHidden();
   await expect.poll(async () => ((await callsOf(app, "browser_open")).at(-1) as { url: string } | undefined)?.url).toBe("https://duckduckgo.com/");
+  // The URL bar has the keyboard with its URL selected: a pasted URL replaces it.
+  const bar = app.locator("input.url-pill");
+  await expect(bar).toBeFocused();
+  await expect.poll(() => bar.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, "https://duckduckgo.com/".length]);
 });
 
 test("a saved article's summary shows in a strip above its page; it can be generated there (H13)", async ({ app }) => {

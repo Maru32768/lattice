@@ -133,8 +133,9 @@ export default function App() {
   const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
+  // The Reader keeps its own mode; the mixed ratio is the Page's (`pageLang.percent`), one setting for both.
   const [mode, setMode] = useState<LanguageMode>("mixed");
-  const [percent, setPercent] = useState(70);
+  const setPercent = (percent: number) => setPageLang({ ...pageLang, percent });
 
   const { scoped, shown, groups, order, counts, relax, articleById } = useLibraryView({
     articles,
@@ -251,14 +252,14 @@ export default function App() {
   }
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. `pane`: not the focused one. */
-  function openPage(url: string, focus?: string, article?: ArticleRow, where: Where = "active", pane?: Id) {
+  function openPage(url: string, focus?: string, article?: ArticleRow, where: Where = "active", pane?: Id, edit?: boolean) {
     // An imported file has no page: it stays in the Reader.
     if (isLocal(url)) {
       return article ? openReader(article.id, undefined, where, pane) : setError(t("reader.pageDisabled"));
     }
     setError(null);
     setScreen("library");
-    setLayout((l) => open(l, { kind: "page", url, focus, title: article?.title ?? "", saved: article?.id ?? null }, where, pane));
+    setLayout((l) => open(l, { kind: "page", url, focus, title: article?.title ?? "", saved: article?.id ?? null, edit }, where, pane));
   }
 
   function openReader(id: number, focus?: Omit<Focus, "seq">, where: Where = "active", pane?: Id) {
@@ -483,7 +484,7 @@ export default function App() {
       setPageLang({ mode: "mixed", percent: Math.max(0, Math.min(100, pageLang.percent + delta)) });
     } else {
       setMode("mixed");
-      setPercent((p) => Math.max(0, Math.min(100, p + delta)));
+      setPercent(Math.max(0, Math.min(100, pageLang.percent + delta)));
       translateOnPick(curView, "mixed");
     }
   }
@@ -933,10 +934,12 @@ export default function App() {
         focus={tab.focus}
         matches={tab === cur ? readerMatches : undefined}
         mode={mode}
-        percent={percent}
+        percent={pageLang.percent}
         onLang={(m, p) => {
           setMode(m);
-          setPercent(p);
+          if (p !== pageLang.percent) {
+            setPercent(p);
+          }
           translateOnPick(v, m);
         }}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)}
@@ -1135,7 +1138,7 @@ export default function App() {
                     onLayout={setLayout}
                     labelOf={labelOf}
                     renderPane={renderPane}
-                    onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane)}
+                    onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane, true)}
                     windowAction={windowAction}
                     movable={HOST.kind === "doc"}
                     onSend={win.sendTab}
