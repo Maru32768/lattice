@@ -86,7 +86,7 @@ test("with 表示を切り替えたら自動で翻訳 off, switching the view tr
   expect(await callsOf(app, "set_auto_translate")).toEqual([{ on: true }]);
   await own.check();
   expect(await callsOf(app, "set_auto_translate_own_language")).toEqual([{ on: true }]);
-  const parallel = app.getByRole("combobox", { name: "同時に送る数" });
+  const parallel = app.getByRole("combobox", { name: "並列実行数" });
   await expect(parallel).toHaveValue("3");
   await parallel.selectOption("5");
   expect(await callsOf(app, "set_translate_parallel")).toEqual([{ n: 5 }]);
