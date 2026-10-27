@@ -544,16 +544,22 @@ UPDATE feeds SET position = (
     ) o WHERE o.id = feeds.id
 );
 "#,
+    r#"
+-- url_norm folds http into https: stored URLs are normalized again (RENORMALIZE_AT).
+"#,
 ];
-/// Stored URLs are normalized again after this many migrations: `url_norm` started dropping
-/// `source=rss…`, and feed entries must keep matching the articles and items saved before.
-const RENORMALIZE_AT: usize = 18;
+/// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
+/// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
+/// then folding http into https (28; a feed linking http:// showed its saved page as unsaved).
+const RENORMALIZE_AT: [usize; 2] = [18, 28];
 
 /// `UPDATE OR IGNORE`: a URL whose new form is already taken keeps its old one.
 fn renormalize_urls(tx: &rusqlite::Transaction) -> Result<()> {
     for (table, col) in [("articles", "normalized_url"), ("articles", "canonical_url"), ("feed_items", "normalized_url")] {
-        let urls: Vec<String> =
-            tx.prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%'"))?.query_map([], |r| r.get(0))?.collect::<Result<_>>()?;
+        let urls: Vec<String> = tx
+            .prepare(&format!("SELECT DISTINCT {col} FROM {table} WHERE {col} LIKE '%source=%' OR {col} LIKE 'http://%'"))?
+            .query_map([], |r| r.get(0))?
+            .collect::<Result<_>>()?;
         for old in urls {
             if let Ok(new) = crate::url_norm::normalize(&old).map(String::from)
                 && new != old
@@ -993,7 +999,7 @@ impl Store {
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = conn.transaction()?;
             tx.execute_batch(sql)?;
-            if i + 1 == RENORMALIZE_AT {
+            if RENORMALIZE_AT.contains(&(i + 1)) {
                 renormalize_urls(&tx)?;
             }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
@@ -1873,10 +1879,10 @@ mod tests {
     #[test]
     fn medium_feed_links_are_normalized_again() {
         let conn = Connection::open_in_memory().unwrap();
-        for sql in &MIGRATIONS[..RENORMALIZE_AT - 1] {
+        for sql in &MIGRATIONS[..RENORMALIZE_AT[0] - 1] {
             conn.execute_batch(sql).unwrap();
         }
-        conn.pragma_update(None, "user_version", RENORMALIZE_AT as i64 - 1).unwrap();
+        conn.pragma_update(None, "user_version", RENORMALIZE_AT[0] as i64 - 1).unwrap();
         conn.execute_batch(
             "INSERT INTO feeds (url, etag) VALUES ('https://m.dev/feed', 'W/1');
              INSERT INTO articles (original_url, normalized_url, domain, feed_id) VALUES
@@ -1894,6 +1900,34 @@ mod tests {
         assert_eq!(item, "https://m.dev/a");
         let etag: Option<String> = s.conn().query_row("SELECT etag FROM feeds", [], |r| r.get(0)).unwrap();
         assert_eq!(etag, None, "the next poll fetches the feed in full");
+    }
+
+    /// A feed linking http:// saved its articles under http keys; the browser lands on https.
+    #[test]
+    fn http_urls_are_keyed_as_https_again() {
+        let at = MIGRATIONS.iter().position(|m| m.contains("folds http into https")).unwrap() + 1;
+        assert!(RENORMALIZE_AT.contains(&at));
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..at - 1] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", at as i64 - 1).unwrap();
+        conn.execute_batch(
+            "INSERT INTO feeds (url) VALUES ('https://b.dev/rss.xml');
+             INSERT INTO articles (original_url, normalized_url, domain, feed_id) VALUES
+                 ('http://b.dev/a.html', 'http://b.dev/a.html', 'b.dev', 1),
+                 ('http://b.dev/b.html', 'http://b.dev/b.html', 'b.dev', 1),
+                 ('https://b.dev/b.html', 'https://b.dev/b.html', 'b.dev', NULL);
+             INSERT INTO feed_items (feed_id, normalized_url) VALUES (1, 'http://b.dev/a.html');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        assert_eq!(s.find_article_by_url("https://b.dev/a.html").unwrap(), Some(1));
+        assert_eq!(s.find_article_by_url("https://b.dev/b.html").unwrap(), Some(3), "the http copy keeps its key; the saved https one matches");
+        let item: String = s.conn().query_row("SELECT normalized_url FROM feed_items", [], |r| r.get(0)).unwrap();
+        assert_eq!(item, "https://b.dev/a.html");
+        let original: String = s.conn().query_row("SELECT original_url FROM articles WHERE id = 1", [], |r| r.get(0)).unwrap();
+        assert_eq!(original, "http://b.dev/a.html", "pages are still fetched from where the feed points");
     }
 
     /// Migration 5 moves block translations into the hash-keyed segment cache.

@@ -3,12 +3,18 @@ use url::Url;
 const TRACKING_PREFIXES: &[&str] = &["utm_", "mc_", "_hs"];
 const TRACKING_KEYS: &[&str] = &["fbclid", "gclid", "dclid", "msclkid", "yclid", "igshid", "ref_src", "spm"];
 
-/// Normalized form used as the dedup key: http(s) only, no fragment, no tracking params.
-/// Host lowercasing and default-port removal come from `url` itself.
+/// Normalized form used as the dedup key: http(s) only, no fragment, no tracking params, and
+/// http folded into https (a feed linking `http://` must match the page the browser lands on).
+/// Only a key: pages are fetched from their original URL. Host lowercasing and default-port
+/// removal come from `url` itself.
 pub fn normalize(input: &str) -> Result<Url, String> {
     let mut u = Url::parse(input.trim()).map_err(|e| format!("invalid URL: {e}"))?;
     if !matches!(u.scheme(), "http" | "https") {
         return Err(format!("unsupported scheme: {}", u.scheme()));
+    }
+    // A URL on its own port (a local server) keeps http: https://host:8080 would be another site.
+    if u.scheme() == "http" && u.port().is_none() {
+        let _ = u.set_scheme("https");
     }
     u.set_fragment(None);
     let kept: Vec<(String, String)> = u
@@ -40,6 +46,8 @@ mod tests {
         assert_eq!(n("https://example.com/a?utm_medium=rss"), "https://example.com/a");
         assert_eq!(n("https://netflixtechblog.com/a-post-0123abcd?source=rss----2615bd06b42e---4"), "https://netflixtechblog.com/a-post-0123abcd");
         assert_eq!(n("https://example.com/a?source=github&id=1"), "https://example.com/a?source=github&id=1");
+        assert_eq!(n("http://brooker.co.za/blog/a.html"), "https://brooker.co.za/blog/a.html");
+        assert_eq!(n("http://localhost:8080/a"), "http://localhost:8080/a");
         assert!(normalize("javascript:alert(1)").is_err());
         assert!(normalize("not a url").is_err());
     }
