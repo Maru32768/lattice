@@ -100,15 +100,14 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 
 ```
 末端 block の inline HTML 断片（属性は除去、a[href] は残す、画像などは ⟦n⟧）
- → LLM: 断片を「読みの単位」（文。長い文は節）に分割し、単位ごとに HTML を保ったまま翻訳
+ → LLM: 断片を「読みの単位」（文。長い文も節には分けない）に分割し、単位ごとに HTML を保ったまま翻訳
  → 1:1 で照合（重複・不正・範囲外は破棄）→ 欠けた断片は 1 件ずつ再試行
- → 長すぎる単位（CJK は 45 字、それ以外は 140 字を超えるもの）は再分割を 1 回だけ依頼。連結すると元の HTML に完全に戻る場合だけ採用
  → segment_translations（本文の正規化テキストの hash をキーとするキャッシュ）
 ```
 
 | 対象 | ファイル |
 |---|---|
-| 読みの単位での翻訳（prompt・照合・再試行・再分割） | `crates/lattice-core/src/segments.rs` |
+| 読みの単位での翻訳（prompt・照合・再試行） | `crates/lattice-core/src/segments.rs` |
 | Provider 境界（汎用の structured JSON 補完） | `crates/lattice-core/src/llm.rs` |
 | Claude CLI adapter | `crates/lattice-core/src/claude.rs` |
 | 記事単位の翻訳 job（Reader 用の事前翻訳） | `crates/lattice-core/src/translate.rs`、`jobs.rs` |
@@ -119,7 +118,9 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **表示中の記事の専用枠 (J13)。** queue は id 順なので、表示を切り替えて積んだ翻訳は待機中の job の後ろに並び、実行中の job (Opus だと記事 1 つに数分) が終わるまで始まらなかった。優先度で順番を変えても実行中の job は待つので、表示中の記事だけを扱う runner (`jobs::run_foreground`) を LLM の runner の横にもう 1 つ置いた。各ウィンドウが各ペインの手前のタブの記事 (Reader と保存済みの Page) を `set_articles_on_screen` で知らせ (ウィンドウごとに持ち、閉じたウィンドウの分は再起動まで残る)、runner はその記事の translate・summarize・quiz の job を `claim_article_job` で取って実行する。classify は記事をまたいで 20 件ずつまとめるので queue に残す。同じ queue から claim するので二重には走らず、backoff 中の job は待つ。表示中の記事がなければ眠り、あれば 1 秒ごとに見る (job を積む command は LLM の runner しか起こさないため)。provider は同じ chain なので、CLI のプロセスと使用量はその分増える (総量は同じで、順番が変わるだけ)。
 - **記事をまたいで並列、上限は全体で 1 つ (J14)。** J10 の並列は記事の中だけで、batch が 1〜2 個の短い記事では効かず、翻訳は要約・分類と同じ runner に並んでいた。翻訳を専用の runner の pool (`jobs::run_translate_worker`、8 個を起動し、並列実行数の数だけが記事を取る) に移し、要約・分類などは一般の LLM runner (`OTHER_LLM_JOBS`) が待たずに処理する。記事の batch は送る前に共有の `translate::Gate` を通り、送っている呼び出しの数を全体で並列実行数までにする (長い記事 1 つなら batch を並列に、短い記事が多ければ記事を並列に。上限は batch ごとに読むので、設定の変更は次の batch から効く)。表示中の記事の専用枠 (J13) は gate を通らない (並列実行数とは別の枠)。CLI の `save --run` も通らない。呼び出しごとの時間 (chain の各段: provider・model・成否・入力の文字数) と batch ごとの時間 (段落数・文字数・gate で待った時間) をログに出し、batch の大きさと並列実行数の調整、自動調整 (AIMD) の材料にする。
 - **記事の batch は同時に送る (J10)。** 1 batch (12 段落か 6000 文字まで) ずつ順に待つと、長い記事ほど訳し終わるまでが長かった。`translate::run` は `buffered(n)` で同時に n 個まで送り、記事の順に保存する (先頭から表示に出る)。n は 設定 › 翻訳 の「並列実行数」(1〜8、既定 3。job の開始時に読む)。既定の 3 は測ったものではなく控えめに選んだ値で、この時点のライブラリでは記事の batch 数の中央値が 4、90 パーセンタイルが 9 だった。(この時点では LLM の runner が 1 つで、要約・分類などの job や別の記事とは並行しなかった。J14 で変えた。)CLI の provider は呼び出しごとにプロセスなので最大 n 個 (1 つの batch の個別の再試行も加わる)、API は rate limit に早く当たりうる。全滅した batch で job を失敗させると、送っている途中の batch は捨てる (保存済みの batch は残る)。
-- **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
+- **単位は文で、節に分けない。** 以前は長い文 (日本語 40 字・英語 20 語ほど) を節に分け、それでも長い単位 (CJK 45 字・それ以外 140 字超) は再分割を依頼していた。日本語と英語は節の順が違うので、節の訳が自分の原文と対応せず (「LINE Sukimani is a spot work serviceスポットワークサービスです。」)、混在で意味が通らなかった。prompt で節への分割を禁じ、再分割をやめた (`segments-v3`)。既存の cache は使い続けるので、節で分けた訳は訳し直すまで残る。
+- **単位の訳をつなぐ空白。** 文の間の空白は原文の単位に含まれ、訳には含まれない。英語の訳を並べると「key.An」のように詰まるので、ラテン文字どうしの境目に空白を入れる (`segments::joined_translation` が保存する訳文テキスト、overlay は訳文の単位の後ろ)。
+- **表示言語の割り当て。** block ごとに、単位数 × 割合の数を訳文にし、均等に散らす (Bresenham と同じ間引き)。ずらす位置はページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。以前の seed で並べ替える方式は、同じ言語の文が 5 つ以上続くことがあった。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
 - **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer、`translate="no"` は対象外（aside は記事中の囲み記事が本文なので訳す）。訳先の言語は §16 を参照。
 - **訳し直す（G29）。** Reader の ⋯ と、全部訳し終えたときの翻訳状況の横に「訳し直す」を置く。`translate::retranslate` が、記事の prose block の hash と今の訳先の key に一致する `segment_translations` の行を消し（FTS の行は trigger で消える）、translate job を積み直す。job は全 block を未翻訳として見るので cache を通らない。provider は chain のまま（この実行だけ別の provider を選ぶことはしない）。訳文が 50 block を超えるときだけ確認ダイアログを出す。
@@ -401,7 +402,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 - **手動の指定はジャンルと同じく固定する。** Reader の meta 行の select で選ぶと `difficulty_source = 'manual'` になり、自動分類は上書きしない。「未判定」に戻すと固定も外れる。「自動分類」ボタンはジャンルと難易度の両方の固定を外して分類し直す。
 - **難易度がない記事も分類の対象にする。** 保存後の自動分類と「未分類をすべて分類」は、ジャンルか難易度のどちらかがない記事を queue に入れる。この slice より前に分類した記事も「未分類をすべて分類」で難易度が付く（ジャンルの固定とタグの追加だけの規則は従来どおり）。
 - **表示。** 一覧の各記事に小さな badge（上級・専門は accent 色）、並び順に「難易度順（やさしい順）」（未判定は最後）。難易度での絞り込みは入れていない。
-- **専門用語を英語のまま残す（既定 ON、`settings.translate_keep_terms`、OFF のときだけ `off` を保存）。** ON は「技術用語・略語・固有名詞は英語のまま、周りだけ訳す」、OFF は「定着した訳語があれば訳す（略語と製品名はそのまま）」を prompt に入れる。re-split の prompt にも同じ規則を入れる。prompt_version は `segments-v2`。
+- **専門用語を英語のまま残す（既定 ON、`settings.translate_keep_terms`、OFF のときだけ `off` を保存）。** ON は「技術用語・略語・固有名詞は英語のまま、周りだけ訳す」、OFF は「定着した訳語があれば訳す（略語と製品名はそのまま）」を prompt に入れる。re-split の prompt にも同じ規則を入れる。prompt_version は `segments-v2` (節に分けない prompt で `segments-v3`)。
 - **cache はモードごとに分ける。** モードを `target_language` の値に含める: ON は従来どおり `ja`、OFF は `ja-x-translated-terms`（`segments::target_key`）。`segment_translations`・`get_article` の訳文 join・`hit_details`・`untranslated_blocks`・translate job の params と dedup key はこの値をそのまま使うので、SQL は変えていない。FTS は言語で絞らないので、両方の訳文が検索に効く。
   - 既存の `ja` の行（segments-v1。prompt は「技術用語はエンジニアがわかる形で」）は ON の cache として使い続ける。全記事の再翻訳を避けるための判断で、v1 の訳文には訳語にした用語が混じりうる。
   - job は queue に入れた時点のモードを params に持つので、実行前に設定を変えても混ざらない。
@@ -496,6 +497,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
   - 宣言された言語がテキストと食い違っても宣言を優先する。中国語の記事は宣言がなければ日本語と判定され、英語に訳される。
   - 英語への訳の専門用語モード: オン（既定）は「定着した英語の用語を使う（ラテン文字で書かれた用語はそのまま）」、オフは「専門用語より平易な英語を優先する（略語と製品名はそのまま）」を prompt に入れる。訳元の言語は、英語への訳なら日本語、それ以外は英語として prompt に書く。
   - Reader の混在は「訳文の割合」になり、日本語の記事では英語の割合になる。「日本語に翻訳」は記事の訳先に合わせて「英語に翻訳」と表示する。
+  - 割合は後に「表示言語の割合」に変えた。訳文の割合のままだと、同じ 70% が英語の記事では日本語 70%、日本語の記事では英語 70% と逆転した。訳先が表示言語なら割合をそのまま訳文に、そうでなければ 100 − 割合を訳文にする (`translatedShare`、`src/overlay/logic.ts`。overlay には表示言語を `OverlayLabels.lang` で渡す)。
   - ページ表示の overlay も、`<html lang>` があればそれで、なければ最初に見つけた 30 個の block のテキストでページの言語を決め、日本語のページは英語に訳す（`overlay_translate` の `target`。`en` 以外は日本語として扱う）。訳先の言語ですでに書かれた block は送らない。
 - **分類のバックフィル。** 自動分類が入る前に保存した記事には classify job がない。起動時、自動分類がオンなら、ジャンルか難易度がなく classify job を一度も持たなかった抽出済みの記事に job を積む（`classify::enqueue_missing`。dedup key `classify:{id}` で `ON CONFLICT DO NOTHING`）。「未分類をすべて分類」と違って既存の job は再投入しないので、失敗した分類や結果の出なかった分類を起動のたびに LLM に送り直すことはない。
 - **翻訳の追加の指示。** 設定「翻訳」の「追加の指示」（`settings.translate_instructions`、2000 文字まで、空なら保存しない）を、翻訳と re-split の prompt の末尾（信頼しない入力についての注意の直前）に「ユーザーからの追加の指示」として付ける。記事の翻訳もページ表示の overlay も同じ prompt を通るので両方に効く。`Target` が指示を持ち、`key()` に指示の sha256 の先頭 12 桁を `-x-instr-` で付けるので、指示を変えると別の cache になる（空の指示は従来の key のまま）。translate job は params に key と指示の本文を持ち、queue に入れたときの指示で訳す。設定画面には、指示が拡張する組み込みの prompt（英語→日本語、現在の専門用語モード）を読み取り専用で表示する。

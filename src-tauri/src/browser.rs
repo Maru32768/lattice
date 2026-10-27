@@ -4,7 +4,7 @@
 //!
 //! Trust boundary: the pages are remote and untrusted. Their webviews (labels `browser-<tab>`)
 //! get only the capability in `capabilities/browser.json` (overlay_config / overlay_translate /
-//! overlay_snapshot / overlay_history / overlay_key / overlay_vocab / overlay_print), translate calls are refused
+//! overlay_snapshot / overlay_history / overlay_progress / overlay_key / overlay_vocab / overlay_print), translate calls are refused
 //! unless the user has switched translation on, snapshots unless the app asked for one, and word
 //! captures unless the page is on screen and the last one is a moment ago. The background
 //! renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
@@ -60,6 +60,8 @@ pub struct OverlayConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct OverlayLabels {
+    /// The display language itself ("ja" / "en"): the mixed percent counts text in it.
+    lang: String,
     original: String,
     translated: String,
     flip: String,
@@ -587,6 +589,24 @@ pub fn overlay_history(browser: State<'_, Browser>, webview: Webview, can_go_bac
     }
     browser.with_tab(webview.label(), |t| t.history = (can_go_back, can_go_forward));
     emit_page(&webview, &browser, webview.url().map_err(|e| e.to_string())?.to_string());
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+struct Progress {
+    done: u32,
+    total: u32,
+}
+
+/// Called by the overlay as its translation advances: blocks done of those sent so far. The toolbar
+/// shows it for pages not in the Index (saved ones show their article's job). Exposed to remote
+/// pages; it only sets that status.
+#[tauri::command]
+pub fn overlay_progress(webview: Webview, done: u32, total: u32) -> Result<(), String> {
+    if !is_browser(webview.label()) {
+        return Err("not a browser webview".into());
+    }
+    emit_tab(&webview, "browser-translate", Progress { done: done.min(total), total });
     Ok(())
 }
 

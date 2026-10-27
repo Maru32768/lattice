@@ -232,7 +232,7 @@ The switch right of **Reader** and **Page** chooses the language of the text.
 
 - **Original**: the text as written.
 - **Translated**: the translation.
-- **Mixed**: only some paragraphs are translated. The percentage next to it is the share of translated paragraphs. Press `[` to lower it by 10% and `]` to raise it by 10%.
+- **Mixed**: only some paragraphs (sentences, in the Page view) are translated. The percentage next to it is the share shown in the app's display language (English): the original's share in an English article, the translation's in a Japanese one. Press `[` to lower it by 10% and `]` to raise it by 10%.
 
 The article's language sets the direction: Japanese articles are translated into English, and articles in any other language into Japanese. Switching the app's display language does not change this.
 
@@ -261,7 +261,7 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 
 **Shared translations.** Translations are stored per paragraph text. A paragraph translated in the Page view is translated in the Reader too, and the other way around. Other articles and pages that contain the same paragraph use that translation as well. So **Translate again** also renews the translation in other articles and pages that share the paragraph.
 
-**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider.
+**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider. On a page not in the Index, the toolbar shows **Translating** and how many paragraphs are done while it works.
 
 **Translation settings.** **Settings › Translation** has these options. Each applies to translation in both the Reader and the Page view.
 
@@ -708,15 +708,15 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Action | Default key |
 |---|---|
 | Switch Reader / Page | `v` |
-| Less translated text | `[` |
-| More translated text | `]` |
+| Less English text | `[` |
+| More English text | `]` |
 | Favorite | `s` |
 | Read / unread | `m` |
 | Focus mode | `f` |
 | Save the selected English word to Vocabulary | `w` |
 | Hear a word card again | `r` |
 
-`[` and `]` change the share of translated text. In a Japanese article the translation is English, so they change the share of English.
+`[` and `]` change the share shown in the display language (English). The same share gives as much English in a Japanese article as in an English one.
 
 ### Tabs, panes and windows
 

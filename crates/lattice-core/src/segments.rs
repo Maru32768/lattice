@@ -1,10 +1,12 @@
 //! Sentence-level ("reading unit") translation of HTML snippets.
 //!
 //! Adapted from Mazelingo (MIT License, Copyright (c) 2026 Yeq6X): the LLM splits each
-//! inline-HTML snippet into reading units (sentences, or clauses for long sentences) and
-//! translates each unit with its HTML preserved. Responses are reconciled 1:1 against the
-//! request, missing snippets are retried individually, and units that are still too long
-//! get one re-split attempt that must rejoin to the original exactly.
+//! inline-HTML snippet into reading units (whole sentences) and translates each unit with its
+//! HTML preserved. Responses are reconciled 1:1 against the request, and missing snippets are
+//! retried individually.
+//!
+//! Units are never clauses: mixed display shows each unit in either language, and Japanese and
+//! English order clauses differently, so a clause's translation does not line up with its source.
 //!
 //! Results are cached by the hash of the snippet's normalized plain text, so the live page
 //! overlay, the saved-article reader and search all share one translation per paragraph.
@@ -17,7 +19,7 @@ use serde_json::{Value, json};
 use crate::llm::{LlmError, LlmProvider};
 use crate::store::sha256_hex;
 
-pub const PROMPT_VERSION: &str = "segments-v2";
+pub const PROMPT_VERSION: &str = "segments-v3";
 
 /// Key suffix for the mode that also translates technical terms. The default mode (terms
 /// kept) uses the bare language tag, so rows cached by segments-v1, whose prompt already asked
@@ -138,9 +140,6 @@ fn user_instructions(to: &Target) -> String {
     }
 }
 
-const CJK_LONG_UNIT_LIMIT: usize = 45;
-const OTHER_LONG_UNIT_LIMIT: usize = 140;
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Unit {
     /// Exact substring of the source snippet HTML.
@@ -190,16 +189,6 @@ pub fn is_cjk_dominant(plain: &str) -> bool {
     cjk > 0 && cjk * 2 >= alnum
 }
 
-pub fn is_long_unit(source_html: &str) -> bool {
-    let plain = plain_text(source_html);
-    let limit = if is_cjk_dominant(&plain) {
-        CJK_LONG_UNIT_LIMIT
-    } else {
-        OTHER_LONG_UNIT_LIMIT
-    };
-    plain.chars().count() > limit
-}
-
 fn lang_name(tag: &str) -> &str {
     match tag {
         "en" => "English",
@@ -239,7 +228,7 @@ Each input object has an integer "i" and an "html" snippet. Return a JSON "block
 Segmentation rules:
 - A newline is normally a boundary. Keep text across a newline in one unit only when the next line is clearly a visual wrap that continues the same sentence; when uncertain, split
 - Sentence-ending punctuation (. 。 ． ! ！ ? ？ …) is a boundary
-- If one sentence is long (roughly over 40 Japanese characters or 20 English words), split it into clause-sized units at 、 , ; — or clause connections such as but, because, which, or and then
+- Never split a sentence into clauses, however long it is: each unit is one complete sentence (or a heading, label or list fragment). Units are shown one by one in either language, so each unit's translation must be a complete sentence that translates exactly its own source and nothing from the neighbouring units
 - Do not split inside a noun phrase, quotation/title, URL, code span, or matched HTML tag pair
 - An HTML tag boundary is not a reading-unit boundary. One unit may span multiple inline elements
 
@@ -251,24 +240,6 @@ Source and translation rules:
 {terms}
 - Translate each unit in the context of the entire snippet, and make the concatenated unit translations read naturally
 - Return the same number of blocks as input
-{extra}
-{UNTRUSTED}"#
-    )
-}
-
-pub fn resplit_prompt(to: &Target) -> String {
-    let (from, terms, extra, to) = (lang_name(to.source()), terms_rule(to), user_instructions(to), lang_name(to.language));
-    format!(
-        r#"You receive ONE long HTML unit. Split it into 2 to 6 clause-sized reading units and translate each unit from {from} to {to}.
-
-Return JSON with exactly one "blocks" entry containing "i": 0 and a "sentences" array of {{ "source", "translation" }} objects.
-
-Rules:
-- Every source must be an exact, complete substring of the input HTML, and concatenating all sources in order must reproduce the input exactly
-- Preserve HTML tags in source and translation; do not split inside a noun phrase, quotation/title, URL, code span, or matched HTML tag pair
-- Tokens such as ⟦1⟧ are placeholders for images or icons. Do not translate them; keep each token unchanged at the corresponding position in source and translation
-{terms}
-- Translate using the context of the whole unit so the concatenated unit translations read naturally
 {extra}
 {UNTRUSTED}"#
     )
@@ -292,8 +263,18 @@ pub fn reconcile(raw: &Value, expected: &[usize]) -> Vec<Option<Vec<Unit>>> {
         .collect()
 }
 
-fn rejoins(units: &[Unit], source: &str) -> bool {
-    units.iter().map(|u| u.source.as_str()).collect::<String>() == source
+/// The units' translations as one text. Unit sources carry the spaces between sentences, but
+/// translations may not: two Latin-script ends get a space ("service. That"), CJK ends none.
+pub fn joined_translation(units: &[Unit]) -> String {
+    let spaced = |c: char| !c.is_whitespace() && !is_cjk(c) && !matches!(c, '\u{3000}'..='\u{303F}' | '\u{FF00}'..='\u{FFEF}');
+    let mut out = String::new();
+    for u in units {
+        if out.chars().last().is_some_and(spaced) && u.translation.chars().next().is_some_and(spaced) {
+            out.push(' ');
+        }
+        out.push_str(&u.translation);
+    }
+    out
 }
 
 /// Which provider/model produced a snippet's units (the batch or retry call that answered it;
@@ -318,8 +299,8 @@ async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expecte
     Ok(reconcile(&c.value, expected).into_iter().map(|r| r.map(|u| (u, origin.clone()))).collect())
 }
 
-/// Translates snippets with one batch call, individual retries for anything missing, and a
-/// re-split pass for long units. Never fails as a whole: unresolved snippets are `None`.
+/// Translates snippets with one batch call and individual retries for anything missing.
+/// Never fails as a whole: unresolved snippets are `None`.
 pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String], to: &Target) -> Translated {
     let system = translation_prompt(to);
     let indexed = |idx: &[usize]| json!(idx.iter().map(|&i| json!({"i": i, "html": snippets[i]})).collect::<Vec<_>>());
@@ -345,29 +326,6 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
         }
     }
 
-    let resplit = resplit_prompt(to);
-    for slot in out.results.iter_mut() {
-        let Some((units, origin)) = slot.take() else {
-            continue;
-        };
-        let parts = join_all(units.into_iter().map(|u| {
-            let resplit = &resplit;
-            async move {
-                if !is_long_unit(&u.source) {
-                    return vec![u];
-                }
-                match provider.complete_json(resplit, &u.source, &schema()).await {
-                    Ok(c) => match reconcile(&c.value, &[0]).pop().flatten() {
-                        Some(split) if split.len() >= 2 && rejoins(&split, &u.source) => split,
-                        _ => vec![u],
-                    },
-                    Err(_) => vec![u], // best-effort: keep the long unit
-                }
-            }
-        }))
-        .await;
-        *slot = Some((parts.into_iter().flatten().collect(), origin));
-    }
     out
 }
 
@@ -502,11 +460,9 @@ pub(crate) mod tests {
         let (keep, translate) = (Target::default(), Target { keep_terms: false, ..Target::default() });
         assert_eq!(keep.key(), "ja", "default mode keeps the pre-setting cache key");
         assert_eq!((Target::from_key(&translate.key(), ""), Target::from_key("ja", "")), (translate.clone(), keep.clone()));
-        for prompt in [translation_prompt, resplit_prompt] {
-            let (a, b) = (prompt(&keep), prompt(&translate));
-            assert!(a.contains("from English to Japanese") && b.contains("from English to Japanese"), "{b}");
-            assert!(a.contains("in English as written") && !b.contains("in English as written"));
-        }
+        let (a, b) = (translation_prompt(&keep), translation_prompt(&translate));
+        assert!(a.contains("from English to Japanese") && b.contains("from English to Japanese"), "{b}");
+        assert!(a.contains("in English as written") && !b.contains("in English as written"));
     }
 
     #[test]
@@ -529,12 +485,10 @@ pub(crate) mod tests {
         assert!(en.is_written_in("2026/10/21 — v1.2 beta") && !ja.is_written_in("Tokyo・Osaka"));
         assert!(!ja.is_written_in("多版本并发控制让读写互不阻塞。"), "Chinese is translated into Japanese");
 
-        for prompt in [translation_prompt, resplit_prompt] {
-            let (keep, plain) = (prompt(&en), prompt(&Target { keep_terms: false, ..en.clone() }));
-            assert!(keep.contains("from Japanese to English") && plain.contains("from Japanese to English"), "{keep}");
-            assert!(keep.contains("standard English term") && !plain.contains("standard English term"), "the term mode still matters");
-            assert!(!keep.contains("in English as written"), "the Japanese-target rule is not reused");
-        }
+        let (keep, plain) = (translation_prompt(&en), translation_prompt(&Target { keep_terms: false, ..en.clone() }));
+        assert!(keep.contains("from Japanese to English") && plain.contains("from Japanese to English"), "{keep}");
+        assert!(keep.contains("standard English term") && !plain.contains("standard English term"), "the term mode still matters");
+        assert!(!keep.contains("in English as written"), "the Japanese-target rule is not reused");
     }
 
     #[test]
@@ -546,19 +500,16 @@ pub(crate) mod tests {
         assert_eq!(Target { keep_terms: false, ..polite.clone() }.for_source(true).key().split("-x-").next(), Some("en"));
         let back = Target::from_key(&polite.key(), &polite.instructions);
         assert_eq!((back.key(), back.keep_terms), (polite.key(), true));
-        for prompt in [translation_prompt, resplit_prompt] {
-            let (a, b) = (prompt(&plain), prompt(&polite));
-            assert!(!a.contains("Additional instructions") && b.contains("from the user") && b.contains("です・ます調で訳す\n"), "{b}");
-            assert!(b.trim_end().ends_with(UNTRUSTED), "the untrusted-input rule stays last");
-        }
+        let (a, b) = (translation_prompt(&plain), translation_prompt(&polite));
+        assert!(!a.contains("Additional instructions") && b.contains("from the user") && b.contains("です・ます調で訳す\n"), "{b}");
+        assert!(b.trim_end().ends_with(UNTRUSTED), "the untrusted-input rule stays last");
     }
 
     #[test]
-    fn long_unit_limits() {
-        assert!(!is_long_unit(&"word ".repeat(28)));
-        assert!(is_long_unit(&"word ".repeat(29)));
-        assert!(!is_long_unit(&"あ".repeat(45)));
-        assert!(is_long_unit(&"あ".repeat(46)));
+    fn joined_translation_spaces_latin_ends_only() {
+        let units = |ts: &[&str]| ts.iter().map(|t| Unit { source: String::new(), translation: (*t).into() }).collect::<Vec<_>>();
+        assert_eq!(joined_translation(&units(&["One example is", "the abuse.", "Done. ", "Next"])), "One example is the abuse. Done. Next");
+        assert_eq!(joined_translation(&units(&["最初の文です。", "次の文。", "v2", "を使う"])), "最初の文です。次の文。v2を使う");
     }
 
     #[test]
@@ -575,7 +526,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn batch_retry_and_resplit() {
+    async fn batch_and_retry() {
         let long = format!("<b>{}</b>", "x".repeat(150));
         let snippets = vec!["One. Two.".to_string(), "Three.".to_string(), long.clone()];
         let p = Fake { drop: vec![1], ..Fake::new() };
@@ -583,11 +534,9 @@ pub(crate) mod tests {
         let r0 = &t.results[0].as_ref().unwrap().0;
         assert_eq!(r0.iter().map(|u| u.translation.as_str()).collect::<Vec<_>>(), ["ONE. ", "TWO."]);
         assert_eq!(t.results[1].as_ref().unwrap().0[0].translation, "THREE.", "missing index retried individually");
-        let r2 = &t.results[2].as_ref().unwrap().0;
-        assert_eq!(r2.len(), 2, "long unit re-split");
-        assert!(rejoins(r2, &long));
+        assert_eq!(t.results[2].as_ref().unwrap().0.len(), 1, "a long sentence stays one unit");
         assert_eq!(t.results[0].as_ref().unwrap().1, Origin { provider: "fake".into(), model: Some("fake-1".into()) });
-        assert_eq!(p.calls.lock().unwrap().len(), 3, "batch + 1 retry + 1 resplit");
+        assert_eq!(p.calls.lock().unwrap().len(), 2, "batch + 1 retry");
 
         let failing = Fake { fail: true, ..Fake::new() };
         let t = translate_snippets(&failing, &snippets, &Target::default()).await;
@@ -610,13 +559,12 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn origin_is_per_snippet() {
-        let snippets = vec!["One.".to_string(), "Two.".to_string(), format!("<b>{}</b>", "x".repeat(150))];
+        let snippets = vec!["One.".to_string(), "Two.".to_string()];
         let p = Relabel(Fake { drop: vec![1], ..Fake::new() }, AtomicUsize::new(0));
         let t = translate_snippets(&p, &snippets, &Target::default()).await;
         let origin = |i: usize| t.results[i].as_ref().map(|(_, o)| (o.provider.as_str(), o.model.as_deref()));
         assert_eq!(origin(0), Some(("p0", Some("m0"))), "batch call");
         assert_eq!(origin(1), Some(("p1", Some("m1"))), "retry answered by another entry");
-        assert_eq!(origin(2), Some(("p0", Some("m0"))), "re-split (call p2) keeps the snippet's origin");
-        assert_eq!(p.1.load(Ordering::SeqCst), 3);
+        assert_eq!(p.1.load(Ordering::SeqCst), 2);
     }
 }

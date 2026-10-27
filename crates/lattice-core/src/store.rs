@@ -1423,7 +1423,7 @@ impl Store {
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )?;
             for (hash, units, provider, model) in items {
-                let text = plain_text(&units.iter().map(|u| u.translation.as_str()).collect::<String>());
+                let text = plain_text(&crate::segments::joined_translation(units));
                 ins.execute(params![hash, target_language, json(units), text, provider, model, prompt_version])?;
             }
         }

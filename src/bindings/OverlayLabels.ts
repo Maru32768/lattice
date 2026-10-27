@@ -3,7 +3,11 @@
 /**
  * The overlay's tooltip text in the display language, from the UI's catalog (G51); empty until the UI sends it.
  */
-export type OverlayLabels = { original: string, translated: string, flip: string, translating: string, failed: string, retry: string, 
+export type OverlayLabels = { 
+/**
+ * The display language itself ("ja" / "en"): the mixed percent counts text in it.
+ */
+lang: string, original: string, translated: string, flip: string, translating: string, failed: string, retry: string, 
 /**
  * 単語を登録 and its confirmation.
  */

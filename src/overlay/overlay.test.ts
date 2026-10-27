@@ -14,7 +14,8 @@ Object.assign(globalThis, {
 });
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
-const { assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } = await import("./logic.ts");
+const { assignTranslated, endsSpaced, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks, translatedShare } =
+  await import("./logic.ts");
 const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
 
 test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
@@ -83,6 +84,28 @@ test("assignTranslated is exact by count and deterministic", () => {
     assert.equal(assignTranslated(src, p, "seed").filter(Boolean).length, p / 10);
   }
   assert.deepEqual(assignTranslated(src, 50, "seed"), assignTranslated(src, 50, "seed"));
+  /** The longest stretch of units in one language. */
+  const runs = (picks: boolean[]) => {
+    let best = 0,
+      n = 0;
+    picks.forEach((v, i) => {
+      n = v === picks[i - 1] ? n + 1 : 1;
+      best = Math.max(best, n);
+    });
+    return best;
+  };
+  assert.equal(runs(assignTranslated(src, 50, "seed")), 1, "half and half alternates");
+  assert.ok(runs(assignTranslated(src, 70, "seed")) <= 3, "no long run in one language");
+});
+
+test("the mixed percent counts the display language, the same on Japanese and English pages", () => {
+  assert.equal(translatedShare(70, "ja", "ja"), 70, "an English page in a Japanese UI: 70 % translated into Japanese");
+  assert.equal(translatedShare(70, "en", "ja"), 30, "a Japanese page: 30 % translated into English");
+  assert.equal(translatedShare(70, "en", ""), 70, "not configured yet: the translation's share");
+});
+
+test("endsSpaced: Latin ends need a space before the next sentence, Japanese ends do not", () => {
+  assert.deepEqual(["the abuse.", "isthe", "です。", "スポット", "（注）", "end "].map(endsSpaced), [true, true, false, false, false, false]);
 });
 
 test("sanitize drops scripts, handlers and unsafe URLs", () => {

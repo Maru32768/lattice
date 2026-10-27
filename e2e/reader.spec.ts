@@ -32,7 +32,7 @@ test("the language segment switches every block; a block flips on its own", asyn
   await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "この block を訳文に切り替え" }).click();
   expect(await shown(app)).toEqual(["ja", "ja", "ja", "ja", "ja"]);
 
-  await seg.getByRole("button", { name: "訳文の割合を下げる ([)" }).click();
+  await seg.getByRole("button", { name: "日本語の割合を下げる ([)" }).click();
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 60%");
   await app.keyboard.press("]");
   await app.keyboard.press("]");

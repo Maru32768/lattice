@@ -1,6 +1,7 @@
 import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "../api";
+import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, TRANSLATABLE, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "../library/library";
 import { highlight } from "../search/search";
@@ -787,7 +788,7 @@ export function Reader({
   const [cap, setCap] = useState<{ capture: VocabCapture; x: number; y: number; status?: string; error?: string } | null>(null);
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
-  const selected = translatedBlockIds(blocks, mode, percent);
+  const selected = translatedBlockIds(blocks, mode, translatedShare(percent, view.target_language, t.lang));
   const { done, total } = translationProgress(blocks, view.target_language);
   const nothing = nothingToTranslate(blocks, view.target_language);
   const job = view.jobs.find((j) => j.type === "translate");

@@ -175,25 +175,25 @@ export function hashString(input: string): number {
 }
 
 /**
- * Which units of one block show their translation: exactly round(n * percent / 100) with
- * the rounding and order derived from a seed, so a page keeps the same mix on revisit.
+ * Which units of one block show their translation: n * percent / 100 of them (rounded either way),
+ * spread evenly so the languages alternate instead of bunching (a shuffle left runs of five
+ * sentences in one language). The phase comes from a seed, so a page keeps the same mix on revisit.
  */
 export function assignTranslated(sources: string[], percent: number, seed: string): boolean[] {
-  const n = sources.length;
-  const p = Math.max(0, Math.min(100, percent));
-  const s = hashString(`${seed}::${sources.join("|")}`);
-  const exact = (n * p) / 100;
-  const count = Math.floor(exact) + (Math.abs(Math.trunc(s * 2654435761)) % 100 < (exact % 1) * 100 ? 1 : 0);
-  const out = Array.from({ length: n }, (_, i) => i < count);
-  for (let i = n - 1; i > 0; i--) {
-    const j = Math.abs(Math.trunc(s * (i + 1) * 2654435761)) % (i + 1);
-    const [a, b] = [out[i], out[j]];
-    if (a !== undefined && b !== undefined) {
-      [out[i], out[j]] = [b, a];
-    }
-  }
-  return out;
+  const p = Math.max(0, Math.min(100, percent)) / 100;
+  const phase = (hashString(`${seed}::${sources.join("|")}`) % 1000) / 1000;
+  return sources.map((_, i) => Math.floor((i + 1) * p + phase) > Math.floor(i * p + phase));
 }
+
+/**
+ * The share of units that show their translation, for a mixed `percent` that counts text in the
+ * display language `lang`: the same setting reads 70 % Japanese on English and Japanese pages alike.
+ * Without a display language (an overlay the UI has not configured yet) it counts the translation.
+ */
+export const translatedShare = (percent: number, target: Target, lang: string) => (!lang || target === lang ? percent : 100 - percent);
+
+/** Whether a space must follow `text` before more Latin-script text (as segments::joined_translation). */
+export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]$/u.test(text);
 
 /**
  * What the overlay does with a key pressed in the page. "take": forward it before the page sees

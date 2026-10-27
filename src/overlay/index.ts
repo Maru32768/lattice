@@ -14,7 +14,19 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
-import { type Target, assignTranslated, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks } from "./logic.ts";
+import {
+  type Target,
+  assignTranslated,
+  endsSpaced,
+  isWrittenIn,
+  pageTarget,
+  plainText,
+  routeKey,
+  sanitize,
+  snippetHtml,
+  splitByLineBreaks,
+  translatedShare,
+} from "./logic.ts";
 import type { PageKeys } from "../lib/keys.ts";
 import type { OverlayLabels } from "../api.ts";
 import { keyOf } from "../lib/keyname.ts";
@@ -64,7 +76,7 @@ const state = {
   config: {
     enabled: false,
     percent: 70,
-    labels: { original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" },
+    labels: { lang: "", original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" },
   } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
@@ -131,6 +143,18 @@ function processRoot(root: Element) {
   }
 }
 
+let progressTimer = 0;
+/** Tells the app how far the page's translation is (blocks sent so far), for its toolbar. */
+function reportProgress() {
+  clearTimeout(progressTimer);
+  progressTimer = window.setTimeout(() => {
+    const count = (s: string) => document.querySelectorAll(`[data-lattice-block='${s}']`).length;
+    const done = count("done");
+    // Failed blocks are left out: they wait for a retry from their tooltip, not in the status.
+    invoke("overlay_progress", { done, total: done + count("translating") }).catch(() => {});
+  }, 200);
+}
+
 function enqueue(el: HTMLElement) {
   if (!el.isConnected || !state.config.enabled) {
     return;
@@ -145,6 +169,7 @@ function enqueue(el: HTMLElement) {
     return;
   }
   el.dataset.latticeBlock = "translating";
+  reportProgress();
   state.pending.push({ el, parts });
   clearTimeout(state.flushTimer);
   state.flushTimer = window.setTimeout(flush, 200);
@@ -199,6 +224,7 @@ async function translateBatch(batch: Pending[]) {
     }
     if (mine.length !== p.parts.length || mine.some((r) => !r?.length)) {
       p.el.dataset.latticeBlock = "failed";
+      reportProgress();
       continue;
     }
     apply(p.el, mine.flat() as Unit[]);
@@ -225,6 +251,7 @@ function apply(el: HTMLElement, units: Unit[]) {
     from = loc.nextIndex;
   }
   el.dataset.latticeBlock = spans.length ? "done" : "failed";
+  reportProgress();
   assignBlock(el);
 }
 
@@ -237,7 +264,9 @@ function spansOf(el: Element): SentenceSpan[] {
 function render(span: SentenceSpan) {
   const translated = state.config.enabled && (span.dataset.manual ? span.dataset.manual === "t" : span.dataset.default === "t");
   if (translated) {
-    renderVariant(span, span.dataset.translation ?? "");
+    const html = span.dataset.translation ?? "";
+    // Unit translations carry no space between sentences ("key.An"); the source's own spaces went with it.
+    renderVariant(span, endsSpaced(plainText(html)) ? `${html} ` : html);
   } else {
     renderOriginal(span);
   }
@@ -248,7 +277,7 @@ function assignBlock(el: Element) {
   const spans = spansOf(el);
   const picks = assignTranslated(
     spans.map((s) => s.dataset.source ?? ""),
-    state.config.percent,
+    translatedShare(state.config.percent, state.target ?? "ja", state.config.labels.lang),
     location.href,
   );
   spans.forEach((s, i) => {
