@@ -4,9 +4,16 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
-## [0.1.0]
+## [0.1.0] - 2026-10-27
 
 The first public release. Everything below is new.
+
+### Getting started
+
+- Windows 10 and Windows 11, x64. The installer sets up required runtimes; the portable version requires WebView2 and the Microsoft Visual C++ x64 runtime separately.
+- Configure an AI provider in Settings to use translation, summaries, quizzes and chat. Search and reading work without one.
+- Back up your library regularly. Restoring a backup does not restore credentials or local preferences; see the [backup guide](https://github.com/Maru32768/lattice/blob/v0.1.0/docs/guide.md#restore-a-backup).
+- Windows code signing is deferred, so Windows may show an unknown-publisher warning. Updates are signed separately. Data in older identifier-named test folders is not moved automatically, and the browser profile starts fresh.
 
 ### Added
 
