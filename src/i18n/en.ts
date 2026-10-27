@@ -19,7 +19,7 @@ export const en = {
   "networkSettings.allowlist": "Allowed destinations only",
   "networkSettings.unrestricted": "Allow all, including internal networks",
   "networkSettings.modeDesc":
-    "An empty allowlist blocks everything in allowlist mode. Allow URLs with hostnames by hostname. Allow all also lets fetched pages access internal networks. Deny rules always apply.",
+    "An empty allowlist blocks everything in allowlist mode. A URL that uses a hostname must be allowed by that hostname. Allow all also lets fetched pages access internal networks. Deny rules always apply.",
   "networkSettings.proxy":
     "Uses OS and environment proxy settings. Through a proxy, Lattice cannot verify the final destination IP. IP and CIDR rules apply only to IP literals in URLs. Restrictions after DNS resolution depend on the proxy's configuration.",
   "networkSettings.scope":
@@ -65,7 +65,7 @@ export const en = {
     "All data (articles, translations, summaries, images, the search index) lives in one SQLite file, and a backup is a copy of that file (see Logs & storage for where it is).",
   "settingsView.r2": "Cloud backup (R2)",
   "settingsView.r2Lead":
-    "Uploads a gzip-compressed copy of the database (without API keys) to Cloudflare R2. After each successful upload, the backups on this device are pruned to the number of newest generations you set (nothing is deleted by age, so a break from the app loses nothing). The bucket is managed with the Terraform in {code}.",
+    "Uploads a gzip-compressed copy of the database (without API keys) to Cloudflare R2. After each successful upload, the backups on this device are pruned to the number of newest generations you set (nothing is deleted for its age, so a long break from the app costs you no backups). The bucket is managed with the Terraform in {code}.",
   "settingsView.export": "Export",
   "settingsView.storage": "Logs & storage",
   "settingsView.update": "Updates",
@@ -83,7 +83,7 @@ export const en = {
   "backupSection.backUpNow": "Back up now",
   "backupSection.keep": "Backups to keep",
   "backupSection.keepDesc":
-    "Each backup deletes the oldest {code} files beyond the number you set. Nothing is deleted by age, so a break from the app loses nothing.",
+    "Each backup deletes the oldest {code} files beyond the number you set. Nothing is deleted for its age, so a long break from the app costs you no backups.",
   "common.save": "Save",
   "browserSettings.engine": "Search engine",
   "browserSettings.engineDesc": "Searches what you type in the URL bar when it is not a URL, and sets the page the home button opens.",
@@ -95,10 +95,10 @@ export const en = {
   "chatSettings.large": "Large (about 150,000 characters)",
   "chatSettings.budget": "Context per question",
   "chatSettings.budgetDesc":
-    "How much article text one question sends to the LLM. When the articles in the scope fit, it sends their full text; when it does not, it collects passages picked by search, first up to 4 per article from as many articles as fit, then more from the same articles when there is room. More text gives more thorough answers but costs more per question (API charges or CLI usage) and takes longer. Applies from the next question.",
+    "How much article text one question sends to the LLM. When the articles in the scope fit, it sends their full text; when they do not, it collects passages picked by search, first up to 4 per article from as many articles as fit, then more from the same articles when there is room. More text gives more thorough answers but costs more per question (API charges or CLI usage) and takes longer. Applies from the next question.",
   "chatSettings.vim": "Vim key bindings in the question box",
   "chatSettings.vimDesc":
-    "Esc for normal mode; i, a, o and friends for insert mode. Move with h j k l w b e 0 $ gg G and edit with x dd dw cw yy p u. Ctrl + Enter sends in either mode.",
+    "Esc for normal mode; i, a, o and similar keys for insert mode. Move with h j k l w b e 0 $ gg G and edit with x dd dw cw yy p u. Ctrl + Enter sends in either mode.",
   "classifySettings.queued": (p) => `Queued ${plural(p.x, "article", "articles")} for classification`,
   "classifySettings.auto": "Sort saved articles into genres and tag them with the LLM",
   "classifySettings.autoDesc": "Classifies up to 20 articles per LLM call. A genre you picked in the Reader is never overwritten.",
@@ -138,7 +138,7 @@ export const en = {
   "instructionSettings.profilePlaceholder":
     "e.g. Backend engineer. Runs PostgreSQL and Kubernetes in production. Cares about performance numbers and operational caveats.",
   "instructionSettings.summary": "Extra instructions for summaries",
-  "instructionSettings.summaryDesc": "Added to summaries only. After a change, existing summaries show that regenerating them applies it.",
+  "instructionSettings.summaryDesc": "Added to summaries only. After a change, existing summaries say they are out of date until you regenerate them.",
   "common.none": "None",
   "instructionSettings.chat": "Extra instructions for chat",
   "instructionSettings.chatDesc": "Added to chat answers only. Applies from the next question.",
@@ -164,7 +164,7 @@ export const en = {
   "renderSettings.autoDesc":
     "Articles that came out nearly empty (from bulk import, RSS and so on) are rendered one at a time in a hidden background browser and imported again (up to about 20 seconds each).",
   "taskbarSettings.autostart": "Start Lattice when Windows starts",
-  "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps shows here too.",
+  "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps turns it off here too.",
   "taskbarSettings.badge": "Show the unread count on the taskbar",
   "taskbarSettings.badgeDesc": "Overlays the number of unread articles on the app's taskbar button (99+ from 100 on, nothing at 0).",
   "translationSettings.onSwitch": "Translate when I switch the view",
@@ -180,7 +180,7 @@ export const en = {
   "translationSettings.parallelDesc":
     "How many translation requests to the AI provider run at the same time (default 3), across the batches of a long article or several articles at once. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
   "translationSettings.keepTermsDesc":
-    "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, on prefers the established English terms and off prefers plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
+    "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, turning this on uses the established English terms and turning it off uses plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
   "translationSettings.instructions": "Extra instructions",
   "translationSettings.instructionsDesc":
     "Appended to the translation prompt (e.g. “use a polite register”, “follow the Kubernetes docs' official terms”). Applies both to article translation and to translated pages. Translations are stored per set of instructions, so articles need translating again after a change.",
@@ -661,7 +661,7 @@ export const en = {
   "jobsView.about": "About {typeLabel}",
   "jobsView.feedFilterAbout": "Decides, before a feed's new entries are saved, whether to keep them (the import filter's keyword rules and the LLM).",
   "jobsView.ingestAbout": "Fetches the page at the URL, extracts the article text and saves it.",
-  "jobsView.renderAbout": "Loads pages whose text a plain fetch does not get in a hidden browser, and saves the rendered page.",
+  "jobsView.renderAbout": "Loads a page in a hidden browser when a plain fetch misses its text, and saves the rendered page.",
   "jobsView.imagesAbout": "Downloads and stores the article's images (the Reader never loads remote images).",
   "jobsView.faviconAbout": "Fetches the site icons shown next to feeds and articles.",
   "jobsView.embedAbout": "Turns the article's paragraphs into vectors for search. Runs on this device; no LLM.",
@@ -834,7 +834,7 @@ export const en = {
   "reader.classifyFailed": " · classification failed: {last_error}",
   "reader.fetchFailed": "Could not fetch the page",
   "reader.extractFailed": "Could not extract the text",
-  "reader.fetchedOk": " — the fetch succeeded and the {x} is saved.",
+  "reader.fetchedOk": " (the fetch succeeded and the {x} is saved).",
   "reader.imageOnlyPdf": " Text cannot be extracted from a PDF without text (images only).",
   "reader.reextractOffline": "Re-extract (offline)",
   "reader.reextractHint": "Extracts again from the saved {x}",
@@ -1133,7 +1133,7 @@ export const en = {
   "feedFilter.globalTitle": "Global import filters",
   "feedFilter.rules": "Rules",
   "feedFilter.rulesHint":
-    "Entries matching any skip rule are not imported, nor, when there are only-if rules, entries matching none of them. Matching ignores case.",
+    "Entries that match any skip rule are not imported. When there are only-if rules, entries that match none of them are not imported either. Matching ignores case.",
   "feedFilter.ruleN": "Rule {n}",
   "feedFilter.field": "Field",
   "feedFilter.action": "Only if or skip",

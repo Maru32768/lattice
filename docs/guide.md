@@ -452,7 +452,7 @@ An article that came from a feed is not imported again from that feed.
 
 ### Search
 
-Press `/` to search your saved articles. Lattice's search is a hybrid of full-text search, which finds passages that contain your keywords, and semantic search, which finds passages close in meaning. Thanks to semantic search, a Japanese query finds the matching passage in an English article, and the other way around. Both the original text and translations are searched.
+Press `/` to search your saved articles. Lattice's search is a hybrid of full-text search, which finds passages that contain your keywords, and semantic search, which finds passages close in meaning. Semantic search lets a Japanese query find the matching passage in an English article, and the other way around. Both the original text and translations are searched.
 
 - Results list the matching passages, grouped by article. Move with `j` and `k`. `Enter` opens the passage in the Reader, and `Shift+Enter` in the Page view. `Esc` returns to the article list.
 - The scope menu narrows the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow it further.
@@ -837,7 +837,7 @@ With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres
 
 Saved articles are web pages written by other people. An agent that reads them can follow instructions planted in the text (prompt injection).
 
-Lattice starts every tool result with a notice that the content is untrusted outside text and that instructions in it must not be followed. It also cuts each result at 25,000 characters. The risk remains anyway, so:
+Lattice starts every tool result with a notice that the content is untrusted outside text and that instructions in it must not be followed. It also cuts each result at 25,000 characters. The risk remains, so:
 
 - Don't allow writes (`--allow-write`) unless you need them.
 - Don't give an agent session that reads your articles risky tools at the same time, such as running shell commands, writing files or sending email.
