@@ -28,6 +28,7 @@ const COMMANDS: &[&str] = &[
     "set_genre",
     "rename_genre",
     "add_genre",
+    "set_articles_on_screen",
     "delete_genre",
     "set_article_note",
     "set_difficulty",

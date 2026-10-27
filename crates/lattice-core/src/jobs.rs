@@ -1,7 +1,8 @@
 //! In-process job runners. The queue lives in SQLite, so jobs survive crashes and restarts.
 //! Each runner drains a subset of job types serially: LLM jobs (rate-limited CLIs), local jobs
 //! (embeddings) and network jobs (bulk-import fetches, several runners) run separately so a long
-//! translation queue never delays indexing or importing.
+//! translation queue never delays indexing or importing. A reserved slot (`run_foreground`) runs
+//! only the jobs of the articles on screen, so the one being read never waits behind the queue.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -23,6 +24,13 @@ pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JO
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
 const IDLE_POLL: Duration = Duration::from_secs(30);
+/// How often the reserved slot looks for new jobs of the articles on screen: the commands that queue
+/// them wake the LLM runner, not this one.
+const FOREGROUND_POLL: Duration = Duration::from_secs(1);
+
+/// The jobs a reader waits for on the article in front of them (classification runs in batches
+/// across articles, so it stays in the queue).
+pub const FOREGROUND_JOBS: &[&str] = &[translate::JOB_TYPE, summarize::JOB_TYPE, quiz::JOB_TYPE];
 
 pub struct Providers<L, E> {
     pub llm: L,
@@ -65,17 +73,47 @@ pub async fn run_next<L: LlmProvider, E: EmbeddingProvider>(
     run_claimed(store, providers, job, on_change).await
 }
 
-/// Runs one article's ready jobs of `types` here, oldest first, as a runner would (the CLI's
-/// `save --run` when the app is not running). Returns how many ran.
+/// The reserved slot: runs the `FOREGROUND_JOBS` of the articles `on_screen` returns, beside
+/// `run_worker`. A job already running there is not run twice (both claim from the queue), and one
+/// backing off waits as it would there.
+pub async fn run_foreground<L: LlmProvider, E: EmbeddingProvider>(
+    store: Arc<Store>,
+    providers: Arc<Providers<L, E>>,
+    on_screen: impl Fn() -> Vec<i64> + Send + Sync + 'static,
+    wake: Arc<Notify>,
+    on_change: impl Fn(&JobRow) + Send + Sync + 'static,
+) {
+    loop {
+        let ids = on_screen();
+        let mut ran = 0;
+        for &id in &ids {
+            match run_article(&store, &providers, FOREGROUND_JOBS, id, &on_change).await {
+                Ok(n) => ran += n,
+                Err(e) => log::error!("foreground job runner: {e}"),
+            }
+        }
+        if ran > 0 {
+            continue;
+        }
+        tokio::select! {
+            _ = wake.notified() => {}
+            _ = tokio::time::sleep(if ids.is_empty() { IDLE_POLL } else { FOREGROUND_POLL }) => {}
+        }
+    }
+}
+
+/// Runs one article's ready jobs of `types` here, oldest first, as a runner would (the reserved
+/// slot, and the CLI's `save --run` when the app is not running). Returns how many ran.
 pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     providers: &Providers<L, E>,
     types: &[&str],
     article_id: i64,
+    on_change: &(dyn Fn(&JobRow) + Send + Sync),
 ) -> Result<usize, String> {
     let mut ran = 0;
     while let Some(job) = store.claim_article_job(types, article_id).map_err(|e| e.to_string())? {
-        run_claimed(store, providers, job, &|_| {}).await?;
+        run_claimed(store, providers, job, on_change).await?;
         ran += 1;
     }
     Ok(ran)
@@ -179,6 +217,37 @@ mod tests {
         let f = Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html: html.into() };
         store_fetched(&s, id, &f).unwrap();
         (s, id)
+    }
+
+    #[tokio::test]
+    async fn the_reserved_slot_translates_the_article_on_screen_while_the_queue_is_busy() {
+        let (s, busy) = setup();
+        let article = |s: &Store, url: &str| {
+            let (id, _) = s.upsert_pending(url, url, "example.com").unwrap();
+            let html =
+                "<html><body><article><p>Write skew happens when two transactions read overlapping data and write disjoint data.</p></article></body></html>";
+            store_fetched(s, id, &Fetched { final_url: url.into(), status: 200, content_type: None, html: html.into() }).unwrap();
+            id
+        };
+        let (shown, other) = (article(&s, "https://example.com/shown"), article(&s, "https://example.com/other"));
+        for id in [busy, other, shown] {
+            translate::enqueue(&s, id, &Target::default()).unwrap();
+        }
+        // The queue's runner is in the middle of the first article's translation.
+        assert_eq!(s.claim_next_job(LLM_JOBS).unwrap().unwrap().article_id, Some(busy));
+
+        let s = Arc::new(s);
+        let slot = tokio::spawn(run_foreground(s.clone(), Arc::new(with(Fake::new())), move || vec![shown], Arc::new(Notify::new()), |_| {}));
+        let status = |id: i64| s.get_article(id, "ja").unwrap().unwrap().jobs[0].status.clone();
+        for _ in 0..200 {
+            if status(shown) == "succeeded" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        slot.abort();
+        assert_eq!(status(shown), "succeeded", "the article on screen did not wait for the busy queue");
+        assert_eq!((status(busy).as_str(), status(other).as_str()), ("running", "pending"), "the queue's jobs are left to the queue");
     }
 
     #[tokio::test]
@@ -401,10 +470,10 @@ mod tests {
         crate::summarize::enqueue(&s, id).unwrap();
         translate::enqueue(&s, id, &Target::default()).unwrap();
         let p = with(Fake::new());
-        assert_eq!(run_article(&s, &p, LLM_JOBS, id).await.unwrap(), 2);
+        assert_eq!(run_article(&s, &p, LLM_JOBS, id, &|_| {}).await.unwrap(), 2);
         assert!(s.get_article(id, "ja").unwrap().unwrap().jobs.iter().all(|j| j.status == "succeeded"));
         assert_eq!(s.get_article(other, "ja").unwrap().unwrap().jobs[0].status, "pending", "another article's job waits");
-        assert_eq!(run_article(&s, &p, LLM_JOBS, id).await.unwrap(), 0);
+        assert_eq!(run_article(&s, &p, LLM_JOBS, id, &|_| {}).await.unwrap(), 0);
     }
 
     #[test]

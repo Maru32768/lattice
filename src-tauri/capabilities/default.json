@@ -67,6 +67,7 @@
     "allow-set-genre",
     "allow-rename-genre",
     "allow-add-genre",
+    "allow-set-articles-on-screen",
     "allow-delete-genre",
     "allow-set-article-note",
     "allow-set-difficulty",

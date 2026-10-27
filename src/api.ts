@@ -166,6 +166,8 @@ export const api = {
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),
   renameGenre: (from: string, to: string) => invoke<void>("rename_genre", { from, to }),
   addGenre: (name: string) => invoke<void>("add_genre", { name }),
+  /** The articles this window shows: the reserved job slot works on them first. */
+  setArticlesOnScreen: (ids: number[]) => invoke<void>("set_articles_on_screen", { ids }),
   deleteGenre: (name: string) => invoke<void>("delete_genre", { name }),
   setArticleNote: (id: number, body: string) => invoke<void>("set_article_note", { id, body }),
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),

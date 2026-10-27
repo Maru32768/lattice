@@ -254,6 +254,7 @@ In the Page view, the same bubble appears for each sentence instead of each para
 The Reader's toolbar shows how far translation has gone (for example, **Translated 12/40**).
 
 - **Starting automatically.** With **Translate when I switch the view** on (the default), switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
+- **The article on screen goes first.** Translation, the summary and the quiz of the articles you are looking at (the front tab of each pane) start right away in a slot of their own, instead of waiting behind queued jobs or the job already running.
 - **Starting by hand.** Click **Translate**. On a partly translated article, **Translate the rest** translates the remaining paragraphs. Hold the pointer over the button to see which language it translates into.
 - **Translating again.** **Translate again** drops this article's translations and translates it again with the current provider and settings. It is in the ⋯ menu once any paragraph is translated, and also in the toolbar once all of them are. Articles with more than 50 translated paragraphs ask you to confirm. It is unavailable while this article's translation is running.
 - **When it fails.** The toolbar shows **Failed**, the time of the next automatic retry and a **Retry** button, and a note above the text gives the error. Paragraphs that were already translated are kept, so a retry sends only the rest.

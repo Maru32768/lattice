@@ -3,11 +3,13 @@ import { listen } from "@tauri-apps/api/event";
 import { api, browser, type ArticleView } from "../api";
 import { forgetOpened } from "../browser/BrowserView";
 import {
+  activeTab,
   allTabs,
   closeWhere,
   load as loadLayout,
   navigated,
   pageByKey,
+  panes,
   save as saveLayout,
   update,
   type Id,
@@ -103,6 +105,21 @@ export function useDocuments(fail: (e: unknown) => void) {
     }
   });
   useEffect(() => loadMissing(readerKey ? readerKey.split(",").map(Number) : []), [readerKey]);
+
+  // The article in front in each pane: the backend's reserved job slot translates it before the queue.
+  const onScreenKey = [
+    ...new Set(
+      panes(layout.root).flatMap((p) => {
+        const t = activeTab(p);
+        return t?.kind === "reader" ? [t.articleId] : t?.kind === "page" && t.saved != null ? [t.saved] : [];
+      }),
+    ),
+  ]
+    .sort((a, b) => a - b)
+    .join(",");
+  useEffect(() => {
+    api.setArticlesOnScreen(onScreenKey ? onScreenKey.split(",").map(Number) : []).catch(() => {});
+  }, [onScreenKey]);
 
   // Page tabs that closed (or show a Reader now) give up their webview.
   const pageKey = useMemo(

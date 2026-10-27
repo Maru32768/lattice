@@ -337,7 +337,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                     })
                     .copied()
                     .collect();
-                jobs::run_article(store, &ctx.providers, &types, id).await?
+                jobs::run_article(store, &ctx.providers, &types, id, &|_| {}).await?
             } else {
                 0
             };

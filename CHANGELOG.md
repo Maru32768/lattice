@@ -11,6 +11,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
+- The article on screen is translated (and summarized, and quizzed) right away in a slot of its own, instead of waiting behind queued jobs and the job already running.
 - When an AI provider step fails and the next step answers instead, Settings › AI providers and Jobs show which step failed and why (for example, a CLI that is not installed). Before, only the log said so.
 - Automatic translation of saved articles skips articles written in the display language (before, it always skipped Japanese articles). Turn on **Also translate articles in the display language** to include them.
 - Translation sends several batches of an article at once, so long articles finish sooner. Set how many in Settings › Translation (default 3).

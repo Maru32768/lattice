@@ -630,6 +630,7 @@ export const handlers = {
     const extra = [...addedGenres].filter((g) => !used.some((u) => u.name.toLowerCase() === g.toLowerCase())).map((name) => ({ name, count: 0 }));
     return [...used, ...extra];
   },
+  set_articles_on_screen: none,
   add_genre: ({ name }: { name: string }) => void addedGenres.add(name.trim()),
   set_article_note: ({ id, body }: { id: number; body: string }) => void (body.trim() ? notes.set(id, body) : notes.delete(id)),
   set_genre: ({ id, name }: { id: number; name: string }) => {

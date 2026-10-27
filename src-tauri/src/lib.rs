@@ -55,6 +55,9 @@ struct App {
     wake_local: Arc<Notify>,
     wake_net: Vec<Arc<Notify>>,
     wake_render: Arc<Notify>,
+    /// The articles each window shows (by window label), for the reserved job slot (`jobs::run_foreground`).
+    on_screen: OnScreen,
+    wake_foreground: Arc<Notify>,
     overlay_llm: Semaphore,
     chat_llm: Semaphore,
     db_path: String,
@@ -63,6 +66,8 @@ struct App {
     /// The folder `pick_data_dir` returned, waiting for `set_data_dir`.
     picked_dir: Mutex<Option<PathBuf>>,
 }
+
+type OnScreen = Arc<Mutex<std::collections::HashMap<String, Vec<i64>>>>;
 
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -285,6 +290,21 @@ fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
 #[tauri::command(async)]
 fn rename_genre(app: State<'_, App>, from: String, to: String) -> Result<(), String> {
     classify::rename_genre(&app.store, &from, &to)
+}
+
+/// The articles shown in this window's panes (Reader tabs and saved Page tabs in front): the
+/// reserved job slot translates (and summarizes, quizzes) them before the queue gets to them.
+// shortcut: a window that closes leaves its last list until the app restarts; harmless, since the
+// slot only runs jobs those articles have queued. Clear it on window destroy if that ever matters.
+#[tauri::command(async)]
+fn set_articles_on_screen(app: State<'_, App>, window: tauri::Window, ids: Vec<i64>) {
+    let mut on_screen = app.on_screen.lock().unwrap_or_else(|e| e.into_inner());
+    if ids.is_empty() {
+        on_screen.remove(window.label());
+    } else {
+        on_screen.insert(window.label().to_string(), ids);
+    }
+    app.wake_foreground.notify_one();
 }
 
 #[tauri::command(async)]
@@ -1217,6 +1237,23 @@ pub fn run() {
                 llm_wake.notify_one();
                 net_wake.iter().for_each(|w| w.notify_one()); // the stored rendering has queued its images job
             };
+            // The reserved slot for the articles on screen, beside the LLM runner above.
+            let (on_screen, wake_foreground): (OnScreen, _) = (Arc::default(), Arc::new(Notify::new()));
+            let shown = on_screen.clone();
+            let ids = move || {
+                let mut ids: Vec<i64> = shown.lock().unwrap_or_else(|e| e.into_inner()).values().flatten().copied().collect();
+                ids.sort_unstable();
+                ids.dedup();
+                ids
+            };
+            let handle = app.handle().clone();
+            let on_change = move |job: &JobRow| {
+                if let Some(id) = job.article_id {
+                    let _ = handle.emit("article-changed", id);
+                }
+            };
+            tauri::async_runtime::spawn(jobs::run_foreground(store.clone(), providers.clone(), ids, wake_foreground.clone(), on_change));
+
             let embed_model = providers.embedder.model_id().to_string();
             tauri::async_runtime::spawn(renderer::run(app.handle().clone(), store.clone(), embed_model, wake_render.clone(), on_render));
 
@@ -1237,6 +1274,8 @@ pub fn run() {
                 wake_local,
                 wake_net,
                 wake_render,
+                on_screen,
+                wake_foreground,
                 overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY),
                 chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY),
                 db_path: path.display().to_string(),
@@ -1272,6 +1311,7 @@ pub fn run() {
             set_genre,
             rename_genre,
             add_genre,
+            set_articles_on_screen,
             delete_genre,
             set_article_note,
             set_difficulty,
