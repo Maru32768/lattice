@@ -65,7 +65,7 @@ export const en = {
     "All data (articles, translations, summaries, images, the search index) lives in one SQLite file, and a backup is a copy of that file (see Logs & storage for where it is).",
   "settingsView.r2": "Cloud backup (R2)",
   "settingsView.r2Lead":
-    "Uploads a gzip-compressed copy of the database (without API keys) to Cloudflare R2. After each successful upload, the backups on this device are pruned to the number of newest generations you set (nothing is deleted for its age, so a long break from the app costs you no backups). The bucket is managed with the Terraform in {code}.",
+    "Uploads a gzip-compressed copy of the database (without API keys) to Cloudflare R2. After each successful upload, the backups on this device are pruned to the number of newest generations you set (nothing is deleted for its age, so backups are not lost when you leave the app unused for a while). The bucket is managed with the Terraform in {code}.",
   "settingsView.export": "Export",
   "settingsView.storage": "Logs & storage",
   "settingsView.update": "Updates",
@@ -83,7 +83,7 @@ export const en = {
   "backupSection.backUpNow": "Back up now",
   "backupSection.keep": "Backups to keep",
   "backupSection.keepDesc":
-    "Each backup deletes the oldest {code} files beyond the number you set. Nothing is deleted for its age, so a long break from the app costs you no backups.",
+    "Each backup deletes the oldest {code} files beyond the number you set. Nothing is deleted for its age, so backups are not lost when you leave the app unused for a while.",
   "common.save": "Save",
   "browserSettings.engine": "Search engine",
   "browserSettings.engineDesc": "Searches what you type in the URL bar when it is not a URL, and sets the page the home button opens.",
@@ -138,7 +138,7 @@ export const en = {
   "instructionSettings.profilePlaceholder":
     "e.g. Backend engineer. Runs PostgreSQL and Kubernetes in production. Cares about performance numbers and operational caveats.",
   "instructionSettings.summary": "Extra instructions for summaries",
-  "instructionSettings.summaryDesc": "Added to summaries only. After a change, existing summaries say they are out of date until you regenerate them.",
+  "instructionSettings.summaryDesc": "Added to summaries only. After a change, existing summaries show a note that regenerating them applies it.",
   "common.none": "None",
   "instructionSettings.chat": "Extra instructions for chat",
   "instructionSettings.chatDesc": "Added to chat answers only. Applies from the next question.",
