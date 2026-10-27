@@ -869,6 +869,7 @@ export const handlers = {
   open_window: none,
   close_window: none,
   window_ready: none,
+  window_adopted: none,
   tab_drag_start: none,
   tab_drag_strips: none,
   tab_drag_float: none,

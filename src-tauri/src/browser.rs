@@ -333,11 +333,67 @@ pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// A tab moved to another window gets a new page webview there: `Webview::reparent` keeps the
-/// WebView2 controller's old offset on Windows (the page drew shifted and spilled past the new
-/// window), so the old one is closed and the tab reloads in its new window.
+/// Whether page webview `wv` is in `window`. A tab that moved to another window brings its
+/// webview along when that window opens it (`attach`).
 fn in_window(wv: &Webview, window: &Window) -> bool {
     wv.window().label() == window.label()
+}
+
+/// Moves page webview `wv` into `window`, whose UI shows its tab now: the page keeps its history
+/// and scroll position, as a tab dragged between Chrome windows does. If it cannot move, it is
+/// closed and the tab opens its page again there.
+async fn attach(app: &AppHandle, wv: Webview, window: &Window) -> Result<(), String> {
+    match wv.reparent(window) {
+        Ok(()) => {
+            #[cfg(windows)]
+            settle(&wv);
+            Ok(())
+        }
+        Err(e) => {
+            log::warn!("moving {} to {}: {e}", wv.label(), window.label());
+            close_page(app, wv).await
+        }
+    }
+}
+
+/// After a move to another window, WebView2 is told its top-level window changed (wry does that
+/// only for a webview that fills its window), and the page goes above the window's own UI webview,
+/// as a new one does. Without them the moved page drew at the old window's offset (a1fe3b4).
+#[cfg(windows)]
+fn settle(wv: &Webview) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowPos};
+    let r = wv.with_webview(|pw| {
+        let c = pw.controller();
+        let mut host = HWND::default();
+        // SAFETY: with_webview runs this on the main thread with wry's live controller; `host` is a
+        // local the call writes, and the window it names is wry's container of this webview.
+        unsafe {
+            let _ = c.NotifyParentWindowPositionChanged();
+            if c.ParentWindow(&mut host).is_ok() {
+                let _ = SetWindowPos(host, Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
+        }
+    });
+    if let Err(e) = r {
+        log::warn!("placing {} in its new window: {e}", wv.label());
+    }
+}
+
+/// Window `from` is closing: its page webviews go into `to`, hidden, because the UI is sending
+/// their tabs there and a child webview would close with its window.
+pub async fn park_all(app: &AppHandle, from: &Window, to: &Window) {
+    let browser = app.state::<Browser>();
+    // After a move `browser_open` has begun, or before it: never in between.
+    let _opening = browser.opening.lock().await;
+    for wv in from.webviews().into_iter().filter(|wv| is_browser(wv.label())) {
+        if let Err(e) = update_visibility(&wv, &browser, |v| v.wanted = false) {
+            log::warn!("hiding {}: {e}", wv.label());
+        }
+        if let Err(e) = attach(app, wv, to).await {
+            log::warn!("{e}");
+        }
+    }
 }
 
 /// Closes a page webview and waits until its label is free to be used again.
@@ -372,13 +428,18 @@ pub async fn browser_open(
     let _opening = browser.opening.lock().await;
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
-    if let Some(wv) = app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
-        close_page(&app, wv).await?;
-    }
+    let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
+        Some(wv) => {
+            attach(&app, wv, &window).await?;
+            true
+        }
+        None => false,
+    };
     if let Some(wv) = app.get_webview(&label) {
-        // A tab that came from another window already shows this page: no reload, its history and scroll stay.
+        // Already showing this page, or the tab's own page come from another window (its URL may have
+        // moved on in the page since the tab last saw it): no reload, its history and scroll stay.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
-        if focus_text.is_none() && !loading && wv.url().is_ok_and(|u| u == url) {
+        if focus_text.is_none() && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
@@ -441,7 +502,7 @@ pub async fn browser_open(
 #[tauri::command]
 pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: Webview, tab: String, bounds: Bounds) -> Result<bool, String> {
     match app.get_webview(&label(&tab)?) {
-        // In another window: the UI opens the tab again here (browser_open replaces the webview).
+        // In another window: the UI opens the tab here, which brings the webview along (browser_open).
         Some(wv) if !in_window(&wv, &webview.window()) => Ok(false),
         Some(wv) => update_visibility(&wv, &browser, |v| {
             v.wanted = true;

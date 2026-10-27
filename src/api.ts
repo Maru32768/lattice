@@ -266,6 +266,8 @@ export const windows = {
   open: (label: string) => invoke<void>("open_window", { label }),
   close: () => invoke<void>("close_window"),
   ready: () => invoke<void>("window_ready"),
+  /** Resolves once this window may mount: at once, or for the spare kept ready hidden, when a tab or document is sent to it. */
+  adopted: () => invoke<void>("window_adopted"),
 };
 
 /** Tab drags across windows, which the backend runs (design-review §26, `src/layout/tabDrag.ts`). */

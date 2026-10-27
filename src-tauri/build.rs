@@ -158,6 +158,7 @@ const COMMANDS: &[&str] = &[
     "open_window",
     "close_window",
     "window_ready",
+    "window_adopted",
     "tab_drag_start",
     "tab_drag_strips",
     "tab_drag_float",

@@ -17,6 +17,7 @@
     "allow-open-window",
     "allow-close-window",
     "allow-window-ready",
+    "allow-window-adopted",
     "allow-tab-drag-start",
     "allow-tab-drag-strips",
     "allow-tab-drag-float",

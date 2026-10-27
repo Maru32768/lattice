@@ -3,12 +3,19 @@
 //! what to show (`src/app/windows.ts`) and keeps what it holds in its own storage. This module creates
 //! the windows where they last were, keeps their page webviews alive while they close, and quits
 //! the app with the main window.
+//!
+//! One document window is kept ready, hidden, with the frontend loaded (`Spare`): a tab torn off
+//! or popped out goes to it and shows at once. A new window takes 2-3 s to start WebView2 and load
+//! the frontend, which is how long a torn-off tab took to appear.
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, State, Webview, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent};
+use tokio::sync::oneshot;
 
+use crate::browser::lock;
 use crate::location::Location;
 use crate::{App, browser, err, tabdrag};
 
@@ -17,10 +24,22 @@ const DEFAULT_SIZE: (f64, f64) = (960.0, 720.0);
 /// A pop-out shows once its UI has mounted (`window_ready`), so it never flashes empty; this is
 /// how long it waits for that before showing anyway.
 const REVEAL_AFTER: Duration = Duration::from_secs(3);
+/// How long after startup, or after the spare was taken, the next one is made: not while the app
+/// starts or the torn-off window is being dragged.
+const SPARE_AFTER: Duration = Duration::from_secs(3);
+
+/// The spare document window's label and, while its frontend waits for a layout (`window_adopted`),
+/// what wakes it.
+#[derive(Default)]
+pub struct Spare(Mutex<Option<(String, Option<oneshot::Sender<()>>)>>);
 
 /// A document window's label: `doc-<n>`.
 pub fn is_doc(label: &str) -> bool {
     label.strip_prefix("doc-").is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+}
+
+fn doc_number(label: &str) -> Option<u32> {
+    label.strip_prefix("doc-").filter(|_| is_doc(label))?.parse().ok()
 }
 
 /// A pop-out's label: `doc-<n>` or `chat`. Nothing else is created on the UI's request.
@@ -108,14 +127,32 @@ pub fn restore_main(app: &AppHandle, state: &App) {
     if let Err(e) = w.show() {
         log::warn!("showing the main window: {e}");
     }
+    prepare_spare(app);
 }
 
-/// Creates pop-out `label`, hidden until `ready`. None when it is open already (asked twice before
-/// the first finished, as a double click does: the first one wins).
+/// Creates pop-out `label`, hidden until `ready`, or takes the spare when it has that label. None
+/// when it is open already (asked twice before the first finished, as a double click does: the
+/// first one wins).
 pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<WebviewWindow>, String> {
+    if let Some(w) = take_spare(app, label) {
+        reveal_later(app, label);
+        prepare_spare(app);
+        return Ok(Some(w));
+    }
     if app.get_window(label).is_some() {
         return Ok(None);
     }
+    match build(app, loc, label) {
+        Ok(w) => {
+            reveal_later(app, label);
+            Ok(Some(w))
+        }
+        Err(tauri::Error::WindowLabelAlreadyExists(_) | tauri::Error::WebviewLabelAlreadyExists(_)) => Ok(None),
+        Err(e) => Err(err(e)),
+    }
+}
+
+fn build(app: &AppHandle, loc: &Location, label: &str) -> tauri::Result<WebviewWindow> {
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::default())
         .title("Lattice")
         .decorations(false)
@@ -124,21 +161,98 @@ pub fn create(app: &AppHandle, loc: &Location, label: &str) -> Result<Option<Web
     if let Some(d) = loc.webview_dir() {
         builder = builder.data_directory(d);
     }
-    match builder.build() {
-        Ok(w) => {
-            let (app, label) = (app.clone(), label.to_string());
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(REVEAL_AFTER).await;
-                // A window following a drag shows when the drag says, and only once it holds the tab.
-                if !tabdrag::follows(&app, &label) {
-                    show(&app, &label);
-                }
-            });
-            Ok(Some(w))
+    builder.build()
+}
+
+fn reveal_later(app: &AppHandle, label: &str) {
+    let (app, label) = (app.clone(), label.to_string());
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(REVEAL_AFTER).await;
+        // A window following a drag shows when the drag says, and only once it holds the tab.
+        if !tabdrag::follows(&app, &label) {
+            show(&app, &label);
         }
-        Err(tauri::Error::WindowLabelAlreadyExists(_) | tauri::Error::WebviewLabelAlreadyExists(_)) => Ok(None),
-        Err(e) => Err(err(e)),
+    });
+}
+
+/// The spare, if it is `label`: no longer a spare, its frontend goes on to load the layout stored
+/// for it. None while it is still being created; it is no spare then either, and the create that
+/// asked for it finds the label taken.
+fn take_spare(app: &AppHandle, label: &str) -> Option<WebviewWindow> {
+    let (_, wake) = {
+        let spare = app.state::<Spare>();
+        let mut g = lock(&spare.0);
+        g.take_if(|(l, _)| l == label)?
+    };
+    if let Some(wake) = wake {
+        let _ = wake.send(());
     }
+    app.get_webview_window(label)
+}
+
+/// Makes a spare document window `SPARE_AFTER` from now, unless there is one, with the lowest free
+/// label: the one the UI picks next (`nextDocLabel`).
+pub fn prepare_spare(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(SPARE_AFTER).await;
+        let label = {
+            let spare = app.state::<Spare>();
+            let mut g = lock(&spare.0);
+            if g.is_some() {
+                return;
+            }
+            let Some(label) = (1..).map(|n: u32| format!("doc-{n}")).find(|l| app.get_window(l).is_none()) else {
+                return;
+            };
+            *g = Some((label.clone(), None));
+            label
+        };
+        if let Err(e) = build(&app, &app.state::<Location>(), &label) {
+            log::warn!("creating the spare window {label}: {e}");
+            lock(&app.state::<Spare>().0).take_if(|(l, _)| *l == label);
+        }
+    });
+}
+
+/// Document window `closed` is gone: the spare is made again when its label is no longer the
+/// lowest free one, since the UI would pick that one instead.
+fn respare(app: &AppHandle, closed: &str) {
+    let Some(n) = doc_number(closed) else {
+        return;
+    };
+    let stale = {
+        let spare = app.state::<Spare>();
+        let mut g = lock(&spare.0);
+        g.take_if(|(l, _)| doc_number(l).is_some_and(|s| s > n))
+    };
+    if let Some((label, _)) = stale {
+        if let Some(w) = app.get_window(&label)
+            && let Err(e) = w.destroy()
+        {
+            log::warn!("closing the spare window {label}: {e}");
+        }
+        prepare_spare(app);
+    }
+}
+
+/// The calling window's frontend waits here before it mounts: at once, unless it is the spare,
+/// which waits until a tab or document is sent to it (`take_spare`).
+#[tauri::command]
+pub async fn window_adopted(spare: State<'_, Spare>, webview: Webview) -> Result<(), String> {
+    let label = webview.window().label().to_string();
+    let woken = {
+        let mut g = lock(&spare.0);
+        match g.as_mut() {
+            Some((l, wake)) if *l == label => {
+                let (tx, rx) = oneshot::channel();
+                *wake = Some(tx);
+                rx
+            }
+            _ => return Ok(()),
+        }
+    };
+    woken.await.map_err(err)
 }
 
 fn show(app: &AppHandle, label: &str) {
@@ -163,21 +277,21 @@ pub async fn window_ready(app: AppHandle, webview: Webview) -> Result<(), String
     Ok(())
 }
 
-/// Closes the calling pop-out. Its page webviews close with it; the UI moves their tabs to the
-/// main window, which opens their pages again (see `browser::in_window`).
+/// Closes the calling pop-out. Its page webviews go to the main window first, hidden: the UI is
+/// moving their tabs there, and they would close with this window.
 #[tauri::command]
-pub async fn close_window(_app: AppHandle, state: State<'_, App>, webview: Webview) -> Result<(), String> {
+pub async fn close_window(app: AppHandle, state: State<'_, App>, webview: Webview) -> Result<(), String> {
     let w = webview.window();
     if !is_popout(w.label()) {
         return Err("not a pop-out window".into());
     }
-    for wv in w.webviews().into_iter().filter(|wv| browser::is_browser(wv.label())) {
-        if let Err(e) = wv.close() {
-            log::warn!("closing {}: {e}", wv.label());
-        }
+    if let Some(main) = app.get_window(MAIN) {
+        browser::park_all(&app, &w, &main).await;
     }
     save_geometry(&state, &w);
-    w.destroy().map_err(err)
+    w.destroy().map_err(err)?;
+    respare(&app, w.label());
+    Ok(())
 }
 
 /// The main window's close quits the app, as before pop-outs existed; its position and the
@@ -191,7 +305,8 @@ pub fn on_window_event(w: &Window, e: &WindowEvent) {
         WindowEvent::CloseRequested { .. } => {
             if let Some(state) = app.try_state::<App>() {
                 for (label, win) in app.windows() {
-                    if label == MAIN || is_popout(&label) {
+                    // Not the spare: it never showed, and the place saved under its label is another window's.
+                    if (label == MAIN || is_popout(&label)) && win.is_visible().unwrap_or(false) {
                         save_geometry(&state, &win);
                     }
                 }
@@ -205,6 +320,14 @@ pub fn on_window_event(w: &Window, e: &WindowEvent) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_document_windows_number_is_its_label_s() {
+        assert_eq!((doc_number("doc-1"), doc_number("doc-12")), (Some(1), Some(12)));
+        for other in ["doc-", "doc-x", "chat", "main", "doc-1-2"] {
+            assert_eq!(doc_number(other), None, "{other:?}");
+        }
+    }
 
     #[test]
     fn only_document_and_chat_labels_are_pop_outs() {

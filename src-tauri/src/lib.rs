@@ -1165,6 +1165,7 @@ pub fn run() {
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
+        .manage(popout::Spare::default())
         .on_window_event(popout::on_window_event)
         .setup(|app| {
             let loc = location::detect()?;
@@ -1464,6 +1465,7 @@ pub fn run() {
             popout::open_window,
             popout::close_window,
             popout::window_ready,
+            popout::window_adopted,
             tabdrag::tab_drag_start,
             tabdrag::tab_drag_strips,
             tabdrag::tab_drag_float,

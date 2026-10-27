@@ -28,6 +28,7 @@ import {
   TAB_DRAG_START,
   TAB_DRAG_TEAR,
   measure,
+  type DragStart,
   type Incoming,
   type Over,
   type Slot,
@@ -358,7 +359,13 @@ export function DocArea({
       if (!o.alone) {
         uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
       }
-      const start = { tab: labelOf(hit.tab), pane: hit.pane.id, index: hit.pane.tabs.indexOf(hit.tab), alone: o.alone };
+      const start: Omit<DragStart, "geom"> = {
+        tab: labelOf(hit.tab),
+        pane: hit.pane.id,
+        index: hit.pane.tabs.indexOf(hit.tab),
+        alone: o.alone,
+        grab: [d.dx, d.dy],
+      };
       void getCurrentWindow()
         .innerPosition()
         .then((p) => tabDrag.start({ ...start, geom: measure(me, p) }))

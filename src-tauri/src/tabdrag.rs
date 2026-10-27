@@ -32,9 +32,9 @@ use crate::{err, popout};
 const TICK: Duration = Duration::from_millis(8);
 /// How far (CSS px) above or below its strip a tab can go and stay in it; Chrome lets go at about this.
 const DETACH: f64 = 30.0;
-/// Where the first tab's center sits in a fresh document window, in logical pixels: the title bar
-/// (32) plus half the strip, and half a tab from the left edge.
-const TAB_GRAB: (f64, f64) = (56.0, 51.0);
+/// Where the first tab's corner sits in a fresh document window, in logical pixels: its strip is
+/// the title bar, and this is the strip's padding (`.tabs` in `src/app/App.css`).
+const FIRST_TAB: (f64, f64) = (6.0, 5.0);
 /// How far into a pane's body, as a fraction of its width or height, an edge reaches.
 const EDGE: f64 = 0.25;
 
@@ -212,6 +212,8 @@ struct Session {
     tab: Value,
     /// Where the tab was in the source, for Escape.
     origin: Slot,
+    /// Where in the tab it was grabbed (CSS px from its corner): a torn-off window keeps that spot under the cursor.
+    in_tab: (f64, f64),
     /// Where the source window was, when it is the one that follows the cursor.
     home: Option<PhysicalPosition<i32>>,
     wins: Vec<Geom>,
@@ -226,11 +228,25 @@ struct Session {
 }
 
 impl Session {
-    fn new(id: u64, source: Geom, tab: Value, origin: (u64, usize), at: Point, alone: Option<PhysicalPosition<i32>>) -> Self {
+    fn new(id: u64, source: Geom, tab: Value, origin: (u64, usize), in_tab: (f64, f64), at: Point, alone: Option<PhysicalPosition<i32>>) -> Self {
         let label = source.label.clone();
         let float = alone.map(|o| Float { label: label.clone(), grab: (at.x - o.x as f64, at.y - o.y as f64), ready: true, shown: true, at: Some(o) });
         let origin = Slot { label: label.clone(), pane: origin.0, at: At::Index(origin.1) };
-        Session { id, source: label, tab, origin, home: alone, wins: vec![source], float, torn: false, over: None, last: at, ended: false, pending: None }
+        Session {
+            id,
+            source: label,
+            tab,
+            origin,
+            in_tab,
+            home: alone,
+            wins: vec![source],
+            float,
+            torn: false,
+            over: None,
+            last: at,
+            ended: false,
+            pending: None,
+        }
     }
 
     /// The window that has the tab and can act on it: the source until the tab is torn off, then
@@ -310,19 +326,20 @@ impl Session {
         (pane != self.origin.pane || zone != Zone::Center).then(|| Slot { label: w.label.clone(), pane, at: At::Zone(zone) })
     }
 
-    /// The following window goes to the cursor, and shows once it has loaded.
+    /// The following window goes to the cursor once it has loaded, and shows there. Until then it
+    /// may not exist yet: a move would be lost and the window would show where Windows put it.
     fn follow(&mut self) -> Vec<Effect> {
         let p = self.last;
-        let Some(f) = self.float.as_mut() else {
+        let Some(f) = self.float.as_mut().filter(|f| f.ready) else {
             return vec![];
         };
         let mut fx = vec![];
         let to = PhysicalPosition::new((p.x - f.grab.0).round() as i32, (p.y - f.grab.1).round() as i32);
-        if f.at != Some(to) {
+        if f.at != Some(to) || !f.shown {
             f.at = Some(to);
             fx.push(Effect::Move(f.label.clone(), to));
         }
-        if f.ready && !f.shown {
+        if !f.shown {
             f.shown = true;
             fx.push(Effect::Show(f.label.clone()));
         }
@@ -402,7 +419,8 @@ impl Session {
     /// The source tore the tab off into new window `label`, not loaded yet, on a monitor of `scale`;
     /// the next tick puts it under the cursor.
     fn floated(&mut self, label: String, scale: f64) {
-        self.float = Some(Float { label, grab: (TAB_GRAB.0 * scale, TAB_GRAB.1 * scale), ready: false, shown: false, at: None });
+        let grab = ((FIRST_TAB.0 + self.in_tab.0) * scale, (FIRST_TAB.1 + self.in_tab.1) * scale);
+        self.float = Some(Float { label, grab, ready: false, shown: false, at: None });
     }
 }
 
@@ -523,6 +541,8 @@ pub struct Start {
     index: usize,
     /// The window is a document window and this is its only tab: the window follows the cursor.
     alone: bool,
+    /// Where in the tab the pointer went down, in CSS px from its corner.
+    grab: (f64, f64),
     geom: Geom,
 }
 
@@ -543,7 +563,7 @@ pub async fn tab_drag_start(app: AppHandle, drag: State<'_, TabDrag>, webview: W
     let id = {
         let mut g = lock(&drag.0);
         g.seq += 1;
-        g.now = Some(Session::new(g.seq, source, start.tab, (start.pane, start.index), at, home));
+        g.now = Some(Session::new(g.seq, source, start.tab, (start.pane, start.index), start.grab, at, home));
         g.seq
     };
     app.emit("tab-drag-start", ()).map_err(err)?;
@@ -634,9 +654,11 @@ mod tests {
     fn over_body(pane: u64, z: Zone) -> Option<Over> {
         Some(Over { pane, at: At::Zone(z), tab: None })
     }
+    /// Grabbed 50 px into the tab and 14 px down: a torn-off window at scale 1 has that spot at (56, 19).
+    const IN_TAB: (f64, f64) = (50.0, 14.0);
     /// A drag of main's second tab (pane 1, index 1), with doc-1's strips reported.
     fn from_main() -> Session {
-        let mut s = Session::new(1, main_win(), label(), (1, 1), p(160.0, 40.0), None);
+        let mut s = Session::new(1, main_win(), label(), (1, 1), IN_TAB, p(160.0, 40.0), None);
         s.strips(doc_win());
         s
     }
@@ -686,8 +708,12 @@ mod tests {
         assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Tear("main".into())]);
         assert_eq!(s.step(p(1251.0, 300.0)), vec![], "asked once");
         s.floated("doc-2".into(), 1.0);
-        assert_eq!(s.step(p(200.0, 300.0)), vec![Effect::Move("doc-2".into(), pos(144, 249))], "hidden until it has loaded");
-        assert_eq!(claim(&mut s, "doc-2"), vec![Effect::Show("doc-2".into())]);
+        assert_eq!(s.step(p(200.0, 300.0)), vec![], "until it has loaded it may not exist: a move would be lost");
+        assert_eq!(
+            claim(&mut s, "doc-2"),
+            vec![Effect::Move("doc-2".into(), pos(144, 281)), Effect::Show("doc-2".into())],
+            "under the cursor where the tab was grabbed"
+        );
         assert_eq!(s.ready("doc-1"), None, "another window shows itself");
         assert_eq!(s.step(p(1400.0, 180.0)), vec![Effect::Over("doc-1".into(), over(1, 0, true)), Effect::Hide("doc-2".into())], "doc-1 draws the tab");
         assert_eq!(s.step(p(1600.0, 180.0)), vec![Effect::Over("doc-1".into(), over(1, 1, true))]);
@@ -696,7 +722,7 @@ mod tests {
             vec![Effect::Over("doc-1".into(), None), Effect::Over("main".into(), over(1, 1, true))],
             "back in main: drawn, it left main"
         );
-        assert_eq!(s.step(p(100.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Move("doc-2".into(), pos(44, 249)), Effect::Show("doc-2".into())]);
+        assert_eq!(s.step(p(100.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Move("doc-2".into(), pos(44, 281)), Effect::Show("doc-2".into())]);
         assert_eq!(s.release(false), vec![Effect::Focus("doc-2".into()), Effect::End], "it stays where it is");
         assert_eq!(s.step(p(0.0, 0.0)), vec![]);
         assert_eq!(s.ready("doc-2"), None, "done: a later doc-2 is a window of its own");
@@ -742,7 +768,8 @@ mod tests {
         s.step(p(600.0, 600.0));
         assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Tear("main".into())], "out of the window");
         assert_eq!(s.step(p(600.0, 600.0)), vec![], "torn off: a body is no target");
-        let mut s = Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 734.0)], ..main_win() }, label(), (1, 1), p(160.0, 40.0), None);
+        let mut s =
+            Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 734.0)], ..main_win() }, label(), (1, 1), IN_TAB, p(160.0, 40.0), None);
         assert_eq!(s.step(p(170.0, 300.0)), vec![Effect::Tear("main".into())], "one pane: as soon as it is off the strip");
     }
 
@@ -788,7 +815,7 @@ mod tests {
         s.step(p(1250.0, 300.0));
         assert_eq!(s.release(false), vec![Effect::End], "the tab is on its way to a window not created yet");
         s.floated("doc-2".into(), 1.0);
-        assert_eq!(claim(&mut s, "doc-2"), vec![Effect::Move("doc-2".into(), pos(1194, 249)), Effect::Show("doc-2".into()), Effect::Focus("doc-2".into())]);
+        assert_eq!(claim(&mut s, "doc-2"), vec![Effect::Move("doc-2".into(), pos(1194, 281)), Effect::Show("doc-2".into()), Effect::Focus("doc-2".into())]);
 
         let mut s = from_main();
         s.step(p(1250.0, 300.0));
@@ -802,7 +829,7 @@ mod tests {
     fn a_window_dragged_by_its_only_tab_follows_the_cursor_and_escape_puts_it_back() {
         let mut d = doc_win();
         (d.x, d.y, d.scale) = (500.0, 500.0, 1.0);
-        let mut s = Session::new(1, d, label(), (1, 0), p(560.0, 549.0), Some(pos(500, 500)));
+        let mut s = Session::new(1, d, label(), (1, 0), IN_TAB, p(560.0, 549.0), Some(pos(500, 500)));
         s.strips(main_win());
         assert_eq!(s.step(p(560.0, 549.0)), vec![], "its own strip is under the cursor, but it is the window that moves");
         assert_eq!(s.step(p(600.0, 600.0)), vec![Effect::Move("doc-1".into(), pos(540, 551))]);
@@ -812,7 +839,7 @@ mod tests {
             vec![Effect::Move("doc-1".into(), pos(500, 500)), Effect::Show("doc-1".into()), Effect::Focus("doc-1".into()), Effect::End]
         );
 
-        let mut s = Session::new(1, doc_win(), label(), (1, 0), p(1400.0, 180.0), Some(pos(1300, 100)));
+        let mut s = Session::new(1, doc_win(), label(), (1, 0), IN_TAB, p(1400.0, 180.0), Some(pos(1300, 100)));
         s.strips(main_win());
         s.step(p(100.0, 40.0));
         assert_eq!(s.release(false), vec![Effect::Drop("doc-1".into(), slot("main", 1, 1)), Effect::End], "it sends its tab and closes");

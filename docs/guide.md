@@ -349,7 +349,7 @@ In a document window, the tab row is also the title bar. Drag an empty part of i
 
 To return a tab to the main window, use **Move back to the main window** or `Ctrl+Shift+N`. Closing a document window also returns its tabs to the main window. A document window closes when its last tab leaves.
 
-When a tab moves to another window, its web page reloads, and the back and forward history is not carried over.
+When a tab moves to another window, its web page moves with it: it does not reload, and keeps its back and forward history and scroll position.
 
 The chat pane also has **Open in a new window**. **Move back to the main window** returns it to its place. Closing the chat window closes the chat without returning it to the main window.
 
@@ -1004,10 +1004,6 @@ See [Pages that don't extract well](#pages-that-dont-extract-well) for details.
 ### Shortcuts do nothing on a web page
 
 The keyboard is going to the web page. Single-key shortcuts work only outside the page's text fields, and only when the page does not use that key itself. `Ctrl+K` always works. Click outside the page (the article list, for example) to give the keyboard back to Lattice.
-
-### A tab moved to another window reloaded its page
-
-That is expected. When a tab moves to another window, its web page reloads, and the back and forward history is not carried over.
 
 ### A menu over a web page appears a moment late
 

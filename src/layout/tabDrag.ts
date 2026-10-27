@@ -37,6 +37,8 @@ export interface DragStart {
   index: number;
   /** A document window's only tab: the window itself follows the cursor. */
   alone: boolean;
+  /** Where in the tab the pointer went down (CSS px from its corner): a torn-off window keeps that spot under the cursor. */
+  grab: [number, number];
   geom: WindowGeom;
 }
 
