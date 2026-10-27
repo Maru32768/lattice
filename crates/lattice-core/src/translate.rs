@@ -193,7 +193,11 @@ mod tests {
         let slow = Slow { fake: Fake::new(), now: AtomicUsize::new(0), most: AtomicUsize::new(0) };
         let saved = AtomicUsize::new(0);
 
-        run(&s, &slow, id, &Target::default(), &|| drop(saved.fetch_add(1, Ordering::SeqCst))).await.unwrap();
+        run(&s, &slow, id, &Target::default(), &|| {
+            saved.fetch_add(1, Ordering::SeqCst);
+        })
+        .await
+        .unwrap();
         assert_eq!(saved.load(Ordering::SeqCst), 5, "60 paragraphs in batches of 12");
         assert_eq!(slow.most.load(Ordering::SeqCst), PARALLEL_BATCHES);
         let v = s.get_article(id, "ja").unwrap().unwrap();
