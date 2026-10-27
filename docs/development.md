@@ -98,7 +98,7 @@ CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on W
 - **UI text** lives in `src/i18n/ja.ts` (the key source) and `src/i18n/en.ts` (must match it). A Japanese literal in UI code fails `src/i18n/literals.test.ts`.
 - **Backend messages** that reach the UI are codes: `msg!("code", name = value)` in Rust, with a `be.<code>` entry in both catalogs (checked by `src/i18n/backend.test.ts`).
 - **Untrusted content.** Article text, pages and feed data are untrusted: the UI renders them as text only, and LLM providers never get tools.
-- **Migrations** are append-only (`crates/lattice-core/src/store.rs`); a migration test should find its migration by content, not by index.
+- **Migrations** are append-only numbered files in `crates/lattice-core/db/migrations/`, each listed in `MIGRATIONS` (`crates/lattice-core/src/store.rs`). `crates/lattice-core/db/master.sql` is the schema they build, kept current by a test (regenerate with `UPDATE_MASTER_SQL=1 cargo test -p lattice-core master_sql`); a migration test should find its migration by content, not by index.
 
 ## Building
 

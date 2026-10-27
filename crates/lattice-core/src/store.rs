@@ -18,543 +18,35 @@ use ts_rs::TS;
 
 /// Append-only: each entry upgrades `PRAGMA user_version` by one.
 const MIGRATIONS: &[&str] = &[
-    r#"
-CREATE TABLE articles (
-    id                 INTEGER PRIMARY KEY,
-    original_url       TEXT NOT NULL,
-    normalized_url     TEXT NOT NULL UNIQUE,
-    canonical_url      TEXT,
-    domain             TEXT NOT NULL,
-    title              TEXT,
-    author             TEXT,
-    site_name          TEXT,
-    published_at       TEXT,
-    language           TEXT,
-    saved_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    fetched_at         TEXT,
-    fetch_status       TEXT NOT NULL DEFAULT 'pending' CHECK (fetch_status IN ('pending','ok','failed')),
-    extraction_status  TEXT NOT NULL DEFAULT 'pending' CHECK (extraction_status IN ('pending','ok','failed')),
-    last_error         TEXT,
-    content_hash       TEXT,
-    extraction_version INTEGER,
-    read_status        TEXT NOT NULL DEFAULT 'unread' CHECK (read_status IN ('unread','read')),
-    favorite           INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX articles_canonical ON articles(canonical_url);
-CREATE INDEX articles_content_hash ON articles(content_hash);
-CREATE INDEX articles_saved_at ON articles(saved_at);
-
--- Raw HTML as fetched: lets us re-extract without the network and survive link rot.
-CREATE TABLE snapshots (
-    id           INTEGER PRIMARY KEY,
-    article_id   INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    fetched_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    final_url    TEXT NOT NULL,
-    http_status  INTEGER NOT NULL,
-    content_type TEXT,
-    html         TEXT NOT NULL
-);
-CREATE INDEX snapshots_article ON snapshots(article_id);
-
-CREATE TABLE blocks (
-    id          INTEGER PRIMARY KEY,
-    article_id  INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    ordinal     INTEGER NOT NULL,
-    kind        TEXT NOT NULL,
-    text        TEXT NOT NULL,
-    text_hash   TEXT NOT NULL,
-    inlines     TEXT,
-    attrs       TEXT,
-    heading_id  INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
-    UNIQUE (article_id, ordinal)
-);
-"#,
-    r#"
--- Derived data: several translations per block may coexist; readers pick the newest
--- whose source_hash still matches blocks.text_hash.
-CREATE TABLE translations (
-    id              INTEGER PRIMARY KEY,
-    block_id        INTEGER NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
-    target_language TEXT NOT NULL,
-    text            TEXT NOT NULL,
-    source_hash     TEXT NOT NULL,
-    provider        TEXT NOT NULL,
-    model           TEXT,
-    prompt_version  TEXT NOT NULL,
-    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX translations_block ON translations(block_id, target_language);
-
-CREATE TABLE processing_jobs (
-    id            INTEGER PRIMARY KEY,
-    type          TEXT NOT NULL,
-    article_id    INTEGER REFERENCES articles(id) ON DELETE CASCADE,
-    params        TEXT,
-    dedup_key     TEXT NOT NULL UNIQUE,
-    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','running','succeeded','failed')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    last_error    TEXT,
-    next_run_at   TEXT,
-    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    started_at    TEXT,
-    completed_at  TEXT
-);
-CREATE INDEX processing_jobs_ready ON processing_jobs(status, next_run_at);
-CREATE INDEX processing_jobs_article ON processing_jobs(article_id);
-"#,
-    r#"
--- Lexical search. trigram tokenizes Japanese and identifiers like pg_visibility alike;
--- terms under 3 characters fall back to LIKE (see lexical_search).
-CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid='id', tokenize='trigram');
-CREATE TRIGGER blocks_fts_ai AFTER INSERT ON blocks BEGIN
-    INSERT INTO blocks_fts(rowid, text) VALUES (new.id, new.text);
-END;
-CREATE TRIGGER blocks_fts_ad AFTER DELETE ON blocks BEGIN
-    INSERT INTO blocks_fts(blocks_fts, rowid, text) VALUES ('delete', old.id, old.text);
-END;
-CREATE TRIGGER blocks_fts_au AFTER UPDATE OF text ON blocks BEGIN
-    INSERT INTO blocks_fts(blocks_fts, rowid, text) VALUES ('delete', old.id, old.text);
-    INSERT INTO blocks_fts(rowid, text) VALUES (new.id, new.text);
-END;
-INSERT INTO blocks_fts(blocks_fts) VALUES ('rebuild');
-
--- Translations are indexed too, so a Japanese query finds English articles lexically.
-CREATE VIRTUAL TABLE translations_fts USING fts5(text, content='translations', content_rowid='id', tokenize='trigram');
-CREATE TRIGGER translations_fts_ai AFTER INSERT ON translations BEGIN
-    INSERT INTO translations_fts(rowid, text) VALUES (new.id, new.text);
-END;
-CREATE TRIGGER translations_fts_ad AFTER DELETE ON translations BEGIN
-    INSERT INTO translations_fts(translations_fts, rowid, text) VALUES ('delete', old.id, old.text);
-END;
-INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
-
--- One vector per (block, model): switching models re-embeds without losing the old index.
-CREATE TABLE embeddings (
-    block_id    INTEGER NOT NULL REFERENCES blocks(id) ON DELETE CASCADE,
-    model       TEXT NOT NULL,
-    vector      BLOB NOT NULL,   -- little-endian f32, L2-normalized
-    source_hash TEXT NOT NULL,
-    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    PRIMARY KEY (block_id, model)
-);
-"#,
-    r#"
--- Snapshots get compressed (raw HTML is 100KB-1MB per article). Existing rows stay as-is.
-CREATE TABLE snapshots_v2 (
-    id           INTEGER PRIMARY KEY,
-    article_id   INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    fetched_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    final_url    TEXT NOT NULL,
-    http_status  INTEGER NOT NULL,
-    content_type TEXT,
-    encoding     TEXT NOT NULL CHECK (encoding IN ('identity', 'deflate')),
-    body         BLOB NOT NULL
-);
-INSERT INTO snapshots_v2 (id, article_id, fetched_at, final_url, http_status, content_type, encoding, body)
-    SELECT id, article_id, fetched_at, final_url, http_status, content_type, 'identity', CAST(html AS BLOB) FROM snapshots;
-DROP TABLE snapshots;
-ALTER TABLE snapshots_v2 RENAME TO snapshots;
-CREATE INDEX snapshots_article ON snapshots(article_id);
-"#,
-    r#"
--- Translations become a cache keyed by the paragraph's plain-text hash (= blocks.text_hash),
--- holding reading units [{source, translation}] as HTML. Shared by the live page overlay,
--- the reader and search; independent of articles, so it also survives re-extraction.
-CREATE TABLE segment_translations (
-    id              INTEGER PRIMARY KEY,
-    source_hash     TEXT NOT NULL,
-    target_language TEXT NOT NULL,
-    units           TEXT NOT NULL,
-    text            TEXT NOT NULL,   -- plain translated text, for search and the reader view
-    provider        TEXT NOT NULL,
-    model           TEXT,
-    prompt_version  TEXT NOT NULL,
-    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX segment_translations_hash ON segment_translations(source_hash, target_language);
-INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version, created_at)
-    SELECT t.source_hash, t.target_language, json_array(json_object('source', b.text, 'translation', t.text)),
-           t.text, t.provider, t.model, t.prompt_version, t.created_at
-    FROM translations t JOIN blocks b ON b.id = t.block_id ORDER BY t.id;
-DROP TRIGGER translations_fts_ai;
-DROP TRIGGER translations_fts_ad;
-DROP TABLE translations_fts;
-DROP TABLE translations;
-CREATE VIRTUAL TABLE translations_fts USING fts5(text, content='segment_translations', content_rowid='id', tokenize='trigram');
-CREATE TRIGGER translations_fts_ai AFTER INSERT ON segment_translations BEGIN
-    INSERT INTO translations_fts(rowid, text) VALUES (new.id, new.text);
-END;
-CREATE TRIGGER translations_fts_ad AFTER DELETE ON segment_translations BEGIN
-    INSERT INTO translations_fts(translations_fts, rowid, text) VALUES ('delete', old.id, old.text);
-END;
-INSERT INTO translations_fts(translations_fts) VALUES ('rebuild');
-CREATE INDEX blocks_text_hash ON blocks(text_hash);
-"#,
-    r#"
-CREATE TABLE tags (
-    id   INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE
-);
-CREATE TABLE article_tags (
-    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    tag_id     INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    PRIMARY KEY (article_id, tag_id)
-);
-CREATE INDEX article_tags_tag ON article_tags(tag_id);
-CREATE INDEX articles_inbox ON articles(read_status, favorite, saved_at);
-"#,
-    r#"
-CREATE TABLE summaries (
-    id             INTEGER PRIMARY KEY,
-    article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    type           TEXT NOT NULL,
-    text           TEXT NOT NULL,
-    source_hash    TEXT NOT NULL,   -- articles.content_hash when generated
-    provider       TEXT NOT NULL,
-    model          TEXT,
-    prompt_version TEXT NOT NULL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX summaries_article ON summaries(article_id, type);
-"#,
-    r#"
-CREATE TABLE settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-"#,
-    r#"
--- Chat over saved articles (F9). Scope and citations are JSON; citations copy the cited
--- block's title/heading/text so old answers still render after re-extraction or deletion.
-CREATE TABLE chat_threads (
-    id         INTEGER PRIMARY KEY,
-    title      TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE TABLE chat_messages (
-    id             INTEGER PRIMARY KEY,
-    thread_id      INTEGER NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
-    question       TEXT NOT NULL,
-    answer         TEXT NOT NULL,
-    citations      TEXT NOT NULL,
-    scope          TEXT NOT NULL,
-    mode           TEXT NOT NULL CHECK (mode IN ('full', 'retrieval', 'none')),
-    provider       TEXT,
-    model          TEXT,
-    prompt_version TEXT NOT NULL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX chat_messages_thread ON chat_messages(thread_id);
-"#,
-    r#"
--- Genres (§11 topic): one per article. genre_source 'manual' pins the user's choice against auto runs.
-CREATE TABLE genres (
-    id   INTEGER PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE COLLATE NOCASE
-);
-INSERT INTO genres (name) VALUES ('Database'), ('Distributed Systems'), ('Linux'), ('Networking'),
-    ('Programming Languages'), ('Security'), ('Web'), ('AI/ML'), ('DevOps'), ('Hardware'), ('Career'), ('Other');
-ALTER TABLE articles ADD COLUMN genre_id INTEGER REFERENCES genres(id) ON DELETE SET NULL;
-ALTER TABLE articles ADD COLUMN genre_source TEXT CHECK (genre_source IN ('auto', 'manual'));
-CREATE INDEX articles_genre ON articles(genre_id);
-CREATE INDEX articles_published_at ON articles(published_at);
--- Derived data: every auto classification, as summaries keep theirs.
-CREATE TABLE classifications (
-    id             INTEGER PRIMARY KEY,
-    article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    genre          TEXT NOT NULL,
-    tags           TEXT NOT NULL,   -- JSON array
-    provider       TEXT NOT NULL,
-    model          TEXT,
-    prompt_version TEXT NOT NULL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX classifications_article ON classifications(article_id);
-"#,
-    r#"
-CREATE TABLE feeds (
-    id              INTEGER PRIMARY KEY,
-    url             TEXT NOT NULL UNIQUE,
-    title           TEXT,
-    site_url        TEXT,
-    etag            TEXT,
-    last_modified   TEXT,
-    last_fetched_at TEXT,   -- last successful fetch
-    last_error      TEXT,
-    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
--- Every entry URL a feed has listed, imported or not: only unseen entries get imported.
-CREATE TABLE feed_items (
-    feed_id        INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-    normalized_url TEXT NOT NULL,
-    PRIMARY KEY (feed_id, normalized_url)
-);
--- Removing a feed keeps its articles (they fall back to manually added).
-ALTER TABLE articles ADD COLUMN feed_id INTEGER REFERENCES feeds(id) ON DELETE SET NULL;
-CREATE INDEX articles_feed ON articles(feed_id);
-"#,
-    r#"
--- Extracted text length (characters): flags pages whose server HTML has almost no content
--- (JS-rendered), so the user can re-save them from the in-app browser.
-ALTER TABLE articles ADD COLUMN text_length INTEGER;
-UPDATE articles SET text_length = (SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = articles.id)
-    WHERE extraction_status = 'ok';
-"#,
-    r#"
--- Jobs view: counts per (status, type) and the backed-off list without touching table rows.
-CREATE INDEX processing_jobs_status_type ON processing_jobs(status, type, next_run_at);
-"#,
-    r#"
--- Difficulty for a working software engineer, 1 (入門) to 5 (専門), from the classify job.
--- difficulty_source 'manual' pins the user's choice against auto runs, as genre_source does.
-ALTER TABLE articles ADD COLUMN difficulty INTEGER CHECK (difficulty BETWEEN 1 AND 5);
-ALTER TABLE articles ADD COLUMN difficulty_source TEXT CHECK (difficulty_source IN ('auto', 'manual'));
-ALTER TABLE classifications ADD COLUMN difficulty INTEGER;
-"#,
-    r#"
--- Article images (§6), stored once per content hash (sha256 of the bytes) across articles.
--- Raster formats only (sniffed): SVG can carry script and stays a link.
-CREATE TABLE images (
-    hash       TEXT PRIMARY KEY,
-    mime       TEXT NOT NULL,
-    bytes      BLOB NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
--- Every image URL an article's blocks reference, tried or stored. Keyed by URL, not block id:
--- re-extraction matches image blocks by their alt text (often empty), so their ids can swap.
-CREATE TABLE article_images (
-    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    src        TEXT NOT NULL,
-    hash       TEXT,   -- NULL: not stored; error says why
-    error      TEXT,
-    PRIMARY KEY (article_id, src)
-);
-CREATE INDEX article_images_hash ON article_images(hash);
--- Garbage collection: bytes go when their last mapping does (article deleted or image dropped).
-CREATE TRIGGER article_images_gc AFTER DELETE ON article_images WHEN old.hash IS NOT NULL BEGIN
-    DELETE FROM images WHERE hash = old.hash AND NOT EXISTS (SELECT 1 FROM article_images WHERE hash = old.hash);
-END;
-"#,
-    r#"
--- The entry's published (else updated) date: fills articles.published_at when the page has none.
-ALTER TABLE feed_items ADD COLUMN published_at TEXT;
-"#,
-    r#"
--- Site icons per domain (favicons.rs). A failure is a row too (bytes NULL, error set), so a
--- site without an icon is not asked again until the row is a week old.
-CREATE TABLE favicons (
-    domain     TEXT PRIMARY KEY,
-    mime       TEXT,
-    bytes      BLOB,
-    error      TEXT,
-    fetched_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-"#,
-    r#"
--- The entry's own title, and its full text when the feed carries one (deflated HTML; NULL for
--- excerpts): read in place of the page when the site refuses to serve it (feeds::Entry).
-ALTER TABLE feed_items ADD COLUMN title TEXT;
-ALTER TABLE feed_items ADD COLUMN content BLOB;
--- So the next poll gets every feed in full and fills these for entries seen before.
-UPDATE feeds SET etag = NULL, last_modified = NULL;
-"#,
-    r#"
--- The user's name and icon for a feed (feeds::rename / set_icon); NULL shows the feed's own
--- title and the site's favicon. title keeps the feed's own, so the name can be reset.
-ALTER TABLE feeds ADD COLUMN custom_title TEXT;
-ALTER TABLE feeds ADD COLUMN icon_mime TEXT;
-ALTER TABLE feeds ADD COLUMN icon BLOB;
-"#,
-    r#"
--- Comprehension quizzes (G32, quiz.rs). Every generation is kept, as summaries are; the newest is current.
-CREATE TABLE quizzes (
-    id             INTEGER PRIMARY KEY,
-    article_id     INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    source_hash    TEXT NOT NULL,   -- articles.content_hash when generated
-    provider       TEXT NOT NULL,
-    model          TEXT,
-    prompt_version TEXT NOT NULL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX quizzes_article ON quizzes(article_id);
-CREATE TABLE quiz_questions (
-    id          INTEGER PRIMARY KEY,
-    quiz_id     INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-    ordinal     INTEGER NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('recall', 'choice')),
-    question    TEXT NOT NULL,
-    options     TEXT NOT NULL,   -- JSON array: four for 'choice' (answer is one of them), empty for 'recall'
-    answer      TEXT NOT NULL,
-    explanation TEXT NOT NULL,
-    block_ids   TEXT NOT NULL,   -- JSON array of the blocks.id the answer comes from
-    UNIQUE (quiz_id, ordinal)
-);
--- Spaced repetition (srs.rs): one card per question the user added to review.
-CREATE TABLE review_cards (
-    question_id      INTEGER PRIMARY KEY REFERENCES quiz_questions(id) ON DELETE CASCADE,
-    ease             INTEGER NOT NULL,   -- permille
-    interval_minutes INTEGER NOT NULL,   -- 0: new, never answered
-    reps             INTEGER NOT NULL,
-    lapses           INTEGER NOT NULL,
-    due_at           INTEGER NOT NULL,   -- unix seconds
-    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX review_cards_due ON review_cards(interval_minutes, due_at);
-CREATE TABLE review_log (
-    id                    INTEGER PRIMARY KEY,
-    question_id           INTEGER NOT NULL REFERENCES review_cards(question_id) ON DELETE CASCADE,
-    grade                 TEXT NOT NULL CHECK (grade IN ('again', 'hard', 'good', 'easy')),
-    prev_interval_minutes INTEGER NOT NULL,   -- 0: the card's first answer (counts as a new card that day)
-    interval_minutes      INTEGER NOT NULL,
-    ease                  INTEGER NOT NULL,
-    reviewed_at           INTEGER NOT NULL    -- unix seconds
-);
-CREATE INDEX review_log_card ON review_log(question_id);
-CREATE INDEX review_log_time ON review_log(reviewed_at);
-"#,
-    r#"
--- Vocabulary (G56, vocab.rs): one entry per word or phrase, merged by lemma, with every sentence
--- it was captured in. A source article or block that goes away leaves the word and its URL.
-CREATE TABLE vocab_entries (
-    id         INTEGER PRIMARY KEY,
-    headword   TEXT NOT NULL,   -- the lemma once the LLM answered; until then the form captured
-    state      TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'ready', 'failed')),
-    pos        TEXT NOT NULL DEFAULT '',
-    meaning    TEXT NOT NULL DEFAULT '',   -- Japanese, as used in the first capture
-    definition TEXT NOT NULL DEFAULT '',   -- short, in English
-    ipa        TEXT NOT NULL DEFAULT '',
-    example    TEXT NOT NULL DEFAULT '',
-    suspended  INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX vocab_entries_headword ON vocab_entries(lower(headword));
-CREATE TABLE vocab_contexts (
-    id         INTEGER PRIMARY KEY,
-    entry_id   INTEGER NOT NULL REFERENCES vocab_entries(id) ON DELETE CASCADE,
-    surface    TEXT NOT NULL,   -- the form as it appears in the sentence
-    sentence   TEXT NOT NULL,
-    article_id INTEGER REFERENCES articles(id) ON DELETE SET NULL,
-    block_id   INTEGER REFERENCES blocks(id) ON DELETE SET NULL,
-    url        TEXT,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX vocab_contexts_entry ON vocab_contexts(entry_id);
-CREATE INDEX vocab_contexts_surface ON vocab_contexts(lower(surface));
-CREATE INDEX vocab_contexts_article ON vocab_contexts(article_id);
-CREATE INDEX vocab_contexts_block ON vocab_contexts(block_id);
--- Two cards per entry with a meaning, scheduled like review_cards (srs.rs).
-CREATE TABLE vocab_cards (
-    id               INTEGER PRIMARY KEY,
-    entry_id         INTEGER NOT NULL REFERENCES vocab_entries(id) ON DELETE CASCADE,
-    kind             TEXT NOT NULL CHECK (kind IN ('cloze', 'meaning')),
-    ease             INTEGER NOT NULL,   -- permille
-    interval_minutes INTEGER NOT NULL,   -- 0: new, never answered
-    reps             INTEGER NOT NULL,
-    lapses           INTEGER NOT NULL,
-    due_at           INTEGER NOT NULL,   -- unix seconds
-    created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    UNIQUE (entry_id, kind)
-);
-CREATE INDEX vocab_cards_due ON vocab_cards(interval_minutes, due_at);
-CREATE TABLE vocab_log (
-    id                    INTEGER PRIMARY KEY,
-    card_id               INTEGER NOT NULL REFERENCES vocab_cards(id) ON DELETE CASCADE,
-    grade                 TEXT NOT NULL CHECK (grade IN ('again', 'hard', 'good', 'easy')),
-    prev_interval_minutes INTEGER NOT NULL,   -- 0: the card's first answer (counts as a new card that day)
-    interval_minutes      INTEGER NOT NULL,
-    ease                  INTEGER NOT NULL,
-    reviewed_at           INTEGER NOT NULL    -- unix seconds
-);
-CREATE INDEX vocab_log_card ON vocab_log(card_id);
-CREATE INDEX vocab_log_time ON vocab_log(reviewed_at);
-"#,
-    r#"
--- Resource groups (G53, groups.rs): collections the user makes by hand; an article can be in many.
-CREATE TABLE groups (
-    id          INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    color       TEXT,
-    description TEXT,
-    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE TABLE group_articles (
-    group_id   INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
-    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-    added_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    PRIMARY KEY (group_id, article_id)
-);
-CREATE INDEX group_articles_article ON group_articles(article_id);
-"#,
-    r#"
--- Importance for the reader (G54, relevance.rs): 1-5 against the 「自分について」 profile, with a
--- one-line reason. Only the newest judgment is kept. profile_hash is the profile it was judged
--- against; settings 'user_profile_hash' holds the current one, so editing the profile makes it stale.
-CREATE TABLE relevance (
-    article_id     INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
-    score          INTEGER NOT NULL CHECK (score BETWEEN 1 AND 5),
-    reason         TEXT NOT NULL,
-    profile_hash   TEXT NOT NULL,
-    provider       TEXT NOT NULL,
-    model          TEXT,
-    prompt_version TEXT NOT NULL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX relevance_score ON relevance(score);
-"#,
-    r#"
--- Feed import filters (G55, feed_filter.rs). feeds.filter: the feed's own (JSON feed_filter::Filter;
--- the global one is the 'feed_filter' setting). filter_note: why the LLM filter last let entries
--- through unjudged (it fails open).
-ALTER TABLE feeds ADD COLUMN filter TEXT;
-ALTER TABLE feeds ADD COLUMN filter_note TEXT;
--- What the filters decided for an entry seen from now on: 'passed' (queued), 'rejected'
--- (filter_reason: JSON feed_filter::Reason) or 'pending' (waiting for the LLM filter). NULL: seen
--- before G55, or past the first-fetch cap. filter_input is what the rules read
--- (feed_filter::Input), so rejected entries can be judged again after the rules change.
-ALTER TABLE feed_items ADD COLUMN filter_status TEXT CHECK (filter_status IN ('passed', 'rejected', 'pending'));
-ALTER TABLE feed_items ADD COLUMN filter_reason TEXT;
-ALTER TABLE feed_items ADD COLUMN filter_input TEXT;
-CREATE INDEX feed_items_filter ON feed_items(filter_status, feed_id) WHERE filter_status IN ('rejected', 'pending');
-"#,
-    r#"
--- Vocabulary cards are Anki's basic word -> meaning only (H20, vocab.rs): the cloze cards go, with
--- their log. The meaning cards keep their schedule and log.
-DELETE FROM vocab_cards WHERE kind = 'cloze';
-"#,
-    r#"
--- Feed folders (H25, feed_folders.rs): named and ordered, not nested; a feed is in at most one.
--- Deleting a folder leaves its feeds without one.
-CREATE TABLE feed_folders (
-    id         INTEGER PRIMARY KEY,
-    name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    position   INTEGER NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-ALTER TABLE feeds ADD COLUMN folder_id INTEGER REFERENCES feed_folders(id) ON DELETE SET NULL;
-CREATE INDEX feeds_folder ON feeds(folder_id);
-"#,
-    r#"
--- The user's order of feeds within their folder, or among the feeds in none (H26, feed_folders.rs).
--- Existing feeds keep the order they were shown in: by name.
-ALTER TABLE feeds ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
-UPDATE feeds SET position = (
-    SELECT n FROM (
-        SELECT id, row_number() OVER (PARTITION BY folder_id ORDER BY coalesce(custom_title, title, url) COLLATE NOCASE, id) - 1 AS n FROM feeds
-    ) o WHERE o.id = feeds.id
-);
-"#,
-    r#"
--- url_norm folds http into https: stored URLs are normalized again (RENORMALIZE_AT).
-"#,
-    r#"
--- The user's own memo on an article, one per article (plain text, edited beside the Reader).
-CREATE TABLE article_notes (
-    article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
-    body       TEXT NOT NULL,
-    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-"#,
+    include_str!("../db/migrations/00001_init_articles.sql"),
+    include_str!("../db/migrations/00002_translations_jobs.sql"),
+    include_str!("../db/migrations/00003_blocks_fts.sql"),
+    include_str!("../db/migrations/00004_compress_snapshots.sql"),
+    include_str!("../db/migrations/00005_segment_translations.sql"),
+    include_str!("../db/migrations/00006_tags.sql"),
+    include_str!("../db/migrations/00007_summaries.sql"),
+    include_str!("../db/migrations/00008_settings.sql"),
+    include_str!("../db/migrations/00009_chat.sql"),
+    include_str!("../db/migrations/00010_genres.sql"),
+    include_str!("../db/migrations/00011_feeds.sql"),
+    include_str!("../db/migrations/00012_text_length.sql"),
+    include_str!("../db/migrations/00013_jobs_status_index.sql"),
+    include_str!("../db/migrations/00014_difficulty.sql"),
+    include_str!("../db/migrations/00015_images.sql"),
+    include_str!("../db/migrations/00016_feed_item_published_at.sql"),
+    include_str!("../db/migrations/00017_favicons.sql"),
+    include_str!("../db/migrations/00018_feed_item_content.sql"),
+    include_str!("../db/migrations/00019_feed_custom_title_icon.sql"),
+    include_str!("../db/migrations/00020_quizzes.sql"),
+    include_str!("../db/migrations/00021_vocab.sql"),
+    include_str!("../db/migrations/00022_groups.sql"),
+    include_str!("../db/migrations/00023_relevance.sql"),
+    include_str!("../db/migrations/00024_feed_filters.sql"),
+    include_str!("../db/migrations/00025_drop_cloze_cards.sql"),
+    include_str!("../db/migrations/00026_feed_folders.sql"),
+    include_str!("../db/migrations/00027_feed_position.sql"),
+    include_str!("../db/migrations/00028_renormalize_https.sql"),
+    include_str!("../db/migrations/00029_article_notes.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -1733,6 +1225,32 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `db/master.sql` is the schema all migrations build, for reading only (the app never runs it).
+    /// `UPDATE_MASTER_SQL=1 cargo test -p lattice-core master_sql` rewrites it.
+    #[test]
+    fn master_sql_matches_migrations() {
+        let s = Store::open_in_memory().unwrap();
+        let c = s.conn();
+        // FTS5 shadow tables are created by their virtual table, not by a statement of ours.
+        let mut st = c
+            .prepare(
+                "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT IN (SELECT name FROM pragma_table_list WHERE type = 'shadow')
+                 ORDER BY tbl_name, type <> 'table', type, name",
+            )
+            .unwrap();
+        let ddl = st.query_map([], |r| r.get::<_, String>(0)).unwrap().map(|r| r.unwrap() + ";\n").collect::<Vec<_>>();
+        let master = format!(
+            "-- Generated by store::tests::master_sql_matches_migrations; do not edit.\n-- PRAGMA user_version = {}\n\n{}",
+            MIGRATIONS.len(),
+            ddl.join("\n")
+        );
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("db/master.sql");
+        if std::env::var_os("UPDATE_MASTER_SQL").is_some() {
+            std::fs::write(&path, &master).unwrap();
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), master, "db/master.sql is stale: rerun with UPDATE_MASTER_SQL=1");
+    }
 
     /// Migration 4 rewrites the snapshots table; pre-existing raw HTML must survive it.
     #[test]

@@ -1,0 +1,1 @@
+-- url_norm folds http into https: stored URLs are normalized again (RENORMALIZE_AT).
