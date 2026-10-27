@@ -37,7 +37,7 @@ export const ja = {
   "settingsView.providerLead":
     "翻訳・要約・分類・対話で使うモデル。上から順に使い、usage limit やエラーで失敗したら次の段に切り替えます (失敗した段は 5 分間後回し)。",
   "settingsView.translation": "翻訳",
-  "settingsView.translationLead": "記事の翻訳とページ表示の翻訳の両方に効きます。",
+  "settingsView.translationLead": "記事の翻訳とページ表示の翻訳の両方に適用されます。",
   "settingsView.instructions": "要約・対話",
   "settingsView.instructionsLead":
     "要約と対話の回答に、あなたの関心や前提知識を反映させます。記事の本文は信頼しない入力として扱い、その中の指示には従わせません。",
@@ -89,7 +89,7 @@ export const ja = {
   "chatSettings.large": "多め (約 15 万字)",
   "chatSettings.budget": "対話で使う範囲",
   "chatSettings.budgetDesc":
-    "1 回の質問で LLM に渡す記事の量。質問の範囲にある記事が収まれば全文を渡します。収まらなければ検索で選んだ箇所を、まず 1 記事 4 箇所までにして多くの記事から集め、余裕があれば同じ記事から足します。多いほど網羅的に答えられますが、1 回のコスト (API の料金や CLI の usage) と待ち時間が増えます。次の質問から効きます。",
+    "1 回の質問で LLM に渡す記事の量。質問の範囲にある記事が収まれば全文を渡します。収まらなければ検索で選んだ箇所を、まず 1 記事 4 箇所までにして多くの記事から集め、余裕があれば同じ記事から足します。多いほど網羅的に答えられますが、1 回のコスト (API の料金や CLI の usage) と待ち時間が増えます。次の質問から反映されます。",
   "chatSettings.vim": "質問の入力欄で Vim キーバインドを使う",
   "chatSettings.vimDesc":
     "Esc でノーマルモード、i・a・o などで挿入モード。h j k l w b e 0 $ gg G で移動し、x dd dw cw yy p u で編集します。送信はどちらのモードでも Ctrl + Enter。",
@@ -134,7 +134,7 @@ export const ja = {
   "instructionSettings.summaryDesc": "要約だけに付け加える指示。変えると、作成済みの要約に「作り直すと反映されます」と表示します。",
   "common.none": "なし",
   "instructionSettings.chat": "対話の追加の指示",
-  "instructionSettings.chatDesc": "対話の回答だけに付け加える指示。次の質問から効きます。",
+  "instructionSettings.chatDesc": "対話の回答だけに付け加える指示。次の質問から反映されます。",
   "common.saved": "保存しました",
   "quizSettings.days": "日",
   "quizSettings.hours": "時間",
@@ -177,7 +177,7 @@ export const ja = {
     "MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります (元の設定に戻せば以前の訳文が表示されます)。",
   "translationSettings.instructions": "追加の指示",
   "translationSettings.instructionsDesc":
-    "翻訳の prompt の末尾に付け加えます (例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に効きます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
+    "翻訳の prompt の末尾に付け加えます (例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に適用されます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
   "translationSettings.showPrompt": "組み込みの prompt (英語→日本語) を見る",
   "translationSettings.prompt": "組み込みの prompt",
   "backupSection.location": "保存先: {path}",
@@ -864,7 +864,7 @@ export const ja = {
   "palette.showAll": "すべての記事を表示",
   "palette.genreCommand": "ジャンル: {name}",
   "palette.sourceCommand": "ソース: {name}",
-  "palette.translate": "この記事を翻訳 (job を積む)",
+  "palette.translate": "この記事を翻訳 (ジョブに追加)",
   "palette.groupCommand": "グループ: {name}",
   "palette.folderCommand": "フォルダ: {name}",
   "palette.addToGroup": "この記事をグループに追加…",
@@ -1115,7 +1115,7 @@ export const ja = {
   "be.relevance.thresholdRange": "重要度は 1〜5 で選んでください ({min})",
   "settingsView.feedFilter": "取り込みフィルタ",
   "settingsView.feedFilterLead":
-    "フィードの新着を取り込む前に絞り込みます。ここはすべてのフィードに効く全体の設定で、フィードごとの設定は「フィードを管理」の「編集」にあります。記事は全体とフィードの両方を通ったものだけ取り込みます。ルールを先に当て、残ったものだけを LLM に回します。除外した記事は「フィードを管理」の「除外された記事」に理由つきで残り、手で取り込めます。",
+    "フィードの新着を取り込む前に絞り込みます。ここはすべてのフィードに適用される全体の設定で、フィードごとの設定は「フィードを管理」の「編集」にあります。記事は全体とフィードの両方を通ったものだけ取り込みます。ルールを先に当て、残ったものだけを LLM に回します。除外した記事は「フィードを管理」の「除外された記事」に理由つきで残り、手で取り込めます。",
   "feedsView.rejected": "除外 {n} 件",
   "feedsView.rejectedOf": "{feedName} の除外された記事 {n} 件",
   "feedFilter.title": "このフィードの取り込みフィルタ",
@@ -1140,7 +1140,7 @@ export const ja = {
   "feedFilter.fieldDomain": "ドメイン",
   "feedFilter.fieldLanguage": "言語",
   "feedFilter.minChars": "本文の最短文字数",
-  "feedFilter.minCharsHint": "本文を載せているフィードの記事だけに効きます (抜粋だけのフィードでは判定しません)",
+  "feedFilter.minCharsHint": "本文を載せているフィードの記事だけに適用されます (抜粋だけのフィードでは判定しません)",
   "feedFilter.llm": "ルールを通った記事を LLM で判定する",
   "feedFilter.llmHint":
     "タイトル・抜粋と「自分について」、下の指示から取り込むか決めます (最大 20 件をまとめて 1 回の呼び出し)。LLM が失敗したときは取り込みます。",
