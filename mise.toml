@@ -31,6 +31,7 @@ run = "npm run e2e"
 [tasks.licenses]
 description = "Regenerate THIRD_PARTY_LICENSES (needs `cargo install --locked cargo-about --features cli`)"
 run = [
+  "node -e \"require('node:fs').mkdirSync('target', { recursive: true })\"",
   "cargo about generate --fail -c scripts/about.toml -o target/rust-licenses.txt scripts/about.hbs",
   "node scripts/licenses.mjs target/rust-licenses.txt",
 ]
