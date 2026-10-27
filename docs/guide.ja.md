@@ -705,11 +705,13 @@ claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 | バックアップ | `%APPDATA%\Lattice\backups\` |
 | エクスポート（JSON・CSV・OPML） | `%APPDATA%\Lattice\exports\` |
 | 意味検索のモデル | `%APPDATA%\Lattice\models\` |
-| ログ | `%LOCALAPPDATA%\dev.lattice.app\logs\` |
+| ログ | `%LOCALAPPDATA%\Lattice\logs\` |
 
 正確なパスは「設定 › ログ・保存場所」に出ます。「フォルダを開く」で、現在使っているデータフォルダを開けます。自分で選んだ場所やポータブル版にも対応します。
 
 以前の検証版は `%APPDATA%\dev.lattice.app` を使っていました。新しい版を起動する前に、古いアプリと CLI を閉じてください。新しい既定フォルダがまだなければ、旧フォルダの名前を変更してデータと保存場所の設定を引き継ぎます。移行先がすでにある場合は、上書きや統合をしません。開発版は別の `Lattice Dev` フォルダを使います。
+
+ログはライブラリを移動しても `%LOCALAPPDATA%\Lattice\logs` に保存します。開発版のログは `%LOCALAPPDATA%\Lattice Dev\logs` です。以前のログは旧識別子のフォルダに残します。ブラウザのプロファイルの場所は変更しません。
 
 **ポータブル版。** すべて（ログとアプリ内ブラウザの Cookie・キャッシュも）を `Lattice.exe` の隣の `data` フォルダに置きます。
 
@@ -822,4 +824,4 @@ Web ページに重なるメニューは、ページを静止画の後ろに隠�
 
 ### ログの場所
 
-`%LOCALAPPDATA%\dev.lattice.app\logs\`（ポータブル版では `data` フォルダ）にあります。失敗したジョブ・バックアップ・各 AI ジョブにかかった時間が記録されます。
+`%LOCALAPPDATA%\Lattice\logs\`（ポータブル版では `data\logs`）にあります。「設定 › ログ・保存場所」で使用中のパスを確認できます。失敗したジョブ・バックアップ・各 AI ジョブにかかった時間が記録されます。

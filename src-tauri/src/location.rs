@@ -1,7 +1,7 @@
 //! Moving the data folder (G38). Resolution is shared with the CLI in `lattice_core::location`.
 
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use lattice_core::location::*;
 use lattice_core::msg;
@@ -9,6 +9,13 @@ use lattice_core::store::Store;
 
 /// Copied when the user moves the data folder; logs and the WebView2 profile stay behind.
 const DATA_DIRS: [&str; 3] = ["backups", "exports", "models"];
+
+pub fn log_dir(loc: &Location, local_data_dir: impl FnOnce() -> tauri::Result<PathBuf>) -> tauri::Result<PathBuf> {
+    match loc.log_dir() {
+        Some(path) => Ok(path),
+        None => Ok(local_data_dir()?.join(APP_DATA_FOLDER).join("logs")),
+    }
+}
 
 /// Refuses the folder in use and folders inside it (copying would recurse into itself).
 pub fn check_target(current: &Path, target: &Path) -> Result<(), String> {
@@ -51,7 +58,46 @@ pub fn copy_data(store: &Store, from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+
+    #[test]
+    fn installed_logs_stay_in_the_profile_when_the_library_moves() {
+        let local_root = PathBuf::from(r"C:\Users\me\AppData\Local");
+        for kind in [Kind::Default, Kind::Custom] {
+            let loc = Location { kind, dir: PathBuf::from(r"D:\Library"), warning: None };
+            assert_eq!(log_dir(&loc, || Ok(local_root.clone())).unwrap(), local_root.join(APP_DATA_FOLDER).join("logs"));
+        }
+    }
+
+    #[test]
+    fn log_folder_name_matches_the_build_profile() {
+        let loc = Location { kind: Kind::Default, dir: PathBuf::from("library"), warning: None };
+        let profile = if cfg!(debug_assertions) {
+            "Lattice Dev"
+        } else {
+            "Lattice"
+        };
+        assert_eq!(log_dir(&loc, || Ok(PathBuf::from("local"))).unwrap(), PathBuf::from("local").join(profile).join("logs"));
+    }
+
+    #[test]
+    fn portable_logs_do_not_need_an_os_data_folder() {
+        let loc = Location { kind: Kind::Portable, dir: PathBuf::from("portable/data"), warning: None };
+        let mut resolved = false;
+        let path = log_dir(&loc, || {
+            resolved = true;
+            Err(std::io::Error::other("no local data folder").into())
+        })
+        .unwrap();
+        assert_eq!(path, loc.dir.join("logs"));
+        assert!(!resolved);
+    }
+
+    #[test]
+    fn installed_logs_report_os_data_folder_errors() {
+        let loc = Location { kind: Kind::Default, dir: PathBuf::from("library"), warning: None };
+        let error = log_dir(&loc, || Err(std::io::Error::other("no local data folder").into())).unwrap_err();
+        assert!(error.to_string().contains("no local data folder"));
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("lattice-location-{name}-{}", std::process::id()));

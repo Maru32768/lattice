@@ -707,11 +707,13 @@ Lattice keeps all its data in one SQLite file: articles, the fetched HTML, trans
 | Backups | `%APPDATA%\Lattice\backups\` |
 | Exports (JSON, CSV, OPML) | `%APPDATA%\Lattice\exports\` |
 | Semantic search model | `%APPDATA%\Lattice\models\` |
-| Logs | `%LOCALAPPDATA%\dev.lattice.app\logs\` |
+| Logs | `%LOCALAPPDATA%\Lattice\logs\` |
 
 **Settings › Logs & storage** shows the exact paths. **Open folder** opens the data folder currently in use, including custom and portable locations.
 
 Older test builds used `%APPDATA%\dev.lattice.app`. Close old app and CLI processes before starting the new build. If the new default folder does not exist, Lattice renames the old folder and keeps its library and saved location. Existing destination folders are never overwritten or merged. Development builds use a separate `Lattice Dev` folder.
+
+Logs use `%LOCALAPPDATA%\Lattice\logs`, even when you move the library. Development logs use `%LOCALAPPDATA%\Lattice Dev\logs`. Historical logs remain in the old identifier folder. Browser profiles keep their existing locations.
 
 **Portable copy.** The portable zip keeps everything in a `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
 
@@ -824,4 +826,4 @@ If **Settings › Updates** says automatic updates are not set up, this build ca
 
 ### Where are the logs?
 
-In `%LOCALAPPDATA%\dev.lattice.app\logs\`, or in the `data` folder of a portable copy. Failed jobs, backups and the duration of each AI job are logged there.
+In `%LOCALAPPDATA%\Lattice\logs\`, or in `data\logs` for a portable copy. **Settings › Logs & storage** shows the active path. Failed jobs, backups and the duration of each AI job are logged there.

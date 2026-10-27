@@ -92,10 +92,11 @@ lattice_runtime_ready:
 
 !macro NSIS_HOOK_POSTUNINSTALL
   Delete "$INSTDIR\lattice-cli.exe"
-  RMDir "$INSTDIR"
   ${If} $DeleteAppDataCheckboxState = 1
   ${AndIf} $UpdateMode <> 1
     SetShellVarContext current
     RMDir /r "$APPDATA\Lattice"
+    RMDir /r "$LOCALAPPDATA\Lattice\logs"
   ${EndIf}
+  RMDir "$INSTDIR"
 !macroend

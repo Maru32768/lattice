@@ -59,6 +59,7 @@ struct App {
     chat_llm: Semaphore,
     db_path: String,
     data_dir: PathBuf,
+    log_dir: PathBuf,
     /// The folder `pick_data_dir` returned, waiting for `set_data_dir`.
     picked_dir: Mutex<Option<PathBuf>>,
 }
@@ -867,17 +868,13 @@ struct Settings {
 }
 
 #[tauri::command]
-fn get_settings(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Settings, String> {
-    let log_dir = match loc.log_dir() {
-        Some(d) => d,
-        None => handle.path().app_log_dir().map_err(err)?,
-    };
+fn get_settings(app: State<'_, App>, loc: State<'_, Location>) -> Result<Settings, String> {
     Ok(Settings {
         db_path: app.db_path.clone(),
         data_dir: app.data_dir.display().to_string(),
         location: loc.kind,
         location_warning: loc.warning.clone(),
-        log_dir: log_dir.display().to_string(),
+        log_dir: app.log_dir.display().to_string(),
         backup_dir: backup_dir(&app).display().to_string(),
         backup_keep: backup::keep_generations(&app.store)?,
     })
@@ -1105,12 +1102,8 @@ pub fn run() {
         .on_window_event(popout::on_window_event)
         .setup(|app| {
             let loc = location::detect()?;
-            // The log folder follows the data in portable mode, so the plugin is added here.
-            let file_name = Some("lattice".to_string());
-            let log_file = match loc.log_dir() {
-                Some(path) => tauri_plugin_log::TargetKind::Folder { path, file_name },
-                None => tauri_plugin_log::TargetKind::LogDir { file_name },
-            };
+            let log_dir = location::log_dir(&loc, || app.path().local_data_dir())?;
+            let log_file = tauri_plugin_log::TargetKind::Folder { path: log_dir.clone(), file_name: Some("lattice".to_string()) };
             app.handle().plugin(
                 tauri_plugin_log::Builder::new()
                     .clear_targets()
@@ -1209,6 +1202,7 @@ pub fn run() {
                 chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY),
                 db_path: path.display().to_string(),
                 data_dir: dir,
+                log_dir,
                 picked_dir: Mutex::new(None),
             });
             popout::restore_main(app.handle(), &app.state::<App>());

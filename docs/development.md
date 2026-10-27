@@ -35,9 +35,9 @@ mise run dev
 Debug builds use `%APPDATA%\Lattice Dev`; release builds and installed copies use `%APPDATA%\Lattice`.
 Each profile renames its own legacy data folder (`dev.lattice.app.debug` or `dev.lattice.app`) when the new folder is absent, preserving the library and its saved data-folder selection. Release data and settings are never migrated into the development library. Close old app and CLI processes before the first start; a failed move stops startup instead of creating an empty library. Existing destination folders are never overwritten or merged.
 Each build has its own saved data-folder selection, WebView2 profile, cache, and logs.
-Tauri identifiers and LocalAppData browser-profile/log locations retain their existing names.
+Logs use `%LOCALAPPDATA%\Lattice Dev\logs` in debug builds and `%LOCALAPPDATA%\Lattice\logs` in release builds, including when the library is in a custom folder. Historical logs remain in the old identifier folders. Tauri identifiers and LocalAppData browser-profile locations retain their existing names.
 A debug CLI uses the development folder; a release CLI uses the installed app's folder.
-Portable mode still uses `<exe dir>/data`, and the CLI's `--data-dir` still overrides the default.
+Portable mode still uses `<exe dir>/data`, with logs in `data/logs`, and the CLI's `--data-dir` still overrides the default.
 
 ### API keys in development
 
