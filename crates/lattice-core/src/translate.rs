@@ -1,5 +1,5 @@
 //! Article translation job: translates an article's prose blocks with the reading-unit
-//! algorithm (`segments.rs`), in batches persisted as they return, so a usage limit
+//! algorithm (`segments.rs`), in batches sent a few at a time and persisted in order, so a usage limit
 //! mid-article loses nothing and a retry only sends what is still missing.
 
 use crate::ir::PROSE_KINDS;
@@ -7,6 +7,7 @@ use crate::llm::LlmProvider;
 use crate::msg;
 use crate::segments::{self, PROMPT_VERSION, Target, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
+use futures::{StreamExt, stream};
 use rusqlite::OptionalExtension;
 
 pub const JOB_TYPE: &str = "translate";
@@ -20,6 +21,9 @@ pub const MAX_INSTRUCTION_CHARS: usize = 2000;
 pub const AUTO_SETTING: &str = "auto_translate";
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
+/// Batches of one article in flight at once: a long article is ready several times sooner, and a
+/// provider (one CLI process per call, or an API's rate limit) sees at most this many calls.
+const PARALLEL_BATCHES: usize = 3;
 
 pub fn keep_terms(store: &Store) -> Result<bool, String> {
     Ok(store.setting(KEEP_TERMS_SETTING).map_err(|e| e.to_string())?.as_deref() != Some("off"))
@@ -119,9 +123,15 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
     let mut seen = std::collections::HashSet::new();
     pending.retain(|b| seen.insert(b.text_hash.clone()) && !target.is_written_in(&b.text));
     let mut missing = 0;
-    for batch in batches(pending) {
-        let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
-        let t = segments::translate_snippets(provider, &snippets, target).await;
+    // `buffered` keeps the article's order: the top of the article is saved (and shown) first.
+    let mut done = stream::iter(batches(pending))
+        .map(|batch| async move {
+            let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
+            let t = segments::translate_snippets(provider, &snippets, target).await;
+            (batch, t)
+        })
+        .buffered(PARALLEL_BATCHES);
+    while let Some((batch, t)) = done.next().await {
         let rows: Vec<SegmentRow> = batch
             .iter()
             .zip(&t.results)
@@ -131,7 +141,8 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
         if rows.is_empty()
             && let Some(e) = t.error
         {
-            return Err(e.to_string()); // provider down or rate-limited: back off instead of hammering
+            // Provider down or rate-limited: back off instead of hammering (batches in flight are dropped).
+            return Err(e.to_string());
         }
         store.insert_segments(&key, PROMPT_VERSION, &rows).map_err(|e| e.to_string())?;
         on_progress();
@@ -140,4 +151,52 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
         return Err(format!("{missing} blocks were not returned by the provider"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fetch::Fetched;
+    use crate::ingest::store_fetched;
+    use crate::llm::{Completion, LlmError};
+    use crate::segments::tests::Fake;
+    use serde_json::Value;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// `Fake`, slow enough that calls overlap, counting how many are in flight at once.
+    struct Slow {
+        fake: Fake,
+        now: AtomicUsize,
+        most: AtomicUsize,
+    }
+
+    impl LlmProvider for Slow {
+        fn name(&self) -> &str {
+            "slow"
+        }
+        async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+            let n = self.now.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most.fetch_max(n, Ordering::SeqCst);
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            self.now.fetch_sub(1, Ordering::SeqCst);
+            self.fake.complete_json(system, input, schema).await
+        }
+    }
+
+    #[tokio::test]
+    async fn an_articles_batches_are_translated_a_few_at_a_time() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/long", "https://a.dev/long", "a.dev").unwrap();
+        let paras: String = (0..60).map(|i| format!("<p>Paragraph {i} explains how snapshot isolation handles write skew in practice.</p>")).collect();
+        let html = format!("<html><body><article>{paras}</article></body></html>");
+        store_fetched(&s, id, &Fetched { final_url: "https://a.dev/long".into(), status: 200, content_type: None, html }).unwrap();
+        let slow = Slow { fake: Fake::new(), now: AtomicUsize::new(0), most: AtomicUsize::new(0) };
+        let saved = AtomicUsize::new(0);
+
+        run(&s, &slow, id, &Target::default(), &|| drop(saved.fetch_add(1, Ordering::SeqCst))).await.unwrap();
+        assert_eq!(saved.load(Ordering::SeqCst), 5, "60 paragraphs in batches of 12");
+        assert_eq!(slow.most.load(Ordering::SeqCst), PARALLEL_BATCHES);
+        let v = s.get_article(id, "ja").unwrap().unwrap();
+        assert!(v.blocks.iter().all(|b| b.translation.is_some()), "every batch saved");
+    }
 }
