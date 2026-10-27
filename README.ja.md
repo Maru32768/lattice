@@ -34,7 +34,7 @@ Windows 10 / 11 で動きます。[Releases ページ](https://github.com/Maru32
 - **インストーラー** (`Lattice_x.y.z_x64-setup.exe`): 通常はこちらを使います。新しいバージョンが出るとアプリ内で更新できます。必要なら Microsoft Visual C++ ランタイムも一緒にインストールします。このとき管理者の承認を求めることがあります。
 - **ポータブル版の zip**: 好きな場所に展開して `Lattice.exe` を起動します。データはすべて隣の `data` フォルダに保存します。自動更新はありません。
 
-Lattice は WebView2 を使います。Windows 11 には最初から入っています。ポータブル版を使うときは、WebView2 と Microsoft Visual C++ x64 ランタイムがなければ、自分でインストールしてください (同梱の CLI も同じランタイムを使います)。ランタイムは Microsoft の[サポートされている最新の Visual C++ 再頒布可能パッケージ](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version)のページから入手できます。
+Lattice は WebView2 を使います。WebView2 は Windows 11 には最初から入っています。ポータブル版では、WebView2 と Microsoft Visual C++ x64 ランタイムが入っていなければ、自分でインストールしてください (同梱の CLI もこのランタイムを使います)。ランタイムは Microsoft の[サポートされている最新の Visual C++ 再頒布可能パッケージ](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version)のページから入手できます。
 
 ソースからビルドする方法は[開発者向けガイド](docs/development.md) (英語) にあります。
 
@@ -57,7 +57,7 @@ Lattice は WebView2 を使います。Windows 11 には最初から入ってい
 
 ## CLI と MCP
 
-同梱の `lattice-cli.exe` を使うと、保存した記事をターミナルから検索・閲覧できます。また、Claude Code などの AI エージェントに MCP サーバーとして記事を提供できます。インストーラー版・ポータブル版のどちらでも、`Lattice.exe` と同じフォルダにあります。既定の場所にインストールした場合は、PowerShell で次を実行すると Claude Code に登録できます。
+同梱の `lattice-cli.exe` を使うと、保存した記事をターミナルから検索・閲覧できます。MCP サーバーとして動かせば、Claude Code などの AI エージェントからも記事を検索・閲覧できます。インストーラー版・ポータブル版のどちらでも、`Lattice.exe` と同じフォルダにあります。既定の場所にインストールした場合は、PowerShell で次を実行すると Claude Code に登録できます。
 
 ```powershell
 claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
