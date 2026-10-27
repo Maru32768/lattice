@@ -2542,6 +2542,7 @@ dependencies = [
  "lattice-core",
  "serde",
  "serde_json",
+ "tauri-winres",
  "tokio",
 ]
 

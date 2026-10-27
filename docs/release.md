@@ -95,7 +95,7 @@ The release workflow builds with `src-tauri/tauri.updater.conf.json`, which sign
 
 An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\Lattice` is kept. Identifier-based folders from older test builds are not moved automatically.
 
-Updater signatures verify the update package. Windows Authenticode code signing identifies the executable's publisher and is configured separately. Decide whether to sign the Windows executables and record the decision in the checklist. An updater signature alone does not remove Windows' unknown-publisher prompts.
+Updater signatures verify the update package. Windows Authenticode code signing identifies the executable's publisher and is separate. It is deferred; [authenticode.md](authenticode.md) records the options and a workflow design. An updater signature alone does not remove Windows' unknown-publisher prompts.
 
 To build signed artifacts locally, set the same two variables in the shell and run `mise exec -- npm run tauri build -- --config src-tauri/tauri.updater.conf.json`.
 

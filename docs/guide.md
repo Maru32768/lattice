@@ -921,6 +921,20 @@ To keep what is not included, use a [backup](#backup). Saved words can also be e
 
 ## Privacy and safety
 
+### Network connections
+
+Lattice has no telemetry, analytics or account. It connects only to these places:
+
+| Where | When |
+|---|---|
+| Sites you save articles from, and the sites of their images and icons | When you save an article, and when a subscribed feed brings a new one |
+| Feeds you subscribe to | When you subscribe, then periodically while Lattice runs |
+| The AI providers you set up | When you use the features listed in [What goes to AI providers](#what-goes-to-ai-providers) |
+| Pages you open in the built-in browser, and the search engine you choose | When you open them |
+| Hugging Face | Once, to download the semantic search model |
+| Your Cloudflare R2 bucket | Only when you set up cloud backup |
+| GitHub (`github.com`) | At startup and from **Settings › Updates**, to check for a new version (installed copies only). The request carries no library data. |
+
 ### What goes to AI providers
 
 Lattice sends text to the AI provider you set up only when you use these features:

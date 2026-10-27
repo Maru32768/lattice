@@ -139,3 +139,4 @@ mise exec -- node scripts/icons.mjs
 - [design-review.md](design-review.md): design decisions per feature (in Japanese).
 - [roadmap.md](roadmap.md): what is done and what is planned (in Japanese).
 - [release.md](release.md): versioning, signing and publishing.
+- [authenticode.md](authenticode.md): Windows code signing (deferred): options, SignPath requirements and a workflow design.

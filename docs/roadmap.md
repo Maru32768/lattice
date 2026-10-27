@@ -148,7 +148,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | J2 | ジャンルの手動追加 | 済 | 設定 › ジャンル の先頭の欄（`add_genre`、大文字小文字を区別せず既存なら何もしない）。記事 0 件のジャンルも `list_genres` に出るので、自動分類の候補に入る。 |
 | J3 | フィード管理画面の並べ替えをドラッグに | 済 | H26 の管理画面は上下ボタンだった。AI プロバイダの段と同じ ⋮⋮ のハンドル（dnd-kit、ポインタとキーボード）でフィードの表とフォルダの欄を並べ替える（`src/ui/SortableRow.tsx`）。別のフォルダのフィードの上に落とすとそのフォルダへ移す（ナビと同じ `feedDrop`）。上下ボタンは外した。読み上げの live region はナビと同じくページの外へ出す。 |
 | J4 | フィードの記事が Index 済みなのに「Index に追加」が出る | 済 | フィードが `http://` でリンクする記事（brooker.co.za）を http の正規化 URL で保存し、アプリ内ブラウザは https に着くので一致しなかった。`url_norm` が http を https に畳み（独自のポートを持つ URL は除く。取得は元の URL のまま）、migration で保存済みの URL を正規化し直す（`RENORMALIZE_AT`）。http と https で二重に保存されていた記事は、https の方が Page と一致する。 |
-| J5 | Windows Authenticode 署名 | 検討 | 「配布・リリース」の行。署名の手段の決定待ち: Azure Artifact Signing は日本の個人は対象外。候補は SignPath Foundation（OSS 向けに無料、公開リポジトリと審査が要る）か、クラウド HSM の OV 証明書（有料、CI から署名できるもの）。決まったら `bundle.windows.signCommand` で GUI の exe と NSIS インストーラー、`prepare-windows-bundle.ps1` で `lattice-cli.exe` に署名する。 |
+| J5 | Windows Authenticode 署名 | 後 | SignPath Foundation (OSS 向けに無料) を検討し、公開からの期間が短いことと、今は警告で困っていないことから見送った (2026-10-27)。選択肢・SignPath の条件・release workflow の設計 (`tauri bundle --no-binary-patching` が要ることなど)・artifact configuration・未確認の点は `docs/authenticode.md`。`lattice-cli.exe` のバージョン情報 (`build.rs`) と guide の「通信する相手」は先に入れた。 |
 | J6 | Vim キーバインドの強化 | 後 | G43 は対話の入力欄だけで、visual mode・count・`.`・テキストオブジェクトがない。メモ（J1）にも同じキーを効かせ、visual mode（`v` / `V`）・count・`.`・`ciw` などのテキストオブジェクト・検索（`/`）を足す。使うのは Vim に慣れた人なので、専用の設定画面は作らず、`.vimrc` 風のテキスト（`nnoremap`・`inoremap` と一部の `set`）を設定に書けるようにする案。`src/chat/vim.ts` の状態機械を広げ、textarea の部品として対話とメモで共有する。 |
 | J7 | 処理ごとの AI プロバイダ | 後 | 翻訳・要約・分類・対話などで求めるモデルとエフォートの水準が違う。今は 1 つの fallback chain をすべての処理が使う。処理ごとに chain を選べるようにし、未設定の処理は既定の chain を使う。 |
 | J8 | 対話ごとのモデル選択 | 後 | 対話ペインで会話ごとに provider・モデル・エフォートを選ぶ（J7 の対話用の chain を既定にする）。会話に選択を保存する。 |
@@ -219,7 +219,7 @@ F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは 
 
 | 項目 | 状態 | 方針 |
 |---|---|---|
-| Windows Authenticode 署名 | 検討 | 署名の手段の決定待ち（J5）。0.1.0 公開後に対応する。証明書または署名サービスを選び、GitHub Actions で GUI・CLI の exe と NSIS インストーラーに署名・タイムスタンプを付ける。配布物の署名と発行元表示をクリーンな Windows 環境で確認する。Tauri の更新署名は設定済み。 |
+| Windows Authenticode 署名 | 後 | 見送り (J5)。再開するときは `docs/authenticode.md` から。 |
 | MCP を本体の実行ファイルから起動する | 将来 | `lattice.exe` に GUI を起動しない MCP 用の入口を設ける。既存の MCP 実装を共有し、stdout はプロトコル専用、診断ログは stderr に出す。Windows の標準入出力パイプ、クライアントからの起動・終了、更新時のプロセス終了を検証する。0.1.0 は同梱の `lattice-cli.exe mcp` を使う。 |
 
 ### Phase 2〜5
