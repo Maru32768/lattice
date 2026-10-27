@@ -171,7 +171,10 @@ export const en = {
   "translationSettings.onSwitchDesc": "Switching the Reader to Mixed or Translated starts translating an article that has not been translated yet.",
   "translationSettings.onSave": "Translate saved articles automatically",
   "translationSettings.onSaveDesc":
-    "Translates each article as soon as it is saved and extracted. This uses LLM credits for every article. Japanese articles are left as they are.",
+    "Translates each article as soon as it is saved and extracted. This uses LLM credits for every article. Articles written in the display language are left as they are.",
+  "translationSettings.onSaveOwn": "Also translate articles in the display language",
+  "translationSettings.onSaveOwnDesc":
+    "With Translate saved articles automatically on, articles written in the display language are translated into the other language too (with English as the display language, English articles into Japanese). Off by default.",
   "translationSettings.keepTerms": "Keep technical terms in English",
   "translationSettings.parallel": "Batches at once",
   "translationSettings.parallelDesc":

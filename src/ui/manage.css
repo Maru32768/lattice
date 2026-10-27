@@ -135,6 +135,7 @@
 .stg .tg::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--raise); transition: left .12s; }
 .stg .tg:checked { background: var(--ink); }
 .stg .tg:checked::after { left: 17px; }
+.stg .tg:disabled { opacity: .45; cursor: default; }
 .stg .chain-head { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink3); }
 .stg .chain-head span { margin-left: auto; }
 /* Flex, not a grid: a narrow pane (chat open) wraps the key pill and Delete instead of squeezing the selects to nothing. */

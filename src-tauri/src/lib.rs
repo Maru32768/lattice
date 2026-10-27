@@ -98,8 +98,9 @@ fn set_auto_render(app: State<'_, App>, on: bool) -> Result<(), String> {
     render::set_auto(&app.store, on)
 }
 
-/// The display language (G51), chosen in the UI; the backend reads it for native dialog titles.
-const UI_LANGUAGE: &str = "ui_language";
+/// The display language (G51), chosen in the UI; the backend reads it for native dialog titles and
+/// automatic translation.
+const UI_LANGUAGE: &str = translate::UI_LANGUAGE_SETTING;
 
 /// `None` until the UI first stores the language it detected.
 #[tauri::command(async)]
@@ -366,6 +367,16 @@ fn get_auto_translate(app: State<'_, App>) -> Result<bool, String> {
 #[tauri::command(async)]
 fn set_auto_translate(app: State<'_, App>, on: bool) -> Result<(), String> {
     translate::set_auto(&app.store, on)
+}
+
+#[tauri::command(async)]
+fn get_auto_translate_own_language(app: State<'_, App>) -> Result<bool, String> {
+    translate::auto_own_language(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_auto_translate_own_language(app: State<'_, App>, on: bool) -> Result<(), String> {
+    translate::set_auto_own_language(&app.store, on)
 }
 
 #[tauri::command(async)]
@@ -1271,6 +1282,8 @@ pub fn run() {
             set_auto_translate,
             get_translate_parallel,
             set_translate_parallel,
+            get_auto_translate_own_language,
+            set_auto_translate_own_language,
             get_translate_instructions,
             set_translate_instructions,
             get_translation_prompt,

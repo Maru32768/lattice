@@ -267,7 +267,8 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 | Setting | What it does |
 |---|---|
 | **Translate when I switch the view** | Starts translating when you switch to **Mixed** or **Translated**. On by default. Stored on this computer only. |
-| **Translate saved articles automatically** | Starts translating each article as soon as it is saved. Off by default, because it uses the AI provider for every saved article. Japanese articles are skipped. |
+| **Translate saved articles automatically** | Starts translating each article as soon as it is saved. Off by default, because it uses the AI provider for every saved article. Articles written in the display language are skipped (with English as the display language, English and other non-Japanese articles). |
+| **Also translate articles in the display language** | With **Translate saved articles automatically** on, articles written in the display language are translated into the other language too (with English as the display language, English articles into Japanese). Off by default. |
 | **Batches at once** | How many batches of an article (up to 12 paragraphs each) are sent at the same time (1–8, default 3). More finishes long articles sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once. |
 | **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. When translating into English, uses the established English terms. On by default. |
 | **Extra instructions** | Instructions added to the end of the translation prompt, such as a preferred style or terms. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt they are added to. |

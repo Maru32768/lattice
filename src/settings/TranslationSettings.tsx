@@ -14,6 +14,7 @@ export function TranslationSettings() {
   const [onSwitch, setOnSwitch] = useState(translateOnSwitch);
   const [onSave, setOnSave] = useState(false);
   const [parallel, setParallel] = useState(3);
+  const [ownLanguage, setOwnLanguage] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [saved, setSaved] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -28,6 +29,10 @@ export function TranslationSettings() {
     api
       .autoTranslate()
       .then(setOnSave)
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .autoTranslateOwnLanguage()
+      .then(setOwnLanguage)
       .catch((e: unknown) => setError(String(e)));
     api
       .translateParallel()
@@ -63,6 +68,16 @@ export function TranslationSettings() {
     setError(null);
     try {
       await api.setAutoTranslate(value);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function toggleOwnLanguage(value: boolean) {
+    setOwnLanguage(value);
+    setError(null);
+    try {
+      await api.setAutoTranslateOwnLanguage(value);
     } catch (e) {
       setError(String(e));
     }
@@ -105,6 +120,9 @@ export function TranslationSettings() {
       </SetRow>
       <SetRow title={t("translationSettings.onSave")} htmlFor="tr-on-save" desc={t("translationSettings.onSaveDesc")}>
         <Switch id="tr-on-save" checked={onSave} onChange={toggleOnSave} />
+      </SetRow>
+      <SetRow title={t("translationSettings.onSaveOwn")} htmlFor="tr-on-save-own" desc={t("translationSettings.onSaveOwnDesc")}>
+        <Switch id="tr-on-save-own" checked={ownLanguage} disabled={!onSave} onChange={toggleOwnLanguage} />
       </SetRow>
       <SetRow title={t("translationSettings.parallel")} htmlFor="tr-parallel" desc={t("translationSettings.parallelDesc")}>
         <select id="tr-parallel" className="select" value={parallel} onChange={(e) => void saveParallel(Number(e.target.value))}>

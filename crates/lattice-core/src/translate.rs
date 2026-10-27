@@ -19,6 +19,11 @@ pub const INSTRUCTIONS_SETTING: &str = "translate_instructions";
 pub const MAX_INSTRUCTION_CHARS: usize = 2000;
 /// "on" translates each saved article once it is extracted; absent means off, since it spends LLM usage.
 pub const AUTO_SETTING: &str = "auto_translate";
+/// "on" also auto-translates articles written in the display language (into the other one, e.g. a
+/// Japanese article into English for a Japanese reader); absent means off.
+pub const AUTO_OWN_LANGUAGE_SETTING: &str = "auto_translate_own_language";
+/// The display language ("ja" or "en", G51), stored by the app once it has detected or been given one.
+pub const UI_LANGUAGE_SETTING: &str = "ui_language";
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
 /// How many batches of one article are in flight at once (設定 › 翻訳); absent means `DEFAULT_PARALLEL`.
@@ -68,8 +73,26 @@ pub fn set_auto(store: &Store, on: bool) -> Result<(), String> {
     store.set_setting(AUTO_SETTING, on.then_some("on")).map_err(|e| e.to_string())
 }
 
-/// After ingest: queue an extracted article's translation if auto translation is on. Japanese
-/// articles are left alone: the reader reads them as they are, and English output would only cost usage.
+pub fn auto_own_language(store: &Store) -> Result<bool, String> {
+    Ok(store.setting(AUTO_OWN_LANGUAGE_SETTING).map_err(|e| e.to_string())?.as_deref() == Some("on"))
+}
+
+pub fn set_auto_own_language(store: &Store, on: bool) -> Result<(), String> {
+    store.set_setting(AUTO_OWN_LANGUAGE_SETTING, on.then_some("on")).map_err(|e| e.to_string())
+}
+
+/// "ja" until the app has stored one.
+fn display_language(store: &Store) -> Result<&'static str, String> {
+    Ok(match store.setting(UI_LANGUAGE_SETTING).map_err(|e| e.to_string())?.as_deref() {
+        Some("en") => "en",
+        _ => "ja",
+    })
+}
+
+/// After ingest: queue an extracted article's translation if auto translation is on. Only when the
+/// translation is in the display language, unless `AUTO_OWN_LANGUAGE_SETTING` is on: an article whose
+/// translation is not is one the reader reads as it is (in the display language, as far as Japanese and
+/// English go), and translating it would only cost usage.
 pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
     if !auto_enabled(store)? {
         return Ok(());
@@ -80,10 +103,14 @@ pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
         .optional()
         .map_err(|e| e.to_string())?
         .unwrap_or(false);
-    if !extracted || store.article_is_japanese(article_id).map_err(|e| e.to_string())? {
+    if !extracted {
         return Ok(());
     }
-    enqueue(store, article_id, &target(store)?)
+    let target = article_target(store, article_id)?;
+    if target.language != display_language(store)? && !auto_own_language(store)? {
+        return Ok(());
+    }
+    enqueue(store, article_id, &target)
 }
 
 /// The current settings' target for non-Japanese sources (`Target::for_source` adapts it).

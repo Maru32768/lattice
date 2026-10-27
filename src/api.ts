@@ -172,6 +172,8 @@ export const api = {
   /** 保存した記事を自動で翻訳 (off by default). */
   autoTranslate: () => invoke<boolean>("get_auto_translate"),
   setAutoTranslate: (on: boolean) => invoke<void>("set_auto_translate", { on }),
+  autoTranslateOwnLanguage: () => invoke<boolean>("get_auto_translate_own_language"),
+  setAutoTranslateOwnLanguage: (on: boolean) => invoke<void>("set_auto_translate_own_language", { on }),
   translateParallel: () => invoke<number>("get_translate_parallel"),
   setTranslateParallel: (n: number) => invoke<void>("set_translate_parallel", { n }),
   translateInstructions: () => invoke<string>("get_translate_instructions"),

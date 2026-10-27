@@ -232,7 +232,7 @@ mod tests {
     }
 
     #[test]
-    fn saved_articles_are_translated_only_when_asked_and_not_when_japanese() {
+    fn saved_articles_are_translated_only_when_asked_and_into_the_display_language_unless_asked() {
         let (s, id) = setup();
         let queued = |s: &Store| s.claim_next_job(&[translate::JOB_TYPE]).unwrap().map(|j| j.article_id);
         translate::enqueue_if_auto(&s, id).unwrap();
@@ -248,6 +248,27 @@ mod tests {
         store_fetched(&s, ja, &Fetched { final_url: "https://example.jp/a".into(), status: 200, content_type: None, html: html.into() }).unwrap();
         translate::enqueue_if_auto(&s, ja).unwrap();
         assert_eq!(queued(&s), None, "a Japanese article is not translated to English on its own");
+        let target = |s: &Store| s.claim_next_job(&[translate::JOB_TYPE]).unwrap().map(|j| j.params.unwrap_or_default());
+        translate::set_auto_own_language(&s, true).unwrap();
+        translate::enqueue_if_auto(&s, ja).unwrap();
+        assert!(target(&s).unwrap().contains(r#""target_language":"en"#), "asked: Japanese into English");
+        translate::set_auto_own_language(&s, false).unwrap();
+
+        // An English reader: Japanese articles are translated, English ones are left as they are.
+        s.set_setting(translate::UI_LANGUAGE_SETTING, Some("en")).unwrap();
+        // Another article: the claimed job above still holds this one's dedup key.
+        let (ja2, _) = s.upsert_pending("https://example.jp/b", "https://example.jp/b", "example.jp").unwrap();
+        store_fetched(&s, ja2, &Fetched { final_url: "https://example.jp/b".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        translate::enqueue_if_auto(&s, ja2).unwrap();
+        assert!(target(&s).unwrap().contains(r#""target_language":"en"#));
+        let (en, _) = s.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap();
+        let english = "<html><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.</p></article></body></html>";
+        store_fetched(&s, en, &Fetched { final_url: "https://example.com/b".into(), status: 200, content_type: None, html: english.into() }).unwrap();
+        translate::enqueue_if_auto(&s, en).unwrap();
+        assert_eq!(queued(&s), None, "an English article in English");
+        translate::set_auto_own_language(&s, true).unwrap();
+        translate::enqueue_if_auto(&s, en).unwrap();
+        assert_eq!(queued(&s), Some(Some(en)), "asked: English into Japanese");
         translate::set_auto(&s, false).unwrap();
         assert!(!translate::auto_enabled(&s).unwrap());
     }

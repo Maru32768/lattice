@@ -17,6 +17,6 @@ export function SetRow({ title, desc, htmlFor, children }: { title: ReactNode; d
   );
 }
 
-export function Switch({ id, checked, onChange }: { id: string; checked: boolean; onChange: (on: boolean) => void }) {
-  return <input id={id} type="checkbox" role="switch" className="tg" checked={checked} onChange={(e) => onChange(e.target.checked)} />;
+export function Switch({ id, checked, disabled, onChange }: { id: string; checked: boolean; disabled?: boolean; onChange: (on: boolean) => void }) {
+  return <input id={id} type="checkbox" role="switch" className="tg" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />;
 }
