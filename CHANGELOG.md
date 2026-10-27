@@ -11,7 +11,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- Translation sends up to three batches of an article at once, so long articles finish sooner.
+- Translation sends several batches of an article at once, so long articles finish sooner. Set how many in Settings › Translation (default 3).
 - The feed manager reorders feeds and folders by dragging their ⋮⋮ handle, as the AI provider chain does, instead of up and down buttons.
 
 ### Fixed

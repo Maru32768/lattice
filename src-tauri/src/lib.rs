@@ -369,6 +369,16 @@ fn set_auto_translate(app: State<'_, App>, on: bool) -> Result<(), String> {
 }
 
 #[tauri::command(async)]
+fn get_translate_parallel(app: State<'_, App>) -> Result<usize, String> {
+    translate::parallel(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_parallel(app: State<'_, App>, n: usize) -> Result<(), String> {
+    translate::set_parallel(&app.store, n)
+}
+
+#[tauri::command(async)]
 fn get_translate_keep_terms(app: State<'_, App>) -> Result<bool, String> {
     translate::keep_terms(&app.store)
 }
@@ -1259,6 +1269,8 @@ pub fn run() {
             set_translate_keep_terms,
             get_auto_translate,
             set_auto_translate,
+            get_translate_parallel,
+            set_translate_parallel,
             get_translate_instructions,
             set_translate_instructions,
             get_translation_prompt,

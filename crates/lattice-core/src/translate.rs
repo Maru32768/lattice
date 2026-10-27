@@ -21,9 +21,12 @@ pub const MAX_INSTRUCTION_CHARS: usize = 2000;
 pub const AUTO_SETTING: &str = "auto_translate";
 const BATCH_CHARS: usize = 6000;
 const BATCH_ITEMS: usize = 12;
-/// Batches of one article in flight at once: a long article is ready several times sooner, and a
-/// provider (one CLI process per call, or an API's rate limit) sees at most this many calls.
-const PARALLEL_BATCHES: usize = 3;
+/// How many batches of one article are in flight at once (設定 › 翻訳); absent means `DEFAULT_PARALLEL`.
+/// More finishes a long article sooner; fewer spares a provider that runs one CLI process per call or
+/// rate-limits an API (and a batch's single retries add to the calls in flight).
+pub const PARALLEL_SETTING: &str = "translate_parallel";
+pub const DEFAULT_PARALLEL: usize = 3;
+pub const MAX_PARALLEL: usize = 8;
 
 pub fn keep_terms(store: &Store) -> Result<bool, String> {
     Ok(store.setting(KEEP_TERMS_SETTING).map_err(|e| e.to_string())?.as_deref() != Some("off"))
@@ -43,6 +46,18 @@ pub fn set_instructions(store: &Store, text: &str) -> Result<(), String> {
         return Err(msg!("translate.instructionsTooLong", max = MAX_INSTRUCTION_CHARS));
     }
     store.set_setting(INSTRUCTIONS_SETTING, (!text.is_empty()).then_some(text)).map_err(|e| e.to_string())
+}
+
+pub fn parallel(store: &Store) -> Result<usize, String> {
+    let stored = store.setting(PARALLEL_SETTING).map_err(|e| e.to_string())?;
+    Ok(stored.and_then(|v| v.parse().ok()).filter(|n| (1..=MAX_PARALLEL).contains(n)).unwrap_or(DEFAULT_PARALLEL))
+}
+
+pub fn set_parallel(store: &Store, n: usize) -> Result<(), String> {
+    if !(1..=MAX_PARALLEL).contains(&n) {
+        return Err(msg!("translate.parallelRange", max = MAX_PARALLEL));
+    }
+    store.set_setting(PARALLEL_SETTING, (n != DEFAULT_PARALLEL).then(|| n.to_string()).as_deref()).map_err(|e| e.to_string())
 }
 
 pub fn auto_enabled(store: &Store) -> Result<bool, String> {
@@ -123,6 +138,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
     let mut seen = std::collections::HashSet::new();
     pending.retain(|b| seen.insert(b.text_hash.clone()) && !target.is_written_in(&b.text));
     let mut missing = 0;
+    let parallel = parallel(store)?;
     // `buffered` keeps the article's order: the top of the article is saved (and shown) first.
     let mut done = stream::iter(batches(pending))
         .map(|batch| async move {
@@ -130,7 +146,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, t
             let t = segments::translate_snippets(provider, &snippets, target).await;
             (batch, t)
         })
-        .buffered(PARALLEL_BATCHES);
+        .buffered(parallel);
     while let Some((batch, t)) = done.next().await {
         let rows: Vec<SegmentRow> = batch
             .iter()
@@ -184,7 +200,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_articles_batches_are_translated_a_few_at_a_time() {
+    async fn an_articles_batches_are_translated_as_many_at_a_time_as_set() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://a.dev/long", "https://a.dev/long", "a.dev").unwrap();
         let paras: String = (0..60).map(|i| format!("<p>Paragraph {i} explains how snapshot isolation handles write skew in practice.</p>")).collect();
@@ -192,6 +208,8 @@ mod tests {
         store_fetched(&s, id, &Fetched { final_url: "https://a.dev/long".into(), status: 200, content_type: None, html }).unwrap();
         let slow = Slow { fake: Fake::new(), now: AtomicUsize::new(0), most: AtomicUsize::new(0) };
         let saved = AtomicUsize::new(0);
+        assert!(set_parallel(&s, 0).is_err() && set_parallel(&s, MAX_PARALLEL + 1).is_err());
+        set_parallel(&s, 2).unwrap();
 
         run(&s, &slow, id, &Target::default(), &|| {
             saved.fetch_add(1, Ordering::SeqCst);
@@ -199,7 +217,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(saved.load(Ordering::SeqCst), 5, "60 paragraphs in batches of 12");
-        assert_eq!(slow.most.load(Ordering::SeqCst), PARALLEL_BATCHES);
+        assert_eq!(slow.most.load(Ordering::SeqCst), 2, "the setting caps the calls in flight");
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert!(v.blocks.iter().all(|b| b.translation.is_some()), "every batch saved");
     }

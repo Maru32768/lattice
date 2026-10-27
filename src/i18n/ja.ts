@@ -166,6 +166,9 @@ export const ja = {
   "translationSettings.onSave": "保存した記事を自動で翻訳",
   "translationSettings.onSaveDesc": "記事を保存して本文を取り出したら、すぐに翻訳します。記事ごとに LLM の使用量がかかります。日本語の記事は訳しません。",
   "translationSettings.keepTerms": "専門用語を英語のまま残す",
+  "translationSettings.parallel": "同時に送る数",
+  "translationSettings.parallelDesc":
+    "1 つの記事を、段落のまとまり (最大 12 段落) いくつ分ずつ同時に AI プロバイダへ送るか (既定 3)。増やすと長い記事が早く訳し終わりますが、使用量の上限や API の rate limit に早く当たり、Claude CLI・Codex CLI では同時に動くプロセスが増えます。",
   "translationSettings.keepTermsDesc":
     "MVCC、WAL、snapshot isolation、write skew など。日本語の記事を英語に訳すときは、オンで定着した英語の用語を、オフで平易な言い換えを優先します。訳文は設定ごとに別に保存するので、切り替えた後の記事は翻訳し直す必要があります (元の設定に戻せば以前の訳文が表示されます)。",
   "translationSettings.instructions": "追加の指示",
@@ -983,6 +986,7 @@ export const ja = {
   "be.render.loadTimeout": "ページの読み込みが終わりませんでした",
   "be.render.noDom": "ページから DOM を取得できませんでした",
   "be.translate.instructionsTooLong": "追加の指示は {max} 文字までです",
+  "be.translate.parallelRange": "同時に送る数は 1 から {max} までです",
   "be.file.tooLarge": "ファイルが大きすぎます ({max} MB まで)",
   "be.file.notUtf8": "UTF-8 のテキストファイルではありません",
   "be.location.portable": "ポータブル版はデータを exe の隣の data フォルダに保存します",

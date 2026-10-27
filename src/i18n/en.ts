@@ -173,6 +173,9 @@ export const en = {
   "translationSettings.onSaveDesc":
     "Translates each article as soon as it is saved and extracted. This uses LLM credits for every article. Japanese articles are left as they are.",
   "translationSettings.keepTerms": "Keep technical terms in English",
+  "translationSettings.parallel": "Batches at once",
+  "translationSettings.parallelDesc":
+    "How many batches of an article (up to 12 paragraphs each) are sent to the AI provider at the same time (default 3). More finishes long articles sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
   "translationSettings.keepTermsDesc":
     "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, on prefers the established English terms and off prefers plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
   "translationSettings.instructions": "Extra instructions",
@@ -994,6 +997,7 @@ export const en = {
   "be.render.loadTimeout": "The page did not finish loading",
   "be.render.noDom": "Could not get the DOM from the page",
   "be.translate.instructionsTooLong": "Extra instructions can be {max} characters at most",
+  "be.translate.parallelRange": "Batches at once must be between 1 and {max}",
   "be.file.tooLarge": "The file is too large (up to {max} MB)",
   "be.file.notUtf8": "Not a UTF-8 text file",
   "be.location.portable": "The portable version keeps its data in the data folder next to the exe",

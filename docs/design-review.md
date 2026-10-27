@@ -116,7 +116,7 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 
 - **キャッシュは本文の hash 1 つで共有する。** hash は `segments::source_hash`（タグを除き、⟦n⟧ を除き、空白を正規化したテキストの sha256）で、`blocks.text_hash` と一致する。ページ上の overlay で訳した段落は、Index に追加した記事の Reader と全文検索にそのまま使われ、記事単位の翻訳 job の結果も overlay で使われる（実機で確認済み）。記事から独立しているので、再抽出しても訳は失われない。
 - **途中で失敗しても失われない。** batch ごとに保存するので、再試行で送るのは未翻訳の分だけになる。provider が全滅した batch は job を失敗させて backoff する。
-- **記事の batch は 3 つまで同時に送る (J10)。** 1 batch (12 段落か 6000 文字まで) ずつ順に待つと、長い記事ほど訳し終わるまでが長かった。`translate::run` は `buffered(PARALLEL_BATCHES)` で同時に 3 つまで送り、記事の順に保存する (先頭から表示に出る)。LLM の runner は 1 つのままなので、要約・分類などの job や別の記事と並行はしない。CLI の provider は呼び出しごとにプロセスなので最大 3 つ (1 つの batch の個別の再試行も加わる)、API は rate limit に早く当たりうる。全滅した batch で job を失敗させると、送っている途中の batch は捨てる (保存済みの batch は残る)。
+- **記事の batch は同時に送る (J10)。** 1 batch (12 段落か 6000 文字まで) ずつ順に待つと、長い記事ほど訳し終わるまでが長かった。`translate::run` は `buffered(n)` で同時に n 個まで送り、記事の順に保存する (先頭から表示に出る)。n は 設定 › 翻訳 の「同時に送る数」(1〜8、既定 3。job の開始時に読む)。既定の 3 は測ったものではなく控えめに選んだ値で、この時点のライブラリでは記事の batch 数の中央値が 4、90 パーセンタイルが 9 だった。LLM の runner は 1 つのままなので、要約・分類などの job や別の記事と並行はしない。CLI の provider は呼び出しごとにプロセスなので最大 n 個 (1 つの batch の個別の再試行も加わる)、API は rate limit に早く当たりうる。全滅した batch で job を失敗させると、送っている途中の batch は捨てる (保存済みの batch は残る)。
 - **表示言語の割り当て。** block ごとに、単位数 × `percent` の数だけを日本語にする。どの単位を日本語にするかは、ページ URL と本文から作る seed で決める（同じページを開き直しても同じ混在になる）。
 - **操作。** 300ms hover すると吹き出しにもう一方の言語を表示し、吹き出しをクリックするとその文を反転する。Reader（抽出テキスト）でも同じ操作にした（block 単位。キーボードでは Enter で切り替える）。
 - **翻訳対象。** 訳先の言語ですでに書かれている prose は送らない（日本語の訳なら日本語が優勢な block、英語の訳ならそれ以外）。code / pre / nav / header / footer、`translate="no"` は対象外（aside は記事中の囲み記事が本文なので訳す）。訳先の言語は §16 を参照。

@@ -5,12 +5,15 @@ import { setTranslateOnSwitch, translateOnSwitch } from "../reader/mixed";
 import { useT } from "../i18n";
 
 const MAX_INSTRUCTIONS = 2000;
+/** `translate::MAX_PARALLEL`. */
+const MAX_PARALLEL = 8;
 
 export function TranslationSettings() {
   const t = useT();
   const [on, setOn] = useState(true);
   const [onSwitch, setOnSwitch] = useState(translateOnSwitch);
   const [onSave, setOnSave] = useState(false);
+  const [parallel, setParallel] = useState(3);
   const [instructions, setInstructions] = useState("");
   const [saved, setSaved] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -25,6 +28,10 @@ export function TranslationSettings() {
     api
       .autoTranslate()
       .then(setOnSave)
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .translateParallel()
+      .then(setParallel)
       .catch((e: unknown) => setError(String(e)));
     api
       .translateInstructions()
@@ -61,6 +68,16 @@ export function TranslationSettings() {
     }
   }
 
+  async function saveParallel(n: number) {
+    setParallel(n);
+    setError(null);
+    try {
+      await api.setTranslateParallel(n);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function saveInstructions() {
     setError(null);
     setStatus(null);
@@ -88,6 +105,15 @@ export function TranslationSettings() {
       </SetRow>
       <SetRow title={t("translationSettings.onSave")} htmlFor="tr-on-save" desc={t("translationSettings.onSaveDesc")}>
         <Switch id="tr-on-save" checked={onSave} onChange={toggleOnSave} />
+      </SetRow>
+      <SetRow title={t("translationSettings.parallel")} htmlFor="tr-parallel" desc={t("translationSettings.parallelDesc")}>
+        <select id="tr-parallel" className="select" value={parallel} onChange={(e) => void saveParallel(Number(e.target.value))}>
+          {Array.from({ length: MAX_PARALLEL }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
       </SetRow>
       <SetRow title={t("translationSettings.keepTerms")} htmlFor="keep-terms" desc={t("translationSettings.keepTermsDesc")}>
         <Switch id="keep-terms" checked={on} onChange={toggle} />
