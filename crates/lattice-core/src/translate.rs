@@ -9,6 +9,8 @@ use crate::segments::{self, PROMPT_VERSION, Target, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
 use rusqlite::OptionalExtension;
+use serde::Serialize;
+use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "translate";
 pub const TARGET_LANGUAGE: &str = "ja";
@@ -137,6 +139,40 @@ pub fn retranslate(store: &Store, article_id: i64, target: &Target) -> Result<us
     let dropped = store.drop_translations(article_id, &target.key(), PROSE_KINDS).map_err(|e| e.to_string())?;
     enqueue(store, article_id, target)?;
     Ok(dropped)
+}
+
+/// An article with a translate job queued or running, for the article list's label. Finished
+/// translations have none.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct Progress {
+    pub article_id: i64,
+    pub running: bool,
+    /// Prose blocks translated, and those plus the ones still to translate (as the Reader counts them).
+    pub done: usize,
+    pub total: usize,
+}
+
+/// Every article being translated or waiting to be.
+pub fn in_progress(store: &Store) -> Result<Vec<Progress>, String> {
+    let e = |e: rusqlite::Error| e.to_string();
+    let mut out = Vec::new();
+    for job in store.active_jobs(JOB_TYPE).map_err(e)? {
+        let Some(article_id) = job.article_id else {
+            continue;
+        };
+        let key = job
+            .params
+            .as_deref()
+            .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+            .and_then(|p| p["target_language"].as_str().map(str::to_string))
+            .map_or_else(|| article_target(store, article_id).map(|t| t.key()), Ok)?;
+        let target = Target::from_key(&key, "");
+        let done = store.translated_count(article_id, &key, PROSE_KINDS).map_err(e)?;
+        let left = store.untranslated_blocks(article_id, &key, PROSE_KINDS).map_err(e)?.iter().filter(|b| !target.is_written_in(&b.text)).count();
+        out.push(Progress { article_id, running: job.status == "running", done, total: done + left });
+    }
+    Ok(out)
 }
 
 fn batches(blocks: Vec<PendingBlock>) -> Vec<Vec<PendingBlock>> {
@@ -316,6 +352,34 @@ mod tests {
         assert_eq!(slow.most.load(Ordering::SeqCst), 2, "the setting caps the calls in flight");
         let v = s.get_article(id, "ja").unwrap().unwrap();
         assert!(v.blocks.iter().all(|b| b.translation.is_some()), "every batch saved");
+    }
+
+    #[tokio::test]
+    async fn progress_lists_queued_and_running_articles_until_done_and_the_view_has_sentences() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/p", "https://a.dev/p", "a.dev").unwrap();
+        let html = "<html><body><article><p>One sentence here. Two sentences here.</p><p>スナップショット分離の説明です。</p><p>A third paragraph about write skew.</p></article></body></html>";
+        store_fetched(&s, id, &Fetched { final_url: "https://a.dev/p".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        let target = Target::default();
+        enqueue(&s, id, &target).unwrap();
+        let p = in_progress(&s).unwrap();
+        assert_eq!(p.len(), 1);
+        assert_eq!((p[0].article_id, p[0].running, p[0].done, p[0].total), (id, false, 0, 2), "the Japanese paragraph is not counted");
+
+        let job = s.claim_article_job(&[JOB_TYPE], id).unwrap().unwrap();
+        run(&s, &Fake::new(), id, &target, None, &|| {}).await.unwrap();
+        let p = in_progress(&s).unwrap();
+        assert_eq!((p[0].running, p[0].done, p[0].total), (true, 2, 2));
+        s.finish_job(job.id, None).unwrap();
+        assert!(in_progress(&s).unwrap().is_empty(), "a finished translation has no label");
+
+        let v = s.get_article(id, &target.key()).unwrap().unwrap();
+        let units: Vec<(&str, &str)> = v.blocks[0].units.iter().map(|u| (u.source.as_str(), u.translation.as_str())).collect();
+        assert_eq!(
+            units,
+            [("One sentence here.", "ONE SENTENCE HERE."), ("Two sentences here.", "TWO SENTENCES HERE.")],
+            "plain text, for the Reader to mix by sentence"
+        );
     }
 
     #[tokio::test]

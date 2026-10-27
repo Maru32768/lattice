@@ -442,6 +442,8 @@ export const handlers = {
     return i >= 0;
   },
   translate_article: ({ id }: { id: number }) => void translating.add(id),
+  translation_status: () =>
+    [...translating].map((id) => ({ article_id: id, running: false, done: 0, total: blocksOf(articles.find((a) => a.id === id)!).length })),
   summarize_article: none,
   quiz_article: ({ id }: { id: number }) => void quizzes.set(id, generateQuiz(id)),
   get_quiz: ({ id }: { id: number }): Quiz | null => {

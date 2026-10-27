@@ -33,6 +33,8 @@ export interface PageTab {
   canGoForward?: boolean;
   /** The library article of this URL, when it is in the Index. */
   saved: number | null;
+  /** The page overlay's translation while it runs: blocks done of those sent so far. */
+  translating?: { done: number; total: number };
 }
 
 export type Tab = ReaderTab | PageTab;
@@ -332,7 +334,7 @@ export function navigated(l: Layout, tab: Id, e: { url: string; loading: boolean
   if (t?.kind !== "page") {
     return l;
   }
-  return update(l, tab, { ...e, title: t.url === e.url ? t.title : "" });
+  return update(l, tab, { ...e, title: t.url === e.url ? t.title : "", translating: t.url === e.url ? t.translating : undefined });
 }
 
 // ---- persistence --------------------------------------------------------------------------------

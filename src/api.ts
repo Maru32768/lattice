@@ -32,6 +32,7 @@ import type {
   OpmlFeed,
   OverlayLabels,
   PickedDir,
+  Progress,
   Quiz,
   R2Settings,
   R2Status,
@@ -95,6 +96,8 @@ export const api = {
   /** Removes the article with its HTML, blocks, translations only it uses, summaries, images and jobs. */
   deleteArticle: (id: number) => invoke<boolean>("delete_article", { id }),
   translateArticle: (id: number) => invoke<void>("translate_article", { id }),
+  /** Articles with a translate job queued or running, for the list's label. */
+  translationStatus: () => invoke<Progress[]>("translation_status"),
   /** Drops the article's translations for its current target and translates every block again. */
   retranslateArticle: (id: number) => invoke<void>("translate_article", { id, fresh: true }),
   summarizeArticle: (id: number) => invoke<void>("summarize_article", { id }),

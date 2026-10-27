@@ -845,6 +845,12 @@ fn set_review_settings(app: State<'_, App>, settings: quiz::Settings) -> Result<
     quiz::set_settings(&app.store, &settings)
 }
 
+/// Articles being translated or waiting to be, for the article list.
+#[tauri::command(async)]
+fn translation_status(app: State<'_, App>) -> Result<Vec<translate::Progress>, String> {
+    translate::in_progress(&app.store)
+}
+
 #[tauri::command(async)]
 fn translate_article(app: State<'_, App>, id: i64, fresh: Option<bool>) -> Result<(), String> {
     let target = translate::article_target(&app.store, id)?;
@@ -1385,6 +1391,7 @@ pub fn run() {
             delete_article,
             article_for_url,
             translate_article,
+            translation_status,
             summarize_article,
             quiz_article,
             get_quiz,

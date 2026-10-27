@@ -1,4 +1,4 @@
-import { isWrittenIn, type Target } from "../overlay/logic.ts";
+import { assignTranslated, endsSpaced, isWrittenIn, type Target } from "../overlay/logic.ts";
 
 export type LanguageMode = "original" | "translated" | "mixed";
 
@@ -57,22 +57,84 @@ export function setTranslateOnSwitch(on: boolean) {
   }
 }
 
-/**
- * Which blocks show their translation. Pure display logic: changing mode or ratio never
- * re-translates. Mixed mode spreads `percent` evenly over translated blocks (by count),
- * so the other language isn't bunched at the top.
- */
-export function translatedBlockIds(blocks: { id: number; translation: string | null }[], mode: LanguageMode, percent: number): Set<number> {
-  const ids = blocks.filter((b) => b.translation != null).map((b) => b.id);
-  if (mode === "original") {
-    return new Set();
-  }
-  if (mode === "translated") {
-    return new Set(ids);
-  }
-  const p = Math.min(100, Math.max(0, Math.round(percent)));
-  return new Set(ids.filter((_, i) => Math.floor(((i + 1) * p) / 100) > Math.floor((i * p) / 100)));
+/** A stretch of a block's text: a translated sentence, or the text between sentences (`translation` null). */
+export interface Piece {
+  start: number;
+  end: number;
+  translation: string | null;
 }
+
+/**
+ * A block cut into its translated sentences (the translation's units, as the Page view wraps
+ * them) and the text between. A block whose text does not contain every unit (a translation of
+ * other wording) is one sentence with the whole translation, as is one without units.
+ */
+export function blockPieces(b: { text: string; translation: string | null; units?: { source: string; translation: string }[] }): Piece[] {
+  const whole = [{ start: 0, end: b.text.length, translation: b.translation }];
+  if (b.translation == null || !b.units?.length) {
+    return whole;
+  }
+  const out: Piece[] = [];
+  let at = 0;
+  for (const u of b.units) {
+    const i = u.source ? b.text.indexOf(u.source, at) : -1;
+    if (i < 0) {
+      return whole;
+    }
+    if (i > at) {
+      out.push({ start: at, end: i, translation: null });
+    }
+    out.push({ start: i, end: i + u.source.length, translation: u.translation });
+    at = i + u.source.length;
+  }
+  if (at < b.text.length) {
+    out.push({ start: at, end: b.text.length, translation: null });
+  }
+  return out;
+}
+
+/**
+ * Which sentences show their translation, as `${block id}:${piece index}`. Pure display logic:
+ * changing mode or ratio never re-translates. Mixed mode picks sentences in each block as the
+ * Page view's overlay does (`assignTranslated`, seeded by the article's URL), so both views mix alike.
+ */
+export function translatedSentences(blocks: { id: number; text: string; pieces: Piece[] }[], mode: LanguageMode, percent: number, seed: string): Set<string> {
+  const out = new Set<string>();
+  if (mode === "original") {
+    return out;
+  }
+  for (const b of blocks) {
+    const idx = b.pieces.flatMap((p, i) => (p.translation == null ? [] : [i]));
+    const picks =
+      mode === "translated"
+        ? idx.map(() => true)
+        : assignTranslated(
+            idx.map((i) => b.text.slice(b.pieces[i]!.start, b.pieces[i]!.end)),
+            percent,
+            seed,
+          );
+    idx.forEach((i, n) => {
+      if (picks[n]) {
+        out.add(`${b.id}:${i}`);
+      }
+    });
+  }
+  return out;
+}
+
+/**
+ * Whether the text between sentences is left out: only spaces between two sentences that both show
+ * their translation (Japanese sentences take none; `shownTranslation` spaces English ones).
+ */
+export function dropsGap(text: string, pieces: Piece[], i: number, shown: (i: number) => boolean): boolean {
+  const [p, before, after] = [pieces[i]!, pieces[i - 1], pieces[i + 1]];
+  return (
+    p.translation == null && !text.slice(p.start, p.end).trim() && before?.translation != null && after?.translation != null && shown(i - 1) && shown(i + 1)
+  );
+}
+
+/** A translated sentence as shown: a space after a Latin-script end, as the units carry none between them. */
+export const shownTranslation = (tr: string) => (endsSpaced(tr) ? `${tr} ` : tr);
 
 /** Splits translated text on `backticks` so inline code keeps its styling. */
 export function splitBackticks(text: string): { code: boolean; v: string }[] {

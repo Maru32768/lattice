@@ -150,8 +150,9 @@ function reportProgress() {
   progressTimer = window.setTimeout(() => {
     const count = (s: string) => document.querySelectorAll(`[data-lattice-block='${s}']`).length;
     const done = count("done");
-    // Failed blocks are left out: they wait for a retry from their tooltip, not in the status.
-    invoke("overlay_progress", { done, total: done + count("translating") }).catch(() => {});
+    // Failed blocks are left out: they wait for a retry from their tooltip, not in the status. 原文 shows none.
+    const total = state.config.enabled ? done + count("translating") : 0;
+    invoke("overlay_progress", { done: Math.min(done, total), total }).catch(() => {});
   }, 200);
 }
 
@@ -605,6 +606,9 @@ function configure(c: Partial<Config>) {
   }
   if (!state.config.enabled) {
     hideTip();
+  }
+  if (was.enabled !== state.config.enabled) {
+    reportProgress();
   }
 }
 

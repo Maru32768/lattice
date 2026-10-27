@@ -1,22 +1,70 @@
 // Run with `npm test` (Node strips the types natively).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { autoTranslates, needsTranslation, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed.ts";
+import {
+  autoTranslates,
+  blockPieces,
+  dropsGap,
+  needsTranslation,
+  nothingToTranslate,
+  shownTranslation,
+  splitBackticks,
+  translatedSentences,
+  translationProgress,
+} from "./mixed.ts";
 
-const blocks = Array.from({ length: 10 }, (_, i) => ({ id: i, translation: i === 9 ? null : `t${i}` }));
+const piece = (start: number, end: number, translation: string | null) => ({ start, end, translation });
 
-test("modes", () => {
-  assert.equal(translatedBlockIds(blocks, "original", 70).size, 0);
-  assert.equal(translatedBlockIds(blocks, "translated", 0).size, 9);
+test("blockPieces cuts a block at its translated sentences", () => {
+  const text = "One. Two three. Four.";
+  const units = [
+    { source: "One.", translation: "一。" },
+    { source: "Two three.", translation: "二三。" },
+    { source: "Four.", translation: "四。" },
+  ];
+  assert.deepEqual(blockPieces({ text, translation: "一。二三。四。", units }), [
+    piece(0, 4, "一。"),
+    piece(4, 5, null),
+    piece(5, 15, "二三。"),
+    piece(15, 16, null),
+    piece(16, 21, "四。"),
+  ]);
+  assert.deepEqual(
+    blockPieces({ text, translation: "全体", units: [{ source: "Other wording.", translation: "x" }] }),
+    [piece(0, 21, "全体")],
+    "units of other text: one sentence",
+  );
+  assert.deepEqual(blockPieces({ text, translation: null }), [piece(0, 21, null)]);
 });
 
-test("mixed ratio is exact by count and evenly spread", () => {
-  const ten = blocks.map((b) => ({ ...b, translation: "t" }));
-  for (const p of [0, 10, 30, 50, 70, 100]) {
-    assert.equal(translatedBlockIds(ten, "mixed", p).size, p / 10);
-  }
-  assert.deepEqual([...translatedBlockIds(ten, "mixed", 30)], [3, 6, 9]);
-  assert.equal(translatedBlockIds(blocks, "mixed", 100).has(9), false, "untranslated blocks never flip");
+test("translatedSentences: modes, and mixed alternates within a block as the Page view does", () => {
+  const text = Array.from({ length: 10 }, (_, i) => `S${i}.`).join(" ");
+  const pieces = blockPieces({ text, translation: "t", units: Array.from({ length: 10 }, (_, i) => ({ source: `S${i}.`, translation: `訳${i}` })) });
+  const blocks = [{ id: 7, text, pieces }];
+  assert.equal(translatedSentences(blocks, "original", 70, "u").size, 0);
+  assert.equal(translatedSentences(blocks, "translated", 0, "u").size, 10);
+  const half = translatedSentences(blocks, "mixed", 50, "u");
+  assert.equal(half.size, 5);
+  const sentenceIdx = pieces.flatMap((p, i) => (p.translation == null ? [] : [i]));
+  const shown = sentenceIdx.map((i) => half.has(`7:${i}`));
+  assert.ok(
+    shown.every((v, i) => i === 0 || v !== shown[i - 1]),
+    "half and half alternates",
+  );
+  assert.equal(translatedSentences([{ id: 1, text: "x", pieces: [piece(0, 1, null)] }], "mixed", 100, "u").size, 0, "untranslated blocks never flip");
+});
+
+test("dropsGap leaves out spaces only between two sentences shown translated", () => {
+  const text = "One. Two. Three.";
+  const pieces = blockPieces({ text, translation: "t", units: ["One.", "Two.", "Three."].map((source) => ({ source, translation: "訳。" })) });
+  const shown = (on: number[]) => (i: number) => on.includes(i);
+  assert.equal(dropsGap(text, pieces, 1, shown([0, 2])), true);
+  assert.equal(dropsGap(text, pieces, 1, shown([0])), false, "the next sentence is English");
+  assert.equal(dropsGap(text, pieces, 0, shown([0, 2])), false, "a sentence is never dropped");
+});
+
+test("shownTranslation spaces Latin ends only", () => {
+  assert.deepEqual(["Done.", "終わり。"].map(shownTranslation), ["Done. ", "終わり。"]);
 });
 
 test("splitBackticks", () => {

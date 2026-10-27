@@ -88,6 +88,7 @@ const COMMANDS: &[&str] = &[
     "delete_article",
     "article_for_url",
     "translate_article",
+    "translation_status",
     "summarize_article",
     "quiz_article",
     "get_quiz",

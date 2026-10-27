@@ -3,7 +3,9 @@ import { ARTICLES, MARKDOWN_ID, SNAPSHOT_ID, blocksOf } from "./fixtures.ts";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
 const blocks = blocksOf(snapshot);
-const translatable = blocks.filter((b) => b.translation != null);
+// Blocks of one sentence: shown whole in one language. The paragraph with units mixes by sentence.
+const translatable = blocks.filter((b) => b.translation != null && !b.units);
+const sentences = blocks.find((b) => b.units)!;
 
 async function open(page: import("@playwright/test").Page, title: string) {
   await list(page).locator(".row", { hasText: title }).click();
@@ -17,9 +19,9 @@ const shown = (page: import("@playwright/test").Page) =>
 test("the language segment switches every block; a block flips on its own", async ({ app }) => {
   await open(app, snapshot.title!);
   const seg = app.getByRole("group", { name: "表示言語" });
-  // Mixed 70%: three of the five translated blocks, spread out.
+  // Mixed 70%: a one-sentence block shows its translation as the Page view would pick that sentence.
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveAttribute("aria-pressed", "true");
-  expect(await shown(app)).toEqual(["en", "ja", "ja", "en", "ja"]);
+  expect(await shown(app)).toEqual(["ja", "en", "en", "ja", "ja"]);
 
   await seg.getByRole("button", { name: "原文", exact: true }).click();
   expect(await shown(app)).toEqual(["en", "en", "en", "en", "en"]);
@@ -52,13 +54,37 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
 
 const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;
 
+test("a paragraph mixes sentence by sentence, and one sentence flips from its tooltip", async ({ app }) => {
+  await open(app, snapshot.title!);
+  const seg = app.getByRole("group", { name: "表示言語" });
+  const para = app.locator(`#b-${sentences.id}`);
+  /** The language each sentence of the paragraph shows. */
+  const langs = () => para.locator(".sent").evaluateAll((els) => els.map((e) => (e.classList.contains("tr") ? "ja" : "en")));
+  await app.keyboard.press("[");
+  await app.keyboard.press("[");
+  await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 50%");
+  expect(await langs(), "half and half alternates within the paragraph").toEqual(expect.arrayContaining(["ja", "en"]));
+  const half = await langs();
+  expect(half.every((l, i) => i === 0 || l !== half[i - 1])).toBe(true);
+
+  const first = para.locator(".sent").first();
+  await first.hover();
+  const tip = para.getByRole("tooltip");
+  await expect(tip).toContainText(half[0] === "ja" ? sentences.units![0].source : sentences.units![0].translation);
+  await tip.click();
+  expect(await langs()).toEqual([half[0] === "ja" ? "en" : "ja", ...half.slice(1)]);
+
+  await seg.getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(para).toContainText(sentences.units!.map((u) => u.translation).join(""));
+});
+
 test("picking 訳文 on an untranslated article starts its translation and shows the progress", async ({ app }) => {
   await open(app, untranslated.title!);
   const seg = app.getByRole("group", { name: "表示言語" });
   await seg.getByRole("button", { name: "訳文", exact: true }).click();
   // The Reader and the list row count the same blocks.
   await expect(app.locator(".tr-prog")).toHaveText("翻訳待ち 0 / 4 ブロック");
-  await expect(list(app).locator(".row").filter({ hasText: untranslated.title! })).toContainText("翻訳中 0/4");
+  await expect(list(app).locator(".row").filter({ hasText: untranslated.title! })).toContainText("翻訳待ち");
   await seg.getByRole("button", { name: /混在/ }).click();
   expect(await callsOf(app, "translate_article"), "queued once; the waiting job is not queued again").toEqual([{ id: untranslated.id }]);
 

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api } from "../api";
+import { api, type Progress } from "../api";
 
 const POLL_MS = 10_000;
 
@@ -41,6 +41,34 @@ export function useActivity() {
   }, []);
 
   return { jobFailures, reviewDue, loadReview };
+}
+
+/**
+ * Articles being translated or waiting to be, by id, for the list's labels. Read again soon after an
+ * article changes (a translate job reports each saved batch), and polled for jobs queued meanwhile.
+ */
+export function useTranslations() {
+  const [progress, setProgress] = useState<Map<number, Progress>>(new Map());
+  useEffect(() => {
+    const load = () =>
+      void api
+        .translationStatus()
+        .then((ps) => setProgress(new Map(ps.map((p) => [p.article_id, p]))))
+        .catch(() => {});
+    load();
+    const poll = window.setInterval(load, POLL_MS);
+    let timer = 0;
+    const sub = listen<number>("article-changed", () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(load, 500);
+    });
+    return () => {
+      clearInterval(poll);
+      clearTimeout(timer);
+      void sub.then((f) => f());
+    };
+  }, []);
+  return progress;
 }
 
 /** The taskbar badge follows the unread count; reading through a list changes it in bursts. */

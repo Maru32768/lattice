@@ -54,6 +54,7 @@
 .tab:focus-visible { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
 .tab .favicon { flex: none; }
 .tab .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .tab-tr { flex: none; font-size: 11px; color: var(--tr); }
 .tab .x { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink3); opacity: 0; }
 .tab:hover .x, .tab.on .x { opacity: 1; }
 .tab .x:hover { background: var(--active); color: var(--ink); }
@@ -344,6 +345,8 @@
 .mk.en i { width: 1px; height: 12px; border: 1px solid var(--tr); background: transparent; }
 .mk.pend i { background: repeating-linear-gradient(180deg, var(--tr-dot) 0 2px, transparent 2px 4px); }
 .pop { position: absolute; left: 14px; right: 14px; top: calc(100% + 4px); z-index: 5; padding: 12px 14px; background: var(--raise); border: 1px solid var(--line2); border-radius: 8px; box-shadow: 0 10px 30px var(--shadow); font: 13.5px/1.65 var(--sans); color: var(--ink2); cursor: pointer; }
+/* The sentence a tooltip will speak for: the block already shades on hover, so the sentence gets a line. */
+.sent:hover { text-decoration: underline dotted var(--tr); text-underline-offset: 4px; }
 .pop-h { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 11px; color: var(--ink3); }
 .pop-h > span:first-child { letter-spacing: .06em; }
 .pop-h .r { margin-left: auto; }

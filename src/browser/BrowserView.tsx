@@ -1,4 +1,3 @@
-import { listen } from "@tauri-apps/api/event";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "../api";
 import type { LanguageMode } from "../reader/mixed";
@@ -167,17 +166,6 @@ export function BrowserView({
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
   const [panel, togglePanel, closePanel] = useSidePanel(saved?.id ?? 0);
-  /** The overlay's translation of this page (blocks done of those sent), for pages not in the Index. */
-  const [progress, setProgress] = useState<{ url: string; done: number; total: number } | null>(null);
-  useEffect(() => {
-    const sub = listen<{ tab: string; done: number; total: number }>("browser-translate", (e) => {
-      if (e.payload.tab === id) {
-        setProgress({ url: tab.url, done: e.payload.done, total: e.payload.total });
-      }
-    });
-    return () => void sub.then((f) => f());
-  }, [id, tab.url]);
-  const translating = !saved && lang.mode !== "original" && progress?.url === tab.url && progress.done < progress.total ? progress : null;
   /** The page as drawn now, decoded; null while it loads or off Windows. */
   const grab = useEffectEvent(async () => {
     const png = tab.loading ? null : await browser.capture(id).catch(() => null);
@@ -403,16 +391,6 @@ export function BrowserView({
           <span className="indexed" title={t("browserView.indexed")}>
             <Icon name="check" />
             <span className="lbl">{t("browserView.indexed")}</span>
-          </span>
-        )}
-        {translating && (
-          <span className="tr-prog" role="status">
-            <span>
-              {t("reader.translating")} {t("reader.blockProgress", { done: translating.done, total: translating.total })}
-            </span>
-            <span className="prog">
-              <b style={{ width: `${Math.round((translating.done / translating.total) * 100)}%` }} />
-            </span>
           </span>
         )}
         {shown && act ? (

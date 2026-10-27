@@ -2,7 +2,18 @@ import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, u
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "../api";
 import { translatedShare } from "../overlay/logic";
-import { type LanguageMode, TRANSLATABLE, nothingToTranslate, splitBackticks, translatedBlockIds, translationProgress } from "./mixed";
+import {
+  type LanguageMode,
+  type Piece,
+  TRANSLATABLE,
+  blockPieces,
+  dropsGap,
+  nothingToTranslate,
+  shownTranslation,
+  splitBackticks,
+  translatedSentences,
+  translationProgress,
+} from "./mixed";
 import { DIFFICULTY_LABELS, genreSwatch } from "../library/library";
 import { highlight } from "../search/search";
 import { Menu, type MenuItem } from "../ui/Popover";
@@ -67,16 +78,37 @@ const Txt = memo(function Txt({ v, ts }: { v: string; ts?: string[] }) {
   return <>{highlight(v, ts).map((s, i) => (s.mark ? <mark key={i}>{words(s.v)}</mark> : <Fragment key={i}>{words(s.v)}</Fragment>))}</>;
 });
 
-function Inlines({ block, translated, ts }: { block: Block; translated: boolean; ts?: string[] }) {
-  if (translated && block.translation != null) {
-    return <>{splitBackticks(block.translation).map((s, n) => (s.code ? <code key={n}>{s.v}</code> : <Txt key={n} v={s.v} ts={ts} />))}</>;
-  }
+/** The block's inlines between two offsets of its text (a sentence, or the text between sentences). */
+function sliceInlines(block: Block, start: number, end: number): Inline[] {
   if (!block.inlines) {
-    return <Txt v={block.text} ts={ts} />;
+    return [{ t: "text", v: block.text.slice(start, end) }];
   }
+  const out: Inline[] = [];
+  let at = 0;
+  for (const i of block.inlines) {
+    const [from, to] = [Math.max(start, at), Math.min(end, at + i.v.length)];
+    if (from < to) {
+      out.push({ ...i, v: i.v.slice(from - at, to - at) });
+    }
+    at += i.v.length;
+  }
+  return out;
+}
+
+function Translation({ text, ts }: { text: string; ts?: string[] }) {
+  return <>{splitBackticks(shownTranslation(text)).map((s, n) => (s.code ? <code key={n}>{s.v}</code> : <Txt key={n} v={s.v} ts={ts} />))}</>;
+}
+
+/** The text of a translated sentence as rendered (backticks become <code>). */
+const translationText = (tr: string) =>
+  splitBackticks(shownTranslation(tr))
+    .map((s) => s.v)
+    .join("");
+
+function Inlines({ inlines, ts }: { inlines: Inline[]; ts?: string[] }) {
   return (
     <>
-      {block.inlines.map((i: Inline, n) =>
+      {inlines.map((i: Inline, n) =>
         i.t === "code" ? (
           <code key={n}>{i.v}</code>
         ) : i.t === "link" ? (
@@ -131,9 +163,42 @@ function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) 
   );
 }
 
-function BlockView({ block, marker, translated, imagesJob, ts }: { block: Block; marker?: string; translated: boolean; imagesJob?: string; ts?: string[] }) {
+/**
+ * A prose block sentence by sentence, each in the language `shown` picks; hovering a translated
+ * sentence (`onHover`) offers the other language.
+ */
+function Sentences({
+  block,
+  pieces,
+  shown,
+  ts,
+  onHover,
+  onLeave,
+}: {
+  block: Block;
+  pieces: Piece[];
+  shown: (i: number) => boolean;
+  ts?: string[];
+  onHover: (i: number) => void;
+  onLeave: () => void;
+}) {
+  return (
+    <>
+      {pieces.map((p, i) =>
+        dropsGap(block.text, pieces, i, shown) ? null : p.translation == null ? (
+          <Inlines key={i} inlines={sliceInlines(block, p.start, p.end)} ts={ts} />
+        ) : (
+          <span key={i} className={`sent${shown(i) ? " tr" : ""}`} onMouseEnter={() => onHover(i)} onMouseLeave={onLeave}>
+            {shown(i) ? <Translation text={p.translation} ts={ts} /> : <Inlines inlines={sliceInlines(block, p.start, p.end)} ts={ts} />}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+function BlockView({ block, marker, body, imagesJob }: { block: Block; marker?: string; body: React.ReactNode; imagesJob?: string }) {
   const a = block.attrs;
-  const body = <Inlines block={block} translated={translated} ts={ts} />;
   switch (block.kind) {
     case "heading": {
       const H = `h${Math.min(Math.max(a.level ?? 2, 2), 6)}` as "h2";
@@ -778,9 +843,10 @@ export function Reader({
 }) {
   const t = useT();
   const { article: a, blocks } = view;
-  // Per-block click overrides on top of the mode; App remounts Reader per article.
-  const [flipped, setFlipped] = useState<Set<number>>(new Set());
-  const [pop, setPop] = useState<number | null>(null);
+  // Per-sentence click overrides on top of the mode (`${block id}:${piece}`); App remounts Reader per article.
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  /** The sentence whose other language is shown under its block. */
+  const [pop, setPop] = useState<{ block: number; piece: number } | null>(null);
   const [panel, togglePanel, closePanel] = useSidePanel(a.id);
   const timers = useRef({ show: 0, hide: 0, cap: 0 });
   const blocksEl = useRef<HTMLDivElement>(null);
@@ -788,7 +854,13 @@ export function Reader({
   const [cap, setCap] = useState<{ capture: VocabCapture; x: number; y: number; status?: string; error?: string } | null>(null);
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const markers = listMarkers(blocks);
-  const selected = translatedBlockIds(blocks, mode, translatedShare(percent, view.target_language, t.lang));
+  const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
+  const selected = translatedSentences(
+    blocks.map((b) => ({ id: b.id, text: b.text, pieces: pieces.get(b.id)! })),
+    mode,
+    translatedShare(percent, view.target_language, t.lang),
+    a.original_url,
+  );
   const { done, total } = translationProgress(blocks, view.target_language);
   const nothing = nothingToTranslate(blocks, view.target_language);
   const job = view.jobs.find((j) => j.type === "translate");
@@ -808,7 +880,21 @@ export function Reader({
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focusBlock, focus?.seq, blocks.length]);
 
-  const shows = (b: Block) => b.translation != null && selected.has(b.id) !== flipped.has(b.id);
+  const shows = (id: number, i: number) => selected.has(`${id}:${i}`) !== flipped.has(`${id}:${i}`);
+  /** Whether any sentence of the block shows its translation (its marker, and what flipping the block does). */
+  const blockShows = (b: Block) => pieces.get(b.id)!.some((p, i) => p.translation != null && shows(b.id, i));
+  /** The block's text as rendered, sentence by sentence. */
+  const shownText = (b: Block) =>
+    pieces
+      .get(b.id)!
+      .map((p, i, ps) =>
+        dropsGap(b.text, ps, i, (j) => shows(b.id, j))
+          ? ""
+          : p.translation != null && shows(b.id, i)
+            ? translationText(p.translation)
+            : b.text.slice(p.start, p.end),
+      )
+      .join("");
 
   /** The word selected in one prose block of this article, as shown (original or translation), and where to put the button. */
   function selectionCapture(): { capture: VocabCapture; x: number; y: number } | null {
@@ -826,7 +912,7 @@ export function Reader({
     const before = document.createRange();
     before.setStart(el, 0);
     before.setEnd(range.startContainer, range.startOffset);
-    const c = captureIn(shows(block) ? block.translation! : block.text, sel.toString(), before.toString().length);
+    const c = captureIn(shownText(block), sel.toString(), before.toString().length);
     if (!c) {
       return null;
     }
@@ -884,22 +970,29 @@ export function Reader({
     setFlipped(new Set());
   }
 
-  function flip(id: number) {
+  /** Flips sentences of a block: one (its tooltip), or all of them to the other language (the marker, Enter). */
+  function flip(b: Block, piece?: number) {
     setPop(null);
+    const to = !blockShows(b);
+    const keys = pieces
+      .get(b.id)!
+      .flatMap((p, i) => (p.translation != null && (piece === undefined ? shows(b.id, i) !== to : i === piece) ? [`${b.id}:${i}`] : []));
     setFlipped((s) => {
       const n = new Set(s);
-      if (!n.delete(id)) {
-        n.add(id);
+      for (const k of keys) {
+        if (!n.delete(k)) {
+          n.add(k);
+        }
       }
       return n;
     });
   }
 
-  // Hover shows the other language; clicking it (or the marker, or Enter) flips the block.
-  function hover(id: number) {
+  // Hovering a sentence shows its other language; clicking that flips the sentence.
+  function hover(block: number, piece: number) {
     clearTimeout(timers.current.show);
     clearTimeout(timers.current.hide);
-    timers.current.show = window.setTimeout(() => setPop(id), 300);
+    timers.current.show = window.setTimeout(() => setPop({ block, piece }), 300);
   }
   function leave() {
     clearTimeout(timers.current.show);
@@ -1084,7 +1177,10 @@ export function Reader({
               <div className="prose blocks" ref={blocksEl} onMouseUp={offerCapture} onKeyUp={(e) => e.shiftKey && offerCapture()}>
                 {blocks.map((b, i) => {
                   const has = b.translation != null;
-                  const translated = shows(b);
+                  const translated = blockShows(b);
+                  const ps = pieces.get(b.id)!;
+                  const popped = pop?.block === b.id ? ps[pop.piece] : undefined;
+                  const popShown = popped != null && shows(b.id, pop!.piece);
                   const pending = !has && translating && TRANSLATABLE.has(b.kind);
                   const focused = focus?.block === b.id ? focus : undefined;
                   const label = translated ? t("reader.flipToOriginal") : t("reader.flipToTranslation");
@@ -1093,8 +1189,6 @@ export function Reader({
                       key={b.id}
                       id={`b-${b.id}`}
                       className={`blk ${b.kind}${focused ? ` is-${focused.tone}` : ""}${has ? " flip" : ""}`}
-                      onMouseEnter={has ? () => hover(b.id) : undefined}
-                      onMouseLeave={has ? leave : undefined}
                       tabIndex={has ? 0 : undefined}
                       aria-description={has ? t("reader.flipHint") : undefined}
                       onKeyDown={
@@ -1102,14 +1196,14 @@ export function Reader({
                           ? (e) => {
                               if (e.key === "Enter" && e.target === e.currentTarget) {
                                 e.preventDefault();
-                                flip(b.id);
+                                flip(b);
                               }
                             }
                           : undefined
                       }
                     >
                       {has ? (
-                        <button className={`mk ${translated ? "ja" : "en"}`} onClick={() => flip(b.id)} aria-label={label} title={label}>
+                        <button className={`mk ${translated ? "ja" : "en"}`} onClick={() => flip(b)} aria-label={label} title={label}>
                           <i />
                         </button>
                       ) : (
@@ -1120,14 +1214,27 @@ export function Reader({
                         )
                       )}
                       {focused && <div className="blk-label">{focused.label}</div>}
-                      <BlockView block={b} marker={markers[i]} translated={translated} imagesJob={imagesJob} ts={focused?.terms} />
-                      {pop === b.id && (
-                        <div className="pop" role="tooltip" onClick={() => flip(b.id)} onMouseEnter={() => clearTimeout(timers.current.hide)}>
+                      <BlockView
+                        block={b}
+                        marker={markers[i]}
+                        imagesJob={imagesJob}
+                        body={
+                          <Sentences block={b} pieces={ps} shown={(j) => shows(b.id, j)} ts={focused?.terms} onHover={(j) => hover(b.id, j)} onLeave={leave} />
+                        }
+                      />
+                      {popped?.translation != null && (
+                        <div
+                          className="pop"
+                          role="tooltip"
+                          onClick={() => flip(b, pop!.piece)}
+                          onMouseEnter={() => clearTimeout(timers.current.hide)}
+                          onMouseLeave={leave}
+                        >
                           <div className="pop-h">
-                            <span>{translated ? t("reader.original") : t("reader.translated")}</span>
+                            <span>{popShown ? t("reader.original") : t("reader.translated")}</span>
                             <span className="r">{t.rich("reader.flipPop", { kbd: <Kbd>Enter</Kbd> })}</span>
                           </div>
-                          {translated ? b.text : b.translation}
+                          {popShown ? b.text.slice(popped.start, popped.end) : popped.translation}
                         </div>
                       )}
                     </div>

@@ -764,6 +764,9 @@ pub struct StoredBlock {
     pub block: Block,
     /// Current translation in the requested language, if any.
     pub translation: Option<String>,
+    /// That translation's sentences as plain text (source and translation), for mixing by sentence.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub units: Vec<Unit>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -1323,10 +1326,11 @@ impl Store {
         };
         let mut st = c.prepare(
             "SELECT b.id, b.ordinal, b.heading_id, b.kind, b.text, b.inlines, b.attrs,
-                    (SELECT st.text FROM segment_translations st
-                     WHERE st.source_hash = b.text_hash AND st.target_language = ?2
-                     ORDER BY st.id DESC LIMIT 1)
-             FROM blocks b WHERE b.article_id = ?1 ORDER BY b.ordinal",
+                    st.text, st.units
+             FROM blocks b
+             LEFT JOIN segment_translations st ON st.id = (SELECT id FROM segment_translations
+                 WHERE source_hash = b.text_hash AND target_language = ?2 ORDER BY id DESC LIMIT 1)
+             WHERE b.article_id = ?1 ORDER BY b.ordinal",
         )?;
         let blocks = st
             .query_map(params![id, target_language], |r| {
@@ -1341,6 +1345,10 @@ impl Store {
                         attrs: opt_json_col(r, 6)?,
                     },
                     translation: r.get(7)?,
+                    units: opt_json_col::<Vec<Unit>>(r, 8)?
+                        .into_iter()
+                        .map(|u| Unit { source: plain_text(&u.source), translation: plain_text(&u.translation) })
+                        .collect(),
                 })
             })?
             .collect::<Result<_>>()?;
@@ -1387,6 +1395,28 @@ impl Store {
             Ok(PendingBlock { id: r.get(0)?, kind: r.get(1)?, text: r.get(2)?, text_hash: r.get(3)?, inlines: opt_json_col(r, 4)? })
         })?;
         rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
+    }
+
+    /// Jobs of `job_type` queued or running, not waiting to retry after an error, oldest first.
+    pub fn active_jobs(&self, job_type: &str) -> Result<Vec<JobRow>> {
+        let c = self.conn();
+        let mut st = c.prepare(&format!(
+            "SELECT {JOB_COLS} FROM processing_jobs
+             WHERE type = ?1 AND (status = 'running' OR (status = 'pending' AND last_error IS NULL)) ORDER BY id"
+        ))?;
+        st.query_map([job_type], job_row)?.collect()
+    }
+
+    /// How many of the article's blocks of `kinds` have a translation into `target_language`.
+    pub fn translated_count(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<usize> {
+        self.conn()
+            .query_row(
+                "SELECT count(*) FROM blocks b WHERE b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?3)) AND EXISTS (
+                 SELECT 1 FROM segment_translations st WHERE st.source_hash = b.text_hash AND st.target_language = ?2)",
+                params![article_id, target_language, json(&kinds)],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n as usize)
     }
 
     /// Deletes the cached translations into `target_language` of the article's blocks of `kinds`.

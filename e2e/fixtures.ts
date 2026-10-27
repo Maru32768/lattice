@@ -321,6 +321,14 @@ FEEDS[1].filter_note = JSON.stringify({ code: "feedFilter.llmFailed", params: { 
 export const SNAPSHOT_ID = 1;
 export const MARKDOWN_ID = 36;
 
+/** Sentences of one paragraph and their translations: the Reader mixes them one by one. */
+const SNAPSHOT_SENTENCES: [string, string][] = [
+  ["Snapshots are cheap.", "スナップショットは軽い。"],
+  ["Old versions are vacuumed later.", "古い版は後で vacuum される。"],
+  ["Long transactions keep them alive.", "長いトランザクションは古い版を残す。"],
+  ["Monitor them closely.", "注意して監視する。"],
+];
+
 const SNAPSHOT_BLOCKS: [Block["kind"], string, string | null, Block["attrs"]?][] = [
   ["heading", "Snapshot isolation", "スナップショット分離", { level: 2 }],
   [
@@ -332,6 +340,7 @@ const SNAPSHOT_BLOCKS: [Block["kind"], string, string | null, Block["attrs"]?][]
   ["list_item", "Readers never block writers.", "読み取りは書き込みを妨げない。", { depth: 0 }],
   ["code", "BEGIN ISOLATION LEVEL REPEATABLE READ;", null, { lang: "sql" }],
   ["paragraph", "Write skew is still possible under snapshot isolation.", "スナップショット分離でも write skew は起こりうる。"],
+  ["paragraph", SNAPSHOT_SENTENCES.map(([s]) => s).join(" "), SNAPSHOT_SENTENCES.map(([, t]) => t).join("")],
 ];
 
 function genericBlocks(a: ArticleRow): [Block["kind"], string, string | null, Block["attrs"]?][] {
@@ -366,6 +375,7 @@ export function blocksOf(a: ArticleRow): Block[] {
     text,
     attrs: attrs ?? {},
     translation,
+    ...(a.id === SNAPSHOT_ID && i === SNAPSHOT_BLOCKS.length - 1 && { units: SNAPSHOT_SENTENCES.map(([source, translation]) => ({ source, translation })) }),
   }));
 }
 

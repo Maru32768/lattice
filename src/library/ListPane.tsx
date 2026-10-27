@@ -296,7 +296,8 @@ export function ListPane({
   selectedId: number | null;
   cursorId: number | null;
   onCursor: (id: number) => void;
-  translating: { id: number; label: string } | null;
+  /** The label of an article being translated or waiting to be; none once it is done. */
+  translating: (id: number) => string | undefined;
   relax: Relaxation[];
   onRelax: (r: Relaxation) => void;
   /** `newTab`: Ctrl / middle click. */
@@ -388,7 +389,7 @@ export function ListPane({
               sort={sort}
               onOpen={(t) => onOpen(a, t)}
               onCursor={() => onCursor(a.id)}
-              translating={translating?.id === a.id ? translating.label : null}
+              translating={translating(a.id) ?? null}
               picked={picked ? picked.includes(a.id) : undefined}
               onPick={onPick(a.id)}
               onMenu={(e) => onRowMenu(picked?.includes(a.id) ? pickedRows : [a], e.currentTarget)}

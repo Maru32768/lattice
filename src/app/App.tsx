@@ -3,7 +3,7 @@ import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
 import { BrowserView } from "../browser/BrowserView";
-import { autoTranslates, translateOnSwitch, translationProgress, type LanguageMode } from "../reader/mixed";
+import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
 import { ImportView, type ImportTab } from "../import/ImportView";
 import { SettingsView, type SettingsSection } from "../settings/SettingsView";
@@ -60,7 +60,7 @@ import { HOST, IS_MAIN, type Where } from "./host";
 import { FirstRun, PrefixHint } from "./FirstRun";
 import { useLibrary } from "./useLibrary";
 import { importantMinOf, useLibraryView } from "./useLibraryView";
-import { useActivity, useUnreadBadge } from "./useActivity";
+import { useActivity, useTranslations, useUnreadBadge } from "./useActivity";
 import { useVocab } from "./useVocab";
 import { useSearch } from "./useSearch";
 import { useDocuments } from "./useDocuments";
@@ -87,6 +87,7 @@ export default function App() {
   const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } =
     useLibrary(fail);
   const { jobFailures, reviewDue, loadReview } = useActivity();
+  const translations = useTranslations();
   const { vocab, marksOn, setMarks, marks, loadVocab, saveWordSeq, saveWord } = useVocab(() => void loadReview());
   const { layout, setLayout, layoutRef, views, setViews, viewsRef, loadView, refreshSaved, forgetPage } = useDocuments(fail);
   const [pageLang, setPageLang] = usePageLang(t, fail);
@@ -766,16 +767,10 @@ export default function App() {
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
-  // Only the open article's job progress is known to the UI (the list has no per-article job data).
-  const tjob = curView?.jobs.find((j) => j.type === "translate");
-  const tprog = curView ? translationProgress(curView.blocks, curView.target_language) : { done: 0, total: 0 };
-  const translatingRow =
-    curView && tjob && (tjob.status === "running" || (tjob.status === "pending" && !tjob.last_error))
-      ? {
-          id: curView.article.id,
-          label: t("app.translating", { length: tprog.done, length2: tprog.total }),
-        }
-      : null;
+  const translatingLabel = (id: number) => {
+    const p = translations.get(id);
+    return p && (p.running ? t("app.translating", { length: p.done, length2: p.total }) : t("reader.waiting"));
+  };
   const docHits = search && cur?.kind === "reader" ? flatHits.filter((h) => h.article_id === cur.articleId) : [];
   const readerMatches =
     docHits.length > 0 && cur?.kind === "reader"
@@ -1102,7 +1097,7 @@ export default function App() {
                   selectedId={selectedId}
                   cursorId={cursor}
                   onCursor={setCursor}
-                  translating={translatingRow}
+                  translating={translatingLabel}
                   relax={relax}
                   onRelax={(r) => {
                     setScopeState(r.scope);

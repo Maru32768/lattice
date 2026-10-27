@@ -232,26 +232,21 @@ The switch right of **Reader** and **Page** chooses the language of the text.
 
 - **Original**: the text as written.
 - **Translated**: the translation.
-- **Mixed**: only some paragraphs (sentences, in the Page view) are translated. The percentage next to it is the share shown in the app's display language (English): the original's share in an English article, the translation's in a Japanese one. Press `[` to lower it by 10% and `]` to raise it by 10%.
+- **Mixed**: only some sentences are translated. The percentage next to it is the share shown in the app's display language (English): the original's share in an English article, the translation's in a Japanese one. Press `[` to lower it by 10% and `]` to raise it by 10%.
 
 The article's language sets the direction: Japanese articles are translated into English, and articles in any other language into Japanese. Switching the app's display language does not change this.
 
-How **Mixed** picks the translated paragraphs:
-
-- In the Reader, they are spread evenly through the article.
-- In the Page view, they are picked from the page's address and text, so the same page always mixes the same paragraphs.
+**Mixed** picks the translated sentences the same way in the Reader and the Page view: within each paragraph, so that the two languages alternate. The choice follows the article's (page's) address and text, so the same article always mixes the same sentences. A paragraph of one sentence (a heading, say) is shown whole in whichever language its sentence gets.
 
 The Reader and the Page view remember their choice separately. A choice applies to every article (every page, in the Page view) until you change it. When Lattice starts, the Reader is at **Mixed** 70% and the Page view at **Original**.
 
 ### Switch one paragraph
 
-Rest the pointer on a translated paragraph and a bubble shows it in the other language. Click the bubble, or the small mark at the paragraph's edge, to switch only that paragraph. With the keyboard, focus the paragraph and press `Enter`.
-
-In the Page view, the same bubble appears for each sentence instead of each paragraph.
+Rest the pointer on a translated sentence and a bubble shows it in the other language. Click the bubble to switch only that sentence. In the Reader, the small mark at the paragraph's edge switches the whole paragraph to the other language. With the keyboard, focus the paragraph and press `Enter`.
 
 ### Translate an article
 
-The Reader's toolbar shows how far translation has gone (for example, **Translated 12/40**).
+The Reader's toolbar shows how far translation has gone (for example, **Translated 12/40**). In the article list, an article being translated or waiting for it is labeled **Translating 12/40** or **Waiting to translate**, whether or not it is open. The label goes away once it is translated.
 
 - **Starting automatically.** With **Translate when I switch the view** on (the default), switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
 - **The article on screen goes first.** Translation, the summary and the quiz of the articles you are looking at (the front tab of each pane) start right away in a slot of their own, instead of waiting behind queued jobs or the job already running.
@@ -261,7 +256,7 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 
 **Shared translations.** Translations are stored per paragraph text. A paragraph translated in the Page view is translated in the Reader too, and the other way around. Other articles and pages that contain the same paragraph use that translation as well. So **Translate again** also renews the translation in other articles and pages that share the paragraph.
 
-**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider. On a page not in the Index, the toolbar shows **Translating** and how many paragraphs are done while it works.
+**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider. While it works, the page's tab shows **Translating** and how many paragraphs are done (for example, **Translating 3/10**), also for a tab in the background.
 
 **Translation settings.** **Settings › Translation** has these options. Each applies to translation in both the Reader and the Page view.
 

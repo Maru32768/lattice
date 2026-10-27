@@ -2,12 +2,17 @@
 import type { BlockAttrs } from "./BlockAttrs";
 import type { BlockKind } from "./BlockKind";
 import type { Inline } from "./Inline";
+import type { Unit } from "./Unit";
 
 export type Block = { id: number, ordinal: number, heading_id: number | null, 
 /**
  * Current translation in the requested language, if any.
  */
-translation: string | null, kind: BlockKind, 
+translation: string | null, 
+/**
+ * That translation's sentences as plain text (source and translation), for mixing by sentence.
+ */
+units?: Array<Unit>, kind: BlockKind, 
 /**
  * Plain text: the unit for search, hashing and translation.
  */

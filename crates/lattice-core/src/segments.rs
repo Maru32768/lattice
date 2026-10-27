@@ -15,6 +15,7 @@ use dom_query::Document;
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use ts_rs::TS;
 
 use crate::llm::{LlmError, LlmProvider};
 use crate::store::sha256_hex;
@@ -140,7 +141,8 @@ fn user_instructions(to: &Target) -> String {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Unit {
     /// Exact substring of the source snippet HTML.
     pub source: String,

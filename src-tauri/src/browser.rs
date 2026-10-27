@@ -598,9 +598,8 @@ struct Progress {
     total: u32,
 }
 
-/// Called by the overlay as its translation advances: blocks done of those sent so far. The toolbar
-/// shows it for pages not in the Index (saved ones show their article's job). Exposed to remote
-/// pages; it only sets that status.
+/// Called by the overlay as its translation advances: blocks done of those sent so far, shown on
+/// the page's tab. Exposed to remote pages; it only sets that label.
 #[tauri::command]
 pub fn overlay_progress(webview: Webview, done: u32, total: u32) -> Result<(), String> {
     if !is_browser(webview.label()) {

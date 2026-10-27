@@ -167,6 +167,11 @@ export function TabStrip({
           >
             {tab.kind === "page" ? <Favicon domain={domain} /> : <Favicon domain={domain} feed={feed} />}
             <span className="tab-t">{title}</span>
+            {tab.kind === "page" && tab.translating && (
+              <span className="tab-tr" role="status">
+                {t("app.translating", { length: tab.translating.done, length2: tab.translating.total })}
+              </span>
+            )}
             <button
               className="x"
               onClick={() => onClose(tab.id)}

@@ -110,6 +110,7 @@
     "allow-delete-article",
     "allow-article-for-url",
     "allow-translate-article",
+    "allow-translation-status",
     "allow-summarize-article",
     "allow-quiz-article",
     "allow-get-quiz",
