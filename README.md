@@ -20,6 +20,8 @@ Download it from the [Releases page](https://github.com/Maru32768/lattice/releas
 - **Installer** (`Lattice_x.y.z_x64-setup.exe`): installs Lattice and keeps it up to date.
 - **Portable zip**: unzip anywhere and run `Lattice.exe`. All data stays in a `data` folder next to it.
 
+The installer includes the Microsoft Visual C++ x64 runtime and installs it if needed. This step may request administrator approval. For the portable GUI and CLI, install the [Microsoft Visual C++ x64 runtime](https://aka.ms/vc14/vc_redist.x64.exe) separately if it is missing. A portable copy also needs WebView2 installed separately when it is absent.
+
 If no release has been published yet, build it from source: see the [developer guide](docs/development.md).
 
 ## Getting started
@@ -42,10 +44,10 @@ Press `Ctrl+K` for the command palette. Every shortcut is listed in [Keyboard sh
 
 ## CLI and MCP
 
-`lattice-cli`, in the portable zip next to `Lattice.exe`, searches and reads your library from a terminal and serves it to agents such as Claude Code as an MCP server:
+`lattice-cli.exe` searches and reads your library from a terminal and serves it to agents such as Claude Code as an MCP server. Both the installer and portable zip include it next to the GUI executable. For the default installation, run this in PowerShell:
 
-```bash
-claude mcp add lattice -- lattice-cli mcp
+```powershell
+claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
 Saved articles are web pages written by other people, so an agent that reads them can be steered by instructions hidden in the text. Read [CLI and MCP](docs/guide.md#cli-and-mcp) for every command and for how to keep write access and other tools away from that agent.

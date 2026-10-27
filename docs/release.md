@@ -93,7 +93,7 @@ The following steps are the manual alternative. If the script already generated 
 
 The release workflow builds with `src-tauri/tauri.updater.conf.json`, which signs the installer, and the draft release gets `Lattice_<x.y.z>_x64-setup.exe.sig` and `latest.json`. Missing signing prerequisites stop the workflow before the build. Installed copies see an update only after you publish the draft: `releases/latest` ignores drafts and prereleases.
 
-An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\dev.lattice.app` is untouched.
+An update downloads the installer, checks its signature, and runs it in passive mode; the installer closes Lattice, installs over it and starts the new version. Data in `%APPDATA%\Lattice` is kept. Older test builds' `dev.lattice.app` data is renamed on first start only when the new default folder is absent.
 
 Updater signatures verify the update package. Windows Authenticode code signing identifies the executable's publisher and is configured separately. Decide whether to sign the Windows executables and record the decision in the checklist. An updater signature alone does not remove Windows' unknown-publisher prompts.
 
@@ -127,15 +127,15 @@ The browser E2E suite uses a mock backend in Chromium. It does not verify native
 
 Use a disposable test library or a restored backup. On both Windows 10 and Windows 11, test the installer and portable archive with a clean user profile and no developer toolchains:
 
-- Install, start, close and restart the app. Cover a machine without WebView2 for the installer.
+- Install, start, close and restart the app. Cover machines without WebView2 and without the Microsoft Visual C++ x64 runtime. Check runtime installation, administrator-approval cancellation and an already installed newer runtime. A failed prerequisite must stop installation.
 - Extract the portable archive into a writable folder. Confirm that the GUI and CLI use its adjacent `data` folder and that the license files are present.
 - Start with no AI configuration. Save, read and search an article, then restart and confirm persistence. Check the guidance for an absent CLI, an unauthenticated CLI and invalid API credentials.
 - Use one authenticated API provider and one authenticated CLI provider for translation, summary, quiz generation and chat. Correct invalid credentials and retry.
 - Download the semantic-search model on first run. Start offline before an initial download, verify full-text fallback and its explanation, then reconnect and retry.
 - Save a real JavaScript page, translate Page content, split panes and move a tab between windows.
 - Create a collection and a vocabulary entry, answer a quiz and complete a due review. Confirm that the state survives a restart.
-- Run the portable CLI and an MCP client against the same test library. Verify read access and explicitly enabled write access.
-- Check default, allow and deny network rules against public and local test destinations.
+- Run both the installed CLI and portable CLI, then an MCP client against the same test library. Verify read access and explicitly enabled write access.
+- Confirm that settings do not expose destination rules. Verify that direct HTTP downloads still reject private destinations by default and respect any existing saved policy.
 - Confirm separate debug and release data, logs, browser profiles and storage selections. Check portable behavior and the CLI's `--data-dir` override.
 - Back up a library with articles, images, translations, vocabulary and review history. Restore it with [the user-guide procedure](guide.md#restore-a-backup), re-enter credentials and verify those records after restarting.
 - Move the data directory and restart. Reinstall over the test installation and confirm that the library remains.
@@ -149,12 +149,14 @@ The draft release `Lattice v<x.y.z>` has these assets:
 
 | Asset | What it is |
 |---|---|
-| `Lattice_<x.y.z>_x64-setup.exe` | NSIS installer. Installs for the current user and keeps data in `%APPDATA%\dev.lattice.app`. |
+| `Lattice_<x.y.z>_x64-setup.exe` | NSIS installer. Installs the GUI and `lattice-cli.exe` together, by default in `%LOCALAPPDATA%\Lattice`. Does not add the CLI to PATH. Updates replace both executables, and uninstall removes both. Stop MCP clients before either operation. Default data stays in `%APPDATA%\Lattice` unless the uninstall data-deletion checkbox is selected. Custom data outside the default folder is retained. |
 | `Lattice_<x.y.z>_x64-portable.zip` | `Lattice.exe` and `lattice-cli.exe` (the CLI and MCP server, built in its own step) with a `portable` marker file, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`. Unzip anywhere; the marker keeps all data, logs and the WebView2 profile in a `data` folder next to the exe. Users update it by replacing `Lattice.exe`; the in-app updater only links to the release. |
 | `THIRD_PARTY_LICENSES` | The license list the build shipped with. |
 | `Lattice_<x.y.z>_x64-setup.exe.sig`, `latest.json` | The installer's signature and the manifest installed copies read to find updates. Required for published installer releases. |
 
 Both the installer and the zip need the WebView2 runtime, which Windows 11 includes. The installer downloads it on Windows 10 when it is missing. A portable copy on a machine without WebView2 needs the runtime installed separately.
+
+Both executables also need the Microsoft Visual C++ x64 runtime because the prebuilt ONNX Runtime library uses the dynamic C++ runtime. Before bundling, `scripts/prepare-windows-runtime.ps1` downloads the Microsoft-signed Redistributable and verifies its signature and version. The NSIS installer embeds it, installs it with administrator approval when needed, and stops if installation fails. It leaves the shared runtime installed when Lattice is uninstalled. For portable copies, install the [Microsoft Visual C++ x64 runtime](https://aka.ms/vc14/vc_redist.x64.exe) separately. Windows 11 does not guarantee that this prerequisite is present.
 
 To update a portable copy, replace the application binaries with those from the new archive and keep the existing `data` folder.
 

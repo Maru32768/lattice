@@ -32,9 +32,10 @@ mise run dev
 
 `mise run dev` starts the app with hot reload. The first build compiles the Rust workspace and takes several minutes.
 
-Debug builds use `%APPDATA%\dev.lattice.app.debug`; release builds and installed copies use `%APPDATA%\dev.lattice.app`.
-The development library starts empty, with no automatic migration of release data or settings.
+Debug builds use `%APPDATA%\Lattice Dev`; release builds and installed copies use `%APPDATA%\Lattice`.
+Each profile renames its own legacy data folder (`dev.lattice.app.debug` or `dev.lattice.app`) when the new folder is absent, preserving the library and its saved data-folder selection. Release data and settings are never migrated into the development library. Close old app and CLI processes before the first start; a failed move stops startup instead of creating an empty library. Existing destination folders are never overwritten or merged.
 Each build has its own saved data-folder selection, WebView2 profile, cache, and logs.
+Tauri identifiers and LocalAppData browser-profile/log locations retain their existing names.
 A debug CLI uses the development folder; a release CLI uses the installed app's folder.
 Portable mode still uses `<exe dir>/data`, and the CLI's `--data-dir` still overrides the default.
 

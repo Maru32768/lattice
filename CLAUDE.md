@@ -2,14 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Lattice is a local-first Windows desktop app (Tauri 2 + React 19) for collecting, reading, translating and searching technical articles. User docs: `README.md`, `docs/guide.md`. Developer docs: `docs/development.md`. Design decisions per feature (Japanese): `docs/design-review.md`; planned work: `docs/roadmap.md`; original requirements: `要件定義.md`.
+Lattice is a local-first Windows desktop app (Tauri 2 + React 19) for collecting, reading, translating and searching technical articles. User docs: `README.md`, `docs/guide.md`. Developer docs: `docs/development.md`. Design decisions per feature (Japanese): `docs/design-review.md`; planned work: `docs/roadmap.md`.
 
 ## Commands
 
 Node and Rust versions are pinned in `mise.toml`; run every tool through `mise exec --` (or a `mise run` task).
 
 ```bash
-mise run dev                  # app with hot reload (uses %APPDATA%\dev.lattice.app.debug)
+mise run dev                  # app with hot reload (uses %APPDATA%\Lattice Dev)
 mise run lint                 # overlay build, rustfmt --check, clippy -D warnings, oxlint, prettier --check, React Compiler check
 mise run test                 # lint + cargo test --workspace + npm test + npm run build (typecheck incl. tests)
 mise run e2e                  # Playwright over the mock backend (needs `npx playwright install chromium` once)
@@ -28,7 +28,7 @@ mise exec -- npx playwright test e2e/reader.spec.ts -g "<title>"
 - `src-tauri` embeds `src-tauri/overlay-dist/overlay.js` via `include_str!`, so run `npm run build:overlay` before building/clippy-ing the Tauri crate (`mise run lint` and `npm run dev` do it).
 - E2E specs read the Japanese UI (locale `ja-JP`); only `e2e/english.spec.ts` runs in English. Set `E2E_PORT` when several checkouts run the suite at once.
 - If `lattice.exe` is running it locks the build output; stopping it is fine.
-- Debug app and CLI builds use `%APPDATA%\dev.lattice.app.debug`; release builds use `%APPDATA%\dev.lattice.app`. Development starts with an empty library and no automatic migration. Saved data-folder selections, WebView2 profiles, caches, and logs are separate. Portable mode and CLI `--data-dir` overrides keep their existing behavior.
+- Debug app and CLI builds use `%APPDATA%\Lattice Dev`; release builds use `%APPDATA%\Lattice`. Each profile renames its own legacy data folder on first start when the new folder is absent; release data never moves into the development library. Saved data-folder selections, WebView2 profiles, caches, and logs are separate. Tauri identifiers and LocalAppData browser profiles/logs keep their existing names. Portable mode and CLI `--data-dir` overrides bypass default-folder migration.
 
 ## Architecture
 
@@ -57,5 +57,5 @@ A command touches several places, and tests catch the misses:
 - **Migrations** in `store.rs` (`MIGRATIONS`) are append-only; a migration test finds its migration by content, not by index. Credential settings use the `secret.` prefix and are excluded from backups.
 - **React Compiler** must compile every component (`scripts/react-compiler.mjs`); it silently skips constructs like try/finally, so restructure rather than suppress.
 - **Formatting:** 160-column lines in both rustfmt and Prettier; rustfmt puts every `if/else` and `let … else` block on its own lines; every TS block is braced. Workspace clippy denies `unwrap_used`, `todo`, `dbg_macro` etc. outside tests; `#[allow]` needs a `reason`.
-- Comments explain *why* (constraints, past bugs), often citing requirement/roadmap ids like `F3`, `G51`, `§12`. A deliberate deferral is marked `// shortcut: …`.
+- Comments explain *why* (constraints, past bugs), often citing roadmap ids like `F3`, `G51` or numbered sections in `docs/design-review.md`. A deliberate deferral is marked `// shortcut: …`.
 - The app version is shared by `package.json` and the workspace `Cargo.toml`; bump with `npm run bump -- <x.y.z>`. Releases: `docs/release.md`.

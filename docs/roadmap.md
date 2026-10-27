@@ -1,6 +1,6 @@
 # ロードマップ（未実装項目）
 
-要件定義と 2026-10-17 時点の実装を突き合わせた未実装項目の一覧。実装済みの内容は `docs/design-review.md` を参照。
+利用時の要望、レビュー、初期計画から整理した実装状況と未実装項目の一覧。実装済みの内容は `docs/design-review.md` を参照。
 
 状態: **済** は実装済み（`docs/design-review.md` の該当節を参照）、**進行中** は着手済み、**次** は次に着手する、**後** は MVP 後でよい、**将来** は Phase 2 以降、**検討** は仕様の決定待ち。
 
@@ -11,9 +11,9 @@
 | F1 | 記事一覧クリック時に固まる | 済 | クリックした記事を即座に選択状態にし、ページの読み込み中はローディングを表示する。 |
 | F2 | 「その他のモデル」が選べない | 済 | `SettingsView` の select が `custom` を選んでも preset 値のまま戻るバグ。F3 の設定 UI で作り直す。 |
 | F3 | モデルの Fallback（最大 3 つ） | 済 | provider + model の組を 3 つまで並べ、1 つ目が usage limit などで失敗したら 2 つ目を使う。`LlmProvider` を実装する chain として作るので、domain 側は変わらない。 |
-| F4 | Codex CLI / OpenAI API / Gemini API | 済 | §9。adapter を追加する。API key は DB の `settings` に `secret.` 接頭辞で保存し、バックアップからは除く。 |
-| F5 | 自動分類 | 済 | LLM の `classify` job（§4.6）。記事にジャンルを付ける。ジャンルは既存ジャンルを優先して再利用させ、ユーザーが変更できる。 |
-| F6 | RSS / Atom | 済 | §13。feed を登録し、定期的に取得して新着を ingest job に流す。 |
+| F4 | Codex CLI / OpenAI API / Gemini API | 済 | AI provider の adapter を追加する。API key は DB の `settings` に `secret.` 接頭辞で保存し、バックアップからは除く。 |
+| F5 | 自動分類 | 済 | LLM の `classify` job。記事にジャンルを付ける。ジャンルは既存ジャンルを優先して再利用させ、ユーザーが変更できる。 |
+| F6 | RSS / Atom | 済 | feed を登録し、定期的に取得して新着を ingest job に流す。 |
 | F7 | 2 つの表示モード | 済 | 「feed ごと → その中でジャンルごと」と「ジャンルごと」を切り替える。 |
 | F8 | 追加日時ソート | 済 | 一覧の並び順を 追加日時（新しい順／古い順）・公開日時 から選べるようにする。 |
 | F9 | LLM との対話ペイン | 済 | NotebookLM のように、保存した記事を根拠に回答し、根拠の block を引用・ジャンプできる。スコープ（この記事／タグ／ジャンル／feed／全体）を指定する。全体のときは hybrid search で上位 block だけを渡す。 |
@@ -63,7 +63,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G35 | 技術書の取り込み | 将来 | G31 の延長。 |
 | G36 | URL バーから検索 | 済 | Page のツールバーの URL をクリックすると全体を選択した入力欄になり、Enter で開く・Esc で戻す。`http(s)://` で始まる入力はそのまま、ホストらしい入力（`example.com/x`・`localhost:3000`・IP）は `https://` を付けて開き、それ以外は検索する（`toNavigation`）。設定「ブラウザ」で検索エンジン（DuckDuckGo（既定）・Google・Bing・Brave Search・Kagi・`%s` を含むカスタム URL）を選ぶ。再読み込みの隣にホームボタン（エンジンのトップページ）。 |
 | G37 | 更新通知とアプリ内アップデート | 済 | `tauri-plugin-updater` が GitHub の公開済み release の `latest.json` を読む。起動時と 設定 › アップデート の「更新を確認」で確認し、新しい版があればタイトルバーの下にバー（版・リリースノート（Page 表示で開く）・「更新して再起動」・「後で」）を出す。ダウンロードの進み具合を表示し、署名を確かめて NSIS インストーラーを passive で実行する（インストーラーがアプリを閉じて新しい版を起動する）。公開鍵は `tauri.conf.json` に置き、placeholder のままなら確認せず「設定されていません」と表示する。鍵の作り方と secret は `docs/release.md`。 |
-| G38 | データ保存先の変更 | 済 | 既定は `%APPDATA%\dev.lattice.app` のまま。exe の隣に `portable`（または `lattice.portable`）があれば、DB・バックアップ・エクスポート・モデル・ログ・WebView2 のプロファイルを exe の隣の `data` に置く（portable zip はこのファイル入り）。設定 › ログ・保存場所 の「変更…」で Rust 側のダイアログからフォルダを選び、DB を `VACUUM INTO`（API キーも含む）で、backups・exports・models をコピーし、既定のフォルダの `data-location.json` に記録して再起動を促す。既にデータがあるフォルダはコピーせずに切り替える。元のデータは消さない。記録が読めない・フォルダが作れないときは既定の場所で起動し、設定画面に理由を出す（`src-tauri/src/location.rs`）。 |
+| G38 | データ保存先の変更 | 済 | 既定は `%APPDATA%\Lattice`（開発版は `Lattice Dev`）。旧プロファイルのフォルダは、新しい既定がなければ名前を変更して引き継ぐ。「フォルダを開く」で現在の保存先を開ける。exe の隣に `portable`（または `lattice.portable`）があれば、DB・バックアップ・エクスポート・モデル・ログ・WebView2 のプロファイルを exe の隣の `data` に置く（portable zip はこのファイル入り）。設定 › ログ・保存場所 の「変更…」で Rust 側のダイアログからフォルダを選び、DB を `VACUUM INTO`（API キーも含む）で、backups・exports・models をコピーし、既定のフォルダの `data-location.json` に記録して再起動を促す。既にデータがあるフォルダはコピーせずに切り替える。元のデータは消さない。記録が読めない・フォルダが作れないときは既定の場所で起動し、設定画面に理由を出す（`src-tauri/src/location.rs`）。 |
 | G39 | 単体テスト・E2E テストの強化 | 済 | `e2e/`: Vite が本物のフロントエンドを `@tauri-apps/api/mocks` の上で配信し、Playwright（Chromium）が操作する。mock backend は `e2e/mock.ts` の 1 つの表（`src/api.ts` の全 command と window / webview plugin）で、サンプルデータは 40 記事・6 フィード・訳文・Markdown 記事・検索・job・対話。spec は一覧の scope・facet と件数、タグの popover、j/k と Enter、Ctrl+K、検索、Reader の表示言語と block の反転、削除の確認、設定、ショートカットの変更、ペイン幅の保存（22 件、約 25 秒）。`api.ts` の command を mock が答えないと `npm test` が失敗する。単体テストは job の backoff・同一ホスト制限・実行中の job の取り消し・feed の重複 entry・overlay の sanitize・キー設定・ペイン移動に追加（design-review §18）。 |
 | G40 | CI でテスト | 済 | `.github/workflows/ci.yml`: master への push と PR で、windows-latest・`jdx/mise-action`（`mise.toml` の版）・cargo と npm と Playwright のブラウザの cache の上で、overlay のビルド、rustfmt、clippy、Rust のテスト、`npm test`、oxlint、型チェックとビルド、E2E を順に実行する。失敗時は Playwright のレポートを artifact に残す（design-review §18）。 |
 | G41 | リリースフロー | 済 | バージョンは `package.json`・`package-lock.json`・workspace の `Cargo.toml`（両 crate が継承、`tauri.conf.json` は持たない）・`Cargo.lock` にあり、`npm run bump -- <x.y.z>` で揃え、`npm test` がずれを検出する。`CHANGELOG.md`（Keep a Changelog）。`v*` タグで `.github/workflows/release.yml` が NSIS インストーラー・portable zip・`THIRD_PARTY_LICENSES` を draft release に載せる（署名鍵の secret があれば updater 用の `.sig` と `latest.json` も）。ライセンス一覧は cargo-about と `scripts/licenses.mjs` で生成（`mise run licenses`）。手順は `docs/release.md`。 |
@@ -82,7 +82,7 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | G54 | 自分の志向に基づく重要度判定 | 済 | job `relevance`（`relevance.rs`）が「自分について」を基準に 1〜5 と理由 1 行を付ける。分類と同じく最大 20 件を 1 回の LLM 呼び出しで判定（タイトル・ドメイン・要約か本文の冒頭 1500 字、untrusted input）。最新の判定だけを `relevance` 表に、判定に使ったプロフィールの hash と一緒に保存し、プロフィールを書き換えると「以前のプロフィールで判定」になる。プロフィールがあれば新しい記事を自動で判定（設定でオフ可）。一覧の目印（4・5 だけ）と理由の tooltip、Reader の理由の行、「重要度・高い順」、facet「重要度」、サイドバーの「重要」（既定 4 以上、設定で 2〜5）。「重要度を付け直す」は設定（未判定と古いものすべて）と一覧（表示中の記事）から（design-review §25）。 |
 | G55 | RSS フィードの取り込みフィルタ | 済 | `feed_filter.rs`。新着 entry を queue する前に、全体（設定 › 取り込みフィルタ）とフィードごと（フィードを管理 › 編集）のフィルタを両方通す。ルールはタイトル・URL・著者・カテゴリ・ドメイン・言語へのキーワードか正規表現（大文字小文字を区別しない）で、「除く」のどれかに合えば除外、「含む」があればどれかに合う必要がある。本文を載せているフィードには最短文字数。ルールを通ったものだけ、LLM がオンなら job `feed_filter` がフィードごとに最大 20 件まとめて判定する（タイトル・抜粋・「自分について」・指示。重要度の下限を選ぶと G54 と同じ 1〜5 の点数で決める）。LLM が失敗したら取り込み、フィードに理由を出す（fail open）。判定は `feed_items` に状態・理由・判定に使った値と一緒に残し、poll で判定し直さない。「除外された記事」に理由を出し、「取り込む」「このルールを外す」「除外分を再評価」ができる（design-review §25）。 |
 | G56 | 英単語の登録と学習 | 済 | Reader で英語の語・熟語を選ぶと「単語を登録」（ショートカット `w`）、文脈の文（ブロックの文から切り出す）・記事・block を保存する。Page では overlay が同じボタンを出し、`overlay_vocab`（browser webview から、画面に出ているときだけ、1 秒に 1 回まで、長さと「語が文に含まれる」を検証）で送る。出典はページの主張ではなく webview の URL で、保存済みの記事なら記事に結び付ける。LLM job `vocab`（20 語ずつ、文は untrusted、出力は検証）が見出し語・品詞・文脈での意味（日本語）・英語の定義・IPA・例文を付け、同じ見出し語の項目は 1 つにまとめて文脈を足す。意味が付くとカードが 2 枚（穴埋め＝意味をヒントに使われた形を答える、単語→意味＝答えの後に文脈）でき、「今日の復習」に quiz のカードと同じ 1 日の上限で並ぶ（同じ語のカードは 1 日 1 枚）。出典の箇所に飛べる。ツール › 単語帳で検索・並び替え（追加順・期限順）・意味の編集・停止・再取得・削除・Anki 用 CSV の書き出し、記事中の登録語に下線と意味のツールチップ（単語帳で切り替え、既定はオン）。`vocab.rs`・`review.rs`・`src/vocab/vocab.ts`、design-review §22。英語レベルからの候補提案は未着手。 |
-| G57 | CLI・外部エージェントから機能を呼ぶ | 済 | `crates/lattice-cli` の `lattice-cli`（アプリの `lattice.exe` と衝突しない名前）。アプリと同じ保存場所の解決（`lattice_core::location` に移した）で同じ DB を WAL で開き、`search`（モデルがなければ全文検索と明示）・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask`（アプリの LLM chain）を JSON か `--format text` で返す。`save`・`tag`・`read`・`favorite` は `--allow-write` か `LATTICE_ALLOW_WRITE=1` のときだけ。`save` は ingest job を積んでアプリの runner（30 秒ごとに queue を見る）に任せ、`--run` で CLI が同じコードで取得する。`lattice-cli mcp` は同じ操作を MCP の tool として stdio で出す（最小の JSON-RPC、結果に untrusted の明示と 25,000 文字の上限）。portable zip に同梱し、README に Claude Code の設定と prompt injection の注意を書いた。設計は `docs/design-review.md` §23。 |
+| G57 | CLI・外部エージェントから機能を呼ぶ | 済 | `crates/lattice-cli` の `lattice-cli`（アプリの `lattice.exe` と衝突しない名前）。アプリと同じ保存場所の解決（`lattice_core::location` に移した）で同じ DB を WAL で開き、`search`（モデルがなければ全文検索と明示）・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`jobs`・`ask`（アプリの LLM chain）を JSON か `--format text` で返す。`save`・`tag`・`read`・`favorite` は `--allow-write` か `LATTICE_ALLOW_WRITE=1` のときだけ。`save` は ingest job を積んでアプリの runner（30 秒ごとに queue を見る）に任せ、`--run` で CLI が同じコードで取得する。`lattice-cli mcp` は同じ操作を MCP の tool として stdio で出す（最小の JSON-RPC、結果に untrusted の明示と 25,000 文字の上限）。インストーラーと portable zip に同梱し、README に Claude Code の設定と prompt injection の注意を書いた。設計は `docs/design-review.md` §23。 |
 
 ### 2026-10-21 のフィードバック（H）
 
@@ -140,35 +140,35 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | I15 | Esc で戻る範囲 | 検討 | Esc で戻る対象に、並び順・グループの変更を含めるか（2.5）。 |
 | I16 | 記事 0 件の初期ジャンル | 検討 | 記事が 0 件の初期ジャンルを、設定に出し続けるか（2.6）。 |
 
-## 3. 要件定義の未実装項目
+## 3. 機能別の実装状況と今後の計画
 
 ### MVP 後すぐ
 
-| 項目 | 要件 | 状態 | 備考 |
+| 項目 | 分野 | 状態 | 備考 |
 |---|---|---|---|
-| 検索の metadata filter | §6 UC6, §10 | 一部済 | 未読・お気に入り・タグ・ジャンル・feed は済。domain・期間は未着手。 |
-| 再抽出コマンドと block ID の再利用 | §4.2, §6 | 済 | snapshot から再抽出し、`text_hash` が一致する block の id を再利用する。 |
-| bulk import の同一ホスト宛て並列数の制限 | §15 | 済 | 同じホストへの同時取得を 1 本にする。 |
-| job の一覧と再実行 UI | §4.6, §25 Observability | 済 | 失敗した job（job・記事・エラー・試行回数・時刻）を一覧し、再実行できる。 |
-| エクスポート | §17 | 済 | 記事・訳・要約・対話を JSONL（gzip）で書き出す（design-review §10）。 |
-| 画像の保存 | §26-10 | 済 | SQLite に保存し、Reader には `data:` URL で渡す（design-review §14）。 |
+| 検索の metadata filter | 検索・一覧の絞り込み | 一部済 | 未読・お気に入り・タグ・ジャンル・feed は済。domain・期間は未着手。 |
+| 再抽出コマンドと block ID の再利用 | 取り込み・再抽出 | 済 | snapshot から再抽出し、`text_hash` が一致する block の id を再利用する。 |
+| bulk import の同一ホスト宛て並列数の制限 | HTTP 取得 | 済 | 同じホストへの同時取得を 1 本にする。 |
+| job の一覧と再実行 UI | ジョブ管理・ログ | 済 | 失敗した job（job・記事・エラー・試行回数・時刻）を一覧し、再実行できる。 |
+| エクスポート | データの持ち出し | 済 | 記事・訳・要約・対話を JSONL（gzip）で書き出す（design-review §10）。 |
+| 画像の保存 | Reader のオフライン閲覧 | 済 | SQLite に保存し、Reader には `data:` URL で渡す（design-review §14）。 |
 
 ### LLM 処理
 
-| 項目 | 要件 | 状態 | 備考 |
+| 項目 | 分野 | 状態 | 備考 |
 |---|---|---|---|
-| タグ付け | §3 UC7 | 済 | F5 の分類と同じ job でタグ候補も出す。 |
-| difficulty estimation | §3 UC7, §4.6 | 済 | Phase 3 の表示制御の入力になる。 |
-| relevance estimation | §3 UC7, §12 | 済 | G54。サイドバーの「重要」が「High relevance」inbox。 |
-| 要約の種類（short / detailed / key_points） | §4.4 | 後 | 今は normal だけ。 |
-| technical term を英語のまま残すモード | §8 | 済 | 翻訳 prompt の option にする。 |
-| Anthropic API provider | §9 | 済 | `anthropic.rs`（design-review §6）。 |
-| Local Model provider | §9 | 後 | F4 の adapter と同じ形で追加できる。 |
-| F9 のスコープに genre / feed | F9 | 済 | |
+| タグ付け | 自動分類 | 済 | F5 の分類と同じ job でタグ候補も出す。 |
+| difficulty estimation | 難易度推定 | 済 | Phase 3 の表示制御の入力になる。 |
+| relevance estimation | 重要度判定 | 済 | G54。サイドバーの「重要」が「High relevance」inbox。 |
+| 要約の種類（short / detailed / key_points） | 要約 | 後 | 今は normal だけ。 |
+| technical term を英語のまま残すモード | 翻訳 | 済 | 翻訳 prompt の option にする。 |
+| Anthropic API provider | AI provider | 済 | `anthropic.rs`（design-review §6）。 |
+| Local Model provider | AI provider | 後 | F4 の adapter と同じ形で追加できる。 |
+| F9 のスコープに genre / feed | 対話の範囲 | 済 | |
 
 ### 対話の広い範囲（検討中）
 
-F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは hybrid search の上位 30 block（約 40,000 字）だけだった。範囲外の資料を使えないので、「このテーマについて何が分かっているか」（§24）のような網羅型の質問に弱い。上位が 2〜3 記事に偏りやすいのも原因の一つ。NotebookLM のように数百ソースを横断して答えられるようにしたい。
+F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは hybrid search の上位 30 block（約 40,000 字）だけだった。範囲外の資料を使えないので、「このテーマについて何が分かっているか」のような網羅型の質問に弱い。上位が 2〜3 記事に偏りやすいのも原因の一つ。NotebookLM のように数百ソースを横断して答えられるようにしたい。
 
 | 案 | 状態 | 内容 | 代償 |
 |---|---|---|---|
@@ -181,19 +181,31 @@ F9 の対話は範囲に数千記事を指定できるが、LLM に渡すのは 
 
 ### 検索
 
-| 項目 | 要件 | 状態 | 備考 |
+| 項目 | 分野 | 状態 | 備考 |
 |---|---|---|---|
-| reranker | §10.3 | 将来 | |
-| vector index（sqlite-vec / ANN） | §16 | 将来 | 10^6 block を超えたら。`Store::scan_embeddings` を差し替える。 |
+| reranker | 検索結果の順位 | 将来 | |
+| vector index（sqlite-vec / ANN） | 検索の規模 | 将来 | 10^6 block を超えたら。`Store::scan_embeddings` を差し替える。 |
 
 ### 収集
 
-| 項目 | 要件 | 状態 | 備考 |
+| 項目 | 分野 | 状態 | 備考 |
 |---|---|---|---|
-| Browser extension | §13 | 将来 | |
-| Pocket / Raindrop import | §13 | 後 | 今の bulk import は URL を抜き出すので、export ファイルはそのまま読める。専用 import は tag・既読も取り込む場合に作る。 |
-| GitHub trending / Hacker News / RSSHub | §13 | 後 | F6 の feed として登録できるもの（RSSHub など）はそれで足りる。 |
-| Discord 通知 | §12 | 将来 | |
+| Browser extension | ブラウザからの収集 | 将来 | |
+| Pocket / Raindrop import | 他サービスからの移行 | 後 | 今の bulk import は URL を抜き出すので、export ファイルはそのまま読める。専用 import は tag・既読も取り込む場合に作る。 |
+| GitHub trending / Hacker News / RSSHub | フィード・外部ソース | 後 | F6 の feed として登録できるもの（RSSHub など）はそれで足りる。 |
+| Discord 通知 | 外部連携 | 将来 | |
+
+### 記事取得の詳細設定
+
+| 項目 | 状態 | 方針 |
+|---|---|---|
+| 記事取得の通信先ルールを設定する UI | 将来 | 0.1.0 では設定画面から隠す。社内 RSS や localhost の文書を取得するときの例外設定として、用途が分かる名前・説明で再設計する。対象は直接 HTTP で取得する記事・PDF・フィード・画像・サイトアイコンと、そのリダイレクト。内蔵ブラウザ・JS 描画・AI provider・バックアップ・意味検索モデルのダウンロードは対象外。内部の既定のプライベートアドレス拒否、保存済みルールと API は維持する。プロキシ経由では接続先 IP を確認できない制約も説明する。 |
+
+### 配布・リリース
+
+| 項目 | 状態 | 方針 |
+|---|---|---|
+| Windows Authenticode 署名 | 後 | 0.1.0 公開後に対応する。証明書または署名サービスを選び、GitHub Actions で GUI・CLI の exe と NSIS インストーラーに署名・タイムスタンプを付ける。配布物の署名と発行元表示をクリーンな Windows 環境で確認する。Tauri の更新署名は設定済み。 |
 
 ### Phase 2〜5
 

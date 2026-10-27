@@ -613,16 +613,18 @@ When you click into a web page, the page gets the keyboard. Lattice still catche
 
 ## CLI and MCP
 
-`lattice-cli` reads and adds to your library from a terminal, and serves it to AI agents such as Claude Code over MCP. It is in the portable zip, next to `Lattice.exe`. It uses the same data as the app, including the portable data folder and a folder you chose in **Settings › Logs & storage**, and works while the app is running.
+`lattice-cli` reads and adds to your library from a terminal, and serves it to AI agents such as Claude Code over MCP. Both the installer and portable zip include `lattice-cli.exe` next to the GUI executable. The installer defaults to `%LOCALAPPDATA%\Lattice` and does not add the CLI to PATH. It uses the same data as the app, including the portable data folder and a folder you chose in **Settings › Logs & storage**, and works while the app is running.
+
+For a custom installation folder, replace the executable path in the examples below. For a portable copy, use `.\lattice-cli.exe` from its extracted folder. That copy uses its adjacent `data`, so use `--data-dir PATH` to access a different library. Stop MCP clients before updating or uninstalling Lattice so they release the CLI executable.
 
 ### Commands
 
-```bash
-lattice-cli search "MVCC write skew" --limit 5
+```powershell
+& "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" search "MVCC write skew" --limit 5
 ```
 
-```bash
-lattice-cli --format text get 42
+```powershell
+& "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" --format text get 42
 ```
 
 | Command | What it does |
@@ -680,8 +682,8 @@ These options work with every command:
 
 ### Use Lattice from Claude Code
 
-```bash
-claude mcp add lattice -- lattice-cli mcp
+```powershell
+claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
 This gives the agent `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
@@ -701,13 +703,15 @@ Lattice keeps all its data in one SQLite file: articles, the fetched HTML, trans
 
 | What | Where (installed version) |
 |---|---|
-| Database | `%APPDATA%\dev.lattice.app\lattice.db` |
-| Backups | `%APPDATA%\dev.lattice.app\backups\` |
-| Exports (JSON, CSV, OPML) | `%APPDATA%\dev.lattice.app\exports\` |
-| Semantic search model | `%APPDATA%\dev.lattice.app\models\` |
+| Database | `%APPDATA%\Lattice\lattice.db` |
+| Backups | `%APPDATA%\Lattice\backups\` |
+| Exports (JSON, CSV, OPML) | `%APPDATA%\Lattice\exports\` |
+| Semantic search model | `%APPDATA%\Lattice\models\` |
 | Logs | `%LOCALAPPDATA%\dev.lattice.app\logs\` |
 
-**Settings › Logs & storage** shows the exact paths.
+**Settings › Logs & storage** shows the exact paths. **Open folder** opens the data folder currently in use, including custom and portable locations.
+
+Older test builds used `%APPDATA%\dev.lattice.app`. Close old app and CLI processes before starting the new build. If the new default folder does not exist, Lattice renames the old folder and keeps its library and saved location. Existing destination folders are never overwritten or merged. Development builds use a separate `Lattice Dev` folder.
 
 **Portable copy.** The portable zip keeps everything in a `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
 
@@ -761,17 +765,15 @@ Saved pages are written by other people, so Lattice treats their content as data
 - Web pages run in a separate browser that can only open http and https addresses and can reach only a few narrow Lattice functions.
 - AI providers never get tools. The CLI providers run with tools, MCP servers and user settings turned off, in an empty temporary folder. Every prompt tells the model to ignore instructions in the article.
 - Translations that go back into a page are cleaned of scripts and unsafe links first.
-- By default, direct HTTP fetches reject private network addresses. You can configure exceptions in **Settings › Network destinations**.
+- By default, direct HTTP fetches reject private network addresses.
 
-### Allow an internal site or restrict downloads
+### Article download destinations
 
-Open **Settings › Network destinations**. Public websites work by default. Add internal sites to **Allowed destinations**, one per line, then click **Save**. Use a hostname such as `localhost`, an IP address, or a CIDR range such as `192.168.1.0/24`. A hostname matches exactly. `*.example.com` matches subdomains but excludes `example.com`. Rules cover all ports and paths. Do not enter a full URL.
+The default restriction applies to direct HTTP downloads of articles, PDFs, feeds, saved images, and site icons, including redirects. It does not govern the built-in browser, JavaScript rendering, AI providers, backups, or semantic search model downloads.
 
-**Denied destinations** wins over allowed entries in every mode. Under **Advanced settings**, select **Allowed destinations only** to block everything outside the allowlist. An empty allowlist blocks all fetches in that mode. Allow a URL containing a hostname by hostname. IP ranges also filter resolved addresses on direct connections. **Allow all** permits internal networks too, including requests triggered by fetched pages. Deny rules still apply.
+Version 0.1.0 has no settings UI for destination rules. Previously saved rules still apply. Configuration for internal sites is planned as [advanced article download settings](roadmap.md#記事取得の詳細設定).
 
-The rules cover article and PDF downloads, feeds, saved images, and site icons, including redirects. They do not govern the built-in browser, JavaScript rendering, AI providers, or backups. Changes apply to newly started fetches and all background workers. Active fetches keep their original settings. The CLI and MCP server read the saved policy at startup. Restart them after changing it.
-
-OS and environment proxy settings, including proxy bypass rules, remain enabled. A proxy resolves destination hostnames itself, so Lattice cannot verify its final destination IP. Hostname rules still apply, but IP and CIDR rules only apply to IP literals in URLs on that route. Configure the proxy's own access rules if you need to restrict addresses after DNS resolution.
+OS and environment proxy settings, including proxy bypass rules, remain enabled. A proxy resolves destination hostnames itself, so Lattice cannot verify its final destination IP. Use the proxy's own access rules when you need to restrict those addresses.
 
 ## Troubleshooting
 

@@ -125,6 +125,7 @@ const COMMANDS: &[&str] = &[
     "cancel_job",
     "export_json",
     "pick_data_dir",
+    "open_data_dir",
     "set_data_dir",
     "restart_app",
     "get_autostart",

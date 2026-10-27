@@ -54,7 +54,7 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
     let dir = match &cli.data_dir {
         Some(d) => d.clone(),
         None => {
-            let loc = location::detect(&location::default_dir().ok_or("cannot find the app data folder: pass --data-dir")?);
+            let loc = location::detect().map_err(|e| e.to_string())?;
             if let Some(w) = &loc.warning {
                 eprintln!("warning: {w}");
             }

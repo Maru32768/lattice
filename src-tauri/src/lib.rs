@@ -891,6 +891,14 @@ struct PickedDir {
     has_data: bool,
 }
 
+#[tauri::command(async)]
+fn open_data_dir(app: State<'_, App>) -> Result<(), String> {
+    let explorer =
+        std::env::var_os("SystemRoot").map(PathBuf::from).ok_or_else(|| msg!("location.openFailed", error = "SystemRoot is not set"))?.join("explorer.exe");
+    std::process::Command::new(explorer).arg(&app.data_dir).spawn().map_err(|e| msg!("location.openFailed", error = e.to_string()))?;
+    Ok(())
+}
+
 /// Picks the new data folder with a native dialog (the webview never passes a path).
 #[tauri::command]
 async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: tauri::AppHandle) -> Result<Option<PickedDir>, String> {
@@ -920,7 +928,7 @@ async fn pick_data_dir(app: State<'_, App>, loc: State<'_, Location>, handle: ta
 /// Uses the picked folder from the next start: copies the data there (`copy`), or switches to the
 /// Lattice data already in it. The current folder is left as it is.
 #[tauri::command]
-async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool) -> Result<String, String> {
+async fn set_data_dir(app: State<'_, App>, copy: bool) -> Result<String, String> {
     let target = lock(&app.picked_dir).take().ok_or_else(|| msg!("location.pickAgain"))?;
     let has_data = target.join(location::DB_FILE).exists();
     if copy && has_data {
@@ -934,7 +942,7 @@ async fn set_data_dir(app: State<'_, App>, handle: tauri::AppHandle, copy: bool)
         tauri::async_runtime::spawn_blocking(move || location::copy_data(&store, &from, &to)).await.map_err(err)??;
         log::info!("copied the data from {} to {}", app.data_dir.display(), target.display());
     }
-    let default_dir = handle.path().app_data_dir().map_err(err)?;
+    let default_dir = location::default_dir().ok_or_else(|| msg!("location.noDefaultFolder"))?;
     location::write_bootstrap(&default_dir, &target)
         .map_err(|e| msg!("location.recordFailed", path = default_dir.join(location::BOOTSTRAP_FILE).display().to_string(), error = e.to_string()))?;
     Ok(target.display().to_string())
@@ -1096,7 +1104,7 @@ pub fn run() {
         .manage(tabdrag::TabDrag::default())
         .on_window_event(popout::on_window_event)
         .setup(|app| {
-            let loc = location::detect(&app.path().app_data_dir()?);
+            let loc = location::detect()?;
             // The log folder follows the data in portable mode, so the plugin is added here.
             let file_name = Some("lattice".to_string());
             let log_file = match loc.log_dir() {
@@ -1329,6 +1337,7 @@ pub fn run() {
             cancel_job,
             export_json,
             pick_data_dir,
+            open_data_dir,
             set_data_dir,
             restart_app,
             get_autostart,

@@ -10,7 +10,6 @@ const SECTIONS = [
   "取り込み・JS 描画",
   "取り込みフィルタ",
   "画像",
-  "通信先の制限",
   "復習",
   "表示言語",
   "ショートカット",
@@ -56,50 +55,53 @@ test("the launch-at-sign-in switch keeps what was chosen", async ({ app }) => {
   await expect(autostart).toBeChecked();
 });
 
-test("network rules save together, persist on reopening and keep invalid drafts out of saved settings", async ({ app }, testInfo) => {
+test("the data folder opens through the backend without a webview-supplied path", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
-  const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
-  await section("通信先の制限").click();
-  const allow = app.getByLabel("許可する通信先", { exact: true });
-  const deny = app.getByLabel("拒否する通信先", { exact: true });
-  await expect(allow).toBeEnabled();
-  expect((await allow.boundingBox())?.height).toBeGreaterThanOrEqual(100);
-  await expect(allow).toHaveValue("");
-  await allow.fill("localhost\n192.168.1.0/24\n*.example.com\n");
-  await deny.fill("blocked.example.com");
-  await app.getByText("詳細設定", { exact: true }).click();
-  await app.getByLabel("許可方式", { exact: true }).selectOption("allowlist");
-  await app.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(app.getByRole("status")).toHaveText("保存しました");
-  expect(await callsOf(app, "set_network_settings")).toEqual([
-    { settings: { mode: "allowlist", allow: ["localhost", "192.168.1.0/24", "*.example.com"], deny: ["blocked.example.com"] } },
-  ]);
-  await section("ブラウザ").click();
-  await section("通信先の制限").click();
-  await expect(allow).toHaveValue("localhost\n192.168.1.0/24\n*.example.com");
-  await expect(deny).toHaveValue("blocked.example.com");
-  await expect(app.locator(".stg main")).toContainText("最終的な接続先 IP を確認できない");
-  await expect(app.locator(".stg main")).toContainText("内蔵ブラウザ・JS 描画");
-
-  await allow.fill("https://bad.example/path");
-  await app.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(app.getByRole("alert")).toContainText("通信先のルールが無効です");
-  await section("ブラウザ").click();
-  await section("通信先の制限").click();
-  await expect(allow).toHaveValue("localhost\n192.168.1.0/24\n*.example.com");
-  await app.getByText("詳細設定", { exact: true }).click();
-  await expect(app.getByLabel("許可方式", { exact: true })).toHaveValue("allowlist");
-  await app.getByLabel("許可方式", { exact: true }).selectOption("unrestricted");
-  await app.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(app.getByRole("status")).toHaveText("保存しました");
-  await section("ブラウザ").click();
-  await section("通信先の制限").click();
-  await app.getByText("詳細設定", { exact: true }).click();
-  await expect(app.getByLabel("許可方式", { exact: true })).toHaveValue("unrestricted");
-  await app.screenshot({ path: testInfo.outputPath("network-settings.png") });
+  await nav
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("ログ・保存場所", { exact: true }) })
+    .click();
+  await expect(app.locator(".stg main")).toContainText("AppData\\Roaming\\Lattice");
+  await app.getByRole("button", { name: "フォルダを開く", exact: true }).click();
+  await expect.poll(() => callsOf(app, "open_data_dir")).toEqual([{}]);
 });
 
+test("portable storage can be opened even though its location cannot be changed", async ({ app }) => {
+  await app.evaluate(() => {
+    const internals: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+    if (!internals || typeof internals !== "object" || !("invoke" in internals) || typeof internals.invoke !== "function") {
+      throw new Error("Tauri invoke is unavailable");
+    }
+    const invoke = internals.invoke;
+    internals.invoke = async (cmd: string, args?: unknown, options?: unknown): Promise<unknown> => {
+      const result: unknown = await Reflect.apply(invoke, internals, [cmd, args, options]);
+      if (cmd === "get_settings" && result && typeof result === "object") {
+        return { ...result, location: "portable", data_dir: "C:\\Lattice\\data" };
+      }
+      return result;
+    };
+  });
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  await nav
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("ログ・保存場所", { exact: true }) })
+    .click();
+  await expect(app.locator(".stg main")).toContainText("C:\\Lattice\\data");
+  await expect(app.getByRole("button", { name: "変更…", exact: true })).toBeHidden();
+  await app.getByRole("button", { name: "フォルダを開く", exact: true }).click();
+  await expect.poll(() => callsOf(app, "open_data_dir")).toEqual([{}]);
+});
+
+test("article download rules are not exposed in settings", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  await expect(nav.getByRole("button", { name: "通信先の制限", exact: true })).toHaveCount(0);
+  await expect(app.getByLabel("許可する通信先", { exact: true })).toHaveCount(0);
+  await expect.poll(() => callsOf(app, "get_network_settings")).toEqual([]);
+  await expect.poll(() => callsOf(app, "set_network_settings")).toEqual([]);
+});
 test("in a narrow window the provider chain wraps instead of squeezing its selects to nothing", async ({ app }) => {
   await app.setViewportSize({ width: 820, height: 800 });
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();

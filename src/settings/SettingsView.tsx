@@ -10,7 +10,6 @@ import { FilterEditor } from "../feeds/FeedFilterEditor";
 import { GenreSettings } from "./GenreSettings";
 import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
-import { NetworkSettings } from "./NetworkSettings";
 import { QuizSettings } from "./QuizSettings";
 import { BackupSection } from "./BackupSection";
 import { R2BackupSection } from "./R2BackupSection";
@@ -35,7 +34,6 @@ export type SettingsSection =
   | "genres"
   | "render"
   | "images"
-  | "network"
   | "review"
   | "shortcuts"
   | "browser"
@@ -66,7 +64,6 @@ const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: Pla
   { id: "render", group: "library", title: "settingsView.render" },
   { id: "feedFilter", group: "library", title: "settingsView.feedFilter", lead: "settingsView.feedFilterLead" },
   { id: "images", group: "library", title: "settingsView.images" },
-  { id: "network", group: "library", title: "networkSettings.title" },
   { id: "review", group: "library", title: "settingsView.review", lead: "settingsView.reviewLead" },
   { id: "language", group: "controls", title: "language.title" },
   { id: "shortcuts", group: "controls", title: "settingsView.shortcuts", lead: "settingsView.shortcutsLead" },
@@ -110,8 +107,6 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
       );
     case "images":
       return <ImageSettings />;
-    case "network":
-      return <NetworkSettings />;
     case "review":
       return <QuizSettings />;
     case "language":

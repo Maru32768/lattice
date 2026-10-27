@@ -575,20 +575,20 @@ export const handlers = {
     );
   },
   set_read: ({ id, read }: { id: number; read: boolean }) => void (article(id).read_status = read ? "read" : "unread"),
-  db_path: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\lattice.db",
+  db_path: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\lattice.db",
   get_settings: (): Settings => ({
-    db_path: "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\lattice.db",
-    data_dir: "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app",
+    db_path: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\lattice.db",
+    data_dir: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice",
     location: "default",
     location_warning: null,
     log_dir: "C:\\Users\\e2e\\AppData\\Local\\dev.lattice.app\\logs",
-    backup_dir: "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\backups",
+    backup_dir: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\backups",
     backup_keep: store.backupKeep,
   }),
   get_llm_settings: (): LlmSettings => store.llm,
   set_llm_chain: ({ chain }: { chain: ChainEntry[] }) => void (store.llm = { ...store.llm, chain }),
   set_api_key: none,
-  backup_db: () => ({ path: "C:\\Users\\e2e\\AppData\\Roaming\\dev.lattice.app\\backups\\lattice-20261020.db", warning: null }),
+  backup_db: () => ({ path: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\backups\\lattice-20261020.db", warning: null }),
   set_backup_keep: ({ keep }: { keep: number }) => void (store.backupKeep = keep),
   import_urls: ({ text }: { text: string }) => {
     const urls = text.match(/https?:\/\/\S+/g) ?? [];
@@ -852,6 +852,7 @@ export const handlers = {
   r2_clear_secret: () => void (store.r2 = { ...store.r2, has_secret: false }),
   r2_backup_now: (): string => "lattice/2026-10-20T03-00-00Z.db.gz",
   pick_data_dir: () => null,
+  open_data_dir: none,
   set_data_dir: (): string => "C:\\Users\\e2e\\LatticeData",
   restart_app: none,
   update_info: (): UpdateInfo => ({ current: "0.1.0", configured: false, portable: false }),

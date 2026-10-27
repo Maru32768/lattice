@@ -1,4 +1,4 @@
-# Builds a draft GitHub release for a `v*` tag: the NSIS installer, a portable zip (with lattice-cli), the
+# Builds a draft GitHub release for a `v*` tag: the NSIS installer and portable zip (both with lattice-cli), the
 # third-party license list and signed updater artifacts
 # (the installer's .sig and latest.json). See docs/release.md.
 name: Release
@@ -66,9 +66,6 @@ jobs:
           releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
           args: --config src-tauri/tauri.updater.conf.json
-
-      - name: Build the CLI
-        run: mise exec -- cargo build --release -p lattice-cli
 
       - name: Portable zip and license list
         shell: pwsh

@@ -20,6 +20,8 @@ Windows 10 / 11 で動きます（WebView2 が必要です。Windows 11 には�
 - **インストーラー**（`Lattice_x.y.z_x64-setup.exe`）: インストールし、アップデートも受け取ります。
 - **ポータブル版の zip**: 好きな場所に展開して `Lattice.exe` を起動します。データはすべて隣の `data` フォルダに置きます。
 
+インストーラーは Microsoft Visual C++ x64 ランタイムを同梱し、必要な場合に導入します。このとき管理者の承認を求めることがあります。ポータブル版の GUI・CLI は、未導入なら [Microsoft Visual C++ x64 ランタイム](https://aka.ms/vc14/vc_redist.x64.exe)を別途インストールしてください。ポータブル版は WebView2 がない場合も別途導入が必要です。
+
 まだリリースが公開されていない場合は、ソースからビルドしてください: [開発者向けガイド](docs/development.md)（英語）。
 
 ## はじめ方
@@ -42,10 +44,10 @@ AI プロバイダ・翻訳・バックアップ・エクスポート・デー�
 
 ## CLI と MCP
 
-ポータブル版の zip の `Lattice.exe` の隣にある `lattice-cli` で、ライブラリをターミナルから検索・閲覧し、Claude Code などのエージェントに MCP サーバーとして提供できます。
+`lattice-cli.exe` で、ライブラリをターミナルから検索・閲覧し、Claude Code などのエージェントに MCP サーバーとして提供できます。インストーラー・ポータブル版の両方に、GUI の隣の実行ファイルとして同梱しています。既定のインストール先なら、PowerShell で次を実行します。
 
-```bash
-claude mcp add lattice -- lattice-cli mcp
+```powershell
+claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
 保存した記事は他人が書いた Web ページなので、それを読むエージェントは本文に隠れた指示に誘導されることがあります。すべてのコマンドと、書き込みや危険な tool をそのエージェントから遠ざける方法は、[CLI と MCP](docs/guide.ja.md#cli-と-mcp) を読んでください。

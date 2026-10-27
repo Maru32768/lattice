@@ -6,6 +6,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "pwsh -NoProfile -File scripts/prepare-windows-bundle.ps1",
     "frontendDist": "../dist"
   },
   "app": {
@@ -33,6 +34,11 @@
   },
   "bundle": {
     "active": true,
+    "windows": {
+      "nsis": {
+        "installerHooks": "installer-hooks.nsh"
+      }
+    },
     "targets": [
       "nsis"
     ],

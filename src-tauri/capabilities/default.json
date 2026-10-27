@@ -147,6 +147,7 @@
     "allow-cancel-job",
     "allow-export-json",
     "allow-pick-data-dir",
+    "allow-open-data-dir",
     "allow-set-data-dir",
     "allow-restart-app",
     "allow-browser-open",

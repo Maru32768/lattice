@@ -611,16 +611,18 @@ Web ページをクリックすると、キーボードの入力はページに�
 
 ## CLI と MCP
 
-`lattice-cli` は、ライブラリをターミナルから読み書きし、Claude Code などの AI エージェントに MCP で提供します。ポータブル版の zip の `Lattice.exe` の隣にあります。アプリと同じデータ（ポータブル版の `data` フォルダや、「設定 › ログ・保存場所」で選んだフォルダも含む）を使い、アプリの起動中も使えます。
+`lattice-cli` は、ライブラリをターミナルから読み書きし、Claude Code などの AI エージェントに MCP で提供します。インストーラー・ポータブル版の両方に、GUI の隣の実行ファイルとして同梱しています。インストーラーの既定の保存先は `%LOCALAPPDATA%\Lattice` です。CLI を PATH には登録しません。アプリと同じデータ（ポータブル版の `data` フォルダや、「設定 › ログ・保存場所」で選んだフォルダも含む）を使い、アプリの起動中も使えます。
+
+保存先を変えた場合は、以下の例の実行ファイルのパスを置き換えてください。ポータブル版では、展開したフォルダから `.\lattice-cli.exe` を使います。そのコピーは隣の `data` を使うので、別のライブラリには `--data-dir PATH` を指定します。更新・アンインストールの前には、MCP クライアントを終了して CLI の実行を止めてください。
 
 ### コマンド
 
-```bash
-lattice-cli search "MVCC write skew" --limit 5
+```powershell
+& "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" search "MVCC write skew" --limit 5
 ```
 
-```bash
-lattice-cli --format text get 42
+```powershell
+& "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" --format text get 42
 ```
 
 | コマンド | 内容 |
@@ -678,8 +680,8 @@ lattice-cli --format text get 42
 
 ### Claude Code から使う
 
-```bash
-claude mcp add lattice -- lattice-cli mcp
+```powershell
+claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
 エージェントは `search`・`get`・`list`・`summary`・`tags`・`genres`・`feeds`・`collections`・`jobs`・`ask` を tool として使えます。`save`・`tag`・`read`・`favorite` も渡すには、`mcp` の後に `--allow-write` を付けます。
@@ -699,13 +701,15 @@ claude mcp add lattice -- lattice-cli mcp
 
 | もの | 場所（インストール版） |
 |---|---|
-| DB | `%APPDATA%\dev.lattice.app\lattice.db` |
-| バックアップ | `%APPDATA%\dev.lattice.app\backups\` |
-| エクスポート（JSON・CSV・OPML） | `%APPDATA%\dev.lattice.app\exports\` |
-| 意味検索のモデル | `%APPDATA%\dev.lattice.app\models\` |
+| DB | `%APPDATA%\Lattice\lattice.db` |
+| バックアップ | `%APPDATA%\Lattice\backups\` |
+| エクスポート（JSON・CSV・OPML） | `%APPDATA%\Lattice\exports\` |
+| 意味検索のモデル | `%APPDATA%\Lattice\models\` |
 | ログ | `%LOCALAPPDATA%\dev.lattice.app\logs\` |
 
-正確なパスは「設定 › ログ・保存場所」に出ます。
+正確なパスは「設定 › ログ・保存場所」に出ます。「フォルダを開く」で、現在使っているデータフォルダを開けます。自分で選んだ場所やポータブル版にも対応します。
+
+以前の検証版は `%APPDATA%\dev.lattice.app` を使っていました。新しい版を起動する前に、古いアプリと CLI を閉じてください。新しい既定フォルダがまだなければ、旧フォルダの名前を変更してデータと保存場所の設定を引き継ぎます。移行先がすでにある場合は、上書きや統合をしません。開発版は別の `Lattice Dev` フォルダを使います。
 
 **ポータブル版。** すべて（ログとアプリ内ブラウザの Cookie・キャッシュも）を `Lattice.exe` の隣の `data` フォルダに置きます。
 
@@ -759,7 +763,15 @@ API キーと R2 の Secret はローカルの DB に保存します。二度と
 - Web ページは別のブラウザで動きます。そのブラウザは http と https のアドレスしか開けず、Lattice の機能はごく一部しか呼べません。
 - AI プロバイダに tool は渡しません。CLI のプロバイダは、tool・MCP サーバー・ユーザー設定を無効にし、空の一時フォルダで実行します。どの prompt でも、記事の中の指示に従わないよう指示しています。
 - ページに戻す訳文は、スクリプトや危険なリンクを取り除いてから差し込みます。
-- 画像やサイトのアイコンのダウンロードと、フィードの検出では、プライベートネットワークのアドレスにはアクセスしません。
+- 直接 HTTP で取得する記事・PDF・フィード・画像・サイトアイコンでは、既定でプライベートネットワークのアドレスを拒否します。リダイレクト先も確認します。
+
+### 記事の取得先
+
+取得先の制限は、内蔵ブラウザ・JS 描画・AI プロバイダ・バックアップ・意味検索モデルのダウンロードには適用されません。
+
+0.1.0 では通信先ルールの設定 UI を提供しません。保存済みのルールは引き続き適用します。社内サイトなどの例外を設定する UI は、[記事取得の詳細設定](roadmap.md#記事取得の詳細設定)として計画しています。
+
+OS・環境変数のプロキシ設定と、その除外設定は引き続き使います。プロキシ経由では、プロキシが解決した最終接続先 IP を Lattice は確認できません。そのアドレスを制限する場合は、プロキシ側でルールを設定してください。
 
 ## 困ったときは
 

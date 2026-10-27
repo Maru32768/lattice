@@ -1,16 +1,18 @@
 # 設計レビュー: 技術選定とデータモデル
 
-要件定義 §26 の「最初に決める事項」に対するレビューと決定事項。各項目の状態は「決定」「暫定」「保留」で示す。
+機能ごとの設計判断と決定事項。各項目の状態は「決定」「暫定」「保留」で示す。
+
+初期設計で比較した[旧要件定義](https://github.com/Maru32768/lattice/blob/15c6d1090f022af5613e32bfb065a3dcad511e22/%E8%A6%81%E4%BB%B6%E5%AE%9A%E7%BE%A9.md)は Git 履歴に保存している。「旧要件 §」は当時の文書の節を指す。それ以外の機能間の § 参照は本書の節を指す。現在の操作方法は [guide.ja.md](guide.ja.md)、未実装の計画は [roadmap.md](roadmap.md) を参照。
 
 ## 1. 技術選定
 
 | 候補 | 判定 | 理由 |
 |---|---|---|
-| **Tauri 2** | 採用 | Electron に比べて軽量。capability による IPC 権限制御が §25 Security（記事 HTML から native API を呼ばせない）に直接効く。 |
+| **Tauri 2** | 採用 | Electron に比べて軽量。capability による IPC 権限制御が 旧要件 §25 Security（記事 HTML から native API を呼ばせない）に直接効く。 |
 | **Rust** | 採用 | fetch・抽出・SQLite・job runner を UI プロセスから分離できる。ドメインロジックは `crates/lattice-core` に置き、Tauri には依存させない（CLI や bulk import から再利用できる）。 |
 | **React + TypeScript** | 採用 | Reader は IR の block 列をコンポーネントとして描画するだけなので、どの UI フレームワークでも成立する。慣れたものを使えばよい。 |
 | **SQLite** | 採用 | 要件どおり。`rusqlite`（bundled）を使い、FTS5 は同梱ビルドに含まれる。WAL モードで動かす。 |
-| **Cloudflare** | **MVP では不採用** | §1「初期段階ではクラウドサービスを前提としない」、§2.1 と矛盾する。将来の候補として R2 は暗号化 backup／同期先、Workers Cron は remote RSS collector（取得した記事を desktop が pull する）。現時点ではコードも抽象化も入れない。 |
+| **Cloudflare** | **MVP では不採用** | 旧要件 §1「初期段階ではクラウドサービスを前提としない」、旧要件 §2.1 と矛盾する。将来の候補として R2 は暗号化 backup／同期先、Workers Cron は remote RSS collector（取得した記事を desktop が pull する）。現時点ではコードも抽象化も入れない。 |
 
 ### 選定したライブラリ
 
@@ -26,24 +28,24 @@
 | Hybrid ranking | Reciprocal Rank Fusion（k=60） | 決定 | bm25 と cosine はスケールが違うので、weighted score にすると調整が必要になる。RRF は順位だけで統合できる。 |
 | ツール管理 | mise（`mise.toml` で Node / Rust を固定し、`mise run dev` / `mise run test` を提供する） | 決定 | Vite 8 は Node 20.19 以上が必要。パッケージマネージャは npm。 |
 
-### 抽象化の方針（§18 への回答）
+### 抽象化の方針（旧要件 §18 への回答）
 
-§18 が挙げる 6 つの interface のうち、**今 trait にするのは 0 個**。
+旧要件 §18 が挙げる 6 つの interface のうち、**今 trait にするのは 0 個**。
 
 - `ArticleFetcher` / `ContentExtractor` / `ArticleRepository`: 現時点で実装は 1 つだけ。モジュール境界（`fetch.rs` / `extract.rs` / `store.rs`）で十分で、関数シグネチャはすでに差し替えやすい形になっている。
 - `LLMProvider`: 翻訳スライスで trait にした（`llm.rs`）。
 - `SearchIndex` / `EmbeddingProvider`: semantic search スライスで導入する。
 
-§18 の「交換可能性が実際に必要な境界だけ抽象化する」を、「2 つ目の実装が現れた時点で抽象化する」と解釈した。
+旧要件 §18 の「交換可能性が実際に必要な境界だけ抽象化する」を、「2 つ目の実装が現れた時点で抽象化する」と解釈した。
 
 ## 2. データモデルレビュー
 
 ### 指摘と変更
 
-1. **生 HTML の snapshot が欠けている（重要）。** §1「URL 切れに耐える」と `extraction_version` による再抽出を両立するには、取得した HTML を保持しておく必要がある。→ `snapshots` テーブルを追加した。再抽出はネットワークなしで行える。
+1. **生 HTML の snapshot が欠けている（重要）。** 旧要件 §1「URL 切れに耐える」と `extraction_version` による再抽出を両立するには、取得した HTML を保持しておく必要がある。→ `snapshots` テーブルを追加した。再抽出はネットワークなしで行える。
    - 規模の見積もり: 1 記事あたり HTML は 100KB〜1MB なので、10^5 記事では数十 GB になりうる。→ migration 4 で deflate 圧縮した（pure Rust の flate2。技術記事の HTML ならおおよそ 1/5〜1/8 になる）。それ以前の行は無圧縮（`encoding = 'identity'`）のまま読める。
-2. **`extraction_status` が Article の定義にない。** §6 では必要とされている。→ `fetch_status` と `extraction_status`（`pending` / `ok` / `failed`）を追加した。失敗した記事も行として残し、同じ URL を再保存すると再試行になる。
-3. **§2.3 の線形状態遷移（DISCOVERED→…→ENRICHED）は採用しない。** 翻訳・要約・embedding は互いに独立していて、しかも block 単位で部分的に完了する。単一の status 列では「翻訳 60% 完了、要約は失敗」を表せない。→ Article が持つのは取り込みの状態（fetch / extraction）だけにする。LLM 系の進捗は `processing_jobs` と派生テーブルの有無から導く。
+2. **`extraction_status` が Article の定義にない。** 旧要件 §6 では必要とされている。→ `fetch_status` と `extraction_status`（`pending` / `ok` / `failed`）を追加した。失敗した記事も行として残し、同じ URL を再保存すると再試行になる。
+3. **旧要件 §2.3 の線形状態遷移（DISCOVERED→…→ENRICHED）は採用しない。** 翻訳・要約・embedding は互いに独立していて、しかも block 単位で部分的に完了する。単一の status 列では「翻訳 60% 完了、要約は失敗」を表せない。→ Article が持つのは取り込みの状態（fetch / extraction）だけにする。LLM 系の進捗は `processing_jobs` と派生テーブルの有無から導く。
 4. **block にインライン構造がない。** `original_text` だけでは link と inline code（`pg_visibility` など、技術記事で重要なもの）が失われる。→ `text`（plain text。検索・翻訳・hash の単位）と `inlines`（JSON。`text` / `code` / `link` の run）に分けた。emphasis は今は text に潰す。
 5. **heading level と list の深さがない。** → `attrs` JSON に `level` / `ordered` / `depth` / `lang` / `src` / `rows` を持たせる。kind ごとに列を増やさずに済む。
 6. **`normalized_text` 列は不要。** 正規化は FTS の tokenizer と hash の計算時に行えば足りる。列として持つと、同じ内容のデータが 2 つになる。
@@ -138,7 +140,7 @@ Query → FTS5 trigram（原文 + 訳文、bm25）─┐
 
 - **全文検索。** 3 文字以上の語は trigram の index で MATCH し、3 文字未満の語（「索引」など）は LIKE で絞り込む。入力はすべて quote するので、FTS5 の構文として解釈されない。block や翻訳を削除すると、trigger で index からも消える。
 - **意味検索。** prose block に、その block が属する見出しを前置して embedding する（短い list item の文脈を補うため）。e5 の `query:` / `passage:` prefix は adapter 側で付ける。
-- **縮退。** モデルが未ダウンロード、オフライン、ロード失敗などで意味検索が使えないときは、全文検索だけで結果を返し、UI にその理由を出す（§2.3 LLM／モデル非依存）。
+- **縮退。** モデルが未ダウンロード、オフライン、ロード失敗などで意味検索が使えないときは、全文検索だけで結果を返し、UI にその理由を出す（旧要件 §2.3 LLM／モデル非依存）。
 - **Backfill。** 起動時に、現在のモデルの embedding が欠けている記事へ embed job を投入する。既存記事の取り込みと、モデルを切り替えたときの再 index を兼ねる。
 - **Metadata filter。** `lexical_search` / `scan_embeddings` / `search::search` は記事 ID の集合（`Option<&[i64]>`）で絞り込める。`None` のときの SQL は従来と同じで、全体検索は遅くならない。今は対話ペインだけが使い、検索ボックスにはまだ出していない。
 
@@ -186,8 +188,8 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 ### 運用（設定・バックアップ・ログ）
 
 - **モデル選択。** 翻訳と要約に使う provider とモデルを、最大 3 つの fallback として設定画面で選ぶ（§6）。`settings` テーブル（migration 8）に保存する。
-- **バックアップ（§17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。書き出しに成功したら、`lattice-<数字>.db` という名前の通常ファイルだけを対象に、新しい順に「残す世代数」（`backup.keep_generations`、既定 30、設定画面で変更）を超えた分を削除する（`crates/lattice-core/src/backup.rs`）。同じフォルダにある R2 の一時ファイル（`r2-upload-*`）などには触れない。削除に失敗してもバックアップ自体は成功として返し、警告を表示する。
-- **ログ（§25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
+- **バックアップ（旧要件 §17）。** `VACUUM INTO` で、稼働中でも整合したコピーを `app_data/backups/lattice-<unix秒>.db` に書き出す。重要なデータはすべてこの 1 ファイルに入っている。書き出しに成功したら、`lattice-<数字>.db` という名前の通常ファイルだけを対象に、新しい順に「残す世代数」（`backup.keep_generations`、既定 30、設定画面で変更）を超えた分を削除する（`crates/lattice-core/src/backup.rs`）。同じフォルダにある R2 の一時ファイル（`r2-upload-*`）などには触れない。削除に失敗してもバックアップ自体は成功として返し、警告を表示する。
+- **ログ（旧要件 §25 Observability）。** `tauri-plugin-log` で `app_log_dir/lattice.log` と stdout に出力する。job の失敗は job・記事・試行回数を記録し、`processing_jobs` にも `last_error` / `attempt_count` / 時刻が残る。
 - **リリース（G41）。** バージョンの置き場所を減らしてから同期する。2 つの crate は `[workspace.package]` を継承し、`tauri.conf.json` には書かない（Tauri は `Cargo.toml` を読む）。残る 4 ファイルは `scripts/version.mjs` が書き換え、`npm test` とリリース workflow が一致を確かめる。npm script を `version` にしないのは `npm version` の hook と衝突するため（`bump`）。updater 用の成果物は署名鍵がないとビルドが失敗するので、`tauri.conf.json` では切り、鍵の secret があるときだけ `src-tauri/tauri.updater.conf.json` を `--config` で重ねる。依存ライセンス一覧は Rust を cargo-about、npm を lockfile から読む小さなスクリプトで作り（本番依存は十数個なので npx のツールは足さない）、リポジトリにも commit してインストーラーの resources と zip に同梱する。
 - **アップデート（G37）。** 確認とインストールはアプリの command（`update_info` / `update_check` / `update_install`）が Rust 側で plugin を呼び、plugin の JS command の権限はどの webview にも付けない。公開鍵が placeholder（`NOT_CONFIGURED` で始まる）なら command は通信せずにエラーを返し、UI は起動時の確認をしない。再起動に `tauri-plugin-process` は足さない（Windows では plugin がインストーラーを起動してアプリを終了し、NSIS が新しい版を起動する。それ以外は `AppHandle::restart`）。通知はタイトルバーの下の帯にする（右下の toast はページ表示の native webview に隠れ、cover で隠すとページが消えるため）。`requireSignedVersion` は、今の CLI の署名が版を含むか確かめてから有効にする。
 - **保存場所（G38）。** 解決は `location::resolve`（純粋関数）で、portable の目印 → 既定のフォルダの `data-location.json` → 既定、の順。DB は自分の場所を持てないので、記録は既定のフォルダ（Windows では config dir と同じ）に置く。記録が壊れている・選んだフォルダが作れないときは起動を止めず既定の場所で開き、設定画面に理由を出す（空のライブラリに見えるのは、起動できないよりましと判断）。portable では WebView2 のプロファイルも `data/webview` に移すため、main window を config ではなく setup で作り（`create: false`）、ブラウザ・裏描画の webview にも同じ `data_directory` を渡す。ログの plugin も保存場所が決まってから setup で登録する。移動は `copy_to`（`VACUUM INTO`、バックアップと違い API キーを残す）と backups・exports・models のコピー。webview からはパスを受け取らず、Rust のダイアログで選んだフォルダを state に保持して `set_data_dir` で使う。移動元のデータは消さない。コピー後・再起動前の書き込みは新しい場所に入らないので、UI はすぐの再起動を勧める。portable 版は updater のインストーラーを使わない（インストーラーは別の場所に入り、データも `%APPDATA%` を使うため）。
@@ -251,7 +253,7 @@ domain（segments / translate / summarize / overlay）→ LlmChain（LlmProvider
 - **Anthropic API。** `x-api-key` と `anthropic-version: 2023-06-01` で `/v1/messages` を呼ぶ。非 streaming なので `max_tokens` は 16000。HTTP 401 / 403 / 429 / 529（overloaded）は `Unavailable` として次の entry へ進む（529 の扱いは他の API と共通の `post_json`）。`stop_reason` が `refusal` なら `Failed`、`max_tokens` なら `Malformed`。thinking block は読み飛ばし、text block の JSON だけを使う。
 - **設定。** `settings.llm_chain` に `[{kind, model}]` の JSON で保存する。未保存なら旧 `claude_model` を 1 つ目（Claude CLI）として読む。保存すると chain を作り直す（job runner は同じ `Arc` を共有したまま、`RwLock` の中身だけ差し替える）。
 - **API キー。** `secret.openai_api_key` / `secret.gemini_api_key` / `secret.anthropic_api_key` に保存し、バックアップからは除かれる（`backup_to`）。未設定なら環境変数 `OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` を使う。UI に返すのはキーの有無と出所（保存／環境変数）だけ。キーがない entry は `Unavailable` になり次へ進む。
-- **Untrusted input（§25）。** どの adapter にも tool を渡さない。Codex は user config・rules・web search・shell などの tool feature をすべて無効にし、read-only sandbox・空の一時ディレクトリ・`--ephemeral` で動かす。指示は prompt 引数、記事テキストは stdin（`<stdin>` block）で渡す。API は structured output だけを使う（Anthropic は forced tool ではなく `output_config.format` の JSON schema。tools は送らない）。
+- **Untrusted input（旧要件 §25）。** どの adapter にも tool を渡さない。Codex は user config・rules・web search・shell などの tool feature をすべて無効にし、read-only sandbox・空の一時ディレクトリ・`--ephemeral` で動かす。指示は prompt 引数、記事テキストは stdin（`<stdin>` block）で渡す。API は structured output だけを使う（Anthropic は forced tool ではなく `output_config.format` の JSON schema。tools は送らない）。
 - **Reasoning effort（G45）。** chain の各段に任意の `effort`（`llm::Effort`: low / medium / high / xhigh / max）を持たせ、`settings.llm_chain` の JSON に、指定したときだけ書く（ない段は provider の既定。G45 より前に保存した chain もそのまま読める）。渡し方は Claude CLI が `--effort`（`claude --help` の 2.1.303 で確認し、`-p` で受け付けることを実際の呼び出しで確認）、Codex CLI が `-c model_reasoning_effort=…`（未指定は従来どおり `low`。翻訳や要約に深い推論は要らず、usage limit のある CLI を速く回すため）、OpenAI API が `reasoning.effort`、Anthropic API が `output_config.effort`（structured output の `format` と同じ object）、Gemini API が `generationConfig.thinkingConfig.thinkingLevel`。どの provider も対応するので、設定画面では全段に effort の select を出す。選べる値は provider ごとに `ProviderKind::efforts` で決め（Gemini は多くのモデルに共通する low / medium / high だけ）、保存時にそれ以外を拒む。モデルが対応しない値（古いモデルや `gpt-reserve` など）は API が 400 を返し、その段は失敗として次の段に進む。モデルごとの対応表は持たない（モデル ID を自由に入力できるので網羅できない）。
 - **モデルの選択肢。** Claude は alias（haiku / sonnet / opus）、Codex は `~/.codex/models_cache.json` にある ID、OpenAI API は既定を `gpt-6-luna`、Gemini API は既定を `gemini-flash-latest`、Anthropic API は既定を `claude-opus-5-5`（選択肢に `claude-sonnet-5-5` / `claude-haiku-5-5`）にした。どれも「その他」でモデル ID を直接入力できる（F2 の修正。選択状態を model 値と別に持つ）。
 
@@ -342,7 +344,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 - **同一ホストの並列制限。** `claim_next_job` は、同じ `articles.domain` の ingest job が running の間、そのホストの ingest job を飛ばして別ホストの job を取る。1 つの UPDATE 文なので runner 間で競合しない。ホストは正規化後の host そのもので、`www.` の有無は別ホストとして扱う。
 - **再抽出と block ID の再利用。** `reextract_article` は最新の snapshot から抽出し直す（ネットワークを使わず、snapshot を増やさず、canonical による記事の統合もしない）。`save_fetched` は blocks を全置換せず、`text_hash` が一致する旧 block の id を出現順に再利用する（重複テキストは順に対応付ける）。旧行を負の ordinal に退避してから並べ替えるので、`UNIQUE (article_id, ordinal)` に衝突しない。`heading_id` は新しい並びで付け直し、使われなかった旧 block は削除する（embedding は cascade で消える）。再利用した block の embedding と検索結果はそのまま有効。見出しだけが変わった block の embedding（見出しを前置している）は古いままになるが、本文の hash が同じなので再計算しない。
 
-## 10. 処理状況と JSON エクスポート（§4.6・§17・§25）
+## 10. 処理状況と JSON エクスポート（旧要件 §4.6・§17・§25）
 
 | 対象 | ファイル |
 |---|---|
@@ -381,7 +383,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 
 一覧で開いているグループ（フィード → ジャンルの組み合わせ）を範囲にすること（1 つの `ArticleFilter` では表せない。複合条件が必要になったら filter を AND の列にする）、範囲の選択の保存、サイドバーの絞り込みボタンへのジャンル・フィードの追加（表示モードのグループで代わりになる）。
 
-## 12. 難易度推定と専門用語を残す翻訳（§3 UC7・§8）
+## 12. 難易度推定と専門用語を残す翻訳（旧要件 §3 UC7・§8）
 
 | 対象 | ファイル |
 |---|---|
@@ -391,7 +393,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | Tauri commands（`set_difficulty` / `get_translate_keep_terms` / `set_translate_keep_terms`） | `src-tauri/src/lib.rs` |
 | UI | `src/DifficultyField.tsx`、`src/settings/TranslationSettings.tsx`、`src/ArticleList.tsx`、`src/reader/Reader.tsx` |
 
-- **難易度は classify job で一緒に出す。** §4.6 の `estimate_difficulty` を別 job にせず、分類と同じ入力（タイトル・ドメイン・要約か冒頭 1200 字）・同じ batch（最大 20 件で 1 回の LLM 呼び出し）で返させる。入力が同じなので、別 job にすると LLM 呼び出しが倍になるだけになる。prompt_version は `classify-v2`。
+- **難易度は classify job で一緒に出す。** 旧要件 §4.6 の `estimate_difficulty` を別 job にせず、分類と同じ入力（タイトル・ドメイン・要約か冒頭 1200 字）・同じ batch（最大 20 件で 1 回の LLM 呼び出し）で返させる。入力が同じなので、別 job にすると LLM 呼び出しが倍になるだけになる。prompt_version は `classify-v2`。
 - **尺度。** 1〜5 の整数（入門／初級／中級／上級／専門）。「その分野が専門ではない現役のソフトウェアエンジニア」にとっての難しさで判定させる。範囲外や欠落は保存しない（未判定のまま）。結果は `classifications.difficulty` にも provider / model 付きで残す。
 - **手動の指定はジャンルと同じく固定する。** Reader の meta 行の select で選ぶと `difficulty_source = 'manual'` になり、自動分類は上書きしない。「未判定」に戻すと固定も外れる。「自動分類」ボタンはジャンルと難易度の両方の固定を外して分類し直す。
 - **難易度がない記事も分類の対象にする。** 保存後の自動分類と「未分類をすべて分類」は、ジャンルか難易度のどちらかがない記事を queue に入れる。この slice より前に分類した記事も「未分類をすべて分類」で難易度が付く（ジャンルの固定とタグの追加だけの規則は従来どおり）。
@@ -430,7 +432,7 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 
 裏で描画するページの音声のミュート（WebView2 の COM API が必要）、クライアント側リダイレクト（`location.href = …`）で読み込みが 2 回起きるページへの対応（最初の読み込み完了で待ち始めるので、DOM を取れずに失敗することがある）、描画の並列化。
 
-## 14. 画像の保存（§6・§1/§2.2 URL 切れ・§26-10）
+## 14. 画像の保存（旧要件 §6・§1・§2.2・§26-10）
 
 | 対象 | ファイル |
 |---|---|
@@ -440,14 +442,14 @@ feed 単位の取り込み件数・間隔の設定、表示モードと並び順
 | Tauri commands（`article_image` / `get_image_settings` / `set_image_settings`） | `src-tauri/src/lib.rs` |
 | 表示と設定 | `src/reader/Reader.tsx`（`ImageBlock`）、`src/settings/ImageSettings.tsx` |
 
-- **保存先は SQLite。** `images(hash, mime, bytes)` は中身の sha256 を主キーにし、記事をまたいで重複を除く。`article_images(article_id, src, hash, error)` は記事が参照する画像 URL ごとに 1 行で、保存できなかった理由も残す。1 ファイルのバックアップ（§17）と R2 にそのまま入る。
+- **保存先は SQLite。** `images(hash, mime, bytes)` は中身の sha256 を主キーにし、記事をまたいで重複を除く。`article_images(article_id, src, hash, error)` は記事が参照する画像 URL ごとに 1 行で、保存できなかった理由も残す。1 ファイルのバックアップ（旧要件 §17）と R2 にそのまま入る。
 - **block ID ではなく (記事, URL) で対応づける。** 再抽出では block を text（画像なら alt。空のことが多い）の hash で照合するので、画像 block の ID は入れ替わりうる。URL で引けば、ID の再利用とは関係なく対応が正しく保たれる。
 - **job。** 抽出のたび（取得・再抽出・描画後の保存・「描画後のページで保存」）に、画像 block か対応行がある記事へ `images` job を 1 件積む（dedup key `images:{id}`）。network runner（4 本）が処理し、1 記事の画像は 1 枚ずつ取得する。同一ホスト制限（§9）を ingest と共有し、同じドメインの記事の ingest / images job は同時に 1 本だけ走る。起動時と、設定をオンにしたときに、まだ試していない画像 URL を持つ記事の job を積む（バックフィル）。
 - **取得の制限。** http(s) のみ、`fetch::client()`（private address を拒否）を使い、Referer に記事の URL を付ける（hotlink を拒むサイトのため）。Content-Type は `image/*`・`application/octet-stream`・なしだけを受け付け、SVG は拒否する。1 枚の上限は設定（既定 5 MB、1〜20 MB）で、`Content-Length` と受信中の両方で確かめる。記事 1 件あたりは 30 MB まで。保存する形式は header ではなく magic number で判定する（PNG・JPEG・GIF・WebP・AVIF）。SVG は script を持てるので保存せず、Reader ではリンクのままにする。
-- **失敗。** 404・形式違い・サイズ超過・private address などは理由を記録し、再試行しない。timeout・5xx・429 は記録せずに job を失敗させるので、backoff 付きで再試行される（§4.6）。
+- **失敗。** 404・形式違い・サイズ超過・private address などは理由を記録し、再試行しない。timeout・5xx・429 は記録せずに job を失敗させるので、backoff 付きで再試行される（旧要件 §4.6）。
 - **配信。** `article_image(block_id)` が `data:` URL を返す。main webview の CSP（`img-src 'self' data:`）は変えない。custom URI scheme（`lattice-img://`）は使わなかった。scheme は browser / renderer の webview（リモートのページ）からも引けるので、「この画像を保存しているか」がページ側から分かってしまう。command なら capability で main webview だけに限られる。Reader は IntersectionObserver で画面の近く（600px 以内）に来た画像だけを取りに行くので、画像の多い記事でも最初の表示は重くならない。base64 で 1.33 倍になるが、1 枚 5 MB までなら問題にならない。未保存の画像は従来どおりプレースホルダとリンクを表示し、job が進むと取り直す。
 - **GC。** `article_images` の行が消えると、trigger が、どの行からも参照されなくなった `images` の行を消す。記事の削除（canonical による統合を含む）は cascade で、再抽出で消えた画像は images job の最初に対応行を消すことで処理される。
-- **エクスポート。** JSON（§17）には bytes を入れず、画像 block に `image_hash` を付ける。bytes はバックアップにある。
+- **エクスポート。** JSON（§10）には bytes を入れず、画像 block に `image_hash` を付ける。bytes はバックアップにある。
 - **設定。** 「画像を保存する」（`settings.save_images`、既定は on）と「1 枚あたりの上限」（`settings.image_max_mb`）。オフにしても保存済みの画像は消さない。
 
 ### DB サイズの見積もり
@@ -653,7 +655,7 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 
 - G28 の英語レベルから難しい語を候補として出すこと。
 - 文脈ごとの意味（意味は項目に 1 つ。別の意味で出会った語は意味を手で直す）。
-- JSON エクスポート（§17）への単語帳。DB のバックアップには入る。CSV で持ち出せる。
+- JSON エクスポート（§10）への単語帳。DB のバックアップには入る。CSV で持ち出せる。
 - Page でのショートカット（overlay のボタンのみ）。
 
 
@@ -668,14 +670,14 @@ poll と ingest job の競合: entry の本文は job を積んだ後に保存�
 | モデルを落とさない埋め込み・記事単位の job 実行 | `crates/lattice-core/src/embed.rs`（`LocalE5::offline`）、`crates/lattice-core/src/jobs.rs`（`run_article`） |
 
 - **バイナリ名は `lattice-cli`。** アプリのバイナリが `lattice.exe` で、portable zip では `Lattice.exe` として入る。Windows のファイル名は大文字小文字を区別しないので、同じフォルダに `lattice.exe` は置けず、workspace の `target/` でも出力が衝突する。
-- **同じ DB を開く。** 保存場所の解決（portable の目印 → `data-location.json` → 既定）を `lattice_core::location` に移し、アプリと CLI が同じ関数を使う。既定のフォルダは Tauri の `app_data_dir` と同じ規則で求め（Windows では `%APPDATA%\dev.lattice.app`）、識別子が `tauri.conf.json` とずれるとアプリのテストが落ちる。portable zip では `lattice-cli.exe` が `Lattice.exe` の隣にあるので、同じ `data` を使う。DB がなければ作らずにエラーにする（空のライブラリを作ると、場所の間違いに気づけない）。SQLite は WAL で `busy_timeout` 5 秒なので、アプリの起動中も読み書きできる。
+- **同じ DB を開く。** 保存場所の解決（portable の目印 → `data-location.json` → 既定）を `lattice_core::location` に移し、アプリと CLI が同じ関数を使う。既定のフォルダはリリース版が `%APPDATA%\Lattice`、開発版が `%APPDATA%\Lattice Dev`。Tauri の識別子は変えず、旧プロファイルのデータは新しい既定フォルダがなければフォルダ単位で移す。portable zip では `lattice-cli.exe` が `Lattice.exe` の隣にあるので、同じ `data` を使う。DB がなければ作らずにエラーにする（空のライブラリを作ると、場所の間違いに気づけない）。SQLite は WAL で `busy_timeout` 5 秒なので、アプリの起動中も読み書きできる。
 - **1 つの `Op` を 2 つの入口で。** `Op` は clap の `Subcommand` と serde の `Deserialize`（`{"name", "arguments"}` の adjacently tagged）を両方 derive し、CLI の引数と MCP の `tools/call` が同じ値になる。各操作は JSON と text の両方を返し、`--format` で選ぶ。MCP の tool の JSON Schema は手書きで、property と必須項目が clap の引数と一致することをテストで確かめる。
 - **MCP は最小の JSON-RPC。** `initialize`・`tools/list`・`tools/call`・`ping` だけで足りるので、SDK（rmcp）は入れずに 1 ファイルで書いた。改行区切りの stdio で、通知には返事をしない。`protocolVersion` は知っている版ならそのまま返し、それ以外は最新を返す（tools の扱いはどの版も同じ）。
 - **untrusted の明示。** tool の結果の先頭に、Web ページ由来の信頼できないテキストでありデータとして扱い指示に従わないこと、を付ける（`initialize` の `instructions` にも同じ文）。結果は 25,000 文字で切る（日本語でも Claude Code の既定の上限 25k token におおむね収まる）。記事の内容を実行する経路はない。README に prompt injection の注意を書いた。
 - **書き込みは明示的に有効にしたときだけ。** `save`・`tag`・`read`・`favorite` は `--allow-write` か `LATTICE_ALLOW_WRITE=1` がないと拒否し、MCP では tool の一覧にも出さない。`ask` は LLM を呼び対話の履歴に 1 件残すが、読み取りの延長として許可する（アプリの対話と同じ扱い）。
 - **job はアプリに任せる。** `save` は bulk import と同じ `enqueue_urls` で ingest job を積むだけ。アプリの runner は wake がなくても 30 秒ごとに queue を見る（`IDLE_POLL`）ので、別プロセスが積んだ job も 30 秒以内に拾う。アプリ側の変更は要らなかった。`save --run` は `jobs::run_article` でその記事の job だけを runner と同じコードで実行する（取得・画像、モデルがあれば埋め込み。分類と裏描画はアプリに残る）。claim は 1 文の `UPDATE … RETURNING` なので、アプリと CLI が同じ job を二重に実行することはない。
 - **モデルはダウンロードしない。** `LocalE5::offline` は hf-hub のキャッシュ（`models--intfloat--multilingual-e5-small/snapshots/*/onnx/model.onnx`）がなければ埋め込みを失敗させるので、検索は既存の `semantic_error` の経路で全文検索だけになり、JSON に `"mode": "full_text"` と理由を出す。
-- **リリース。** portable zip に `lattice-cli.exe` を入れる（release workflow で `cargo build --release -p lattice-cli` を追加）。インストーラーには入れない。`scripts/version.mjs` は `lattice-cli` の Cargo.lock の版も書き換える。
+- **リリース。** インストーラーと portable zip に `lattice-cli.exe` を同梱する。インストール版では GUI と同じフォルダに置き、更新とアンインストールでも両方を扱う。PATH には登録しない。MCP は GUI を起動しない stdio プロセスとして CLI に残し、GUI とドメイン処理を `lattice-core` で共有する。`scripts/version.mjs` は `lattice-cli` の Cargo.lock の版も書き換える。
 
 ### 未実装（意図的）
 

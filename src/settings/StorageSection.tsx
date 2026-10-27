@@ -30,6 +30,15 @@ export function StorageSection() {
     }
   }
 
+  async function open() {
+    setError(null);
+    try {
+      await api.openDataDir();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function apply() {
     if (!picked) {
       return;
@@ -57,8 +66,11 @@ export function StorageSection() {
             </>
           }
         >
+          <button className="btn" onClick={open} disabled={!settings || moving}>
+            {t("storageSection.openFolder")}
+          </button>
           {!portable && (
-            <button className="btn" onClick={pick} disabled={moving || !!moved}>
+            <button className="btn" onClick={pick} disabled={!settings || moving || !!moved}>
               {moving ? t("storageSection.copying") : t("storageSection.change")}
             </button>
           )}
