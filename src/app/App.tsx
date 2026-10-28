@@ -1141,7 +1141,7 @@ export default function App() {
                     onNew={(pane) => openPage(homeOf(getEngine()), undefined, undefined, "new", pane, true)}
                     windowAction={windowAction}
                     movable={HOST.kind === "doc"}
-                    onSend={win.sendTab}
+                    onSend={win.passTab}
                     onTear={(tab) => win.popOutTab(tab, true)}
                   />
                 </WordMarksContext.Provider>

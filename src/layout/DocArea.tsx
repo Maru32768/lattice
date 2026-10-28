@@ -9,6 +9,7 @@ import {
   dropOn,
   focusedPane,
   move,
+  open,
   panes,
   resize,
   split,
@@ -26,12 +27,13 @@ import {
   TAB_DRAG_END,
   TAB_DRAG_OVER,
   TAB_DRAG_START,
+  TAB_DRAG_TAKE,
   TAB_DRAG_TEAR,
   measure,
   type DragStart,
-  type Incoming,
   type Over,
   type Slot,
+  type Take,
   type ZoneTarget,
 } from "./tabDrag";
 import { tabDrag } from "../api";
@@ -138,7 +140,7 @@ function NodeView({
   renderPane: (p: Pane) => React.ReactNode;
   onNew: (pane: Id) => void;
   windowAction: WindowAction;
-  drop: Incoming | null;
+  drop: DropTarget | null;
   /** The pane body a drag is over, and which zone of it. */
   body: ZoneTarget | null;
   dragging: Id | null;
@@ -255,8 +257,8 @@ export function DocArea({
   windowAction: WindowAction;
   /** A document window: dragged by its only tab, the window itself follows the cursor. */
   movable: boolean;
-  /** The tab goes to window `label`, at slot `at` of its strips. */
-  onSend: (tab: Id, label: string, at: DropTarget) => void;
+  /** During a drag the tab goes to window `label`, at slot `at` of its strips or in its focused pane. */
+  onSend: (tab: Id, label: string, at?: DropTarget) => void;
   /** The tab was pulled off every strip: it leaves for a new document window, which the drag places. */
   onTear: (tab: Id) => void;
 }) {
@@ -266,43 +268,86 @@ export function DocArea({
   // Read by the pointer moves that come before the next render.
   const ownRef = useRef<Own | null>(null);
   const setOwn = (o: Own | null) => setOwnState((ownRef.current = o));
+  /** The dragged tab, when another window sent it here during the drag. */
+  const held = useRef<Id | null>(null);
+  /** It was sent here and the backend hears so once the layout has it (`tab_drag_held`). */
+  const taking = useRef(false);
   /** Some window is dragging a tab: this one reports its strips, again whenever its tabs change. */
   const [reporting, setReporting] = useState(false);
   const cover = useContext(CoverContext);
   const uncover = useRef<(() => void) | null>(null);
   const me = getCurrentWindow().label;
 
-  /** The drag is over: the marker, the ghost and the page stills go. */
-  function finish() {
+  /** The tab is no longer this window's to drag: the marker, the ghost and the page stills go. */
+  function letGo() {
     uncover.current?.();
     uncover.current = null;
     setOwn(null);
     setGhost(null);
     setDrop(null);
+    held.current = null;
+  }
+
+  /** The drag is over. */
+  function finish() {
+    letGo();
+    taking.current = false;
     setReporting(false);
   }
 
-  /** Where the drag ended, told to the window holding the tab: this window's dragged tab, or a torn-off window's only one. */
-  function dropped(to: Slot) {
+  /** The dragged tab in this window: pressed here, sent here, or a torn-off window's only one. */
+  function heldTab(): Id | null {
     const all = panes(layout.root).flatMap((p) => p.tabs);
     const only = all.length === 1 ? all[0] : undefined;
-    const tab = ownRef.current?.tab ?? only?.id ?? null;
+    return ownRef.current?.tab ?? held.current ?? only?.id ?? null;
+  }
+
+  /** Where the tab goes, told to the window holding it: a move in this window, else to another one. */
+  function dropped(to: Slot) {
+    const tab = heldTab();
     if (tab == null) {
       return;
     }
     // A pane body is a target only in the window dragging the tab.
     if ("zone" in to) {
       onLayout((l) => (to.label === me ? dropOn(l, tab, to.pane, to.zone) : l));
-    } else if (to.label === me) {
+    } else if (to.label === me && "index" in to) {
       onLayout((l) => move(l, tab, to.pane, to.index));
     } else {
-      onSend(tab, to.label, { pane: to.pane, index: to.index });
+      letGo();
+      onSend(tab, to.label, "index" in to ? { pane: to.pane, index: to.index } : undefined);
     }
   }
 
+  /** The tab leaves for a new document window, which the drag places. */
+  function torn() {
+    const tab = heldTab();
+    if (tab != null) {
+      letGo();
+      onTear(tab);
+    }
+  }
+
+  /** Another window sent the dragged tab here: it opens at the slot, its content shown at once. */
+  function take({ doc, at }: Take) {
+    onLayout((l) => {
+      held.current = l.next;
+      return open(l, doc, "new", at?.pane, at?.index);
+    });
+    taking.current = true;
+  }
+
+  useEffect(() => {
+    if (taking.current && held.current != null && tabById(layout, held.current)) {
+      taking.current = false;
+      void tabDrag.held().catch(() => {});
+    }
+  }, [layout]);
+
   const onEnd = useEffectEvent(finish);
   const onDropped = useEffectEvent(dropped);
-  const onTorn = useEffectEvent(() => ownRef.current && onTear(ownRef.current.tab));
+  const onTorn = useEffectEvent(torn);
+  const onTake = useEffectEvent(take);
   useEffect(() => {
     const win = getCurrentWindow();
     const subs = [
@@ -314,6 +359,7 @@ export function DocArea({
       win.listen<Over | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
       win.listen(TAB_DRAG_TEAR, () => onTorn()),
       win.listen<Slot>(TAB_DRAG_DROP, (e) => onDropped(e.payload)),
+      win.listen<Take>(TAB_DRAG_TAKE, (e) => onTake(e.payload)),
     ];
     return () => subs.forEach((s) => void s.then((f) => f()));
   }, []);
@@ -360,7 +406,6 @@ export function DocArea({
         uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
       }
       const start: Omit<DragStart, "geom"> = {
-        tab: labelOf(hit.tab),
         pane: hit.pane.id,
         index: hit.pane.tabs.indexOf(hit.tab),
         alone: o.alone,

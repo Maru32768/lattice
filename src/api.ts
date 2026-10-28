@@ -277,6 +277,8 @@ export const tabDrag = {
   strips: (geom: WindowGeom) => invoke<void>("tab_drag_strips", { geom }),
   /** The dragged tab was torn off into new document window `label` (its layout stored): the backend creates and places it. */
   float: (label: string) => invoke<void>("tab_drag_float", { label }),
+  /** A tab sent to this window during the drag is in its layout now: the drag goes on from here. */
+  held: () => invoke<void>("tab_drag_held"),
   /** The button came up, or Escape (`cancel`: the tab goes back). */
   release: (cancel: boolean) => invoke<void>("tab_drag_release", { cancel }),
 };

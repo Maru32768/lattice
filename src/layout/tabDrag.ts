@@ -1,9 +1,9 @@
 // Dragging a tab between windows, live (design-review §26). The backend runs the drag
-// (`src-tauri/src/tabdrag.rs`): it follows the cursor, decides where the tab is, and tells each
-// window what to draw and the window holding the tab where it goes. Windows only report their
-// strips and pane bodies, measured here.
-import type { Id, Zone } from "./layout";
-import type { DropTarget, TabLabel } from "./TabStrip";
+// (`src-tauri/src/tabdrag.rs`): it follows the cursor, decides where the tab is, and tells the
+// window holding the tab where it goes, one window at a time. Windows report their strips and
+// pane bodies, measured here, and say when a tab sent to them has arrived.
+import type { Doc, Id, Zone } from "./layout";
+import type { DropTarget } from "./TabStrip";
 
 interface Rect {
   x: number;
@@ -30,9 +30,8 @@ export interface WindowGeom {
   strips: Strip[];
 }
 
-/** What the dragging window tells the backend: the tab as strips draw it, where it is, and the window's geometry. */
+/** What the dragging window tells the backend: where the tab is, and the window's geometry. */
 export interface DragStart {
-  tab: TabLabel;
   pane: Id;
   index: number;
   /** A document window's only tab: the window itself follows the cursor. */
@@ -42,22 +41,23 @@ export interface DragStart {
   geom: WindowGeom;
 }
 
-/** What a strip draws at a slot: a marker in the window that has the tab, the tab itself (`tab`) in any other. */
-export interface Incoming extends DropTarget {
-  tab?: TabLabel;
-}
-
 /** A pane's body in a window split into panes (the dragging one): its center takes the tab, an edge splits the pane on that side. */
 export interface ZoneTarget {
   pane: Id;
   zone: Zone;
 }
 
-/** Where a drag is over in this window: a strip slot, or a pane body's zone (drawn as an overlay). */
-export type Over = Incoming | ZoneTarget;
+/** Where a drag is over in the window it started in, while the tab is still there: a strip slot (a marker), or a pane body's zone (an overlay). */
+export type Over = DropTarget | ZoneTarget;
 
-/** A place in window `label`: where the tab goes when the drag ends. */
-export type Slot = (DropTarget | ZoneTarget) & { label: string };
+/** Where the tab goes: a slot or zone in window `label`, or (only a label) that window's focused pane. */
+export type Slot = ((DropTarget | ZoneTarget) & { label: string }) | { label: string };
+
+/** A tab sent to this window during a drag, for slot `at` (else the focused pane). */
+export interface Take {
+  doc: Doc;
+  at?: DropTarget;
+}
 
 /** Broadcast: a drag began; every window reports its strips until `TAB_DRAG_END`. */
 export const TAB_DRAG_START = "tab-drag-start";
@@ -65,17 +65,19 @@ export const TAB_DRAG_START = "tab-drag-start";
 export const TAB_DRAG_END = "tab-drag-end";
 /** To one window: the `Over` to draw, or null. */
 export const TAB_DRAG_OVER = "tab-drag-over";
-/** To the dragging window: the tab leaves for a new document window. */
+/** To the window holding the tab: it leaves for a new document window. */
 export const TAB_DRAG_TEAR = "tab-drag-tear";
-/** To the window holding the tab when the drag ends: the `Slot` it goes to. */
+/** To the window holding the tab: the `Slot` it goes to, during the drag or as it ends. */
 export const TAB_DRAG_DROP = "tab-drag-drop";
+/** From the window holding the tab to the one it sends it to: the `Take`. */
+export const TAB_DRAG_TAKE = "tab-drag-take";
 
-/** This window's geometry from its DOM, `inner` being its client area's physical position. A tab drawn for another window's drag is not one of its tabs. */
+/** This window's geometry from its DOM, `inner` being its client area's physical position. */
 export function measure(label: string, inner: { x: number; y: number }, root: ParentNode = document): WindowGeom {
   const scale = window.devicePixelRatio;
   const strips = [...root.querySelectorAll<HTMLElement>("[data-pane-id]")].map((pane) => {
     const r = pane.querySelector<HTMLElement>(":scope > .tabs")!.getBoundingClientRect();
-    const mids = [...pane.querySelectorAll<HTMLElement>(":scope > .tabs > .tab:not(.incoming)")].map((t) => {
+    const mids = [...pane.querySelectorAll<HTMLElement>(":scope > .tabs > .tab")].map((t) => {
       const b = t.getBoundingClientRect();
       return b.left + b.width / 2;
     });

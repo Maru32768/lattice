@@ -20,6 +20,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Fixed
 
+- A tab dragged over another window's tab row moves into that window right away and shows its content there before you let go, as in Chrome.
 - A tab dragged out of its window appears in its new window at once and under the pointer. Before, the window took 2-3 seconds to show and came up away from the pointer until the pointer moved.
 - A web page no longer reloads when its tab moves to another window, by dragging or with **Open in new window** or **Move back to the main window**; it keeps its back and forward history and scroll position.
 - A page saved from a feed that links `http://` no longer shows **Add to Index** when opened in the built-in browser over `https://`.

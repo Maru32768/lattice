@@ -1,7 +1,10 @@
 import { useEffect, useEffectEvent, useState } from "react";
+import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { tabDrag, windows } from "../api";
 import { allTabs, close, docOf, open, serialize, single, tabById, type Doc, type Id, type Layout, type Tab } from "../layout/layout";
+import type { DropTarget } from "../layout/TabStrip";
+import { TAB_DRAG_END, TAB_DRAG_TAKE, type Take } from "../layout/tabDrag";
 import { HOST, IS_MAIN, STORAGE } from "./host";
 import { CHAT, MAIN, nextDocLabel, openWindows, storageKeys, toMain, toWindow, windowKey } from "./windows";
 
@@ -43,6 +46,8 @@ export function useWindows({
   const [chatOpen, setChatOpen] = useState(false);
   /** The chat is in its own window (main only; restored from storage at startup). */
   const [chatWindow, setChatWindow] = useState(() => IS_MAIN && openWindows(storageKeys()).includes(CHAT));
+  /** This window gave a dragged tab away: it stays open, even empty, until the drag ends, since the tab may come back. */
+  const [kept, setKept] = useState(false);
 
   /** A new document window's label, its layout showing `doc` stored for it to load; null if it could not be stored. */
   function storeDocWindow(doc: Doc): string | null {
@@ -75,6 +80,20 @@ export function useWindows({
     (drag ? tabDrag.float(label) : windows.open(label)).catch(fail);
     forgetPage(hit.tab);
     setLayout((l) => close(l, tab));
+    setKept(drag);
+  }
+
+  /** During a drag the tab goes to window `label`, which opens it at once (design-review §26). */
+  function passTab(tab: Id, label: string, at?: DropTarget) {
+    const hit = tabById(layout, tab);
+    if (!hit) {
+      return;
+    }
+    forgetPage(hit.tab);
+    setLayout((l) => close(l, tab));
+    setKept(true);
+    const take: Take = { doc: docOf(hit.tab), at };
+    void emitTo(label, TAB_DRAG_TAKE, take);
   }
 
   /** The tab goes to window `label`: its focused pane, or the slot `at` it was dropped on. */
@@ -130,13 +149,18 @@ export function useWindows({
     return () => void sub.then((f) => f());
   }, []);
 
-  // A document window with nothing left closes (its last tab was closed or sent back).
+  useEffect(() => {
+    const sub = listen(TAB_DRAG_END, () => setKept(false));
+    return () => void sub.then((f) => f());
+  }, []);
+
+  // A document window with nothing left closes (its last tab was closed or sent back), once no drag may bring a tab back.
   const empty = HOST.kind === "doc" && allTabs(layout).length === 0;
   useEffect(() => {
-    if (empty) {
+    if (empty && !kept) {
       closeWindow();
     }
-  }, [empty]);
+  }, [empty, kept]);
 
-  return { chatOpen, setChatOpen, chatWindow, setChatWindow, popOutDoc, popOutTab, sendTab, returnTab, closeRequested, popOutChat, toggleChat };
+  return { chatOpen, setChatOpen, chatWindow, setChatWindow, popOutDoc, popOutTab, passTab, sendTab, returnTab, closeRequested, popOutChat, toggleChat };
 }

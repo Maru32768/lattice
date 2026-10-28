@@ -21,6 +21,7 @@
     "allow-tab-drag-start",
     "allow-tab-drag-strips",
     "allow-tab-drag-float",
+    "allow-tab-drag-held",
     "allow-tab-drag-release",
     "allow-save-url",
     "allow-save-page",

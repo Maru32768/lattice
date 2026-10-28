@@ -162,6 +162,7 @@ const COMMANDS: &[&str] = &[
     "tab_drag_start",
     "tab_drag_strips",
     "tab_drag_float",
+    "tab_drag_held",
     "tab_drag_release",
     "update_info",
     "update_check",

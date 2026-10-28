@@ -343,7 +343,7 @@ A tab can leave the main window and open in its own window (a document window).
 
 - **Open in a new window** in the tab row, or `Ctrl+Shift+N`, moves the shown tab to a new window.
 - Drag a tab about 30 pixels up or down out of the tab row and it becomes a new window that follows the pointer. In a window split into panes, the tab becomes a new window once you drag it outside the window.
-- Drop a dragged tab on another window's tab row to move it into that window. Press `Esc` while dragging to put it back.
+- Drag a tab over another window's tab row and it moves into that window before you let go, showing its content there. Let go to leave it there, or drag it off the row again to make it a new window. Press `Esc` while dragging to put it back.
 
 In a document window, the tab row is also the title bar. Drag an empty part of it to move the window, and double-click to maximize it. Each window has its own panes, tabs and palette.
 

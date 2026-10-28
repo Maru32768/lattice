@@ -10,10 +10,10 @@ const row = (page: Page, title: string) => list(page).locator(".row", { hasText:
 const tabs = (page: Page) => page.locator(".dpane").first().getByRole("tab");
 const titles = (page: Page) => tabs(page).locator(".tab-t");
 const emit = (page: Page, event: string, payload: unknown = null) => page.evaluate(([e, p]) => window.__e2e.emit(e as string, p), [event, payload]);
-/** The tabs this window sent to other windows (`main-request` `open`), oldest first. */
+/** The tabs this window handed to other windows during a drag (`tab-drag-take`), oldest first. */
 const sentTabs = async (page: Page) =>
-  ((await callsOf(page, "plugin:event|emit_to")) as { target: { label: string }; event: string; payload: { kind: string } }[])
-    .filter((e) => e.event === "main-request" && e.payload.kind === "open")
+  ((await callsOf(page, "plugin:event|emit_to")) as { target: { label: string }; event: string; payload: unknown }[])
+    .filter((e) => e.event === "tab-drag-take")
     .map((e) => [e.target.label, e.payload]);
 
 async function openTwo(app: Page) {
@@ -38,7 +38,7 @@ test("a drag starts in the backend with the tab, its slot and this window's stri
   await expect(tabs(app).nth(1)).toHaveClass(/dragging/);
   const [start] = (await callsOf(app, "tab_drag_start")) as { start: { geom: { strips: { mids: number[] }[] } } }[];
   expect(start).toMatchObject({
-    start: { tab: { title: b.title, domain: b.domain }, pane: 1, index: 1, alone: false, geom: { label: "main", x: 0, y: 0, scale: 1 } },
+    start: { pane: 1, index: 1, alone: false, geom: { label: "main", x: 0, y: 0, scale: 1 } },
   });
   expect(start.start.geom.strips[0].mids).toHaveLength(2);
 
@@ -52,23 +52,14 @@ test("a drag starts in the backend with the tab, its slot and this window's stri
   await expect(titles(app), "nothing moved: the backend did not say where").toHaveText([a.title!, b.title!]);
 });
 
-test("a window draws the slot it is told: a marker for its own tab, the tab itself for another window's", async ({ app }) => {
+test("the window a drag started in marks the slot it is told", async ({ app }) => {
   await openTwo(app);
   await emit(app, "tab-drag-over", { pane: 1, index: 1 });
   await expect(tabs(app).nth(1)).toHaveClass(/drop-before/);
   await emit(app, "tab-drag-over", { pane: 1, index: 2 });
   await expect(tabs(app).nth(1)).toHaveClass(/drop-after/);
-
-  await emit(app, "tab-drag-over", { pane: 1, index: 1, tab: { title: c.title, domain: c.domain } });
-  const drawn = app.locator(".dpane .tabs > *").nth(1);
-  await expect(drawn).toHaveClass(/incoming/);
-  await expect(drawn.locator(".tab-t")).toHaveText(c.title!);
-  await expect(titles(app), "not one of this window's tabs").toHaveText([a.title!, b.title!]);
-  await expect(tabs(app).nth(1)).not.toHaveClass(/drop-before/);
-  await emit(app, "tab-drag-over", { pane: 1, index: 2, tab: { title: c.title, domain: c.domain } });
-  await expect(app.locator(".dpane .tabs > *").nth(2)).toHaveClass(/incoming/);
   await emit(app, "tab-drag-end");
-  await expect(app.locator(".tab.incoming")).toHaveCount(0);
+  await expect(app.locator(".tab.drop-before, .tab.drop-after")).toHaveCount(0);
 });
 
 test("every window reports its strips while any window drags, and again when its tabs change", async ({ app }) => {
@@ -77,9 +68,8 @@ test("every window reports its strips while any window drags, and again when its
     ((await callsOf(app, "tab_drag_strips")) as { geom: { label: string; strips: { mids: number[] }[] } }[]).map((r) => r.geom.strips[0].mids.length);
   await emit(app, "tab-drag-start");
   await expect.poll(reported).toEqual([2]);
-  await emit(app, "tab-drag-over", { pane: 1, index: 0, tab: { title: c.title, domain: c.domain } });
   await row(app, c.title!).click({ modifiers: ["Control"] });
-  await expect.poll(reported, "a drawn tab is not counted").toEqual([2, 3]);
+  await expect.poll(reported).toEqual([2, 3]);
   await emit(app, "tab-drag-end");
   await titles(app).first().click();
   await row(app, a.title!).click({ modifiers: ["Control"] });
@@ -102,7 +92,7 @@ test("torn off, the tab leaves for a new document window that the backend create
   await emit(app, "tab-drag-end");
 });
 
-test("the window holding the tab when the drag ends moves it in its own strips or sends it to the slot in another window", async ({ app }) => {
+test("the window holding the tab moves it in its own strips or hands it to the slot in another window", async ({ app }) => {
   await openTwo(app);
   await dragSecond(app);
   await emit(app, "tab-drag-drop", { label: "main", pane: 1, index: 0 });
@@ -113,8 +103,27 @@ test("the window holding the tab when the drag ends moves it in its own strips o
   await dragSecond(app);
   await emit(app, "tab-drag-drop", { label: "doc-1", pane: 1, index: 0 });
   await expect(titles(app)).toHaveText([b.title!]);
-  expect(await sentTabs(app)).toEqual([["doc-1", { kind: "open", docs: [{ kind: "reader", articleId: a.id }], at: { pane: 1, index: 0 } }]]);
+  await expect(app.locator(".tab-ghost"), "the tab is no longer here").toHaveCount(0);
+  expect(await sentTabs(app)).toEqual([["doc-1", { doc: { kind: "reader", articleId: a.id }, at: { pane: 1, index: 0 } }]]);
   await app.mouse.up();
+  await emit(app, "tab-drag-end");
+});
+
+test("a tab handed to this window during a drag opens at its slot at once, and the window says when it has it", async ({ app }) => {
+  await openTwo(app);
+  await emit(app, "tab-drag-start");
+  await emit(app, "tab-drag-take", { doc: { kind: "reader", articleId: c.id }, at: { pane: 1, index: 1 } });
+  await expect(titles(app)).toHaveText([a.title!, c.title!, b.title!]);
+  await expect(tabs(app).nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(app.locator(".art-title"), "its content, not only its tab").toHaveText(c.title!);
+  await expect.poll(() => callsOf(app, "tab_drag_held")).toHaveLength(1);
+
+  await emit(app, "tab-drag-drop", { label: "main", pane: 1, index: 3 });
+  await expect(titles(app), "later moves are of that tab").toHaveText([a.title!, b.title!, c.title!]);
+  await emit(app, "tab-drag-drop", { label: "doc-2" });
+  await expect(titles(app)).toHaveText([a.title!, b.title!]);
+  expect(await sentTabs(app)).toEqual([["doc-2", { doc: { kind: "reader", articleId: c.id } }]]);
+  await emit(app, "tab-drag-end");
 });
 
 test("split into panes, a tab dropped on the other pane's strip moves there, and an empty strip marks the slot", async ({ app }) => {
@@ -278,8 +287,14 @@ test("a document window dragged by its only tab follows the cursor itself; a tor
   await shell.mouse.up();
   await emit(shell, "tab-drag-end");
 
-  // A torn-off window has no drag of its own: told where the drag ended, it sends its only tab.
+  // A torn-off window has no drag of its own: told where the tab goes, it sends its only tab.
   await emit(shell, "tab-drag-drop", { label: "main", pane: 1, index: 2 });
-  expect(await sentTabs(shell)).toEqual([["main", { kind: "open", docs: [{ kind: "reader", articleId: a.id }], at: { pane: 1, index: 2 } }]]);
-  await expect.poll(() => callsOf(shell, "close_window"), "its last tab left").toHaveLength(1);
+  expect(await sentTabs(shell)).toEqual([["main", { doc: { kind: "reader", articleId: a.id }, at: { pane: 1, index: 2 } }]]);
+  await shell.waitForTimeout(300);
+  expect(await callsOf(shell, "close_window"), "kept while the drag may bring the tab back").toHaveLength(0);
+  await emit(shell, "tab-drag-take", { doc: { kind: "reader", articleId: a.id } });
+  await expect(titles(shell), "back in its window").toHaveText([a.title!]);
+  await emit(shell, "tab-drag-drop", { label: "main", pane: 1, index: 2 });
+  await emit(shell, "tab-drag-end");
+  await expect.poll(() => callsOf(shell, "close_window"), "empty when the drag ended").toHaveLength(1);
 });

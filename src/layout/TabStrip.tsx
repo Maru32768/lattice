@@ -3,7 +3,6 @@ import { Favicon } from "../ui/Favicon";
 import { Icon, type IconName } from "../ui/Icon";
 import type { Dir, Id, Pane, Tab } from "./layout";
 import { useT } from "../i18n";
-import type { Incoming } from "./tabDrag";
 
 export interface TabLabel {
   title: string;
@@ -64,7 +63,7 @@ export function TabStrip({
   multi: boolean;
   labelOf: (t: Tab) => TabLabel;
   /** The slot a drag is over: a marker, or the dragged tab itself when it comes from another window. */
-  drop: Incoming | null;
+  drop: DropTarget | null;
   /** This window's tab being dragged (drawn faded). */
   dragging: Id | null;
   windowAction: WindowAction;
@@ -131,21 +130,12 @@ export function TabStrip({
   const lost = () => void (press.current = null);
 
   const here = drop?.pane === pane.id ? drop.index : -1;
-  const incoming = here >= 0 && drop?.tab;
-  /** Another window's tab, drawn where it would land (it moves only when the drag ends). */
-  const arriving = incoming && (
-    <div key="incoming" className="tab on incoming" aria-hidden>
-      <Favicon domain={incoming.domain} feed={incoming.feed} />
-      <span className="tab-t">{incoming.title}</span>
-    </div>
-  );
   return (
     <div className="tabs" role="tablist" aria-label={t("tabStrip.tabs")} onMouseDown={onTitleDrag}>
       {pane.tabs.flatMap((tab, i) => {
         const { title, domain, feed } = labelOf(tab);
         const on = tab.id === pane.active;
         return [
-          here === i && arriving,
           <div
             key={tab.id}
             role="tab"
@@ -153,7 +143,7 @@ export function TabStrip({
             tabIndex={on ? 0 : -1}
             title={title}
             data-tab={tab.id}
-            className={`tab${on && !incoming ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i && !incoming ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 && !incoming ? " drop-after" : ""}`}
+            className={`tab${on ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
             onPointerDown={(e) => down(e, tab.id)}
             onPointerMove={moveP}
             onPointerUp={(e) => up(e, tab.id)}
@@ -185,7 +175,7 @@ export function TabStrip({
         ];
       })}
       {/* An empty pane (a fresh split) has no tab to draw the marker on. */}
-      {here >= pane.tabs.length && (arriving || (!pane.tabs.length && <span className="tab-mark" aria-hidden />))}
+      {here >= pane.tabs.length && !pane.tabs.length && <span className="tab-mark" aria-hidden />}
       <button className="ib" onClick={onNew} aria-label={t("tabStrip.newTab")} title={t("tabStrip.newTabHint")}>
         <Icon name="plus" />
       </button>

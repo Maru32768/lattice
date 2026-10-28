@@ -1,16 +1,18 @@
 //! Live tab dragging between windows (design-review §26), the way Chrome does it: a tab pulled
 //! `DETACH` px off its strip comes out at once in a window that follows the cursor; over another
-//! window's strip that window goes away and the strip shows the tab at the slot under the cursor;
-//! off the strip again the window comes back. A document window dragging its only tab is itself
-//! the window that follows.
+//! window's strip that window goes away and the tab moves into the strip at the slot under the
+//! cursor, its content shown there; off the strip again it goes back into the window that follows.
+//! A document window dragging its only tab is itself the window that follows.
 //!
 //! The backend runs the drag. Once the cursor leaves the window that was pressed, its pointer
 //! events cannot be relied on (the tab element holding the pointer capture is gone after a tear,
 //! and the new window takes the activation), so a thread polls the cursor, the primary button
 //! and Escape until the button comes up. The windows report their strips; this module decides,
-//! and tells each window what to draw (`tab-drag-over`), the source to tear the tab off
-//! (`tab-drag-tear`), and the window holding the tab where it goes when the drag ends
-//! (`tab-drag-drop`). Page webviews move only then, so passing over strips never reloads a page.
+//! and tells the source what to mark while the tab is still in it (`tab-drag-over`), and the
+//! window holding the tab to tear it off into a new window (`tab-drag-tear`) or to put it
+//! somewhere (`tab-drag-drop`). A window the tab was sent to says when it has it
+//! (`tab_drag_held`), and only then does the tab move on: one window at a time. A page moves with
+//! its webview, so it does not reload on the way.
 //!
 //! In a window split into panes the tab can also go onto a pane's body, as in VS Code: its center
 //! moves the tab into that pane, its edges split the pane that way (`Zone`).
@@ -19,10 +21,9 @@
 
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, Webview};
 
 use crate::browser::lock;
@@ -30,6 +31,8 @@ use crate::location::Location;
 use crate::{err, popout};
 
 const TICK: Duration = Duration::from_millis(8);
+/// How long after the button came up a window may take to say it has the tab, before the drag ends without it.
+const SETTLE: Duration = Duration::from_secs(3);
 /// How far (CSS px) above or below its strip a tab can go and stay in it; Chrome lets go at about this.
 const DETACH: f64 = 30.0;
 /// Where the first tab's corner sits in a fresh document window, in logical pixels: its strip is
@@ -160,15 +163,13 @@ fn slot_at(p: Point, wins: &[Geom], skip: Option<&str>, attached: Option<&Slot>)
     near.then(|| Slot { label: a.label.clone(), pane: a.pane, at: At::Index(index_at(&s.mids, c.x)) })
 }
 
-/// What a pane draws at its slot: in its strip a marker in the window that has the tab, the tab
-/// itself elsewhere; on its body the zone's overlay.
+/// What the source draws while the tab is still in it: a marker in a strip, or a zone's overlay on
+/// a pane's body.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 struct Over {
     pane: u64,
     #[serde(flatten)]
     at: At,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tab: Option<Value>,
 }
 
 /// The window following the cursor: the new window of a torn-off tab, or the source itself when
@@ -177,27 +178,38 @@ struct Over {
 struct Float {
     label: String,
     grab: (f64, f64),
-    /// Its UI has mounted (it holds the tab and can be shown).
+    /// Its UI has mounted (it can hold the tab and be shown).
     ready: bool,
     shown: bool,
     at: Option<PhysicalPosition<i32>>,
 }
 
-/// Where the tab ends up: a slot, where its window is now, or (Escape on a window that
-/// followed the cursor) back where that window was.
+/// Where the dragged tab is, or is on its way to.
 #[derive(Debug, Clone, PartialEq)]
-enum Final {
-    To(Slot),
-    Stay,
-    Home(PhysicalPosition<i32>),
+enum Held {
+    /// Still where it started: the source draws its ghost and marks the slot or zone it would go to.
+    Source,
+    /// In the strip of window `label`, at this slot.
+    Strip(Slot),
+    /// In the window following the cursor.
+    Float,
+}
+
+/// Where the window holding the tab puts it: a slot (in its own strips a move, else a send), or
+/// the window following the cursor.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+enum To {
+    Slot(Slot),
+    Window { label: String },
 }
 
 #[derive(Debug, PartialEq)]
 enum Effect {
     Over(String, Option<Over>),
     Tear(String),
-    Drop(String, Slot),
-    /// To every window: the drag is over (markers, the tab drawn at a slot, the ghost go).
+    Drop(String, To),
+    /// To every window: the drag is over (markers and the ghost go, emptied windows close).
     End,
     Move(String, PhysicalPosition<i32>),
     Show(String),
@@ -208,8 +220,6 @@ enum Effect {
 struct Session {
     id: u64,
     source: String,
-    /// The dragged tab's title, domain and feed, for the strips that draw it.
-    tab: Value,
     /// Where the tab was in the source, for Escape.
     origin: Slot,
     /// Where in the tab it was grabbed (CSS px from its corner): a torn-off window keeps that spot under the cursor.
@@ -218,50 +228,54 @@ struct Session {
     home: Option<PhysicalPosition<i32>>,
     wins: Vec<Geom>,
     float: Option<Float>,
-    /// The source was asked to tear the tab off (it then has the tab no more).
-    torn: bool,
+    held: Held,
+    /// The tab was sent or torn off to the window `held` names, which has not said it has it yet.
+    moving: bool,
+    /// The window told to tear the tab off, until the new window exists.
+    tearing: Option<String>,
+    /// The slot or zone the source marks while the tab is still in it.
     over: Option<Slot>,
     last: Point,
-    ended: bool,
-    /// The end, until a window that holds the tab can act on it (a torn-off window that has loaded).
-    pending: Option<Final>,
+    /// The button came up: `Some(true)` with Escape.
+    released: Option<bool>,
+    /// `tab-drag-end` went out.
+    done: bool,
 }
 
 impl Session {
-    fn new(id: u64, source: Geom, tab: Value, origin: (u64, usize), in_tab: (f64, f64), at: Point, alone: Option<PhysicalPosition<i32>>) -> Self {
+    fn new(id: u64, source: Geom, origin: (u64, usize), in_tab: (f64, f64), at: Point, alone: Option<PhysicalPosition<i32>>) -> Self {
         let label = source.label.clone();
         let float = alone.map(|o| Float { label: label.clone(), grab: (at.x - o.x as f64, at.y - o.y as f64), ready: true, shown: true, at: Some(o) });
         let origin = Slot { label: label.clone(), pane: origin.0, at: At::Index(origin.1) };
+        let held = if alone.is_some() {
+            Held::Float
+        } else {
+            Held::Source
+        };
         Session {
             id,
             source: label,
-            tab,
             origin,
             in_tab,
             home: alone,
             wins: vec![source],
             float,
-            torn: false,
+            held,
+            moving: false,
+            tearing: None,
             over: None,
             last: at,
-            ended: false,
-            pending: None,
+            released: None,
+            done: false,
         }
     }
 
-    /// The window that has the tab and can act on it: the source until the tab is torn off, then
-    /// the window it went to once that has loaded.
+    /// The window that has the tab, or is getting it.
     fn holder(&self) -> Option<String> {
-        match &self.float {
-            Some(f) => f.ready.then(|| f.label.clone()),
-            None => (!self.torn).then(|| self.source.clone()),
-        }
-    }
-
-    fn holds(&self, label: &str) -> bool {
-        match &self.float {
-            Some(f) => f.label == label,
-            None => !self.torn && self.source == label,
+        match &self.held {
+            Held::Source => Some(self.source.clone()),
+            Held::Strip(s) => Some(s.label.clone()),
+            Held::Float => self.float.as_ref().map(|f| f.label.clone()),
         }
     }
 
@@ -273,38 +287,83 @@ impl Session {
     }
 
     fn step(&mut self, p: Point) -> Vec<Effect> {
-        if self.ended {
+        if self.released.is_some() {
             return vec![];
         }
         self.last = p;
-        let skip = self.float.as_ref().map(|f| f.label.clone());
-        let attached = self.over.as_ref().filter(|o| matches!(o.at, At::Index(_)));
-        let at = slot_at(p, &self.wins, skip.as_deref(), attached).or_else(|| self.body_at(p));
-        let mut fx = vec![];
-        if at != self.over {
-            if let Some(o) = &self.over
-                && at.as_ref().is_none_or(|a| a.label != o.label)
-            {
-                fx.push(Effect::Over(o.label.clone(), None));
-            }
-            if let Some(a) = &at {
-                let tab = (!self.holds(&a.label)).then(|| self.tab.clone());
-                fx.push(Effect::Over(a.label.clone(), Some(Over { pane: a.pane, at: a.at, tab })));
-            }
-            self.over = at;
+        // While the tab is on its way, the window getting it catches up with the cursor (`held_by`).
+        if self.moving {
+            return vec![];
         }
-        if self.over.is_some() {
-            if let Some(f) = self.float.as_mut().filter(|f| f.shown) {
-                f.shown = false;
-                fx.push(Effect::Hide(f.label.clone()));
+        self.chase()
+    }
+
+    /// The tab goes where the cursor is: into the strip under it, or off every strip into the
+    /// window following the cursor. One window at a time: the next move waits for this one.
+    fn chase(&mut self) -> Vec<Effect> {
+        let p = self.last;
+        let skip = self.float.as_ref().map(|f| f.label.clone());
+        let attached = match &self.held {
+            Held::Strip(s) => Some(s.clone()),
+            Held::Source => self.over.clone().filter(|o| matches!(o.at, At::Index(_))),
+            Held::Float => None,
+        };
+        let at = slot_at(p, &self.wins, skip.as_deref(), attached.as_ref()).or_else(|| self.body_at(p));
+        let Some(from) = self.holder() else {
+            return vec![];
+        };
+        match (self.held.clone(), at) {
+            (Held::Source, at) => self.in_source(at, p),
+            (Held::Strip(s), Some(a)) if a == s => vec![],
+            (Held::Strip(_), Some(a)) => self.send(&from, a),
+            (Held::Strip(_), None) => self.float_off(&from),
+            (Held::Float, Some(a)) => {
+                let mut fx = self.hide();
+                fx.extend(self.send(&from, a));
+                fx
             }
-        } else if self.float.is_some() {
-            fx.extend(self.follow());
-        } else if !self.torn && !self.between_panes(p) {
-            self.torn = true;
-            fx.push(Effect::Tear(self.source.clone()));
+            (Held::Float, None) => self.follow(),
+        }
+    }
+
+    /// The tab is still in the source: its own strips and pane bodies are marked, another window's
+    /// strip takes the tab, and off every strip it comes out (in a source split into panes, only
+    /// outside the window).
+    fn in_source(&mut self, at: Option<Slot>, p: Point) -> Vec<Effect> {
+        let source = self.source.clone();
+        let mine = at.clone().filter(|a| a.label == source);
+        let mut fx = vec![];
+        if mine != self.over {
+            fx.push(Effect::Over(source.clone(), mine.as_ref().map(|m| Over { pane: m.pane, at: m.at })));
+            self.over = mine;
+        }
+        match at {
+            Some(a) if a.label != source => fx.extend(self.send(&source, a)),
+            None if !self.between_panes(p) => fx.extend(self.float_off(&source)),
+            _ => {}
         }
         fx
+    }
+
+    /// Window `from`, which has the tab, puts it at `to`: a move in its own strips, else a send
+    /// that `to`'s window confirms.
+    fn send(&mut self, from: &str, to: Slot) -> Vec<Effect> {
+        self.moving = to.label != from;
+        self.held = Held::Strip(to.clone());
+        vec![Effect::Drop(from.to_string(), To::Slot(to))]
+    }
+
+    /// Off every strip: the tab goes into the window following the cursor, made the first time.
+    fn float_off(&mut self, from: &str) -> Vec<Effect> {
+        self.held = Held::Float;
+        self.moving = true;
+        match &self.float {
+            Some(f) => vec![Effect::Drop(from.to_string(), To::Window { label: f.label.clone() })],
+            None => {
+                self.tearing = Some(from.to_string());
+                vec![Effect::Tear(from.to_string())]
+            }
+        }
     }
 
     /// In a source split into panes, the way from one pane's strip to another's crosses the panes:
@@ -317,7 +376,7 @@ impl Session {
     /// The pane body under `p` while the tab is still in a source split into panes. The center of
     /// the tab's own pane is where it already is.
     fn body_at(&self, p: Point) -> Option<Slot> {
-        if self.torn || !self.between_panes(p) {
+        if self.held != Held::Source || !self.between_panes(p) {
             return None;
         }
         let w = &self.wins[0];
@@ -326,19 +385,22 @@ impl Session {
         (pane != self.origin.pane || zone != Zone::Center).then(|| Slot { label: w.label.clone(), pane, at: At::Zone(zone) })
     }
 
-    /// The following window goes to the cursor once it has loaded, and shows there. Until then it
-    /// may not exist yet: a move would be lost and the window would show where Windows put it.
-    fn follow(&mut self) -> Vec<Effect> {
-        let p = self.last;
-        let Some(f) = self.float.as_mut().filter(|f| f.ready) else {
+    fn hide(&mut self) -> Vec<Effect> {
+        match self.float.as_mut().filter(|f| f.shown) {
+            Some(f) => {
+                f.shown = false;
+                vec![Effect::Hide(f.label.clone())]
+            }
+            None => vec![],
+        }
+    }
+
+    fn place(&mut self, to: PhysicalPosition<i32>) -> Vec<Effect> {
+        let Some(f) = self.float.as_mut() else {
             return vec![];
         };
-        let mut fx = vec![];
-        let to = PhysicalPosition::new((p.x - f.grab.0).round() as i32, (p.y - f.grab.1).round() as i32);
-        if f.at != Some(to) || !f.shown {
-            f.at = Some(to);
-            fx.push(Effect::Move(f.label.clone(), to));
-        }
+        f.at = Some(to);
+        let mut fx = vec![Effect::Move(f.label.clone(), to)];
         if !f.shown {
             f.shown = true;
             fx.push(Effect::Show(f.label.clone()));
@@ -346,52 +408,111 @@ impl Session {
         fx
     }
 
-    /// The button came up; with `cancel` (Escape) the tab goes back where it started.
-    fn release(&mut self, cancel: bool) -> Vec<Effect> {
-        if self.ended {
+    /// The following window goes to the cursor once it has loaded, and shows there. Until then it
+    /// may not exist yet: a move would be lost and the window would show where Windows put it.
+    fn follow(&mut self) -> Vec<Effect> {
+        let p = self.last;
+        let Some(f) = self.float.as_ref().filter(|f| f.ready) else {
+            return vec![];
+        };
+        let to = PhysicalPosition::new((p.x - f.grab.0).round() as i32, (p.y - f.grab.1).round() as i32);
+        if f.at == Some(to) && f.shown {
             return vec![];
         }
-        self.ended = true;
-        self.pending = Some(match (cancel, self.home) {
-            (true, Some(home)) => Final::Home(home),
-            (true, None) => Final::To(self.origin.clone()),
-            (false, _) => self.over.clone().map_or(Final::Stay, Final::To),
-        });
-        // Before `End`, which ends the source's own record of which tab it is dragging.
-        let mut fx = self.deliver();
+        self.place(to)
+    }
+
+    /// Window `label` says it has the tab it was sent: the tab catches up with the cursor, or the
+    /// drag ends if the button came up meanwhile.
+    fn held_by(&mut self, label: &str) -> Vec<Effect> {
+        if self.done || !self.moving || self.holder().as_deref() != Some(label) {
+            return vec![];
+        }
+        self.moving = false;
+        if self.released.is_some() {
+            self.finish()
+        } else {
+            self.chase()
+        }
+    }
+
+    /// The button came up; with `cancel` (Escape) the tab goes back where it started.
+    fn release(&mut self, cancel: bool) -> Vec<Effect> {
+        if self.released.is_some() {
+            return vec![];
+        }
+        self.released = Some(cancel);
+        if self.held == Held::Source {
+            // The tab never left the source: it goes where the source marks, or back with Escape.
+            let to = if cancel {
+                Some(self.origin.clone())
+            } else {
+                self.over.clone()
+            };
+            let mut fx: Vec<Effect> = to.map(|s| Effect::Drop(self.source.clone(), To::Slot(s))).into_iter().collect();
+            fx.push(Effect::End);
+            self.done = true;
+            return fx;
+        }
+        if self.moving {
+            return vec![];
+        }
+        self.finish()
+    }
+
+    /// The button is up and no window is waiting for the tab: with Escape it goes back first; then
+    /// the window holding it comes to the front and the drag ends.
+    fn finish(&mut self) -> Vec<Effect> {
+        let cancel = self.released == Some(true);
+        let mut fx = if cancel {
+            self.back()
+        } else {
+            vec![]
+        };
+        if self.moving {
+            return fx;
+        }
+        if self.held == Held::Float {
+            fx.extend(match self.home.filter(|_| cancel) {
+                Some(home) => self.place(home),
+                None => self.follow(),
+            });
+        }
+        fx.extend(self.holder().map(Effect::Focus));
         fx.push(Effect::End);
+        self.done = true;
         fx
     }
 
-    fn deliver(&mut self) -> Vec<Effect> {
-        let Some(h) = self.holder() else {
+    /// Escape: the tab goes back to its slot, or to the window dragged by it, which goes home.
+    fn back(&mut self) -> Vec<Effect> {
+        let Some(from) = self.holder() else {
             return vec![];
         };
-        let Some(end) = self.pending.take() else {
-            return vec![];
-        };
-        let mut fx = match end {
-            Final::To(s) => return vec![Effect::Drop(h, s)],
-            // Never torn off, and off every strip: nothing moves.
-            Final::Stay if self.float.is_none() => return vec![],
-            Final::Stay => self.follow(),
-            Final::Home(home) => {
-                let f = self.float.as_mut().expect("only a following source has a home");
-                f.at = Some(home);
-                let mut fx = vec![Effect::Move(h.clone(), home)];
-                if !f.shown {
-                    f.shown = true;
-                    fx.push(Effect::Show(h.clone()));
-                }
+        match (self.home, self.held.clone()) {
+            (Some(_), Held::Strip(_)) => self.float_off(&from),
+            (None, Held::Strip(s)) if s == self.origin => vec![],
+            (None, Held::Strip(_)) => self.send(&from, self.origin.clone()),
+            (None, Held::Float) => {
+                let mut fx = self.hide();
+                fx.extend(self.send(&from, self.origin.clone()));
                 fx
             }
-        };
-        fx.push(Effect::Focus(h));
-        fx
+            _ => vec![],
+        }
+    }
+
+    /// No window said it has the tab: the drag ends anyway rather than holding every window in it.
+    fn give_up(&mut self) -> Vec<Effect> {
+        if self.done {
+            return vec![];
+        }
+        self.done = true;
+        vec![Effect::End]
     }
 
     /// Window `label` has mounted its UI: None unless it is this drag's following window, which
-    /// then shows only while it is off every strip.
+    /// then has the tab torn off into it.
     fn ready(&mut self, label: &str) -> Option<Vec<Effect>> {
         if !self.follows(label) {
             return None;
@@ -401,26 +522,20 @@ impl Session {
             return Some(vec![]);
         }
         f.ready = true;
-        let mut fx = if !self.ended && self.over.is_none() {
-            self.follow()
-        } else {
-            vec![]
-        };
-        fx.extend(self.deliver());
-        Some(fx)
+        Some(self.held_by(label))
     }
 
-    /// Window `label` follows the cursor in this drag, or holds the tab until the drag's end reaches
-    /// it. Once that is done the label is free: a later window of the same name is not this drag's.
+    /// Window `label` follows the cursor in this drag. Once the drag is over the label is free: a
+    /// later window of the same name is not this drag's.
     fn follows(&self, label: &str) -> bool {
-        !(self.ended && self.pending.is_none()) && self.float.as_ref().is_some_and(|f| f.label == label)
+        !self.done && self.float.as_ref().is_some_and(|f| f.label == label)
     }
 
-    /// The source tore the tab off into new window `label`, not loaded yet, on a monitor of `scale`;
-    /// the next tick puts it under the cursor.
+    /// The tab was torn off into new window `label`, not loaded yet, on a monitor of `scale`.
     fn floated(&mut self, label: String, scale: f64) {
         let grab = ((FIRST_TAB.0 + self.in_tab.0) * scale, (FIRST_TAB.1 + self.in_tab.1) * scale);
         self.float = Some(Float { label, grab, ready: false, shown: false, at: None });
+        self.tearing = None;
     }
 }
 
@@ -440,7 +555,7 @@ fn apply(app: &AppHandle, fx: Vec<Effect>) {
         let r = match &e {
             Effect::Over(l, o) => app.emit_to(l.as_str(), "tab-drag-over", o),
             Effect::Tear(l) => app.emit_to(l.as_str(), "tab-drag-tear", ()),
-            Effect::Drop(l, s) => app.emit_to(l.as_str(), "tab-drag-drop", s),
+            Effect::Drop(l, to) => app.emit_to(l.as_str(), "tab-drag-drop", to),
             Effect::End => app.emit("tab-drag-end", ()),
             Effect::Move(l, p) => win(l).map_or(Ok(()), |w| w.set_position(*p)),
             Effect::Show(l) => win(l).map_or(Ok(()), |w| w.show()),
@@ -490,22 +605,28 @@ fn sample(app: &AppHandle) -> Option<Sample> {
 /// Follows the cursor until drag `id` ends or another drag replaces it.
 fn poll(app: AppHandle, id: u64) {
     thread::spawn(move || {
+        let mut released = None;
         loop {
             thread::sleep(TICK);
-            let Some(s) = sample(&app) else {
-                continue;
-            };
+            let s = sample(&app);
             let drag = app.state::<TabDrag>();
             let mut g = lock(&drag.0);
-            let Some(d) = g.now.as_mut().filter(|d| d.id == id && !d.ended) else {
+            let Some(d) = g.now.as_mut().filter(|d| d.id == id && !d.done) else {
                 break;
             };
-            let fx = if s.escape {
-                d.release(true)
-            } else if !s.down {
-                d.release(false)
-            } else {
-                d.step(s.at)
+            let fx = match s {
+                // Up: the drag ends once the window getting the tab has it, or after `SETTLE` without.
+                _ if d.released.is_some() => {
+                    if released.get_or_insert_with(Instant::now).elapsed() > SETTLE {
+                        d.give_up()
+                    } else {
+                        vec![]
+                    }
+                }
+                None => vec![],
+                Some(s) if s.escape => d.release(true),
+                Some(s) if !s.down => d.release(false),
+                Some(s) => d.step(s.at),
             };
             // Applied under the lock so effects reach the windows in the order they were decided;
             // nothing here waits on the main thread, and the main thread never takes this lock.
@@ -535,8 +656,6 @@ pub fn claim_ready(app: &AppHandle, label: &str) -> bool {
 
 #[derive(Deserialize)]
 pub struct Start {
-    /// The tab's title, domain and feed, as the strips draw it.
-    tab: Value,
     pane: u64,
     index: usize,
     /// The window is a document window and this is its only tab: the window follows the cursor.
@@ -563,7 +682,7 @@ pub async fn tab_drag_start(app: AppHandle, drag: State<'_, TabDrag>, webview: W
     let id = {
         let mut g = lock(&drag.0);
         g.seq += 1;
-        g.now = Some(Session::new(g.seq, source, start.tab, (start.pane, start.index), start.grab, at, home));
+        g.now = Some(Session::new(g.seq, source, (start.pane, start.index), start.grab, at, home));
         g.seq
     };
     app.emit("tab-drag-start", ()).map_err(err)?;
@@ -575,14 +694,14 @@ pub async fn tab_drag_start(app: AppHandle, drag: State<'_, TabDrag>, webview: W
 #[tauri::command]
 pub async fn tab_drag_strips(drag: State<'_, TabDrag>, webview: Webview, geom: Geom) -> Result<(), String> {
     let label = webview.window().label().to_string();
-    if let Some(d) = lock(&drag.0).now.as_mut().filter(|d| !d.ended) {
+    if let Some(d) = lock(&drag.0).now.as_mut().filter(|d| !d.done) {
         d.strips(Geom { label, ..geom });
     }
     Ok(())
 }
 
-/// The source tore the tab off into a new document window `label`, whose layout it has stored:
-/// the window is created hidden and follows the cursor, shown once it has loaded.
+/// The window told to tear the tab off did, into a new document window `label` whose layout it
+/// has stored: the window is created hidden and follows the cursor, shown once it has loaded.
 #[tauri::command]
 pub async fn tab_drag_float(app: AppHandle, drag: State<'_, TabDrag>, loc: State<'_, Location>, webview: Webview, label: String) -> Result<(), String> {
     if !popout::is_doc(&label) {
@@ -593,11 +712,21 @@ pub async fn tab_drag_float(app: AppHandle, drag: State<'_, TabDrag>, loc: State
     let scale = app.monitor_from_point(last.x, last.y).map_err(err)?.map_or(1.0, |m| m.scale_factor());
     {
         let mut g = lock(&drag.0);
-        let d = g.now.as_mut().filter(|d| d.source == source && d.torn && d.float.is_none()).ok_or("no tab is being torn off")?;
+        let d = g.now.as_mut().filter(|d| d.tearing.as_deref() == Some(source.as_str())).ok_or("no tab is being torn off")?;
         // Before the window exists, so that its `window_ready` finds it.
         d.floated(label.clone(), scale);
     }
     popout::create(&app, &loc, &label).map(|_| ())
+}
+
+/// The calling window has the tab it was sent during the drag (or torn off into it, `window_ready`).
+#[tauri::command]
+pub async fn tab_drag_held(app: AppHandle, drag: State<'_, TabDrag>, webview: Webview) -> Result<(), String> {
+    let label = webview.window().label().to_string();
+    if let Some(d) = lock(&drag.0).now.as_mut() {
+        apply(&app, d.held_by(&label));
+    }
+    Ok(())
 }
 
 /// The source saw the button come up, or Escape (`cancel`). On Windows the poll usually sees it first.
@@ -645,20 +774,17 @@ mod tests {
     fn doc_win() -> Geom {
         Geom { label: "doc-1".into(), x: 1300.0, y: 100.0, width: 960.0, height: 720.0, scale: 2.0, strips: vec![strip(1, 32.0, 480.0, &[60.0], 294.0)] }
     }
-    fn label() -> Value {
-        json!({ "title": "B", "domain": "b.example" })
-    }
-    fn over(pane: u64, index: usize, tab: bool) -> Option<Over> {
-        Some(Over { pane, at: At::Index(index), tab: tab.then(label) })
+    fn over(pane: u64, index: usize) -> Option<Over> {
+        Some(Over { pane, at: At::Index(index) })
     }
     fn over_body(pane: u64, z: Zone) -> Option<Over> {
-        Some(Over { pane, at: At::Zone(z), tab: None })
+        Some(Over { pane, at: At::Zone(z) })
     }
     /// Grabbed 50 px into the tab and 14 px down: a torn-off window at scale 1 has that spot at (56, 19).
     const IN_TAB: (f64, f64) = (50.0, 14.0);
     /// A drag of main's second tab (pane 1, index 1), with doc-1's strips reported.
     fn from_main() -> Session {
-        let mut s = Session::new(1, main_win(), label(), (1, 1), IN_TAB, p(160.0, 40.0), None);
+        let mut s = Session::new(1, main_win(), (1, 1), IN_TAB, p(160.0, 40.0), None);
         s.strips(doc_win());
         s
     }
@@ -700,36 +826,90 @@ mod tests {
         assert_eq!(slot_at(p(1250.0, 40.0), &wins, None, Some(&a)), None, "sideways out of the strip");
     }
 
+    fn claim(s: &mut Session, label: &str) -> Vec<Effect> {
+        s.ready(label).expect("the following window")
+    }
+
+    fn to(label: &str, pane: u64, index: usize) -> To {
+        To::Slot(slot(label, pane, index))
+    }
+
+    fn into(label: &str) -> To {
+        To::Window { label: label.into() }
+    }
+
     #[test]
-    fn a_tab_torn_off_follows_the_cursor_in_its_window_hides_over_a_strip_and_comes_back() {
+    fn over_another_windows_strip_the_tab_moves_there_at_once_and_out_again_into_a_window_of_its_own() {
         let mut s = from_main();
-        assert_eq!(s.step(p(170.0, 45.0)), vec![Effect::Over("main".into(), over(1, 2, false))], "its own strip: a marker");
-        assert_eq!(s.step(p(600.0, 200.0)), vec![Effect::Over("main".into(), None)], "main has two panes: still inside it, over its own pane");
-        assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Tear("main".into())]);
-        assert_eq!(s.step(p(1251.0, 300.0)), vec![], "asked once");
+        assert_eq!(s.step(p(170.0, 45.0)), vec![Effect::Over("main".into(), over(1, 2))], "its own strip: a marker");
+        assert_eq!(
+            s.step(p(1400.0, 180.0)),
+            vec![Effect::Over("main".into(), None), Effect::Drop("main".into(), to("doc-1", 1, 0))],
+            "doc-1's strip: the tab goes there"
+        );
+        assert_eq!(s.step(p(1600.0, 180.0)), vec![], "one move at a time");
+        assert_eq!(s.held_by("main"), vec![], "only the window it went to confirms");
+        assert_eq!(s.held_by("doc-1"), vec![Effect::Drop("doc-1".into(), to("doc-1", 1, 1))], "then it catches up: a move in doc-1's strip");
+        assert_eq!(s.step(p(1610.0, 180.0)), vec![], "the same slot");
+        assert_eq!(s.step(p(1400.0, 600.0)), vec![Effect::Tear("doc-1".into())], "off every strip: doc-1 tears it off");
         s.floated("doc-2".into(), 1.0);
-        assert_eq!(s.step(p(200.0, 300.0)), vec![], "until it has loaded it may not exist: a move would be lost");
+        assert_eq!(s.step(p(1410.0, 600.0)), vec![], "until it has loaded it may not exist: a move would be lost");
         assert_eq!(
             claim(&mut s, "doc-2"),
-            vec![Effect::Move("doc-2".into(), pos(144, 281)), Effect::Show("doc-2".into())],
+            vec![Effect::Move("doc-2".into(), pos(1354, 581)), Effect::Show("doc-2".into())],
             "under the cursor where the tab was grabbed"
         );
         assert_eq!(s.ready("doc-1"), None, "another window shows itself");
-        assert_eq!(s.step(p(1400.0, 180.0)), vec![Effect::Over("doc-1".into(), over(1, 0, true)), Effect::Hide("doc-2".into())], "doc-1 draws the tab");
-        assert_eq!(s.step(p(1600.0, 180.0)), vec![Effect::Over("doc-1".into(), over(1, 1, true))]);
-        assert_eq!(
-            s.step(p(100.0, 40.0)),
-            vec![Effect::Over("doc-1".into(), None), Effect::Over("main".into(), over(1, 1, true))],
-            "back in main: drawn, it left main"
-        );
-        assert_eq!(s.step(p(100.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Move("doc-2".into(), pos(44, 281)), Effect::Show("doc-2".into())]);
+        assert_eq!(s.step(p(100.0, 40.0)), vec![Effect::Hide("doc-2".into()), Effect::Drop("doc-2".into(), to("main", 1, 1))], "back over main's strip");
+        assert_eq!(s.held_by("main"), vec![], "already where the cursor is");
+        assert_eq!(s.step(p(100.0, 300.0)), vec![Effect::Drop("main".into(), into("doc-2"))], "off again: back into its window, kept hidden");
+        assert_eq!(s.held_by("doc-2"), vec![Effect::Move("doc-2".into(), pos(44, 281)), Effect::Show("doc-2".into())]);
         assert_eq!(s.release(false), vec![Effect::Focus("doc-2".into()), Effect::End], "it stays where it is");
         assert_eq!(s.step(p(0.0, 0.0)), vec![]);
         assert_eq!(s.ready("doc-2"), None, "done: a later doc-2 is a window of its own");
     }
 
-    fn claim(s: &mut Session, label: &str) -> Vec<Effect> {
-        s.ready(label).expect("the following window")
+    #[test]
+    fn a_release_while_a_window_is_getting_the_tab_ends_the_drag_once_it_has_it() {
+        let mut s = from_main();
+        s.step(p(1400.0, 180.0));
+        assert_eq!(s.release(false), vec![], "doc-1 has not confirmed");
+        assert_eq!(s.held_by("doc-1"), vec![Effect::Focus("doc-1".into()), Effect::End]);
+
+        let mut s = from_main();
+        assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Tear("main".into())]);
+        assert_eq!(s.release(false), vec![], "the tab is on its way to a window not created yet");
+        s.floated("doc-2".into(), 1.0);
+        assert_eq!(
+            claim(&mut s, "doc-2"),
+            vec![Effect::Move("doc-2".into(), pos(1194, 281)), Effect::Show("doc-2".into()), Effect::Focus("doc-2".into()), Effect::End]
+        );
+
+        let mut s = from_main();
+        s.step(p(1400.0, 180.0));
+        s.release(false);
+        assert_eq!(s.give_up(), vec![Effect::End], "a window that never confirms does not hold the drag open");
+        assert_eq!(s.held_by("doc-1"), vec![]);
+    }
+
+    #[test]
+    fn escape_puts_the_tab_back_where_it_started() {
+        let mut s = from_main();
+        s.step(p(1250.0, 300.0));
+        s.floated("doc-2".into(), 1.0);
+        claim(&mut s, "doc-2");
+        s.step(p(1400.0, 180.0));
+        s.held_by("doc-1");
+        assert_eq!(s.release(true), vec![Effect::Drop("doc-1".into(), to("main", 1, 1))], "from doc-1 back to its slot in main");
+        assert_eq!(s.held_by("main"), vec![Effect::Focus("main".into()), Effect::End]);
+        assert_eq!(s.release(false), vec![], "once");
+
+        let mut s = from_main();
+        s.step(p(1250.0, 300.0));
+        s.floated("doc-2".into(), 1.0);
+        claim(&mut s, "doc-2");
+        assert_eq!(s.release(true), vec![Effect::Hide("doc-2".into()), Effect::Drop("doc-2".into(), to("main", 1, 1))], "from its own window");
+        assert_eq!(s.held_by("main"), vec![Effect::Focus("main".into()), Effect::End]);
     }
 
     #[test]
@@ -752,7 +932,7 @@ mod tests {
         let mut s = from_main();
         // Pane 1's body spans y 66..420, pane 2's 454..800, both x 0..1200.
         assert_eq!(s.step(p(600.0, 200.0)), vec![], "its own pane's center: where it is");
-        assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0, false))]);
+        assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0))]);
         assert_eq!(s.step(p(600.0, 600.0)), vec![Effect::Over("main".into(), over_body(2, Zone::Center))], "the other pane's body");
         assert_eq!(s.step(p(100.0, 600.0)), vec![Effect::Over("main".into(), over_body(2, Zone::Left))]);
         assert_eq!(s.step(p(600.0, 380.0)), vec![Effect::Over("main".into(), over_body(1, Zone::Bottom))], "its own pane's edge");
@@ -760,16 +940,17 @@ mod tests {
         assert_eq!(s.release(false), vec![Effect::End], "dropped on its own pane's center: it stays");
         let mut s = from_main();
         s.step(p(1100.0, 600.0));
-        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), zone("main", 2, Zone::Right)), Effect::End]);
+        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), To::Slot(zone("main", 2, Zone::Right))), Effect::End]);
         let mut s = from_main();
         s.step(p(600.0, 600.0));
-        assert_eq!(s.release(true), vec![Effect::Drop("main".into(), slot("main", 1, 1)), Effect::End], "Escape over a body");
+        assert_eq!(s.release(true), vec![Effect::Drop("main".into(), to("main", 1, 1)), Effect::End], "Escape over a body");
         let mut s = from_main();
         s.step(p(600.0, 600.0));
         assert_eq!(s.step(p(1250.0, 300.0)), vec![Effect::Over("main".into(), None), Effect::Tear("main".into())], "out of the window");
-        assert_eq!(s.step(p(600.0, 600.0)), vec![], "torn off: a body is no target");
-        let mut s =
-            Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 734.0)], ..main_win() }, label(), (1, 1), IN_TAB, p(160.0, 40.0), None);
+        s.floated("doc-2".into(), 1.0);
+        claim(&mut s, "doc-2");
+        assert_eq!(s.step(p(600.0, 600.0)), vec![Effect::Move("doc-2".into(), pos(544, 581))], "torn off: a body is no target, the window follows");
+        let mut s = Session::new(1, Geom { strips: vec![strip(1, 32.0, 1200.0, &[60.0, 160.0], 734.0)], ..main_win() }, (1, 1), IN_TAB, p(160.0, 40.0), None);
         assert_eq!(s.step(p(170.0, 300.0)), vec![Effect::Tear("main".into())], "one pane: as soon as it is off the strip");
     }
 
@@ -777,72 +958,31 @@ mod tests {
     fn released_over_another_panes_strip_in_its_own_window_the_tab_moves_there() {
         let mut s = from_main();
         s.step(p(170.0, 300.0));
-        assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0, false))], "the empty pane's strip marks its slot");
-        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), slot("main", 2, 0)), Effect::End]);
+        assert_eq!(s.step(p(300.0, 430.0)), vec![Effect::Over("main".into(), over(2, 0))], "the empty pane's strip marks its slot");
+        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), to("main", 2, 0)), Effect::End]);
     }
 
     #[test]
-    fn released_over_a_strip_the_window_holding_the_tab_sends_it_there() {
-        let mut s = from_main();
-        s.step(p(1250.0, 300.0));
-        s.floated("doc-2".into(), 2.0);
-        claim(&mut s, "doc-2");
-        s.step(p(1600.0, 180.0));
-        assert_eq!(s.release(false), vec![Effect::Drop("doc-2".into(), slot("doc-1", 1, 1)), Effect::End]);
-
-        let mut s = from_main();
-        s.step(p(1400.0, 180.0));
-        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), slot("doc-1", 1, 0)), Effect::End], "never torn off: main sends it");
-        let mut s = from_main();
-        s.step(p(40.0, 40.0));
-        assert_eq!(s.release(false), vec![Effect::Drop("main".into(), slot("main", 1, 0)), Effect::End], "its own strip: a move");
-    }
-
-    #[test]
-    fn escape_puts_the_tab_back_where_it_started() {
-        let mut s = from_main();
-        s.step(p(1250.0, 300.0));
-        s.floated("doc-2".into(), 1.0);
-        claim(&mut s, "doc-2");
-        s.step(p(1400.0, 180.0));
-        assert_eq!(s.release(true), vec![Effect::Drop("doc-2".into(), slot("main", 1, 1)), Effect::End]);
-        assert_eq!(s.release(false), vec![], "once");
-    }
-
-    #[test]
-    fn a_release_before_the_torn_off_window_loads_waits_for_it() {
-        let mut s = from_main();
-        s.step(p(1250.0, 300.0));
-        assert_eq!(s.release(false), vec![Effect::End], "the tab is on its way to a window not created yet");
-        s.floated("doc-2".into(), 1.0);
-        assert_eq!(claim(&mut s, "doc-2"), vec![Effect::Move("doc-2".into(), pos(1194, 281)), Effect::Show("doc-2".into()), Effect::Focus("doc-2".into())]);
-
-        let mut s = from_main();
-        s.step(p(1250.0, 300.0));
-        s.floated("doc-2".into(), 1.0);
-        s.step(p(1400.0, 180.0));
-        assert_eq!(s.release(false), vec![Effect::End]);
-        assert_eq!(claim(&mut s, "doc-2"), vec![Effect::Drop("doc-2".into(), slot("doc-1", 1, 0))], "it never shows");
-    }
-
-    #[test]
-    fn a_window_dragged_by_its_only_tab_follows_the_cursor_and_escape_puts_it_back() {
+    fn a_window_dragged_by_its_only_tab_follows_the_cursor_gives_the_tab_to_a_strip_and_escape_brings_both_back() {
         let mut d = doc_win();
         (d.x, d.y, d.scale) = (500.0, 500.0, 1.0);
-        let mut s = Session::new(1, d, label(), (1, 0), IN_TAB, p(560.0, 549.0), Some(pos(500, 500)));
+        let mut s = Session::new(1, d, (1, 0), IN_TAB, p(560.0, 549.0), Some(pos(500, 500)));
         s.strips(main_win());
         assert_eq!(s.step(p(560.0, 549.0)), vec![], "its own strip is under the cursor, but it is the window that moves");
         assert_eq!(s.step(p(600.0, 600.0)), vec![Effect::Move("doc-1".into(), pos(540, 551))]);
-        assert_eq!(s.step(p(100.0, 40.0)), vec![Effect::Over("main".into(), over(1, 1, true)), Effect::Hide("doc-1".into())]);
+        assert_eq!(s.step(p(100.0, 40.0)), vec![Effect::Hide("doc-1".into()), Effect::Drop("doc-1".into(), to("main", 1, 1))]);
+        s.held_by("main");
+        assert_eq!(s.release(true), vec![Effect::Drop("main".into(), into("doc-1"))], "Escape: the tab goes back to its window");
         assert_eq!(
-            s.release(true),
+            s.held_by("doc-1"),
             vec![Effect::Move("doc-1".into(), pos(500, 500)), Effect::Show("doc-1".into()), Effect::Focus("doc-1".into()), Effect::End]
         );
 
-        let mut s = Session::new(1, doc_win(), label(), (1, 0), IN_TAB, p(1400.0, 180.0), Some(pos(1300, 100)));
+        let mut s = Session::new(1, doc_win(), (1, 0), IN_TAB, p(1400.0, 180.0), Some(pos(1300, 100)));
         s.strips(main_win());
         s.step(p(100.0, 40.0));
-        assert_eq!(s.release(false), vec![Effect::Drop("doc-1".into(), slot("main", 1, 1)), Effect::End], "it sends its tab and closes");
+        s.held_by("main");
+        assert_eq!(s.release(false), vec![Effect::Focus("main".into()), Effect::End], "doc-1 is left empty and closes when the drag ends");
     }
 
     #[test]
@@ -852,10 +992,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!((g.x, g.strips[0].pane, g.strips[0].mids.clone()), (-1920.0, 3, vec![50.5]));
-        let o = serde_json::to_value(Over { pane: 1, at: At::Index(2), tab: None }).unwrap();
-        assert_eq!(o, json!({ "pane": 1, "index": 2 }), "a marker carries no tab");
+        assert_eq!(serde_json::to_value(Over { pane: 1, at: At::Index(2) }).unwrap(), json!({ "pane": 1, "index": 2 }));
         assert_eq!(serde_json::to_value(over_body(2, Zone::Left)).unwrap(), json!({ "pane": 2, "zone": "left" }));
-        assert_eq!(serde_json::to_value(zone("main", 2, Zone::Center)).unwrap(), json!({ "label": "main", "pane": 2, "zone": "center" }));
-        assert_eq!(serde_json::to_value(slot("main", 1, 0)).unwrap(), json!({ "label": "main", "pane": 1, "index": 0 }));
+        assert_eq!(serde_json::to_value(To::Slot(zone("main", 2, Zone::Center))).unwrap(), json!({ "label": "main", "pane": 2, "zone": "center" }));
+        assert_eq!(serde_json::to_value(to("main", 1, 0)).unwrap(), json!({ "label": "main", "pane": 1, "index": 0 }));
+        assert_eq!(serde_json::to_value(into("doc-2")).unwrap(), json!({ "label": "doc-2" }), "the following window's focused pane");
     }
 }

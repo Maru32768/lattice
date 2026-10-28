@@ -873,6 +873,7 @@ export const handlers = {
   tab_drag_start: none,
   tab_drag_strips: none,
   tab_drag_float: none,
+  tab_drag_held: none,
   tab_drag_release: none,
   r2_status: (): R2Status => store.r2,
   r2_save: ({ settings }: { settings: R2Settings }) => {

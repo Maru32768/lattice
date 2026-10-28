@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-tab-drag-held"
+description = "Enables the tab_drag_held command without any pre-configured scope."
+commands.allow = ["tab_drag_held"]
+
+[[permission]]
+identifier = "deny-tab-drag-held"
+description = "Denies the tab_drag_held command without any pre-configured scope."
+commands.deny = ["tab_drag_held"]

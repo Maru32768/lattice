@@ -1469,6 +1469,7 @@ pub fn run() {
             tabdrag::tab_drag_start,
             tabdrag::tab_drag_strips,
             tabdrag::tab_drag_float,
+            tabdrag::tab_drag_held,
             tabdrag::tab_drag_release,
             update::update_info,
             update::update_check,
