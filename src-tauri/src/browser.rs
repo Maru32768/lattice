@@ -343,12 +343,22 @@ fn in_window(wv: &Webview, window: &Window) -> bool {
 /// and scroll position, as a tab dragged between Chrome windows does. If it cannot move, it is
 /// closed and the tab opens its page again there.
 async fn attach(app: &AppHandle, wv: Webview, window: &Window) -> Result<(), String> {
-    match wv.reparent(window) {
-        Ok(()) => {
-            #[cfg(windows)]
-            settle(&wv);
-            Ok(())
+    let (tx, rx) = oneshot::channel();
+    let (moving, to) = (wv.clone(), window.clone());
+    // On the main thread: off it, `reparent` holds the webview's lock until the main thread has
+    // moved it, and the window already counts as the webview's, so a `browser_set_bounds` for it
+    // run there meanwhile waited on that lock and the app froze.
+    app.run_on_main_thread(move || {
+        let moved = moving.reparent(&to).map_err(|e| e.to_string());
+        #[cfg(windows)]
+        if moved.is_ok() {
+            settle(&moving);
         }
+        let _ = tx.send(moved);
+    })
+    .map_err(|e| e.to_string())?;
+    match rx.await.unwrap_or_else(|_| Err("the main thread dropped the move".into())) {
+        Ok(()) => Ok(()),
         Err(e) => {
             log::warn!("moving {} to {}: {e}", wv.label(), window.label());
             close_page(app, wv).await
