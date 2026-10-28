@@ -440,7 +440,7 @@ impl Session {
         match &self.held {
             // Along its own strip a move counts the tab itself among the tabs it goes before.
             Held::Strip(cur) if cur.label == to.label && cur.pane == to.pane => {
-                if let (At::Index(i), Some(h)) = (to.at, self.held_index(cur))
+                if let (At::Index(i), At::Index(h)) = (to.at, cur.at)
                     && i > h
                 {
                     sent.at = At::Index(i + 1);
@@ -491,12 +491,6 @@ impl Session {
         let c = w.client(p);
         let (pane, zone) = w.strips.iter().find_map(|s| Some((s.pane, s.body.zone(c)?)))?;
         (pane != held.pane || zone != Zone::Center).then(|| Slot { label: w.label.clone(), pane, at: At::Zone(zone) })
-    }
-
-    /// Where `slot`'s window says the tab sits in that strip.
-    fn held_index(&self, slot: &Slot) -> Option<usize> {
-        let w = self.wins.iter().find(|w| w.label == slot.label)?;
-        w.strips.iter().find(|s| s.pane == slot.pane)?.held
     }
 
     fn hide(&mut self) -> Vec<Effect> {
@@ -988,6 +982,26 @@ mod tests {
     }
 
     #[test]
+    fn reversing_a_reorder_before_the_strip_report_catches_up_moves_the_tab_back() {
+        let mut s = from_main();
+        assert_eq!(s.step(p(105.0, 45.0)), vec![Effect::Drop("main".into(), to("main", 1, 0)), slid("main", 1, 55.0)]);
+        assert_eq!(
+            s.step(p(125.0, 45.0)),
+            vec![Effect::Drop("main".into(), to("main", 1, 2)), slid("main", 1, 75.0)],
+            "the tab is already first even though the strip still reports it second"
+        );
+        assert_eq!(s.step(p(125.0, 45.0)), vec![], "holding the cursor still does not reorder again");
+
+        let mut s = from_main();
+        s.step(p(105.0, 45.0));
+        assert_eq!(
+            s.release(true),
+            vec![Effect::Drop("main".into(), to("main", 1, 2)), Effect::Focus("main".into()), Effect::End],
+            "Escape restores the tab before the strip reports the reorder"
+        );
+    }
+
+    #[test]
     fn over_another_windows_strip_the_tab_moves_there_at_once_and_out_again_into_a_window_of_its_own() {
         let mut s = from_main();
         assert_eq!(s.step(p(170.0, 45.0)), vec![slid("main", 1, 120.0)], "along its own strip it follows the cursor");
@@ -1000,7 +1014,11 @@ mod tests {
         );
         assert_eq!(s.step(p(1600.0, 180.0)), vec![], "one move at a time");
         assert_eq!(s.held_by("main"), vec![], "only the window it went to confirms");
-        assert_eq!(s.held_by("doc-1"), vec![Effect::Drop("doc-1".into(), to("doc-1", 1, 1)), slid("doc-1", 1, 100.0)], "then it catches up");
+        assert_eq!(
+            s.held_by("doc-1"),
+            vec![Effect::Drop("doc-1".into(), to("doc-1", 1, 2)), slid("doc-1", 1, 100.0)],
+            "then it catches up, counting itself before the neighbour"
+        );
         assert_eq!(s.step(p(1610.0, 180.0)), vec![slid("doc-1", 1, 105.0)], "the same slot");
         assert_eq!(s.step(p(1400.0, 600.0)), vec![Effect::Tear("doc-1".into()), Effect::Slide("doc-1".into(), None)], "off every strip: doc-1 tears it off");
         s.floated("doc-2".into(), 1.0);
