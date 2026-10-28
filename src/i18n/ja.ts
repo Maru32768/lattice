@@ -84,6 +84,9 @@ export const ja = {
   "browserSettings.custom": "カスタム",
   "browserSettings.template": "検索 URL",
   "browserSettings.templateDesc": "検索語の位置に {code} を書きます (例: {code2})。ホームはこの URL のサイトのトップページです。",
+  "browserSettings.skipSites": "翻訳しないサイト",
+  "browserSettings.skipSitesDesc":
+    "Page の表示を混在・訳文にしていても、これらのサイトのページは原文のまま表示します。1 行に 1 つホスト名を書きます (サブドメインも含みます)。既定は主な検索エンジンです。",
   "chatSettings.small": "少なめ (約 4 万字)",
   "chatSettings.standard": "標準 (約 8 万字)",
   "chatSettings.large": "多め (約 15 万字)",

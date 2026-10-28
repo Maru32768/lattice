@@ -400,6 +400,21 @@ fn set_auto_translate_own_language(app: State<'_, App>, on: bool) -> Result<(), 
     translate::set_auto_own_language(&app.store, on)
 }
 
+/// 翻訳しないサイト, one host per line.
+#[tauri::command(async)]
+fn get_page_translate_skip_sites(app: State<'_, App>) -> Result<String, String> {
+    Ok(translate::page_skip_sites(&app.store)?.join("\n"))
+}
+
+/// Returns the hosts as stored (a pasted URL becomes its host).
+#[tauri::command(async)]
+fn set_page_translate_skip_sites(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle, text: String) -> Result<String, String> {
+    let sites = translate::set_page_skip_sites(&app.store, &text)?;
+    let shown = sites.join("\n");
+    browser.set_skip_sites(&handle, sites)?;
+    Ok(shown)
+}
+
 #[tauri::command(async)]
 fn get_translate_parallel(app: State<'_, App>) -> Result<usize, String> {
     translate::parallel(&app.store)
@@ -1200,6 +1215,7 @@ pub fn run() {
             let http = HttpClient::configured(&network::settings(&store)?)?;
             let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http });
 
+            app.state::<Browser>().set_skip_sites(app.handle(), translate::page_skip_sites(&store)?)?;
             store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
@@ -1352,6 +1368,8 @@ pub fn run() {
             set_translate_parallel,
             get_auto_translate_own_language,
             set_auto_translate_own_language,
+            get_page_translate_skip_sites,
+            set_page_translate_skip_sites,
             get_translate_instructions,
             set_translate_instructions,
             get_translation_prompt,

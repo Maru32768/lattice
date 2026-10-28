@@ -55,6 +55,24 @@ test("the launch-at-sign-in switch keeps what was chosen", async ({ app }) => {
   await expect(autostart).toBeChecked();
 });
 
+test("翻訳しないサイト shows the stored hosts and saves the edited list", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  await nav
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("ブラウザ", { exact: true }) })
+    .click();
+  const sites = app.getByRole("textbox", { name: "翻訳しないサイト" });
+  await expect(sites).toHaveValue("google.com\nduckduckgo.com");
+  const save = app.locator(".set.wide").filter({ has: sites }).getByRole("button", { name: "保存" });
+  await expect(save, "nothing changed yet").toBeDisabled();
+  await sites.fill("google.com\nExample.com\n");
+  await save.click();
+  expect(await callsOf(app, "set_page_translate_skip_sites")).toEqual([{ text: "google.com\nExample.com\n" }]);
+  await expect(sites, "as stored").toHaveValue("google.com\nexample.com");
+  await expect(save).toBeDisabled();
+});
+
 test("the data folder opens through the backend without a webview-supplied path", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });

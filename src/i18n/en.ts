@@ -90,6 +90,9 @@ export const en = {
   "browserSettings.custom": "Custom",
   "browserSettings.template": "Search URL",
   "browserSettings.templateDesc": "Put {code} where the search terms go (e.g. {code2}). Home is the top page of that URL's site.",
+  "browserSettings.skipSites": "Sites not to translate",
+  "browserSettings.skipSitesDesc":
+    "Pages on these sites stay in the original even when Page is set to Mixed or Translated. One host name per line (subdomains included). By default, the major search engines.",
   "chatSettings.small": "Small (about 40,000 characters)",
   "chatSettings.standard": "Standard (about 80,000 characters)",
   "chatSettings.large": "Large (about 150,000 characters)",

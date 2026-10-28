@@ -181,6 +181,9 @@ export const api = {
   setAutoTranslate: (on: boolean) => invoke<void>("set_auto_translate", { on }),
   autoTranslateOwnLanguage: () => invoke<boolean>("get_auto_translate_own_language"),
   setAutoTranslateOwnLanguage: (on: boolean) => invoke<void>("set_auto_translate_own_language", { on }),
+  /** 翻訳しないサイト: one host per line. */
+  pageTranslateSkipSites: () => invoke<string>("get_page_translate_skip_sites"),
+  setPageTranslateSkipSites: (text: string) => invoke<string>("set_page_translate_skip_sites", { text }),
   translateParallel: () => invoke<number>("get_translate_parallel"),
   setTranslateParallel: (n: number) => invoke<void>("set_translate_parallel", { n }),
   translateInstructions: () => invoke<string>("get_translate_instructions"),

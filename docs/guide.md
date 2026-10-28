@@ -666,6 +666,8 @@ Shortcuts are stored on this computer only.
 
 **Search engine** is used when you type something other than a URL in the Page view's URL field, and for the home button. Choose DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For **Custom**, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
 
+Pages on the sites in **Sites not to translate** stay in the original even when the Page view is set to Mixed or Translated. Write one host name per line; subdomains are included. By default, the major search engines such as Google, Bing and DuckDuckGo.
+
 ### Startup and taskbar
 
 - **Start Lattice when Windows starts**: opens Lattice when you sign in to Windows. Off by default. Turning Lattice off in Task Manager's Startup apps also turns this setting off.

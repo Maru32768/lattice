@@ -48,6 +48,8 @@ const COMMANDS: &[&str] = &[
     "set_translate_parallel",
     "get_auto_translate_own_language",
     "set_auto_translate_own_language",
+    "get_page_translate_skip_sites",
+    "set_page_translate_skip_sites",
     "get_translate_instructions",
     "set_translate_instructions",
     "get_translation_prompt",

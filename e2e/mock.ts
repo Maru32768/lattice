@@ -129,6 +129,7 @@ const store = {
   autoTranslate: false,
   translateParallel: 3,
   autoTranslateOwnLanguage: false,
+  pageSkipSites: "google.com\nduckduckgo.com",
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
   chatBudget: "standard" as ChatBudget,
@@ -659,6 +660,9 @@ export const handlers = {
   set_auto_translate: ({ on }: { on: boolean }) => void (store.autoTranslate = on),
   get_auto_translate_own_language: (): boolean => store.autoTranslateOwnLanguage,
   set_auto_translate_own_language: ({ on }: { on: boolean }) => void (store.autoTranslateOwnLanguage = on),
+  get_page_translate_skip_sites: (): string => store.pageSkipSites,
+  set_page_translate_skip_sites: ({ text }: { text: string }): string =>
+    (store.pageSkipSites = [...new Set(text.split("\n").map((l) => l.trim().toLowerCase()))].filter(Boolean).join("\n")),
   get_translate_parallel: (): number => store.translateParallel,
   set_translate_parallel: ({ n }: { n: number }) => void (store.translateParallel = n),
   get_translate_instructions: (): string => store.translateInstructions,

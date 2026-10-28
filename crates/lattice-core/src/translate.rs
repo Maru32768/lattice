@@ -34,6 +34,12 @@ const BATCH_ITEMS: usize = 12;
 pub const PARALLEL_SETTING: &str = "translate_parallel";
 pub const DEFAULT_PARALLEL: usize = 3;
 pub const MAX_PARALLEL: usize = 8;
+/// Sites whose pages the in-app browser never translates, one host per line (subdomains included);
+/// absent means `DEFAULT_PAGE_SKIP_SITES`: result pages are mostly titles, and translating every search spends usage.
+pub const PAGE_SKIP_SETTING: &str = "page_translate_skip_sites";
+pub const DEFAULT_PAGE_SKIP_SITES: &[&str] =
+    &["google.com", "google.co.jp", "bing.com", "duckduckgo.com", "search.brave.com", "kagi.com", "search.yahoo.co.jp", "search.yahoo.com"];
+const MAX_PAGE_SKIP_SITES: usize = 500;
 
 pub fn keep_terms(store: &Store) -> Result<bool, String> {
     Ok(store.setting(KEEP_TERMS_SETTING).map_err(|e| e.to_string())?.as_deref() != Some("off"))
@@ -81,6 +87,45 @@ pub fn auto_own_language(store: &Store) -> Result<bool, String> {
 
 pub fn set_auto_own_language(store: &Store, on: bool) -> Result<(), String> {
     store.set_setting(AUTO_OWN_LANGUAGE_SETTING, on.then_some("on")).map_err(|e| e.to_string())
+}
+
+pub fn page_skip_sites(store: &Store) -> Result<Vec<String>, String> {
+    Ok(match store.setting(PAGE_SKIP_SETTING).map_err(|e| e.to_string())? {
+        Some(v) => v.lines().map(str::to_owned).collect(),
+        None => DEFAULT_PAGE_SKIP_SITES.iter().map(|s| (*s).to_owned()).collect(),
+    })
+}
+
+/// Stores the hosts in `text` (one per line; a pasted URL counts as its host), returning them as stored.
+pub fn set_page_skip_sites(store: &Store, text: &str) -> Result<Vec<String>, String> {
+    let mut sites: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let host = site_host(line);
+        if !host.is_empty() && !sites.contains(&host) {
+            sites.push(host);
+        }
+    }
+    sites.truncate(MAX_PAGE_SKIP_SITES);
+    let default = sites.iter().map(String::as_str).eq(DEFAULT_PAGE_SKIP_SITES.iter().copied());
+    // Empty is stored as "": clearing the list must not bring the defaults back.
+    store.set_setting(PAGE_SKIP_SETTING, (!default).then(|| sites.join("\n")).as_deref()).map_err(|e| e.to_string())?;
+    Ok(sites)
+}
+
+/// `https://www.Example.com/path` → `www.example.com`.
+fn site_host(line: &str) -> String {
+    let s = line.trim();
+    let s = s.split_once("://").map_or(s, |(_, rest)| rest);
+    let s = s.split(['/', '?', '#']).next().unwrap_or_default();
+    let s = s.rsplit_once('@').map_or(s, |(_, host)| host);
+    let s = s.split(':').next().unwrap_or_default();
+    s.trim_matches('.').to_ascii_lowercase()
+}
+
+/// Whether `host` is one of `sites` or a subdomain of one.
+pub fn page_skipped(sites: &[String], host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    sites.iter().any(|s| host == *s || host.strip_suffix(s.as_str()).is_some_and(|sub| sub.ends_with('.')))
 }
 
 /// "ja" until the app has stored one.
@@ -329,6 +374,25 @@ mod tests {
             self.now.fetch_sub(1, Ordering::SeqCst);
             self.fake.complete_json(system, input, schema).await
         }
+    }
+
+    #[test]
+    fn page_skip_sites_default_to_search_engines_and_match_subdomains() {
+        let s = Store::open_in_memory().unwrap();
+        let sites = page_skip_sites(&s).unwrap();
+        assert!(page_skipped(&sites, "www.google.com") && page_skipped(&sites, "DuckDuckGo.com."));
+        assert!(!page_skipped(&sites, "notgoogle.com"), "a suffix is not a subdomain");
+        assert!(!page_skipped(&sites, "example.com"));
+
+        let stored = set_page_skip_sites(&s, " https://Docs.Example.com:8080/a?b \n\nexample.org\nexample.org\n").unwrap();
+        assert_eq!(stored, ["docs.example.com", "example.org"]);
+        assert_eq!(page_skip_sites(&s).unwrap(), stored);
+        assert!(page_skipped(&stored, "docs.example.com") && !page_skipped(&stored, "example.com"));
+
+        assert!(set_page_skip_sites(&s, "").unwrap().is_empty());
+        assert!(page_skip_sites(&s).unwrap().is_empty(), "cleared stays cleared");
+        set_page_skip_sites(&s, &DEFAULT_PAGE_SKIP_SITES.join("\n")).unwrap();
+        assert_eq!(s.setting(PAGE_SKIP_SETTING).unwrap(), None, "the defaults are not stored");
     }
 
     #[tokio::test]

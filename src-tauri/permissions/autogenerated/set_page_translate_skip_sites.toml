@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-page-translate-skip-sites"
+description = "Enables the set_page_translate_skip_sites command without any pre-configured scope."
+commands.allow = ["set_page_translate_skip_sites"]
+
+[[permission]]
+identifier = "deny-set-page-translate-skip-sites"
+description = "Denies the set_page_translate_skip_sites command without any pre-configured scope."
+commands.deny = ["set_page_translate_skip_sites"]

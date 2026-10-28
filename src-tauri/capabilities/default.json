@@ -89,6 +89,8 @@
     "allow-set-translate-parallel",
     "allow-get-auto-translate-own-language",
     "allow-set-auto-translate-own-language",
+    "allow-get-page-translate-skip-sites",
+    "allow-set-page-translate-skip-sites",
     "allow-get-translate-instructions",
     "allow-set-translate-instructions",
     "allow-get-translation-prompt",

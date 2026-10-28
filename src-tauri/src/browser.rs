@@ -86,6 +86,8 @@ pub struct PageKeys {
 pub struct Browser {
     /// Shared by every page webview, like the Reader's display language is shared by articles.
     pub config: Mutex<OverlayConfig>,
+    /// Hosts never translated (`translate::page_skip_sites`): their pages get the config switched off.
+    skip_sites: Mutex<Vec<String>>,
     keys: Mutex<Option<PageKeys>>,
     /// Per webview label.
     tabs: Mutex<HashMap<String, TabState>>,
@@ -161,6 +163,7 @@ impl Default for Browser {
     fn default() -> Self {
         Self {
             config: Mutex::new(OverlayConfig { enabled: false, percent: 70, labels: OverlayLabels::default() }),
+            skip_sites: Mutex::new(Vec::new()),
             keys: Mutex::new(None),
             tabs: Mutex::new(HashMap::new()),
             opening: tokio::sync::Mutex::new(()),
@@ -177,6 +180,37 @@ impl Browser {
     /// Every page webview, by label.
     fn webviews(&self, app: &AppHandle) -> Vec<(String, Webview)> {
         app.webviews().into_iter().filter(|(l, _)| is_browser(l)).collect()
+    }
+
+    /// Whether the page now in `wv` is on a site the user excluded from translation.
+    fn skipped(&self, wv: &Webview) -> bool {
+        let url = wv.url().ok();
+        url.as_ref().and_then(Url::host_str).is_some_and(|h| lattice_core::translate::page_skipped(&lock(&self.skip_sites), h))
+    }
+
+    /// The overlay config for the page in `wv`.
+    fn config_for(&self, wv: &Webview) -> OverlayConfig {
+        let config = lock(&self.config).clone();
+        if config.enabled && self.skipped(wv) {
+            OverlayConfig { enabled: false, ..config }
+        } else {
+            config
+        }
+    }
+
+    /// Sends every page its config again (the config or the excluded sites changed).
+    fn reconfigure(&self, app: &AppHandle) -> Result<(), String> {
+        for (_, wv) in self.webviews(app) {
+            let arg = serde_json::to_string(&self.config_for(&wv)).expect("config serializes");
+            wv.eval(format!("window.__lattice&&window.__lattice.configure({arg})")).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// New excluded sites: pages on them stop translating, pages no longer on them start.
+    pub fn set_skip_sites(&self, app: &AppHandle, sites: Vec<String>) -> Result<(), String> {
+        *lock(&self.skip_sites) = sites;
+        self.reconfigure(app)
     }
 
     /// Closes hidden webviews beyond MAX_PARKED, oldest first.
@@ -705,13 +739,8 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
 
 #[tauri::command]
 pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>, enabled: bool, percent: u8, labels: OverlayLabels) -> Result<(), String> {
-    let cfg = OverlayConfig { enabled, percent: percent.min(100), labels };
-    let arg = serde_json::to_string(&cfg).expect("config serializes");
-    *lock(&browser.config) = cfg;
-    for (_, wv) in browser.webviews(&app) {
-        wv.eval(format!("window.__lattice&&window.__lattice.configure({arg})")).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    *lock(&browser.config) = OverlayConfig { enabled, percent: percent.min(100), labels };
+    browser.reconfigure(&app)
 }
 
 #[derive(Serialize)]
@@ -725,11 +754,10 @@ pub struct OverlayBoot {
 /// Only the visible browsers translate and forward shortcuts; the renderer's page stays as served.
 #[tauri::command]
 pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayBoot {
-    let config = lock(&browser.config).clone();
     if is_browser(webview.label()) {
-        OverlayBoot { config, keys: lock(&browser.keys).clone() }
+        OverlayBoot { config: browser.config_for(&webview), keys: lock(&browser.keys).clone() }
     } else {
-        OverlayBoot { config: OverlayConfig { enabled: false, ..config }, keys: None }
+        OverlayBoot { config: OverlayConfig { enabled: false, ..lock(&browser.config).clone() }, keys: None }
     }
 }
 
@@ -821,12 +849,12 @@ fn take_capture(t: &mut TabState, now: Instant) -> bool {
     ok
 }
 
-/// Guards overlay_translate: the caller must be a browser webview with translation on.
+/// Guards overlay_translate: the caller must be a browser webview with translation on, not on an excluded site.
 pub fn ensure_translation_allowed(webview: &Webview, browser: &Browser) -> Result<(), String> {
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
-    if !lock(&browser.config).enabled {
+    if !lock(&browser.config).enabled || browser.skipped(webview) {
         return Err("translation is off".into());
     }
     Ok(())
