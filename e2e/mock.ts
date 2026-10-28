@@ -129,7 +129,7 @@ const store = {
   autoTranslate: false,
   translateParallel: 3,
   autoTranslateOwnLanguage: false,
-  pageSkipSites: "google.com\nduckduckgo.com",
+  pageSkipSites: "www.google.*\nduckduckgo.com",
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
   chatBudget: "standard" as ChatBudget,

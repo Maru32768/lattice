@@ -268,6 +268,7 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 | **Parallel requests** | How many translation requests to the AI provider run at the same time (1–8, default 3). Long articles send their batches (up to 12 paragraphs each) in parallel, and several short articles are translated at once, so **Jobs** shows up to this many running. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once. |
 | **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. When translating into English, uses the established English terms. On by default. |
 | **Extra instructions** | Instructions added to the end of the translation prompt, such as a preferred style or terms. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt they are added to. |
+| **Sites not to translate** | Pages listed here stay in the original even when the Page view is set to Mixed or Translated. Write one per line; `*` matches any text. A host name alone also covers its subdomains (e.g. `www.google.*`). With a `/`, it is matched against the whole URL, with or without `https://` (e.g. `https://example.com/docs/*`). By default, the major search engines such as Google, Bing and DuckDuckGo. |
 
 Translations are stored separately for each combination of **Keep technical terms in English** and **Extra instructions**. After changing them, translate again the articles you want to read with the new settings. Changing the settings back shows the earlier translations again.
 
@@ -665,8 +666,6 @@ Shortcuts are stored on this computer only.
 ### Browser
 
 **Search engine** is used when you type something other than a URL in the Page view's URL field, and for the home button. Choose DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For **Custom**, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
-
-Pages on the sites in **Sites not to translate** stay in the original even when the Page view is set to Mixed or Translated. Write one host name per line; subdomains are included. By default, the major search engines such as Google, Bing and DuckDuckGo.
 
 ### Startup and taskbar
 

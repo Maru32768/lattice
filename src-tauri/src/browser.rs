@@ -182,10 +182,11 @@ impl Browser {
         app.webviews().into_iter().filter(|(l, _)| is_browser(l)).collect()
     }
 
-    /// Whether the page now in `wv` is on a site the user excluded from translation.
+    /// Whether the page now in `wv` is one the user excluded from translation.
+    // shortcut: checked at page load and on a settings change, so a same-document navigation (pushState)
+    // onto or off an excluded path keeps the page's state until the next load; watch overlay_history if that matters.
     fn skipped(&self, wv: &Webview) -> bool {
-        let url = wv.url().ok();
-        url.as_ref().and_then(Url::host_str).is_some_and(|h| lattice_core::translate::page_skipped(&lock(&self.skip_sites), h))
+        wv.url().is_ok_and(|u| lattice_core::translate::page_skipped(&lock(&self.skip_sites), u.as_str()))
     }
 
     /// The overlay config for the page in `wv`.

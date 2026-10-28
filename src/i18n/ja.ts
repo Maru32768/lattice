@@ -84,9 +84,6 @@ export const ja = {
   "browserSettings.custom": "カスタム",
   "browserSettings.template": "検索 URL",
   "browserSettings.templateDesc": "検索語の位置に {code} を書きます (例: {code2})。ホームはこの URL のサイトのトップページです。",
-  "browserSettings.skipSites": "翻訳しないサイト",
-  "browserSettings.skipSitesDesc":
-    "Page の表示を混在・訳文にしていても、これらのサイトのページは原文のまま表示します。1 行に 1 つホスト名を書きます (サブドメインも含みます)。既定は主な検索エンジンです。",
   "chatSettings.small": "少なめ (約 4 万字)",
   "chatSettings.standard": "標準 (約 8 万字)",
   "chatSettings.large": "多め (約 15 万字)",
@@ -181,6 +178,9 @@ export const ja = {
   "translationSettings.instructions": "追加の指示",
   "translationSettings.instructionsDesc":
     "翻訳の prompt の末尾に付け加えます (例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に適用されます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
+  "translationSettings.skipSites": "翻訳しないサイト",
+  "translationSettings.skipSitesDesc":
+    "Page 表示を混在・訳文にしていても、ここに書いたページは原文のまま表示します。1 行に 1 つ書き、{code} は任意の文字列に一致します。ホスト名だけならサブドメインも含みます (例: {code2})。/ を含めると URL 全体と比べます (例: {code3})。既定は主な検索エンジンです。",
   "translationSettings.showPrompt": "組み込みの prompt (英語→日本語) を見る",
   "translationSettings.prompt": "組み込みの prompt",
   "backupSection.location": "保存先: {path}",

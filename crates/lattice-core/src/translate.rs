@@ -34,11 +34,12 @@ const BATCH_ITEMS: usize = 12;
 pub const PARALLEL_SETTING: &str = "translate_parallel";
 pub const DEFAULT_PARALLEL: usize = 3;
 pub const MAX_PARALLEL: usize = 8;
-/// Sites whose pages the in-app browser never translates, one host per line (subdomains included);
-/// absent means `DEFAULT_PAGE_SKIP_SITES`: result pages are mostly titles, and translating every search spends usage.
+/// Pages the in-app browser never translates, one pattern per line (`page_skipped`); absent means
+/// `DEFAULT_PAGE_SKIP_SITES`: result pages are mostly titles, and translating every search spends usage.
 pub const PAGE_SKIP_SETTING: &str = "page_translate_skip_sites";
+/// `www.google.*` and not `google.*`: Docs, Groups and the like are pages worth translating.
 pub const DEFAULT_PAGE_SKIP_SITES: &[&str] =
-    &["google.com", "google.co.jp", "bing.com", "duckduckgo.com", "search.brave.com", "kagi.com", "search.yahoo.co.jp", "search.yahoo.com"];
+    &["www.google.*", "bing.com", "duckduckgo.com", "search.brave.com", "kagi.com", "search.yahoo.co.jp", "search.yahoo.com"];
 const MAX_PAGE_SKIP_SITES: usize = 500;
 
 pub fn keep_terms(store: &Store) -> Result<bool, String> {
@@ -96,13 +97,13 @@ pub fn page_skip_sites(store: &Store) -> Result<Vec<String>, String> {
     })
 }
 
-/// Stores the hosts in `text` (one per line; a pasted URL counts as its host), returning them as stored.
+/// Stores the patterns in `text` (one per line), returning them as stored.
 pub fn set_page_skip_sites(store: &Store, text: &str) -> Result<Vec<String>, String> {
     let mut sites: Vec<String> = Vec::new();
     for line in text.lines() {
-        let host = site_host(line);
-        if !host.is_empty() && !sites.contains(&host) {
-            sites.push(host);
+        let pattern = line.trim().to_ascii_lowercase();
+        if !pattern.is_empty() && !sites.contains(&pattern) {
+            sites.push(pattern);
         }
     }
     sites.truncate(MAX_PAGE_SKIP_SITES);
@@ -122,10 +123,45 @@ fn site_host(line: &str) -> String {
     s.trim_matches('.').to_ascii_lowercase()
 }
 
-/// Whether `host` is one of `sites` or a subdomain of one.
-pub fn page_skipped(sites: &[String], host: &str) -> bool {
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-    sites.iter().any(|s| host == *s || host.strip_suffix(s.as_str()).is_some_and(|sub| sub.ends_with('.')))
+/// Whether the page at `url` matches one of `sites`, where `*` stands for any text. A pattern without
+/// `/` is a host and covers its subdomains (`example.com`, `www.google.*`); one with `/` is matched
+/// against the whole URL, with or without its scheme (`https://www.google.com/search*`, `example.com/docs/*`).
+pub fn page_skipped(sites: &[String], url: &str) -> bool {
+    let url = url.to_ascii_lowercase();
+    let host = site_host(&url);
+    let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
+    sites.iter().any(|p| {
+        if p.contains("://") {
+            glob(p, &url)
+        } else if p.contains('/') {
+            glob(p, rest)
+        } else {
+            glob(p, &host) || host.match_indices('.').any(|(i, _)| glob(p, &host[i + 1..]))
+        }
+    })
+}
+
+/// `*` matches any run of bytes, everything else itself. Greedy with one backtrack point, so a
+/// pattern full of `*` stays linear-ish instead of exponential on every page load.
+fn glob(pattern: &str, s: &str) -> bool {
+    let (p, s) = (pattern.as_bytes(), s.as_bytes());
+    let (mut pi, mut si) = (0, 0);
+    let mut back: Option<(usize, usize)> = None;
+    while si < s.len() {
+        if p.get(pi) == Some(&b'*') {
+            back = Some((pi + 1, si));
+            pi += 1;
+        } else if p.get(pi) == s.get(si) {
+            pi += 1;
+            si += 1;
+        } else if let Some((bp, bs)) = back {
+            (pi, si) = (bp, bs + 1);
+            back = Some((bp, bs + 1));
+        } else {
+            return false;
+        }
+    }
+    p.get(pi..).is_some_and(|rest| rest.iter().all(|&b| b == b'*'))
 }
 
 /// "ja" until the app has stored one.
@@ -380,14 +416,22 @@ mod tests {
     fn page_skip_sites_default_to_search_engines_and_match_subdomains() {
         let s = Store::open_in_memory().unwrap();
         let sites = page_skip_sites(&s).unwrap();
-        assert!(page_skipped(&sites, "www.google.com") && page_skipped(&sites, "DuckDuckGo.com."));
-        assert!(!page_skipped(&sites, "notgoogle.com"), "a suffix is not a subdomain");
-        assert!(!page_skipped(&sites, "example.com"));
+        for url in ["https://www.google.com/search?q=x", "https://www.google.co.jp/", "https://html.duckduckgo.com/html?q=x", "https://DuckDuckGo.com./"] {
+            assert!(page_skipped(&sites, url), "{url}");
+        }
+        for url in ["https://docs.google.com/document/d/1", "https://notbing.com/", "https://example.com/?u=bing.com"] {
+            assert!(!page_skipped(&sites, url), "{url}");
+        }
 
-        let stored = set_page_skip_sites(&s, " https://Docs.Example.com:8080/a?b \n\nexample.org\nexample.org\n").unwrap();
-        assert_eq!(stored, ["docs.example.com", "example.org"]);
+        let stored = set_page_skip_sites(&s, " https://Docs.Example.com/api/* \n\nexample.org/blog*\n*.test\n*.test\n").unwrap();
+        assert_eq!(stored, ["https://docs.example.com/api/*", "example.org/blog*", "*.test"]);
         assert_eq!(page_skip_sites(&s).unwrap(), stored);
-        assert!(page_skipped(&stored, "docs.example.com") && !page_skipped(&stored, "example.com"));
+        assert!(page_skipped(&stored, "https://docs.example.com/api/v1#x"));
+        assert!(!page_skipped(&stored, "http://docs.example.com/api/v1"), "the scheme counts when written");
+        assert!(!page_skipped(&stored, "https://docs.example.com/guide"));
+        assert!(page_skipped(&stored, "http://example.org/blog/post") && !page_skipped(&stored, "https://www.example.org/blog"));
+        assert!(page_skipped(&stored, "https://app.test:8080/"), "the port is not part of the host");
+        assert!(!glob("*a*a*a*a*a*a*b", &"a".repeat(2000)) && glob("a**b*", "axxbyy"));
 
         assert!(set_page_skip_sites(&s, "").unwrap().is_empty());
         assert!(page_skip_sites(&s).unwrap().is_empty(), "cleared stays cleared");

@@ -90,9 +90,6 @@ export const en = {
   "browserSettings.custom": "Custom",
   "browserSettings.template": "Search URL",
   "browserSettings.templateDesc": "Put {code} where the search terms go (e.g. {code2}). Home is the top page of that URL's site.",
-  "browserSettings.skipSites": "Sites not to translate",
-  "browserSettings.skipSitesDesc":
-    "Pages on these sites stay in the original even when Page is set to Mixed or Translated. One host name per line (subdomains included). By default, the major search engines.",
   "chatSettings.small": "Small (about 40,000 characters)",
   "chatSettings.standard": "Standard (about 80,000 characters)",
   "chatSettings.large": "Large (about 150,000 characters)",
@@ -187,6 +184,9 @@ export const en = {
   "translationSettings.instructions": "Extra instructions",
   "translationSettings.instructionsDesc":
     "Appended to the translation prompt (e.g. “use a polite register”, “follow the Kubernetes docs' official terms”). Applies both to article translation and to translated pages. Translations are stored per set of instructions, so articles need translating again after a change.",
+  "translationSettings.skipSites": "Sites not to translate",
+  "translationSettings.skipSitesDesc":
+    "Pages listed here stay in the original even when the Page view is set to Mixed or Translated. One per line; {code} matches any text. A host name alone includes its subdomains (e.g. {code2}); with a / it is matched against the whole URL (e.g. {code3}). By default, the major search engines.",
   "translationSettings.showPrompt": "Show the built-in prompt (English to Japanese)",
   "translationSettings.prompt": "Built-in prompt",
   "backupSection.location": "Location: {path}",

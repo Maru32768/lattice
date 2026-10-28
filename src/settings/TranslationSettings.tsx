@@ -19,6 +19,9 @@ export function TranslationSettings() {
   const [saved, setSaved] = useState("");
   const [prompt, setPrompt] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [sites, setSites] = useState("");
+  const [savedSites, setSavedSites] = useState("");
+  const [sitesStatus, setSitesStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,6 +46,13 @@ export function TranslationSettings() {
       .then((text) => {
         setInstructions(text);
         setSaved(text);
+      })
+      .catch((e: unknown) => setError(String(e)));
+    api
+      .pageTranslateSkipSites()
+      .then((s) => {
+        setSites(s);
+        setSavedSites(s);
       })
       .catch((e: unknown) => setError(String(e)));
     api
@@ -106,6 +116,18 @@ export function TranslationSettings() {
     }
   }
 
+  async function saveSites() {
+    setError(null);
+    try {
+      const stored = await api.setPageTranslateSkipSites(sites);
+      setSites(stored);
+      setSavedSites(stored);
+      setSitesStatus(t("common.saved"));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   return (
     <div className="grp">
       <SetRow title={t("translationSettings.onSwitch")} htmlFor="tr-on-switch" desc={t("translationSettings.onSwitchDesc")}>
@@ -162,6 +184,35 @@ export function TranslationSettings() {
           <summary>{t("translationSettings.showPrompt")}</summary>
           <pre aria-label={t("translationSettings.prompt")}>{prompt}</pre>
         </details>
+      </div>
+      <div className="set wide">
+        <label className="h" htmlFor="tr-skip-sites">
+          {t("translationSettings.skipSites")}
+        </label>
+        <div className="d">
+          {t.rich("translationSettings.skipSitesDesc", {
+            code: <code>*</code>,
+            code2: <code>www.google.*</code>,
+            code3: <code>https://example.com/docs/*</code>,
+          })}
+        </div>
+        <textarea
+          id="tr-skip-sites"
+          value={sites}
+          rows={5}
+          spellCheck={false}
+          placeholder={t("common.none")}
+          onChange={(e) => {
+            setSites(e.target.value);
+            setSitesStatus(null);
+          }}
+        />
+        <div className="acts">
+          <button className="btn sm" onClick={saveSites} disabled={sites === savedSites}>
+            {t("common.save")}
+          </button>
+          {sitesStatus && <span className="muted">{sitesStatus}</span>}
+        </div>
       </div>
       {error && (
         <p className="msg error-text" role="alert">

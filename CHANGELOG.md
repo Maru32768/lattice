@@ -8,7 +8,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
 - **Genres.** Add a genre in Settings › Genres before any article has it; auto classification can then choose it.
-- **Sites not to translate.** The Page view does not translate pages on the sites listed in Settings › Browser; by default, the major search engines.
+- **Sites not to translate.** The Page view does not translate pages on the sites or URLs (`*` allowed) listed in Settings › Translation; by default, the major search engines.
 
 ### Changed
 
