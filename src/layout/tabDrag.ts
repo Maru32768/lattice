@@ -23,6 +23,8 @@ export interface Strip extends Rect {
 /** A window's client area in physical pixels, its scale, and its strips. */
 export interface WindowGeom {
   label: string;
+  /** This window's count of its reports: the backend drops one that arrives after a newer one. */
+  seq: number;
   x: number;
   y: number;
   width: number;
@@ -83,6 +85,8 @@ export const TAB_DRAG_DROP = "tab-drag-drop";
 /** From the window holding the tab to the one it sends it to: the `Take`. */
 export const TAB_DRAG_TAKE = "tab-drag-take";
 
+let reports = 0;
+
 /** This window's geometry from its DOM, `inner` being its client area's physical position, `held` the dragged tab if it is here. */
 export function measure(label: string, inner: { x: number; y: number }, held: Id | null, root: ParentNode = document): WindowGeom {
   const scale = window.devicePixelRatio;
@@ -99,5 +103,5 @@ export function measure(label: string, inner: { x: number; y: number }, held: Id
     const body = { x: p.left, y: r.bottom, width: p.width, height: p.bottom - r.bottom };
     return { pane: Number(pane.dataset.paneId), x: r.left, y: r.top, width: r.width, height: r.height, tabs, held: at < 0 ? null : at, body };
   });
-  return { label, x: inner.x, y: inner.y, width: window.innerWidth * scale, height: window.innerHeight * scale, scale, strips };
+  return { label, seq: ++reports, x: inner.x, y: inner.y, width: window.innerWidth * scale, height: window.innerHeight * scale, scale, strips };
 }

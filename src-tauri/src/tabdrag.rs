@@ -40,6 +40,10 @@ const DETACH: f64 = 30.0;
 /// Where the first tab's corner sits in a fresh document window, in logical pixels: its strip is
 /// the title bar, and this is the strip's padding (`.tabs` in `src/app/App.css`).
 const FIRST_TAB: (f64, f64) = (6.0, 5.0);
+/// Along its strip the tab changes places at most once per this many CSS px the cursor moves, as
+/// in Chrome (`kHorizontalMoveThreshold`): a swap moves the neighbour by the tab's width, so right
+/// after one the way back is only the gap between tabs, and a shaking hand swapped it to and fro.
+const REORDER_PX: f64 = 16.0;
 /// How far into a pane's body, as a fraction of its width or height, an edge reaches.
 const EDGE: f64 = 0.25;
 
@@ -125,6 +129,9 @@ enum At {
 pub struct Geom {
     #[serde(default)]
     label: String,
+    /// The window's count of its reports: one that comes late, after a newer one, is dropped.
+    #[serde(default)]
+    seq: u64,
     x: f64,
     y: f64,
     width: f64,
@@ -152,10 +159,10 @@ pub struct Slot {
     at: At,
 }
 
-/// The slot in `s` for the dragged tab with the cursor at client x `x`. In the strip that has it,
-/// Chrome's rule: a neighbour changes sides once the tab's near edge passes the neighbour's center
-/// (and a move counts the tab itself among the tabs it goes before). Elsewhere the tab goes before
-/// the first tab whose center is past its own.
+/// The position in `s` (among its other tabs) for the dragged tab with the cursor at client x `x`.
+/// In the strip that has it, Chrome's rule: a neighbour changes sides once the tab's near edge
+/// passes the neighbour's center. Elsewhere the tab goes before the first tab whose center is past
+/// its own.
 fn index_in(s: &Strip, x: f64, g: Grip) -> usize {
     let left = x - g.grab;
     let center = |t: &(f64, f64)| (t.0 + t.1) / 2.0;
@@ -163,12 +170,7 @@ fn index_in(s: &Strip, x: f64, g: Grip) -> usize {
         return s.tabs.iter().filter(|t| center(t) < left + g.width / 2.0).count();
     };
     let right = left + s.tabs.get(h).map_or(g.width, |t| t.1 - t.0);
-    let before = s.tabs.iter().enumerate().filter(|&(i, t)| (i < h && center(t) <= left) || (i > h && center(t) < right)).count();
-    if before > h {
-        before + 1
-    } else {
-        before
-    }
+    s.tabs.iter().enumerate().filter(|&(i, t)| (i < h && center(t) <= left) || (i > h && center(t) < right)).count()
 }
 
 /// The slot under `p`, if any. The first window that contains `p` decides: the source is `wins[0]`
@@ -273,6 +275,8 @@ struct Session {
     over: Option<Slot>,
     /// The last slide sent, and to which window.
     slid: Option<(String, Slide)>,
+    /// The cursor's x (physical px) when the tab last changed places along its strip.
+    reordered: Option<f64>,
     last: Point,
     /// The button came up: `Some(true)` with Escape.
     released: Option<bool>,
@@ -304,6 +308,7 @@ impl Session {
             tearing: None,
             over: None,
             slid: None,
+            reordered: None,
             last: at,
             released: None,
             done: false,
@@ -320,7 +325,8 @@ impl Session {
 
     fn strips(&mut self, g: Geom) {
         match self.wins.iter_mut().find(|w| w.label == g.label) {
-            Some(w) => *w = g,
+            Some(w) if g.seq >= w.seq => *w = g,
+            Some(_) => {}
             None => self.wins.push(g),
         }
     }
@@ -356,6 +362,14 @@ impl Session {
         fx.extend(match (self.held.clone(), at.clone()) {
             (_, Some(_)) if marked.is_some() => vec![],
             (Held::Strip(s), Some(a)) if a == s => vec![],
+            (Held::Strip(s), Some(a)) if a.label == s.label && a.pane == s.pane => {
+                if self.reordered.is_some_and(|x| (p.x - x).abs() < REORDER_PX * self.scale_of(&s.label)) {
+                    vec![]
+                } else {
+                    self.reordered = Some(p.x);
+                    self.send(&from, a)
+                }
+            }
             (Held::Strip(_), Some(a)) => self.send(&from, a),
             (Held::Strip(_), None) if self.stayed && self.between_panes(p) => vec![],
             (Held::Strip(_), None) => self.float_off(&from),
@@ -366,7 +380,7 @@ impl Session {
             }
             (Held::Float, None) => self.follow(),
         });
-        let along = matches!((&self.held, &at), (Held::Strip(s), Some(a)) if a == s);
+        let along = matches!((&self.held, &at), (Held::Strip(s), Some(a)) if a.label == s.label && a.pane == s.pane && matches!(a.at, At::Index(_)));
         fx.extend(self.slide(along));
         fx
     }
@@ -422,8 +436,25 @@ impl Session {
     fn send(&mut self, from: &str, to: Slot) -> Vec<Effect> {
         self.moving = to.label != from;
         self.stayed &= !self.moving;
-        self.held = Held::Strip(to.clone());
-        vec![Effect::Drop(from.to_string(), To::Slot(to))]
+        let mut sent = to.clone();
+        match &self.held {
+            // Along its own strip a move counts the tab itself among the tabs it goes before.
+            Held::Strip(cur) if cur.label == to.label && cur.pane == to.pane => {
+                if let (At::Index(i), Some(h)) = (to.at, self.held_index(cur))
+                    && i > h
+                {
+                    sent.at = At::Index(i + 1);
+                }
+            }
+            // Into another strip: its first change of place there is not held back.
+            _ => self.reordered = None,
+        }
+        self.held = Held::Strip(to);
+        vec![Effect::Drop(from.to_string(), To::Slot(sent))]
+    }
+
+    fn scale_of(&self, label: &str) -> f64 {
+        self.wins.iter().find(|w| w.label == label).map_or(1.0, |w| w.scale)
     }
 
     /// Off every strip: the tab goes into the window following the cursor, made the first time.
@@ -568,16 +599,7 @@ impl Session {
         match (self.home, self.held.clone()) {
             (Some(_), Held::Strip(_)) => self.float_off(&from),
             (None, Held::Strip(s)) if s == self.origin => vec![],
-            (None, Held::Strip(s)) => {
-                let mut to = self.origin.clone();
-                // Back along its own strip: a move counts the tab itself among the tabs it goes before.
-                if let (true, At::Index(i), Some(h)) = (s.label == to.label && s.pane == to.pane, to.at, self.held_index(&s))
-                    && i > h
-                {
-                    to.at = At::Index(i + 1);
-                }
-                self.send(&from, to)
-            }
+            (None, Held::Strip(_)) => self.send(&from, self.origin.clone()),
             (None, Held::Float) => {
                 let mut fx = self.hide();
                 fx.extend(self.send(&from, self.origin.clone()));
@@ -850,6 +872,7 @@ mod tests {
     /// The main window at the origin with two panes stacked; a document window to its right at double scale.
     fn main_win() -> Geom {
         Geom {
+            seq: 0,
             label: "main".into(),
             x: 0.0,
             y: 0.0,
@@ -861,6 +884,7 @@ mod tests {
     }
     fn doc_win() -> Geom {
         Geom {
+            seq: 0,
             label: "doc-1".into(),
             x: 1300.0,
             y: 100.0,
@@ -939,13 +963,28 @@ mod tests {
         let s = Strip { held: Some(1), ..strip(1, 32.0, 400.0, &[(10.0, 110.0), (110.0, 210.0), (210.0, 310.0)], 300.0) };
         assert_eq!(index_in(&s, 160.0, GRIP), 1, "where it is");
         assert_eq!(index_in(&s, 205.0, GRIP), 1, "its right edge (255) short of the next center");
-        assert_eq!(index_in(&s, 215.0, GRIP), 3, "past it (265): after it, counting itself");
+        assert_eq!(index_in(&s, 215.0, GRIP), 2, "past it (265): after it");
         assert_eq!(index_in(&s, 111.0, GRIP), 1, "its left edge (61) short of the previous center");
         assert_eq!(index_in(&s, 109.0, GRIP), 0, "past it (59): before it");
         let other = strip(1, 32.0, 400.0, &[(10.0, 110.0), (110.0, 210.0)], 300.0);
         assert_eq!(index_in(&other, 105.0, GRIP), 1, "another strip: before the first center past its own center");
         assert_eq!(index_in(&other, 165.0, GRIP), 2);
         assert_eq!(index_in(&strip(2, 0.0, 400.0, &[], 300.0), 165.0, GRIP), 0, "an empty strip takes the tab first");
+    }
+
+    #[test]
+    fn along_its_strip_the_tab_changes_places_once_per_reorder_px_so_a_shaking_hand_does_not_swap_it_to_and_fro() {
+        // Main's first strip: tabs 100 wide at 10, 110; the second is dragged, grabbed at its center.
+        let mut s = from_main();
+        assert_eq!(s.step(p(105.0, 45.0)), vec![Effect::Drop("main".into(), to("main", 1, 0)), slid("main", 1, 55.0)], "its left edge past the first center");
+        let swapped = Strip { held: Some(0), ..strip(1, 32.0, 1200.0, &[(5.0, 105.0), (112.0, 212.0)], 354.0) };
+        s.strips(Geom { seq: 1, strips: vec![swapped.clone()], ..main_win() });
+        assert_eq!(s.step(p(105.0, 45.0)), vec![], "its own report agrees: nothing to send");
+        assert_eq!(s.step(p(110.0, 45.0)), vec![slid("main", 1, 60.0)], "its right edge (160) past the other center (162)? not yet");
+        assert_eq!(s.step(p(114.0, 45.0)), vec![slid("main", 1, 64.0)], "past it, but within REORDER_PX of the last swap: no swap back");
+        assert_eq!(s.step(p(125.0, 45.0)), vec![Effect::Drop("main".into(), to("main", 1, 2)), slid("main", 1, 75.0)], "past it by REORDER_PX: back after it");
+        s.strips(Geom { seq: 0, strips: vec![swapped], ..main_win() });
+        assert_eq!(s.wins[0].seq, 1, "a report that comes late is dropped");
     }
 
     #[test]
