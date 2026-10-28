@@ -181,12 +181,18 @@ impl Browser {
 
     /// Closes hidden webviews beyond MAX_PARKED, oldest first.
     fn evict(&self, app: &AppHandle) {
-        for label in to_evict(&lock(&self.tabs)) {
-            if let Some(wv) = app.get_webview(&label)
+        self.evict_with(|label| {
+            if let Some(wv) = app.get_webview(label)
                 && let Err(e) = wv.close()
             {
                 log::warn!("closing the webview {label}: {e}");
             }
+        });
+    }
+
+    fn evict_with(&self, mut close: impl FnMut(&str)) {
+        for label in to_evict(&lock(&self.tabs)) {
+            close(&label);
             lock(&self.tabs).remove(&label);
         }
     }
@@ -906,5 +912,20 @@ mod tests {
         tabs.remove("browser-4");
         assert!(to_evict(&tabs).is_empty());
         assert_eq!(TabState::default().history, (true, true), "a fresh tab assumes history both ways until the page reports");
+    }
+
+    #[test]
+    fn eviction_holds_no_tab_lock_while_a_webview_closes() {
+        let browser = Browser::default();
+        for i in 0..5u32 {
+            browser.with_tab(&label(&i.to_string()).unwrap(), |t| t.parked = Instant::now().checked_sub(Duration::from_secs(i as u64)));
+        }
+        let mut closed = Vec::new();
+        browser.evict_with(|label| {
+            assert!(browser.tabs.try_lock().is_ok(), "closing {label} with the tab lock held: close may wait on the main thread, which wants it");
+            closed.push(label.to_string());
+        });
+        assert_eq!(closed, vec!["browser-3", "browser-4"]);
+        assert_eq!(lock(&browser.tabs).len(), 3);
     }
 }
