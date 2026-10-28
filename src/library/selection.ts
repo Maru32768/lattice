@@ -8,5 +8,6 @@ export function pick(order: number[], picked: number[], anchor: number | null, i
     return picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
   }
   const span = order.slice(Math.min(from, to), Math.max(from, to) + 1);
-  return [...picked, ...span.filter((x) => !picked.includes(x))];
+  const has = new Set(picked);
+  return [...picked, ...span.filter((x) => !has.has(x))];
 }

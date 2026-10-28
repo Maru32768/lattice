@@ -53,6 +53,7 @@ export function useChatBridge(own: { article: DocRef; docs: OpenDoc[] }) {
 
   // Broadcasts (`emit`) reach every window's `listen`; what is addressed to one window (`emitTo`) is
   // heard through that window's own listener, since a global `listen` matches any target.
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup -- `listen` resolves to the unlisten, which the cleanup calls
   useEffect(() => {
     const subs = [
       listen<DocRef>("doc-current", (e) => setRemoteArticle(e.payload)),

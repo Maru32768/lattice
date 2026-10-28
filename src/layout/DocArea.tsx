@@ -357,6 +357,7 @@ export function DocArea({
   const onDropped = useEffectEvent(dropped);
   const onTorn = useEffectEvent(torn);
   const onTake = useEffectEvent(take);
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup -- `listen` resolves to the unlisten, which the cleanup calls
   useEffect(() => {
     const win = getCurrentWindow();
     const subs = [

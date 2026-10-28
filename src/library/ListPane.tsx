@@ -349,7 +349,8 @@ export function ListPane({
     return () => document.removeEventListener("keydown", esc);
   }, [picking]);
   const order = flatten(groups);
-  const pickedRows = order.filter((a) => picked?.includes(a.id));
+  const pickedSet = picked && new Set(picked);
+  const pickedRows = order.filter((a) => pickedSet?.has(a.id));
   const ids = pickedRows.map((a) => a.id);
   const onPick = (id: number) => (range: boolean) => {
     setPicked((p) =>
@@ -390,9 +391,9 @@ export function ListPane({
               onOpen={(t) => onOpen(a, t)}
               onCursor={() => onCursor(a.id)}
               translating={translating(a.id) ?? null}
-              picked={picked ? picked.includes(a.id) : undefined}
+              picked={pickedSet ? pickedSet.has(a.id) : undefined}
               onPick={onPick(a.id)}
-              onMenu={(e) => onRowMenu(picked?.includes(a.id) ? pickedRows : [a], e.currentTarget)}
+              onMenu={(e) => onRowMenu(pickedSet?.has(a.id) ? pickedRows : [a], e.currentTarget)}
             />
           ))}
     </div>

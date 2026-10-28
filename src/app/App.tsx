@@ -615,6 +615,7 @@ export default function App() {
   }
   const onMainRequest = useEffectEvent(onRequest);
   const onStartError = useEffectEvent(fail);
+  // react-doctor-disable-next-line react-doctor/effect-needs-cleanup -- `listen` resolves to the unlisten, which the cleanup calls
   useEffect(() => {
     const sub = getCurrentWindow().listen<MainRequest>(MAIN_REQUEST, (e) => onMainRequest(e.payload));
     // The pop-outs that were open last time come back; the chat window is restored from its key too.

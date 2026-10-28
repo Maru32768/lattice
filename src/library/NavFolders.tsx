@@ -153,15 +153,14 @@ export function NavFolders({
       onReorderFolders(ids);
     }
   };
-  const toggle = (id: number) =>
-    setCollapsed((c) => {
-      const next = new Set(c);
-      if (!next.delete(id)) {
-        next.add(id);
-      }
-      saveCollapsed(next);
-      return next;
-    });
+  const toggle = (id: number) => {
+    const next = new Set(collapsed);
+    if (!next.delete(id)) {
+      next.add(id);
+    }
+    saveCollapsed(next);
+    setCollapsed(next);
+  };
   /** Alt+↑ / ↓ (the `moveUp` / `moveDown` keys) on a focused row. */
   const step = (e: KeyboardEvent): -1 | 1 | 0 => {
     const k = keyOf(e.nativeEvent);
