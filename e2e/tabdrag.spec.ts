@@ -33,23 +33,42 @@ async function dragSecond(app: Page) {
 
 test("a drag starts in the backend with the tab, its slot and this window's strips, and ends when the backend says so", async ({ app }) => {
   await openTwo(app);
-  await dragSecond(app);
-  await expect(app.locator(".tab-ghost .tab-t")).toHaveText(b.title!);
-  await expect(tabs(app).nth(1)).toHaveClass(/dragging/);
-  const [start] = (await callsOf(app, "tab_drag_start")) as { start: { geom: { strips: { mids: number[] }[] } } }[];
+  await tabs(app).first().click();
+  const box = await dragSecond(app);
+  await expect(tabs(app).nth(1), "the dragged tab shows its content").toHaveAttribute("aria-selected", "true");
+  await expect(tabs(app).nth(1)).toHaveClass(/held/);
+  await expect(app.locator(".tab-ghost"), "no ghost: the tab stays in its strip").toHaveCount(0);
+  const [start] = (await callsOf(app, "tab_drag_start")) as { start: { width: number; geom: { strips: { tabs: number[][]; held: number }[] } } }[];
   expect(start).toMatchObject({
     start: { pane: 1, index: 1, alone: false, geom: { label: "main", x: 0, y: 0, scale: 1 } },
   });
-  expect(start.start.geom.strips[0].mids).toHaveLength(2);
+  expect(start.start.width).toBeCloseTo(box.width, 0);
+  expect(start.start.geom.strips[0].tabs).toHaveLength(2);
+  expect(start.start.geom.strips[0].held, "which tab is dragged").toBe(1);
 
   await app.keyboard.press("Escape");
   await app.mouse.up();
   expect(await callsOf(app, "tab_drag_release")).toEqual([{ cancel: true }, { cancel: false }]);
-  await expect(app.locator(".tab-ghost"), "the ghost stays until the backend ends the drag").toHaveCount(1);
   await emit(app, "tab-drag-end");
-  await expect(app.locator(".tab-ghost")).toHaveCount(0);
-  await expect(tabs(app).nth(1)).not.toHaveClass(/dragging/);
+  await expect(tabs(app).nth(1)).not.toHaveClass(/held/);
   await expect(titles(app), "nothing moved: the backend did not say where").toHaveText([a.title!, b.title!]);
+});
+
+test("the dragged tab follows the cursor along its strip where the backend says, kept within the tabs", async ({ app }) => {
+  await openTwo(app);
+  await dragSecond(app);
+  const second = tabs(app).nth(1);
+  const at = (await second.boundingBox())!.x;
+  const strip = (await app.locator(".dpane .tabs").first().boundingBox())!;
+  await emit(app, "tab-drag-slide", { pane: 1, x: at - strip.x - 30 });
+  await expect.poll(async () => (await second.boundingBox())!.x).toBeCloseTo(at - 30, 0);
+  await emit(app, "tab-drag-slide", { pane: 1, x: -500 });
+  const first = (await tabs(app).first().boundingBox())!.x;
+  await expect.poll(async () => (await second.boundingBox())!.x, "not past the first tab").toBeCloseTo(first, 0);
+  await emit(app, "tab-drag-slide", null);
+  await expect.poll(async () => (await second.boundingBox())!.x, "back in its slot").toBeCloseTo(at, 0);
+  await app.mouse.up();
+  await emit(app, "tab-drag-end");
 });
 
 test("the window a drag started in marks the slot it is told", async ({ app }) => {
@@ -65,7 +84,7 @@ test("the window a drag started in marks the slot it is told", async ({ app }) =
 test("every window reports its strips while any window drags, and again when its tabs change", async ({ app }) => {
   await openTwo(app);
   const reported = async () =>
-    ((await callsOf(app, "tab_drag_strips")) as { geom: { label: string; strips: { mids: number[] }[] } }[]).map((r) => r.geom.strips[0].mids.length);
+    ((await callsOf(app, "tab_drag_strips")) as { geom: { label: string; strips: { tabs: number[][] }[] } }[]).map((r) => r.geom.strips[0].tabs.length);
   await emit(app, "tab-drag-start");
   await expect.poll(reported).toEqual([2]);
   await row(app, c.title!).click({ modifiers: ["Control"] });
@@ -82,7 +101,6 @@ test("torn off, the tab leaves for a new document window that the backend create
   await dragSecond(app);
   await emit(app, "tab-drag-tear");
   await expect(titles(app)).toHaveText([a.title!]);
-  await expect(app.locator(".tab-ghost"), "the tab is no longer here").toHaveCount(0);
   expect(await callsOf(app, "tab_drag_float")).toEqual([{ label: "doc-1" }]);
   expect(await callsOf(app, "open_window")).toEqual([]);
   expect(JSON.parse((await app.evaluate(() => localStorage.getItem("lattice.window.doc-1")))!)).toMatchObject({
@@ -103,7 +121,7 @@ test("the window holding the tab moves it in its own strips or hands it to the s
   await dragSecond(app);
   await emit(app, "tab-drag-drop", { label: "doc-1", pane: 1, index: 0 });
   await expect(titles(app)).toHaveText([b.title!]);
-  await expect(app.locator(".tab-ghost"), "the tab is no longer here").toHaveCount(0);
+  await expect(app.locator(".tab.held"), "the tab is no longer here").toHaveCount(0);
   expect(await sentTabs(app)).toEqual([["doc-1", { doc: { kind: "reader", articleId: a.id }, at: { pane: 1, index: 0 } }]]);
   await app.mouse.up();
   await emit(app, "tab-drag-end");
@@ -282,8 +300,7 @@ test("a document window dragged by its only tab follows the cursor itself; a tor
   await expect
     .poll(() => callsOf(shell, "tab_drag_start"))
     .toEqual([expect.objectContaining({ start: expect.objectContaining({ alone: true, pane: 1, index: 0 }) })]);
-  await expect(shell.locator(".tab-ghost"), "the window carries its tab").toHaveCount(0);
-  await expect(tabs(shell).first()).not.toHaveClass(/dragging/);
+  await expect(tabs(shell).first(), "the window carries its tab: it does not slide in its strip").not.toHaveClass(/held/);
   await shell.mouse.up();
   await emit(shell, "tab-drag-end");
 

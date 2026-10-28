@@ -38,18 +38,16 @@
 .drop-zone.top { bottom: calc(50% - 17px); }
 .drop-zone.bottom { top: calc(50% + 17px); }
 .doc-area.multi .dpane.focused { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
-.tabs { height: 34px; flex: none; display: flex; align-items: stretch; gap: 2px; padding: 5px 6px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.tabs { position: relative; height: 34px; flex: none; display: flex; align-items: stretch; gap: 2px; padding: 5px 6px 0; background: var(--panel); border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .tab { position: relative; display: flex; align-items: center; gap: 6px; min-width: 56px; max-width: 200px; padding: 0 4px 0 9px; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; font-size: 12px; color: var(--ink2); user-select: none; touch-action: none; }
 .tab:hover { background: var(--hover); }
 .tab.on { background: var(--doc); border-color: var(--line); color: var(--ink); margin-bottom: -1px; }
-.tab.dragging { opacity: .5; }
+.tab.held { z-index: 1; }
 .tab.drop-before::before, .tab.drop-after::after { content: ""; position: absolute; top: 4px; bottom: 2px; width: 2px; background: var(--acc); }
 .tab.drop-before::before { left: -2px; }
 .tabs > .tab-mark { width: 2px; flex: none; margin: 4px 0 2px; background: var(--acc); }
 .tab.drop-after::after { right: -2px; }
 /* Another window's tab, drawn at the slot a drag is over (it arrives when the drag ends). */
-.tab-ghost { position: fixed; z-index: 70; display: flex; align-items: center; gap: 6px; max-width: 200px; height: 28px; padding: 0 10px 0 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--doc); color: var(--ink); font-size: 12px; box-shadow: 0 4px 14px rgba(0, 0, 0, .18); pointer-events: none; }
-.tab-ghost .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab:focus-visible { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
 .tab .favicon { flex: none; }
 .tab .tab-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

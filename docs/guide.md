@@ -310,7 +310,7 @@ Each pane in the document area has a row of tabs. A tab holds an article in the 
 - **New tab** (+) at the end of the tab row opens the search engine's home page in a new tab, with its address selected in the address bar so you can paste or type another right away. `Ctrl+T` opens the palette, and what you choose there opens in a new tab.
 - Close a tab with `Ctrl+W`, its ×, or a middle-click on it.
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
-- Drag tabs to reorder them.
+- Drag tabs to reorder them. A dragged tab moves along the tab row with the pointer, and swaps with the next tab once its edge passes that tab's middle.
 
 Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab.
 

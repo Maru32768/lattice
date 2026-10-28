@@ -26,19 +26,20 @@ import {
   TAB_DRAG_DROP,
   TAB_DRAG_END,
   TAB_DRAG_OVER,
+  TAB_DRAG_SLIDE,
   TAB_DRAG_START,
   TAB_DRAG_TAKE,
   TAB_DRAG_TEAR,
   measure,
   type DragStart,
   type Over,
+  type Slide,
   type Slot,
   type Take,
   type ZoneTarget,
 } from "./tabDrag";
 import { tabDrag } from "../api";
 import { CoverContext } from "../ui/Popover";
-import { Favicon } from "../ui/Favicon";
 import { useT } from "../i18n";
 import { topStrips } from "./chrome";
 import { WindowControls, dragWindow } from "../app/TitleBar";
@@ -127,7 +128,8 @@ function NodeView({
   windowAction,
   drop,
   body,
-  dragging,
+  held,
+  slide,
   onDrag,
   onDrop,
   index,
@@ -143,7 +145,9 @@ function NodeView({
   drop: DropTarget | null;
   /** The pane body a drag is over, and which zone of it. */
   body: ZoneTarget | null;
-  dragging: Id | null;
+  /** The dragged tab, when it is in this window. */
+  held: Id | null;
+  slide: Slide | null;
   onDrag: (d: TabDrag) => void;
   onDrop: () => void;
   /** Reading-order number of the first pane in this node, for the panes' labels. */
@@ -184,7 +188,8 @@ function NodeView({
                   windowAction={windowAction}
                   drop={drop}
                   body={body}
-                  dragging={dragging}
+                  held={held}
+                  slide={slide}
                   onDrag={onDrag}
                   onDrop={onDrop}
                   index={start}
@@ -206,7 +211,8 @@ function NodeView({
         multi={multi}
         labelOf={labelOf}
         drop={drop}
-        dragging={dragging}
+        held={held}
+        slide={slide?.pane === n.id ? slide.x : null}
         windowAction={windowAction}
         onActivate={(t) => onLayout((l) => activate(l, t))}
         onClose={(t) => onLayout((l) => close(l, t))}
@@ -263,13 +269,17 @@ export function DocArea({
   onTear: (tab: Id) => void;
 }) {
   const [drop, setDrop] = useState<Over | null>(null);
-  const [ghost, setGhost] = useState<TabDrag | null>(null);
+  const [slide, setSlide] = useState<Slide | null>(null);
   const [own, setOwnState] = useState<Own | null>(null);
   // Read by the pointer moves that come before the next render.
   const ownRef = useRef<Own | null>(null);
   const setOwn = (o: Own | null) => setOwnState((ownRef.current = o));
   /** The dragged tab, when another window sent it here during the drag. */
+  const [taken, setTakenState] = useState<Id | null>(null);
   const held = useRef<Id | null>(null);
+  const setTaken = (id: Id | null) => setTakenState((held.current = id));
+  /** The dragged tab, when it is in this window's strips. */
+  const holding = own && !own.alone ? own.tab : taken;
   /** It was sent here and the backend hears so once the layout has it (`tab_drag_held`). */
   const taking = useRef(false);
   /** Some window is dragging a tab: this one reports its strips, again whenever its tabs change. */
@@ -278,14 +288,14 @@ export function DocArea({
   const uncover = useRef<(() => void) | null>(null);
   const me = getCurrentWindow().label;
 
-  /** The tab is no longer this window's to drag: the marker, the ghost and the page stills go. */
+  /** The tab is no longer this window's to drag: the marker and the page stills go. */
   function letGo() {
     uncover.current?.();
     uncover.current = null;
     setOwn(null);
-    setGhost(null);
+    setSlide(null);
     setDrop(null);
-    held.current = null;
+    setTaken(null);
   }
 
   /** The drag is over. */
@@ -330,10 +340,9 @@ export function DocArea({
 
   /** Another window sent the dragged tab here: it opens at the slot, its content shown at once. */
   function take({ doc, at }: Take) {
-    onLayout((l) => {
-      held.current = l.next;
-      return open(l, doc, "new", at?.pane, at?.index);
-    });
+    // `open` gives the new tab the layout's next id.
+    setTaken(layout.next);
+    onLayout((l) => open(l, doc, "new", at?.pane, at?.index));
     taking.current = true;
   }
 
@@ -357,6 +366,7 @@ export function DocArea({
       }),
       listen(TAB_DRAG_END, () => onEnd()),
       win.listen<Over | null>(TAB_DRAG_OVER, (e) => setDrop(e.payload)),
+      win.listen<Slide | null>(TAB_DRAG_SLIDE, (e) => setSlide(e.payload)),
       win.listen(TAB_DRAG_TEAR, () => onTorn()),
       win.listen<Slot>(TAB_DRAG_DROP, (e) => onDropped(e.payload)),
       win.listen<Take>(TAB_DRAG_TAKE, (e) => onTake(e.payload)),
@@ -370,10 +380,10 @@ export function DocArea({
     }
     void getCurrentWindow()
       .innerPosition()
-      .then((p) => tabDrag.strips(measure(me, p)))
+      .then((p) => tabDrag.strips(measure(me, p, holding)))
       .catch(() => {});
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- measure reads the strips from the DOM, which follows the layout
-  }, [reporting, layout, me]);
+  }, [reporting, layout, me, holding]);
 
   // Escape puts the tab back (on Windows the backend sees the key too); it is the drag's, not the app's.
   useEffect(() => {
@@ -401,8 +411,10 @@ export function DocArea({
       }
       o = { tab: d.tab, alone: movable && panes(layout.root).flatMap((p) => p.tabs).length === 1 };
       setOwn(o);
-      // The page webviews are drawn above this document: a still of each stands in so the ghost stays visible.
-      if (!o.alone) {
+      // A dragged tab shows its content, as in Chrome.
+      onLayout((l) => activate(l, d.tab));
+      // The page webviews are drawn above this document: stills stand in so the zones drawn over the panes show.
+      if (!o.alone && layout.root.kind === "split") {
         uncover.current = cover(new DOMRect(0, 0, window.innerWidth, window.innerHeight));
       }
       const start: Omit<DragStart, "geom"> = {
@@ -410,20 +422,15 @@ export function DocArea({
         index: hit.pane.tabs.indexOf(hit.tab),
         alone: o.alone,
         grab: [d.dx, d.dy],
+        width: d.w,
       };
       void getCurrentWindow()
         .innerPosition()
-        .then((p) => tabDrag.start({ ...start, geom: measure(me, p) }))
+        .then((p) => tabDrag.start({ ...start, geom: measure(me, p, d.tab) }))
         .catch(() => finish());
-    }
-    // A window that follows the cursor carries its tab along: no ghost.
-    if (!o.alone) {
-      setGhost(d);
     }
   }
 
-  const ghostTab = ghost && tabById(layout, ghost.tab)?.tab;
-  const ghostLabel = ghostTab && labelOf(ghostTab);
   return (
     <div className={`doc-area${layout.root.kind === "split" ? " multi" : ""}`}>
       <NodeView
@@ -436,18 +443,13 @@ export function DocArea({
         windowAction={windowAction}
         drop={drop && "index" in drop ? drop : null}
         body={drop && "zone" in drop ? drop : null}
-        dragging={own && !own.alone ? own.tab : null}
+        held={holding}
+        slide={slide}
         onDrag={drag}
         onDrop={() => void tabDrag.release(false).catch(() => {})}
         index={0}
         title={movable ? topStrips(layout.root) : null}
       />
-      {ghost && ghostTab && ghostLabel && (
-        <div className="tab-ghost" aria-hidden style={{ left: ghost.x - ghost.dx, top: ghost.y - ghost.dy }}>
-          <Favicon domain={ghostLabel.domain} feed={ghostTab.kind === "page" ? undefined : ghostLabel.feed} />
-          <span className="tab-t">{ghostLabel.title}</span>
-        </div>
-      )}
     </div>
   );
 }

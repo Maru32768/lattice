@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Favicon } from "../ui/Favicon";
 import { Icon, type IconName } from "../ui/Icon";
 import type { Dir, Id, Pane, Tab } from "./layout";
@@ -24,13 +24,14 @@ export interface DropTarget {
   index: number;
 }
 
-/** A drag in flight: the tab, where the pointer is (CSS px of this window), and the grab offset inside the tab. */
+/** A drag in flight: the tab, where the pointer is (CSS px of this window), the grab offset inside the tab, and its width. */
 export interface TabDrag {
   tab: Id;
   x: number;
   y: number;
   dx: number;
   dy: number;
+  w: number;
 }
 
 /** Moves of less than this many pixels are a click. */
@@ -46,7 +47,8 @@ export function TabStrip({
   multi,
   labelOf,
   drop,
-  dragging,
+  held,
+  slide,
   windowAction,
   onActivate,
   onClose,
@@ -62,10 +64,12 @@ export function TabStrip({
   /** More than one pane: this one can be closed. */
   multi: boolean;
   labelOf: (t: Tab) => TabLabel;
-  /** The slot a drag is over: a marker, or the dragged tab itself when it comes from another window. */
+  /** The slot in this strip a drag from another pane would go to: a marker. */
   drop: DropTarget | null;
-  /** This window's tab being dragged (drawn faded). */
-  dragging: Id | null;
+  /** The dragged tab, when it is in this strip. */
+  held: Id | null;
+  /** Where the dragged tab is drawn along the strip, following the cursor: its left edge, CSS px from the strip's left. */
+  slide: number | null;
   windowAction: WindowAction;
   onActivate: (tab: Id) => void;
   onClose: (tab: Id) => void;
@@ -83,6 +87,22 @@ export function TabStrip({
 }) {
   const t = useT();
   const press = useRef<(TabDrag & { moved: boolean }) | null>(null);
+  const heldEl = useRef<HTMLDivElement | null>(null);
+
+  // The dragged tab stays in the strip and follows the cursor along it, kept within the tabs, as in Chrome.
+  useLayoutEffect(() => {
+    const el = heldEl.current;
+    const strip = el?.parentElement;
+    if (!el || !strip || slide == null) {
+      return;
+    }
+    const all = strip.querySelectorAll<HTMLElement>(":scope > .tab");
+    const first = all[0]!;
+    const last = all[all.length - 1]!;
+    const x = Math.min(Math.max(slide + strip.scrollLeft, first.offsetLeft), last.offsetLeft + last.offsetWidth - el.offsetWidth);
+    el.style.transform = `translateX(${x - el.offsetLeft}px)`;
+    return () => void (el.style.transform = "");
+  });
 
   function down(e: React.PointerEvent, tab: Id) {
     // A middle press would start Chromium's autoscroll (and then no auxclick comes); see middle.ts.
@@ -93,7 +113,7 @@ export function TabStrip({
       return;
     }
     const r = e.currentTarget.getBoundingClientRect();
-    press.current = { tab, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false };
+    press.current = { tab, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, moved: false };
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
@@ -143,7 +163,8 @@ export function TabStrip({
             tabIndex={on ? 0 : -1}
             title={title}
             data-tab={tab.id}
-            className={`tab${on ? " on" : ""}${dragging === tab.id ? " dragging" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
+            ref={held === tab.id ? heldEl : undefined}
+            className={`tab${on ? " on" : ""}${held === tab.id ? " held" : ""}${here === i ? " drop-before" : ""}${here === i + 1 && i === pane.tabs.length - 1 ? " drop-after" : ""}`}
             onPointerDown={(e) => down(e, tab.id)}
             onPointerMove={moveP}
             onPointerUp={(e) => up(e, tab.id)}
