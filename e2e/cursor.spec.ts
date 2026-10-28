@@ -46,3 +46,30 @@ test("Shift+Enter opens the cursor's article as a page", async ({ app }) => {
   await expect.poll(() => callsOf(app, "browser_open")).toEqual([expect.objectContaining({ url: order[0].original_url })]);
   await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("rows and headings keep the fixed heights the virtualized list is given, in a narrow list too", async ({ app }) => {
+  // ROW_H / HEAD_H in ListPane.tsx: a row or heading of another height makes the scrollbar drift from the mouse.
+  await list(app).getByRole("button", { name: "並び順とまとめ方" }).click();
+  await app.getByRole("menuitemradio", { name: "ソース" }).click();
+  await expect(list(app).locator(".grp-h").first()).toBeVisible();
+  for (const width of [null, "260px"]) {
+    if (width) {
+      await app.locator(".list").evaluate((e, w) => void ((e as HTMLElement).style.width = w), width);
+    }
+    const heights = (sel: string) =>
+      list(app)
+        .locator(sel)
+        .evaluateAll((els) => [...new Set(els.map((e) => e.getBoundingClientRect().height))]);
+    expect(await heights(".row")).toEqual([104]);
+    expect(await heights(".grp-h")).toEqual([27]);
+  }
+});
+
+test("a click on a row below the fold opens it", async ({ app }) => {
+  // The click focuses the row, which moves the cursor. Revealing the cursor's row then scrolled the list again (Virtuoso
+  // had not caught up with the click's own scroll), moving another row under the mouse before mouseup.
+  for (const title of [label(4), label(8)]) {
+    await list(app).locator(".row", { hasText: title }).click();
+    await expect(app.locator(".art-title")).toHaveText(title);
+  }
+});

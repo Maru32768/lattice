@@ -48,18 +48,23 @@ export async function listRow(page: Page, title: string) {
   const row = list(page).locator(".row", { hasText: title });
   const body = list(page).locator(".list-body");
   await expect(list(page).locator(".row").first()).toBeVisible();
-  await body.evaluate((el) => el.scrollTo(0, 0));
-  for (let i = 0; i < 100 && (await row.count()) === 0; i++) {
-    const end = await body.evaluate((el) => {
-      el.scrollBy(0, el.clientHeight / 2);
-      return el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
-    });
-    // Let the list draw what it scrolled to before looking again.
+  // The list draws the range it scrolled to a frame or more later: a row counted before then can be unmounted after,
+  // which left scrollIntoViewIfNeeded waiting for good. Such a scan starts over.
+  await expect(async () => {
+    await body.evaluate((el) => el.scrollTo(0, 0));
     await page.evaluate(() => new Promise(requestAnimationFrame));
-    if (end && i > 0 && (await row.count()) === 0) {
-      break;
+    for (let i = 0; i < 100 && (await row.count()) === 0; i++) {
+      const end = await body.evaluate((el) => {
+        el.scrollBy(0, el.clientHeight / 2);
+        return el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+      });
+      // Let the list draw what it scrolled to before looking again.
+      await page.evaluate(() => new Promise(requestAnimationFrame));
+      if (end && i > 0 && (await row.count()) === 0) {
+        break;
+      }
     }
-  }
-  await row.first().scrollIntoViewIfNeeded();
+    await row.first().scrollIntoViewIfNeeded({ timeout: 2000 });
+  }).toPass();
   return row;
 }

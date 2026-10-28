@@ -33,6 +33,15 @@ const GROUPINGS: [Grouping, PlainKey][] = [
 /** A list line: a group heading or an article row; the virtualized list draws only those in view. */
 type Item = { kind: "head"; g: Group<ArticleRow>; depth: number; key: string } | { kind: "row"; a: ArticleRow };
 
+/**
+ * The heights of `.row` and `.grp-h` in App.css, given to Virtuoso as `heightEstimates`. It takes an item not yet drawn
+ * to be as tall as its estimate and corrects it once drawn: with estimates off, the scrollbar drifted from the mouse
+ * while dragged (Chrome does not move the thumb as the content grows) and scrolling up shifted the rows. No
+ * `defaultItemHeight` beside them: it seeds the sizes first, and Virtuoso then ignores the estimates.
+ */
+const ROW_H = 104;
+const HEAD_H = 27;
+
 /** A heading's key is its path: the same genre recurs under each feed. */
 function itemsOf(groups: Group<ArticleRow>[], depth = 0, path = "", out: Item[] = []): Item[] {
   for (const g of groups) {
@@ -401,7 +410,10 @@ export function ListPane({
   // The cursor's row may be out of view and so not mounted: scroll to it, then focus it as the shell's revealCursor would.
   const revealCursor = useEffectEvent(() => {
     const index = items.findIndex((it) => it.kind === "row" && it.a.id === cursorId);
-    if (index < 0) {
+    // A click focused the row (onFocus moved the cursor): it is in view. Virtuoso, not yet caught up with the scroll that
+    // brought it there, would scroll again and move another row under the mouse before mouseup, losing the click.
+    const focused = document.activeElement;
+    if (index < 0 || (focused instanceof HTMLElement && focused.matches(".row") && focused.dataset.id === String(cursorId))) {
       return;
     }
     virtuoso.current?.scrollIntoView({
@@ -524,6 +536,8 @@ export function ListPane({
       </header>
       {count > 0 ? (
         <Virtuoso
+          // The estimates apply only to a new list: another list or grouping starts afresh rather than keep headings' heights by index.
+          key={`${title}|${group}`}
           ref={virtuoso}
           scrollerRef={(el) => {
             body.current = el;
@@ -532,7 +546,7 @@ export function ListPane({
           data={items}
           computeItemKey={(_, it) => (it.kind === "head" ? it.key : it.a.id)}
           itemContent={renderItem}
-          defaultItemHeight={64}
+          heightEstimates={items.map((it) => (it.kind === "head" ? HEAD_H : ROW_H))}
           increaseViewportBy={400}
         />
       ) : (

@@ -107,24 +107,26 @@
 .list-tools .clear:hover:not(:disabled) { color: var(--ink); }
 .list-body { flex: 1; min-height: 0; overflow-y: auto; }
 .list-f { flex: none; padding: 8px 16px; border-top: 1px solid var(--line); }
-.grp-h { position: sticky; top: 0; z-index: 1; display: flex; align-items: baseline; gap: 8px; padding: 6px 16px 5px 24px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 600; color: var(--ink2); }
+/* Headings and rows have fixed heights (ROW_H / HEAD_H in ListPane.tsx): the virtualized list then knows every item's
+   height before it draws it, so the scrollbar follows the mouse and scrolling up does not shift the rows. */
+.grp-h { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 16px 0 24px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 600; color: var(--ink2); }
 .grp-h.d1 { position: static; padding-left: 36px; background: var(--bg); font-weight: 500; }
 .grp-h .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .grp-h .n { margin-left: auto; font: 11px var(--mono); color: var(--ink3); font-weight: 400; }
 
-.row { position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 11px 16px 11px 24px; border: 0; border-bottom: 1px solid var(--line3); background: none; text-align: left; color: var(--ink); }
+.row { position: relative; display: flex; flex-direction: column; gap: 4px; width: 100%; height: 104px; overflow: hidden; padding: 11px 16px 11px 24px; border: 0; border-bottom: 1px solid var(--line3); background: none; text-align: left; color: var(--ink); }
 .row:hover { background: var(--blk-hover); }
 .row.sel { background: var(--sel); }
 .row.sel::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--ink); }
 /* The keyboard cursor, when it is not on the open row (that one already shows as .sel). */
 .row.cur:not(.sel) { outline: 1.5px solid var(--acc); outline-offset: -1.5px; }
-.row .t { font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--ink); text-wrap: pretty; }
+.row .t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; flex: none; font-size: 14px; font-weight: 600; line-height: 1.38; color: var(--ink); text-wrap: pretty; }
 .row.read .t { font-weight: 400; color: var(--ink2); }
 .row .dot { position: absolute; left: 10px; top: 17px; width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
 .row.picking { padding-left: 34px; }
 .row.picking .dot { left: 26px; }
 .row > .cb { position: absolute; left: 10px; top: 14px; }
-.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: var(--ink3); }
+.meta { display: flex; gap: 8px; align-items: center; flex: none; min-width: 0; overflow: hidden; white-space: nowrap; font-size: 12px; color: var(--ink3); }
 .meta .fav { display: inline-flex; color: var(--tr); }
 /* Importance mark: only 4 and 5 are shown, 5 the strongest. */
 .meta .imp { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; font: 600 10.5px var(--mono); background: var(--acc-soft); color: var(--acc-ink); }
@@ -132,8 +134,9 @@
 .favicon { flex: none; width: 16px; height: 16px; border-radius: 3px; object-fit: contain; }
 .favicon.letter { display: inline-flex; align-items: center; justify-content: center; background: var(--active); color: var(--ink3); font: 600 9.5px/1 var(--sans); }
 .with-ico { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.meta > .with-ico { overflow: hidden; }
 .meta .fav .ico { fill: currentColor; }
-.row .tags { font: 12px var(--mono); color: var(--ink3); }
+.row .tags { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px var(--mono); color: var(--ink3); }
 .list .empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px 20px; font-size: 12.5px; }
 .empty-h { font-size: 14px; font-weight: 500; }
 .list-rail { width: 44px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0; border-right: 1px solid var(--line); background: var(--bg); }

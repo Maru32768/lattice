@@ -19,6 +19,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Importance weighs what you would gain from an article as well as how close it is to your interests, following what About you says you value, and looks at the headings and the middle and end of the text, not only the start. Earlier ratings show as rated by earlier criteria until you choose **Rate again**.
 - The feed manager reorders feeds and folders by dragging their ⋮⋮ handle, as the AI provider chain does, instead of up and down buttons.
 - Closing a document window closes its tabs instead of returning them to the main window. **Move back to the main window** still returns a tab.
+- The article list shows a title in up to two lines and tags in one, cut off with "…", so that every row is the same height.
 
 ### Fixed
 
