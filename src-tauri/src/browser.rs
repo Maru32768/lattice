@@ -191,7 +191,10 @@ impl Browser {
     }
 
     fn evict_with(&self, mut close: impl FnMut(&str)) {
-        for label in to_evict(&lock(&self.tabs)) {
+        // Bound first: a guard in the `for` expression lives through the loop, so `close` ran under
+        // the tab lock and the `remove` below took it again, and the app froze at the first eviction.
+        let gone = to_evict(&lock(&self.tabs));
+        for label in gone {
             close(&label);
             lock(&self.tabs).remove(&label);
         }
