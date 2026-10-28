@@ -70,7 +70,14 @@ pub struct ChainEntry {
 
 pub fn load_config(store: &Store) -> Result<Vec<ChainEntry>, String> {
     let saved = store.setting(CHAIN_SETTING).map_err(|e| e.to_string())?;
-    if let Some(entries) = saved.and_then(|s| serde_json::from_str::<Vec<ChainEntry>>(&s).ok()).filter(|e| !e.is_empty()) {
+    let parsed = saved.and_then(|s| match serde_json::from_str::<Vec<ChainEntry>>(&s) {
+        Ok(entries) => Some(entries),
+        Err(e) => {
+            log::warn!("llm_chain setting unreadable, using default: {e}");
+            None
+        }
+    });
+    if let Some(entries) = parsed.filter(|e| !e.is_empty()) {
         return Ok(entries);
     }
     let model = store.setting(LEGACY_MODEL_SETTING).map_err(|e| e.to_string())?;

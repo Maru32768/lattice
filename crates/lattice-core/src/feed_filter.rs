@@ -301,7 +301,7 @@ pub fn save(store: &Store, feed_id: Option<i64>, f: Filter) -> Result<(), String
     match feed_id {
         None => store.set_setting(GLOBAL_SETTING, json.as_deref()).map_err(err),
         Some(id) => match store.conn().execute("UPDATE feeds SET filter = ?2 WHERE id = ?1", params![id, json]).map_err(err)? {
-            0 => Err("feed no longer exists".into()),
+            0 => Err(msg!("feeds.gone")),
             _ => Ok(()),
         },
     }
@@ -334,24 +334,27 @@ pub fn enqueue_pending(store: &Store) -> Result<usize, String> {
     Ok(feeds.len())
 }
 
-/// Queues `inputs` for ingest as articles of `feed_id` and marks their entries passed.
-fn import(store: &Store, feed_id: i64, inputs: &[&Input]) -> Result<usize, String> {
+/// Queues the `(stored normalized URL, input)` entries for ingest as articles of `feed_id` and marks
+/// them passed. The stored URL keys the row: normalizing the input again may not reproduce it.
+fn import(store: &Store, feed_id: i64, inputs: &[(&str, &Input)]) -> Result<usize, String> {
     if inputs.is_empty() {
         return Ok(0);
     }
-    let urls: Vec<String> = inputs.iter().map(|i| i.url.clone()).collect();
-    let queued = ingest::enqueue_urls(store, &urls)?.queued;
-    let norms: Vec<String> = urls.iter().filter_map(|u| crate::url_norm::normalize(u).ok().map(|n| n.to_string())).collect();
-    let norms = json!(norms).to_string();
+    let urls: Vec<String> = inputs.iter().map(|(_, i)| i.url.clone()).collect();
+    let summary = ingest::enqueue_urls(store, &urls)?;
+    let norms = json!(inputs.iter().map(|(n, _)| *n).collect::<Vec<_>>()).to_string();
     let c = store.conn();
-    c.execute("UPDATE articles SET feed_id = ?1 WHERE feed_id IS NULL AND normalized_url IN (SELECT value FROM json_each(?2))", params![feed_id, norms])
-        .map_err(err)?;
+    c.execute(
+        "UPDATE articles SET feed_id = ?1 WHERE feed_id IS NULL AND id IN (SELECT value FROM json_each(?2))",
+        params![feed_id, json!(summary.ids).to_string()],
+    )
+    .map_err(err)?;
     c.execute(
         "UPDATE feed_items SET filter_status = 'passed', filter_reason = NULL WHERE feed_id = ?1 AND normalized_url IN (SELECT value FROM json_each(?2))",
         params![feed_id, norms],
     )
     .map_err(err)?;
-    Ok(queued)
+    Ok(summary.queued)
 }
 
 fn set_status(store: &Store, feed_id: i64, norm: &str, status: &str, reason: Option<&Reason>) -> Result<(), String> {
@@ -436,7 +439,7 @@ pub fn import_rejected(store: &Store, feed_id: i64, url: &str) -> Result<usize, 
         return Err(msg!("feedFilter.notRejected"));
     };
     let input = input.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_else(|| Input { url: url.to_string(), ..Input::default() });
-    import(store, feed_id, &[&input])
+    import(store, feed_id, &[(url, &input)])
 }
 
 #[derive(Debug, Default, Serialize, PartialEq, TS)]
@@ -460,7 +463,7 @@ pub fn reevaluate(store: &Store, feed_id: Option<i64>) -> Result<Reevaluated, St
         let (mut pass, mut asked) = (Vec::new(), 0);
         for (norm, input) in &items {
             match rules.verdict(input) {
-                Verdict::Import => pass.push(input),
+                Verdict::Import => pass.push((norm.as_str(), input)),
                 Verdict::AskLlm => {
                     set_status(store, feed, norm, "pending", None)?;
                     asked += 1;
@@ -525,15 +528,19 @@ fn parse_item(it: &Value) -> Option<(bool, Option<i64>, String)> {
 /// The LLM filter for one feed: judges its pending entries in batches. Fails open: when the
 /// LLM fails, or skips an entry, the entry is imported and the feed's `filter_note` says so.
 pub async fn run<P: LlmProvider>(store: &Store, provider: &P, feed_id: i64) -> Result<(), String> {
+    let mut last: Vec<String> = Vec::new();
     loop {
         let batch = entries(store, Some(feed_id), "pending", BATCH as i64)?;
-        if batch.is_empty() {
+        let norms: Vec<String> = batch.iter().map(|(_, n, _)| n.clone()).collect();
+        // The same batch again means nothing was marked: stop rather than spin or re-send it.
+        if batch.is_empty() || norms == last {
             return Ok(());
         }
+        last = norms;
         let (global, own) = (load(store, None)?, load(store, Some(feed_id))?);
         if !(global.llm || own.llm) {
             // Turned off since these were queued.
-            import(store, feed_id, &batch.iter().map(|(_, _, i)| i).collect::<Vec<_>>())?;
+            import(store, feed_id, &batch.iter().map(|(_, n, i)| (n.as_str(), i)).collect::<Vec<_>>())?;
             continue;
         }
         let profile = instructions::load(store)?.profile.trim().to_string();
@@ -562,7 +569,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, feed_id: i64) -> R
                 Some((import, score, reason)) if !min.map_or(*import, |m| score.is_some_and(|s| s >= m)) => {
                     set_status(store, feed_id, norm, "rejected", Some(&Reason::Llm { reason: reason.clone(), score: *score }))?;
                 }
-                _ => pass.push(input),
+                _ => pass.push((norm.as_str(), input)),
             }
         }
         import(store, feed_id, &pass)?;
@@ -774,5 +781,21 @@ mod tests {
         assert!(article_urls(&s).contains(&"https://blog.dev/e".to_string()));
         assert!(crate::feeds::list(&s).unwrap()[0].filter_note.as_deref().unwrap().contains("feedFilter.llmFailed"));
         assert_eq!(enqueue_pending(&s).unwrap(), 0, "nothing left pending");
+    }
+
+    #[tokio::test]
+    async fn a_pending_row_is_marked_by_its_stored_url_even_when_its_input_normalizes_differently() {
+        let s = Store::open_in_memory().unwrap();
+        let (feed, _) = crate::feeds::add(&s, "https://blog.dev/feed", None).unwrap();
+        let stored = serde_json::to_string(&input("Old", "https://blog.dev/old?utm_source=x")).unwrap();
+        s.conn()
+            .execute(
+                "INSERT INTO feed_items (feed_id, normalized_url, filter_status, filter_input) VALUES (?1, 'https://blog.dev/old-rules', 'pending', ?2)",
+                params![feed, stored],
+            )
+            .unwrap();
+        run(&s, &Fake::new(), feed).await.unwrap();
+        assert_eq!(status(&s, feed, "https://blog.dev/old-rules").0.as_deref(), Some("passed"));
+        assert_eq!(article_urls(&s), ["https://blog.dev/old?utm_source=x"]);
     }
 }

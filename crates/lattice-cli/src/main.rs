@@ -56,7 +56,7 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
         None => {
             let loc = location::detect().map_err(|e| e.to_string())?;
             if let Some(w) = &loc.warning {
-                eprintln!("warning: {w}");
+                eprintln!("{}", render(cli.format, "warning", w));
             }
             loc.dir
         }
@@ -73,16 +73,35 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
     Ok(Ctx { store, providers, allow_write })
 }
 
-/// Backend messages are coded JSON (`msg!`); keep them structured in JSON output.
-fn error_json(e: &str) -> Value {
-    json!({ "error": serde_json::from_str::<Value>(e).ok().filter(Value::is_object).unwrap_or_else(|| json!(e)) })
+/// A `warning` or `error` line. Backend messages are coded JSON (`msg!`, `{"code","params"}`):
+/// kept structured in JSON output, `code (k=v, ...)` in text.
+fn render(format: Format, kind: &str, msg: &str) -> String {
+    let coded = serde_json::from_str::<Value>(msg).ok().filter(Value::is_object);
+    match (format, coded) {
+        (Format::Json, coded) => json!({ kind: coded.unwrap_or_else(|| json!(msg)) }).to_string(),
+        (Format::Text, None) => format!("{kind}: {msg}"),
+        (Format::Text, Some(m)) => {
+            let params: Vec<String> = m["params"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(k, v)| match v {
+                    Value::String(s) => format!("{k}={s}"),
+                    v => format!("{k}={v}"),
+                })
+                .collect();
+            let code = m["code"].as_str().unwrap_or_default();
+            if params.is_empty() {
+                format!("{kind}: {code}")
+            } else {
+                format!("{kind}: {code} ({})", params.join(", "))
+            }
+        }
+    }
 }
 
 fn fail(format: Format, e: &str) -> ExitCode {
-    match format {
-        Format::Json => eprintln!("{}", error_json(e)),
-        Format::Text => eprintln!("error: {e}"),
-    }
+    eprintln!("{}", render(format, "error", e));
     ExitCode::FAILURE
 }
 
@@ -116,9 +135,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn coded_errors_stay_structured() {
-        assert_eq!(error_json(r#"{"code":"chat.badQuestion","params":{}}"#), json!({ "error": { "code": "chat.badQuestion", "params": {} } }));
-        assert_eq!(error_json("no article 3"), json!({ "error": "no article 3" }));
-        assert_eq!(error_json("42"), json!({ "error": "42" }));
+    fn coded_messages_stay_structured_in_json_and_read_as_code_and_params_in_text() {
+        let coded = r#"{"code":"net.proxy","params":{"host":"p.example","port":8080}}"#;
+        let parse = |s: String| serde_json::from_str::<Value>(&s).unwrap();
+        assert_eq!(parse(render(Format::Json, "error", coded)), json!({ "error": { "code": "net.proxy", "params": { "host": "p.example", "port": 8080 } } }));
+        assert_eq!(parse(render(Format::Json, "warning", "no article 3")), json!({ "warning": "no article 3" }));
+        assert_eq!(parse(render(Format::Json, "error", "42")), json!({ "error": "42" }));
+        assert_eq!(render(Format::Text, "warning", coded), "warning: net.proxy (host=p.example, port=8080)");
+        assert_eq!(render(Format::Text, "error", r#"{"code":"chat.badQuestion","params":{}}"#), "error: chat.badQuestion");
+        assert_eq!(render(Format::Text, "error", "no article 3"), "error: no article 3");
     }
 }

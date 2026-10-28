@@ -28,6 +28,16 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A tab dragged out of its window appears in its new window at once and under the pointer. Before, the window took 2-3 seconds to show and came up away from the pointer until the pointer moved.
 - A web page no longer reloads when its tab moves to another window, by dragging or with **Open in new window** or **Move back to the main window**; it keeps its back and forward history and scroll position.
 - A page saved from a feed that links `http://` no longer shows **Add to Index** when opened in the built-in browser over `https://`.
+- A job whose processing crashed, or whose result could not be recorded because the database was busy, no longer stays **running** until the app restarts; it is retried like any other failure.
+- Opening Settings, closing the app, or writing a local backup no longer waits for a running job: the backup copies the database on a connection of its own, and the window closes once positions are saved.
+- Importing a large URL list (bookmarks, CSV) no longer takes minutes to find the URLs in it.
+- A feed whose entries could not be marked as imported no longer keeps re-sending them to the feed filter.
+- A page nested thousands of tags deep is cut off instead of crashing the app when it is saved.
+- A translation request to the built-in browser no longer freezes the app when a page finishes loading at the same time.
+- A web page can press only the shortcuts the overlay was told to forward, not any key the app binds.
+- When the Claude or Codex CLI exits early (not logged in, usage limit), Jobs shows the CLI's own message instead of a broken-pipe error.
+- A database written by a newer Lattice is refused with a clear message instead of failing later.
+- `lattice-cli`: the MCP server answers an invalid request instead of staying silent, survives invalid UTF-8 on its input, and reports an unknown tool as a protocol error; `--format text` prints backend errors readably instead of as JSON.
 
 ## [0.1.0] - 2026-10-27
 

@@ -941,7 +941,7 @@ struct Settings {
     backup_keep: u64,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_settings(app: State<'_, App>, loc: State<'_, Location>) -> Result<Settings, String> {
     Ok(Settings {
         db_path: app.db_path.clone(),
@@ -1092,10 +1092,13 @@ fn backup_dir(app: &App) -> PathBuf {
 }
 
 /// Writes a consistent copy of the database to app_data/backups and prunes old generations.
-#[tauri::command(async)]
-fn backup_db(app: State<'_, App>) -> Result<backup::LocalBackup, String> {
+#[tauri::command]
+async fn backup_db(app: State<'_, App>) -> Result<backup::LocalBackup, String> {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(err)?.as_secs();
-    backup::backup_local(&app.store, &backup_dir(&app), secs)
+    let keep = backup::keep_generations(&app.store)?;
+    let (db, dir) = (PathBuf::from(&app.db_path), backup_dir(&app));
+    // Its own connection: the copy (VACUUM INTO) would otherwise hold the store lock for every command and job.
+    tauri::async_runtime::spawn_blocking(move || backup::backup_local(&db, &dir, secs, keep)).await.map_err(err)?
 }
 
 #[tauri::command(async)]

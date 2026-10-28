@@ -72,7 +72,6 @@ impl ClaudeCli {
         let (written, out) = tokio::time::timeout(self.timeout, async { tokio::join!(write, child.wait_with_output()) })
             .await
             .map_err(|_| LlmError::Failed(format!("timed out after {:?}", self.timeout)))?;
-        written.map_err(|e| LlmError::Failed(e.to_string()))?;
         let out = out.map_err(|e| LlmError::Failed(e.to_string()))?;
         let stdout = String::from_utf8_lossy(&out.stdout);
         let v: Value = serde_json::from_str(&stdout).map_err(|_| {
@@ -83,6 +82,8 @@ impl ClaudeCli {
             // Usage limits and auth errors arrive here; the job runner backs off and retries.
             return Err(LlmError::Failed(v["result"].as_str().unwrap_or("unknown error").to_string()));
         }
+        // Checked last: a CLI that exits early (not logged in, usage limit) reports its own error above, not BrokenPipe.
+        written.map_err(|e| LlmError::Failed(e.to_string()))?;
         Ok(v)
     }
 }

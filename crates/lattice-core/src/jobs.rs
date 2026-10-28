@@ -7,6 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures::FutureExt;
 use tokio::sync::Notify;
 
 use crate::embed::{self, EmbeddingProvider};
@@ -162,7 +163,11 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
 ) -> Result<bool, String> {
     on_change(&job);
     let started = std::time::Instant::now();
-    let result = run_job(store, providers, &job, gate, &|| on_change(&job)).await;
+    // A panic (release unwinds on purpose) must still reach `finish_job`, or the job stays `running` until restart.
+    let result = std::panic::AssertUnwindSafe(run_job(store, providers, &job, gate, &|| on_change(&job)))
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|p| Err(format!("panic: {}", p.downcast_ref::<&str>().copied().or(p.downcast_ref::<String>().map(String::as_str)).unwrap_or(""))));
     match &result {
         Err(e) => log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count),
         // LLM jobs take minutes with the CLIs: their durations are what a "stuck" report needs.
@@ -172,7 +177,17 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
         Ok(()) => {}
     }
     let ok = result.is_ok();
-    store.finish_job(job.id, result.err().as_deref()).map_err(|e| e.to_string())?;
+    let error = result.err();
+    let mut finished = store.finish_job(job.id, error.as_deref());
+    // SQLITE_BUSY from the CLI/MCP process would otherwise leave the job `running`.
+    for _ in 0..2 {
+        if finished.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        finished = store.finish_job(job.id, error.as_deref());
+    }
+    finished.map_err(|e| e.to_string())?;
     // A word captured while the finished vocab job was still marked running was not re-queued by its capture.
     if ok && job.job_type == vocab::JOB_TYPE {
         vocab::enqueue_missing(store)?;
@@ -307,6 +322,26 @@ mod tests {
         spare.abort();
         first.abort();
         assert_eq!(status(&s), "succeeded");
+    }
+
+    #[tokio::test]
+    async fn a_panicking_handler_leaves_the_job_retryable_instead_of_running() {
+        struct Panics;
+        impl LlmProvider for Panics {
+            fn name(&self) -> &str {
+                "panics"
+            }
+            async fn complete_json(&self, _: &str, _: &str, _: &serde_json::Value) -> Result<crate::llm::Completion, crate::llm::LlmError> {
+                panic!("boom")
+            }
+        }
+        let (s, id) = setup();
+        summarize::enqueue(&s, id).unwrap();
+        let p = Providers { llm: Panics, embedder: NoEmbed, http: crate::fetch::client() };
+        assert!(run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap());
+        let job = &s.get_article(id, "ja").unwrap().unwrap().jobs[0];
+        assert_eq!(job.status, "pending", "backs off and retries like any other failure");
+        assert_eq!(job.last_error.as_deref(), Some("panic: boom"));
     }
 
     #[tokio::test]

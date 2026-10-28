@@ -285,7 +285,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
     let outcome = rate(store, provider, &ids).await;
     let result_for = |id: i64| match &outcome {
         Err(e) => Err(e.clone()),
-        Ok(m) => m.get(&id).cloned().unwrap_or_else(|| Err("model returned no score".into())),
+        Ok(m) => m.get(&id).cloned().unwrap_or_else(|| Err(msg!("relevance.noResult"))),
     };
     for j in &extra {
         let r = result_for(j.article_id.unwrap_or_default());
@@ -309,7 +309,7 @@ async fn rate<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> Resul
                 v["i"] = json!(items.len());
                 items.push((id, v));
             }
-            Ok(None) => drop(out.insert(id, Err("article has no extracted content".to_string()))),
+            Ok(None) => drop(out.insert(id, Err(msg!("article.noContent")))),
             Err(e) => drop(out.insert(id, Err(e.to_string()))),
         }
     }
@@ -492,7 +492,7 @@ mod tests {
         assert_eq!(get(&s, ids[0]).unwrap(), Some((4, "Rust に関係する".into())));
         assert_eq!(get(&s, ids[1]).unwrap(), None, "the out-of-range score is dropped");
         let jobs = s.get_article(ids[1], "ja").unwrap().unwrap().jobs;
-        assert_eq!((jobs[0].status.as_str(), jobs[0].last_error.as_deref()), ("pending", Some("model returned no score")));
+        assert_eq!((jobs[0].status.as_str(), jobs[0].last_error.as_deref()), ("pending", Some(msg!("relevance.noResult").as_str())));
         assert_eq!(status(&s).unwrap(), Status { has_profile: true, auto: true, threshold: 4, scored: 2, stale: 0, unscored: 1 });
 
         let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();

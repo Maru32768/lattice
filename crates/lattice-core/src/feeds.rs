@@ -196,9 +196,9 @@ pub async fn discover(client: &HttpClient, url: &str) -> Result<Vec<Candidate>, 
 /// goes last in its folder.
 pub fn add(store: &Store, url: &str, folder: Option<i64>) -> Result<(i64, bool), String> {
     let url = url.trim();
-    let parsed = url::Url::parse(url).map_err(|e| format!("invalid URL: {e}"))?;
+    let parsed = url::Url::parse(url).map_err(|e| msg!("feeds.invalidUrl", error = e.to_string()))?;
     if !matches!(parsed.scheme(), "http" | "https") {
-        return Err("only http(s) feeds are supported".into());
+        return Err(msg!("feeds.notHttp"));
     }
     let c = store.conn();
     let created = c
@@ -257,7 +257,7 @@ const MAX_ICON_BYTES: usize = 1024 * 1024;
 
 fn changed(rows: rusqlite::Result<usize>) -> Result<(), String> {
     match rows.map_err(err)? {
-        0 => Err("feed no longer exists".into()),
+        0 => Err(msg!("feeds.gone")),
         _ => Ok(()),
     }
 }
@@ -303,7 +303,7 @@ pub async fn refresh(store: &Store, client: &HttpClient, id: i64) -> Result<usiz
         .optional()
         .map_err(err)?;
     let Some((url, etag, modified)) = row else {
-        return Err("feed no longer exists".into());
+        return Err(msg!("feeds.gone"));
     };
     let result = match fetch(client, &url, etag.as_deref(), modified.as_deref()).await {
         Ok(None) => mark_fetched(store, id, None, None, None).map(|_| 0),

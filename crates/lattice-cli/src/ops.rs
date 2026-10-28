@@ -342,10 +342,12 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
                 0
             };
             let a = article(store, id)?;
-            let state = match (queued, run) {
+            // --run finds nothing to run when the running app's runner claimed the job first.
+            let state = match (queued, ran > 0) {
                 (false, _) => "already saved",
-                (true, false) => "queued: the app fetches it within 30 seconds while it runs (or use --run)",
                 (true, true) => "fetched here",
+                (true, false) if run => "queued: the running app took it first",
+                (true, false) => "queued: the app fetches it within 30 seconds while it runs (or use --run)",
             };
             let text = format!("{}\n{state} ({})", row_line(&a), a.fetch_status);
             Ok(Out { json: json!({ "article_id": id, "queued": queued, "jobs_run": ran, "article": a }), text })
@@ -372,11 +374,11 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// An empty in-memory library with no LLM or embedding model behind it.
-    fn ctx() -> Ctx {
+    pub(crate) fn ctx() -> Ctx {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));

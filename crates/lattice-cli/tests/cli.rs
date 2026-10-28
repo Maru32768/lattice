@@ -12,15 +12,31 @@ use serde_json::{Value, json};
 
 const UNTRUSTED_START: &str = "Lattice returns text from web pages";
 
-fn data_dir(name: &str) -> PathBuf {
+/// A temporary data folder, removed when dropped.
+struct Dir(PathBuf);
+
+impl Drop for Dir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+impl std::ops::Deref for Dir {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+fn data_dir(name: &str) -> Dir {
     let dir = std::env::temp_dir().join(format!("lattice-cli-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir
+    Dir(dir)
 }
 
 /// Two articles; the first is tagged `db`.
-fn library(name: &str) -> (PathBuf, i64) {
+fn library(name: &str) -> (Dir, i64) {
     let dir = data_dir(name);
     let s = Store::open(&dir.join("lattice.db")).unwrap();
     let mut first = 0;
@@ -130,7 +146,7 @@ fn writes_need_the_opt_in() {
     assert_eq!(ok(&dir, &["--allow-write", "tag", &id_s, "later"])["tags"], json!(["db", "later"]));
     assert_eq!(ok(&dir, &["--allow-write", "favorite", &id_s])["favorite"], true);
     let out =
-        Command::new(env!("CARGO_BIN_EXE_lattice-cli")).arg("--data-dir").arg(&dir).args(["read", &id_s]).env("LATTICE_ALLOW_WRITE", "1").output().unwrap();
+        Command::new(env!("CARGO_BIN_EXE_lattice-cli")).arg("--data-dir").arg(&*dir).args(["read", &id_s]).env("LATTICE_ALLOW_WRITE", "1").output().unwrap();
     assert!(out.status.success(), "the environment opts in too");
     assert_eq!(ok(&dir, &["list", "--scope", "unread"])["total"], 1);
 
@@ -216,7 +232,7 @@ fn serves_mcp_over_stdio() {
     assert!(text(&replies[4]).contains("--allow-write"));
     assert!(text(&replies[4]).starts_with(UNTRUSTED_START), "errors are marked too: {}", text(&replies[4]));
     assert_eq!(replies[5]["error"]["code"], -32601);
-    assert_eq!(replies[6]["result"]["isError"], true, "a missing argument is a tool error");
+    assert_eq!(replies[6]["error"]["code"], -32602, "a missing argument is invalid params, not a tool error: {}", replies[6]);
     assert!(ok(&dir, &["tags"]).to_string().contains("\"db\"") && !ok(&dir, &["tags"]).to_string().contains("\"x\""));
 }
 

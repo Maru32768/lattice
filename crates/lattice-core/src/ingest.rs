@@ -135,8 +135,12 @@ pub fn extract_urls(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut rest = text;
-    while let Some(start) = ["https://", "http://"].iter().filter_map(|p| rest.find(p)).min() {
+    while let Some(start) = rest.find("http") {
         let tail = &rest[start..];
+        if !(tail.starts_with("https://") || tail.starts_with("http://")) {
+            rest = &tail[4..];
+            continue;
+        }
         let end = tail.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '<' | '>' | '`' | ',' | '|' | '{' | '}')).unwrap_or(tail.len());
         let mut url = tail[..end].replace("&amp;", "&");
         // Trailing punctuation belongs to the surrounding prose; a ')' only if unbalanced (Markdown links).
@@ -219,6 +223,12 @@ mod tests {
                 "https://f.dev/end",
             ]
         );
+    }
+
+    #[test]
+    fn extracts_http_and_https_in_order_past_bare_words() {
+        let text = "http://a.dev/1 says http is fine https://b.dev/2 httpd http://c.dev/3 http://a.dev/1";
+        assert_eq!(extract_urls(text), ["http://a.dev/1", "https://b.dev/2", "http://c.dev/3"]);
     }
 
     #[test]

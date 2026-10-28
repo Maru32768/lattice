@@ -106,11 +106,13 @@ struct TabState {
     parked: Option<Instant>,
     /// The page's last word capture (overlay_vocab).
     captured: Option<Instant>,
+    /// Until when the key after the pane prefix (Ctrl+B) is forwarded, as the overlay's `prefixUntil`.
+    prefix_until: Option<Instant>,
 }
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None }
+        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None }
     }
 }
 
@@ -612,19 +614,21 @@ async fn capture_png(wv: &Webview) -> Result<Vec<u8>, String> {
     use windows::Win32::UI::Shell::SHCreateMemStream;
 
     let (tx, rx) = oneshot::channel();
-    // SAFETY: on the main thread with wry's live controller; the stream and handler are owned
-    // COM references that WebView2 keeps until the capture completes.
-    wv.with_webview(move |pw| unsafe {
-        let Some(stream) = SHCreateMemStream(None) else {
+    wv.with_webview(move |pw| {
+        // SAFETY: a plain Win32 call; the stream is an owned COM reference.
+        let Some(stream) = (unsafe { SHCreateMemStream(None) }) else {
             return;
         };
         let out = stream.clone();
         // Fires later on this (main) thread; if CapturePreview fails, dropping it closes the channel.
         let done = CapturePreviewCompletedHandler::create(Box::new(move |hr| {
-            let _ = tx.send(hr.and_then(|()| read_stream(&out)));
+            // SAFETY: completion handlers run on the STA thread that created the stream, once WebView2 has finished writing it.
+            let _ = tx.send(hr.and_then(|()| unsafe { read_stream(&out) }));
             Ok(())
         }));
-        let started = pw.controller().CoreWebView2().and_then(|core| core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &done));
+        // SAFETY: on the main thread with wry's live controller; WebView2 keeps the stream and handler until the capture completes.
+        let started =
+            unsafe { pw.controller().CoreWebView2().and_then(|core| core.CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &done)) };
         if let Err(e) = started {
             log::warn!("CapturePreview: {e}");
         }
@@ -781,8 +785,8 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
-    let shown = browser.with_tab(webview.label(), |t| t.visibility.wanted && !t.visibility.loading);
-    if !shown || key.len() > 64 {
+    let keys = lock(&browser.keys).clone();
+    if !browser.with_tab(webview.label(), |t| take_key(t, keys.as_ref(), &key, Instant::now())) {
         return Err("key refused".into());
     }
     #[derive(Clone, Serialize)]
@@ -791,6 +795,22 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
     }
     emit_tab(&webview, "browser-key", Key { key });
     Ok(())
+}
+
+/// Whether the tab may forward `key` at `now`: on screen, and `key` one of those the overlay was told
+/// to forward, or any key within `prefix_ms` of the pane prefix (as the overlay's `forward`); if so,
+/// arms or disarms the prefix the same way.
+fn take_key(t: &mut TabState, keys: Option<&PageKeys>, key: &str, now: Instant) -> bool {
+    let Some(k) = keys else {
+        return false;
+    };
+    let armed = t.prefix_until.is_some_and(|until| now < until);
+    let listed = k.in_fields.iter().chain(&k.outside).chain(&k.prefix).any(|s| s == key);
+    let ok = t.visibility.wanted && !t.visibility.loading && key.len() <= 64 && (armed || listed);
+    if ok {
+        t.prefix_until = (!armed && k.prefix.iter().any(|s| s == key)).then(|| now + Duration::from_millis(k.prefix_ms.into()));
+    }
+    ok
 }
 
 /// Called by the overlay for Ctrl+P and `window.print()`. WebView2's own print preview is drawn
@@ -855,7 +875,9 @@ pub fn ensure_translation_allowed(webview: &Webview, browser: &Browser) -> Resul
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
-    if !lock(&browser.config).enabled || browser.skipped(webview) {
+    // The guard is dropped before skipped() waits on the main thread, where overlay_config takes the same lock.
+    let enabled = lock(&browser.config).enabled;
+    if !enabled || browser.skipped(webview) {
         return Err("translation is off".into());
     }
     Ok(())
@@ -925,6 +947,25 @@ mod tests {
         assert!(take_capture(&mut t, now + CAPTURE_GAP));
         t.visibility.loading = true;
         assert!(!take_capture(&mut t, now + 3 * CAPTURE_GAP), "loading");
+    }
+
+    #[test]
+    fn a_page_forwards_only_the_keys_it_was_given_or_the_one_after_the_prefix() {
+        let now = Instant::now();
+        let keys = PageKeys { in_fields: vec!["Ctrl+K".into()], outside: vec!["J".into()], prefix: vec!["Ctrl+B".into()], prefix_ms: 1500 };
+        let mut t = TabState::default();
+        assert!(!take_key(&mut t, Some(&keys), "J", now), "hidden");
+        t.visibility.wanted = true;
+        assert!(!take_key(&mut t, None, "J", now), "no keys yet");
+        assert!(take_key(&mut t, Some(&keys), "J", now));
+        assert!(take_key(&mut t, Some(&keys), "Ctrl+K", now));
+        assert!(!take_key(&mut t, Some(&keys), "Ctrl+Q", now), "not a shortcut");
+        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now), "not armed");
+        assert!(take_key(&mut t, Some(&keys), "Ctrl+B", now));
+        assert!(take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(100)), "armed");
+        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(200)), "one key per prefix");
+        assert!(take_key(&mut t, Some(&keys), "Ctrl+B", now));
+        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(1500)), "expired");
     }
 
     #[test]

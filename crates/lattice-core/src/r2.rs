@@ -40,6 +40,14 @@ const TMP_PREFIX: &str = "r2-upload-";
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// Clears `RUNNING` however `backup_now` ends, including a dropped future.
+struct Running;
+impl Drop for Running {
+    fn drop(&mut self) {
+        RUNNING.store(false, Ordering::SeqCst)
+    }
+}
+
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct R2Status {
@@ -169,7 +177,7 @@ fn creds(store: &Store) -> Result<Creds, String> {
 fn due(store: &Store, now: u64) -> Result<bool, String> {
     let s = status(store)?;
     let complete = !s.account_id.is_empty() && !s.bucket.is_empty() && !s.access_key_id.is_empty() && s.has_secret;
-    let after_success = s.last_success.is_none_or(|t| now >= t + s.interval_hours * 3600);
+    let after_success = s.last_success.is_none_or(|t| now >= t.saturating_add(s.interval_hours.saturating_mul(3600)));
     let after_failure = get_u64(store, LAST_ATTEMPT)?.is_none_or(|t| s.last_success >= Some(t) || now >= t + RETRY_AFTER_SECS);
     Ok(s.enabled && complete && after_success && after_failure)
 }
@@ -206,6 +214,7 @@ pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, t
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err(msg!("r2.running"));
     }
+    let _running = Running;
     let now = unix_now();
     let tmp = tmp_dir.join(format!("{TMP_PREFIX}{now}.db"));
     let gz = tmp_dir.join(format!("{TMP_PREFIX}{now}.db.gz"));
@@ -240,7 +249,6 @@ pub async fn backup_now(store: &Store, http: &reqwest::Client, db_path: &Path, t
         Ok((c, keep)) => Some(prune(http, c, &prefix, *keep, &key).await),
         Err(_) => None,
     };
-    RUNNING.store(false, Ordering::SeqCst);
     match result {
         Ok(_) => {
             log::info!("r2 backup uploaded: {key}");
@@ -392,7 +400,7 @@ async fn upload(http: &reqwest::Client, c: &Creds, key: &str, path: &Path) -> Re
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let size = file.metadata().map_err(|e| e.to_string())?.len();
     if size <= PART_SIZE {
-        let body = read_part(&mut file)?;
+        let (_, body) = read_part(file).await?;
         return send(http, c, "PUT", key, &[], body).await.map(drop);
     }
     let created = send(http, c, "POST", key, &[("uploads", "")], Vec::new()).await?;
@@ -400,7 +408,8 @@ async fn upload(http: &reqwest::Client, c: &Creds, key: &str, path: &Path) -> Re
     let parts = async {
         let mut xml = String::from("<CompleteMultipartUpload>");
         for n in 1.. {
-            let body = read_part(&mut file)?;
+            let (f, body) = read_part(file).await?;
+            file = f;
             if body.is_empty() {
                 break;
             }
@@ -426,10 +435,15 @@ async fn upload(http: &reqwest::Client, c: &Creds, key: &str, path: &Path) -> Re
     parts
 }
 
-fn read_part(file: &mut std::fs::File) -> Result<Vec<u8>, String> {
-    let mut buf = Vec::new();
-    file.take(PART_SIZE).read_to_end(&mut buf).map_err(|e| e.to_string())?;
-    Ok(buf)
+/// Reads the next part (up to 64 MiB) off the async worker and hands the file back for the next one.
+async fn read_part(mut file: std::fs::File) -> Result<(std::fs::File, Vec<u8>), String> {
+    tokio::task::spawn_blocking(move || {
+        let mut buf = Vec::new();
+        (&mut file).take(PART_SIZE).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        Ok((file, buf))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn xml_text(xml: &str, tag: &str) -> Option<String> {

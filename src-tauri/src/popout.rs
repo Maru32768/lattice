@@ -9,6 +9,7 @@
 //! the frontend, which is how long a torn-off tab took to appear.
 
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -69,18 +70,31 @@ fn setting_key(label: &str) -> String {
     format!("window.{label}")
 }
 
-fn save_geometry(app: &App, w: &Window) {
+/// Where `w` is, as the setting's value; None for a minimized or maximized window.
+fn geometry_json(w: &Window) -> Option<String> {
     // shortcut: a minimized or maximized window keeps its last normal geometry; maximized is not restored, save the flag if that is missed.
     if w.is_minimized().unwrap_or(false) || w.is_maximized().unwrap_or(false) {
-        return;
+        return None;
     }
     let saved = w.outer_position().and_then(|p| w.inner_size().map(|s| Geometry { x: p.x, y: p.y, width: s.width, height: s.height }));
-    let result = saved
-        .map_err(err)
-        .and_then(|g| serde_json::to_string(&g).map_err(err))
-        .and_then(|json| app.store.set_setting(&setting_key(w.label()), Some(&json)).map_err(err));
-    if let Err(e) = result {
-        log::warn!("saving the position of {}: {e}", w.label());
+    match saved.map_err(err).and_then(|g| serde_json::to_string(&g).map_err(err)) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            log::warn!("saving the position of {}: {e}", w.label());
+            None
+        }
+    }
+}
+
+fn save_setting(app: &App, key: &str, json: &str) {
+    if let Err(e) = app.store.set_setting(key, Some(json)) {
+        log::warn!("saving the position {key}: {e}");
+    }
+}
+
+fn save_geometry(app: &App, w: &Window) {
+    if let Some(json) = geometry_json(w) {
+        save_setting(app, &setting_key(w.label()), &json);
     }
 }
 
@@ -294,6 +308,9 @@ pub async fn close_window(app: AppHandle, state: State<'_, App>, webview: Webvie
     Ok(())
 }
 
+/// Set once the main window's close began saving positions.
+static CLOSING: AtomicBool = AtomicBool::new(false);
+
 /// The main window's close quits the app, as before pop-outs existed; its position and the
 /// pop-outs' are saved first, since they go down with it (their contents are saved by the UI as they change).
 pub fn on_window_event(w: &Window, e: &WindowEvent) {
@@ -302,15 +319,29 @@ pub fn on_window_event(w: &Window, e: &WindowEvent) {
     }
     let app = w.app_handle();
     match e {
-        WindowEvent::CloseRequested { .. } => {
-            if let Some(state) = app.try_state::<App>() {
-                for (label, win) in app.windows() {
-                    // Not the spare: it never showed, and the place saved under its label is another window's.
-                    if (label == MAIN || is_popout(&label)) && win.is_visible().unwrap_or(false) {
-                        save_geometry(&state, &win);
-                    }
+        WindowEvent::CloseRequested { api, .. } => {
+            // The saves wait for the store, which a job may hold for a while: not on the event loop, which would
+            // freeze the window. A second close request while they wait closes at once (the saves are then lost).
+            if CLOSING.swap(true, Ordering::SeqCst) || app.try_state::<App>().is_none() {
+                return;
+            }
+            api.prevent_close();
+            let mut places = Vec::new();
+            for (label, win) in app.windows() {
+                // Not the spare: it never showed, and the place saved under its label is another window's.
+                if (label == MAIN || is_popout(&label)) && win.is_visible().unwrap_or(false) {
+                    places.extend(geometry_json(&win).map(|json| (setting_key(&label), json)));
                 }
             }
+            let (app, main) = (app.clone(), w.clone());
+            tauri::async_runtime::spawn_blocking(move || {
+                let state = app.state::<App>();
+                for (key, json) in &places {
+                    save_setting(&state, key, json);
+                }
+                // destroy() raises no second CloseRequested; Destroyed then exits the app.
+                let _ = main.destroy();
+            });
         }
         WindowEvent::Destroyed => app.exit(0),
         _ => {}

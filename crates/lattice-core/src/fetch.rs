@@ -70,7 +70,7 @@ impl Transport {
         let Some(proxy) = self.proxies.intercept(&uri) else {
             return Ok(self.direct.clone());
         };
-        let mut clients = self.proxy_clients.lock().expect("proxy clients lock");
+        let mut clients = self.proxy_clients.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(client) = clients.get(url.scheme()) {
             return Ok(client.clone());
         }
@@ -98,14 +98,13 @@ impl HttpClient {
     /// Already started requests finish with the policy snapshot they captured.
     pub fn set_settings(&self, store: &Store, settings: &NetworkSettings) -> Result<(), String> {
         let next = Arc::new(Transport::new(settings, Matcher::from_system())?);
-        let mut transport = self.transport.write().expect("transport lock");
         crate::network::save(store, settings)?;
-        *transport = next;
+        *self.transport.write().unwrap_or_else(|e| e.into_inner()) = next;
         Ok(())
     }
 
     pub(crate) async fn get(&self, url: &str, mut headers: HeaderMap) -> Result<reqwest::Response, GetError> {
-        let transport = self.transport.read().expect("transport lock").clone();
+        let transport = self.transport.read().unwrap_or_else(|e| e.into_inner()).clone();
         let mut url = reqwest::Url::parse(url).map_err(|e| GetError::Policy(e.to_string()))?;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
         for hop in 0..=10 {

@@ -102,6 +102,7 @@ const UNTRUSTED: &str =
 /// Article text as sent to the model, each block labelled `[n]`, and the block id of each label.
 pub fn input_text(title: &str, blocks: &[(i64, String, String)]) -> (String, Vec<i64>) {
     let mut out = format!("# {title}\n");
+    let mut len = out.chars().count();
     let mut ids = Vec::new();
     for (id, kind, text) in blocks {
         let n = ids.len() + 1;
@@ -110,7 +111,8 @@ pub fn input_text(title: &str, blocks: &[(i64, String, String)]) -> (String, Vec
         } else {
             format!("[{n}] {text}\n")
         };
-        if out.chars().count() + line.chars().count() > MAX_INPUT_CHARS {
+        len += line.chars().count();
+        if len > MAX_INPUT_CHARS {
             out.push_str("\n[…truncated]\n");
             break;
         }
@@ -168,7 +170,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
             .optional()
             .map_err(err)?
         else {
-            return Err("article has no extracted content".into());
+            return Err(msg!("article.noContent"));
         };
         let mut st =
             c.prepare("SELECT id, kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal").map_err(err)?;
@@ -184,7 +186,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
     let c = provider.complete_json(&applied.system(RULES, UNTRUSTED), &input, &schema()).await.map_err(err)?;
     let questions = parse(&c.value, &ids);
     if questions.is_empty() {
-        return Err("malformed quiz: no usable questions".into());
+        return Err(msg!("quiz.malformed"));
     }
     let mut conn = store.conn();
     let tx = conn.transaction().map_err(err)?;
@@ -565,7 +567,7 @@ mod tests {
         let (s, id) = setup();
         let e =
             run(&s, &llm(json!({"questions": [{"question": "q", "options": ["a"], "answer": "a", "explanation": "", "sources": []}]})), id).await.unwrap_err();
-        assert!(e.contains("no usable questions"));
+        assert_eq!(e, msg!("quiz.malformed"));
         assert!(get(&s, id).unwrap().is_none());
     }
 

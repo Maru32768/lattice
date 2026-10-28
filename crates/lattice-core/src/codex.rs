@@ -80,7 +80,7 @@ impl CodexCli {
             cmd.args(["--disable", f]);
         }
         // Instructions as the prompt; the untrusted text arrives on stdin as a <stdin> block.
-        cmd.arg(system).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+        cmd.arg("--").arg(system).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
 
@@ -92,18 +92,19 @@ impl CodexCli {
             let (written, out) = tokio::time::timeout(self.timeout, async { tokio::join!(write, child.wait_with_output()) })
                 .await
                 .map_err(|_| LlmError::Failed(format!("timed out after {:?}", self.timeout)))?;
-            written.map_err(|e| LlmError::Failed(e.to_string()))?;
-            out.map_err(|e| LlmError::Failed(e.to_string()))
+            Ok((written, out.map_err(|e| LlmError::Failed(e.to_string()))?))
         }
         .await;
         let _ = std::fs::remove_file(&schema_path);
-        let out = result?;
+        let (written, out) = result?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         if !out.status.success() && !stdout.contains("\"agent_message\"") {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let msg = event_error(&stdout).or_else(|| stderr.lines().map(str::trim).rfind(|l| !l.is_empty()).map(str::to_string));
             return Err(LlmError::Failed(format!("exit {}: {}", out.status, msg.unwrap_or_default())));
         }
+        // Checked last: a CLI that exits early (not logged in, usage limit) reports its own error above, not BrokenPipe.
+        written.map_err(|e| LlmError::Failed(e.to_string()))?;
         Ok(stdout)
     }
 }

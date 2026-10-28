@@ -477,6 +477,10 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// `?1` article, `?2` target language, `?3` block kinds as a JSON array.
+const UNTRANSLATED: &str = "b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?3))
+    AND NOT EXISTS (SELECT 1 FROM segment_translations st WHERE st.source_hash = b.text_hash AND st.target_language = ?2)";
+
 fn json<T: Serialize>(v: &T) -> String {
     serde_json::to_string(v).expect("IR types always serialize")
 }
@@ -506,6 +510,9 @@ impl Store {
     fn init(mut conn: Connection) -> Result<Self> {
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;")?;
         let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version as usize > MIGRATIONS.len() {
+            return Err(rusqlite::Error::ToSqlConversionFailure(format!("database version {version} is newer than this build ({})", MIGRATIONS.len()).into()));
+        }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = conn.transaction()?;
             tx.execute_batch(sql)?;
@@ -878,20 +885,22 @@ impl Store {
         Ok(())
     }
 
-    /// Translatable blocks of an article lacking a current translation in `target_language`.
+    /// Blocks of `kinds` of an article lacking a current translation in `target_language`.
     pub fn untranslated_blocks(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<Vec<PendingBlock>> {
         let c = self.conn();
-        let mut st = c.prepare(
-            "SELECT b.id, b.kind, b.text, b.text_hash, b.inlines FROM blocks b
-             WHERE b.article_id = ?1 AND NOT EXISTS (
-                 SELECT 1 FROM segment_translations st
-                 WHERE st.source_hash = b.text_hash AND st.target_language = ?2)
-             ORDER BY b.ordinal",
-        )?;
-        let rows = st.query_map(params![article_id, target_language], |r| {
+        let mut st = c.prepare(&format!("SELECT b.id, b.kind, b.text, b.text_hash, b.inlines FROM blocks b WHERE {UNTRANSLATED} ORDER BY b.ordinal"))?;
+        let rows = st.query_map(params![article_id, target_language, json(&kinds)], |r| {
             Ok(PendingBlock { id: r.get(0)?, kind: r.get(1)?, text: r.get(2)?, text_hash: r.get(3)?, inlines: opt_json_col(r, 4)? })
         })?;
-        rows.filter(|b| b.as_ref().map_or(true, |b| kinds.contains(&b.kind.as_str()))).collect()
+        rows.collect()
+    }
+
+    /// The texts of [`untranslated_blocks`](Self::untranslated_blocks), for counting what is left.
+    pub fn untranslated_texts(&self, article_id: i64, target_language: &str, kinds: &[&str]) -> Result<Vec<String>> {
+        let c = self.conn();
+        let mut st = c.prepare(&format!("SELECT b.text FROM blocks b WHERE {UNTRANSLATED}"))?;
+        let rows = st.query_map(params![article_id, target_language, json(&kinds)], |r| r.get(0))?;
+        rows.collect()
     }
 
     /// Jobs of `job_type` queued or running, not waiting to retry after an error, oldest first.
@@ -1255,6 +1264,14 @@ mod tests {
             std::fs::write(&path, &master).unwrap();
         }
         assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), master, "db/master.sql is stale: rerun with UPDATE_MASTER_SQL=1");
+    }
+
+    #[test]
+    fn a_database_from_a_newer_build_is_refused_on_open() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "user_version", MIGRATIONS.len() as i64 + 1).unwrap();
+        let e = Store::init(conn).err().expect("refused").to_string();
+        assert!(e.contains("newer than this build"), "{e}");
     }
 
     /// Migration 4 rewrites the snapshots table; pre-existing raw HTML must survive it.

@@ -45,14 +45,15 @@ pub(crate) fn stale<T: Ord>(mut items: Vec<T>, keep: u64, current: &T) -> Vec<T>
     items.into_iter().skip(keep.saturating_sub(1) as usize).collect()
 }
 
-/// Writes `dir/lattice-<now>.db`, then deletes older local backups beyond the configured count.
-pub fn backup_local(store: &Store, dir: &Path, now: u64) -> Result<LocalBackup, String> {
+/// Writes `dir/lattice-<now>.db` from the database at `db` on a connection of its own (the app's
+/// store stays free for the copy), then deletes older local backups beyond `keep`.
+pub fn backup_local(db: &Path, dir: &Path, now: u64, keep: u64) -> Result<LocalBackup, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let name = format!("lattice-{now}.db");
     let path = dir.join(&name);
-    store.backup_to(&path).map_err(|e| e.to_string())?;
+    Store::open(db).and_then(|s| s.backup_to(&path)).map_err(|e| e.to_string())?;
     log::info!("backup written to {}", path.display());
-    let warning = match keep_generations(store).and_then(|keep| prune(dir, keep, (now, name)).map_err(|e| e.to_string())) {
+    let warning = match prune(dir, keep, (now, name)).map_err(|e| e.to_string()) {
         Ok(n) => {
             if n > 0 {
                 log::info!("deleted {n} old local backups");
@@ -131,11 +132,20 @@ mod tests {
         assert_eq!(keep_generations(&s).unwrap(), DEFAULT_KEEP);
         assert!(set_keep_generations(&s, 0).is_err());
         set_keep_generations(&s, 2).unwrap();
-        let b = backup_local(&s, &dir, 12).unwrap();
+        assert_eq!(keep_generations(&s).unwrap(), 2);
+        // The source database lives outside `dir`, whose listing is asserted below.
+        let src_dir = std::env::temp_dir().join(format!("lattice-prune-src-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&src_dir);
+        std::fs::create_dir_all(&src_dir).unwrap();
+        let src = src_dir.join("lattice.db");
+        drop(Store::open(&src).unwrap());
+        let b = backup_local(&src, &dir, 12, 2).unwrap();
         assert!(b.warning.is_none(), "{:?}", b.warning);
         let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
         left.sort();
         assert_eq!(left, ["lattice-1.db-journal", "lattice-11.db", "lattice-12.db", "lattice-5.db", "notes.txt", "r2-upload-1.db", "r2-upload-1.db.gz"]);
+        assert!(Store::open(&dir.join("lattice-12.db")).is_ok(), "the copy opens");
         std::fs::remove_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_dir_all(&src_dir);
     }
 }

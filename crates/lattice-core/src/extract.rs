@@ -25,6 +25,7 @@ pub fn extract(html: &str, url: &str) -> Result<ArticleIr, ExtractError> {
     let base = Url::parse(url).map_err(|e| ExtractError::Readability(e.to_string()))?;
     let cfg = Config { keep_classes: true, ..Default::default() };
     let mut r = Readability::new(html, Some(url), Some(cfg)).map_err(|e| ExtractError::Readability(e.to_string()))?;
+    cut_deep(&r.doc);
     // Read before parse(): parse() mutates the document.
     let canonical = r.doc.select(r#"link[rel="canonical"]"#).attr("href").and_then(|h| http_url(&base, &h));
     // Readability drops every <aside>, and anything classed like "sidebar", as boilerplate; inside
@@ -75,6 +76,23 @@ const SKIP: &[&str] = &[
     "script", "style", "noscript", "template", "svg", "button", "form", "input", "select", "textarea", "iframe", "object", "embed", "nav", "footer", "aside",
     "head",
 ];
+
+/// Nesting beyond this is cut off before Readability: it and the walker recurse per level, so a
+/// 20 MB page of unclosed tags would overflow the stack (and Readability goes quadratic first).
+const MAX_DEPTH: usize = 256;
+
+fn cut_deep(doc: &Document) {
+    let mut stack = vec![(doc.root(), 0)];
+    while let Some((node, depth)) = stack.pop() {
+        for child in node.children() {
+            if depth < MAX_DEPTH {
+                stack.push((child, depth + 1));
+            } else {
+                child.remove_from_parent();
+            }
+        }
+    }
+}
 
 struct Walker {
     base: Url,
@@ -322,6 +340,19 @@ mod tests {
 <aside class="related"><p><a href="/other.html">Related posts</a> from elsewhere on the site.</p></aside>
 <footer>Copyright notice and other unrelated footer text.</footer>
 </body></html>"#;
+
+    #[test]
+    fn deeply_nested_pages_are_cut_off_instead_of_overflowing_the_stack() {
+        let prose = "<p>A paragraph long enough for readability to keep, with commas, clauses, and detail about write-ahead logging.</p>".repeat(3);
+        // 5000 overflowed a 2 MB test-thread stack before the cut; deeper takes html5ever quadratically longer to parse.
+        let n = 5000;
+        let html = format!("<html><body><article>{prose}{}<p>deep</p>{prose}</article></body></html>", "<div>".repeat(n));
+        let ir = extract(&html, "https://example.com/deep").unwrap();
+        assert!(ir.blocks.iter().any(|b| b.text.starts_with("A paragraph")));
+        assert!(!ir.blocks.iter().any(|b| b.text == "deep"), "past the cap: cut off");
+        let html = format!("<html><body><article>{prose}<p>{}deep</p></article></body></html>", "<span>".repeat(n));
+        extract(&html, "https://example.com/deep-inline").unwrap();
+    }
 
     #[test]
     fn keeps_asides_inside_the_article_body() {

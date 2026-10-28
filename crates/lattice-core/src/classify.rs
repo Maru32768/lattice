@@ -167,7 +167,7 @@ pub fn set_genre(store: &Store, article_id: i64, name: &str) -> Result<(), Strin
 /// classification is on, queues the article to be estimated again.
 pub fn set_difficulty(store: &Store, article_id: i64, level: Option<i64>) -> Result<(), String> {
     if level.is_some_and(|l| !DIFFICULTIES.contains(&l)) {
-        return Err(format!("difficulty must be 1-5, got {level:?}"));
+        return Err(msg!("classify.difficultyRange"));
     }
     store
         .conn()
@@ -249,7 +249,7 @@ pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -
     let outcome = classify(store, provider, &ids).await;
     let result_for = |id: i64| match &outcome {
         Err(e) => Err(e.clone()),
-        Ok(m) => m.get(&id).cloned().unwrap_or_else(|| Err("model returned no classification".into())),
+        Ok(m) => m.get(&id).cloned().unwrap_or_else(|| Err(msg!("classify.noResult"))),
     };
     for j in &extra {
         let r = result_for(j.article_id.unwrap_or_default());
@@ -269,7 +269,7 @@ async fn classify<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> R
                 v["i"] = json!(items.len());
                 items.push((id, v));
             }
-            Ok(None) => drop(out.insert(id, Err("article has no extracted content".to_string()))),
+            Ok(None) => drop(out.insert(id, Err(msg!("article.noContent")))),
             Err(e) => drop(out.insert(id, Err(e.to_string()))),
         }
     }

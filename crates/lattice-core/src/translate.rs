@@ -250,7 +250,7 @@ pub fn in_progress(store: &Store) -> Result<Vec<Progress>, String> {
             .map_or_else(|| article_target(store, article_id).map(|t| t.key()), Ok)?;
         let target = Target::from_key(&key, "");
         let done = store.translated_count(article_id, &key, PROSE_KINDS).map_err(e)?;
-        let left = store.untranslated_blocks(article_id, &key, PROSE_KINDS).map_err(e)?.iter().filter(|b| !target.is_written_in(&b.text)).count();
+        let left = store.untranslated_texts(article_id, &key, PROSE_KINDS).map_err(e)?.iter().filter(|t| !target.is_written_in(t)).count();
         out.push(Progress { article_id, running: job.status == "running", done, total: done + left });
     }
     Ok(out)
@@ -377,7 +377,7 @@ pub async fn run<P: LlmProvider>(
         on_progress();
     }
     if missing > 0 {
-        return Err(format!("{missing} blocks were not returned by the provider"));
+        return Err(msg!("translate.missingBlocks", missing = missing));
     }
     Ok(())
 }
