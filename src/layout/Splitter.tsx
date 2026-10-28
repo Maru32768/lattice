@@ -55,15 +55,36 @@ export function Splitter({ pane, side, width, onWidth }: { pane: Resizable; side
   const t = useT();
   const [drag, setDrag] = useState<{ x: number; w: number } | null>(null);
   const shield = useRef<HTMLDivElement>(null);
+  const handle = useRef<HTMLDivElement>(null);
+  /** The width the drag reached, committed on release. */
+  const dragged = useRef<number | null>(null);
   const dir = side === "left" ? 1 : -1;
   useCover(shield, !!drag && !LIVE_RESIZE);
-  const onMove = useEffectEvent((d: { x: number; w: number }, e: MouseEvent) => onWidth(clamp(pane, d.w + dir * (e.clientX - d.x))));
+  // While dragging, only the shell's width variable moves: committing per mousemove re-rendered the whole app
+  // and wrote localStorage per pixel.
+  const onMove = useEffectEvent((d: { x: number; w: number }, e: MouseEvent) => {
+    const w = clamp(pane, d.w + dir * (e.clientX - d.x));
+    const app = handle.current?.closest<HTMLElement>(".app");
+    if (app) {
+      dragged.current = w;
+      app.style.setProperty(`--${pane}-w`, `${w}px`);
+    } else {
+      onWidth(w);
+    }
+  });
+  const onUp = useEffectEvent(() => {
+    setDrag(null);
+    if (dragged.current != null) {
+      onWidth(dragged.current);
+      dragged.current = null;
+    }
+  });
   useEffect(() => {
     if (!drag) {
       return;
     }
     const move = (e: MouseEvent) => onMove(drag, e);
-    const up = () => setDrag(null);
+    const up = () => onUp();
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     window.addEventListener("blur", up);
@@ -101,6 +122,7 @@ export function Splitter({ pane, side, width, onWidth }: { pane: Resizable; side
   return (
     <>
       <div
+        ref={handle}
         className={`splitter at-${pane}${drag ? " on" : ""}`}
         role="separator"
         aria-orientation="vertical"

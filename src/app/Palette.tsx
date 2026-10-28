@@ -332,8 +332,17 @@ export function Palette({
     }
 
     if (!prefix && text) {
-      const titled = all.filter((a) => has(a.title ?? a.original_url));
-      for (const a of titled.slice(0, LIMIT)) {
+      // Stops at LIMIT: a keystroke need not scan every title of a large library.
+      const titled: ArticleRow[] = [];
+      for (const a of all) {
+        if (titled.length === LIMIT) {
+          break;
+        }
+        if (has(a.title ?? a.original_url)) {
+          titled.push(a);
+        }
+      }
+      for (const a of titled) {
         out.push({
           group: "articles",
           icon: "reader",

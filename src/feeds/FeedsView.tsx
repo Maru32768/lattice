@@ -14,6 +14,9 @@ import { skippedLines } from "../lib/urlLines";
 import "../ui/manage.css";
 import { useT } from "../i18n";
 
+/** Feeds subscribed at once from an OPML file or a list of URLs. */
+const ADD_CONCURRENCY = 4;
+
 const bare = (url: string) => url.replace(/^https?:\/\//, "");
 const feedName = (f: FeedRow) => f.custom_title ?? f.title ?? bare(f.url);
 const MAX_ICON_BYTES = 1024 * 1024;
@@ -217,20 +220,25 @@ export function FeedsView({
     }
   };
 
-  /** Subscribes to each feed in turn, reporting progress; a failed one does not stop the rest. */
+  /**
+   * Subscribes to the feeds a few at a time (each add fetches its feed: one slow host held up a whole
+   * OPML file), reporting progress; a failed one does not stop the rest.
+   */
   async function addAll(list: { url: string; folder: number | null }[]) {
-    let ok = 0;
+    // One iterator shared by the workers hands each feed to exactly one of them.
+    const queue = list.entries();
     const failed: string[] = [];
-    for (const f of list) {
-      setStatus(t("feedsView.adding", { x: ok + failed.length + 1, length: list.length }));
-      try {
-        await api.addFeed(f.url, f.folder);
-        ok++;
-      } catch {
-        failed.push(f.url);
+    const worker = async () => {
+      for (const [i, f] of queue) {
+        setStatus(t("feedsView.adding", { x: i + 1, length: list.length }));
+        await api.addFeed(f.url, f.folder).catch(() => failed.push(f.url));
       }
-    }
-    return t("feedsView.opmlDone", { total: list.length, ok }) + (failed.length ? t("feedsView.opmlFailed", { urls: failed.join(", ") }) : "");
+    };
+    await Promise.all(Array.from({ length: Math.min(ADD_CONCURRENCY, list.length) }, worker));
+    return (
+      t("feedsView.opmlDone", { total: list.length, ok: list.length - failed.length }) +
+      (failed.length ? t("feedsView.opmlFailed", { urls: failed.join(", ") }) : "")
+    );
   }
 
   // OPML: the backend reads the feeds and makes their outline folders; each is then subscribed.

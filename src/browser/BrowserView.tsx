@@ -468,7 +468,13 @@ export function BrowserView({
           {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
         </div>
         {panel === "quiz" && shown && act && (
-          <QuizPanel view={shown} onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))} onReviewChanged={act.onReviewChanged} onClose={closePanel} />
+          <QuizPanel
+            key={shown.article.id}
+            view={shown}
+            onSource={(b) => act.onFocusBlock(b, t("reader.quizSource"))}
+            onReviewChanged={act.onReviewChanged}
+            onClose={closePanel}
+          />
         )}
         {panel === "note" && shown && <NotePanel key={shown.article.id} view={shown} onClose={closePanel} />}
       </div>

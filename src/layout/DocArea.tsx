@@ -51,19 +51,39 @@ type Update = (f: (l: Layout) => Layout) => void;
  * Drag handle between two children of a split (the pane splitters' look and keys). Sets child
  * `i` to the fraction the pointer asks for; the next child takes the difference.
  */
-function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (size: number) => void }) {
+function SplitHandle({ dir, size, next, onSize }: { dir: Dir; size: number; next: number; onSize: (size: number) => void }) {
   const t = useT();
   const [drag, setDrag] = useState<{ at: number; size: number; len: number } | null>(null);
+  const handle = useRef<HTMLDivElement>(null);
+  /** The share the drag reached, committed on release. */
+  const dragged = useRef<number | null>(null);
   const row = dir === "row";
-  const onMove = useEffectEvent((d: { at: number; size: number; len: number }, e: MouseEvent) =>
-    onSize(d.size + ((row ? e.clientX : e.clientY) - d.at) / d.len),
-  );
+  // While dragging, only the two cells' flex moves (as resize() would set it): committing per mousemove
+  // re-rendered every open document and rewrote the saved layout per pixel.
+  const onMove = useEffectEvent((d: { at: number; size: number; len: number }, e: MouseEvent) => {
+    const s = Math.max(MIN_SIZE, Math.min(size + next - MIN_SIZE, d.size + ((row ? e.clientX : e.clientY) - d.at) / d.len));
+    const [before, after] = [handle.current?.previousElementSibling, handle.current?.nextElementSibling];
+    if (before instanceof HTMLElement && after instanceof HTMLElement) {
+      dragged.current = s;
+      before.style.flex = `${s} 1 0px`;
+      after.style.flex = `${size + next - s} 1 0px`;
+    } else {
+      onSize(s);
+    }
+  });
+  const onUp = useEffectEvent(() => {
+    setDrag(null);
+    if (dragged.current != null) {
+      onSize(dragged.current);
+      dragged.current = null;
+    }
+  });
   useEffect(() => {
     if (!drag) {
       return;
     }
     const moveM = (e: MouseEvent) => onMove(drag, e);
-    const up = () => setDrag(null);
+    const up = () => onUp();
     window.addEventListener("mousemove", moveM);
     window.addEventListener("mouseup", up);
     window.addEventListener("blur", up);
@@ -101,6 +121,7 @@ function SplitHandle({ dir, size, onSize }: { dir: Dir; size: number; onSize: (s
   const label = row ? t("docArea.paneWidth") : t("docArea.paneHeight");
   return (
     <div
+      ref={handle}
       className={`splitter at-pane${row ? "" : " h"}${drag ? " on" : ""}`}
       role="separator"
       aria-orientation={row ? "vertical" : "horizontal"}
@@ -169,6 +190,7 @@ function NodeView({
                 <SplitHandle
                   dir={n.dir}
                   size={size}
+                  next={sizeOf(i)}
                   onSize={(s) =>
                     onLayout((l) => {
                       const even = (size + sizeOf(i)) / 2;

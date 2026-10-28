@@ -209,6 +209,22 @@ export function scopeLabel(s: Scope, all: ArticleRow[], groups: GroupRow[], t: T
 }
 
 /** Display name of a facet value; feed names come from the articles' feed_title (none left: the feed was deleted). */
+const titlesByList = new WeakMap<ArticleRow[], Map<number, string | null>>();
+/** Feed titles by feed id, read off the articles once per list: a label per feed scanned every article. */
+function feedTitles(all: ArticleRow[]) {
+  let m = titlesByList.get(all);
+  if (!m) {
+    m = new Map();
+    for (const a of all) {
+      if (a.feed_id != null && !m.has(a.feed_id)) {
+        m.set(a.feed_id, a.feed_title);
+      }
+    }
+    titlesByList.set(all, m);
+  }
+  return m;
+}
+
 export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRow[], groups: GroupRow[], t: T): string {
   switch (dim) {
     case "genres":
@@ -221,7 +237,7 @@ export function valueLabel<D extends Dim>(dim: D, v: DimValue<D>, all: ArticleRo
       if (v == null) {
         return t("common.manual");
       }
-      return all.find((a) => a.feed_id === v)?.feed_title ?? t("library.feedDeleted");
+      return feedTitles(all).get(v as number) ?? t("library.feedDeleted");
     }
     case "difficulty": {
       const label = v == null ? "library.difficultyNone" : DIFFICULTY_LABELS[(v as number) - 1];

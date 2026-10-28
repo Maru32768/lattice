@@ -1,12 +1,11 @@
 // Dragging tabs between windows (design-review §26) over the mock. The backend runs the drag and
 // tells windows what to do through events; the specs send those events and check what this page
 // (the main window, or a pop-out with `?window=`) does and asks of the backend.
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, listRow, callsOf } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const [a, b, c] = ARTICLES;
-const row = (page: Page, title: string) => list(page).locator(".row", { hasText: title });
 const tabs = (page: Page) => page.locator(".dpane").first().getByRole("tab");
 const titles = (page: Page) => tabs(page).locator(".tab-t");
 const emit = (page: Page, event: string, payload: unknown = null) => page.evaluate(([e, p]) => window.__e2e.emit(e as string, p), [event, payload]);
@@ -17,8 +16,8 @@ const sentTabs = async (page: Page) =>
     .map((e) => [e.target.label, e.payload]);
 
 async function openTwo(app: Page) {
-  await row(app, a.title!).click();
-  await row(app, b.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, a.title!)).click();
+  await (await listRow(app, b.title!)).click({ modifiers: ["Control"] });
   await expect(titles(app)).toHaveText([a.title!, b.title!]);
 }
 
@@ -76,7 +75,7 @@ for (const kind of ["reader", "page"] as const) {
     const names = kind === "reader" ? [a.title!, b.title!, c.title!] : ["First browser page", "Second browser page", "Third browser page"];
     if (kind === "reader") {
       await openTwo(app);
-      await row(app, c.title!).click({ modifiers: ["Control"] });
+      await (await listRow(app, c.title!)).click({ modifiers: ["Control"] });
     } else {
       await emit(app, "main-request", {
         kind: "open",
@@ -137,11 +136,11 @@ test("every window reports its strips while any window drags, and again when its
     ((await callsOf(app, "tab_drag_strips")) as { geom: { label: string; strips: { tabs: number[][] }[] } }[]).map((r) => r.geom.strips[0].tabs.length);
   await emit(app, "tab-drag-start");
   await expect.poll(reported).toEqual([2]);
-  await row(app, c.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, c.title!)).click({ modifiers: ["Control"] });
   await expect.poll(reported).toEqual([2, 3]);
   await emit(app, "tab-drag-end");
   await titles(app).first().click();
-  await row(app, a.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, a.title!)).click({ modifiers: ["Control"] });
   await expect(titles(app)).toHaveCount(4);
   expect(await reported()).toEqual([2, 3]);
 });
@@ -221,7 +220,7 @@ test("split into panes, a tab dropped on the other pane's strip moves there, and
 async function splitThree(app: Page) {
   await openTwo(app);
   await app.getByRole("button", { name: "右に分割" }).click();
-  await row(app, c.title!).click();
+  await (await listRow(app, c.title!)).click();
   const panes = app.locator(".dpane");
   await expect(panes.nth(1).locator(".tab-t")).toHaveText([c.title!]);
   return Number(await panes.nth(1).getAttribute("data-pane-id"));

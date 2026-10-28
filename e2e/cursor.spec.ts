@@ -22,6 +22,24 @@ test("j / k move the cursor without opening; Enter opens it in the Reader", asyn
   expect(await callsOf(app, "set_read")).toEqual([{ id: order[1].id, read: true }]);
 });
 
+test("the cursor reaches the end of the virtualized list, its row scrolled into view and focused", async ({ app }) => {
+  await list(app).locator(".row").first().focus();
+  for (let i = 1; i < order.length; i++) {
+    await app.keyboard.press("j");
+  }
+  const cur = list(app).locator(".row.cur");
+  await expect(cur.locator(".t")).toHaveText(label(order.length - 1));
+  await expect(cur).toBeInViewport();
+  await expect(cur).toBeFocused();
+  // Back up to the first row: rows scrolled out of view are mounted again.
+  for (let i = 1; i < order.length; i++) {
+    await app.keyboard.press("k");
+  }
+  await expect(cur.locator(".t")).toHaveText(label(0));
+  await expect(cur).toBeInViewport();
+  await expect(cur).toBeFocused();
+});
+
 test("Shift+Enter opens the cursor's article as a page", async ({ app }) => {
   await app.keyboard.press("j");
   await app.keyboard.press("Shift+Enter");

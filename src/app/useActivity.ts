@@ -7,8 +7,11 @@ const POLL_MS = 10_000;
 const failedJobs = () => api.jobOverview().then((o) => o.counts.filter((c) => c.state === "failed").reduce((n, c) => n + c.count, 0));
 const dueReviews = () => api.reviewOverview().then((o) => o.due);
 
-/** The sidebar's badges: failed jobs and due reviews, polled; the jobs are read again soon after an article changes. */
-export function useActivity() {
+/**
+ * The sidebar's badges: failed jobs and due reviews, polled; the jobs are read again soon after an article changes.
+ * Only the main window draws them (`enabled`): pop-outs would poll the same store for nothing.
+ */
+export function useActivity(enabled: boolean) {
   const [jobFailures, setJobFailures] = useState(0);
   const [reviewDue, setReviewDue] = useState(0);
   const loadReview = () =>
@@ -17,6 +20,9 @@ export function useActivity() {
       .catch(() => {});
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     const loadJobs = () =>
       void failedJobs()
         .then(setJobFailures)
@@ -38,7 +44,7 @@ export function useActivity() {
       clearTimeout(jobTimer);
       void sub.then((f) => f());
     };
-  }, []);
+  }, [enabled]);
 
   return { jobFailures, reviewDue, loadReview };
 }
@@ -47,9 +53,12 @@ export function useActivity() {
  * Articles being translated or waiting to be, by id, for the list's labels. Read again soon after an
  * article changes (a translate job reports each saved batch), and polled for jobs queued meanwhile.
  */
-export function useTranslations() {
+export function useTranslations(enabled: boolean) {
   const [progress, setProgress] = useState<Map<number, Progress>>(new Map());
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     const load = () =>
       void api
         .translationStatus()
@@ -67,7 +76,7 @@ export function useTranslations() {
       clearTimeout(timer);
       void sub.then((f) => f());
     };
-  }, []);
+  }, [enabled]);
   return progress;
 }
 

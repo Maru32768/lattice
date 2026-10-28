@@ -24,6 +24,7 @@ import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
 import { GroupChips } from "../library/GroupPicker";
 import { onMiddle } from "../lib/middle";
+import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord, markWords, type WordMarks } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
@@ -196,6 +197,93 @@ function Sentences({
     </>
   );
 }
+
+/**
+ * One block of the Reader, memoized: hovering a sentence or flipping one changes only its own block's
+ * props (`shownKey`, `popPiece`), so a long article does not re-render every block per mouse move.
+ */
+const ReaderBlock = memo(function ReaderBlock({
+  b,
+  pieces: ps,
+  shownKey,
+  popPiece,
+  pending,
+  focused,
+  marker,
+  imagesJob,
+  onFlip,
+  onHover,
+  onLeave,
+  onKeepPop,
+}: {
+  b: Block;
+  pieces: Piece[];
+  /** Per piece, "1" when it shows its translation. */
+  shownKey: string;
+  popPiece: number | null;
+  pending: boolean;
+  focused?: Focus;
+  marker?: string;
+  imagesJob?: string;
+  onFlip: (b: Block, piece?: number) => void;
+  onHover: (block: number, piece: number) => void;
+  onLeave: () => void;
+  onKeepPop: () => void;
+}) {
+  const t = useT();
+  const shown = (j: number) => shownKey[j] === "1";
+  const has = b.translation != null;
+  const translated = ps.some((p, j) => p.translation != null && shown(j));
+  const popped = popPiece == null ? undefined : ps[popPiece];
+  const popShown = popPiece != null && shown(popPiece);
+  const label = translated ? t("reader.flipToOriginal") : t("reader.flipToTranslation");
+  return (
+    <div
+      id={`b-${b.id}`}
+      className={`blk ${b.kind}${focused ? ` is-${focused.tone}` : ""}${has ? " flip" : ""}`}
+      tabIndex={has ? 0 : undefined}
+      aria-description={has ? t("reader.flipHint") : undefined}
+      onKeyDown={
+        has
+          ? (e) => {
+              if (e.key === "Enter" && e.target === e.currentTarget) {
+                e.preventDefault();
+                onFlip(b);
+              }
+            }
+          : undefined
+      }
+    >
+      {has ? (
+        <button className={`mk ${translated ? "ja" : "en"}`} onClick={() => onFlip(b)} aria-label={label} title={label}>
+          <i />
+        </button>
+      ) : (
+        pending && (
+          <span className="mk pend" aria-hidden="true" title={t("reader.waiting")}>
+            <i />
+          </span>
+        )
+      )}
+      {focused && <div className="blk-label">{focused.label}</div>}
+      <BlockView
+        block={b}
+        marker={marker}
+        imagesJob={imagesJob}
+        body={<Sentences block={b} pieces={ps} shown={shown} ts={focused?.terms} onHover={(j) => onHover(b.id, j)} onLeave={onLeave} />}
+      />
+      {popped?.translation != null && (
+        <div className="pop" role="tooltip" onClick={() => onFlip(b, popPiece!)} onMouseEnter={onKeepPop} onMouseLeave={onLeave}>
+          <div className="pop-h">
+            <span>{popShown ? t("reader.original") : t("reader.translated")}</span>
+            <span className="r">{t.rich("reader.flipPop", { kbd: <Kbd>Enter</Kbd> })}</span>
+          </div>
+          {popShown ? b.text.slice(popped.start, popped.end) : popped.translation}
+        </div>
+      )}
+    </div>
+  );
+});
 
 function BlockView({ block, marker, body, imagesJob }: { block: Block; marker?: string; body: React.ReactNode; imagesJob?: string }) {
   const a = block.attrs;
@@ -875,7 +963,8 @@ export function Reader({
   const focusBlock = focus?.block;
   useEffect(() => {
     if (focusBlock != null) {
-      document.getElementById(`b-${focusBlock}`)?.scrollIntoView({ block: "center" });
+      // Scoped to this Reader: the same article may be open in another pane.
+      blocksEl.current?.querySelector(`#b-${focusBlock}`)?.scrollIntoView({ block: "center" });
     }
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focusBlock, focus?.seq, blocks.length]);
@@ -998,6 +1087,10 @@ export function Reader({
     clearTimeout(timers.current.show);
     timers.current.hide = window.setTimeout(() => setPop(null), 150);
   }
+  const keepPop = () => clearTimeout(timers.current.hide);
+  // flip reads this render's flips; through a ref its identity stays put, so flipping one block re-renders only the blocks it changes.
+  const flipRef = useLatest(flip);
+  const onFlip = (b: Block, piece?: number) => flipRef.current(b, piece);
 
   const [retranslate, retranslateDialog] = useRetranslate(done, act.onRetranslate);
 
@@ -1175,71 +1268,26 @@ export function Reader({
 
             <OpenLink.Provider value={onLink}>
               <div className="prose blocks" ref={blocksEl} onMouseUp={offerCapture} onKeyUp={(e) => e.shiftKey && offerCapture()}>
-                {blocks.map((b, i) => {
-                  const has = b.translation != null;
-                  const translated = blockShows(b);
-                  const ps = pieces.get(b.id)!;
-                  const popped = pop?.block === b.id ? ps[pop.piece] : undefined;
-                  const popShown = popped != null && shows(b.id, pop!.piece);
-                  const pending = !has && translating && TRANSLATABLE.has(b.kind);
-                  const focused = focus?.block === b.id ? focus : undefined;
-                  const label = translated ? t("reader.flipToOriginal") : t("reader.flipToTranslation");
-                  return (
-                    <div
-                      key={b.id}
-                      id={`b-${b.id}`}
-                      className={`blk ${b.kind}${focused ? ` is-${focused.tone}` : ""}${has ? " flip" : ""}`}
-                      tabIndex={has ? 0 : undefined}
-                      aria-description={has ? t("reader.flipHint") : undefined}
-                      onKeyDown={
-                        has
-                          ? (e) => {
-                              if (e.key === "Enter" && e.target === e.currentTarget) {
-                                e.preventDefault();
-                                flip(b);
-                              }
-                            }
-                          : undefined
-                      }
-                    >
-                      {has ? (
-                        <button className={`mk ${translated ? "ja" : "en"}`} onClick={() => flip(b)} aria-label={label} title={label}>
-                          <i />
-                        </button>
-                      ) : (
-                        pending && (
-                          <span className="mk pend" aria-hidden="true" title={t("reader.waiting")}>
-                            <i />
-                          </span>
-                        )
-                      )}
-                      {focused && <div className="blk-label">{focused.label}</div>}
-                      <BlockView
-                        block={b}
-                        marker={markers[i]}
-                        imagesJob={imagesJob}
-                        body={
-                          <Sentences block={b} pieces={ps} shown={(j) => shows(b.id, j)} ts={focused?.terms} onHover={(j) => hover(b.id, j)} onLeave={leave} />
-                        }
-                      />
-                      {popped?.translation != null && (
-                        <div
-                          className="pop"
-                          role="tooltip"
-                          onClick={() => flip(b, pop!.piece)}
-                          onMouseEnter={() => clearTimeout(timers.current.hide)}
-                          onMouseLeave={leave}
-                        >
-                          <div className="pop-h">
-                            <span>{popShown ? t("reader.original") : t("reader.translated")}</span>
-                            <span className="r">{t.rich("reader.flipPop", { kbd: <Kbd>Enter</Kbd> })}</span>
-                          </div>
-                          {popShown ? b.text.slice(popped.start, popped.end) : popped.translation}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                {blocks.map((b, i) => (
+                  <ReaderBlock
+                    key={b.id}
+                    b={b}
+                    pieces={pieces.get(b.id)!}
+                    shownKey={pieces
+                      .get(b.id)!
+                      .map((_, j) => (shows(b.id, j) ? "1" : "0"))
+                      .join("")}
+                    popPiece={pop?.block === b.id ? pop.piece : null}
+                    pending={b.translation == null && translating && TRANSLATABLE.has(b.kind)}
+                    focused={focus?.block === b.id ? focus : undefined}
+                    marker={markers[i]}
+                    imagesJob={imagesJob}
+                    onFlip={onFlip}
+                    onHover={hover}
+                    onLeave={leave}
+                    onKeepPop={keepPop}
+                  />
+                ))}
               </div>
             </OpenLink.Provider>
           </article>

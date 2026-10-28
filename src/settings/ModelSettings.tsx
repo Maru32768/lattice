@@ -147,9 +147,9 @@ export function ModelSettings() {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const s = await api.llmSettings();
+    const [s, h] = await Promise.all([api.llmSettings(), api.llmHealth()]);
     setLlm(s);
-    setHealth(await api.llmHealth());
+    setHealth(h);
     return s;
   }
 

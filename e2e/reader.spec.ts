@@ -1,4 +1,4 @@
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, listRow, callsOf } from "./harness.ts";
 import { ARTICLES, MARKDOWN_ID, SNAPSHOT_ID, blocksOf } from "./fixtures.ts";
 
 const snapshot = ARTICLES.find((a) => a.id === SNAPSHOT_ID)!;
@@ -8,7 +8,7 @@ const translatable = blocks.filter((b) => b.translation != null && !b.units);
 const sentences = blocks.find((b) => b.units)!;
 
 async function open(page: import("@playwright/test").Page, title: string) {
-  await list(page).locator(".row", { hasText: title }).click();
+  await (await listRow(page, title)).click();
   await expect(page.locator(".art-title")).toHaveText(title);
 }
 
@@ -84,7 +84,7 @@ test("picking 訳文 on an untranslated article starts its translation and shows
   await seg.getByRole("button", { name: "訳文", exact: true }).click();
   // The Reader and the list row count the same blocks.
   await expect(app.locator(".tr-prog")).toHaveText("翻訳待ち 0 / 4 ブロック");
-  await expect(list(app).locator(".row").filter({ hasText: untranslated.title! })).toContainText("翻訳待ち");
+  await expect(await listRow(app, untranslated.title!)).toContainText("翻訳待ち");
   await seg.getByRole("button", { name: /混在/ }).click();
   expect(await callsOf(app, "translate_article"), "queued once; the waiting job is not queued again").toEqual([{ id: untranslated.id }]);
 

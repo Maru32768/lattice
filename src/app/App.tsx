@@ -1,16 +1,12 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
 import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
-import { ImportView, type ImportTab } from "../import/ImportView";
-import { SettingsView, type SettingsSection } from "../settings/SettingsView";
-import { FeedsView } from "../feeds/FeedsView";
-import { JobsView } from "../jobs/JobsView";
-import { QuizReview } from "../quiz/QuizReview";
-import { VocabView } from "../vocab/VocabView";
+import type { ImportTab } from "../import/ImportView";
+import type { SettingsSection } from "../settings/SettingsView";
 import { replayWord } from "../vocab/speech";
 import { ChatPane } from "../chat/ChatPane";
 import { openDocs } from "../chat/chat";
@@ -56,6 +52,14 @@ import type { TabLabel } from "../layout/TabStrip";
 import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
+
+// Screens opened now and then load on first use: the reading path (and every pop-out) parses less at start.
+const ImportView = lazy(() => import("../import/ImportView").then((m) => ({ default: m.ImportView })));
+const SettingsView = lazy(() => import("../settings/SettingsView").then((m) => ({ default: m.SettingsView })));
+const FeedsView = lazy(() => import("../feeds/FeedsView").then((m) => ({ default: m.FeedsView })));
+const JobsView = lazy(() => import("../jobs/JobsView").then((m) => ({ default: m.JobsView })));
+const QuizReview = lazy(() => import("../quiz/QuizReview").then((m) => ({ default: m.QuizReview })));
+const VocabView = lazy(() => import("../vocab/VocabView").then((m) => ({ default: m.VocabView })));
 import { HOST, IS_MAIN, type Where } from "./host";
 import { FirstRun, PrefixHint } from "./FirstRun";
 import { useLibrary } from "./useLibrary";
@@ -84,10 +88,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(String(e));
 
-  const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } =
-    useLibrary(fail);
-  const { jobFailures, reviewDue, loadReview } = useActivity();
-  const translations = useTranslations();
+  const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } = useLibrary(
+    fail,
+    HOST.kind !== "chat",
+  );
+  const { jobFailures, reviewDue, loadReview } = useActivity(IS_MAIN);
+  const translations = useTranslations(IS_MAIN);
   const { vocab, marksOn, setMarks, marks, loadVocab, saveWordSeq, saveWord } = useVocab(() => void loadReview());
   const { layout, setLayout, layoutRef, views, setViews, viewsRef, loadView, refreshSaved, forgetPage } = useDocuments(fail);
   const [pageLang, setPageLang] = usePageLang(t, fail);
@@ -1002,54 +1008,58 @@ export default function App() {
           >
             {IS_MAIN &&
               (screen === "settings" ? (
-                <SettingsView
-                  section={settingsSection}
-                  onSection={setSettingsSection}
-                  onBack={() => setScreen("library")}
-                  onFeeds={() => setScreen("feeds")}
-                  onChanged={refresh}
-                  onOpenUrl={(url) => openPage(url)}
-                />
+                <Suspense fallback={null}>
+                  <SettingsView
+                    section={settingsSection}
+                    onSection={setSettingsSection}
+                    onBack={() => setScreen("library")}
+                    onFeeds={() => setScreen("feeds")}
+                    onChanged={refresh}
+                    onOpenUrl={(url) => openPage(url)}
+                  />
+                </Suspense>
               ) : (
                 nav
               ))}
             {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (
               <main className="main" data-pane="doc">
-                {screen === "import" && (
-                  <ImportView
-                    tab={importTab}
-                    onTab={setImportTab}
-                    onImported={refresh}
-                    onOpen={(id) => {
-                      void refresh();
-                      openReader(id);
-                    }}
-                    groups={groupRows}
-                    initialGroups={scope.kind === "group" ? [scope.id] : []}
-                    onCreateGroup={createGroup}
-                  />
-                )}
-                {screen === "feeds" && (
-                  <FeedsView
-                    key={feedsUrl}
-                    articles={articles}
-                    navFeeds={feeds}
-                    onChanged={refreshSoon}
-                    initialUrl={feedsUrl}
-                    onShowFeed={(id) => setScope({ kind: "feed", id })}
-                  />
-                )}
-                {screen === "jobs" && <JobsView />}
-                {screen === "review" && (
-                  <QuizReview
-                    onChanged={loadVocab}
-                    onOpenPage={(url, text) => openPage(url, text)}
-                    onOpen={(id, block, label) =>
-                      openReader(id, block == null ? undefined : { block, label: label ?? t("reader.quizSource"), terms: [], tone: "cite" })
-                    }
-                  />
-                )}
-                {screen === "vocab" && <VocabView entries={vocab} marks={marksOn} onMarks={setMarks} onChanged={loadVocab} onSource={openContext} />}
+                <Suspense fallback={null}>
+                  {screen === "import" && (
+                    <ImportView
+                      tab={importTab}
+                      onTab={setImportTab}
+                      onImported={refresh}
+                      onOpen={(id) => {
+                        void refresh();
+                        openReader(id);
+                      }}
+                      groups={groupRows}
+                      initialGroups={scope.kind === "group" ? [scope.id] : []}
+                      onCreateGroup={createGroup}
+                    />
+                  )}
+                  {screen === "feeds" && (
+                    <FeedsView
+                      key={feedsUrl}
+                      articles={articles}
+                      navFeeds={feeds}
+                      onChanged={refreshSoon}
+                      initialUrl={feedsUrl}
+                      onShowFeed={(id) => setScope({ kind: "feed", id })}
+                    />
+                  )}
+                  {screen === "jobs" && <JobsView />}
+                  {screen === "review" && (
+                    <QuizReview
+                      onChanged={loadVocab}
+                      onOpenPage={(url, text) => openPage(url, text)}
+                      onOpen={(id, block, label) =>
+                        openReader(id, block == null ? undefined : { block, label: label ?? t("reader.quizSource"), terms: [], tone: "cite" })
+                      }
+                    />
+                  )}
+                  {screen === "vocab" && <VocabView entries={vocab} marks={marksOn} onMarks={setMarks} onChanged={loadVocab} onSource={openContext} />}
+                </Suspense>
               </main>
             )}
             {IS_MAIN && screen === "library" && search && listOpen && (

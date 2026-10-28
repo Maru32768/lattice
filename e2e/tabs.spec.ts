@@ -1,23 +1,22 @@
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, listRow, callsOf } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 
-const row = (page: import("@playwright/test").Page, title: string) => list(page).locator(".row", { hasText: title });
 const tabs = (page: import("@playwright/test").Page, pane = 0) => page.locator(".dpane").nth(pane).getByRole("tab");
 /** The tabs' titles (without the favicon's letter). */
 const titles = (page: import("@playwright/test").Page, pane = 0) => tabs(page, pane).locator(".tab-t");
 const [a, b, c] = ARTICLES;
 
 test("Ctrl-click opens a second tab; Ctrl+Tab cycles; Ctrl+W closes back to one", async ({ app }) => {
-  await row(app, a.title!).click();
+  await (await listRow(app, a.title!)).click();
   await expect(titles(app)).toHaveText([a.title!]);
-  await row(app, b.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, b.title!)).click({ modifiers: ["Control"] });
   await expect(titles(app)).toHaveText([a.title!, b.title!]);
   await expect(tabs(app).nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(app.locator(".art-title")).toHaveText(b.title!);
 
   await app.keyboard.press("Control+Tab");
   await expect(app.locator(".art-title")).toHaveText(a.title!);
-  await row(app, c.title!).click();
+  await (await listRow(app, c.title!)).click();
   // A plain click replaces the active tab.
   await expect(titles(app)).toHaveText([c.title!, b.title!]);
 
@@ -27,8 +26,8 @@ test("Ctrl-click opens a second tab; Ctrl+Tab cycles; Ctrl+W closes back to one"
 });
 
 test("a tab reorders by drag; middle-click closes it", async ({ app }) => {
-  await row(app, a.title!).click();
-  await row(app, b.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, a.title!)).click();
+  await (await listRow(app, b.title!)).click({ modifiers: ["Control"] });
   const first = (await tabs(app).nth(0).boundingBox())!;
   const second = (await tabs(app).nth(1).boundingBox())!;
   await app.mouse.move(second.x + second.width / 2, second.y + second.height / 2);
@@ -44,14 +43,14 @@ test("a tab reorders by drag; middle-click closes it", async ({ app }) => {
 });
 
 test("split right makes a focused empty pane; the next click opens there; closing it merges back", async ({ app }) => {
-  await row(app, a.title!).click();
+  await (await listRow(app, a.title!)).click();
   await app.getByRole("button", { name: "右に分割" }).click();
   const panes = app.locator(".dpane");
   await expect(panes).toHaveCount(2);
   await expect(panes.nth(1)).toHaveClass(/focused/);
   await expect(panes.nth(1)).toContainText("記事を選んでください");
 
-  await row(app, b.title!).click();
+  await (await listRow(app, b.title!)).click();
   await expect(titles(app, 1)).toHaveText([b.title!]);
   await expect(titles(app, 0)).toHaveText([a.title!]);
 
@@ -77,10 +76,10 @@ test("split right makes a focused empty pane; the next click opens there; closin
 });
 
 test("the layout with its tabs survives a reload", async ({ app }) => {
-  await row(app, a.title!).click();
-  await row(app, b.title!).click({ modifiers: ["Control"] });
+  await (await listRow(app, a.title!)).click();
+  await (await listRow(app, b.title!)).click({ modifiers: ["Control"] });
   await app.getByRole("button", { name: "下に分割" }).click();
-  await row(app, c.title!).click();
+  await (await listRow(app, c.title!)).click();
   await app.reload();
   await expect(app.locator(".dpane")).toHaveCount(2);
   await expect(titles(app, 0)).toHaveText([a.title!, b.title!]);
@@ -117,7 +116,7 @@ test("a Page tab gets its own webview, titled by its host until the page names i
 });
 
 test("a chat citation and a palette article open in a new tab on Ctrl / middle click", async ({ app }) => {
-  await row(app, a.title!).click();
+  await (await listRow(app, a.title!)).click();
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   await app.getByRole("button", { name: "会話を選ぶ" }).click();
   await app.getByRole("menuitemradio", { name: "MVCC と VACUUM の関係" }).click();

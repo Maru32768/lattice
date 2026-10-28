@@ -4,8 +4,11 @@ import { api, type ArticleRow, type ArticleSort, type FeedRow, type FolderRow, t
 
 type Count = { name: string; count: number };
 
-/** The library as the backend has it: articles, feeds and their folders, tags, genres, groups, relevance. */
-export function useLibrary(fail: (e: unknown) => void) {
+/**
+ * The library as the backend has it: articles, feeds and their folders, tags, genres, groups, relevance.
+ * The chat window lists no articles (`withArticles` false): it skips the largest read on every change.
+ */
+export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
@@ -21,9 +24,16 @@ export function useLibrary(fail: (e: unknown) => void) {
   const sortRef = useRef(sort);
   const [now, setNow] = useState(() => Date.now());
 
-  const refresh = () =>
-    Promise.all([
-      api.listArticles({ kind: "all" }, sortRef.current).then((a) => {
+  /** Grows with each list request: a slower one sent under the previous sort must not land last. */
+  const listSeq = useRef(0);
+  const refresh = () => {
+    const seq = ++listSeq.current;
+    const list = withArticles ? api.listArticles({ kind: "all" }, sortRef.current) : Promise.resolve([]);
+    return Promise.all([
+      list.then((a) => {
+        if (seq !== listSeq.current) {
+          return;
+        }
         setNow(Date.now());
         setArticles(a);
         setLoaded(true);
@@ -35,6 +45,7 @@ export function useLibrary(fail: (e: unknown) => void) {
       api.listGroups().then(setGroupRows),
       api.relevanceStatus().then(setRelevance),
     ]).catch(fail);
+  };
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
     setSortState(s);

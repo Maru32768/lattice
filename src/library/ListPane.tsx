@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { siteOf, type ArticleRow, type ArticleSort, type GroupRow } from "../api";
 import { DIMS, DIM_LABELS, NO_FACETS, activeDims, facetBase, facetLabel, without, type Dim, type Facets, type Relaxation } from "./library";
 import { flatten, type Group } from "./groups";
@@ -11,6 +12,7 @@ import { keyOf } from "../lib/keyname";
 import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
 import { onMiddle } from "../lib/middle";
+import { paneOf } from "../layout/panes";
 import { useT, type PlainKey, type T } from "../i18n";
 
 export type Grouping = "none" | "feed" | "genre";
@@ -27,6 +29,27 @@ const GROUPINGS: [Grouping, PlainKey][] = [
   ["feed", "common.source"],
   ["genre", "common.genre"],
 ];
+
+/** A list line: a group heading or an article row; the virtualized list draws only those in view. */
+type Item = { kind: "head"; g: Group<ArticleRow>; depth: number; key: string } | { kind: "row"; a: ArticleRow };
+
+/** A heading's key is its path: the same genre recurs under each feed. */
+function itemsOf(groups: Group<ArticleRow>[], depth = 0, path = "", out: Item[] = []): Item[] {
+  for (const g of groups) {
+    const key = `${path}/${g.key}`;
+    if (g.label) {
+      out.push({ kind: "head", g, depth, key });
+    }
+    if (g.children) {
+      itemsOf(g.children, depth + 1, key, out);
+    } else {
+      for (const a of g.articles) {
+        out.push({ kind: "row", a });
+      }
+    }
+  }
+  return out;
+}
 
 export const mmdd = (s: string) => {
   const d = new Date(s);
@@ -371,33 +394,49 @@ export function ListPane({
       (n) => setRescored(t("listPane.rescoreQueued", { n })),
       (e: unknown) => setRescored(t.msg(String(e))),
     );
-  const renderGroup = (g: Group<ArticleRow>, depth: number): React.ReactNode => (
-    <div key={g.key} role="group" aria-label={g.label || undefined}>
-      {g.label && (
-        <div className={`grp-h d${depth}`}>
-          <span className="label">{g.label}</span>
-          <span className="n">{g.articles.length}</span>
-        </div>
-      )}
-      {g.children
-        ? g.children.map((c) => renderGroup(c, depth + 1))
-        : g.articles.map((a) => (
-            <ArticleRowView
-              key={a.id}
-              a={a}
-              sel={a.id === selectedId}
-              cur={a.id === cursorId}
-              sort={sort}
-              onOpen={(t) => onOpen(a, t)}
-              onCursor={() => onCursor(a.id)}
-              translating={translating(a.id) ?? null}
-              picked={pickedSet ? pickedSet.has(a.id) : undefined}
-              onPick={onPick(a.id)}
-              onMenu={(e) => onRowMenu(pickedSet?.has(a.id) ? pickedRows : [a], e.currentTarget)}
-            />
-          ))}
-    </div>
-  );
+  // Libraries run to thousands of articles: only the rows in view are mounted, so j / k re-renders a screenful.
+  const items = itemsOf(groups);
+  const virtuoso = useRef<VirtuosoHandle>(null);
+  const body = useRef<HTMLElement | Window | null>(null);
+  // The cursor's row may be out of view and so not mounted: scroll to it, then focus it as the shell's revealCursor would.
+  const revealCursor = useEffectEvent(() => {
+    const index = items.findIndex((it) => it.kind === "row" && it.a.id === cursorId);
+    if (index < 0) {
+      return;
+    }
+    virtuoso.current?.scrollIntoView({
+      index,
+      done: () =>
+        requestAnimationFrame(() => {
+          const el = body.current instanceof HTMLElement ? body.current.querySelector<HTMLElement>(".row.cur") : null;
+          if (el && paneOf(document.activeElement)?.dataset.pane === "list" && document.activeElement !== el) {
+            el.focus({ preventScroll: true });
+          }
+        }),
+    });
+  });
+  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- once per cursor move, not per list reload
+  useEffect(() => revealCursor(), [cursorId]);
+  const renderItem = (_: number, it: Item) =>
+    it.kind === "head" ? (
+      <div className={`grp-h d${it.depth}`}>
+        <span className="label">{it.g.label}</span>
+        <span className="n">{it.g.articles.length}</span>
+      </div>
+    ) : (
+      <ArticleRowView
+        a={it.a}
+        sel={it.a.id === selectedId}
+        cur={it.a.id === cursorId}
+        sort={sort}
+        onOpen={(t) => onOpen(it.a, t)}
+        onCursor={() => onCursor(it.a.id)}
+        translating={translating(it.a.id) ?? null}
+        picked={pickedSet ? pickedSet.has(it.a.id) : undefined}
+        onPick={onPick(it.a.id)}
+        onMenu={(e) => onRowMenu(pickedSet?.has(it.a.id) ? pickedRows : [it.a], e.currentTarget)}
+      />
+    );
   return (
     <section className="list" aria-label={t("listPane.articles")} data-pane="list">
       <header className="list-h">
@@ -483,31 +522,44 @@ export function ListPane({
           />
         )}
       </header>
-      <div className="list-body">
-        {count > 0 ? (
-          groups.map((g) => renderGroup(g, 0))
-        ) : total > 0 || relax.length > 0 ? (
-          <div className="empty">
-            <div className="empty-h">{t("listPane.noMatch")}</div>
-            {relax.length > 0 && (
-              <>
-                <div className="muted">{t("listPane.relaxHint")}</div>
-                <div className="btn-row">
-                  {relax.map((r) => (
-                    <button key={r.label} className="btn" onClick={() => onRelax(r)}>
-                      {t("listPane.relaxation", { label: r.label, count: r.count })}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="empty">
-            <div className="muted">{all.length === 0 ? t("listPane.empty") : t("listPane.emptyList")}</div>
-          </div>
-        )}
-      </div>
+      {count > 0 ? (
+        <Virtuoso
+          ref={virtuoso}
+          scrollerRef={(el) => {
+            body.current = el;
+          }}
+          className="list-body"
+          data={items}
+          computeItemKey={(_, it) => (it.kind === "head" ? it.key : it.a.id)}
+          itemContent={renderItem}
+          defaultItemHeight={64}
+          increaseViewportBy={400}
+        />
+      ) : (
+        <div className="list-body">
+          {total > 0 || relax.length > 0 ? (
+            <div className="empty">
+              <div className="empty-h">{t("listPane.noMatch")}</div>
+              {relax.length > 0 && (
+                <>
+                  <div className="muted">{t("listPane.relaxHint")}</div>
+                  <div className="btn-row">
+                    {relax.map((r) => (
+                      <button key={r.label} className="btn" onClick={() => onRelax(r)}>
+                        {t("listPane.relaxation", { label: r.label, count: r.count })}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="empty">
+              <div className="muted">{all.length === 0 ? t("listPane.empty") : t("listPane.emptyList")}</div>
+            </div>
+          )}
+        </div>
+      )}
       <footer className="list-f hints">
         <span>
           <ActionKey id="next" />

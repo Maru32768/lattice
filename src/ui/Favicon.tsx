@@ -22,7 +22,11 @@ export const feedIconChanged = (id: number) => forget(`feed:${id}`);
 function icon(key: string) {
   let p = icons.get(key);
   if (!p) {
-    p = (key.startsWith("feed:") ? api.feedIcon(Number(key.slice(5))) : api.favicon(key)).catch(() => null);
+    // A failed ask is not kept: the next mount asks again rather than showing no icon all session.
+    p = (key.startsWith("feed:") ? api.feedIcon(Number(key.slice(5))) : api.favicon(key)).catch(() => {
+      icons.delete(key);
+      return null;
+    });
     icons.set(key, p);
   }
   return p;

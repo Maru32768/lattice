@@ -28,10 +28,13 @@ export function useSearch(shown: ArticleRow[], fail: (e: unknown) => void) {
     .join(",");
   const onError = useEffectEvent(fail);
   const submitted = request && request !== "idle" ? request : null;
-  const settled = response?.request === submitted && response.articleIds === articleIds ? response : null;
+  const answered = response?.request === submitted ? response : null;
+  const settled = answered?.articleIds === articleIds ? answered : null;
+  // While the shown articles change (an import, a row marked read), the query's last hits stay up, narrowed to
+  // what is shown (hitGroups), instead of blanking until the new answer.
   const search = useMemo(
-    () => (request === null ? null : { query: submitted?.query ?? "", result: settled?.result ?? null, busy: submitted !== null && settled === null }),
-    [request, submitted, settled],
+    () => (request === null ? null : { query: submitted?.query ?? "", result: answered?.result ?? null, busy: submitted !== null && settled === null }),
+    [request, submitted, answered, settled],
   );
 
   useEffect(() => {

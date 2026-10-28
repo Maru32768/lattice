@@ -153,17 +153,22 @@ export function ChatPane({
     }
   }, [cursor]);
 
+  /** Grows with each thread pick: a slower load for an earlier pick must not land under the later one. */
+  const openSeq = useRef(0);
   async function openThread(id: number | null) {
+    const seq = ++openSeq.current;
     setError(null);
     setThreadId(id);
-    setMessages(
+    const ms =
       id == null
         ? []
         : await api.chatMessages(id).catch((e: unknown) => {
             fail(e);
             return [];
-          }),
-    );
+          });
+    if (seq === openSeq.current) {
+      setMessages(ms);
+    }
   }
 
   async function removeThread() {

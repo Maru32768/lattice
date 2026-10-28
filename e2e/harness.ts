@@ -39,3 +39,27 @@ export const navItem = (page: Page, label: string) => page.locator(".nav .ni").f
 /** The article list, in either display language. */
 export const list = (page: Page) => page.getByRole("region", { name: /^(記事一覧|Articles)$/ });
 export const listCount = (page: Page) => list(page).locator(".count");
+
+/**
+ * The list row of the article titled `title`, scrolled into view first: the list is virtualized, so a row
+ * out of view is not in the DOM until the list scrolls to it.
+ */
+export async function listRow(page: Page, title: string) {
+  const row = list(page).locator(".row", { hasText: title });
+  const body = list(page).locator(".list-body");
+  await expect(list(page).locator(".row").first()).toBeVisible();
+  await body.evaluate((el) => el.scrollTo(0, 0));
+  for (let i = 0; i < 100 && (await row.count()) === 0; i++) {
+    const end = await body.evaluate((el) => {
+      el.scrollBy(0, el.clientHeight / 2);
+      return el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+    });
+    // Let the list draw what it scrolled to before looking again.
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    if (end && i > 0 && (await row.count()) === 0) {
+      break;
+    }
+  }
+  await row.first().scrollIntoViewIfNeeded();
+  return row;
+}

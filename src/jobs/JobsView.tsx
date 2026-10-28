@@ -54,13 +54,17 @@ export function JobsView() {
   useEffect(() => {
     let timer = 0;
     reload();
-    const poll = window.setInterval(() => reload(), POLL_MS);
+    // A hidden window (minimized, in the tray) skips the poll and reads again when shown.
+    const poll = window.setInterval(() => !document.hidden && reload(), POLL_MS);
+    const shown = () => !document.hidden && reload();
+    document.addEventListener("visibilitychange", shown);
     const sub = listen("article-changed", () => {
       clearTimeout(timer);
       timer = window.setTimeout(() => reload(), 1000);
     });
     return () => {
       clearInterval(poll);
+      document.removeEventListener("visibilitychange", shown);
       clearTimeout(timer);
       void sub.then((f) => f());
     };

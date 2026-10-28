@@ -447,9 +447,17 @@ export function load(key = LAYOUT_KEY): Layout {
   }
 }
 
+/** What each key last held: transient page state (loading, translating progress) changes the layout, not what is saved. */
+const written = new Map<string, string>();
+
 export function save(l: Layout, key = LAYOUT_KEY) {
+  const s = serialize(l);
+  if (written.get(key) === s) {
+    return;
+  }
+  written.set(key, s);
   try {
-    localStorage.setItem(key, serialize(l));
+    localStorage.setItem(key, s);
   } catch {
     // Blocked storage: the layout lasts for this session only.
   }

@@ -27,7 +27,8 @@
     "@tauri-apps/api": "^2",
     "radix-ui": "^1.7.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "react-virtuoso": "^4.18.19"
   },
   "devDependencies": {
     "@babel/core": "^8.0.7",

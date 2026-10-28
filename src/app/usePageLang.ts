@@ -17,13 +17,14 @@ export function usePageLang(t: T, fail: (e: unknown) => void): [PageLang, (l: Pa
     void emit("page-lang", l);
   };
   const onError = useEffectEvent(fail);
+  // Keyed on the overlay's values, not the object: this window hears its own "page-lang" broadcast back as a new, equal object.
+  const { enabled, percent } = overlayOf(pageLang);
   useEffect(() => {
     if (pageLangOnStart(HOST) !== "send") {
       return;
     }
-    const o = overlayOf(pageLang);
-    browser.setTranslation(o.enabled, o.percent, overlayLabels(t)).catch(onError);
-  }, [pageLang, t]);
+    browser.setTranslation(enabled, percent, overlayLabels(t)).catch(onError);
+  }, [enabled, percent, t]);
   useEffect(() => {
     const sub = listen<PageLang>("page-lang", (e) => setPageLangState(e.payload));
     if (pageLangOnStart(HOST) === "ask") {

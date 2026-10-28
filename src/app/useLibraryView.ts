@@ -44,15 +44,26 @@ export function useLibraryView({
     [shown, group, t, feedOrder],
   );
   const order = useMemo(() => flatten(groups), [groups]);
+  // One pass over the library: it reloads every 500 ms during an import.
   const counts: NavCounts = useMemo(() => {
-    const unread = articles.filter((a) => a.read_status === "unread");
+    const unread: ArticleRow[] = [];
+    let [recent, important, favorites, manual] = [0, 0, 0, 0];
+    for (const a of articles) {
+      if (a.read_status === "unread") {
+        unread.push(a);
+      }
+      recent += Number(inScope(a, { kind: "recent" }, now));
+      important += Number(importantMin != null && inScope(a, { kind: "important", min: importantMin }, now));
+      favorites += Number(a.favorite);
+      manual += Number(a.feed_id == null);
+    }
     return {
-      recent: articles.filter((a) => inScope(a, { kind: "recent" }, now)).length,
-      important: importantMin == null ? 0 : articles.filter((a) => inScope(a, { kind: "important", min: importantMin }, now)).length,
+      recent,
+      important,
       unread: unread.length,
-      favorites: articles.filter((a) => a.favorite).length,
+      favorites,
       all: articles.length,
-      manual: articles.filter((a) => a.feed_id == null).length,
+      manual,
       genres: [...countBy(articles, "genres")].sort((a, b) => (a[0] == null ? 1 : b[0] == null ? -1 : b[1] - a[1])),
       feedUnread: countBy(unread, "feeds"),
     };

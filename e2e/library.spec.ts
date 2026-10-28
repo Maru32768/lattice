@@ -18,7 +18,7 @@ test("sidebar counts each scope, and a scope narrows the list", async ({ app }) 
   await navItem(app, "未読").click();
   await expect(list(app).getByRole("heading", { level: 1 })).toHaveText("未読");
   await expect(listCount(app)).toHaveText(`${unread} / ${unread}`);
-  await expect(list(app).locator(".row")).toHaveCount(unread);
+  // The list is virtualized: the count line, not the mounted rows, says how many it holds.
 
   const db = count((a) => a.genre === "データベース");
   await navItem(app, "データベース").click();

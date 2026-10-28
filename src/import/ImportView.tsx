@@ -39,9 +39,7 @@ export function ImportView({
   const [into, setInto] = useState(initialGroups);
   /** Puts imported articles into the chosen groups (already-saved ones too). */
   const fileInto = async (ids: number[]) => {
-    for (const g of into) {
-      await api.groupAdd(g, ids);
-    }
+    await Promise.all(into.map((g) => api.groupAdd(g, ids)));
   };
   return (
     <main className="manage">

@@ -11,6 +11,8 @@ const SAVE_MS = 800;
 // this session outlives the view's `note` here, by article id.
 // shortcut: another window keeps the memo it loaded until its article view is reloaded.
 const saved = new Map<number, string>();
+/** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
+let queue: Promise<unknown> = Promise.resolve();
 
 const noteOf = (view: ArticleView) => saved.get(view.article.id) ?? view.note ?? "";
 /** Whether the article has a memo: the toolbar marks メモ. */
@@ -35,16 +37,18 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     }
     pending.current = null;
     setStatus("saving");
-    api.setArticleNote(id, body).then(
-      () => {
-        saved.set(id, body);
-        setStatus("saved");
-      },
-      (e: unknown) => {
-        setStatus(null);
-        setError(String(e));
-      },
-    );
+    queue = queue
+      .then(() => api.setArticleNote(id, body))
+      .then(
+        () => {
+          saved.set(id, body);
+          setStatus("saved");
+        },
+        (e: unknown) => {
+          setStatus(null);
+          setError(String(e));
+        },
+      );
   };
   // Closing the panel or leaving the article saves what was typed.
   const flushOnLeave = useEffectEvent(flush);

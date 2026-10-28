@@ -6,6 +6,17 @@ import { useT } from "../i18n";
 
 const THRESHOLDS = [2, 3, 4, 5];
 
+// Rules have no id; removing one from the middle must not hand its inputs (focus, IME composition) to the next.
+const ruleKeys = new WeakMap<FilterRule, number>();
+let nextRuleKey = 0;
+function ruleKey(r: FilterRule) {
+  let k = ruleKeys.get(r);
+  if (k == null) {
+    ruleKeys.set(r, (k = nextRuleKey++));
+  }
+  return k;
+}
+
 /** The rules, length and LLM settings of one import filter: a feed's own (`feedId`) or the global defaults (null). */
 export function FilterEditor({ feedId, onSaved }: { feedId: number | null; onSaved: () => void }) {
   const t = useT();
@@ -26,7 +37,18 @@ export function FilterEditor({ feedId, onSaved }: { feedId: number | null; onSav
       .catch((e: unknown) => setError(String(e)));
   }, [feedId]);
 
-  const setRule = (i: number, r: Partial<FilterRule>) => setF((x) => ({ ...x, rules: x.rules.map((old, j) => (j === i ? { ...old, ...r } : old)) }));
+  const setRule = (i: number, r: Partial<FilterRule>) =>
+    setF((x) => ({
+      ...x,
+      rules: x.rules.map((old, j) => {
+        if (j !== i) {
+          return old;
+        }
+        const next = { ...old, ...r };
+        ruleKeys.set(next, ruleKey(old));
+        return next;
+      }),
+    }));
   const changed = JSON.stringify(f) !== JSON.stringify(saved);
 
   async function run(task: () => Promise<string | null>) {
@@ -63,7 +85,7 @@ export function FilterEditor({ feedId, onSaved }: { feedId: number | null; onSav
         <span className="muted">{t("feedFilter.rulesHint")}</span>
       </div>
       {f.rules.map((r, i) => (
-        <div className="ff-rule" key={i} role="group" aria-label={t("feedFilter.ruleN", { n: i + 1 })}>
+        <div className="ff-rule" key={ruleKey(r)} role="group" aria-label={t("feedFilter.ruleN", { n: i + 1 })}>
           <select
             className="select"
             aria-label={t("feedFilter.field")}

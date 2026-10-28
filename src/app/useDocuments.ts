@@ -59,10 +59,22 @@ export function useDocuments(fail: (e: unknown) => void) {
       return t ? f(l, t) : l;
     });
 
+  // A translate job reports every saved batch: reload an open article at most once per 500 ms, as the
+  // library throttles its list (user actions reload their article directly).
+  const reloadTimers = useRef(new Map<number, number>());
   const onArticleChanged = useEffectEvent((id: number) => {
-    if (views.has(id)) {
-      void loadView(id);
+    if (!views.has(id) || reloadTimers.current.has(id)) {
+      return;
     }
+    reloadTimers.current.set(
+      id,
+      window.setTimeout(() => {
+        reloadTimers.current.delete(id);
+        if (viewsRef.current.has(id)) {
+          void loadView(id);
+        }
+      }, 500),
+    );
   });
   const onBrowserPage = useEffectEvent((p: { tab: string; url: string; loading: boolean; can_go_back: boolean; can_go_forward: boolean }) => {
     const { tab, url, loading, can_go_back: canGoBack, can_go_forward: canGoForward } = p;

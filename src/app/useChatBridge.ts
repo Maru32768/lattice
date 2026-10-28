@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { mergeDocs, type OpenDoc } from "../chat/chat";
@@ -10,14 +10,16 @@ type DocRef = { id: number; title: string } | null;
 /** Runs `send` when `value` differs in content from what it last sent. */
 function useSendOnChange<V>(value: V, send: (v: V) => void) {
   const sent = useRef<string | null>(null);
+  const onSend = useEffectEvent(send);
+  // Only when the value is a new object: stringifying every open doc on each App render added up.
   useEffect(() => {
     const key = JSON.stringify(value);
     if (key === sent.current) {
       return;
     }
     sent.current = key;
-    send(value);
-  });
+    onSend(value);
+  }, [value]);
 }
 
 /**
