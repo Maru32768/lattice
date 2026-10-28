@@ -71,6 +71,56 @@ test("the dragged tab follows the cursor along its strip where the backend says,
   await emit(app, "tab-drag-end");
 });
 
+for (const kind of ["reader", "page"] as const) {
+  test(`a held ${kind} tab stays under the cursor across a reorder without another slide event`, async ({ app }) => {
+    const names = kind === "reader" ? [a.title!, b.title!, c.title!] : ["First browser page", "Second browser page", "Third browser page"];
+    if (kind === "reader") {
+      await openTwo(app);
+      await row(app, c.title!).click({ modifiers: ["Control"] });
+    } else {
+      await emit(app, "main-request", {
+        kind: "open",
+        docs: names.map((title, index) => ({ kind: "page", url: `https://example.com/drag-${index}`, title })),
+      });
+    }
+    await expect(titles(app)).toHaveText(names);
+    const first = (await tabs(app).first().boundingBox())!;
+    const third = (await tabs(app).nth(2).boundingBox())!;
+    const second = await dragSecond(app);
+    const strip = (await app.locator(".dpane .tabs").first().boundingBox())!;
+    const left = first.x + first.width / 2 - 2;
+    await emit(app, "tab-drag-slide", { pane: 1, x: left - strip.x });
+    await expect.poll(async () => (await app.locator(".tab.held").boundingBox())!.x).toBeCloseTo(left, 0);
+
+    const frames = await app.evaluate(async () => {
+      const samples: { title: string; x: number; width: number }[][] = [];
+      void window.__e2e.emit("tab-drag-drop", { label: "main", pane: 1, index: 0 });
+      for (let frame = 0; frame < 8; frame++) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        samples.push(
+          [...document.querySelectorAll<HTMLElement>(".dpane .tab")].map((tab) => ({
+            title: tab.querySelector(".tab-t")!.textContent ?? "",
+            x: tab.getBoundingClientRect().x,
+            width: tab.getBoundingClientRect().width,
+          })),
+        );
+      }
+      return samples;
+    });
+    await expect(titles(app)).toHaveText([names[1], names[0], names[2]]);
+    for (const frame of frames) {
+      expect(frame.find((tab) => tab.title === names[1])!.x, "the held tab keeps its grab position at every frame").toBeCloseTo(left, 0);
+      expect(frame.find((tab) => tab.title === names[0])!.x, "the crossed neighbor moves into the vacated slot").toBeCloseTo(first.x + second.width + 2, 0);
+      expect(frame.find((tab) => tab.title === names[2])!.x, "the untouched neighbor stays in place").toBeCloseTo(third.x, 0);
+    }
+    await emit(app, "tab-drag-drop", { label: "main", pane: 1, index: 2 });
+    await expect(titles(app)).toHaveText(names);
+    await expect.poll(async () => (await app.locator(".tab.held").boundingBox())!.x).toBeCloseTo(left, 0);
+    await app.mouse.up();
+    await emit(app, "tab-drag-end");
+  });
+}
+
 test("the window a drag started in marks the slot it is told", async ({ app }) => {
   await openTwo(app);
   await emit(app, "tab-drag-over", { pane: 1, index: 1 });

@@ -90,6 +90,9 @@ export function TabStrip({
   const heldEl = useRef<HTMLDivElement | null>(null);
 
   // The dragged tab stays in the strip and follows the cursor along it, kept within the tabs, as in Chrome.
+  // It is shifted with `left`, not a transform: in WebView2 (Chromium 156) an inline transform takes
+  // effect one rendering update late and, after the tabs are reordered, falls back to none for frames
+  // at a time, so the tab jumped between its slot and the cursor. A relative offset is laid out at once.
   useLayoutEffect(() => {
     const el = heldEl.current;
     const strip = el?.parentElement;
@@ -99,9 +102,10 @@ export function TabStrip({
     const all = strip.querySelectorAll<HTMLElement>(":scope > .tab");
     const first = all[0]!;
     const last = all[all.length - 1]!;
+    // The cleanup has reset `left`, so every offsetLeft here is a slot position.
     const x = Math.min(Math.max(slide + strip.scrollLeft, first.offsetLeft), last.offsetLeft + last.offsetWidth - el.offsetWidth);
-    el.style.transform = `translateX(${x - el.offsetLeft}px)`;
-    return () => void (el.style.transform = "");
+    el.style.left = `${x - el.offsetLeft}px`;
+    return () => void (el.style.left = "");
   });
 
   function down(e: React.PointerEvent, tab: Id) {
