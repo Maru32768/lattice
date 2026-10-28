@@ -180,7 +180,7 @@ export const ja = {
     "翻訳の prompt の末尾に付け加えます (例:「です・ます調で訳す」「Kubernetes の用語は公式ドキュメントの訳語に合わせる」)。記事の翻訳とページ表示の翻訳の両方に適用されます。訳文は指示ごとに別に保存するので、変えた後の記事は翻訳し直す必要があります。",
   "translationSettings.skipSites": "翻訳しないサイト",
   "translationSettings.skipSitesDesc":
-    "Page 表示を混在・訳文にしていても、ここに書いたページは原文のまま表示します。1 行に 1 つ書き、{code} は任意の文字列に一致します。ホスト名だけならサブドメインも含みます (例: {code2})。/ を含めると URL 全体と比べます (例: {code3})。既定は主な検索エンジンです。",
+    "Page 表示を混在・訳文にしていても、ここに書いたページは原文のまま表示します。1 行に 1 つ書き、{code} は任意の文字列に一致します。ホスト名だけならサブドメインも含みます (例: {code2})。/ を含めると URL 全体と比べます (例: {code3})。! で始まる行は一致したページを翻訳し、複数の行に一致したときは最後の行に従います (例: {code4})。既定は主な検索エンジンです。",
   "translationSettings.showPrompt": "組み込みの prompt (英語→日本語) を見る",
   "translationSettings.prompt": "組み込みの prompt",
   "backupSection.location": "保存先: {path}",

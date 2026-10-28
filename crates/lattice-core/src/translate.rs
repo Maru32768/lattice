@@ -97,12 +97,14 @@ pub fn page_skip_sites(store: &Store) -> Result<Vec<String>, String> {
     })
 }
 
-/// Stores the patterns in `text` (one per line), returning them as stored.
+/// Stores the patterns in `text` (one per line), returning them as stored. A repeated line keeps only
+/// its last place, which is the one that decides under last-match-wins.
 pub fn set_page_skip_sites(store: &Store, text: &str) -> Result<Vec<String>, String> {
     let mut sites: Vec<String> = Vec::new();
     for line in text.lines() {
         let pattern = line.trim().to_ascii_lowercase();
-        if !pattern.is_empty() && !sites.contains(&pattern) {
+        if !pattern.is_empty() {
+            sites.retain(|s| *s != pattern);
             sites.push(pattern);
         }
     }
@@ -126,11 +128,13 @@ fn site_host(line: &str) -> String {
 /// Whether the page at `url` matches one of `sites`, where `*` stands for any text. A pattern without
 /// `/` is a host and covers its subdomains (`example.com`, `www.google.*`); one with `/` is matched
 /// against the whole URL, with or without its scheme (`https://www.google.com/search*`, `example.com/docs/*`).
+/// As in .gitignore, a pattern starting with `!` translates what it matches, and the last matching line wins:
+/// `x.com/*` then `!x.com/*/status/*` skips X except its posts.
 pub fn page_skipped(sites: &[String], url: &str) -> bool {
     let url = url.to_ascii_lowercase();
     let host = site_host(&url);
     let rest = url.split_once("://").map_or(url.as_str(), |(_, rest)| rest);
-    sites.iter().any(|p| {
+    let matches = |p: &str| {
         if p.contains("://") {
             glob(p, &url)
         } else if p.contains('/') {
@@ -138,7 +142,15 @@ pub fn page_skipped(sites: &[String], url: &str) -> bool {
         } else {
             glob(p, &host) || host.match_indices('.').any(|(i, _)| glob(p, &host[i + 1..]))
         }
-    })
+    };
+    sites
+        .iter()
+        .rev()
+        .find_map(|p| match p.strip_prefix('!') {
+            Some(p) => matches(p).then_some(false),
+            None => matches(p).then_some(true),
+        })
+        .unwrap_or(false)
 }
 
 /// `*` matches any run of bytes, everything else itself. Greedy with one backtrack point, so a
@@ -432,6 +444,14 @@ mod tests {
         assert!(page_skipped(&stored, "http://example.org/blog/post") && !page_skipped(&stored, "https://www.example.org/blog"));
         assert!(page_skipped(&stored, "https://app.test:8080/"), "the port is not part of the host");
         assert!(!glob("*a*a*a*a*a*a*b", &"a".repeat(2000)) && glob("a**b*", "axxbyy"));
+
+        let x = set_page_skip_sites(&s, "x.com/*\n!x.com/*/status/*\nx.com/spam/*\nx.com/*\n").unwrap();
+        assert_eq!(x, ["!x.com/*/status/*", "x.com/spam/*", "x.com/*"], "a repeated line moves to its last place");
+        let x = set_page_skip_sites(&s, "x.com/*\n!x.com/*/status/*\nx.com/spam/*").unwrap();
+        assert!(page_skipped(&x, "https://x.com/home"));
+        assert!(!page_skipped(&x, "https://x.com/Maru32768/status/1"), "a later ! line translates");
+        assert!(page_skipped(&x, "https://x.com/spam/status/1"), "and a still later line skips again");
+        assert!(!page_skipped(&["!example.com".to_owned()], "https://example.com/"), "! alone skips nothing");
 
         assert!(set_page_skip_sites(&s, "").unwrap().is_empty());
         assert!(page_skip_sites(&s).unwrap().is_empty(), "cleared stays cleared");

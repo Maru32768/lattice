@@ -194,6 +194,7 @@ export function TranslationSettings() {
             code: <code>*</code>,
             code2: <code>www.google.*</code>,
             code3: <code>https://example.com/docs/*</code>,
+            code4: <code>!x.com/*/status/*</code>,
           })}
         </div>
         <textarea

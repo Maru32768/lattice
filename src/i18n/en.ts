@@ -186,7 +186,7 @@ export const en = {
     "Appended to the translation prompt (e.g. “use a polite register”, “follow the Kubernetes docs' official terms”). Applies both to article translation and to translated pages. Translations are stored per set of instructions, so articles need translating again after a change.",
   "translationSettings.skipSites": "Sites not to translate",
   "translationSettings.skipSitesDesc":
-    "Pages listed here stay in the original even when the Page view is set to Mixed or Translated. One per line; {code} matches any text. A host name alone includes its subdomains (e.g. {code2}); with a / it is matched against the whole URL (e.g. {code3}). By default, the major search engines.",
+    "Pages listed here stay in the original even when the Page view is set to Mixed or Translated. One per line; {code} matches any text. A host name alone includes its subdomains (e.g. {code2}); with a / it is matched against the whole URL (e.g. {code3}). A line starting with ! translates the pages it matches, and when several lines match, the last one wins (e.g. {code4}). By default, the major search engines.",
   "translationSettings.showPrompt": "Show the built-in prompt (English to Japanese)",
   "translationSettings.prompt": "Built-in prompt",
   "backupSection.location": "Location: {path}",
