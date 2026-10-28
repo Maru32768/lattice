@@ -347,7 +347,7 @@ A tab can leave the main window and open in its own window (a document window).
 
 In a document window, the tab row is also the title bar. Drag an empty part of it to move the window, and double-click to maximize it. Each window has its own panes, tabs and palette.
 
-To return a tab to the main window, use **Move back to the main window** or `Ctrl+Shift+N`. Closing a document window also returns its tabs to the main window. A document window closes when its last tab leaves.
+To return a tab to the main window, use **Move back to the main window** or `Ctrl+Shift+N`. Closing a document window closes its tabs too; they do not return to the main window. A document window closes when its last tab leaves.
 
 When a tab moves to another window, its web page moves with it: it does not reload, and keeps its back and forward history and scroll position.
 

@@ -73,6 +73,22 @@ test("a document window shows only its tabs, hands one back to the main window, 
   expect(await reported()).toEqual({ kind: "openDocs", label: "doc-1", docs: [] });
 });
 
+test("closing a document window closes its tabs with it: none go back to the main window", async ({ shell }) => {
+  const tabs = [
+    { kind: "reader", id: 2, articleId: a.id },
+    { kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" },
+  ];
+  await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs, active: 2 }, focused: 1 }) });
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+
+  await shell.evaluate(() => window.__e2e.emit("tauri://close-requested"));
+  await expect.poll(() => callsOf(shell, "close_window")).toHaveLength(1);
+  expect(await callsOf(shell, "browser_close"), "closed, not parked in main").toEqual([{ tab: "k1" }]);
+  expect((await requests(shell)).filter((r) => (r as { kind: string }).kind === "open")).toEqual([]);
+  expect(await stored(shell, DOC), "not restored at the next start").toBeNull();
+});
+
 test("the main window restores pop-outs at startup, keeps the chat in its window, and opens what comes back", async ({ shell }) => {
   await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [], active: null }, focused: 1 }), [CHAT]: "1" });
   await shell.goto("/");

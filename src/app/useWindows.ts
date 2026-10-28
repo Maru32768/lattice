@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { tabDrag, windows } from "../api";
+import { browser, tabDrag, windows } from "../api";
 import { allTabs, close, docOf, open, serialize, single, tabById, type Doc, type Id, type Layout, type Tab } from "../layout/layout";
 import type { DropTarget } from "../layout/TabStrip";
 import { TAB_DRAG_END, TAB_DRAG_TAKE, type Take } from "../layout/tabDrag";
@@ -110,13 +110,12 @@ export function useWindows({
   /** Document window: the tab goes back to the main window's focused pane. */
   const returnTab = (tab: Id) => sendTab(tab, MAIN);
 
-  /** × or Alt+F4 on a pop-out: a document window hands its tabs back; the chat window just closes. */
-  function closeRequested() {
+  /** × or Alt+F4 on a pop-out: a document window's tabs close with it (メインウィンドウに戻す hands them back); the chat window just closes. */
+  async function closeRequested() {
     if (HOST.kind === "doc") {
-      const docs = allTabs(layout).map(docOf);
-      if (docs.length) {
-        void toMain({ kind: "open", docs });
-      }
+      // Closed before close_window, which would otherwise park them in main with no tab to show them.
+      const pages = allTabs(layout).flatMap((t) => (t.kind === "page" ? [browser.close(t.key).catch(() => {})] : []));
+      await Promise.all(pages);
     } else if (HOST.kind === "chat") {
       void toMain({ kind: "chatClosed" });
     }
@@ -144,7 +143,7 @@ export function useWindows({
     }
     const sub = getCurrentWindow().onCloseRequested((e) => {
       e.preventDefault();
-      onCloseRequested();
+      void onCloseRequested();
     });
     return () => void sub.then((f) => f());
   }, []);
