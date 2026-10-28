@@ -20,6 +20,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Fixed
 
+- Opening a fifth Page tab (with four already hidden behind other tabs) no longer freezes the app. The oldest hidden page is closed as intended, and opens again when its tab is shown.
 - A dragged tab stays in its tab row and moves along it with the pointer, as in Chrome, instead of a faded copy following the pointer. It swaps with the next tab once its edge passes that tab's middle (before, its middle had to pass).
 - A tab dragged over another window's tab row moves into that window right away and shows its content there before you let go, as in Chrome.
 - A tab dragged out of its window appears in its new window at once and under the pointer. Before, the window took 2-3 seconds to show and came up away from the pointer until the pointer moved.
