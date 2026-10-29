@@ -2,7 +2,7 @@ import { createHash, createPublicKey, verify } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export function verifyUpdater(publicKey, signature, content) {
+export function verifyUpdater(publicKey: string, signature: string, content: Buffer): void {
   const keyLines = Buffer.from(publicKey.trim(), "base64").toString("utf8").split(/\r?\n/);
   const sigLines = Buffer.from(signature.trim(), "base64").toString("utf8").split(/\r?\n/);
   const key = Buffer.from(keyLines[1] ?? "", "base64");
@@ -37,12 +37,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const [keyFile, signatureFile, signedFile] = process.argv.slice(2);
     if (!keyFile || !signatureFile || !signedFile) {
-      throw new Error("Usage: node scripts/verify-updater.mjs <public-key-file> <signature-file> <signed-file>");
+      throw new Error("Usage: node scripts/verify-updater.ts <public-key-file> <signature-file> <signed-file>");
     }
     verifyUpdater(readFileSync(keyFile, "utf8"), readFileSync(signatureFile, "utf8"), readFileSync(signedFile));
     console.log("Updater signature verified");
   } catch (error) {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   }
 }

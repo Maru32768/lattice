@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { npmPackages, renderNpm } from "./licenses.mjs";
+import { npmPackages, renderNpm } from "./licenses.ts";
 
 test("every bundled npm package has a license text, and dev tools are left out", () => {
   const packages = npmPackages(fileURLToPath(new URL("..", import.meta.url)));

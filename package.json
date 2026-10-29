@@ -6,14 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "npm run build:overlay && vite",
-    "build": "tsc && tsc -p tsconfig.test.json && npm run build:overlay && vite build",
+    "build": "tsc && tsc -p tsconfig.test.json && tsc -p scripts && npm run build:overlay && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "node --test src/**/*.test.ts scripts/*.test.mjs e2e/*.test.ts",
-    "bump": "node scripts/version.mjs",
+    "test": "node --test src/**/*.test.ts scripts/*.test.ts e2e/*.test.ts",
+    "bump": "node scripts/version.ts",
     "e2e": "tsc -p e2e && playwright test",
     "build:overlay": "vite build -c vite.overlay.config.ts",
-    "lint": "oxlint --deny-warnings && prettier --check . && node scripts/react-compiler.mjs && node scripts/doc-pairs.mjs",
+    "lint": "oxlint --deny-warnings && prettier --check . && node scripts/react-compiler.ts && node scripts/doc-pairs.ts",
     "format": "prettier --write .",
     "doctor": "npx react-doctor@0.9.18"
   },

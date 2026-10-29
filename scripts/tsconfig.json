@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2025"],
+    "types": ["node"],
+    /* The scanners index arrays inside their own bounds checks. */
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["."],
+  "exclude": ["test-audit-2026-10-23"],
+  "references": []
+}

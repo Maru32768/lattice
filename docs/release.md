@@ -6,7 +6,7 @@ Source preparation does not establish that a packaged application works: test th
 
 ## Version
 
-One version number covers the app. It is kept in four files, and `scripts/version.mjs` keeps them in sync:
+One version number covers the app. It is kept in four files, and `scripts/version.ts` keeps them in sync:
 
 | File | Field |
 |---|---|
@@ -21,7 +21,7 @@ One version number covers the app. It is kept in four files, and `scripts/versio
 mise exec -- npm run bump -- 0.2.0
 ```
 
-Run without a version, `npm run bump` prints what each file holds. `npm test` fails when the files disagree (`scripts/version.test.mjs`), and the release workflow fails when the tag differs from the version. The script is not named `version` because npm runs a script of that name as a hook of `npm version`.
+Run without a version, `npm run bump` prints what each file holds. `npm test` fails when the files disagree (`scripts/version.test.ts`), and the release workflow fails when the tag differs from the version. The script is not named `version` because npm runs a script of that name as a hook of `npm version`.
 
 ## Changelog
 
@@ -41,11 +41,11 @@ Run without a version, `npm run bump` prints what each file holds. `npm test` fa
 
 The workflow copies the version's section into the release notes, and fails when the section is missing or empty.
 
-`CHANGELOG.ja.md` is its Japanese translation, line for line: make the same edits there (`scripts/doc-pairs.mjs` checks). The release notes come from `CHANGELOG.md` only.
+`CHANGELOG.ja.md` is its Japanese translation, line for line: make the same edits there (`scripts/doc-pairs.ts` checks). The release notes come from `CHANGELOG.md` only.
 
 ## Third-party licenses
 
-`THIRD_PARTY_LICENSES` lists the license of every Rust crate compiled into the app (by [cargo-about](https://github.com/EmbarkStudios/cargo-about), settings in `scripts/about.toml`) and every npm package bundled into the UI (`scripts/licenses.mjs`, from the non-dev packages in `package-lock.json`). Regenerate and commit it when dependencies change:
+`THIRD_PARTY_LICENSES` lists the license of every Rust crate compiled into the app (by [cargo-about](https://github.com/EmbarkStudios/cargo-about), settings in `scripts/about.toml`) and every npm package bundled into the UI (`scripts/licenses.ts`, from the non-dev packages in `package-lock.json`). Regenerate and commit it when dependencies change:
 
 ```bash
 mise exec -- cargo install --locked cargo-about --features cli

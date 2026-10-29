@@ -1,8 +1,8 @@
 // The app version lives in package.json, package-lock.json, the workspace Cargo.toml (the
 // crates inherit it, and tauri.conf.json has no version so Tauri reads Cargo's) and Cargo.lock.
-//   node scripts/version.mjs              print each file's version
-//   node scripts/version.mjs 1.2.3        set every file to 1.2.3
-//   node scripts/version.mjs --check [v1.2.3]   fail on drift (and on a tag that differs)
+//   node scripts/version.ts              print each file's version
+//   node scripts/version.ts 1.2.3        set every file to 1.2.3
+//   node scripts/version.ts --check [v1.2.3]   fail on drift (and on a tag that differs)
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,17 +11,28 @@ const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const WORKSPACE_VERSION = /(\[workspace\.package\][^[]*?\nversion = ")([^"]+)(")/;
 const LOCK_VERSION = /(\nname = "(?:lattice|lattice-core|lattice-cli)"\r?\nversion = ")([^"]+)(")/g;
 
+interface Doc {
+  [key: string]: Doc | string | undefined;
+}
+
 const json = {
-  read: (text, path) => path.reduce((o, k) => o?.[k], JSON.parse(text)),
-  write(text, path, v) {
-    const doc = JSON.parse(text);
-    path.slice(0, -1).reduce((o, k) => o[k], doc)[path.at(-1)] = v;
+  read: (text: string, path: string[]) =>
+    path.reduce<Doc | string | undefined>((o, k) => (typeof o === "object" ? o[k] : undefined), JSON.parse(text) as Doc) as string | undefined,
+  write(text: string, path: string[], v: string) {
+    const doc = JSON.parse(text) as Doc;
+    path.slice(0, -1).reduce((o, k) => o[k] as Doc, doc)[path.at(-1)!] = v;
     return JSON.stringify(doc, null, 2) + "\n";
   },
 };
 
-/** Each file that keeps the version: `read` returns every copy in it, `write` sets them all. */
-const SOURCES = [
+/** A file that keeps the version: `read` returns every copy in it, `write` sets them all. */
+interface Source {
+  file: string;
+  read: (text: string) => (string | undefined)[];
+  write: (text: string, version: string) => string;
+}
+
+const SOURCES: Source[] = [
   { file: "package.json", read: (t) => [json.read(t, ["version"])], write: (t, v) => json.write(t, ["version"], v) },
   {
     file: "package-lock.json",
@@ -40,21 +51,21 @@ const SOURCES = [
 ];
 
 /** `[{ file, versions }]` for the repository at `root`. */
-export function readVersions(root) {
+export function readVersions(root: string): { file: string; versions: (string | undefined)[] }[] {
   return SOURCES.map((s) => ({ file: s.file, versions: s.read(readFileSync(join(root, s.file), "utf8")) }));
 }
 
 /** The one version every file agrees on; throws listing the files on drift. */
-export function checkVersions(root) {
+export function checkVersions(root: string): string {
   const all = readVersions(root);
   const distinct = new Set(all.flatMap((f) => f.versions));
   if (distinct.size !== 1 || distinct.has(undefined)) {
     throw new Error(`version drift: ${all.map((f) => `${f.file}=${f.versions.join("/")}`).join(", ")}`);
   }
-  return [...distinct][0];
+  return [...distinct][0]!;
 }
 
-export function setVersion(root, version) {
+export function setVersion(root: string, version: string): string {
   if (!SEMVER.test(version)) {
     throw new Error(`not a semver version: ${version}`);
   }
@@ -83,7 +94,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       }
     }
   } catch (e) {
-    console.error(e.message);
+    console.error(e instanceof Error ? e.message : e);
     process.exit(1);
   }
 }

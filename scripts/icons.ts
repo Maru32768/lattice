@@ -1,5 +1,5 @@
 // Regenerates src-tauri/icons and the title bar logo from the SVG sources in src-tauri/icons.
-//   node scripts/icons.mjs
+//   node scripts/icons.ts
 // `tauri icon` scales one source to every size, which blurs the 1px gaps of the weave below 64px,
 // so the small sizes come from their own pixel-grid sources (icon-16/24/32/48.svg) and are packed
 // into icon.ico here. icon.svg is drawn on a 32px grid, so 64/128/256/512 stay sharp too.
@@ -14,7 +14,7 @@ const icons = join(root, "src-tauri", "icons");
 const tauri = join(root, "node_modules", "@tauri-apps", "cli", "tauri.js");
 
 /** Each size in icon.ico and the source drawn for it. */
-const ICO = [
+const ICO: [size: number, svg: string][] = [
   [16, "icon-16.svg"],
   [24, "icon-24.svg"],
   [32, "icon-32.svg"],
@@ -23,15 +23,15 @@ const ICO = [
   [256, "icon.svg"],
 ];
 
-const run = (...args) => execFileSync(process.execPath, [tauri, "icon", ...args], { cwd: root, stdio: "ignore" });
+const run = (...args: string[]) => execFileSync(process.execPath, [tauri, "icon", ...args], { cwd: root, stdio: "ignore" });
 
-function render(svg, size, dir) {
+function render(svg: string, size: number, dir: string): Buffer {
   run(join(icons, svg), "-o", dir, "-p", String(size));
   return readFileSync(join(dir, `${size}x${size}.png`));
 }
 
 /** An ICO whose entries are PNGs (read by Windows Vista and later). */
-function ico(images) {
+function ico(images: [size: number, png: Buffer][]): Buffer {
   const header = Buffer.alloc(6 + 16 * images.length);
   header.writeUInt16LE(1, 2);
   header.writeUInt16LE(images.length, 4);
@@ -56,9 +56,9 @@ for (const extra of ["android", "ios", "64x64.png"]) {
 }
 const tmp = mkdtempSync(join(tmpdir(), "lattice-icons-"));
 try {
-  const images = ICO.map(([size, svg]) => [size, render(svg, size, tmp)]);
+  const images = ICO.map(([size, svg]): [number, Buffer] => [size, render(svg, size, tmp)]);
   writeFileSync(join(icons, "icon.ico"), ico(images));
-  writeFileSync(join(icons, "32x32.png"), images.find(([size]) => size === 32)[1]);
+  writeFileSync(join(icons, "32x32.png"), images.find(([size]) => size === 32)![1]);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

@@ -1,7 +1,7 @@
 // Writes THIRD_PARTY_LICENSES: the license text of every npm package bundled into the UI (the
 // non-dev packages in package-lock.json) and of every Rust crate in the Windows build, which
 // cargo-about renders first (see the `licenses` task in mise.toml).
-//   node scripts/licenses.mjs <cargo-about output>
+//   node scripts/licenses.ts <cargo-about output>
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,11 +9,20 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const RULE = "-".repeat(79);
 /** Packages that ship no license file: the license file of a package by the same author under the same license (package.json). */
-const SIBLING = { "react-remove-scroll-bar": "react-remove-scroll" };
+const SIBLING: Record<string, string> = { "react-remove-scroll-bar": "react-remove-scroll" };
 
-/** Production packages as `{ name, version, license, text }`, grouped later by identical text. */
-export function npmPackages(root) {
-  const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+export interface NpmPackage {
+  name: string;
+  version: string;
+  license: string;
+  text: string;
+}
+
+/** Production packages, grouped later by identical text. */
+export function npmPackages(root: string): NpmPackage[] {
+  const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
+    packages: Record<string, { dev?: boolean; devOptional?: boolean; version: string; license: string }>;
+  };
   return Object.entries(lock.packages)
     .filter(([path, p]) => path.startsWith("node_modules/") && !p.dev && !p.devOptional)
     .map(([path, p]) => {
@@ -29,8 +38,8 @@ export function npmPackages(root) {
     });
 }
 
-export function renderNpm(packages) {
-  const groups = new Map();
+export function renderNpm(packages: NpmPackage[]): string {
+  const groups = new Map<string, NpmPackage[]>();
   for (const p of packages) {
     groups.set(p.text, [...(groups.get(p.text) ?? []), p]);
   }
@@ -40,7 +49,7 @@ export function renderNpm(packages) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const rust = process.argv[2];
   if (!rust) {
-    console.error("usage: node scripts/licenses.mjs <cargo-about output>");
+    console.error("usage: node scripts/licenses.ts <cargo-about output>");
     process.exit(1);
   }
   const out = [

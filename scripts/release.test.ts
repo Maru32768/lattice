@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkSigning, releaseNotes } from "./release.mjs";
+import { checkSigning, releaseNotes } from "./release.ts";
 
 test("release notes select the exact version, omit link definitions and support Windows newlines", () => {
   const changelog = "## [Unreleased]\r\n\r\n## [0.1.0] - 2026-10-26\r\n\r\n### Added\r\n\r\n- First release.\r\n\r\n[0.1.0]: https://example.com\r\n";

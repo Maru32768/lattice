@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { checkVersions, readVersions, setVersion } from "./version.mjs";
+import { checkVersions, readVersions, setVersion } from "./version.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const FILES = ["package.json", "package-lock.json", "Cargo.toml", "Cargo.lock"];
@@ -22,7 +22,7 @@ test("every version file in the repository agrees", () => {
 });
 
 test("tauri.conf.json takes its version from Cargo.toml", () => {
-  assert.equal(JSON.parse(readFileSync(join(ROOT, "src-tauri/tauri.conf.json"), "utf8")).version, undefined);
+  assert.equal((JSON.parse(readFileSync(join(ROOT, "src-tauri/tauri.conf.json"), "utf8")) as { version?: string }).version, undefined);
 });
 
 test("setVersion rewrites every source and leaves dependencies alone", () => {
@@ -39,7 +39,7 @@ test("setVersion rewrites every source and leaves dependencies alone", () => {
 
 test("drift and bad input are reported", () => {
   const dir = copyRepo();
-  const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+  const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as Record<string, unknown>;
   writeFileSync(join(dir, "package.json"), JSON.stringify({ ...pkg, version: "9.9.9" }));
   assert.throws(() => checkVersions(dir), /version drift: package\.json=9\.9\.9/);
   assert.throws(() => setVersion(dir, "v1.0"), /not a semver/);

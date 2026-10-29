@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { ja } from "./ja.ts";
 import { translatorFor } from "./index.ts";
-import { rustMessageUsage } from "../../scripts/rust-messages.mjs";
+import { rustMessageUsage } from "../../scripts/rust-messages.ts";
 
 function readRust(dir: string): { file: string; usage: ReturnType<typeof rustMessageUsage> }[] {
   const root = new URL(`../../${dir}/`, import.meta.url);

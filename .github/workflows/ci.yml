@@ -51,7 +51,7 @@ jobs:
         run: mise exec -- cargo clippy --workspace --all-targets -- -D warnings
 
       - name: TypeScript bindings match the Rust types
-        run: mise exec -- node scripts/bindings.mjs --check
+        run: mise exec -- node scripts/bindings.ts --check
 
       - name: Rust tests
         run: mise exec -- cargo test --workspace
@@ -63,7 +63,7 @@ jobs:
         run: mise exec -- npm run lint
 
       - name: English and Japanese docs change together
-        run: mise exec -- node scripts/doc-pairs.mjs ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: mise exec -- node scripts/doc-pairs.ts ${{ github.event.pull_request.base.sha || github.event.before }}
 
       - name: Typecheck and build
         run: mise exec -- npm run build

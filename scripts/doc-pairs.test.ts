@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { PAIRS, changedLines, shapeMismatches, shapeOf, unpaired } from "./doc-pairs.mjs";
+import { PAIRS, changedLines, shapeMismatches, shapeOf, unpaired } from "./doc-pairs.ts";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 

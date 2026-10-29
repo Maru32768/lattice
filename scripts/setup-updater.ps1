@@ -92,7 +92,7 @@ try {
     [IO.File]::WriteAllText($probe, 'Lattice updater key check')
     & mise exec -- npx --no-install tauri signer sign --private-key-path $keyFile $probe *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Could not sign with this key and password. Configuration was not changed.' }
-    & mise exec -- node (Join-Path $PSScriptRoot 'verify-updater.mjs') "$keyFile.pub" "$probe.sig" $probe *> $null
+    & mise exec -- node (Join-Path $PSScriptRoot 'verify-updater.ts') "$keyFile.pub" "$probe.sig" $probe *> $null
     if ($LASTEXITCODE -ne 0) { throw 'The private key and public key do not form a matching pair. Configuration was not changed.' }
 
     $publicKey = (Get-Content -LiteralPath "$keyFile.pub" -Raw).Trim()

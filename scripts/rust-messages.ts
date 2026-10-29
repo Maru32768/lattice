@@ -1,7 +1,12 @@
 // A token scan for the Rust message contract. Literals/comments cannot masquerade as macro calls;
 // cfg(test) items are excluded before collecting production uses.
-function tokens(source) {
-  const out = [];
+interface Token {
+  kind: "string" | "word" | "punct";
+  value: string;
+}
+
+function tokens(source: string): Token[] {
+  const out: Token[] = [];
   for (let i = 0; i < source.length;) {
     const tail = source.slice(i);
     if (/^\s/.test(tail)) {
@@ -63,10 +68,10 @@ function tokens(source) {
   return out;
 }
 
-const matches = (ts, i, sequence) => sequence.every((value, n) => ts[i + n]?.value === value && ts[i + n]?.kind !== "string");
-function groupEnd(ts, start) {
-  const stack = [];
-  const pairs = { "(": ")", "[": "]", "{": "}" };
+const matches = (ts: Token[], i: number, sequence: string[]) => sequence.every((value, n) => ts[i + n]?.value === value && ts[i + n]?.kind !== "string");
+function groupEnd(ts: Token[], start: number): number {
+  const stack: string[] = [];
+  const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}" };
   for (let i = start; i < ts.length; i++) {
     if (ts[i].kind !== "punct") {
       continue;
@@ -84,8 +89,8 @@ function groupEnd(ts, start) {
   throw new Error("Unclosed Rust token group");
 }
 
-function production(ts) {
-  const out = [];
+function production(ts: Token[]): Token[] {
+  const out: Token[] = [];
   for (let i = 0; i < ts.length; i++) {
     if (matches(ts, i, ["#", "[", "cfg", "(", "test", ")", "]"])) {
       i += 7;
@@ -112,9 +117,9 @@ function production(ts) {
   return out;
 }
 
-export function rustMessageUsage(source) {
+export function rustMessageUsage(source: string) {
   const ts = production(tokens(source));
-  const calls = [];
+  const calls: { code: string; params: string[] }[] = [];
   for (let i = 0; i < ts.length; i++) {
     if (!matches(ts, i, ["msg", "!", "("])) {
       continue;
@@ -124,7 +129,7 @@ export function rustMessageUsage(source) {
     if (code?.kind !== "string") {
       throw new Error("Dynamic msg! code needs an explicit contract");
     }
-    const params = [];
+    const params: string[] = [];
     for (let j = i + 4; j < end; j++) {
       const token = ts[j];
       if (token.kind !== "punct") {

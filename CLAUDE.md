@@ -11,7 +11,7 @@ Node and Rust versions are pinned in `mise.toml`; run every tool through `mise e
 ```bash
 mise run dev                  # app with hot reload (uses %APPDATA%\Lattice Dev)
 mise run lint                 # overlay build, rustfmt --check, clippy -D warnings, oxlint, prettier --check, React Compiler check
-mise run test                 # lint + cargo test --workspace + npm test + npm run build (typecheck incl. tests)
+mise run test                 # lint + cargo test --workspace + npm test + npm run build (typecheck incl. tests and scripts/)
 mise run e2e                  # Playwright over the mock backend (needs `npx playwright install chromium` once)
 mise exec -- npm run format   # Prettier
 mise exec -- npm run tauri build
@@ -55,9 +55,9 @@ A command touches several places, and tests catch the misses:
 - **Backend errors/messages that reach the UI** are codes: `msg!("code", name = value)` in Rust, with a `be.<code>` entry in both catalogs (`src/i18n/backend.test.ts`). They travel as JSON strings through `Result<_, String>` and `last_error` columns.
 - **Untrusted content.** Article text, pages and feed data are untrusted: the UI renders them as text only, and LLM providers never get tools (the CLI adapters disable tools, MCP and settings and run in an empty directory).
 - **Migrations** are numbered files in `crates/lattice-core/db/migrations/`, listed in `MIGRATIONS` in `store.rs`, and append-only; `db/master.sql` is the resulting schema (regenerate with `UPDATE_MASTER_SQL=1 cargo test -p lattice-core master_sql`). A migration test finds its migration by content, not by index. Credential settings use the `secret.` prefix and are excluded from backups.
-- **React Compiler** must compile every component (`scripts/react-compiler.mjs`); it silently skips constructs like try/finally, so restructure rather than suppress.
+- **React Compiler** must compile every component (`scripts/react-compiler.ts`); it silently skips constructs like try/finally, so restructure rather than suppress.
 - **Formatting:** 160-column lines in both rustfmt and Prettier; rustfmt puts every `if/else` and `let … else` block on its own lines; every TS block is braced. Workspace clippy denies `unwrap_used`, `todo`, `dbg_macro` etc. outside tests; `#[allow]` needs a `reason`.
-- **User docs come in pairs** (`README.md` / `README.ja.md`, `docs/guide.md` / `docs/guide.ja.md`, `CHANGELOG.md` / `CHANGELOG.ja.md`) that match line for line: edit the same lines in both. `scripts/doc-pairs.mjs` (in `npm run lint` and CI) fails when a line's shape or the changed lines differ; `[one-language]` in a commit message skips the latter.
+- **User docs come in pairs** (`README.md` / `README.ja.md`, `docs/guide.md` / `docs/guide.ja.md`, `CHANGELOG.md` / `CHANGELOG.ja.md`) that match line for line: edit the same lines in both. `scripts/doc-pairs.ts` (in `npm run lint` and CI) fails when a line's shape or the changed lines differ; `[one-language]` in a commit message skips the latter.
 - **Japanese text** (docs and `src/i18n/ja.ts`) uses half-width parentheses `()`, with a space between them and adjacent text as with alphanumerics: `残す世代数 (既定 30) を超えると`. UI labels quoted in the docs match the catalog exactly.
 - Comments explain *why* (constraints, past bugs), often citing roadmap ids like `F3`, `G51` or numbered sections in `docs/design-review.md`. A deliberate deferral is marked `// shortcut: …`.
 - The app version is shared by `package.json` and the workspace `Cargo.toml`; bump with `npm run bump -- <x.y.z>`. Releases: `docs/release.md`.

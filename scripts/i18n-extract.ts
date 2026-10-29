@@ -1,7 +1,7 @@
 // Moves Japanese UI text out of src/ into the catalogs (src/i18n/ja.ts, en.ts), G51.
-//   node scripts/i18n-extract.mjs scan <files…> > map.json   list the text, one entry per call site
+//   node scripts/i18n-extract.ts scan <files…> > map.json   list the text, one entry per call site
 //   (fill each entry's "en", optionally "key", or set "skip": true)
-//   node scripts/i18n-extract.mjs apply map.json             rewrite the call sites, append the catalogs
+//   node scripts/i18n-extract.ts apply map.json             rewrite the call sites, append the catalogs
 // Text in a component becomes `t(…)` from `const t = useT()`; elsewhere the global `t`. Entries the
 // rewrite cannot do safely carry a "note" (module-level constants, comparisons, nested markup).
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -13,11 +13,34 @@ const JAPANESE = /[　-ヿ㐀-鿿＀-￯]/;
 const CATALOG_DIR = "src/i18n";
 const APPEND = "  // @i18n-append";
 
-const parse = (file) =>
+type Fn = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+type Kind = "attr" | "string" | "template" | "jsx" | "jsxRich";
+interface Param {
+  name: string;
+  expr: string;
+}
+/** One Japanese text site, as `scan` lists it and `apply` reads it back from the filled-in map. */
+export interface Entry {
+  file: string;
+  start: number;
+  end: number;
+  line: number;
+  kind: Kind;
+  ja: string;
+  params: Param[];
+  scope: "component" | "function" | "module";
+  component: string | null;
+  key: string;
+  en: string;
+  note?: string;
+  skip?: boolean;
+}
+
+const parse = (file: string) =>
   ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
 
 /** JSX text as React renders it (Babel's cleanJSXElementLiteralChild). */
-export function jsxText(raw) {
+export function jsxText(raw: string): string {
   const lines = raw.split(/\r\n|\n|\r/);
   const last = lines.findLastIndex((l) => /[^ \t]/.test(l));
   let out = "";
@@ -36,9 +59,9 @@ export function jsxText(raw) {
   return out;
 }
 
-const hasJapanese = (node) => {
+const hasJapanese = (node: ts.Node): boolean => {
   let found = false;
-  const visit = (n) => {
+  const visit = (n: ts.Node): void => {
     if (found) {
       return;
     }
@@ -52,7 +75,7 @@ const hasJapanese = (node) => {
   return found;
 };
 
-const fnName = (fn) => {
+const fnName = (fn: Fn): string | null => {
   if (fn.name && ts.isIdentifier(fn.name)) {
     return fn.name.text;
   }
@@ -64,8 +87,8 @@ const fnName = (fn) => {
 };
 
 /** The component the node renders in (outermost function named in PascalCase), else "function" or "module". */
-function scopeOf(node) {
-  let component = null;
+function scopeOf(node: ts.Node): { scope: Entry["scope"]; fn: Fn | null } {
+  let component: Fn | null = null;
   let inFunction = false;
   for (let n = node.parent; n; n = n.parent) {
     if (ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n)) {
@@ -79,7 +102,7 @@ function scopeOf(node) {
   return component ? { scope: "component", fn: component } : { scope: inFunction ? "function" : "module", fn: null };
 }
 
-const isTCall = (node) => {
+const isTCall = (node: ts.Node): boolean => {
   for (let n = node.parent; n; n = n.parent) {
     if (ts.isCallExpression(n)) {
       const c = n.expression.getText();
@@ -92,7 +115,7 @@ const isTCall = (node) => {
   return false;
 };
 
-function suspicious(node) {
+function suspicious(node: ts.Node): string | null {
   const p = node.parent;
   if (ts.isCaseClause(p)) {
     return "case label";
@@ -113,7 +136,7 @@ function suspicious(node) {
 }
 
 /** A param name for an interpolated expression. */
-function paramName(expr, taken) {
+function paramName(expr: ts.Node, taken: Set<string>): string {
   let base = "x";
   if (ts.isIdentifier(expr)) {
     base = expr.text;
@@ -137,7 +160,7 @@ function paramName(expr, taken) {
   return name;
 }
 
-const isSimple = (e) =>
+const isSimple = (e: ts.Expression): boolean =>
   ts.isIdentifier(e) ||
   ts.isPropertyAccessExpression(e) ||
   ts.isElementAccessExpression(e) ||
@@ -146,10 +169,10 @@ const isSimple = (e) =>
   ts.isNumericLiteral(e);
 
 /** One entry per Japanese text site in `file`. */
-export function scan(file) {
+export function scan(file: string): Entry[] {
   const sf = parse(file);
-  const entries = [];
-  const add = (node, start, end, kind, ja, params, extra = {}) => {
+  const entries: Entry[] = [];
+  const add = (node: ts.Node, start: number, end: number, kind: Kind, ja: string, params: Param[], extra: Partial<Entry> = {}) => {
     const { scope, fn } = scopeOf(node);
     entries.push({
       file,
@@ -167,7 +190,7 @@ export function scan(file) {
     });
   };
 
-  const visit = (node) => {
+  const visit = (node: ts.Node): void => {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
       return;
     }
@@ -187,9 +210,9 @@ export function scan(file) {
       return;
     }
     if (ts.isTemplateExpression(node) && hasJapaneseSpans(node) && !isTCall(node)) {
-      const taken = new Set();
+      const taken = new Set<string>();
       let ja = node.head.text;
-      const params = [];
+      const params: Param[] = [];
       for (const span of node.templateSpans) {
         const name = paramName(span.expression, taken);
         params.push({ name, expr: span.expression.getText() });
@@ -202,7 +225,7 @@ export function scan(file) {
     }
     ts.forEachChild(node, visit);
   };
-  const visitChild = (c) => {
+  const visitChild = (c: ts.JsxChild): void => {
     if (ts.isJsxExpression(c)) {
       if (c.expression) {
         visit(c.expression);
@@ -213,8 +236,8 @@ export function scan(file) {
   };
 
   /** Children runs between child elements that hold Japanese themselves; a run with Japanese text becomes one message. */
-  function jsxChildren(children) {
-    let run = [];
+  function jsxChildren(children: ts.NodeArray<ts.JsxChild>): void {
+    let run: ts.JsxChild[] = [];
     const flush = () => {
       if (run.some((c) => ts.isJsxText(c) && JAPANESE.test(c.text))) {
         emitRun(run);
@@ -232,17 +255,17 @@ export function scan(file) {
     flush();
   }
 
-  function emitRun(run) {
+  function emitRun(run: ts.JsxChild[]): void {
     // Markup at the edges stays outside the message, and so does blank text (layout, not content).
-    const edge = (c) => (ts.isJsxText(c) ? !/\S/.test(c.text) : !ts.isJsxExpression(c) || !c.expression || !isSimple(c.expression));
+    const edge = (c: ts.JsxChild) => (ts.isJsxText(c) ? !/\S/.test(c.text) : !ts.isJsxExpression(c) || !c.expression || !isSimple(c.expression));
     while (run.length && edge(run[0])) {
       run.shift();
     }
-    while (run.length && edge(run.at(-1))) {
+    while (run.length && edge(run.at(-1)!)) {
       run.pop();
     }
-    const taken = new Set();
-    const params = [];
+    const taken = new Set<string>();
+    const params: Param[] = [];
     let ja = "";
     let rich = false;
     run.forEach((c) => {
@@ -266,20 +289,21 @@ export function scan(file) {
       }
     });
     const first = run[0];
-    const last = run.at(-1);
+    const last = run.at(-1)!;
     // JsxText spans from `pos` (getStart() would skip its leading blanks); layout blanks stay outside.
     const start = ts.isJsxText(first) ? first.pos + (first.text.length - first.text.replace(/^\s*\n\s*/, "").length) : first.getStart();
     const end = ts.isJsxText(last) ? last.end - (last.text.length - last.text.replace(/\s*\n\s*$/, "").length) : last.getEnd();
     add(first, start, end, rich ? "jsxRich" : "jsx", ja, params);
   }
 
-  const hasJapaneseSpans = (tpl) => JAPANESE.test(tpl.head.text) || tpl.templateSpans.some((s) => JAPANESE.test(s.literal.text));
+  const hasJapaneseSpans = (tpl: ts.TemplateExpression): boolean =>
+    JAPANESE.test(tpl.head.text) || tpl.templateSpans.some((s) => JAPANESE.test(s.literal.text));
   visit(sf);
   return entries;
 }
 
 /** Every UI source file: src/ but the catalogs and the tests. */
-export function sourceFiles(dir = "src") {
+export function sourceFiles(dir = "src"): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
     const path = `${dir}/${d.name}`;
     if (d.isDirectory()) {
@@ -289,11 +313,11 @@ export function sourceFiles(dir = "src") {
   });
 }
 
-const camel = (s) => s.replace(/^[A-Z]/, (c) => c.toLowerCase());
+const camel = (s: string) => s.replace(/^[A-Z]/, (c) => c.toLowerCase());
 
 /** A key from the English text: the file's namespace and the first words, camelCased. */
-function proposeKey(entry, common) {
-  const ns = common.has(entry.ja) ? "common" : camel(basename(entry.file).replace(/\.(tsx?|mjs)$/, ""));
+function proposeKey(entry: Entry, common: Set<string>): string {
+  const ns = common.has(entry.ja) ? "common" : camel(basename(entry.file).replace(/\.(tsx?)$/, ""));
   const words = entry.en
     .replace(/^\(p\) =>|\{\w+\}|p\.\w+/g, " ")
     .toLowerCase()
@@ -304,8 +328,8 @@ function proposeKey(entry, common) {
     .join("")}`;
 }
 
-const quote = (s) => JSON.stringify(s);
-const call = (fn, key, params) => {
+const quote = (s: string) => JSON.stringify(s);
+const call = (fn: string, key: string, params: Param[]): string => {
   if (!params.length) {
     return `${fn}(${quote(key)})`;
   }
@@ -313,7 +337,7 @@ const call = (fn, key, params) => {
   return `${fn}(${quote(key)}, { ${obj} })`;
 };
 
-function replacement(e) {
+function replacement(e: Entry): string {
   switch (e.kind) {
     case "attr":
       return `{${call("t", e.key, [])}}`;
@@ -325,19 +349,19 @@ function replacement(e) {
     case "jsxRich":
       return `{${call("t.rich", e.key, e.params)}}`;
     default:
-      throw new Error(`unknown kind ${e.kind}`);
+      throw new Error(`unknown kind ${String(e.kind)}`);
   }
 }
 
 /** The catalog module as `file` imports it; .ts modules also run under node --test, which resolves no directories. */
-function importFrom(file) {
+function importFrom(file: string): string {
   const rel = relative(dirname(file), CATALOG_DIR).replace(/\\/g, "/");
   const dir = rel.startsWith(".") ? rel : `./${rel}`;
   return file.endsWith(".ts") ? `${dir}/index.ts` : dir;
 }
 
 /** Adds `name` to the file's import from the catalog module. */
-function ensureImport(src, file, name) {
+function ensureImport(src: string, file: string, name: string): string {
   const from = importFrom(file);
   const re = new RegExp(`import \\{([^}]*)\\} from "${from.replace(/[./]/g, "\\$&")}";`);
   const m = src.match(re);
@@ -352,18 +376,18 @@ function ensureImport(src, file, name) {
     return src.replace(re, `import { ${[...names, name].sort((a, b) => a.localeCompare(b)).join(", ")} } from "${from}";`);
   }
   const imports = [...src.matchAll(/^import [^;]+;\r?\n/gm)];
-  const at = imports.length ? imports.at(-1).index + imports.at(-1)[0].length : 0;
+  const at = imports.length ? imports.at(-1)!.index + imports.at(-1)![0].length : 0;
   return `${src.slice(0, at)}import { ${name} } from "${from}";\n${src.slice(at)}`;
 }
 
 /** `const t = useT();` as the first statement of each component that now uses `t`. */
-function addHooks(src, file, components) {
+function addHooks(src: string, file: string, components: Set<string | null>): string {
   if (!components.size) {
     return src;
   }
   const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  const inserts = [];
-  const visit = (n) => {
+  const inserts: { at: number; text: string; end?: number; close?: string }[] = [];
+  const visit = (n: ts.Node): void => {
     if ((ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n)) && components.has(fnName(n))) {
       components.delete(fnName(n));
       if (n.body && ts.isBlock(n.body)) {
@@ -380,7 +404,7 @@ function addHooks(src, file, components) {
   };
   visit(sf);
   for (const i of inserts.sort((a, b) => b.at - a.at)) {
-    if (i.end !== undefined) {
+    if (i.end !== undefined && i.close !== undefined) {
       src = src.slice(0, i.end) + i.close + src.slice(i.end);
     }
     src = src.slice(0, i.at) + i.text + src.slice(i.at);
@@ -388,10 +412,10 @@ function addHooks(src, file, components) {
   return src;
 }
 
-function appendCatalog(lang, entries) {
+function appendCatalog(lang: "ja" | "en", entries: Entry[]): void {
   const path = `${CATALOG_DIR}/${lang}.ts`;
   let src = readFileSync(path, "utf8");
-  const lines = [];
+  const lines: string[] = [];
   for (const e of entries) {
     if (src.includes(`  ${quote(e.key)}:`) || lines.some((l) => l.startsWith(`  ${quote(e.key)}:`))) {
       continue;
@@ -407,27 +431,30 @@ function appendCatalog(lang, entries) {
   writeFileSync(path, src);
 }
 
-function apply(mapFile) {
-  const map = JSON.parse(readFileSync(mapFile, "utf8")).filter((e) => !e.skip);
+function apply(mapFile: string): void {
+  const map = (JSON.parse(readFileSync(mapFile, "utf8")) as Entry[]).filter((e) => !e.skip);
   const missing = map.filter((e) => !e.en);
   if (missing.length) {
     throw new Error(`no "en" for: ${missing.map((e) => `${e.file}:${e.line}`).join(", ")}`);
   }
-  const files = new Map();
+  const files = new Map<string, Entry[]>();
   for (const e of map) {
     files.set(e.file, [...(files.get(e.file) ?? []), e]);
   }
   // The same Japanese in two files (of all of src/) is one shared "common" message; text the
   // catalog already has keeps its key.
-  const byText = new Map();
+  const byText = new Map<string, Set<string>>();
   for (const e of sourceFiles().flatMap(scan)) {
     byText.set(e.ja, new Set([...(byText.get(e.ja) ?? []), e.file]));
   }
   const common = new Set([...byText].filter(([, f]) => f.size > 1).map(([ja]) => ja));
   const existing = new Map(
-    [...readFileSync(`${CATALOG_DIR}/ja.ts`, "utf8").matchAll(/^ {2}("[^"]+"): ("(?:[^"\\]|\\.)*"),$/gm)].map((m) => [JSON.parse(m[2]), JSON.parse(m[1])]),
+    [...readFileSync(`${CATALOG_DIR}/ja.ts`, "utf8").matchAll(/^ {2}("[^"]+"): ("(?:[^"\\]|\\.)*"),$/gm)].map((m): [string, string] => [
+      JSON.parse(m[2]) as string,
+      JSON.parse(m[1]) as string,
+    ]),
   );
-  const keys = new Map(); // key → ja
+  const keys = new Map<string, string>(); // key → ja
   for (const e of map) {
     let key = e.key || existing.get(e.ja) || proposeKey(e, common);
     for (let i = 2; keys.has(key) && keys.get(key) !== e.ja; i++) {
@@ -464,6 +491,6 @@ if (cmd === "scan") {
 } else if (cmd === "apply") {
   apply(args[0]);
 } else if (cmd) {
-  console.error("usage: i18n-extract.mjs scan <files…> | apply <map.json>");
+  console.error("usage: i18n-extract.ts scan <files…> | apply <map.json>");
   process.exit(1);
 }

@@ -81,12 +81,12 @@ export default defineConfig({
     },
     {
       // node:test tracks the promise test() returns.
-      files: ["src/**/*.test.ts", "e2e/*.test.ts", "scripts/*.test.mjs"],
+      files: ["src/**/*.test.ts", "e2e/*.test.ts", "scripts/*.test.ts"],
       rules: { "typescript/no-floating-promises": "off" },
     },
     {
-      // Untyped Node scripts: every JSON.parse and regex result is `any`, so these rules only add noise there.
-      files: ["scripts/**/*.mjs"],
+      // The frozen test-audit snapshot stays untyped JavaScript: every JSON.parse and regex result is `any` there.
+      files: ["scripts/test-audit-2026-10-23/*.mjs"],
       rules: {
         "typescript/no-unsafe-argument": "off",
         "typescript/no-unsafe-assignment": "off",

@@ -70,7 +70,7 @@ Commit `src/bindings` with the Rust change. Do not edit the generated files. Inc
 The integer mapping in `.cargo/config.toml` keeps IDs and counts as JavaScript numbers. String fields with a fixed set of values use `#[ts(type = "...")]`; update these annotations when the allowed values change.
 
 ```bash
-mise exec -- node scripts/bindings.mjs --check
+mise exec -- node scripts/bindings.ts --check
 ```
 
 The check generates into a temporary directory and fails for missing, changed, or obsolete bindings without changing `src/bindings`. CI runs it before Rust tests, because the export tests also write bindings.
@@ -117,7 +117,7 @@ mise exec -- cargo install --path crates/lattice-cli
 The app icon is drawn in `src-tauri/icons/icon*.svg`: `icon.svg` for 64px and up, and its own pixel-grid source for each of 16, 24, 32 and 48px so the weave stays sharp. After editing them, regenerate the PNG / ICO / ICNS set and the title bar logo (`src/app/logo.svg`):
 
 ```bash
-mise exec -- node scripts/icons.mjs
+mise exec -- node scripts/icons.ts
 ```
 
 ## Project layout

@@ -1,9 +1,9 @@
 import { readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkVersions } from "./version.mjs";
+import { checkVersions } from "./version.ts";
 
-export function releaseNotes(changelog, version) {
+export function releaseNotes(changelog: string, version: string): string {
   const lines = changelog.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## [${version}]`));
   if (start < 0) {
@@ -24,7 +24,11 @@ export function releaseNotes(changelog, version) {
   return body;
 }
 
-export function checkSigning(config, env) {
+interface TauriConfig {
+  plugins?: { updater?: { pubkey?: string } };
+}
+
+export function checkSigning(config: TauriConfig, env: Record<string, string | undefined>): void {
   const key = config.plugins?.updater?.pubkey?.trim();
   if (!key || key.startsWith("NOT_CONFIGURED")) {
     throw new Error("Configure the updater public key before releasing");
@@ -44,14 +48,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       throw new Error(`tag ${process.argv[2] ?? "(missing)"} does not match version ${version}`);
     }
     const body = releaseNotes(readFileSync(join(root, "CHANGELOG.md"), "utf8"), version);
-    checkSigning(JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8")), process.env);
+    checkSigning(JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8")) as TauriConfig, process.env);
     if (process.env.GITHUB_OUTPUT) {
       const delimiter = `LATTICE_NOTES_${crypto.randomUUID()}`;
       appendFileSync(process.env.GITHUB_OUTPUT, `body<<${delimiter}\n${body}\n${delimiter}\n`);
     }
     console.log(`Release ${version}: version, notes and signing prerequisites checked`);
   } catch (error) {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   }
 }

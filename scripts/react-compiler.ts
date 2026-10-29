@@ -3,18 +3,19 @@
 // skipped component silently loses its memoization. Run by `npm run lint`.
 import { globSync, readFileSync } from "node:fs";
 import { transformSync } from "@babel/core";
+import type { Logger } from "babel-plugin-react-compiler";
 
 const files = globSync("src/**/*.{ts,tsx}").filter((f) => !f.endsWith(".test.ts") && !f.includes("overlay"));
-const skipped = [];
+const skipped: string[] = [];
 let compiled = 0;
 for (const file of files) {
-  const logger = {
+  const logger: Logger = {
     logEvent(_filename, e) {
       if (e.kind === "CompileSuccess") {
         compiled++;
       } else if (e.kind === "CompileError" || e.kind === "PipelineError") {
-        const reason = e.detail?.reason ?? e.detail?.options?.reason ?? e.data ?? "";
-        skipped.push(`${file}:${e.fnLoc?.start?.line ?? "?"} ${reason}`);
+        const reason = e.kind === "CompileError" ? e.detail.reason : e.data;
+        skipped.push(`${file}:${e.fnLoc?.start.line ?? "?"} ${reason}`);
       }
     },
   };

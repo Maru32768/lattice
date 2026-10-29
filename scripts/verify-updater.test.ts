@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { test } from "node:test";
-import { verifyUpdater } from "./verify-updater.mjs";
+import { verifyUpdater } from "./verify-updater.ts";
 
-function signed(prehashed) {
+function signed(prehashed: boolean) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const keyId = Buffer.from("01234567");
   const rawKey = publicKey.export({ type: "spki", format: "der" }).subarray(-32);

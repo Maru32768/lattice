@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rustMessageUsage } from "./rust-messages.mjs";
+import { rustMessageUsage } from "./rust-messages.ts";
 
 test("Rust message uses exclude comments, literal lookalikes and cfg(test) items", () => {
   const usage = rustMessageUsage(String.raw`
