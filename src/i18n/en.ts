@@ -444,7 +444,7 @@ export const en = {
   "nav.allFeeds": "All feeds…",
   "nav.outOfFolders": "Drop here to take it out of its folder",
   "nav.manageFeeds": "Manage feeds",
-  "nav.tools": "Tools",
+  "nav.learn": "Learn",
   "common.chat": "Chat",
   "common.todaysReview": "Today's review",
   "nav.due": (p) => `${plural(p.reviewDue, "card", "cards")} due`,

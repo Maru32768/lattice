@@ -29,7 +29,7 @@ The main window has these areas, from left to right.
 
 | Area | What it holds |
 |---|---|
-| Navigation (the left sidebar) | The article lists (**Library**, **Collections**, **Genres**, **Source**), **Tools** (**Chat**, **Today's review**, **Vocabulary**, **Jobs**, **Bulk import**), and **Settings** at the bottom |
+| Navigation (the left sidebar) | A ＋ at the top (**Add articles**), the article lists (**Library**, **Collections**, **Genres**, **Source**), and at the bottom **Chat**, **Learn** (**Today's review**, **Vocabulary**), **Jobs** and **Settings** |
 | Article list | The articles of the list chosen in the navigation, with filters and sorting above them |
 | Document area | Articles and web pages open here in tabs. You can split it into several panes |
 | Chat pane | Opens at the right edge when you click **Chat** in the navigation |
@@ -38,6 +38,7 @@ The title bar at the top has back and forward buttons (‹ ›) for the places y
 
 - Drag the border between two areas to resize them. Double-click a border to restore its default width. Widths are kept for the next start.
 - Close the navigation with the button at its top, and the article list with its own button. A closed article list becomes a thin strip, and the same button opens it again.
+- When the navigation's article lists grow long, only that part scrolls. The ＋ at the top and the items at the bottom stay in view.
 - **Manage feeds**, **Jobs**, **Bulk import**, **Vocabulary** and **Today's review** take the place of the article list and document area. **Settings** also takes the navigation's place. `Esc` returns to the library.
 
 When the library is empty, the document area shows **Add your first article**. From there you can paste a URL, subscribe to a feed, run a bulk import or import Markdown.
@@ -104,7 +105,7 @@ To save the page you are viewing in the Page view (the built-in browser), click 
 
 ### Import files
 
-Open **Bulk import** under **Tools** in the navigation. The screen has three tabs: **URL list**, **Markdown** and **PDF**. Choose a collection in the **Collection** field above the tabs to put the imported articles in it.
+Open **Bulk import** from the ＋ at the top of the navigation (**Add articles**). The screen has three tabs: **URL list**, **Markdown** and **PDF**. Choose a collection in the **Collection** field above the tabs to put the imported articles in it.
 
 **URL list.** Reads any text that contains URLs: a plain list of URLs, bookmarks exported from a browser (HTML), CSV, JSON, or an export from another read-later service. Paste the text or choose a file, then click **Import**. Fetching runs in the background, and the screen reports how many URLs were new, already saved or invalid. Pages that fail to fetch do not stop the rest of the import.
 
@@ -556,7 +557,7 @@ You can save up to 64 characters that contain a Latin letter and do not span a l
 
 ### Vocabulary
 
-**Vocabulary** under **Tools** lists your saved words.
+**Vocabulary** under **Learn** in the navigation lists your saved words.
 
 - **Search words and meanings** narrows the list. Sort by **Recently added** or **Due soonest**.
 - Each word's ⋯ menu has **Edit meaning**, **Go to source**, **Regenerate meaning and example**, **Suspend** (**Resume** when suspended) and **Delete**. A word whose lookup failed shows **Look up again**.
@@ -592,7 +593,7 @@ The daily limits count quiz cards and word cards together.
 
 ## Background jobs
 
-Slow work such as fetching, rendering and translating runs as background jobs. Check them in **Jobs** under **Tools**. When a job has failed, the navigation shows the count in red.
+Slow work such as fetching, rendering and translating runs as background jobs. Check them in **Jobs** at the bottom of the navigation. When a job has failed, the navigation shows the count in red.
 
 These are the kinds of jobs. The **Jobs** screen shows each kind by name; hold the pointer over the name to see the ID in parentheses. The ⓘ next to each kind explains it too.
 

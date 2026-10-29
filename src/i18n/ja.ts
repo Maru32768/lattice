@@ -437,7 +437,7 @@ export const ja = {
   "nav.allFeeds": "すべてのフィード…",
   "nav.outOfFolders": "ここに置くとフォルダから出します",
   "nav.manageFeeds": "フィードを管理",
-  "nav.tools": "ツール",
+  "nav.learn": "学ぶ",
   "common.chat": "対話",
   "common.todaysReview": "今日の復習",
   "nav.due": "期限 {reviewDue} 枚",

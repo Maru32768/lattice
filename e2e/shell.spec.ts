@@ -1,5 +1,5 @@
 // The title bar, the toolbars and the Reader / Page parity (H8–H14).
-import { test, expect, list, callsOf } from "./harness.ts";
+import { test, expect, list, callsOf, navItem } from "./harness.ts";
 import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
@@ -145,6 +145,32 @@ test("the nav's ＋ holds the empty library's ways in, with PDF; the palette kee
   for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) {
     await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
   }
+});
+
+test("only the nav's lists scroll: the footer holds chat, learning, jobs and settings in view", async ({ app }) => {
+  const nav = app.locator(".nav");
+  await expect(nav.locator(".nav-foot .ni .label")).toHaveText(["対話", "今日の復習", "単語帳", "処理状況", "設定"]);
+  await expect(nav.locator(".nav-foot .sec")).toHaveText("学ぶ");
+  await expect(nav.getByText("ツール", { exact: true })).toHaveCount(0);
+  await expect(nav.locator(".ni", { hasText: "一括インポート" })).toHaveCount(0);
+
+  await app.setViewportSize({ width: 1440, height: 480 });
+  const scroller = nav.locator(".nav-scroll");
+  expect(await scroller.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
+  await expect(nav.getByRole("button", { name: "設定" })).toBeInViewport();
+  await expect(nav.getByRole("button", { name: "記事を追加" })).toBeInViewport();
+  await scroller.evaluate((e) => e.scrollTo(0, e.scrollHeight));
+  await expect(nav.getByRole("button", { name: "記事を追加" })).toBeInViewport();
+});
+
+test("the nav's feed tree stays closed after a reload", async ({ app }) => {
+  const feeds = navItem(app, "フィード");
+  await expect(feeds).toHaveAttribute("aria-expanded", "true");
+  await feeds.click();
+  await expect(feeds).toHaveAttribute("aria-expanded", "false");
+  await app.reload();
+  await expect(navItem(app, "フィード")).toHaveAttribute("aria-expanded", "false");
+  await expect(navItem(app, "Zenn")).toHaveCount(0);
 });
 
 test("the closed list is one button that opens it again; j / k still move the cursor (H11)", async ({ app }) => {

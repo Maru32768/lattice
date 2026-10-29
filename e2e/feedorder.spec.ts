@@ -1,6 +1,9 @@
 import { test, expect, navItem, callsOf } from "./harness.ts";
 import type { Locator, Page } from "@playwright/test";
 
+// Tall enough that the nav's list does not scroll: a drag near the scroller's edge auto-scrolls it, which moves the drop targets.
+test.use({ viewport: { width: 1440, height: 1100 } });
+
 const nav = (app: Page) => app.locator(".nav");
 const inFolder = (app: Page, name: string) =>
   nav(app)

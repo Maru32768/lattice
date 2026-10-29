@@ -44,7 +44,7 @@ To build from source, see the [developer guide](docs/development.md).
 2. Press `Ctrl+K`, paste an article's URL and choose **Add to Index (import)**. In Lattice, the Index is the set of articles you have saved.
 3. Open the article from the list and switch between **Original**, **Mixed** and **Translated** in the toolbar. Switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
 
-To subscribe to a feed, use **Manage** next to **Source** in the sidebar. To import files, use **Bulk import** under **Tools**.
+To subscribe to a feed, use **Manage** next to **Source** in the sidebar. To import files, use the ＋ at the top of the navigation (**Add articles**).
 
 ## Learn more
 

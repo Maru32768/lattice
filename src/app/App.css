@@ -63,7 +63,12 @@
 .update-bar .btn.ghost { color: var(--acc-ink); }
 .doc-empty { margin: auto; font-size: 13px; }
 
-.nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); overflow-y: auto; }
+.nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); min-height: 0; }
+/* The scroller spans the nav's width so its scrollbar sits at the edge, not inside the padding. */
+.nav-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin: 0 -10px; padding: 0 10px 8px; }
+.nav-foot { display: flex; flex-direction: column; margin: 0 -10px; padding: 6px 10px 0; border-top: 1px solid var(--line); }
+.nav-foot > .sec { padding-top: 10px; }
+.nav-sys { display: flex; flex-direction: column; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 /* The close button shares the first section's row, so the nav starts without an empty band. */
 .nav-head { padding-top: 0; }
 /* The 追加 menu (its trigger sits in the Menu's wrapper span) and the close button sit at the right end. */
@@ -88,7 +93,6 @@
 .nav .dragging { position: relative; z-index: 1; background: var(--active); box-shadow: 0 4px 12px var(--shadow); border-radius: 6px; }
 .nav .drop { background: var(--acc-soft); border-radius: 6px; }
 .nav-drop { border: 1px dashed var(--line2); border-radius: 6px; }
-.nav-bottom { margin-top: 12px; }
 .nav-rail { width: 48px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
 .nav-rail .ib.acc { color: var(--acc); }
 
