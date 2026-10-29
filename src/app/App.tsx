@@ -53,13 +53,28 @@ import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest 
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
 
-// Screens opened now and then load on first use: the reading path (and every pop-out) parses less at start.
-const ImportView = lazy(() => import("../import/ImportView").then((m) => ({ default: m.ImportView })));
-const SettingsView = lazy(() => import("../settings/SettingsView").then((m) => ({ default: m.SettingsView })));
-const FeedsView = lazy(() => import("../feeds/FeedsView").then((m) => ({ default: m.FeedsView })));
-const JobsView = lazy(() => import("../jobs/JobsView").then((m) => ({ default: m.JobsView })));
-const QuizReview = lazy(() => import("../quiz/QuizReview").then((m) => ({ default: m.QuizReview })));
-const VocabView = lazy(() => import("../vocab/VocabView").then((m) => ({ default: m.VocabView })));
+// Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
+const chunkImport = () => import("../import/ImportView");
+const chunkSettings = () => import("../settings/SettingsView");
+const chunkFeeds = () => import("../feeds/FeedsView");
+const chunkJobs = () => import("../jobs/JobsView");
+const chunkQuiz = () => import("../quiz/QuizReview");
+const chunkVocab = () => import("../vocab/VocabView");
+const ImportView = lazy(() => chunkImport().then((m) => ({ default: m.ImportView })));
+const SettingsView = lazy(() => chunkSettings().then((m) => ({ default: m.SettingsView })));
+const FeedsView = lazy(() => chunkFeeds().then((m) => ({ default: m.FeedsView })));
+const JobsView = lazy(() => chunkJobs().then((m) => ({ default: m.JobsView })));
+const QuizReview = lazy(() => chunkQuiz().then((m) => ({ default: m.QuizReview })));
+const VocabView = lazy(() => chunkVocab().then((m) => ({ default: m.VocabView })));
+// Loaded on demand, the settings screen stayed blank for a moment the first time it opened; fetch them once the
+// main window is idle so the first open is instant too.
+requestIdleCallback(() => {
+  if (IS_MAIN) {
+    for (const chunk of [chunkSettings, chunkFeeds, chunkImport, chunkJobs, chunkQuiz, chunkVocab]) {
+      chunk().catch(() => {});
+    }
+  }
+});
 import { HOST, IS_MAIN, type Where } from "./host";
 import { FirstRun, PrefixHint } from "./FirstRun";
 import { useLibrary } from "./useLibrary";
