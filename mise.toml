@@ -1,5 +1,5 @@
 [tools]
-node = "24"
+node = "26"
 rust = "1.99.1"
 
 [tasks.dev]
