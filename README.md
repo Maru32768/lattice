@@ -10,9 +10,9 @@ Lattice is a Windows app for collecting technical articles, reading them with tr
 
 ## Read with partial translation
 
-Lattice's main feature is that you don't have to translate a whole article. You can translate only part of it and read the rest in the original.
+Lattice's main feature is partial translation: you translate part of an article and read the rest in the original.
 
-Choose **Mixed** in the toolbar and set how much to translate, for example 70%. That share of the paragraphs is shown in Japanese and the rest stays in English. The share moves in steps of 10%; the lower it is, the more you read in English. When an English paragraph is hard to follow, switch just that paragraph to the translation. On a translated paragraph, hold the pointer over it to check the original.
+Choose **Mixed** in the toolbar and set how much to translate, for example 70%. That share of the sentences is shown in Japanese and the other sentences stay in English. The share moves in steps of 10%; the lower it is, the more you read in English. When an English paragraph is hard to follow, switch just that paragraph to the translation. The other way round, hold the pointer over a translated sentence to check the original.
 
 This works both in the Reader, which shows the saved text, and in the Page view, which shows the original web page. Japanese articles work the other way: Lattice translates them into English and mixes them the same way. You can also read a whole article in the original or entirely translated.
 
@@ -20,10 +20,10 @@ This way of reading is inspired by [Mazelingo](https://github.com/Yeq6X/mazeling
 
 ## What it does
 
-- **Collect.** Paste a URL, save the page you are viewing in the built-in browser, subscribe to RSS / Atom feeds, or import bookmarks, URL lists, Markdown and PDF papers. Pages built with JavaScript are rendered before Lattice extracts their text. Feeds can have filters that choose which entries get imported.
+- **Collect.** Add articles in any of these ways: paste a URL, save the page you are viewing in the built-in browser, subscribe to RSS / Atom feeds, or import bookmarks, URL lists, Markdown and PDF papers. Pages that build their text with JavaScript are rendered before Lattice extracts it. Feeds can have filters that choose which entries get imported.
 - **Read.** The Reader shows the extracted text and the Page view opens the original page; both support the partial translation above. The AI also writes summaries. Articles open in tabs, which you can split into panes or move to their own windows.
-- **Organize.** The AI assigns a genre, tags and a difficulty, and rates how important each article is for your interests. You can change all of them. You can also gather articles into your own collections, and narrow the list by stacking conditions such as genre, tag and unread.
-- **Search and ask.** Search matches both keywords and meaning, so a Japanese query finds the matching passage in an English article. In the chat pane, the AI answers only from your saved articles, and its citations take you to the paragraphs it relied on.
+- **Organize.** The AI assigns a genre, tags and a difficulty (you can change them later). It also rates how important each article is to you, given your interests. You can also gather articles into your own collections, and narrow the list by stacking conditions such as genre, tag and unread.
+- **Search and ask.** Search matches both keywords and meaning, so a Japanese query finds the matching passage in an English article. Ask a question in the chat pane and the AI answers only from your saved articles. Click a citation in the answer to jump to the paragraph it relied on.
 - **Learn.** The AI writes quizzes that check what you read. Save unknown English words together with the sentence they came from. Review quizzes and words with the same kind of spaced repetition as Anki.
 - **Keep your data.** All data is in one SQLite file. Lattice can back it up on your computer, back it up automatically to Cloudflare R2, and export it as JSON.
 

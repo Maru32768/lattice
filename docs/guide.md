@@ -249,7 +249,7 @@ Rest the pointer on a translated sentence and a bubble shows it in the other lan
 The Reader's toolbar shows how far translation has gone (for example, **Translated 12/40**). In the article list, an article being translated or waiting for it is labeled **Translating 12/40** or **Waiting to translate**, whether or not it is open. The label goes away once it is translated.
 
 - **Starting automatically.** With **Translate when I switch the view** on (the default), switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
-- **The article on screen goes first.** Translation, the summary and the quiz of the articles you are looking at (the front tab of each pane) start right away in a slot of their own, instead of waiting behind queued jobs or the job already running.
+- **The article on screen goes first.** Translation, the summary and the quiz of the articles you are looking at (the front tab of each pane) start right away, even while jobs for other articles are queued or running.
 - **Starting by hand.** Click **Translate**. On a partly translated article, **Translate the rest** translates the remaining paragraphs. Hold the pointer over the button to see which language it translates into.
 - **Translating again.** **Translate again** drops this article's translations and translates it again with the current provider and settings. It is in the ⋯ menu once any paragraph is translated, and also in the toolbar once all of them are. Articles with more than 50 translated paragraphs ask you to confirm. It is unavailable while this article's translation is running.
 - **When it fails.** The toolbar shows **Failed**, the time of the next automatic retry and a **Retry** button, and a note above the text gives the error. Paragraphs that were already translated are kept, so a retry sends only the rest.
@@ -265,10 +265,10 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 | **Translate when I switch the view** | Starts translating when you switch to **Mixed** or **Translated**. On by default. Stored on this computer only. |
 | **Translate saved articles automatically** | Starts translating each article as soon as it is saved. Off by default, because it uses the AI provider for every saved article. Articles written in the display language are skipped (with English as the display language, English and other non-Japanese articles). |
 | **Also translate articles in the display language** | With **Translate saved articles automatically** on, articles written in the display language are translated into the other language too (with English as the display language, English articles into Japanese). Off by default. |
-| **Parallel requests** | How many translation requests to the AI provider run at the same time (1–8, default 3). Long articles send their batches (up to 12 paragraphs each) in parallel, and several short articles are translated at once, so **Jobs** shows up to this many running. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once. |
+| **Parallel requests** | How many translation requests to the AI provider run at the same time (1–8, default 3). Long articles are translated in batches (up to 12 paragraphs each) in parallel, and short articles several at a time, so **Jobs** shows up to this many running. The article on screen is translated right away, outside this number. A higher number finishes sooner but reaches usage and API rate limits sooner. With Claude CLI and Codex CLI, it also runs more processes at once. |
 | **Keep technical terms in English** | Keeps terms such as MVCC or write skew in English when translating into Japanese. When translating into English, uses the established English terms. On by default. |
 | **Extra instructions** | Instructions added to the end of the translation prompt, such as a preferred style or terms. Up to 2,000 characters. **Show the built-in prompt (English to Japanese)** shows the prompt they are added to. |
-| **Sites not to translate** | Pages listed here stay in the original even when the Page view is set to Mixed or Translated. Write one per line; `*` matches any text. A host name alone also covers its subdomains (e.g. `www.google.*`). With a `/`, it is matched against the whole URL, with or without `https://` (e.g. `https://example.com/docs/*`). As in `.gitignore`, a line starting with `!` translates the pages it matches, and when several lines match, the last one wins: `x.com/*` followed by `!x.com/*/status/*` leaves X untranslated except its posts. By default, the major search engines such as Google, Bing and DuckDuckGo. |
+| **Sites not to translate** | Pages listed here stay in the original even when the Page view is set to Mixed or Translated. Write one per line; `*` matches any text. A host name alone also covers its subdomains (e.g. `www.google.*`). A line with a `/` is matched against the whole URL; `https://` may be written or left out (e.g. `https://example.com/docs/*`). As in `.gitignore`, a line starting with `!` is an exception: the pages it matches are translated. When several lines match, the last one wins. For example, `x.com/*` followed by `!x.com/*/status/*` translates only the posts on X. By default, the list holds the major search engines such as Google, Bing and DuckDuckGo. |
 
 Translations are stored separately for each combination of **Keep technical terms in English** and **Extra instructions**. After changing them, translate again the articles you want to read with the new settings. Changing the settings back shows the earlier translations again.
 
@@ -294,7 +294,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list, the filters and the document in the focused tab. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
 
-When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history instead of Lattice's. ‹ › in the Page view's toolbar always move through the page's history.
+When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history. ‹ › in the Page view's toolbar always move through the page's history.
 
 ### Print a page
 
@@ -378,13 +378,13 @@ Classification groups up to 20 unclassified articles into one call. To stop it, 
 
 ### Importance
 
-Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. It weighs both how close the article is to your interests and what you would gain from reading it, judged by what About you says you value, so a basic article on one of your topics can rate lower than an insightful one from a neighboring field. The five levels are **Not for you**, **Low priority**, **Read if interested**, **Worth reading soon** and **Must read**.
+Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. It weighs both how close the article is to your interests and what you would gain from reading it, judged against what About you says you value. So a basic article on one of your topics can rate lower than an insightful one from a neighboring field. The five levels are **Not for you**, **Low priority**, **Read if interested**, **Worth reading soon** and **Must read**.
 
 - In the article list, articles rated 4 or 5 have a mark. Hold the pointer over it to see the reason. The Reader shows the rating and reason under the title.
 - **Important** in the navigation lists articles rated at least **Lowest importance in Important** in **Settings › Importance** (4 by default).
 - To stop rating, turn off **Rate newly saved articles** in **Settings › Importance**.
 
-**After you change About you**, or when an update changes how articles are rated, earlier ratings are marked **(rated by earlier criteria)**. They are not rated again on their own. Until they are rated again, their scores are still used. There are two ways to rate again:
+**Rating again.** When you change About you, or when an update changes how articles are rated, earlier ratings are marked **(rated by earlier criteria)**. They are not rated again on their own, and their scores are still used until they are. There are two ways to rate again:
 
 - **Rate again** in **Settings › Importance** rates every unrated article and every article rated by earlier criteria.
 - **Rate again** above the article list rates the articles shown in the list.
@@ -613,7 +613,7 @@ Jobs that use the AI provider, jobs that run on your computer (the search index)
 
 - A job that fails goes to **Waiting to retry** and is retried automatically after 2, 4, 8 and 16 minutes. After 5 tries without success, it becomes **Failed** and stops.
 - **Retry now** runs a waiting job without waiting. **Retry** runs a failed job again.
-- **Retry failed** reruns the failed jobs of one kind, and **Retry all failed** the failed jobs of every kind.
+- **Retry failed** reruns the failed jobs of that kind, and **Retry all failed** those of every kind.
 - **Cancel** deletes a waiting or failed job. A running job cannot be canceled.
 
 ## Settings
@@ -785,7 +785,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 | `collections` | Collections with their IDs and article counts. |
 | `jobs` | Pending, running and failed jobs. |
 | `ask QUESTION` | Answers from your saved articles, with citations, using the AI provider set up in the app. `--scope`. |
-| `save URL` | Saves a URL. Needs write permission. With `--run`, the CLI fetches it on the spot instead of leaving it to the app. |
+| `save URL` | Saves a URL. Needs write permission. With `--run`, the CLI fetches it on the spot. |
 | `tag ID NAME` | Adds a tag to an article. Needs write permission. |
 | `read ID` | Marks an article as read. Needs write permission. |
 | `favorite ID` | Marks an article as a favorite. Needs write permission. |
@@ -822,7 +822,7 @@ Options for every command:
 
 - Search gives the same results as the app. If the app has not downloaded the semantic search model yet, the CLI does not download it and answers with full-text search only. The JSON output says so.
 - Questions asked with `ask` also appear in the app's chat history.
-- `save` only queues the fetch; a running app fetches it within 30 seconds. With `--run`, the CLI itself fetches the page, its images and, if the model is present, the search vectors. In both cases, classification, importance, automatic translation and rendering are left to the app.
+- `save` only adds a fetch job; a running app does the fetch within 30 seconds. With `--run`, the CLI itself fetches the page and its images, and makes the search vectors if the model is present. In both cases, classification, importance, automatic translation and rendering are left to the app.
 - Changes made with `tag`, `read` and `favorite` show in the app the next time it reloads the list.
 - The CLI cannot remove favorites, mark articles unread, remove tags or delete articles. Agents are limited to actions that are easy to undo.
 
@@ -863,7 +863,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are stored on the computer instead of in the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
 
 ### Move the data folder
 
@@ -877,7 +877,7 @@ If the chosen folder already holds Lattice data, Lattice switches to that data w
 
 ### Backup
 
-**Back up now** in **Settings › Backup** writes a copy of the database to the `backups` folder. Beyond **Backups to keep** (30 by default), the oldest copies are deleted. Copies are never deleted because of their age.
+**Back up now** in **Settings › Backup** writes a copy of the database to the `backups` folder. Beyond **Backups to keep** (30 by default), the oldest copies are deleted. Age alone never deletes a copy.
 
 A backup contains articles, images, translations, words, review history and the settings in the database. It does not contain API keys or the R2 Secret Access Key, nor the [settings stored on this computer only](#where-your-data-is).
 
@@ -978,9 +978,9 @@ For what Lattice downloads directly over HTTP (articles, PDFs, feeds, images and
 ### Translation seems stuck
 
 - Open **Jobs**. If the translation job is **Running**, it is still working. With a CLI provider, one call for a long article can take several minutes. The time each AI job took is written to the log.
-- A job **Waiting to retry** has failed once and is waiting, for example for a usage limit to reset. **Retry now** runs it without waiting.
+- A job **Waiting to retry** has failed once and is waiting for its next automatic retry (for example, after hitting a usage limit). **Retry now** runs it without waiting.
 - If the toolbar shows **Translate the rest**, some paragraphs are not translated yet. Click it to continue.
-- Japanese articles are translated into English. That is not a language detection mistake.
+- Japanese articles are translated into English, so an English translation is the expected result.
 - If nothing happens, check **Settings › AI providers**. At least one working provider step is needed.
 
 ### Search shows only full-text results

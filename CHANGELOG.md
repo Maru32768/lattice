@@ -8,37 +8,37 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
 - **Genres.** Add a genre in Settings › Genres before any article has it; auto classification can then choose it.
-- **Sites not to translate.** The Page view does not translate pages on the sites or URLs (`*` allowed, and `!` to translate an exception, as in `.gitignore`) listed in Settings › Translation; by default, the major search engines.
+- **Sites not to translate.** The Page view does not translate pages on the sites or URLs listed in Settings › Translation. `*` is allowed, and as in `.gitignore`, a line starting with `!` marks an exception (pages to translate). By default, the list holds the major search engines.
 
 ### Changed
 
-- The article on screen is translated (and summarized, and quizzed) right away in a slot of its own, instead of waiting behind queued jobs and the job already running.
+- The article on screen is translated, summarized and quizzed right away, even while other jobs are queued or running.
 - When an AI provider step fails and the next step answers instead, Settings › AI providers and Jobs show which step failed and why (for example, a CLI that is not installed). Before, only the log said so.
 - Automatic translation of saved articles skips articles written in the display language (before, it always skipped Japanese articles). Turn on **Also translate articles in the display language** to include them.
 - Translation runs several requests at once, across the batches of a long article or several articles, so it finishes sooner, and it no longer holds up summaries and classification. Set how many in Settings › Translation › Parallel requests (default 3).
-- Importance weighs what you would gain from an article as well as how close it is to your interests, following what About you says you value, and looks at the headings and the middle and end of the text, not only the start. Earlier ratings show as rated by earlier criteria until you choose **Rate again**.
-- The feed manager reorders feeds and folders by dragging their ⋮⋮ handle, as the AI provider chain does, instead of up and down buttons.
+- Importance is rated on both how close an article is to your interests and what you would gain from it. What you would gain is judged against what About you says you value. The rating reads the headings and the middle and end of the text as well as the start. Earlier ratings show as rated by earlier criteria until you choose **Rate again**.
+- The feed manager drops its up and down buttons: feeds and folders are reordered by dragging their ⋮⋮ handle, as in the AI provider chain.
 - Closing a document window closes its tabs instead of returning them to the main window. **Move back to the main window** still returns a tab.
 - The article list shows a title in up to two lines and tags in one, cut off with "…", so that every row is the same height.
 
 ### Fixed
 
-- Opening a fifth Page tab (with four already hidden behind other tabs) no longer freezes the app. The oldest hidden page is closed as intended, and opens again when its tab is shown.
-- A dragged tab stays in its tab row and moves along it with the pointer, as in Chrome, instead of a faded copy following the pointer. It swaps with the next tab once its edge passes that tab's middle (before, its middle had to pass).
+- Opening a fifth Page tab (with four already hidden behind other tabs) no longer freezes the app. The oldest hidden page is still closed as designed, and opens again when its tab is shown.
+- When you drag a tab, the tab itself now moves along its row with the pointer, as in Chrome. Before, a faded copy followed the pointer. It swaps with the next tab once its edge passes that tab's middle (before, its middle had to pass).
 - A tab dragged over another window's tab row moves into that window right away and shows its content there before you let go, as in Chrome.
 - A tab dragged out of its window appears in its new window at once and under the pointer. Before, the window took 2-3 seconds to show and came up away from the pointer until the pointer moved.
 - A web page no longer reloads when its tab moves to another window, by dragging or with **Open in new window** or **Move back to the main window**; it keeps its back and forward history and scroll position.
 - A page saved from a feed that links `http://` no longer shows **Add to Index** when opened in the built-in browser over `https://`.
-- A job whose processing crashed, or whose result could not be recorded because the database was busy, no longer stays **running** until the app restarts; it is retried like any other failure.
-- Opening Settings, closing the app, or writing a local backup no longer waits for a running job: the backup copies the database on a connection of its own, and the window closes once positions are saved.
+- A job that crashed partway, or whose result could not be recorded because the database was busy, used to stay **running** until the app restarted. It is now retried like any other failure.
+- Opening Settings, closing the app and writing a local backup no longer wait for a running job to finish. The backup copies the database on a connection of its own, and the window closes once its position is saved.
 - Importing a large URL list (bookmarks, CSV) no longer takes minutes to find the URLs in it.
-- A feed whose entries could not be marked as imported no longer keeps re-sending them to the feed filter.
-- A page nested thousands of tags deep is cut off instead of crashing the app when it is saved.
+- When a feed's entries could not be marked as imported, they were sent to the import filter again and again. This is fixed.
+- Saving a page whose HTML tags are nested thousands deep crashed the app. Now the part that is too deep is cut off and the page is saved.
 - A translation request to the built-in browser no longer freezes the app when a page finishes loading at the same time.
-- A web page can press only the shortcuts the overlay was told to forward, not any key the app binds.
-- When the Claude or Codex CLI exits early (not logged in, usage limit), Jobs shows the CLI's own message instead of a broken-pipe error.
-- A database written by a newer Lattice is refused with a clear message instead of failing later.
-- `lattice-cli`: the MCP server answers an invalid request instead of staying silent, survives invalid UTF-8 on its input, and reports an unknown tool as a protocol error; `--format text` prints backend errors readably instead of as JSON.
+- A web page in the built-in browser can now trigger only the Lattice shortcuts the overlay was told to forward. Before, it could press any key the app binds.
+- When the Claude or Codex CLI exits early (not logged in, usage limit reached), Jobs shows the CLI's own message. Before, it showed a broken-pipe error.
+- A database written by a newer version of Lattice is refused when you open it, with a message giving the reason. Before, it opened and failed later.
+- `lattice-cli`: the MCP server answers invalid requests (before, it stayed silent), survives invalid UTF-8 on its input, and reports a call to an unknown tool as a protocol error. `--format text` also prints backend errors as readable text.
 
 ## [0.1.0] - 2026-10-27
 
