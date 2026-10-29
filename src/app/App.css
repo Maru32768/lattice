@@ -66,11 +66,13 @@
 .nav { width: var(--nav-w); flex: 0 1 auto; min-width: 180px; display: flex; flex-direction: column; padding: 10px 10px 8px; background: var(--panel); min-height: 0; }
 /* The scroller spans the nav's width so its scrollbar sits at the edge, not inside the padding. */
 .nav-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin: 0 -10px; padding: 0 10px 8px; }
-.nav-foot { display: flex; flex-direction: column; margin: 0 -10px; padding: 6px 10px 0; border-top: 1px solid var(--line); }
+/* A flex column shrinks its children before it overflows: without this the rows squeeze to 20px once the list scrolls. */
+.nav-scroll > * { flex-shrink: 0; }
+.nav-foot { flex: none; display: flex; flex-direction: column; margin: 0 -10px; padding: 6px 10px 0; border-top: 1px solid var(--line); }
 .nav-foot > .sec { padding-top: 10px; }
 .nav-sys { display: flex; flex-direction: column; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 /* The close button shares the first section's row, so the nav starts without an empty band. */
-.nav-head { padding-top: 0; }
+.nav-head { flex: none; padding-top: 0; }
 /* The 追加 menu (its trigger sits in the Menu's wrapper span) and the close button sit at the right end. */
 .nav-head > span { margin-left: auto; }
 .nav-head > .ib { margin: 0 -4px 0 0; }

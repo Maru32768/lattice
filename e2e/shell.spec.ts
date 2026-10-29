@@ -159,6 +159,10 @@ test("only the nav's lists scroll: the footer holds chat, learning, jobs and set
   expect(await scroller.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
   await expect(nav.getByRole("button", { name: "設定" })).toBeInViewport();
   await expect(nav.getByRole("button", { name: "記事を追加" })).toBeInViewport();
+  const heights = await nav
+    .locator(".nav-scroll > .ni, .nav-scroll > .ni-row, .nav-foot > .ni")
+    .evaluateAll((es) => es.map((e) => e.getBoundingClientRect().height));
+  expect(new Set(heights), "a scrolling list keeps its rows' height").toEqual(new Set([28]));
   await scroller.evaluate((e) => e.scrollTo(0, e.scrollHeight));
   await expect(nav.getByRole("button", { name: "記事を追加" })).toBeInViewport();
 });
