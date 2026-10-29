@@ -837,12 +837,9 @@ export default function App() {
         jobFailures={jobFailures}
         reviewDue={reviewDue}
         chatOpen={chatShown}
-        searching={!!search}
-        recentSearches={recent}
         onScope={setScope}
         onScreen={setScreen}
         onChat={win.toggleChat}
-        onRecent={(q) => runSearch(q)}
         onGenres={() => {
           setSettingsSection("genres");
           setScreen("settings");
@@ -1117,6 +1114,7 @@ export default function App() {
                 groups={groupRows}
                 articleById={articleById}
                 focusSeq={searchFocus}
+                recent={recent}
               />
             )}
             {IS_MAIN && screen === "library" && search && listOpen && splitter("search")}

@@ -135,3 +135,29 @@ test("an older search response cannot replace results after its scope changes", 
   await expect(pane.locator(".sgrp .at")).toHaveText(expected);
   await expect.poll(async () => (await callsOf(app, "search_blocks")).length).toBe(2);
 });
+
+test("recent searches show under the empty search box, not in the nav, and rerun on a click", async ({ app }) => {
+  const pane = app.getByRole("region", { name: "検索結果" });
+  const box = pane.getByRole("textbox", { name: "検索語" });
+  const recent = pane.getByRole("group", { name: "最近の検索" });
+  await app.keyboard.press("/");
+  await expect(recent).toHaveCount(0);
+  for (const q of ["mvcc", "postgres"]) {
+    await box.fill(q);
+    await box.press("Enter");
+    await expect(pane.locator(".search-count")).toContainText("記事");
+  }
+  await expect(recent, "hidden while the box holds a query").toHaveCount(0);
+  await expect(app.locator(".nav").getByText("最近の検索")).toHaveCount(0);
+
+  await box.fill("");
+  await expect(recent.getByRole("button")).toHaveText(["postgres", "mvcc"]);
+  await recent.getByRole("button", { name: "mvcc" }).click();
+  await expect(box).toHaveValue("mvcc");
+  await expect(recent).toHaveCount(0);
+  expect((await callsOf(app, "search_blocks")).at(-1)).toMatchObject({ query: "mvcc" });
+
+  await box.press("Escape");
+  await app.keyboard.press("/");
+  await expect(recent.getByRole("button")).toHaveText(["mvcc", "postgres"]);
+});

@@ -14,6 +14,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - The navigation has a ＋ at its top (**Add articles**). It leads to pasting a URL, subscribing to a feed, bulk import and importing Markdown or a PDF, also once the library has articles.
 - The navigation drops **Tools**. **Chat**, **Learn** (**Today's review**, **Vocabulary**), **Jobs** and **Settings** are fixed at its bottom, in view however long the article lists get. **Bulk import** moved to the ＋. A closed feed tree stays closed at the next start.
+- Recent searches show under the empty search box instead of in the navigation, so starting a search no longer shifts the navigation's items.
 - The article on screen is translated, summarized and quizzed right away, even while other jobs are queued or running.
 - When an AI provider step fails and the next step answers instead, Settings › AI providers and Jobs show which step failed and why (for example, a CLI that is not installed). Before, only the log said so.
 - Automatic translation of saved articles skips articles written in the display language (before, it always skipped Japanese articles). Turn on **Also translate articles in the display language** to include them.

@@ -87,12 +87,9 @@ export function Nav({
   jobFailures,
   reviewDue,
   chatOpen,
-  searching,
-  recentSearches,
   onScope,
   onScreen,
   onChat,
-  onRecent,
   onGenres,
   onCreateGroup,
   onRenameGroup,
@@ -117,12 +114,9 @@ export function Nav({
   /** Cards in today's review queue. */
   reviewDue: number;
   chatOpen: boolean;
-  searching: boolean;
-  recentSearches: string[];
   onScope: (s: Scope) => void;
   onScreen: (s: Screen) => void;
   onChat: () => void;
-  onRecent: (q: string) => void;
   onGenres: () => void;
   onCreateGroup: (name: string) => void;
   onRenameGroup: (id: number, name: string) => void;
@@ -188,17 +182,6 @@ export function Nav({
             <Icon name={allGenres ? "up" : "right"} />
             {allGenres ? t("nav.collapse") : t("nav.moreGenres", { x: counts.genres.length - GENRES_SHOWN })}
           </button>
-        )}
-
-        {searching && recentSearches.length > 0 && (
-          <>
-            <div className="sec">{t("nav.recentSearches")}</div>
-            {recentSearches.map((q) => (
-              <button key={q} className="ni mono-ni" onClick={() => onRecent(q)}>
-                <span className="label">{q}</span>
-              </button>
-            ))}
-          </>
         )}
 
         <div className="sec">

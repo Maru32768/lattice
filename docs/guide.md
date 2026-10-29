@@ -463,7 +463,7 @@ Press `/` to search your saved articles. Lattice's search is a hybrid of full-te
 - Results list the matching passages, grouped by article. Move with `j` and `k`. `Enter` opens the passage in the Reader, and `Shift+Enter` in the Page view. `Esc` returns to the article list.
 - The scope menu narrows the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow it further.
 - Every search uses both methods. Each result shows whether it matched by **Full text**, **Meaning** or **Full text + meaning**. **Search method** (**Hybrid**, **Full text**, **Meaning**) filters the results shown by how they matched.
-- While you search, the navigation shows your recent searches.
+- While the search box is empty, up to five recent searches show under it. Click one to search for it again.
 
 **The semantic search model.** Semantic search runs the multilingual-e5-small model (about 470 MB) on your computer. Lattice downloads it the first time it is needed, usually when the first article is prepared for search. Until the model is ready, search shows only full-text results and says why in the results.
 

@@ -80,6 +80,7 @@ export function SearchPane({
   groups,
   articleById,
   focusSeq,
+  recent,
 }: {
   initial: string;
   result: SearchResult | null;
@@ -111,6 +112,8 @@ export function SearchPane({
   articleById: Map<number, ArticleRow>;
   /** Bumped to move focus back into the search box (the `/` key). */
   focusSeq: number;
+  /** Recent queries, newest first. */
+  recent: string[];
 }) {
   const t = useT();
   const [q, setQ] = useState(initial);
@@ -248,6 +251,17 @@ export function SearchPane({
         )}
       </header>
       <div className="list-body" ref={body}>
+        {/* Shown while the box is empty, as a search box offers its history: on entering search, or after clearing the box. */}
+        {!q.trim() && recent.length > 0 && (
+          <div className="recent-q" role="group" aria-label={t("searchPane.recent")}>
+            <div className="sec">{t("searchPane.recent")}</div>
+            {recent.map((r) => (
+              <button key={r} className="ni mono-ni" onClick={() => onSearch(r)}>
+                <span className="label">{r}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {result && hits.length === 0 && !busy && (
           <div className="empty">
             <div className="muted">{t("searchPane.none")}</div>
