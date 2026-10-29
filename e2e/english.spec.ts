@@ -25,10 +25,16 @@ test("the Reader, jobs, feeds and review screens read in English", async ({ app 
   await expect(app.locator("main.manage")).toContainText("usage limit reached", { useInnerText: true });
   await expect(app.getByRole("button", { name: "Retry all failed" })).toBeVisible();
 
-  await app.locator(".nav").getByRole("button", { name: "Manage", exact: true }).click();
+  await app.locator(".nav").getByRole("button", { name: "Manage sources" }).click();
   await expect(app.locator("main.manage h1")).toHaveText("Manage feeds");
   await expect(app.locator("main.manage .sub")).toContainText(/6 feeds · last checked .* ago/);
   await expect(app.locator("main.manage")).toContainText("HTTP 503 Service Unavailable", { useInnerText: true });
+
+  await app.locator(".nav").getByRole("button", { name: "Manage collections" }).click();
+  await expect(app.locator("main.organize h1")).toHaveText("Organize");
+  expect(await app.locator("main.organize").innerText(), "no Japanese on the Organize screen but the fixtures' names").not.toMatch(/分類|グループ|ジャンル|件/);
+  await app.getByRole("group", { name: "Kind" }).getByRole("button", { name: "Genres" }).click();
+  await expect(app.getByRole("textbox", { name: "Name of the genre to add" })).toBeVisible();
 
   await app.locator(".nav").getByRole("button", { name: "Today's review" }).click();
   await expect(app.locator("main.manage h1")).toHaveText("Today's review");
@@ -44,7 +50,6 @@ test("every settings section has an English title, and a backend error is shown 
     "Summaries & chat",
     "Auto-classification",
     "Importance",
-    "Genres",
     "Import & JS rendering",
     "Import filters",
     "Images",

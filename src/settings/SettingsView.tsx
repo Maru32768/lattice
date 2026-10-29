@@ -7,7 +7,6 @@ import { ChatSettings } from "./ChatSettings";
 import { ClassifySettings } from "./ClassifySettings";
 import { RelevanceSettings } from "./RelevanceSettings";
 import { FilterEditor } from "../feeds/FeedFilterEditor";
-import { GenreSettings } from "./GenreSettings";
 import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
 import { QuizSettings } from "./QuizSettings";
@@ -31,7 +30,6 @@ export type SettingsSection =
   | "classify"
   | "relevance"
   | "feedFilter"
-  | "genres"
   | "render"
   | "images"
   | "review"
@@ -60,7 +58,6 @@ const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: Pla
   { id: "instructions", group: "ai", title: "settingsView.instructions", lead: "settingsView.instructionsLead" },
   { id: "classify", group: "ai", title: "settingsView.classify" },
   { id: "relevance", group: "ai", title: "settingsView.relevance", lead: "settingsView.relevanceLead" },
-  { id: "genres", group: "library", title: "settingsView.genres", lead: "settingsView.genresLead" },
   { id: "render", group: "library", title: "settingsView.render" },
   { id: "feedFilter", group: "library", title: "settingsView.feedFilter", lead: "settingsView.feedFilterLead" },
   { id: "images", group: "library", title: "settingsView.images" },
@@ -93,8 +90,6 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
       return <ClassifySettings />;
     case "relevance":
       return <RelevanceSettings onChanged={onChanged} />;
-    case "genres":
-      return <GenreSettings onChanged={onChanged} />;
     case "render":
       return <RenderSettings />;
     case "feedFilter":
@@ -147,14 +142,13 @@ export function SettingsView({
   onOpenUrl: (url: string) => void;
 }) {
   const t = useT();
-  const [counts, setCounts] = useState<{ models?: number; genres?: number; r2Failed?: boolean }>({});
+  const [counts, setCounts] = useState<{ models?: number; r2Failed?: boolean }>({});
 
   // Re-read on every switch so a count edited in one section shows when leaving it.
   useEffect(() => {
-    void Promise.allSettled([api.llmSettings(), api.listGenres(), r2.status()]).then(([llm, genres, r2s]) =>
+    void Promise.allSettled([api.llmSettings(), r2.status()]).then(([llm, r2s]) =>
       setCounts({
         models: llm.status === "fulfilled" ? llm.value.chain.length : undefined,
-        genres: genres.status === "fulfilled" ? genres.value.length : undefined,
         r2Failed: r2s.status === "fulfilled" && !!r2s.value.last_error,
       }),
     );
@@ -162,7 +156,6 @@ export function SettingsView({
   }, [section]);
   const badges: Partial<Record<SettingsSection, ReactNode>> = {
     provider: counts.models != null ? t("settingsView.models", { length: counts.models }) : null,
-    genres: counts.genres,
     r2: counts.r2Failed ? <span className="error-text">{t("common.error")}</span> : null,
   };
 

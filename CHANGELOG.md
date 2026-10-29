@@ -7,7 +7,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Added
 
 - **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
-- **Genres.** Add a genre in Settings › Genres before any article has it; auto classification can then choose it.
+- **Genres.** Add a genre in Organize › Genres before any article has it; auto classification can then choose it.
 - **Sites not to translate.** The Page view does not translate pages on the sites or URLs listed in Settings › Translation. `*` is allowed, and as in `.gitignore`, a line starting with `!` marks an exception (pages to translate). By default, the list holds the major search engines.
 
 ### Changed
@@ -16,6 +16,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The navigation drops **Tools**. **Chat**, **Learn** (**Today's review**, **Vocabulary**), **Jobs** and **Settings** are fixed at its bottom, in view however long the article lists get. **Bulk import** moved to the ＋. A closed feed tree stays closed at the next start.
 - Recent searches show under the empty search box instead of in the navigation, so starting a search no longer shifts the navigation's items.
 - The set of saved articles is called the library everywhere: **Add to Index** is now **Save to library**, **Remove from Index…** is **Remove from library…**, and **Indexed** is **Saved**. The search method **Hybrid** is now **All**. **Recently added** and the **Needs attention** filter say what they hold in a tooltip.
+- The **Collections**, **Genres** and **Source** headings in the navigation all have **Manage** beside them. Collections and genres are created, renamed and deleted with their article counts on a new **Organize** screen; genre management moved there from Settings, and collections are created there instead of with **+ New**.
 - The article on screen is translated, summarized and quizzed right away, even while other jobs are queued or running.
 - When an AI provider step fails and the next step answers instead, Settings › AI providers and Jobs show which step failed and why (for example, a CLI that is not installed). Before, only the log said so.
 - Automatic translation of saved articles skips articles written in the display language (before, it always skipped Japanese articles). Turn on **Also translate articles in the display language** to include them.

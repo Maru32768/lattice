@@ -7,8 +7,9 @@ import { NavFolders } from "./NavFolders";
 import type { FeedOrder } from "../feeds/feedFolders";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { useT, type PlainKey } from "../i18n";
+import type { OrganizeTab } from "./OrganizeView";
 
-export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review" | "vocab";
+export type Screen = "library" | "feeds" | "organize" | "jobs" | "import" | "settings" | "review" | "vocab";
 
 export interface NavCounts {
   recent: number;
@@ -91,7 +92,7 @@ export function Nav({
   onScope,
   onScreen,
   onChat,
-  onGenres,
+  onOrganize,
   onCreateGroup,
   onRenameGroup,
   onDeleteGroup,
@@ -118,7 +119,8 @@ export function Nav({
   onScope: (s: Scope) => void;
   onScreen: (s: Screen) => void;
   onChat: () => void;
-  onGenres: () => void;
+  /** Opens the 分類の管理 screen at a tab: each section's 管理 link. */
+  onOrganize: (tab: OrganizeTab) => void;
   onCreateGroup: (name: string) => void;
   onRenameGroup: (id: number, name: string) => void;
   onDeleteGroup: (id: number) => void;
@@ -167,12 +169,20 @@ export function Nav({
         {LIBRARY.map(([s, label, icon, key, hint]) => item(s, t(label), counts[key] as number, <Icon name={icon} />, hint && t(hint)))}
         {importantMin != null && item({ kind: "important", min: importantMin }, t("library.important"), counts.important, <Icon name="flag" />)}
 
-        <NavGroups groups={groups} scope={scope} onScope={onScope} onCreate={onCreateGroup} onRename={onRenameGroup} onDelete={onDeleteGroup} />
+        <NavGroups
+          groups={groups}
+          scope={scope}
+          onScope={onScope}
+          onCreate={onCreateGroup}
+          onRename={onRenameGroup}
+          onDelete={onDeleteGroup}
+          onManage={() => onOrganize("groups")}
+        />
 
         <div className="sec">
           {t("common.genre")}
-          <button className="link" onClick={onGenres}>
-            {t("nav.edit")}
+          <button className="link" onClick={() => onOrganize("genres")} aria-label={t("nav.manageGenres")} title={t("nav.manageGenres")}>
+            {t("nav.manage")}
           </button>
         </div>
         {genres.map(([g, c]) =>
@@ -187,7 +197,7 @@ export function Nav({
 
         <div className="sec">
           {t("common.source")}
-          <button className="link" onClick={() => onScreen("feeds")}>
+          <button className="link" onClick={() => onScreen("feeds")} aria-label={t("nav.manageSources")} title={t("nav.manageSources")}>
             {t("nav.manage")}
           </button>
         </div>

@@ -13,7 +13,7 @@ test("clickable controls show the hand; the nav and the list do not select as te
   expect(await style(list(app), "userSelect")).toBe("none");
   expect(await style(app.locator(".art-title"), "userSelect")).not.toBe("none");
 
-  await app.locator(".nav").getByRole("button", { name: "管理", exact: true }).click();
+  await app.locator(".nav").getByRole("button", { name: "ソースを管理" }).click();
   expect(await style(app.locator("label", { hasText: "OPML を読み込む" }), "cursor"), "a label opening a file picker").toBe("pointer");
 });
 

@@ -5,7 +5,7 @@ import type { Page } from "@playwright/test";
 const [sponsored, meetup] = REJECTED[1];
 
 async function openFeeds(page: Page) {
-  await page.locator(".nav").getByRole("button", { name: "管理", exact: true }).click();
+  await page.locator(".nav").getByRole("button", { name: "ソースを管理" }).click();
   await expect(page.locator("main.manage h1")).toHaveText("フィードを管理");
 }
 

@@ -14,7 +14,7 @@ const inFolder = (app: Page, name: string) =>
 const loose = (app: Page) => nav(app).locator(".nav-sub:not(.nav-folder > .nav-sub) > .ni[data-feed] .label");
 
 async function openFeeds(app: Page) {
-  await nav(app).getByRole("button", { name: "管理", exact: true }).click();
+  await nav(app).getByRole("button", { name: "ソースを管理" }).click();
   await expect(app.locator("main.manage h1")).toHaveText("フィードを管理");
 }
 

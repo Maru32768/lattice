@@ -6,7 +6,7 @@ import type { Page } from "@playwright/test";
 const [plain, , , custom] = FEEDS;
 
 async function edit(app: Page, title: string) {
-  await app.locator("nav").getByRole("button", { name: "管理", exact: true }).click();
+  await app.locator("nav").getByRole("button", { name: "ソースを管理" }).click();
   await app
     .getByRole("row", { name: new RegExp(title) })
     .getByRole("button", { name: "編集" })

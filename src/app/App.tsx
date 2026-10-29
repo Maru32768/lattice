@@ -16,6 +16,7 @@ import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
 import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
 import { Nav, NavRail, type AddActions, type Screen } from "../library/Nav";
+import type { OrganizeTab } from "../library/OrganizeView";
 import { ListPane, ListRail, type Grouping } from "../library/ListPane";
 import { getEngine, homeOf } from "../browser/engines";
 import { ContextMenu, CoverContext, coverRect, type MenuItem } from "../ui/Popover";
@@ -57,12 +58,14 @@ import { placeDoc, type Place } from "./history";
 const chunkImport = () => import("../import/ImportView");
 const chunkSettings = () => import("../settings/SettingsView");
 const chunkFeeds = () => import("../feeds/FeedsView");
+const chunkOrganize = () => import("../library/OrganizeView");
 const chunkJobs = () => import("../jobs/JobsView");
 const chunkQuiz = () => import("../quiz/QuizReview");
 const chunkVocab = () => import("../vocab/VocabView");
 const ImportView = lazy(() => chunkImport().then((m) => ({ default: m.ImportView })));
 const SettingsView = lazy(() => chunkSettings().then((m) => ({ default: m.SettingsView })));
 const FeedsView = lazy(() => chunkFeeds().then((m) => ({ default: m.FeedsView })));
+const OrganizeView = lazy(() => chunkOrganize().then((m) => ({ default: m.OrganizeView })));
 const JobsView = lazy(() => chunkJobs().then((m) => ({ default: m.JobsView })));
 const QuizReview = lazy(() => chunkQuiz().then((m) => ({ default: m.QuizReview })));
 const VocabView = lazy(() => chunkVocab().then((m) => ({ default: m.VocabView })));
@@ -70,7 +73,7 @@ const VocabView = lazy(() => chunkVocab().then((m) => ({ default: m.VocabView })
 // main window is idle so the first open is instant too.
 requestIdleCallback(() => {
   if (IS_MAIN) {
-    for (const chunk of [chunkSettings, chunkFeeds, chunkImport, chunkJobs, chunkQuiz, chunkVocab]) {
+    for (const chunk of [chunkSettings, chunkFeeds, chunkOrganize, chunkImport, chunkJobs, chunkQuiz, chunkVocab]) {
       chunk().catch(() => {});
     }
   }
@@ -144,6 +147,7 @@ export default function App() {
   const [palette, setPalette] = useState<{ initial: string; newTab: boolean } | null>(null);
   const openPalette = () => setPalette({ initial: "", newTab: false });
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
+  const [organizeTab, setOrganizeTab] = useState<OrganizeTab>("groups");
   const [importTab, setImportTab] = useState<ImportTab>("urls");
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
   /** The article waiting for delete confirmation, and the view that asked. */
@@ -840,9 +844,9 @@ export default function App() {
         onScope={setScope}
         onScreen={setScreen}
         onChat={win.toggleChat}
-        onGenres={() => {
-          setSettingsSection("genres");
-          setScreen("settings");
+        onOrganize={(tab) => {
+          setOrganizeTab(tab);
+          setScreen("organize");
         }}
         onCreateGroup={(name) =>
           createGroup(name)
@@ -1048,7 +1052,7 @@ export default function App() {
               ) : (
                 nav
               ))}
-            {(screen === "import" || screen === "feeds" || screen === "jobs" || screen === "review" || screen === "vocab") && (
+            {(screen === "import" || screen === "feeds" || screen === "organize" || screen === "jobs" || screen === "review" || screen === "vocab") && (
               <main className="main" data-pane="doc">
                 <Suspense fallback={null}>
                   {screen === "import" && (
@@ -1073,6 +1077,17 @@ export default function App() {
                       onChanged={refreshSoon}
                       initialUrl={feedsUrl}
                       onShowFeed={(id) => setScope({ kind: "feed", id })}
+                    />
+                  )}
+                  {screen === "organize" && (
+                    <OrganizeView
+                      tab={organizeTab}
+                      onTab={setOrganizeTab}
+                      groups={groupRows}
+                      onCreateGroup={createGroup}
+                      onRenameGroup={(id, name) => api.renameGroup(id, name).then(refresh)}
+                      onDeleteGroup={deleteGroup}
+                      onChanged={refresh}
                     />
                   )}
                   {screen === "jobs" && <JobsView />}

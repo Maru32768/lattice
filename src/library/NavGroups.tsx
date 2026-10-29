@@ -6,7 +6,7 @@ import { Icon } from "../ui/Icon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { useT } from "../i18n";
 
-/** The sidebar's グループ section: each group is a scope; + creates one, ⋯ renames or deletes it. */
+/** The sidebar's グループ section: each group is a scope; ⋯ renames or deletes it, 管理 opens the screen that lists them all. */
 export function NavGroups({
   groups,
   scope,
@@ -14,6 +14,7 @@ export function NavGroups({
   onCreate,
   onRename,
   onDelete,
+  onManage,
 }: {
   groups: GroupRow[];
   scope: Scope | null;
@@ -21,6 +22,7 @@ export function NavGroups({
   onCreate: (name: string) => void;
   onRename: (id: number, name: string) => void;
   onDelete: (id: number) => void;
+  onManage: () => void;
 }) {
   const t = useT();
   /** The group being named: `null` id for a new one. */
@@ -73,8 +75,8 @@ export function NavGroups({
     <>
       <div className="sec">
         {t("nav.groups")}
-        <button className="link" onClick={() => setNaming({ id: null })}>
-          {t("nav.newGroup")}
+        <button className="link" onClick={onManage} aria-label={t("nav.manageGroups")} title={t("nav.manageGroups")}>
+          {t("nav.manage")}
         </button>
       </div>
       {groups.map((g) => {

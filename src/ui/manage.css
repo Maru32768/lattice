@@ -5,6 +5,7 @@
 .manage h1 { margin: 0; font-size: 20px; font-weight: 600; }
 .manage h2 { margin: 0 8px 0 0; font-size: 14px; font-weight: 600; }
 .manage .sub { margin: 2px 0 0; font-size: 12.5px; color: var(--ink3); }
+.manage .organize-lead { max-width: 720px; margin-top: -12px; }
 .manage .acts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 .manage .msg { margin: 0; font-size: 12.5px; }
 .manage .msg.muted { color: var(--ink3); }
@@ -113,18 +114,19 @@
 .stg .msg { font-size: 12.5px; }
 .stg .msg.moved { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .stg .msg.moved p { margin: 0; }
-.stg .muted { font-size: 12.5px; }
-.stg .grp { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+:is(.stg, .organize) .muted { font-size: 12.5px; }
+/* The 分類の管理 screen lays its rows out like Settings. */
+:is(.stg, .organize) .grp { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .stg .grp > fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .stg .grp > fieldset > .msg { margin: 12px 0; }
 .stg .network-settings .set .input { width: 100%; min-width: 0; }
 .stg .network-settings textarea.input { height: auto; min-height: 100px; }
-.stg .set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line3); }
-.stg .set .h { grid-column: 1; font-size: 13.5px; font-weight: 500; }
-.stg .set .d { grid-column: 1; font-size: 12.5px; color: var(--ink3); }
-.stg .set .ctl { grid-column: 2; grid-row: 1; display: flex; gap: 6px; align-items: center; }
-.stg .set:has(> .d) .ctl { grid-row: 1 / span 2; }
-.stg .set .input { width: 240px; }
+:is(.stg, .organize) .set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line3); }
+:is(.stg, .organize) .set .h { grid-column: 1; font-size: 13.5px; font-weight: 500; }
+:is(.stg, .organize) .set .d { grid-column: 1; font-size: 12.5px; color: var(--ink3); }
+:is(.stg, .organize) .set .ctl { grid-column: 2; grid-row: 1; display: flex; gap: 6px; align-items: center; }
+:is(.stg, .organize) .set:has(> .d) .ctl { grid-row: 1 / span 2; }
+:is(.stg, .organize) .set .input { width: 240px; }
 .stg .set .input.num { width: 80px; }
 .stg .set.wide { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .stg .set.wide textarea { padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); color: var(--ink); font-size: 13px; line-height: 1.6; resize: vertical; }

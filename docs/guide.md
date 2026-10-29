@@ -379,7 +379,7 @@ Classification groups up to 20 unclassified articles into one call. To stop it, 
 - **+ Tag** adds a tag, and a tag's × removes it. Auto-classification only adds tags; it never removes tags you added.
 - **Auto-classify** in the ⋯ menu unpins the genre and difficulty and classifies the article again.
 
-**Edit genres.** **Edit** next to **Genres** in the navigation opens **Settings › Genres**, which lists every genre with its article count. You can rename a genre; giving it the name of another genre merges the two. A genre with no articles can be deleted. Add a genre in the field at the top, and auto classification can choose it from then on.
+**Manage genres.** **Manage** next to **Genres** in the navigation opens the **Genres** tab of **Organize**, which lists every genre with its article count. You can rename a genre; giving it the name of another genre merges the two. A genre with no articles can be deleted. Add a genre in the field at the top, and auto classification can choose it from then on.
 
 ### Importance
 
@@ -398,7 +398,7 @@ Once you have written [About you](#write-about-you), the AI provider rates each 
 
 A collection is a set of articles you pick yourself, such as material for a project or a reading list. An article can be in several collections.
 
-- Create one with **+ New** under **Collections** in the navigation. A collection's ⋯ menu renames or deletes it. Deleting a collection keeps its articles.
+- **Manage** next to **Collections** in the navigation opens the **Collections** tab of **Organize**, which lists every collection with its article count. Create, rename and delete collections there. A collection's ⋯ menu in the navigation also renames or deletes it. Deleting a collection keeps its articles.
 - Add the open article with **+ Collection** in the Reader, **Add this article to a collection…** in the palette, or **Add to collection…** in the right-click menu.
 - To add several articles, choose them with **Select** above the list and click **Add to collection**.
 - Articles from a bulk import, and URLs saved while the list shows a collection, can go into that collection as they are saved.
@@ -632,8 +632,7 @@ Open **Settings** at the bottom of the navigation. Settings are grouped into **A
 | | **Summaries & chat** | [Write About you](#write-about-you), [Summaries](#summaries), [Chat with your articles](#chat-with-your-articles) |
 | | **Auto-classification** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
 | | **Importance** | [Importance](#importance) |
-| Library | **Genres** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
-| | **Import & JS rendering** | [Pages that don't extract well](#pages-that-dont-extract-well) |
+| Library | **Import & JS rendering** | [Pages that don't extract well](#pages-that-dont-extract-well) |
 | | **Import filters** | [Import filters](#import-filters) |
 | | **Images** | [Images](#images) |
 | | **Review** | [Today's review](#todays-review) |

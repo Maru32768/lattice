@@ -30,8 +30,7 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
 });
 
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
-  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("ジャンル", { exact: true }).click();
+  await app.locator(".nav").getByRole("button", { name: "ジャンルを管理" }).click();
   const name = app.getByRole("textbox", { name: "追加するジャンルの名前" });
   await name.fill("Compilers");
   await app.getByRole("button", { name: "追加", exact: true }).click();

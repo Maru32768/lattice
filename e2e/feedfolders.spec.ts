@@ -7,7 +7,7 @@ const unreadIn = (feeds: number[]) => ARTICLES.filter((a) => a.feed_id != null &
 const totalIn = (feeds: number[]) => ARTICLES.filter((a) => a.feed_id != null && feeds.includes(a.feed_id)).length;
 
 async function openFeeds(app: Page) {
-  await nav(app).getByRole("button", { name: "管理", exact: true }).click();
+  await nav(app).getByRole("button", { name: "ソースを管理" }).click();
   await expect(app.locator("main.manage h1")).toHaveText("フィードを管理");
 }
 

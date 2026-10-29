@@ -8,18 +8,20 @@ const members = (id: number) => ARTICLES.filter((a) => a.groups.includes(id));
 const nav = (app: Page) => app.locator(".nav");
 const picker = (app: Page) => app.getByRole("dialog", { name: "グループ" });
 
-test("a sidebar group is a scope; groups are created, renamed and deleted there (articles stay)", async ({ app }) => {
+test("a sidebar group is a scope; groups are renamed and deleted there (articles stay)", async ({ app }) => {
   await expect(navItem(app, mvcc.name).locator(".n")).toHaveText(String(members(mvcc.id).length));
   await navItem(app, mvcc.name).click();
   await expect(list(app).locator("h1")).toHaveText(mvcc.name);
   await expect(listCount(app)).toHaveText(`${members(mvcc.id).length} / ${members(mvcc.id).length}`);
 
-  await nav(app).getByRole("button", { name: "＋ 新規" }).click();
-  const name = nav(app).getByLabel("グループ名");
-  await name.fill("論文");
-  await name.press("Enter");
+  await nav(app).getByRole("button", { name: "グループを管理" }).click();
+  await app.getByRole("textbox", { name: "グループを作成" }).fill("論文");
+  await app.getByRole("textbox", { name: "グループを作成" }).press("Enter");
+  await expect(navItem(app, "論文")).toBeVisible();
+  await navItem(app, "論文").click();
   await expect(list(app).locator("h1")).toHaveText("論文");
   await expect(listCount(app)).toHaveText("0 / 0");
+  const name = nav(app).getByLabel("グループ名");
 
   await nav(app).getByRole("button", { name: "論文 の操作" }).click();
   await app.getByRole("menuitem", { name: "名前を変更" }).click();
