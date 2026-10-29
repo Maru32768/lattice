@@ -101,7 +101,7 @@ test("the search and command box sits in the title bar, not in the nav (H9)", as
   expect(Math.abs(box.x + box.width / 2 - 720)).toBeLessThan(2);
 
   await app.locator(".nav").getByRole("button", { name: "ナビゲーションを閉じる" }).click();
-  await expect(app.locator(".nav-rail").getByRole("button")).toHaveCount(4);
+  await expect(app.locator(".nav-rail").getByRole("button")).toHaveCount(5);
   await expect(app.locator(".nav-rail").getByRole("button", { name: /検索/ })).toHaveCount(0);
 });
 
@@ -111,9 +111,35 @@ test("the chat window has no command center (H9)", async ({ shell }) => {
   await expect(commandCenter(shell)).toHaveCount(0);
 });
 
-test("the nav's top holds only its close button; what the ＋ opened is in the palette (H10)", async ({ app }) => {
-  await expect(app.locator(".nav-head").getByRole("button")).toHaveCount(1);
-  await expect(app.locator(".nav-head").getByRole("button")).toHaveAccessibleName("ナビゲーションを閉じる");
+test("the nav's ＋ holds the empty library's ways in, with PDF; the palette keeps them too", async ({ app }) => {
+  await expect(app.locator(".nav-head").getByRole("button")).toHaveCount(2);
+  const add = app.locator(".nav-head").getByRole("button", { name: "記事を追加" });
+  const menu = app.getByRole("menu", { name: "記事を追加" });
+  await add.click();
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    /^URL を貼る/,
+    /^フィードを登録/,
+    /^一括インポート/,
+    /^Markdown を取り込む/,
+    /^PDF \(論文\) を取り込む/,
+  ]);
+  await menu.getByRole("menuitem", { name: /^URL を貼る/ }).click();
+  await expect(palette(app)).toBeVisible();
+  await app.keyboard.press("Escape");
+  await add.click();
+  await menu.getByRole("menuitem", { name: /^フィードを登録/ }).click();
+  await expect(app.getByRole("heading", { name: "フィードを管理" })).toBeVisible();
+  await add.click();
+  await menu.getByRole("menuitem", { name: /^PDF/ }).click();
+  await expect(app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "PDF" })).toHaveAttribute("aria-pressed", "true");
+  await add.click();
+  await menu.getByRole("menuitem", { name: /^一括インポート/ }).click();
+  await expect(app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "URL 一覧" })).toHaveAttribute("aria-pressed", "true");
+
+  await app.locator(".nav-head").getByRole("button", { name: "ナビゲーションを閉じる" }).click();
+  await app.locator(".nav-rail").getByRole("button", { name: "記事を追加" }).click();
+  await expect(menu.getByRole("menuitem")).toHaveCount(5);
+  await app.keyboard.press("Escape");
   await commandCenter(app).click();
   await app.keyboard.type(">");
   for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) {

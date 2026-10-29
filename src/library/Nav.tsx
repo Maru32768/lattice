@@ -5,7 +5,7 @@ import { Icon, type IconName } from "../ui/Icon";
 import { NavGroups } from "./NavGroups";
 import { NavFolders } from "./NavFolders";
 import type { FeedOrder } from "../feeds/feedFolders";
-import type { MenuItem } from "../ui/Popover";
+import { Menu, type MenuItem } from "../ui/Popover";
 import { useT, type PlainKey } from "../i18n";
 
 export type Screen = "library" | "feeds" | "jobs" | "import" | "settings" | "review" | "vocab";
@@ -30,6 +30,34 @@ const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
 ];
 
 const n = (v: number) => v.toLocaleString();
+
+/** What the 追加 menu starts: the empty library's entries, kept in reach once it has articles. */
+export interface AddActions {
+  paste: () => void;
+  feeds: () => void;
+  bulk: () => void;
+  markdown: () => void;
+  pdf: () => void;
+}
+
+function AddMenu({ add }: { add: AddActions }) {
+  const t = useT();
+  return (
+    <Menu
+      className="ib add"
+      label={t("nav.add")}
+      inPane={false}
+      trigger={<Icon name="plus" />}
+      items={[
+        { label: t("app.pasteUrl"), hint: `Ctrl+K${t("app.pasteHint")}`, onSelect: add.paste },
+        { label: t("common.addFeed"), hint: t("app.feedHint"), onSelect: add.feeds },
+        { label: t("common.bulkImport"), hint: t("app.bulkHint"), onSelect: add.bulk },
+        { label: t("common.importMarkdown"), hint: t("app.markdownHint"), onSelect: add.markdown },
+        { label: t("palette.importPdf"), hint: t("nav.pdfHint"), onSelect: add.pdf },
+      ]}
+    />
+  );
+}
 
 export function Nav({
   screen,
@@ -58,6 +86,7 @@ export function Nav({
   onMenu,
   onCollapse,
   importantMin,
+  add,
 }: {
   screen: Screen;
   /** null while a management screen is shown. */
@@ -89,6 +118,7 @@ export function Nav({
   onCollapse: () => void;
   /** The lowest score in 重要; null hides it (no 「自分について」 profile and nothing scored). */
   importantMin: number | null;
+  add: AddActions;
 }) {
   const t = useT();
   const [allGenres, setAllGenres] = useState(false);
@@ -114,6 +144,7 @@ export function Nav({
     <nav className="nav" aria-label={t("nav.nav")} data-pane="nav">
       <div className="sec nav-head">
         {t("nav.library")}
+        <AddMenu add={add} />
         <button className="ib" onClick={onCollapse} aria-label={t("nav.close")} title={t("nav.close")}>
           <Icon name="panel" />
         </button>
@@ -210,12 +241,14 @@ export function NavRail({
   onOpen,
   onScope,
   onChat,
+  add,
 }: {
   scope: Scope | null;
   chatOpen: boolean;
   onOpen: () => void;
   onScope: (s: Scope) => void;
   onChat: () => void;
+  add: AddActions;
 }) {
   const t = useT();
   const btn = (s: Scope, label: string, icon: IconName) => (
@@ -228,6 +261,7 @@ export function NavRail({
       <button className="ib" onClick={onOpen} aria-label={t("nav.open")} title={t("nav.open")}>
         <Icon name="panel" />
       </button>
+      <AddMenu add={add} />
       {btn({ kind: "unread" }, t("common.unread"), "unread")}
       {btn({ kind: "favorites" }, t("common.favorites"), "star")}
       <button className={`ib${chatOpen ? " acc" : ""}`} onClick={onChat} aria-label={t("common.chat")} title={t("common.chat")} aria-pressed={chatOpen}>

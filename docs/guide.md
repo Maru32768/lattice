@@ -42,6 +42,8 @@ The title bar at the top has back and forward buttons (‹ ›) for the places y
 
 When the library is empty, the document area shows **Add your first article**. From there you can paste a URL, subscribe to a feed, run a bulk import or import Markdown.
 
+Once the library has articles, the ＋ at the top of the navigation (**Add articles**) leads to the same actions, plus importing a PDF. With the navigation closed, use the ＋ on its thin strip.
+
 ### Set up an AI provider
 
 Translation, summaries, classification, importance, quizzes, word meanings, the LLM feed filter and chat send text to an AI provider. To use them, set up at least one provider in **Settings › AI providers**. Saving, reading and full-text search work without one.
@@ -76,6 +78,8 @@ Write your job, interests and the knowledge you can take for granted in **About 
 ## Collect articles
 
 For each article, Lattice saves its text, its images and the HTML it was extracted from. You can still read a saved article after the original page changes or disappears. In Lattice, the set of articles you have saved is called the Index.
+
+Each way in this chapter can start from the ＋ at the top of the navigation (**Add articles**).
 
 ### Save a URL
 

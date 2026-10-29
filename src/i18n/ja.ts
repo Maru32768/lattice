@@ -409,6 +409,8 @@ export const ja = {
   "common.bulkImport": "一括インポート",
   "common.importMarkdown": "Markdown を取り込む",
   "common.addFeed": "フィードを登録",
+  "nav.add": "記事を追加",
+  "nav.pdfHint": "論文などの PDF ファイル",
   "nav.close": "ナビゲーションを閉じる",
   "nav.searchPlaceholder": "検索・コマンド・URL",
   "nav.library": "ライブラリ",

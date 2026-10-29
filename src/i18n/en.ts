@@ -416,6 +416,8 @@ export const en = {
   "common.bulkImport": "Bulk import",
   "common.importMarkdown": "Import Markdown",
   "common.addFeed": "Add a feed",
+  "nav.add": "Add articles",
+  "nav.pdfHint": "A paper or other PDF file",
   "nav.close": "Close navigation",
   "nav.searchPlaceholder": "Search, commands, URLs",
   "nav.library": "Library",

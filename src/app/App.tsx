@@ -15,7 +15,7 @@ import { NO_FACETS, NO_KEPT, activeDims, keep, scopeLabel, toFilter, viewKey, ty
 import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
 import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
-import { Nav, NavRail, type Screen } from "../library/Nav";
+import { Nav, NavRail, type AddActions, type Screen } from "../library/Nav";
 import { ListPane, ListRail, type Grouping } from "../library/ListPane";
 import { getEngine, homeOf } from "../browser/engines";
 import { ContextMenu, CoverContext, coverRect, type MenuItem } from "../ui/Popover";
@@ -815,6 +815,16 @@ export default function App() {
     <Splitter pane={pane} side={side} width={widths[pane]} onWidth={(w) => setWidth(pane, w)} />
   );
   const chatShown = win.chatOpen || win.chatWindow;
+  const adds: AddActions = {
+    paste: openPalette,
+    feeds: () => setScreen("feeds"),
+    bulk: () => {
+      setImportTab("urls");
+      setScreen("import");
+    },
+    markdown: importMarkdown,
+    pdf: importPdf,
+  };
   const nav = navOpen ? (
     <>
       <Nav
@@ -851,11 +861,19 @@ export default function App() {
         onMenu={setCtxItems}
         onCollapse={() => setNavOpen(false)}
         importantMin={importantMin}
+        add={adds}
       />
       {splitter("nav")}
     </>
   ) : (
-    <NavRail scope={screen === "library" ? scope : null} chatOpen={chatShown} onOpen={() => setNavOpen(true)} onScope={setScope} onChat={win.toggleChat} />
+    <NavRail
+      scope={screen === "library" ? scope : null}
+      chatOpen={chatShown}
+      onOpen={() => setNavOpen(true)}
+      onScope={setScope}
+      onChat={win.toggleChat}
+      add={adds}
+    />
   );
 
   const labelOf = (t: Tab): TabLabel => {
@@ -889,13 +907,10 @@ export default function App() {
       }
       return (
         <FirstRun
-          onPaste={openPalette}
-          onFeeds={() => setScreen("feeds")}
-          onImport={() => {
-            setImportTab("urls");
-            setScreen("import");
-          }}
-          onMarkdown={importMarkdown}
+          onPaste={adds.paste}
+          onFeeds={adds.feeds}
+          onImport={adds.bulk}
+          onMarkdown={adds.markdown}
           onSettings={() => {
             setSettingsSection("provider");
             setScreen("settings");
