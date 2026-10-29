@@ -6,7 +6,7 @@ import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
 import type { ImportTab } from "../import/ImportView";
-import type { SettingsSection } from "../settings/SettingsView";
+import type { SettingsSection } from "../settings/sections";
 import { replayWord } from "../vocab/speech";
 import { ChatPane } from "../chat/ChatPane";
 import { openDocs } from "../chat/chat";
@@ -685,6 +685,10 @@ export default function App() {
     },
     search: (q) => runSearch(q),
     screen: setScreen,
+    settings: (s) => {
+      setSettingsSection(s);
+      setScreen("settings");
+    },
     importMarkdown,
     importPdf,
     chat: openChat,

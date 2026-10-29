@@ -7,6 +7,7 @@ import { useCover } from "../ui/Popover";
 import { onMiddle } from "../lib/middle";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
 import type { Screen } from "../library/Nav";
+import { SECTIONS, type SettingsSection } from "../settings/sections";
 import type { LanguageMode } from "../reader/mixed";
 import { useT, type PlainKey } from "../i18n";
 
@@ -21,6 +22,8 @@ export interface PaletteActions {
   discover: (url: string) => void;
   search: (q: string) => void;
   screen: (s: Screen) => void;
+  /** The settings screen at one section. */
+  settings: (s: SettingsSection) => void;
   /** The import screen's Markdown tab. */
   importMarkdown: () => void;
   /** The import screen's PDF tab. */
@@ -223,6 +226,12 @@ export function Palette({
       { label: t("common.importMarkdown"), keys: `markdown md import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importMarkdown },
       { label: t("palette.importPdf"), keys: `pdf paper arxiv import ${t("palette.aliasImport")}`, icon: "reader", run: actions.importPdf },
       { label: t("palette.settings"), keys: "settings", icon: "gear", run: () => actions.screen("settings") },
+      ...SECTIONS.map((s) => ({
+        label: t("palette.settingsSection", { name: t(s.title) }),
+        keys: `settings ${s.id}`,
+        icon: "gear" as const,
+        run: () => actions.settings(s.id),
+      })),
     ],
     [genreCounts, feeds, folders, groups, actions, t],
   );

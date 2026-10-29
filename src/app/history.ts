@@ -3,7 +3,7 @@
 import type { Facets, Scope } from "../library/library";
 import type { Doc, Id, Tab } from "../layout/layout";
 import type { Screen } from "../library/Nav";
-import type { SettingsSection } from "../settings/SettingsView";
+import type { SettingsSection } from "../settings/sections";
 
 /** The focused tab and what it showed. `key` tells documents apart: a page by its explicit navigations (`seq`), not the page's own. */
 export interface PlaceDoc {

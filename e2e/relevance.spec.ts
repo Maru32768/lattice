@@ -60,7 +60,7 @@ test("without a profile nothing is rated and settings say why; with one, scores 
   await expect(app.getByRole("note")).toContainText("「自分について」が空なので");
   await expect(app.getByRole("button", { name: "重要度を付け直す" })).toBeDisabled();
 
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "要約・対話" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "自分について" }).click();
   await app.getByLabel("自分について").fill("PostgreSQL の運用をしている");
   await app.getByRole("button", { name: "保存", exact: true }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "重要度" }).click();

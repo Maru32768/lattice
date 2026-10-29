@@ -69,7 +69,7 @@ These providers are supported:
 
 ### Write About you
 
-Write your job, interests and the knowledge you can take for granted in **About you** under **Settings › Summaries & chat**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
+Write your job, interests and the knowledge you can take for granted in **Settings › About you**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
 
 - Summaries and chat answers
 - Quiz questions
@@ -623,27 +623,28 @@ Jobs that use the AI provider, jobs that run on your computer (the search index)
 
 ## Settings
 
-Open **Settings** at the bottom of the navigation. Settings are grouped into **AI**, **Library**, **Controls**, **Data** and **App**. Settings that belong to a feature are explained with that feature.
+Open **Settings** at the bottom of the navigation. Settings are grouped into **AI**, **Collect**, **Read**, **Sorting**, **Learn**, **App** and **Data**. **AI** holds only what every AI feature uses; the rest are grouped by what you are doing. Settings that belong to a feature are explained with that feature.
 
 | Group | Section | Explained in |
 |---|---|---|
 | AI | **AI providers** | [Set up an AI provider](#set-up-an-ai-provider) |
-| | **Translation** | [Translate an article](#translate-an-article) |
-| | **Summaries & chat** | [Write About you](#write-about-you), [Summaries](#summaries), [Chat with your articles](#chat-with-your-articles) |
-| | **Auto-classification** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
-| | **Importance** | [Importance](#importance) |
-| Library | **Import & JS rendering** | [Pages that don't extract well](#pages-that-dont-extract-well) |
+| | **About you** | [Write About you](#write-about-you) |
+| Collect | **Import & JS rendering** | [Pages that don't extract well](#pages-that-dont-extract-well) |
 | | **Import filters** | [Import filters](#import-filters) |
 | | **Images** | [Images](#images) |
-| | **Review** | [Today's review](#todays-review) |
-| Controls | **Display language** | [Display language](#display-language) |
-| | **Shortcuts** | [Keyboard shortcuts](#keyboard-shortcuts) |
+| Read | **Translation** | [Translate an article](#translate-an-article) |
+| | **Summaries & chat** | [Summaries](#summaries), [Chat with your articles](#chat-with-your-articles) |
 | | **Browser** | [Browser](#browser) |
+| Sorting | **Auto-classification** | [Genres, tags and difficulty](#genres-tags-and-difficulty) |
+| | **Importance** | [Importance](#importance) |
+| Learn | **Review** | [Today's review](#todays-review) |
+| App | **Display language** | [Display language](#display-language) |
+| | **Shortcuts** | [Keyboard shortcuts](#keyboard-shortcuts) |
 | | **Startup & taskbar** | [Startup and taskbar](#startup-and-taskbar) |
+| | **Updates** | [Updates](#updates) |
 | Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
-| App | **Updates** | [Updates](#updates) |
 
-**Feeds →** in the **Library** group opens the feed manager.
+Type a section's name in the palette, for example **Settings: Translation**, to open that section directly.
 
 ### Images
 

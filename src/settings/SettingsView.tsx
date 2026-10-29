@@ -20,69 +20,22 @@ import { BrowserSettings } from "./BrowserSettings";
 import { TaskbarSettings } from "./TaskbarSettings";
 import { UpdateSection } from "../app/Update";
 import "../ui/manage.css";
-import { useT, type PlainKey, type T } from "../i18n";
+import { useT } from "../i18n";
+import { GROUPS, SECTIONS, type Group, type SettingsSection } from "./sections";
 
-export type SettingsSection =
-  | "language"
-  | "provider"
-  | "translation"
-  | "instructions"
-  | "classify"
-  | "relevance"
-  | "feedFilter"
-  | "render"
-  | "images"
-  | "review"
-  | "shortcuts"
-  | "browser"
-  | "taskbar"
-  | "backup"
-  | "r2"
-  | "export"
-  | "storage"
-  | "update";
-
-const GROUPS = {
-  ai: "settingsView.groupAi",
-  library: "settingsView.groupLibrary",
-  controls: "settingsView.groupControls",
-  data: "settingsView.groupData",
-  app: "settingsView.groupApp",
-} as const satisfies Record<string, PlainKey>;
-type Group = keyof typeof GROUPS;
-
-/** `lead` is a key, or rendered (text with markup). */
-const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lead?: PlainKey | ((t: T) => ReactNode) }[] = [
-  { id: "provider", group: "ai", title: "settingsView.provider", lead: "settingsView.providerLead" },
-  { id: "translation", group: "ai", title: "settingsView.translation", lead: "settingsView.translationLead" },
-  { id: "instructions", group: "ai", title: "settingsView.instructions", lead: "settingsView.instructionsLead" },
-  { id: "classify", group: "ai", title: "settingsView.classify" },
-  { id: "relevance", group: "ai", title: "settingsView.relevance", lead: "settingsView.relevanceLead" },
-  { id: "render", group: "library", title: "settingsView.render" },
-  { id: "feedFilter", group: "library", title: "settingsView.feedFilter", lead: "settingsView.feedFilterLead" },
-  { id: "images", group: "library", title: "settingsView.images" },
-  { id: "review", group: "library", title: "settingsView.review", lead: "settingsView.reviewLead" },
-  { id: "language", group: "controls", title: "language.title" },
-  { id: "shortcuts", group: "controls", title: "settingsView.shortcuts", lead: "settingsView.shortcutsLead" },
-  { id: "browser", group: "controls", title: "settingsView.browser", lead: "settingsView.browserLead" },
-  { id: "taskbar", group: "controls", title: "settingsView.taskbar" },
-  { id: "backup", group: "data", title: "settingsView.backup", lead: "settingsView.backupLead" },
-  { id: "r2", group: "data", title: "settingsView.r2", lead: (t) => t.rich("settingsView.r2Lead", { code: <code>infra/r2</code> }) },
-  { id: "export", group: "data", title: "settingsView.export" },
-  { id: "storage", group: "data", title: "settingsView.storage" },
-  { id: "update", group: "app", title: "settingsView.update", lead: "settingsView.updateLead" },
-];
-
-function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: () => void; onOpenUrl: (url: string) => void }) {
+function Body({ id, onChanged, onOpenUrl, onFeeds }: { id: SettingsSection; onChanged: () => void; onOpenUrl: (url: string) => void; onFeeds: () => void }) {
+  const t = useT();
   switch (id) {
     case "provider":
       return <ModelSettings />;
     case "translation":
       return <TranslationSettings />;
+    case "profile":
+      return <InstructionSettings fields={["profile"]} />;
     case "instructions":
       return (
         <>
-          <InstructionSettings />
+          <InstructionSettings fields={["summary", "chat"]} />
           <ChatSettings />
         </>
       );
@@ -97,6 +50,15 @@ function Body({ id, onChanged, onOpenUrl }: { id: SettingsSection; onChanged: ()
         <div className="grp">
           <div className="set wide">
             <FilterEditor feedId={null} onSaved={onChanged} />
+          </div>
+          <div className="set">
+            <div className="h">{t("settingsView.perFeedFilters")}</div>
+            <div className="d">{t("settingsView.perFeedFiltersDesc")}</div>
+            <div className="ctl">
+              <button className="btn" onClick={onFeeds}>
+                {t("nav.manageFeeds")}
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -185,11 +147,6 @@ export function SettingsView({
                 {badges[s.id] != null && <span className="n">{badges[s.id]}</span>}
               </button>
             ))}
-            {g === "library" && (
-              <button className="ni" onClick={onFeeds}>
-                {t("settingsView.feeds")}
-              </button>
-            )}
           </Fragment>
         ))}
       </nav>
@@ -200,7 +157,7 @@ export function SettingsView({
             <h1>{t(current.title)}</h1>
             {current.lead && <p className="lead">{typeof current.lead === "function" ? current.lead(t) : t(current.lead)}</p>}
           </header>
-          <Body id={section} onChanged={onChanged} onOpenUrl={onOpenUrl} />
+          <Body id={section} onChanged={onChanged} onOpenUrl={onOpenUrl} onFeeds={onFeeds} />
         </div>
       </main>
     </div>

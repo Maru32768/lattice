@@ -27,7 +27,8 @@ const FIELDS: { key: keyof CustomInstructions; label: PlainKey; desc: PlainKey; 
 
 const EMPTY: CustomInstructions = { profile: "", summary: "", chat: "" };
 
-export function InstructionSettings() {
+/** The free-text instructions `fields` names: 自分について has its own section, the summary and chat ones share 要約・対話. */
+export function InstructionSettings({ fields }: { fields: (keyof CustomInstructions)[] }) {
   const t = useT();
   const [value, setValue] = useState(EMPTY);
   const [saved, setSaved] = useState(EMPTY);
@@ -47,7 +48,11 @@ export function InstructionSettings() {
   async function save() {
     setError(null);
     setStatus(null);
-    const trimmed = { profile: value.profile.trim(), summary: value.summary.trim(), chat: value.chat.trim() };
+    // Each section saves only its own fields: the others keep what is stored, as read when this section opened.
+    const trimmed = { ...saved };
+    for (const key of fields) {
+      trimmed[key] = value[key].trim();
+    }
     try {
       await api.setCustomInstructions(trimmed);
       setValue(trimmed);
@@ -58,10 +63,11 @@ export function InstructionSettings() {
     }
   }
 
-  const changed = FIELDS.some(({ key }) => value[key].trim() !== saved[key]);
+  const shown = FIELDS.filter(({ key }) => fields.includes(key));
+  const changed = shown.some(({ key }) => value[key].trim() !== saved[key]);
   return (
     <div className="grp">
-      {FIELDS.map(({ key, label, desc, placeholder }) => (
+      {shown.map(({ key, label, desc, placeholder }) => (
         <div className="set wide" key={key}>
           <label className="h" htmlFor={`ci-${key}`}>
             {t(label)}

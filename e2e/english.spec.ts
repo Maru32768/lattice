@@ -46,23 +46,24 @@ test("every settings section has an English title, and a backend error is shown 
   expect(await nav.innerText(), "no Japanese left in the settings navigation").not.toMatch(JAPANESE);
   for (const title of [
     "AI providers",
-    "Translation",
-    "Summaries & chat",
-    "Auto-classification",
-    "Importance",
+    "About you",
     "Import & JS rendering",
     "Import filters",
     "Images",
+    "Translation",
+    "Summaries & chat",
+    "Browser",
+    "Auto-classification",
+    "Importance",
     "Review",
     "Display language",
     "Shortcuts",
-    "Browser",
     "Startup & taskbar",
+    "Updates",
     "Backup",
     "Cloud backup (R2)",
     "Export",
     "Logs & storage",
-    "Updates",
   ]) {
     await nav
       .locator(".ni")

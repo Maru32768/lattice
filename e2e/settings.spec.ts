@@ -2,23 +2,24 @@ import { test, expect, navItem, callsOf } from "./harness.ts";
 
 const SECTIONS = [
   "AI プロバイダ",
-  "翻訳",
-  "要約・対話",
-  "自動分類",
-  "重要度",
+  "自分について",
   "取り込み・JS 描画",
   "取り込みフィルタ",
   "画像",
+  "翻訳",
+  "要約・対話",
+  "ブラウザ",
+  "自動分類",
+  "重要度",
   "復習",
   "表示言語",
   "ショートカット",
-  "ブラウザ",
   "起動・タスクバー",
+  "アップデート",
   "バックアップ",
   "クラウドバックアップ (R2)",
   "エクスポート",
   "ログ・保存場所",
-  "アップデート",
 ];
 
 test("every settings section renders, and Esc goes back to the library", async ({ app }) => {
@@ -26,6 +27,8 @@ test("every settings section renders, and Esc goes back to the library", async (
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
   const heading = app.locator(".stg main h1");
   await expect(nav.locator(".ni .label")).toHaveText(SECTIONS);
+  await expect(nav.locator(".sec")).toHaveText(["AI", "集める", "読む", "整理", "学ぶ", "アプリ", "データ"]);
+  await expect(nav.getByRole("button", { name: "フィード →" })).toHaveCount(0);
   const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
   for (const title of SECTIONS) {
     await section(title).click();
@@ -132,4 +135,34 @@ test("in a narrow window the provider chain wraps instead of squeezing its selec
     // A custom model ID shares the line with its select: each keeps at least 7em.
     expect(box?.width, name).toBeGreaterThanOrEqual(80);
   }
+});
+
+test("自分について and 要約・対話 each save their own instructions without clearing the other's", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  await nav.getByRole("button", { name: "要約・対話" }).click();
+  await expect(app.getByLabel("自分について")).toHaveCount(0);
+  await app.getByLabel("要約の追加の指示").fill("箇条書きで");
+  await app.getByRole("button", { name: "保存", exact: true }).click();
+  await nav.getByRole("button", { name: "自分について" }).click();
+  await expect(app.getByLabel("要約の追加の指示")).toHaveCount(0);
+  await app.getByLabel("自分について").fill("DB の運用担当");
+  await app.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(app.getByRole("status")).toHaveText("保存しました");
+  expect((await callsOf(app, "set_custom_instructions")).at(-1)).toEqual({ settings: { profile: "DB の運用担当", summary: "箇条書きで", chat: "" } });
+});
+
+test("取り込みフィルタ links to the per-feed filters in the feed manager", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "取り込みフィルタ" }).click();
+  await app.locator(".stg main").getByRole("button", { name: "フィードを管理" }).click();
+  await expect(app.locator("main.manage h1")).toHaveText("フィードを管理");
+});
+
+test("the palette opens a settings section by name", async ({ app }) => {
+  await app.keyboard.press("Control+k");
+  await app.keyboard.type(">設定: 翻訳");
+  await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option").first()).toHaveText(/^設定: 翻訳/);
+  await app.keyboard.press("Enter");
+  await expect(app.locator(".stg main h1")).toHaveText("翻訳");
 });
