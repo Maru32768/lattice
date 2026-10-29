@@ -9,6 +9,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
 - **Genres.** Add a genre in Organize › Genres before any article has it; auto classification can then choose it.
 - **Sites not to translate.** The Page view does not translate pages on the sites or URLs listed in Settings › Translation. `*` is allowed, and as in `.gitignore`, a line starting with `!` marks an exception (pages to translate). By default, the list holds the major search engines.
+- **Automatic summaries.** **Summarize automatically** in Settings › Summaries & chat writes a summary for each newly saved article, for all of them or only for those rated at or above an importance you choose. It is off by default.
 
 ### Changed
 

@@ -3,6 +3,7 @@ import { api, r2 } from "../api";
 import { ModelSettings } from "./ModelSettings";
 import { TranslationSettings } from "./TranslationSettings";
 import { InstructionSettings } from "./InstructionSettings";
+import { SummarySettings } from "./SummarySettings";
 import { ChatSettings } from "./ChatSettings";
 import { ClassifySettings } from "./ClassifySettings";
 import { RelevanceSettings } from "./RelevanceSettings";
@@ -35,6 +36,7 @@ function Body({ id, onChanged, onOpenUrl, onFeeds }: { id: SettingsSection; onCh
     case "instructions":
       return (
         <>
+          <SummarySettings />
           <InstructionSettings fields={["summary", "chat"]} />
           <ChatSettings />
         </>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-auto-summarize"
+description = "Enables the set_auto_summarize command without any pre-configured scope."
+commands.allow = ["set_auto_summarize"]
+
+[[permission]]
+identifier = "deny-set-auto-summarize"
+description = "Denies the set_auto_summarize command without any pre-configured scope."
+commands.deny = ["set_auto_summarize"]

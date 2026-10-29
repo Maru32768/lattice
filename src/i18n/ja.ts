@@ -166,6 +166,12 @@ export const ja = {
   "renderSettings.auto": "JS ページを自動で描画",
   "renderSettings.autoDesc":
     "一括インポート・RSS などで本文がほとんど取れなかった記事を、裏の非表示ブラウザで 1 件ずつ描画して取り込み直します (1 件あたり最大 20 秒ほど)。",
+  "summarySettings.auto": "要約を自動で作る",
+  "summarySettings.autoDesc":
+    "新しく保存した記事の要約を作ります。記事 1 件ごとに LLM を 1 回呼ぶので、フィードから多く取り込むと使用量が増えます。重要度で絞ると、重要度の判定の後に作ります (「自分について」が空のときや、重要度の自動判定がオフのときは作りません)。作成済みの要約は作り直しません。",
+  "summarySettings.off": "作らない",
+  "summarySettings.all": "すべての記事",
+  "summarySettings.important": "重要度 {n} 以上の記事",
   "taskbarSettings.autostart": "Windows の起動時に Lattice を起動",
   "taskbarSettings.autostartDesc":
     "サインインしたときに Lattice を自動で開きます。タスク マネージャーの「スタートアップ アプリ」で無効にした場合もここに反映されます。",

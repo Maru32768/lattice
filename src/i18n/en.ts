@@ -173,6 +173,12 @@ export const en = {
   "renderSettings.auto": "Render JS pages automatically",
   "renderSettings.autoDesc":
     "Articles that came out nearly empty (from bulk import, RSS and so on) are rendered one at a time in a hidden background browser and imported again (up to about 20 seconds each).",
+  "summarySettings.auto": "Summarize automatically",
+  "summarySettings.autoDesc":
+    "Writes a summary for each newly saved article. Each one is an LLM call, so importing many articles from feeds adds up. When limited by importance, the summary is written after the article is rated (none while “About you” is empty or automatic rating is off). Existing summaries are never redone.",
+  "summarySettings.off": "Off",
+  "summarySettings.all": "All articles",
+  "summarySettings.important": "Importance {n} or higher",
   "taskbarSettings.autostart": "Start Lattice when Windows starts",
   "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps turns it off here too.",
   "taskbarSettings.badge": "Show the unread count on the taskbar",

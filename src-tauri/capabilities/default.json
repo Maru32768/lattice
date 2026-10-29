@@ -141,6 +141,8 @@
     "allow-chat-delete-thread",
     "allow-get-chat-budget",
     "allow-set-chat-budget",
+    "allow-get-auto-summarize",
+    "allow-set-auto-summarize",
     "allow-set-read",
     "allow-db-path",
     "allow-get-settings",

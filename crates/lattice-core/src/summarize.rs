@@ -1,11 +1,15 @@
 //! Article summary job (§4.4, type "normal"): a short Japanese overview plus key points,
 //! generated from the extracted blocks and stored with the article's content hash.
 
+use rusqlite::{OptionalExtension, params};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use ts_rs::TS;
 
 use crate::instructions;
 use crate::llm::LlmProvider;
 use crate::msg;
+use crate::relevance;
 use crate::store::{ArticleView, Store};
 
 pub const JOB_TYPE: &str = "summarize";
@@ -13,10 +17,67 @@ pub const PROMPT_VERSION: &str = "summary-v1";
 pub const SUMMARY_TYPE: &str = "normal";
 /// Upper bound on article text sent; long articles are cut at a block boundary.
 const MAX_INPUT_CHARS: usize = 40_000;
+const AUTO_SETTING: &str = "auto_summarize";
+
+/// Which saved articles get a summary without a click (Settings › 要約・対話). Off by default:
+/// every summary is an LLM call, and a feed can bring in hundreds of articles.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, rename = "AutoSummarize")]
+#[serde(rename_all = "snake_case")]
+pub enum Auto {
+    #[default]
+    Off,
+    All,
+    /// Once importance rating gives the article at least this score.
+    Important(i64),
+}
+
+pub fn auto(store: &Store) -> Result<Auto, String> {
+    let v = store.setting(AUTO_SETTING).map_err(|e| e.to_string())?;
+    Ok(v.and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default())
+}
+
+pub fn set_auto(store: &Store, a: Auto) -> Result<(), String> {
+    if let Auto::Important(min) = a
+        && !relevance::SCORES.contains(&min)
+    {
+        return Err(msg!("relevance.thresholdRange", min = min));
+    }
+    let v = (a != Auto::Off).then(|| serde_json::to_string(&a).expect("auto mode serializes"));
+    store.set_setting(AUTO_SETTING, v.as_deref()).map_err(|e| e.to_string())
+}
 
 pub fn enqueue(store: &Store, article_id: i64) -> Result<(), String> {
     let key = format!("{JOB_TYPE}:{article_id}:{SUMMARY_TYPE}");
     store.enqueue_job(JOB_TYPE, article_id, "{}", &key).map_err(|e| e.to_string())
+}
+
+/// After ingest and after importance rating: queue an extracted article that has no summary yet,
+/// if the auto mode covers it. An existing summary is left alone even when stale, so summaries
+/// still never change without a click.
+pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
+    let min = match auto(store)? {
+        Auto::Off => return Ok(()),
+        Auto::All => None,
+        Auto::Important(n) => Some(n),
+    };
+    let wanted: bool = store
+        .conn()
+        .query_row(
+            "SELECT a.extraction_status = 'ok' AND NOT EXISTS (SELECT 1 FROM summaries WHERE article_id = a.id)
+                AND (?2 IS NULL OR coalesce((SELECT score FROM relevance WHERE article_id = a.id), 0) >= ?2)
+             FROM articles a WHERE a.id = ?1",
+            params![article_id, min],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(false);
+    if wanted {
+        enqueue(store, article_id)
+    } else {
+        Ok(())
+    }
 }
 
 fn schema() -> Value {

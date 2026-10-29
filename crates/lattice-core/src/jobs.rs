@@ -230,6 +230,7 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             let id = ingest::process(store, &p.http, article_id).await?;
             classify::enqueue_if_auto(store, id)?;
             relevance::enqueue_if_auto(store, id)?;
+            summarize::enqueue_if_auto(store, id)?;
             translate::enqueue_if_auto(store, id)?;
             render::enqueue_if_auto(store, id)?;
             embed::enqueue(store, id, p.embedder.model_id())

@@ -283,6 +283,7 @@ Click **Summarize** under **Summary** at the top of the Reader, and the AI summa
 
 - Summaries reflect **About you**.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
+- **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
 - If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
 In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page.

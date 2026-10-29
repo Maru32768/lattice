@@ -15,6 +15,7 @@ use crate::instructions::{self, PROFILE_HASH_SETTING};
 use crate::llm::LlmProvider;
 use crate::msg;
 use crate::store::Store;
+use crate::summarize;
 use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "relevance";
@@ -328,6 +329,14 @@ async fn rate<P: LlmProvider>(store: &Store, provider: &P, ids: &[i64]) -> Resul
         }
     }
     let saved = save(store, &hash, &judged, &c.provider, c.model.as_deref()).map_err(err);
+    if saved == Ok(true) {
+        for &id in judged.keys() {
+            // The scores are saved; failing the job here would only rate the articles again.
+            if let Err(e) = summarize::enqueue_if_auto(store, id) {
+                log::error!("relevance: queueing the summary of {id}: {e}");
+            }
+        }
+    }
     for id in judged.into_keys() {
         out.insert(
             id,
@@ -515,6 +524,42 @@ mod tests {
         assert!(s.article_row(ids[0]).unwrap().unwrap().relevance_stale, "no profile: every score is out of date");
         drain(&s, &fake).await;
         assert_eq!(fake.calls.lock().unwrap().len(), 2, "a job left after the profile was removed does not call the LLM");
+    }
+
+    #[tokio::test]
+    async fn summaries_are_made_for_new_articles_or_for_important_ones() {
+        use summarize::Auto;
+        let s = Store::open_in_memory().unwrap();
+        profile(&s, "SRE");
+        let ids: Vec<i64> = (0..3).map(|n| saved(&s, n)).collect();
+        let queued = |s: &Store| -> Vec<i64> {
+            let c = s.conn();
+            let mut q = c.prepare("SELECT article_id FROM processing_jobs WHERE type = 'summarize' AND status = 'pending' ORDER BY article_id").unwrap();
+            q.query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect()
+        };
+        let after_ingest = |s: &Store| {
+            for &id in &ids {
+                summarize::enqueue_if_auto(s, id).unwrap();
+                enqueue_if_auto(s, id).unwrap();
+            }
+        };
+
+        assert_eq!(summarize::auto(&s).unwrap(), Auto::Off);
+        after_ingest(&s);
+        assert!(queued(&s).is_empty(), "off by default");
+
+        assert_eq!(summarize::set_auto(&s, Auto::Important(6)).unwrap_err(), msg!("relevance.thresholdRange", min = 6));
+        summarize::set_auto(&s, Auto::Important(5)).unwrap();
+        assert_eq!(summarize::auto(&s).unwrap(), Auto::Important(5));
+        after_ingest(&s);
+        assert!(queued(&s).is_empty(), "not rated yet");
+        drain(&s, &Fake::new()).await;
+        assert_eq!(queued(&s), [ids[2]], "only the article rated 5 (the fake rates them 4, invalid, 5)");
+
+        summarize::set_auto(&s, Auto::All).unwrap();
+        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "v").unwrap();
+        after_ingest(&s);
+        assert_eq!(queued(&s), [ids[1], ids[2]], "every article without a summary; a stale one is left alone");
     }
 
     #[tokio::test]

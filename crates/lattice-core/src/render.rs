@@ -82,6 +82,7 @@ pub fn finish(store: &Store, article_id: i64, rendered: Result<(String, String),
     }
     let id = ingest::store_fetched(store, article_id, &Fetched { final_url: url, status: 200, content_type: Some(RENDERED_CONTENT_TYPE.into()), html })?;
     classify::enqueue_if_auto(store, id)?;
+    crate::summarize::enqueue_if_auto(store, id)?;
     crate::translate::enqueue_if_auto(store, id)?;
     embed::enqueue(store, id, embed_model)?;
     Ok(id)

@@ -3,6 +3,7 @@ export type * from "./ArticleFilter";
 export type * from "./ArticleRow";
 export type * from "./ArticleSort";
 export type * from "./ArticleView";
+export type * from "./AutoSummarize";
 export type * from "./Block";
 export type * from "./BlockAttrs";
 export type * from "./BlockKind";

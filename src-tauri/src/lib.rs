@@ -138,6 +138,7 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     app.wake_net.iter().for_each(|w| w.notify_one()); // extraction has queued its images job
     classify::enqueue_if_auto(&app.store, id)?;
     relevance::enqueue_if_auto(&app.store, id)?;
+    summarize::enqueue_if_auto(&app.store, id)?;
     translate::enqueue_if_auto(&app.store, id)?;
     app.wake_llm.iter().for_each(|w| w.notify_one());
     Ok(id)
@@ -919,6 +920,16 @@ fn set_chat_budget(app: State<'_, App>, budget: chat::Budget) -> Result<(), Stri
 }
 
 #[tauri::command(async)]
+fn get_auto_summarize(app: State<'_, App>) -> Result<summarize::Auto, String> {
+    summarize::auto(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_auto_summarize(app: State<'_, App>, mode: summarize::Auto) -> Result<(), String> {
+    summarize::set_auto(&app.store, mode)
+}
+
+#[tauri::command(async)]
 fn set_read(app: State<'_, App>, id: i64, read: bool) -> Result<(), String> {
     app.store.set_read_status(id, read).map_err(err)
 }
@@ -1441,6 +1452,8 @@ pub fn run() {
             chat_delete_thread,
             get_chat_budget,
             set_chat_budget,
+            get_auto_summarize,
+            set_auto_summarize,
             set_read,
             db_path,
             get_settings,

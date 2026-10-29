@@ -152,6 +152,16 @@ test("自分について and 要約・対話 each save their own instructions wi
   expect((await callsOf(app, "set_custom_instructions")).at(-1)).toEqual({ settings: { profile: "DB の運用担当", summary: "箇条書きで", chat: "" } });
 });
 
+test("要約を自動で作る starts off and saves all articles or an importance threshold", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "要約・対話" }).click();
+  const auto = app.getByLabel("要約を自動で作る");
+  await expect(auto).toHaveValue("off");
+  await auto.selectOption({ label: "重要度 4 以上の記事" });
+  await auto.selectOption({ label: "すべての記事" });
+  await expect.poll(() => callsOf(app, "set_auto_summarize")).toEqual([{ mode: { important: 4 } }, { mode: "all" }]);
+});
+
 test("取り込みフィルタ links to the per-feed filters in the feed manager", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "取り込みフィルタ" }).click();

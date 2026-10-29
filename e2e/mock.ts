@@ -5,6 +5,7 @@ import type {
   ArticleRow,
   ArticleSort,
   ArticleView,
+  AutoSummarize,
   ChainEntry,
   ChatBudget,
   ChatMessage,
@@ -133,6 +134,7 @@ const store = {
   translateInstructions: "",
   custom: { profile: "", summary: "", chat: "" },
   chatBudget: "standard" as ChatBudget,
+  autoSummarize: "off" as AutoSummarize,
   images: { save: true, max_mb: 5 } as ImageSettings,
   backupKeep: 5,
   llm: {
@@ -579,6 +581,8 @@ export const handlers = {
   chat_threads: () => threads,
   get_chat_budget: (): ChatBudget => store.chatBudget,
   set_chat_budget: ({ budget }: { budget: ChatBudget }) => void (store.chatBudget = budget),
+  get_auto_summarize: (): AutoSummarize => store.autoSummarize,
+  set_auto_summarize: ({ mode }: { mode: AutoSummarize }) => void (store.autoSummarize = mode),
   chat_messages: ({ threadId }: { threadId: number }): ChatMessage[] => messages.filter((m) => m.thread_id === threadId),
   chat_delete_thread: ({ threadId }: { threadId: number }) => {
     threads.splice(

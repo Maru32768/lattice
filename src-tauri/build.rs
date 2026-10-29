@@ -117,6 +117,8 @@ const COMMANDS: &[&str] = &[
     "chat_delete_thread",
     "get_chat_budget",
     "set_chat_budget",
+    "get_auto_summarize",
+    "set_auto_summarize",
     "set_read",
     "db_path",
     "get_settings",
