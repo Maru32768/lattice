@@ -19,7 +19,7 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
     "別ウィンドウで開く",
     "Page で開く",
     "URL をコピー",
-    "Index から削除…",
+    "ライブラリから削除…",
   ]);
   await m.getByRole("menuitem", { name: /お気に入り/ }).click();
   await expect(m).toBeHidden();
@@ -30,7 +30,7 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
   await expect(app.locator(".dpane").first().getByRole("tab")).toHaveCount(1);
 
   await row(app, a.title!).click({ button: "right" });
-  await menu(app).getByRole("menuitem", { name: "Index から削除…" }).click();
+  await menu(app).getByRole("menuitem", { name: "ライブラリから削除…" }).click();
   await expect(app.getByRole("alertdialog")).toBeVisible();
   await app.getByRole("alertdialog").getByRole("button", { name: "キャンセル" }).click();
   expect(await callsOf(app, "delete_article")).toEqual([]);
@@ -82,7 +82,7 @@ test("right-click on a tab: the article's menu; an unsaved page's tab offers wha
   await row(app, a.title!).click();
   const tab = app.locator(".dpane").first().getByRole("tab").first();
   await tab.click({ button: "right" });
-  await expect(menu(app).getByRole("menuitem", { name: "Index から削除…" })).toBeVisible();
+  await expect(menu(app).getByRole("menuitem", { name: "ライブラリから削除…" })).toBeVisible();
   await menu(app).getByRole("menuitem", { name: "新しいタブで開く" }).click();
   await expect(app.locator(".dpane").first().getByRole("tab")).toHaveCount(2);
 

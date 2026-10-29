@@ -33,11 +33,11 @@ test("Tab stacks a tag as a facet and keeps the palette open", async ({ app }) =
   await expect(listCount(app)).toHaveText(`${kafka} / ${ARTICLES.length}`);
 });
 
-test("Ctrl+Enter saves a pasted URL to the Index", async ({ app }) => {
+test("Ctrl+Enter saves a pasted URL to the library", async ({ app }) => {
   const url = "https://example.com/new-post";
   await app.keyboard.press("Control+k");
   await app.keyboard.insertText(url);
-  await expect(palette(app).getByRole("option")).toHaveText(["Page で開くEnter", /Index に追加/, "フィードを検出して登録"]);
+  await expect(palette(app).getByRole("option")).toHaveText(["Page で開くEnter", /ライブラリに保存/, "フィードを検出して登録"]);
   await app.keyboard.press("Control+Enter");
   await expect.poll(() => callsOf(app, "save_url")).toEqual([{ url }]);
   await expect(app.locator(".art-title")).toHaveText(url);

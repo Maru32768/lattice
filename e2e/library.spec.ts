@@ -74,3 +74,12 @@ test("an empty result offers to drop one condition", async ({ app }) => {
   await expect(list(app).getByRole("heading", { level: 1 })).toHaveText("すべての記事");
   await expect(listCount(app)).toHaveText(`${webDev} / ${all}`);
 });
+
+test("最近追加 and 要対応 say what they hold in a tooltip", async ({ app }) => {
+  await expect(navItem(app, "最近追加")).toHaveAttribute("title", "7 日以内に保存した記事");
+  await list(app).getByRole("button", { name: "状態", exact: true }).click();
+  await expect(app.getByRole("dialog", { name: "状態で絞り込む" }).getByRole("button", { name: /要対応/ })).toHaveAttribute(
+    "title",
+    "取得か本文の抽出に失敗した記事と、本文が短い記事",
+  );
+});

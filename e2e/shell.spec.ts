@@ -223,7 +223,7 @@ test("a saved article's summary shows in a strip above its page; it can be gener
 
 test("an unsaved page has no summary (H13)", async ({ app }) => {
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
-  await expect(app.locator(".docbar").getByRole("button", { name: "Index に追加" })).toBeVisible();
+  await expect(app.locator(".docbar").getByRole("button", { name: "ライブラリに保存" })).toBeVisible();
   await expect(app.locator(".docbar").getByRole("button", { name: "要約", exact: true })).toHaveCount(0);
   await expect(app.locator(".page-summary")).toHaveCount(0);
 });
@@ -257,7 +257,7 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   expect(reader.items[1]).toBe("描画して取り込み直す");
   expect(page.items[1]).toBe("表示中のページで取り込み直す");
   expect(page.items.toSpliced(1, 1)).toEqual(reader.items.toSpliced(1, 1));
-  expect(reader.items.slice(-2)).toEqual(["URL をコピー", "Index から削除…"]);
+  expect(reader.items.slice(-2)).toEqual(["URL をコピー", "ライブラリから削除…"]);
 
   // The quiz opens beside the page, as it does beside the Reader.
   await app.locator(".docbar").getByRole("button", { name: "理解度チェック" }).click();

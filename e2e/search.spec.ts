@@ -23,7 +23,7 @@ test("search groups hits by article, filters by match type, and Esc leaves it", 
   await expect(pane.locator(".sgrp .at")).toHaveText(groups.slice(1));
   await method.getByRole("button", { name: "意味" }).click();
   await expect(pane.locator(".sgrp .at")).toHaveText(groups.slice(0, 3));
-  await method.getByRole("button", { name: "Hybrid" }).click();
+  await method.getByRole("button", { name: "すべて" }).click();
 
   await pane.getByRole("textbox", { name: "検索語" }).focus();
   await app.keyboard.press("Escape");

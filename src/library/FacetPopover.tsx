@@ -150,6 +150,7 @@ export function FacetPopover({
         aria-pressed={on}
         onClick={() => pick(o.v)}
         onMouseMove={() => setAct(i)}
+        title={dim === "state" && o.v === "issue" ? t("library.issueHint") : undefined}
       >
         <span className={`cb${on ? " on" : ""}`} aria-hidden="true">
           {on && "✓"}

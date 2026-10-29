@@ -181,7 +181,7 @@ test("the palette opens a group, adds the open article to one, and saves a URL i
 
   await app.keyboard.press("Control+k");
   await app.keyboard.type("https://example.com/into-group");
-  await app.getByRole("option", { name: `Index に追加してグループ「${rust.name}」に入れる` }).click();
+  await app.getByRole("option", { name: `ライブラリに保存してグループ「${rust.name}」に入れる` }).click();
   await expect.poll(() => callsOf(app, "group_add")).toHaveLength(1);
   const [call] = (await callsOf(app, "group_add")) as { id: number; articles: number[] }[];
   expect(call.id).toBe(rust.id);

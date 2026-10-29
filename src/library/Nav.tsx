@@ -22,8 +22,9 @@ export interface NavCounts {
 }
 
 const GENRES_SHOWN = 6;
-const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts][] = [
-  [{ kind: "recent" }, "library.recent", "recent", "recent"],
+/** The last entry, when present, is a tooltip saying what the list holds that its name does not. */
+const LIBRARY: [Scope, PlainKey, IconName, keyof NavCounts, PlainKey?][] = [
+  [{ kind: "recent" }, "library.recent", "recent", "recent", "library.recentHint"],
   [{ kind: "unread" }, "common.unread", "unread", "unread"],
   [{ kind: "favorites" }, "common.favorites", "star", "favorites"],
   [{ kind: "all" }, "common.allArticles", "all", "all"],
@@ -136,8 +137,8 @@ export function Nav({
   const [allGenres, setAllGenres] = useState(false);
   const [feedsOpen, setFeedsOpen] = useState(feedsShown);
   const on = (s: Scope) => (scope && sameScope(scope, s) ? " on" : "");
-  const item = (s: Scope, label: React.ReactNode, count: number, lead: React.ReactNode, extra = "") => (
-    <button key={JSON.stringify(s)} className={`ni${on(s)}${extra}`} onClick={() => onScope(s)} aria-current={on(s) ? "page" : undefined}>
+  const item = (s: Scope, label: React.ReactNode, count: number, lead: React.ReactNode, title?: string) => (
+    <button key={JSON.stringify(s)} className={`ni${on(s)}`} onClick={() => onScope(s)} aria-current={on(s) ? "page" : undefined} title={title}>
       {lead}
       <span className="label">{label}</span>
       <span className="n">{n(count)}</span>
@@ -163,7 +164,7 @@ export function Nav({
       </div>
       {/* Only the lists scroll: the ＋ above and the footer's badges (review due, failed jobs) stay in view however many feeds there are. */}
       <div className="nav-scroll">
-        {LIBRARY.map(([s, label, icon, key]) => item(s, t(label), counts[key] as number, <Icon name={icon} />))}
+        {LIBRARY.map(([s, label, icon, key, hint]) => item(s, t(label), counts[key] as number, <Icon name={icon} />, hint && t(hint)))}
         {importantMin != null && item({ kind: "important", min: importantMin }, t("library.important"), counts.important, <Icon name="flag" />)}
 
         <NavGroups groups={groups} scope={scope} onScope={onScope} onCreate={onCreateGroup} onRename={onRenameGroup} onDelete={onDeleteGroup} />

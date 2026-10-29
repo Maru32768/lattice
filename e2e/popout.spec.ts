@@ -55,7 +55,7 @@ test("a document window shows only its tabs, hands one back to the main window, 
   await expect(shell.getByRole("button", { name: "別ウィンドウで開く" })).toHaveCount(0);
   const reported = async () => (await requests(shell)).filter((r) => (r as { kind: string }).kind === "openDocs").at(-1);
   await expect
-    .poll(reported, "its saved articles, for the chat; the page not in the Index is left out")
+    .poll(reported, "its saved articles, for the chat; the page not in the library is left out")
     .toEqual({ kind: "openDocs", label: "doc-1", docs: [{ id: a.id, title: a.title }] });
 
   await shell.getByRole("button", { name: "メインウィンドウに戻す" }).click();

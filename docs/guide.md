@@ -78,7 +78,7 @@ Write your job, interests and the knowledge you can take for granted in **About 
 
 ## Collect articles
 
-For each article, Lattice saves its text, its images and the HTML it was extracted from. You can still read a saved article after the original page changes or disappears. In Lattice, the set of articles you have saved is called the Index.
+For each article, Lattice saves its text, its images and the HTML it was extracted from. You can still read a saved article after the original page changes or disappears. In Lattice, the set of articles you have saved is called the library.
 
 Each way in this chapter can start from the ＋ at the top of the navigation (**Add articles**).
 
@@ -86,7 +86,7 @@ Each way in this chapter can start from the ＋ at the top of the navigation (**
 
 1. Press `Ctrl+K` to open the command palette.
 2. Paste the URL.
-3. Choose **Add to Index (import)**, or press `Ctrl+Enter`.
+3. Choose **Save to library (import)**, or press `Ctrl+Enter`.
 
 The page is fetched in the background.
 
@@ -101,7 +101,7 @@ Lattice decides whether a URL is already saved after removing tracking parameter
 
 ### Save the page you are browsing
 
-To save the page you are viewing in the Page view (the built-in browser), click **Add to Index** in the toolbar. Lattice saves the page as the browser shows it, so pages built with JavaScript and pages that need a login come in complete. Once saved, the toolbar shows **Indexed**, and the Reader, tags, genres and favorites become available.
+To save the page you are viewing in the Page view (the built-in browser), click **Save to library** in the toolbar. Lattice saves the page as the browser shows it, so pages built with JavaScript and pages that need a login come in complete. Once saved, the toolbar shows **Saved**, and the Reader, tags, genres and favorites become available.
 
 ### Import files
 
@@ -227,7 +227,7 @@ Imported Markdown and PDF files have no original web page, so they have no Page 
 
 - **Re-extract**: rebuilds the article from the saved HTML, PDF or Markdown without going online. Use it after a Lattice update improves text extraction.
 - The import-again actions (see [Pages that don't extract well](#pages-that-dont-extract-well))
-- **Auto-classify**, **Translate again**, **Summarize**, **Copy URL** and **Remove from Index…**
+- **Auto-classify**, **Translate again**, **Summarize**, **Copy URL** and **Remove from library…**
 
 **The built-in browser.** The Page view's toolbar has back, forward, reload and **Home (search engine)**. Click the URL to edit it, press `Enter` to open it, or `Esc` to stop editing. Text that is not a URL is searched with the search engine chosen in **Settings › Browser**. Your logins to sites are kept after you quit Lattice.
 
@@ -435,7 +435,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 Right-click an article in the list, or a Reader or Page tab, to open a menu of actions for that article. With the keyboard, press the menu key or `Shift+F10`.
 
-The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from Index…**. For the tab of a page you have not saved, only the items that apply to it appear.
+The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. For the tab of a page you have not saved, only the items that apply to it appear.
 
 ### Act on several articles
 
@@ -445,9 +445,9 @@ The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in
 
 **Done** or `Esc` ends the selection.
 
-### Remove an article from the Index
+### Remove an article from the library
 
-Choose **Remove from Index…** in the ⋯ menu or the right-click menu, and confirm. This cannot be undone.
+Choose **Remove from library…** in the ⋯ menu or the right-click menu, and confirm. This cannot be undone.
 
 - Removed: the saved HTML, text, summary, tags, images, search data, and translations no other article uses
 - Kept: citations in chat answers
@@ -462,7 +462,7 @@ Press `/` to search your saved articles. Lattice's search is a hybrid of full-te
 
 - Results list the matching passages, grouped by article. Move with `j` and `k`. `Enter` opens the passage in the Reader, and `Shift+Enter` in the Page view. `Esc` returns to the article list.
 - The scope menu narrows the search to **Recently added**, **Unread**, **Favorites**, **Important**, a collection, a genre, a feed or a folder. The filter chips narrow it further.
-- Every search uses both methods. Each result shows whether it matched by **Full text**, **Meaning** or **Full text + meaning**. **Search method** (**Hybrid**, **Full text**, **Meaning**) filters the results shown by how they matched.
+- Every search uses both methods. Each result shows whether it matched by **Full text**, **Meaning** or **Full text + meaning**. **Search method** (**All**, **Full text**, **Meaning**) filters the results shown by how they matched.
 - While the search box is empty, up to five recent searches show under it. Click one to search for it again.
 
 **The semantic search model.** Semantic search runs the multilingual-e5-small model (about 470 MB) on your computer. Lattice downloads it the first time it is needed, usually when the first article is prepared for search. Until the model is ready, search shows only full-text results and says why in the results.
@@ -482,7 +482,7 @@ Press `Ctrl+K` or click the box in the title bar to open the palette. Type to se
 - `Enter` runs the selected item. `Ctrl`+click an article to open it in a new tab.
 - `Tab` adds the selected tag, source or genre to the list's filters. The palette stays open, so you can add several in a row.
 - `Ctrl+Enter` searches for what you typed.
-- Pasting a URL offers **Open in Page**, **Add to Index (import)** and **Find and add its feed** (see [Save a URL](#save-a-url)).
+- Pasting a URL offers **Open in Page**, **Save to library (import)** and **Find and add its feed** (see [Save a URL](#save-a-url)).
 
 Besides switching lists, the commands include:
 
@@ -994,7 +994,7 @@ The results say why only full-text results are shown. Usually the semantic searc
 
 ### A page will not save, or saves with little text
 
-- An article marked **Fetch failed** could not be downloaded. Some sites refuse requests that don't come from a browser. Open it in the Page view and click **Add to Index**, or, for a saved article, choose **Import again from the page as shown**.
+- An article marked **Fetch failed** could not be downloaded. Some sites refuse requests that don't come from a browser. Open it in the Page view and click **Save to library**, or, for a saved article, choose **Import again from the page as shown**.
 - An article marked **Little text** may be a page built with JavaScript. Use **Render and import again** in the ⋯ menu, or the Page view method above.
 - For sites that need a login, log in in the Page view first. The hidden browser that renders pages uses the same login.
 - A PDF made only of scanned images has no text data, so there is no text to import.
