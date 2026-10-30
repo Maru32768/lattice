@@ -34,6 +34,8 @@ Windows 10 / 11 で動きます。[Releases ページ](https://github.com/Maru32
 - **インストーラー** (`Lattice_x.y.z_x64-setup.exe`): 通常はこちらを使います。新しいバージョンが出るとアプリ内で更新できます。必要なら Microsoft Visual C++ ランタイムも一緒にインストールします。このとき管理者の承認を求めることがあります。
 - **ポータブル版の zip**: 好きな場所に展開して `Lattice.exe` を起動します。データはすべて隣の `data` フォルダに保存します。自動更新はありません。
 
+Lattice はまだ開発元の証明書で署名していないため、インストーラーや `Lattice.exe` を初めて実行すると「WindowsによってPCが保護されました」と表示されることがあります。上の Releases ページからダウンロードしたものであることを確かめてから、「詳細情報」を押し、続けて「実行」を押してください。
+
 Lattice は WebView2 を使います。WebView2 は Windows 11 には最初から入っています。ポータブル版では、WebView2 と Microsoft Visual C++ x64 ランタイムが入っていなければ、自分でインストールしてください (同梱の CLI もこのランタイムを使います)。ランタイムは Microsoft の[サポートされている最新の Visual C++ 再頒布可能パッケージ](https://learn.microsoft.com/ja-jp/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version)のページから入手できます。
 
 ソースからビルドする方法は[開発者向けガイド](docs/development.md) (英語) にあります。

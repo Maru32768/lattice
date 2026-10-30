@@ -34,6 +34,8 @@ Lattice runs on Windows 10 and 11. Download one of these from the [Releases page
 - **Installer** (`Lattice_x.y.z_x64-setup.exe`): the usual choice. Lattice can update itself when a new version comes out. The installer also installs the Microsoft Visual C++ runtime if it is missing, which may ask for administrator approval.
 - **Portable zip**: unzip it anywhere and run `Lattice.exe`. All data is stored in a `data` folder next to it. It does not update itself.
 
+The first time you run the installer or `Lattice.exe`, Windows may show "Windows protected your PC", because Lattice is not yet signed with a publisher certificate. Make sure you downloaded it from the Releases page above, then click **More info** and **Run anyway**.
+
 Lattice needs WebView2, which comes with Windows 11. With the portable zip, install WebView2 and the Microsoft Visual C++ x64 runtime yourself if they are missing (the bundled CLI needs the same runtime). Microsoft's [latest supported Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-supported-redistributable-version) page has the runtime.
 
 To build from source, see the [developer guide](docs/development.md).
