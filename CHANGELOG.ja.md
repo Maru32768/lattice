@@ -4,6 +4,8 @@ Lattice の主な変更をここに記録します。書式は [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
 ### 追加
 
 - **メモ。** 記事ごとにテキストのメモを書けます。メモの欄は Reader 表示や Page 表示の横に開き、入力を止めると自動で保存します。メモは JSON エクスポートにも含まれます。
@@ -75,5 +77,6 @@ Lattice の主な変更をここに記録します。書式は [Keep a Changelog
 - **通信先。** Lattice が直接行うダウンロードは、既定でプライベートネットワークのアドレスを拒否します。許可・拒否のルールには、ホスト名、ワイルドカードのサブドメイン、IP アドレス、CIDR の範囲を書けます。許可リストにあるものだけを許すモードと、すべてを許すモードもあります。ルールは記事・PDF・フィード・画像・ファビコンのダウンロードと、そのリダイレクト先に適用されます。アプリ内ブラウザ、JavaScript の描画、AI プロバイダ、バックアップは別の経路で通信するので、ルールの対象外です。
 - **プロジェクト。** MIT ライセンス、サードパーティのライセンス表示、英語と日本語の README、mise で固定したツールチェーン。
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maru32768/lattice/releases/tag/v0.1.0

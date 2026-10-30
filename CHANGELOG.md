@@ -4,6 +4,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-30
+
 ### Added
 
 - **Notes.** Write a plain-text note on any article beside the Reader or Page view; it saves as you type and is included in the JSON export.
@@ -75,5 +77,6 @@ The first public release. Everything below is new.
 - **Network destinations.** Direct downloads reject private networks by default. Allow and deny rules support hostnames, wildcard subdomains, IP addresses and CIDR ranges, with allowlist-only and allow-all modes. The rules cover article, PDF, feed, image and favicon downloads, including redirects. The built-in browser, JavaScript rendering, AI providers and backups use separate network paths.
 - **Project.** MIT license, third-party notices, English and Japanese READMEs, and toolchains pinned with mise.
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maru32768/lattice/releases/tag/v0.1.0
