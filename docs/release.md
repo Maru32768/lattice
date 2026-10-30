@@ -39,9 +39,9 @@ Run without a version, `npm run bump` prints what each file holds. `npm test` fa
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 ```
 
-The workflow copies the version's section into the release notes, and fails when the section is missing or empty.
+The workflow copies the version's section into the release notes.
 
-`CHANGELOG.ja.md` is its Japanese translation, line for line: make the same edits there (`scripts/doc-pairs.ts` checks). The release notes come from `CHANGELOG.md` only.
+`CHANGELOG.ja.md` is its Japanese translation, line for line: make the same edits there (`scripts/doc-pairs.ts` checks). The release notes hold the English section, then the Japanese one under a `## 日本語` heading; the workflow fails when either is missing or empty.
 
 ## Third-party licenses
 

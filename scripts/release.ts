@@ -3,14 +3,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { checkVersions } from "./version.ts";
 
-export function releaseNotes(changelog: string, version: string): string {
+export function releaseNotes(changelog: string, version: string, file = "CHANGELOG.md"): string {
   const lines = changelog.split(/\r?\n/);
   const start = lines.findIndex((line) => line.startsWith(`## [${version}]`));
   if (start < 0) {
-    throw new Error(`CHANGELOG.md has no section for ${version}`);
+    throw new Error(`${file} has no section for ${version}`);
   }
   if (!new RegExp(`^## \\[${version.replaceAll(".", "\\.")}\\] - \\d{4}-\\d{2}-\\d{2}$`).test(lines[start])) {
-    throw new Error(`Date the CHANGELOG.md section for ${version} before tagging the release`);
+    throw new Error(`Date the ${file} section for ${version} before tagging the release`);
   }
   const end = lines.findIndex((line, i) => i > start && line.startsWith("## ["));
   const body = lines
@@ -19,7 +19,7 @@ export function releaseNotes(changelog: string, version: string): string {
     .join("\n")
     .trim();
   if (!body || !body.split("\n").some((line) => line.trim() && !line.startsWith("#"))) {
-    throw new Error(`CHANGELOG.md has no release notes for ${version}`);
+    throw new Error(`${file} has no release notes for ${version}`);
   }
   return body;
 }
@@ -47,7 +47,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     if (process.argv[2] !== `v${version}`) {
       throw new Error(`tag ${process.argv[2] ?? "(missing)"} does not match version ${version}`);
     }
-    const body = releaseNotes(readFileSync(join(root, "CHANGELOG.md"), "utf8"), version);
+    const notes = (file: string) => releaseNotes(readFileSync(join(root, file), "utf8"), version, file);
+    // The UI ships in Japanese too, so the release page carries both languages.
+    const body = `${notes("CHANGELOG.md")}\n\n---\n\n## 日本語\n\n${notes("CHANGELOG.ja.md")}`;
     checkSigning(JSON.parse(readFileSync(join(root, "src-tauri/tauri.conf.json"), "utf8")) as TauriConfig, process.env);
     if (process.env.GITHUB_OUTPUT) {
       const delimiter = `LATTICE_NOTES_${crypto.randomUUID()}`;
