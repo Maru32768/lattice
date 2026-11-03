@@ -189,6 +189,9 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
 .tbl .num { font: 12px var(--mono); color: var(--ink2); text-align: right; white-space: nowrap; }
 .tbl th.num { font: inherit; font-size: 11px; color: var(--ink3); }
 
+/* No transitions at all, rather than very short ones: a duration on every element turns every property into a
+   transition (the default property is all), and the article list's padding then lagged a frame behind its rows,
+   which pulled the scroll back a row at the end of the list. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
 }

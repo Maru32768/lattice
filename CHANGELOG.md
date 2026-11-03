@@ -19,6 +19,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 - Images inside a paragraph or a link (as on many blogs) were dropped when an article was saved, so the Reader never showed them. For an article saved before, choose **Re-extract (from the saved HTML)** in the Reader’s ⋯ menu to get its images.
 - Opening the editor of a feed low in the Feeds table no longer scrolls the whole window, which left a blank band under the app.
+- With animation effects turned off in Windows, scrolling to the end of a long article list was pulled back a row just before the last article.
 - Launching Lattice while it is already running now brings the open window to the front instead of starting a second copy. The two copies ran the same jobs, so the same request could be sent to an AI provider (and paid for) twice.
 - Starting the app while `lattice-cli save --run` or the MCP server's `save` works on an article no longer makes the app take over its job and run it a second time. A job left running by a CLI stopped mid-run, or one whose result could not be recorded, now goes back to the queue within about a minute instead of staying stuck until a restart.
 

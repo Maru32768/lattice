@@ -99,3 +99,28 @@ test("すべて既読にする marks every unread article shown as read, after a
   await expect(navItem(app, "未読").locator(".n")).toHaveText("0");
   await expect(button).toBeDisabled();
 });
+
+test.describe("with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+
+  test("the wheel reaches the end of a long list", async ({ shell }) => {
+    // A transition on every property (the old reduced-motion rule) delayed the virtual list's padding by a frame:
+    // near the end the list came out a row short each time it swapped rows, and the scroll was pulled back a row.
+    await shell.route(/\/e2e\/fixtures\.ts/, async (route) => {
+      const res = await route.fetch();
+      const more = "ARTICLES.push(...Array.from({ length: 150 }, (_, i) => ({ ...ARTICLES[0], id: 5000 + i, title: `Extra ${i}` })));";
+      await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
+    });
+    await shell.goto("/");
+    const body = list(shell).locator(".list-body");
+    await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+    await body.evaluate((el) => void (el.scrollTop = el.scrollHeight - el.clientHeight - 1200));
+    const box = (await body.boundingBox())!;
+    await shell.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let i = 0; i < 20; i++) {
+      await shell.mouse.wheel(0, 100);
+      await shell.waitForTimeout(50);
+    }
+    await expect.poll(() => body.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBe(0);
+  });
+});
