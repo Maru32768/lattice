@@ -25,6 +25,7 @@ const requests = async (page: Page) =>
 test("別ウィンドウで開く moves the tab to a new document window whose layout waits in storage", async ({ app }) => {
   await row(app, a.title!).click();
   await row(app, b.title!).click({ modifiers: ["Control"] });
+  await app.locator(".dpane").first().getByRole("tab").nth(1).click();
   await app.getByRole("button", { name: "別ウィンドウで開く" }).click();
   await expect(titles(app)).toHaveText([a.title!]);
   expect(await callsOf(app, "open_window")).toEqual([{ label: "doc-1" }]);

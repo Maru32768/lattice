@@ -39,12 +39,14 @@ test("openBehind: links opened from a page line up after it in click order, and 
   const source = activeTab(focusedPane(l))!.id;
   l = activate(l, focusedPane(l).tabs[0].id);
   const a = focusedPane(l).tabs[0].id;
-  l = openBehind(l, "https://b.test/1", a);
-  l = openBehind(l, "https://b.test/2", a);
+  l = openBehind(l, page("https://b.test/1"), a);
+  l = openBehind(l, page("https://b.test/2"), a);
   assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9"]);
-  l = openBehind(l, "https://c.test/", source);
-  assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9 https://c.test/"], "after the tab that opened it");
-  assert.equal(openBehind(l, "https://x.test/", 999), l, "a closed source opens nothing");
+  l = openBehind(l, reader(7), source);
+  assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9 7"], "after the tab that opened it");
+  assert.equal(openBehind(l, page("https://x.test/"), 999), l, "a closed source opens nothing");
+  assert.deepEqual(picture(open(l, reader(8), "behind")), ["https://a.test/* https://b.test/1 https://b.test/2 8 9 7"], "behind the active tab");
+  assert.deepEqual(picture(open(single(), reader(8), "behind")), ["8*"], "an empty pane shows it");
 });
 
 test("open: fills the empty pane, then replaces the active tab; a new tab goes right after it", () => {

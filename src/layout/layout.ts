@@ -13,6 +13,8 @@ export interface ReaderTab {
   id: Id;
   articleId: number;
   focus?: Focus;
+  /** The tab this one was opened behind (`openBehind`): its later ones go after this, in click order. */
+  opener?: Id;
 }
 
 export interface PageTab {
@@ -37,11 +39,13 @@ export interface PageTab {
   saved: number | null;
   /** The page overlay's translation while it runs: blocks done of those sent so far. */
   translating?: { done: number; total: number };
-  /** The tab whose page opened this one behind it (`openBehind`): its later ones go after this, in click order. */
+  /** The tab this one was opened behind (`openBehind`): its later ones go after this, in click order. */
   opener?: Id;
 }
 
 export type Tab = ReaderTab | PageTab;
+/** In the active tab, a new tab brought to the front, or a new tab behind the active one (a middle or Ctrl click). */
+export type Where = "active" | "new" | "behind";
 
 /** What to open: a Reader of an article, or a Page of a URL (`key`: the webview of a tab moved from another window). */
 export type Doc =
@@ -188,11 +192,14 @@ function shows(t: Tab, doc: Doc): boolean {
 /**
  * Opens `doc` in the focused pane: in its active tab (or a new one when `where` is "new" or the
  * pane is empty). In another pane when `pane` is given. A new tab goes right after the active one,
- * or at `index` (a tab dropped from another window).
+ * or at `index` (a tab dropped from another window); "behind" leaves the active tab in front (`openBehind`).
  */
-export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pane = l.focused, index?: number): Layout {
+export function open(l: Layout, doc: Doc, where: Where = "active", pane = l.focused, index?: number): Layout {
   const p = paneById(l, pane) ?? focusedPane(l);
   const cur = activeTab(p);
+  if (cur && where === "behind") {
+    return openBehind(l, doc, cur.id);
+  }
   if (cur && where === "active") {
     if (shows(cur, doc)) {
       return focus(l, p.id);
@@ -206,20 +213,20 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
 }
 
 /**
- * A page opened from tab `source` without leaving it (a middle-clicked link): after `source` and the tabs it opened
- * that way before, so several links line up in the order they were clicked. Neither the active tab nor focus moves.
+ * A document opened from tab `source` without leaving it (a middle-clicked link or row): after `source` and the tabs
+ * opened behind it before, so several line up in the order they were clicked. Neither the active tab nor focus moves.
  */
-export function openBehind(l: Layout, url: string, source: Id): Layout {
+export function openBehind(l: Layout, doc: Doc, source: Id): Layout {
   const hit = tabById(l, source);
   if (!hit) {
     return l;
   }
   const { pane } = hit;
   let at = pane.tabs.findIndex((t) => t.id === source) + 1;
-  while (at < pane.tabs.length && pane.tabs[at]?.kind === "page" && (pane.tabs[at] as PageTab).opener === source) {
+  while (at < pane.tabs.length && pane.tabs[at]?.opener === source) {
     at++;
   }
-  const tab: PageTab = { ...(tabFor({ kind: "page", url }, l.next) as PageTab), opener: source };
+  const tab: Tab = { ...tabFor(doc, l.next), opener: source };
   return { ...replacePane(l, { ...pane, tabs: pane.tabs.toSpliced(at, 0, tab) }), next: l.next + 1 };
 }
 

@@ -70,6 +70,9 @@ test("articles opened in the focused tab come back in order; a tab switch is und
     .click({ modifiers: ["Control"] });
   const tabs = app.locator(".dpane").first().getByRole("tab");
   await expect(tabs).toHaveCount(2);
+  // It opened behind: switching to it is the step to undo.
+  await tabs.nth(1).click();
+  await expect(title).toHaveText(a.title!);
   await back(app).click();
   await expect(tabs, "back to the first tab, not a reload of it").toHaveCount(2);
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");

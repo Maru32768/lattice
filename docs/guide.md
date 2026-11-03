@@ -313,7 +313,7 @@ Press `Ctrl+P` in the Page view to open the Windows print dialog.
 Each pane in the document area has a row of tabs. A tab holds an article in the Reader or a web page.
 
 - Opening an article from the list, the palette, search results or a chat citation replaces the contents of the shown tab in the focused pane.
-- To open it in a new tab instead, `Ctrl`+click or middle-click.
+- To open it in a new tab instead, `Ctrl`+click or middle-click. As in a browser, the new tab opens behind the current one, which stays in front; several line up in the order you opened them. Only from the palette does the new tab come to the front.
 - **New tab** (+) at the end of the tab row opens the search engine's home page in a new tab, with its address selected in the address bar so you can paste or type another right away. `Ctrl+T` opens the palette, and what you choose there opens in a new tab.
 - Close a tab with `Ctrl+W`, its ×, or a middle-click on it.
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.

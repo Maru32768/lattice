@@ -6,23 +6,33 @@ const tabs = (page: import("@playwright/test").Page, pane = 0) => page.locator("
 const titles = (page: import("@playwright/test").Page, pane = 0) => tabs(page, pane).locator(".tab-t");
 const [a, b, c] = ARTICLES;
 
-test("Ctrl-click opens a second tab; Ctrl+Tab cycles; Ctrl+W closes back to one", async ({ app }) => {
+test("Ctrl-click opens a second tab behind the first; Ctrl+Tab cycles; Ctrl+W closes back to one", async ({ app }) => {
   await (await listRow(app, a.title!)).click();
   await expect(titles(app)).toHaveText([a.title!]);
   await (await listRow(app, b.title!)).click({ modifiers: ["Control"] });
   await expect(titles(app)).toHaveText([a.title!, b.title!]);
-  await expect(tabs(app).nth(1)).toHaveAttribute("aria-selected", "true");
-  await expect(app.locator(".art-title")).toHaveText(b.title!);
+  // As in a browser, the article being read stays in front.
+  await expect(tabs(app).nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
 
   await app.keyboard.press("Control+Tab");
-  await expect(app.locator(".art-title")).toHaveText(a.title!);
+  await expect(app.locator(".art-title")).toHaveText(b.title!);
   await (await listRow(app, c.title!)).click();
   // A plain click replaces the active tab.
-  await expect(titles(app)).toHaveText([c.title!, b.title!]);
+  await expect(titles(app)).toHaveText([a.title!, c.title!]);
 
   await app.keyboard.press("Control+w");
-  await expect(titles(app)).toHaveText([b.title!]);
-  await expect(app.locator(".art-title")).toHaveText(b.title!);
+  await expect(titles(app)).toHaveText([a.title!]);
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
+});
+
+test("middle-clicked rows open behind the article being read, in the order they were clicked", async ({ app }) => {
+  await (await listRow(app, a.title!)).click();
+  await (await listRow(app, b.title!)).click({ button: "middle" });
+  await (await listRow(app, c.title!)).click({ button: "middle" });
+  await expect(titles(app)).toHaveText([a.title!, b.title!, c.title!]);
+  await expect(tabs(app).nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
 });
 
 test("a tab reorders by drag; middle-click closes it", async ({ app }) => {
@@ -128,9 +138,12 @@ test("a chat citation and a palette article open in a new tab on Ctrl / middle c
   await expect(titles(app)).toHaveText([a.title!, b.title!]);
   await app.locator(".chat .source").first().click({ button: "middle" });
   await expect(titles(app)).toHaveText([a.title!, b.title!, b.title!]);
+  await expect(tabs(app).nth(0), "citations open behind the article being read").toHaveAttribute("aria-selected", "true");
 
+  // The palette is not a page being read: its new tab comes to the front, right after the active one.
   await app.keyboard.press("Control+k");
   await app.keyboard.insertText(c.title!);
   await app.locator(".pal .it-l").getByText(c.title!, { exact: true }).click({ button: "middle" });
-  await expect(titles(app)).toHaveText([a.title!, b.title!, b.title!, c.title!]);
+  await expect(titles(app)).toHaveText([a.title!, c.title!, b.title!, b.title!]);
+  await expect(tabs(app).nth(1)).toHaveAttribute("aria-selected", "true");
 });

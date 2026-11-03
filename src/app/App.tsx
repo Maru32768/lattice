@@ -270,7 +270,7 @@ export default function App() {
 
   function openHit(h: SearchHit, page = false, newTab = false) {
     const a = articleById.get(h.article_id);
-    const where: Where = newTab ? "new" : "active";
+    const where: Where = newTab ? "behind" : "active";
     if (page && a) {
       return openPage(a.original_url, h.text, a, where);
     }
@@ -299,8 +299,7 @@ export default function App() {
   }
 
   /** Opens in the view the focused document uses (Reader by default). */
-  function openArticle(a: ArticleRow, newTab = false) {
-    const where: Where = newTab ? "new" : "active";
+  function openArticle(a: ArticleRow, where: Where = "active") {
     if (cur?.kind === "page") {
       openPage(a.original_url, undefined, a, where);
     } else {
@@ -368,7 +367,7 @@ export default function App() {
     if (!IS_MAIN) {
       return void toMain({ kind: "cite", citation: c, newTab });
     }
-    const where: Where = newTab ? "new" : "active";
+    const where: Where = newTab ? "behind" : "active";
     if (articleById.has(c.article_id)) {
       openReader(c.article_id, { block: c.block_id, label: t("app.citation", { n: c.n }), terms: [], tone: "cite" }, where);
     } else if (c.url) {
@@ -415,7 +414,7 @@ export default function App() {
     difficulty: (ids, level) => void actOn(ids, (id) => api.setDifficulty(id, level)),
     genre: (ids, name) => void actOn(ids, (id) => api.setGenre(id, name)),
     genres: genres.map((g) => g.name),
-    openNew: (a) => openArticle(a, true),
+    openNew: (a) => openArticle(a, "new"),
     popOut: IS_MAIN ? (a) => void win.popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
     page: (a) => openPage(a.original_url, undefined, a),
     copyUrl: (a) => copyUrl(a.original_url),
@@ -1005,7 +1004,7 @@ export default function App() {
           translateOnPick(v, m);
         }}
         onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)}
-        onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "new" : "active", pane.id)}
+        onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "behind" : "active", pane.id)}
         onRetry={vAct(() => api.saveUrl(a.original_url))}
         onTranslate={vAct(api.translateArticle)}
         onTag={(name, add) => act(() => (add ? api.addTag(a.id, name) : api.removeTag(a.id, name)), a.id)}
@@ -1186,7 +1185,7 @@ export default function App() {
                     setScopeState(r.scope);
                     setFacets(r.facets);
                   }}
-                  onOpen={openArticle}
+                  onOpen={(a, newTab) => openArticle(a, newTab ? "behind" : "active")}
                   onGroupMembers={groupMembers}
                   onCreateGroup={createGroup}
                   onRowMenu={openRowMenu}
