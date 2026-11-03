@@ -351,6 +351,8 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     relevance: null,
     relevance_reason: null,
     relevance_stale: false,
+    relevance_manual: false,
+    relevance_ai: null,
     ...extra,
   });
   return id;
@@ -657,6 +659,12 @@ export const handlers = {
     const a = article(id);
     a.difficulty = level;
     a.difficulty_manual = level != null;
+  },
+  set_relevance: ({ id, score }: { id: number; score: number | null }) => {
+    const a = article(id);
+    a.relevance = score ?? a.relevance_ai;
+    a.relevance_manual = score != null;
+    a.relevance_stale = false;
   },
   get_translate_keep_terms: (): boolean => store.keepTerms,
   set_translate_keep_terms: ({ on }: { on: boolean }) => void (store.keepTerms = on),

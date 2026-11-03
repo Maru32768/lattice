@@ -991,6 +991,7 @@ export default function App() {
         onTag={(name, add) => act(() => (add ? api.addTag(a.id, name) : api.removeTag(a.id, name)), a.id)}
         onGenre={(name) => act(() => api.setGenre(a.id, name), a.id)}
         onDifficulty={(level) => act(() => api.setDifficulty(a.id, level), a.id)}
+        onRelevance={(score) => act(() => api.setRelevance(a.id, score), a.id)}
         saveWordSeq={saveWordSeq}
         onVocabChanged={loadVocab}
         groups={groupRows}

@@ -14,7 +14,7 @@ import {
   translatedSentences,
   translationProgress,
 } from "./mixed";
-import { DIFFICULTY_LABELS, genreSwatch } from "../library/library";
+import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
 import { highlight } from "../search/search";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
@@ -895,6 +895,7 @@ export function Reader({
   onTag,
   onGenre,
   onDifficulty,
+  onRelevance,
   saveWordSeq,
   onVocabChanged,
   groups,
@@ -918,6 +919,7 @@ export function Reader({
   onTag: (name: string, add: boolean) => void;
   onGenre: (name: string) => void;
   onDifficulty: (level: number | null) => void;
+  onRelevance: (score: number | null) => void;
   /** Bumped by the 単語を登録 shortcut: saves the word selected in this article, if any. */
   saveWordSeq: number;
   /** A word was saved. */
@@ -1188,6 +1190,24 @@ export function Reader({
                 </label>
               )}
               {!failed && (
+                <label className="chip sel-chip" title={t("reader.relevanceHint")}>
+                  {t("reader.relevance", { score: a.relevance ?? "–" })}
+                  {a.relevance_manual && ` · ${t("reader.manual")}`}
+                  <select
+                    value={a.relevance_manual ? (a.relevance ?? "") : ""}
+                    aria-label={t("common.relevance")}
+                    onChange={(e) => onRelevance(e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">{t("reader.relevanceAuto", { x: a.relevance_ai ?? t("library.relevanceNone") })}</option>
+                    {RELEVANCE_LABELS.map((l, i) => (
+                      <option key={l} value={i + 1}>
+                        {i + 1} {t(l)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {!failed && (
                 <span className="chip-cap">
                   {classifying ? t("reader.classifying") : a.genre_manual || a.difficulty_manual ? t("reader.manual") : t("reader.auto")}
                   {classify?.last_error && !classifying && classify.status !== "succeeded" && (
@@ -1199,9 +1219,9 @@ export function Reader({
               )}
             </div>
 
-            {a.relevance != null && (
+            {a.relevance_reason && (
               <p className="art-relevance">
-                <span className="imp-score">{t("reader.relevance", { score: a.relevance })}</span>
+                <span className="imp-score">{t("reader.relevanceAi", { score: a.relevance_ai ?? "–" })}</span>
                 {a.relevance_reason}
                 {a.relevance_stale && <span className="muted">{t("reader.relevanceStale")}</span>}
               </p>

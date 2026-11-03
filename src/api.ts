@@ -177,6 +177,7 @@ export const api = {
   deleteGenre: (name: string) => invoke<void>("delete_genre", { name }),
   setArticleNote: (id: number, body: string) => invoke<void>("set_article_note", { id, body }),
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
+  setRelevance: (id: number, score: number | null) => invoke<void>("set_relevance", { id, score }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
   /** 保存した記事を自動で翻訳 (off by default). */

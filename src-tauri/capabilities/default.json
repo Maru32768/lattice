@@ -73,6 +73,7 @@
     "allow-delete-genre",
     "allow-set-article-note",
     "allow-set-difficulty",
+    "allow-set-relevance",
     "allow-classify-article",
     "allow-classify-unclassified",
     "allow-get-auto-classify",

@@ -50,6 +50,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00029_article_notes.sql"),
     include_str!("../db/migrations/00030_relevance_axes.sql"),
     include_str!("../db/migrations/00031_job_heartbeat.sql"),
+    include_str!("../db/migrations/00032_relevance_manual.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -172,11 +173,14 @@ pub struct ArticleRow {
     pub from_feed: bool,
     /// Extracted from a PDF (a URL's or an imported file's), kept as the snapshot.
     pub pdf: bool,
-    /// Importance for the reader, 1-5 (relevance.rs), and why.
+    /// Importance for the reader, 1-5 (relevance.rs): the user's pick, else the model's score. The reason is the model's.
     pub relevance: Option<i64>,
     pub relevance_reason: Option<String>,
-    /// Judged against another profile than the current one.
+    /// Judged against another profile than the current one (never for a pick).
     pub relevance_stale: bool,
+    pub relevance_manual: bool,
+    /// The model's score, also under a pick.
+    pub relevance_ai: Option<i64>,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -225,7 +229,7 @@ fn filter_cond(filter: &ArticleFilter) -> (&'static str, Option<rusqlite::types:
         ArticleFilter::Feed { id: Some(id) } => ("feed_id = ?1", Some((*id).into())),
         ArticleFilter::Feed { id: None } => ("feed_id IS NULL", None),
         ArticleFilter::Group { id } => ("EXISTS (SELECT 1 FROM group_articles WHERE article_id = articles.id AND group_id = ?1)", Some((*id).into())),
-        ArticleFilter::Important { min } => ("EXISTS (SELECT 1 FROM relevance WHERE article_id = articles.id AND score >= ?1)", Some((*min).into())),
+        ArticleFilter::Important { min } => (concat!(crate::relevance::score_sql!(), " >= ?1"), Some((*min).into())),
         ArticleFilter::Folder { id } => ("feed_id IN (SELECT id FROM feeds WHERE folder_id = ?1)", Some((*id).into())),
     }
 }
@@ -371,11 +375,13 @@ const ARTICLE_COLS: &str = concat!(
     (SELECT coalesce(custom_title, title, url) FROM feeds WHERE id = articles.feed_id), text_length, difficulty, difficulty_source IS 'manual',
     (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1),
     (SELECT json_group_array(group_id) FROM (SELECT group_id FROM group_articles WHERE article_id = articles.id ORDER BY group_id)),
-    (SELECT score FROM relevance WHERE article_id = articles.id), (SELECT reason FROM relevance WHERE article_id = articles.id),
-    coalesce((SELECT NOT ",
+    ",
+    crate::relevance::score_sql!(),
+    ", (SELECT reason FROM relevance WHERE article_id = articles.id),
+    relevance_manual IS NULL AND coalesce((SELECT NOT ",
     crate::relevance::current_sql!(),
     " FROM relevance WHERE article_id = articles.id), 0),
-    (SELECT folder_id FROM feeds WHERE id = articles.feed_id)"
+    (SELECT folder_id FROM feeds WHERE id = articles.feed_id), relevance_manual IS NOT NULL, (SELECT score FROM relevance WHERE article_id = articles.id)"
 );
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
@@ -416,6 +422,8 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         relevance: r.get(25)?,
         relevance_reason: r.get(26)?,
         relevance_stale: r.get(27)?,
+        relevance_manual: r.get(29)?,
+        relevance_ai: r.get(30)?,
     })
 }
 
@@ -752,7 +760,7 @@ impl Store {
             // shortcut: published_at is whatever the page declared (usually ISO 8601); normalize at extraction if odd formats show up.
             ArticleSort::PublishedDesc => "published_at DESC, saved_at DESC, id DESC", // NULLs sort last when descending
             ArticleSort::DifficultyAsc => "difficulty IS NULL, difficulty, saved_at DESC, id DESC",
-            ArticleSort::RelevanceDesc => "(SELECT score FROM relevance WHERE article_id = articles.id) DESC NULLS LAST, saved_at DESC, id DESC",
+            ArticleSort::RelevanceDesc => concat!(crate::relevance::score_sql!(), " DESC NULLS LAST, saved_at DESC, id DESC"),
         };
         let (cond, arg) = filter_cond(filter);
         let c = self.conn();

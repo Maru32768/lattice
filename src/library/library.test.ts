@@ -52,6 +52,8 @@ const row = (id: number, p: Partial<ArticleRow> = {}): ArticleRow => ({
   relevance: null,
   relevance_reason: null,
   relevance_stale: false,
+  relevance_manual: false,
+  relevance_ai: null,
   ...p,
 });
 const all = [

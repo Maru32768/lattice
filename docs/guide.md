@@ -387,6 +387,7 @@ Classification groups up to 20 unclassified articles into one call. To stop it, 
 Once you have written [About you](#write-about-you), the AI provider rates each newly saved article from 1 to 5 for how important it is to you, with a one-line reason. It weighs both how close the article is to your interests and what you would gain from reading it, judged against what About you says you value. So a basic article on one of your topics can rate lower than an insightful one from a neighboring field. The five levels are **Not for you**, **Low priority**, **Read if interested**, **Worth reading soon** and **Must read**.
 
 - In the article list, articles rated 4 or 5 have a mark. Hold the pointer over it to see the reason. The Reader shows the rating and reason under the title.
+- You can pick the importance by hand under the title in the Reader. Your pick overrides the AI rating and stays when articles are rated again. Pick **Leave it to AI** to go back to the AI rating.
 - **Important** in the navigation lists articles rated at least **Lowest importance in Important** in **Settings › Importance** (4 by default).
 - To stop rating, turn off **Rate newly saved articles** in **Settings › Importance**.
 

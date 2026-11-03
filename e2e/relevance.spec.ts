@@ -50,7 +50,7 @@ test("sorting and filtering by importance; the Reader shows the reason", async (
 
   await list(app).locator(".row", { hasText: stale.title! }).click();
   const line = app.locator(".art-relevance");
-  await expect(line).toContainText(`重要度 ${stale.relevance}/5`);
+  await expect(line).toContainText(`AI の判定 ${stale.relevance}/5`);
   await expect(line).toContainText(stale.relevance_reason!);
   await expect(line).toContainText("以前の基準で判定");
 });
@@ -79,4 +79,21 @@ test("without a profile nothing is rated and settings say why; with one, scores 
   await list(app).getByRole("button", { name: "重要度を付け直す" }).click();
   await expect(list(app).getByRole("status")).toHaveText("1 件を判定キューに追加しました");
   expect((await callsOf(app, "rescore_relevance")).at(-1)).toEqual({ ids: [top.id] });
+});
+
+test("picking an importance by hand overrides the AI's, until it is left to AI again", async ({ app }) => {
+  await list(app).locator(".row", { hasText: low.title! }).click();
+  const pick = app.getByRole("combobox", { name: "重要度", exact: true });
+  await expect(pick).toHaveValue("");
+  await pick.selectOption("5");
+  expect((await callsOf(app, "set_relevance")).at(-1)).toEqual({ id: low.id, score: 5 });
+  await expect(app.locator(".art-chips")).toContainText("重要度 5/5 · 手動");
+  await expect(app.locator(".art-relevance"), "the AI's own rating stays in view").toContainText(`AI の判定 ${low.relevance}/5`);
+  await expect(list(app).locator(".row", { hasText: low.title! }).locator(".imp")).toHaveText("重要 5");
+  await expect(navItem(app, "重要").locator(".n")).toHaveText(String(important.length + 1));
+
+  await pick.selectOption({ label: `AI の判定に任せる (${low.relevance})` });
+  await expect(app.locator(".art-chips")).toContainText(`重要度 ${low.relevance}/5`);
+  await expect(app.locator(".art-chips")).not.toContainText("重要度 2/5 · 手動");
+  await expect(navItem(app, "重要").locator(".n")).toHaveText(String(important.length));
 });

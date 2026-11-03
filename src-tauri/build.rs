@@ -32,6 +32,7 @@ const COMMANDS: &[&str] = &[
     "delete_genre",
     "set_article_note",
     "set_difficulty",
+    "set_relevance",
     "classify_article",
     "classify_unclassified",
     "get_auto_classify",

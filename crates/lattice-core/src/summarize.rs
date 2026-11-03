@@ -64,9 +64,13 @@ pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
     let wanted: bool = store
         .conn()
         .query_row(
-            "SELECT a.extraction_status = 'ok' AND NOT EXISTS (SELECT 1 FROM summaries WHERE article_id = a.id)
-                AND (?2 IS NULL OR coalesce((SELECT score FROM relevance WHERE article_id = a.id), 0) >= ?2)
-             FROM articles a WHERE a.id = ?1",
+            concat!(
+                "SELECT extraction_status = 'ok' AND NOT EXISTS (SELECT 1 FROM summaries WHERE article_id = articles.id)
+                    AND (?2 IS NULL OR coalesce(",
+                relevance::score_sql!(),
+                ", 0) >= ?2)
+                 FROM articles WHERE id = ?1"
+            ),
             params![article_id, min],
             |r| r.get(0),
         )

@@ -198,6 +198,8 @@ UI 全面改修（4 層モデル: scope・facet・一覧・文書）のあとで
 | タグ付け | 自動分類 | 済 | F5 の分類と同じ job でタグ候補も出す。 |
 | difficulty estimation | 難易度推定 | 済 | Phase 3 の表示制御の入力になる。 |
 | relevance estimation | 重要度判定 | 済 | G54。サイドバーの「重要」が「High relevance」inbox。 |
+| 重要度の手動変更 | 重要度判定 | 済 | Reader で 1〜5 を選ぶと `articles.relevance_manual` に入り、AI の点数 (`relevance.score`) より優先する。AI の点数は残す。 |
+| 手動変更から重要度判定を調整する | 重要度判定 | 将来 | 手動変更と AI の点数の組を few-shot の例として判定 prompt に入れるか、「自分について」への追記を提案する。組が溜まってから。 |
 | 要約の種類（short / detailed / key_points） | 要約 | 後 | 今は normal だけ。 |
 | technical term を英語のまま残すモード | 翻訳 | 済 | 翻訳 prompt の option にする。 |
 | Anthropic API provider | AI provider | 済 | `anthropic.rs`（design-review §6）。 |

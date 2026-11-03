@@ -30,10 +30,14 @@ from_feed: boolean,
  */
 pdf: boolean, 
 /**
- * Importance for the reader, 1-5 (relevance.rs), and why.
+ * Importance for the reader, 1-5 (relevance.rs): the user's pick, else the model's score. The reason is the model's.
  */
 relevance: number | null, relevance_reason: string | null, 
 /**
- * Judged against another profile than the current one.
+ * Judged against another profile than the current one (never for a pick).
  */
-relevance_stale: boolean, };
+relevance_stale: boolean, relevance_manual: boolean, 
+/**
+ * The model's score, also under a pick.
+ */
+relevance_ai: number | null, };

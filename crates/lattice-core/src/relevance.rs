@@ -40,6 +40,13 @@ macro_rules! current_sql {
     };
 }
 pub(crate) use current_sql;
+/// SQL for an article's importance: the user's pick, else the model's score. `articles` must be in scope unaliased.
+macro_rules! score_sql {
+    () => {
+        "coalesce(articles.relevance_manual, (SELECT score FROM relevance WHERE article_id = articles.id))"
+    };
+}
+pub(crate) use score_sql;
 /// "off" stops rating new articles; absent means on (only while a profile exists).
 const AUTO_SETTING: &str = "auto_relevance";
 const THRESHOLD_SETTING: &str = "relevance_threshold";
@@ -134,6 +141,16 @@ fn enqueue(store: &Store, ids: Option<&[i64]>, force: bool) -> Result<usize, Str
             params![JOB_TYPE, ids.map(|i| json!(i).to_string()), force],
         )
         .map_err(err)
+}
+
+/// The user's importance, pinned against rating runs; `None` goes back to the model's score. Raising it can bring
+/// the article into an automatic summary that covers only important ones.
+pub fn set_manual(store: &Store, article_id: i64, score: Option<i64>) -> Result<(), String> {
+    if score.is_some_and(|s| !SCORES.contains(&s)) {
+        return Err(msg!("relevance.thresholdRange", min = score));
+    }
+    store.conn().execute("UPDATE articles SET relevance_manual = ?2 WHERE id = ?1", params![article_id, score]).map_err(err)?;
+    summarize::enqueue_if_auto(store, article_id)
 }
 
 /// After ingest: queue a newly extracted article when a profile exists and auto rating is on.
@@ -524,6 +541,34 @@ mod tests {
         assert!(s.article_row(ids[0]).unwrap().unwrap().relevance_stale, "no profile: every score is out of date");
         drain(&s, &fake).await;
         assert_eq!(fake.calls.lock().unwrap().len(), 2, "a job left after the profile was removed does not call the LLM");
+    }
+
+    #[tokio::test]
+    async fn a_picked_importance_wins_and_keeps_the_models_score() {
+        let s = Store::open_in_memory().unwrap();
+        profile(&s, "Rust でデータベースを書いている");
+        let ids: Vec<i64> = (0..3).map(|n| saved(&s, n)).collect();
+        ids.iter().for_each(|&id| enqueue_if_auto(&s, id).unwrap());
+        drain(&s, &Fake::new()).await;
+        assert!(set_manual(&s, ids[0], Some(6)).is_err());
+
+        set_manual(&s, ids[0], Some(1)).unwrap();
+        set_manual(&s, ids[1], Some(5)).unwrap();
+        let row = s.article_row(ids[0]).unwrap().unwrap();
+        assert_eq!((row.relevance, row.relevance_ai, row.relevance_manual), (Some(1), Some(4), true));
+        let rows = s.list_articles_sorted(&ArticleFilter::All, ArticleSort::RelevanceDesc).unwrap();
+        assert_eq!(rows.iter().map(|a| a.id).collect::<Vec<_>>(), [ids[2], ids[1], ids[0]], "picked 5 ties the model's 5, picked 1 last");
+        assert_eq!(s.article_ids(&ArticleFilter::Important { min: 5 }).unwrap(), Some(vec![ids[1], ids[2]]));
+
+        profile(&s, "Go を書いている");
+        assert!(!s.article_row(ids[0]).unwrap().unwrap().relevance_stale, "a pick never goes stale");
+        rescore(&s, None).unwrap();
+        drain(&s, &Fake::new()).await;
+        assert_eq!(s.article_row(ids[0]).unwrap().unwrap().relevance, Some(1), "rating again keeps the pick");
+
+        set_manual(&s, ids[0], None).unwrap();
+        let row = s.article_row(ids[0]).unwrap().unwrap();
+        assert_eq!((row.relevance, row.relevance_manual), (Some(4), false), "back to the model's score");
     }
 
     #[tokio::test]

@@ -325,6 +325,14 @@ fn set_genre(app: State<'_, App>, id: i64, name: String) -> Result<(), String> {
     classify::set_genre(&app.store, id, &name)
 }
 
+/// The user's importance (1-5), pinned against rating runs; `None` goes back to the model's score.
+#[tauri::command(async)]
+fn set_relevance(app: State<'_, App>, id: i64, score: Option<i64>) -> Result<(), String> {
+    relevance::set_manual(&app.store, id, score)?;
+    app.wake_llm.iter().for_each(|w| w.notify_one());
+    Ok(())
+}
+
 /// Manual choice (1-5), pinned against auto runs; `None` clears it and queues a re-estimate.
 #[tauri::command(async)]
 fn set_difficulty(app: State<'_, App>, id: i64, level: Option<i64>) -> Result<(), String> {
@@ -1378,6 +1386,7 @@ pub fn run() {
             delete_genre,
             set_article_note,
             set_difficulty,
+            set_relevance,
             classify_article,
             classify_unclassified,
             get_auto_classify,
