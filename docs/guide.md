@@ -413,7 +413,7 @@ Opening an article marks it as read. While you are looking at the **Unread** lis
 
 `m` toggles read and unread, and `s` toggles the favorite star. Starred articles appear under **Favorites** in the navigation.
 
-**Mark all as read** in the article list marks every unread article shown in the list as read, after asking.
+The ✓ button beside the article list’s title (**Mark all as read**) marks every unread article shown in the list as read, after asking.
 
 ### Lists, filters and sorting
 

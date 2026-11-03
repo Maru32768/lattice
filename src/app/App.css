@@ -106,6 +106,7 @@
 .list-title h1 { margin: 0; font-size: 17px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-title .count { font-size: 12px; color: var(--ink3); white-space: nowrap; }
 .list-title .ib { margin-left: auto; align-self: center; }
+.list-title .ib + .ib { margin-left: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip-body { display: inline-flex; align-items: center; gap: 6px; height: 100%; padding: 0; border: 0; background: none; color: inherit; font-size: inherit; }
 .list-tools { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink3); white-space: nowrap; }

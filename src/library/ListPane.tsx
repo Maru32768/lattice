@@ -460,6 +460,16 @@ export function ListPane({
           <span className="mono count">
             {count} / {total}
           </span>
+          {/* Here, not in the toolbar below: that row is full, and a button there squeezed its notes to nothing. */}
+          <button
+            className="ib"
+            onClick={onMarkRead}
+            disabled={!items.some((it) => it.kind === "row" && it.a.read_status === "unread")}
+            aria-label={t("listPane.markRead")}
+            title={t("listPane.markReadHint")}
+          >
+            <Icon name="check" />
+          </button>
           <button className="ib" onClick={onCollapse} aria-label={t("listPane.close")} title={t("listPane.close")}>
             <Icon name="left" />
           </button>
@@ -510,14 +520,6 @@ export function ListPane({
                 {t("listPane.noProfile")}
               </span>
             )}
-            <button
-              className="tb"
-              onClick={onMarkRead}
-              disabled={!items.some((it) => it.kind === "row" && it.a.read_status === "unread")}
-              title={t("listPane.markReadHint")}
-            >
-              {t("listPane.markRead")}
-            </button>
             <button
               className="tb"
               onClick={() => {

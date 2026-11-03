@@ -7,7 +7,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Added
 
 - **Pick the importance by hand.** Choose 1 to 5 under the title in the Reader. Your pick overrides the AI rating in sorting, **Important** and automatic summaries, and stays when articles are rated again; **Leave it to AI** goes back.
-- **Mark all as read** in the article list marks every unread article the list shows as read, after asking.
+- The ✓ button beside the article list’s title (**Mark all as read**) marks every unread article the list shows as read, after asking.
 - **Save to library** in the Page view also puts the page into the collection whose list is open.
 
 ### Changed
