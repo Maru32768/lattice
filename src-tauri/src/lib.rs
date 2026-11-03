@@ -1188,6 +1188,17 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     context.config_mut().identifier = location::APP_IDENTIFIER.into();
     tauri::Builder::default()
+        // First, so a second launch exits before it opens the store: it would start a second set of job runners
+        // and schedulers, and `recover_running_jobs` would hand it the jobs this instance is running.
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            // Still hidden while starting up: `restore_main` shows it.
+            if let Some(w) = app.get_webview_window(popout::MAIN)
+                && w.is_visible().unwrap_or(false)
+                && let Err(e) = w.unminimize().and_then(|()| w.set_focus())
+            {
+                log::warn!("focusing the main window for a second launch: {e}");
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::Builder::new().build())

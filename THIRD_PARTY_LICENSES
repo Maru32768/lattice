@@ -7522,6 +7522,7 @@ DEALINGS IN THE SOFTWARE.
 MIT License (MIT)
 Used by:
   tokio-native-tls 0.3.1
+  tracing-attributes 0.1.31
   tracing-core 0.1.36
   tracing 0.1.44
 
@@ -9383,6 +9384,7 @@ Used by:
   tauri-plugin-dialog 2.8.3
   tauri-plugin-fs 2.7.1
   tauri-plugin-log 2.10.1
+  tauri-plugin-single-instance 2.5.5
   tauri-plugin-updater 2.14.0
   ts-rs-macros 12.0.1
   ts-rs 12.0.1
