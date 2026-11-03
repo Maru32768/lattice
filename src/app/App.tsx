@@ -118,6 +118,8 @@ export default function App() {
 
   /** The palette asked this Reader tab to open its group picker; `seq` grows with each ask. */
   const [groupRequest, setGroupRequest] = useState<{ tab: Id; seq: number } | null>(null);
+  /** The summary shortcut, for the focused Reader or Page tab. */
+  const [summaryRequest, setSummaryRequest] = useState<{ tab: Id; seq: number } | null>(null);
   const [group, setGroup] = useState<Grouping>("none");
   const [scopeState, setScopeState] = useState<Scope>({ kind: "all" });
   const importantMin = importantMinOf(relevance);
@@ -757,6 +759,11 @@ export default function App() {
       setListOpen(!collapse);
     },
     view: toggleView,
+    summary: () => {
+      if (cur?.kind === "reader" || cur?.kind === "page") {
+        setSummaryRequest((r) => ({ tab: cur.id, seq: (r?.seq ?? 0) + 1 }));
+      }
+    },
     less: () => nudgeRatio(-10),
     more: () => nudgeRatio(10),
     escape: () => {
@@ -963,6 +970,7 @@ export default function App() {
           onLang={setPageLang}
           onSave={() => savePage(tab, saved ? null : saveGroup)}
           saveGroup={saved || saveGroup == null ? null : groupName(saveGroup, groupRows, t)}
+          summaryRequest={summaryRequest?.tab === tab.id ? summaryRequest.seq : 0}
           onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
           onError={fail}
         />
@@ -1004,6 +1012,7 @@ export default function App() {
         onGroup={(id, add) => groupMembers(id, [a.id], add)}
         onCreateGroup={createGroup}
         groupRequest={groupRequest?.tab === tab.id ? groupRequest.seq : 0}
+        summaryRequest={summaryRequest?.tab === tab.id ? summaryRequest.seq : 0}
       />
     );
   };

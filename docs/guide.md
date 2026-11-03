@@ -286,7 +286,7 @@ Click **Summarize** under **Summary** at the top of the Reader, and the AI summa
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
 - If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
-In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page.
+In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
 
 ### See search matches in an article
 
@@ -713,6 +713,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Action | Default key |
 |---|---|
 | Switch Reader / Page | `v` |
+| Open or close the summary | `y` |
 | Less English text | `[` |
 | More English text | `]` |
 | Favorite | `s` |

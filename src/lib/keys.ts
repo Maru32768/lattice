@@ -15,6 +15,7 @@ export type ActionId =
   | "read"
   | "focus"
   | "view"
+  | "summary"
   | "less"
   | "more"
   | "escape"
@@ -51,6 +52,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "read", keys: ["M"] },
   { id: "focus", keys: ["F"] },
   { id: "view", keys: ["V"] },
+  { id: "summary", keys: ["Y"] },
   { id: "less", keys: ["["] },
   { id: "more", keys: ["]"] },
   { id: "escape", keys: ["Escape"], inFields: true },

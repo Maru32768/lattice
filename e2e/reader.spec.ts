@@ -52,6 +52,21 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
   await expect(app.locator(".art-meta")).toContainText("ローカル");
 });
 
+test("y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
+  await open(app, snapshot.title!);
+  await app.keyboard.press("y");
+  await expect(app.locator(".summary-body")).toContainText("MVCC で実装する");
+  await app.keyboard.press("y");
+  await expect(app.locator(".summary-body")).toHaveCount(0);
+
+  await app.keyboard.press("v");
+  await expect(app.locator(".page-summary")).toHaveCount(0);
+  await app.keyboard.press("y");
+  await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCC で実装する");
+  await app.keyboard.press("y");
+  await expect(app.locator(".page-summary")).toHaveCount(0);
+});
+
 const untranslated = ARTICLES.find((a) => a.id % 3 === 0 && a.fetch_status === "ok" && a.title && a.language !== "ja")!;
 
 test("a paragraph mixes sentence by sentence, and one sentence flips from its tooltip", async ({ app }) => {

@@ -822,10 +822,21 @@ function TagAdder({ onAdd }: { onAdd: (name: string) => void }) {
   );
 }
 
-/** The summary row, opened to the full text on a click (closed at first, in the Reader and in the Page view's strip). */
-export function Summary({ view, onSummarize }: { view: ArticleView; onSummarize: () => void }) {
+/**
+ * The summary row, opened to the full text on a click or the summary shortcut (`request` grows), closed at first
+ * unless `initialOpen` (the Page view's strip shown by the shortcut).
+ */
+export function Summary({ view, onSummarize, request, initialOpen }: { view: ArticleView; onSummarize: () => void; request?: number; initialOpen?: boolean }) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen === true);
+  // Only a request made while mounted: the Reader remounts per article, and other tabs see it drop to 0.
+  const seen = useRef(request ?? 0);
+  useEffect(() => {
+    if ((request ?? 0) > seen.current) {
+      setOpen((o) => !o);
+    }
+    seen.current = request ?? 0;
+  }, [request]);
   const job = view.jobs.find((j) => j.type === "summarize");
   const running = busy(job);
   const failed = job && job.last_error && !running && job.status !== "succeeded";
@@ -902,6 +913,7 @@ export function Reader({
   onGroup,
   onCreateGroup,
   groupRequest,
+  summaryRequest,
 }: {
   view: ArticleView;
   act: DocActions;
@@ -930,6 +942,8 @@ export function Reader({
   onCreateGroup: (name: string) => Promise<number>;
   /** Opens the group picker when it grows (palette). */
   groupRequest: number;
+  /** Grows when the summary shortcut asks this tab to open or close its summary. */
+  summaryRequest: number;
 }) {
   const t = useT();
   const { article: a, blocks } = view;
@@ -1257,7 +1271,7 @@ export function Reader({
                 </div>
               </div>
             )}
-            {!failed && <Summary view={view} onSummarize={act.onSummarize} />}
+            {!failed && <Summary view={view} onSummarize={act.onSummarize} request={summaryRequest} />}
             {a.from_feed && (
               <div className="note warn center thin">
                 <span className="grow">

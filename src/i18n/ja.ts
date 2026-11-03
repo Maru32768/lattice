@@ -324,6 +324,7 @@ export const ja = {
   "keys.read": "既読 / 未読",
   "keys.focus": "フォーカスモード",
   "keys.view": "Reader / Page を切り替え",
+  "keys.summary": "要約を開く / 閉じる",
   "keys.less": "日本語の割合を下げる",
   "keys.more": "日本語の割合を上げる",
   "keys.escape": "戻る・絞り込みを解除",

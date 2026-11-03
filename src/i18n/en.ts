@@ -331,6 +331,7 @@ export const en = {
   "keys.read": "Read / unread",
   "keys.focus": "Focus mode",
   "keys.view": "Switch between Reader and Page",
+  "keys.summary": "Open or close the summary",
   "keys.less": "Less English text",
   "keys.more": "More English text",
   "keys.escape": "Back / clear filters",

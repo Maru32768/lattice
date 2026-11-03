@@ -143,6 +143,7 @@ export function BrowserView({
   act,
   saving,
   saveGroup,
+  summaryRequest,
   lang,
   onNavigate,
   onLang,
@@ -159,6 +160,8 @@ export function BrowserView({
   saving: boolean;
   /** The group a save also puts the page in (the one whose list is open). */
   saveGroup: string | null;
+  /** Grows when the summary shortcut asks this tab to show or hide its summary strip. */
+  summaryRequest: number;
   lang: PageLang;
   /** Opens an http(s) URL typed in the URL bar or the home page. */
   onNavigate: (url: string) => void;
@@ -174,6 +177,16 @@ export function BrowserView({
   const covered = useCovered(host);
   const [still, setStill] = useState<string | null>(null);
   const [summary, setSummary] = useState(summaryShown);
+  /** The strip was shown by the shortcut: it opens to the full text, since that is what the key is for. */
+  const [summaryByKey, setSummaryByKey] = useState(false);
+  const seenSummary = useRef(summaryRequest);
+  useEffect(() => {
+    if (summaryRequest > seenSummary.current) {
+      setSummaryByKey(true);
+      setSummary((s) => showSummary(!s));
+    }
+    seenSummary.current = summaryRequest;
+  }, [summaryRequest]);
   const [editAt, setEditAt] = useState(0);
   const [panel, togglePanel, closePanel] = useSidePanel(saved?.id ?? 0);
   /** The page as drawn now, decoded; null while it loads or off Windows. */
@@ -427,7 +440,10 @@ export function BrowserView({
                 aria-pressed={summary}
                 aria-label={t("reader.summary")}
                 title={t("browserView.summaryHint")}
-                onClick={() => setSummary(showSummary(!summary))}
+                onClick={() => {
+                  setSummaryByKey(false);
+                  setSummary(showSummary(!summary));
+                }}
               >
                 <Icon name="summary" />
                 <span className="lbl">{t("reader.summary")}</span>
@@ -472,7 +488,7 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
       {/* A strip above the page; the webview shrinks to the placeholder below it. */}
       {summary && shown && !failedOf(shown) && (
         <div className="page-summary">
-          <Summary view={shown} onSummarize={act!.onSummarize} />
+          <Summary view={shown} onSummarize={act!.onSummarize} initialOpen={summaryByKey} />
         </div>
       )}
       <div className="doc-body">
