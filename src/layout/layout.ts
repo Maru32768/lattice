@@ -37,6 +37,8 @@ export interface PageTab {
   saved: number | null;
   /** The page overlay's translation while it runs: blocks done of those sent so far. */
   translating?: { done: number; total: number };
+  /** The tab whose page opened this one behind it (`openBehind`): its later ones go after this, in click order. */
+  opener?: Id;
 }
 
 export type Tab = ReaderTab | PageTab;
@@ -201,6 +203,24 @@ export function open(l: Layout, doc: Doc, where: "active" | "new" = "active", pa
   const tab = tabFor(doc, l.next);
   const at = index ?? (cur ? p.tabs.indexOf(cur) + 1 : p.tabs.length);
   return focus({ ...replacePane(l, { ...p, tabs: p.tabs.toSpliced(at, 0, tab), active: tab.id }), next: l.next + 1 }, p.id);
+}
+
+/**
+ * A page opened from tab `source` without leaving it (a middle-clicked link): after `source` and the tabs it opened
+ * that way before, so several links line up in the order they were clicked. Neither the active tab nor focus moves.
+ */
+export function openBehind(l: Layout, url: string, source: Id): Layout {
+  const hit = tabById(l, source);
+  if (!hit) {
+    return l;
+  }
+  const { pane } = hit;
+  let at = pane.tabs.findIndex((t) => t.id === source) + 1;
+  while (at < pane.tabs.length && pane.tabs[at]?.kind === "page" && (pane.tabs[at] as PageTab).opener === source) {
+    at++;
+  }
+  const tab: PageTab = { ...(tabFor({ kind: "page", url }, l.next) as PageTab), opener: source };
+  return { ...replacePane(l, { ...pane, tabs: pane.tabs.toSpliced(at, 0, tab) }), next: l.next + 1 };
 }
 
 export function activate(l: Layout, tab: Id): Layout {

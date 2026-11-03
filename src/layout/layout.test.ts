@@ -16,6 +16,7 @@ import {
   move,
   navigated,
   open,
+  openBehind,
   pageByKey,
   panes,
   parse,
@@ -32,6 +33,19 @@ const page = (url: string) => ({ kind: "page" as const, url });
 /** Article ids (or URLs) of the panes' tabs, with the active one starred, in reading order. */
 const picture = (l: Layout) =>
   panes(l.root).map((p) => p.tabs.map((t) => `${t.kind === "reader" ? t.articleId : t.url}${t.id === p.active ? "*" : ""}`).join(" "));
+
+test("openBehind: links opened from a page line up after it in click order, and the page stays in front", () => {
+  let l = open(open(single(), page("https://a.test/")), reader(9), "new");
+  const source = activeTab(focusedPane(l))!.id;
+  l = activate(l, focusedPane(l).tabs[0]!.id);
+  const a = focusedPane(l).tabs[0]!.id;
+  l = openBehind(l, "https://b.test/1", a);
+  l = openBehind(l, "https://b.test/2", a);
+  assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9"]);
+  l = openBehind(l, "https://c.test/", source);
+  assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9 https://c.test/"], "after the tab that opened it");
+  assert.equal(openBehind(l, "https://x.test/", 999), l, "a closed source opens nothing");
+});
 
 test("open: fills the empty pane, then replaces the active tab; a new tab goes right after it", () => {
   let l = open(single(), reader(1));

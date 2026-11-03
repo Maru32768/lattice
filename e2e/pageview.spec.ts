@@ -40,7 +40,7 @@ test("a page's tab shows the overlay's translation while it runs, and nothing on
   await expect(tab.getByRole("status")).toHaveCount(0);
 });
 
-test("a link the page opens in a new window (middle-click) opens a new tab after its own, and the page stays", async ({ shell }) => {
+test("a link the page opens in a new window (middle-click) opens a tab behind its own, which stays in front", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
   await shell.goto("/");
   await expect(shell.getByRole("tab", { name: "P" })).toBeVisible({ timeout: 30_000 });
@@ -48,7 +48,9 @@ test("a link the page opens in a new window (middle-click) opens a new tab after
   const tabs = shell.getByRole("tab");
   await expect(tabs).toHaveCount(2);
   await expect(tabs.first()).toHaveAccessibleName(/P/);
-  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "false");
+  await tabs.nth(1).click();
   await expect
     .poll(() => shell.evaluate(() => window.__e2e.calls.filter((c) => c.cmd === "browser_open").map((c) => (c.args as { url: string }).url)))
     .toContain("https://example.com/q");
