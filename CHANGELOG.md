@@ -10,6 +10,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The ✓ button beside the article list’s title (**Mark all as read**) marks every unread article the list shows as read, after asking.
 - **Save to library** in the Page view also puts the page into the collection whose list is open.
 - In the Page view, a link opened with a middle-click or `Ctrl`+click, or one the page opens in a new window, opens in a new tab behind the current page. Several such links line up in the order you opened them.
+- Right-click an article (in the list or on its tab) to set its importance, difficulty and genre from submenus, or to edit its tags; with several articles picked, the change applies to all of them.
 - `y` opens and closes the summary. In the Page view it shows the whole summary above the page, and pressing it again gives the page its full height back. Change the key in Settings › Shortcuts.
 
 ### Changed

@@ -37,8 +37,8 @@ const picture = (l: Layout) =>
 test("openBehind: links opened from a page line up after it in click order, and the page stays in front", () => {
   let l = open(open(single(), page("https://a.test/")), reader(9), "new");
   const source = activeTab(focusedPane(l))!.id;
-  l = activate(l, focusedPane(l).tabs[0]!.id);
-  const a = focusedPane(l).tabs[0]!.id;
+  l = activate(l, focusedPane(l).tabs[0].id);
+  const a = focusedPane(l).tabs[0].id;
   l = openBehind(l, "https://b.test/1", a);
   l = openBehind(l, "https://b.test/2", a);
   assert.deepEqual(picture(l), ["https://a.test/* https://b.test/1 https://b.test/2 9"]);

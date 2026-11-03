@@ -439,13 +439,13 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 Right-click an article in the list, or a Reader or Page tab, to open a menu of actions for that article. With the keyboard, press the menu key or `Shift+F10`.
 
-The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. For the tab of a page you have not saved, only the items that apply to it appear.
+The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit tags…**, **Importance**, **Difficulty**, **Genre**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. **Importance**, **Difficulty** and **Genre** open a list of values with the current one marked. For the tab of a page you have not saved, only the items that apply to it appear.
 
 ### Act on several articles
 
 1. Click **Select** above the list.
 2. Click articles to select them. `Shift`+click selects a range. `Shift`+click also starts selecting without clicking **Select** first.
-3. Right-click the selection to get actions that apply to all of it: favorite, read and unread, and **Add to collection…**.
+3. Right-click the selection to get actions that apply to all of it: favorite, read and unread, **Add to collection…**, **Edit tags…**, importance, difficulty and genre.
 
 **Done** or `Esc` ends the selection.
 

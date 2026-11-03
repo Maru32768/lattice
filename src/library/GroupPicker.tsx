@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { GroupRow } from "../api";
 import { Popover } from "../ui/Popover";
-import { Icon, Kbd } from "../ui/Icon";
+import { Icon, Kbd, type IconName } from "../ui/Icon";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
 
@@ -21,6 +21,70 @@ export function GroupPicker({
   onCreate: (name: string) => Promise<number>;
   anchor: HTMLElement;
   onClose: () => void;
+}) {
+  const t = useT();
+  return (
+    <Picker
+      options={groups.map((g) => ({ id: g.id, name: g.name, count: g.count }))}
+      selected={selected}
+      onToggle={onToggle}
+      onCreate={onCreate}
+      anchor={anchor}
+      onClose={onClose}
+      icon="folder"
+      text={{ label: t("groupPicker.label"), find: t("groupPicker.find"), create: (name) => t("groupPicker.create", { name }), none: t("groupPicker.none") }}
+    />
+  );
+}
+
+/** Multi-select of tags with find-or-add: a picked tag is on every article, and a new name is added as a tag. */
+export function TagPicker({
+  tags,
+  selected,
+  onToggle,
+  anchor,
+  onClose,
+}: {
+  tags: { name: string; count: number }[];
+  selected: string[];
+  onToggle: (name: string, on: boolean) => void;
+  anchor: HTMLElement;
+  onClose: () => void;
+}) {
+  const t = useT();
+  return (
+    <Picker
+      options={tags.map((g) => ({ id: g.name, name: g.name, count: g.count }))}
+      selected={selected}
+      onToggle={onToggle}
+      onCreate={(name) => Promise.resolve(name)}
+      anchor={anchor}
+      onClose={onClose}
+      icon="search"
+      text={{ label: t("tagPicker.label"), find: t("tagPicker.find"), create: (name) => t("tagPicker.create", { name }), none: t("tagPicker.none") }}
+    />
+  );
+}
+
+function Picker<K extends number | string>({
+  options: groups,
+  selected,
+  onToggle,
+  onCreate,
+  anchor,
+  onClose,
+  icon,
+  text,
+}: {
+  options: { id: K; name: string; count: number }[];
+  selected: K[];
+  onToggle: (id: K, on: boolean) => void;
+  /** Makes the option and returns its id; the picker then selects it. */
+  onCreate: (name: string) => Promise<K>;
+  anchor: HTMLElement;
+  onClose: () => void;
+  icon: IconName;
+  text: { label: string; find: string; create: (name: string) => string; none: string };
 }) {
   const t = useT();
   const [q, setQ] = useState("");
@@ -66,12 +130,12 @@ export function GroupPicker({
   }
 
   return (
-    <Popover anchor={anchor} label={t("groupPicker.label")} width={300} onClose={onClose}>
+    <Popover anchor={anchor} label={text.label} width={300} onClose={onClose}>
       <div className="facet-pv" onKeyDown={keys}>
         <div className="pv-head">
           <label className="pv-search">
-            <Icon name="folder" />
-            <span className="vh">{t("groupPicker.find")}</span>
+            <Icon name={icon} />
+            <span className="vh">{text.find}</span>
             <input
               value={q}
               onChange={(e) => {
@@ -79,11 +143,11 @@ export function GroupPicker({
                 setAct(0);
                 setError(null);
               }}
-              placeholder={t("groupPicker.find")}
+              placeholder={text.find}
             />
           </label>
         </div>
-        <div className="pv-list" role="group" aria-label={t("common.group")}>
+        <div className="pv-list" role="group" aria-label={text.label}>
           {shown.map((g, i) => {
             const on = selected.includes(g.id);
             return (
@@ -99,10 +163,10 @@ export function GroupPicker({
           {canCreate && (
             <button className={`opt${at === shown.length ? " act" : ""}`} onClick={() => pick(shown.length)} onMouseMove={() => setAct(shown.length)}>
               <Icon name="plus" size="sm" />
-              <span className="opt-l">{t("groupPicker.create", { name })}</span>
+              <span className="opt-l">{text.create(name)}</span>
             </button>
           )}
-          {count === 0 && <div className="pv-empty">{t("groupPicker.none")}</div>}
+          {count === 0 && <div className="pv-empty">{text.none}</div>}
           {error && (
             <div className="pv-empty error-text" role="alert">
               {t.msg(error)}

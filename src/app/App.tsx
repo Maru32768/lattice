@@ -21,7 +21,7 @@ import { ListPane, ListRail, type Grouping } from "../library/ListPane";
 import { getEngine, homeOf } from "../browser/engines";
 import { ContextMenu, CoverContext, coverRect, type MenuItem } from "../ui/Popover";
 import { articleMenu, type ArticleActions } from "../library/articleMenu";
-import { GroupPicker } from "../library/GroupPicker";
+import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
 import { keyLabel, type ActionId } from "../lib/keys";
@@ -160,6 +160,7 @@ export default function App() {
   const [ctxItems, setCtxItems] = useState<(MenuItem | string)[]>([]);
   /** グループに追加… from a context menu: the picker under the row or tab. */
   const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
+  const [tagPick, setTagPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
   // The Reader keeps its own mode; the mixed ratio is the Page's (`pageLang.percent`), one setting for both.
@@ -409,6 +410,11 @@ export default function App() {
     favorite: (ids, on) => void actOn(ids, (id) => api.setFavorite(id, on)),
     read: (ids, read) => void actOn(ids, (id) => api.setRead(id, read)),
     group: (ids) => setGroupPick({ el: from, ids }),
+    tags: (ids) => setTagPick({ el: from, ids }),
+    relevance: (ids, score) => void actOn(ids, (id) => api.setRelevance(id, score)),
+    difficulty: (ids, level) => void actOn(ids, (id) => api.setDifficulty(id, level)),
+    genre: (ids, name) => void actOn(ids, (id) => api.setGenre(id, name)),
+    genres: genres.map((g) => g.name),
     openNew: (a) => openArticle(a, true),
     popOut: IS_MAIN ? (a) => void win.popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
     page: (a) => openPage(a.original_url, undefined, a),
@@ -1269,6 +1275,15 @@ export default function App() {
                 onClose={() => setGroupPick(null)}
                 selected={groupRows.filter((g) => groupPick.ids.every((id) => articleById.get(id)?.groups.includes(g.id))).map((g) => g.id)}
                 onToggle={(g, on) => void groupMembers(g, groupPick.ids, on)}
+              />
+            )}
+            {tagPick && (
+              <TagPicker
+                tags={tags}
+                anchor={tagPick.el}
+                onClose={() => setTagPick(null)}
+                selected={tags.filter((g) => tagPick.ids.every((id) => articleById.get(id)?.tags.includes(g.name))).map((g) => g.name)}
+                onToggle={(name, on) => void actOn(tagPick.ids, (id) => (on ? api.addTag(id, name) : api.removeTag(id, name)))}
               />
             )}
             {win.chatOpen && splitter("chat", "right")}

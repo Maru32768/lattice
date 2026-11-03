@@ -15,6 +15,10 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
     a.favorite ? "お気に入りを解除" : "お気に入り",
     a.read_status === "read" ? "未読に戻す" : "既読にする",
     "グループに追加…",
+    "タグを編集…",
+    "重要度",
+    "難易度",
+    "ジャンル",
     "新しいタブで開く",
     "別ウィンドウで開く",
     "Pageで開く",
@@ -34,6 +38,37 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
   await expect(app.getByRole("alertdialog")).toBeVisible();
   await app.getByRole("alertdialog").getByRole("button", { name: "キャンセル" }).click();
   expect(await callsOf(app, "delete_article")).toEqual([]);
+});
+
+test("right-click on a row sets the importance, difficulty and genre from submenus, and edits tags", async ({ app }) => {
+  const a = shown.find((x) => x.genre !== "フロントエンド")!;
+  const open = async () => {
+    await row(app, a.title!).click({ button: "right" });
+    return menu(app);
+  };
+  let m = await open();
+  await m.getByRole("menuitem", { name: "重要度" }).hover();
+  await app.getByRole("menu", { name: "重要度" }).getByRole("menuitemradio", { name: /^5 / }).click();
+  await expect(m).toBeHidden();
+  expect((await callsOf(app, "set_relevance")).at(-1)).toEqual({ id: a.id, score: 5 });
+  await expect(row(app, a.title!).locator(".imp")).toHaveText("重要5");
+
+  m = await open();
+  await m.getByRole("menuitem", { name: "難易度" }).click();
+  await app.getByRole("menu", { name: "難易度" }).getByRole("menuitemradio", { name: /^2 / }).click();
+  expect((await callsOf(app, "set_difficulty")).at(-1)).toEqual({ id: a.id, level: 2 });
+
+  m = await open();
+  await m.getByRole("menuitem", { name: "ジャンル" }).hover();
+  await app.getByRole("menu", { name: "ジャンル" }).getByRole("menuitemradio", { name: "フロントエンド" }).click();
+  expect((await callsOf(app, "set_genre")).at(-1)).toEqual({ id: a.id, name: "フロントエンド" });
+
+  m = await open();
+  await m.getByRole("menuitem", { name: "タグを編集…" }).click();
+  const picker = app.getByRole("dialog", { name: "タグ" });
+  await picker.getByPlaceholder("タグを検索・追加").fill("from-menu");
+  await app.keyboard.press("Enter");
+  await expect.poll(async () => (await callsOf(app, "add_tag")).at(-1)).toEqual({ id: a.id, name: "from-menu" });
 });
 
 test("the menu key and Shift+F10 open the cursor row's menu; Esc returns to the row", async ({ app }) => {
@@ -59,7 +94,7 @@ test("with rows picked, the menu applies the bulk actions to all of them", async
   await row(app, b.title!).click({ button: "right" });
   const m = menu(app);
   await expect(m).toContainText("2件");
-  await expect(m.getByRole("menuitem")).toHaveCount(3);
+  await expect(m.getByRole("menuitem")).toHaveCount(7);
   await m.getByRole("menuitem", { name: "グループに追加…" }).click();
   await expect(app.getByRole("dialog")).toBeVisible();
   await app.keyboard.press("Escape");

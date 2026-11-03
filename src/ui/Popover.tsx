@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ContextMenu as CM, DropdownMenu as DM, Popover as PV } from "radix-ui";
 import { listStep } from "../lib/keys";
+import { Icon } from "./Icon";
 
 /**
  * The Page view's native webview is drawn above all app DOM, so every app overlay reports its
@@ -190,6 +191,8 @@ export interface MenuItem {
   hint?: string;
   /** Destructive (delete): drawn in the error color. */
   danger?: boolean;
+  /** A submenu: the item opens these instead of running `onSelect`. */
+  items?: (MenuItem | string)[];
 }
 
 /** j / k (the list bindings) step through a menu as the arrows do; Radix handles the arrows. */
@@ -207,8 +210,31 @@ function stepKeys(e: React.KeyboardEvent<HTMLElement>) {
   all[(i + d + all.length) % all.length]?.focus();
 }
 
+type Parts = Pick<typeof DM, "Item" | "Label" | "Separator" | "Sub" | "SubTrigger" | "SubContent" | "Portal">;
+
+/** A submenu, kept off a page webview like the menu it opens from. */
+function SubMenu({ parts: P, item, height }: { parts: Parts; item: MenuItem; height: string }) {
+  const s = useSurface();
+  const { onCloseAutoFocus: _, ...props } = menuProps(typeof item.label === "string" ? item.label : "", s, height);
+  return (
+    <P.Sub>
+      <P.SubTrigger asChild disabled={item.disabled}>
+        <button role="menuitem" className="sub" disabled={item.disabled}>
+          <span className="grow">{item.label}</span>
+          <Icon name="right" size="sm" />
+        </button>
+      </P.SubTrigger>
+      <P.Portal>
+        <P.SubContent {...props} sideOffset={2}>
+          <MenuItems parts={P} items={item.items ?? []} height={height} />
+        </P.SubContent>
+      </P.Portal>
+    </P.Sub>
+  );
+}
+
 /** The parts both menus share; `items` entries of "-" are separators, other strings captions. */
-function MenuItems({ parts: P, items }: { parts: Pick<typeof DM, "Item" | "Label" | "Separator">; items: (MenuItem | string)[] }) {
+function MenuItems({ parts: P, items, height }: { parts: Parts; items: (MenuItem | string)[]; height: string }) {
   return items.map((it, i) =>
     it === "-" ? (
       <P.Separator key={i} className="sep" />
@@ -216,6 +242,8 @@ function MenuItems({ parts: P, items }: { parts: Pick<typeof DM, "Item" | "Label
       <P.Label key={i} className="cap">
         {it}
       </P.Label>
+    ) : it.items ? (
+      <SubMenu key={i} parts={P} item={it} height={height} />
     ) : (
       <P.Item key={i} asChild disabled={it.disabled} onSelect={it.onSelect}>
         <button
@@ -318,7 +346,7 @@ function MenuContent({
   const p = menuProps(label, useSurface(), "--radix-dropdown-menu-content-available-height");
   return (
     <DM.Content {...p} className={menuClass ? `menu ${menuClass}` : "menu"} align={align} sideOffset={4} collisionBoundary={boundary}>
-      <MenuItems parts={DM} items={items} />
+      <MenuItems parts={DM} items={items} height="--radix-dropdown-menu-content-available-height" />
     </DM.Content>
   );
 }
@@ -361,7 +389,7 @@ export function ContextMenu({
 function ContextContent({ label, items }: { label: string; items: (MenuItem | string)[] }) {
   return (
     <CM.Content {...menuProps(label, useSurface(), "--radix-context-menu-content-available-height")}>
-      <MenuItems parts={CM} items={items} />
+      <MenuItems parts={CM} items={items} height="--radix-context-menu-content-available-height" />
     </CM.Content>
   );
 }
