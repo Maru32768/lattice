@@ -745,6 +745,7 @@ export const en = {
   "browserView.addHint": "Saving enables the Reader, tags, genres and favorites. The import uses the page's DOM as rendered.",
   "browserView.adding": "Adding…",
   "browserView.add": "Save to library",
+  "browserView.addToGroup": "It also goes into the open collection “{name}”.",
   "browserView.loading": "Loading",
   "browserView.loadingEllipsis": "Loading…",
   "chatPane.cite": "Source {n}: {where}",

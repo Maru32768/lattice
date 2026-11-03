@@ -1,5 +1,6 @@
 // The page webview's visibility as the UI drives it (the native webview itself is not in the mock).
-import { test, expect, list, navItem } from "./harness.ts";
+import { test, expect, callsOf, list, navItem } from "./harness.ts";
+import { GROUPS } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
@@ -51,4 +52,17 @@ test("a link the page opens in a new window (middle-click) opens a new tab after
   await expect
     .poll(() => shell.evaluate(() => window.__e2e.calls.filter((c) => c.cmd === "browser_open").map((c) => (c.args as { url: string }).url)))
     .toContain("https://example.com/q");
+});
+
+test("saving a page while a group's list is open puts it in that group too", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  const group = GROUPS[0];
+  await navItem(shell, group.name).click();
+  const save = shell.getByRole("button", { name: "ライブラリに保存" });
+  await expect(save).toHaveAttribute("title", new RegExp(`開いているグループ「${group.name}」にも入れます`));
+  await save.click();
+  await expect.poll(async () => (await callsOf(shell, "group_add")).at(-1)).toMatchObject({ id: group.id });
+  await expect(list(shell).locator(".row", { hasText: "Saved page" })).toBeVisible();
 });

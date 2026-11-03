@@ -11,7 +11,7 @@ import { replayWord } from "../vocab/speech";
 import { ChatPane } from "../chat/ChatPane";
 import { openDocs } from "../chat/chat";
 import { filterGroups, filterKey } from "../library/scopes";
-import { NO_FACETS, NO_KEPT, activeDims, keep, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "../library/library";
+import { NO_FACETS, NO_KEPT, activeDims, groupName, keep, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "../library/library";
 import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
 import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
@@ -497,10 +497,13 @@ export default function App() {
       .catch(fail);
   }
 
-  async function savePage(t: PageTab) {
+  /** Saving a new page while a group's list is open puts it in that group too. */
+  const saveGroup = IS_MAIN && scope.kind === "group" ? scope.id : null;
+  async function savePage(t: PageTab, group: number | null) {
     setSaving(t.id);
     await api
       .savePage(t.key)
+      .then((id) => (group == null ? undefined : api.groupAdd(group, [id])))
       .then(() => Promise.all([refresh(), refreshSaved(t.id, t.url)]))
       .catch(fail);
     setSaving(null);
@@ -958,7 +961,8 @@ export default function App() {
           lang={pageLang}
           onNavigate={(url) => openPage(url, undefined, undefined, "active", pane.id)}
           onLang={setPageLang}
-          onSave={() => savePage(tab)}
+          onSave={() => savePage(tab, saved ? null : saveGroup)}
+          saveGroup={saved || saveGroup == null ? null : groupName(saveGroup, groupRows, t)}
           onReader={() => saved && openReader(saved.id, undefined, "active", pane.id)}
           onError={fail}
         />

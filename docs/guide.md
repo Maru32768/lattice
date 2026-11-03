@@ -101,7 +101,7 @@ Lattice decides whether a URL is already saved after removing tracking parameter
 
 ### Save the page you are browsing
 
-To save the page you are viewing in the Page view (the built-in browser), click **Save to library** in the toolbar. Lattice saves the page as the browser shows it, so pages built with JavaScript and pages that need a login come in complete. Once saved, the toolbar shows **Saved**, and the Reader, tags, genres and favorites become available.
+To save the page you are viewing in the Page view (the built-in browser), click **Save to library** in the toolbar. Lattice saves the page as the browser shows it, so pages built with JavaScript and pages that need a login come in complete. Once saved, the toolbar shows **Saved**, and the Reader, tags, genres and favorites become available. While a collection is open in the navigation, the saved page also goes into that collection.
 
 ### Import files
 

@@ -736,6 +736,7 @@ export const ja = {
   "browserView.addHint": "保存すると Reader・タグ・ジャンル・お気に入りが有効になります。取り込みは描画後の DOM を使います。",
   "browserView.adding": "追加中…",
   "browserView.add": "ライブラリに保存",
+  "browserView.addToGroup": "開いているグループ「{name}」にも入れます。",
   "browserView.loading": "読み込み中",
   "browserView.loadingEllipsis": "読み込み中…",
   "chatPane.cite": "出典 {n}: {where}",

@@ -142,6 +142,7 @@ export function BrowserView({
   view,
   act,
   saving,
+  saveGroup,
   lang,
   onNavigate,
   onLang,
@@ -156,6 +157,8 @@ export function BrowserView({
   /** The saved article's actions, shared with the Reader's toolbar (H14). */
   act: DocActions | null;
   saving: boolean;
+  /** The group a save also puts the page in (the one whose list is open). */
+  saveGroup: string | null;
   lang: PageLang;
   /** Opens an http(s) URL typed in the URL bar or the home page. */
   onNavigate: (url: string) => void;
@@ -434,7 +437,17 @@ export function BrowserView({
         ) : (
           !saved && (
             <div className="docbar-r">
-              <button className="tb pri" onClick={onSave} disabled={saving || loading} title={t("browserView.addHint")}>
+              <button
+                className="tb pri"
+                onClick={onSave}
+                disabled={saving || loading}
+                title={
+                  saveGroup
+                    ? `${t("browserView.addHint")}
+${t("browserView.addToGroup", { name: saveGroup })}`
+                    : t("browserView.addHint")
+                }
+              >
                 <Icon name="import" />
                 {saving ? t("browserView.adding") : t("browserView.add")}
               </button>
