@@ -142,6 +142,10 @@ impl Walker {
         let mut para = std::mem::take(&mut self.para);
         collect_inline(&self.base, node, &mut para);
         self.para = para;
+        if !Selection::from(*node).select("img").nodes().is_empty() {
+            self.flush();
+            self.inner_images(node);
+        }
     }
 
     fn flush(&mut self) {
@@ -153,6 +157,23 @@ impl Walker {
         let mut inlines = Vec::new();
         collect_children(&self.base, node, &mut inlines);
         self.push_prose(kind, inlines, attrs);
+        self.inner_images(node);
+    }
+
+    /// Images inside prose (`<p><img></p>`, `<a><img></a>`): the inline collectors keep text only, so these
+    /// follow the block as image blocks. Nested lists are skipped: `list` emits them, images included.
+    fn inner_images(&mut self, node: &NodeRef) {
+        for child in node.children() {
+            let Some(name) = child.node_name() else {
+                continue;
+            };
+            match name.as_ref() {
+                "img" => self.image(&child),
+                "ul" | "ol" => {}
+                n if SKIP.contains(&n) => {}
+                _ => self.inner_images(&child),
+            }
+        }
     }
 
     fn push_prose(&mut self, kind: BlockKind, mut inlines: Vec<Inline>, attrs: BlockAttrs) {
@@ -241,7 +262,7 @@ fn collect_inline(base: &Url, node: &NodeRef, out: &mut Vec<Inline>) {
             }
         }
         "br" => push_text(out, " "),
-        "ul" | "ol" | "img" => {} // nested lists are emitted as their own blocks
+        "ul" | "ol" | "img" => {} // nested lists and images are emitted as their own blocks
         n if SKIP.contains(&n) => {}
         _ => collect_children(base, node, out),
     }
@@ -352,6 +373,26 @@ mod tests {
         assert!(!ir.blocks.iter().any(|b| b.text == "deep"), "past the cap: cut off");
         let html = format!("<html><body><article>{prose}<p>{}deep</p></article></body></html>", "<span>".repeat(n));
         extract(&html, "https://example.com/deep-inline").unwrap();
+    }
+
+    #[test]
+    fn keeps_images_inside_paragraphs_and_links() {
+        let prose = "<p>A paragraph long enough for readability to keep, with commas, clauses, and detail about write-ahead logging.</p>".repeat(3);
+        let html = format!(
+            "<html><body><article>{prose}<p><img src=\"/blog/images/railways.jpg\" alt=\"\" /></p>{prose}<div><a href=\"/big.png\"><img src=\"small.png\" alt=\"Diagram\"></a> Figure 1</div>{prose}<ul><li>Item<ul><li><img src=\"/nested.png\"></li></ul></li></ul>{prose}</article></body></html>"
+        );
+        let ir = extract(&html, "https://brooker.co.za/blog/2026/03/25/ic-junior.html").unwrap();
+        let images: Vec<_> =
+            ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).map(|b| (b.attrs.src.as_deref().unwrap_or_default(), b.text.as_str())).collect();
+        assert_eq!(
+            images,
+            [
+                ("https://brooker.co.za/blog/images/railways.jpg", ""),
+                ("https://brooker.co.za/blog/2026/03/25/small.png", "Diagram"),
+                ("https://brooker.co.za/nested.png", "")
+            ]
+        );
+        assert!(ir.blocks.iter().any(|b| b.text == "Figure 1"), "text beside the linked image stays");
     }
 
     #[test]
