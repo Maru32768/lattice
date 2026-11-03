@@ -37,7 +37,7 @@ test("every settings section renders, and Esc goes back to the library", async (
   await section("ログ・保存場所").click();
   await expect(app.locator(".stg main")).toContainText("lattice.db");
   await section("AI プロバイダ").click();
-  await expect(section("AI プロバイダ")).toContainText("2 段");
+  await expect(section("AI プロバイダ")).toContainText("2 モデル");
 
   await app.keyboard.press("Escape");
   await expect(nav).toBeHidden();
@@ -130,7 +130,7 @@ test("in a narrow window the provider chain wraps instead of squeezing its selec
     .locator(".ni")
     .filter({ has: app.locator(".label").getByText("AI プロバイダ", { exact: true }) })
     .click();
-  for (const name of ["1 段目のモデル", "1 段目の effort", "2 段目のモデル", "2 段目の effort"]) {
+  for (const name of ["1 番目のモデル", "1 番目の effort", "2 番目のモデル", "2 番目の effort"]) {
     const box = await app.getByRole("combobox", { name }).boundingBox();
     // A custom model ID shares the line with its select: each keeps at least 7em.
     expect(box?.width, name).toBeGreaterThanOrEqual(80);
