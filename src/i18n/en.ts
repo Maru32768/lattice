@@ -962,6 +962,8 @@ export const en = {
   "app.pickArticle": "Pick an article",
   "app.confirmRemove": "Remove from the library?",
   "app.confirmDelete": "Delete the article?",
+  "app.confirmMarkRead": (p) => `Mark ${plural(p.n, "unread article", "unread articles")} as read?`,
+  "app.markReadDesc": "Marks every unread article shown in “{title}” as read. To make one unread again, do it article by article.",
   "app.deleteWhat": "Deletes “{x}”.",
   "app.deleteDesc":
     "Its saved HTML, text, the translations only it uses, summaries, tags, images and search index entries are deleted too, and this cannot be undone. Citations in chat answers stay.",
@@ -1152,6 +1154,8 @@ export const en = {
   "listPane.relevanceDesc": "Most important first",
   "listPane.importance": "Key {score}",
   "listPane.rescore": "Rate again",
+  "listPane.markRead": "Mark all as read",
+  "listPane.markReadHint": "Marks every unread article shown as read",
   "listPane.rescoreHint": "Rates the shown articles again against your current “About you”",
   "listPane.rescoreQueued": (p) => `Queued ${plural(p.n, "article", "articles")} for rating`,
   "listPane.noProfile": "Not rated: “About you” is empty",

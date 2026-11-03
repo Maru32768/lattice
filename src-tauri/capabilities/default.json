@@ -145,6 +145,7 @@
     "allow-get-auto-summarize",
     "allow-set-auto-summarize",
     "allow-set-read",
+    "allow-mark-read",
     "allow-db-path",
     "allow-get-settings",
     "allow-get-llm-settings",

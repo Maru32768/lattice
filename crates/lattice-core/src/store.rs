@@ -1267,6 +1267,14 @@ impl Store {
         self.conn().execute_batch(sql).unwrap();
     }
 
+    /// Marks many articles at once (the list's 既読にする); one statement however long the list.
+    pub fn mark_read(&self, ids: &[i64]) -> Result<usize> {
+        self.conn().execute(
+            "UPDATE articles SET read_status = 'read' WHERE read_status != 'read' AND id IN (SELECT value FROM json_each(?1))",
+            [serde_json::to_string(ids).unwrap_or_default()],
+        )
+    }
+
     pub fn set_read_status(&self, id: i64, read: bool) -> Result<()> {
         self.conn().execute(
             "UPDATE articles SET read_status = ?2 WHERE id = ?1",
@@ -1840,6 +1848,17 @@ mod tests {
         s.exec_for_test("UPDATE processing_jobs SET status = 'running', heartbeat_at = NULL");
         assert_eq!(s.recover_abandoned_jobs().unwrap(), 1);
         assert!(s.claim_next_job(&["t"]).unwrap().is_some());
+    }
+
+    #[test]
+    fn mark_read_changes_only_the_unread_ones_it_names() {
+        let s = Store::open_in_memory().unwrap();
+        for u in ["https://a.dev/1", "https://a.dev/2", "https://a.dev/3"] {
+            s.upsert_pending(u, u, "a.dev").unwrap();
+        }
+        s.set_read_status(1, true).unwrap();
+        assert_eq!(s.mark_read(&[1, 2, 999]).unwrap(), 1);
+        assert_eq!(s.list_articles(&ArticleFilter::Unread).unwrap().iter().map(|a| a.id).collect::<Vec<_>>(), [3]);
     }
 
     #[test]

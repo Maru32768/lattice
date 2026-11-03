@@ -136,6 +136,7 @@ export const api = {
   autoSummarize: () => invoke<AutoSummarize>("get_auto_summarize"),
   setAutoSummarize: (mode: AutoSummarize) => invoke<void>("set_auto_summarize", { mode }),
   setRead: (id: number, read: boolean) => invoke<void>("set_read", { id, read }),
+  markRead: (ids: number[]) => invoke<number>("mark_read", { ids }),
   dbPath: () => invoke<string>("db_path"),
   settings: () => invoke<Settings>("get_settings"),
   llmSettings: () => invoke<LlmSettings>("get_llm_settings"),

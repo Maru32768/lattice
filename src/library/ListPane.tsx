@@ -308,6 +308,7 @@ export function ListPane({
   onRowMenu,
   onCollapse,
   onRescore,
+  onMarkRead,
   noProfile,
 }: {
   title: string;
@@ -341,6 +342,8 @@ export function ListPane({
   onCollapse: () => void;
   /** 「重要度を付け直す」 for the shown articles, resolving to how many were queued; absent when importance is not in view or there is no profile. */
   onRescore?: () => Promise<number>;
+  /** Asks to mark every unread article shown as read. */
+  onMarkRead: () => void;
   /** No 「自分について」 profile: nothing is rated, which the list says when sorted by importance. */
   noProfile?: boolean;
 }) {
@@ -507,6 +510,14 @@ export function ListPane({
                 {t("listPane.noProfile")}
               </span>
             )}
+            <button
+              className="tb"
+              onClick={onMarkRead}
+              disabled={!items.some((it) => it.kind === "row" && it.a.read_status === "unread")}
+              title={t("listPane.markReadHint")}
+            >
+              {t("listPane.markRead")}
+            </button>
             <button
               className="tb"
               onClick={() => {

@@ -942,6 +942,11 @@ fn set_read(app: State<'_, App>, id: i64, read: bool) -> Result<(), String> {
     app.store.set_read_status(id, read).map_err(err)
 }
 
+#[tauri::command(async)]
+fn mark_read(app: State<'_, App>, ids: Vec<i64>) -> Result<usize, String> {
+    app.store.mark_read(&ids).map_err(err)
+}
+
 #[tauri::command]
 fn db_path(app: State<'_, App>) -> String {
     app.db_path.clone()
@@ -1476,6 +1481,7 @@ pub fn run() {
             get_auto_summarize,
             set_auto_summarize,
             set_read,
+            mark_read,
             db_path,
             get_settings,
             get_llm_settings,

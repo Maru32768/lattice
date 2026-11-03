@@ -152,6 +152,8 @@ export default function App() {
   const [feedsUrl, setFeedsUrl] = useState<string | undefined>(undefined);
   /** The article waiting for delete confirmation, and the view that asked. */
   const [deleting, setDeleting] = useState<{ article: ArticleRow; page: boolean } | null>(null);
+  /** The unread articles of the shown list that 既読にする asks about. */
+  const [marking, setMarking] = useState<number[] | null>(null);
   /** The items of the right-click menu, set by the row or tab it opens on. */
   const [ctxItems, setCtxItems] = useState<(MenuItem | string)[]>([]);
   /** グループに追加… from a context menu: the picker under the row or tab. */
@@ -1176,6 +1178,7 @@ export default function App() {
                       : undefined
                   }
                   noProfile={relevance != null && !relevance.has_profile}
+                  onMarkRead={() => setMarking(shown.filter((a) => a.read_status === "unread").map((a) => a.id))}
                 />
               ) : (
                 <ListRail onOpen={() => setListOpen(true)} />
@@ -1229,6 +1232,19 @@ export default function App() {
               >
                 <p>{t.rich("app.deleteWhat", { x: deleting.article.title ?? deleting.article.original_url })}</p>
                 <p>{t("app.deleteDesc")}</p>
+              </ConfirmDialog>
+            )}
+            {marking && (
+              <ConfirmDialog
+                title={t("app.confirmMarkRead", { n: marking.length })}
+                confirm={t("listPane.markRead")}
+                onConfirm={() => {
+                  setMarking(null);
+                  void act(() => api.markRead(marking)).then(() => marking.forEach((id) => viewsRef.current.has(id) && void loadView(id)));
+                }}
+                onCancel={() => setMarking(null)}
+              >
+                <p>{t("app.markReadDesc", { title })}</p>
               </ConfirmDialog>
             )}
             {prefix.prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}

@@ -593,6 +593,7 @@ export const handlers = {
     );
   },
   set_read: ({ id, read }: { id: number; read: boolean }) => void (article(id).read_status = read ? "read" : "unread"),
+  mark_read: ({ ids }: { ids: number[] }): number => ids.filter((id) => article(id).read_status === "unread" && (article(id).read_status = "read")).length,
   db_path: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\lattice.db",
   get_settings: (): Settings => ({
     db_path: "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\lattice.db",

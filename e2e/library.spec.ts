@@ -1,4 +1,4 @@
-import { test, expect, navItem, list, listCount } from "./harness.ts";
+import { test, expect, callsOf, navItem, list, listCount } from "./harness.ts";
 import { ARTICLES, NOW } from "./fixtures.ts";
 import type { ArticleRow } from "../src/api.ts";
 
@@ -82,4 +82,20 @@ test("最近追加 and 要対応 say what they hold in a tooltip", async ({ app 
     "title",
     "取得か本文の抽出に失敗した記事と、本文が短い記事",
   );
+});
+
+test("すべて既読にする marks every unread article shown as read, after asking", async ({ app }) => {
+  await navItem(app, "すべての記事").click();
+  const button = list(app).getByRole("button", { name: "すべて既読にする", exact: true });
+  await button.click();
+  const dialog = app.getByRole("alertdialog", { name: `未読の ${unread} 件を既読にしますか？` });
+  await dialog.getByRole("button", { name: "キャンセル" }).click();
+  expect(await callsOf(app, "mark_read")).toEqual([]);
+
+  await button.click();
+  await dialog.getByRole("button", { name: "すべて既読にする" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect((await callsOf(app, "mark_read"))[0]).toEqual({ ids: expect.arrayContaining(ARTICLES.filter((a) => a.read_status === "unread").map((a) => a.id)) });
+  await expect(navItem(app, "未読").locator(".n")).toHaveText("0");
+  await expect(button).toBeDisabled();
 });

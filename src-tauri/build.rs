@@ -121,6 +121,7 @@ const COMMANDS: &[&str] = &[
     "get_auto_summarize",
     "set_auto_summarize",
     "set_read",
+    "mark_read",
     "db_path",
     "get_settings",
     "get_llm_settings",
