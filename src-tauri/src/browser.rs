@@ -511,11 +511,16 @@ pub async fn browser_open(
         .initialization_script(OVERLAY_JS)
         // Never leave the web: no file:, custom schemes or app-internal URLs in this webview.
         .on_navigation(is_http)
+        // A middle-click, Ctrl+click or target=_blank link opens a Page tab next to this one (the UI holds the tabs).
         .on_new_window(move |u, _| {
             if is_http(&u)
                 && let Some(wv) = popup_target.get_webview(&popup_label)
             {
-                let _ = wv.navigate(u);
+                #[derive(Clone, Serialize)]
+                struct NewTab {
+                    url: String,
+                }
+                emit_tab(&wv, "browser-new-tab", NewTab { url: u.to_string() });
             }
             NewWindowResponse::Deny
         })

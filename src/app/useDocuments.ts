@@ -8,9 +8,11 @@ import {
   closeWhere,
   load as loadLayout,
   navigated,
+  open,
   pageByKey,
   panes,
   save as saveLayout,
+  tabById,
   update,
   type Id,
   type Layout,
@@ -84,6 +86,10 @@ export function useDocuments(fail: (e: unknown) => void) {
       void refreshSaved(t.id, url);
     }
   });
+  /** A link the page asked to open in a new window: a Page tab right after its own. */
+  const onNewTab = useEffectEvent((p: { tab: string; url: string }) =>
+    onPage(p.tab, (l, t) => open(l, { kind: "page", url: p.url }, "new", tabById(l, t.id)?.pane.id)),
+  );
   useEffect(() => {
     const subs = [
       listen<number>("article-changed", (e) => onArticleChanged(e.payload)),
@@ -94,6 +100,7 @@ export function useDocuments(fail: (e: unknown) => void) {
           return t ? update(l, t.id, { translating: p.done < p.total ? { done: p.done, total: p.total } : undefined }) : l;
         }),
       ),
+      listen<{ tab: string; url: string }>("browser-new-tab", (e) => onNewTab(e.payload)),
       listen<{ tab: string; title: string }>("browser-title", (e) =>
         setLayout((l) => {
           const t = pageByKey(l, e.payload.tab);
