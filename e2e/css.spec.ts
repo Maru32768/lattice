@@ -14,7 +14,7 @@ test("clickable controls show the hand; the nav and the list do not select as te
   expect(await style(app.locator(".art-title"), "userSelect")).not.toBe("none");
 
   await app.locator(".nav").getByRole("button", { name: "ソースを管理" }).click();
-  expect(await style(app.locator("label", { hasText: "OPML を読み込む" }), "cursor"), "a label opening a file picker").toBe("pointer");
+  expect(await style(app.locator("label", { hasText: "OPMLを読み込む" }), "cursor"), "a label opening a file picker").toBe("pointer");
 });
 
 test("a disabled button shows not-allowed and keeps its tooltip", async ({ app }) => {

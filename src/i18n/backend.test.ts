@@ -52,7 +52,7 @@ test("every be.* catalog entry is a code the backend uses", () => {
 test("t.msg translates coded messages, nested codes in params too, and passes plain text through", () => {
   const [ja_, en] = [translatorFor("ja"), translatorFor("en")];
   const tooLong = JSON.stringify({ code: "instructions.tooLong", params: { field: JSON.stringify({ code: "instructions.summary", params: {} }), max: 2000 } });
-  assert.equal(ja_.msg(tooLong), "要約の追加の指示は 2,000 文字までです");
+  assert.equal(ja_.msg(tooLong), "要約の追加の指示は2,000文字までです");
   assert.equal(en.msg(tooLong), "Extra instructions for summaries can be 2,000 characters at most");
   assert.equal(en.msg(JSON.stringify({ code: "render.failed", params: { error: "HTTP 503" } })), "Could not render the page: HTTP 503");
   assert.equal(en.msg("HTTP 404"), "HTTP 404", "provider and network errors stay as they are");

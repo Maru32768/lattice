@@ -135,7 +135,7 @@ test("the chat window syncs article scopes, sends citations to main and docks ba
   await expect(shell.getByLabel("質問の範囲").locator("optgroup[label='開いている記事'] option")).toHaveText(["From main", "From doc-1"]);
 
   await shell.getByRole("button", { name: "会話を選ぶ" }).click();
-  await shell.getByRole("menuitemradio", { name: "MVCC と VACUUM の関係" }).click();
+  await shell.getByRole("menuitemradio", { name: "MVCCとVACUUMの関係" }).click();
   await shell.locator(".chat .answer > p .cite").first().click();
   await expect
     .poll(async () => (await requests(shell)).filter((r) => typeof r === "object" && r !== null && "kind" in r && r.kind === "cite"))

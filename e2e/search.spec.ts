@@ -14,7 +14,7 @@ test("search groups hits by article, filters by match type, and Esc leaves it", 
   await app.keyboard.press("Enter");
   await expect.poll(() => callsOf(app, "search_blocks")).toEqual([{ query: "mvcc", articles: ARTICLES.map((a) => a.id) }]);
 
-  await expect(pane.locator(".search-count")).toHaveText("4 block · 4 記事");
+  await expect(pane.locator(".search-count")).toHaveText("4 block · 4記事");
   await expect(pane.locator(".sgrp .at")).toHaveText(groups);
   await expect(pane.locator(".sgrp").first().locator(".mt")).toHaveText(/^意味/);
 
@@ -43,7 +43,7 @@ test("the arrows move through the hits and Enter opens the Reader at the hit blo
   await app.keyboard.press("Enter");
   await expect(app.locator(".art-title")).toHaveText(title(2));
   await expect(app.locator(".blk.is-hit .blk-label")).toHaveText(/検索一致/);
-  await expect(app.locator(".docbar .matches")).toContainText("一致 1 / 1");
+  await expect(app.locator(".docbar .matches")).toContainText("一致1 / 1");
 });
 
 test("the search scope picker shows the list's scope, with the chat's groups but no tags", async ({ app }) => {
@@ -80,7 +80,7 @@ test("facets restrict candidates before the search page limit and rerun an activ
     .click();
   await app.keyboard.press("Escape");
   await expect.poll(async () => (await callsOf(app, "search_blocks")).at(-1)).toEqual({ query: "a", articles: [] });
-  await expect(pane.locator(".search-count")).toHaveText("0 block · 0 記事");
+  await expect(pane.locator(".search-count")).toHaveText("0 block · 0記事");
   await expect(pane.locator(".hit")).toHaveCount(0);
 });
 

@@ -88,7 +88,7 @@ export function TitleBar({
 }) {
   const t = useT();
   const bindings = useBindings();
-  const withKey = (label: string, keys: string[]) => (keys[0] ? `${label} (${keyLabel(keys[0])})` : label);
+  const withKey = (label: string, keys: string[]) => (keys[0] ? t("common.withKey", { label, key: keyLabel(keys[0]) }) : label);
   return (
     <header className="titlebar" onMouseDown={dragWindow}>
       <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} />

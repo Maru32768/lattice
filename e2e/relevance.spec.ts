@@ -19,7 +19,7 @@ async function openSettings(page: import("@playwright/test").Page, title: string
 test("重要 lists the important articles, which carry a mark with the reason", async ({ app }) => {
   await expect(navItem(app, "重要").locator(".n")).toHaveText(String(important.length));
   const row = (title: string) => list(app).locator(".row", { hasText: title });
-  await expect(row(top.title!).locator(".imp")).toHaveText("重要 5");
+  await expect(row(top.title!).locator(".imp")).toHaveText("重要5");
   await expect(row(top.title!).locator(".imp")).toHaveAttribute("title", top.relevance_reason!);
   await expect(row(low.title!).locator(".imp"), "1-3 get no mark").toHaveCount(0);
 
@@ -50,7 +50,7 @@ test("sorting and filtering by importance; the Reader shows the reason", async (
 
   await list(app).locator(".row", { hasText: stale.title! }).click();
   const line = app.locator(".art-relevance");
-  await expect(line).toContainText(`AI の判定 ${stale.relevance}/5`);
+  await expect(line).toContainText(`AIの判定${stale.relevance}/5`);
   await expect(line).toContainText(stale.relevance_reason!);
   await expect(line).toContainText("以前の基準で判定");
 });
@@ -61,13 +61,13 @@ test("without a profile nothing is rated and settings say why; with one, scores 
   await expect(app.getByRole("button", { name: "重要度を付け直す" })).toBeDisabled();
 
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "自分について" }).click();
-  await app.getByLabel("自分について").fill("PostgreSQL の運用をしている");
+  await app.getByLabel("自分について").fill("PostgreSQLの運用をしている");
   await app.getByRole("button", { name: "保存", exact: true }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "重要度" }).click();
   await expect(app.getByRole("note")).toHaveCount(0);
   await app.getByRole("button", { name: "重要度を付け直す" }).click();
   const outdated = ARTICLES.filter((a) => a.extraction_status === "ok" && (a.relevance == null || a.relevance_stale)).length;
-  await expect(app.getByRole("status")).toHaveText(`${outdated} 件を判定キューに追加しました`);
+  await expect(app.getByRole("status")).toHaveText(`${outdated}件を判定キューに追加しました`);
   expect(await callsOf(app, "rescore_relevance")).toEqual([{ ids: null }]);
 
   await app.getByLabel("「重要」に入れる重要度").selectOption("5");
@@ -77,7 +77,7 @@ test("without a profile nothing is rated and settings say why; with one, scores 
   // The shown articles can be rated again from the list.
   await navItem(app, "重要").click();
   await list(app).getByRole("button", { name: "重要度を付け直す" }).click();
-  await expect(list(app).getByRole("status")).toHaveText("1 件を判定キューに追加しました");
+  await expect(list(app).getByRole("status")).toHaveText("1件を判定キューに追加しました");
   expect((await callsOf(app, "rescore_relevance")).at(-1)).toEqual({ ids: [top.id] });
 });
 
@@ -87,13 +87,13 @@ test("picking an importance by hand overrides the AI's, until it is left to AI a
   await expect(pick).toHaveValue("");
   await pick.selectOption("5");
   expect((await callsOf(app, "set_relevance")).at(-1)).toEqual({ id: low.id, score: 5 });
-  await expect(app.locator(".art-chips")).toContainText("重要度 5/5 · 手動");
-  await expect(app.locator(".art-relevance"), "the AI's own rating stays in view").toContainText(`AI の判定 ${low.relevance}/5`);
-  await expect(list(app).locator(".row", { hasText: low.title! }).locator(".imp")).toHaveText("重要 5");
+  await expect(app.locator(".art-chips")).toContainText("重要度5/5 · 手動");
+  await expect(app.locator(".art-relevance"), "the AI's own rating stays in view").toContainText(`AIの判定${low.relevance}/5`);
+  await expect(list(app).locator(".row", { hasText: low.title! }).locator(".imp")).toHaveText("重要5");
   await expect(navItem(app, "重要").locator(".n")).toHaveText(String(important.length + 1));
 
-  await pick.selectOption({ label: `AI の判定に任せる (${low.relevance})` });
-  await expect(app.locator(".art-chips")).toContainText(`重要度 ${low.relevance}/5`);
-  await expect(app.locator(".art-chips")).not.toContainText("重要度 2/5 · 手動");
+  await pick.selectOption({ label: `AIの判定に任せる(${low.relevance})` });
+  await expect(app.locator(".art-chips")).toContainText(`重要度${low.relevance}/5`);
+  await expect(app.locator(".art-chips")).not.toContainText("重要度2/5 · 手動");
   await expect(navItem(app, "重要").locator(".n")).toHaveText(String(important.length));
 });

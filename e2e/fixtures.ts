@@ -73,7 +73,7 @@ export const FEEDS: FeedRow[] = [
   {
     id: 4,
     url: "https://zenn.dev/feed",
-    title: "Zenn トレンド",
+    title: "Zennトレンド",
     custom_title: "Zenn",
     has_icon: false,
     site_url: "https://zenn.dev",
@@ -176,11 +176,11 @@ const ROWS: Row[] = [
   ["Retrieval-augmented generation evaluation", "eugeneyan.com", "機械学習", ["llm", "rag"], 4, false, false, 4],
   ["Tokenizers: BPE vs unigram", "huggingface.co", "機械学習", ["llm", "nlp"], 3, true, false, 11],
   ["Quantization for local inference", "huggingface.co", "機械学習", ["llm", "performance"], 4, false, false, 6],
-  ["Postgres の MVCC を図で理解する", 4, "データベース", ["postgres", "mvcc"], 2, false, false, 1, { language: "ja" }],
-  ["Rust の所有権を 10 分で", 4, "プログラミング言語", ["rust"], 1, false, false, 3, { language: "ja" }],
-  ["React 19 の use フック入門", 4, "フロントエンド", ["react"], 2, true, false, 8, { language: "ja" }],
-  ["Kafka のパーティション設計", 4, "分散システム", ["kafka"], 3, false, false, 5, { language: "ja" }],
-  ["LLM エージェントの評価方法", 4, "機械学習", ["llm"], 3, false, false, 0, { language: "ja" }],
+  ["PostgresのMVCCを図で理解する", 4, "データベース", ["postgres", "mvcc"], 2, false, false, 1, { language: "ja" }],
+  ["Rustの所有権を10分で", 4, "プログラミング言語", ["rust"], 1, false, false, 3, { language: "ja" }],
+  ["React 19のuseフック入門", 4, "フロントエンド", ["react"], 2, true, false, 8, { language: "ja" }],
+  ["Kafkaのパーティション設計", 4, "分散システム", ["kafka"], 3, false, false, 5, { language: "ja" }],
+  ["LLMエージェントの評価方法", 4, "機械学習", ["llm"], 3, false, false, 0, { language: "ja" }],
   [
     "読書メモ: Designing Data-Intensive Applications",
     "",
@@ -210,8 +210,8 @@ const ROWS: Row[] = [
 
 /** Importance by article id: [score, reason, rated by earlier criteria]. */
 const RELEVANCE: Record<number, [number, string, boolean]> = {
-  1: [5, "PostgreSQL の MVCC を扱う仕事に直結する", false],
-  2: [4, "VACUUM の運用はデータベース担当として重要", false],
+  1: [5, "PostgreSQLのMVCCを扱う仕事に直結する", false],
+  2: [4, "VACUUMの運用はデータベース担当として重要", false],
   8: [4, "移行作業の進め方が参考になる", true],
   14: [2, "フロントエンドは関心の外", false],
 };
@@ -272,8 +272,8 @@ export const FOLDERS: FolderRow[] = [];
 
 /** User-made groups (G53); `count` is filled from the memberships below. */
 export const GROUPS: GroupRow[] = [
-  { id: 1, name: "MVCC 調査", created_at: daysAgo(10), count: 0 },
-  { id: 2, name: "Rust 勉強会", created_at: daysAgo(5), count: 0 },
+  { id: 1, name: "MVCC調査", created_at: daysAgo(10), count: 0 },
+  { id: 2, name: "Rust勉強会", created_at: daysAgo(5), count: 0 },
   { id: 3, name: "空のグループ", created_at: daysAgo(1), count: 0 },
 ];
 const MEMBERS: Record<number, number[]> = { 1: [1, 2, 31, 36], 2: [20, 21, 22, 32] };
@@ -289,7 +289,7 @@ export const FEED_FILTERS: Record<number, FeedFilter> = {
     rules: [{ field: "title", action: "exclude", pattern: "sponsored", regex: false }],
     min_chars: null,
     llm: true,
-    instruction: "Postgres の内部実装だけ",
+    instruction: "Postgresの内部実装だけ",
     min_relevance: null,
   },
 };
@@ -326,7 +326,7 @@ export const MARKDOWN_ID = 36;
 /** Sentences of one paragraph and their translations: the Reader mixes them one by one. */
 const SNAPSHOT_SENTENCES: [string, string][] = [
   ["Snapshots are cheap.", "スナップショットは軽い。"],
-  ["Old versions are vacuumed later.", "古い版は後で vacuum される。"],
+  ["Old versions are vacuumed later.", "古い版は後でvacuumされる。"],
   ["Long transactions keep them alive.", "長いトランザクションは古い版を残す。"],
   ["Monitor them closely.", "注意して監視する。"],
 ];
@@ -338,10 +338,10 @@ const SNAPSHOT_BLOCKS: [Block["kind"], string, string | null, Block["attrs"]?][]
     "Every transaction reads from a consistent snapshot taken when it starts.",
     "各トランザクションは、開始時点の一貫したスナップショットから読み取る。",
   ],
-  ["paragraph", "PostgreSQL implements it with multi-version concurrency control.", "PostgreSQL はこれを MVCC で実装している。"],
+  ["paragraph", "PostgreSQL implements it with multi-version concurrency control.", "PostgreSQLはこれをMVCCで実装している。"],
   ["list_item", "Readers never block writers.", "読み取りは書き込みを妨げない。", { depth: 0 }],
   ["code", "BEGIN ISOLATION LEVEL REPEATABLE READ;", null, { lang: "sql" }],
-  ["paragraph", "Write skew is still possible under snapshot isolation.", "スナップショット分離でも write skew は起こりうる。"],
+  ["paragraph", "Write skew is still possible under snapshot isolation.", "スナップショット分離でもwrite skewは起こりうる。"],
   ["paragraph", SNAPSHOT_SENTENCES.map(([s]) => s).join(" "), SNAPSHOT_SENTENCES.map(([, t]) => t).join("")],
 ];
 
@@ -352,13 +352,13 @@ function genericBlocks(a: ArticleRow): [Block["kind"], string, string | null, Bl
   if (a.language === "ja") {
     return [
       ["heading", "はじめに", tr("Introduction"), { level: 2 }],
-      ["paragraph", `${a.title ?? ""}について、${topic} を中心に解説する。`, tr(`An explanation of ${topic}.`)],
+      ["paragraph", `${a.title ?? ""}について、${topic}を中心に解説する。`, tr(`An explanation of ${topic}.`)],
       ["paragraph", "実運用で得た知見をまとめた。", tr("Lessons learned in production.")],
     ];
   }
   return [
     ["heading", "Overview", tr("概要"), { level: 2 }],
-    ["paragraph", `${a.title ?? ""}. This post looks at ${topic}.`, tr(`${topic} について扱う記事。`)],
+    ["paragraph", `${a.title ?? ""}. This post looks at ${topic}.`, tr(`${topic}について扱う記事。`)],
     ["paragraph", "Key takeaways for working engineers.", tr("現場のエンジニア向けの要点。")],
     ["list_item", "Measure before you optimize.", tr("最適化の前に計測する。"), { depth: 0 }],
   ];
@@ -389,7 +389,7 @@ export function jobsOf(a: ArticleRow): JobRow[] {
 }
 
 export const SUMMARIES: Record<number, string> = {
-  [SNAPSHOT_ID]: "- スナップショット分離は、トランザクション開始時点のスナップショットから読む。\n- PostgreSQL は MVCC で実装する。\n- write skew は防げない。",
+  [SNAPSHOT_ID]: "- スナップショット分離は、トランザクション開始時点のスナップショットから読む。\n- PostgreSQLはMVCCで実装する。\n- write skewは防げない。",
 };
 
 export const JOBS: JobOverview = {
@@ -443,16 +443,16 @@ export const JOBS: JobOverview = {
 };
 
 export const CHAT_THREADS: ChatThread[] = [
-  { id: 1, title: "MVCC と VACUUM の関係", updated_at: daysAgo(1) },
-  { id: 2, title: "Kafka の exactly-once", updated_at: daysAgo(4) },
+  { id: 1, title: "MVCCとVACUUMの関係", updated_at: daysAgo(1) },
+  { id: 2, title: "Kafkaのexactly-once", updated_at: daysAgo(4) },
 ];
 
 export const CHAT_MESSAGES: ChatMessage[] = [
   {
     id: 1,
     thread_id: 1,
-    question: "MVCC で VACUUM が必要なのはなぜ？",
-    answer: "古い版の行が残るため、VACUUM が不要になった版を回収します [1]。スナップショットが古い版を読む間は回収できません [2]。",
+    question: "MVCCでVACUUMが必要なのはなぜ？",
+    answer: "古い版の行が残るため、VACUUMが不要になった版を回収します[1]。スナップショットが古い版を読む間は回収できません[2]。",
     citations: [
       {
         n: 1,
@@ -491,8 +491,8 @@ export const QUIZ: Quiz = {
     {
       id: 11,
       kind: "choice",
-      question: "PostgreSQL はスナップショット分離を何で実装している？",
-      options: ["2 相ロック", "MVCC", "WAL のリプレイ", "楽観ロックだけ"],
+      question: "PostgreSQLはスナップショット分離を何で実装している？",
+      options: ["2相ロック", "MVCC", "WALのリプレイ", "楽観ロックだけ"],
       answer: "MVCC",
       explanation: "行の複数の版を持ち、各トランザクションは自分のスナップショットに見える版を読む。",
       block_ids: [103],
@@ -502,14 +502,14 @@ export const QUIZ: Quiz = {
       kind: "recall",
       question: "スナップショット分離でも起こりうる異常は？",
       answer: "write skew",
-      explanation: "別々の行を読んで書く 2 つのトランザクションは、互いの書き込みを検出できない。",
+      explanation: "別々の行を読んで書く2つのトランザクションは、互いの書き込みを検出できない。",
       block_ids: [106],
     },
     {
       id: 13,
       kind: "choice",
       question: "スナップショット分離で、読み取りは書き込みを妨げる？",
-      options: ["妨げる", "妨げない", "行ロック次第", "WAL 次第"],
+      options: ["妨げる", "妨げない", "行ロック次第", "WAL次第"],
       answer: "妨げない",
       explanation: "読み取りは古い版を読むので、書き込みを待たせない。",
       block_ids: [104],
@@ -537,18 +537,18 @@ export const REVIEW: QuizCard[] = [
   card(ARTICLES[1], {
     id: 21,
     kind: "recall",
-    question: "VACUUM が回収するのは何？",
+    question: "VACUUMが回収するのは何？",
     answer: "どのスナップショットからも見えなくなった古い版の行",
-    explanation: "MVCC では更新のたびに古い版が残る。",
+    explanation: "MVCCでは更新のたびに古い版が残る。",
     block_ids: [202],
   }),
   card(ARTICLES[1], {
     id: 22,
     kind: "choice",
-    question: "bloat が増える主な原因は？",
-    options: ["長いトランザクション", "インデックスの不足", "WAL の圧縮", "共有バッファの不足"],
+    question: "bloatが増える主な原因は？",
+    options: ["長いトランザクション", "インデックスの不足", "WALの圧縮", "共有バッファの不足"],
     answer: "長いトランザクション",
-    explanation: "古いスナップショットが残る間、VACUUM は版を回収できない。",
+    explanation: "古いスナップショットが残る間、VACUUMは版を回収できない。",
     block_ids: [203],
   }),
 ];

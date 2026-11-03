@@ -116,14 +116,8 @@ test("the nav's ＋ holds the empty library's ways in, with PDF; the palette kee
   const add = app.locator(".nav-head").getByRole("button", { name: "記事を追加" });
   const menu = app.getByRole("menu", { name: "記事を追加" });
   await add.click();
-  await expect(menu.getByRole("menuitem")).toHaveText([
-    /^URL を貼る/,
-    /^フィードを登録/,
-    /^一括インポート/,
-    /^Markdown を取り込む/,
-    /^PDF \(論文\) を取り込む/,
-  ]);
-  await menu.getByRole("menuitem", { name: /^URL を貼る/ }).click();
+  await expect(menu.getByRole("menuitem")).toHaveText([/^URLを貼る/, /^フィードを登録/, /^一括インポート/, /^Markdownを取り込む/, /^PDF\(論文\)を取り込む/]);
+  await menu.getByRole("menuitem", { name: /^URLを貼る/ }).click();
   await expect(palette(app)).toBeVisible();
   await app.keyboard.press("Escape");
   await add.click();
@@ -134,7 +128,7 @@ test("the nav's ＋ holds the empty library's ways in, with PDF; the palette kee
   await expect(app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "PDF" })).toHaveAttribute("aria-pressed", "true");
   await add.click();
   await menu.getByRole("menuitem", { name: /^一括インポート/ }).click();
-  await expect(app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "URL 一覧" })).toHaveAttribute("aria-pressed", "true");
+  await expect(app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "URL一覧" })).toHaveAttribute("aria-pressed", "true");
 
   await app.locator(".nav-head").getByRole("button", { name: "ナビゲーションを閉じる" }).click();
   await app.locator(".nav-rail").getByRole("button", { name: "記事を追加" }).click();
@@ -142,7 +136,7 @@ test("the nav's ＋ holds the empty library's ways in, with PDF; the palette kee
   await app.keyboard.press("Escape");
   await commandCenter(app).click();
   await app.keyboard.type(">");
-  for (const name of ["一括インポート", "Markdown を取り込む", "フィードを管理"]) {
+  for (const name of ["一括インポート", "Markdownを取り込む", "フィードを管理"]) {
     await expect(palette(app).getByRole("option", { name })).toHaveCount(1);
   }
 });
@@ -179,7 +173,7 @@ test("the nav's feed tree stays closed after a reload", async ({ app }) => {
 
 test("the closed list is one button that opens it again; j / k still move the cursor (H11)", async ({ app }) => {
   await list(app).getByRole("button", { name: "記事一覧を閉じる" }).click();
-  const rail = app.getByRole("region", { name: "記事一覧 (折りたたみ)" });
+  const rail = app.getByRole("region", { name: "記事一覧(折りたたみ)" });
   await expect(rail.getByRole("button")).toHaveCount(1);
   await expect(rail).toHaveText("");
   await app.locator(".doc-area-wrap").click({ position: { x: 5, y: 200 } });
@@ -211,7 +205,7 @@ test("a saved article's summary shows in a strip above its page; it can be gener
   const row = strip.locator(".summary-row");
   await expect(row).toHaveAttribute("aria-expanded", "false");
   await row.click();
-  await expect(strip).toContainText("write skew は防げない");
+  await expect(strip).toContainText("write skewは防げない");
   // The strip sits above the placeholder the webview follows.
   expect((await strip.boundingBox())!.y).toBeLessThan((await app.locator(".page-host").boundingBox())!.y);
 
@@ -243,21 +237,13 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   const reader = await tools(app);
   await openPage(app, snapshot.title!);
   const page = await tools(app);
-  expect(reader.buttons).toEqual([
-    "お気に入り (s)",
-    "既読にする (m)",
-    "質問",
-    "理解度チェック",
-    "メモ",
-    "フォーカスモード (f)",
-    expect.stringMatching(/^その他/),
-  ]);
+  expect(reader.buttons).toEqual(["お気に入り(s)", "既読にする(m)", "質問", "理解度チェック", "メモ", "フォーカスモード(f)", expect.stringMatching(/^その他/)]);
   // Page adds its summary strip's toggle before フォーカス.
   expect(page.buttons).toEqual([...reader.buttons.slice(0, 5), "要約", ...reader.buttons.slice(5)]);
   expect(reader.items[1]).toBe("描画して取り込み直す");
   expect(page.items[1]).toBe("表示中のページで取り込み直す");
   expect(page.items.toSpliced(1, 1)).toEqual(reader.items.toSpliced(1, 1));
-  expect(reader.items.slice(-2)).toEqual(["URL をコピー", "ライブラリから削除…"]);
+  expect(reader.items.slice(-2)).toEqual(["URLをコピー", "ライブラリから削除…"]);
 
   // The quiz opens beside the page, as it does beside the Reader.
   await app.locator(".docbar").getByRole("button", { name: "理解度チェック" }).click();
@@ -271,8 +257,8 @@ test("an unsaved page's ⋯ copies its URL (H14)", async ({ app }) => {
   await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   await more(app).click();
-  await expect(app.getByRole("menu").getByRole("menuitem")).toHaveText(["URL をコピー"]);
-  await app.getByRole("menuitem", { name: "URL をコピー" }).click();
+  await expect(app.getByRole("menu").getByRole("menuitem")).toHaveText(["URLをコピー"]);
+  await app.getByRole("menuitem", { name: "URLをコピー" }).click();
   await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).toBe("https://example.com/unsaved");
 });
 

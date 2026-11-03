@@ -41,7 +41,7 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
 
   await app.evaluate(() => (window as unknown as { release: () => void }).release());
   await expect.poll(() => opacity(menu)).toBe("1");
-  await menu.getByRole("menuitem", { name: "URL をコピー" }).click();
+  await menu.getByRole("menuitem", { name: "URLをコピー" }).click();
   await expect(menu).toHaveCount(0);
 });
 
@@ -129,7 +129,7 @@ test("Esc closes a popover without also clearing the filters (H23)", async ({ ap
 test("a nav group's ⋯ menu opens beside its trigger, not at the window's left edge (H24)", async ({ app }) => {
   const item = navItem(app, GROUPS[0].name);
   await item.hover();
-  const trigger = app.locator(".nav").getByRole("button", { name: `${GROUPS[0].name} の操作` });
+  const trigger = app.locator(".nav").getByRole("button", { name: `${GROUPS[0].name}の操作` });
   await trigger.click();
   const menu = app.getByRole("menu");
   await expect.poll(() => opacity(menu)).toBe("1");

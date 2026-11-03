@@ -35,7 +35,7 @@ test("a page's tab shows the overlay's translation while it runs, and nothing on
   const tab = shell.getByRole("tab", { name: "P" });
   await expect(tab).toBeVisible({ timeout: 30_000 });
   await shell.evaluate(() => window.__e2e.emit("browser-translate", { tab: "k1", done: 3, total: 10 }));
-  await expect(tab.getByRole("status")).toHaveText("翻訳中 3/10");
+  await expect(tab.getByRole("status")).toHaveText("翻訳中3/10");
   await shell.evaluate(() => window.__e2e.emit("browser-translate", { tab: "k1", done: 10, total: 10 }));
   await expect(tab.getByRole("status")).toHaveCount(0);
 });

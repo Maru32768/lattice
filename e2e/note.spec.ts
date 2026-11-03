@@ -12,9 +12,9 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
   const button = app.getByRole("button", { name: "メモ", exact: true });
   await button.click();
   const panel = app.getByRole("complementary", { name: "メモ" });
-  await panel.getByRole("textbox", { name: "メモ" }).fill("2PL と比べる");
+  await panel.getByRole("textbox", { name: "メモ" }).fill("2PLと比べる");
   await expect(panel.getByRole("status")).toHaveText("保存しました");
-  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "2PL と比べる" });
+  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "2PLと比べる" });
 
   // One panel at a time: the quiz takes the memo's place.
   await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
@@ -26,7 +26,7 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
   await expect(app.getByRole("button", { name: "メモ", exact: true })).not.toHaveClass(/\bon\b/);
   await open(app, SNAPSHOT_ID);
   await button.click();
-  await expect(panel.getByRole("textbox", { name: "メモ" })).toHaveValue("2PL と比べる");
+  await expect(panel.getByRole("textbox", { name: "メモ" })).toHaveValue("2PLと比べる");
 });
 
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
@@ -35,7 +35,7 @@ test("ジャンル: a genre added ahead of any article is listed for classificat
   await name.fill("Compilers");
   await app.getByRole("button", { name: "追加", exact: true }).click();
   await expect(app.getByRole("status")).toHaveText("「Compilers」を追加しました");
-  await expect(app.getByRole("combobox", { name: "Compilers の新しい名前" })).toHaveValue("Compilers");
+  await expect(app.getByRole("combobox", { name: "Compilersの新しい名前" })).toHaveValue("Compilers");
   await name.fill("compilers");
   await expect(app.getByText("「Compilers」はすでにあります")).toBeVisible();
   await expect(app.getByRole("button", { name: "追加", exact: true })).toBeDisabled();

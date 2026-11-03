@@ -16,7 +16,7 @@ test("each nav section's 管理 opens its tab of one screen; Settings no longer 
   const kind = screen(app).getByRole("group", { name: "分類の種類" });
   await expect(kind.getByRole("button", { name: "グループ" })).toHaveAttribute("aria-pressed", "true");
   for (const g of GROUPS) {
-    await expect(screen(app).getByRole("textbox", { name: `${g.name} の新しい名前` })).toHaveValue(g.name);
+    await expect(screen(app).getByRole("textbox", { name: `${g.name}の新しい名前` })).toHaveValue(g.name);
   }
 
   await app.keyboard.press("Escape");
@@ -44,7 +44,7 @@ test("the groups tab creates, renames and deletes groups, like the genres tab", 
   await screen(app).getByRole("button", { name: "追加" }).click();
   await expect(navItem(app, "論文")).toBeVisible();
 
-  const rename = screen(app).getByRole("textbox", { name: `${mvcc.name} の新しい名前` });
+  const rename = screen(app).getByRole("textbox", { name: `${mvcc.name}の新しい名前` });
   await rename.fill(rust.name);
   await expect(screen(app)).toContainText(`「${rust.name}」はすでにあります`);
   await rename.fill("MVCC");
@@ -53,7 +53,7 @@ test("the groups tab creates, renames and deletes groups, like the genres tab", 
   await expect(navItem(app, "MVCC")).toBeVisible();
   expect(await callsOf(app, "rename_group")).toEqual([{ id: mvcc.id, name: "MVCC" }]);
 
-  await screen(app).getByRole("button", { name: "MVCC を削除" }).click();
+  await screen(app).getByRole("button", { name: "MVCCを削除" }).click();
   await app.getByRole("alertdialog", { name: "グループ「MVCC」を削除しますか？" }).getByRole("button", { name: "削除", exact: true }).click();
   await expect(navItem(app, "MVCC")).toHaveCount(0);
   expect(await callsOf(app, "delete_group")).toEqual([{ id: mvcc.id }]);

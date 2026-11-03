@@ -26,8 +26,8 @@ async function createFolder(app: Page, name: string) {
 }
 
 async function moveTo(app: Page, feed: string, folder: string) {
-  await app.getByLabel(`${feed} のフォルダ`).selectOption({ label: folder });
-  await expect(app.getByRole("status")).toHaveText(`1 件を「${folder}」へ移動しました`);
+  await app.getByLabel(`${feed}のフォルダ`).selectOption({ label: folder });
+  await expect(app.getByRole("status")).toHaveText(`1件を「${folder}」へ移動しました`);
 }
 
 /** A pointer drag in small steps, as a hand does: past the few pixels that start it, then onto the target's middle. */
@@ -73,7 +73,7 @@ test("dragging feeds in the sidebar reorders them and moves them between folders
     names(["TechFeed", "Rust Blog", "Postgres Weekly", "Zenn", "フォルダなし", "web.dev", "LWN.net", "Netflix TechBlog"]),
   );
   // The ⋮⋮ handles drag rows, as the AI provider chain's do.
-  const grip = (name: string) => app.getByLabel(`${name} をドラッグで並べ替え`);
+  const grip = (name: string) => app.getByLabel(`${name}をドラッグで並べ替え`);
   await drag(app, grip("Zenn"), grip("web.dev"));
   await expect(table.locator(".fn"), "dragged down onto a feed of another group: just after it").toHaveText(
     names(["Rust Blog", "Postgres Weekly", "web.dev", "Zenn", "LWN.net", "Netflix TechBlog"]),
@@ -120,6 +120,6 @@ test("Alt+↑ / ↓ move the focused feed or folder, across folders; folders dra
   await drag(app, navItem(app, "News"), navItem(app, "Tech"));
   await expect(folders()).toHaveText(["News", "Tech"]);
   await expect(app.getByRole("region", { name: "フォルダ" }).locator("li input").first(), "the Feeds screen follows").toHaveValue("News");
-  await drag(app, app.getByLabel("Tech をドラッグで並べ替え"), app.getByLabel("News をドラッグで並べ替え"));
+  await drag(app, app.getByLabel("Techをドラッグで並べ替え"), app.getByLabel("Newsをドラッグで並べ替え"));
   await expect(folders(), "the Feeds screen's folder list drags too").toHaveText(["Tech", "News"]);
 });

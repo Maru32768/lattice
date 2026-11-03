@@ -516,7 +516,12 @@ export function ArticleTools({
       >
         <Icon name="star" />
       </button>
-      <button className="tb" onClick={act.onToggleRead} title={`${readLabel} (m)`} aria-label={`${readLabel} (m)`}>
+      <button
+        className="tb"
+        onClick={act.onToggleRead}
+        title={t("common.withKey", { label: readLabel, key: "m" })}
+        aria-label={t("common.withKey", { label: readLabel, key: "m" })}
+      >
         <Icon name="check" />
         <span className="lbl">{readLabel}</span>
       </button>

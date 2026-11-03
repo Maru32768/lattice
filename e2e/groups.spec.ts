@@ -23,20 +23,20 @@ test("a sidebar group is a scope; groups are renamed and deleted there (articles
   await expect(listCount(app)).toHaveText("0 / 0");
   const name = nav(app).getByLabel("グループ名");
 
-  await nav(app).getByRole("button", { name: "論文 の操作" }).click();
+  await nav(app).getByRole("button", { name: "論文の操作" }).click();
   await app.getByRole("menuitem", { name: "名前を変更" }).click();
   await name.fill(rust.name);
   await name.press("Enter");
   await expect(app.getByRole("alert")).toContainText(`グループ「${rust.name}」はすでにあります`);
-  await nav(app).getByRole("button", { name: "論文 の操作" }).click();
+  await nav(app).getByRole("button", { name: "論文の操作" }).click();
   await app.getByRole("menuitem", { name: "名前を変更" }).click();
-  await name.fill("論文 2026");
+  await name.fill("論文2026");
   await name.press("Enter");
-  await expect(list(app).locator("h1")).toHaveText("論文 2026");
+  await expect(list(app).locator("h1")).toHaveText("論文2026");
 
   await navItem(app, mvcc.name).click();
   await nav(app)
-    .getByRole("button", { name: `${mvcc.name} の操作` })
+    .getByRole("button", { name: `${mvcc.name}の操作` })
     .click();
   await app.getByRole("menuitem", { name: "削除" }).click();
   const dialog = app.getByRole("alertdialog", { name: `グループ「${mvcc.name}」を削除しますか？` });
@@ -84,7 +84,7 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
   await rows.nth(0).click();
   await rows.nth(2).click({ modifiers: ["Shift"] });
   await rows.nth(1).click();
-  await expect(list(app).getByRole("toolbar")).toContainText("2 件を選択");
+  await expect(list(app).getByRole("toolbar")).toContainText("2件を選択");
   await expect(app.locator(".art-title")).toHaveCount(0);
 
   await list(app).getByRole("button", { name: "グループに追加" }).click();
@@ -96,7 +96,7 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
 
   await list(app).getByRole("button", { name: "選択を終了" }).click();
   await rows.nth(3).click({ modifiers: ["Shift"] });
-  await expect(list(app).getByRole("toolbar")).toContainText("1 件を選択");
+  await expect(list(app).getByRole("toolbar")).toContainText("1件を選択");
   await app.keyboard.press("Escape");
   await expect(list(app).getByRole("toolbar")).toHaveCount(0);
   await expect(list(app).getByRole("button", { name: "選択", exact: true })).toBeVisible();
@@ -116,9 +116,9 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
   const scope = app.getByLabel("質問の範囲");
   const key = JSON.stringify({ kind: "group", id: mvcc.id });
   await expect(scope.locator("option", { hasText: `このグループ: ${mvcc.name}` })).toHaveAttribute("value", key);
-  await expect(scope.locator(`optgroup[label="グループ"] option`)).toHaveText(GROUPS.map((g) => `${g.name} (${members(g.id).length}件)`));
+  await expect(scope.locator(`optgroup[label="グループ"] option`)).toHaveText(GROUPS.map((g) => `${g.name}(${members(g.id).length}件)`));
   await scope.selectOption({ label: `このグループ: ${mvcc.name}` });
-  await app.getByLabel("質問", { exact: true }).fill("MVCC とは？");
+  await app.getByLabel("質問", { exact: true }).fill("MVCCとは？");
   await app.getByRole("button", { name: "送信" }).click();
   await expect
     .poll(async () => (await callsOf(app, "chat_ask")).map((c) => (c as { scope: unknown }).scope))
@@ -158,8 +158,8 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
   const text = app.getByRole("textbox", { name: "インポートするテキスト" });
   await text.fill(`${existing}\nhttps://example.com/new-post\nftp://example.com/file\nnot-a-url at all`);
   await app.getByRole("button", { name: "インポート", exact: true }).click();
-  await expect(app.getByRole("status")).toContainText("2 件中 1 件");
-  await expect(app.getByRole("status")).toContainText("・1 行は http(s) でないため無視・1 行は URL がないため無視");
+  await expect(app.getByRole("status")).toContainText("2件中1件");
+  await expect(app.getByRole("status")).toContainText("・1行はhttp(s)でないため無視・1行はURLがないため無視");
   await expect(text).toHaveValue("");
   const [call] = (await callsOf(app, "group_add")) as { id: number; articles: number[] }[];
   expect(call.id).toBe(empty.id);

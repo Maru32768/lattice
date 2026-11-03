@@ -13,7 +13,7 @@ test("the chat budget sends the setting and keeps it when the section is reopene
   await section(app, "要約・対話").click();
   const budget = app.getByLabel("対話で使う範囲");
   await expect(budget).toHaveValue("standard");
-  await budget.selectOption({ label: "多め (約 15 万字)" });
+  await budget.selectOption({ label: "多め(約15万字)" });
   expect(await callsOf(app, "set_chat_budget")).toEqual([{ budget: "large" }]);
 
   await section(app, "翻訳").click();
@@ -31,7 +31,7 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
 
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await section(app, "要約・対話").click();
-  await app.getByLabel("質問の入力欄で Vim キーバインドを使う").check();
+  await app.getByLabel("質問の入力欄でVimキーバインドを使う").check();
   await app.keyboard.press("Escape");
 
   await q.fill("");
@@ -74,12 +74,12 @@ test("the chat scope offers each open article and all of them, and follows the t
   const scope = app.getByLabel("質問の範囲");
   const opened = scope.locator("optgroup[label='開いている記事'] option");
   await expect(opened).toHaveText([a.title!, b.title!]);
-  await expect(scope.locator("option", { hasText: "開いている記事すべて (2 件)" })).toBeEnabled();
+  await expect(scope.locator("option", { hasText: "開いている記事すべて(2件)" })).toBeEnabled();
 
   // A document window reports its tabs to the main window.
   await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
   await expect(opened).toHaveText([a.title!, b.title!, c.title!]);
-  await scope.selectOption({ label: "開いている記事すべて (3 件)" });
+  await scope.selectOption({ label: "開いている記事すべて(3件)" });
   const q = app.locator("#chat-q");
   await q.fill("共通点は？");
   await q.press("Control+Enter");
@@ -89,7 +89,7 @@ test("the chat scope offers each open article and all of them, and follows the t
 
   // One of them, until its tab closes: then the scope widens to what is still open.
   await scope.selectOption({ label: b.title! });
-  await app.getByRole("button", { name: `${b.title} を閉じる` }).click();
+  await app.getByRole("button", { name: `${b.title}を閉じる` }).click();
   await expect(opened).toHaveText([a.title!, c.title!]);
   await expect(scope).toHaveValue("open");
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));

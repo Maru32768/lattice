@@ -17,8 +17,8 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
     "グループに追加…",
     "新しいタブで開く",
     "別ウィンドウで開く",
-    "Page で開く",
-    "URL をコピー",
+    "Pageで開く",
+    "URLをコピー",
     "ライブラリから削除…",
   ]);
   await m.getByRole("menuitem", { name: /お気に入り/ }).click();
@@ -58,7 +58,7 @@ test("with rows picked, the menu applies the bulk actions to all of them", async
   await row(app, b.title!).click();
   await row(app, b.title!).click({ button: "right" });
   const m = menu(app);
-  await expect(m).toContainText("2 件");
+  await expect(m).toContainText("2件");
   await expect(m.getByRole("menuitem")).toHaveCount(3);
   await m.getByRole("menuitem", { name: "グループに追加…" }).click();
   await expect(app.getByRole("dialog")).toBeVisible();
@@ -89,5 +89,5 @@ test("right-click on a tab: the article's menu; an unsaved page's tab offers wha
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "open", docs: [{ kind: "page", url: "https://example.com/unsaved" }] }));
   const page = app.locator(".dpane").first().getByRole("tab").last();
   await page.click({ button: "right" });
-  await expect(menu(app).getByRole("menuitem")).toHaveText(["新しいタブで開く", "別ウィンドウで開く", "URL をコピー"]);
+  await expect(menu(app).getByRole("menuitem")).toHaveText(["新しいタブで開く", "別ウィンドウで開く", "URLをコピー"]);
 });

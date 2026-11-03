@@ -17,7 +17,7 @@ export const newRule = (): FilterRule => ({ field: "title", action: "exclude", p
 
 const fieldLabel = (f: FilterField, t: T) => t(FIELDS.find(([x]) => x === f)![1]);
 
-/** 「タイトルに sponsored を含むものを除く」 */
+/** 「タイトルにsponsoredを含むものを除く」 */
 export const ruleText = (r: FilterRule, t: T) =>
   t(r.action === "include" ? "feedFilter.ruleInclude" : "feedFilter.ruleExclude", {
     field: fieldLabel(r.field, t),

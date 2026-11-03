@@ -1,9 +1,9 @@
 import { test, expect, navItem, callsOf } from "./harness.ts";
 
 const SECTIONS = [
-  "AI プロバイダ",
+  "AIプロバイダ",
   "自分について",
-  "取り込み・JS 描画",
+  "取り込み・JS描画",
   "取り込みフィルタ",
   "画像",
   "翻訳",
@@ -17,7 +17,7 @@ const SECTIONS = [
   "起動・タスクバー",
   "アップデート",
   "バックアップ",
-  "クラウドバックアップ (R2)",
+  "クラウドバックアップ(R2)",
   "エクスポート",
   "ログ・保存場所",
 ];
@@ -36,8 +36,8 @@ test("every settings section renders, and Esc goes back to the library", async (
   }
   await section("ログ・保存場所").click();
   await expect(app.locator(".stg main")).toContainText("lattice.db");
-  await section("AI プロバイダ").click();
-  await expect(section("AI プロバイダ")).toContainText("2 モデル");
+  await section("AIプロバイダ").click();
+  await expect(section("AIプロバイダ")).toContainText("2モデル");
 
   await app.keyboard.press("Escape");
   await expect(nav).toBeHidden();
@@ -49,7 +49,7 @@ test("the launch-at-sign-in switch keeps what was chosen", async ({ app }) => {
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
   const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
   await section("起動・タスクバー").click();
-  const autostart = app.getByRole("switch", { name: "Windows の起動時に Lattice を起動" });
+  const autostart = app.getByRole("switch", { name: "Windowsの起動時にLatticeを起動" });
   await expect(autostart).not.toBeChecked();
   await autostart.click();
   await section("ブラウザ").click();
@@ -128,9 +128,9 @@ test("in a narrow window the provider chain wraps instead of squeezing its selec
   await app
     .getByRole("navigation", { name: "設定カテゴリ" })
     .locator(".ni")
-    .filter({ has: app.locator(".label").getByText("AI プロバイダ", { exact: true }) })
+    .filter({ has: app.locator(".label").getByText("AIプロバイダ", { exact: true }) })
     .click();
-  for (const name of ["1 番目のモデル", "1 番目の effort", "2 番目のモデル", "2 番目の effort"]) {
+  for (const name of ["1番目のモデル", "1番目のeffort", "2番目のモデル", "2番目のeffort"]) {
     const box = await app.getByRole("combobox", { name }).boundingBox();
     // A custom model ID shares the line with its select: each keeps at least 7em.
     expect(box?.width, name).toBeGreaterThanOrEqual(80);
@@ -146,10 +146,10 @@ test("自分について and 要約・対話 each save their own instructions wi
   await app.getByRole("button", { name: "保存", exact: true }).click();
   await nav.getByRole("button", { name: "自分について" }).click();
   await expect(app.getByLabel("要約の追加の指示")).toHaveCount(0);
-  await app.getByLabel("自分について").fill("DB の運用担当");
+  await app.getByLabel("自分について").fill("DBの運用担当");
   await app.getByRole("button", { name: "保存", exact: true }).click();
   await expect(app.getByRole("status")).toHaveText("保存しました");
-  expect((await callsOf(app, "set_custom_instructions")).at(-1)).toEqual({ settings: { profile: "DB の運用担当", summary: "箇条書きで", chat: "" } });
+  expect((await callsOf(app, "set_custom_instructions")).at(-1)).toEqual({ settings: { profile: "DBの運用担当", summary: "箇条書きで", chat: "" } });
 });
 
 test("要約を自動で作る starts off and saves all articles or an importance threshold", async ({ app }) => {
@@ -157,7 +157,7 @@ test("要約を自動で作る starts off and saves all articles or an importanc
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByRole("button", { name: "要約・対話" }).click();
   const auto = app.getByLabel("要約を自動で作る");
   await expect(auto).toHaveValue("off");
-  await auto.selectOption({ label: "重要度 4 以上の記事" });
+  await auto.selectOption({ label: "重要度4以上の記事" });
   await auto.selectOption({ label: "すべての記事" });
   await expect.poll(() => callsOf(app, "set_auto_summarize")).toEqual([{ mode: { important: 4 } }, { mode: "all" }]);
 });

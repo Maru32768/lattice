@@ -19,7 +19,7 @@ test("Ctrl+K toggles the palette; > lists commands only", async ({ app }) => {
   await app.keyboard.press("Control+k");
   await app.keyboard.type(">設定");
   await app.keyboard.press("Enter");
-  await expect(app.getByRole("main").getByRole("heading", { level: 1 })).toHaveText("AI プロバイダ");
+  await expect(app.getByRole("main").getByRole("heading", { level: 1 })).toHaveText("AIプロバイダ");
 });
 
 test("Tab stacks a tag as a facet and keeps the palette open", async ({ app }) => {
@@ -37,7 +37,7 @@ test("Ctrl+Enter saves a pasted URL to the library", async ({ app }) => {
   const url = "https://example.com/new-post";
   await app.keyboard.press("Control+k");
   await app.keyboard.insertText(url);
-  await expect(palette(app).getByRole("option")).toHaveText(["Page で開くEnter", /ライブラリに保存/, "フィードを検出して登録"]);
+  await expect(palette(app).getByRole("option")).toHaveText(["Pageで開くEnter", /ライブラリに保存/, "フィードを検出して登録"]);
   await app.keyboard.press("Control+Enter");
   await expect.poll(() => callsOf(app, "save_url")).toEqual([{ url }]);
   await expect(app.locator(".art-title")).toHaveText(url);
@@ -47,7 +47,7 @@ test("a pasted URL of a saved article offers its Reader view first", async ({ ap
   const saved = ARTICLES[1];
   await app.keyboard.press("Control+k");
   await app.keyboard.insertText(saved.original_url);
-  await expect(palette(app).getByRole("option").first()).toContainText("Reader で開く");
+  await expect(palette(app).getByRole("option").first()).toContainText("Readerで開く");
   await app.keyboard.press("Enter");
   await expect(app.locator(".art-title")).toHaveText(saved.title!);
 });

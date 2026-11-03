@@ -32,7 +32,7 @@ test("tag popover: search, AND / any, Backspace drops the last tag", async ({ ap
   await search.focus();
   await app.keyboard.press("Backspace");
   await expect(listCount(app)).toHaveText(`${postgres} / ${all}`);
-  await expect(pv.getByRole("button", { name: "postgres を解除" })).toBeVisible();
+  await expect(pv.getByRole("button", { name: "postgresを解除" })).toBeVisible();
 
   await app.keyboard.press("Escape");
   await expect(pv).toBeHidden();

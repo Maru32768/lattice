@@ -11,38 +11,38 @@ async function openFeeds(page: Page) {
 
 test("a feed's rejected entries show why, and can be imported or let in by dropping the rule", async ({ app }) => {
   await openFeeds(app);
-  await expect(app.locator("main.manage")).toContainText("LLM での判定に失敗したため、そのまま取り込みました: usage limit reached");
-  await app.getByRole("button", { name: "Postgres Weekly の除外された記事 2 件" }).click();
+  await expect(app.locator("main.manage")).toContainText("LLMでの判定に失敗したため、そのまま取り込みました: usage limit reached");
+  await app.getByRole("button", { name: "Postgres Weeklyの除外された記事2件" }).click();
 
   const filter = app.getByRole("region", { name: "このフィードの取り込みフィルタ" });
   await expect(filter.getByLabel("キーワード")).toHaveValue("sponsored");
   await expect(filter.getByRole("switch")).toBeChecked();
-  await expect(filter.getByLabel("取り込む記事の指示")).toHaveValue("Postgres の内部実装だけ");
+  await expect(filter.getByLabel("取り込む記事の指示")).toHaveValue("Postgresの内部実装だけ");
 
   const list = app.getByRole("region", { name: "除外された記事" });
   await expect(list.locator("li")).toHaveCount(2);
-  await expect(list.locator("li", { hasText: sponsored.title! })).toContainText("このフィードのルール「タイトルに sponsored を含むものを除く」で除外");
-  await expect(list.locator("li", { hasText: meetup.title! })).toContainText("LLM: イベント告知で内部実装の記事ではない (重要度 2)");
+  await expect(list.locator("li", { hasText: sponsored.title! })).toContainText("このフィードのルール「タイトルにsponsoredを含むものを除く」で除外");
+  await expect(list.locator("li", { hasText: meetup.title! })).toContainText("LLM: イベント告知で内部実装の記事ではない(重要度2)");
 
-  await list.getByRole("button", { name: `${meetup.title} を取り込む` }).click();
+  await list.getByRole("button", { name: `${meetup.title}を取り込む` }).click();
   await expect(list.getByRole("status")).toHaveText(`「${meetup.title}」を取り込みました`);
   expect(await callsOf(app, "import_rejected")).toEqual([{ feedId: 1, url: meetup.url }]);
   await expect(list.locator("li")).toHaveCount(1);
 
   await list.getByRole("button", { name: "このルールを外す" }).click();
-  await expect(list.getByRole("status")).toHaveText("再評価: 取り込み 1 件・LLM の判定待ち 0 件・除外のまま 0 件");
+  await expect(list.getByRole("status")).toHaveText("再評価: 取り込み1件・LLMの判定待ち0件・除外のまま0件");
   expect((await callsOf(app, "set_feed_filter")).at(-1)).toMatchObject({ feedId: 1, filter: { rules: [] } });
   await expect(list).toContainText("除外された記事はありません");
-  await expect(app.getByRole("button", { name: /Postgres Weekly の除外された記事/ })).toHaveCount(0);
+  await expect(app.getByRole("button", { name: /Postgres Weeklyの除外された記事/ })).toHaveCount(0);
 });
 
 test("rules are edited per feed, and a bad regex is refused with the reason", async ({ app }) => {
   await openFeeds(app);
-  await app.getByRole("button", { name: "Rust Blog の名前・アイコン・取り込みフィルタを編集" }).click();
+  await app.getByRole("button", { name: "Rust Blogの名前・アイコン・取り込みフィルタを編集" }).click();
   const filter = app.getByRole("region", { name: "このフィードの取り込みフィルタ" });
   await expect(filter.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
   await filter.getByRole("button", { name: "ルールを追加" }).click();
-  const rule = filter.getByRole("group", { name: "ルール 1" });
+  const rule = filter.getByRole("group", { name: "ルール1" });
   await rule.getByLabel("キーワード").fill("(release");
   await rule.getByLabel("正規表現").check();
   await rule.getByLabel("含む・除く").selectOption("include");
@@ -64,7 +64,7 @@ test("rules are edited per feed, and a bad regex is refused with the reason", as
     },
   });
   await filter.getByRole("button", { name: "除外分を再評価" }).click();
-  await expect(filter.getByRole("status")).toHaveText("再評価: 取り込み 0 件・LLM の判定待ち 0 件・除外のまま 0 件");
+  await expect(filter.getByRole("status")).toHaveText("再評価: 取り込み0件・LLMの判定待ち0件・除外のまま0件");
 });
 
 test("the global filter lives in Settings › 取り込みフィルタ", async ({ app }) => {

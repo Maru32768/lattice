@@ -58,6 +58,11 @@ A command touches several places, and tests catch the misses:
 - **React Compiler** must compile every component (`scripts/react-compiler.ts`); it silently skips constructs like try/finally, so restructure rather than suppress.
 - **Formatting:** 160-column lines in both rustfmt and Prettier; rustfmt puts every `if/else` and `let … else` block on its own lines; every TS block is braced. Workspace clippy denies `unwrap_used`, `todo`, `dbg_macro` etc. outside tests; `#[allow]` needs a `reason`.
 - **User docs come in pairs** (`README.md` / `README.ja.md`, `docs/guide.md` / `docs/guide.ja.md`, `CHANGELOG.md` / `CHANGELOG.ja.md`) that match line for line: edit the same lines in both. `scripts/doc-pairs.ts` (in `npm run lint` and CI) fails when a line's shape or the changed lines differ; `[one-language]` in a commit message skips the latter.
-- **Japanese text** (docs and `src/i18n/ja.ts`) uses half-width parentheses `()`, with a space between them and adjacent text as with alphanumerics: `残す世代数 (既定 30) を超えると`. UI labels quoted in the docs match the catalog exactly.
+- **Japanese text** (UI catalog, docs, Japanese comments, prompts and Japanese test strings that mirror them) applies to everything you write or edit:
+  - Half-width alphanumerics, and no space between Japanese and alphanumerics: `AIを使って最大100件の記事を要約する`, `Google CloudのAPI`.
+  - Half-width parentheses `()` with no space inside or outside: `残す世代数(既定30)を超えると`. Other brackets (「」, 【】) stay as they are.
+  - Keep spaces that are not between Japanese and alphanumerics: inside English names and phrases (`Google Cloud`), around separators like `·`, `/`, `›`, after a URL, and leading/trailing spaces that sit next to markup. Code spans, identifiers, paths, commands, URLs and Markdown syntax are unchanged; leave kanji numerals (`一部`, `一度`) alone.
+  - Not covered: English prose quoting a Japanese label (code comments, test titles keep English spacing: `returns the article to 未分類`), article and other external data, `Intl` output, migrations, and the dated audit records under `docs/` (`*-audit-*`, `review-*`, `audits/`).
+  - `src/i18n/i18n.test.ts` checks the catalog. UI labels quoted in the docs match the catalog exactly.
 - Comments explain *why* (constraints, past bugs), often citing roadmap ids like `F3`, `G51` or numbered sections in `docs/design-review.md`. A deliberate deferral is marked `// shortcut: …`.
 - The app version is shared by `package.json` and the workspace `Cargo.toml`; bump with `npm run bump -- <x.y.z>`. Releases: `docs/release.md`.

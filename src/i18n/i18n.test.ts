@@ -31,6 +31,13 @@ test("en keeps ja's leading and trailing spaces (text placed next to markup; Eng
   assert.deepEqual(off, []);
 });
 
+test("ja uses half-width parentheses and no space between Japanese and alphanumerics (CLAUDE.md, Japanese text)", () => {
+  const off = Object.entries(ja).filter(
+    ([, v]) => /[（）]/.test(v) || /[぀-ヿ㐀-鿿] +[A-Za-z0-9({]/.test(v) || /[A-Za-z0-9)}] +[぀-ヿ㐀-鿿]/.test(v) || /[A-Za-z0-9}] +\([぀-ヿ㐀-鿿]/.test(v),
+  );
+  assert.deepEqual(off, []);
+});
+
 test("English text has no Japanese in it", () => {
   const en_ = translatorFor("en");
   const leaks = (Object.keys(ja) as Key[]).filter((k) => {

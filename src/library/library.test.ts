@@ -99,7 +99,7 @@ test("groups: a scope by id and a facet dimension (OR within, AND with the other
   assert.deepEqual(
     r.map((x) => [x.label, x.count]),
     [
-      ["状態 既読 を外す", 1],
+      ["状態 既読を外す", 1],
       ["卒論 → すべての記事", 1],
     ],
   );
@@ -152,8 +152,8 @@ test("relaxations: one per active facet, plus the scope unless all", () => {
   assert.deepEqual(
     r.map((x) => [x.label, x.count]),
     [
-      ["ジャンル Database を外す", 1],
-      ["タグ ebpf を外す", 1],
+      ["ジャンル Databaseを外す", 1],
+      ["タグ ebpfを外す", 1],
       ["未読 → すべての記事", 0],
     ],
   );

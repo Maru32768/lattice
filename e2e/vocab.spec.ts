@@ -76,7 +76,7 @@ test("単語帳: search, edit a meaning, suspend, export and delete", async ({ a
   await navItem(app, "単語帳").click();
   const main = app.locator(".vocab");
   await expect(main.getByRole("heading", { level: 1 })).toHaveText("単語帳");
-  await expect(main.locator(".sub")).toHaveText(`${VOCAB.length} 語`);
+  await expect(main.locator(".sub")).toHaveText(`${VOCAB.length}語`);
   const row = (word: string) => main.locator("tbody tr", { hasText: word });
   await expect(row("write skew").locator(".ctx b")).toHaveText("Write skew");
   await expect(row("bloat")).toContainText("取得に失敗");
@@ -85,27 +85,27 @@ test("単語帳: search, edit a meaning, suspend, export and delete", async ({ a
   await expect(main.locator("tbody tr")).toHaveCount(1);
   await main.getByRole("searchbox", { name: "単語・意味で検索" }).fill("");
 
-  await row("bloat").getByRole("button", { name: "bloat の操作" }).click();
+  await row("bloat").getByRole("button", { name: "bloatの操作" }).click();
   await app.getByRole("menuitem", { name: "意味を編集" }).click();
-  await main.getByRole("textbox", { name: "bloat の意味" }).fill("肥大化");
+  await main.getByRole("textbox", { name: "bloatの意味" }).fill("肥大化");
   await main.getByRole("button", { name: "保存" }).click();
   expect(await callsOf(app, "vocab_set_meaning")).toEqual([{ id: 1, meaning: "肥大化" }]);
   await expect(row("bloat")).toContainText("肥大化");
 
   // A ready word can be asked again (an entry from before the learner's-dictionary prompt).
-  await row("write skew").getByRole("button", { name: "write skew の操作" }).click();
+  await row("write skew").getByRole("button", { name: "write skewの操作" }).click();
   await app.getByRole("menuitem", { name: /意味と例文を再生成/ }).click();
   expect(await callsOf(app, "vocab_retry")).toEqual([{ id: 2 }]);
 
-  await row("write skew").getByRole("button", { name: "write skew の操作" }).click();
+  await row("write skew").getByRole("button", { name: "write skewの操作" }).click();
   await app.getByRole("menuitem", { name: "復習を停止" }).click();
   await expect(row("write skew")).toContainText("停止中");
   expect(await callsOf(app, "vocab_suspend")).toEqual([{ id: 2, suspended: true }]);
 
-  await main.getByRole("button", { name: "CSV に書き出す" }).click();
+  await main.getByRole("button", { name: "CSVに書き出す" }).click();
   await expect(main.getByRole("status")).toContainText("lattice-vocab-20261020T030000Z.csv");
 
-  await row("bloat").getByRole("button", { name: "bloat の操作" }).click();
+  await row("bloat").getByRole("button", { name: "bloatの操作" }).click();
   await app.getByRole("menuitem", { name: "削除" }).click();
   await app.getByRole("alertdialog", { name: "「bloat」を削除しますか？" }).getByRole("button", { name: "削除" }).click();
   await expect(row("bloat")).toHaveCount(0);
@@ -184,7 +184,7 @@ test("今日の復習: a saved word is a word → meaning card, said aloud", asy
   await expect(session.locator(".vc-word")).toHaveText("block");
   await expect(session.locator(".vc-pos")).toHaveText("noun");
   await expect(session.getByText("block is a word the mock explains.")).toHaveCount(0);
-  await expect(session.getByText("block の意味")).toHaveCount(0);
+  await expect(session.getByText("blockの意味")).toHaveCount(0);
   await expect.poll(() => spoken(app)).toEqual(["block"]);
   await session.getByRole("button", { name: "発音を聞く" }).click();
   await app.keyboard.press("r");
@@ -195,7 +195,7 @@ test("今日の復習: a saved word is a word → meaning card, said aloud", asy
   await expect(session.getByRole("region", { name: "例文" })).toContainText("An example sentence with block.");
   await session.getByRole("button", { name: "例文を聞く" }).click();
   await expect.poll(() => spoken(app)).toEqual(["block", "block", "block", "An example sentence with block."]);
-  await expect(session.locator(".vc-gloss")).toHaveText("日本語block の意味");
+  await expect(session.locator(".vc-gloss")).toHaveText("日本語blockの意味");
   await expect(session.locator(".vc-context b")).toHaveText("block");
   await expect(session.getByRole("button", { name: "出典へ" })).toBeVisible();
 
@@ -203,7 +203,7 @@ test("今日の復習: a saved word is a word → meaning card, said aloud", asy
   const graded = await callsOf(app, "vocab_grade");
   expect(graded).toHaveLength(1);
   expect(graded[0]).toMatchObject({ grade: "good" });
-  await expect(app.locator(".qz-summary")).toContainText("1 枚を復習しました");
+  await expect(app.locator(".qz-summary")).toContainText("1枚を復習しました");
 });
 
 test("without an offline English voice the card is silent and has no audio buttons", async ({ shell: app }) => {

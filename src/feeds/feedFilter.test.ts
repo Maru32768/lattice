@@ -8,14 +8,14 @@ const [ja, en] = [translatorFor("ja"), translatorFor("en")];
 const ad: FilterRule = { field: "title", action: "exclude", pattern: "sponsored", regex: false };
 
 test("every rejection reason reads as a sentence in both languages", () => {
-  assert.equal(reasonText({ kind: "excluded", scope: "global", rule: ad }, ja), "全体のルール「タイトルに sponsored を含むものを除く」で除外");
+  assert.equal(reasonText({ kind: "excluded", scope: "global", rule: ad }, ja), "全体のルール「タイトルにsponsoredを含むものを除く」で除外");
   assert.equal(
     reasonText({ kind: "excluded", scope: "feed", rule: { ...ad, field: "url", regex: true, pattern: "db-[0-9]+" } }, en),
     "Excluded by this feed's rule: skip if URL contains /db-[0-9]+/",
   );
   assert.equal(reasonText({ kind: "not_included", scope: "feed" }, ja), "このフィードの「含む」ルールのどれにも合わない");
   assert.equal(reasonText({ kind: "too_short", scope: "global", min: 500, chars: 120 }, en), "Text too short for the global rules: 120 of 500 characters");
-  assert.equal(reasonText({ kind: "llm", reason: "広告", score: 2 }, ja), "LLM: 広告 (重要度 2)");
+  assert.equal(reasonText({ kind: "llm", reason: "広告", score: 2 }, ja), "LLM: 広告(重要度2)");
   assert.equal(reasonText({ kind: "llm", reason: "ad", score: null }, en), "LLM: ad");
   assert.equal(reasonText(null, en), "Rejected");
 });

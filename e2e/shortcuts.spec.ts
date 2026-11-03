@@ -28,7 +28,7 @@ test("a recorded key runs the action, survives a reload, and can be removed", as
   await expect(list(app).locator(".row.cur")).toHaveCount(1);
 
   await openShortcuts(app);
-  await row(app, "次の項目へ").getByRole("button", { name: "次の項目へから n を外す" }).click();
+  await row(app, "次の項目へ").getByRole("button", { name: "次の項目へからnを外す" }).click();
   await expect(row(app, "次の項目へ").locator(".kbd.key")).toHaveText(["j×", "↓×"]);
   await expect(row(app, "次の項目へ").getByRole("button", { name: "既定に戻す" })).toBeDisabled();
 });
@@ -43,7 +43,7 @@ test("a key bound to two actions is flagged, and Esc cancels recording", async (
 
   await fav.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("j");
-  await expect(fav.getByRole("note")).toHaveText("j は「次の項目へ」にも割り当てられています");
+  await expect(fav.getByRole("note")).toHaveText("jは「次の項目へ」にも割り当てられています");
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
 });

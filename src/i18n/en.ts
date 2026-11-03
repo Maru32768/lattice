@@ -150,6 +150,7 @@ export const en = {
   "instructionSettings.summary": "Extra instructions for summaries",
   "instructionSettings.summaryDesc": "Added to summaries only. After a change, existing summaries show a note that regenerating them applies it.",
   "common.none": "None",
+  "common.withKey": "{label} ({key})",
   "instructionSettings.chat": "Extra instructions for chat",
   "instructionSettings.chatDesc": "Added to chat answers only. Applies from the next question.",
   "common.saved": "Saved",

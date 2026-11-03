@@ -630,7 +630,7 @@ function scrollToText(text: string): boolean {
 }
 
 /**
- * Sends the rendered DOM to the app ("Index に追加", or the background renderer, which first
+ * Sends the rendered DOM to the app ("Indexに追加", or the background renderer, which first
  * lets the page finish rendering), with every sentence in its original language.
  */
 async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null) {

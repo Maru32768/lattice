@@ -17,7 +17,7 @@ test("理解度チェック: answer, see the source, then add the answers to rev
   await expect(panel.locator(".qz-n")).toHaveText(`1 / ${QUIZ.questions.length}`);
 
   // A wrong choice shows the answer and suggests もう一度; the suggestion can be overridden.
-  await panel.getByRole("button", { name: /2 相ロック/ }).click();
+  await panel.getByRole("button", { name: /2相ロック/ }).click();
   await expect(panel.getByRole("status")).toHaveText("不正解 · 答えは「MVCC」");
   await expect(panel.locator(".qz-opt.right")).toContainText("MVCC");
   await expect(panel.getByRole("button", { name: "もう一度" })).toHaveClass(/pri/);
@@ -39,10 +39,10 @@ test("理解度チェック: answer, see the source, then add the answers to rev
   await panel.getByRole("button", { name: /妨げない/ }).click();
   await expect(panel.getByRole("button", { name: "正解" })).toHaveClass(/pri/);
   await app.keyboard.press("Enter");
-  await expect(panel.locator(".qz-score")).toHaveText("3 / 3 問 答えられました");
+  await expect(panel.locator(".qz-score")).toHaveText("3 / 3問 答えられました");
 
   await panel.locator(".qz-done").getByRole("button", { name: "復習に追加" }).click();
-  await expect(panel.locator(".qz-done")).toContainText("復習中です (3 枚)");
+  await expect(panel.locator(".qz-done")).toContainText("復習中です(3枚)");
   expect(await callsOf(app, "review_add")).toEqual([
     {
       quizId: QUIZ.id,
@@ -64,7 +64,7 @@ test("理解度チェック stays open with its progress across another screen a
   await open(app, SNAPSHOT_ID);
   await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
   const panel = app.getByRole("complementary", { name: "理解度チェック" });
-  await panel.getByRole("button", { name: /2 相ロック/ }).click();
+  await panel.getByRole("button", { name: /2相ロック/ }).click();
   await panel.getByRole("button", { name: "難しい" }).click();
   await expect(panel.locator(".qz-n")).toHaveText(`2 / ${QUIZ.questions.length}`);
 
@@ -101,7 +101,7 @@ test("an article without a quiz offers to make one", async ({ app }) => {
   await app.getByRole("button", { name: "理解度チェック", exact: true }).click();
   const panel = app.getByRole("complementary", { name: "理解度チェック" });
   await panel.getByRole("button", { name: "クイズを作成" }).click();
-  await expect(panel.locator(".qz-q")).toHaveText("1 段落目の要点は？");
+  await expect(panel.locator(".qz-q")).toHaveText("1段落目の要点は？");
   await panel.getByRole("button", { name: "理解度チェックを閉じる" }).click();
   await expect(panel).toBeHidden();
 });
@@ -110,10 +110,10 @@ test("今日の復習: due cards one by one with their next intervals, then a su
   await review(app).click();
   const main = app.locator(".qz-review");
   await expect(main.getByRole("heading", { level: 1 })).toHaveText("今日の復習");
-  await expect(main.locator(".sub")).toHaveText(`残り ${REVIEW.length} 枚`);
+  await expect(main.locator(".sub")).toHaveText(`残り${REVIEW.length}枚`);
   // A start card first: how many, of which kind; the cards begin on the press.
   const start = main.getByRole("region", { name: "復習を始める" });
-  await expect(start).toContainText(`今日は ${REVIEW.length} 枚`);
+  await expect(start).toContainText(`今日は${REVIEW.length}枚`);
   await expect(main.getByRole("region", { name: "復習カード" })).toHaveCount(0);
   await start.getByRole("button", { name: "復習を始める" }).click();
   const session = main.getByRole("region", { name: "復習カード" });
@@ -126,7 +126,7 @@ test("今日の復習: due cards one by one with their next intervals, then a su
   await expect(session.locator(".qz-q")).toHaveText(REVIEW[1].question);
   await session.getByRole("button", { name: /インデックスの不足/ }).click();
   await session.getByRole("button", { name: /もう一度/ }).click();
-  await expect(main.locator(".qz-summary")).toContainText("2 枚を復習しました");
+  await expect(main.locator(".qz-summary")).toContainText("2枚を復習しました");
   await expect(main.locator(".qz-summary")).toContainText("今日の復習は終わりです。");
   await expect(review(app).locator(".bd")).toHaveCount(0);
 

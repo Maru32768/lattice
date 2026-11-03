@@ -102,7 +102,7 @@ export function Palette({
 }: {
   initial: string;
   all: ArticleRow[];
-  /** The list as currently filtered, for "現在の集合で N 件". */
+  /** The list as currently filtered, for "現在の集合でN件". */
   shown: ArticleRow[];
   feeds: FeedRow[];
   folders: FolderRow[];

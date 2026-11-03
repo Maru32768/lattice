@@ -29,12 +29,12 @@ test("the language segment switches every block; a block flips on its own", asyn
   expect(await shown(app)).toEqual(["ja", "ja", "ja", "ja", "ja"]);
   await expect(app.locator(`#b-${blocks[4].id}`)).toHaveText(blocks[4].text);
 
-  await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "この block を原文に切り替え" }).click();
+  await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "このblockを原文に切り替え" }).click();
   expect(await shown(app)).toEqual(["ja", "en", "ja", "ja", "ja"]);
-  await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "この block を訳文に切り替え" }).click();
+  await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "このblockを訳文に切り替え" }).click();
   expect(await shown(app)).toEqual(["ja", "ja", "ja", "ja", "ja"]);
 
-  await seg.getByRole("button", { name: "日本語の割合を下げる ([)" }).click();
+  await seg.getByRole("button", { name: "日本語の割合を下げる([)" }).click();
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 60%");
   await app.keyboard.press("]");
   await app.keyboard.press("]");
@@ -44,7 +44,7 @@ test("the language segment switches every block; a block flips on its own", asyn
 test("the summary expands, and imported Markdown has no Page view", async ({ app }) => {
   await open(app, snapshot.title!);
   await app.getByRole("region", { name: "要約" }).getByRole("button").click();
-  await expect(app.locator(".summary-body")).toContainText("MVCC で実装する");
+  await expect(app.locator(".summary-body")).toContainText("MVCCで実装する");
 
   const md = ARTICLES.find((a) => a.id === MARKDOWN_ID)!;
   await open(app, md.title!);
@@ -55,14 +55,14 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
 test("y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
   await open(app, snapshot.title!);
   await app.keyboard.press("y");
-  await expect(app.locator(".summary-body")).toContainText("MVCC で実装する");
+  await expect(app.locator(".summary-body")).toContainText("MVCCで実装する");
   await app.keyboard.press("y");
   await expect(app.locator(".summary-body")).toHaveCount(0);
 
   await app.keyboard.press("v");
   await expect(app.locator(".page-summary")).toHaveCount(0);
   await app.keyboard.press("y");
-  await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCC で実装する");
+  await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
   await app.keyboard.press("y");
   await expect(app.locator(".page-summary")).toHaveCount(0);
 });
@@ -98,7 +98,7 @@ test("picking 訳文 on an untranslated article starts its translation and shows
   const seg = app.getByRole("group", { name: "表示言語" });
   await seg.getByRole("button", { name: "訳文", exact: true }).click();
   // The Reader and the list row count the same blocks.
-  await expect(app.locator(".tr-prog")).toHaveText("翻訳待ち 0 / 4 ブロック");
+  await expect(app.locator(".tr-prog")).toHaveText("翻訳待ち 0 / 4ブロック");
   await expect(await listRow(app, untranslated.title!)).toContainText("翻訳待ち");
   await seg.getByRole("button", { name: /混在/ }).click();
   expect(await callsOf(app, "translate_article"), "queued once; the waiting job is not queued again").toEqual([{ id: untranslated.id }]);

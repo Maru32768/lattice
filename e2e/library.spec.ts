@@ -27,7 +27,7 @@ test("sidebar counts each scope, and a scope narrows the list", async ({ app }) 
 
   // 未分類 and the two smallest genres sit behind the expander.
   await expect(navItem(app, "ネットワーク")).toHaveCount(0);
-  await app.getByRole("button", { name: /他 \d+ ジャンル/ }).click();
+  await app.getByRole("button", { name: /他\d+ジャンル/ }).click();
   await navItem(app, "ネットワーク").click();
   await expect(listCount(app)).toHaveText("1 / 1");
 });
@@ -69,14 +69,14 @@ test("an empty result offers to drop one condition", async ({ app }) => {
 
   const webDev = count((a) => a.feed_id === 3);
   await list(app)
-    .getByRole("button", { name: `お気に入り → すべての記事 → ${webDev} 件` })
+    .getByRole("button", { name: `お気に入り → すべての記事 → ${webDev}件` })
     .click();
   await expect(list(app).getByRole("heading", { level: 1 })).toHaveText("すべての記事");
   await expect(listCount(app)).toHaveText(`${webDev} / ${all}`);
 });
 
 test("最近追加 and 要対応 say what they hold in a tooltip", async ({ app }) => {
-  await expect(navItem(app, "最近追加")).toHaveAttribute("title", "7 日以内に保存した記事");
+  await expect(navItem(app, "最近追加")).toHaveAttribute("title", "7日以内に保存した記事");
   await list(app).getByRole("button", { name: "状態", exact: true }).click();
   await expect(app.getByRole("dialog", { name: "状態で絞り込む" }).getByRole("button", { name: /要対応/ })).toHaveAttribute(
     "title",
@@ -88,7 +88,7 @@ test("すべて既読にする marks every unread article shown as read, after a
   await navItem(app, "すべての記事").click();
   const button = list(app).getByRole("button", { name: "すべて既読にする", exact: true });
   await button.click();
-  const dialog = app.getByRole("alertdialog", { name: `未読の ${unread} 件を既読にしますか？` });
+  const dialog = app.getByRole("alertdialog", { name: `未読の${unread}件を既読にしますか？` });
   await dialog.getByRole("button", { name: "キャンセル" }).click();
   expect(await callsOf(app, "mark_read")).toEqual([]);
 

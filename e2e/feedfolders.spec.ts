@@ -21,19 +21,19 @@ async function createFolder(app: Page, name: string) {
 test("feeds move into a folder; the nav shows it as a scope over its feeds, with their unread summed", async ({ app }) => {
   await openFeeds(app);
   await createFolder(app, "TechFeed");
-  await app.getByLabel("Postgres Weekly のフォルダ").selectOption({ label: "TechFeed" });
-  await expect(app.getByRole("status")).toHaveText("1 件を「TechFeed」へ移動しました");
+  await app.getByLabel("Postgres Weeklyのフォルダ").selectOption({ label: "TechFeed" });
+  await expect(app.getByRole("status")).toHaveText("1件を「TechFeed」へ移動しました");
 
-  await app.getByLabel("Netflix TechBlog を選択").check();
-  await app.getByLabel("web.dev を選択").check();
-  await app.getByRole("group", { name: "2 件を選択中" }).getByLabel("フォルダへ移動…").selectOption({ label: "TechFeed" });
-  await expect(app.getByRole("status")).toHaveText("2 件を「TechFeed」へ移動しました");
-  await expect(app.getByLabel("web.dev のフォルダ")).toHaveValue(/\d+/);
-  await expect(app.getByRole("region", { name: "フォルダ" })).toContainText("3 件のフィード");
+  await app.getByLabel("Netflix TechBlogを選択").check();
+  await app.getByLabel("web.devを選択").check();
+  await app.getByRole("group", { name: "2件を選択中" }).getByLabel("フォルダへ移動…").selectOption({ label: "TechFeed" });
+  await expect(app.getByRole("status")).toHaveText("2件を「TechFeed」へ移動しました");
+  await expect(app.getByLabel("web.devのフォルダ")).toHaveValue(/\d+/);
+  await expect(app.getByRole("region", { name: "フォルダ" })).toContainText("3件のフィード");
 
   const folder = navItem(app, "TechFeed");
   await expect(folder.locator(".n")).toHaveText(String(unreadIn([1, 2, 3])));
-  await expect(folder).toHaveAttribute("title", `未読 ${unreadIn([1, 2, 3])} 件 / 全 ${totalIn([1, 2, 3])} 件`);
+  await expect(folder).toHaveAttribute("title", `未読${unreadIn([1, 2, 3])}件 / 全${totalIn([1, 2, 3])}件`);
   const inside = nav(app).locator(".nav-folder .nav-sub .label");
   await expect(inside).toHaveText(["Postgres Weekly", "Netflix TechBlog", "web.dev"]);
   await expect(navItem(app, "Zenn")).toBeVisible();
@@ -43,7 +43,7 @@ test("feeds move into a folder; the nav shows it as a scope over its feeds, with
   await expect(list(app).locator("h1")).toHaveText("TechFeed");
   await expect(listCount(app)).toHaveText(`${totalIn([1, 2, 3])} / ${totalIn([1, 2, 3])}`);
 
-  const toggle = nav(app).getByRole("button", { name: "TechFeed を開閉" });
+  const toggle = nav(app).getByRole("button", { name: "TechFeedを開閉" });
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(inside).toHaveCount(0);
@@ -52,8 +52,8 @@ test("feeds move into a folder; the nav shows it as a scope over its feeds, with
   await expect(inside).toHaveCount(3);
 
   await openFeeds(app);
-  await app.getByLabel("Netflix TechBlog のフォルダ").selectOption({ label: "フォルダなし" });
-  await expect(app.getByRole("status")).toHaveText("1 件をフォルダから出しました");
+  await app.getByLabel("Netflix TechBlogのフォルダ").selectOption({ label: "フォルダなし" });
+  await expect(app.getByRole("status")).toHaveText("1件をフォルダから出しました");
   await expect(inside).toHaveText(["Postgres Weekly", "web.dev"]);
 });
 
@@ -61,23 +61,23 @@ test("several feed URLs, one per line, are subscribed into the chosen folder", a
   await openFeeds(app);
   await createFolder(app, "TechFeed");
   const urls = ["https://techfeed.io/feeds/categories/rust", "https://techfeed.io/feeds/categories/go", "https://techfeed.io/feeds/categories/db"];
-  const field = app.getByLabel("サイトまたは記事の URL からフィードを検出");
+  const field = app.getByLabel("サイトまたは記事のURLからフィードを検出");
   await field.fill(urls.join("\n") + "\nftp://techfeed.io/feeds\nnot a feed\n\n");
   await app.getByLabel("追加先のフォルダ").selectOption({ label: "TechFeed" });
-  await app.getByRole("button", { name: "3 件を登録" }).click();
-  await expect(app.getByRole("status")).toHaveText("3 件中 3 件を登録・1 行は http(s) でないため無視・1 行は URL がないため無視");
+  await app.getByRole("button", { name: "3件を登録" }).click();
+  await expect(app.getByRole("status")).toHaveText("3件中3件を登録・1行はhttp(s)でないため無視・1行はURLがないため無視");
   await expect(field).toHaveValue("");
   const calls = await callsOf(app, "add_feed");
   expect(calls.map((c) => (c as { url: string }).url)).toEqual(urls);
   const folderId = (calls[0] as { folder: number }).folder;
   expect(calls.every((c) => (c as { folder: number }).folder === folderId)).toBe(true);
-  await expect(app.getByRole("region", { name: "フォルダ" })).toContainText("3 件のフィード");
+  await expect(app.getByRole("region", { name: "フォルダ" })).toContainText("3件のフィード");
   await expect(nav(app).locator(".nav-folder .nav-sub .ni")).toHaveCount(3);
 
   // One URL still finds the feeds of a page first.
   await field.fill("https://example.com/");
   await field.press("Enter");
-  await app.getByRole("button", { name: "登録して最新 20 件を取り込む" }).click();
+  await app.getByRole("button", { name: "登録して最新20件を取り込む" }).click();
   await expect(app.getByRole("status")).toContainText("Discovered feed");
   expect((await callsOf(app, "add_feed")).at(-1)).toEqual({ url: "https://example.com/feed.xml", folder: folderId });
 });
@@ -85,8 +85,8 @@ test("several feed URLs, one per line, are subscribed into the chosen folder", a
 test("a nav folder's context menu renames it and deletes it, keeping its feeds", async ({ app }) => {
   await openFeeds(app);
   await createFolder(app, "News");
-  await app.getByLabel("LWN.net のフォルダ").selectOption({ label: "News" });
-  await expect(app.getByRole("status")).toHaveText("1 件を「News」へ移動しました");
+  await app.getByLabel("LWN.netのフォルダ").selectOption({ label: "News" });
+  await expect(app.getByRole("status")).toHaveText("1件を「News」へ移動しました");
   await navItem(app, "News").click();
 
   await navItem(app, "News").click({ button: "right" });
@@ -104,7 +104,7 @@ test("a nav folder's context menu renames it and deletes it, keeping its feeds",
   await expect(navItem(app, "Linux")).toHaveCount(0);
   await expect(list(app).locator("h1")).toHaveText("すべての記事");
   await openFeeds(app);
-  await expect(app.getByLabel("LWN.net のフォルダ")).toHaveValue("");
+  await expect(app.getByLabel("LWN.netのフォルダ")).toHaveValue("");
 });
 
 test("OPML outlines become folders on import; the palette finds folders", async ({ app }) => {
@@ -113,15 +113,15 @@ test("OPML outlines become folders on import; the palette finds folders", async 
     <outline text="TechFeed"><outline text="Rust" xmlUrl="https://techfeed.io/feeds/rust"/><outline text="Go" xmlUrl="https://techfeed.io/feeds/go"/></outline>
     <outline text="Loose" xmlUrl="https://loose.dev/feed"/></body></opml>`;
   await app
-    .locator("label", { hasText: "OPML を読み込む" })
+    .locator("label", { hasText: "OPMLを読み込む" })
     .locator("input")
     .setInputFiles({ name: "techfeed.opml", mimeType: "text/xml", buffer: Buffer.from(opml) });
-  await expect(app.getByRole("status")).toHaveText("3 件中 3 件を登録");
+  await expect(app.getByRole("status")).toHaveText("3件中3件を登録");
   const calls = await callsOf(app, "add_feed");
   expect(calls.map((c) => (c as { folder: number | null }).folder === null)).toEqual([false, false, true]);
   await expect(navItem(app, "TechFeed")).toBeVisible();
 
-  await app.getByRole("button", { name: "OPML に書き出す" }).click();
+  await app.getByRole("button", { name: "OPMLに書き出す" }).click();
   await expect(app.getByRole("status")).toContainText("lattice-feeds-");
 
   await app.keyboard.press("Control+k");
@@ -135,7 +135,7 @@ test("OPML outlines become folders on import; the palette finds folders", async 
 test("a failed Find shows its error under the field, and editing the field clears it", async ({ app }) => {
   await openFeeds(app);
   const form = app.getByRole("form", { name: "フィードを追加" });
-  const field = app.getByLabel("サイトまたは記事の URL からフィードを検出");
+  const field = app.getByLabel("サイトまたは記事のURLからフィードを検出");
   await field.fill("not a site");
   await app.getByRole("button", { name: "検出", exact: true }).click();
   await expect(form.getByRole("alert")).toBeVisible();

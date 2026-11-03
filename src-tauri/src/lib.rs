@@ -144,7 +144,7 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     Ok(id)
 }
 
-/// "Index に追加" in the in-app browser: stores the page as rendered (JS-built pages have no
+/// "Indexに追加" in the in-app browser: stores the page as rendered (JS-built pages have no
 /// content in their server HTML), or fetches it from the server if the page does not answer.
 #[tauri::command]
 async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle, tab: String) -> Result<i64, String> {
@@ -189,7 +189,7 @@ fn import_markdown(app: State<'_, App>, text: String) -> Result<i64, String> {
 async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "Markdown を取り込む", "Import Markdown")).add_filter("Markdown", &["md", "markdown"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "Markdownを取り込む", "Import Markdown")).add_filter("Markdown", &["md", "markdown"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }
@@ -214,7 +214,7 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
 async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDF を取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
+    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDFを取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
     if let Some(w) = handle.get_window("main") {
         dialog = dialog.set_parent(&w);
     }

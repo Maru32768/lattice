@@ -291,7 +291,7 @@ function generateQuiz(id: number): Quiz {
     questions: blocks.map((b, i) => ({
       id: id * 1000 + i,
       kind: "recall",
-      question: `${i + 1} 段落目の要点は？`,
+      question: `${i + 1}段落目の要点は？`,
       answer: b.text,
       explanation: "",
       block_ids: [b.id],
@@ -520,7 +520,7 @@ export const handlers = {
       id,
       headword: c.surface.toLowerCase(),
       pos: "noun",
-      meaning: `${c.surface} の意味`,
+      meaning: `${c.surface}の意味`,
       definition: `${c.surface} is a word the mock explains.`,
       ipa: "",
       example: `An example sentence with ${c.surface}.`,

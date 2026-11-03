@@ -13,12 +13,12 @@ test("the empty library explains AI defaults and data sharing, and opens provide
   );
   const firstRun = app.getByRole("region", { name: "最初の記事を入れる" });
   await expect(firstRun).toBeVisible();
-  await expect(firstRun).toContainText("記事の保存・閲覧・全文検索は、AI を設定せずに使えます。");
-  await expect(firstRun).toContainText("Claude CLI をインストールしてログイン");
-  await expect(firstRun).toContainText("自動分類を含む AI 機能は、記事の本文を設定した AI プロバイダに送信します。");
-  await firstRun.getByRole("button", { name: "URL を貼る" }).click();
+  await expect(firstRun).toContainText("記事の保存・閲覧・全文検索は、AIを設定せずに使えます。");
+  await expect(firstRun).toContainText("Claude CLIをインストールしてログイン");
+  await expect(firstRun).toContainText("自動分類を含むAI機能は、記事の本文を設定したAIプロバイダに送信します。");
+  await firstRun.getByRole("button", { name: "URLを貼る" }).click();
   await expect(app.getByRole("dialog", { name: "コマンドパレット" })).toBeVisible();
   await app.keyboard.press("Escape");
-  await firstRun.getByRole("button", { name: "AI プロバイダの設定", exact: true }).click();
-  await expect(app.locator(".stg main h1")).toHaveText("AI プロバイダ");
+  await firstRun.getByRole("button", { name: "AIプロバイダの設定", exact: true }).click();
+  await expect(app.locator(".stg main h1")).toHaveText("AIプロバイダ");
 });
