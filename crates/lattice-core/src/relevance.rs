@@ -5,7 +5,7 @@
 //! score keeps the hash of the profile and the prompt version it was judged with, so editing the
 //! profile or changing the criteria makes it stale, not wrong.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
@@ -22,7 +22,7 @@ pub const JOB_TYPE: &str = "relevance";
 
 macro_rules! prompt_version {
     () => {
-        "relevance-v2"
+        "relevance-v3"
     };
 }
 pub(crate) use prompt_version;
@@ -60,6 +60,8 @@ const EXCERPT_CHARS: usize = 1500;
 const EXCERPT_WITH_SUMMARY_CHARS: usize = 900;
 const SUMMARY_CHARS: usize = 800;
 const OUTLINE_CHARS: usize = 500;
+/// The text of links to other sites: what a roundup is worth reading for.
+const LINKS_CHARS: usize = 1000;
 const MAX_REASON_CHARS: usize = 200;
 const PROFILE_CHANGED: &str = "the profile changed while rating";
 
@@ -193,8 +195,9 @@ Read the profile as a description of a person, not as a list of keywords: what t
 how much they already know, and what kind of article they find worth their time (for example in-depth analysis, practical how-tos \
 or approachable introductions). Where the profile does not say what they already know, do not assume it.\n\n\
 The input has \"articles\", each with \"i\", title, domain and what is known of its content: \"summary\" (may be empty), \
-\"outline\" (its headings), \"text\" (excerpts from the beginning, middle and end, joined by \" … \") and \"stats\" \
-(length in characters and the number of code blocks, tables and images).\n\n\
+\"outline\" (its headings), \"text\" (excerpts from the beginning, middle and end, joined by \" … \"), \"links\" \
+(the text of its links to other sites, in order, joined by \" / \") and \"stats\" \
+(length in characters and the number of code blocks, tables, images and links to other sites).\n\n\
 For every article return one item with its \"i\" and:\n\
 - \"fit\", 1-5: how closely the topic relates to the reader's interests, goals and current problems. \
 An adjacent field counts when its ideas plausibly carry over to what the reader cares about.\n\
@@ -211,6 +214,9 @@ written in the language the profile is written in.\n\
 2 = low priority: related, but with little to gain, or only marginally related;\n\
 1 = not for them: unrelated to the profile and unlikely to be worth their time. An article on a topic the profile names is at least 2.\n\
 Weigh both: a close topic match alone does not make a 5, and an excellent article from an adjacent field does not get a low score just because the field differs.\n\n\
+A roundup (a newsletter issue or link collection: mostly short entries, each pointing to another article) is worth what its best entries \
+are worth to this reader, since reading it means following them. Judge its \"fit\" and \"value\" by the strongest items in \"links\" and \
+the notes on them, not by the list format or a thin summary, and name those items in the reason. A roundup with nothing for the reader stays low.\n\n\
 Judge only by what the input shows. Do not credit depth, evidence or novelty that the title promises but the excerpts do not show; \
 when the input is too thin to tell, \"value\" is at most 3, the score at most 4, and the reason says so.\n\n\
 The reader's profile, in their own words:\n{profile}\n\n\
@@ -249,6 +255,20 @@ fn source(store: &Store, article_id: i64) -> rusqlite::Result<Option<Value>> {
     };
     let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 ORDER BY ordinal")?;
     let blocks = st.query_map([article_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut st = c.prepare(
+        "SELECT json_extract(j.value, '$.href'), json_extract(j.value, '$.v') FROM blocks b, json_each(b.inlines) j
+         WHERE b.article_id = ?1 AND b.inlines IS NOT NULL AND json_extract(j.value, '$.t') = 'link' ORDER BY b.ordinal, j.key",
+    )?;
+    let site = |h: &str| h.trim_start_matches("www.").to_ascii_lowercase();
+    let own = site(&domain);
+    let mut seen = HashSet::new();
+    let links: Vec<String> = st
+        .query_map([article_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .filter(|(href, _)| url::Url::parse(href).ok().and_then(|u| u.host_str().map(site)).is_some_and(|h| h != own) && seen.insert(href.clone()))
+        .map(|(_, v)| v)
+        .collect();
     let count = |kind: &str| blocks.iter().filter(|(k, _)| k == kind).count();
     let outline: Vec<&str> = blocks.iter().filter(|(k, _)| k == "heading").map(|(_, t)| t.as_str()).collect();
     let prose: Vec<&str> =
@@ -266,7 +286,8 @@ fn source(store: &Store, article_id: i64) -> rusqlite::Result<Option<Value>> {
         "summary": summary,
         "outline": outline.join(" / ").chars().take(OUTLINE_CHARS).collect::<String>(),
         "text": excerpt(&prose, budget),
-        "stats": {"chars": prose.chars().count(), "code_blocks": count("code"), "tables": count("table"), "images": count("image")},
+        "links": links.join(" / ").chars().take(LINKS_CHARS).collect::<String>(),
+        "stats": {"chars": prose.chars().count(), "code_blocks": count("code"), "tables": count("table"), "images": count("image"), "links": links.len()},
     })))
 }
 
@@ -486,6 +507,30 @@ mod tests {
         let v = source(&s, id).unwrap().unwrap();
         assert_eq!(v["summary"], "WAL の fsync の順序を測定で比べる。");
         assert!(v["text"].as_str().unwrap().chars().count() <= EXCERPT_WITH_SUMMARY_CHARS + 6, "a summary leaves less room for excerpts");
+    }
+
+    #[test]
+    fn a_roundup_shows_what_it_links_to_on_other_sites() {
+        let s = Store::open_in_memory().unwrap();
+        let url = "https://www.sreweekly.com/issue-537/";
+        let (id, _) = s.upsert_pending(url, url, "sreweekly.com").unwrap();
+        let item = |n: usize| {
+            format!(
+                "<p><a href=\"https://blog{n}.example/post\">Incident write-up {n}</a></p><p>The curator's note on item {n}, long enough to read as prose about an outage and its root cause.</p><p>See <a href=\"https://blog{n}.example/post\">it again</a>.</p>"
+            )
+        };
+        let html = format!(
+            "<html><head><title>SRE Weekly #537</title></head><body><article><p><a href=\"https://sreweekly.com/link/537\">Sponsor</a> pays for this issue, which we thank them for in this sentence.</p>{}</article></body></html>",
+            (0..8).map(item).collect::<String>()
+        );
+        store_fetched(&s, id, &Fetched { final_url: url.into(), status: 200, content_type: None, html }).unwrap();
+
+        let v = source(&s, id).unwrap().unwrap();
+        let links = v["links"].as_str().unwrap();
+        assert!(links.starts_with("Incident write-up 0 / Incident write-up 1 / ") && links.ends_with("Incident write-up 7"), "{links}");
+        assert!(!links.contains("Sponsor") && !links.contains("again"), "the site's own links and repeats stay out: {links}");
+        assert_eq!(v["stats"]["links"], 8);
+        assert!(system("SRE").contains("A roundup"));
     }
 
     #[test]

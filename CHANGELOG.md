@@ -4,8 +4,20 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Pick the importance by hand.** Choose 1 to 5 under the title in the Reader. Your pick overrides the AI rating in sorting, **Important** and automatic summaries, and stays when articles are rated again; **Leave it to AI** goes back.
+- **Mark all as read** in the article list marks every unread article the list shows as read, after asking.
+- **Save to library** in the Page view also puts the page into the collection whose list is open.
+
+### Changed
+
+- Importance rating now sees the titles of the articles a page links to on other sites, and rates a roundup (a newsletter issue or link collection) by its best entries instead of rating it low as a thin list. Earlier ratings show **(rated by earlier criteria)** until you rate them again.
+
 ### Fixed
 
+- Images inside a paragraph or a link (as on many blogs) were dropped when an article was saved, so the Reader never showed them. For an article saved before, choose **Re-extract (from the saved HTML)** in the Reader’s ⋯ menu to get its images.
+- Opening the editor of a feed low in the Feeds table no longer scrolls the whole window, which left a blank band under the app.
 - Launching Lattice while it is already running now brings the open window to the front instead of starting a second copy. The two copies ran the same jobs, so the same request could be sent to an AI provider (and paid for) twice.
 - Starting the app while `lattice-cli save --run` or the MCP server's `save` works on an article no longer makes the app take over its job and run it a second time. A job left running by a CLI stopped mid-run, or one whose result could not be recorded, now goes back to the queue within about a minute instead of staying stuck until a restart.
 
