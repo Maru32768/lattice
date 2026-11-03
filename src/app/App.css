@@ -1,7 +1,9 @@
 
 /* ---- shell: nav | list | main | chat ---------------------------------------------------- */
 /* Pane widths come from the splitters; when the window is too narrow for them, the panes give way down to their minimums before the document does. */
-.shell { height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+/* Positioned and clipped: a visually hidden input (.vh) deep in a scroller otherwise sits at its place in the page and makes
+   the window taller than the app, and WebView2 then scrolls the window itself to focus it, leaving a blank band below. */
+.shell { position: relative; overflow-y: clip; height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
 .app { flex: 1; min-height: 0; display: flex; overflow: hidden; background: var(--bg); }
 
 /* Title bar of the undecorated window: drag region plus Windows 11 caption buttons (46 × 32). */

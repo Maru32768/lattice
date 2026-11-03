@@ -50,3 +50,13 @@ test("a custom name starts the field; the feed's own name or an empty field save
       { id: custom.id, name: null },
     ]);
 });
+
+test("editing a feed low in the list leaves the window unscrolled", async ({ app }) => {
+  // The icon picker's hidden file input sits below the window here: it once made the page taller than the window,
+  // and WebView2 scrolled the whole window to the name field's autofocus, leaving a blank band under the app.
+  await app.setViewportSize({ width: 1200, height: 500 });
+  await edit(app, FEEDS.at(-1)!.custom_title ?? FEEDS.at(-1)!.title!);
+  await expect(app.getByLabel("表示名")).toBeFocused();
+  const page = await app.evaluate(() => ({ height: document.scrollingElement!.scrollHeight, top: document.scrollingElement!.scrollTop }));
+  expect(page).toEqual({ height: 500, top: 0 });
+});
