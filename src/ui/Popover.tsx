@@ -45,15 +45,30 @@ export function pageDrawn(key: string, rect: (() => DOMRect | undefined) | null)
   notify();
 }
 
+/**
+ * Reports `ref`'s rectangle while `open`. Returns whether no page webview is drawn under it any more: a backdrop
+ * shown before that dims the app at once and the page only when its still replaces it (H22, as for surfaces).
+ */
 export function useCover(ref: React.RefObject<HTMLElement | null>, open: boolean) {
   const cover = useContext(CoverContext);
+  const rect = useRef<DOMRect | null>(null);
   useLayoutEffect(() => {
     if (!open || !ref.current) {
       return;
     }
-    return cover(ref.current.getBoundingClientRect());
+    const r = ref.current.getBoundingClientRect();
+    rect.current = r;
+    const withdraw = cover(r);
+    return () => {
+      rect.current = null;
+      withdraw();
+    };
   }, [open, cover, ref]);
+  return useSyncExternalStore(watch, () => !rect.current || !underPage(rect.current));
 }
+
+/** The style of a backdrop `useCover` says is not clear yet: invisible, but focus can already move into it. */
+export const coverStyle = (clear: boolean) => (clear ? undefined : WAITING);
 
 const intersects = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 /** Page `key` is drawn and no overlay covers it, so a focus it reports came from a click on it. */

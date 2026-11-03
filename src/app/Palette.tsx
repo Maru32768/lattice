@@ -3,7 +3,7 @@ import { api, siteOf, type ArticleRow, type FeedRow, type FolderRow, type GroupR
 import { feedName } from "../library/groups";
 import { activeDims, countBy, facetLabel, genreSwatch, groupName, scopeLabel, type Facets, type Scope } from "../library/library";
 import { filterKey } from "../library/scopes";
-import { useCover } from "../ui/Popover";
+import { coverStyle, useCover } from "../ui/Popover";
 import { onMiddle } from "../lib/middle";
 import { Icon, Kbd, type IconName } from "../ui/Icon";
 import type { Screen } from "../library/Nav";
@@ -120,7 +120,7 @@ export function Palette({
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const scrim = useRef<HTMLDivElement>(null);
-  useCover(scrim, true);
+  const clear = useCover(scrim, true);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     input.current?.focus();
@@ -484,6 +484,7 @@ export function Palette({
     <div
       ref={scrim}
       className="pal-scrim"
+      style={coverStyle(clear)}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) {
           onClose();

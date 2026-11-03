@@ -45,6 +45,35 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
   await expect(menu).toHaveCount(0);
 });
 
+test("a dialog's backdrop over the page webview waits for it too, so the page darkens with the rest", async ({ app }) => {
+  await openPage(app);
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; release: () => void; hides: number };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    const held = new Promise<void>((r) => (w.release = r));
+    w.hides = 0;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) => {
+      if (cmd !== "browser_hide") {
+        return invoke(cmd, args, options);
+      }
+      w.hides++;
+      return held.then(() => invoke(cmd, args, options));
+    };
+  });
+  await list(app).getByRole("button", { name: "すべて既読にする" }).click();
+  const scrim = app.locator(".pal-scrim");
+  await expect.poll(() => app.evaluate(() => (window as unknown as { hides: number }).hides)).toBeGreaterThan(0);
+  await app.waitForTimeout(200);
+  expect(await opacity(scrim), "hidden while the webview is still drawn under it").toBe("0");
+  await expect(app.getByRole("alertdialog").getByRole("button", { name: "キャンセル" }), "focus already in the dialog").toBeFocused();
+
+  await app.evaluate(() => (window as unknown as { release: () => void }).release());
+  await expect.poll(() => opacity(scrim)).toBe("1");
+  await app.keyboard.press("Escape");
+  await expect(scrim).toHaveCount(0);
+});
+
 test("a menu over no webview is drawn in the frame it first appears (H22)", async ({ app }) => {
   const first = app.evaluate(
     () =>

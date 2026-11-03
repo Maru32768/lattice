@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { createPortal } from "react-dom";
 import { AlertDialog as AD } from "radix-ui";
-import { useCover } from "./Popover";
+import { coverStyle, useCover } from "./Popover";
 import { useT } from "../i18n";
 
 /**
@@ -24,7 +24,7 @@ export function ConfirmDialog({
 }) {
   const t = useT();
   const scrim = useRef<HTMLDivElement>(null);
-  useCover(scrim, true);
+  const clear = useCover(scrim, true);
   // Not AD.Portal: it mounts a render late, after useCover has measured.
   return createPortal(
     <AD.Root
@@ -38,6 +38,7 @@ export function ConfirmDialog({
       <AD.Overlay
         ref={scrim}
         className="pal-scrim"
+        style={coverStyle(clear)}
         onPointerDown={(e) => {
           if (e.target === e.currentTarget) {
             onCancel();
