@@ -55,6 +55,12 @@ fn job(db: &Path, id: i64) -> (String, i64) {
     c.query_row("SELECT status, attempt_count FROM processing_jobs WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap()
 }
 
+/// Ages every job's heartbeat by two minutes, as that long without a beat would.
+fn lapse_heartbeats(db: &Path) {
+    let c = rusqlite::Connection::open(db).unwrap();
+    c.execute("UPDATE processing_jobs SET heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')", []).unwrap();
+}
+
 struct NoEmbed;
 impl embed::EmbeddingProvider for NoEmbed {
     fn model_id(&self) -> &str {
@@ -78,8 +84,8 @@ impl<F: Fn() + Send + Sync + 'static> LlmProvider for Summarizer<F> {
 }
 
 /// F6. Only `finish_job` applies MAX_ATTEMPTS (5). A job whose run takes the process down never
-/// reaches it: each start puts it back to pending (`recover_running_jobs`) and a runner claims it
-/// at once, with no backoff. One such job is a crash at every launch.
+/// reaches it: a minute after each crash it is back to pending (`recover_abandoned_jobs`) and a
+/// runner claims it at once, with no backoff. One such job is a crash at every launch.
 #[test]
 #[ignore = "reliability audit F6: fails until fixed"]
 fn a_job_that_takes_the_process_down_stops_being_retried() {
@@ -91,10 +97,11 @@ fn a_job_that_takes_the_process_down_stops_being_retried() {
         summarize::enqueue(&s, id).unwrap();
         s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().unwrap().id
     };
-    // The process dies mid-job (`finish_job` never runs), then the app starts again, eight times.
+    // The process dies mid-job (`finish_job` never runs), and the app runs again a minute later, eight times.
     for _ in 0..8 {
         let s = Store::open(&db).unwrap();
-        s.recover_running_jobs().unwrap();
+        lapse_heartbeats(&db);
+        s.recover_abandoned_jobs().unwrap();
         if s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().is_none() {
             break;
         }
@@ -104,10 +111,11 @@ fn a_job_that_takes_the_process_down_stops_being_retried() {
 }
 
 /// F7. If `finish_job` cannot write (another process holds the write lock for the 3 x 5 s busy
-/// timeout), the job stays `running`. Nothing but a restart releases it: the Jobs view's retry and
-/// enqueue both skip running jobs, and for fetches the host stays blocked for every other article.
+/// timeout), the job is left `running`, and the Jobs view's retry and enqueue both skip running
+/// jobs (for fetches, the host stays blocked for every other article). Its heartbeat stops with the
+/// failed finish, so within about a minute the next `keep_alive` round puts it back in the queue,
+/// without a restart. Takes about 20 s.
 #[tokio::test]
-#[ignore = "reliability audit F7: fails until fixed (takes about 20 s)"]
 async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     let dir = data_dir("stuck");
     let db = dir.join("lattice.db");
@@ -137,10 +145,10 @@ async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     released.recv().unwrap();
 
     let job_id = s.get_article(id, "ja").unwrap().unwrap().jobs[0].id;
-    let retried = job_status::retry(&s, job_id).unwrap();
-    summarize::enqueue(&s, id).unwrap();
-    let (status, _) = job(&db, job_id);
-    assert!(retried.is_some() || status != "running", "the job stays running, and retry and enqueue are no-ops until restart");
+    lapse_heartbeats(&db);
+    assert_eq!(s.recover_abandoned_jobs().unwrap(), 1, "the job stays running until restart");
+    assert_eq!(job(&db, job_id).0, "pending");
+    assert!(job_status::retry(&s, job_id).unwrap().is_some(), "the Jobs view's retry runs it again");
 }
 
 /// F1. A fetch whose canonical URL names an article already saved drops the new row in favour of
@@ -364,11 +372,10 @@ async fn a_provider_outage_is_not_multiplied_by_the_batch_size() {
     assert!(calls <= 2, "{calls} calls for one batch of {} while the provider is down", snippets.len());
 }
 
-/// F7. `recover_running_jobs` treats every `running` job as left by a dead process. The app has no
-/// single-instance guard, so a second launch (or an app start while `lattice-cli save --run` works)
-/// takes over jobs another live process is running, and both pay for them.
+/// F7. Recovery must not treat every `running` job as left by a dead process: an app start while
+/// `lattice-cli save --run` works (or a second launch, before the single-instance guard) would take
+/// over jobs another live process is running, and both would pay for them.
 #[tokio::test]
-#[ignore = "reliability audit F7: fails until fixed"]
 async fn a_second_process_does_not_rerun_a_job_another_one_is_running() {
     let dir = data_dir("instances");
     let db = dir.join("lattice.db");
@@ -379,7 +386,7 @@ async fn a_second_process_does_not_rerun_a_job_another_one_is_running() {
 
     // The second instance starts while the first one waits for the model.
     let second = Store::open(&db).unwrap();
-    second.recover_running_jobs().unwrap();
+    second.recover_abandoned_jobs().unwrap();
     let taken = second.claim_next_job(&[summarize::JOB_TYPE]).unwrap();
     assert_eq!(taken.map(|j| j.id), None, "job {} is claimed a second time while the first process runs it", running.id);
 }

@@ -1,7 +1,7 @@
 //! SQLite store. Concrete on purpose: SQLite is the system of record, not a swappable detail.
 //! Swappable parts (search index, vectors) get their own boundary when they arrive.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -13,6 +13,7 @@ use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ingest::FEED_CONTENT_TYPE;
 use crate::ir::{ArticleIr, Block, Inline};
+use crate::jobs::ABANDONED_AFTER;
 use crate::segments::{Target, Unit, plain_text};
 use ts_rs::TS;
 
@@ -48,6 +49,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00028_renormalize_https.sql"),
     include_str!("../db/migrations/00029_article_notes.sql"),
     include_str!("../db/migrations/00030_relevance_axes.sql"),
+    include_str!("../db/migrations/00031_job_heartbeat.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -125,6 +127,9 @@ pub type Result<T> = rusqlite::Result<T>;
 
 pub struct Store {
     conn: Mutex<Connection>,
+    /// Jobs claimed through this Store and not finished: the ones `heartbeat` keeps alive. Never
+    /// locked while waiting for `conn`.
+    running: Mutex<HashSet<i64>>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -522,12 +527,16 @@ impl Store {
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
         }
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self { conn: Mutex::new(conn), running: Mutex::default() })
     }
 
     pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
         // A panic mid-transaction rolls back via Drop, so the connection is still usable.
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn running(&self) -> std::sync::MutexGuard<'_, HashSet<i64>> {
+        self.running.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     pub fn summary_source(&self, article_id: i64) -> Result<Option<SummarySource>> {
@@ -977,9 +986,32 @@ impl Store {
         Ok(())
     }
 
-    /// Crash recovery: anything left `running` by a previous process gets picked up again.
-    pub fn recover_running_jobs(&self) -> Result<usize> {
-        self.conn().execute("UPDATE processing_jobs SET status = 'pending' WHERE status = 'running'", [])
+    /// Marks the jobs this Store is running as alive, so other processes leave them running.
+    pub fn heartbeat(&self) -> Result<()> {
+        let mine: Vec<i64> = self.running().iter().copied().collect();
+        // An idle process takes no write lock.
+        if mine.is_empty() {
+            return Ok(());
+        }
+        self.conn().execute(
+            "UPDATE processing_jobs SET heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+             WHERE status = 'running' AND id IN (SELECT value FROM json_each(?1))",
+            [json(&mine)],
+        )?;
+        Ok(())
+    }
+
+    /// Puts back in the queue the jobs left `running` by a process that is gone, or by a finish that
+    /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app,
+    /// the CLI and the MCP server share the queue, so a job another live process runs stays its own.
+    pub fn recover_abandoned_jobs(&self) -> Result<usize> {
+        let mine = json(&*self.running());
+        self.conn().execute(
+            "UPDATE processing_jobs SET status = 'pending'
+             WHERE status = 'running' AND id NOT IN (SELECT value FROM json_each(?1))
+               AND (heartbeat_at IS NULL OR heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?2))",
+            params![mine, format!("-{} seconds", ABANDONED_AFTER.as_secs())],
+        )
     }
 
     /// Claims the oldest ready job whose type is in `types`. Ingest and image jobs are skipped
@@ -994,12 +1026,13 @@ impl Store {
     }
 
     fn claim_job(&self, types: &[&str], article_id: Option<i64>) -> Result<Option<JobRow>> {
-        self.conn()
+        let job = self
+            .conn()
             .query_row(
                 &format!(
                     "UPDATE processing_jobs
                      SET status = 'running', attempt_count = attempt_count + 1,
-                         started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                         started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
                      WHERE id = (SELECT j.id FROM processing_jobs j
                                  WHERE j.status = 'pending'
                                    AND j.type IN (SELECT value FROM json_each(?1))
@@ -1016,11 +1049,17 @@ impl Store {
                 params![json(&types), crate::ingest::JOB_TYPE, crate::images::JOB_TYPE, article_id],
                 job_row,
             )
-            .optional()
+            .optional()?;
+        if let Some(j) = &job {
+            self.running().insert(j.id);
+        }
+        Ok(job)
     }
 
     /// Failures retry with exponential backoff (2, 4, 8, ... minutes) until MAX_ATTEMPTS.
     pub fn finish_job(&self, id: i64, error: Option<&str>) -> Result<()> {
+        // Before the write: a finish that cannot be written stops the heartbeat, so the job is recovered.
+        self.running().remove(&id);
         let c = self.conn();
         match error {
             None => c.execute(
@@ -1723,6 +1762,76 @@ mod tests {
         assert_eq!(claim(), None);
         s.finish_job(fetch, None).unwrap();
         assert_eq!(claim().map(|j| j.1).as_deref(), Some(images::JOB_TYPE));
+    }
+
+    /// Ages every job's heartbeat past `ABANDONED_AFTER`, as two minutes without a beat would.
+    const LAPSED: &str = "UPDATE processing_jobs SET heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')";
+
+    /// One database file opened by two Stores, as the app and the CLI open it.
+    fn shared_db(name: &str) -> (std::path::PathBuf, Store, Store) {
+        let dir = std::env::temp_dir().join(format!("lattice-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("lattice.db");
+        let (app, cli) = (Store::open(&db).unwrap(), Store::open(&db).unwrap());
+        (dir, app, cli)
+    }
+
+    #[test]
+    fn a_job_another_process_runs_is_recovered_only_once_its_heartbeat_stops() {
+        let (dir, app, cli) = shared_db("abandoned-job");
+        let (id, _) = cli.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        cli.enqueue_job("t", id, "{}", "t:1").unwrap();
+        let job = cli.claim_next_job(&["t"]).unwrap().unwrap();
+        app.heartbeat().unwrap();
+        assert_eq!(app.recover_abandoned_jobs().unwrap(), 0, "the CLI is running it");
+        assert!(app.claim_next_job(&["t"]).unwrap().is_none());
+
+        // The CLI is stopped mid-job, and two minutes pass.
+        drop(cli);
+        app.exec_for_test(LAPSED);
+        app.heartbeat().unwrap();
+        assert_eq!(app.recover_abandoned_jobs().unwrap(), 1);
+        assert_eq!(app.claim_next_job(&["t"]).unwrap().map(|j| j.id), Some(job.id), "back in the queue");
+        drop(app);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn heartbeats_keep_a_long_job_from_being_taken_over() {
+        let (dir, app, cli) = shared_db("long-job");
+        let (id, _) = cli.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        cli.enqueue_job("t", id, "{}", "t:1").unwrap();
+        cli.claim_next_job(&["t"]).unwrap().unwrap();
+        // Two minutes into the job, the CLI beats again.
+        app.exec_for_test(LAPSED);
+        cli.heartbeat().unwrap();
+        assert_eq!(app.recover_abandoned_jobs().unwrap(), 0);
+        assert!(app.claim_next_job(&["t"]).unwrap().is_none(), "the app does not run it a second time");
+        drop((app, cli));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_job_this_process_runs_is_never_recovered() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        s.claim_next_job(&["t"]).unwrap().unwrap();
+        // Beats lost to another process's write lock.
+        s.exec_for_test(LAPSED);
+        assert_eq!(s.recover_abandoned_jobs().unwrap(), 0);
+        assert!(s.claim_next_job(&["t"]).unwrap().is_none(), "not run twice here");
+    }
+
+    #[test]
+    fn a_job_left_running_before_heartbeats_existed_is_recovered() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        s.enqueue_job("t", id, "{}", "t:1").unwrap();
+        s.exec_for_test("UPDATE processing_jobs SET status = 'running', heartbeat_at = NULL");
+        assert_eq!(s.recover_abandoned_jobs().unwrap(), 1);
+        assert!(s.claim_next_job(&["t"]).unwrap().is_some());
     }
 
     #[test]

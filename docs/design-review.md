@@ -22,7 +22,7 @@
 | HTTP | `reqwest` + native-tls | 決定 | Windows では SChannel を使う。rustls/aws-lc は Windows でビルド依存が増えるため避けた。body は 20MB を上限にする。 |
 | DB アクセス | `rusqlite`（ORM なし） | 決定 | `PRAGMA user_version` による append-only migration。 |
 | LLM 連携 | `claude -p --output-format json --json-schema` を subprocess で起動する | 決定 | ユーザーの既存の CLI ログインを使う。記事本文は untrusted なので、`--tools ""`、`--strict-mcp-config`、`--setting-sources ""` で tool・MCP・設定をすべて無効にし、空の一時ディレクトリで実行する。`LLMProvider` trait は `llm.rs`（テスト用 fake と合わせて実装が 2 つある）。 |
-| Job runner | SQLite の `processing_jobs` を、アプリ内の tokio task が直列に処理する。LLM 系（translate）とローカル系（embed）で runner を分ける | 決定 | 起動時に `running` を `pending` に戻す。失敗時は指数 backoff（2, 4, 8… 分）、5 回で `failed`。手動の再実行で backoff を解除する。 |
+| Job runner | SQLite の `processing_jobs` を、アプリ内の tokio task が直列に処理する。LLM 系（translate）とローカル系（embed）で runner を分ける | 決定 | `running` の job は、取ったプロセスが 15 秒ごとに `heartbeat_at` を更新する。heartbeat が 1 分途絶えた `running` は、どのプロセスも `pending` に戻す (アプリの起動中に CLI も job を実行するので、起動時に一律には戻さない)。失敗時は指数 backoff（2, 4, 8… 分）、5 回で `failed`。手動の再実行で backoff を解除する。 |
 | Vector search | `embeddings` テーブル（f32 BLOB）を Rust で総当たりして cosine を計算する | 暫定 | 10^5〜10^6 block 程度まではこれで足りる。それを超えたら sqlite-vec か ANN に移す（`Store::scan_embeddings` の 1 箇所を差し替えればよい。`shortcut:` で記録済み）。 |
 | Embedding model | multilingual-e5-small（fastembed／ONNX Runtime、384 次元） | 決定 | ローカルで動き、日本語の query と英語の本文をまたいで検索できる。モデル（約 470MB）は初回利用時に `app_data_dir/models` へダウンロードする。`EmbeddingProvider` trait の裏にあり、vector は model ID ごとに保存するので、モデルを替えても古い index と混ざらない。**ビルドには MSVC 14.4x（VS 2022 17.10 以降）が必要**（ONNX Runtime の配布バイナリの要件）。 |
 | Hybrid ranking | Reciprocal Rank Fusion（k=60） | 決定 | bm25 と cosine はスケールが違うので、weighted score にすると調整が必要になる。RRF は順位だけで統合できる。 |
@@ -57,7 +57,7 @@
     - `params` JSON（target_language、prompt_version）
     - `dedup_key UNIQUE`（enqueue を冪等にするため）
     - `next_run_at`（usage limit のときの backoff）
-    - `locked_at`（crash 後の復旧。起動時に、古い `running` を `pending` に戻す）
+    - `heartbeat_at` (crash 後の復旧。heartbeat が途絶えた `running` を `pending` に戻す)
     - **job の粒度は article 単位にする。** block 単位で CLI を起動すると、1 記事 100 プロセスになり現実的でない。結果は block 単位で保存する。
 11. **FTS の tokenizer。** `unicode61` は日本語を分かち書きできない。`trigram` は日英両方で部分一致でき、`pg_visibility` のような識別子にも強い。その代わり 3 文字未満のクエリ（「索引」など）は LIKE にフォールバックさせる必要がある。→ `trigram` を採用した（migration 3）。原文 block と翻訳文の両方を index する。
 

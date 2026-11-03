@@ -1188,8 +1188,7 @@ pub fn run() {
     let mut context = tauri::generate_context!();
     context.config_mut().identifier = location::APP_IDENTIFIER.into();
     tauri::Builder::default()
-        // First, so a second launch exits before it opens the store: it would start a second set of job runners
-        // and schedulers, and `recover_running_jobs` would hand it the jobs this instance is running.
+        // First, so a second launch exits before it opens the store: it would start a second set of job runners and schedulers.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             // Still hidden while starting up: `restore_main` shows it.
             if let Some(w) = app.get_webview_window(popout::MAIN)
@@ -1241,7 +1240,6 @@ pub fn run() {
             let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http });
 
             app.state::<Browser>().set_skip_sites(app.handle(), translate::page_skip_sites(&store)?)?;
-            store.recover_running_jobs()?;
             store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
             images::enqueue_missing(&store)?;
             classify::enqueue_missing(&store)?;
@@ -1252,6 +1250,9 @@ pub fn run() {
             let wake_local = Arc::new(Notify::new());
             let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
             let wake_render = Arc::new(Notify::new());
+            // Also puts back the jobs left running by a process that is gone (this app's last run, a stopped CLI).
+            let keeper = store.clone();
+            tauri::async_runtime::spawn(async move { jobs::keep_alive(&keeper).await });
             let runners =
                 [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
             for (types, wake) in runners {

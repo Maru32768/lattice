@@ -7,6 +7,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - Launching Lattice while it is already running now brings the open window to the front instead of starting a second copy. The two copies ran the same jobs, so the same request could be sent to an AI provider (and paid for) twice.
+- Starting the app while `lattice-cli save --run` or the MCP server's `save` works on an article no longer makes the app take over its job and run it a second time. A job left running by a CLI stopped mid-run, or one whose result could not be recorded, now goes back to the queue within about a minute instead of staying stuck until a restart.
 
 ## [0.2.0] - 2026-10-30
 

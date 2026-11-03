@@ -4,6 +4,7 @@
 //! translation queue never delays indexing or importing. A reserved slot (`run_foreground`) runs
 //! only the jobs of the articles on screen, so the one being read never waits behind the queue.
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -32,6 +33,11 @@ const IDLE_POLL: Duration = Duration::from_secs(30);
 /// How often the reserved slot looks for new jobs of the articles on screen: the commands that queue
 /// them wake the LLM runner, not this one.
 const FOREGROUND_POLL: Duration = Duration::from_secs(1);
+/// How often `keep_alive` marks this process's running jobs as alive.
+const HEARTBEAT: Duration = Duration::from_secs(15);
+/// A running job with no heartbeat for this long was left by a process that is gone. Four beats, so
+/// a few lost to another process's write lock (5 s busy timeout each) do not free a live job.
+pub(crate) const ABANDONED_AFTER: Duration = Duration::from_secs(HEARTBEAT.as_secs() * 4);
 
 /// The jobs a reader waits for on the article in front of them (classification runs in batches
 /// across articles, so it stays in the queue).
@@ -43,7 +49,32 @@ pub struct Providers<L, E> {
     pub http: HttpClient,
 }
 
-/// Call `store.recover_running_jobs()` once before starting runners, not per runner.
+/// Keeps this process's running jobs alive for the other processes that share the queue (the app,
+/// the CLI, the MCP server), and puts back in the queue the jobs abandoned by one that is gone.
+pub async fn keep_alive(store: &Store) -> Infallible {
+    loop {
+        if let Err(e) = store.heartbeat() {
+            log::error!("job heartbeat: {e}");
+        }
+        match store.recover_abandoned_jobs() {
+            Ok(0) => {}
+            Ok(n) => log::warn!("put {n} abandoned running job(s) back in the queue"),
+            Err(e) => log::error!("recovering abandoned jobs: {e}"),
+        }
+        tokio::time::sleep(HEARTBEAT).await;
+    }
+}
+
+/// Runs `work` beside `keep_alive`, for a process that runs jobs without the app's runners (the CLI's
+/// `save --run`), so an app open meanwhile does not take them over.
+pub async fn with_keep_alive<T>(store: &Store, work: impl Future<Output = T>) -> T {
+    tokio::select! {
+        out = work => out,
+        never = keep_alive(store) => match never {},
+    }
+}
+
+/// Run `keep_alive` once per process beside the runners, not per runner.
 /// `on_change` gets each job as it starts, makes progress and finishes.
 pub async fn run_worker<L: LlmProvider, E: EmbeddingProvider>(
     store: Arc<Store>,
@@ -571,12 +602,14 @@ mod tests {
         assert_eq!(run_article(&s, &p, LLM_JOBS, id, &|_| {}).await.unwrap(), 0);
     }
 
-    #[test]
-    fn recovers_jobs_left_running() {
+    #[tokio::test]
+    async fn keep_alive_puts_a_job_left_by_a_dead_process_back_in_the_queue() {
         let (s, id) = setup();
         translate::enqueue(&s, id, &Target::default()).unwrap();
-        s.claim_next_job(LLM_JOBS).unwrap().unwrap();
-        assert_eq!(s.recover_running_jobs().unwrap(), 1);
-        assert!(s.claim_next_job(LLM_JOBS).unwrap().is_some());
+        // How a process that died mid-job leaves it: running, its last heartbeat two minutes old.
+        s.exec_for_test("UPDATE processing_jobs SET status = 'running', heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')");
+        assert!(s.claim_next_job(LLM_JOBS).unwrap().is_none());
+        let _ = tokio::time::timeout(Duration::from_millis(50), keep_alive(&s)).await;
+        assert!(s.claim_next_job(LLM_JOBS).unwrap().is_some(), "claimable again without a restart");
     }
 }
