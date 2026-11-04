@@ -748,6 +748,7 @@ export const en = {
   "browserView.translate": "Translate this page",
   "browserView.indexed": "Saved",
   "browserView.savedPdf": "Saved PDF",
+  "browserView.outline": "Contents",
   "browserView.summaryHint": "Show this article's summary above the page",
   "browserView.favorite": "Favorite (s)",
   "browserView.more": "More (copy the URL)",

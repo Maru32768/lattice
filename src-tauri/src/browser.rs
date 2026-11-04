@@ -73,6 +73,8 @@ pub struct OverlayLabels {
     /// 単語を登録 and its confirmation.
     save_word: String,
     saved_word: String,
+    /// The PDF viewer's table of contents.
+    outline: String,
 }
 
 /// The app shortcuts the overlay forwards (`PageKeys` in `src/lib/keys.ts`), passed through to the page.

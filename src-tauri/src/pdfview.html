@@ -56,6 +56,114 @@
       .textLayer ::selection {
         background: rgba(47, 93, 138, 0.3);
       }
+      .links {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+      .links a {
+        position: absolute;
+        pointer-events: auto;
+      }
+      .links a:hover {
+        background: rgba(47, 93, 138, 0.12);
+      }
+      .has-outline #pages {
+        margin-left: 32px;
+      }
+      .outline-open #pages {
+        margin-left: 280px;
+      }
+      #outline-toggle {
+        position: fixed;
+        z-index: 3;
+        top: 0;
+        left: 0;
+        width: 32px;
+        height: 32px;
+        border: 0;
+        font-size: 15px;
+        color: #45474c;
+        background: transparent;
+        cursor: pointer;
+      }
+      #outline-toggle:hover {
+        background: rgba(30, 28, 24, 0.1);
+      }
+      nav {
+        position: fixed;
+        z-index: 2;
+        display: none;
+        box-sizing: border-box;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 272px;
+        padding: 32px 4px 12px;
+        overflow: auto;
+        background: #f6f5f1;
+        border-right: 1px solid #d2cfc6;
+        font: 12.5px/1.45 system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
+      }
+      .outline-open nav {
+        display: block;
+      }
+      nav ul {
+        margin: 0;
+        padding: 0 0 0 12px;
+        list-style: none;
+      }
+      nav > ul {
+        padding: 0;
+      }
+      nav li {
+        position: relative;
+        padding-left: 16px;
+      }
+      nav button {
+        border: 0;
+        font: inherit;
+        color: #2c2d30;
+        background: transparent;
+        cursor: pointer;
+      }
+      nav .item {
+        display: block;
+        width: 100%;
+        padding: 3px 4px;
+        border-radius: 3px;
+        text-align: left;
+      }
+      nav .item:hover:enabled {
+        background: rgba(30, 28, 24, 0.08);
+      }
+      nav .item:disabled {
+        cursor: default;
+      }
+      nav .fold {
+        position: absolute;
+        left: 0;
+        top: 2px;
+        width: 16px;
+        height: 20px;
+        padding: 0;
+      }
+      nav .fold::before {
+        content: "▸";
+        display: inline-block;
+      }
+      nav .fold[aria-expanded="true"]::before {
+        transform: rotate(90deg);
+      }
+      @media print {
+        nav,
+        #outline-toggle {
+          display: none !important;
+        }
+        .has-outline #pages {
+          margin-left: 0;
+        }
+      }
       .region {
         position: absolute;
         overflow: hidden;

@@ -11,4 +11,8 @@ lang: string, original: string, translated: string, flip: string, translating: s
 /**
  * 単語を登録 and its confirmation.
  */
-save_word: string, saved_word: string, };
+save_word: string, saved_word: string, 
+/**
+ * The PDF viewer's table of contents.
+ */
+outline: string, };

@@ -86,6 +86,8 @@ pub struct Region {
     pub y1: f64,
     pub size: f64,
     pub text: String,
+    /// A heading's level, for the contents of a PDF that has no bookmarks.
+    pub level: Option<u8>,
 }
 
 /// The blocks of `to_ir` with their places. A block that runs on across a column, a page or a figure
@@ -96,10 +98,19 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let (lines, body, _) = lay_out(&doc);
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
-    Ok(drafts(&lines, body).iter().flat_map(|d| d.lines.chunk_by(run_on)).filter_map(|piece| region(piece, &vocab)).collect())
+    let mut out = Vec::new();
+    for d in drafts(&lines, body) {
+        let level = if let Kind::Heading(l) = d.kind {
+            Some(l)
+        } else {
+            None
+        };
+        out.extend(d.lines.chunk_by(run_on).filter_map(|piece| region(piece, level, &vocab)));
+    }
+    Ok(out)
 }
 
-fn region(piece: &[&Line], vocab: &HashSet<String>) -> Option<Region> {
+fn region(piece: &[&Line], level: Option<u8>, vocab: &HashSet<String>) -> Option<Region> {
     let (first, last) = (piece.first()?, piece.last()?);
     let mut text = String::new();
     for l in piece {
@@ -113,6 +124,7 @@ fn region(piece: &[&Line], vocab: &HashSet<String>) -> Option<Region> {
         y1: last.y + 0.3 * last.size,
         size: first.size,
         text: collapse(&text).trim().to_string(),
+        level,
     })
 }
 
@@ -974,6 +986,9 @@ pub(crate) mod tests {
         let at = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}"));
         let abs = at("We study");
         assert_eq!(abs.page, 0);
+        assert_eq!(abs.level, None);
+        assert_eq!(at("1 Introduction").level, Some(2));
+        assert_eq!(at("2.1 Running headers").level, Some(3));
         assert!(abs.text.ends_with("representation of columns."), "lines joined as in the block: {}", abs.text);
         assert_eq!((abs.x0, abs.y0, abs.y1), (L, 155., 216.), "from the top of the first line to below the last");
         assert!(abs.x1 > L && abs.x1 < R);

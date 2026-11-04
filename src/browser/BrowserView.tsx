@@ -73,6 +73,7 @@ export const overlayLabels = (t: T): OverlayLabels => ({
   retry: t("overlay.retry"),
   save_word: t("vocab.save"),
   saved_word: t("vocab.savedShort"),
+  outline: t("browserView.outline"),
 });
 
 /** https:// + host emphasized + the rest; a click (or a change of `editAt`) edits it, with the whole URL selected. */

@@ -76,7 +76,7 @@ const state = {
   config: {
     enabled: false,
     percent: 70,
-    labels: { lang: "", original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "" },
+    labels: { lang: "", original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "", outline: "" },
   } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
