@@ -635,7 +635,10 @@ export const handlers = {
   set_autostart: ({ on }: { on: boolean }) => void (store.autostart = on),
   get_ui_language: (): string | null => store.uiLanguage,
   set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
-  article_for_url: ({ url }: { url: string }): ArticleRow | null => articles.find((a) => a.original_url === url) ?? null,
+  article_for_url: ({ url }: { url: string }): ArticleRow | null => {
+    const pdf = /^http:\/\/lattice-pdf\.localhost\/(\d+)$/.exec(url);
+    return articles.find((a) => (pdf ? a.id === Number(pdf[1]) : a.original_url === url)) ?? null;
+  },
   list_genres: (): TagCount[] => {
     const used = counts(articles.map((a) => a.genre));
     const extra = [...addedGenres].filter((g) => !used.some((u) => u.name.toLowerCase() === g.toLowerCase())).map((name) => ({ name, count: 0 }));

@@ -61,6 +61,12 @@ export type JobState = JobCount["state"];
 /** An imported file (Markdown or PDF): no page to open, refetch or render. */
 export const isLocal = (url: string) => url.startsWith("local:");
 
+const PDF_PAGE = "http://lattice-pdf.localhost/";
+/** The saved original of a PDF, which the Page view shows (`saved_pdf` in lib.rs). */
+export const isPdfPage = (url: string) => url.startsWith(PDF_PAGE);
+/** What the Page view opens: a PDF's saved original, whether it came from a file or a URL that may be gone; else the article's URL. */
+export const pageUrl = (a: Pick<ArticleRow, "id" | "pdf" | "original_url">) => (a.pdf ? `${PDF_PAGE}${a.id}` : a.original_url);
+
 /** The site shown for an article: its domain, or "local" for an imported file. */
 export const siteOf = (a: Pick<ArticleRow, "domain">, t: T) => a.domain || t("common.local");
 

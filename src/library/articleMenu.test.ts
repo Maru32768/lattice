@@ -84,6 +84,14 @@ test("favorite and read flip only when every article already has them", () => {
   assert.deepEqual(got, [[1, 2], true]);
 });
 
+test("an imported PDF opens its original in Page, with no URL to copy", () => {
+  const items = articleMenu([row(3, { original_url: "local:pdf/abc", pdf: true })], actions, t).filter((i): i is MenuItem => typeof i !== "string");
+  assert.deepEqual(
+    items.filter((i) => i.disabled).map((i) => i.label),
+    ["articleMenu.copyUrl"],
+  );
+});
+
 test("an imported file has no page and no URL to copy; a pop-out has no new window to offer", () => {
   const local = articleMenu([row(3, { original_url: "local:md/abc" })], { ...actions, popOut: undefined }, t).filter(
     (i): i is MenuItem => typeof i !== "string",

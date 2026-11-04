@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, isLocal, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
+import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
 import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
@@ -272,7 +272,7 @@ export default function App() {
     const a = articleById.get(h.article_id);
     const where: Where = newTab ? "behind" : "active";
     if (page && a) {
-      return openPage(a.original_url, h.text, a, where);
+      return openPage(pageUrl(a), h.text, a, where);
     }
     openReader(
       h.article_id,
@@ -283,7 +283,7 @@ export default function App() {
 
   /** `article`: the saved article being opened, highlighted right away rather than after the page loads. `pane`: not the focused one. */
   function openPage(url: string, focus?: string, article?: ArticleRow, where: Where = "active", pane?: Id, edit?: boolean) {
-    // An imported file has no page: it stays in the Reader.
+    // An imported Markdown file has no page: it stays in the Reader.
     if (isLocal(url)) {
       return article ? openReader(article.id, undefined, where, pane) : setError(t("reader.pageDisabled"));
     }
@@ -301,7 +301,7 @@ export default function App() {
   /** Opens in the view the focused document uses (Reader by default). */
   function openArticle(a: ArticleRow, where: Where = "active") {
     if (cur?.kind === "page") {
-      openPage(a.original_url, undefined, a, where);
+      openPage(pageUrl(a), undefined, a, where);
     } else {
       openReader(a.id, undefined, where);
     }
@@ -348,7 +348,7 @@ export default function App() {
     }
     const a = cursor == null ? undefined : articleById.get(cursor);
     if (a && asPage) {
-      openPage(a.original_url, undefined, a);
+      openPage(pageUrl(a), undefined, a);
     } else if (a) {
       openArticle(a);
     }
@@ -356,7 +356,7 @@ export default function App() {
 
   function toggleView() {
     if (cur?.kind === "reader" && curView) {
-      openPage(curView.article.original_url, undefined, curView.article);
+      openPage(pageUrl(curView.article), undefined, curView.article);
     } else if (cur?.kind === "page" && current) {
       openReader(current.id);
     }
@@ -416,7 +416,7 @@ export default function App() {
     genres: genres.map((g) => g.name),
     openNew: (a) => openArticle(a, "new"),
     popOut: IS_MAIN ? (a) => void win.popOutDoc({ kind: "reader", articleId: a.id }) : undefined,
-    page: (a) => openPage(a.original_url, undefined, a),
+    page: (a) => openPage(pageUrl(a), undefined, a),
     copyUrl: (a) => copyUrl(a.original_url),
     remove: (a) => setDeleting({ article: a, page: false }),
   });
@@ -900,7 +900,9 @@ export default function App() {
 
   const labelOf = (t: Tab): TabLabel => {
     if (t.kind === "page") {
-      return { title: t.title || siteOf(t.url) || t.url, domain: siteOf(t.url) };
+      // A saved PDF's address is not a site: its icon is the article's.
+      const domain = isPdfPage(t.url) ? (t.saved != null ? (articleById.get(t.saved)?.domain ?? "") : "") : siteOf(t.url);
+      return { title: t.title || domain || t.url, domain };
     }
     const a = views.get(t.articleId)?.article ?? articleById.get(t.articleId);
     return { title: a?.title ?? a?.original_url ?? "…", domain: a?.domain ?? "", feed: a?.feed_id };
@@ -1003,7 +1005,7 @@ export default function App() {
           }
           translateOnPick(v, m);
         }}
-        onPage={() => openPage(a.original_url, undefined, a, "active", pane.id)}
+        onPage={() => openPage(pageUrl(a), undefined, a, "active", pane.id)}
         onLink={(href, nt) => openPage(href, undefined, undefined, nt ? "behind" : "active", pane.id)}
         onRetry={vAct(() => api.saveUrl(a.original_url))}
         onTranslate={vAct(api.translateArticle)}

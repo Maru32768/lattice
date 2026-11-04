@@ -707,6 +707,9 @@ fn delete_article(app: State<'_, App>, id: i64) -> Result<bool, String> {
 
 #[tauri::command(async)]
 fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow>, String> {
+    if let Some(id) = tauri::Url::parse(&url).ok().as_ref().and_then(browser::pdf_article) {
+        return app.store.article_row(id).map_err(err);
+    }
     let Ok(norm) = normalize(&url) else {
         return Ok(None);
     };
@@ -1227,6 +1230,30 @@ async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
     r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&app)).await
 }
 
+/// A saved PDF for the Page tab `browser_open` opened it in, so the original opens offline and for a
+/// file with no URL. WebView2's own viewer draws it, in a webview that holds only the overlay's commands.
+fn saved_pdf(handle: &tauri::AppHandle, label: &str, path: &str) -> tauri::http::Response<Vec<u8>> {
+    let status = |code: u16| tauri::http::Response::builder().status(code).body(Vec::new()).unwrap_or_default();
+    let Some(id) = browser::pdf_path(path) else {
+        return status(404);
+    };
+    if !handle.state::<Browser>().pdf_allowed(label, id) {
+        return status(403);
+    }
+    match handle.state::<App>().store.latest_snapshot(id) {
+        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => tauri::http::Response::builder()
+            .header("Content-Type", pdf::CONTENT_TYPE)
+            .header("Cross-Origin-Resource-Policy", "same-origin")
+            .body(s.body)
+            .unwrap_or_else(|_| status(500)),
+        Ok(_) => status(404),
+        Err(e) => {
+            log::warn!("reading the PDF of article {id}: {e}");
+            status(500)
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut context = tauri::generate_context!();
@@ -1249,6 +1276,10 @@ pub fn run() {
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
+        .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
+            let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
+            tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
+        })
         .on_window_event(popout::on_window_event)
         .setup(|app| {
             let loc = location::detect()?;

@@ -1126,7 +1126,7 @@ export function Reader({
   return (
     <div className="doc">
       <div className="docbar">
-        <ViewSeg page={false} onReader={() => {}} onPage={onPage} pageDisabled={local} />
+        <ViewSeg page={false} onReader={() => {}} onPage={onPage} pageDisabled={local && !a.pdf} />
         <div className="vsep" />
         {!failed && <LangSeg mode={mode} percent={percent} onChange={setLang} />}
         {!failed && (

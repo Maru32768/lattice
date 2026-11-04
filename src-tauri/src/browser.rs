@@ -25,6 +25,8 @@ use ts_rs::TS;
 /// names the tab across windows and restarts; the UI's numeric tab ids are per window.
 const PREFIX: &str = "browser-";
 pub const RENDER_LABEL: &str = "renderer";
+pub const PDF_SCHEME: &str = "lattice-pdf";
+const PDF_HOST: &str = "lattice-pdf.localhost";
 pub(crate) const OVERLAY_JS: &str = include_str!("../overlay-dist/overlay.js");
 /// Keys are short and alphanumeric (`newKey` in `src/layout/layout.ts`); anything else is not a tab of ours.
 const MAX_KEY: usize = 32;
@@ -108,11 +110,13 @@ struct TabState {
     captured: Option<Instant>,
     /// Until when the key after the pane prefix (Ctrl+B) is forwarded, as the overlay's `prefixUntil`.
     prefix_until: Option<Instant>,
+    /// The saved PDF the app last opened in this tab: the only one the tab may load (`pdf_allowed`).
+    pdf: Option<i64>,
 }
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None }
+        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None, pdf: None }
     }
 }
 
@@ -177,6 +181,13 @@ impl Default for Browser {
 impl Browser {
     fn with_tab<T>(&self, label: &str, f: impl FnOnce(&mut TabState) -> T) -> T {
         f(lock(&self.tabs).entry(label.to_string()).or_default())
+    }
+
+    /// The protocol is registered on every webview and remote pages can navigate to its URLs, so a
+    /// tab gets only the PDF `browser_open` was told to show. The same-origin policy keeps its bytes
+    /// from a page the user reaches from there by a link.
+    pub fn pdf_allowed(&self, label: &str, id: i64) -> bool {
+        is_browser(label) && lock(&self.tabs).get(label).is_some_and(|t| t.pdf == Some(id))
     }
 
     /// Every page webview, by label.
@@ -375,6 +386,16 @@ pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
 }
 
+/// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
+pub fn pdf_article(u: &Url) -> Option<i64> {
+    (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
+}
+
+/// The protocol's handler sees that URL rewritten to `lattice-pdf://localhost/<id>`; the path is the same.
+pub fn pdf_path(path: &str) -> Option<i64> {
+    path.strip_prefix('/')?.parse().ok()
+}
+
 pub(crate) fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -482,6 +503,7 @@ pub async fn browser_open(
     let label = label(&tab)?;
     let window = webview.window();
     let _opening = browser.opening.lock().await;
+    browser.with_tab(&label, |t| t.pdf = pdf_article(&url));
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
     let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
@@ -513,7 +535,9 @@ pub async fn browser_open(
         .on_navigation(is_http)
         // A middle-click, Ctrl+click or target=_blank link opens a Page tab next to this one (the UI holds the tabs).
         .on_new_window(move |u, _| {
+            // Not a saved PDF: the UI would open it for the page that asked.
             if is_http(&u)
+                && pdf_article(&u).is_none()
                 && let Some(wv) = popup_target.get_webview(&popup_label)
             {
                 #[derive(Clone, Serialize)]
@@ -903,6 +927,23 @@ mod tests {
         for bad in ["", "a b", "x/y", "../main", &"a".repeat(MAX_KEY + 1)] {
             assert!(label(bad).is_err(), "{bad:?} is not a key the UI makes");
         }
+    }
+
+    #[test]
+    fn a_tab_loads_only_the_saved_pdf_it_was_opened_on() {
+        let article = |s: &str| pdf_article(&Url::parse(s).unwrap());
+        assert_eq!(article("http://lattice-pdf.localhost/5"), Some(5));
+        assert_eq!(article("https://lattice-pdf.localhost/5"), None);
+        assert_eq!(article("http://example.com/5"), None);
+        assert_eq!(article("http://lattice-pdf.localhost/5/x"), None);
+        let browser = Browser::default();
+        let tab = label("k1").unwrap();
+        assert!(!browser.pdf_allowed(&tab, 5), "never opened");
+        browser.with_tab(&tab, |t| t.pdf = Some(5));
+        assert!(browser.pdf_allowed(&tab, 5));
+        assert!(!browser.pdf_allowed(&tab, 6), "another article");
+        assert!(!browser.pdf_allowed(&label("k2").unwrap(), 5), "another tab");
+        assert!(!browser.pdf_allowed("main", 5), "only page webviews");
     }
 
     #[test]

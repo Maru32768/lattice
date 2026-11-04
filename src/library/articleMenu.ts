@@ -37,7 +37,7 @@ export function articleMenu(rows: ArticleRow[], act: ArticleActions, t: T): (Men
   const favorite = rows.every((a) => a.favorite);
   const read = rows.every((a) => a.read_status === "read");
   const one = rows.length === 1 ? rows[0] : null;
-  // Imported files (local:…) have no page and no URL to share.
+  // Imported files (local:…) have no URL to share, and only a PDF has an original to show as its page.
   const local = one?.original_url.startsWith("local:") ?? false;
   const relevance: (MenuItem | string)[] = [
     {
@@ -80,7 +80,7 @@ export function articleMenu(rows: ArticleRow[], act: ArticleActions, t: T): (Men
           "-",
           { label: t("articleMenu.openNewTab"), onSelect: () => act.openNew(one) },
           ...(act.popOut ? [{ label: t("tabStrip.popOut"), onSelect: () => act.popOut!(one) }] : []),
-          { label: t("articleMenu.openPage"), onSelect: () => act.page(one), disabled: local },
+          { label: t("articleMenu.openPage"), onSelect: () => act.page(one), disabled: local && !one.pdf },
           { label: t("articleMenu.copyUrl"), onSelect: () => act.copyUrl(one), disabled: local },
           "-",
           { label: t("browserView.remove"), onSelect: () => act.remove(one), danger: true },

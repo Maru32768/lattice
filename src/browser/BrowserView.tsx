@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { browser, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "../api";
+import { browser, isLocal, isPdfPage, type ArticleRow, type ArticleView, type Bounds, type OverlayLabels } from "../api";
 import type { LanguageMode } from "../reader/mixed";
 import type { PageTab } from "../layout/layout";
 import { ArticleTools, LangSeg, Summary, ViewSeg, type DocActions } from "../reader/Reader";
@@ -377,6 +377,9 @@ export function BrowserView({
   }, [id]);
 
   const { url, loading } = tab;
+  // A saved PDF's address means nothing to the user, and nothing here translates or re-saves the viewer's page.
+  const pdf = isPdfPage(url);
+  const shownUrl = !pdf ? url : saved && !isLocal(saved.original_url) ? saved.original_url : t("browserView.savedPdf");
   const shown = saved && view && act && view.article.id === saved.id ? view : null;
   const copyUrl = () => navigator.clipboard.writeText(url).catch((e: unknown) => onError(String(e)));
   return (
@@ -384,8 +387,12 @@ export function BrowserView({
       <div className="docbar pg">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
-        <div className="vsep" />
+        {!pdf && (
+          <>
+            <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
+            <div className="vsep" />
+          </>
+        )}
         <button
           className="ib"
           onClick={() => browser.go(id, "back")}
@@ -411,7 +418,7 @@ export function BrowserView({
           <Icon name="home" />
         </button>
         <UrlBar
-          url={url}
+          url={shownUrl}
           editAt={editAt}
           onGo={(input) => {
             const next = toNavigation(input, getEngine());
@@ -432,7 +439,9 @@ export function BrowserView({
             act={act}
             panel={panel}
             onPanel={togglePanel}
-            rerender={{ label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }}
+            rerender={
+              pdf ? undefined : { label: saving ? t("browserView.saving") : t("browserView.saveRendered"), onSelect: onSave, disabled: saving || loading }
+            }
           >
             {!failedOf(shown) && (
               <button
@@ -451,7 +460,8 @@ export function BrowserView({
             )}
           </ArticleTools>
         ) : (
-          !saved && (
+          !saved &&
+          !pdf && (
             <div className="docbar-r">
               <button
                 className="tb pri"

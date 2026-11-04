@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, browser, type ArticleView } from "../api";
+import { api, browser, isPdfPage, type ArticleView } from "../api";
 import { forgetOpened } from "../browser/BrowserView";
 import {
   activeTab,
@@ -101,7 +101,8 @@ export function useDocuments(fail: (e: unknown) => void) {
       listen<{ tab: string; title: string }>("browser-title", (e) =>
         setLayout((l) => {
           const t = pageByKey(l, e.payload.tab);
-          return t ? update(l, t.id, { title: e.payload.title }) : l;
+          // The viewer titles a saved PDF by its address, an article id: the tab keeps the article's title.
+          return t && !isPdfPage(t.url) ? update(l, t.id, { title: e.payload.title }) : l;
         }),
       ),
     ];
