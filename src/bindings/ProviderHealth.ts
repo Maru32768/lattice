@@ -14,6 +14,6 @@ provider: string, model: string | null,
  */
 error: string | null, failed_secs_ago: number | null, 
 /**
- * Tried after the other entries until `COOLDOWN` has passed.
+ * Tried after the other entries for now.
  */
 cooling: boolean, };

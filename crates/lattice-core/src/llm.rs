@@ -25,6 +25,9 @@ pub enum LlmError {
     Failed(String),
     #[error("malformed provider output: {0}")]
     Malformed(String),
+    /// From `complete_json_now`: usable again after this long.
+    #[error("rate limited for {0:.0?}")]
+    RateLimited(std::time::Duration),
 }
 
 /// A CLI provider that could not be started; not installed (or not on PATH) is the usual case.
@@ -67,6 +70,12 @@ pub trait LlmProvider: Send + Sync + 'static {
 
     /// One structured completion: `system` instructions, untrusted `input`, output per `schema`.
     fn complete_json(&self, system: &str, input: &str, schema: &Value) -> impl Future<Output = Result<Completion, LlmError>> + Send;
+
+    /// `complete_json` for a caller with somewhere else to go: a provider that would sit out a rate
+    /// limit returns `RateLimited` instead.
+    fn complete_json_now(&self, system: &str, input: &str, schema: &Value) -> impl Future<Output = Result<Completion, LlmError>> + Send {
+        self.complete_json(system, input, schema)
+    }
 }
 
 /// OpenAI structured outputs (and Codex `--output-schema`) need `additionalProperties: false`

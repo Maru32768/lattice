@@ -146,6 +146,13 @@ impl LlmProvider for AnyLlm {
             Self::Anthropic(p) => p.complete_json(system, input, schema).await,
         }
     }
+
+    async fn complete_json_now(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+        match self {
+            Self::Codex(p) => p.complete_json_now(system, input, schema).await,
+            other => other.complete_json(system, input, schema).await,
+        }
+    }
 }
 
 /// Builds the providers for the stored chain, with API keys resolved now.
@@ -172,12 +179,25 @@ pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
         .collect()
 }
 
+#[derive(Clone)]
+struct Failure {
+    at: Instant,
+    cooldown: Duration,
+    error: String,
+}
+
+impl Failure {
+    fn cooling(&self) -> bool {
+        self.at.elapsed() < self.cooldown
+    }
+}
+
 struct Slot<P> {
     llm: P,
     model: Option<String>,
-    /// When the last call failed (not cleared by malformed output, which says nothing about the entry
-    /// being usable), and why; a success clears it.
-    failed: Mutex<Option<(Instant, String)>>,
+    /// The last call's failure (not set by malformed output, which says nothing about the entry
+    /// being usable); a success clears it.
+    failed: Mutex<Option<Failure>>,
 }
 
 /// How a chain entry fared on its last call, for the UI: a fallback that answered hides a failed
@@ -192,7 +212,7 @@ pub struct ProviderHealth {
     pub error: Option<String>,
     #[ts(type = "number | null")]
     pub failed_secs_ago: Option<u64>,
-    /// Tried after the other entries until `COOLDOWN` has passed.
+    /// Tried after the other entries for now.
     pub cooling: bool,
 }
 
@@ -225,9 +245,9 @@ impl<P: LlmProvider> LlmChain<P> {
                 ProviderHealth {
                     provider: s.llm.name().to_string(),
                     model: s.model.clone(),
-                    failed_secs_ago: failed.as_ref().map(|(t, _)| t.elapsed().as_secs()),
-                    cooling: failed.as_ref().is_some_and(|(t, _)| t.elapsed() < COOLDOWN),
-                    error: failed.map(|(_, e)| e),
+                    failed_secs_ago: failed.as_ref().map(|f| f.at.elapsed().as_secs()),
+                    cooling: failed.as_ref().is_some_and(Failure::cooling),
+                    error: failed.map(|f| f.error),
                 }
             })
             .collect()
@@ -241,13 +261,19 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
 
     async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
         let slots = self.slots.read().unwrap_or_else(|e| e.into_inner()).clone();
-        let cooling = |s: &Slot<P>| s.failed.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|(t, _)| t.elapsed() < COOLDOWN);
+        let cooling = |s: &Slot<P>| s.failed.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(Failure::cooling);
         let mut order: Vec<&Slot<P>> = slots.iter().collect();
         order.sort_by_key(|s| cooling(s)); // stable: configured order within each group
         let mut errors = Vec::new();
-        for s in order {
+        let last = order.len().saturating_sub(1);
+        for (i, s) in order.into_iter().enumerate() {
             let started = Instant::now();
-            let result = s.llm.complete_json(system, input, schema).await;
+            // With nothing left to try, a rate limit is worth waiting out.
+            let result = if i == last {
+                s.llm.complete_json(system, input, schema).await
+            } else {
+                s.llm.complete_json_now(system, input, schema).await
+            };
             // Every call's time, for tuning parallelism and batch sizes from real timings.
             log::info!(
                 "{} ({}) {} in {:.1?} ({} chars in)",
@@ -270,8 +296,14 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
                 Err(e) => {
                     log::warn!("{} ({}) failed: {e}", s.llm.name(), s.model.as_deref().unwrap_or("default"));
                     // Malformed output is usually a one-off; limits, auth and timeouts persist.
-                    if !matches!(e, LlmError::Malformed(_)) {
-                        *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), e.to_string()));
+                    let cooldown = match e {
+                        LlmError::Malformed(_) => None,
+                        // Back as soon as the limit lets it: what the entry can answer goes to it, and only the rest elsewhere.
+                        LlmError::RateLimited(wait) => Some(wait),
+                        _ => Some(COOLDOWN),
+                    };
+                    if let Some(cooldown) = cooldown {
+                        *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some(Failure { at: Instant::now(), cooldown, error: e.to_string() });
                     }
                     errors.push(e);
                 }
@@ -311,6 +343,62 @@ mod tests {
         // Summary Fake reports no model: the configured one is recorded.
         let c = LlmChain::new(vec![(Fake::new(), Some("cfg".into()))]).complete_json("You summarize technical articles", "", &schema).await.unwrap();
         assert_eq!((c.model.as_deref(), c.provider.as_str()), (Some("cfg"), "fake"));
+    }
+
+    /// `limited` turns down calls that ask for an answer now, for `wait`, and answers the patient ones.
+    struct Entry {
+        name: &'static str,
+        limited: Option<Duration>,
+        now: std::sync::atomic::AtomicUsize,
+        patient: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Entry {
+        fn new(name: &'static str, limited: Option<Duration>) -> Self {
+            Self { name, limited, now: Default::default(), patient: Default::default() }
+        }
+        fn answer(&self) -> Result<Completion, LlmError> {
+            Ok(Completion { value: serde_json::json!({}), model: None, provider: self.name.into() })
+        }
+    }
+
+    impl LlmProvider for Entry {
+        fn name(&self) -> &str {
+            self.name
+        }
+        async fn complete_json(&self, _: &str, _: &str, _: &Value) -> Result<Completion, LlmError> {
+            self.patient.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.answer()
+        }
+        async fn complete_json_now(&self, _: &str, _: &str, _: &Value) -> Result<Completion, LlmError> {
+            self.now.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.limited.map_or_else(|| self.answer(), |wait| Err(LlmError::RateLimited(wait)))
+        }
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_entry_hands_over_only_for_as_long_as_the_limit_lasts() {
+        let schema = serde_json::json!({});
+        let chain = |wait| LlmChain::new(vec![(Entry::new("limited", Some(wait)), None), (Entry::new("other", None), None)]);
+        let asked_now = |c: &LlmChain<Entry>| c.slots.read().unwrap()[0].llm.now.load(std::sync::atomic::Ordering::SeqCst);
+
+        let held = chain(Duration::from_secs(60));
+        assert_eq!(held.complete_json("", "x", &schema).await.unwrap().provider, "other");
+        assert!(held.health()[0].cooling, "{:?}", held.health());
+        assert_eq!(held.complete_json("", "x", &schema).await.unwrap().provider, "other");
+        assert_eq!(asked_now(&held), 1, "not asked again while the limit lasts");
+
+        let over = chain(Duration::ZERO);
+        over.complete_json("", "x", &schema).await.unwrap();
+        over.complete_json("", "x", &schema).await.unwrap();
+        assert_eq!(asked_now(&over), 2, "first again once the limit is over, not after the usual cooldown");
+    }
+
+    #[tokio::test]
+    async fn the_last_entry_left_to_try_waits_out_a_rate_limit() {
+        let schema = serde_json::json!({});
+        let alone = LlmChain::new(vec![(Entry::new("limited", Some(Duration::from_secs(60))), None)]);
+        assert_eq!(alone.complete_json("", "x", &schema).await.unwrap().provider, "limited", "an only entry must not turn a wait into a failure");
     }
 
     #[test]
