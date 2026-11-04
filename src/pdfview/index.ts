@@ -31,8 +31,16 @@ interface Region {
   room_down: number;
 }
 
-/** How far a translation longer than the original may shrink to fit. */
-const MIN_FIT = 0.55;
+/**
+ * What a paragraph gives up to fit its box, in order. Japanese needs more line spacing than the 1.25 of
+ * dense English, and 1.5 everywhere left many paragraphs small (one in seven at 80% or less in a long paper).
+ * So spacing goes before the type drops below 90%, which it then does only for those that still spill.
+ */
+const FIT_STEPS = [
+  ...[1, 0.95, 0.9].map((scale) => ({ scale, leading: 1.5 })),
+  ...[1.45, 1.4, 1.35, 1.3, 1.25].map((leading) => ({ scale: 0.9, leading })),
+  ...[0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55].map((scale) => ({ scale, leading: 1.25 })),
+];
 const RENDER_MARGIN = "1500px";
 /** Canvas pixels per CSS pixel: a page's small type blurs and thickens at 1 on an ordinary display. */
 const MIN_DENSITY = 2;
@@ -238,8 +246,11 @@ function place(el: HTMLElement, top: number, height: number) {
 
 /** Sets the box and the text's size so the text shows whole: into the margin if there is room, then smaller. */
 function fit(el: HTMLElement) {
-  let scale = 1;
-  el.style.setProperty("--fit", "1");
+  const apply = ({ scale, leading }: (typeof FIT_STEPS)[number]) => {
+    el.style.setProperty("--fit", String(scale));
+    el.style.setProperty("--leading", String(leading));
+  };
+  apply(FIT_STEPS[0]!);
   const box = boxes.get(el);
   if (box) {
     place(el, box.top, box.height);
@@ -249,9 +260,11 @@ function fit(el: HTMLElement) {
       place(el, box.top - up, box.height + up + Math.min(over - up, box.down));
     }
   }
-  while (el.scrollHeight > el.clientHeight && scale > MIN_FIT) {
-    scale -= 0.05;
-    el.style.setProperty("--fit", String(scale));
+  for (const step of FIT_STEPS) {
+    apply(step);
+    if (el.scrollHeight <= el.clientHeight) {
+      break;
+    }
   }
 }
 

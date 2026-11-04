@@ -40,6 +40,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A PDF's Page view now uses the saved translation for a paragraph broken across columns or pages. It used to translate them again. A part that ends in the middle of a sentence still goes to the AI provider, as before.
 - In a translated PDF, formulas look as they do in the paper. They are not sent to the AI provider: they go into the translation as they are.
 - In a translated PDF, a paragraph at the top or bottom of a page also uses the margin, so its text shrinks less.
+- Translated text in a PDF has wider line spacing. A paragraph that does not fit tightens its spacing before its text gets smaller.
 - **Translate again** on a PDF also replaces the translations the Page view saved for parts of a paragraph. They used to keep showing there.
 
 ## [0.2.0] - 2026-10-30
