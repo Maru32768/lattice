@@ -254,6 +254,50 @@ impl<P: LlmProvider> LlmChain<P> {
     }
 }
 
+/// One call to one entry, recording how it fared.
+async fn attempt<P: LlmProvider>(s: &Slot<P>, patient: bool, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+    let started = Instant::now();
+    let result = if patient {
+        s.llm.complete_json(system, input, schema).await
+    } else {
+        s.llm.complete_json_now(system, input, schema).await
+    };
+    // Every call's time, for tuning parallelism and batch sizes from real timings.
+    log::info!(
+        "{} ({}) {} in {:.1?} ({} chars in)",
+        s.llm.name(),
+        s.model.as_deref().unwrap_or("default"),
+        if result.is_ok() {
+            "answered"
+        } else {
+            "failed"
+        },
+        started.elapsed(),
+        input.chars().count()
+    );
+    match result {
+        Ok(mut c) => {
+            *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            c.model = c.model.or_else(|| s.model.clone());
+            Ok(c)
+        }
+        Err(e) => {
+            log::warn!("{} ({}) failed: {e}", s.llm.name(), s.model.as_deref().unwrap_or("default"));
+            // Malformed output is usually a one-off; limits, auth and timeouts persist.
+            let cooldown = match e {
+                LlmError::Malformed(_) => None,
+                // Back as soon as the limit lets it: what the entry can answer goes to it, and only the rest elsewhere.
+                LlmError::RateLimited(wait) => Some(wait),
+                _ => Some(COOLDOWN),
+            };
+            if let Some(cooldown) = cooldown {
+                *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some(Failure { at: Instant::now(), cooldown, error: e.to_string() });
+            }
+            Err(e)
+        }
+    }
+}
+
 impl<P: LlmProvider> LlmProvider for LlmChain<P> {
     fn name(&self) -> &str {
         "chain"
@@ -265,48 +309,21 @@ impl<P: LlmProvider> LlmProvider for LlmChain<P> {
         let mut order: Vec<&Slot<P>> = slots.iter().collect();
         order.sort_by_key(|s| cooling(s)); // stable: configured order within each group
         let mut errors = Vec::new();
+        let mut limited = Vec::new();
         let last = order.len().saturating_sub(1);
         for (i, s) in order.into_iter().enumerate() {
-            let started = Instant::now();
             // With nothing left to try, a rate limit is worth waiting out.
-            let result = if i == last {
-                s.llm.complete_json(system, input, schema).await
-            } else {
-                s.llm.complete_json_now(system, input, schema).await
-            };
-            // Every call's time, for tuning parallelism and batch sizes from real timings.
-            log::info!(
-                "{} ({}) {} in {:.1?} ({} chars in)",
-                s.llm.name(),
-                s.model.as_deref().unwrap_or("default"),
-                if result.is_ok() {
-                    "answered"
-                } else {
-                    "failed"
-                },
-                started.elapsed(),
-                input.chars().count()
-            );
-            match result {
-                Ok(mut c) => {
-                    *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = None;
-                    c.model = c.model.or_else(|| s.model.clone());
-                    return Ok(c);
-                }
-                Err(e) => {
-                    log::warn!("{} ({}) failed: {e}", s.llm.name(), s.model.as_deref().unwrap_or("default"));
-                    // Malformed output is usually a one-off; limits, auth and timeouts persist.
-                    let cooldown = match e {
-                        LlmError::Malformed(_) => None,
-                        // Back as soon as the limit lets it: what the entry can answer goes to it, and only the rest elsewhere.
-                        LlmError::RateLimited(wait) => Some(wait),
-                        _ => Some(COOLDOWN),
-                    };
-                    if let Some(cooldown) = cooldown {
-                        *s.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some(Failure { at: Instant::now(), cooldown, error: e.to_string() });
-                    }
-                    errors.push(e);
-                }
+            match attempt(s, i == last, system, input, schema).await {
+                Ok(c) => return Ok(c),
+                Err(LlmError::RateLimited(_)) => limited.push(s),
+                Err(e) => errors.push(e),
+            }
+        }
+        // The others could not answer at all, so the entry that only asked for a wait still can.
+        for s in limited {
+            match attempt(s, true, system, input, schema).await {
+                Ok(c) => return Ok(c),
+                Err(e) => errors.push(e),
             }
         }
         match errors.len() {
@@ -349,15 +366,19 @@ mod tests {
     struct Entry {
         name: &'static str,
         limited: Option<Duration>,
+        dead: bool,
         now: std::sync::atomic::AtomicUsize,
         patient: std::sync::atomic::AtomicUsize,
     }
 
     impl Entry {
         fn new(name: &'static str, limited: Option<Duration>) -> Self {
-            Self { name, limited, now: Default::default(), patient: Default::default() }
+            Self { name, limited, dead: false, now: Default::default(), patient: Default::default() }
         }
         fn answer(&self) -> Result<Completion, LlmError> {
+            if self.dead {
+                return Err(LlmError::Failed("dead".into()));
+            }
             Ok(Completion { value: serde_json::json!({}), model: None, provider: self.name.into() })
         }
     }
@@ -399,6 +420,22 @@ mod tests {
         let schema = serde_json::json!({});
         let alone = LlmChain::new(vec![(Entry::new("limited", Some(Duration::from_secs(60))), None)]);
         assert_eq!(alone.complete_json("", "x", &schema).await.unwrap().provider, "limited", "an only entry must not turn a wait into a failure");
+    }
+
+    #[tokio::test]
+    async fn a_rate_limited_entry_is_waited_for_when_the_others_cannot_answer() {
+        let schema = serde_json::json!({});
+        let dead = Entry { dead: true, ..Entry::new("dead", None) };
+        let chain = LlmChain::new(vec![(Entry::new("limited", Some(Duration::from_secs(60))), None), (dead, None)]);
+        assert_eq!(chain.complete_json("", "x", &schema).await.unwrap().provider, "limited");
+        assert!(!chain.health()[0].cooling, "it answered: {:?}", chain.health());
+
+        let both_dead = LlmChain::new(vec![
+            (Entry { dead: true, ..Entry::new("a", Some(Duration::from_secs(60))) }, None),
+            (Entry { dead: true, ..Entry::new("b", None) }, None),
+        ]);
+        let e = both_dead.complete_json("", "x", &schema).await.unwrap_err().to_string();
+        assert_eq!(e.matches("dead").count(), 2, "the reasons, not the rate limit that was waited out: {e}");
     }
 
     #[test]
