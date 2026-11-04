@@ -787,6 +787,10 @@ async fn overlay_translate(
                 .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
                 .collect();
             app.store.insert_segments(target, segments::PROMPT_VERSION, &rows).map_err(err)?;
+            // A paragraph that is a whole block is the Reader's translation too, and the article's ⋯ offers 訳し直す by what it has.
+            if let Some(id) = article.filter(|_| !rows.is_empty()) {
+                let _ = webview.app_handle().emit("article-changed", id);
+            }
             for (&i, r) in misses.iter().zip(t.results) {
                 if let Some((units, _)) = r {
                     cached.insert(hashes[i].clone(), units);
