@@ -147,6 +147,7 @@ export const api = {
   /** Native folder picker; null when cancelled. `has_data`: the folder already holds a Lattice database. */
   pickDataDir: () => invoke<PickedDir | null>("pick_data_dir"),
   openDataDir: () => invoke<void>("open_data_dir"),
+  openLogDir: () => invoke<void>("open_log_dir"),
   /** Uses the picked folder from the next start, copying the current data there or switching to the data in it. */
   setDataDir: (copy: boolean) => invoke<string>("set_data_dir", { copy }),
   restart: () => invoke<void>("restart_app"),

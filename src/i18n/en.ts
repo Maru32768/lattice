@@ -292,6 +292,7 @@ export const en = {
   "storageSection.copying": "Copying…",
   "storageSection.change": "Change…",
   "storageSection.openFolder": "Open folder",
+  "storageSection.openLogFolder": "Open folder for logs",
   "storageSection.database": "Database",
   "storageSection.logs": "Logs",
   "storageSection.moved":
@@ -1054,7 +1055,7 @@ export const en = {
   "be.file.tooLarge": "The file is too large (up to {max} MB)",
   "be.file.notUtf8": "Not a UTF-8 text file",
   "be.location.portable": "The portable version keeps its data in the data folder next to the exe",
-  "be.location.openFailed": "Could not open the data folder: {error}",
+  "be.location.openFailed": "Could not open the folder: {error}",
   "be.location.noDefaultFolder": "Could not find the default data folder",
   "be.location.noExecutableFolder": "Could not find the application executable folder",
   "be.location.pickAgain": "Choose the folder again",

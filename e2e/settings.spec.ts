@@ -87,6 +87,19 @@ test("the data folder opens through the backend without a webview-supplied path"
   await expect.poll(() => callsOf(app, "open_data_dir")).toEqual([{}]);
 });
 
+test("the log folder opens through the backend, apart from the data folder", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  await nav
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("ログ・保存場所", { exact: true }) })
+    .click();
+  await expect(app.locator(".stg main")).toContainText("AppData\\Local\\Lattice\\logs");
+  await app.getByRole("button", { name: "ログのフォルダを開く", exact: true }).click();
+  await expect.poll(() => callsOf(app, "open_log_dir")).toEqual([{}]);
+  expect(await callsOf(app, "open_data_dir")).toEqual([]);
+});
+
 test("portable storage can be opened even though its location cannot be changed", async ({ app }) => {
   await app.evaluate(() => {
     const internals: unknown = Reflect.get(window, "__TAURI_INTERNALS__");

@@ -30,10 +30,10 @@ export function StorageSection() {
     }
   }
 
-  async function open() {
+  async function open(folder: () => Promise<void>) {
     setError(null);
     try {
-      await api.openDataDir();
+      await folder();
     } catch (e) {
       setError(String(e));
     }
@@ -66,7 +66,7 @@ export function StorageSection() {
             </>
           }
         >
-          <button className="btn" onClick={open} disabled={!settings || moving}>
+          <button className="btn" onClick={() => open(api.openDataDir)} disabled={!settings || moving}>
             {t("storageSection.openFolder")}
           </button>
           {!portable && (
@@ -76,7 +76,11 @@ export function StorageSection() {
           )}
         </SetRow>
         <SetRow title={t("storageSection.database")} desc={<code>{settings?.db_path}</code>} />
-        <SetRow title={t("storageSection.logs")} desc={t.rich("storageSection.logsDesc", { path: <code>{settings?.log_dir}</code> })} />
+        <SetRow title={t("storageSection.logs")} desc={t.rich("storageSection.logsDesc", { path: <code>{settings?.log_dir}</code> })}>
+          <button className="btn" onClick={() => open(api.openLogDir)} disabled={!settings} aria-label={t("storageSection.openLogFolder")}>
+            {t("storageSection.openFolder")}
+          </button>
+        </SetRow>
       </div>
       {settings?.location_warning && (
         <p role="alert" className="msg error-text">

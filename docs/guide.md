@@ -867,7 +867,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 | Semantic search model | `%APPDATA%\Lattice\models\` |
 | Logs | `%LOCALAPPDATA%\Lattice\logs\` |
 
-**Settings › Logs & storage** shows the locations actually in use. **Open folder** opens the data folder in use.
+**Settings › Logs & storage** shows the locations actually in use. **Open folder** opens the data folder in use, and the one in the **Logs** row opens the log folder.
 
 - A **portable copy** keeps everything in the `data` folder next to `Lattice.exe`, including the logs and the built-in browser's cookies and cache.
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).

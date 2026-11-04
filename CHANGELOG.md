@@ -12,6 +12,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A middle-click or `Ctrl`+click on an article in the list, a search result, a chat citation or a link opens it in a new tab behind the current one, as in a browser, and so does a page's request to open a new window. Several line up in the order you opened them. From the palette the new tab still comes to the front.
 - Right-click an article (in the list or on its tab) to set its importance, difficulty and genre from submenus, or to edit its tags; with several articles picked, the change applies to all of them.
 - `y` opens and closes the summary. In the Page view it shows the whole summary above the page, and pressing it again gives the page its full height back. Change the key in Settings › Shortcuts.
+- **Settings › Logs & storage** has an **Open folder** button for the log folder too.
 
 ### Changed
 

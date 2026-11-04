@@ -986,12 +986,21 @@ struct PickedDir {
     has_data: bool,
 }
 
-#[tauri::command(async)]
-fn open_data_dir(app: State<'_, App>) -> Result<(), String> {
+fn open_in_explorer(dir: &Path) -> Result<(), String> {
     let explorer =
         std::env::var_os("SystemRoot").map(PathBuf::from).ok_or_else(|| msg!("location.openFailed", error = "SystemRoot is not set"))?.join("explorer.exe");
-    std::process::Command::new(explorer).arg(&app.data_dir).spawn().map_err(|e| msg!("location.openFailed", error = e.to_string()))?;
+    std::process::Command::new(explorer).arg(dir).spawn().map_err(|e| msg!("location.openFailed", error = e.to_string()))?;
     Ok(())
+}
+
+#[tauri::command(async)]
+fn open_data_dir(app: State<'_, App>) -> Result<(), String> {
+    open_in_explorer(&app.data_dir)
+}
+
+#[tauri::command(async)]
+fn open_log_dir(app: State<'_, App>) -> Result<(), String> {
+    open_in_explorer(&app.log_dir)
 }
 
 /// Picks the new data folder with a native dialog (the webview never passes a path).
@@ -1501,6 +1510,7 @@ pub fn run() {
             export_json,
             pick_data_dir,
             open_data_dir,
+            open_log_dir,
             set_data_dir,
             restart_app,
             get_autostart,

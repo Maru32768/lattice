@@ -901,6 +901,7 @@ export const handlers = {
   r2_backup_now: (): string => "lattice/2026-10-20T03-00-00Z.db.gz",
   pick_data_dir: () => null,
   open_data_dir: none,
+  open_log_dir: none,
   set_data_dir: (): string => "C:\\Users\\e2e\\LatticeData",
   restart_app: none,
   update_info: (): UpdateInfo => ({ current: "0.1.0", configured: false, portable: false }),

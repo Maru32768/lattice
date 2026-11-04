@@ -141,6 +141,7 @@ const COMMANDS: &[&str] = &[
     "export_json",
     "pick_data_dir",
     "open_data_dir",
+    "open_log_dir",
     "set_data_dir",
     "restart_app",
     "get_autostart",
