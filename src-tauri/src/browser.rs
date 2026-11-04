@@ -11,7 +11,7 @@
 
 #![allow(unsafe_code, reason = "WebView2 and COM calls through the windows crate")]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -120,13 +120,13 @@ struct TabState {
     captured: Option<Instant>,
     /// Until when the key after the pane prefix (Ctrl+B) is forwarded, as the overlay's `prefixUntil`.
     prefix_until: Option<Instant>,
-    /// The saved PDF the app last opened in this tab: the only one the tab may load (`pdf_allowed`).
-    pdf: Option<i64>,
+    /// The saved PDFs the app opened in this tab, which Back and Forward can return to: the only ones the tab may load (`pdf_allowed`).
+    pdfs: HashSet<i64>,
 }
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None, pdf: None }
+        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None, pdfs: HashSet::new() }
     }
 }
 
@@ -197,7 +197,7 @@ impl Browser {
     /// tab gets only the PDF `browser_open` was told to show. The same-origin policy keeps its bytes
     /// from a page the user reaches from there by a link.
     pub fn pdf_allowed(&self, label: &str, id: i64) -> bool {
-        is_browser(label) && lock(&self.tabs).get(label).is_some_and(|t| t.pdf == Some(id))
+        is_browser(label) && lock(&self.tabs).get(label).is_some_and(|t| t.pdfs.contains(&id))
     }
 
     /// Every page webview, by label.
@@ -529,7 +529,9 @@ pub async fn browser_open(
     let label = label(&tab)?;
     let window = webview.window();
     let _opening = browser.opening.lock().await;
-    browser.with_tab(&label, |t| t.pdf = pdf_article(&url));
+    if let Some(id) = pdf_article(&url) {
+        browser.with_tab(&label, |t| t.pdfs.insert(id));
+    }
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
     let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
@@ -962,7 +964,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tab_loads_only_the_saved_pdf_it_was_opened_on() {
+    fn a_tab_loads_only_the_saved_pdfs_it_was_opened_on() {
         let article = |s: &str| pdf_article(&Url::parse(s).unwrap());
         assert_eq!(article("http://lattice-pdf.localhost/5"), Some(5));
         assert_eq!(article("https://lattice-pdf.localhost/5"), None);
@@ -971,9 +973,11 @@ mod tests {
         let browser = Browser::default();
         let tab = label("k1").unwrap();
         assert!(!browser.pdf_allowed(&tab, 5), "never opened");
-        browser.with_tab(&tab, |t| t.pdf = Some(5));
+        browser.with_tab(&tab, |t| t.pdfs.insert(5));
         assert!(browser.pdf_allowed(&tab, 5));
         assert!(!browser.pdf_allowed(&tab, 6), "another article");
+        browser.with_tab(&tab, |t| t.pdfs.insert(6));
+        assert!(browser.pdf_allowed(&tab, 5), "Back to the earlier one still works");
         assert!(!browser.pdf_allowed(&label("k2").unwrap(), 5), "another tab");
         assert!(!browser.pdf_allowed("main", 5), "only page webviews");
     }
