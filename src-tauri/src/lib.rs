@@ -1335,6 +1335,13 @@ fn saved_pdf(handle: &tauri::AppHandle, label: &str, path: &str) -> tauri::http:
     }
 }
 
+fn translation_changed(handle: &tauri::AppHandle, job: &JobRow) {
+    if let Some(id) = job.article_id {
+        let _ = handle.emit("article-changed", id);
+        handle.state::<Browser>().show_saved(handle, id);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut context = tauri::generate_context!();
@@ -1449,11 +1456,7 @@ pub fn run() {
             let gate = Arc::new(translate::Gate::default());
             for (index, wake) in wake_llm[1..].iter().enumerate() {
                 let handle = app.handle().clone();
-                let on_change = move |job: &JobRow| {
-                    if let Some(id) = job.article_id {
-                        let _ = handle.emit("article-changed", id);
-                    }
-                };
+                let on_change = move |job: &JobRow| translation_changed(&handle, job);
                 tauri::async_runtime::spawn(jobs::run_translate_worker(store.clone(), providers.clone(), index, gate.clone(), wake.clone(), on_change));
             }
             // The reserved slot for the articles on screen, beside the LLM runners above.
@@ -1466,11 +1469,7 @@ pub fn run() {
                 ids
             };
             let handle = app.handle().clone();
-            let on_change = move |job: &JobRow| {
-                if let Some(id) = job.article_id {
-                    let _ = handle.emit("article-changed", id);
-                }
-            };
+            let on_change = move |job: &JobRow| translation_changed(&handle, job);
             tauri::async_runtime::spawn(jobs::run_foreground(store.clone(), providers.clone(), ids, wake_foreground.clone(), on_change));
 
             let embed_model = providers.embedder.model_id().to_string();

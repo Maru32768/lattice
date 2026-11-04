@@ -63,6 +63,7 @@ declare global {
       setKeys(k: PageKeys | null): void;
       scrollToText(text: string): boolean;
       translateBlocks(els: HTMLElement[], fresh: boolean): void;
+      showSavedIdle(): void;
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
@@ -295,6 +296,15 @@ function translateBlocks(els: HTMLElement[], fresh: boolean) {
   } else {
     void unsavedOf(blocks).then(send);
   }
+}
+
+/** The article's job has saved more: a block waiting in manual mode shows it, as it would have at load. */
+function showSavedIdle() {
+  if (!state.config.enabled) {
+    return;
+  }
+  const idle = Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block='idle']"));
+  void unsavedOf(idle.flatMap((el) => prepare(el, false) ?? [])).then(setIdle);
 }
 
 async function showSaved(batch: Pending[]): Promise<Pending[]> {
@@ -768,7 +778,7 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
 }
 
 if (window.top === window && !window.__lattice) {
-  window.__lattice = { configure, setKeys, scrollToText, translateBlocks, snapshot };
+  window.__lattice = { configure, setKeys, scrollToText, translateBlocks, showSavedIdle, snapshot };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);
   window.print = () =>

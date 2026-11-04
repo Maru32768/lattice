@@ -247,6 +247,19 @@ impl Browser {
         Ok(())
     }
 
+    /// The article's translation job has saved more: a page showing it in manual mode asks for nothing by
+    /// itself, so it is told to look. Pages translating by themselves get it as they scroll.
+    pub fn show_saved(&self, app: &AppHandle, article: i64) {
+        for (label, wv) in self.webviews(app) {
+            if page_article(&wv) == Some(article)
+                && page_is_manual(&wv)
+                && let Err(e) = wv.eval("window.__lattice&&window.__lattice.showSavedIdle()")
+            {
+                log::warn!("telling {label} of saved translations: {e}");
+            }
+        }
+    }
+
     /// New excluded sites: pages on them stop translating, pages no longer on them start.
     pub fn set_skip_sites(&self, app: &AppHandle, sites: Vec<String>) -> Result<(), String> {
         *lock(&self.skip_sites) = sites;
@@ -424,13 +437,18 @@ pub fn pdf_article(u: &Url) -> Option<i64> {
     (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
 }
 
+/// The saved article the page in `wv` is.
+fn page_article(wv: &Webview) -> Option<i64> {
+    let (app, url) = (wv.app_handle().try_state::<crate::App>()?, wv.url().ok()?);
+    pdf_article(&url).or_else(|| app.store.find_article_by_url(normalize(url.as_str()).ok()?.as_str()).ok()?)
+}
+
 /// Whether the page in `wv` is a saved article with automatic translation off.
 fn page_is_manual(wv: &Webview) -> bool {
-    let (Some(app), Ok(url)) = (wv.app_handle().try_state::<crate::App>(), wv.url()) else {
+    let Some(app) = wv.app_handle().try_state::<crate::App>() else {
         return false;
     };
-    let article = pdf_article(&url).or_else(|| app.store.find_article_by_url(normalize(url.as_str()).ok()?.as_str()).ok()?);
-    article.and_then(|id| app.store.article_row(id).ok()?).is_some_and(|a| a.translate_manual)
+    page_article(wv).and_then(|id| app.store.article_row(id).ok()?).is_some_and(|a| a.translate_manual)
 }
 
 /// The protocol's handler sees that URL rewritten to `lattice-pdf://localhost/<id>`; the path is the same.
