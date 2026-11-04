@@ -68,7 +68,7 @@ function pressButtons(e: KeyboardEvent) {
 // ---- moving around the document -----------------------------------------------------------------
 
 /** Every page, in order, once it is laid out. */
-const places: { host: HTMLElement; size: { height: number; convertToViewportPoint(x: number, y: number): number[] } }[] = [];
+const places: { page: PDFPageProxy; host: HTMLElement; size: { height: number; convertToViewportPoint(x: number, y: number): number[] } }[] = [];
 
 async function placeOf(doc: PDFDocumentProxy, target: Target): Promise<{ page: number; y: number } | null> {
   if ("page" in target) {
@@ -312,19 +312,27 @@ function regionEl(r: Region, width: number, height: number) {
   return el;
 }
 
+/** The canvas width that keeps a page sharp at its width on screen. */
+const drawnWidth = (host: HTMLElement) => Math.round(host.clientWidth * Math.max(devicePixelRatio, MIN_DENSITY));
+
+async function pageCanvas(page: PDFPageProxy, width: number) {
+  const viewport = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
+  const canvas = document.createElement("canvas");
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvas, viewport }).promise;
+  return canvas;
+}
+
 /** Draws a page at its width on screen; again when that changes. */
 async function draw(page: PDFPageProxy, host: HTMLElement) {
-  const width = Math.round(host.clientWidth * Math.max(devicePixelRatio, MIN_DENSITY));
+  const width = drawnWidth(host);
   if (!width || host.dataset.drawn === String(width)) {
     return;
   }
   host.dataset.drawn = String(width);
   const pageWidth = page.getViewport({ scale: 1 }).width;
-  const viewport = page.getViewport({ scale: width / pageWidth });
-  const canvas = document.createElement("canvas");
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvas, viewport }).promise;
+  const canvas = await pageCanvas(page, width);
   // Resized or scrolled away meanwhile.
   if (host.dataset.drawn !== String(width)) {
     return;
@@ -343,6 +351,48 @@ function forget(host: HTMLElement) {
   delete host.dataset.drawn;
   host.querySelector("canvas")?.remove();
   host.querySelector(".textLayer")?.replaceChildren();
+}
+
+/**
+ * Printing takes every page, but `forget` has dropped the canvases of those far from the screen. They go
+ * in as images, one page at a time, since a long PDF's canvases would not fit in memory all at once.
+ * The images stay for the next print; the page's canvas hides its image.
+ */
+async function imagesForPrint() {
+  for (const { page, host } of places) {
+    if (host.querySelector(".print-page")) {
+      continue;
+    }
+    const canvas = await pageCanvas(page, drawnWidth(host));
+    const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done));
+    if (blob) {
+      const image = document.createElement("img");
+      image.className = "print-page";
+      image.src = URL.createObjectURL(blob);
+      await image.decode();
+      host.prepend(image);
+    }
+  }
+}
+
+/** The overlay's `window.print` is what Ctrl+P calls. */
+function printAllPages() {
+  const print = window.print.bind(window);
+  let preparing = false;
+  window.print = () => {
+    if (preparing) {
+      return;
+    }
+    preparing = true;
+    document.documentElement.classList.add("preparing-print");
+    void imagesForPrint()
+      .catch((e: unknown) => console.warn("[lattice] preparing to print", e))
+      .then(() => {
+        preparing = false;
+        document.documentElement.classList.remove("preparing-print");
+        print();
+      });
+  };
 }
 
 function regionsOf(root: Element) {
@@ -420,7 +470,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
       void draw(page, host).catch(failed);
       void addLinks(doc, page, host).catch(failed);
     });
-    places.push({ host, size: viewport });
+    places.push({ page, host, size: viewport });
     pages.append(host);
     visible.observe(host);
     resized.observe(host);
@@ -468,6 +518,8 @@ addEventListener("keydown", (e) => {
     setZoom(next);
   }
 });
+
+printAllPages();
 
 const here = location.pathname;
 const layout = fetch(`${here}/layout`).then((r): Promise<Region[]> => (r.ok ? (r.json() as Promise<Region[]>) : Promise.resolve([])));
