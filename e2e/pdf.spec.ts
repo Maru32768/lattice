@@ -32,3 +32,12 @@ test("a PDF picked on the import screen opens in the Reader, and Page shows the 
   await app.getByRole("group", { name: "表示" }).getByRole("button", { name: "Reader" }).click();
   await expect(app.locator("h1.art-title")).toHaveText("Reading Order in Two Column Papers");
 });
+
+test("the PDF tab's 自動で翻訳しない goes with the import", async ({ app }) => {
+  await app.keyboard.press("Control+k");
+  await app.keyboard.type(">pdf");
+  await app.keyboard.press("Enter");
+  await app.getByRole("checkbox", { name: "自動で翻訳しない" }).check();
+  await app.getByRole("button", { name: "PDFファイルを選択…" }).click();
+  expect(await callsOf(app, "import_pdf_file")).toEqual([{ manual: true }]);
+});

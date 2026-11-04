@@ -139,6 +139,30 @@ test("with 表示を切り替えたら自動で翻訳 off, switching the view tr
   expect(await callsOf(app, "translate_article")).toEqual([]);
 });
 
+test("automatic translation can be turned off per article in the ⋯ menu, and switching the view then translates nothing", async ({ app }) => {
+  await open(app, untranslated.title!);
+  const more = app.getByRole("button", { name: /^その他/ });
+  await more.click();
+  const off = app.getByRole("menuitem", { name: /自動翻訳をオフにする/ });
+  await expect(off).toContainText("Page表示のスクロール");
+  await off.click();
+  expect(await callsOf(app, "set_translate_manual")).toEqual([{ id: untranslated.id, on: true }]);
+
+  await more.click();
+  await expect(app.getByRole("menuitem", { name: /自動翻訳をオフにする/ })).toHaveCount(0);
+  await expect(app.getByRole("menuitem", { name: /自動翻訳をオンに戻す/ })).toBeVisible();
+  await app.keyboard.press("Escape");
+  await app.getByRole("group", { name: "表示言語" }).getByRole("button", { name: "訳文", exact: true }).click();
+  await expect(app.getByRole("button", { name: "翻訳する", exact: true }), "asking for it is still there").toBeVisible();
+  expect(await callsOf(app, "translate_article")).toEqual([]);
+
+  await more.click();
+  await app.getByRole("menuitem", { name: /自動翻訳をオンに戻す/ }).click();
+  expect((await callsOf(app, "set_translate_manual")).at(-1)).toEqual({ id: untranslated.id, on: false });
+  await more.click();
+  await expect(app.getByRole("menuitem", { name: /自動翻訳をオフにする/ })).toBeVisible();
+});
+
 test("訳し直す is in the ⋯ menu, with what it does, as soon as an article has a translation", async ({ app }) => {
   await open(app, snapshot.title!);
   const more = app.getByRole("button", { name: /^その他/ });

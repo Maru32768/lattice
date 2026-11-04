@@ -133,6 +133,16 @@ function GroupField({
 
 type FileInto = (ids: number[]) => Promise<void>;
 
+function NoAutoTranslate({ checked, onChange }: { checked: boolean; onChange: (on: boolean) => void }) {
+  const t = useT();
+  return (
+    <label className="ff-check">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {t("importView.noAutoTranslate")}
+    </label>
+  );
+}
+
 function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto: FileInto }) {
   const t = useT();
   const [text, setText] = useState("");
@@ -212,6 +222,7 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
 function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
   const t = useT();
   const [text, setText] = useState("");
+  const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -242,7 +253,7 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
         if (content === null) {
           throw new Error(t("be.file.notUtf8"));
         }
-        return api.importMarkdown(content, fileStem(file.name));
+        return api.importMarkdown(content, fileStem(file.name), manual);
       }),
     onReject: () => setError(t("common.wrongFile")),
     disabled: busy,
@@ -251,7 +262,7 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
   return (
     <section className={`card add${dragging ? " dropping" : ""}`} aria-label="Markdown" {...zone}>
       <div className="line">
-        <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>
+        <button className="btn" onClick={() => run(() => api.importMarkdownFile(manual))} disabled={busy}>
           {t("importView.chooseFileEllipsis")}
         </button>
         <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
@@ -266,9 +277,10 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
         spellCheck={false}
       />
       <div className="line">
-        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text))} disabled={busy || !text.trim()}>
+        <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text, undefined, manual))} disabled={busy || !text.trim()}>
           {busy ? t("importView.importing") : t("importView.importMarkdown")}
         </button>
+        <NoAutoTranslate checked={manual} onChange={setManual} />
         {error && (
           <span role="alert" className="msg error-text">
             {t.msg(error)}
@@ -281,6 +293,7 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
 
 function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
   const t = useT();
+  const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -306,7 +319,7 @@ function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInt
         if (tooLarge(file, PDF_MAX_MB)) {
           throw new Error(t("be.file.tooLarge", { max: PDF_MAX_MB }));
         }
-        return api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name));
+        return api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name), manual);
       }),
     onReject: () => setError(t("common.wrongFile")),
     disabled: busy,
@@ -314,10 +327,11 @@ function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInt
 
   return (
     <section className={`card add drop-area${dragging ? " dropping" : ""}`} aria-label="PDF" {...zone}>
-      <button className="btn pri lg" onClick={() => run(api.importPdfFile)} disabled={busy}>
+      <button className="btn pri lg" onClick={() => run(() => api.importPdfFile(manual))} disabled={busy}>
         {busy ? t("importView.importing") : t("importView.choosePdf")}
       </button>
       <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
+      <NoAutoTranslate checked={manual} onChange={setManual} />
       {error && (
         <span role="alert" className="msg error-text">
           {t.msg(error)}

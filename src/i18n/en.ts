@@ -638,6 +638,7 @@ export const en = {
   "importView.importing": "Importing…",
   "importView.importMarkdown": "Import",
   "importView.choosePdf": "Choose a PDF file…",
+  "importView.noAutoTranslate": "Don't translate automatically",
   "feedsView.iconTooLarge": "Icons can be 1 MB at most",
   "feedsView.editorTitle": "Name and icon of {feedName}",
   "feedsView.displayName": "Display name",
@@ -832,6 +833,10 @@ export const en = {
   "reader.alreadyInTarget": "Nothing to translate: the text is already in the target language",
   "reader.retranslate": "Translate again",
   "reader.retranslateHint": "Drop this article's translations and translate it again with the current settings",
+  "reader.autoTranslateOff": "Turn automatic translation off",
+  "reader.autoTranslateOn": "Turn automatic translation back on",
+  "reader.autoTranslateHint":
+    "While it is off, importing, switching the view and scrolling in Page start no translation. Translate and the other commands still work",
   "reader.failedSuffix": " · failed",
   "reader.autoRetry": "Retrying automatically at {retryAt}",
   "common.retry": "Retry",
@@ -861,7 +866,8 @@ export const en = {
   "reader.quizHint": "Quiz yourself on this article",
   "reader.noteHint": "Write a note on this article",
   "reader.focus": "Focus mode (f)",
-  "reader.more2": "More (re-extract, import again, auto-classify, translate again, summary, copy the URL, remove from library)",
+  "reader.more2":
+    "More (re-extract, import again, auto-classify, translate again, automatic translation on or off, summary, copy the URL, remove from library)",
   "reader.reextractFrom": "Re-extract (from the saved {x})",
   "reader.classifying": "Classifying…",
   "reader.translatingEllipsis": "Translating…",

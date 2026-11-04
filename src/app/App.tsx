@@ -530,6 +530,7 @@ export default function App() {
   function translateOnPick(v: ArticleView | undefined, m: LanguageMode) {
     if (
       v &&
+      !v.article.translate_manual &&
       translateOnSwitch() &&
       autoTranslates(
         m,
@@ -955,6 +956,7 @@ export default function App() {
         onRender: vAct(api.renderArticle),
         onClassify: vAct(api.classifyArticle),
         onRetranslate: vAct(api.retranslateArticle),
+        onTranslateManual: (on) => vAct((id) => api.setTranslateManual(id, on))(),
         onSummarize: vAct(api.summarizeArticle),
         onCopyUrl: () => copyUrl(a.original_url),
         onDelete: () => setDeleting({ article: a, page }),

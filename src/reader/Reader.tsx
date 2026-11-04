@@ -465,6 +465,8 @@ export interface DocActions {
   onClassify: () => void;
   /** Drops this article's translations and translates it again. */
   onRetranslate: () => void;
+  /** `on`: this article stops translating by itself. */
+  onTranslateManual: (on: boolean) => void;
   onSummarize: () => void;
   onCopyUrl: () => void;
   /** Asks for confirmation, then removes the article from the Index. */
@@ -583,6 +585,11 @@ export function ArticleTools({
                 },
               ]
             : []),
+          {
+            label: a.translate_manual ? t("reader.autoTranslateOn") : t("reader.autoTranslateOff"),
+            hint: t("reader.autoTranslateHint"),
+            onSelect: () => act.onTranslateManual(!a.translate_manual),
+          },
           { label: view.summary ? t("reader.resummarize") : t("reader.summarize"), onSelect: act.onSummarize, disabled: failed || job("summarize") },
           "-",
           { label: t("articleMenu.copyUrl"), onSelect: act.onCopyUrl, disabled: local },
