@@ -122,11 +122,22 @@ struct TabState {
     prefix_until: Option<Instant>,
     /// The saved PDFs the app opened in this tab, which Back and Forward can return to: the only ones the tab may load (`pdf_allowed`).
     pdfs: HashSet<i64>,
+    /// How many documents have begun loading, which `pushState` and in-page links do not count as.
+    documents: u64,
 }
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, prefix_until: None, pdfs: HashSet::new() }
+        Self {
+            focus: None,
+            visibility: Visibility::default(),
+            history: (true, true),
+            parked: None,
+            captured: None,
+            prefix_until: None,
+            pdfs: HashSet::new(),
+            documents: 0,
+        }
     }
 }
 
@@ -198,6 +209,11 @@ impl Browser {
     /// from a page the user reaches from there by a link.
     pub fn pdf_allowed(&self, label: &str, id: i64) -> bool {
         is_browser(label) && lock(&self.tabs).get(label).is_some_and(|t| t.pdfs.contains(&id))
+    }
+
+    /// Changes when the webview's page is replaced, unlike its URL, which a page can change itself.
+    pub fn document(&self, label: &str) -> u64 {
+        self.with_tab(label, |t| t.documents)
     }
 
     /// Every page webview, by label.
@@ -580,7 +596,10 @@ pub async fn browser_open(
             let loading = matches!(p.event(), PageLoadEvent::Started);
             let browser = wv.app_handle().state::<Browser>();
             if loading {
-                browser.with_tab(wv.label(), |t| t.history = (true, true)); // until the new page's overlay reports
+                browser.with_tab(wv.label(), |t| {
+                    t.history = (true, true); // until the new page's overlay reports
+                    t.documents += 1;
+                });
             }
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);

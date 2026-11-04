@@ -751,8 +751,8 @@ async fn overlay_translate(
     }
     let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
     let target = &to.key();
-    let page = browser::page_url(&webview);
-    let article = page.as_ref().and_then(browser::pdf_article);
+    let document = browser.document(webview.label());
+    let article = browser::page_url(&webview).as_ref().and_then(browser::pdf_article);
     let fresh = fresh == Some(true) && article.is_some();
     let saved = || {
         if fresh {
@@ -767,7 +767,7 @@ async fn overlay_translate(
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
         // This wait can take minutes behind other calls: the page may be gone, and whatever was
         // translating the same text meanwhile has saved it. Sending it again only makes the wait longer.
-        if browser::page_url(&webview) != page {
+        if browser.document(webview.label()) != document {
             return Err("page left".into());
         }
         cached = saved()?;
