@@ -420,6 +420,10 @@ export function BrowserView({
           url={shownUrl}
           editAt={editAt}
           onGo={(input) => {
+            // What the bar shows for a saved PDF is no address of the page: unchanged, it asks for nothing.
+            if (pdf && input === shownUrl) {
+              return;
+            }
             const next = toNavigation(input, getEngine());
             if (next) {
               onNavigate(next);
