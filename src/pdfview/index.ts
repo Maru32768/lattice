@@ -22,10 +22,13 @@ interface Region {
   y1: number;
   size: number;
   text: string;
-  /** `text` with its superscripts and subscripts told apart. */
-  runs: { text: string; script: "sub" | "sup" | null }[];
+  /** `text` with its superscripts, subscripts and formulas told apart. */
+  runs: { text: string; script: "sub" | "sup" | null; math: boolean; italic: boolean }[];
   /** A heading's level. */
   level: number | null;
+  /** How far a translation may run past the box: the margin, at the edge of the page's text. */
+  room_up: number;
+  room_down: number;
 }
 
 /** How far a translation longer than the original may shrink to fit. */
@@ -225,35 +228,69 @@ async function addOutline(doc: PDFDocumentProxy, regions: Region[], labels: Labe
 
 // ---- pages --------------------------------------------------------------------------------------
 
-/** Sets the text's size so it fills its box without spilling out of it. */
+/** Each region's box as a share of its page's height, and the room beyond it. */
+const boxes = new WeakMap<HTMLElement, { top: number; height: number; up: number; down: number }>();
+
+function place(el: HTMLElement, top: number, height: number) {
+  el.style.top = `${top * 100}%`;
+  el.style.height = `${height * 100}%`;
+}
+
+/** Sets the box and the text's size so the text shows whole: into the margin if there is room, then smaller. */
 function fit(el: HTMLElement) {
   let scale = 1;
   el.style.setProperty("--fit", "1");
+  const box = boxes.get(el);
+  if (box) {
+    place(el, box.top, box.height);
+    const over = (el.scrollHeight - el.clientHeight) / (el.parentElement?.clientHeight || 1);
+    if (over > 0) {
+      const up = Math.min(over, box.up);
+      place(el, box.top - up, box.height + up + Math.min(over - up, box.down));
+    }
+  }
   while (el.scrollHeight > el.clientHeight && scale > MIN_FIT) {
     scale -= 0.05;
     el.style.setProperty("--fit", String(scale));
   }
 }
 
+function runNode(run: Region["runs"][number]) {
+  let node: Node = document.createTextNode(run.text);
+  for (const tag of [run.script, run.italic ? "i" : null]) {
+    if (tag) {
+      const wrap = document.createElement(tag);
+      wrap.append(node);
+      node = wrap;
+    }
+  }
+  return node;
+}
+
 function regionEl(r: Region, width: number, height: number) {
   const el = document.createElement("div");
   el.className = "region";
   el.dataset.block = String(r.block);
+  // A formula is a `math` element, which the overlay moves whole into a translation: the model sees a placeholder and it stays as printed.
+  let formula: HTMLElement | null = null;
   for (const run of r.runs) {
-    if (run.script) {
-      const script = document.createElement(run.script);
-      script.textContent = run.text;
-      el.append(script);
+    if (run.math) {
+      if (!formula) {
+        formula = document.createElement("math");
+        el.append(formula);
+      }
+      formula.append(runNode(run));
     } else {
-      el.append(run.text);
+      formula = null;
+      el.append(runNode(run));
     }
   }
+  boxes.set(el, { top: r.y0 / height, height: (r.y1 - r.y0) / height, up: r.room_up / height, down: r.room_down / height });
   Object.assign(el.style, {
     left: percent(r.x0, width),
-    top: percent(r.y0, height),
     width: percent(r.x1 - r.x0, width),
-    height: percent(r.y1 - r.y0, height),
   });
+  place(el, r.y0 / height, (r.y1 - r.y0) / height);
   el.style.setProperty("--size", String(r.size / width));
   return el;
 }

@@ -237,7 +237,7 @@ Segmentation rules:
 Source and translation rules:
 - Every unit source must be an exact and complete substring of the original HTML. Concatenating all unit sources in order must reproduce that input snippet exactly
 - Preserve HTML tags in both source and translation
-- Tokens such as ⟦1⟧ are placeholders for images or icons. Do not translate them; keep each token unchanged at the corresponding position in source and translation
+- Tokens such as ⟦1⟧ are placeholders for images, icons or formulas. Do not translate them; keep each token unchanged at the corresponding position in source and translation
 - Keep the content of <code> elements, identifiers, commands, file names and URLs unchanged
 - Keep the label at the start of a section heading unchanged ("4.1", "A", "A.1", "IV."): a lone capital letter before a title is an appendix label, not an article
 {terms}

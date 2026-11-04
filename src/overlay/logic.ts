@@ -120,6 +120,19 @@ export function sanitize(html: string, doc: Document = document): string {
   return div.innerHTML;
 }
 
+const ATOM = /⟦(\d+)⟧/gu;
+
+/** Whether a translation still has every atom of its source: one it lost would vanish from the page with it. */
+export function keepsAtoms(source: string, translation: string): boolean {
+  const have = new Set(Array.from(translation.matchAll(ATOM), (m) => m[1]));
+  return Array.from(source.matchAll(ATOM)).every((m) => have.has(m[1]));
+}
+
+/** Text for reading as it is: each atom as what it stands for (a formula's text; an image has none). */
+export function withAtoms(text: string, atomText: (n: number) => string): string {
+  return text.replace(ATOM, (_, n: string) => atomText(Number(n)));
+}
+
 /**
  * Snippet HTML sent for translation: the block's inline markup with attributes stripped
  * (except a[href]) and atoms (images, icons) replaced by ⟦n⟧ in token order.

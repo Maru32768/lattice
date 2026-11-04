@@ -14,8 +14,21 @@ Object.assign(globalThis, {
 });
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
-const { assignTranslated, endsSpaced, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks, translatedShare, unitsByBlock } =
-  await import("./logic.ts");
+const {
+  assignTranslated,
+  endsSpaced,
+  isWrittenIn,
+  keepsAtoms,
+  withAtoms,
+  pageTarget,
+  plainText,
+  routeKey,
+  sanitize,
+  snippetHtml,
+  splitByLineBreaks,
+  translatedShare,
+  unitsByBlock,
+} = await import("./logic.ts");
 const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
 
 test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
@@ -71,6 +84,37 @@ test("Japanese pages translate into English, others into Japanese", () => {
   assert.ok(!isWrittenIn("SRE業務", "en") && !isWrittenIn("the word 改善 (kaizen)", "ja"));
   assert.ok(isWrittenIn("2026/10/21 — v1.2 beta", "en") && !isWrittenIn("Tokyo・Osaka", "ja"));
   assert.ok(!isWrittenIn("多版本并发控制让读写互不阻塞。", "ja"), "Chinese is translated into Japanese");
+});
+
+test("a formula in a math element goes to the model as a placeholder and comes back as it was", () => {
+  const p = document.createElement("p");
+  const formula = document.createElement("math");
+  formula.innerHTML = "<i>t<sub>abs</sub></i>(<i>e</i>)";
+  p.append("The time ", formula, " of an event.");
+  assert.equal(snippetHtml(p), "The time ⟦1⟧ of an event.");
+  const source = "The time ⟦1⟧ of an event.";
+  const loc = locate(p, tokenize(p), source)!;
+  const range = document.createRange();
+  range.setStart(loc.start.container, loc.start.offset);
+  range.setEnd(loc.end.container, loc.end.offset);
+  const span = wrapRange(range, "s");
+  renderVariant(span, "イベントの時刻⟦1⟧です。");
+  assert.equal(span.innerHTML, "イベントの時刻<math><i>t<sub>abs</sub></i>(<i>e</i>)</math>です。");
+  assert.equal(span.querySelector("math"), formula, "the page's own element");
+});
+
+test("a translation must keep every atom of its source", () => {
+  assert.ok(keepsAtoms("The time ⟦1⟧ and ⟦2⟧.", "⟦2⟧と⟦1⟧の時刻。"), "in any order");
+  assert.ok(keepsAtoms("No atoms.", "アトムなし。"));
+  assert.ok(!keepsAtoms("The time ⟦1⟧ and ⟦2⟧.", "⟦1⟧の時刻。"));
+});
+
+test("text for reading has each atom's own text in its place", () => {
+  const atoms = new Map([[1, "tabs(e)"]]);
+  assert.equal(
+    withAtoms("The time ⟦1⟧ of ⟦2⟧.", (n) => atoms.get(n) ?? ""),
+    "The time tabs(e) of .",
+  );
 });
 
 test("splitByLineBreaks splits on blank lines and after sentence ends only", () => {

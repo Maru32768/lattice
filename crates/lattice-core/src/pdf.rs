@@ -8,7 +8,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pdf_extract::{Document, MediaBox, Object, OutputDev, OutputError, Transform};
+use pdf_extract::content::Content;
+use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Transform};
 use serde::Serialize;
 
 use crate::extract::collapse;
@@ -92,6 +93,17 @@ pub struct Region {
     pub runs: Vec<TextRun>,
     /// A heading's level, for the contents of a PDF that has no bookmarks.
     pub level: Option<u8>,
+    /// How far a translation may run past the box, in points: a region at the edge of the page's text
+    /// has the margin beyond it. A sentence moved here from another page needs more than the box holds.
+    pub room_up: f64,
+    pub room_down: f64,
+}
+
+impl Region {
+    /// The text as the overlay sends it: a formula goes as a placeholder, which its hash leaves out.
+    pub fn translated_text(&self) -> String {
+        self.runs.iter().filter(|r| !r.math).map(|r| r.text.as_str()).collect()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -99,25 +111,37 @@ pub struct TextRun {
     pub text: String,
     /// The element that sets it: `sub` or `sup`.
     pub script: Option<&'static str>,
+    /// Part of a formula (`formula_glyphs`): shown as it stands, never sent to be translated.
+    pub math: bool,
+    /// Set in italics, inside a formula: elsewhere translation would not keep it.
+    pub italic: bool,
 }
 
 // Mark a line's scripts in the text that `piece_texts` cuts up. Noncharacters: no text holds them.
 const SUP: char = '\u{fdd0}';
 const SUB: char = '\u{fdd1}';
 const SCRIPT_END: char = '\u{fdd2}';
+const MATH: char = '\u{fdd3}';
+const MATH_END: char = '\u{fdd4}';
+const ITALIC: char = '\u{fdd5}';
+const ITALIC_END: char = '\u{fdd6}';
 
 /// A cut can fall inside a script: what follows it in the next piece then reads as plain text.
 fn text_runs(marked: &str) -> Vec<TextRun> {
     let mut runs: Vec<TextRun> = Vec::new();
-    let mut script = None;
+    let (mut script, mut math, mut italic) = (None, false, false);
     for c in marked.chars() {
         match c {
             SUP => script = Some("sup"),
             SUB => script = Some("sub"),
             SCRIPT_END => script = None,
+            MATH => math = true,
+            MATH_END => math = false,
+            ITALIC => italic = true,
+            ITALIC_END => italic = false,
             c => match runs.last_mut() {
-                Some(run) if run.script == script => run.text.push(c),
-                _ => runs.push(TextRun { text: c.to_string(), script }),
+                Some(run) if run.script == script && run.math == math && run.italic == italic => run.text.push(c),
+                _ => runs.push(TextRun { text: c.to_string(), script, math, italic }),
             },
         }
     }
@@ -141,7 +165,32 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
         let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
         out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level, block)));
     }
+    let top = lines.iter().map(|l| l.y - l.size).fold(f64::MAX, f64::min);
+    let bottom = lines.iter().map(|l| l.y + 0.3 * l.size).fold(f64::MIN, f64::max);
+    for r in &mut out {
+        if let Some(page) = doc.pages.get(r.page) {
+            give_room(r, page, top, bottom);
+        }
+    }
     Ok(out)
+}
+
+/// Keeps out of the outer part of the page, where the viewer has its buttons.
+const PAGE_EDGE: f64 = 0.05;
+
+/// A region as far up or down as the document's text goes has only the margin beyond it, and what is
+/// printed there (a running header) stops it. One that ends short of that has a figure or the like
+/// beyond it, which is not in the glyphs: figures are skipped.
+fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
+    let across = |g: &&Glyph| g.x < r.x1 && g.end > r.x0;
+    if r.y0 <= top + r.size {
+        let above = page.glyphs.iter().filter(across).filter(|g| g.y < r.y0).map(|g| g.y + 0.3 * g.size);
+        r.room_up = (r.y0 - above.fold(PAGE_EDGE * page.height, f64::max)).max(0.);
+    }
+    if r.y1 >= bottom - r.size {
+        let below = page.glyphs.iter().filter(across).filter(|g| g.y > r.y1).map(|g| g.y - g.size);
+        r.room_down = (below.fold((1. - PAGE_EDGE) * page.height, f64::min) - r.y1).max(0.);
+    }
 }
 
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
@@ -241,6 +290,8 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
         text: runs.iter().map(|r| r.text.as_str()).collect(),
         runs,
         level,
+        room_up: 0.,
+        room_down: 0.,
     })
 }
 
@@ -266,6 +317,78 @@ struct Glyph {
     end: f64,
     size: f64,
     text: String,
+    face: Face,
+}
+
+/// What a glyph's font says about it.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+enum Face {
+    #[default]
+    Body,
+    /// Prose set in italics, or a name set like a formula (`TT.now()`).
+    Italic,
+    /// A math font's letters.
+    MathLetter,
+    /// A math font's symbols.
+    MathSymbol,
+}
+
+impl Face {
+    /// From a font's `BaseFont`, with or without its subset prefix (`GMFWUF+CMMI10`).
+    fn of(base: &str) -> Face {
+        let name = base.rsplit('+').next().unwrap_or(base).to_ascii_uppercase();
+        let is = |families: &[&str]| families.iter().any(|f| name.starts_with(f));
+        if is(&["CMMI", "MATHITALIC", "STIXMATH"]) {
+            Face::MathLetter
+        } else if is(&["CMSY", "CMBSY", "CMEX", "MSAM", "MSBM", "SYMBOL", "STMARY", "RSFS", "WASY", "EUFM"]) {
+            Face::MathSymbol
+        } else if is(&["CMTI", "CMSL"]) || name.contains("ITAL") || name.contains("OBLIQUE") {
+            Face::Italic
+        } else {
+            Face::Body
+        }
+    }
+
+    fn is_math(self) -> bool {
+        matches!(self, Face::MathLetter | Face::MathSymbol)
+    }
+
+    fn is_italic(self) -> bool {
+        matches!(self, Face::MathLetter | Face::Italic)
+    }
+}
+
+/// The face of each string the page shows, in the order pdf-extract shows them. It reports glyphs without
+/// their fonts, but calls `begin_word` once per string, so these line up with what it reports.
+fn string_faces(doc: &Document, page: ObjectId) -> Vec<Face> {
+    let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
+        return Vec::new();
+    };
+    let fonts = doc.get_page_fonts(page).unwrap_or_default();
+    let face_named = |name: &[u8]| {
+        let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
+        base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
+    };
+    let (mut face, mut saved, mut out) = (Face::Body, Vec::new(), Vec::new());
+    for op in &content.operations {
+        match op.operator.as_str() {
+            "q" => saved.push(face),
+            "Q" => face = saved.pop().unwrap_or(face),
+            "Tf" => {
+                if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
+                    face = face_named(name);
+                }
+            }
+            "Tj" => out.push(face),
+            "TJ" => {
+                if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
+                    out.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
 }
 
 #[derive(Default)]
@@ -319,7 +442,8 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             }
         }
     }
-    let mut out = Glyphs::default();
+    let faces = doc.get_pages().values().map(|&page| string_faces(&doc, page)).collect();
+    let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| fail(&e))?;
     Ok((doc, out.pages))
 }
@@ -328,16 +452,27 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
 struct Glyphs {
     pages: Vec<Page>,
     origin: (f64, f64),
+    /// `string_faces` of each page, and how many of the current page's strings have begun.
+    faces: Vec<Vec<Face>>,
+    shown: usize,
 }
 
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
         self.origin = (b.llx, b.lly);
+        self.shown = 0;
         self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, glyphs: Vec::new() });
         Ok(())
     }
 
     fn end_page(&mut self) -> Result<(), OutputError> {
+        // Strings inside forms, which `string_faces` does not follow: the faces would be off by those.
+        let index = self.pages.len().wrapping_sub(1);
+        if self.faces.get(index).is_none_or(|f| f.len() != self.shown)
+            && let Some(page) = self.pages.last_mut()
+        {
+            page.glyphs.iter_mut().for_each(|g| g.face = Face::Body);
+        }
         Ok(())
     }
 
@@ -345,15 +480,18 @@ impl OutputDev for Glyphs {
         // Rotated or mirrored text is a margin stamp (arXiv's) or a figure label, not prose.
         let upright = trm.m11 > 0. && trm.m22 > 0. && trm.m12.abs() < 1e-3 * trm.m11 && trm.m21.abs() < 1e-3 * trm.m22;
         let size = font_size.abs() * (trm.m11 * trm.m22).sqrt();
+        let index = self.pages.len().wrapping_sub(1);
         let Some(page) = self.pages.last_mut().filter(|_| upright && size > 0.5) else {
             return Ok(());
         };
         let x = trm.m31 - self.origin.0;
-        page.glyphs.push(Glyph { x, y: page.height - (trm.m32 - self.origin.1), end: x + width * size, size, text: text.to_string() });
+        let face = self.faces.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
+        page.glyphs.push(Glyph { x, y: page.height - (trm.m32 - self.origin.1), end: x + width * size, size, text: text.to_string(), face });
         Ok(())
     }
 
     fn begin_word(&mut self) -> Result<(), OutputError> {
+        self.shown += 1;
         Ok(())
     }
 
@@ -446,21 +584,30 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
         _ if g.y > base.y + 0.1 * base.size => Some(SUB),
         _ => None,
     };
+    let formula = formula_glyphs(glyphs);
     let mut text = String::new();
     let mut marked = String::new();
     let mut open = None;
+    let (mut in_math, mut in_italic) = (false, false);
     let mut prev: Option<&Glyph> = None;
     let mut space = false;
     let mut gaps = Vec::new();
     let mut reach = f64::MIN;
-    for &g in glyphs {
+    for (&g, &math) in glyphs.iter().zip(&formula) {
         if g.text.trim().is_empty() {
             space = true;
             continue;
         }
         let script = script_of(g);
+        let italic = math && g.face.is_italic();
         if open.is_some() && open != script {
             marked.push(SCRIPT_END);
+        }
+        if in_italic && !italic {
+            marked.push(ITALIC_END);
+        }
+        if in_math && !math {
+            marked.push(MATH_END);
         }
         if let Some(p) = prev {
             gaps.push(g.x - reach);
@@ -469,10 +616,17 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
                 marked.push(' ');
             }
         }
+        if math && !in_math {
+            marked.push(MATH);
+        }
+        if italic && !in_italic {
+            marked.push(ITALIC);
+        }
         if let Some(mark) = script.filter(|_| open != script) {
             marked.push(mark);
         }
         open = script;
+        (in_math, in_italic) = (math, italic);
         reach = reach.max(g.end);
         space = false;
         push_clean(&mut text, &g.text);
@@ -481,6 +635,12 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     }
     if open.is_some() {
         marked.push(SCRIPT_END);
+    }
+    if in_italic {
+        marked.push(ITALIC_END);
+    }
+    if in_math {
+        marked.push(MATH_END);
     }
     let text = collapse(&text).trim().to_string();
     if text.is_empty() {
@@ -491,6 +651,108 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     let x1 = ink.iter().map(|g| g.end).fold(f64::MIN, f64::max);
     let wide_gaps = gaps.iter().filter(|&&gap| gap > 1.8 * main as f64 / 10.).count();
     Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps })
+}
+
+/// Which of a line's glyphs make up a formula, which the page view then shows as printed: `t_abs(e)` or
+/// `tt.earliest ≤ x` read badly set in Japanese type, and only the fonts tell them from prose. A word is
+/// one by its math font, or in italics when it has a script, a call or a member (`TT.now()`) or is a
+/// single letter. Prose in italics (*time master*) stays prose. An operator joins what it stands between,
+/// and that brings in a short italic name or a number on its other side.
+fn formula_glyphs(glyphs: &[&Glyph]) -> Vec<bool> {
+    let mut words: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut prev: Option<&Glyph> = None;
+    let mut space = false;
+    for (i, &g) in glyphs.iter().enumerate() {
+        if g.text.trim().is_empty() {
+            space = true;
+            continue;
+        }
+        match words.last_mut() {
+            Some(w) if !space && prev.is_some_and(|p| g.x <= p.end + 0.15 * p.size.min(g.size)) => w.end = i + 1,
+            _ => words.push(i..i + 1),
+        }
+        prev = Some(g);
+        space = false;
+    }
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        Formula,
+        ShortName,
+        Number,
+        Operator,
+        Prose,
+    }
+    let kind = |w: &std::ops::Range<usize>| {
+        let word = &glyphs[w.clone()];
+        let text: String = word.iter().map(|g| g.text.as_str()).collect();
+        let text = text.trim();
+        let letters = text.chars().filter(|c| c.is_alphanumeric()).count();
+        let alphabetic = text.chars().filter(|c| c.is_alphabetic()).count();
+        let italic = word.iter().filter(|g| g.text.chars().any(char::is_alphanumeric)).all(|g| g.face.is_italic());
+        let member = text.char_indices().any(|(i, c)| c == '.' && text[i + 1..].chars().next().is_some_and(char::is_alphabetic));
+        if word.iter().any(|g| g.face.is_math())
+            || (alphabetic > 0 && italic && (member || text.contains('(') || letters == 1 || word.iter().any(|g| is_script(g, glyphs))))
+        {
+            Kind::Formula
+        } else if alphabetic > 0 && italic && letters <= 3 {
+            Kind::ShortName
+        } else if text.chars().all(|c| c.is_ascii_digit() || c == '.') {
+            Kind::Number
+        } else if letters == 0 && text.chars().all(|c| "=<>≤≥≠≈+-−*/×·∈→".contains(c)) {
+            Kind::Operator
+        } else {
+            Kind::Prose
+        }
+    };
+    let kinds: Vec<Kind> = words.iter().map(kind).collect();
+    let is_formula = |i: Option<usize>, more: &[Kind]| i.and_then(|i| kinds.get(i)).is_some_and(|k| *k == Kind::Formula || more.contains(k));
+    let mut joined: Vec<bool> = kinds.iter().map(|k| *k == Kind::Formula).collect();
+    for i in 0..kinds.len() {
+        if kinds[i] == Kind::Operator && is_formula(i.checked_sub(1), &[Kind::ShortName]) && is_formula(Some(i + 1), &[Kind::ShortName, Kind::Number]) {
+            joined[i] = true;
+        }
+    }
+    for i in 0..kinds.len() {
+        let by_operator = |n: Option<usize>| n.is_some_and(|n| kinds.get(n) == Some(&Kind::Operator) && joined[n]);
+        if matches!(kinds[i], Kind::ShortName | Kind::Number) && (by_operator(i.checked_sub(1)) || by_operator(Some(i + 1))) {
+            joined[i] = true;
+        }
+    }
+    let mut out = vec![false; glyphs.len()];
+    let mut i = 0;
+    while i < words.len() {
+        if !joined[i] {
+            i += 1;
+            continue;
+        }
+        let first = i;
+        while joined.get(i + 1) == Some(&true) {
+            i += 1;
+        }
+        let (start, end) = trimmed(glyphs, words[first].start, words[i].end);
+        out[start..end].iter_mut().for_each(|m| *m = true);
+        i += 1;
+    }
+    out
+}
+
+/// A formula without the sentence's punctuation around it: the comma after `TT.now(),` and the
+/// parenthesis of "(see `t`)". Those stay with the prose, where a period still ends the sentence.
+fn trimmed(glyphs: &[&Glyph], mut start: usize, mut end: usize) -> (usize, usize) {
+    let count = |s: usize, e: usize, c: &str| glyphs[s..e].iter().filter(|g| g.text == c).count();
+    while end > start {
+        let last = glyphs[end - 1].text.as_str();
+        let unopened = last == ")" && count(start, end, ")") > count(start, end, "(");
+        if matches!(last, "," | "." | ";" | ":") || last.trim().is_empty() || unopened {
+            end -= 1;
+        } else {
+            break;
+        }
+    }
+    if start < end && glyphs[start].text == "(" && count(start, end, "(") > count(start, end, ")") {
+        start += 1;
+    }
+    (start, end)
 }
 
 /// Ligatures as letters; soft hyphens and control characters as nothing.
@@ -984,7 +1246,7 @@ fn pdf_date(d: &str) -> Option<String> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use pdf_extract::content::{Content, Operation};
+    use pdf_extract::content::Operation;
     use pdf_extract::{Dictionary, Stream, StringFormat};
 
     /// One text run: x and baseline y from the top of a US Letter page, font size, text.
@@ -994,7 +1256,10 @@ pub(crate) mod tests {
         Object::Name(s.as_bytes().to_vec())
     }
 
-    /// A PDF set in Helvetica, the runs of each page written in the order given.
+    /// A PDF set in Helvetica, or Times-Italic for a run starting with this, the runs of each page
+    /// written in the order given.
+    const ITALIC_RUN: &str = "/i ";
+
     pub(crate) fn pdf(pages: &[Vec<Run>], title: Option<&str>) -> Vec<u8> {
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.new_object_id();
@@ -1003,12 +1268,18 @@ pub(crate) mod tests {
         font.set("Subtype", name("Type1"));
         font.set("BaseFont", name("Helvetica"));
         let font_id = doc.add_object(font);
+        let mut italic = Dictionary::new();
+        italic.set("Type", name("Font"));
+        italic.set("Subtype", name("Type1"));
+        italic.set("BaseFont", name("Times-Italic"));
+        let italic_id = doc.add_object(italic);
         let mut kids = Vec::new();
         for runs in pages {
             let mut ops = Vec::new();
             for &(x, y, size, text) in runs {
                 ops.push(Operation::new("BT", vec![]));
-                ops.push(Operation::new("Tf", vec![name("F1"), Object::Real(size as f32)]));
+                let (font, text) = text.strip_prefix(ITALIC_RUN).map_or(("F1", text), |t| ("F2", t));
+                ops.push(Operation::new("Tf", vec![name(font), Object::Real(size as f32)]));
                 if text.starts_with("arXiv:") {
                     ops.push(Operation::new("Tm", [0., 1., -1., 0., x, 792. - y].map(|v| Object::Real(v as f32)).to_vec()));
                 } else {
@@ -1020,6 +1291,7 @@ pub(crate) mod tests {
             let content = doc.add_object(Stream::new(Dictionary::new(), Content { operations: ops }.encode().unwrap()));
             let mut fonts = Dictionary::new();
             fonts.set("F1", Object::Reference(font_id));
+            fonts.set("F2", Object::Reference(italic_id));
             let mut resources = Dictionary::new();
             resources.set("Font", Object::Dictionary(fonts));
             let mut page = Dictionary::new();
@@ -1166,6 +1438,136 @@ pub(crate) mod tests {
         assert_eq!(at("reading order").x0, R, "and its right column");
         assert!(at("A paragraph that runs").y1 < at("figure before").y0, "the figure between the pieces stays uncovered");
         assert_eq!(at("figure before").page, 2);
+    }
+
+    /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
+    fn glyphs_of(text: &str, face: Face) -> Vec<Glyph> {
+        let mut x = 72.;
+        let mut inside = false;
+        let mut out = Vec::new();
+        for c in text.chars() {
+            if c == '|' {
+                inside = !inside;
+                continue;
+            }
+            let face = if inside {
+                face
+            } else {
+                Face::Body
+            };
+            out.push(Glyph { x, y: 100., end: x + 5., size: 10., text: c.to_string(), face });
+            x += 5.;
+        }
+        out
+    }
+
+    /// `text` with the glyphs of its formulas in brackets.
+    fn formulas(text: &str, face: Face) -> String {
+        let glyphs = glyphs_of(text, face);
+        let refs: Vec<&Glyph> = glyphs.iter().collect();
+        let mut out = String::new();
+        let mut open = false;
+        for (g, math) in refs.iter().zip(formula_glyphs(&refs)) {
+            if math != open && (open || !g.text.trim().is_empty()) {
+                out.push(if math {
+                    '['
+                } else {
+                    ']'
+                });
+                open = math;
+            }
+            out.push_str(&g.text);
+        }
+        if open {
+            out.push(']');
+        }
+        out
+    }
+
+    #[test]
+    fn a_formula_is_told_from_prose_by_its_font_and_its_shape() {
+        let italic = |t| formulas(t, Face::Italic);
+        assert_eq!(italic("for |tt| = |TT.now()|, where"), "for [tt = TT.now()], where", "an operator brings in the short name beside it");
+        assert_eq!(italic("the |time master| and |timeslave daemon| run"), "the time master and timeslave daemon run", "prose in italics");
+        assert_eq!(italic("|In| Proc. |of| the"), "In Proc. of the", "short italic words on their own");
+        assert_eq!(italic("an event |e| happens"), "an event [e] happens");
+        assert_eq!(italic("(see |tt.latest|) and"), "(see [tt.latest]) and");
+        assert_eq!(italic("a = b and 3 - 2"), "a = b and 3 - 2", "no italics, no formula");
+        assert_eq!(italic("|2.2| Crush and |7|"), "2.2 Crush and 7", "a section's number in italics");
+
+        let math = |t| formulas(t, Face::MathLetter);
+        assert_eq!(math("then |s| > 5."), "then [s > 5].", "a number beyond an operator, not the sentence's period");
+        assert_eq!(math("if (|x|) and"), "if [(x)] and", "its parentheses");
+        assert_eq!(formulas("|≤| and", Face::MathSymbol), "[≤] and");
+    }
+
+    #[test]
+    fn faces_follow_the_font_names_with_or_without_a_subset_prefix() {
+        for (font, face) in [
+            ("GMFWUF+CMMI10", Face::MathLetter),
+            ("ACCOFV+CMSY10", Face::MathSymbol),
+            ("Symbol", Face::MathSymbol),
+            ("QJOIDE+NimbusRomNo9L-ReguItal", Face::Italic),
+            ("Times-Italic", Face::Italic),
+            ("Helvetica-Oblique", Face::Italic),
+            ("COIEQL+NimbusRomNo9L-Regu", Face::Body),
+            ("EGYAWT+CMR10", Face::Body),
+        ] {
+            assert_eq!(Face::of(font), face, "{font}");
+        }
+    }
+
+    #[test]
+    fn a_formula_goes_as_printed_and_the_rest_to_be_translated() {
+        let line: Vec<Run> = vec![
+            (72., 100., 10., "Denote the absolute time of an event"),
+            (240., 100., 10., "/i e"),
+            (250., 100., 10., "by the clock of the machine that saw it happen."),
+        ];
+        let r = regions(&pdf(&[line], None)).unwrap();
+        let math: Vec<(&str, bool)> = r[0].runs.iter().filter(|run| run.math).map(|run| (run.text.as_str(), run.italic)).collect();
+        assert_eq!(math, [("e", true)]);
+        assert_eq!(r[0].runs.iter().map(|run| run.text.as_str()).collect::<String>(), r[0].text, "the runs add up to the text");
+        assert_eq!(r[0].translated_text(), "Denote the absolute time of an event  by the clock of the machine that saw it happen.");
+        assert!(
+            to_ir(&pdf(&[vec![(72., 100., 10., "An event"), (120., 100., 10., "/i e"), (130., 100., 10., "happens.")]], None), None)
+                .unwrap()
+                .blocks
+                .iter()
+                .any(|b| b.text.contains("An event e happens.")),
+            "the Reader keeps it as text"
+        );
+    }
+
+    #[test]
+    fn only_regions_at_the_edge_of_the_text_have_the_margin_as_room() {
+        let lines = |y: f64| {
+            [
+                (72., y, 10., "A paragraph at this place on the page runs across the whole of the column and ends."),
+                (72., y + 12., 10., "It has a second line too."),
+            ]
+        };
+        let page = |header: bool| {
+            let mut runs: Vec<Run> = Vec::new();
+            if header {
+                runs.push((72., 50., 10., "Running Header Of The Paper"));
+            }
+            for y in [100., 400., 700.] {
+                runs.extend(lines(y));
+            }
+            runs
+        };
+        let r = regions(&pdf(&[page(false)], None)).unwrap();
+        let at = |r: &[Region], i: usize| (r[i].room_up.round(), r[i].room_down.round());
+        assert_eq!(at(&r, 0).1, 0.);
+        assert_eq!(at(&r, 0).0, (r[0].y0 - 0.05 * 792.).round(), "to the page's outer edge");
+        assert_eq!(at(&r, 1), (0., 0.), "the middle of the page has other text around it");
+        assert_eq!(at(&r, 2).0, 0.);
+        assert_eq!(at(&r, 2).1, (0.95 * 792. - r[2].y1).round());
+
+        let r = regions(&pdf(&[page(true), page(true), page(true)], None)).unwrap();
+        assert!(r.iter().all(|x| !x.text.contains("Running")), "dropped as a header, though still printed");
+        assert_eq!(at(&r, 0).0, (r[0].y0 - 53.).round(), "it stops at the header");
     }
 
     #[test]

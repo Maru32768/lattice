@@ -19,6 +19,7 @@ import {
   assignTranslated,
   endsSpaced,
   isWrittenIn,
+  keepsAtoms,
   pageTarget,
   plainText,
   routeKey,
@@ -27,6 +28,7 @@ import {
   splitByLineBreaks,
   translatedShare,
   unitsByBlock,
+  withAtoms,
 } from "./logic.ts";
 import type { PageKeys } from "../lib/keys.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -348,6 +350,10 @@ function apply(el: HTMLElement, units: Unit[]) {
   let from = 0;
   for (const u of units) {
     const plain = plainText(sanitize(u.source));
+    // The sentence stays in the original: a translation that lost a formula or an image would say less.
+    if (!keepsAtoms(plain, u.translation)) {
+      continue;
+    }
     const loc = locate(el, tokenize(el, isSentence), plain, from);
     if (!loc) {
       break;
@@ -489,7 +495,8 @@ function bindSentenceHover(span: SentenceSpan) {
         return;
       }
       const translated = span.dataset.shown === "t";
-      const other = translated ? (span.dataset.source ?? "") : plainText(span.dataset.translation ?? "");
+      const raw = translated ? (span.dataset.source ?? "") : plainText(span.dataset.translation ?? "");
+      const other = withAtoms(raw, (n) => span.latticeAtoms?.get(n)?.textContent ?? "");
       const l = state.config.labels;
       showTip(
         span,

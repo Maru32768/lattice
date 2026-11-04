@@ -38,6 +38,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Superscripts and subscripts in a PDF's text stay raised and lowered in its translation in the Page view. They used to run into the letters before them.
 - An appendix heading such as `A Paxos Leader-Lease Management` is now a heading, keeps its `A` in the translation and no longer merges with the text after it. To apply this to a saved PDF, use **Re-extract**.
 - A PDF's Page view now uses the saved translation for a paragraph broken across columns or pages. It used to translate them again. A part that ends in the middle of a sentence still goes to the AI provider, as before.
+- In a translated PDF, formulas look as they do in the paper. They are not sent to the AI provider: they go into the translation as they are.
+- In a translated PDF, a paragraph at the top or bottom of a page also uses the margin, so its text shrinks less.
 - **Translate again** on a PDF also replaces the translations the Page view saved for parts of a paragraph. They used to keep showing there.
 
 ## [0.2.0] - 2026-10-30

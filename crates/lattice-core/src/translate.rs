@@ -316,7 +316,7 @@ fn pdf_piece_hashes(store: &Store, article_id: i64) -> Vec<String> {
         Err(e) => Err(e.to_string()),
     };
     match regions {
-        Ok(regions) => regions.iter().map(|r| segments::source_hash(&snippet_from_inlines(&r.text, &[]))).collect(),
+        Ok(regions) => regions.iter().map(|r| segments::source_hash(&snippet_from_inlines(&r.translated_text(), &[]))).collect(),
         Err(e) => {
             log::warn!("reading the regions of article {article_id} to retranslate it: {e}");
             Vec::new()
