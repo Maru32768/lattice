@@ -747,6 +747,7 @@ export const en = {
   "browserView.reload": "Reload",
   "browserView.home": "Home (search engine)",
   "browserView.translate": "Translate this page",
+  "browserView.retranslate": "Translate this page again",
   "browserView.indexed": "Saved",
   "browserView.savedPdf": "Saved PDF",
   "browserView.outline": "Contents",

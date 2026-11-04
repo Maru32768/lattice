@@ -5,6 +5,7 @@
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
 use crate::msg;
+use crate::pdf;
 use crate::segments::{self, PROMPT_VERSION, Target, Unit, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
@@ -298,9 +299,29 @@ fn units_of_piece(units: &[Unit], piece: &str) -> Option<Vec<Unit>> {
 /// paragraphs other articles share, which then get the new translation) and queues the job,
 /// which now finds every block untranslated. Returns how many translations were dropped.
 pub fn retranslate(store: &Store, article_id: i64, target: &Target) -> Result<usize, String> {
-    let dropped = store.drop_translations(article_id, &target.key(), PROSE_KINDS).map_err(|e| e.to_string())?;
+    let key = target.key();
+    let blocks = store.drop_translations(article_id, &key, PROSE_KINDS).map_err(|e| e.to_string())?;
+    let pieces = store.drop_segments(&pdf_piece_hashes(store, article_id), &key).map_err(|e| e.to_string())?;
     enqueue(store, article_id, target)?;
-    Ok(dropped)
+    Ok(blocks + pieces)
+}
+
+/// What the Page view saves a PDF's regions under, unknown to `drop_translations`: left in place, they
+/// would keep showing the old translation there. Whatever keeps them from being read must not stop the
+/// retranslation, which only leaves those few rows.
+fn pdf_piece_hashes(store: &Store, article_id: i64) -> Vec<String> {
+    let regions = match store.latest_snapshot(article_id) {
+        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => pdf::regions(&s.body),
+        Ok(_) => return Vec::new(),
+        Err(e) => Err(e.to_string()),
+    };
+    match regions {
+        Ok(regions) => regions.iter().map(|r| segments::source_hash(&snippet_from_inlines(&r.text, &[]))).collect(),
+        Err(e) => {
+            log::warn!("reading the regions of article {article_id} to retranslate it: {e}");
+            Vec::new()
+        }
+    }
 }
 
 /// An article with a translate job queued or running, for the article list's label. Finished

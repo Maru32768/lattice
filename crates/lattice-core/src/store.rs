@@ -956,6 +956,14 @@ impl Store {
         )
     }
 
+    /// Deletes the cached translations into `target_language` saved under these hashes.
+    pub fn drop_segments(&self, hashes: &[String], target_language: &str) -> Result<usize> {
+        self.conn().execute(
+            "DELETE FROM segment_translations WHERE target_language = ?2 AND source_hash IN (SELECT value FROM json_each(?1))",
+            params![json(&hashes), target_language],
+        )
+    }
+
     /// Newest cached reading units per source hash.
     pub fn cached_segments(&self, hashes: &[String], target_language: &str) -> Result<HashMap<String, Vec<Unit>>> {
         let c = self.conn();

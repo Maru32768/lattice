@@ -80,6 +80,9 @@ pub struct OverlayLabels {
     saved_word: String,
     /// The PDF viewer's table of contents.
     outline: String,
+    /// The PDF viewer's button on each page.
+    translate_page: String,
+    retranslate_page: String,
 }
 
 /// The app shortcuts the overlay forwards (`PageKeys` in `src/lib/keys.ts`), passed through to the page.

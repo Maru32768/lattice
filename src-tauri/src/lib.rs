@@ -730,7 +730,9 @@ fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow
 }
 
 /// Translation for the page overlay: saved units where available, the LLM for the rest unless
-/// `cached_only`, which lets the overlay show what is saved without waiting on what is not.
+/// `cached_only`, which lets the overlay show what is saved without waiting on what is not. `fresh`
+/// translates all of it again, for a saved PDF's page only: a remote page must not bypass the cache.
+/// Nothing is deleted first, so a provider failure leaves the old translation saved.
 /// Snippets come from an untrusted page, so size and count are bounded. `target` is the
 /// overlay's choice for the page ("en" for a Japanese page); anything else means Japanese.
 #[tauri::command]
@@ -741,6 +743,7 @@ async fn overlay_translate(
     snippets: Vec<String>,
     target: Option<String>,
     cached_only: bool,
+    fresh: Option<bool>,
 ) -> Result<Vec<Option<Vec<Unit>>>, String> {
     browser::ensure_translation_allowed(&webview, &browser)?;
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
@@ -750,8 +753,16 @@ async fn overlay_translate(
     let target = &to.key();
     let page = browser::page_url(&webview);
     let article = page.as_ref().and_then(browser::pdf_article);
+    let fresh = fresh == Some(true) && article.is_some();
+    let saved = || {
+        if fresh {
+            Ok(Default::default())
+        } else {
+            translate::saved_units(&app.store, article, &snippets, target)
+        }
+    };
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
-    let mut cached = translate::saved_units(&app.store, article, &snippets, target)?;
+    let mut cached = saved()?;
     if !cached_only && hashes.iter().any(|h| !cached.contains_key(h)) {
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
         // This wait can take minutes behind other calls: the page may be gone, and whatever was
@@ -759,7 +770,7 @@ async fn overlay_translate(
         if browser::page_url(&webview) != page {
             return Err("page left".into());
         }
-        cached = translate::saved_units(&app.store, article, &snippets, target)?;
+        cached = saved()?;
         let mut misses: Vec<usize> = Vec::new();
         for (i, h) in hashes.iter().enumerate() {
             if !cached.contains_key(h) && !misses.iter().any(|&j| hashes[j] == *h) {

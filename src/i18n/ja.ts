@@ -736,6 +736,7 @@ export const ja = {
   "browserView.reload": "再読み込み",
   "browserView.home": "ホーム(検索エンジン)",
   "browserView.translate": "このページを翻訳",
+  "browserView.retranslate": "このページを訳し直す",
   "browserView.indexed": "保存済み",
   "browserView.savedPdf": "保存したPDF",
   "browserView.outline": "目次",

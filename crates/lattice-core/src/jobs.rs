@@ -574,6 +574,27 @@ mod tests {
         assert!(s.get_article(id, &other.key()).unwrap().unwrap().blocks[0].translation.is_some(), "other targets keep theirs");
     }
 
+    #[test]
+    fn retranslating_a_pdf_also_drops_what_its_page_view_saved_for_a_region() {
+        let s = Store::open_in_memory().unwrap();
+        let bytes = crate::pdf::tests::paper();
+        let id = crate::pdf::import(&s, &bytes, None).unwrap();
+        let piece = crate::pdf::regions(&bytes).unwrap().into_iter().find(|r| r.text.starts_with("reading order")).unwrap();
+        let hash = crate::segments::source_hash(&piece.text);
+        let units = [crate::segments::Unit { source: piece.text, translation: "古い訳".into() }];
+        let saved = |s: &Store| s.cached_segments(std::slice::from_ref(&hash), "ja").unwrap().len();
+        let save = |s: &Store| s.insert_segments("ja", crate::segments::PROMPT_VERSION, &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
+
+        save(&s);
+        assert_eq!(translate::retranslate(&s, id, &Target::default()).unwrap(), 1, "the piece's own row counts");
+        assert_eq!(saved(&s), 0);
+
+        save(&s);
+        s.exec_for_test("UPDATE snapshots SET body = x'00'");
+        assert_eq!(translate::retranslate(&s, id, &Target::default()).unwrap(), 0, "an unreadable PDF does not stop it");
+        assert_eq!(saved(&s), 1);
+    }
+
     #[tokio::test]
     async fn japanese_articles_translate_into_english() {
         let s = Store::open_in_memory().unwrap();

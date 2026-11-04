@@ -3,14 +3,19 @@
  * lies one element per run of body text (`pdf::regions`), invisible until the page overlay
  * (`src/overlay`), which sees them as any page's paragraphs, shows a translated sentence in one: the
  * element then covers the original with its text. Translation, 混在 and flipping are all the overlay's.
+ * Each page has a button that asks the overlay to translate its paragraphs, or to translate them again.
  */
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
+import { pageAction } from "./pageAction.ts";
+import type { OverlayLabels } from "../api.ts";
 
 GlobalWorkerOptions.workerSrc = "/assets/pdf.worker.js";
 
 interface Region {
   page: number;
+  /** The same on all the pieces of a block broken across columns or pages. */
+  block: number;
   x0: number;
   y0: number;
   x1: number;
@@ -36,6 +41,14 @@ const OPEN_DEPTH = 1;
 const OUTLINE_KEY = "lattice.pdfOutline";
 
 const percent = (v: number, of: number) => `${(v / of) * 100}%`;
+
+/** The app's shortcuts include Enter and Space: pressing a button here is not one. */
+function pressButtons(e: KeyboardEvent) {
+  if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLButtonElement) {
+    e.preventDefault();
+    e.target.click();
+  }
+}
 
 // ---- moving around the document -----------------------------------------------------------------
 
@@ -183,29 +196,30 @@ function showOutline(doc: PDFDocumentProxy, entries: Entry[], label: string) {
   // The overlay leaves it alone: these are controls, and the tooltip would cover them.
   ui.dataset.latticeUi = "1";
   ui.append(toggle, nav);
-  // The app's shortcuts include Enter and Space: pressing a button here is not one.
-  ui.addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLButtonElement) {
-      e.preventDefault();
-      e.target.click();
-    }
-  });
+  ui.addEventListener("keydown", pressButtons);
   document.body.classList.add("has-outline");
   document.body.prepend(ui);
   setOpen(wanted);
 }
 
-/** The label comes from the app's catalog, by the overlay's call: it is the one this webview may make. */
-async function outlineLabel() {
-  const config = (await window.__TAURI_INTERNALS__?.invoke("overlay_config").catch(() => null)) as { labels?: { outline?: string } } | null | undefined;
-  return config?.labels?.outline || "Contents";
+/** The labels come from the app's catalog, by the overlay's call: it is the one this webview may make. */
+async function viewerLabels() {
+  const config = (await window.__TAURI_INTERNALS__?.invoke("overlay_config").catch(() => null)) as { labels?: Partial<OverlayLabels> } | null | undefined;
+  const l = config?.labels;
+  return {
+    outline: l?.outline || "Contents",
+    translate_page: l?.translate_page || "Translate this page",
+    retranslate_page: l?.retranslate_page || "Translate this page again",
+    translating: l?.translating || "Translating…",
+  };
 }
+type Labels = Awaited<ReturnType<typeof viewerLabels>>;
 
-async function addOutline(doc: PDFDocumentProxy, regions: Region[]) {
+async function addOutline(doc: PDFDocumentProxy, regions: Region[], labels: Labels) {
   const bookmarks = await doc.getOutline().catch(() => null);
   const entries = bookmarks?.length ? bookmarkTree(bookmarks) : headingTree(regions);
   if (entries.length) {
-    showOutline(doc, entries, await outlineLabel());
+    showOutline(doc, entries, labels.outline);
   }
 }
 
@@ -224,6 +238,7 @@ function fit(el: HTMLElement) {
 function regionEl(r: Region, width: number, height: number) {
   const el = document.createElement("div");
   el.className = "region";
+  el.dataset.block = String(r.block);
   for (const run of r.runs) {
     if (run.script) {
       const script = document.createElement(run.script);
@@ -276,7 +291,38 @@ function forget(host: HTMLElement) {
   host.querySelector(".textLayer")?.replaceChildren();
 }
 
+function regionsOf(root: Element) {
+  return Array.from(root.querySelectorAll<HTMLElement>(".region"));
+}
+
+/** Sets a page's button from the state of its paragraphs. */
+function showPageAction(host: Element, labels: Labels) {
+  const button = host.querySelector<HTMLButtonElement>(".page-act")!;
+  const action = pageAction(regionsOf(host).map((r) => r.dataset.latticeBlock));
+  button.dataset.action = action;
+  button.disabled = action === "busy";
+  button.textContent = { none: "", busy: labels.translating, redo: labels.retranslate_page, translate: labels.translate_page }[action];
+}
+
+function pageButton(host: Element) {
+  const button = document.createElement("button");
+  button.className = "page-act";
+  button.addEventListener("click", () => {
+    // A block broken across pages goes whole: a sentence ending on the next page stays under this page's box otherwise.
+    const blocks = new Set(regionsOf(host).map((r) => r.dataset.block));
+    const els = regionsOf(document.getElementById("pages")!).filter((r) => blocks.has(r.dataset.block));
+    window.__lattice?.translateBlocks(els, button.dataset.action === "redo");
+  });
+  const ui = document.createElement("div");
+  // The overlay leaves it alone, as the outline.
+  ui.dataset.latticeUi = "1";
+  ui.append(button);
+  ui.addEventListener("keydown", pressButtons);
+  return ui;
+}
+
 async function open(doc: PDFDocumentProxy, regions: Region[]) {
+  const labels = await viewerLabels();
   const pages = document.getElementById("pages")!;
   const drawOn = new Map<Element, () => void>();
   const visible = new IntersectionObserver(
@@ -309,7 +355,8 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     const links = document.createElement("div");
     links.className = "links";
     links.translate = false;
-    host.append(text, links, ...regions.filter((r) => r.page === n - 1).map((r) => regionEl(r, width, height)));
+    host.append(text, links, ...regions.filter((r) => r.page === n - 1).map((r) => regionEl(r, width, height)), pageButton(host));
+    showPageAction(host, labels);
     const failed = (e: unknown) => console.warn("[lattice] drawing a page", e);
     drawOn.set(host, () => {
       void draw(page, host).catch(failed);
@@ -320,12 +367,24 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     visible.observe(host);
     resized.observe(host);
   }
-  // The overlay changes a region's text: only ever its children, never its style.
+  // The overlay changes a region's text and state: only ever its children and that attribute, never its style.
   new MutationObserver((records) => {
-    const changed = new Set(records.map((r) => (r.target instanceof Element ? r.target : r.target.parentElement)?.closest<HTMLElement>(".region")));
-    changed.forEach((el) => el && fit(el));
-  }).observe(pages, { childList: true, characterData: true, subtree: true });
-  await addOutline(doc, regions);
+    const refit = new Set<HTMLElement>();
+    const stateOn = new Set<Element>();
+    for (const r of records) {
+      const region = (r.target instanceof Element ? r.target : r.target.parentElement)?.closest<HTMLElement>(".region");
+      if (region) {
+        if (r.type === "attributes") {
+          stateOn.add(region.closest(".page")!);
+        } else {
+          refit.add(region);
+        }
+      }
+    }
+    refit.forEach(fit);
+    stateOn.forEach((host) => showPageAction(host, labels));
+  }).observe(pages, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-lattice-block"] });
+  await addOutline(doc, regions, labels);
 }
 
 /** Pages are as wide as the window, so the browser's own zoom would change nothing on screen. */

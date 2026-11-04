@@ -80,6 +80,8 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 #[derive(Debug, Serialize)]
 pub struct Region {
     pub page: usize,
+    /// Which block it is a piece of: the same on all of a block's pieces, whatever columns and pages they are on.
+    pub block: usize,
     pub x0: f64,
     pub y0: f64,
     pub x1: f64,
@@ -130,14 +132,14 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
     let mut out = Vec::new();
-    for d in drafts(&lines, body).iter().filter(|d| !laid_out_text(d)) {
+    for (block, d) in drafts(&lines, body).iter().enumerate().filter(|(_, d)| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
             None
         };
         let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
-        out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level)));
+        out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level, block)));
     }
     Ok(out)
 }
@@ -225,11 +227,12 @@ fn word_break(text: &str, at: usize) -> usize {
         .map_or_else(|| (at..text.len()).find(|&i| text.is_char_boundary(i)).unwrap_or(text.len()), |space| space + 1)
 }
 
-fn region(piece: &[&Line], text: String, level: Option<u8>) -> Option<Region> {
+fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Option<Region> {
     let (first, last) = (piece.first()?, piece.last()?);
     let runs = text_runs(collapse(&text).trim());
     Some(Region {
         page: first.page,
+        block,
         x0: piece.iter().map(|l| l.x0).fold(f64::MAX, f64::min),
         y0: first.y - first.size,
         x1: piece.iter().map(|l| l.x1).fold(f64::MIN, f64::max),
@@ -1163,6 +1166,24 @@ pub(crate) mod tests {
         assert_eq!(at("reading order").x0, R, "and its right column");
         assert!(at("A paragraph that runs").y1 < at("figure before").y0, "the figure between the pieces stays uncovered");
         assert_eq!(at("figure before").page, 2);
+    }
+
+    #[test]
+    fn the_pieces_of_a_block_share_it_across_columns_and_pages() {
+        let r = regions(&paper()).unwrap();
+        let block = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}")).block;
+        assert_eq!(block("Most papers"), block("reading order"), "across columns");
+        assert_ne!(block("We study"), block("Most papers"), "another block");
+
+        let first: Vec<Run> = vec![
+            (L, 100., 10., "The leader sends every write to all of the replicas and then waits"),
+            (L, 112., 10., "until a majority of them has answered with the same stored value and"),
+        ];
+        let second: Vec<Run> =
+            vec![(L, 100., 10., "only then does it tell the client that the write has been committed"), (L, 112., 10., "to the log for good.")];
+        let r = regions(&pdf(&[first, second], None)).unwrap();
+        let places: Vec<(usize, usize)> = r.iter().map(|x| (x.page, x.block)).collect();
+        assert_eq!(places, [(0, r[0].block), (1, r[0].block)], "across pages");
     }
 
     #[test]

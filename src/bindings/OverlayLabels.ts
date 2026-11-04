@@ -15,4 +15,8 @@ save_word: string, saved_word: string,
 /**
  * The PDF viewer's table of contents.
  */
-outline: string, };
+outline: string, 
+/**
+ * The PDF viewer's button on each page.
+ */
+translate_page: string, retranslate_page: string, };

@@ -156,9 +156,45 @@
       nav .fold[aria-expanded="true"]::before {
         transform: rotate(90deg);
       }
+      .page-act {
+        display: none;
+        position: absolute;
+        /* Above a translated paragraph, which covers the links at 2. */
+        z-index: 3;
+        top: 6px;
+        right: 6px;
+        padding: 3px 8px;
+        border: 1px solid #d2cfc6;
+        border-radius: 4px;
+        font: 12px/1.4 system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
+        color: #45474c;
+        background: #f6f5f1;
+        cursor: pointer;
+      }
+      [data-lattice-on] .page-act:not([data-action="none"]) {
+        display: block;
+      }
+      .page-act[data-action="translate"] {
+        opacity: 0.7;
+      }
+      /* Transparent rather than hidden: it stays reachable by keyboard, and focus brings it out. */
+      .page-act[data-action="redo"] {
+        opacity: 0;
+      }
+      .page:is(:hover, :focus-within) .page-act[data-action="redo"],
+      .page-act[data-action="translate"]:is(:hover, :focus-visible) {
+        opacity: 1;
+      }
+      .page-act:hover:enabled {
+        background: #e6e4de;
+      }
+      .page-act:disabled {
+        cursor: default;
+      }
       @media print {
         nav,
-        #outline-toggle {
+        #outline-toggle,
+        .page-act {
           display: none !important;
         }
         .has-outline #pages {

@@ -43,10 +43,14 @@ interface Config {
   percent: number | null;
   /** Tooltip text in the app's display language. */
   labels: OverlayLabels;
+  /** Only what is saved shows by itself; the rest waits as `idle` for `translateBlocks`. */
+  manual: boolean;
 }
 interface Pending {
   el: HTMLElement;
   parts: string[];
+  /** Translate again even with a translation saved. */
+  fresh?: boolean;
 }
 type Invoke = (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 
@@ -56,6 +60,7 @@ declare global {
       configure(c: Partial<Config>): void;
       setKeys(k: PageKeys | null): void;
       scrollToText(text: string): boolean;
+      translateBlocks(els: HTMLElement[], fresh: boolean): void;
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
@@ -78,7 +83,21 @@ const state = {
   config: {
     enabled: false,
     percent: 70,
-    labels: { lang: "", original: "", translated: "", flip: "", translating: "", failed: "", retry: "", save_word: "", saved_word: "", outline: "" },
+    labels: {
+      lang: "",
+      original: "",
+      translated: "",
+      flip: "",
+      translating: "",
+      failed: "",
+      retry: "",
+      save_word: "",
+      saved_word: "",
+      outline: "",
+      translate_page: "",
+      retranslate_page: "",
+    },
+    manual: false,
   } as Config,
   /** Decided once per page from the first blocks seen. */
   target: null as Target | null,
@@ -158,22 +177,31 @@ function reportProgress() {
   }, 200);
 }
 
-function enqueue(el: HTMLElement) {
-  if (!el.isConnected || !state.config.enabled) {
-    return;
-  }
+/** What to send for a block, now `translating`; null when it needs no translation, now `skip`. */
+function prepare(el: HTMLElement, fresh: boolean): Pending | null {
   if (isWrittenIn(el.textContent ?? "", state.target ?? "ja")) {
     el.dataset.latticeBlock = "skip";
-    return;
+    return null;
   }
   const { parts } = splitByLineBreaks(snippetHtml(el));
   if (parts.length === 0 || !parts.some((p) => normalizeText(plainText(p).replace(/⟦\d+⟧/gu, "")))) {
     el.dataset.latticeBlock = "skip";
-    return;
+    return null;
   }
   el.dataset.latticeBlock = "translating";
   reportProgress();
-  state.pending.push({ el, parts });
+  return { el, parts, fresh };
+}
+
+function enqueue(el: HTMLElement) {
+  if (!el.isConnected || !state.config.enabled) {
+    return;
+  }
+  const pending = prepare(el, false);
+  if (!pending) {
+    return;
+  }
+  state.pending.push(pending);
   clearTimeout(state.flushTimer);
   state.flushTimer = window.setTimeout(() => void flush(), 200);
 }
@@ -204,10 +232,67 @@ function batchesOf(blocks: Pending[]): Pending[][] {
  * What is saved shows at once; only the rest waits for the LLM, whose one call can take a minute
  * and would otherwise hold up every block that shares its batch (a page's sidebar, its article's text).
  */
-async function flush() {
-  const unsaved = await Promise.all(batchesOf(state.pending.splice(0)).map(showSaved));
-  state.queue.push(...batchesOf(unsaved.flat()));
+async function unsavedOf(blocks: Pending[]): Promise<Pending[]> {
+  return (await Promise.all(batchesOf(blocks).map(showSaved))).flat();
+}
+
+function send(blocks: Pending[]) {
+  state.queue.push(...batchesOf(blocks));
   pump();
+}
+
+function setIdle(blocks: Pending[]) {
+  blocks.forEach((p) => (p.el.dataset.latticeBlock = "idle"));
+  reportProgress();
+}
+
+async function flush() {
+  const unsaved = await unsavedOf(state.pending.splice(0));
+  if (state.config.manual) {
+    setIdle(unsaved);
+  } else {
+    send(unsaved);
+  }
+}
+
+/** Takes a block's sentences apart, so that its DOM is the page's own again. */
+function unwrapSentences(el: HTMLElement) {
+  for (const span of spansOf(el)) {
+    renderOriginal(span);
+    span.replaceWith(...span.childNodes);
+  }
+  el.normalize();
+}
+
+/**
+ * Translates these blocks because the user asked, also in manual mode. `fresh`: sends them to the LLM
+ * even if they are done; otherwise those stay, and what is saved shows without a call. A block already
+ * being translated is left to that.
+ */
+function translateBlocks(els: HTMLElement[], fresh: boolean) {
+  if (!state.config.enabled) {
+    return;
+  }
+  const blocks: Pending[] = [];
+  for (const el of els) {
+    const s = el.dataset.latticeBlock;
+    if (s === "translating" || (!fresh && s === "done")) {
+      continue;
+    }
+    state.io?.unobserve(el);
+    if (fresh) {
+      unwrapSentences(el);
+    }
+    const pending = prepare(el, fresh);
+    if (pending) {
+      blocks.push(pending);
+    }
+  }
+  if (fresh) {
+    send(blocks);
+  } else {
+    void unsavedOf(blocks).then(send);
+  }
 }
 
 async function showSaved(batch: Pending[]): Promise<Pending[]> {
@@ -234,7 +319,8 @@ function pump() {
 
 async function translated(batch: Pending[], cachedOnly: boolean): Promise<(Unit[] | null)[]> {
   try {
-    return (await invoke("overlay_translate", { snippets: batch.flatMap((p) => p.parts), target: state.target, cachedOnly })) as (Unit[] | null)[];
+    const fresh = batch.some((p) => p.fresh) ? { fresh: true } : {};
+    return (await invoke("overlay_translate", { snippets: batch.flatMap((p) => p.parts), target: state.target, cachedOnly, ...fresh })) as (Unit[] | null)[];
   } catch (e) {
     console.warn("[lattice] translate failed", e);
     return [];
@@ -435,17 +521,7 @@ function bindBlockHover(el: HTMLElement) {
     if (s === "translating") {
       showTip(el, "", l.translating, "", null, { x: e.clientX, y: e.clientY });
     } else {
-      showTip(
-        el,
-        "",
-        l.failed,
-        l.retry,
-        () => {
-          el.dataset.latticeBlock = "pending";
-          enqueue(el);
-        },
-        { x: e.clientX, y: e.clientY },
-      );
+      showTip(el, "", l.failed, l.retry, () => translateBlocks([el], false), { x: e.clientX, y: e.clientY });
     }
   });
   el.addEventListener("mouseleave", () => {
@@ -637,6 +713,15 @@ function configure(c: Partial<Config>) {
   if (was.enabled !== state.config.enabled) {
     reportProgress();
   }
+  if (state.config.manual && !was.manual) {
+    // In-flight calls were already paid for: let them finish.
+    setIdle(state.queue.splice(0).flat());
+  } else if (was.manual && !state.config.manual) {
+    document.querySelectorAll<HTMLElement>("[data-lattice-block='idle']").forEach((el) => {
+      el.dataset.latticeBlock = "pending";
+      state.io?.observe(el);
+    });
+  }
 }
 
 function scrollToText(text: string): boolean {
@@ -676,7 +761,7 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
 }
 
 if (window.top === window && !window.__lattice) {
-  window.__lattice = { configure, setKeys, scrollToText, snapshot };
+  window.__lattice = { configure, setKeys, scrollToText, translateBlocks, snapshot };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);
   window.print = () =>
