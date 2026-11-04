@@ -1277,8 +1277,11 @@ async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
 const PDF_VIEWER_HTML: &str = include_str!("pdfview.html");
 const PDF_VIEWER_JS: &str = include_str!("../pdfview-dist/viewer.js");
 const PDF_WORKER_JS: &str = include_str!("../pdfview-dist/pdf.worker.js");
-/// pdf.js runs here with the PDF's untrusted data: nothing but this origin's scripts, and no way out but the overlay's IPC.
-const PDF_VIEWER_CSP: &str = "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost";
+const PDF_OPENJPEG_WASM: &[u8] = include_bytes!("../pdfview-dist/openjpeg.wasm");
+const PDF_JBIG2_WASM: &[u8] = include_bytes!("../pdfview-dist/jbig2.wasm");
+const PDF_QCMS_WASM: &[u8] = include_bytes!("../pdfview-dist/qcms_bg.wasm");
+/// pdf.js runs here with the PDF's untrusted data: nothing but this origin's scripts and pdf.js's image decoders, and no way out but the overlay's IPC.
+const PDF_VIEWER_CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost";
 
 /// The Page view of a saved PDF, so the original opens offline and for a file with no URL: `/<id>` the
 /// viewer (`src/pdfview`), `/<id>/file` the PDF, `/<id>/layout` where its text is. Only for the tab `browser_open` opened it in.
@@ -1298,6 +1301,9 @@ fn saved_pdf(handle: &tauri::AppHandle, label: &str, path: &str) -> tauri::http:
     match path {
         "/assets/viewer.js" => return ok("text/javascript", PDF_VIEWER_JS.into()),
         "/assets/pdf.worker.js" => return ok("text/javascript", PDF_WORKER_JS.into()),
+        "/assets/wasm/openjpeg.wasm" => return ok("application/wasm", PDF_OPENJPEG_WASM.into()),
+        "/assets/wasm/jbig2.wasm" => return ok("application/wasm", PDF_JBIG2_WASM.into()),
+        "/assets/wasm/qcms_bg.wasm" => return ok("application/wasm", PDF_QCMS_WASM.into()),
         _ => {}
     }
     let (article, part) = path.rfind('/').filter(|&i| i > 0).map_or((path, ""), |i| path.split_at(i));

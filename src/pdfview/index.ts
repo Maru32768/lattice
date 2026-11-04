@@ -472,6 +472,6 @@ addEventListener("keydown", (e) => {
 const here = location.pathname;
 const layout = fetch(`${here}/layout`).then((r): Promise<Region[]> => (r.ok ? (r.json() as Promise<Region[]>) : Promise.resolve([])));
 // shortcut: no CMaps or standard fonts are bundled, so a PDF that does not embed its CJK fonts draws without that text; serve pdfjs-dist/cmaps if such PDFs turn up.
-getDocument({ url: `${here}/file`, disableRange: true, disableStream: true })
+getDocument({ url: `${here}/file`, disableRange: true, disableStream: true, wasmUrl: new URL("/assets/wasm/", location.href).href })
   .promise.then(async (doc) => open(doc, await layout))
   .catch((e: unknown) => console.warn("[lattice] opening the PDF", e));
