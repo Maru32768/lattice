@@ -52,6 +52,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00031_job_heartbeat.sql"),
     include_str!("../db/migrations/00032_relevance_manual.sql"),
     include_str!("../db/migrations/00033_translate_manual.sql"),
+    include_str!("../db/migrations/00034_job_ids_stay_unique.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -1355,6 +1356,25 @@ mod tests {
         conn.pragma_update(None, "user_version", MIGRATIONS.len() as i64 + 1).unwrap();
         let e = Store::init(conn).err().expect("refused").to_string();
         assert!(e.contains("newer than this build"), "{e}");
+    }
+
+    #[test]
+    fn a_deleted_jobs_id_does_not_come_back_and_old_jobs_survive_the_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        let before = MIGRATIONS.iter().position(|m| m.contains("processing_jobs_new")).unwrap();
+        for sql in &MIGRATIONS[..before] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", before as i64).unwrap();
+        conn.execute_batch("INSERT INTO processing_jobs (id, type, dedup_key, status, attempt_count) VALUES (7, 'x', 'a', 'running', 2)").unwrap();
+        let s = Store::init(conn).unwrap();
+        let c = s.conn();
+        let old: (String, String, i64) =
+            c.query_row("SELECT type, status, attempt_count FROM processing_jobs WHERE id = 7", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
+        assert_eq!(old, ("x".to_string(), "running".to_string(), 2));
+        c.execute("DELETE FROM processing_jobs WHERE id = 7", []).unwrap();
+        c.execute("INSERT INTO processing_jobs (type, dedup_key) VALUES ('y', 'b')", []).unwrap();
+        assert_eq!(c.last_insert_rowid(), 8);
     }
 
     /// Migration 4 rewrites the snapshots table; pre-existing raw HTML must survive it.
