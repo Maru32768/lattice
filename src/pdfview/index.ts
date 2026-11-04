@@ -48,6 +48,8 @@ const FIT_STEPS = [
 const RENDER_MARGIN = "1500px";
 /** Canvas pixels per CSS pixel: a page's small type blurs and thickens at 1 on an ordinary display. */
 const MIN_DENSITY = 2;
+/** A page's canvas at most: at 400% it would take hundreds of MB, each. */
+const MAX_DRAWN_WIDTH = 4096;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.1;
@@ -217,7 +219,10 @@ function showOutline(doc: PDFDocumentProxy, entries: Entry[], label: string) {
   setOpen(wanted);
 }
 
-/** The labels come from the app's catalog, by the overlay's call: it is the one this webview may make. */
+/**
+ * The labels come from the app's catalog, by the overlay's call: it is the one this webview may make.
+ * shortcut: read when the document opens, so a change of language shows here after a reload; re-read on the overlay's configure if that matters.
+ */
 async function viewerLabels() {
   const config = (await window.__TAURI_INTERNALS__?.invoke("overlay_config").catch(() => null)) as { labels?: Partial<OverlayLabels> } | null | undefined;
   const l = config?.labels;
@@ -314,16 +319,20 @@ function regionEl(r: Region, width: number, height: number) {
 }
 
 /** The canvas width that keeps a page sharp at its width on screen. */
-const drawnWidth = (host: HTMLElement) => Math.round(host.clientWidth * Math.max(devicePixelRatio, MIN_DENSITY));
+const drawnWidth = (host: HTMLElement) => Math.min(MAX_DRAWN_WIDTH, Math.round(host.clientWidth * Math.max(devicePixelRatio, MIN_DENSITY)));
 
-async function pageCanvas(page: PDFPageProxy, width: number) {
+function startDrawing(page: PDFPageProxy, width: number) {
   const viewport = page.getViewport({ scale: width / page.getViewport({ scale: 1 }).width });
   const canvas = document.createElement("canvas");
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  await page.render({ canvas, viewport }).promise;
-  return canvas;
+  return { canvas, task: page.render({ canvas, viewport }) };
 }
+
+/** What is being drawn on each page: a page scrolled past or drawn anew stops it, or it runs on and holds its canvas. */
+const drawing = new WeakMap<HTMLElement, { cancel(): void }>();
+
+const wasStopped = (e: unknown) => e instanceof Error && (e.name === "RenderingCancelledException" || e.name === "AbortException");
 
 /** Draws a page at its width on screen; again when that changes. */
 async function draw(page: PDFPageProxy, host: HTMLElement) {
@@ -331,24 +340,26 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   if (!width || host.dataset.drawn === String(width)) {
     return;
   }
+  drawing.get(host)?.cancel();
   host.dataset.drawn = String(width);
   const pageWidth = page.getViewport({ scale: 1 }).width;
-  const canvas = await pageCanvas(page, width);
-  // Resized or scrolled away meanwhile.
-  if (host.dataset.drawn !== String(width)) {
-    return;
-  }
+  const { canvas, task } = startDrawing(page, width);
+  drawing.set(host, task);
+  await task.promise;
   host.querySelector("canvas")?.remove();
   host.prepend(canvas);
   const text = host.querySelector<HTMLElement>(".textLayer")!;
   text.replaceChildren();
   const cssViewport = page.getViewport({ scale: host.clientWidth / pageWidth });
   text.style.setProperty("--total-scale-factor", String(cssViewport.scale));
-  await new TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport: cssViewport }).render();
+  const layer = new TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport: cssViewport });
+  drawing.set(host, layer);
+  await layer.render();
 }
 
 /** A long PDF would hold hundreds of MB of canvases: only pages near the screen keep theirs. */
 function forget(host: HTMLElement) {
+  drawing.get(host)?.cancel();
   delete host.dataset.drawn;
   host.querySelector("canvas")?.remove();
   host.querySelector(".textLayer")?.replaceChildren();
@@ -364,7 +375,8 @@ async function imagesForPrint() {
     if (host.querySelector(".print-page")) {
       continue;
     }
-    const canvas = await pageCanvas(page, drawnWidth(host));
+    const { canvas, task } = startDrawing(page, drawnWidth(host));
+    await task.promise;
     const blob = await new Promise<Blob | null>((done) => canvas.toBlob(done));
     if (blob) {
       const image = document.createElement("img");
@@ -458,6 +470,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     const host = document.createElement("div");
     host.className = "page";
     host.style.aspectRatio = `${width} / ${height}`;
+    host.style.setProperty("--aspect", String(width / height));
     const text = document.createElement("div");
     text.className = "textLayer";
     text.translate = false;
@@ -466,7 +479,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     links.translate = false;
     host.append(text, links, ...onPage.map((r) => regionEl(r, width, height)), pageButton(host));
     showPageAction(host, labels);
-    const failed = (e: unknown) => console.warn("[lattice] drawing a page", e);
+    const failed = (e: unknown) => wasStopped(e) || console.warn("[lattice] drawing a page", e);
     drawOn.set(host, () => {
       void draw(page, host).catch(failed);
       void addLinks(doc, page, host).catch(failed);

@@ -199,8 +199,15 @@
         color: #5a5650;
       }
       @media print {
+        #pages {
+          padding: 0;
+          gap: 0;
+        }
+        /* One page to a sheet, whatever their shapes: an A4 page at full width is taller than a Letter sheet. */
         .page {
-          width: 100%;
+          width: min(100%, calc(100vh * var(--aspect)));
+          break-inside: avoid;
+          box-shadow: none;
         }
         .page:not(:has(canvas)) .print-page {
           display: block;
