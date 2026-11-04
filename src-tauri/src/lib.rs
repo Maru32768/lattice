@@ -176,10 +176,14 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
     Ok(summary)
 }
 
-/// Markdown pasted into the import screen; the same text again opens the article it made.
+/// Markdown pasted into the import screen, or a file dropped or pasted there (`name` is then its
+/// name, and it has no folder to read relative images from); the same text again opens the article it made.
 #[tauri::command(async)]
-fn import_markdown(app: State<'_, App>, text: String) -> Result<i64, String> {
-    let id = markdown::import(&app.store, &text, None, None)?;
+fn import_markdown(app: State<'_, App>, text: String, name: Option<String>) -> Result<i64, String> {
+    if name.is_some() && text.len() as u64 > markdown::MAX_FILE_BYTES {
+        return Err(msg!("file.tooLarge", max = markdown::MAX_FILE_BYTES / 1024 / 1024));
+    }
+    let id = markdown::import(&app.store, &text, name.as_deref(), None)?;
     indexed(&app, id)
 }
 
@@ -230,10 +234,28 @@ async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Resul
     }
     let bytes = std::fs::read(&path).map_err(err)?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+    import_pdf(&app, bytes, name).await.map(Some)
+}
+
+/// A PDF dropped or pasted on the import screen. Sent as the raw request body (a JSON array of 50 MB
+/// would be several times that), with its percent-encoded name in a header.
+#[tauri::command]
+async fn import_pdf_bytes(app: State<'_, App>, request: tauri::ipc::Request<'_>) -> Result<i64, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(msg!("pdf.parseFailed"));
+    };
+    if bytes.len() > pdf::MAX_BYTES {
+        return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
+    }
+    let name = request.headers().get("x-file-name").and_then(|v| percent_encoding::percent_decode(v.as_bytes()).decode_utf8().ok()).map(|s| s.into_owned());
+    import_pdf(&app, bytes.clone(), name).await
+}
+
+async fn import_pdf(app: &App, bytes: Vec<u8>, name: Option<String>) -> Result<i64, String> {
     // Parsing a paper takes a moment of CPU; keep it off the async runtime's threads.
     let store = app.store.clone();
     let id = tokio::task::spawn_blocking(move || pdf::import(&store, &bytes, name.as_deref())).await.map_err(err)??;
-    indexed(&app, id).map(Some)
+    indexed(app, id)
 }
 
 /// The stored image of an image block as a `data:` URL, or `None` (the Reader then shows a link).
@@ -1384,6 +1406,7 @@ pub fn run() {
             import_markdown,
             import_markdown_file,
             import_pdf_file,
+            import_pdf_bytes,
             article_image,
             favicon,
             get_image_settings,

@@ -20,6 +20,10 @@
 .manage .tbl tr.grp .ico { margin-right: 6px; vertical-align: -2px; }
 /* A hidden file input inside a .btn label: show its focus on the label. */
 .btn:has(> input.vh:focus-visible) { outline: 2px solid var(--acc); outline-offset: 1px; }
+/* A file dragged over a place that takes it (useFileDrop.ts). */
+.dropping { outline: 2px dashed var(--acc); outline-offset: -2px; }
+.drop-hint { align-self: center; font-size: 12px; }
+.manage .drop-area { align-items: center; justify-content: center; min-height: 180px; text-align: center; }
 
 /* Feeds */
 .manage .add { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }

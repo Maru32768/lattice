@@ -627,6 +627,7 @@ export const handlers = {
   import_markdown_file: none,
   import_pdf_file: (): number =>
     addArticle("local:pdf/e2e", "Reading Order in Two Column Papers", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
+  import_pdf_bytes: (): number => addArticle("local:pdf/e2e-bytes", "Dropped Paper", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),

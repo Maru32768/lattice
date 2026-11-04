@@ -153,12 +153,14 @@ export const api = {
   restart: () => invoke<void>("restart_app"),
   setBackupKeep: (keep: number) => invoke<void>("set_backup_keep", { keep }),
   importUrls: (text: string) => invoke<ImportSummary>("import_urls", { text }),
-  /** Imports Markdown as an article; the same text again returns the existing one. */
-  importMarkdown: (text: string) => invoke<number>("import_markdown", { text }),
+  /** Imports Markdown as an article; the same text again returns the existing one. `name`: the file it came from, dropped or pasted. */
+  importMarkdown: (text: string, name?: string) => invoke<number>("import_markdown", { text, name }),
   /** Opens a file dialog (in the backend); null when cancelled. */
   importMarkdownFile: () => invoke<number | null>("import_markdown_file"),
   /** Opens a PDF file dialog (in the backend); null when cancelled. */
   importPdfFile: () => invoke<number | null>("import_pdf_file"),
+  /** A PDF dropped or pasted: the raw bytes as the body, the name in a header (headers are ASCII). */
+  importPdfBytes: (bytes: Uint8Array, name: string) => invoke<number>("import_pdf_bytes", bytes, { headers: { "x-file-name": encodeURIComponent(name) } }),
   /** The unread count for the taskbar badge (shown unless switched off). */
   setUnreadBadge: (count: number) => invoke<void>("set_unread_badge", { count }),
   taskbarBadge: () => invoke<boolean>("get_taskbar_badge"),

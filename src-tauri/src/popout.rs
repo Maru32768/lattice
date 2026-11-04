@@ -171,6 +171,8 @@ fn build(app: &AppHandle, loc: &Location, label: &str) -> tauri::Result<WebviewW
         .title("Lattice")
         .decorations(false)
         .inner_size(DEFAULT_SIZE.0, DEFAULT_SIZE.1)
+        // The same as the main window (tauri.conf.json): files are dropped on the page's own zones.
+        .disable_drag_drop_handler()
         .visible(false);
     if let Some(d) = loc.webview_dir() {
         builder = builder.data_directory(d);

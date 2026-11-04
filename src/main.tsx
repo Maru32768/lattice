@@ -12,6 +12,9 @@ import App from "./app/App";
 import { HOST } from "./app/host";
 import { windows } from "./api";
 import { ja } from "./i18n/ja";
+import { guardDrops } from "./lib/files";
+
+guardDrops();
 
 // A document window may be the spare, loaded ahead and hidden: it mounts once it is given a layout,
 // and never when it is closed unused (the wait fails then). design-review §29.

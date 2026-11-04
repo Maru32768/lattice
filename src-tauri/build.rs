@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "import_markdown",
     "import_markdown_file",
     "import_pdf_file",
+    "import_pdf_bytes",
     "set_unread_badge",
     "get_taskbar_badge",
     "set_taskbar_badge",

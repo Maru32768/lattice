@@ -5,8 +5,18 @@ import { Icon } from "../ui/Icon";
 import "../ui/manage.css";
 import { useT, type PlainKey } from "../i18n";
 import { skippedLines } from "../lib/urlLines";
+import { fileStem, readUtf8 } from "../lib/files";
+import { useFileDrop } from "../ui/useFileDrop";
 
 export type ImportTab = "urls" | "markdown" | "pdf";
+
+const URL_FILES = ".txt,.csv,.json,.html,.htm,.md";
+const MARKDOWN_FILES = ".md,.markdown";
+const PDF_FILES = ".pdf,application/pdf";
+// The backend's limits (markdown::MAX_FILE_BYTES, pdf::MAX_BYTES): checked here too, before a huge file is read into memory.
+const MARKDOWN_MAX_MB = 10;
+const PDF_MAX_MB = 50;
+const tooLarge = (file: File, mb: number) => file.size > mb * 1024 * 1024;
 
 const SUB: Record<ImportTab, PlainKey> = {
   urls: "importView.urlsDesc",
@@ -132,9 +142,16 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
 
   async function loadFile(file: File | undefined) {
     if (file) {
+      setError(null);
       setText(await file.text());
     }
   }
+  const { dragging, zone } = useFileDrop({
+    accept: URL_FILES,
+    onFile: (file) => void loadFile(file),
+    onReject: () => setError(t("common.wrongFile")),
+    disabled: busy,
+  });
 
   async function run() {
     setBusy(true);
@@ -152,12 +169,13 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
   }
 
   return (
-    <section className="card add" aria-label={t("importView.text")}>
-      <div>
+    <section className={`card add${dragging ? " dropping" : ""}`} aria-label={t("importView.text")} {...zone}>
+      <div className="line">
         <label className="btn">
           {t("importView.chooseFile")}
-          <input type="file" className="vh" accept=".txt,.csv,.json,.html,.htm,.md" onChange={(e) => loadFile(e.target.files?.[0])} />
+          <input type="file" className="vh" accept={URL_FILES} onChange={(e) => loadFile(e.target.files?.[0])} />
         </label>
+        <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
       </div>
       <textarea
         className="paste"
@@ -207,17 +225,36 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
         onOpen(id);
       }
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
     setBusy(false);
   }
 
+  // No path comes with a dropped file, so relative images show their alt text, as in pasted text.
+  const { dragging, zone } = useFileDrop({
+    accept: MARKDOWN_FILES,
+    onFile: (file) =>
+      void run(async () => {
+        if (tooLarge(file, MARKDOWN_MAX_MB)) {
+          throw new Error(t("be.file.tooLarge", { max: MARKDOWN_MAX_MB }));
+        }
+        const content = await readUtf8(file);
+        if (content === null) {
+          throw new Error(t("be.file.notUtf8"));
+        }
+        return api.importMarkdown(content, fileStem(file.name));
+      }),
+    onReject: () => setError(t("common.wrongFile")),
+    disabled: busy,
+  });
+
   return (
-    <section className="card add" aria-label="Markdown">
-      <div>
+    <section className={`card add${dragging ? " dropping" : ""}`} aria-label="Markdown" {...zone}>
+      <div className="line">
         <button className="btn" onClick={() => run(api.importMarkdownFile)} disabled={busy}>
           {t("importView.chooseFileEllipsis")}
         </button>
+        <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
       </div>
       <textarea
         className="paste"
@@ -247,33 +284,45 @@ function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInt
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function run() {
+  async function run(load: () => Promise<number | null>) {
     setBusy(true);
     setError(null);
     try {
-      const id = await api.importPdfFile();
+      const id = await load();
       if (id != null) {
         await fileInto([id]);
         onOpen(id);
       }
     } catch (e) {
-      setError(String(e));
+      setError(e instanceof Error ? e.message : String(e));
     }
     setBusy(false);
   }
 
+  const { dragging, zone } = useFileDrop({
+    accept: PDF_FILES,
+    onFile: (file) =>
+      void run(async () => {
+        if (tooLarge(file, PDF_MAX_MB)) {
+          throw new Error(t("be.file.tooLarge", { max: PDF_MAX_MB }));
+        }
+        return api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name));
+      }),
+    onReject: () => setError(t("common.wrongFile")),
+    disabled: busy,
+  });
+
   return (
-    <section className="card add" aria-label="PDF">
-      <div className="line">
-        <button className="btn pri lg" onClick={run} disabled={busy}>
-          {busy ? t("importView.importing") : t("importView.choosePdf")}
-        </button>
-        {error && (
-          <span role="alert" className="msg error-text">
-            {t.msg(error)}
-          </span>
-        )}
-      </div>
+    <section className={`card add drop-area${dragging ? " dropping" : ""}`} aria-label="PDF" {...zone}>
+      <button className="btn pri lg" onClick={() => run(api.importPdfFile)} disabled={busy}>
+        {busy ? t("importView.importing") : t("importView.choosePdf")}
+      </button>
+      <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
+      {error && (
+        <span role="alert" className="msg error-text">
+          {t.msg(error)}
+        </span>
+      )}
     </section>
   );
 }

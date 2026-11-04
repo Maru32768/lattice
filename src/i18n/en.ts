@@ -72,6 +72,8 @@ export const en = {
     "New versions come from GitHub Releases. An update is installed only after its signature checks out, and your data stays as it is.",
   "settingsView.models": (p) => plural(p.length, "model", "models"),
   "common.error": "Error",
+  "common.dropOrPaste": "You can also drag and drop or paste it",
+  "common.wrongFile": "This file can't be used here",
   "settingsView.categories": "Settings categories",
   "settingsView.backToLibrary": "Back to library",
   "settingsView.perFeedFilters": "Per-feed filters",
@@ -711,7 +713,7 @@ export const en = {
   "importView.pdfDesc":
     "Imports a PDF, such as a paper, as one article. Its text is read and reassembled: two-column reading order, headings, figure and table captions, references (PDFs that are only images without text cannot be imported). A PDF URL such as arXiv's …/pdf/… can be saved or come from a feed like any other URL. The original PDF is kept for re-extraction.",
   "importView.markdownDesc":
-    "Imports Markdown as one article. The title is the first heading (# ), else the file name or the first line. Images with URLs are saved; images with relative paths are read from the file's folder, only when importing a file (pasted text shows their alt text). HTML tags are left out.",
+    'Imports Markdown as one article. The title is the first heading (# ), else the file name or the first line. Images with URLs are saved; images with relative paths are read from the file\'s folder, only with "Choose a file…" (dropped or pasted, they show their alt text). HTML tags are left out.',
   "feedsView.added": "Added {name}. New articles are fetched in the background.",
   "feedsView.opmlDone": "Added {ok} of {total}",
   "feedsView.opmlFailed": " · failed: {urls}",

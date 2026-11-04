@@ -11,6 +11,7 @@ import { feedDrop, feedGroups, feedUrls, folderTree, placeFeeds, type NavRow } f
 import { SortableRow, rowDndText, useRowSensors } from "../ui/SortableRow";
 import { Icon } from "../ui/Icon";
 import { skippedLines } from "../lib/urlLines";
+import { useFileDrop } from "../ui/useFileDrop";
 import "../ui/manage.css";
 import { useT } from "../i18n";
 
@@ -21,6 +22,7 @@ const bare = (url: string) => url.replace(/^https?:\/\//, "");
 const feedName = (f: FeedRow) => f.custom_title ?? f.title ?? bare(f.url);
 const MAX_ICON_BYTES = 1024 * 1024;
 const ICON_TYPES = ".png,.jpg,.jpeg,.gif,.webp,.svg,.ico,image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/x-icon";
+const OPML_TYPES = ".opml,.xml";
 
 /** Display name and icon of one feed, below its row in the table. */
 function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }) {
@@ -56,10 +58,12 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
     }
     void setIcon(async () => Array.from(new Uint8Array(await file.arrayBuffer())));
   };
+  const { dragging, zone } = useFileDrop({ accept: ICON_TYPES, onFile: pick, onReject: () => setError(t("common.wrongFile")) });
 
   return (
     <form
-      className="feed-edit"
+      {...zone}
+      className={`feed-edit${dragging ? " dropping" : ""}`}
       aria-label={t("feedsView.editorTitle", { feedName: feedName(f) })}
       onSubmit={(e) => {
         e.preventDefault();
@@ -106,7 +110,9 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
             {t("feedsView.siteIcon")}
           </button>
         )}
-        <span className="muted">{t("feedsView.iconFormats")}</span>
+        <span className="muted">
+          {t("feedsView.iconFormats")} · {t("common.dropOrPaste")}
+        </span>
       </div>
       {error && (
         <p role="alert" className="error-text">
@@ -243,6 +249,12 @@ export function FeedsView({
 
   // OPML: the backend reads the feeds and makes their outline folders; each is then subscribed.
   const importOpml = (file: File) => run(async () => addAll(await api.importOpml(await file.text())));
+  const { dragging, zone } = useFileDrop({
+    accept: OPML_TYPES,
+    onFile: (file) => void importOpml(file),
+    onReject: () => setError(t("common.wrongFile")),
+    disabled: busy,
+  });
   const exportOpml = () => run(async () => t("feedsView.exportedOpml", { path: await api.exportOpml() }));
 
   // Several URLs, one per line: each is taken as a feed URL (TechFeed's per-channel feeds) and subscribed as is.
@@ -317,7 +329,7 @@ export function FeedsView({
   };
 
   return (
-    <main className="manage">
+    <main className={`manage${dragging ? " dropping" : ""}`} {...zone}>
       <div className="wrap">
         <header className="head">
           <div>
@@ -325,7 +337,7 @@ export function FeedsView({
             <p className="sub">{t("feedsView.sub", { length: feeds.length, relTime: relTime(newest, t) })}</p>
           </div>
           <div className="acts">
-            <label className="btn lg">
+            <label className="btn lg" title={t("common.dropOrPaste")}>
               <svg className="ico" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3v12M7 10l5 5 5-5" />
                 <path d="M4 19h16" />
@@ -334,7 +346,7 @@ export function FeedsView({
               <input
                 type="file"
                 className="vh"
-                accept=".opml,.xml"
+                accept={OPML_TYPES}
                 disabled={busy}
                 onChange={(e) => {
                   const file = e.target.files?.[0];

@@ -107,16 +107,16 @@ To save the page you are viewing in the Page view (the built-in browser), click 
 
 Open **Bulk import** from the ＋ at the top of the navigation (**Add articles**). The screen has three tabs: **URL list**, **Markdown** and **PDF**. Choose a collection in the **Collection** field above the tabs to put the imported articles in it.
 
-**URL list.** Reads any text that contains URLs: a plain list of URLs, bookmarks exported from a browser (HTML), CSV, JSON, or an export from another read-later service. Paste the text or choose a file, then click **Import**. Fetching runs in the background, and the screen reports how many URLs were new, already saved or invalid. Pages that fail to fetch do not stop the rest of the import.
+**URL list.** Reads any text that contains URLs: a plain list of URLs, bookmarks exported from a browser (HTML), CSV, JSON, or an export from another read-later service. Paste the text or choose a file (you can also drag and drop or paste the file), then click **Import**. Fetching runs in the background, and the screen reports how many URLs were new, already saved or invalid. Pages that fail to fetch do not stop the rest of the import.
 
-**Markdown.** Turns one Markdown file, or pasted text, into one article.
+**Markdown.** Turns one Markdown file, or pasted text, into one article. Besides choosing the file, you can drag and drop or paste it.
 
 - The title is the first level-1 heading (`# `). Without one, Lattice uses the file name or the first line.
-- Images with a web URL such as `https://` are downloaded and saved. Images with a relative path are read from the file's folder, only when you import from a file.
+- Images with a web URL such as `https://` are downloaded and saved. Images with a relative path are read from the file's folder, only with **Choose a file…**. When you drag and drop or paste, they show their alt text.
 - HTML tags are not imported.
 - There is no original web page, so the Page view is not available.
 
-**PDF.** Turns a PDF, such as a paper, into one article. Lattice reads the text in the PDF and rebuilds the reading order of two-column layouts, headings, figure and table captions, and references. A PDF without text data (a scan made only of images) cannot be imported.
+**PDF.** Turns a PDF, such as a paper, into one article. Lattice reads the text in the PDF and rebuilds the reading order of two-column layouts, headings, figure and table captions, and references. A PDF without text data (a scan made only of images) cannot be imported. Besides choosing the file, you can drag and drop or paste it.
 
 A PDF URL such as arXiv's `…/pdf/…` can be saved like any other URL, without this tab. PDFs in feeds are imported too.
 
@@ -174,7 +174,7 @@ The feed manager lists feeds by folder in the same order.
 
 #### Name and icon
 
-**Edit** in a feed's row lets you change its **Display name** and **Icon**. The icon can be a PNG, JPEG, GIF, WebP, SVG or ICO image of up to 1 MB. Without one, the site's icon is shown. **Revert** restores the feed's own name, and **Use the site's icon** restores the site's icon.
+**Edit** in a feed's row lets you change its **Display name** and **Icon**. The icon can be a PNG, JPEG, GIF, WebP, SVG or ICO image of up to 1 MB. Besides choosing the image, you can drag it onto the editor or paste it. Without one, the site's icon is shown. **Revert** restores the feed's own name, and **Use the site's icon** restores the site's icon.
 
 #### Import filters
 
@@ -199,7 +199,7 @@ Entries a filter skipped are kept under **Rejected entries**, with the reason.
 
 Use OPML to move feeds between Lattice and other feed readers.
 
-- **Import OPML** subscribes to the feeds in an OPML file. An outline element that contains feeds becomes a folder.
+- **Import OPML** subscribes to the feeds in an OPML file. An outline element that contains feeds becomes a folder. You can also drag the file onto the screen or paste it.
 - **Export OPML** writes the feed list, with its folders, to the `exports` folder.
 
 ### Pages that don't extract well
