@@ -17,6 +17,8 @@ interface Region {
   y1: number;
   size: number;
   text: string;
+  /** `text` with its superscripts and subscripts told apart. */
+  runs: { text: string; script: "sub" | "sup" | null }[];
   /** A heading's level. */
   level: number | null;
 }
@@ -222,7 +224,15 @@ function fit(el: HTMLElement) {
 function regionEl(r: Region, width: number, height: number) {
   const el = document.createElement("div");
   el.className = "region";
-  el.textContent = r.text;
+  for (const run of r.runs) {
+    if (run.script) {
+      const script = document.createElement(run.script);
+      script.textContent = run.text;
+      el.append(script);
+    } else {
+      el.append(run.text);
+    }
+  }
   Object.assign(el.style, {
     left: percent(r.x0, width),
     top: percent(r.y0, height),

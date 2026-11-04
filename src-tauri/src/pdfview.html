@@ -178,6 +178,11 @@
           "Yu Gothic UI",
           sans-serif;
       }
+      /* Lines stay evenly spaced around a script. */
+      .region sub,
+      .region sup {
+        line-height: 0;
+      }
       /* A paragraph still showing the original takes the pointer too, for its sentences' tooltips. */
       [data-lattice-on] .region:is([data-lattice-block="done"], [data-lattice-block="translating"], [data-lattice-block="failed"]) {
         pointer-events: auto;

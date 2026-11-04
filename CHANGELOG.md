@@ -31,6 +31,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - When an AI provider rate limited the Codex CLI, one call could take minutes. If another step is set up, Lattice now moves on to it without waiting, and returns to the Codex CLI once the limit is over. With no other step, it waits as before.
 - Choosing **Translated** in the Page view of a Japanese page left it in Japanese instead of showing the English.
 - The Page view now shows saved translations at once. Until now, sending them together with text that had none, such as a sidebar, left the article's text on "Translating…" until the AI provider answered. The same text also no longer goes to the AI provider several times.
+- A table in a PDF stays visible under the translation in the Page view. A row as wide as the page made the whole table count as text and hid it.
+- Text with a stacked superscript and subscript in a PDF stays one paragraph. It broke into overlapping pieces in the Page view.
+- Superscripts and subscripts in a PDF's text stay raised and lowered in its translation in the Page view. They used to run into the letters before them.
+- An appendix heading such as `A Paxos Leader-Lease Management` is now a heading, keeps its `A` in the translation and no longer merges with the text after it. To apply this to a saved PDF, use **Re-extract**.
 - A PDF's Page view now uses the saved translation for a paragraph broken across columns or pages. It used to translate them again. A part that ends in the middle of a sentence still goes to the AI provider, as before.
 
 ## [0.2.0] - 2026-10-30

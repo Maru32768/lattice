@@ -20,7 +20,7 @@ use ts_rs::TS;
 use crate::llm::{LlmError, LlmProvider};
 use crate::store::sha256_hex;
 
-pub const PROMPT_VERSION: &str = "segments-v3";
+pub const PROMPT_VERSION: &str = "segments-v4";
 
 /// Key suffix for the mode that also translates technical terms. The default mode (terms
 /// kept) uses the bare language tag, so rows cached by segments-v1, whose prompt already asked
@@ -239,6 +239,7 @@ Source and translation rules:
 - Preserve HTML tags in both source and translation
 - Tokens such as ⟦1⟧ are placeholders for images or icons. Do not translate them; keep each token unchanged at the corresponding position in source and translation
 - Keep the content of <code> elements, identifiers, commands, file names and URLs unchanged
+- Keep the label at the start of a section heading unchanged ("4.1", "A", "A.1", "IV."): a lone capital letter before a title is an appendix label, not an article
 {terms}
 - Translate each unit in the context of the entire snippet, and make the concatenated unit translations read naturally
 - Return the same number of blocks as input

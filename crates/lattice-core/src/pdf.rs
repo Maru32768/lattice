@@ -86,8 +86,40 @@ pub struct Region {
     pub y1: f64,
     pub size: f64,
     pub text: String,
+    /// `text` cut where a superscript or a subscript starts and ends.
+    pub runs: Vec<TextRun>,
     /// A heading's level, for the contents of a PDF that has no bookmarks.
     pub level: Option<u8>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TextRun {
+    pub text: String,
+    /// The element that sets it: `sub` or `sup`.
+    pub script: Option<&'static str>,
+}
+
+// Mark a line's scripts in the text that `piece_texts` cuts up. Noncharacters: no text holds them.
+const SUP: char = '\u{fdd0}';
+const SUB: char = '\u{fdd1}';
+const SCRIPT_END: char = '\u{fdd2}';
+
+/// A cut can fall inside a script: what follows it in the next piece then reads as plain text.
+fn text_runs(marked: &str) -> Vec<TextRun> {
+    let mut runs: Vec<TextRun> = Vec::new();
+    let mut script = None;
+    for c in marked.chars() {
+        match c {
+            SUP => script = Some("sup"),
+            SUB => script = Some("sub"),
+            SCRIPT_END => script = None,
+            c => match runs.last_mut() {
+                Some(run) if run.script == script => run.text.push(c),
+                _ => runs.push(TextRun { text: c.to_string(), script }),
+            },
+        }
+    }
+    runs
 }
 
 /// The blocks of `to_ir` with their places. A block that runs on across a column, a page or a figure
@@ -112,14 +144,13 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
 
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
 /// them would wreck the drawing. They are what is left as a paragraph with no full line and no
-/// punctuation to end it. The Reader keeps them, as text to search.
+/// punctuation to end it, or a line with cells across it. The Reader keeps them, as text to search.
 fn laid_out_text(d: &Draft) -> bool {
     let Some(last) = d.lines.last() else {
         return false;
     };
-    d.kind == Kind::Paragraph
-        && !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、'])
-        && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left))
+    let short = !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、']) && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left));
+    d.kind == Kind::Paragraph && (short || d.lines.iter().any(|l| l.tabular()))
 }
 
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
@@ -131,7 +162,7 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
     let mut breaks = Vec::new();
     for piece in pieces {
         for l in *piece {
-            join(&mut whole, &l.text, vocab);
+            join(&mut whole, &l.marked, vocab);
         }
         breaks.push(whole.len());
     }
@@ -196,6 +227,7 @@ fn word_break(text: &str, at: usize) -> usize {
 
 fn region(piece: &[&Line], text: String, level: Option<u8>) -> Option<Region> {
     let (first, last) = (piece.first()?, piece.last()?);
+    let runs = text_runs(collapse(&text).trim());
     Some(Region {
         page: first.page,
         x0: piece.iter().map(|l| l.x0).fold(f64::MAX, f64::min),
@@ -203,7 +235,8 @@ fn region(piece: &[&Line], text: String, level: Option<u8>) -> Option<Region> {
         x1: piece.iter().map(|l| l.x1).fold(f64::MIN, f64::max),
         y1: last.y + 0.3 * last.size,
         size: first.size,
-        text: collapse(&text).trim().to_string(),
+        text: runs.iter().map(|r| r.text.as_str()).collect(),
+        runs,
         level,
     })
 }
@@ -345,23 +378,39 @@ struct Line {
     y: f64,
     size: f64,
     text: String,
+    /// `text` with its scripts marked.
+    marked: String,
     side: Side,
     /// Left and right edges of the column the line is in.
     left: f64,
     right: f64,
+    /// Spaces too wide to be between words of prose: a justified line stretched those to 1.5 times
+    /// the font size in the papers measured, a table's cells start at 2.1.
+    wide_gaps: usize,
+}
+
+impl Line {
+    /// A table row, or an equation and its label. One wide gap in a line that runs to the column's
+    /// edge is a heading set in the paragraph's first line.
+    fn tabular(&self) -> bool {
+        self.wide_gaps > 1 || self.wide_gaps == 1 && self.x1 < self.right - 0.5 * self.size
+    }
 }
 
 /// Glyphs in content order -> lines: a new line where the baseline moves, the pen jumps back
-/// left, or it jumps the gutter in the middle of the page (columns written row by row).
+/// left, or it jumps the gutter in the middle of the page (columns written row by row). A script
+/// is measured from the letter it belongs to: `e` with both a superscript and a subscript moves
+/// further up and down than a line break would, and returns left to set the second under the first.
 fn page_lines(page: usize, p: &Page) -> Vec<Line> {
     let mid = p.width / 2.;
     let mut groups: Vec<Vec<&Glyph>> = Vec::new();
     for g in &p.glyphs {
-        let new_line = match groups.last().and_then(|l| l.last()) {
+        let new_line = match groups.last().and_then(|l| Some((l.last()?, *l.iter().rev().find(|x| !is_script(x, l))?))) {
             None => true,
-            Some(prev) => {
+            Some((prev, letter)) => {
                 let size = prev.size.max(g.size);
-                (g.y - prev.y).abs() > 0.6 * size || g.x < prev.x - size || (prev.end < mid && g.x > mid && g.x - prev.end > 1.5 * size)
+                let back = g.x < prev.x - size && (g.x < letter.x || g.size >= SCRIPT * letter.size);
+                (g.y - letter.y).abs() > 0.6 * letter.size.max(g.size) || back || (prev.end < mid && g.x > mid && g.x - prev.end > 1.5 * size)
             }
         };
         match groups.last_mut() {
@@ -372,28 +421,14 @@ fn page_lines(page: usize, p: &Page) -> Vec<Line> {
     groups.iter().filter_map(|g| line(page, g)).collect()
 }
 
+/// A glyph this much smaller than the line's largest is a superscript or a subscript.
+const SCRIPT: f64 = 0.85;
+
+fn is_script(g: &Glyph, line: &[&Glyph]) -> bool {
+    g.size < SCRIPT * line.iter().map(|x| x.size).fold(0., f64::max)
+}
+
 fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
-    let mut text = String::new();
-    let mut prev: Option<&Glyph> = None;
-    let mut space = false;
-    for &g in glyphs {
-        if g.text.trim().is_empty() {
-            space = true;
-            continue;
-        }
-        if let Some(p) = prev
-            && (space || g.x > p.end + 0.15 * p.size.min(g.size))
-        {
-            text.push(' ');
-        }
-        space = false;
-        push_clean(&mut text, &g.text);
-        prev = Some(g);
-    }
-    let text = collapse(&text).trim().to_string();
-    if text.is_empty() {
-        return None;
-    }
     let ink: Vec<&&Glyph> = glyphs.iter().filter(|g| !g.text.trim().is_empty()).collect();
     // The size most of the line is set in: superscripts and inline symbols don't count.
     let mut sizes: HashMap<i64, usize> = HashMap::new();
@@ -402,9 +437,57 @@ fn line(page: usize, glyphs: &[&Glyph]) -> Option<Line> {
     }
     let main = sizes.iter().max_by_key(|(k, n)| (**n, **k)).map(|(k, _)| *k)?;
     let base = ink.iter().find(|g| (g.size * 10.).round() as i64 == main)?;
+    let script_of = |g: &Glyph| match () {
+        _ if g.size >= SCRIPT * base.size => None,
+        _ if g.y < base.y - 0.1 * base.size => Some(SUP),
+        _ if g.y > base.y + 0.1 * base.size => Some(SUB),
+        _ => None,
+    };
+    let mut text = String::new();
+    let mut marked = String::new();
+    let mut open = None;
+    let mut prev: Option<&Glyph> = None;
+    let mut space = false;
+    let mut gaps = Vec::new();
+    let mut reach = f64::MIN;
+    for &g in glyphs {
+        if g.text.trim().is_empty() {
+            space = true;
+            continue;
+        }
+        let script = script_of(g);
+        if open.is_some() && open != script {
+            marked.push(SCRIPT_END);
+        }
+        if let Some(p) = prev {
+            gaps.push(g.x - reach);
+            if space || g.x > p.end + 0.15 * p.size.min(g.size) {
+                text.push(' ');
+                marked.push(' ');
+            }
+        }
+        if let Some(mark) = script.filter(|_| open != script) {
+            marked.push(mark);
+        }
+        open = script;
+        reach = reach.max(g.end);
+        space = false;
+        push_clean(&mut text, &g.text);
+        push_clean(&mut marked, &g.text);
+        prev = Some(g);
+    }
+    if open.is_some() {
+        marked.push(SCRIPT_END);
+    }
+    let text = collapse(&text).trim().to_string();
+    if text.is_empty() {
+        return None;
+    }
+    let marked = collapse(&marked).trim().to_string();
     let x0 = ink.iter().map(|g| g.x).fold(f64::MAX, f64::min);
     let x1 = ink.iter().map(|g| g.end).fold(f64::MIN, f64::max);
-    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, side: Side::Full, left: x0, right: x1 })
+    let wide_gaps = gaps.iter().filter(|&&gap| gap > 1.8 * main as f64 / 10.).count();
+    Some(Line { page, x0, x1, y: base.y, size: main as f64 / 10., text, marked, side: Side::Full, left: x0, right: x1, wide_gaps })
 }
 
 /// Ligatures as letters; soft hyphens and control characters as nothing.
@@ -598,6 +681,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 Kind::Heading(_) => flows && (prev.size - l.size).abs() < 0.3 && (l.size >= body * 1.1 || prev.x1 >= prev.right - 3. * prev.size),
                 Kind::Caption => flows && (prev.size - l.size).abs() < 0.3,
                 Kind::Item => flows && l.x0 > first.x0 + 0.3 * l.size,
+                // A table's widest row would carry the short ones past `laid_out_text`.
+                Kind::Paragraph if prev.tabular() || l.tabular() => false,
                 Kind::Paragraph if (prev.size - l.size).abs() > 0.15 * prev.size.max(l.size) => false,
                 Kind::Paragraph if flows => {
                     let indented = l.x0 > prev.x0 + 0.8 * l.size;
@@ -637,7 +722,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
 /// and the stray labels around a figure: the paragraph it continues, if one before them is
 /// unfinished.
 fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
-    if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size {
+    if !l.text.starts_with(char::is_lowercase) || l.x0 > l.left + 0.8 * l.size || l.tabular() {
         return None;
     }
     let float = |d: &Draft| d.kind == Kind::Caption || d.kind == Kind::Paragraph && d.lines.iter().all(|x| x.size < body * 0.95);
@@ -648,10 +733,10 @@ fn interrupted(drafts: &[Draft], l: &Line, body: f64) -> Option<usize> {
     (unfinished && skipped.iter().any(|d| float(d))).then_some(i)
 }
 
-/// A short line on its own with no full stop: a figure's label, or an equation.
+/// A short line on its own with no full stop, or one with cells: a figure's label, or an equation.
 fn fragment(d: &Draft) -> bool {
     let l = d.lines[0];
-    d.kind == Kind::Paragraph && d.lines.len() == 1 && l.x1 - l.x0 < 0.6 * (l.right - l.left) && !l.text.ends_with(['.', '!', '?', ':'])
+    d.kind == Kind::Paragraph && d.lines.len() == 1 && (l.tabular() || l.x1 - l.x0 < 0.6 * (l.right - l.left) && !l.text.ends_with(['.', '!', '?', ':']))
 }
 
 /// Drops the fragments next to a figure caption: labels drawn as page text, not inside the figure.
@@ -777,7 +862,9 @@ fn section_level(l: &Line, body: f64) -> Option<u8> {
         return None;
     }
     let (first, rest) = t.split_once(' ').unwrap_or((t, ""));
-    if let Some(depth) = section_number(first) {
+    // "A Paxos leader" also opens a sentence: an appendix's bare letter counts only when set larger.
+    let appendix = l.size >= body * 1.15 && first.len() == 1 && first.chars().all(|c| c.is_ascii_uppercase());
+    if let Some(depth) = section_number(first).or(appendix.then_some(1)) {
         let rest = rest.trim();
         let letters = rest.chars().filter(|c| c.is_alphabetic()).count();
         let digits = rest.chars().filter(char::is_ascii_digit).count();
@@ -1117,6 +1204,94 @@ pub(crate) mod tests {
         assert!(texts.iter().any(|t| t.starts_with("This short line")), "{texts:?}");
         assert!(!texts.iter().any(|t| t.contains("CPU1") || t.contains("Southbridge") || t.contains("133MHz")), "{texts:?}");
         assert!(to_ir(&bytes, None).unwrap().blocks.iter().any(|b| b.text.contains("133MHz")), "the Reader keeps the table text");
+    }
+
+    /// Two columns of prose, so the page reads as a two-column one.
+    fn columns() -> Vec<Run<'static>> {
+        (0..12)
+            .flat_map(|i| {
+                let y = 300. + 12. * i as f64;
+                [(L, y, 10., "Some prose that runs along the whole of its column,"), (R, y, 10., "and more prose running along the whole of its one,")]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn regions_leave_out_a_table_whose_rows_span_the_band() {
+        let mut page: Vec<Run> = vec![
+            (120., 100., 9., "Read-Only Transaction"),
+            (300., 100., 9., "lock-free"),
+            (400., 100., 9., "leader for timestamp; any for"),
+            (400., 111., 9., "read, subject to 4.1.3"),
+            (120., 122., 9., "Snapshot Read, client-provided timestamp"),
+            (345., 122., 9., "lock-free"),
+            (400., 122., 9., "any, subject to 4.1.3"),
+            (120., 133., 9., "Snapshot Read, client-provided bound"),
+            (345., 133., 9., "lock-free"),
+            (400., 133., 9., "any, subject to 4.1.3"),
+            (179., 160., 9., "Table 2: Types of reads and writes, and how they compare."),
+        ];
+        page.extend(columns());
+        let bytes = pdf(&[page], None);
+        let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
+        assert!(texts.iter().any(|t| t.starts_with("Table 2")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("Some prose")), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.contains("lock-free") || t.contains("subject to") || t.contains("Snapshot")), "{texts:?}");
+        assert!(to_ir(&bytes, None).unwrap().blocks.iter().any(|b| b.text.contains("Snapshot Read")), "the Reader keeps the table text");
+    }
+
+    #[test]
+    fn a_heading_set_in_a_paragraphs_first_line_is_not_a_table_row() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "Single Threaded Access"),
+            (L + 130., 100., 10., "The simplest case is a walk"),
+            (L, 112., 10., "over all of the entries in the list, which are"),
+            (L, 124., 10., "laid out in a row one after another in memory."),
+        ];
+        let r = regions(&pdf(&[page], None)).unwrap();
+        assert_eq!(r.len(), 1, "{:?}", r.iter().map(|x| &x.text).collect::<Vec<_>>());
+        assert!(r[0].text.starts_with("Single Threaded Access The simplest") && r[0].text.ends_with("in memory."), "{}", r[0].text);
+    }
+
+    #[test]
+    fn stacked_scripts_stay_on_their_line() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "Each replica grants a lease at lease e"),
+            (L + 164., 96.4, 7., "grant"),
+            (L + 164., 103., 7., "i,r"),
+            (L + 182., 100., 10., ", after it"),
+            (L, 112., 10., "receives a lease request from the leader of it."),
+        ];
+        let bytes = pdf(&[page], None);
+        let r = regions(&bytes).unwrap();
+        assert_eq!(r.len(), 1, "{:?}", r.iter().map(|x| &x.text).collect::<Vec<_>>());
+        assert!(r[0].text.starts_with("Each replica") && r[0].text.contains(", after it receives"), "{}", r[0].text);
+        assert_eq!((r[0].y0, r[0].y1), (90., 115.));
+        let scripts: Vec<_> = r[0].runs.iter().filter_map(|run| run.script.map(|s| (s, run.text.as_str()))).collect();
+        assert_eq!(scripts, [("sup", "grant"), ("sub", "i,r")]);
+        assert_eq!(r[0].runs.iter().map(|run| run.text.as_str()).collect::<String>(), r[0].text, "the runs add up to the text");
+        let ir = to_ir(&bytes, None).unwrap();
+        assert!(ir.blocks[0].text.contains("granti,r"), "the Reader's text stays plain: {}", ir.blocks[0].text);
+    }
+
+    #[test]
+    fn an_appendix_heading_filling_its_column_ends_the_references() {
+        let page: Vec<Run> = vec![
+            (L, 100., 8., "[1] A. Author. A study of reading in columns. 2020."),
+            (L, 130., 12., "A Paxos Leader-Lease Management"),
+            (L, 150., 10., "The simplest means to ensure the disjointness is a"),
+            (L, 162., 10., "write of the lease interval each time it is extended,"),
+            (L, 174., 10., "and a later leader reads it and waits until it ends."),
+            (L, 198., 10., "A Paxos leader keeps a lower bound on the lease."),
+        ];
+        let mut all = vec![(L, 80., 12., "References")];
+        all.extend(page);
+        let ir = to_ir(&pdf(&[all], None), None).unwrap();
+        let heading = ir.blocks.iter().find(|b| b.text.starts_with("A Paxos Leader")).expect("the heading");
+        assert_eq!((heading.kind.as_str(), heading.text.as_str(), heading.attrs.level), ("heading", "A Paxos Leader-Lease Management", Some(2)));
+        let simple = ir.blocks.iter().find(|b| b.text.starts_with("The simplest")).expect("the paragraph");
+        assert_eq!(simple.kind.as_str(), "paragraph");
+        assert!(ir.blocks.iter().any(|b| b.kind.as_str() == "paragraph" && b.text.starts_with("A Paxos leader")), "a sentence at body size is no heading");
     }
 
     #[test]

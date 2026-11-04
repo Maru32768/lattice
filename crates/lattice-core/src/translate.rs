@@ -232,11 +232,25 @@ pub fn enqueue(store: &Store, article_id: i64, target: &Target) -> Result<(), St
 pub fn saved_units(store: &Store, article: Option<i64>, snippets: &[String], key: &str) -> Result<HashMap<String, Vec<Unit>>, String> {
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut found = store.cached_segments(&hashes, key).map_err(|e| e.to_string())?;
-    let Some(article) = article.filter(|_| hashes.iter().any(|h| !found.contains_key(h))) else {
+    let Some(article) = article else {
         return Ok(found);
     };
+    // A PDF's blocks are plain text. Their units, saved under a snippet's hash too since it ignores
+    // tags, would flatten the snippet's scripts into its letters: those go to the model once more.
+    let scripted = |html: &str| html.contains("<sub>") || html.contains("<sup>");
+    for (snippet, hash) in snippets.iter().zip(&hashes) {
+        if scripted(snippet) && found.get(hash).is_some_and(|units| !units.iter().any(|u| scripted(&u.source))) {
+            found.remove(hash);
+        }
+    }
+    if hashes.iter().all(|h| found.contains_key(h)) {
+        return Ok(found);
+    }
     let blocks = store.translated_blocks(article, key).map_err(|e| e.to_string())?;
     for (snippet, hash) in snippets.iter().zip(hashes) {
+        if scripted(snippet) {
+            continue;
+        }
         if let Entry::Vacant(slot) = found.entry(hash) {
             let piece = segments::plain_text(snippet);
             if let Some(units) = blocks.iter().filter(|(text, _)| text.contains(&piece)).find_map(|(_, units)| units_of_piece(units, &piece)) {
@@ -574,6 +588,16 @@ mod tests {
         assert_eq!(sources("sentence here. Two", Some(id), &key), None, "a piece that cuts through a sentence has no translation of its own");
         assert_eq!(sources("Two sentences here.", None, &key), None, "pieces are looked for in the page's article only");
         assert_eq!(sources("Two sentences here.", Some(id), "en"), None, "nor under another target");
+        assert_eq!(sources("Two sen<sub>tences</sub> here.", Some(id), &key), None, "plain units would lose a script");
+        assert_eq!(
+            sources("One sen<sup>tence</sup> here. Two sentences here. Three sentences here.", Some(id), &key),
+            None,
+            "even under the snippet's own hash"
+        );
+        let scripted = "One sen<sup>tence</sup> here. Two sentences here. Three sentences here.";
+        let units = [Unit { source: scripted.to_string(), translation: "x".to_string() }];
+        s.insert_segments(&key, PROMPT_VERSION, &[(segments::source_hash(scripted).as_str(), &units[..], "fake", None)]).unwrap();
+        assert_eq!(sources(scripted, Some(id), &key).unwrap().len(), 1, "a translation made with the scripts is kept");
     }
 
     #[tokio::test]
