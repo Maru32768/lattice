@@ -221,7 +221,7 @@ A saved article can be read in two views. Switch with **Reader** and **Page** at
 - The **Reader** shows the text extracted from the page, with headings, lists, code, tables and saved images. It never loads anything from the web to show it.
 - The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader.
 
-Imported Markdown has no original web page, so it has no Page view. The Page view of a PDF opens the saved original in a PDF viewer. This works offline, for a PDF imported from a file and for one saved from a URL. Check figures and equations here. Translation and saving words are not available in the PDF viewer.
+Imported Markdown has no original web page, so it has no Page view. The Page view of a PDF shows the saved original. This works offline, for a PDF imported from a file and for one saved from a URL. Check figures and equations here. **Mixed** and **Translated** draw the translation over the original's paragraphs. Zoom with `Ctrl`+wheel or `Ctrl`+`+`/`-`/`0`.
 
 **The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, **Note**, focus mode and the ⋯ menu. The ⋯ menu has:
 

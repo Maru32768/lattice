@@ -1230,27 +1230,58 @@ async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
     r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&app)).await
 }
 
-/// A saved PDF for the Page tab `browser_open` opened it in, so the original opens offline and for a
-/// file with no URL. WebView2's own viewer draws it, in a webview that holds only the overlay's commands.
+const PDF_VIEWER_HTML: &str = include_str!("pdfview.html");
+const PDF_VIEWER_JS: &str = include_str!("../pdfview-dist/viewer.js");
+const PDF_WORKER_JS: &str = include_str!("../pdfview-dist/pdf.worker.js");
+/// pdf.js runs here with the PDF's untrusted data: nothing but this origin's scripts, and no way out but the overlay's IPC.
+const PDF_VIEWER_CSP: &str = "default-src 'none'; script-src 'self'; worker-src 'self'; style-src 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost";
+
+/// The Page view of a saved PDF, so the original opens offline and for a file with no URL: `/<id>` the
+/// viewer (`src/pdfview`), `/<id>/file` the PDF, `/<id>/layout` where its text is. Only for the tab `browser_open` opened it in.
 fn saved_pdf(handle: &tauri::AppHandle, label: &str, path: &str) -> tauri::http::Response<Vec<u8>> {
     let status = |code: u16| tauri::http::Response::builder().status(code).body(Vec::new()).unwrap_or_default();
-    let Some(id) = browser::pdf_path(path) else {
+    let ok = |content_type: &str, body: Vec<u8>| {
+        tauri::http::Response::builder()
+            .header("Content-Type", content_type)
+            .header("Cross-Origin-Resource-Policy", "same-origin")
+            .header("Content-Security-Policy", PDF_VIEWER_CSP)
+            .body(body)
+            .unwrap_or_else(|_| status(500))
+    };
+    if !browser::is_browser(label) {
+        return status(403);
+    }
+    match path {
+        "/assets/viewer.js" => return ok("text/javascript", PDF_VIEWER_JS.into()),
+        "/assets/pdf.worker.js" => return ok("text/javascript", PDF_WORKER_JS.into()),
+        _ => {}
+    }
+    let (article, part) = path.rfind('/').filter(|&i| i > 0).map_or((path, ""), |i| path.split_at(i));
+    let Some(id) = browser::pdf_path(article) else {
         return status(404);
     };
     if !handle.state::<Browser>().pdf_allowed(label, id) {
         return status(403);
     }
-    match handle.state::<App>().store.latest_snapshot(id) {
-        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => tauri::http::Response::builder()
-            .header("Content-Type", pdf::CONTENT_TYPE)
-            .header("Cross-Origin-Resource-Policy", "same-origin")
-            .body(s.body)
-            .unwrap_or_else(|_| status(500)),
-        Ok(_) => status(404),
+    if part.is_empty() {
+        return ok("text/html; charset=utf-8", PDF_VIEWER_HTML.into());
+    }
+    let bytes = match handle.state::<App>().store.latest_snapshot(id) {
+        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => s.body,
+        Ok(_) => return status(404),
         Err(e) => {
             log::warn!("reading the PDF of article {id}: {e}");
-            status(500)
+            return status(500);
         }
+    };
+    match part {
+        "/file" => ok(pdf::CONTENT_TYPE, bytes),
+        "/layout" => match pdf::regions(&bytes).map(|r| serde_json::to_vec(&r)) {
+            Ok(Ok(json)) => ok("application/json", json),
+            // The article may hold a PDF with no readable text: the viewer draws it all the same.
+            _ => status(404),
+        },
+        _ => status(404),
     }
 }
 

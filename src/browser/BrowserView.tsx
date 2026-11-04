@@ -377,7 +377,7 @@ export function BrowserView({
   }, [id]);
 
   const { url, loading } = tab;
-  // A saved PDF's address means nothing to the user, and nothing here translates or re-saves the viewer's page.
+  // A saved PDF's address means nothing to the user, and its viewer's page is not one to save.
   const pdf = isPdfPage(url);
   const shownUrl = !pdf ? url : saved && !isLocal(saved.original_url) ? saved.original_url : t("browserView.savedPdf");
   const shown = saved && view && act && view.article.id === saved.id ? view : null;
@@ -387,12 +387,8 @@ export function BrowserView({
       <div className="docbar pg">
         <ViewSeg page onReader={onReader} onPage={() => {}} readerDisabled={!saved} />
         <div className="vsep" />
-        {!pdf && (
-          <>
-            <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
-            <div className="vsep" />
-          </>
-        )}
+        <LangSeg mode={lang.mode} percent={lang.percent} onChange={(mode, percent) => onLang({ mode, percent })} label={t("browserView.translate")} />
+        <div className="vsep" />
         <button
           className="ib"
           onClick={() => browser.go(id, "back")}

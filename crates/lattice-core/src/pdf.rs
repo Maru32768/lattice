@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pdf_extract::{Document, MediaBox, Object, OutputDev, OutputError, Transform};
+use serde::Serialize;
 
 use crate::extract::collapse;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
@@ -62,15 +63,7 @@ fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
 /// else `fallback`, else the first line.
 pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
-    let mut lines = Vec::new();
-    for (i, page) in doc.pages.iter().enumerate() {
-        lines.push(page_lines(i, page));
-    }
-    drop_running_lines(&mut lines, &doc.pages);
-    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
-    let body = body_size(&lines);
-    let half = doc.pages.first().map_or(0., |p| p.height / 2.);
-    let front = take_front_matter(&mut lines, body, half);
+    let (lines, body, front) = lay_out(&doc);
     let blocks = to_blocks(&lines, body);
     if blocks.is_empty() {
         return Err(msg!("pdf.noText"));
@@ -80,6 +73,62 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
     let title = front.title.or(doc.title.filter(|t| reads_like_title(t))).or_else(|| fallback.and_then(non_empty)).or_else(first_line);
     let author = front.author.or(doc.author.filter(|a| a.contains(' ')));
     Ok(ArticleIr { meta: ArticleMeta { title, author, published_at: doc.created, ..Default::default() }, blocks })
+}
+
+/// Where a run of body text sits on its page, in points from the page's top left, for the Page
+/// view to draw its translation over the original.
+#[derive(Debug, Serialize)]
+pub struct Region {
+    pub page: usize,
+    pub x0: f64,
+    pub y0: f64,
+    pub x1: f64,
+    pub y1: f64,
+    pub size: f64,
+    pub text: String,
+}
+
+/// The blocks of `to_ir` with their places. A block that runs on across a column, a page or a figure
+/// becomes one region per piece, each translated on its own.
+// shortcut: a sentence broken across pieces is translated as two fragments, and differs from the Reader's translation; give pieces a shared block if that reads badly.
+pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
+    let doc = read(bytes)?;
+    let (lines, body, _) = lay_out(&doc);
+    let vocab = vocabulary(&lines);
+    let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
+    Ok(drafts(&lines, body).iter().flat_map(|d| d.lines.chunk_by(run_on)).filter_map(|piece| region(piece, &vocab)).collect())
+}
+
+fn region(piece: &[&Line], vocab: &HashSet<String>) -> Option<Region> {
+    let (first, last) = (piece.first()?, piece.last()?);
+    let mut text = String::new();
+    for l in piece {
+        join(&mut text, &l.text, vocab);
+    }
+    Some(Region {
+        page: first.page,
+        x0: piece.iter().map(|l| l.x0).fold(f64::MAX, f64::min),
+        y0: first.y - first.size,
+        x1: piece.iter().map(|l| l.x1).fold(f64::MIN, f64::max),
+        y1: last.y + 0.3 * last.size,
+        size: first.size,
+        text: collapse(&text).trim().to_string(),
+    })
+}
+
+/// The document's lines in reading order, without running headers, the size of its body text, and
+/// the front matter taken off the first page.
+fn lay_out(doc: &Parsed) -> (Vec<Line>, f64, Front) {
+    let mut lines = Vec::new();
+    for (i, page) in doc.pages.iter().enumerate() {
+        lines.push(page_lines(i, page));
+    }
+    drop_running_lines(&mut lines, &doc.pages);
+    let mut lines: Vec<Line> = lines.into_iter().zip(&doc.pages).flat_map(|(l, p)| order(l, p.width)).collect();
+    let body = body_size(&lines);
+    let half = doc.pages.first().map_or(0., |p| p.height / 2.);
+    let front = take_front_matter(&mut lines, body, half);
+    (lines, body, front)
 }
 
 struct Glyph {
@@ -422,6 +471,10 @@ struct Draft<'a> {
 
 fn to_blocks(lines: &[Line], body: f64) -> Vec<Block> {
     let vocab = vocabulary(lines);
+    drafts(lines, body).into_iter().filter_map(|d| block(d, &vocab)).collect()
+}
+
+fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
     let pitch = pitch(lines, body);
     let mut drafts: Vec<Draft> = Vec::new();
     let mut refs: Option<RefStyle> = None;
@@ -485,7 +538,7 @@ fn to_blocks(lines: &[Line], body: f64) -> Vec<Block> {
         }
     }
     drop_figure_labels(&mut drafts);
-    drafts.into_iter().filter_map(|d| block(d, &vocab)).collect()
+    drafts
 }
 
 /// A line that carries on a sentence (lowercase, not indented) after a caption or a footnote,
@@ -913,6 +966,21 @@ pub(crate) mod tests {
         );
         let levels: Vec<_> = ir.blocks.iter().filter_map(|b| b.attrs.level).collect();
         assert_eq!(levels, [2, 2, 3, 2, 2]);
+    }
+
+    #[test]
+    fn regions_place_the_blocks_and_split_those_broken_across_columns_and_figures() {
+        let r = regions(&paper()).unwrap();
+        let at = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}"));
+        let abs = at("We study");
+        assert_eq!(abs.page, 0);
+        assert!(abs.text.ends_with("representation of columns."), "lines joined as in the block: {}", abs.text);
+        assert_eq!((abs.x0, abs.y0, abs.y1), (L, 155., 216.), "from the top of the first line to below the last");
+        assert!(abs.x1 > L && abs.x1 < R);
+        assert_eq!(at("Most papers").x0, L, "the paragraph's left column");
+        assert_eq!(at("reading order").x0, R, "and its right column");
+        assert!(at("A paragraph that runs").y1 < at("figure before").y0, "the figure between the pieces stays uncovered");
+        assert_eq!(at("figure before").page, 2);
     }
 
     #[test]

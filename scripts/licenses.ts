@@ -21,21 +21,24 @@ export interface NpmPackage {
 /** Production packages, grouped later by identical text. */
 export function npmPackages(root: string): NpmPackage[] {
   const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as {
-    packages: Record<string, { dev?: boolean; devOptional?: boolean; version: string; license: string }>;
+    packages: Record<string, { dev?: boolean; devOptional?: boolean; optional?: boolean; version: string; license: string }>;
   };
-  return Object.entries(lock.packages)
-    .filter(([path, p]) => path.startsWith("node_modules/") && !p.dev && !p.devOptional)
-    .map(([path, p]) => {
-      const name = path.slice("node_modules/".length);
-      const dir = join(root, SIBLING[name] ? `node_modules/${SIBLING[name]}` : path);
-      // LICENSE, LICENSE.txt, or one file per license of a dual license (LICENSE-MIT, LICENSE-APACHE-2.0).
-      const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^licen[cs]e(-[\w.-]+)?(\.(md|txt))?$/i.test(f)) : [];
-      if (!files.length) {
-        throw new Error(`no license file in ${path}; run npm install, or add the text by hand`);
-      }
-      const text = files.map((f) => readFileSync(join(dir, f), "utf8").trim()).join("\n\n");
-      return { name, version: p.version, license: p.license, text };
-    });
+  return (
+    Object.entries(lock.packages)
+      // Optional ones are not bundled: pdf.js's @napi-rs/canvas is for Node, one package per platform, most never installed.
+      .filter(([path, p]) => path.startsWith("node_modules/") && !p.dev && !p.devOptional && !p.optional)
+      .map(([path, p]) => {
+        const name = path.slice("node_modules/".length);
+        const dir = join(root, SIBLING[name] ? `node_modules/${SIBLING[name]}` : path);
+        // LICENSE, LICENSE.txt, or one file per license of a dual license (LICENSE-MIT, LICENSE-APACHE-2.0).
+        const files = existsSync(dir) ? readdirSync(dir).filter((f) => /^licen[cs]e(-[\w.-]+)?(\.(md|txt))?$/i.test(f)) : [];
+        if (!files.length) {
+          throw new Error(`no license file in ${path}; run npm install, or add the text by hand`);
+        }
+        const text = files.map((f) => readFileSync(join(dir, f), "utf8").trim()).join("\n\n");
+        return { name, version: p.version, license: p.license, text };
+      })
+  );
 }
 
 export function renderNpm(packages: NpmPackage[]): string {

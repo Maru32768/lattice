@@ -25,7 +25,7 @@ mise exec -- node --test src/chat/chat.test.ts          # frontend unit tests ar
 mise exec -- npx playwright test e2e/reader.spec.ts -g "<title>"
 ```
 
-- `src-tauri` embeds `src-tauri/overlay-dist/overlay.js` via `include_str!`, so run `npm run build:overlay` before building/clippy-ing the Tauri crate (`mise run lint` and `npm run dev` do it).
+- `src-tauri` embeds `src-tauri/overlay-dist/overlay.js` and `src-tauri/pdfview-dist/*` via `include_str!`, so run `npm run build:overlay` before building/clippy-ing the Tauri crate (`mise run lint` and `npm run dev` do it).
 - E2E specs read the Japanese UI (locale `ja-JP`); only `e2e/english.spec.ts` runs in English. Set `E2E_PORT` when several checkouts run the suite at once.
 - If `lattice.exe` is running it locks the build output; stopping it is fine.
 - Debug app and CLI builds use `%APPDATA%\Lattice Dev`; release builds use `%APPDATA%\Lattice`. Release and development libraries remain separate; older identifier-based folders are not migrated automatically. Saved data-folder selections, WebView2 profiles, caches, and logs are separate. GUI logs use `%LOCALAPPDATA%\Lattice Dev\logs` in debug and `%LOCALAPPDATA%\Lattice\logs` in release, including with custom libraries; old logs are preserved. Tauri identifiers use dev.marulabs.lattice; browser profiles are separate for each build. Portable logs stay in `data/logs`. Portable mode and CLI `--data-dir` overrides use their selected locations.
@@ -38,7 +38,7 @@ Cargo workspace with three crates plus the React frontend:
 - **LLM boundary** — `llm.rs` defines `LlmProvider`; adapters (`claude.rs`/`codex.rs` drive the user's logged-in CLIs, `openai.rs`/`gemini.rs`/`anthropic.rs` are APIs) only move JSON in and out against a JSON schema. `chain.rs` is a runtime-swappable fallback chain of up to three (provider, model) entries with cooldown. Domain code builds prompts and validates results.
 - **`crates/lattice-cli`** — `lattice-cli` and its MCP server (`mcp.rs`), built on `lattice-core` alone.
 - **`src-tauri`** — `lib.rs` holds the Tauri commands and starts the job runners; `browser.rs` is the in-app browser (child webviews `browser-<tab>`), `renderer.rs` a hidden webview that renders JS-built pages, `popout.rs`/`tabdrag.rs` the pop-out windows and cross-window tab dragging. Backend → UI updates are Tauri events (`article-changed`, `feeds-changed`, `vocab-changed`, `favicon-changed`, …).
-- **`src`** — React frontend, one folder per feature; `app/` is the shell (state hooks `use*.ts`), `layout/` the tabs/split panes, `api.ts` the typed IPC client mirroring the Rust serde types. `src/overlay` is a separate IIFE bundle (`vite.overlay.config.ts`) injected into remote pages in the in-app browser.
+- **`src`** — React frontend, one folder per feature; `app/` is the shell (state hooks `use*.ts`), `layout/` the tabs/split panes, `api.ts` the typed IPC client mirroring the Rust serde types. `src/overlay` is a separate IIFE bundle (`vite.overlay.config.ts`) injected into remote pages in the in-app browser; `src/pdfview` is the pdf.js viewer the Page view serves for a saved PDF (`vite.pdfview.config.ts`, `saved_pdf` in `lib.rs`).
 
 ### Adding or changing a Tauri command
 

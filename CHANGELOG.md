@@ -14,7 +14,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The import screen's files (URL list, Markdown, PDF), OPML and feed icons can also be dragged and dropped or pasted, besides being chosen. Relative images in Markdown are still read only with **Choose a file…**.
 - `y` opens and closes the summary. In the Page view it shows the whole summary above the page, and pressing it again gives the page its full height back. Change the key in Settings › Shortcuts.
 - **Settings › Logs & storage** has an **Open folder** button for the log folder too.
-- The Page view of a PDF opens the saved original in a PDF viewer. It works for a PDF imported from a file too, and offline.
+- The Page view of a PDF shows the saved original. It works for a PDF imported from a file too, and offline. **Mixed** and **Translated** draw the translation over the original's paragraphs.
 
 ### Changed
 

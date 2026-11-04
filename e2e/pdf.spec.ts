@@ -23,7 +23,7 @@ test("a PDF picked on the import screen opens in the Reader, and Page shows the 
   const tab = app.getByRole("tab", { name: /Reading Order in Two Column Papers/ });
   await expect(tab).toBeVisible();
   await expect(app.getByRole("button", { name: /保存したPDF/ })).toBeVisible();
-  await expect(app.getByRole("group", { name: "このページを翻訳" })).toHaveCount(0);
+  await expect(app.getByRole("group", { name: "このページを翻訳" })).toBeVisible();
 
   await app.getByRole("button", { name: /^その他/ }).click();
   await expect(app.getByRole("menuitem", { name: "再抽出(保存済みのPDFから)" })).toBeVisible();
