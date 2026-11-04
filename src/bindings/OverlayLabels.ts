@@ -19,4 +19,8 @@ outline: string,
 /**
  * The PDF viewer's button on each page.
  */
-translate_page: string, retranslate_page: string, };
+translate_page: string, retranslate_page: string, 
+/**
+ * The PDF viewer's word when it cannot open the file.
+ */
+pdf_failed: string, };

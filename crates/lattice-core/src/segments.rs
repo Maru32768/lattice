@@ -261,9 +261,26 @@ pub fn reconcile(raw: &Value, expected: &[usize]) -> Vec<Option<Vec<Unit>>> {
                 return None;
             }
             let units: Vec<Unit> = serde_json::from_value(first?["sentences"].clone()).ok()?;
-            (!units.is_empty()).then_some(units)
+            units.iter().any(keeps_atoms).then_some(units)
         })
         .collect()
+}
+
+/// Whether a unit's translation still has its source's ⟦n⟧ tokens. The overlay shows none that lost one,
+/// so a block with no other unit would fail each time it is served from the cache.
+fn keeps_atoms(unit: &Unit) -> bool {
+    let mut rest = unit.source.as_str();
+    while let Some(start) = rest.find('⟦') {
+        let Some(end) = rest[start..].find('⟧') else {
+            return true;
+        };
+        let token = &rest[start..start + end + '⟧'.len_utf8()];
+        if !unit.translation.contains(token) {
+            return false;
+        }
+        rest = &rest[start + token.len()..];
+    }
+    true
 }
 
 /// The units' translations as one text. Unit sources carry the spaces between sentences, but
@@ -545,6 +562,16 @@ pub(crate) mod tests {
         ]});
         let r = reconcile(&raw, &[0, 1, 2, 3, 4]);
         assert!(r[0].is_some() && r[1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn a_block_whose_every_unit_lost_a_token_is_not_accepted() {
+        let block = |sentences: Value| json!({"blocks": [{"i": 0, "sentences": sentences}]});
+        let s = |source: &str, translation: &str| json!({"source": source, "translation": translation});
+        assert!(reconcile(&block(json!([s("Time ⟦1⟧.", "時刻。")])), &[0])[0].is_none());
+        assert!(reconcile(&block(json!([s("Time ⟦1⟧.", "時刻⟦2⟧。")])), &[0])[0].is_none(), "another token is not that one");
+        assert!(reconcile(&block(json!([s("Time ⟦1⟧.", "時刻⟦1⟧。")])), &[0])[0].is_some());
+        assert!(reconcile(&block(json!([s("Time ⟦1⟧. ", "時刻。"), s("Done.", "完了。")])), &[0])[0].is_some(), "the other sentence still shows");
     }
 
     #[test]

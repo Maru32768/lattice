@@ -226,6 +226,7 @@ async function viewerLabels() {
     translate_page: l?.translate_page || "Translate this page",
     retranslate_page: l?.retranslate_page || "Translate this page again",
     translating: l?.translating || "Translating…",
+    pdf_failed: l?.pdf_failed || "This PDF cannot be opened.",
   };
 }
 type Labels = Awaited<ReturnType<typeof viewerLabels>>;
@@ -492,7 +493,19 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     refit.forEach(fit);
     stateOn.forEach((host) => showPageAction(host, labels));
   }).observe(pages, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-lattice-block"] });
+  window.__lattice?.scrollToUnfoundText();
   await addOutline(doc, placed, labels);
+}
+
+/** A password or a broken or deleted file: the page stays empty otherwise, with no word why. */
+async function showFailure(e: unknown) {
+  console.warn("[lattice] opening the PDF", e);
+  const message = document.createElement("p");
+  message.id = "pdf-failed";
+  // The overlay leaves it alone: it is in the display language already.
+  message.dataset.latticeUi = "1";
+  message.textContent = (await viewerLabels()).pdf_failed;
+  document.getElementById("pages")!.append(message);
 }
 
 /** Pages are as wide as the window, so the browser's own zoom would change nothing on screen. */
@@ -526,4 +539,4 @@ const layout = fetch(`${here}/layout`).then((r): Promise<Region[]> => (r.ok ? (r
 // shortcut: no CMaps or standard fonts are bundled, so a PDF that does not embed its CJK fonts draws without that text; serve pdfjs-dist/cmaps if such PDFs turn up.
 getDocument({ url: `${here}/file`, disableRange: true, disableStream: true, wasmUrl: new URL("/assets/wasm/", location.href).href })
   .promise.then(async (doc) => open(doc, await layout))
-  .catch((e: unknown) => console.warn("[lattice] opening the PDF", e));
+  .catch(showFailure);

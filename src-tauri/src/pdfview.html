@@ -194,7 +194,14 @@
       .preparing-print * {
         cursor: progress !important;
       }
+      #pdf-failed {
+        font: 14px system-ui, "Segoe UI", "Yu Gothic UI", sans-serif;
+        color: #5a5650;
+      }
       @media print {
+        .page {
+          width: 100%;
+        }
         .page:not(:has(canvas)) .print-page {
           display: block;
           position: absolute;

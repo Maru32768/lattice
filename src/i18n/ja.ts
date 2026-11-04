@@ -739,6 +739,7 @@ export const ja = {
   "browserView.retranslate": "このページを訳し直す",
   "browserView.indexed": "保存済み",
   "browserView.savedPdf": "保存したPDF",
+  "browserView.pdfFailed": "このPDFを開けません。",
   "browserView.outline": "目次",
   "browserView.summaryHint": "この記事の要約をページの上に表示",
   "browserView.favorite": "お気に入り(s)",

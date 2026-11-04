@@ -750,6 +750,7 @@ export const en = {
   "browserView.retranslate": "Translate this page again",
   "browserView.indexed": "Saved",
   "browserView.savedPdf": "Saved PDF",
+  "browserView.pdfFailed": "This PDF cannot be opened.",
   "browserView.outline": "Contents",
   "browserView.summaryHint": "Show this article's summary above the page",
   "browserView.favorite": "Favorite (s)",

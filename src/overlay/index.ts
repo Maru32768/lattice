@@ -64,6 +64,7 @@ declare global {
       scrollToText(text: string): boolean;
       translateBlocks(els: HTMLElement[], fresh: boolean): void;
       showSavedIdle(): void;
+      scrollToUnfoundText(): void;
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
@@ -153,13 +154,16 @@ function processRoot(root: Element) {
     { rootMargin: "1000px" },
   );
   const blocks = findLeafBlocks(root);
-  state.target ??= pageTarget(
-    document.documentElement.lang,
-    blocks
-      .slice(0, 30)
-      .map((b) => b.textContent ?? "")
-      .join(" "),
-  );
+  // Not from an empty page: the PDF viewer's paragraphs arrive after the document has loaded.
+  if (blocks.length) {
+    state.target ??= pageTarget(
+      document.documentElement.lang,
+      blocks
+        .slice(0, 30)
+        .map((b) => b.textContent ?? "")
+        .join(" "),
+    );
+  }
   for (const el of blocks) {
     el.dataset.latticeBlock = "pending";
     bindBlockHover(el);
@@ -269,13 +273,14 @@ function unwrapSentences(el: HTMLElement) {
 
 /**
  * Translates these blocks because the user asked, also in manual mode. `fresh`: sends them to the LLM
- * even if they are done; otherwise those stay, and what is saved shows without a call. A block already
- * being translated is left to that.
+ * even if they are done; otherwise those stay, and what is saved shows without a call. A failed block
+ * goes to the LLM too, since what is saved may be what failed. A block already being translated is left to that.
  */
 function translateBlocks(els: HTMLElement[], fresh: boolean) {
   if (!state.config.enabled) {
     return;
   }
+  const anew: Pending[] = [];
   const blocks: Pending[] = [];
   for (const el of els) {
     const s = el.dataset.latticeBlock;
@@ -283,19 +288,17 @@ function translateBlocks(els: HTMLElement[], fresh: boolean) {
       continue;
     }
     state.io?.unobserve(el);
-    if (fresh) {
+    const again = fresh || s === "failed";
+    if (again) {
       unwrapSentences(el);
     }
-    const pending = prepare(el, fresh);
+    const pending = prepare(el, again);
     if (pending) {
-      blocks.push(pending);
+      (again ? anew : blocks).push(pending);
     }
   }
-  if (fresh) {
-    send(blocks);
-  } else {
-    void unsavedOf(blocks).then(send);
-  }
+  send(anew);
+  void unsavedOf(blocks).then(send);
 }
 
 /** The article's job has saved more: a block waiting in manual mode shows it, as it would have at load. */
@@ -741,7 +744,11 @@ function configure(c: Partial<Config>) {
   }
 }
 
+/** What `scrollToText` could not find yet: the PDF viewer's paragraphs arrive after the page has loaded. */
+let unfoundText: string | null = null;
+
 function scrollToText(text: string): boolean {
+  unfoundText = null;
   const needle = normalizeText(text).slice(0, 80);
   if (!needle) {
     return false;
@@ -750,6 +757,7 @@ function scrollToText(text: string): boolean {
     .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
     .find((b) => normalizeText(b.textContent ?? "").includes(needle));
   if (!el) {
+    unfoundText = text;
     return false;
   }
   el.scrollIntoView({ block: "center" });
@@ -778,7 +786,15 @@ async function snapshot(nonce: string, wait?: { quietMs: number; maxMs: number }
 }
 
 if (window.top === window && !window.__lattice) {
-  window.__lattice = { configure, setKeys, scrollToText, translateBlocks, showSavedIdle, snapshot };
+  window.__lattice = {
+    configure,
+    setKeys,
+    scrollToText,
+    translateBlocks,
+    showSavedIdle,
+    scrollToUnfoundText: () => unfoundText != null && scrollToText(unfoundText),
+    snapshot,
+  };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);
   window.print = () =>
