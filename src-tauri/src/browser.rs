@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use lattice_core::url_norm::normalize;
 use serde::{Deserialize, Serialize};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, Rect, State, Url, Webview, WebviewBuilder, WebviewUrl, Window};
@@ -57,6 +58,9 @@ pub struct OverlayConfig {
     /// 混在's share of text in the display language; none for 訳文, the whole translation in whichever language.
     pub percent: Option<u8>,
     pub labels: OverlayLabels,
+    /// The page is a saved article with automatic translation off: only what is saved shows, the
+    /// rest waits to be asked for. Per page (`config_for`); never set in `Browser::config`.
+    pub manual: bool,
 }
 
 /// The overlay's tooltip text in the display language, from the UI's catalog (G51); empty until the UI sends it.
@@ -171,7 +175,7 @@ const PARKED: (f64, f64) = (-20000.0, -20000.0);
 impl Default for Browser {
     fn default() -> Self {
         Self {
-            config: Mutex::new(OverlayConfig { enabled: false, percent: Some(70), labels: OverlayLabels::default() }),
+            config: Mutex::new(OverlayConfig { enabled: false, percent: Some(70), labels: OverlayLabels::default(), manual: false }),
             skip_sites: Mutex::new(Vec::new()),
             keys: Mutex::new(None),
             tabs: Mutex::new(HashMap::new()),
@@ -207,7 +211,7 @@ impl Browser {
 
     /// The overlay config for the page in `wv`.
     fn config_for(&self, wv: &Webview) -> OverlayConfig {
-        let config = lock(&self.config).clone();
+        let config = OverlayConfig { manual: page_is_manual(wv), ..lock(&self.config).clone() };
         if config.enabled && self.skipped(wv) {
             OverlayConfig { enabled: false, ..config }
         } else {
@@ -215,8 +219,8 @@ impl Browser {
         }
     }
 
-    /// Sends every page its config again (the config or the excluded sites changed).
-    fn reconfigure(&self, app: &AppHandle) -> Result<(), String> {
+    /// Sends every page its config again (the config, the excluded sites or an article's automatic translation changed).
+    pub fn reconfigure(&self, app: &AppHandle) -> Result<(), String> {
         for (_, wv) in self.webviews(app) {
             let arg = serde_json::to_string(&self.config_for(&wv)).expect("config serializes");
             wv.eval(format!("window.__lattice&&window.__lattice.configure({arg})")).map_err(|e| e.to_string())?;
@@ -399,6 +403,15 @@ pub fn page_url(wv: &Webview) -> Option<Url> {
 /// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
 pub fn pdf_article(u: &Url) -> Option<i64> {
     (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
+}
+
+/// Whether the page in `wv` is a saved article with automatic translation off.
+fn page_is_manual(wv: &Webview) -> bool {
+    let (Some(app), Ok(url)) = (wv.app_handle().try_state::<crate::App>(), wv.url()) else {
+        return false;
+    };
+    let article = pdf_article(&url).or_else(|| app.store.find_article_by_url(normalize(url.as_str()).ok()?.as_str()).ok()?);
+    article.and_then(|id| app.store.article_row(id).ok()?).is_some_and(|a| a.translate_manual)
 }
 
 /// The protocol's handler sees that URL rewritten to `lattice-pdf://localhost/<id>`; the path is the same.
@@ -789,7 +802,7 @@ pub async fn browser_set_translation(
     percent: Option<u8>,
     labels: OverlayLabels,
 ) -> Result<(), String> {
-    *lock(&browser.config) = OverlayConfig { enabled, percent: percent.map(|p| p.min(100)), labels };
+    *lock(&browser.config) = OverlayConfig { enabled, percent: percent.map(|p| p.min(100)), labels, manual: false };
     browser.reconfigure(&app)
 }
 
@@ -802,7 +815,7 @@ pub struct OverlayBoot {
 
 /// Called by the overlay on every page load. Exposed to remote pages (read-only).
 /// Only the visible browsers translate and forward shortcuts; the renderer's page stays as served.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayBoot {
     if is_browser(webview.label()) {
         OverlayBoot { config: browser.config_for(&webview), keys: lock(&browser.keys).clone() }
@@ -980,7 +993,7 @@ mod tests {
     fn page_keys_keep_the_overlay_shape() {
         let keys: PageKeys = serde_json::from_str(r#"{"inFields":["Ctrl+K"],"outside":["J"],"prefix":["Ctrl+B"],"prefixMs":1500}"#).unwrap();
         let boot = serde_json::to_value(OverlayBoot {
-            config: OverlayConfig { enabled: true, percent: Some(70), labels: OverlayLabels::default() },
+            config: OverlayConfig { enabled: true, percent: Some(70), labels: OverlayLabels::default(), manual: false },
             keys: Some(keys),
         })
         .unwrap();

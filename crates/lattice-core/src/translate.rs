@@ -8,7 +8,7 @@ use crate::msg;
 use crate::segments::{self, PROMPT_VERSION, Target, Unit, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
 use std::collections::{HashMap, hash_map::Entry};
 use ts_rs::TS;
@@ -188,18 +188,18 @@ fn display_language(store: &Store) -> Result<&'static str, String> {
 /// After ingest: queue an extracted article's translation if auto translation is on. Only when the
 /// translation is in the display language, unless `AUTO_OWN_LANGUAGE_SETTING` is on: an article whose
 /// translation is not is one the reader reads as it is (in the display language, as far as Japanese and
-/// English go), and translating it would only cost usage.
+/// English go), and translating it would only cost usage. Never for an article set to `set_manual`.
 pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
     if !auto_enabled(store)? {
         return Ok(());
     }
-    let extracted: bool = store
+    let wanted: bool = store
         .conn()
-        .query_row("SELECT extraction_status = 'ok' FROM articles WHERE id = ?1", [article_id], |r| r.get(0))
+        .query_row("SELECT extraction_status = 'ok' AND NOT translate_manual FROM articles WHERE id = ?1", [article_id], |r| r.get(0))
         .optional()
         .map_err(|e| e.to_string())?
         .unwrap_or(false);
-    if !extracted {
+    if !wanted {
         return Ok(());
     }
     let target = article_target(store, article_id)?;
@@ -207,6 +207,18 @@ pub fn enqueue_if_auto(store: &Store, article_id: i64) -> Result<(), String> {
         return Ok(());
     }
     enqueue(store, article_id, &target)
+}
+
+/// Turns automatic translation of one article off (`on`) or back on. Off also takes back its translate
+/// jobs, a running one included (`jobs::run_job` stops it). Turning it back on queues nothing: that waits
+/// for the next thing that starts a translation.
+pub fn set_manual(store: &Store, article_id: i64, on: bool) -> Result<(), String> {
+    let c = store.conn();
+    c.execute("UPDATE articles SET translate_manual = ?2 WHERE id = ?1", params![article_id, on]).map_err(|e| e.to_string())?;
+    if on {
+        c.execute("DELETE FROM processing_jobs WHERE type = ?1 AND article_id = ?2", params![JOB_TYPE, article_id]).map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// The current settings' target for non-Japanese sources (`Target::for_source` adapts it).

@@ -353,6 +353,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     relevance_stale: false,
     relevance_manual: false,
     relevance_ai: null,
+    translate_manual: false,
     ...extra,
   });
   return id;
@@ -447,6 +448,7 @@ export const handlers = {
     return i >= 0;
   },
   translate_article: ({ id }: { id: number }) => void translating.add(id),
+  set_translate_manual: ({ id, on }: { id: number; on: boolean }) => void (article(id).translate_manual = on),
   translation_status: () =>
     [...translating].map((id) => ({ article_id: id, running: false, done: 0, total: blocksOf(articles.find((a) => a.id === id)!).length })),
   summarize_article: none,

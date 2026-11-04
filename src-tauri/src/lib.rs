@@ -144,6 +144,15 @@ fn indexed(app: &App, id: i64) -> Result<i64, String> {
     Ok(id)
 }
 
+/// An imported file or text, with automatic translation off when the import screen asked (`manual`).
+/// A later import of the same one without asking leaves the article's setting as it is.
+fn imported(app: &App, id: i64, manual: bool) -> Result<i64, String> {
+    if manual {
+        translate::set_manual(&app.store, id, true)?;
+    }
+    indexed(app, id)
+}
+
 /// "Indexに追加" in the in-app browser: stores the page as rendered (JS-built pages have no
 /// content in their server HTML), or fetches it from the server if the page does not answer.
 #[tauri::command]
@@ -179,18 +188,18 @@ fn import_urls(app: State<'_, App>, text: String) -> Result<ImportSummary, Strin
 /// Markdown pasted into the import screen, or a file dropped or pasted there (`name` is then its
 /// name, and it has no folder to read relative images from); the same text again opens the article it made.
 #[tauri::command(async)]
-fn import_markdown(app: State<'_, App>, text: String, name: Option<String>) -> Result<i64, String> {
+fn import_markdown(app: State<'_, App>, text: String, name: Option<String>, manual: bool) -> Result<i64, String> {
     if name.is_some() && text.len() as u64 > markdown::MAX_FILE_BYTES {
         return Err(msg!("file.tooLarge", max = markdown::MAX_FILE_BYTES / 1024 / 1024));
     }
     let id = markdown::import(&app.store, &text, name.as_deref(), None)?;
-    indexed(&app, id)
+    imported(&app, id, manual)
 }
 
 /// Picks the file here rather than taking a path from the webview: relative images are read
 /// only from the folder of a file the user chose. `None` when the dialog is cancelled.
 #[tauri::command]
-async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
+async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle, manual: bool) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let mut dialog = handle.dialog().file().set_title(ui_text(&app, "Markdownを取り込む", "Import Markdown")).add_filter("Markdown", &["md", "markdown"]);
@@ -210,12 +219,12 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle) -> 
     let text = String::from_utf8(std::fs::read(&path).map_err(err)?).map_err(|_| msg!("file.notUtf8"))?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
     let id = markdown::import(&app.store, &text, name.as_deref(), path.parent())?;
-    indexed(&app, id).map(Some)
+    imported(&app, id, manual).map(Some)
 }
 
 /// A paper's PDF, picked here like `import_markdown_file`. `None` when the dialog is cancelled.
 #[tauri::command]
-async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Result<Option<i64>, String> {
+async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle, manual: bool) -> Result<Option<i64>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDFを取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
@@ -234,11 +243,11 @@ async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle) -> Resul
     }
     let bytes = std::fs::read(&path).map_err(err)?;
     let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-    import_pdf(&app, bytes, name).await.map(Some)
+    import_pdf(&app, bytes, name, manual).await.map(Some)
 }
 
 /// A PDF dropped or pasted on the import screen. Sent as the raw request body (a JSON array of 50 MB
-/// would be several times that), with its percent-encoded name in a header.
+/// would be several times that), with its percent-encoded name and `manual` in headers.
 #[tauri::command]
 async fn import_pdf_bytes(app: State<'_, App>, request: tauri::ipc::Request<'_>) -> Result<i64, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -248,14 +257,15 @@ async fn import_pdf_bytes(app: State<'_, App>, request: tauri::ipc::Request<'_>)
         return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
     }
     let name = request.headers().get("x-file-name").and_then(|v| percent_encoding::percent_decode(v.as_bytes()).decode_utf8().ok()).map(|s| s.into_owned());
-    import_pdf(&app, bytes.clone(), name).await
+    let manual = request.headers().get("x-translate-manual").is_some_and(|v| v == "true");
+    import_pdf(&app, bytes.clone(), name, manual).await
 }
 
-async fn import_pdf(app: &App, bytes: Vec<u8>, name: Option<String>) -> Result<i64, String> {
+async fn import_pdf(app: &App, bytes: Vec<u8>, name: Option<String>, manual: bool) -> Result<i64, String> {
     // Parsing a paper takes a moment of CPU; keep it off the async runtime's threads.
     let store = app.store.clone();
     let id = tokio::task::spawn_blocking(move || pdf::import(&store, &bytes, name.as_deref())).await.map_err(err)??;
-    indexed(app, id)
+    imported(app, id, manual)
 }
 
 /// The stored image of an image block as a `data:` URL, or `None` (the Reader then shows a link).
@@ -904,6 +914,13 @@ fn get_review_settings(app: State<'_, App>) -> Result<quiz::Settings, String> {
 #[tauri::command(async)]
 fn set_review_settings(app: State<'_, App>, settings: quiz::Settings) -> Result<(), String> {
     quiz::set_settings(&app.store, &settings)
+}
+
+/// Turns automatic translation of one article off or back on; its open pages follow at once.
+#[tauri::command(async)]
+fn set_translate_manual(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle, id: i64, on: bool) -> Result<(), String> {
+    translate::set_manual(&app.store, id, on)?;
+    browser.reconfigure(&handle)
 }
 
 /// Articles being translated or waiting to be, for the article list.
@@ -1556,6 +1573,7 @@ pub fn run() {
             delete_article,
             article_for_url,
             translate_article,
+            set_translate_manual,
             translation_status,
             summarize_article,
             quiz_article,

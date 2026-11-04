@@ -40,4 +40,8 @@ relevance_stale: boolean, relevance_manual: boolean,
 /**
  * The model's score, also under a pick.
  */
-relevance_ai: number | null, };
+relevance_ai: number | null, 
+/**
+ * Automatic translation is off for this article (`translate::set_manual`).
+ */
+translate_manual: boolean, };

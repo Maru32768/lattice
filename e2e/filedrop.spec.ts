@@ -78,7 +78,7 @@ test("a dropped Markdown file becomes an article with its file name, and a non-U
 
   await drop(zone, { name: "memo.md", text: "# Dropped note\n\nbody" });
   await expect(app.locator("h1.art-title")).toHaveText("Dropped note");
-  expect(await callsOf(app, "import_markdown")).toEqual([{ text: "# Dropped note\n\nbody", name: "memo" }]);
+  expect(await callsOf(app, "import_markdown")).toEqual([{ text: "# Dropped note\n\nbody", name: "memo", manual: false }]);
 });
 
 test("a URL list dropped or pasted fills the text box, and text with a picture stays a text paste", async ({ app }) => {

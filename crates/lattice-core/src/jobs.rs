@@ -33,6 +33,8 @@ const IDLE_POLL: Duration = Duration::from_secs(30);
 /// How often the reserved slot looks for new jobs of the articles on screen: the commands that queue
 /// them wake the LLM runner, not this one.
 const FOREGROUND_POLL: Duration = Duration::from_secs(1);
+/// How often a running translation looks whether its job was taken back (`until_deleted`).
+const DELETED_POLL: Duration = Duration::from_secs(1);
 /// How often `keep_alive` marks this process's running jobs as alive.
 const HEARTBEAT: Duration = Duration::from_secs(15);
 /// A running job with no heartbeat for this long was left by a process that is gone. Four beats, so
@@ -227,6 +229,19 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     Ok(true)
 }
 
+/// Ends once the job's row is gone. The row is the only signal: `translate::set_manual` may run in
+/// another process (the app, the CLI and the MCP server share the queue).
+async fn until_deleted(store: &Store, id: i64) {
+    loop {
+        tokio::time::sleep(DELETED_POLL).await;
+        match store.job_exists(id) {
+            Ok(false) => return,
+            Ok(true) => {}
+            Err(e) => log::warn!("looking for job {id}: {e}"),
+        }
+    }
+}
+
 async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     p: &Providers<L, E>,
@@ -249,7 +264,10 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
         translate::JOB_TYPE => {
             let key = params["target_language"].as_str().unwrap_or(translate::TARGET_LANGUAGE);
             let target = Target::from_key(key, params["instructions"].as_str().unwrap_or_default());
-            translate::run(store, &p.llm, article_id, &target, gate, progress).await
+            tokio::select! {
+                done = translate::run(store, &p.llm, article_id, &target, gate, progress) => done,
+                () = until_deleted(store, job.id) => Ok(()),
+            }
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
         classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
@@ -466,6 +484,72 @@ mod tests {
         assert_eq!(queued(&s), Some(Some(en)), "asked: English into Japanese");
         translate::set_auto(&s, false).unwrap();
         assert!(!translate::auto_enabled(&s).unwrap());
+    }
+
+    #[test]
+    fn an_article_set_to_manual_is_not_translated_on_its_own() {
+        let (s, id) = setup();
+        translate::set_auto(&s, true).unwrap();
+        let queued = |s: &Store| translate::in_progress(s).unwrap().len();
+        translate::set_manual(&s, id, true).unwrap();
+        assert!(s.article_row(id).unwrap().unwrap().translate_manual);
+        translate::enqueue_if_auto(&s, id).unwrap();
+        assert_eq!(queued(&s), 0, "auto translation skips it");
+
+        translate::set_manual(&s, id, false).unwrap();
+        assert!(!s.article_row(id).unwrap().unwrap().translate_manual);
+        assert_eq!(queued(&s), 0, "turning it back on queues nothing");
+        translate::enqueue_if_auto(&s, id).unwrap();
+        assert_eq!(queued(&s), 1);
+
+        translate::set_manual(&s, id, true).unwrap();
+        assert_eq!(queued(&s), 0, "a queued job is taken back");
+    }
+
+    #[tokio::test]
+    async fn an_explicit_translation_of_a_manual_article_still_runs() {
+        let (s, id) = setup();
+        translate::set_manual(&s, id, true).unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
+        assert!(run_next(&s, &with(Fake::new()), LLM_JOBS, &|_| {}).await.unwrap());
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().blocks[0].translation.as_deref(), Some("INTRO"));
+    }
+
+    #[tokio::test]
+    async fn taking_back_a_running_translation_stops_it_and_keeps_what_it_saved() {
+        /// Answers the first batch, then never again.
+        struct Stalls(Fake, std::sync::atomic::AtomicUsize);
+        impl LlmProvider for Stalls {
+            fn name(&self) -> &str {
+                "stalls"
+            }
+            async fn complete_json(&self, system: &str, input: &str, schema: &serde_json::Value) -> Result<crate::llm::Completion, crate::llm::LlmError> {
+                if self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst) > 0 {
+                    std::future::pending::<()>().await;
+                }
+                self.0.complete_json(system, input, schema).await
+            }
+        }
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/long", "https://a.dev/long", "a.dev").unwrap();
+        let paras: String = (0..24).map(|i| format!("<p>Paragraph {i} explains how snapshot isolation handles write skew in practice.</p>")).collect();
+        let html = format!("<html><body><article>{paras}</article></body></html>");
+        store_fetched(&s, id, &Fetched { final_url: "https://a.dev/long".into(), status: 200, content_type: None, html }).unwrap();
+        translate::set_parallel(&s, 1).unwrap();
+        translate::enqueue(&s, id, &Target::default()).unwrap();
+
+        let p = Providers { llm: Stalls(Fake::new(), 0.into()), embedder: NoEmbed, http: crate::fetch::client() };
+        let translated = |s: &Store| s.get_article(id, "ja").unwrap().unwrap().blocks.iter().filter(|b| b.translation.is_some()).count();
+        let take_back = async {
+            while translated(&s) == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            translate::set_manual(&s, id, true).unwrap();
+        };
+        let (ran, ()) = tokio::time::timeout(Duration::from_secs(10), async { tokio::join!(run_next(&s, &p, LLM_JOBS, &|_| {}), take_back) }).await.unwrap();
+        assert!(ran.unwrap(), "the runner moved on");
+        assert_eq!(translated(&s), 12, "the batch saved before it stopped is kept");
+        assert!(s.get_article(id, "ja").unwrap().unwrap().jobs.is_empty(), "finishing does not bring the row back");
     }
 
     #[tokio::test]

@@ -51,6 +51,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00030_relevance_axes.sql"),
     include_str!("../db/migrations/00031_job_heartbeat.sql"),
     include_str!("../db/migrations/00032_relevance_manual.sql"),
+    include_str!("../db/migrations/00033_translate_manual.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -181,6 +182,8 @@ pub struct ArticleRow {
     pub relevance_manual: bool,
     /// The model's score, also under a pick.
     pub relevance_ai: Option<i64>,
+    /// Automatic translation is off for this article (`translate::set_manual`).
+    pub translate_manual: bool,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -381,7 +384,7 @@ const ARTICLE_COLS: &str = concat!(
     relevance_manual IS NULL AND coalesce((SELECT NOT ",
     crate::relevance::current_sql!(),
     " FROM relevance WHERE article_id = articles.id), 0),
-    (SELECT folder_id FROM feeds WHERE id = articles.feed_id), relevance_manual IS NOT NULL, (SELECT score FROM relevance WHERE article_id = articles.id)"
+    (SELECT folder_id FROM feeds WHERE id = articles.feed_id), relevance_manual IS NOT NULL, (SELECT score FROM relevance WHERE article_id = articles.id), translate_manual"
 );
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
@@ -424,6 +427,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         relevance_stale: r.get(27)?,
         relevance_manual: r.get(29)?,
         relevance_ai: r.get(30)?,
+        translate_manual: r.get(31)?,
     })
 }
 
@@ -1004,6 +1008,10 @@ impl Store {
             params![job_type, article_id, params, dedup_key],
         )?;
         Ok(())
+    }
+
+    pub fn job_exists(&self, id: i64) -> Result<bool> {
+        self.conn().query_row("SELECT EXISTS (SELECT 1 FROM processing_jobs WHERE id = ?1)", [id], |r| r.get(0))
     }
 
     /// Marks the jobs this Store is running as alive, so other processes leave them running.

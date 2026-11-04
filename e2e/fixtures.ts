@@ -260,6 +260,7 @@ export const ARTICLES: ArticleRow[] = ROWS.map(([title, feed, genre, tags, diffi
     relevance_stale: RELEVANCE[id]?.[2] ?? false,
     relevance_manual: false,
     relevance_ai: RELEVANCE[id]?.[0] ?? null,
+    translate_manual: false,
     ...extra,
   };
 });
