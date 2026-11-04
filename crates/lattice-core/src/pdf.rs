@@ -97,6 +97,10 @@ pub struct Region {
     /// has the margin beyond it. A sentence moved here from another page needs more than the box holds.
     pub room_up: f64,
     pub room_down: f64,
+    /// The top left of the page's MediaBox in the PDF's own coordinates, which `x0`.. are measured from.
+    /// The viewer's page is the CropBox, possibly turned, so it places a box by these.
+    pub left: f64,
+    pub top: f64,
 }
 
 impl Region {
@@ -170,6 +174,7 @@ pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     for r in &mut out {
         if let Some(page) = doc.pages.get(r.page) {
             give_room(r, page, top, bottom);
+            (r.left, r.top) = (page.left, page.top);
         }
     }
     Ok(out)
@@ -292,6 +297,8 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
         level,
         room_up: 0.,
         room_down: 0.,
+        left: 0.,
+        top: 0.,
     })
 }
 
@@ -395,6 +402,9 @@ fn string_faces(doc: &Document, page: ObjectId) -> Vec<Face> {
 struct Page {
     width: f64,
     height: f64,
+    /// The top left of the MediaBox in the PDF's own coordinates.
+    left: f64,
+    top: f64,
     glyphs: Vec<Glyph>,
 }
 
@@ -461,7 +471,7 @@ impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
         self.origin = (b.llx, b.lly);
         self.shown = 0;
-        self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, glyphs: Vec::new() });
+        self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, glyphs: Vec::new() });
         Ok(())
     }
 
@@ -1420,6 +1430,23 @@ pub(crate) mod tests {
         );
         let levels: Vec<_> = ir.blocks.iter().filter_map(|b| b.attrs.level).collect();
         assert_eq!(levels, [2, 2, 3, 2, 2]);
+    }
+
+    #[test]
+    fn regions_say_where_their_mediabox_lies() {
+        let bytes = paper();
+        let mut moved = Document::load_mem(&bytes).unwrap();
+        for id in moved.get_pages().into_values().collect::<Vec<_>>() {
+            moved.get_dictionary_mut(id).unwrap().set("MediaBox", Object::Array([10, 20, 622, 812].map(Object::Integer).to_vec()));
+        }
+        let mut out = Vec::new();
+        moved.save_to(&mut out).unwrap();
+        let (base, shifted) = (regions(&bytes).unwrap(), regions(&out).unwrap());
+        assert_eq!((base[0].left, base[0].top), (0., 792.));
+        assert_eq!((shifted[0].left, shifted[0].top), (10., 812.));
+        // The glyphs did not move on the page, so each box comes to the same place in the PDF's coordinates.
+        assert!((shifted[0].left + shifted[0].x0 - (base[0].left + base[0].x0)).abs() < 1e-6);
+        assert!((shifted[0].top - shifted[0].y0 - (base[0].top - base[0].y0)).abs() < 1e-6);
     }
 
     #[test]

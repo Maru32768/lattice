@@ -8,6 +8,7 @@
 import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, type PDFPageProxy } from "pdfjs-dist";
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
 import { pageAction } from "./pageAction.ts";
+import { onViewport } from "./regionBox.ts";
 import type { OverlayLabels } from "../api.ts";
 
 GlobalWorkerOptions.workerSrc = "/assets/pdf.worker.js";
@@ -29,6 +30,9 @@ interface Region {
   /** How far a translation may run past the box: the margin, at the edge of the page's text. */
   room_up: number;
   room_down: number;
+  /** The top left of the page's MediaBox in the PDF's own coordinates, which the box is measured from. */
+  left: number;
+  top: number;
 }
 
 /**
@@ -393,9 +397,13 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
       }
     }),
   );
+  const placed: Region[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
-    const { width, height } = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: 1 });
+    const { width, height } = viewport;
+    const onPage = regions.filter((r) => r.page === n - 1).map((r) => onViewport(r, viewport));
+    placed.push(...onPage);
     const host = document.createElement("div");
     host.className = "page";
     host.style.aspectRatio = `${width} / ${height}`;
@@ -405,14 +413,14 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     const links = document.createElement("div");
     links.className = "links";
     links.translate = false;
-    host.append(text, links, ...regions.filter((r) => r.page === n - 1).map((r) => regionEl(r, width, height)), pageButton(host));
+    host.append(text, links, ...onPage.map((r) => regionEl(r, width, height)), pageButton(host));
     showPageAction(host, labels);
     const failed = (e: unknown) => console.warn("[lattice] drawing a page", e);
     drawOn.set(host, () => {
       void draw(page, host).catch(failed);
       void addLinks(doc, page, host).catch(failed);
     });
-    places.push({ host, size: page.getViewport({ scale: 1 }) });
+    places.push({ host, size: viewport });
     pages.append(host);
     visible.observe(host);
     resized.observe(host);
@@ -434,7 +442,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     refit.forEach(fit);
     stateOn.forEach((host) => showPageAction(host, labels));
   }).observe(pages, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-lattice-block"] });
-  await addOutline(doc, regions, labels);
+  await addOutline(doc, placed, labels);
 }
 
 /** Pages are as wide as the window, so the browser's own zoom would change nothing on screen. */
