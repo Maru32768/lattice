@@ -427,20 +427,13 @@ pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
 }
 
-/// The page a webview shows, whatever its scroll position in the URL's fragment; none once it is closed.
-pub fn page_url(wv: &Webview) -> Option<Url> {
-    let mut url = wv.url().ok()?;
-    url.set_fragment(None);
-    Some(url)
-}
-
 /// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
 pub fn pdf_article(u: &Url) -> Option<i64> {
     (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
 }
 
 /// The saved article the page in `wv` is.
-fn page_article(wv: &Webview) -> Option<i64> {
+pub fn page_article(wv: &Webview) -> Option<i64> {
     let (app, url) = (wv.app_handle().try_state::<crate::App>()?, wv.url().ok()?);
     pdf_article(&url).or_else(|| app.store.find_article_by_url(normalize(url.as_str()).ok()?.as_str()).ok()?)
 }

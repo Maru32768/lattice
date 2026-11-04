@@ -184,8 +184,8 @@ function reportProgress() {
   }, 200);
 }
 
-/** What to send for a block, now `translating`; null when it needs no translation, now `skip`. */
-function prepare(el: HTMLElement, fresh: boolean): Pending | null {
+/** The snippets of a block; null when it needs no translation, now `skip`. */
+function partsOf(el: HTMLElement): string[] | null {
   if (isWrittenIn(el.textContent ?? "", state.target ?? "ja")) {
     el.dataset.latticeBlock = "skip";
     return null;
@@ -193,6 +193,15 @@ function prepare(el: HTMLElement, fresh: boolean): Pending | null {
   const { parts } = splitByLineBreaks(snippetHtml(el));
   if (parts.length === 0 || !parts.some((p) => normalizeText(plainText(p).replace(/⟦\d+⟧/gu, "")))) {
     el.dataset.latticeBlock = "skip";
+    return null;
+  }
+  return parts;
+}
+
+/** What to send for a block, now `translating`; null when it needs no translation. */
+function prepare(el: HTMLElement, fresh: boolean): Pending | null {
+  const parts = partsOf(el);
+  if (!parts) {
     return null;
   }
   el.dataset.latticeBlock = "translating";
@@ -301,20 +310,26 @@ function translateBlocks(els: HTMLElement[], fresh: boolean) {
   void unsavedOf(blocks).then(send);
 }
 
-/** The article's job has saved more: a block waiting in manual mode shows it, as it would have at load. */
+/** The article's job has saved more: a block waiting in manual mode shows it, as it would have at load. Stays `idle` meanwhile: this runs often and asks only for what is saved. */
 function showSavedIdle() {
   if (!state.config.enabled) {
     return;
   }
   const idle = Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block='idle']"));
-  void unsavedOf(idle.flatMap((el) => prepare(el, false) ?? [])).then(setIdle);
+  void unsavedOf(
+    idle.flatMap((el) => {
+      const parts = partsOf(el);
+      return parts ? [{ el, parts, fresh: false }] : [];
+    }),
+  );
 }
 
 async function showSaved(batch: Pending[]): Promise<Pending[]> {
   const units = unitsByBlock(batch, await translated(batch, true));
   return batch.filter((p, i) => {
     const mine = units[i];
-    if (mine && p.el.isConnected) {
+    // A lookup that crossed another may find the block done already.
+    if (mine && p.el.isConnected && p.el.dataset.latticeBlock !== "done") {
       apply(p.el, mine);
     }
     return !mine && p.el.isConnected;
@@ -602,6 +617,19 @@ function hideSave() {
 }
 
 /** The selected word and its sentence, cut from the nearest block around it. */
+/** The PDF viewer's paragraph lying over a selection in its text layer, whose elements are a line's run each. */
+function paragraphOver(range: Range, el: Element, text: string): string | null {
+  const at = range.getBoundingClientRect();
+  const regions = el.closest(".textLayer")?.parentElement?.querySelectorAll(".region") ?? [];
+  for (const region of regions) {
+    const box = region.getBoundingClientRect();
+    if (at.left >= box.left && at.right <= box.right && at.top >= box.top && at.bottom <= box.bottom && region.textContent?.includes(text)) {
+      return region.textContent;
+    }
+  }
+  return null;
+}
+
 function selectedWord(): { selection: string; sentence: string; rect: DOMRect } | null {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(sel.toString())) {
@@ -620,7 +648,9 @@ function selectedWord(): { selection: string; sentence: string; rect: DOMRect } 
   before.setStart(block, 0);
   before.setEnd(range.startContainer, range.startOffset);
   const text = sel.toString();
-  const c = captureIn(block.textContent ?? "", text, before.toString().length);
+  // shortcut: a word the paragraph has twice is taken from its first sentence that has it, as the text layer does not say which; none has shown wrong so far.
+  const paragraph = paragraphOver(range, block, text);
+  const c = paragraph ? captureIn(paragraph, text, paragraph.indexOf(text)) : captureIn(block.textContent ?? "", text, before.toString().length);
   return { selection: c?.surface ?? collapse(text), sentence: c?.sentence ?? collapse(text), rect: range.getBoundingClientRect() };
 }
 

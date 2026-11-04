@@ -902,8 +902,9 @@ export default function App() {
   const labelOf = (t: Tab): TabLabel => {
     if (t.kind === "page") {
       // A saved PDF's address is not a site: its icon is the article's.
-      const domain = isPdfPage(t.url) ? (t.saved != null ? (articleById.get(t.saved)?.domain ?? "") : "") : siteOf(t.url);
-      return { title: t.title || domain || t.url, domain };
+      const article = isPdfPage(t.url) && t.saved != null ? (views.get(t.saved)?.article ?? articleById.get(t.saved)) : undefined;
+      const domain = isPdfPage(t.url) ? (article?.domain ?? "") : siteOf(t.url);
+      return { title: article?.title || t.title || domain || t.url, domain };
     }
     const a = views.get(t.articleId)?.article ?? articleById.get(t.articleId);
     return { title: a?.title ?? a?.original_url ?? "…", domain: a?.domain ?? "", feed: a?.feed_id };

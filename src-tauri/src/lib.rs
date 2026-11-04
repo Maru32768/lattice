@@ -752,7 +752,7 @@ async fn overlay_translate(
     let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
     let target = &to.key();
     let document = browser.document(webview.label());
-    let article = browser::page_url(&webview).as_ref().and_then(browser::pdf_article);
+    let article = webview.url().ok().as_ref().and_then(browser::pdf_article);
     let fresh = fresh == Some(true) && article.is_some();
     let saved = || {
         if fresh {
@@ -873,12 +873,11 @@ fn overlay_vocab(app: State<'_, App>, browser: State<'_, Browser>, webview: Webv
         return Err("request too large".into());
     }
     browser::ensure_capture_allowed(&webview, &browser)?;
-    let url = webview.url().map_err(err)?.to_string();
-    let article_id = match normalize(&url) {
-        Ok(norm) => app.store.find_article_by_url(norm.as_str()).map_err(err)?,
-        Err(_) => None,
-    };
-    let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url: Some(url) })?;
+    let url = webview.url().map_err(err)?;
+    let article_id = browser::page_article(&webview);
+    // A saved PDF's address is the viewer's, good for nothing once saved: the article is the source.
+    let url = browser::pdf_article(&url).is_none().then(|| url.to_string());
+    let added = vocab::capture(&app.store, &vocab::Capture { surface: selection, sentence, article_id, block_id: None, url })?;
     app.wake_llm.iter().for_each(|w| w.notify_one());
     let _ = webview.app_handle().emit("vocab-changed", ());
     Ok(added)
