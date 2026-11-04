@@ -15,6 +15,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - `y` opens and closes the summary. In the Page view it shows the whole summary above the page, and pressing it again gives the page its full height back. Change the key in Settings › Shortcuts.
 - **Settings › Logs & storage** has an **Open folder** button for the log folder too.
 - The Page view of a PDF shows the saved original. It works for a PDF imported from a file too, and offline. **Mixed** and **Translated** draw the translation over the original's paragraphs. The ☰ at the top left opens the contents, and links inside the PDF work.
+- In a PDF's Page view, the button at the top right of a page translates only that page, or translates it again. Retranslating a whole long PDF is no longer the only way to redo a page.
+- Automatic translation can be turned off per article in the ⋯ menu, and per file on the import screen's Markdown and PDF tabs. Importing, switching the view and scrolling in the Page view then start no translation for it, and **Translate** still works.
 
 ### Changed
 
@@ -36,6 +38,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Superscripts and subscripts in a PDF's text stay raised and lowered in its translation in the Page view. They used to run into the letters before them.
 - An appendix heading such as `A Paxos Leader-Lease Management` is now a heading, keeps its `A` in the translation and no longer merges with the text after it. To apply this to a saved PDF, use **Re-extract**.
 - A PDF's Page view now uses the saved translation for a paragraph broken across columns or pages. It used to translate them again. A part that ends in the middle of a sentence still goes to the AI provider, as before.
+- **Translate again** on a PDF also replaces the translations the Page view saved for parts of a paragraph. They used to keep showing there.
 
 ## [0.2.0] - 2026-10-30
 
