@@ -296,7 +296,6 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     const text = document.createElement("div");
     text.className = "textLayer";
     text.translate = false;
-    // Under the regions: a translation that covers the original covers its links, no longer where they were drawn.
     const links = document.createElement("div");
     links.className = "links";
     links.translate = false;

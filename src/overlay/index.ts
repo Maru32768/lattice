@@ -598,6 +598,8 @@ function onKey(e: KeyboardEvent) {
 function configure(c: Partial<Config>) {
   const was = state.config;
   state.config = { ...was, ...c };
+  // The PDF viewer's paragraphs take the pointer only while there is a translation to show on hover.
+  document.documentElement.toggleAttribute("data-lattice-on", state.config.enabled);
   if (state.config.enabled && !was.enabled && document.body) {
     start();
   }

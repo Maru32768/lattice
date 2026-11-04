@@ -58,6 +58,7 @@
       }
       .links {
         position: absolute;
+        z-index: 1;
         inset: 0;
         pointer-events: none;
       }
@@ -177,11 +178,21 @@
           "Yu Gothic UI",
           sans-serif;
       }
-      .region:has(.lattice-sentence[data-shown="t"]) {
-        color: #1c1c1e;
-        background: #fff;
+      /* A paragraph still showing the original takes the pointer too, for its sentences' tooltips. */
+      [data-lattice-on] .region:is([data-lattice-block="done"], [data-lattice-block="translating"], [data-lattice-block="failed"]) {
         pointer-events: auto;
         user-select: text;
+      }
+      .region .lattice-sentence:hover {
+        background: rgba(47, 93, 138, 0.12);
+      }
+      /* Above the links: a link's place on the page means nothing under text set anew. */
+      .region:has(.lattice-sentence[data-shown="t"]) {
+        z-index: 2;
+        color: #1c1c1e;
+        background: #fff;
+        /* The original's glyphs stick out of its measured box by a hair. */
+        box-shadow: 0 0 0 2px #fff;
       }
     </style>
   </head>

@@ -91,31 +91,111 @@ pub struct Region {
 }
 
 /// The blocks of `to_ir` with their places. A block that runs on across a column, a page or a figure
-/// becomes one region per piece, each translated on its own.
-// shortcut: a sentence broken across pieces is translated as two fragments, and differs from the Reader's translation; give pieces a shared block if that reads badly.
+/// becomes one region per piece, each translated on its own (`piece_texts`).
 pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let doc = read(bytes)?;
     let (lines, body, _) = lay_out(&doc);
     let vocab = vocabulary(&lines);
     let run_on = |a: &&Line, b: &&Line| a.page == b.page && a.side == b.side && b.y > a.y && b.y - a.y < 2.5 * a.size.max(b.size);
     let mut out = Vec::new();
-    for d in drafts(&lines, body) {
+    for d in drafts(&lines, body).iter().filter(|d| !laid_out_text(d)) {
         let level = if let Kind::Heading(l) = d.kind {
             Some(l)
         } else {
             None
         };
-        out.extend(d.lines.chunk_by(run_on).filter_map(|piece| region(piece, level, &vocab)));
+        let pieces: Vec<&[&Line]> = d.lines.chunk_by(run_on).collect();
+        out.extend(pieces.iter().zip(piece_texts(&pieces, &vocab)).filter_map(|(piece, text)| region(piece, text, level)));
     }
     Ok(out)
 }
 
-fn region(piece: &[&Line], level: Option<u8>, vocab: &HashSet<String>) -> Option<Region> {
-    let (first, last) = (piece.first()?, piece.last()?);
-    let mut text = String::new();
-    for l in piece {
-        join(&mut text, &l.text, vocab);
+/// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
+/// them would wreck the drawing. They are what is left as a paragraph with no full line and no
+/// punctuation to end it. The Reader keeps them, as text to search.
+fn laid_out_text(d: &Draft) -> bool {
+    let Some(last) = d.lines.last() else {
+        return false;
+    };
+    d.kind == Kind::Paragraph
+        && !last.text.ends_with(['.', '!', '?', ':', ';', ',', '。', '！', '？', '、'])
+        && d.lines.iter().all(|l| l.x1 - l.x0 < 0.85 * (l.right - l.left))
+}
+
+/// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
+/// translated as two fragments, so a sentence goes whole to the piece that holds most of it; the
+/// other piece's box still covers its end of it. A sentence that would leave a piece empty, whose box
+/// would then keep showing the original, is cut between words instead.
+fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
+    let mut whole = String::new();
+    let mut breaks = Vec::new();
+    for piece in pieces {
+        for l in *piece {
+            join(&mut whole, &l.text, vocab);
+        }
+        breaks.push(whole.len());
     }
+    breaks.pop();
+    let ends = sentence_ends(&whole);
+    let mut texts = Vec::with_capacity(pieces.len());
+    let mut start = 0;
+    for at in breaks {
+        let before = ends.iter().rev().find(|&&e| e <= at).copied().unwrap_or(0);
+        let after = ends.iter().find(|&&e| e > at).copied().unwrap_or(whole.len());
+        let mut cut = if at - before > after - at {
+            after
+        } else {
+            before
+        };
+        if cut <= start || cut >= whole.len() {
+            cut = word_break(&whole, at).max(start);
+        }
+        texts.push(whole[start..cut].to_string());
+        start = cut;
+    }
+    texts.push(whole[start..].to_string());
+    texts
+}
+
+/// Where each sentence but the last ends: the offset of the next one's first letter.
+fn sentence_ends(text: &str) -> Vec<usize> {
+    let mut ends = Vec::new();
+    let mut chars = text.char_indices().peekable();
+    while let Some((_, c)) = chars.next() {
+        if matches!(c, '。' | '！' | '？') {
+            if let Some(&(i, _)) = chars.peek() {
+                ends.push(i);
+            }
+            continue;
+        }
+        if !matches!(c, '.' | '!' | '?') {
+            continue;
+        }
+        while chars.next_if(|(_, c)| matches!(c, '"' | '\'' | ')' | ']' | '”' | '’')).is_some() {}
+        if chars.next_if(|(_, c)| c.is_whitespace()).is_none() {
+            continue;
+        }
+        // Not "e.g. a" or "Fig. 3".
+        if let Some(&(i, next)) = chars.peek()
+            && next.is_uppercase()
+        {
+            ends.push(i);
+        }
+    }
+    ends
+}
+
+/// The start of the word that `at` falls in. `at` itself may be inside a character: a line's hyphen
+/// was taken out of the text after it was measured.
+fn word_break(text: &str, at: usize) -> usize {
+    text.as_bytes()[..(at + 1).min(text.len())]
+        .iter()
+        .rposition(|&b| b == b' ')
+        .map_or_else(|| (at..text.len()).find(|&i| text.is_char_boundary(i)).unwrap_or(text.len()), |space| space + 1)
+}
+
+fn region(piece: &[&Line], text: String, level: Option<u8>) -> Option<Region> {
+    let (first, last) = (piece.first()?, piece.last()?);
     Some(Region {
         page: first.page,
         x0: piece.iter().map(|l| l.x0).fold(f64::MAX, f64::min),
@@ -996,6 +1076,56 @@ pub(crate) mod tests {
         assert_eq!(at("reading order").x0, R, "and its right column");
         assert!(at("A paragraph that runs").y1 < at("figure before").y0, "the figure between the pieces stays uncovered");
         assert_eq!(at("figure before").page, 2);
+    }
+
+    #[test]
+    fn a_sentence_broken_across_columns_goes_whole_to_the_piece_with_most_of_it() {
+        let column = |x: f64, lines: [&'static str; 3]| lines.into_iter().enumerate().map(move |(i, t)| (x, 100. + 12. * i as f64, 10., t));
+        let page: Vec<Run> = column(L, ["Unlike storage has proven much more hard", "and most of them all need the new", "hardware to change. To-"])
+            .chain(column(
+                R,
+                ["day these changes mainly come in the form", "of newer memory designs and there are many", "more of them coming along every year now."],
+            ))
+            .collect();
+        let r = regions(&pdf(&[page], None)).unwrap();
+        let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "Unlike storage has proven much more hard and most of them all need the new hardware to change.",
+                "Today these changes mainly come in the form of newer memory designs and there are many more of them coming along every year now."
+            ]
+        );
+        assert_eq!((r[0].x0, r[1].x0), (L, R), "each box stays over its own column");
+        assert_eq!(r[0].y1, 124. + 3., "and the first still covers the word's start");
+    }
+
+    #[test]
+    fn regions_leave_out_what_a_figure_or_table_draws_but_keep_it_for_the_reader() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "Over the years personal computers and many other servers came to use a chipset of two parts, the one we show."),
+            (140., 130., 10., "CPU1 CPU2"),
+            (105., 160., 10., "Southbridge PCI-E SATA"),
+            (L, 200., 10., "Figure 2.1: Structure with two bridges"),
+            (L, 230., 10., "This short line ends with a stop."),
+            (L, 260., 10., "133MHz 266MHz 4,256MB/s PC2-4200"),
+        ];
+        let bytes = pdf(&[page], None);
+        let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
+        assert!(texts.iter().any(|t| t.starts_with("Over the years")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("Figure 2.1")), "{texts:?}");
+        assert!(texts.iter().any(|t| t.starts_with("This short line")), "{texts:?}");
+        assert!(!texts.iter().any(|t| t.contains("CPU1") || t.contains("Southbridge") || t.contains("133MHz")), "{texts:?}");
+        assert!(to_ir(&bytes, None).unwrap().blocks.iter().any(|b| b.text.contains("133MHz")), "the Reader keeps the table text");
+    }
+
+    #[test]
+    fn sentence_ends_skip_abbreviations() {
+        let text = "See Fig. 3 for it. Then e.g. this \"one.\" Next one. 日本語の文。次の文";
+        let ends: Vec<&str> = sentence_ends(text).into_iter().map(|e| &text[e..]).collect();
+        assert_eq!(ends, ["Then e.g. this \"one.\" Next one. 日本語の文。次の文", "Next one. 日本語の文。次の文", "次の文"]);
+        assert_eq!(word_break("one two", 5), 4);
+        assert_eq!(word_break("日本語", 1), 3, "no space, and never inside a character");
     }
 
     #[test]
