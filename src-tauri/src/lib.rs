@@ -719,7 +719,8 @@ fn article_for_url(app: State<'_, App>, url: String) -> Result<Option<ArticleRow
     }
 }
 
-/// Translation for the page overlay: cached units where available, the LLM for the rest.
+/// Translation for the page overlay: saved units where available, the LLM for the rest unless
+/// `cached_only`, which lets the overlay show what is saved without waiting on what is not.
 /// Snippets come from an untrusted page, so size and count are bounded. `target` is the
 /// overlay's choice for the page ("en" for a Japanese page); anything else means Japanese.
 #[tauri::command]
@@ -729,6 +730,7 @@ async fn overlay_translate(
     webview: Webview,
     snippets: Vec<String>,
     target: Option<String>,
+    cached_only: bool,
 ) -> Result<Vec<Option<Vec<Unit>>>, String> {
     browser::ensure_translation_allowed(&webview, &browser)?;
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
@@ -736,32 +738,42 @@ async fn overlay_translate(
     }
     let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
     let target = &to.key();
+    let page = browser::page_url(&webview);
+    let article = page.as_ref().and_then(browser::pdf_article);
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
-    let mut cached = app.store.cached_segments(&hashes, target).map_err(err)?;
-    let mut misses: Vec<usize> = Vec::new();
-    for (i, h) in hashes.iter().enumerate() {
-        if !cached.contains_key(h) && !misses.iter().any(|&j| hashes[j] == *h) {
-            misses.push(i);
-        }
-    }
-    if !misses.is_empty() {
+    let mut cached = translate::saved_units(&app.store, article, &snippets, target)?;
+    if !cached_only && hashes.iter().any(|h| !cached.contains_key(h)) {
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
-        let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
-        let llm = &app.providers.llm;
-        let t = segments::translate_snippets(llm, &batch, &to).await;
-        let rows: Vec<SegmentRow> = misses
-            .iter()
-            .zip(&t.results)
-            .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
-            .collect();
-        app.store.insert_segments(target, segments::PROMPT_VERSION, &rows).map_err(err)?;
-        for (&i, r) in misses.iter().zip(t.results) {
-            if let Some((units, _)) = r {
-                cached.insert(hashes[i].clone(), units);
+        // This wait can take minutes behind other calls: the page may be gone, and whatever was
+        // translating the same text meanwhile has saved it. Sending it again only makes the wait longer.
+        if browser::page_url(&webview) != page {
+            return Err("page left".into());
+        }
+        cached = translate::saved_units(&app.store, article, &snippets, target)?;
+        let mut misses: Vec<usize> = Vec::new();
+        for (i, h) in hashes.iter().enumerate() {
+            if !cached.contains_key(h) && !misses.iter().any(|&j| hashes[j] == *h) {
+                misses.push(i);
             }
         }
-        if let Some(e) = t.error {
-            log::warn!("overlay translate: {e}");
+        if !misses.is_empty() {
+            let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
+            let llm = &app.providers.llm;
+            let t = segments::translate_snippets(llm, &batch, &to).await;
+            let rows: Vec<SegmentRow> = misses
+                .iter()
+                .zip(&t.results)
+                .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
+                .collect();
+            app.store.insert_segments(target, segments::PROMPT_VERSION, &rows).map_err(err)?;
+            for (&i, r) in misses.iter().zip(t.results) {
+                if let Some((units, _)) = r {
+                    cached.insert(hashes[i].clone(), units);
+                }
+            }
+            if let Some(e) = t.error {
+                log::warn!("overlay translate: {e}");
+            }
         }
     }
     Ok(hashes.iter().map(|h| cached.get(h).cloned()).collect())

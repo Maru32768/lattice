@@ -194,5 +194,5 @@ test("only the main window sends the Page language to the pages; a pop-out takes
 test("the main window sends the Page language to the pages, and a choice made in a pop-out", async ({ app }) => {
   await expect.poll(() => callsOf(app, "browser_set_translation")).toContainEqual(expect.objectContaining({ enabled: false }));
   await app.evaluate(() => window.__e2e.emit("page-lang", { mode: "translated", percent: 70 }));
-  await expect.poll(async () => (await callsOf(app, "browser_set_translation")).at(-1)).toMatchObject({ enabled: true, percent: 100 });
+  await expect.poll(async () => (await callsOf(app, "browser_set_translation")).at(-1)).toMatchObject({ enabled: true, percent: null });
 });

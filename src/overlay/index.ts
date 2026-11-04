@@ -26,6 +26,7 @@ import {
   snippetHtml,
   splitByLineBreaks,
   translatedShare,
+  unitsByBlock,
 } from "./logic.ts";
 import type { PageKeys } from "../lib/keys.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -38,7 +39,8 @@ interface Unit {
 }
 interface Config {
   enabled: boolean;
-  percent: number;
+  /** 混在's share of text in the display language; null for 訳文. */
+  percent: number | null;
   /** Tooltip text in the app's display language. */
   labels: OverlayLabels;
 }
@@ -173,17 +175,18 @@ function enqueue(el: HTMLElement) {
   reportProgress();
   state.pending.push({ el, parts });
   clearTimeout(state.flushTimer);
-  state.flushTimer = window.setTimeout(flush, 200);
+  state.flushTimer = window.setTimeout(() => void flush(), 200);
 }
 
-function flush() {
+function batchesOf(blocks: Pending[]): Pending[][] {
+  const out: Pending[][] = [];
   let batch: Pending[] = [];
   let parts = 0,
     chars = 0;
-  for (const p of state.pending.splice(0)) {
+  for (const p of blocks) {
     const len = p.parts.reduce((n, s) => n + s.length, 0);
     if (batch.length && (parts + p.parts.length > BATCH_PARTS || chars + len > BATCH_CHARS)) {
-      state.queue.push(batch);
+      out.push(batch);
       batch = [];
       parts = chars = 0;
     }
@@ -192,9 +195,30 @@ function flush() {
     chars += len;
   }
   if (batch.length) {
-    state.queue.push(batch);
+    out.push(batch);
   }
+  return out;
+}
+
+/**
+ * What is saved shows at once; only the rest waits for the LLM, whose one call can take a minute
+ * and would otherwise hold up every block that shares its batch (a page's sidebar, its article's text).
+ */
+async function flush() {
+  const unsaved = await Promise.all(batchesOf(state.pending.splice(0)).map(showSaved));
+  state.queue.push(...batchesOf(unsaved.flat()));
   pump();
+}
+
+async function showSaved(batch: Pending[]): Promise<Pending[]> {
+  const units = unitsByBlock(batch, await translated(batch, true));
+  return batch.filter((p, i) => {
+    const mine = units[i];
+    if (mine && p.el.isConnected) {
+      apply(p.el, mine);
+    }
+    return !mine && p.el.isConnected;
+  });
 }
 
 function pump() {
@@ -208,28 +232,29 @@ function pump() {
   }
 }
 
-async function translateBatch(batch: Pending[]) {
-  const snippets = batch.flatMap((p) => p.parts);
-  let results: (Unit[] | null)[] = [];
+async function translated(batch: Pending[], cachedOnly: boolean): Promise<(Unit[] | null)[]> {
   try {
-    results = (await invoke("overlay_translate", { snippets, target: state.target })) as (Unit[] | null)[];
+    return (await invoke("overlay_translate", { snippets: batch.flatMap((p) => p.parts), target: state.target, cachedOnly })) as (Unit[] | null)[];
   } catch (e) {
     console.warn("[lattice] translate failed", e);
+    return [];
   }
-  let offset = 0;
-  for (const p of batch) {
-    const mine = results.slice(offset, offset + p.parts.length);
-    offset += p.parts.length;
+}
+
+async function translateBatch(batch: Pending[]) {
+  const units = unitsByBlock(batch, await translated(batch, false));
+  batch.forEach((p, i) => {
+    const mine = units[i];
     if (!p.el.isConnected) {
-      continue;
+      return;
     }
-    if (mine.length !== p.parts.length || mine.some((r) => !r?.length)) {
+    if (!mine) {
       p.el.dataset.latticeBlock = "failed";
       reportProgress();
-      continue;
+      return;
     }
-    apply(p.el, mine.flat() as Unit[]);
-  }
+    apply(p.el, mine);
+  });
 }
 
 function apply(el: HTMLElement, units: Unit[]) {

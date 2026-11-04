@@ -60,7 +60,7 @@ export interface PageLang {
 }
 
 /** The overlay's switch and ratio for a language choice: 原文 = off, 訳文 = 100 %. */
-export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", percent: l.mode === "translated" ? 100 : l.percent });
+export const overlayOf = (l: PageLang) => ({ enabled: l.mode !== "original", percent: l.mode === "translated" ? null : l.percent });
 
 /** The overlay's tooltip text in the display language. */
 export const overlayLabels = (t: T): OverlayLabels => ({

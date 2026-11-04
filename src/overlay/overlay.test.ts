@@ -14,7 +14,7 @@ Object.assign(globalThis, {
 });
 
 const { locate, renderOriginal, renderVariant, settle, tokenize, wrapRange } = await import("./dom.ts");
-const { assignTranslated, endsSpaced, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks, translatedShare } =
+const { assignTranslated, endsSpaced, isWrittenIn, pageTarget, plainText, routeKey, sanitize, snippetHtml, splitByLineBreaks, translatedShare, unitsByBlock } =
   await import("./logic.ts");
 const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
 
@@ -102,6 +102,19 @@ test("the mixed percent counts the display language, the same on Japanese and En
   assert.equal(translatedShare(70, "ja", "ja"), 70, "an English page in a Japanese UI: 70 % translated into Japanese");
   assert.equal(translatedShare(70, "en", "ja"), 30, "a Japanese page: 30 % translated into English");
   assert.equal(translatedShare(70, "en", ""), 70, "not configured yet: the translation's share");
+});
+
+test("訳文 shows the whole translation on Japanese and English pages alike", () => {
+  assert.equal(translatedShare(null, "ja", "ja"), 100);
+  assert.equal(translatedShare(null, "en", "ja"), 100, "a Japanese page reads in English");
+});
+
+test("a block has its units only when every one of its parts has them", () => {
+  const unit = (s: string) => ({ source: s, translation: s });
+  const blocks = [{ parts: ["a", "b"] }, { parts: ["c"] }, { parts: ["d"] }];
+  assert.deepEqual(unitsByBlock(blocks, [[unit("a")], [unit("b")], null, [unit("d")]]), [[unit("a"), unit("b")], null, [unit("d")]]);
+  assert.deepEqual(unitsByBlock(blocks, []), [null, null, null], "no answer at all");
+  assert.deepEqual(unitsByBlock([{ parts: ["a"] }], [[]]), [null], "an empty answer is none");
 });
 
 test("endsSpaced: Latin ends need a space before the next sentence, Japanese ends do not", () => {

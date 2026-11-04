@@ -54,7 +54,8 @@ fn tab_of(label: &str) -> Option<&str> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverlayConfig {
     pub enabled: bool,
-    pub percent: u8,
+    /// 混在's share of text in the display language; none for 訳文, the whole translation in whichever language.
+    pub percent: Option<u8>,
     pub labels: OverlayLabels,
 }
 
@@ -170,7 +171,7 @@ const PARKED: (f64, f64) = (-20000.0, -20000.0);
 impl Default for Browser {
     fn default() -> Self {
         Self {
-            config: Mutex::new(OverlayConfig { enabled: false, percent: 70, labels: OverlayLabels::default() }),
+            config: Mutex::new(OverlayConfig { enabled: false, percent: Some(70), labels: OverlayLabels::default() }),
             skip_sites: Mutex::new(Vec::new()),
             keys: Mutex::new(None),
             tabs: Mutex::new(HashMap::new()),
@@ -386,6 +387,13 @@ pub(crate) fn http_url(s: &str) -> Result<Url, String> {
 
 pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
+}
+
+/// The page a webview shows, whatever its scroll position in the URL's fragment; none once it is closed.
+pub fn page_url(wv: &Webview) -> Option<Url> {
+    let mut url = wv.url().ok()?;
+    url.set_fragment(None);
+    Some(url)
 }
 
 /// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
@@ -774,8 +782,14 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
 }
 
 #[tauri::command]
-pub async fn browser_set_translation(app: AppHandle, browser: State<'_, Browser>, enabled: bool, percent: u8, labels: OverlayLabels) -> Result<(), String> {
-    *lock(&browser.config) = OverlayConfig { enabled, percent: percent.min(100), labels };
+pub async fn browser_set_translation(
+    app: AppHandle,
+    browser: State<'_, Browser>,
+    enabled: bool,
+    percent: Option<u8>,
+    labels: OverlayLabels,
+) -> Result<(), String> {
+    *lock(&browser.config) = OverlayConfig { enabled, percent: percent.map(|p| p.min(100)), labels };
     browser.reconfigure(&app)
 }
 
@@ -965,9 +979,11 @@ mod tests {
     #[test]
     fn page_keys_keep_the_overlay_shape() {
         let keys: PageKeys = serde_json::from_str(r#"{"inFields":["Ctrl+K"],"outside":["J"],"prefix":["Ctrl+B"],"prefixMs":1500}"#).unwrap();
-        let boot =
-            serde_json::to_value(OverlayBoot { config: OverlayConfig { enabled: true, percent: 70, labels: OverlayLabels::default() }, keys: Some(keys) })
-                .unwrap();
+        let boot = serde_json::to_value(OverlayBoot {
+            config: OverlayConfig { enabled: true, percent: Some(70), labels: OverlayLabels::default() },
+            keys: Some(keys),
+        })
+        .unwrap();
         assert_eq!(boot["enabled"], true, "config fields at the top level, as configure() takes them");
         assert_eq!(boot["keys"]["inFields"][0], "Ctrl+K");
         assert_eq!(boot["keys"]["prefixMs"], 1500);

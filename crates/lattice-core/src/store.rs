@@ -967,6 +967,18 @@ impl Store {
         Ok(out)
     }
 
+    /// The article's translated blocks: each one's text and its newest units.
+    pub fn translated_blocks(&self, article_id: i64, target_language: &str) -> Result<Vec<(String, Vec<Unit>)>> {
+        let c = self.conn();
+        let mut st = c.prepare(
+            "SELECT b.text, st.units FROM blocks b
+             JOIN segment_translations st ON st.id = (SELECT id FROM segment_translations
+                 WHERE source_hash = b.text_hash AND target_language = ?2 ORDER BY id DESC LIMIT 1)
+             WHERE b.article_id = ?1 ORDER BY b.ordinal",
+        )?;
+        st.query_map(params![article_id, target_language], |r| Ok((r.get(0)?, opt_json_col::<Vec<Unit>>(r, 1)?)))?.collect()
+    }
+
     pub fn insert_segments(&self, target_language: &str, prompt_version: &str, items: &[SegmentRow]) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;

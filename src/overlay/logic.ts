@@ -189,8 +189,20 @@ export function assignTranslated(sources: string[], percent: number, seed: strin
  * The share of units that show their translation, for a mixed `percent` that counts text in the
  * display language `lang`: the same setting reads 70 % Japanese on English and Japanese pages alike.
  * Without a display language (an overlay the UI has not configured yet) it counts the translation.
+ * Null is 訳文: all of it, on a Japanese page too, where counting Japanese would show none.
  */
-export const translatedShare = (percent: number, target: Target, lang: string) => (!lang || target === lang ? percent : 100 - percent);
+export const translatedShare = (percent: number | null, target: Target, lang: string) =>
+  percent == null ? 100 : !lang || target === lang ? percent : 100 - percent;
+
+/** Each block's units from the answers for all their parts, in order; null for a block with any part unanswered. */
+export function unitsByBlock<U>(blocks: { parts: string[] }[], answers: (U[] | null)[]): (U[] | null)[] {
+  let offset = 0;
+  return blocks.map(({ parts }) => {
+    const mine = answers.slice(offset, offset + parts.length);
+    offset += parts.length;
+    return mine.length === parts.length && mine.every((a) => a?.length) ? (mine.flat() as U[]) : null;
+  });
+}
 
 /** Whether a space must follow `text` before more Latin-script text (as segments::joined_translation). */
 export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]$/u.test(text);

@@ -271,7 +271,7 @@ export const browser = {
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
   capture: (tab: string) => invoke<string | null>("browser_capture", { tab }),
   go: (tab: string, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
-  setTranslation: (enabled: boolean, percent: number, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
+  setTranslation: (enabled: boolean, percent: number | null, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
 };
 

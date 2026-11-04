@@ -5,11 +5,12 @@
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
 use crate::msg;
-use crate::segments::{self, PROMPT_VERSION, Target, snippet_from_inlines};
+use crate::segments::{self, PROMPT_VERSION, Target, Unit, snippet_from_inlines};
 use crate::store::{PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
 use rusqlite::OptionalExtension;
 use serde::Serialize;
+use std::collections::{HashMap, hash_map::Entry};
 use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "translate";
@@ -223,6 +224,48 @@ pub fn enqueue(store: &Store, article_id: i64, target: &Target) -> Result<(), St
     let key = target.key();
     let params = serde_json::json!({ "target_language": key, "instructions": target.instructions }).to_string();
     store.enqueue_job(JOB_TYPE, article_id, &params, &format!("{JOB_TYPE}:{article_id}:{key}")).map_err(|e| e.to_string())
+}
+
+/// The translations already saved for `snippets`, by `source_hash`. `article`, for a page that shows
+/// its article cut up differently from its blocks (a PDF's paragraph broken across columns, `pdf::regions`),
+/// also serves a snippet from the units of the block that holds it: they were never stored under its hash.
+pub fn saved_units(store: &Store, article: Option<i64>, snippets: &[String], key: &str) -> Result<HashMap<String, Vec<Unit>>, String> {
+    let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
+    let mut found = store.cached_segments(&hashes, key).map_err(|e| e.to_string())?;
+    let Some(article) = article.filter(|_| hashes.iter().any(|h| !found.contains_key(h))) else {
+        return Ok(found);
+    };
+    let blocks = store.translated_blocks(article, key).map_err(|e| e.to_string())?;
+    for (snippet, hash) in snippets.iter().zip(hashes) {
+        if let Entry::Vacant(slot) = found.entry(hash) {
+            let piece = segments::plain_text(snippet);
+            if let Some(units) = blocks.iter().filter(|(text, _)| text.contains(&piece)).find_map(|(_, units)| units_of_piece(units, &piece)) {
+                slot.insert(units);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// The run of `units` that is exactly `piece`, or none when the piece starts or ends inside a unit: half
+/// a sentence's translation cannot be told from the rest. Whitespace is ignored, as some models leave
+/// the space between two sentences out of their sources.
+fn units_of_piece(units: &[Unit], piece: &str) -> Option<Vec<Unit>> {
+    let squeezed = |s: &str| s.split_whitespace().collect::<String>();
+    let piece = squeezed(piece);
+    (0..units.len()).find_map(|start| {
+        let mut text = String::new();
+        for (end, unit) in units.iter().enumerate().skip(start) {
+            text.push_str(&squeezed(&segments::plain_text(&unit.source)));
+            if text == piece {
+                return Some(units[start..=end].to_vec());
+            }
+            if !piece.starts_with(&text) {
+                return None;
+            }
+        }
+        None
+    })
 }
 
 /// Translates the article anew: drops its cached translations for `target` (also those of
@@ -508,6 +551,29 @@ mod tests {
             [("One sentence here.", "ONE SENTENCE HERE."), ("Two sentences here.", "TWO SENTENCES HERE.")],
             "plain text, for the Reader to mix by sentence"
         );
+    }
+
+    #[tokio::test]
+    async fn saved_units_serve_the_pieces_of_a_translated_block_but_only_whole_sentences() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/p", "https://a.dev/p", "a.dev").unwrap();
+        let html = "<html><body><article><p>One sentence here. Two sentences here. Three sentences here.</p></article></body></html>";
+        store_fetched(&s, id, &Fetched { final_url: "https://a.dev/p".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        let target = Target::default();
+        run(&s, &Fake::new(), id, &target, None, &|| {}).await.unwrap();
+        let key = target.key();
+
+        let sources = |snippet: &str, article: Option<i64>, key: &str| {
+            let found = saved_units(&s, article, &[snippet.to_string()], key).unwrap();
+            found.get(&segments::source_hash(snippet)).map(|u| u.iter().map(|u| u.source.trim().to_string()).collect::<Vec<_>>())
+        };
+        let whole = "One sentence here. Two sentences here. Three sentences here.";
+        assert_eq!(sources(whole, None, &key).unwrap().len(), 3, "the block itself needs no article");
+        assert_eq!(sources("Two sentences here. Three sentences here.", Some(id), &key).unwrap(), ["Two sentences here.", "Three sentences here."]);
+        assert_eq!(sources("One sentence here.", Some(id), &key).unwrap(), ["One sentence here."], "a unit's trailing space is no difference");
+        assert_eq!(sources("sentence here. Two", Some(id), &key), None, "a piece that cuts through a sentence has no translation of its own");
+        assert_eq!(sources("Two sentences here.", None, &key), None, "pieces are looked for in the page's article only");
+        assert_eq!(sources("Two sentences here.", Some(id), "en"), None, "nor under another target");
     }
 
     #[tokio::test]
