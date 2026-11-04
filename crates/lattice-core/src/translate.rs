@@ -250,9 +250,8 @@ pub fn saved_units(store: &Store, article: Option<i64>, snippets: &[String], key
     };
     // A PDF's blocks are plain text. Their units, saved under a snippet's hash too since it ignores
     // tags, would flatten the snippet's scripts into its letters: those go to the model once more.
-    let scripted = |html: &str| html.contains("<sub>") || html.contains("<sup>");
     for (snippet, hash) in snippets.iter().zip(&hashes) {
-        if scripted(snippet) && found.get(hash).is_some_and(|units| !units.iter().any(|u| scripted(&u.source))) {
+        if segments::scripted(snippet) && found.get(hash).is_some_and(|units| !units.iter().any(|u| segments::scripted(&u.source))) {
             found.remove(hash);
         }
     }
@@ -261,7 +260,7 @@ pub fn saved_units(store: &Store, article: Option<i64>, snippets: &[String], key
     }
     let blocks = store.translated_blocks(article, key).map_err(|e| e.to_string())?;
     for (snippet, hash) in snippets.iter().zip(hashes) {
-        if scripted(snippet) {
+        if segments::scripted(snippet) {
             continue;
         }
         if let Entry::Vacant(slot) = found.entry(hash) {

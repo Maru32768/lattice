@@ -328,8 +328,27 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
             Err(e) => out.error = Some(e),
         }
     }
+    for (snippet, result) in snippets.iter().zip(&mut out.results) {
+        if let Some((units, _)) = result {
+            *units = keep_scripts(snippet, std::mem::take(units));
+        }
+    }
 
     out
+}
+
+/// Whether HTML has the superscripts or subscripts of a PDF's paragraph.
+pub(crate) fn scripted(html: &str) -> bool {
+    html.contains("<sub>") || html.contains("<sup>")
+}
+
+/// A model may drop a snippet's scripts from its sources. `saved_units` takes flat units for a plain
+/// block's and asks again on every view, so these become one unit whose source has the scripts.
+fn keep_scripts(snippet: &str, units: Vec<Unit>) -> Vec<Unit> {
+    if scripted(snippet) && !units.iter().any(|u| scripted(&u.source)) {
+        return vec![Unit { source: snippet.to_string(), translation: joined_translation(&units) }];
+    }
+    units
 }
 
 /// Snippet HTML for an IR block, in the same shape the page overlay sends:
@@ -526,6 +545,18 @@ pub(crate) mod tests {
         ]});
         let r = reconcile(&raw, &[0, 1, 2, 3, 4]);
         assert!(r[0].is_some() && r[1..].iter().all(Option::is_none));
+    }
+
+    #[test]
+    fn units_that_lost_a_snippets_scripts_become_one_unit_that_has_them() {
+        let unit = |source: &str, translation: &str| Unit { source: source.into(), translation: translation.into() };
+        let snippet = "E=mc<sup>2</sup> holds. It is known.";
+        let flat = vec![unit("E=mc2 holds. ", "成り立つ。"), unit("It is known.", "知られている。")];
+        assert_eq!(keep_scripts(snippet, flat), [unit(snippet, "成り立つ。知られている。")]);
+        let kept = vec![unit("E=mc<sup>2</sup> holds. ", "成り立つ。"), unit("It is known.", "知られている。")];
+        assert_eq!(keep_scripts(snippet, kept.clone()), kept, "the sentences stay when the scripts did");
+        let plain = vec![unit("One. ", "一。"), unit("Two.", "二。")];
+        assert_eq!(keep_scripts("One. Two.", plain.clone()), plain);
     }
 
     #[tokio::test]
