@@ -1,6 +1,6 @@
-# Builds a draft GitHub release for a `v*` tag: the NSIS installer and portable zip (both with lattice-cli), the
-# third-party license list and signed updater artifacts
-# (the installer's .sig and latest.json). See docs/release.md.
+# Waits for CI, then builds a draft GitHub release for a `v*` tag: the NSIS installer and portable zip (both with
+# lattice-cli), the third-party license list and signed updater artifacts (the installer's .sig and latest.json),
+# which release-check.yml then checks. See docs/release.md.
 name: Release
 
 on:
@@ -18,7 +18,8 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 90
+    # The wait for CI below, plus the build.
+    timeout-minutes: 135
     steps:
       - uses: actions/checkout@v5
 
@@ -29,11 +30,17 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$env:GITHUB_SHA&per_page=100" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw "Could not read CI status" }
-          $latest = $runs.workflow_runs | Where-Object { $_.head_sha -eq $env:GITHUB_SHA } | Sort-Object run_number -Descending | Select-Object -First 1
-          if (-not $latest -or $latest.status -ne 'completed' -or $latest.conclusion -ne 'success') {
-            throw "CI must pass on $env:GITHUB_SHA before releasing. Wait for CI, then rerun this release workflow."
+          $deadline = (Get-Date).AddMinutes(45)
+          while ($true) {
+            $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$env:GITHUB_SHA&per_page=100" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw "Could not read CI status" }
+            $latest = $runs.workflow_runs | Where-Object { $_.head_sha -eq $env:GITHUB_SHA } | Sort-Object run_number -Descending | Select-Object -First 1
+            if ($latest.status -eq 'completed') {
+              if ($latest.conclusion -eq 'success') { break }
+              throw "CI ended in '$($latest.conclusion)' on $env:GITHUB_SHA. Fix it before releasing."
+            }
+            if ((Get-Date) -gt $deadline) { throw "CI did not finish on $env:GITHUB_SHA. Is this commit pushed to master?" }
+            Start-Sleep -Seconds 30
           }
 
       - name: Install npm packages
@@ -82,3 +89,9 @@ jobs:
           Copy-Item LICENSE, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES $name
           Compress-Archive -Path $name -DestinationPath "$name.zip"
           gh release upload "${{ github.ref_name }}" "$name.zip" THIRD_PARTY_LICENSES --clobber
+
+  check:
+    needs: windows
+    uses: ./.github/workflows/release-check.yml
+    with:
+      tag: ${{ github.ref_name }}

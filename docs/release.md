@@ -1,8 +1,6 @@
 # Releasing Lattice
 
-A release is a `v<x.y.z>` tag. Pushing it runs `.github/workflows/release.yml`, which builds the Windows app and leaves a draft GitHub release for you to check and publish.
-
-Source preparation does not establish that a packaged application works: test the draft's artifacts before publishing it.
+A release is a `v<x.y.z>` tag. Pushing it runs `.github/workflows/release.yml`, which waits for CI, builds the Windows app, checks the result and leaves a draft GitHub release for you to publish.
 
 ## Version
 
@@ -99,47 +97,59 @@ To build signed artifacts locally, set the same two variables in the shell and r
 
 ## Cutting a release
 
-1. Finish the version, changelog, public key and license changes. Run both `mise run test` and `mise run e2e` locally.
-2. Commit the intended release changes and push to `master`. Record the full commit SHA with `git rev-parse HEAD`.
-3. Require a successful CI run for that exact SHA, including E2E. Inspect the run on GitHub, or list it with `gh run list --workflow ci.yml --commit <full-commit-sha>`. A green run for an earlier commit does not cover later changes. If a fix changes the source, repeat the affected local checks and require green CI for the new SHA.
-4. Tag only the verified commit and push the tag:
+1. Finish the version and changelog changes, and any public key or license changes. Commit them and push to `master`. CI runs the full test suite and E2E, so a release needs no local run of `mise run test` or `mise run e2e`.
+2. Tag that commit and push the tag. CI can still be running.
 
    ```bash
-   git tag v0.2.0 <verified-full-commit-sha>
+   git tag v0.2.0 <full-commit-sha>
    ```
 
    ```bash
    git push origin v0.2.0
    ```
 
-5. Wait for the Release workflow to create the draft.
-6. Test the draft's installer and portable archive with the native checklist below.
-7. Check the notes, license files, installer, portable archive, `latest.json` and installer signature. Confirm that the manifest names the intended version, URL and signature.
-8. Publish the draft once those checks pass. Include supported Windows versions, AI setup, backup guidance and known limitations in the notes.
+3. Wait for the Release workflow. It waits for CI on that exact commit and stops if CI fails. It then builds the draft and runs the [release check](#release-check).
+4. Run the [native checks](#native-checks) for what this release changed.
+5. Read the notes on the draft, then publish it.
+6. Update your own installed copy from the update bar. This is the real update path on a real library.
 
 A tag with a hyphen (`v0.2.0-beta.1`) makes a prerelease.
 
-The browser E2E suite uses a mock backend in Chromium. It does not verify native Tauri commands, WebView2, the installer or the updater. A successful release build does not replace the CI gate.
+The browser E2E suite uses a mock backend in Chromium. It does not verify native Tauri commands, WebView2, the installer or the updater. The release check and the native checks cover those.
 
-## Test the packaged Windows app
+## Release check
 
-Use a disposable test library or a restored backup. On both Windows 10 and Windows 11, test the installer and portable archive with a clean user profile and no developer toolchains:
+`.github/workflows/release-check.yml` runs after the build and changes nothing on the release. If it fails, the Release workflow fails and the draft stays unpublished.
 
-- Install, start, close and restart the app. Cover machines without WebView2 and without the Microsoft Visual C++ x64 runtime. Check runtime installation, administrator-approval cancellation and an already installed newer runtime. A failed prerequisite must stop installation.
-- Extract the portable archive into a writable folder. Confirm that the GUI and CLI use its adjacent `data` folder and that the license files are present.
-- Start with no AI configuration. Save, read and search an article, then restart and confirm persistence. Check the guidance for an absent CLI, an unauthenticated CLI and invalid API credentials.
-- Use one authenticated API provider and one authenticated CLI provider for translation, summary, quiz generation and chat. Correct invalid credentials and retry.
-- Download the semantic-search model on first run. Start offline before an initial download, verify full-text fallback and its explanation, then reconnect and retry.
-- Save a real JavaScript page, translate Page content, split panes and move a tab between windows.
-- Create a collection and a vocabulary entry, answer a quiz and complete a due review. Confirm that the state survives a restart.
-- Run both the installed CLI and portable CLI, then an MCP client against the same test library. Verify read access and explicitly enabled write access.
-- Confirm that settings do not expose destination rules. Verify that direct HTTP downloads still reject private destinations by default and respect any existing saved policy.
-- Confirm separate debug and release data, logs, browser profiles and storage selections. Check portable behavior and the CLI's `--data-dir` override.
-- Back up a library with articles, images, translations, vocabulary and review history. Restore it with [the user-guide procedure](guide.md#restore-a-backup), re-enter credentials and verify those records after restarting.
-- Move the data directory and restart. Reinstall over the test installation and confirm that the library remains.
-- Use a separate test build and a controlled update endpoint to offer a newer signed package. Verify that an altered package is rejected and a valid package installs, restarts and preserves data. Confirm that portable mode links to the release page.
+- `scripts/verify-release.ts` checks the files as uploaded. `latest.json` must name this version, the uploaded installer and its signature. The signature must verify against the public key in the tag, and that key must match the previous tag's, because installed copies reject any other. The portable zip must hold both executables, its marker and the license files. The license list must name this version.
+- The job starts the portable copy, then the installed copy after a silent install. Each must render its main window (`scripts/smoke-webview.ts`), create its database in the right folder and answer `lattice-cli list`. The portable copy must write nothing to `%APPDATA%\Lattice`. Uninstalling must remove both executables and keep the database.
 
-The public `latest.json` only offers a published release. Use a controlled endpoint and a disposable installation for this check. Keep the public endpoint and intended version in the release build.
+To recheck a tag without rebuilding:
+
+```bash
+gh workflow run release-check.yml -f tag=v0.2.0
+```
+
+The runner is a clean Windows Server with WebView2 and the Visual C++ runtime already installed. The check does not cover installing those prerequisites, a Windows 11 desktop, AI providers or updates.
+
+## Native checks
+
+Run only the rows for what the release changed. To list the changes, run `git diff --stat <previous-tag>..<tag>`. After an upgrade of Tauri or ONNX Runtime, run every row.
+
+Use Windows 11, a disposable test library or a restored backup, a clean user profile and no developer toolchains.
+
+| When this changed | Check |
+|---|---|
+| `src-tauri/installer-hooks.nsh`, `scripts/prepare-windows-*`, the `bundle` settings | Install on machines without WebView2 and without the Microsoft Visual C++ x64 runtime. Check runtime installation, administrator-approval cancellation and an already installed newer runtime. A failed prerequisite must stop installation. Reinstall over the test installation and confirm that the library remains. |
+| `src-tauri/src/update.rs`, `tauri.updater.conf.json`, `tauri-plugin-updater` | Use a separate test build and a controlled update endpoint to offer a newer signed package. The public `latest.json` only offers a published release. Verify that an altered package is rejected and a valid package installs, restarts and preserves data. Confirm that portable mode links to the release page. |
+| `llm.rs`, `chain.rs`, `claude.rs`, `codex.rs`, `openai.rs`, `gemini.rs`, `anthropic.rs` | Start with no AI configuration. Check the guidance for an absent CLI, an unauthenticated CLI and invalid API credentials. Use one authenticated API provider and one authenticated CLI provider for translation, summary, quiz generation and chat. Correct invalid credentials and retry. |
+| `embed.rs` | Download the semantic-search model on first run. Start offline before an initial download, verify full-text fallback and its explanation, then reconnect and retry. |
+| `browser.rs`, `renderer.rs`, `popout.rs`, `tabdrag.rs`, `src/overlay`, `src/pdfview` | Save a real JavaScript page, translate Page content, split panes and move a tab between windows. |
+| `store.rs`, a new migration | Save, read and search an article. Create a collection and a vocabulary entry, answer a quiz and complete a due review. Confirm that the state survives a restart. |
+| `crates/lattice-cli` | Run both the installed CLI and portable CLI, then an MCP client against the same test library. Verify read access and explicitly enabled write access. |
+| `network.rs`, `fetch.rs` | Confirm that settings do not expose destination rules. Verify that direct HTTP downloads still reject private destinations by default and respect any existing saved policy. |
+| `location.rs` | Confirm separate debug and release data, logs, browser profiles and storage selections. Check portable behavior and the CLI's `--data-dir` override. Move the data directory and restart. |
+| `backup.rs`, `r2.rs` | Back up a library with articles, images, translations, vocabulary and review history. Restore it with [the user-guide procedure](guide.md#restore-a-backup), re-enter credentials and verify those records after restarting. |
 
 ## What the workflow produces
 
@@ -152,7 +162,7 @@ The draft release `Lattice v<x.y.z>` has these assets:
 | `THIRD_PARTY_LICENSES` | The license list the build shipped with. |
 | `Lattice_<x.y.z>_x64-setup.exe.sig`, `latest.json` | The installer's signature and the manifest installed copies read to find updates. Required for published installer releases. |
 
-Both the installer and the zip need the WebView2 runtime, which Windows 11 includes. The installer downloads it on Windows 10 when it is missing. A portable copy on a machine without WebView2 needs the runtime installed separately.
+Both the installer and the zip need the WebView2 runtime, which Windows 11 includes. The installer downloads it when it is missing. A portable copy on a machine without WebView2 needs the runtime installed separately.
 
 Both executables also need the Microsoft Visual C++ x64 runtime because the prebuilt ONNX Runtime library uses the dynamic C++ runtime. Before bundling, `scripts/prepare-windows-runtime.ps1` downloads the Microsoft-signed Redistributable and verifies its signature and version. The NSIS installer embeds it, installs it with administrator approval when needed, and stops if installation fails. It leaves the shared runtime installed when Lattice is uninstalled. For portable copies, install the [Microsoft Visual C++ x64 runtime](https://aka.ms/vc14/vc_redist.x64.exe) separately. Windows 11 does not guarantee that this prerequisite is present.
 
@@ -162,9 +172,9 @@ To build the same installer locally, run `mise exec -- npm run tauri build`. The
 
 ## If a release fails
 
-Re-run the workflow on the same tag when the source commit is unchanged. The action updates the existing draft and replaces its assets.
+Re-run the workflow on the same tag when the source commit is unchanged. The action updates the existing draft and replaces its assets. When only the release check failed, re-run that job.
 
-If the source needs a fix, prepare a new verified commit. Replace the tag only while the release is unpublished and nobody relies on its artifacts:
+If the source needs a fix, push a new commit. Replace the tag only while the release is unpublished and nobody relies on its artifacts:
 
 ```bash
 git push origin :refs/tags/v0.2.0
@@ -174,4 +184,4 @@ git push origin :refs/tags/v0.2.0
 git tag -d v0.2.0
 ```
 
-After fixing the source, repeat the CI gate and tag the new verified commit. Never silently replace a published release's tag or binaries. Use a new patch version for a published release.
+Then tag the new commit. Never silently replace a published release's tag or binaries. Use a new patch version for a published release.
