@@ -90,6 +90,7 @@ requestIdleCallback(() => {
 import { HOST, IS_MAIN, type Where } from "./host";
 import { FirstRun, PrefixHint } from "./FirstRun";
 import { KeyHelp } from "./KeyHelp";
+import { PaneNumbers } from "./PaneNumbers";
 import { useLibrary } from "./useLibrary";
 import { importantMinOf, useLibraryView } from "./useLibraryView";
 import { useActivity, useTranslations, useUnreadBadge } from "./useActivity";
@@ -164,6 +165,7 @@ export default function App() {
   const [palette, setPalette] = useState<{ initial: string; newTab: boolean } | null>(null);
   const openPalette = () => setPalette({ initial: "", newTab: false });
   const [keyHelp, setKeyHelp] = useState(false);
+  const [paneNumbers, setPaneNumbers] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
   const [organizeTab, setOrganizeTab] = useState<OrganizeTab>("groups");
   const [importTab, setImportTab] = useState<ImportTab>("urls");
@@ -903,7 +905,7 @@ export default function App() {
         paneFocus.enterDoc(layout.previous);
       }
     },
-    paneNumbers: none,
+    paneNumbers: () => setPaneNumbers(true),
     paneGrowLeft: growPane("left"),
     paneGrowRight: growPane("right"),
     paneGrowUp: growPane("up"),
@@ -942,7 +944,7 @@ export default function App() {
   const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
 
   // What the focused pane comes to show takes the keyboard, so the keys go on working: a tab, a split, `J`, an overlay closing.
-  const overlaid = palette != null || keyHelp;
+  const overlaid = palette != null || keyHelp || paneNumbers;
   const shownDoc = cur?.kind === "page" ? cur.key : curView?.article.id;
   const followDoc = useEffectEvent((pane: number, shown: typeof shownDoc) => paneFocus.followDoc(pane, shown));
   useEffect(() => {
@@ -1389,6 +1391,15 @@ export default function App() {
               />
             )}
             {keyHelp && <KeyHelp onClose={() => setKeyHelp(false)} />}
+            {paneNumbers && (
+              <PaneNumbers
+                onPick={(pane) => {
+                  setPaneNumbers(false);
+                  paneFocus.enterPane(pane);
+                }}
+                onClose={() => setPaneNumbers(false)}
+              />
+            )}
             {deleting && (
               <ConfirmDialog
                 title={deleting.page ? t("app.confirmRemove") : t("app.confirmDelete")}

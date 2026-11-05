@@ -396,6 +396,95 @@ test("the tab list picked from the palette's own commands opens on its query", a
   await expect(palette(shell).getByRole("option")).toHaveCount(3);
 });
 
+const numbers = (app: Page) => app.getByRole("status", { name: "ペインの番号を表示" });
+
+test("Ctrl+B q numbers the panes on screen in order, each over its pane, and a digit takes the keyboard there", async ({ shell }) => {
+  await twoReaders(shell);
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell).locator("b")).toHaveText(["1", "2", "3", "4"]);
+  const third = await numbers(shell).locator("span").nth(2).boundingBox();
+  const left = await panes(shell).first().boundingBox();
+  expect(third).toEqual(left);
+
+  await shell.keyboard.press("3");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+  await expect(shell.locator(".app")).toHaveAttribute("data-kb-pane", "doc");
+
+  await press(shell, "Control+b", "q");
+  await shell.keyboard.press("2");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(shell.locator(".app")).toHaveAttribute("data-kb-pane", "list");
+  await expect(list(shell).locator(":focus")).toHaveCount(1);
+  await expect(panes(shell).first(), "the documents' focus stays").toHaveClass(/focused/);
+});
+
+test("any other key, a digit with no pane and a pointer press end the numbers and do nothing else", async ({ shell }) => {
+  await twoReaders(shell);
+  await list(shell).locator(".row").first().focus();
+  const cursor = list(shell).locator(".row.cur .t");
+  const before = await cursor.innerText();
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell)).toBeVisible();
+  await shell.keyboard.press("j");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(cursor, "the key was the numbers'").toHaveText(before);
+
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell)).toBeVisible();
+  await shell.keyboard.press("Shift");
+  await expect(numbers(shell), "a lone modifier is no key yet").toBeVisible();
+  await shell.keyboard.press("Escape");
+  await expect(numbers(shell)).toBeHidden();
+
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell)).toBeVisible();
+  await shell.keyboard.press("9");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(panes(shell).nth(1)).toHaveClass(/focused/);
+
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell)).toBeVisible();
+  await panes(shell).first().locator(".art-title").click();
+  await expect(numbers(shell)).toBeHidden();
+  await expect(panes(shell).first(), "the press reaches what is under the numbers").toHaveClass(/focused/);
+});
+
+test("the numbers hide the pages under them, which come back when they end, with the keyboard", async ({ shell }) => {
+  await twoPages(shell);
+  await expect.poll(() => lastOf(shell, "k2")).toBe("browser_set_bounds");
+  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Q", count: 1 }));
+  await expect(numbers(shell)).toBeVisible();
+  await expect.poll(() => lastOf(shell, "k1")).toBe("browser_hide");
+  await expect.poll(() => lastOf(shell, "k2")).toBe("browser_hide");
+  await expect(numbers(shell)).toHaveCSS("opacity", "1");
+  const before = (await callsOf(shell, "browser_focus")).length;
+
+  await shell.keyboard.press("Escape");
+  await expect(numbers(shell)).toBeHidden();
+  await expect.poll(() => lastOf(shell, "k1")).toBe("browser_set_bounds");
+  await expect.poll(() => lastOf(shell, "k2")).toBe("browser_set_bounds");
+  await expect.poll(async () => (await callsOf(shell, "browser_focus")).slice(before), "the keyboard returns to the page").toEqual([{ tab: "k1" }]);
+
+  await press(shell, "Control+b", "q");
+  await shell.keyboard.press("4");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(panes(shell).nth(1)).toHaveClass(/focused/);
+  await expect.poll(async () => (await callsOf(shell, "browser_focus")).at(-1), "a digit takes it to that page").toEqual({ tab: "k2" });
+});
+
+test("under the zoom only the zoomed pane has a number", async ({ shell }) => {
+  await twoReaders(shell);
+  await press(shell, "Control+b", "z");
+  await expect(panes(shell).first()).toBeHidden();
+  await press(shell, "Control+b", "q");
+  await expect(numbers(shell).locator("b")).toHaveText(["1"]);
+  await shell.keyboard.press("Escape");
+  await expect(numbers(shell)).toBeHidden();
+  await expect(panes(shell).first(), "the zoom goes on").toBeHidden();
+});
+
 test("with one pane the tab list names no panes", async ({ app }) => {
   await (await listRow(app, label(0))).click();
   await press(app, "Control+b", "w");

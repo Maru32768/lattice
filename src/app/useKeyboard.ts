@@ -11,7 +11,7 @@ import { openOverlays, pageClickable } from "../ui/Popover";
 import { IS_MAIN } from "./host";
 
 /** Shortcuts that, pressed in the page, open something in the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab", "tabList", "popOut"]);
+const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab", "tabList", "popOut", "paneNumbers"]);
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
