@@ -9,7 +9,7 @@ import { collapse, isWord } from "../vocab/vocab.ts";
 import type { ActionId } from "../lib/keymap.ts";
 import { firstField, hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
-import { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
+import { docText, firstVisibleOffset, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
 import { createUi, type DocUi, type View } from "./ui.ts";
 import { MOTIONS, focusRect, lineAtFocus, shapeLines, showBlock } from "./visual.ts";
 
@@ -75,26 +75,6 @@ function viewOf(scroller: Element | null): View {
 
 const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
 
-/** The first character on screen in `node`: the first of its lines may have scrolled away. */
-function firstVisibleOffset(node: Text, v: View): number {
-  const r = document.createRange();
-  let [lo, hi] = [0, node.length - 1];
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    r.setStart(node, mid);
-    r.setEnd(node, mid + 1);
-    if (r.getBoundingClientRect().bottom > v.top) {
-      hi = mid;
-    } else {
-      lo = mid + 1;
-    }
-  }
-  while (lo < node.length - 1 && /\s/u.test(node.data.charAt(lo))) {
-    lo++;
-  }
-  return lo;
-}
-
 /** Where the reader is: the first text on screen, the page's own header and menus only if there is nothing else. */
 function firstVisibleText(root: Element, v: View): TextPoint | null {
   const r = document.createRange();
@@ -103,7 +83,7 @@ function firstVisibleText(root: Element, v: View): TextPoint | null {
     return meets(r.getBoundingClientRect(), v);
   });
   const node = shown.find((n) => !n.parentElement?.closest(CHROME)) ?? shown[0];
-  return node ? { node, offset: firstVisibleOffset(node, v) } : null;
+  return node ? { node, offset: firstVisibleOffset(node, v.top) } : null;
 }
 
 /** `host`: as it is now, since the app's closures change with each render. */

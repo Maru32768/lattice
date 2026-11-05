@@ -179,6 +179,31 @@ test("Japanese text has words to hint", async ({ reader }) => {
   await reader.keyboard.press("Escape");
 });
 
+test("gw puts labels on what is on screen of a long text node, from its first visible line to its last", async ({ reader }) => {
+  const lines = Array.from({ length: 3000 }, (_, i) => `line${i} word${i} more${i}`);
+  await reader.locator("#extra").evaluate((el, text) => {
+    const pre = document.createElement("pre");
+    pre.id = "long";
+    pre.textContent = text;
+    el.prepend(pre);
+    pre.scrollIntoView();
+    const scroller = pre.closest(".doc-scroll")!;
+    scroller.scrollTop += pre.getBoundingClientRect().height / 2;
+  }, lines.join("\n"));
+  await press(reader, "g", "w");
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBeGreaterThan(0);
+  const { labels } = await drawn(reader);
+  const onScreen = await reader.locator("#long").evaluate((el) => {
+    const pane = el.closest(".doc-scroll")!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return { top: Math.max(pane.top, box.top), bottom: Math.min(pane.bottom, box.bottom) };
+  });
+  const ys = labels.map((l) => l.y).filter((y) => y >= onScreen.top - 1);
+  expect(Math.min(...ys), "the first line on screen has labels").toBeLessThan(onScreen.top + 30);
+  expect(Math.max(...ys), "and so does the last").toBeGreaterThan(onScreen.bottom - 30);
+  await reader.keyboard.press("Escape");
+});
+
 test("v shows a block at the first text on screen; v again selects, motions extend, Esc collapses and leaves", async ({ reader }) => {
   await reader.locator("#p0").evaluate((el) => el.scrollIntoView());
   await reader.keyboard.press("v");

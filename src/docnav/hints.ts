@@ -1,5 +1,5 @@
 // What `f` and `gw` put labels on. Ideas from Vimium's link_hints.js (see controller.ts).
-import { textNodes } from "./text.ts";
+import { firstVisibleOffset, textNodes } from "./text.ts";
 
 /** A place in the document that typing its label picks. */
 export interface Target {
@@ -153,13 +153,22 @@ export function visibleWords(root: Element): Range[] {
     if (!onScreen(whole.getBoundingClientRect())) {
       continue;
     }
+    // One node can be a whole plain-text page, where a Range takes as long as all its lines: only for words, and only those on screen.
+    // shortcut: a node run across columns taller than the view loses the columns after the first, upgrade if such a page turns up.
+    const start = firstVisibleOffset(node, 0);
     // Once a line: a hit test costs a good part of a millisecond on a PDF's page, and there are hundreds of words.
     let line = null as { top: number; seen: boolean } | null;
-    for (const { segment, index, isWordLike } of segmenter.segment(node.data)) {
+    for (const { segment, index, isWordLike } of segmenter.segment(node.data.slice(start))) {
+      if (!isWordLike) {
+        continue;
+      }
       const range = document.createRange();
-      range.setStart(node, index);
-      range.setEnd(node, index + segment.length);
-      const box = isWordLike ? range.getClientRects()[0] : undefined;
+      range.setStart(node, start + index);
+      range.setEnd(node, start + index + segment.length);
+      const box = range.getClientRects()[0];
+      if (box && box.top >= innerHeight) {
+        break;
+      }
       if (!box || !onScreen(box)) {
         continue;
       }
