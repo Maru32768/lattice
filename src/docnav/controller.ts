@@ -442,19 +442,25 @@ export function createDocNav(host: () => DocHost) {
       return;
     }
     const m = mode;
+    const active = document.activeElement;
+    // An app key may have moved the keyboard on: it stays there, where a selection of ours would also take the caret out of a field and drop what is typed.
+    const moved = active !== ui?.host && active !== document.body;
+    const barHadKeys = active === ui?.host && document.hasFocus();
     enter(NORMAL);
-    if (m.place.focus instanceof HTMLElement) {
+    if (barHadKeys && m.place.focus instanceof HTMLElement) {
       m.place.focus.focus({ preventScroll: true });
     }
-    if (keep && m.at >= 0) {
+    const kept = keep && m.at >= 0;
+    if (kept) {
       lastQuery = m.query;
-      select(rangeAt(m.doc, m.starts[m.at]!, m.length));
-      return;
+    } else {
+      backToPlace(m.place);
     }
-    const s = selection();
-    s.removeAllRanges();
-    m.place.ranges.forEach((r) => s.addRange(r));
-    backToPlace(m.place);
+    if (!moved) {
+      const s = selection();
+      s.removeAllRanges();
+      (kept ? [rangeAt(m.doc, m.starts[m.at]!, m.length)] : m.place.ranges).forEach((r) => s.addRange(r));
+    }
   }
 
   function startFind() {
