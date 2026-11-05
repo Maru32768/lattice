@@ -218,6 +218,67 @@ test("the chat log scrolls with the document's keys once the keyboard is in it, 
   await expect(hint(app)).toBeHidden();
 });
 
+test("after a split the keys start from the new pane, not the one that had DOM focus", async ({ app }) => {
+  await intoReader(app);
+  await app.keyboard.press("Control+\\");
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(2);
+  await expect(panes.nth(1)).toHaveClass(/focused/);
+  await app.keyboard.press("Control+h");
+  await expect(panes.nth(0)).toHaveClass(/focused/);
+  await expect(app.locator(".doc-scroll")).toBeFocused();
+  await app.keyboard.press("Control+l");
+  await expect(panes.nth(1)).toHaveClass(/focused/);
+  await press(app, "Control+b", "x");
+  await expect(panes).toHaveCount(1);
+  await expect(app.locator(".doc-scroll"), "closing it hands the keyboard to the pane left").toBeFocused();
+});
+
+test("the keyboard follows the focused pane to a page, and back from one", async ({ shell }) => {
+  const LAYOUT = {
+    root: {
+      kind: "pane",
+      id: 1,
+      tabs: [
+        { kind: "reader", id: 2, articleId: order[0].id },
+        { kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" },
+      ],
+      active: 2,
+    },
+    focused: 1,
+  };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".art-title")).toHaveText(label(0));
+  await list(shell).locator(".row").first().focus();
+  await shell.keyboard.press("Control+l");
+  await expect(shell.locator(".doc-scroll")).toBeFocused();
+
+  await press(shell, "Control+b", "2");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await expect.poll(() => callsOf(shell, "browser_focus")).toEqual([{ tab: "k1" }]);
+
+  await shell.keyboard.press("Control+p");
+  await expect(palette(shell)).toBeVisible();
+  await shell.keyboard.press("Escape");
+  await expect(palette(shell)).toBeHidden();
+  await expect.poll(() => callsOf(shell, "browser_focus"), "the palette closing returns it").toHaveLength(2);
+
+  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B 1", count: 1 }));
+  await expect(shell.locator(".art-title")).toHaveText(label(0));
+  await expect(shell.locator(".doc-scroll")).toBeFocused();
+});
+
+test("a list that opens an article keeps the keyboard", async ({ app }) => {
+  const row = await listRow(app, label(0));
+  await row.focus();
+  await app.keyboard.press("Enter");
+  await expect(app.locator(".art-title")).toHaveText(label(0));
+  await expect(app.locator(".doc-scroll")).not.toBeFocused();
+  await app.keyboard.press("j");
+  await expect(list(app).locator(".row.cur .t")).toHaveText(label(1));
+});
+
 test("moving into a pane that shows a page gives the page the keyboard", async ({ shell }) => {
   const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
