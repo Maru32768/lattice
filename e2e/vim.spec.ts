@@ -396,3 +396,16 @@ test.describe("IME", () => {
     await expect(chatInput(page)).toHaveText("te!x");
   });
 });
+
+test("a page's quote lands in the Vim editor after what was typed, and typing goes on from it", async ({ shell }) => {
+  await chat(shell);
+  await shell.keyboard.type("draft");
+  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "none", quote: "a quoted line" }));
+  await expect(chatInput(shell)).toContainText("draft");
+  await expect(chatInput(shell)).toContainText("> a quoted line");
+  await expect(chatInput(shell)).toBeFocused();
+  await expect(mode(shell)).toHaveText("INSERT");
+  await shell.keyboard.type("why");
+  await expect(chatInput(shell)).toContainText("why");
+  expect(await questions(shell)).toEqual([]);
+});
