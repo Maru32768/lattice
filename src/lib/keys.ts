@@ -20,13 +20,13 @@ export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
   const paneMoved = !current && (pane.length !== 1 || pane[0] !== "Ctrl+B");
   for (const a of ACTIONS) {
     const v = keysIn(raw[a.id]);
-    const seconds = a.keys.filter((k) => k.includes(" ")).map((k) => k.slice(k.indexOf(" ") + 1));
+    const seconds = a.keys.filter((k) => k.startsWith("Ctrl+B ")).map((k) => k.slice("Ctrl+B ".length));
     if (current) {
       if (v) {
         out[a.id] = v;
       }
     } else if (v || (paneMoved && seconds.length)) {
-      out[a.id] = [...(v ?? a.keys.filter((k) => !k.includes(" "))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
+      out[a.id] = [...(v ?? a.keys.filter((k) => !k.startsWith("Ctrl+B "))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
     }
   }
   return out;

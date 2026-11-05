@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
@@ -24,8 +24,8 @@ import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
-import type { ActionId } from "../lib/keymap";
-import { paneOf, stepNav, type PaneMove } from "../layout/panes";
+import { paneOf, stepNav } from "../layout/panes";
+import { scrollDoc, scrollerIn, type DocScroll } from "../docnav/scroll";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TitleBar } from "./TitleBar";
@@ -91,8 +91,10 @@ import { usePageLang } from "./usePageLang";
 import { useChatBridge } from "./useChatBridge";
 import { dockChat, useWindows } from "./useWindows";
 import { useHistory } from "./useHistory";
-import { MENU_TARGETS, usePaneFocus, usePrefix, useShortcuts } from "./useKeyboard";
+import { MENU_TARGETS, useKeySeq, usePaneFocus, useShortcuts, type ActionHandlers } from "./useKeyboard";
 import "./App.css";
+
+const clampIndex = (i: number, n: number) => Math.max(0, Math.min(n - 1, i));
 
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
@@ -328,19 +330,31 @@ export default function App() {
     });
   }
 
-  function moveCursor(d: 1 | -1) {
+  /** `d` articles from `id` in the list's order, stopping at its ends; without `id` in the list, down starts above the first and up below the last. */
+  function articleFrom(id: number | null, d: number) {
+    const i = order.findIndex((a) => a.id === id);
+    return order[clampIndex((i < 0 ? (d > 0 ? -1 : order.length) : i) + d, order.length)];
+  }
+
+  function moveCursor(d: number) {
     if (search) {
       if (flatHits.length) {
-        setHitSel(Math.max(0, Math.min(flatHits.length - 1, hitSel + d)));
+        setHitSel(clampIndex(hitSel + d, flatHits.length));
       }
-    } else if (order.length) {
-      const i = order.findIndex((a) => a.id === (cursor ?? selectedId));
-      const next = order[i < 0 ? (d > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, i + d))];
+    } else {
+      const next = articleFrom(cursor ?? selectedId, d);
       if (next) {
         setCursor(next.id);
       }
     }
     revealCursor();
+  }
+
+  /** How many rows half the list's height holds, for `d` and `u`. */
+  function halfList() {
+    const row = document.querySelector<HTMLElement>(".row, .hit");
+    const pane = paneOf(row);
+    return row && pane ? Math.max(1, Math.floor(pane.clientHeight / row.offsetHeight / 2)) : 1;
   }
 
   function openCursor(asPage: boolean) {
@@ -738,9 +752,11 @@ export default function App() {
 
   // ---- keyboard -----------------------------------------------------------------------------
   const paneFocus = usePaneFocus(layout, setLayout);
-  const prefix = usePrefix();
+  const keySeq = useKeySeq();
+  /** `J` / `K` replaced the Reader that had the keyboard; the next one shown takes it. */
+  const keepDocFocus = useRef(false);
 
-  const step = (d: 1 | -1) => {
+  const step = (d: number) => {
     const nav = paneOf(document.activeElement);
     if (nav?.dataset.pane === "nav") {
       stepNav(nav, d);
@@ -750,20 +766,57 @@ export default function App() {
     }
   };
 
-  const actions: Record<Exclude<ActionId, PaneMove>, () => void> = {
+  const toggleFocusMode = () => {
+    const collapse = navOpen || listOpen;
+    setNavOpen(!collapse);
+    setListOpen(!collapse);
+  };
+
+  const scrollPane = (id: DocScroll) => (count: number) => {
+    const chat = paneFocus.keyPane()?.dataset.pane === "chat";
+    const root = document.querySelector(chat ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused");
+    const el = root && scrollerIn(root);
+    if (el) {
+      scrollDoc(el, id, count);
+    }
+  };
+
+  const stepArticle = (d: number) => {
+    const a = articleFrom(selectedId, d);
+    if (a && a.id !== selectedId) {
+      openArticle(a);
+      keepDocFocus.current = true;
+    }
+  };
+
+  const none = () => {};
+
+  const actions: ActionHandlers = {
     palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
+    command: () => setPalette((p) => p ?? { initial: ">", newTab: false }),
+    keyHelp: none,
     search: enterSearch,
-    next: () => step(1),
-    prev: () => step(-1),
+    next: (n) => step(n),
+    prev: (n) => step(-n),
+    listFirst: () => step(-Infinity),
+    listLast: () => step(Infinity),
+    listHalfDown: (n) => step(n * halfList()),
+    listHalfUp: (n) => step(-n * halfList()),
     open: () => openCursor(false),
     openPage: () => openCursor(true),
+    scrollDown: scrollPane("scrollDown"),
+    scrollUp: scrollPane("scrollUp"),
+    scrollLeft: scrollPane("scrollLeft"),
+    scrollRight: scrollPane("scrollRight"),
+    halfDown: scrollPane("halfDown"),
+    halfUp: scrollPane("halfUp"),
+    docTop: scrollPane("docTop"),
+    docBottom: scrollPane("docBottom"),
+    nextArticle: (n) => stepArticle(n),
+    prevArticle: (n) => stepArticle(-n),
     favorite: () => void (current && toggleFavorite(current)),
     read: () => void (current && toggleRead(current)),
-    focus: () => {
-      const collapse = navOpen || listOpen;
-      setNavOpen(!collapse);
-      setListOpen(!collapse);
-    },
+    focus: toggleFocusMode,
     view: toggleView,
     summary: () => {
       if (cur?.kind === "reader" || cur?.kind === "page") {
@@ -790,6 +843,12 @@ export default function App() {
       }),
     nextTab: () => setLayout((l) => cycle(l, 1)),
     prevTab: () => setLayout((l) => cycle(l, -1)),
+    tabByNumber: (_, sequence) =>
+      setLayout((l) => {
+        const t = focusedPane(l).tabs[(Number(sequence.slice(-1)) + 9) % 10];
+        return t ? activate(l, t.id) : l;
+      }),
+    tabList: none,
     splitRight: () => {
       setScreen("library");
       setLayout((l) => split(l, l.focused, "row"));
@@ -799,6 +858,15 @@ export default function App() {
       setLayout((l) => split(l, l.focused, "column"));
     },
     closePane: () => setLayout((l) => closePane(l, l.focused)),
+    paneLast: none,
+    paneNumbers: none,
+    paneGrowLeft: none,
+    paneGrowRight: none,
+    paneGrowUp: none,
+    paneGrowDown: none,
+    paneSwapPrev: none,
+    paneSwapNext: none,
+    paneEven: none,
     saveWord,
     speak: replayWord,
     popOut: () => {
@@ -810,10 +878,33 @@ export default function App() {
     back: () => history.step(-1),
     forward: () => history.step(1),
     // The focused sidebar row moves itself (NavFolders); nowhere else has rows to move.
-    moveUp: () => {},
-    moveDown: () => {},
+    moveUp: none,
+    moveDown: none,
+    docFind: none,
+    findNext: none,
+    findPrev: none,
+    hints: none,
+    hintsNew: none,
+    wordHints: none,
+    visual: none,
+    nextHeading: none,
+    prevHeading: none,
+    focusInput: none,
+    docBack: none,
+    docForward: none,
+    copyUrl: none,
+    print: none,
   };
-  useShortcuts({ actions, prefix, layout, setLayout, focus: paneFocus });
+  useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
+
+  // A Reader opened over the one that had the keyboard takes it, so the arrows and Space keep scrolling.
+  const shownArticle = curView?.article.id;
+  useEffect(() => {
+    if (shownArticle != null && keepDocFocus.current) {
+      keepDocFocus.current = false;
+      document.querySelector<HTMLElement>(".dpane.focused .doc-scroll")?.focus();
+    }
+  }, [shownArticle]);
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
@@ -950,7 +1041,7 @@ export default function App() {
       const vAct = (task: (id: number) => Promise<unknown>) => () => void act(() => task(a.id), a.id);
       return {
         focusMode: !navOpen && !listOpen,
-        onFocusMode: actions.focus,
+        onFocusMode: toggleFocusMode,
         onFavorite: () => void toggleFavorite(a),
         onToggleRead: () => void toggleRead(a),
         onAsk: () => openChat("article"),
@@ -1271,7 +1362,7 @@ export default function App() {
                 <p>{t("app.markReadDesc", { title })}</p>
               </ConfirmDialog>
             )}
-            {prefix.prefix && <PrefixHint first={prefix.prefix} />}
+            {keySeq.hint && <PrefixHint first={keySeq.hint.first} scope={keySeq.hint.scope} />}
             {groupPick && (
               <GroupPicker
                 groups={groupRows}

@@ -183,7 +183,7 @@ test("取り込みフィルタ links to the per-feed filters in the feed manager
 });
 
 test("the palette opens a settings section by name", async ({ app }) => {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type(">設定: 翻訳");
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option").first()).toHaveText(/^設定: 翻訳/);
   await app.keyboard.press("Enter");

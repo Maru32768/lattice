@@ -4,7 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
-import type { PageKeys } from "../lib/keymap.ts";
+import type { KeySeq, KeyStep } from "../lib/keymap.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;
@@ -221,20 +221,9 @@ export function unitsByBlock<U>(blocks: { parts: string[] }[], answers: (U[] | n
 export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]$/u.test(text);
 
 /**
- * What the overlay does with a key pressed in the page. "take": forward it before the page sees
- * it. "unlessHandled": forward it once the page has had it, if the page did not preventDefault
- * (sites with their own "/" or "j" keep them). Null: the page's.
+ * Whether the overlay takes a key before the page sees it: a second key, a repeat of one, or a Ctrl /
+ * Alt key, which may have a browser default to suppress (Ctrl+S). Any other key of ours goes once the
+ * page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
  */
-export function routeKey(keys: PageKeys, key: string | null, inField: boolean, prefixArmed: boolean): "take" | "unlessHandled" | null {
-  if (!key) {
-    return null;
-  }
-  if (prefixArmed) {
-    return "take";
-  }
-  if (!keys.inFields.includes(key) && (inField || !keys.outside.includes(key))) {
-    return null;
-  }
-  // A plain key has no browser default to suppress; a Ctrl / Alt one may (Ctrl+S, Ctrl+P).
-  return /^(Ctrl|Alt)\+/.test(key) ? "take" : "unlessHandled";
-}
+export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
+  seq.first != null || /^(Ctrl|Alt)\+/.test(key) || (step.kind === "run" && !!step.action.repeat);

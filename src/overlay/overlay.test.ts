@@ -22,14 +22,14 @@ const {
   withAtoms,
   pageTarget,
   plainText,
-  routeKey,
   sanitize,
   snippetHtml,
   splitByLineBreaks,
+  takesBeforePage,
   translatedShare,
   unitsByBlock,
 } = await import("./logic.ts");
-const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keymap.ts");
+const { DEFAULT_BINDINGS, IDLE, pageKeys, stepKeys } = await import("../lib/keymap.ts");
 
 test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -244,15 +244,19 @@ test("a plain-text fallback leaves no empty inline code box, and keeps elements 
   assert.equal(p.querySelector("code")!.textContent, "rustup");
 });
 
-test("routeKey: which keys pressed in the page go to the app, and when", () => {
-  const keys = pageKeys(DEFAULT_BINDINGS);
-  assert.equal(routeKey(keys, "Ctrl+K", true, false), "take", "Ctrl+K even from a page field, before the page");
-  assert.equal(routeKey(keys, "Ctrl+B", false, false), "take");
-  assert.equal(routeKey(keys, "J", false, false), "unlessHandled", "after the page, which may claim it");
-  assert.equal(routeKey(keys, "J", true, false), null, "typing in a page field");
-  assert.equal(routeKey(keys, "ArrowDown", false, false), null, "the page scrolls with arrows");
-  assert.equal(routeKey(keys, "Enter", false, false), null);
-  assert.equal(routeKey(keys, "Q", false, false), null, "not an app shortcut");
-  assert.equal(routeKey(keys, "ArrowLeft", true, true), "take", "the key after the pane prefix");
-  assert.equal(routeKey(keys, null, false, true), null, "a lone modifier");
+test("takesBeforePage: a second key, a repeat and a Ctrl / Alt key go ahead of the page; a plain key after it", () => {
+  const { bindings } = pageKeys(DEFAULT_BINDINGS);
+  const taken = (seq: typeof IDLE, key: string, inField = false) => {
+    const step = stepKeys(bindings, seq, key, { scope: "doc", inField, now: 0 });
+    return takesBeforePage(seq, key, step);
+  };
+  assert.equal(taken(IDLE, "Ctrl+B"), true, "may have a browser default");
+  assert.equal(taken(IDLE, "Ctrl+P", true), true, "even from a page field");
+  assert.equal(taken({ ...IDLE, first: "G" }, "T"), true, "the page never sees half a sequence");
+  assert.equal(taken({ ...IDLE, first: "G" }, "Escape"), true);
+  assert.equal(taken({ ...IDLE, repeat: { first: "Ctrl+B", until: 1 } }, "Shift+H"), true, "a repeat is a second key");
+  assert.equal(taken(IDLE, "J"), false, "sites with their own j keep it");
+  assert.equal(taken(IDLE, "G"), false);
+  assert.equal(taken(IDLE, "5"), false);
+  assert.equal(taken({ ...IDLE, count: 5 }, "J"), false);
 });

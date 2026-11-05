@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
-import { ACTIONS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, type ActionId } from "../lib/keymap";
+import { ACTIONS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
@@ -47,10 +47,12 @@ export function ShortcutSettings() {
           const keys = bindings[a.id];
           const mine = recording?.id === a.id ? recording : null;
           const shared = keys.flatMap((k) =>
-            (clash.get(k) ?? []).filter((id) => id !== a.id).map((id) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, id) })),
+            (clash.get(k) ?? [])
+              .filter((o) => o !== a && scopesOverlap(o, a))
+              .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
           );
           const shadowed = keys.flatMap((k) => {
-            const by = chordFrom(bindings, k);
+            const by = chordFrom(bindings, k, a.scope);
             return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
           });
           return (
@@ -64,7 +66,7 @@ export function ShortcutSettings() {
               <span className="ctl keys-ctl">
                 {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
                 {keys.map((k) => (
-                  <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k) ? " clash" : ""}`}>
+                  <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
                     {keyLabel(k)}
                     <button
                       className="x"

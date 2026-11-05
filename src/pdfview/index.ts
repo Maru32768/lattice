@@ -392,7 +392,7 @@ async function imagesForPrint() {
   }
 }
 
-/** The overlay's `window.print` is what Ctrl+P calls. */
+/** The overlay's `window.print` is what its print key calls. */
 function printAllPages() {
   const print = window.print.bind(window);
   let preparing = false;

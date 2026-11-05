@@ -124,7 +124,7 @@ test("OPML outlines become folders on import; the palette finds folders", async 
   await app.getByRole("button", { name: "OPMLに書き出す" }).click();
   await expect(app.getByRole("status")).toContainText("lattice-feeds-");
 
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type("@Tech");
   const found = app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option", { name: /TechFeed/ });
   await expect(found.first()).toContainText("フォルダ");

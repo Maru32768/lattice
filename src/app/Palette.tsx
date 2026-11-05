@@ -87,7 +87,7 @@ function Hl({ text, q }: { text: string; q: string }) {
 
 const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg">{children}</span>;
 
-/** Ctrl K: one input for commands, articles, filters, URLs and search (Palette board). */
+/** One input for commands, articles, filters, URLs and search (Palette board). */
 export function Palette({
   initial,
   all,
@@ -124,6 +124,9 @@ export function Palette({
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     input.current?.focus();
+    // After an initial ">": typing goes on from it.
+    const end = input.current?.value.length ?? 0;
+    input.current?.setSelectionRange(end, end);
     return () => prev?.focus?.();
   }, []);
 

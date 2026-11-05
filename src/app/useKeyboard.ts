@@ -3,32 +3,55 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser } from "../api";
 import { getBindings, useBindings } from "../lib/keys";
-import { PREFIX_MS, actionFor, chordFrom, keyOf, pageKeys, type ActionId } from "../lib/keymap";
+import { IDLE, actionFor, chordFrom, keyOf, pageKeys, scopeOf, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
 import { focus as focusLayout, pageByKey, tabById, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
+import { IS_MAIN } from "./host";
 
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
+const LEAVES_PAGE = new Set<ActionId>([
+  "palette",
+  "command",
+  "keyHelp",
+  "view",
+  "newTab",
+  "closeTab",
+  "nextTab",
+  "prevTab",
+  "tabByNumber",
+  "tabList",
+  "splitRight",
+  "splitDown",
+  "popOut",
+]);
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
+/** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
+const HINT_MS = 400;
 
 type SetLayout = (f: (l: Workspace) => Workspace) => void;
 
 /**
- * Which pane has the keyboard: the one focus was moved to (outlined until the pointer is used),
- * and the one last clicked, where arrows scroll instead of moving the list cursor when it is the
- * document or chat. A click in a document pane, or in a page, focuses that pane: the next document opens there.
+ * Which pane has the keyboard: the one focus was moved to (outlined until the pointer is used), and
+ * the one it or the pointer was in last. A click in a document pane, or in a page, focuses that
+ * pane: the next document opens there.
  */
 export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   const [kbPane, setKbPane] = useState<string | null>(null);
-  const pointerPane = useRef<string | null>(null);
+  const lastPane = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    const focusin = (e: FocusEvent) => setKbPane((p) => p && (paneOf(e.target as Element)?.dataset.pane ?? null));
+    const focusin = (e: FocusEvent) => {
+      const p = paneOf(e.target as Element);
+      if (p) {
+        lastPane.current = p;
+      }
+      setKbPane((k) => k && (p?.dataset.pane ?? null));
+    };
     const pointer = (e: PointerEvent) => {
       setKbPane(null);
       const p = paneOf(e.target as Element);
-      pointerPane.current = p?.dataset.pane ?? null;
+      lastPane.current = p;
       if (p?.dataset.paneId) {
         setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
       }
@@ -56,46 +79,67 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     }
     setLayout((l) => focusLayout(l, hit.pane.id));
     setKbPane(null);
-    pointerPane.current = "doc";
+    lastPane.current = document.querySelector<HTMLElement>(`[data-pane-id='${hit.pane.id}']`);
   });
   useEffect(() => {
     const sub = listen<{ tab: string }>("browser-focus", (e) => onPageFocus(e.payload.tab));
     return () => void sub.then((f) => f());
   }, []);
 
-  return { kbPane, setKbPane, pointerPane };
-}
+  /** The pane the keyboard is in: the one with DOM focus, else the last it or the pointer was in, while that is still on screen. */
+  const keyPane = () => paneOf(document.activeElement) ?? (lastPane.current?.isConnected ? lastPane.current : null);
+  const setLastPane = (p: HTMLElement | null) => {
+    lastPane.current = p;
+  };
 
-/** The first key of a two-key binding, as tmux's prefix: armed until the next key or PREFIX_MS. */
-export function usePrefix() {
-  const [prefix, setPrefix] = useState<string | null>(null);
-  const timer = useRef(0);
-  const arm = (key: string) => {
-    setPrefix(key);
-    clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setPrefix(null), PREFIX_MS);
-  };
-  const disarm = () => {
-    clearTimeout(timer.current);
-    setPrefix(null);
-  };
-  return { prefix, arm, disarm };
+  return { kbPane, setKbPane, keyPane, setLastPane };
 }
 
 /**
- * The app's shortcuts: keys pressed in the app, and the ones a page's overlay forwards. After the
- * first key of a two-key binding the next key completes it; otherwise the bound action runs, unless
- * a field, an open overlay or a control owns the key. Also sends the page overlay the keys it forwards.
+ * The key sequence under way (`stepKeys`'s state), and the hint for a chord's first key, which shows
+ * after a moment so a quick `gg` never draws it. A pointer press ends the sequence.
+ */
+export function useKeySeq() {
+  const seq = useRef(IDLE);
+  const [hint, setHint] = useState<{ first: string; scope: KeyScope } | null>(null);
+  const timer = useRef(0);
+  const track = (next: KeySeq, scope: KeyScope = "list", onHint?: () => void) => {
+    seq.current = next;
+    clearTimeout(timer.current);
+    setHint(null);
+    const first = next.first;
+    if (first) {
+      timer.current = window.setTimeout(() => {
+        setHint({ first, scope });
+        onHint?.();
+      }, HINT_MS);
+    }
+  };
+  const onPointer = useEffectEvent(() => track(IDLE));
+  useEffect(() => {
+    const press = () => onPointer();
+    window.addEventListener("pointerdown", press, true);
+    return () => window.removeEventListener("pointerdown", press, true);
+  }, []);
+  return { seq, hint, track };
+}
+
+export type ActionHandlers = Record<Exclude<ActionId, PaneMove>, (count: number, sequence: string) => void>;
+
+/**
+ * The app's shortcuts: keys pressed in the app, and the ones a page's overlay forwards. A key runs
+ * its action unless a field, an open overlay or a control owns it. Also sends the page overlay the
+ * bindings it reads. Returns how to run an action by id, for the palette.
  */
 export function useShortcuts({
   actions,
-  prefix,
+  keySeq,
   layout,
   setLayout,
   focus,
 }: {
-  actions: Record<Exclude<ActionId, PaneMove>, () => void>;
-  prefix: ReturnType<typeof usePrefix>;
+  actions: ActionHandlers;
+  keySeq: ReturnType<typeof useKeySeq>;
   layout: Workspace;
   setLayout: SetLayout;
   focus: ReturnType<typeof usePaneFocus>;
@@ -105,25 +149,25 @@ export function useShortcuts({
     browser.setKeys(pageKeys(bindings)).catch(() => {});
   }, [bindings]);
 
-  /** True when focus moved to another pane. */
-  function movePane(move: PaneMove, from = paneOf(document.activeElement)): boolean {
+  /** The pane focus moved to, if any. */
+  function movePane(move: PaneMove, from: HTMLElement | null): HTMLElement | null {
     const p = paneAfter(move, from);
     if (!p) {
-      return false;
+      return null;
     }
     focusPane(p);
     focus.setKbPane(p.dataset.pane!);
     if (p.dataset.paneId) {
       setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
     }
-    return true;
+    return p;
   }
 
-  function run(id: ActionId) {
+  function run(id: ActionId, count: number, sequence: string) {
     if (isPaneMove(id)) {
-      movePane(id);
+      movePane(id, focus.keyPane());
     } else {
-      actions[id]();
+      actions[id](count, sequence);
     }
   }
 
@@ -135,70 +179,63 @@ export function useShortcuts({
     if (!key) {
       return;
     }
-    if (prefix.prefix) {
-      e.preventDefault();
-      prefix.disarm();
-      const bound = actionFor(getBindings(), `${prefix.prefix} ${key}`);
-      if (bound) {
-        run(bound.id);
-      }
-      return;
-    }
-    // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
-    if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
-      const on = (e.target as Element).closest?.<HTMLElement>(MENU_TARGETS) ?? document.querySelector<HTMLElement>(".row.cur");
-      if (!on) {
+    const t = e.target as HTMLElement;
+    const seq = keySeq.seq.current;
+    if (!seq.first) {
+      // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
+      if ((key === "ContextMenu" || key === "Shift+F10") && !openOverlays()) {
+        const on = t.closest?.<HTMLElement>(MENU_TARGETS) ?? document.querySelector<HTMLElement>(".row.cur");
+        if (!on) {
+          return;
+        }
+        e.preventDefault();
+        on.focus();
+        // The menu opens at the event's point: under the start of the element.
+        const r = on.getBoundingClientRect();
+        on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 16, clientY: r.bottom }));
         return;
       }
+      // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
+      if (t.closest("[aria-roledescription='sortable']")) {
+        return;
+      }
+    }
+    const inField = !!t.closest("input, textarea, select, [contenteditable='true']");
+    // A pop-out has no list for the keys to mean.
+    const scope = scopeOf(focus.keyPane()?.dataset.pane ?? (IS_MAIN ? "list" : "doc"));
+    const step = stepKeys(getBindings(), seq, key, { scope, inField, now: Date.now() });
+    // An open popover, menu or the palette owns the keys (j / k move inside it); the palette's own key still toggles it.
+    if (!seq.first && openOverlays() && !(step.kind === "run" && step.action.id === "palette")) {
+      return;
+    }
+    keySeq.track(step.seq, scope);
+    if (step.kind === "none") {
+      return;
+    }
+    if (step.kind !== "run") {
       e.preventDefault();
-      on.focus();
-      // The menu opens at the event's point: under the start of the element.
-      const r = on.getBoundingClientRect();
-      on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 16, clientY: r.bottom }));
       return;
     }
-    const chord = chordFrom(getBindings(), key);
-    const action = chord ?? actionFor(getBindings(), key);
-    if (!action) {
-      return;
-    }
-    // An open popover, menu or the palette owns the keys (j / k move inside it); Ctrl+K still toggles the palette.
-    if (openOverlays() && action.id !== "palette") {
-      return;
-    }
-    const t = e.target as HTMLElement;
-    // A drag handle being moved with the keyboard owns the arrows, Space and Enter.
-    if (t.closest("[aria-roledescription='sortable']")) {
-      return;
-    }
-    const inField = t.closest("input, textarea, select, [contenteditable='true']");
-    if (inField && !action.inFields) {
-      return;
-    }
-    if (chord) {
-      e.preventDefault();
-      prefix.arm(key);
-      return;
-    }
-    const focused = document.activeElement !== document.body ? paneOf(document.activeElement)?.dataset.pane : focus.pointerPane.current;
-    if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) {
-      return;
-    }
+    const { id } = step.action;
     // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
-    if (inField && action.id === "escape") {
+    if (inField && id === "escape") {
       return t.blur();
     }
     // Enter on a control activates it; on a list row or search hit it opens the cursor.
-    if ((action.id === "open" || action.id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) {
+    if ((id === "open" || id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) {
       return;
     }
     // Plain keys on a focused button would also activate it.
     e.preventDefault();
-    run(action.id);
+    run(id, step.count, step.sequence);
   });
 
-  // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
-  const onPageKey = useEffectEvent(({ tab, key }: { tab: string; key: string }) => {
+  // What the page overlay forwarded: keyboard focus is in that page's pane. Its `stepKeys` has read
+  // the keys, so this is a whole sequence, a chord's first key, or empty for one that ended there.
+  const onPageKey = useEffectEvent(({ tab, key, count }: { tab: string; key: string; count: number }) => {
+    if (!key) {
+      return keySeq.track(IDLE);
+    }
     const focusApp = () =>
       getCurrentWebview()
         .setFocus()
@@ -207,25 +244,23 @@ export function useShortcuts({
     (document.activeElement as HTMLElement | null)?.blur();
     const page = pageByKey(layout, tab);
     const pane = page && tabById(layout, page.id)?.pane.id;
+    const paneEl = document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`);
     if (pane != null) {
       setLayout((l) => focusLayout(l, pane));
+      focus.setLastPane(paneEl);
     }
-    const first = prefix.prefix;
-    if (first) {
-      prefix.disarm();
+    // A page under the hint hides, and the backend refuses a hidden page's keys: from then on the app reads the second key.
+    if (chordFrom(getBindings(), key, "doc")) {
+      return keySeq.track({ ...IDLE, first: key }, "doc", () => void focusApp());
     }
-    const chord = first ? undefined : chordFrom(getBindings(), key);
-    const action = chord ?? actionFor(getBindings(), first ? `${first} ${key}` : key);
-    // The second key skips the check: the hint for the first key counts as an open overlay itself.
-    if (!action || (!first && openOverlays() && action.id !== "palette")) {
-      return;
-    }
-    if (chord) {
-      prefix.arm(key);
+    keySeq.track(IDLE);
+    const action = actionFor(getBindings(), key, "doc");
+    // A chord skips the check: the hint for its first key counts as an open overlay itself.
+    if (!action || (!key.includes(" ") && openOverlays() && action.id !== "palette")) {
       return;
     }
     if (isPaneMove(action.id)) {
-      if (movePane(action.id, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) {
+      if (movePane(action.id, paneEl)) {
         void focusApp();
       }
       return;
@@ -233,16 +268,18 @@ export function useShortcuts({
     if (LEAVES_PAGE.has(action.id)) {
       void focusApp();
     }
-    actions[action.id]();
+    actions[action.id](count, key);
   });
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => onKey(e);
     window.addEventListener("keydown", down);
-    const unlisten = listen<{ tab: string; key: string }>("browser-key", (e) => onPageKey(e.payload));
+    const unlisten = listen<{ tab: string; key: string; count: number }>("browser-key", (e) => onPageKey(e.payload));
     return () => {
       window.removeEventListener("keydown", down);
       void unlisten.then((f) => f());
     };
   }, []);
+
+  return { run };
 }

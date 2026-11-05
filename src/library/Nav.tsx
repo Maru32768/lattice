@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { FeedRow, FolderRow, GroupRow } from "../api";
 import { genreSwatch, sameScope, type Scope } from "./library";
 import { Icon, type IconName } from "../ui/Icon";
+import { useBindings } from "../lib/keys";
+import { keyLabel } from "../lib/keymap";
 import { NavGroups } from "./NavGroups";
 import { NavFolders } from "./NavFolders";
 import type { FeedOrder } from "../feeds/feedFolders";
@@ -62,6 +64,7 @@ export interface AddActions {
 
 function AddMenu({ add }: { add: AddActions }) {
   const t = useT();
+  const paletteKey = useBindings().palette[0];
   return (
     <Menu
       className="ib add"
@@ -69,7 +72,7 @@ function AddMenu({ add }: { add: AddActions }) {
       inPane={false}
       trigger={<Icon name="plus" />}
       items={[
-        { label: t("app.pasteUrl"), hint: `Ctrl+K${t("app.pasteHint")}`, onSelect: add.paste },
+        { label: t("app.pasteUrl"), hint: `${paletteKey ? keyLabel(paletteKey) : ""}${t("app.pasteHint")}`, onSelect: add.paste },
         { label: t("common.addFeed"), hint: t("app.feedHint"), onSelect: add.feeds },
         { label: t("common.bulkImport"), hint: t("app.bulkHint"), onSelect: add.bulk },
         { label: t("common.importMarkdown"), hint: t("app.markdownHint"), onSelect: add.markdown },

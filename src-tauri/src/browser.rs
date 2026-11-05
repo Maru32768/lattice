@@ -87,14 +87,15 @@ pub struct OverlayLabels {
     pdf_failed: String,
 }
 
-/// The app shortcuts the overlay forwards (`PageKeys` in `src/lib/keys.ts`), passed through to the page.
+/// What the overlay reads keys with (`PageKeys` in `src/lib/keymap.ts`), passed through to the page.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PageKeys {
-    in_fields: Vec<String>,
-    outside: Vec<String>,
-    prefix: Vec<String>,
-    prefix_ms: u32,
+    /// Opaque here: the overlay's `stepKeys` reads it.
+    bindings: serde_json::Value,
+    /// The complete sequences a page may press in the app.
+    sequences: Vec<String>,
+    /// The chords' first keys, for the app's hint.
+    first: Vec<String>,
 }
 
 pub struct Browser {
@@ -120,8 +121,6 @@ struct TabState {
     parked: Option<Instant>,
     /// The page's last word capture (overlay_vocab).
     captured: Option<Instant>,
-    /// Until when the key after the pane prefix (Ctrl+B) is forwarded, as the overlay's `prefixUntil`.
-    prefix_until: Option<Instant>,
     /// The saved PDFs the app opened in this tab, which Back and Forward can return to: the only ones the tab may load (`pdf_allowed`).
     pdfs: HashSet<i64>,
     /// How many documents have begun loading, which `pushState` and in-page links do not count as.
@@ -130,16 +129,7 @@ struct TabState {
 
 impl Default for TabState {
     fn default() -> Self {
-        Self {
-            focus: None,
-            visibility: Visibility::default(),
-            history: (true, true),
-            parked: None,
-            captured: None,
-            prefix_until: None,
-            pdfs: HashSet::new(),
-            documents: 0,
-        }
+        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, pdfs: HashSet::new(), documents: 0 }
     }
 }
 
@@ -872,43 +862,39 @@ pub async fn browser_set_keys(app: AppHandle, browser: State<'_, Browser>, keys:
     Ok(())
 }
 
-/// Called by the overlay with an app shortcut pressed while the page has focus. Exposed to remote
-/// pages, so a page can press the app's shortcuts itself; it can do no more than the user's keys
-/// can, and only while it is on screen.
+/// Called by the overlay with an app shortcut pressed while the page has focus: a whole sequence
+/// and its count, a chord's first key, or nothing to end the app's hint. Exposed to remote pages, so
+/// a page can press the app's shortcuts itself; it can do no more than the user's keys can, and only
+/// while it is on screen.
 #[tauri::command]
-pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -> Result<(), String> {
+pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String, count: u32) -> Result<(), String> {
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
     let keys = lock(&browser.keys).clone();
-    if !browser.with_tab(webview.label(), |t| take_key(t, keys.as_ref(), &key, Instant::now())) {
+    if !browser.with_tab(webview.label(), |t| take_key(t, keys.as_ref(), &key)) {
         return Err("key refused".into());
     }
     #[derive(Clone, Serialize)]
     struct Key {
         key: String,
+        count: u32,
     }
-    emit_tab(&webview, "browser-key", Key { key });
+    emit_tab(&webview, "browser-key", Key { key, count });
     Ok(())
 }
 
-/// Whether the tab may forward `key` at `now`: on screen, and `key` one of those the overlay was told
-/// to forward, or any key within `prefix_ms` of a two-key binding's first key (as the overlay's `forward`); if so,
-/// arms or disarms the prefix the same way.
-fn take_key(t: &mut TabState, keys: Option<&PageKeys>, key: &str, now: Instant) -> bool {
+/// Whether the tab may forward `key`: on screen, and `key` empty or one the overlay was told it can
+/// send. The overlay's `stepKeys` holds the sequence; nothing here does.
+fn take_key(t: &TabState, keys: Option<&PageKeys>, key: &str) -> bool {
     let Some(k) = keys else {
         return false;
     };
-    let armed = t.prefix_until.is_some_and(|until| now < until);
-    let listed = k.in_fields.iter().chain(&k.outside).chain(&k.prefix).any(|s| s == key);
-    let ok = t.visibility.wanted && !t.visibility.loading && key.len() <= 64 && (armed || listed);
-    if ok {
-        t.prefix_until = (!armed && k.prefix.iter().any(|s| s == key)).then(|| now + Duration::from_millis(k.prefix_ms.into()));
-    }
-    ok
+    let listed = key.is_empty() || k.sequences.iter().chain(&k.first).any(|s| s == key);
+    t.visibility.wanted && !t.visibility.loading && key.len() <= 64 && listed
 }
 
-/// Called by the overlay for Ctrl+P and `window.print()`. WebView2's own print preview is drawn
+/// Called by the overlay for its print key and `window.print()`. WebView2's own print preview is drawn
 /// inside the page's child webview and showed up behind the page; the system dialog is a window of
 /// its own. Exposed to remote pages, which can call print() anyway; only while the page is on
 /// screen. False off Windows, where the overlay falls back to the page's own print.
@@ -1030,15 +1016,16 @@ mod tests {
 
     #[test]
     fn page_keys_keep_the_overlay_shape() {
-        let keys: PageKeys = serde_json::from_str(r#"{"inFields":["Ctrl+K"],"outside":["J"],"prefix":["Ctrl+B"],"prefixMs":1500}"#).unwrap();
+        let keys: PageKeys = serde_json::from_str(r#"{"bindings":{"palette":["Ctrl+P"]},"sequences":["Ctrl+P"],"first":["Ctrl+B"]}"#).unwrap();
         let boot = serde_json::to_value(OverlayBoot {
             config: OverlayConfig { enabled: true, percent: Some(70), labels: OverlayLabels::default(), manual: false },
             keys: Some(keys),
         })
         .unwrap();
         assert_eq!(boot["enabled"], true, "config fields at the top level, as configure() takes them");
-        assert_eq!(boot["keys"]["inFields"][0], "Ctrl+K");
-        assert_eq!(boot["keys"]["prefixMs"], 1500);
+        assert_eq!(boot["keys"]["bindings"]["palette"][0], "Ctrl+P", "the bindings pass through as they came");
+        assert_eq!(boot["keys"]["sequences"][0], "Ctrl+P");
+        assert_eq!(boot["keys"]["first"][0], "Ctrl+B");
     }
 
     #[test]
@@ -1066,22 +1053,24 @@ mod tests {
     }
 
     #[test]
-    fn a_page_forwards_only_the_keys_it_was_given_or_the_one_after_the_prefix() {
-        let now = Instant::now();
-        let keys = PageKeys { in_fields: vec!["Ctrl+K".into()], outside: vec!["J".into()], prefix: vec!["Ctrl+B".into()], prefix_ms: 1500 };
+    fn a_page_forwards_only_the_keys_it_was_given() {
+        let keys = PageKeys { bindings: serde_json::Value::Null, sequences: vec!["Ctrl+P".into(), "Ctrl+B X".into()], first: vec!["Ctrl+B".into()] };
         let mut t = TabState::default();
-        assert!(!take_key(&mut t, Some(&keys), "J", now), "hidden");
+        assert!(!take_key(&t, Some(&keys), "Ctrl+P"), "hidden");
         t.visibility.wanted = true;
-        assert!(!take_key(&mut t, None, "J", now), "no keys yet");
-        assert!(take_key(&mut t, Some(&keys), "J", now));
-        assert!(take_key(&mut t, Some(&keys), "Ctrl+K", now));
-        assert!(!take_key(&mut t, Some(&keys), "Ctrl+Q", now), "not a shortcut");
-        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now), "not armed");
-        assert!(take_key(&mut t, Some(&keys), "Ctrl+B", now));
-        assert!(take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(100)), "armed");
-        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(200)), "one key per prefix");
-        assert!(take_key(&mut t, Some(&keys), "Ctrl+B", now));
-        assert!(!take_key(&mut t, Some(&keys), "ArrowLeft", now + Duration::from_millis(1500)), "expired");
+        assert!(!take_key(&t, None, "Ctrl+P"), "no keys yet");
+        assert!(take_key(&t, Some(&keys), "Ctrl+P"));
+        assert!(take_key(&t, Some(&keys), "Ctrl+B"), "a first key, for the hint");
+        assert!(take_key(&t, Some(&keys), "Ctrl+B X"), "a whole sequence");
+        assert!(take_key(&t, Some(&keys), ""), "ending the hint");
+        assert!(!take_key(&t, Some(&keys), "Ctrl+Q"), "not a shortcut");
+        assert!(!take_key(&t, Some(&keys), "Ctrl+B Q"), "a sequence the app does not have");
+        assert!(!take_key(&t, Some(&keys), "X"), "a second key alone");
+        let long = "Ctrl+B ".repeat(10);
+        let keys = PageKeys { sequences: vec![long.clone()], ..keys };
+        assert!(!take_key(&t, Some(&keys), &long), "too long");
+        t.visibility.loading = true;
+        assert!(!take_key(&t, Some(&keys), "Ctrl+B"), "loading");
     }
 
     #[test]
