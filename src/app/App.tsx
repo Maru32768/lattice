@@ -29,7 +29,7 @@ import { scrollDoc, scrollerIn, type DocScroll } from "../docnav/scroll";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TitleBar } from "./TitleBar";
-import { Splitter, loadWidths, saveWidths, type PaneWidths, type Resizable } from "../layout/Splitter";
+import { Splitter, clampWidth, loadWidths, saveWidths, type PaneWidths, type Resizable } from "../layout/Splitter";
 import { DocArea } from "../layout/DocArea";
 import { hostOf as siteOf } from "../ui/Favicon";
 import {
@@ -42,6 +42,7 @@ import {
   cycle,
   focus as focusLayout,
   focusedPane,
+  grow,
   open,
   split,
   tabById,
@@ -51,6 +52,7 @@ import {
   type Id,
   type Pane,
   type PageTab,
+  type Side,
   type Tab,
 } from "../layout/layout";
 import type { TabLabel } from "../layout/TabStrip";
@@ -99,6 +101,9 @@ import { MENU_TARGETS, useKeySeq, usePaneFocus, useShortcuts, type ActionHandler
 import "./App.css";
 
 const clampIndex = (i: number, n: number) => Math.max(0, Math.min(n - 1, i));
+/** How far a key moves a border: between documents as a share of their split, beside them in pixels. */
+const GROW_SHARE = 0.04;
+const GROW_PX = 32;
 
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
@@ -797,6 +802,21 @@ export default function App() {
     }
   };
 
+  const growPane = (side: Side) => () => {
+    const pane = paneFocus.keyPane()?.dataset.pane;
+    if (pane !== "nav" && pane !== "list" && pane !== "chat") {
+      return setLayout((l) => grow(l, side, GROW_SHARE));
+    }
+    // A side pane has only a width, and the chat window none of its own.
+    if (HOST.kind === "chat" || side === "up" || side === "down") {
+      return;
+    }
+    const resized = pane === "list" && search ? "search" : pane;
+    // The chat's border is on its left, the others' on their right.
+    const wider = side === (pane === "chat" ? "left" : "right");
+    setWidth(resized, clampWidth(resized, widths[resized] + (wider ? GROW_PX : -GROW_PX)));
+  };
+
   const none = () => {};
 
   const actions: ActionHandlers = {
@@ -873,10 +893,10 @@ export default function App() {
     closePane: () => setLayout((l) => closePane(l, l.focused)),
     paneLast: none,
     paneNumbers: none,
-    paneGrowLeft: none,
-    paneGrowRight: none,
-    paneGrowUp: none,
-    paneGrowDown: none,
+    paneGrowLeft: growPane("left"),
+    paneGrowRight: growPane("right"),
+    paneGrowUp: growPane("up"),
+    paneGrowDown: growPane("down"),
     paneSwapPrev: none,
     paneSwapNext: none,
     paneEven: none,
