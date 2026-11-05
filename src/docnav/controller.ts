@@ -28,6 +28,8 @@ export interface DocHost {
   print(): void;
   /** Brings in the text the document has not drawn yet (a PDF's far pages); `more` says that some came. Called on each use, so that a host not ready yet is asked again. */
   allText?(more: () => void): void;
+  /** Changes when the document's text does; only a host that can say so has its text kept between uses. */
+  textVersion?(): number | undefined;
 }
 
 type Hint = Target & { label: string };
@@ -76,9 +78,9 @@ function viewOf(scroller: Element | null): View {
 const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
 
 /** Where the reader is: the first text on screen, the page's own header and menus only if there is nothing else. */
-function firstVisibleText(root: Element, v: View): TextPoint | null {
+function firstVisibleText(nodes: Text[], v: View): TextPoint | null {
   const r = document.createRange();
-  const shown = textNodes(root).filter((n) => {
+  const shown = nodes.filter((n) => {
     r.selectNodeContents(n);
     return meets(r.getBoundingClientRect(), v);
   });
@@ -94,6 +96,19 @@ export function createDocNav(host: () => DocHost) {
   let lastQuery = "";
   /** The heading `]]` went to last and where that left it: a scroll margin or the document's end can stop it below the top, and while it stays there the next one must still be next. */
   let lastHeading: { el: Element; top: number } | null = null;
+  /** The last walk of a document whose host says when its text changes: on a long PDF one takes over 100 ms, and `/`, `n` and `N` each need it. */
+  let walked: { root: Element; version: number; doc: DocText } | null = null;
+
+  function walkOf(root: Element): DocText {
+    const version = host().textVersion?.();
+    if (version === undefined) {
+      return docText(root);
+    }
+    if (walked?.root !== root || walked.version !== version) {
+      walked = { root, version, doc: docText(root) };
+    }
+    return walked.doc;
+  }
 
   const selection = () => window.getSelection()!;
 
@@ -272,7 +287,7 @@ export function createDocNav(host: () => DocHost) {
   function onMoreText() {
     const root = host().root();
     if (mode.kind === "find" && root) {
-      const m = { ...mode, doc: docText(root) };
+      const m = { ...mode, doc: walkOf(root) };
       if (m.query.trim()) {
         search(m, m.query);
       } else {
@@ -298,7 +313,7 @@ export function createDocNav(host: () => DocHost) {
     if (s.toString() && root.contains(s.anchorNode) && meets(s.getRangeAt(0).getBoundingClientRect(), view)) {
       return enterVisual();
     }
-    const at = firstVisibleText(root, view);
+    const at = firstVisibleText(textNodes(root), view);
     if (at) {
       s.collapse(at.node, at.offset);
       showBlock(s);
@@ -403,7 +418,7 @@ export function createDocNav(host: () => DocHost) {
         return at;
       }
     }
-    return indexOfScreen(doc, firstVisibleText(root, viewOf(host().scroller())));
+    return indexOfScreen(doc, firstVisibleText(doc.nodes, viewOf(host().scroller())));
   }
 
   /** Shows the query's match nearest the origin, or the place the find began without one. */
@@ -464,7 +479,8 @@ export function createDocNav(host: () => DocHost) {
       focus: document.activeElement,
     };
     const { input, count } = openUi().bar(host().findLabel(), view);
-    enter({ kind: "find", query: "", doc: docText(root), origin: firstVisibleText(root, view), starts: [], length: 0, at: -1, place, count });
+    const doc = walkOf(root);
+    enter({ kind: "find", query: "", doc, origin: firstVisibleText(doc.nodes, view), starts: [], length: 0, at: -1, place, count });
     input.addEventListener("input", () => {
       if (mode.kind === "find") {
         search(mode, input.value);
@@ -507,7 +523,7 @@ export function createDocNav(host: () => DocHost) {
     if (!root || !lastQuery) {
       return;
     }
-    const doc = docText(root);
+    const doc = walkOf(root);
     const { starts, length } = matchesIn(doc.text, lastQuery);
     const at = pickMatch(starts, originIn(doc, dir, root), dir);
     if (at >= 0) {

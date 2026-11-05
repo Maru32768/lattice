@@ -73,6 +73,8 @@ declare global {
       repeatKeys(first: string): void;
       /** The PDF viewer's: draws the text of all its pages. */
       allText?(more: () => void): void;
+      /** The PDF viewer's: changes when its text does. */
+      textVersion?(): number;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
@@ -743,6 +745,7 @@ const pageDoc: DocHost = {
   history: (d) => history.go(d),
   print: () => window.print(),
   allText: (more) => window.__lattice?.allText?.(more),
+  textVersion: () => window.__lattice?.textVersion?.(),
 };
 const docNav = createDocNav(() => pageDoc);
 
