@@ -4,6 +4,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- Windows 10 is no longer a supported platform, and releases are no longer tested on it. The app is not blocked from running there.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added

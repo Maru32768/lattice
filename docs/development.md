@@ -4,7 +4,7 @@ This guide is for people who build, change or release Lattice. For using the app
 
 ## Requirements
 
-- Windows 10 or 11 with WebView2 (preinstalled on Windows 11). Lattice is developed on Windows; macOS and Linux builds are untested.
+- Windows 11, which includes WebView2. Lattice is developed on Windows; macOS and Linux builds are untested.
 - [mise](https://mise.jdx.dev/), which installs the pinned Node.js and Rust versions from `mise.toml`.
 - Visual Studio 2022 Build Tools 17.10 or later (MSVC 14.4x) with the "Desktop development with C++" workload. ONNX Runtime, used for semantic search, requires it.
 
