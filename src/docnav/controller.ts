@@ -26,6 +26,8 @@ export interface DocHost {
   /** A step in the document's history. */
   history(d: 1 | -1): void;
   print(): void;
+  /** Brings in the text the document has not drawn yet (a PDF's far pages); `more` says that some came. */
+  allText?(more: () => void): void;
 }
 
 type Hint = Target & { label: string };
@@ -110,6 +112,8 @@ export function createDocNav(host: () => DocHost) {
   let lastQuery = "";
   /** The heading `]]` went to last: at the end of a document it stays below the top, and the next one must still be next. */
   let lastHeading: Element | null = null;
+  /** Keeps `allText` from going through a PDF's pages on every use. */
+  let textAsked = false;
 
   const selection = () => window.getSelection()!;
 
@@ -282,7 +286,15 @@ export function createDocNav(host: () => DocHost) {
 
   // ---- caret and visual ------------------------------------------------------------------------
 
+  function askAllText(more = () => {}) {
+    if (!textAsked) {
+      textAsked = true;
+      host().allText?.(more);
+    }
+  }
+
   function enterVisual() {
+    askAllText();
     enter({ kind: "visual", line: null, g: false });
   }
 
@@ -301,6 +313,7 @@ export function createDocNav(host: () => DocHost) {
     if (at) {
       s.collapse(at.node, at.offset);
       showBlock(s);
+      askAllText();
       enter({ kind: "caret", g: false });
     }
   }
@@ -490,6 +503,16 @@ export function createDocNav(host: () => DocHost) {
     input.addEventListener("keypress", eat, { once: true });
     input.addEventListener("keydown", () => input.removeEventListener("keypress", eat), { once: true });
     input.focus({ preventScroll: true });
+    askAllText(() => {
+      if (mode.kind === "find") {
+        const m = { ...mode, doc: docText(root) };
+        if (m.query.trim()) {
+          search(m, m.query);
+        } else {
+          mode = m;
+        }
+      }
+    });
   }
 
   function repeatFind(dir: 1 | -1) {
