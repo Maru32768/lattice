@@ -40,6 +40,7 @@ import {
   closePane,
   closeWhere,
   cycle,
+  even,
   focus as focusLayout,
   focusedPane,
   grow,
@@ -899,7 +900,7 @@ export default function App() {
     paneGrowDown: growPane("down"),
     paneSwapPrev: none,
     paneSwapNext: none,
-    paneEven: none,
+    paneEven: () => setLayout(even),
     saveWord,
     speak: replayWord,
     popOut: () => {

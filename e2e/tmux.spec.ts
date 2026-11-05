@@ -260,3 +260,14 @@ test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
   await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
   await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
 });
+
+test("Ctrl+B Shift+E evens out every split", async ({ shell }) => {
+  await open(shell, across(90, pane(1, reader(2, 0)), down(91, pane(3, reader(4, 1)), pane(5, reader(6, 2)))), 3);
+  await press(shell, "Control+b", "Shift+H");
+  await press(shell, "Control+b", "Shift+K");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "46");
+  await expect(shell.getByRole("separator", { name: "ペインの高さ" })).toHaveAttribute("aria-valuenow", "46");
+  await press(shell, "Control+b", "Shift+E");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "50");
+  await expect(shell.getByRole("separator", { name: "ペインの高さ" })).toHaveAttribute("aria-valuenow", "50");
+});
