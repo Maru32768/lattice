@@ -354,17 +354,29 @@ function drawText(page: PDFPageProxy, host: HTMLElement) {
   return text.done;
 }
 
+let allPlaced = () => {};
+/** Every page is in `places`, or none will be added. */
+const placing = new Promise<void>((done) => {
+  allPlaced = done;
+});
+let drawingAll = false;
+
 /**
- * Draws the text of every page, those far from the screen too; `more` says that some came.
+ * Draws the text of every page, those far from the screen too; `more` says that some came. Once, however often asked.
  * shortcut: it stays until the PDF closes, about 300 spans and 10 ms a page, so a thousand pages hold 300000 spans; drop the pages far from a selection if such PDFs turn up.
  */
 function allText(more: () => void) {
+  if (drawingAll) {
+    return;
+  }
+  drawingAll = true;
   keepText = true;
   void (async () => {
+    await placing;
     let told = performance.now();
-    // `places` may still be growing: a for-of takes in what is added on the way.
     for (const { page, host } of places) {
-      await drawText(page, host);
+      // A page that fails must not cost a find the pages after it.
+      await drawText(page, host).catch((e: unknown) => console.warn("[lattice] drawing a page's text", e));
       if (performance.now() - told > 200) {
         more();
         told = performance.now();
@@ -609,4 +621,5 @@ const layout = fetch(`${here}/layout`).then((r): Promise<Region[]> => (r.ok ? (r
 // shortcut: no CMaps or standard fonts are bundled, so a PDF that does not embed its CJK fonts draws without that text; serve pdfjs-dist/cmaps if such PDFs turn up.
 getDocument({ url: `${here}/file`, disableRange: true, disableStream: true, wasmUrl: new URL("/assets/wasm/", location.href).href })
   .promise.then(async (doc) => open(doc, await layout))
-  .catch(showFailure);
+  .catch(showFailure)
+  .finally(allPlaced);

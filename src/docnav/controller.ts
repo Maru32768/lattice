@@ -26,7 +26,7 @@ export interface DocHost {
   /** A step in the document's history. */
   history(d: 1 | -1): void;
   print(): void;
-  /** Brings in the text the document has not drawn yet (a PDF's far pages); `more` says that some came. */
+  /** Brings in the text the document has not drawn yet (a PDF's far pages); `more` says that some came. Called on each use, so that a host not ready yet is asked again. */
   allText?(more: () => void): void;
 }
 
@@ -94,8 +94,6 @@ export function createDocNav(host: () => DocHost) {
   let lastQuery = "";
   /** The heading `]]` went to last and where that left it: a scroll margin or the document's end can stop it below the top, and while it stays there the next one must still be next. */
   let lastHeading: { el: Element; top: number } | null = null;
-  /** Keeps `allText` from going through a PDF's pages on every use. */
-  let textAsked = false;
 
   const selection = () => window.getSelection()!;
 
@@ -270,12 +268,19 @@ export function createDocNav(host: () => DocHost) {
 
   // ---- caret and visual ------------------------------------------------------------------------
 
-  function askAllText(more = () => {}) {
-    if (!textAsked) {
-      textAsked = true;
-      host().allText?.(more);
+  /** One callback for whichever use asks first: the find open when text comes is the one to go on with it. */
+  function onMoreText() {
+    const root = host().root();
+    if (mode.kind === "find" && root) {
+      const m = { ...mode, doc: docText(root) };
+      if (m.query.trim()) {
+        search(m, m.query);
+      } else {
+        mode = m;
+      }
     }
   }
+  const askAllText = () => host().allText?.(onMoreText);
 
   function enterVisual() {
     askAllText();
@@ -494,16 +499,7 @@ export function createDocNav(host: () => DocHost) {
     input.addEventListener("keypress", eat, { once: true });
     input.addEventListener("keydown", () => input.removeEventListener("keypress", eat), { once: true });
     input.focus({ preventScroll: true });
-    askAllText(() => {
-      if (mode.kind === "find") {
-        const m = { ...mode, doc: docText(root) };
-        if (m.query.trim()) {
-          search(m, m.query);
-        } else {
-          mode = m;
-        }
-      }
-    });
+    askAllText();
   }
 
   function repeatFind(dir: 1 | -1) {
