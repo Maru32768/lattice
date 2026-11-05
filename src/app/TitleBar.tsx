@@ -3,7 +3,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
 import { useT } from "../i18n";
 import { ActionKey, Icon } from "../ui/Icon";
-import { keyLabel, useBindings } from "../lib/keys";
+import { useBindings } from "../lib/keys";
+import { keyLabel } from "../lib/keymap";
 
 // Windows 11 caption glyphs, 10×10.
 const GLYPHS = {

@@ -1,4 +1,5 @@
-import { keyLabel, useBindings, type ActionId } from "../lib/keys";
+import { useBindings } from "../lib/keys";
+import { keyLabel, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
 
 // Stroke icons copied from the design boards (24×24 viewBox, styled by .ico).

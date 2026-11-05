@@ -24,7 +24,7 @@ import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
-import type { ActionId } from "../lib/keys";
+import type { ActionId } from "../lib/keymap";
 import { paneOf, stepNav, type PaneMove } from "../layout/panes";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";

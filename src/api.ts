@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PageKeys } from "./lib/keys";
+import type { PageKeys } from "./lib/keymap";
 import type { DragStart, WindowGeom } from "./layout/tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 

@@ -29,7 +29,7 @@ const {
   translatedShare,
   unitsByBlock,
 } = await import("./logic.ts");
-const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keys.ts");
+const { DEFAULT_BINDINGS, pageKeys } = await import("../lib/keymap.ts");
 
 test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
