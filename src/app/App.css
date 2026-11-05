@@ -429,8 +429,26 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 .chat-f { flex: none; padding: 10px 14px 14px; border-top: 1px solid var(--line); }
 .chat-f textarea { display: block; width: 100%; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 8px; background: var(--doc); color: var(--ink); font-size: 13.5px; line-height: 1.6; resize: none; }
 .chat-f-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--ink3); }
-.chat-f-row .vim-mode { font: 10.5px/18px var(--mono); letter-spacing: .04em; }
-.chat-f-row .vim-mode:not(.run) { border: 1px solid var(--line2); }
+.vim-mode { font: 10.5px/18px var(--mono); letter-spacing: .04em; }
+.vim-mode:not(.run) { border: 1px solid var(--line2); }
+/* The Vim editor (src/vim/VimEditor.tsx), dressed as the textarea it stands in for. */
+.chat-f .vim-editor { min-height: 87px; max-height: 40vh; border: 1px solid var(--line2); border-radius: 8px; background: var(--doc); font-size: 13.5px; line-height: 1.6; }
+.vim-editor { display: flex; min-width: 0; }
+.note-text.vim-editor { padding: 0; }
+.vim-editor .cm-editor { flex: 1; min-width: 0; color: var(--ink); }
+.vim-editor .cm-editor.cm-focused { outline: none; }
+.chat-f .vim-editor:focus-within { outline: 2px solid var(--acc); }
+.vim-editor .cm-scroller { font: inherit; line-height: inherit; }
+.vim-editor .cm-content { padding: 10px 12px; }
+.note-text .cm-content { padding: 14px 16px; }
+.vim-editor .cm-line { padding: 0; }
+.vim-editor .cm-placeholder { color: var(--ink3); }
+.vim-editor .cm-selectionBackground { background: var(--acc-soft) !important; }
+.vim-editor .cm-fat-cursor { background: var(--acc-soft) !important; outline-color: var(--acc) !important; }
+.vim-editor .cm-cursor { border-left-color: var(--ink); }
+.vim-editor .cm-panels { background: var(--sunken); color: var(--ink); border-color: var(--line); }
+.vim-editor .cm-vim-panel input { color: inherit; }
+.vim-editor .cm-vim-message { color: var(--err) !important; }
 
 /* ---- first run (States board #8) ------------------------------------------------------------ */
 .first-run { max-width: 760px; margin: auto; padding: 28px 32px; display: flex; flex-direction: column; gap: 14px; }

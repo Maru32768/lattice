@@ -16,6 +16,8 @@ const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab"
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
 const HINT_MS = 400;
+/** CodeMirror's root, which is only ever there for a Vim editor. */
+const EDITOR = ".cm-editor";
 
 type SetLayout = (f: (l: Workspace) => Workspace) => void;
 
@@ -285,9 +287,9 @@ export function useShortcuts({
       return;
     }
     const { id } = step.action;
-    // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first.
+    // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first. A Vim editor keeps it for its modes.
     if (inField && id === "escape") {
-      return t.blur();
+      return t.closest(EDITOR) ? undefined : t.blur();
     }
     // Enter on a control activates it; on a list row or search hit it opens the cursor.
     if ((id === "open" || id === "openPage") && t.closest("button, a, [role='button']") && !t.closest(".row, .hit")) {
@@ -339,11 +341,31 @@ export function useShortcuts({
     actions[action.id](count, key);
   });
 
+  // The engine in a Vim editor would use the app's keys and stop them (Ctrl+B is its page up), so the app reads them
+  // first and keeps those it claims.
+  const onEditorKey = useEffectEvent((e: KeyboardEvent) => {
+    onKey(e);
+    if (e.defaultPrevented) {
+      e.stopPropagation();
+    }
+  });
+
   useEffect(() => {
-    const down = (e: KeyboardEvent) => onKey(e);
+    const capture = (e: KeyboardEvent) => {
+      if ((e.target as Element).closest(EDITOR)) {
+        onEditorKey(e);
+      }
+    };
+    const down = (e: KeyboardEvent) => {
+      if (!(e.target as Element).closest(EDITOR)) {
+        onKey(e);
+      }
+    };
+    window.addEventListener("keydown", capture, true);
     window.addEventListener("keydown", down);
     const unlisten = listen<{ tab: string; key: string; count: number }>("browser-key", (e) => onPageKey(e.payload));
     return () => {
+      window.removeEventListener("keydown", capture, true);
       window.removeEventListener("keydown", down);
       void unlisten.then((f) => f());
     };

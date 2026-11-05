@@ -1,8 +1,9 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
 import { api, type ArticleView } from "../api";
 import { Icon } from "../ui/Icon";
 import "../quiz/quiz.css";
 import { useT } from "../i18n";
+import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
 
 /** Typing pauses this long before the memo is saved. */
 const SAVE_MS = 800;
@@ -25,6 +26,8 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
   const [text, setText] = useState(() => noteOf(view));
   const [status, setStatus] = useState<"saving" | "saved" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const vimOn = useVimEnabled();
+  const [vimMode, setVimMode] = useState("INSERT");
   const timer = useRef(0);
   /** Text typed but not yet sent. */
   const pending = useRef<string | null>(null);
@@ -50,6 +53,14 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         },
       );
   };
+  const typed = (value: string) => {
+    setText(value);
+    setError(null);
+    setStatus(null);
+    pending.current = value;
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(flush, SAVE_MS);
+  };
   // Closing the panel or leaving the article saves what was typed.
   const flushOnLeave = useEffectEvent(flush);
   useEffect(() => () => flushOnLeave(), []);
@@ -62,27 +73,37 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         <span className="qz-n" role="status">
           {status === "saving" ? t("notePanel.saving") : status === "saved" ? t("notePanel.saved") : ""}
         </span>
+        {vimOn && <VimMode mode={vimMode} />}
         <button className="ib push" onClick={onClose} aria-label={t("notePanel.close")} title={t("common.close")}>
           <Icon name="x" />
         </button>
       </div>
-      <textarea
-        className="note-text"
-        value={text}
-        autoFocus
-        spellCheck={false}
-        placeholder={t("notePanel.placeholder")}
-        aria-label={t("notePanel.title")}
-        onChange={(e) => {
-          setText(e.target.value);
-          setError(null);
-          setStatus(null);
-          pending.current = e.target.value;
-          clearTimeout(timer.current);
-          timer.current = window.setTimeout(flush, SAVE_MS);
-        }}
-        onBlur={flush}
-      />
+      {vimOn ? (
+        <Suspense fallback={<div className="note-text vim-editor" />}>
+          <VimEditor
+            className="note-text vim-editor"
+            initial={text}
+            label={t("notePanel.title")}
+            placeholder={t("notePanel.placeholder")}
+            autoFocus
+            onChange={typed}
+            onWrite={flush}
+            onMode={setVimMode}
+            onBlur={flush}
+          />
+        </Suspense>
+      ) : (
+        <textarea
+          className="note-text"
+          value={text}
+          autoFocus
+          spellCheck={false}
+          placeholder={t("notePanel.placeholder")}
+          aria-label={t("notePanel.title")}
+          onChange={(e) => typed(e.target.value)}
+          onBlur={flush}
+        />
+      )}
       {error && (
         <p className="qz-note error-text note-error" role="alert">
           {t.msg(error)}

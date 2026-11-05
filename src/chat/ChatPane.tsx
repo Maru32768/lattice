@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { api, type ChatMessage, type ChatThread, type Citation } from "../api";
 import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations } from "./chat";
 import { type FilterGroup, parseFilterKey } from "../library/scopes";
 import { FilterOptgroups } from "../library/FilterOptgroups";
 import { Menu } from "../ui/Popover";
 import { Icon, Kbd } from "../ui/Icon";
-import { initialVim, vimEnabled, vimKey } from "./vim";
+import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
 import { onMiddle } from "../lib/middle";
 import { useT, type PlainKey } from "../i18n";
 
@@ -103,13 +103,11 @@ export function ChatPane({
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [vimOn, setVimOn] = useState(vimEnabled);
-  const [vim, setVim] = useState(initialVim);
-  // Where a Vim command left the cursor, applied once React has rendered the new text.
-  const [cursor, setCursor] = useState<{ at: number; end: number } | null>(null);
+  const vimOn = useVimEnabled();
+  const [vimMode, setVimMode] = useState("INSERT");
+  /** Grows when the question is set from here: the Vim editor starts over on the new text, in insert mode. */
+  const [editorSeq, setEditorSeq] = useState(0);
   const log = useRef<HTMLDivElement>(null);
-  const input = useRef<HTMLTextAreaElement>(null);
-  const normal = vimOn && vim.mode === "normal";
 
   const fail = (e: unknown) => setError(String(e));
   const loadThreads = () => api.chatThreads().then(setThreads).catch(fail);
@@ -131,7 +129,7 @@ export function ChatPane({
   }
   useEffect(() => {
     if (requestSeq != null) {
-      input.current?.focus();
+      document.getElementById("chat-q")?.focus();
     }
   }, [requestSeq]);
   // The chat window learns the current article after it mounts: take it while the user has not picked a scope.
@@ -147,11 +145,6 @@ export function ChatPane({
   if (scopeKey.startsWith("open:") && !open.some((d) => openKey(d.id) === scopeKey)) {
     setScopeKey(open.length ? OPEN_ALL : "all");
   }
-  useLayoutEffect(() => {
-    if (cursor) {
-      input.current?.setSelectionRange(cursor.at, cursor.end);
-    }
-  }, [cursor]);
 
   /** Grows with each thread pick: a slower load for an earlier pick must not land under the later one. */
   const openSeq = useRef(0);
@@ -185,16 +178,15 @@ export function ChatPane({
 
   const scope = () => scopeOf(scopeKey, article, open);
 
-  async function ask(e: React.SyntheticEvent) {
-    e.preventDefault();
-    const q = question.trim();
+  async function ask(text: string) {
+    const q = text.trim();
     const s = scope();
     if (!q || !s || pending) {
       return;
     }
     setPending(q);
     setQuestion("");
-    setVim(initialVim());
+    setEditorSeq((n) => n + 1);
     setError(null);
     try {
       const m = await api.chatAsk(threadId, q, s);
@@ -204,12 +196,14 @@ export function ChatPane({
     } catch (e) {
       fail(e);
       setQuestion(q);
+      setEditorSeq((n) => n + 1);
     }
     setPending(null);
   }
 
   const title = threads.find((t) => t.id === threadId)?.title ?? t("chatPane.newChat");
   const last = messages[messages.length - 1];
+  const askHint = scopeKey === "article" || scopeKey.startsWith("open:") ? t("chatPane.askArticle") : t("chatPane.askSaved");
   return (
     <>
       <aside className="chat" aria-label={t("common.chat")} data-pane="chat">
@@ -321,45 +315,48 @@ export function ChatPane({
             </p>
           )}
         </div>
-        <form className="chat-f" onSubmit={ask}>
+        <form
+          className="chat-f"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void ask(question);
+          }}
+        >
           <label className="vh" htmlFor="chat-q">
             {t("chatPane.question")}
           </label>
-          <textarea
-            id="chat-q"
-            ref={input}
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            rows={3}
-            placeholder={scopeKey === "article" || scopeKey.startsWith("open:") ? t("chatPane.askArticle") : t("chatPane.askSaved")}
-            readOnly={normal}
-            onFocus={() => setVimOn(vimEnabled())}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                return void ask(e);
-              }
-              if (!vimOn || e.ctrlKey || e.metaKey || e.altKey || e.nativeEvent.isComposing) {
-                return;
-              }
-              const t = e.currentTarget;
-              const r = vimKey(vim, { text: t.value, cursor: t.selectionStart }, e.key);
-              if (!r.handled) {
-                return;
-              }
-              e.preventDefault();
-              setVim(r.vim);
-              setQuestion(r.buf.text);
-              // Normal mode selects the character under the cursor, drawn like Vim's block cursor.
-              setCursor({ at: r.buf.cursor, end: r.vim.mode === "normal" ? Math.min(r.buf.cursor + 1, r.buf.text.length) : r.buf.cursor });
-            }}
-          />
+          {vimOn ? (
+            <Suspense fallback={<div className="vim-editor" />}>
+              <VimEditor
+                key={editorSeq}
+                id="chat-q"
+                className="vim-editor"
+                initial={question}
+                label={t("chatPane.question")}
+                placeholder={askHint}
+                autoFocus={requestSeq != null || editorSeq > 0}
+                onChange={setQuestion}
+                onWrite={(text) => void ask(text)}
+                onMode={setVimMode}
+              />
+            </Suspense>
+          ) : (
+            <textarea
+              id="chat-q"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              rows={3}
+              placeholder={askHint}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  void ask(question);
+                }
+              }}
+            />
+          )}
           <div className="chat-f-row">
-            {vimOn && (
-              <span className={`bd vim-mode${normal ? " run" : ""}`} aria-live="polite" title={t("chatPane.vimMode")}>
-                {normal ? "NORMAL" : "INSERT"}
-                {vim.pending && ` ${vim.pending}`}
-              </span>
-            )}
+            {vimOn && <VimMode mode={vimMode} />}
             <span className="push">
               <Kbd>Ctrl</Kbd>
               <Kbd>Enter</Kbd>
