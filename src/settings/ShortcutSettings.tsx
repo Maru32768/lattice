@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
-import { ACTIONS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
+import { ACTIONS, ACTION_GROUPS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
@@ -42,67 +42,72 @@ export function ShortcutSettings() {
         </button>
         <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
-      <div className="grp">
-        {ACTIONS.map((a) => {
-          const keys = bindings[a.id];
-          const mine = recording?.id === a.id ? recording : null;
-          const shared = keys.flatMap((k) =>
-            (clash.get(k) ?? [])
-              .filter((o) => o !== a && scopesOverlap(o, a))
-              .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
-          );
-          const shadowed = keys.flatMap((k) => {
-            const by = chordFrom(bindings, k, a.scope);
-            return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
-          });
-          return (
-            <div className="set" key={a.id}>
-              <span className="h">{actionLabel(t, a.id)}</span>
-              {shared.length + shadowed.length > 0 && (
-                <span className="d warn-text" role="note">
-                  {[...shared, ...shadowed].join(t("shortcutSettings.clashSeparator"))}
-                </span>
-              )}
-              <span className="ctl keys-ctl">
-                {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
-                {keys.map((k) => (
-                  <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
-                    {keyLabel(k)}
+      {ACTION_GROUPS.map((g) => (
+        <Fragment key={g.title}>
+          <h2>{t(g.title)}</h2>
+          <div className="grp">
+            {g.actions.map((a) => {
+              const keys = bindings[a.id];
+              const mine = recording?.id === a.id ? recording : null;
+              const shared = keys.flatMap((k) =>
+                (clash.get(k) ?? [])
+                  .filter((o) => o !== a && scopesOverlap(o, a))
+                  .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
+              );
+              const shadowed = keys.flatMap((k) => {
+                const by = chordFrom(bindings, k, a.scope);
+                return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
+              });
+              return (
+                <div className="set" key={a.id}>
+                  <span className="h">{actionLabel(t, a.id)}</span>
+                  {shared.length + shadowed.length > 0 && (
+                    <span className="d warn-text" role="note">
+                      {[...shared, ...shadowed].join(t("shortcutSettings.clashSeparator"))}
+                    </span>
+                  )}
+                  <span className="ctl keys-ctl">
+                    {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
+                    {keys.map((k) => (
+                      <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
+                        {keyLabel(k)}
+                        <button
+                          className="x"
+                          onClick={() =>
+                            setKeys(
+                              a.id,
+                              keys.filter((x) => x !== k),
+                            )
+                          }
+                          aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
                     <button
-                      className="x"
-                      onClick={() =>
-                        setKeys(
-                          a.id,
-                          keys.filter((x) => x !== k),
-                        )
-                      }
-                      aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}
+                      className={`btn sm ghost${mine ? " rec" : ""}`}
+                      aria-pressed={!!mine}
+                      onClick={() => setRecording(mine ? null : { id: a.id })}
+                      onKeyDown={mine ? (e) => record(mine, e) : undefined}
+                      onBlur={() => setRecording((r) => (r?.id === a.id ? null : r))}
                     >
-                      ×
+                      {mine?.first
+                        ? t("shortcutSettings.pressNextKey", { first: keyLabel(mine.first) })
+                        : mine
+                          ? t("shortcutSettings.pressKey")
+                          : t("shortcutSettings.addKey")}
+                    </button>
+                    <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
+                      {t("shortcutSettings.reset")}
                     </button>
                   </span>
-                ))}
-                <button
-                  className={`btn sm ghost${mine ? " rec" : ""}`}
-                  aria-pressed={!!mine}
-                  onClick={() => setRecording(mine ? null : { id: a.id })}
-                  onKeyDown={mine ? (e) => record(mine, e) : undefined}
-                  onBlur={() => setRecording((r) => (r?.id === a.id ? null : r))}
-                >
-                  {mine?.first
-                    ? t("shortcutSettings.pressNextKey", { first: keyLabel(mine.first) })
-                    : mine
-                      ? t("shortcutSettings.pressKey")
-                      : t("shortcutSettings.addKey")}
-                </button>
-                <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
-                  {t("shortcutSettings.reset")}
-                </button>
-              </span>
-            </div>
-          );
-        })}
-      </div>
+                </div>
+              );
+            })}
+          </div>
+        </Fragment>
+      ))}
     </>
   );
 }
