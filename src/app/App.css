@@ -196,12 +196,17 @@
 
 
 
-/* ---- keyboard: the pane focus moved to (Ctrl+B …), the armed prefix -------------------------- */
+/* ---- keyboard: the pane focus moved to, the hint after a first key, the key list -------------- */
 .app[data-kb-pane="nav"] [data-pane="nav"], .app[data-kb-pane="list"] [data-pane="list"],
 .app[data-kb-pane="doc"] main[data-pane="doc"], .app[data-kb-pane="doc"] .dpane.focused, .app[data-kb-pane="chat"] [data-pane="chat"] { outline: 1.5px solid var(--acc-line); outline-offset: -1.5px; }
 .doc-scroll:focus { outline: none; }
 .prefix-hint { position: fixed; left: 12px; bottom: 12px; z-index: 70; display: flex; flex-wrap: wrap; max-width: calc(100vw - 24px); align-items: center; gap: 4px 12px; padding: 7px 12px; border-radius: 8px; background: var(--ink); color: var(--on-ink); font-size: 12px; box-shadow: 0 10px 30px var(--shadow); }
 .prefix-hint .kbd { background: transparent; border-color: var(--ink3); color: var(--on-ink); }
+.key-help h2 { margin: 0; padding: 14px 18px 6px; font-size: 14px; font-weight: 600; }
+.key-help .pal-list:focus { outline: none; }
+.key-help h3 { margin: 0; font-weight: 400; }
+.key-help .it .r { flex-wrap: wrap; justify-content: flex-end; white-space: normal; }
+.key-help .it-l { flex: none; }
 
 /* ---- pane splitters (Conversation board's dock divider) ------------------------------------ */
 .splitter { width: 5px; flex: none; display: flex; align-items: center; justify-content: center; border-left: 1px solid var(--line); background: var(--doc); cursor: col-resize; touch-action: none; }

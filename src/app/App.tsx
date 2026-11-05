@@ -81,6 +81,7 @@ requestIdleCallback(() => {
 });
 import { HOST, IS_MAIN, type Where } from "./host";
 import { FirstRun, PrefixHint } from "./FirstRun";
+import { KeyHelp } from "./KeyHelp";
 import { useLibrary } from "./useLibrary";
 import { importantMinOf, useLibraryView } from "./useLibraryView";
 import { useActivity, useTranslations, useUnreadBadge } from "./useActivity";
@@ -151,6 +152,7 @@ export default function App() {
   /** The open palette's initial query, and whether it was opened for a new tab (Ctrl+T): its pick opens in one. */
   const [palette, setPalette] = useState<{ initial: string; newTab: boolean } | null>(null);
   const openPalette = () => setPalette({ initial: "", newTab: false });
+  const [keyHelp, setKeyHelp] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
   const [organizeTab, setOrganizeTab] = useState<OrganizeTab>("groups");
   const [importTab, setImportTab] = useState<ImportTab>("urls");
@@ -799,7 +801,7 @@ export default function App() {
   const actions: ActionHandlers = {
     palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
     command: () => setPalette((p) => p ?? { initial: ">", newTab: false }),
-    keyHelp: none,
+    keyHelp: () => setKeyHelp(true),
     search: enterSearch,
     next: (n) => step(n),
     prev: (n) => step(-n),
@@ -1344,6 +1346,7 @@ export default function App() {
                 onClose={() => setPalette(null)}
               />
             )}
+            {keyHelp && <KeyHelp onClose={() => setKeyHelp(false)} />}
             {deleting && (
               <ConfirmDialog
                 title={deleting.page ? t("app.confirmRemove") : t("app.confirmDelete")}
