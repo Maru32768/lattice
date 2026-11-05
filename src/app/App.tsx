@@ -942,8 +942,8 @@ export default function App() {
     docFind: none,
     findNext: none,
     findPrev: none,
-    hints: none,
-    hintsNew: none,
+    hints: docAction("hints"),
+    hintsNew: docAction("hintsNew"),
     wordHints: none,
     visual: none,
     nextHeading: none,
@@ -954,7 +954,7 @@ export default function App() {
     copyUrl: none,
     print: none,
   };
-  const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
+  const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus, docKeys: docNav.onKey });
 
   // What the focused pane comes to show takes the keyboard, so the keys go on working: a tab, a split, `J`, an overlay closing.
   const overlaid = palette != null || keyHelp || paneNumbers;
