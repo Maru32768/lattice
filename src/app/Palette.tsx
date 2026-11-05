@@ -12,6 +12,8 @@ import type { LanguageMode } from "../reader/mixed";
 import { useT, type PlainKey } from "../i18n";
 import { useBindings } from "../lib/keys";
 import { ACTIONS, EX_ALIASES, actionLabel, keyLabel, type ActionId } from "../lib/keymap";
+import type { Id, Tab } from "../layout/layout";
+import type { TabLabel } from "../layout/TabStrip";
 
 export interface PaletteActions {
   scope: (s: Scope) => void;
@@ -19,6 +21,8 @@ export interface PaletteActions {
   /** `newTab`: Ctrl / middle clicked. */
   open: (a: ArticleRow, newTab?: boolean) => void;
   page: (url: string, newTab?: boolean) => void;
+  /** Shows a tab of this window, in its pane. */
+  tab: (id: Id) => void;
   /** `group`: also put the saved article in that group. */
   index: (url: string, group?: number) => void;
   discover: (url: string) => void;
@@ -42,6 +46,7 @@ export interface PaletteActions {
 /** Result groups; URL actions have no heading. */
 const GROUPS = {
   url: null,
+  tabs: "palette.tabs",
   commands: "palette.commands",
   articles: "common.articles",
   tags: "palette.tags",
@@ -97,6 +102,7 @@ const Tg = ({ children }: { children: React.ReactNode }) => <span className="tg"
 /** One input for commands, articles, filters, URLs and search (Palette board). */
 export function Palette({
   initial,
+  tabs,
   all,
   shown,
   feeds,
@@ -109,6 +115,8 @@ export function Palette({
   onClose,
 }: {
   initial: string;
+  /** Every tab of this window, in reading order; `pane` is its pane's number from 1. */
+  tabs: { tab: Tab; label: TabLabel; pane: number }[];
   all: ArticleRow[];
   /** The list as currently filtered, for "現在の集合でN件". */
   shown: ArticleRow[];
@@ -261,7 +269,7 @@ export function Palette({
 
   const items: Item[] = useMemo(() => {
     const out: Item[] = [];
-    const prefix = /^(#|@|g:|>|\?)/.exec(raw)?.[1] ?? "";
+    const prefix = /^(#|@|g:|t:|>|\?)/.exec(raw)?.[1] ?? "";
     const text = raw.slice(prefix.length).trim();
     const tl = text.toLowerCase();
     const has = (s: string) => s.toLowerCase().includes(tl);
@@ -297,6 +305,21 @@ export function Palette({
         out.push({ group: "url", icon: "folder", label: t("palette.indexToGroup", { name: groupName(id, groups, t) }), run: () => actions.index(url, id) });
       }
       out.push({ group: "url", icon: "rss", label: t("palette.discover"), run: () => actions.discover(url) });
+      return out;
+    }
+
+    if (prefix === "t:") {
+      const panes = new Set(tabs.map((x) => x.pane)).size;
+      for (const { tab, label, pane } of tabs.filter((x) => has(x.label.title))) {
+        out.push({
+          group: "tabs",
+          icon: tab.kind === "page" ? "page" : "reader",
+          label: <Hl text={label.title} q={text} />,
+          sub: label.domain,
+          right: panes > 1 ? t("docArea.document", { x: pane }) : undefined,
+          run: () => actions.tab(tab.id),
+        });
+      }
       return out;
     }
 
@@ -453,7 +476,7 @@ export function Palette({
       }
     }
     return out;
-  }, [raw, url, known, commands, all, shown, feeds, folders, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
+  }, [raw, url, known, commands, tabs, all, shown, feeds, folders, groups, scope, facets, tagCounts, genreCounts, unreadByFeed, actions, t]);
 
   useEffect(() => {
     list.current?.querySelectorAll(".it")[act]?.scrollIntoView({ block: "nearest" });
@@ -579,6 +602,9 @@ export function Palette({
           </span>
           <span>
             <b>g:</b> {t("palette.ftGenres")}
+          </span>
+          <span>
+            <b>t:</b> {t("palette.ftTabs")}
           </span>
           <span>
             <b>&gt;</b> {t("palette.ftCommands")}

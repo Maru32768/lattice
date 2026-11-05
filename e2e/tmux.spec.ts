@@ -346,3 +346,59 @@ test("Ctrl+B ; from the list takes the keyboard into that document; from under t
   await expect(panes(shell).first()).toHaveClass(/focused/);
   await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
 });
+
+const palette = (app: Page) => app.getByRole("dialog", { name: "コマンドパレット" });
+/** Three tabs in two panes: an article and a page, and another article. */
+const threeTabs = (shell: Page) => open(shell, across(90, pane(1, reader(2, 0), page(3, "k1")), pane(4, reader(5, 1))), 1);
+
+test("Ctrl+B w lists every tab of the window under t:, and Enter shows the one picked, in its pane", async ({ shell }) => {
+  await threeTabs(shell);
+  await press(shell, "Control+b", "w");
+  const input = palette(shell).getByRole("combobox");
+  await expect(input).toHaveValue("t:");
+  await expect(input).toBeFocused();
+  const options = palette(shell).getByRole("option");
+  await expect(options.locator(".it-l")).toHaveText([label(0), "k1", label(1)]);
+  await expect(options.locator(".r")).toHaveText(["ドキュメント1", "ドキュメント1", "ドキュメント2"]);
+  await expect(palette(shell).locator(".ft")).toContainText("t: 開いているタブ");
+
+  await shell.keyboard.press("ArrowDown");
+  await shell.keyboard.press("Enter");
+  await expect(palette(shell)).toBeHidden();
+  await expect(panes(shell).first().locator(".page-host")).toBeVisible();
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+});
+
+test("the tab list narrows by title; picking a tab of a pane under the zoom ends the zoom", async ({ shell }) => {
+  await threeTabs(shell);
+  await press(shell, "Control+b", "z");
+  await expect(panes(shell).nth(1)).toBeHidden();
+  await press(shell, "Control+b", "w");
+  await shell.keyboard.type(label(1).slice(0, 12));
+  const options = palette(shell).getByRole("option");
+  await expect(options).toHaveCount(1);
+  await expect(options.locator(".it-l mark")).toHaveText(label(1).slice(0, 12));
+  await shell.keyboard.press("Enter");
+  await expect(panes(shell).nth(1)).toBeVisible();
+  await expect(panes(shell).nth(1)).toHaveClass(/focused/);
+});
+
+test("the tab list picked from the palette's own commands opens on its query", async ({ shell }) => {
+  await threeTabs(shell);
+  await shell.keyboard.press(":");
+  await shell.keyboard.type("タブの一覧");
+  await palette(shell)
+    .getByRole("option", { name: /タブの一覧/ })
+    .click();
+  const input = palette(shell).getByRole("combobox");
+  await expect(input).toHaveValue("t:");
+  await expect(input).toBeFocused();
+  await expect(palette(shell).getByRole("option")).toHaveCount(3);
+});
+
+test("with one pane the tab list names no panes", async ({ app }) => {
+  await (await listRow(app, label(0))).click();
+  await press(app, "Control+b", "w");
+  await expect(palette(app).getByRole("option")).toHaveCount(1);
+  await expect(palette(app).locator(".it .r")).toHaveCount(0);
+});

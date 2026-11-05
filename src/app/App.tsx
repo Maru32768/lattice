@@ -45,6 +45,7 @@ import {
   focusedPane,
   grow,
   open,
+  panes,
   split,
   swap,
   tabById,
@@ -712,6 +713,10 @@ export default function App() {
     },
     open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
     page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
+    tab: (id) => {
+      setScreen("library");
+      setLayout((l) => activate(l, id));
+    },
     index: (url, group) => {
       const where = whereFromPalette();
       void act(async () => {
@@ -883,7 +888,7 @@ export default function App() {
         const t = focusedPane(l).tabs[(Number(sequence.slice(-1)) + 9) % 10];
         return t ? activate(l, t.id) : l;
       }),
-    tabList: none,
+    tabList: () => setPalette({ initial: "t:", newTab: false }),
     splitRight: () => {
       setScreen("library");
       setLayout((l) => split(l, l.focused, "row"));
@@ -1367,7 +1372,10 @@ export default function App() {
             )}
             {palette != null && (
               <Palette
+                // Picked from the palette itself, the tab list opens the palette anew on its own query.
+                key={palette.initial}
                 initial={palette.initial}
+                tabs={panes(layout.root).flatMap((p, i) => p.tabs.map((tab) => ({ tab, label: labelOf(tab), pane: i + 1 })))}
                 all={articles}
                 shown={shown}
                 feeds={feeds}
