@@ -893,7 +893,11 @@ export default function App() {
       setLayout((l) => split(l, l.focused, "column"));
     },
     closePane: () => setLayout((l) => closePane(l, l.focused)),
-    paneLast: none,
+    paneLast: () => {
+      if (layout.previous != null) {
+        paneFocus.enterDoc(layout.previous);
+      }
+    },
     paneNumbers: none,
     paneGrowLeft: growPane("left"),
     paneGrowRight: growPane("right"),
