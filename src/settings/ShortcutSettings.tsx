@@ -2,6 +2,86 @@ import { Fragment, useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
 import { ACTIONS, ACTION_GROUPS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
+import { SetRow, Switch } from "../ui/SetRow";
+import { readUtf8 } from "../lib/files";
+import { setVimEnabled, setVimrc, useVimEnabled, useVimrc } from "../vim/vim";
+import { KNOWN, parseVimrc } from "../vim/vimrc";
+
+const VIMRC_MAX_MB = 1;
+
+/** Vim in the text fields: on or off, and the vimrc with what it could not use. */
+function VimSettings() {
+  const t = useT();
+  const on = useVimEnabled();
+  const vimrc = useVimrc();
+  const [error, setError] = useState<string | null>(null);
+  const entries = parseVimrc(vimrc, KNOWN);
+  const skipped = entries.flatMap((e) => (e.kind === "skip" ? [e] : []));
+
+  async function load(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    if (file.size > VIMRC_MAX_MB * 1024 * 1024) {
+      return setError(t("be.file.tooLarge", { max: VIMRC_MAX_MB }));
+    }
+    const text = await readUtf8(file);
+    setError(text === null ? t("be.file.notUtf8") : null);
+    if (text !== null) {
+      setVimrc(text);
+    }
+  }
+
+  return (
+    <>
+      <h2>{t("shortcutSettings.vimGroup")}</h2>
+      <div className="grp">
+        <SetRow title={t("shortcutSettings.vim")} htmlFor="vim-on" desc={t("shortcutSettings.vimDesc")}>
+          <Switch id="vim-on" checked={on} onChange={setVimEnabled} />
+        </SetRow>
+        <div className="set wide">
+          <label className="h" htmlFor="vim-rc">
+            {t("shortcutSettings.vimrc")}
+          </label>
+          <div className="d">{t("shortcutSettings.vimrcDesc")}</div>
+          <textarea id="vim-rc" className="mono" value={vimrc} rows={8} spellCheck={false} wrap="off" onChange={(e) => setVimrc(e.target.value)} />
+          <div className="acts">
+            <label className="btn sm">
+              {t("shortcutSettings.vimrcLoad")}
+              <input
+                type="file"
+                className="vh"
+                onChange={(e) => {
+                  load(e.target.files?.[0]).catch((err: unknown) => setError(String(err)));
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            {vimrc.trim() && <span className="muted">{t("shortcutSettings.vimrcApplied", { n: entries.length - skipped.length })}</span>}
+            {error && (
+              <span className="error-text" role="alert">
+                {error}
+              </span>
+            )}
+          </div>
+          {skipped.length > 0 && (
+            <details open>
+              <summary>{t("shortcutSettings.vimrcSkipped", { n: skipped.length })}</summary>
+              <ul className="vimrc-skips">
+                {skipped.map((e, i) => (
+                  <li key={i}>
+                    <span className="muted">{t("shortcutSettings.vimrcLine", { line: e.line })}</span> <code>{e.text}</code>{" "}
+                    <span className="muted">{t(`shortcutSettings.vimrcReason.${e.reason}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
 export function ShortcutSettings() {
@@ -36,6 +116,7 @@ export function ShortcutSettings() {
 
   return (
     <>
+      <VimSettings />
       <div className="btn-row">
         <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>
           {t("shortcutSettings.resetAll")}

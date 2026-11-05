@@ -30,8 +30,8 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
   await expect(app.locator(".vim-mode")).toHaveCount(0);
 
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await section(app, "要約・対話").click();
-  await app.getByLabel("質問の入力欄でVimキーバインドを使う").check();
+  await section(app, "ショートカット").click();
+  await app.getByLabel("対話の入力欄とメモでVimキーバインドを使う").check();
   await app.keyboard.press("Escape");
 
   // What the textarea held goes on in the editor.
