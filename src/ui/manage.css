@@ -131,6 +131,7 @@
 :is(.stg, .organize) .set .ctl { grid-column: 2; grid-row: 1; display: flex; gap: 6px; align-items: center; }
 :is(.stg, .organize) .set:has(> .d) .ctl { grid-row: 1 / span 2; }
 :is(.stg, .organize) .set .input { width: 240px; }
+.stg .set .keys-ctl { flex-wrap: wrap; justify-content: flex-end; max-width: 460px; }
 .stg .set .input.num { width: 80px; }
 .stg .set.wide { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .stg .set.wide textarea { padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--doc); color: var(--ink); font-size: 13px; line-height: 1.6; resize: vertical; }
