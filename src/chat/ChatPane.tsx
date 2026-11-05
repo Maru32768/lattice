@@ -128,6 +128,7 @@ export function ChatPane({
     setScopeKey(request.key);
     if (request.quote) {
       setQuestion(withQuote(question, request.quote));
+      setEditorSeq((n) => n + 1);
     }
   }
   useEffect(() => {
