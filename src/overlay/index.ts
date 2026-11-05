@@ -103,6 +103,7 @@ const state = {
       outline: "",
       translate_page: "",
       retranslate_page: "",
+      find: "",
     },
     manual: false,
   } as Config,
@@ -719,7 +720,8 @@ function setKeys(k: PageKeys | null) {
   keySeq = IDLE;
 }
 
-const inField = (t: EventTarget | undefined) => t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select"));
+const inField = (t: EventTarget | undefined) =>
+  t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select, [data-lattice-field]"));
 
 /** Tells the app: a whole sequence to run, a chord's first key for its hint, or nothing ("") to hide that hint. */
 const tellApp = (key: string, count = 1) => void invoke("overlay_key", { key, count }).catch(() => {});
@@ -727,6 +729,7 @@ const tellApp = (key: string, count = 1) => void invoke("overlay_key", { key, co
 const pageDoc: DocHost = {
   root: () => document.body,
   scroller: pageScroller,
+  findLabel: () => state.config.labels.find,
   print: () => window.print(),
 };
 const docNav = createDocNav(() => pageDoc);

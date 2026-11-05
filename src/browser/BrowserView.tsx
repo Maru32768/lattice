@@ -77,6 +77,7 @@ export const overlayLabels = (t: T): OverlayLabels => ({
   translate_page: t("browserView.translate"),
   retranslate_page: t("browserView.retranslate"),
   pdf_failed: t("browserView.pdfFailed"),
+  find: t("keys.docFind"),
 });
 
 /** https:// + host emphasized + the rest; a click (or a change of `editAt`) edits it, with the whole URL selected. */

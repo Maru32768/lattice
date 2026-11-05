@@ -8,30 +8,93 @@
 import type { ActionId } from "../lib/keymap.ts";
 import { hintLabels, linkTargets, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
-import { createUi, type DocUi } from "./ui.ts";
+import { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
+import { createUi, type DocUi, type View } from "./ui.ts";
 
 export interface DocHost {
   /** Where the document's text and links are; null with no document. */
   root(): Element | null;
   scroller(): Element | null;
+  /** The find bar's name, for screen readers. */
+  findLabel(): string;
   print(): void;
 }
 
 type Hint = Target & { label: string };
 
-type DocMode = { kind: "normal" } | { kind: "hints"; typed: string; targets: Hint[]; newTab: boolean };
+interface TextPoint {
+  node: Text;
+  offset: number;
+}
+
+/** What a find leaves to go back to, on Esc. */
+interface Place {
+  ranges: Range[];
+  top: number;
+  left: number;
+  focus: Element | null;
+}
+
+type DocMode =
+  | { kind: "normal" }
+  | { kind: "hints"; typed: string; targets: Hint[]; newTab: boolean }
+  /** `doc` and `origin`: what the query is looked for in, and from where. `at`: the match shown, in `starts`. */
+  | { kind: "find"; query: string; doc: DocText; origin: TextPoint | null; starts: number[]; length: number; at: number; place: Place; count: HTMLElement };
 
 const NORMAL: DocMode = { kind: "normal" };
+/** Text a reader does not start from when `v` looks for where they are reading. */
+const CHROME = "nav,header,footer,aside,[role='navigation'],[role='banner'],[role='contentinfo']";
 
 const BLUR_MS = 100;
 
 const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
 const isTyped = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 
+function viewOf(scroller: Element | null): View {
+  return scroller && scroller !== document.scrollingElement ? scroller.getBoundingClientRect() : { top: 0, left: 0, bottom: innerHeight, right: innerWidth };
+}
+
+const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
+
+/** The first character on screen in `node`: the first of its lines may have scrolled away. */
+function firstVisibleOffset(node: Text, v: View): number {
+  const r = document.createRange();
+  let [lo, hi] = [0, node.length - 1];
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    r.setStart(node, mid);
+    r.setEnd(node, mid + 1);
+    if (r.getBoundingClientRect().bottom > v.top) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  while (lo < node.length - 1 && /\s/u.test(node.data.charAt(lo))) {
+    lo++;
+  }
+  return lo;
+}
+
+/** Where the reader is: the first text on screen, the page's own header and menus only if there is nothing else. */
+function firstVisibleText(root: Element, v: View): TextPoint | null {
+  const r = document.createRange();
+  const shown = textNodes(root).filter((n) => {
+    r.selectNodeContents(n);
+    return meets(r.getBoundingClientRect(), v);
+  });
+  const node = shown.find((n) => !n.parentElement?.closest(CHROME)) ?? shown[0];
+  return node ? { node, offset: firstVisibleOffset(node, v) } : null;
+}
+
 /** `host`: as it is now, since the app's closures change with each render. */
 export function createDocNav(host: () => DocHost) {
   let mode: DocMode = NORMAL;
   let ui: DocUi | null = null;
+  /** What `n` and `N` look for: the query last kept with Enter. */
+  let lastQuery = "";
+
+  const selection = () => window.getSelection()!;
 
   function draw() {
     if (mode.kind === "hints") {
@@ -44,6 +107,9 @@ export function createDocNav(host: () => DocHost) {
             return rect ? [{ label: t.label, rect }] : [];
           }),
       );
+    } else if (mode.kind === "find") {
+      ui?.boxes(mode.at >= 0 ? Array.from(rangeAt(mode.doc, mode.starts[mode.at]!, mode.length).getClientRects()) : []);
+      mode.count.textContent = mode.query.trim() ? `${mode.at + 1}/${mode.starts.length}` : "";
     }
   }
 
@@ -57,6 +123,7 @@ export function createDocNav(host: () => DocHost) {
   function onBlur() {
     window.setTimeout(() => {
       if (!document.hasFocus()) {
+        endFind(true);
         enter(NORMAL);
       }
     }, BLUR_MS);
@@ -92,6 +159,40 @@ export function createDocNav(host: () => DocHost) {
     }
   }
 
+  // ---- moving the view -----------------------------------------------------------------------
+
+  /** Brings `rect` into view, `margin` from the edge it came in by. */
+  function reveal(rect: DOMRect | null, margin: number) {
+    const scroller = host().scroller();
+    if (!rect || !scroller) {
+      return;
+    }
+    const v = viewOf(scroller);
+    // A pixel's grace: a box lined up with the edge is often a fraction of one over it.
+    const top = rect.top < v.top - 1 ? rect.top - v.top - margin : rect.bottom > v.bottom + 1 ? rect.bottom - v.bottom + margin : 0;
+    const left = rect.left < v.left - 1 ? rect.left - v.left - margin : rect.right > v.right + 1 ? rect.right - v.right + margin : 0;
+    if (top || left) {
+      scroller.scrollBy({ top, left, behavior: "instant" });
+    }
+  }
+
+  /** Moves the view only for a match a reader cannot see: off screen, or in a box that scrolls by itself (a code block), which it comes out of first. */
+  function revealRange(r: Range) {
+    const rect = r.getBoundingClientRect();
+    if (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.contains(r.startContainer)) {
+      return;
+    }
+    r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    const v = viewOf(host().scroller());
+    reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2);
+  }
+
+  function select(r: Range) {
+    const s = selection();
+    s.removeAllRanges();
+    s.addRange(r);
+  }
+
   // ---- hints -----------------------------------------------------------------------------------
 
   function startHints(targets: Target[], newTab: boolean) {
@@ -123,9 +224,132 @@ export function createDocNav(host: () => DocHost) {
     return true;
   }
 
+  // ---- find ------------------------------------------------------------------------------------
+
+  const indexOfScreen = (doc: DocText, first: TextPoint | null) => (first && indexOfPoint(doc, first.node, first.offset)) ?? 0;
+
+  /** Where to look from: the selection's far end, if it is in this document, else the first text on screen. */
+  function originIn(doc: DocText, dir: 1 | -1, root: Element): number {
+    const s = selection();
+    if (s.rangeCount && root.contains(s.anchorNode)) {
+      const r = s.getRangeAt(0);
+      const at = dir > 0 ? indexOfPoint(doc, r.endContainer, r.endOffset) : indexOfPoint(doc, r.startContainer, r.startOffset);
+      if (at != null) {
+        return at;
+      }
+    }
+    return indexOfScreen(doc, firstVisibleText(root, viewOf(host().scroller())));
+  }
+
+  /** Shows the query's match nearest the origin, or the place the find began without one. */
+  function search(m: Extract<DocMode, { kind: "find" }>, query: string) {
+    const { starts, length } = matchesIn(m.doc.text, query);
+    const at = pickMatch(starts, indexOfScreen(m.doc, m.origin), 1);
+    enter({ ...m, query, starts, length, at });
+    if (at >= 0) {
+      revealRange(rangeAt(m.doc, starts[at]!, length));
+      draw();
+    } else {
+      backToPlace(m.place);
+    }
+  }
+
+  function backToPlace(place: Place) {
+    host().scroller()?.scrollTo({ top: place.top, left: place.left, behavior: "instant" });
+  }
+
+  function endFind(keep: boolean) {
+    if (mode.kind !== "find") {
+      return;
+    }
+    const m = mode;
+    enter(NORMAL);
+    if (m.place.focus instanceof HTMLElement) {
+      m.place.focus.focus({ preventScroll: true });
+    }
+    if (keep && m.at >= 0) {
+      lastQuery = m.query;
+      select(rangeAt(m.doc, m.starts[m.at]!, m.length));
+      return;
+    }
+    const s = selection();
+    s.removeAllRanges();
+    m.place.ranges.forEach((r) => s.addRange(r));
+    backToPlace(m.place);
+  }
+
+  function startFind() {
+    const root = host().root();
+    if (!root) {
+      return;
+    }
+    const s = selection();
+    const scroller = host().scroller();
+    const view = viewOf(scroller);
+    const place: Place = {
+      ranges: Array.from({ length: s.rangeCount }, (_, i) => s.getRangeAt(i)),
+      top: scroller?.scrollTop ?? 0,
+      left: scroller?.scrollLeft ?? 0,
+      focus: document.activeElement,
+    };
+    const { input, count } = openUi().bar(host().findLabel(), view);
+    enter({ kind: "find", query: "", doc: docText(root), origin: firstVisibleText(root, view), starts: [], length: 0, at: -1, place, count });
+    input.addEventListener("input", () => {
+      if (mode.kind === "find") {
+        search(mode, input.value);
+      }
+    });
+    input.addEventListener("keydown", (e) => {
+      // The page and the app see none of what is typed here; a Ctrl key goes on, since the app's run in fields too.
+      if (e.isComposing || !(e.ctrlKey || e.altKey || e.metaKey)) {
+        e.stopPropagation();
+      }
+      if (e.isComposing) {
+        return;
+      }
+      if (e.key === "Escape" || e.key === "Enter") {
+        e.preventDefault();
+        endFind(e.key === "Enter");
+      }
+    });
+    for (const type of ["keyup", "keypress"]) {
+      input.addEventListener(type, (e) => e.stopPropagation());
+    }
+    input.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        if (document.activeElement !== ui?.host) {
+          endFind(true);
+        }
+      }, BLUR_MS);
+    });
+    // The key that opened the bar may still have its character on the way, which would land here.
+    const eat = (e: Event) => e.preventDefault();
+    input.addEventListener("keypress", eat, { once: true });
+    input.addEventListener("keydown", () => input.removeEventListener("keypress", eat), { once: true });
+    input.focus({ preventScroll: true });
+  }
+
+  function repeatFind(dir: 1 | -1) {
+    const root = host().root();
+    if (!root || !lastQuery) {
+      return;
+    }
+    const doc = docText(root);
+    const { starts, length } = matchesIn(doc.text, lastQuery);
+    const at = pickMatch(starts, originIn(doc, dir, root), dir);
+    if (at >= 0) {
+      const r = rangeAt(doc, starts[at]!, length);
+      select(r);
+      revealRange(r);
+    }
+  }
+
   // ---- what hosts call -------------------------------------------------------------------------
 
   const RUNS: Partial<Record<ActionId, () => void>> = {
+    docFind: startFind,
+    findNext: () => repeatFind(1),
+    findPrev: () => repeatFind(-1),
     hints: () => startHints(linkTargetsIn(), false),
     hintsNew: () => startHints(linkTargetsIn(), true),
     print: () => host().print(),
