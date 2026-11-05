@@ -112,8 +112,8 @@ export function createDocNav(host: () => DocHost) {
   let ui: DocUi | null = null;
   /** What `n` and `N` look for: the query last kept with Enter. */
   let lastQuery = "";
-  /** The heading `]]` went to last: at the end of a document it stays below the top, and the next one must still be next. */
-  let lastHeading: Element | null = null;
+  /** The heading `]]` went to last and where that left it: a scroll margin or the document's end can stop it below the top, and while it stays there the next one must still be next. */
+  let lastHeading: { el: Element; top: number } | null = null;
   /** Keeps `allText` from going through a PDF's pages on every use. */
   let textAsked = false;
 
@@ -231,13 +231,13 @@ export function createDocNav(host: () => DocHost) {
     const top = viewOf(host().scroller()).top;
     const tops = all.map((h) => h.getBoundingClientRect().top - top);
     let i = dir > 0 ? tops.findIndex((t) => t > 2) : tops.findLastIndex((t) => t < -2);
-    if (i >= 0 && all[i] === lastHeading) {
+    if (i >= 0 && lastHeading && all[i] === lastHeading.el && Math.abs(tops[i]! - lastHeading.top) < 2) {
       i += dir;
     }
     const to = all[i];
     if (to) {
-      lastHeading = to;
       to.scrollIntoView({ block: "start", behavior: "instant" });
+      lastHeading = { el: to, top: to.getBoundingClientRect().top - top };
     }
   }
 
