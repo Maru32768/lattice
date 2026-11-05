@@ -226,6 +226,22 @@ test("a vimrc applies, with the leader's key given up and a <nop> on it", async 
   await expect(mode(page)).toHaveText("NORMAL");
 });
 
+test("with Esc Esc mapped, a lone Esc in normal mode does not eat the next key", async ({ page }) => {
+  await chat(page, "nnoremap <esc><esc> :noh<cr>");
+  await page.keyboard.type("abc");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("x");
+  await expect(chatInput(page)).toHaveText("ab");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("d");
+  await expect(mode(page), "the wait shows only what still counts").toHaveText("NORMAL d");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(mode(page), "two of them run the mapping and end the wait").toHaveText("NORMAL");
+  await expect(chatInput(page)).toBeFocused();
+});
+
 test("gj moves by screen line, as a vimrc's j asks", async ({ page }) => {
   await chat(page, "nnoremap j gj");
   const long = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ");
