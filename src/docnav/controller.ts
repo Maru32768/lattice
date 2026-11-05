@@ -485,7 +485,8 @@ export function createDocNav(host: () => DocHost) {
       }
     });
     input.addEventListener("keydown", (e) => {
-      // The page and the app see none of what is typed here; a Ctrl key goes on, since the app's run in fields too.
+      // This keeps what is typed here from the app and from a page's bubbling listeners. A page's capture listeners
+      // have already seen the key. A Ctrl key goes on, since the app's run in fields too.
       if (e.isComposing || !(e.ctrlKey || e.altKey || e.metaKey)) {
         e.stopPropagation();
       }
