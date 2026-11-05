@@ -781,7 +781,8 @@ export default function App() {
     if (!chat && screen === "library" && cur?.kind === "page") {
       return paneFocus.focusPage(cur.key);
     }
-    const root = document.querySelector(chat ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused");
+    // The chat window has only the chat, wherever focus is.
+    const root = document.querySelector(chat ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused, [data-pane='chat']");
     const el = root && scrollerIn(root);
     if (el) {
       scrollDoc(el, id, count);

@@ -188,6 +188,36 @@ test("what a page sends runs by its whole sequence, with its count", async ({ ap
   await expect(hint(app), "the page ended it").toBeHidden();
 });
 
+test("a document window has no list: with nothing focused, j scrolls its document", async ({ shell }) => {
+  const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: order[0].id }], active: 2 }, focused: 1 };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify(LAYOUT));
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(label(0));
+  await shell.locator(".reader").evaluate((el) => void ((el as HTMLElement).style.minHeight = "6000px"));
+  await shell.keyboard.press("j");
+  await expect.poll(() => scrollTop(shell)).toBeGreaterThan(0);
+});
+
+test("the chat log scrolls with the document's keys once the keyboard is in it, and the input still types", async ({ app }) => {
+  await app.getByRole("button", { name: "対話" }).click();
+  const log = app.locator(".chat-log");
+  await log.evaluate((el) => {
+    const filler = document.createElement("div");
+    filler.style.cssText = "flex: none; height: 6000px";
+    el.append(filler);
+  });
+  await log.click({ position: { x: 5, y: 5 } });
+  await app.keyboard.press("j");
+  await expect.poll(() => log.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect(list(app).locator(".row.cur")).toHaveCount(0);
+
+  const input = app.locator("#chat-q");
+  await input.click();
+  await app.keyboard.type("jg");
+  await expect(input).toHaveValue("jg");
+  await expect(hint(app)).toBeHidden();
+});
+
 test("moving into a pane that shows a page gives the page the keyboard", async ({ shell }) => {
   const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
