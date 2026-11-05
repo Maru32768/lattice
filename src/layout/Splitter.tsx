@@ -22,7 +22,7 @@ const KEY = "lattice.paneWidths";
  */
 const LIVE_RESIZE = true;
 
-const clamp = (p: Resizable, w: number) => Math.round(Math.max(LIMITS[p].min, Math.min(LIMITS[p].max, w)));
+export const clampWidth = (p: Resizable, w: number) => Math.round(Math.max(LIMITS[p].min, Math.min(LIMITS[p].max, w)));
 
 export function loadWidths(): PaneWidths {
   try {
@@ -30,7 +30,7 @@ export function loadWidths(): PaneWidths {
     const out = { ...DEFAULT_WIDTHS };
     for (const p of Object.keys(out) as Resizable[]) {
       if (typeof saved[p] === "number") {
-        out[p] = clamp(p, saved[p]);
+        out[p] = clampWidth(p, saved[p]);
       }
     }
     return out;
@@ -63,7 +63,7 @@ export function Splitter({ pane, side, width, onWidth }: { pane: Resizable; side
   // While dragging, only the shell's width variable moves: committing per mousemove re-rendered the whole app
   // and wrote localStorage per pixel.
   const onMove = useEffectEvent((d: { x: number; w: number }, e: MouseEvent) => {
-    const w = clamp(pane, d.w + dir * (e.clientX - d.x));
+    const w = clampWidth(pane, d.w + dir * (e.clientX - d.x));
     const app = handle.current?.closest<HTMLElement>(".app");
     if (app) {
       dragged.current = w;
@@ -114,7 +114,7 @@ export function Splitter({ pane, side, width, onWidth }: { pane: Resizable; side
     }
     e.preventDefault();
     e.stopPropagation();
-    onWidth(clamp(pane, width + dir * (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 64 : 16)));
+    onWidth(clampWidth(pane, width + dir * (e.key === "ArrowRight" ? 1 : -1) * (e.shiftKey ? 64 : 16)));
   }
 
   const { min, max } = LIMITS[pane];

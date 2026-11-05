@@ -206,3 +206,57 @@ test("a zoomed pane of a document window holds its window controls", async ({ sh
   await press(shell, "Control+b", "z");
   await expect(controls(1)).toBeVisible();
 });
+
+const paneWidthHandle = (app: Page) => app.getByRole("separator", { name: "ペインの幅" });
+
+test("Ctrl+B Shift+H and L move the focused document's border, and the second key alone repeats", async ({ shell }) => {
+  await twoReaders(shell);
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "50");
+  await press(shell, "Control+b", "Shift+H");
+  await expect(paneWidthHandle(shell), "the right pane grows to its left").toHaveAttribute("aria-valuenow", "46");
+  await shell.keyboard.press("Shift+H");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "42");
+  await press(shell, "Control+b", "Control+ArrowRight");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "46");
+});
+
+test("Ctrl+B Shift+K and J move the border of stacked documents", async ({ shell }) => {
+  await open(shell, down(90, pane(1, reader(2, 0)), pane(3, reader(4, 1))), 1);
+  const handle = shell.getByRole("separator", { name: "ペインの高さ" });
+  await expect(handle).toHaveAttribute("aria-valuenow", "50");
+  await press(shell, "Control+b", "Shift+J");
+  await expect(handle).toHaveAttribute("aria-valuenow", "54");
+  await press(shell, "Control+b", "Shift+K");
+  await expect(handle).toHaveAttribute("aria-valuenow", "50");
+  await press(shell, "Control+b", "Shift+H");
+  await expect(handle, "no split that way: nothing moves").toHaveAttribute("aria-valuenow", "50");
+});
+
+test("with the keyboard in the list, the nav or the chat, the same keys change that pane's width", async ({ shell }) => {
+  await twoReaders(shell);
+  const width = (name: string) => shell.getByRole("separator", { name });
+  await list(shell).locator(".row").first().focus();
+  await press(shell, "Control+b", "Shift+L");
+  await expect(width("記事一覧の幅")).toHaveAttribute("aria-valuenow", "428");
+  await press(shell, "Control+b", "Shift+H");
+  await expect(width("記事一覧の幅")).toHaveAttribute("aria-valuenow", "396");
+  await press(shell, "Control+b", "Shift+K");
+  await expect(width("記事一覧の幅"), "a side pane has no height to change").toHaveAttribute("aria-valuenow", "396");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "50");
+
+  await shell.keyboard.press("Control+h");
+  await press(shell, "Control+b", "Shift+L");
+  await expect(width("ナビゲーションの幅")).toHaveAttribute("aria-valuenow", "260");
+
+  await shell.getByRole("button", { name: "対話" }).click();
+  await shell.locator("#chat-q").click();
+  await press(shell, "Control+b", "Shift+H");
+  await expect(width("対話ペインの幅"), "the chat's border is on its left").toHaveAttribute("aria-valuenow", "462");
+  await expect(shell.locator("#chat-q"), "the keys typed nothing").toHaveValue("");
+});
+
+test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
+  await open(shell, across(90, pane(1, page(2, "k1")), pane(3, page(4, "k2"))), 1);
+  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
+});
