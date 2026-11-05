@@ -340,6 +340,7 @@ const drawing = new WeakMap<HTMLElement, { cancel(): void }>();
 const texts = new WeakMap<HTMLElement, { layer: TextLayer; done: Promise<unknown> }>();
 /** The overlay's find and a long selection reach over every page: from then on `forget` leaves the text alone. */
 let keepText = false;
+let textVersion = 0;
 
 function drawText(page: PDFPageProxy, host: HTMLElement) {
   let text = texts.get(host);
@@ -348,7 +349,7 @@ function drawText(page: PDFPageProxy, host: HTMLElement) {
     const viewport = page.getViewport({ scale: host.clientWidth / page.getViewport({ scale: 1 }).width });
     container.style.setProperty("--total-scale-factor", String(viewport.scale));
     const layer = new TextLayer({ textContentSource: page.streamTextContent(), container, viewport });
-    text = { layer, done: layer.render() };
+    text = { layer, done: layer.render().then(() => void textVersion++) };
     texts.set(host, text);
   }
   return text.done;
@@ -387,6 +388,7 @@ function allText(more: () => void) {
 }
 if (window.__lattice) {
   window.__lattice.allText = allText;
+  window.__lattice.textVersion = () => textVersion;
 }
 
 const wasStopped = (e: unknown) => e instanceof Error && (e.name === "RenderingCancelledException" || e.name === "AbortException");
@@ -424,6 +426,7 @@ function forget(host: HTMLElement) {
     texts.get(host)?.layer.cancel();
     texts.delete(host);
     host.querySelector(".textLayer")?.replaceChildren();
+    textVersion++;
   }
 }
 
