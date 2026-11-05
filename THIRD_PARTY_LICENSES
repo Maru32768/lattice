@@ -9552,9 +9552,9 @@ SOFTWARE.
 -------------------------------------------------------------------------------
 MIT License (MIT)
 Used by:
-  lattice-cli 0.2.0
-  lattice-core 0.2.0
-  lattice 0.2.0
+  lattice-cli 0.3.0
+  lattice-core 0.3.0
+  lattice 0.3.0
   adobe-cmap-parser 0.4.1
   brotli-decompressor 6.0.1
   chrono 0.4.45

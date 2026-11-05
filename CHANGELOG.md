@@ -4,6 +4,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
 ### Added
 
 - **Pick the importance by hand.** Choose 1 to 5 under the title in the Reader. Your pick overrides the AI rating in sorting, **Important** and automatic summaries, and stays when articles are rated again; **Leave it to AI** goes back.
@@ -14,7 +16,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The import screen's files (URL list, Markdown, PDF), OPML and feed icons can also be dragged and dropped or pasted, besides being chosen. Relative images in Markdown are still read only with **Choose a file…**.
 - `y` opens and closes the summary. In the Page view it shows the whole summary above the page, and pressing it again gives the page its full height back. Change the key in Settings › Shortcuts.
 - **Settings › Logs & storage** has an **Open folder** button for the log folder too.
-- The Page view of a PDF shows the saved original. It works for a PDF imported from a file too, and offline. **Mixed** and **Translated** draw the translation over the original's paragraphs. The ☰ at the top left opens the contents, and links inside the PDF work.
+- The Page view of a PDF shows the saved original. It works for a PDF imported from a file too, and offline. **Mixed** and **Translated** draw the translation over the original's paragraphs. The ☰ at the top left opens the contents, and links inside the PDF work. `Ctrl`+wheel zooms and `Ctrl`+`P` prints.
 - In a PDF's Page view, the button at the top right of a page translates only that page, or translates it again. Retranslating a whole long PDF is no longer the only way to redo a page.
 - Automatic translation can be turned off per article in the ⋯ menu, and per file on the import screen's Markdown and PDF tabs. Importing, switching the view and scrolling in the Page view then start no translation for it, and **Translate** still works.
 - **Settings › Shortcuts** can give any action a two-step key, as in tmux. The first key can be any key: click **+ Add key** and press two keys in turn. For a single key, press `Enter` after the first key. The keys after `Ctrl+B`, such as `"`, `%` and the pane moves, can be removed or changed there too.
@@ -31,7 +33,12 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - With animation effects turned off in Windows, scrolling to the end of a long article list was pulled back a row just before the last article.
 - Launching Lattice while it is already running now brings the open window to the front instead of starting a second copy. The two copies ran the same jobs, so the same request could be sent to an AI provider (and paid for) twice.
 - Starting the app while `lattice-cli save --run` or the MCP server's `save` works on an article no longer makes the app take over its job and run it a second time. A job left running by a CLI stopped mid-run, or one whose result could not be recorded, now goes back to the queue within about a minute instead of staying stuck until a restart.
-- When an AI provider rate limited the Codex CLI, one call could take minutes. If another step is set up, Lattice now moves on to it without waiting, and returns to the Codex CLI once the limit is over. With no other step, it waits as before.
+- A translation still running could keep going after being stopped, and mark a different job done when it finished, because a deleted job's number went to the next job. Job numbers are no longer reused.
+- When an AI provider rate limited the Codex CLI, one call could take minutes. If another step is set up, Lattice now moves on to it without waiting, and returns to the Codex CLI once the limit is over. With no other step, or when the other steps fail too, it waits for the limit to end.
+- A Codex CLI call cancelled partway no longer leaves its temporary files in `%TEMP%`.
+- A dialog or the palette now dims the Page view together with the rest of the app. The app used to darken first.
+- In the Page view, a page that changes its own address while its text waits for translation, as single-page sites do, no longer has that text marked as failed.
+- With automatic translation off, translating an article from the palette now shows the result in its open Page view. It used to show nothing until a reload.
 - Choosing **Translated** in the Page view of a Japanese page left it in Japanese instead of showing the English.
 - The Page view now shows saved translations at once. Until now, sending them together with text that had none, such as a sidebar, left the article's text on "Translating…" until the AI provider answered. The same text also no longer goes to the AI provider several times.
 - A table in a PDF stays visible under the translation in the Page view. A row as wide as the page made the whole table count as text and hid it.
@@ -117,6 +124,7 @@ The first public release. Everything below is new.
 - **Network destinations.** Direct downloads reject private networks by default. Allow and deny rules support hostnames, wildcard subdomains, IP addresses and CIDR ranges, with allowlist-only and allow-all modes. The rules cover article, PDF, feed, image and favicon downloads, including redirects. The built-in browser, JavaScript rendering, AI providers and backups use separate network paths.
 - **Project.** MIT license, third-party notices, English and Japanese READMEs, and toolchains pinned with mise.
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Maru32768/lattice/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maru32768/lattice/releases/tag/v0.1.0
