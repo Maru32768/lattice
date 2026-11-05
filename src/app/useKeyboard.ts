@@ -17,6 +17,8 @@ const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab"
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
 const HINT_MS = 400;
+/** How long after the app gives a page the keyboard a focus event from that page is this, not a click. */
+const KEYED_MS = 500;
 /** CodeMirror's root, which is only ever there for a Vim editor. */
 const EDITOR = ".cm-editor";
 
@@ -41,8 +43,8 @@ const pageIn = (p: Element | null) => p?.querySelector<HTMLElement>("[data-page-
 export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   const [kbPane, setKbPane] = useState<string | null>(null);
   const lastPane = useRef<HTMLElement | null>(null);
-  /** The page `focusPage` gave the keyboard to, until its focus event comes. */
-  const keyedPage = useRef<string | null>(null);
+  /** The page `focusPage` gave the keyboard to, and until when. WebView2 can send two focus events for that, or none if the page had the focus. */
+  const keyedPage = useRef<{ tab: string; until: number } | null>(null);
   useEffect(() => {
     const focusin = (e: FocusEvent) => {
       const p = paneOf(e.target as Element);
@@ -72,8 +74,7 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     // popover (Radix dismisses a left press on its click). Not for a page under an overlay: hiding
     // it behind its still gives it the focus too, which would close the menu that hid it. Nor when
     // the keys moved here: no click, and the pane keeps its outline.
-    const keyed = keyedPage.current === tab;
-    keyedPage.current = null;
+    const keyed = keyedPage.current?.tab === tab && performance.now() < keyedPage.current.until;
     if (!keyed && pageClickable(tab)) {
       document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       document.body.click();
@@ -111,7 +112,7 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   /** The keyboard goes to the page `tab`; what the app focused last is stale from here on. */
   const focusPage = (tab: string) => {
     lastPane.current = focusedDoc();
-    keyedPage.current = tab;
+    keyedPage.current = { tab, until: performance.now() + KEYED_MS };
     (document.activeElement as HTMLElement | null)?.blur();
     browser.focus(tab).catch(() => {});
   };
