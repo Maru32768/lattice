@@ -337,6 +337,7 @@ export function ChatPane({
                 autoFocus={requestSeq != null || editorSeq > 0}
                 onChange={setQuestion}
                 onWrite={(text) => void ask(text)}
+                onQuit={() => document.getElementById("chat-q")?.blur()}
                 onMode={setVimMode}
               />
             </Suspense>

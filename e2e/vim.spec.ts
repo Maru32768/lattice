@@ -7,6 +7,8 @@ const title = ARTICLES[0].title!;
 const nav = (page: Page, name: string) => page.locator(".nav").getByRole("button", { name });
 const chatInput = (page: Page) => page.getByRole("textbox", { name: "質問", exact: true });
 const mode = (page: Page) => page.locator(".chat-f-row .vim-mode");
+/** An empty editor shows its placeholder as text, so "no text" is that showing. */
+const isEmpty = (page: Page) => expect(page.locator(".chat-f .cm-placeholder")).toBeVisible();
 const questions = async (page: Page) => (await callsOf(page, "chat_ask")).map((a) => (a as { question: string }).question);
 
 /** The main window with Vim on from the start, and the chat open with the keyboard in its input. */
@@ -20,6 +22,13 @@ async function chat(page: Page, vimrc = "") {
   await nav(page, "対話").click();
   await chatInput(page).click();
   await expect(mode(page)).toHaveText("INSERT");
+}
+
+/** An Ex command typed at the engine's prompt, from insert mode. */
+async function ex(page: Page, command: string) {
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(`:${command}`);
+  await page.keyboard.press("Enter");
 }
 
 test("the editor is the label's and focusPane's #chat-q", async ({ page }) => {
@@ -60,6 +69,48 @@ test("visual mode shows on the badge", async ({ page }) => {
   await expect(mode(page)).toHaveText("VISUAL LINE");
 });
 
+test(":w sends and :q leaves the chat input", async ({ page }) => {
+  await chat(page);
+  await page.keyboard.type("question");
+  await ex(page, "w");
+  await expect.poll(() => questions(page)).toEqual(["question"]);
+  await isEmpty(page);
+  await expect(chatInput(page)).toBeFocused();
+  await expect(mode(page)).toHaveText("INSERT");
+
+  await ex(page, "q");
+  await expect(chatInput(page)).not.toBeFocused();
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "キー一覧" }), "the keys are the app's again").toBeVisible();
+});
+
+test(":w saves and :q closes the note", async ({ page }) => {
+  await chat(page);
+  await (await listRow(page, title)).click();
+  await expect(page.locator(".art-title")).toHaveText(title);
+  const button = page.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = page.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  await expect(note).toBeFocused();
+  await expect(panel.locator(".vim-mode")).toHaveText("INSERT");
+
+  await page.keyboard.type("読み返す");
+  await ex(page, "w");
+  await expect.poll(async () => (await callsOf(page, "set_article_note")).at(-1)).toMatchObject({ body: "読み返す" });
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await expect(note, ":w stays in the note").toBeFocused();
+
+  await page.keyboard.type(":q");
+  await page.keyboard.press("Enter");
+  await expect(panel).toHaveCount(0);
+  await page.locator(".reader").evaluate((el) => void ((el as HTMLElement).style.minHeight = "6000px"));
+  await page.keyboard.press("j");
+  await expect.poll(() => page.locator(".doc-scroll").evaluate((el) => el.scrollTop), "the keys go on in the document").toBeGreaterThan(0);
+  await button.click();
+  await expect(panel.getByRole("textbox", { name: "メモ" })).toHaveText("読み返す");
+});
+
 test("the textarea's note still works next to it: Vim off, autosave as before", async ({ app }) => {
   await (await listRow(app, title)).click();
   await app.getByRole("button", { name: "メモ", exact: true }).click();
@@ -67,6 +118,21 @@ test("the textarea's note still works next to it: Vim off, autosave as before", 
   await expect(note).toHaveJSProperty("tagName", "TEXTAREA");
   await note.fill("plain");
   await expect.poll(async () => (await callsOf(app, "set_article_note")).at(-1)).toMatchObject({ body: "plain" });
+});
+
+test("Ex names from the alias table run the app's actions, and :wincmd moves panes", async ({ page }) => {
+  await chat(page);
+  await (await listRow(page, title)).click();
+  await expect(page.locator(".art-title")).toHaveText(title);
+  await chatInput(page).click();
+  await expect(page.locator(".dpane")).toHaveCount(1);
+  await ex(page, "split");
+  await expect(page.locator(".dpane")).toHaveCount(2);
+
+  await chatInput(page).click();
+  await ex(page, "wincmd h");
+  await expect(chatInput(page), "the prompt's refocus does not undo the move").not.toBeFocused();
+  await expect(page.locator(".dpane.focused")).toContainText(title);
 });
 
 test("the app's keys work from the editor, in both modes; typed keys stay the editor's", async ({ page }) => {
