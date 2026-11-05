@@ -5,6 +5,7 @@ import type { Page } from "@playwright/test";
 
 const order = [...ARTICLES].sort((a, b) => b.saved_at.localeCompare(a.saved_at) || b.id - a.id);
 const label = (i: number) => order[i].title ?? order[i].original_url;
+const palette = (page: Page) => page.getByRole("dialog", { name: "コマンドパレット" });
 
 const PARAGRAPHS = [
   "Alpha beta gamma delta epsilon.",
@@ -72,6 +73,12 @@ const drawn = (page: Page) =>
     };
   });
 
+async function press(page: Page, ...keys: string[]) {
+  for (const k of keys) {
+    await page.keyboard.press(k);
+  }
+}
+
 const selected = (page: Page) => page.evaluate(() => window.getSelection()!.toString());
 const scrollTop = (page: Page) => page.locator(".doc-scroll").evaluate((el) => el.scrollTop);
 
@@ -127,6 +134,110 @@ test("F clicks with Ctrl held, which opens a link behind", async ({ reader }) =>
   await reader.keyboard.press("Shift+F");
   await typeLabelOf(reader, "#plain");
   await expect.poll(() => clicked(reader)).toEqual({ ctrl: true });
+});
+
+test("gw selects the word whose label is typed, in visual mode, and y copies it and leaves", async ({ reader }) => {
+  await press(reader, "g", "w");
+  await reader.locator("#p0").evaluate((el) => {
+    const r = document.createRange();
+    r.setStart(el.firstChild!, 6);
+    r.setEnd(el.firstChild!, 10);
+    (window as unknown as { __word: DOMRect }).__word = r.getClientRects()[0];
+  });
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBeGreaterThan(0);
+  const { labels } = await drawn(reader);
+  const word = await reader.evaluate(() => {
+    const w = (window as unknown as { __word: DOMRect }).__word;
+    return { x: w.left, y: w.top };
+  });
+  const near = labels.toSorted((a, b) => Math.hypot(a.x - word.x, a.y - word.y) - Math.hypot(b.x - word.x, b.y - word.y))[0];
+  await reader.keyboard.type(near.text.toLowerCase());
+  await expect.poll(() => selected(reader)).toBe("beta");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("VISUAL");
+  await reader.keyboard.press("y");
+  await expect.poll(() => reader.evaluate(() => (window as unknown as { __clip?: string }).__clip)).toBe("beta");
+  expect((await drawn(reader)).open).toBe(false);
+  expect(await selected(reader), "the selection went with the mode").toBe("");
+});
+
+test("Japanese text has words to hint", async ({ reader }) => {
+  await reader.locator("#h-two").evaluate((el) => el.scrollIntoView());
+  await press(reader, "g", "w");
+  await reader.locator("#p3").evaluate((el) => {
+    const r = document.createRange();
+    r.setStart(el.firstChild!, 0);
+    r.setEnd(el.firstChild!, 3);
+    (window as unknown as { __word: DOMRect }).__word = r.getClientRects()[0];
+  });
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBeGreaterThan(0);
+  const on = await reader.evaluate(() => {
+    const w = (window as unknown as { __word: DOMRect }).__word;
+    return { x: w.left, right: w.right, y: w.top };
+  });
+  const inLine = (await drawn(reader)).labels.filter((l) => Math.abs(l.y - on.y) < 8);
+  expect(inLine.length, "not one word for the whole line").toBeGreaterThan(1);
+  await reader.keyboard.press("Escape");
+});
+
+test("v shows a block at the first text on screen; v again selects, motions extend, Esc collapses and leaves", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((el) => el.scrollIntoView());
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("CARET");
+  expect(await selected(reader), "one character shows where it is").toBe("A");
+
+  await reader.keyboard.press("l");
+  expect(await selected(reader), "the caret moves, nothing is selected yet").toBe("l");
+
+  await reader.keyboard.press("0");
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("VISUAL");
+  await reader.keyboard.press("e");
+  expect(await selected(reader)).toBe("Alpha");
+  await reader.keyboard.press("w");
+  expect(await selected(reader)).toBe("Alpha ");
+  await reader.keyboard.press("w");
+  expect(await selected(reader)).toBe("Alpha beta ");
+  await reader.keyboard.press("b");
+  expect(await selected(reader)).toBe("Alpha ");
+  await reader.keyboard.press("Shift+L");
+  expect(await selected(reader), "L goes to the line's end").toBe(PARAGRAPHS[0]);
+  await reader.keyboard.press("Shift+H");
+  expect(await selected(reader), "H back to its start").toBe("A");
+  await reader.keyboard.press("$");
+  expect(await selected(reader)).toBe(PARAGRAPHS[0]);
+  await reader.keyboard.press("j");
+  expect(await selected(reader)).toContain("Second");
+
+  await reader.keyboard.press("Escape");
+  expect(await selected(reader)).toBe("");
+  expect((await drawn(reader)).open).toBe(false);
+  await reader.keyboard.press("j");
+  await expect.poll(() => scrollTop(reader), "j scrolls again").toBeGreaterThan(0);
+});
+
+test("V selects whole lines, also as they go up from where it began", async ({ reader }) => {
+  await reader.locator("#p1").evaluate((el) => el.scrollIntoView());
+  await reader.keyboard.press("v");
+  await press(reader, "Shift+V");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("V-LINE");
+  expect(await selected(reader)).toBe(PARAGRAPHS[1]);
+  await reader.keyboard.press("k");
+  const up = await selected(reader);
+  expect(up).toContain(PARAGRAPHS[0]);
+  expect(up, "the line it began on stays whole").toContain(PARAGRAPHS[1]);
+});
+
+test("gg and G in visual mode stop at the document's ends, not the page's", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((el) => el.scrollIntoView());
+  await reader.keyboard.press("v");
+  await reader.keyboard.press("v");
+  await reader.keyboard.press("Shift+G");
+  const down = await selected(reader);
+  expect(down).toContain("Three");
+  expect(down, "the panes beside the Reader are no part of it").not.toContain("対話");
+  await expect.poll(() => reader.locator(".doc-scroll").evaluate((el) => el.scrollTop + el.clientHeight >= el.scrollHeight - 100)).toBe(true);
+  await press(reader, "g", "g");
+  expect(await selected(reader)).toContain(label(0));
 });
 
 test("/ finds as it is typed, Enter keeps the match, n and N go on and round", async ({ reader }) => {
@@ -185,6 +296,17 @@ test("a query with no match shows no match and stays where it began", async ({ r
   await expect.poll(() => scrollTop(reader)).toBe(top);
   await reader.keyboard.press("Enter");
   expect((await drawn(reader)).open).toBe(false);
+});
+
+test("a mode ends for a key of the app's, whose own keys then work", async ({ reader }) => {
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).open).toBe(true);
+  await reader.keyboard.press("Control+p");
+  await expect(palette(reader)).toBeVisible();
+  expect((await drawn(reader)).open).toBe(false);
+  await reader.keyboard.type("x");
+  await expect(palette(reader).getByRole("combobox"), "the palette types").toHaveValue("x");
+  await reader.keyboard.press("Escape");
 });
 
 const PAGE_LAYOUT = {

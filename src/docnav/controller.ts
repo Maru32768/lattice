@@ -6,10 +6,11 @@
  * The ideas come from Vimium's content scripts (MIT License, Copyright (c) 2010 Phil Crosby, Ilya Sukhar).
  */
 import type { ActionId } from "../lib/keymap.ts";
-import { hintLabels, linkTargets, type Target } from "./hints.ts";
+import { hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
 import { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
 import { createUi, type DocUi, type View } from "./ui.ts";
+import { MOTIONS, focusRect, lineAtFocus, shapeLines, showBlock } from "./visual.ts";
 
 export interface DocHost {
   /** Where the document's text and links are; null with no document. */
@@ -38,6 +39,10 @@ interface Place {
 type DocMode =
   | { kind: "normal" }
   | { kind: "hints"; typed: string; targets: Hint[]; newTab: boolean }
+  /** `g`: the first key of `gg` was pressed. */
+  | { kind: "caret"; g: boolean }
+  /** `line`: line-wise, from this line. */
+  | { kind: "visual"; line: Range | null; g: boolean }
   /** `doc` and `origin`: what the query is looked for in, and from where. `at`: the match shown, in `starts`. */
   | { kind: "find"; query: string; doc: DocText; origin: TextPoint | null; starts: number[]; length: number; at: number; place: Place; count: HTMLElement };
 
@@ -97,6 +102,7 @@ export function createDocNav(host: () => DocHost) {
   const selection = () => window.getSelection()!;
 
   function draw() {
+    const view = viewOf(host().scroller());
     if (mode.kind === "hints") {
       const { typed } = mode;
       ui?.labels(
@@ -107,6 +113,10 @@ export function createDocNav(host: () => DocHost) {
             return rect ? [{ label: t.label, rect }] : [];
           }),
       );
+    } else if (mode.kind === "caret") {
+      ui?.badge("CARET", view);
+    } else if (mode.kind === "visual") {
+      ui?.badge(mode.line ? "V-LINE" : "VISUAL", view);
     } else if (mode.kind === "find") {
       ui?.boxes(mode.at >= 0 ? Array.from(rangeAt(mode.doc, mode.starts[mode.at]!, mode.length).getClientRects()) : []);
       mode.count.textContent = mode.query.trim() ? `${mode.at + 1}/${mode.starts.length}` : "";
@@ -220,6 +230,119 @@ export function createDocNav(host: () => DocHost) {
       } else if (left.length) {
         enter({ ...m, typed });
       }
+    }
+    return true;
+  }
+
+  function startWordHints() {
+    const root = host().root();
+    if (!root) {
+      return;
+    }
+    const targets = visibleWords(root).map((range): Target => ({
+      rect: () => range.getClientRects()[0] ?? null,
+      pick: () => {
+        select(range);
+        enterVisual();
+      },
+    }));
+    startHints(targets, false);
+  }
+
+  // ---- caret and visual ------------------------------------------------------------------------
+
+  function enterVisual() {
+    enter({ kind: "visual", line: null, g: false });
+  }
+
+  function startVisual() {
+    const root = host().root();
+    if (!root) {
+      return;
+    }
+    const s = selection();
+    const view = viewOf(host().scroller());
+    // What is already selected and on screen (a kept match, the mouse's) is where to go on from.
+    if (s.toString() && root.contains(s.anchorNode) && meets(s.getRangeAt(0).getBoundingClientRect(), view)) {
+      return enterVisual();
+    }
+    const at = firstVisibleText(root, view);
+    if (at) {
+      s.collapse(at.node, at.offset);
+      showBlock(s);
+      enter({ kind: "caret", g: false });
+    }
+  }
+
+  function moveBy(m: Extract<DocMode, { kind: "caret" | "visual" }>, seq: string) {
+    const motion = MOTIONS[seq];
+    const root = host().root();
+    if (!motion || !root) {
+      return;
+    }
+    const s = selection();
+    const [a, ao, f, fo] = [s.anchorNode, s.anchorOffset, s.focusNode, s.focusOffset];
+    if (m.kind === "caret") {
+      s.collapseToStart();
+      motion(s, "move", root);
+      showBlock(s);
+    } else {
+      motion(s, "extend", root);
+      if (m.line) {
+        shapeLines(s, m.line);
+      } else if (!s.toString()) {
+        showBlock(s);
+      }
+    }
+    // `j` from the Reader's last line would land in the next pane, `k` from a PDF's first on the viewer's own controls.
+    const at = s.focusNode instanceof Element ? s.focusNode : s.focusNode?.parentElement;
+    if (a && f && (!root.contains(s.focusNode) || at?.closest("[data-lattice-ui]"))) {
+      s.setBaseAndExtent(a, ao, f, fo);
+    }
+    reveal(focusRect(s), 40);
+  }
+
+  function modeKey(m: Extract<DocMode, { kind: "caret" | "visual" }>, key: string): boolean {
+    const s = selection();
+    // The page itself may have cleared the selection.
+    if (isModified(key) || !s.rangeCount) {
+      enter(NORMAL);
+      return false;
+    }
+    if (key === "Escape") {
+      s.collapseToStart();
+      enter(NORMAL);
+      return true;
+    }
+    if (!isTyped(key)) {
+      return false;
+    }
+    if (m.g) {
+      moveBy(m, `G ${key}`);
+      enter({ ...m, g: false });
+    } else if (key === "G") {
+      enter({ ...m, g: true });
+    } else if (key === "V") {
+      if (m.kind === "caret" || m.line) {
+        enter({ kind: "visual", line: null, g: false });
+      } else {
+        s.collapse(s.focusNode, s.focusOffset);
+        showBlock(s);
+        enter({ kind: "caret", g: false });
+      }
+    } else if (key === "Shift+V") {
+      if (m.kind === "visual" && m.line) {
+        enter({ ...m, line: null });
+      } else {
+        enter({ kind: "visual", line: lineAtFocus(s), g: false });
+      }
+    } else if (m.kind === "visual" && key === "Y") {
+      // oxlint-disable-next-line typescript/no-deprecated -- `navigator.clipboard` fails on a page that is plain http or forbids it, and this key press is permission enough
+      document.execCommand("copy");
+      s.collapseToStart();
+      enter(NORMAL);
+    } else {
+      moveBy(m, key);
     }
     return true;
   }
@@ -352,6 +475,8 @@ export function createDocNav(host: () => DocHost) {
     findPrev: () => repeatFind(-1),
     hints: () => startHints(linkTargetsIn(), false),
     hintsNew: () => startHints(linkTargetsIn(), true),
+    wordHints: startWordHints,
+    visual: startVisual,
     print: () => host().print(),
   };
 
@@ -374,6 +499,7 @@ export function createDocNav(host: () => DocHost) {
       }
     },
     /** Whether the key was the mode's: the host then swallows it and goes no further. The find bar reads its own keys. */
-    onKey: (key: string): boolean => (mode.kind === "hints" ? hintKey(mode, key) : false),
+    onKey: (key: string): boolean =>
+      mode.kind === "hints" ? hintKey(mode, key) : mode.kind === "caret" || mode.kind === "visual" ? modeKey(mode, key) : false,
   };
 }

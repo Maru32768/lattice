@@ -1,4 +1,5 @@
 // What `f` and `gw` put labels on. Ideas from Vimium's link_hints.js (see controller.ts).
+import { textNodes } from "./text.ts";
 
 /** A place in the document that typing its label picks. */
 export interface Target {
@@ -8,6 +9,9 @@ export interface Target {
 }
 
 const ALPHABET = "SADFJKLEWCMPGH";
+/** Every two-letter label: more words on screen than this get a label only every so often. */
+const MAX_WORDS = ALPHABET.length ** 2;
+const LABEL_WIDTH = 24;
 
 const CLICKABLE =
   "a[href],area[href],button,input:not([type='hidden']),select,textarea,summary,label[for],[onclick],[contenteditable=''],[contenteditable='true']," +
@@ -32,6 +36,11 @@ export function hintLabels(n: number, alphabet = ALPHABET): string[] {
     .slice(used, used + n)
     .toSorted()
     .map((l) => [...l].toReversed().join(""));
+}
+
+/** At most `max` of `items`, evenly spaced: every part of the screen stays within reach of a label. */
+export function spread<T>(items: T[], max: number): T[] {
+  return items.length <= max ? items : items.filter((_, i) => Math.floor((i * max) / items.length) !== Math.floor(((i - 1) * max) / items.length));
 }
 
 function hitAt(x: number, y: number): Element | null {
@@ -120,4 +129,44 @@ export function linkTargets(root: Element): Target[] {
     });
   }
   return out;
+}
+
+/** Whether a reader can see `parent`'s text at this point: nothing with text lies over it. An empty box, as a PDF's link, hides nothing. */
+function seenAt(r: DOMRect, parent: Element): boolean {
+  const hit = hitAt(r.left + r.width / 2, r.top + r.height / 2);
+  return !!hit && (within(hit, parent) || within(parent, hit) || !hit.textContent);
+}
+
+/** The words on screen in `root` that a reader can see, as Ranges: `Intl.Segmenter`, so that Japanese has words too. */
+export function visibleWords(root: Element): Range[] {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
+  const whole = document.createRange();
+  const out: Range[] = [];
+  let last = null as DOMRect | null;
+  for (const node of textNodes(root)) {
+    whole.selectNodeContents(node);
+    if (!onScreen(whole.getBoundingClientRect())) {
+      continue;
+    }
+    // Once a line: a hit test costs a good part of a millisecond on a PDF's page, and there are hundreds of words.
+    let line = null as { top: number; seen: boolean } | null;
+    for (const { segment, index, isWordLike } of segmenter.segment(node.data)) {
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + segment.length);
+      const box = isWordLike ? range.getClientRects()[0] : undefined;
+      if (!box || !onScreen(box)) {
+        continue;
+      }
+      if (line?.top !== box.top) {
+        line = { top: box.top, seen: seenAt(box, node.parentElement!) };
+      }
+      // Japanese has several words in the space of one label, which would only hide each other.
+      if (line.seen && !(last && Math.abs(box.top - last.top) < box.height / 2 && Math.abs(box.left - last.left) < LABEL_WIDTH)) {
+        out.push(range);
+        last = box;
+      }
+    }
+  }
+  return spread(out, MAX_WORDS);
 }
