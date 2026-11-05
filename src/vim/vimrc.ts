@@ -175,27 +175,29 @@ function logicalLines(text: string): { line: number; text: string }[] {
   return out;
 }
 
-const KEY_NAMES: Record<string, string> = {
-  cr: "CR",
-  return: "CR",
-  enter: "CR",
-  esc: "Esc",
-  space: "Space",
-  tab: "Tab",
-  bs: "BS",
-  del: "Del",
-  delete: "Del",
-  ins: "Ins",
-  insert: "Ins",
-  up: "Up",
-  down: "Down",
-  left: "Left",
-  right: "Right",
-  home: "Home",
-  end: "End",
-  pageup: "PageUp",
-  pagedown: "PageDown",
-};
+const KEY_NAMES = new Map(
+  Object.entries({
+    cr: "CR",
+    return: "CR",
+    enter: "CR",
+    esc: "Esc",
+    space: "Space",
+    tab: "Tab",
+    bs: "BS",
+    del: "Del",
+    delete: "Del",
+    ins: "Ins",
+    insert: "Ins",
+    up: "Up",
+    down: "Down",
+    left: "Left",
+    right: "Right",
+    home: "Home",
+    end: "End",
+    pageup: "PageUp",
+    pagedown: "PageDown",
+  }),
+);
 
 /** Key names in the spelling the engine matches, which is the one it makes from key events: `<c-h>` is `<C-h>`, `<esc>` is `<Esc>`. */
 function engineKeys(keys: string): string {
@@ -203,7 +205,7 @@ function engineKeys(keys: string): string {
     const upper = mods.toUpperCase();
     const shift = upper.includes("S-");
     const single = name.length === 1;
-    const known = KEY_NAMES[name.toLowerCase()] ?? (/^f\d+$/i.test(name) ? name.toUpperCase() : undefined);
+    const known = KEY_NAMES.get(name.toLowerCase()) ?? (/^f\d+$/i.test(name) ? name.toUpperCase() : undefined);
     // Other brackets are text: a mapping can type `<b>`.
     if (!known && !(single && mods)) {
       return whole;
@@ -307,16 +309,18 @@ function parseSet(line: number, text: string, known: KnownNames): VimrcEntry[] {
     });
 }
 
-/** A leader as written in `let mapleader = "..."`, spelled as a key. */
+const DEFAULT_LEADER = "\\";
+
+/** A leader as written in `let mapleader = "..."`, spelled as a key. As in Vim, an empty one is the default. */
 function leaderKey(value: string): string {
   const key = value.replace(/\\(<[^>]+>)/, "$1").replace(/\\\\/, "\\");
-  return engineKeys(key === " " ? "<Space>" : key);
+  return engineKeys(key === " " ? "<Space>" : key || DEFAULT_LEADER);
 }
 
 /** The entries of `text`, in order: what applies and, with a reason, what does not. */
 export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
   const out: VimrcEntry[] = [];
-  const leaders = { mapleader: "\\", maplocalleader: "\\" };
+  const leaders = { mapleader: DEFAULT_LEADER, maplocalleader: DEFAULT_LEADER };
   let depth = 0;
   for (const { line, text: raw } of logicalLines(text)) {
     const original = raw.trim().replace(/^:+\s*/, "");
@@ -341,7 +345,8 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
     }
     const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text: original, reason });
     const s = original.replace(/<(local)?leader>/gi, (_, local?: string) => (local ? leaders.maplocalleader : leaders.mapleader));
-    const [, cmd = "", rest = ""] = /^(\S+)\s*(.*)$/.exec(s)!;
+    // A leader of spaces can leave nothing here, and a line can hold a lone CR, where `.` alone stops. This pattern matches any text.
+    const [, cmd = "", rest = ""] = /^(\S*)\s*(.*)$/s.exec(s)!;
     if (/<plug>/i.test(s) || /^plug\s/i.test(s) || /^call\s+plug#/.test(s)) {
       out.push(skip("plugin"));
     } else if (MAPS.has(cmd)) {

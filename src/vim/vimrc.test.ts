@@ -46,6 +46,21 @@ test("the leader is substituted first, and its own key gives up the command it h
   assert.deepEqual(exOf(parse('let maplocalleader = ","\nnmap <localleader>x y\nnmap <leader>x z')), ["unmap ,", "nmap ,x y", "nmap \\x z"]);
 });
 
+test("no vimrc text throws: Settings and the editor parse it as they come up, and it is stored", () => {
+  for (const leader of ["mapleader", "maplocalleader"]) {
+    const entries = parse(`let ${leader} = ""\n<leader>\n<localleader>\nnmap <leader>x y\nnmap <localleader>x z`);
+    assert.deepEqual(exOf(entries).slice(1), ["nmap \\x y", "nmap \\x z"], "as in Vim, an empty leader is the default one");
+  }
+  assert.deepEqual(skips(parse('let mapleader = ""\n<leader>')), [[2, "unknownEx"]], "the line is listed as left out");
+  assert.deepEqual(skips(parse('let mapleader = "  "\n<leader>')), [[2, "unknownEx"]]);
+  assert.deepEqual(skips(parse("imap a <le\rft>")), [[1, "script"]], "a lone CR inside a line");
+  assert.deepEqual(exOf(parse("imap a  b")), ["imap a b"]);
+});
+
+test("a key name is not looked up on Object.prototype", () => {
+  assert.deepEqual(exOf(parse("map <constructor> <__proto__>")), ["map <constructor> <__proto__>"]);
+});
+
 test("map arguments are stripped, <expr> is not understood", () => {
   assert.deepEqual(exOf(parse("nnoremap <silent> <unique> <nowait> <buffer> <script> x :w<cr>")), ["nnoremap x :w<CR>"]);
   assert.deepEqual(skips(parse("nnoremap <expr> x foo()")), [[1, "expr"]]);
