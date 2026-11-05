@@ -1,6 +1,6 @@
 import { test, expect, callsOf, list } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 const section = (app: Page, title: string) =>
   app
@@ -103,3 +103,98 @@ test("the chat scope offers each open article and all of them, and follows the t
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
   await expect(opened).toHaveText([a.title!]);
 });
+
+/** `chat_ask` waits for `failSend()`, so what the user does while a send is under way can be tried. */
+const holdSends = (page: Page) =>
+  page.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; failSend: () => void };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "chat_ask" ? new Promise((_, reject) => (w.failSend = () => reject(new Error("no provider")))) : invoke(cmd, args, options);
+  });
+const failSend = (page: Page) => page.evaluate(() => (window as unknown as { failSend: () => void }).failSend());
+
+for (const vim of [false, true]) {
+  const editor = vim ? "Vim" : "textarea";
+  const openChat = async (page: Page) => {
+    await page.addInitScript((on) => {
+      if (on) {
+        localStorage.setItem("lattice.chatVim", "on");
+      }
+    }, vim);
+    await page.goto("/");
+    await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+    await page.locator(".nav").getByRole("button", { name: "対話" }).click();
+    const input = page.getByRole("textbox", { name: "質問", exact: true });
+    await input.click();
+    await holdSends(page);
+    return input;
+  };
+  const hasText = (input: Locator, text: string) => (vim ? expect(input).toHaveText(text) : expect(input).toHaveValue(text));
+  const send = (page: Page) => page.keyboard.press("Control+Enter");
+
+  test(`${editor}: a failed send puts its question back in an empty input, with the keyboard where it is`, async ({ shell }) => {
+    const input = await openChat(shell);
+    await shell.keyboard.type("will fail");
+    await send(shell);
+    await expect(shell.locator(".pending")).toBeVisible();
+    await shell.keyboard.press("Control+h");
+    await expect(input).not.toBeFocused();
+    const elsewhere = () => shell.evaluate(() => document.activeElement?.closest("[data-pane]")?.getAttribute("data-pane"));
+    const before = await elsewhere();
+
+    await failSend(shell);
+    await expect(shell.getByRole("alert")).toBeVisible();
+    await hasText(input, "will fail");
+    await expect(input, "a late failure takes no keyboard").not.toBeFocused();
+    expect(await elsewhere()).toBe(before);
+  });
+
+  test(`${editor}: a failed send with the keyboard in the input keeps it there`, async ({ shell }) => {
+    const input = await openChat(shell);
+    await shell.keyboard.type("will fail");
+    await send(shell);
+    await expect(shell.locator(".pending")).toBeVisible();
+    await failSend(shell);
+    await expect(shell.getByRole("alert")).toBeVisible();
+    await hasText(input, "will fail");
+    await expect(input).toBeFocused();
+    await shell.keyboard.type(" again");
+    await hasText(input, "will fail again");
+  });
+
+  test(`${editor}: a failed send leaves a draft typed since, and its question stays readable in the log`, async ({ shell }) => {
+    const input = await openChat(shell);
+    await shell.keyboard.type("will fail");
+    await send(shell);
+    await expect(shell.locator(".pending")).toBeVisible();
+    await shell.keyboard.type("next thought");
+    await hasText(input, "next thought");
+
+    await failSend(shell);
+    await expect(shell.getByRole("alert")).toBeVisible();
+    await hasText(input, "next thought");
+    await expect(shell.locator(".chat-log .question")).toHaveText("will fail");
+    await expect(input).toBeFocused();
+    await shell.keyboard.type("!");
+    await hasText(input, "next thought!");
+
+    await holdSends(shell);
+    await send(shell);
+    await expect(shell.locator(".chat-log .question"), "the next send clears it").toHaveText("next thought!");
+    await failSend(shell);
+  });
+
+  test(`${editor}: a failed send leaves a quote received since`, async ({ shell }) => {
+    const input = await openChat(shell);
+    await shell.keyboard.type("will fail");
+    await send(shell);
+    await expect(shell.locator(".pending")).toBeVisible();
+    await shell.evaluate(() => window.__e2e.emit("main-request", { kind: "chat", scopeKey: "all", quote: "quoted" }));
+    await hasText(input, vim ? "> quoted" : "> quoted\n");
+    await failSend(shell);
+    await expect(shell.getByRole("alert")).toBeVisible();
+    await hasText(input, vim ? "> quoted" : "> quoted\n");
+  });
+}
