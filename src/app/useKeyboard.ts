@@ -264,8 +264,8 @@ export function useShortcuts({
       }
     }
     const inField = !!t.closest("input, textarea, select, [contenteditable='true']");
-    // A pop-out has no list for the keys to mean.
-    const scope = scopeOf(focus.keyPane()?.dataset.pane ?? (IS_MAIN ? "list" : "doc"));
+    // A pop-out has no list for the keys to mean, and under the zoom none is on screen.
+    const scope = scopeOf(focus.keyPane()?.dataset.pane ?? (IS_MAIN && layout.zoomed == null ? "list" : "doc"));
     const step = stepKeys(getBindings(), seq, key, { scope, inField, now: Date.now() });
     // An open popover, menu or the palette owns the keys (j / k move inside it); the palette's own key still toggles it.
     if (!seq.first && openOverlays() && !(step.kind === "run" && step.action.id === "palette")) {

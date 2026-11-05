@@ -102,6 +102,18 @@ test("with the keyboard in the list, the zoom takes it into the document", async
   await expect.poll(() => app.locator(".doc-scroll").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
 });
 
+test("under the zoom, with the keyboard nowhere, j scrolls the document and not the hidden list", async ({ app }) => {
+  await (await listRow(app, label(0))).click();
+  await expect(app.locator(".art-title")).toHaveText(label(0));
+  await app.locator(".reader").evaluate((el) => void ((el as HTMLElement).style.minHeight = "6000px"));
+  await press(app, "Control+b", "z");
+  await expect(list(app)).toBeHidden();
+  await app.locator(".titlebar .tb-name").click();
+  await app.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await app.keyboard.press("j");
+  await expect.poll(() => app.locator(".doc-scroll").evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+});
+
 test("moving to another pane ends the zoom and goes by where the panes then are", async ({ shell }) => {
   await twoReaders(shell);
   await press(shell, "Control+b", "z");
