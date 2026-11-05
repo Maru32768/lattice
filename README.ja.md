@@ -29,7 +29,7 @@ Latticeのいちばんの特徴は、記事の一部だけを訳文にし、残�
 
 ## インストール
 
-Windows 10 / 11で動きます。[Releasesページ](https://github.com/Maru32768/lattice/releases)から、次のどちらかをダウンロードしてください。
+Windows 11で動きます。[Releasesページ](https://github.com/Maru32768/lattice/releases)から、次のどちらかをダウンロードしてください。
 
 - **インストーラー** (`Lattice_x.y.z_x64-setup.exe`): 通常はこちらを使います。新しいバージョンが出るとアプリ内で更新できます。必要ならMicrosoft Visual C++ ランタイムも一緒にインストールします。このとき管理者の承認を求めることがあります。
 - **ポータブル版のzip**: 好きな場所に展開して`Lattice.exe`を起動します。データはすべて隣の`data`フォルダに保存します。自動更新はありません。

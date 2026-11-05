@@ -29,7 +29,7 @@ This way of reading is inspired by [Mazelingo](https://github.com/Yeq6X/mazeling
 
 ## Install
 
-Lattice runs on Windows 10 and 11. Download one of these from the [Releases page](https://github.com/Maru32768/lattice/releases):
+Lattice runs on Windows 11. Download one of these from the [Releases page](https://github.com/Maru32768/lattice/releases):
 
 - **Installer** (`Lattice_x.y.z_x64-setup.exe`): the usual choice. Lattice can update itself when a new version comes out. The installer also installs the Microsoft Visual C++ runtime if it is missing, which may ask for administrator approval.
 - **Portable zip**: unzip it anywhere and run `Lattice.exe`. All data is stored in a `data` folder next to it. It does not update itself.
