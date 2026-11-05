@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { SetRow, Switch } from "../ui/SetRow";
+import { SetRow } from "../ui/SetRow";
 import { api, type ChatBudget } from "../api";
-import { setVimEnabled, vimEnabled } from "../vim/vim";
 import { useT, type PlainKey } from "../i18n";
 
 // Sizes mirror `chat::Budget::limits` (context characters per question).
@@ -14,7 +13,6 @@ const BUDGETS: { id: ChatBudget; label: PlainKey }[] = [
 export function ChatSettings() {
   const t = useT();
   const [budget, setBudget] = useState<ChatBudget>("standard");
-  const [vim, setVim] = useState(vimEnabled);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,16 +42,6 @@ export function ChatSettings() {
             </option>
           ))}
         </select>
-      </SetRow>
-      <SetRow title={t("chatSettings.vim")} htmlFor="chat-vim" desc={t("chatSettings.vimDesc")}>
-        <Switch
-          id="chat-vim"
-          checked={vim}
-          onChange={(on) => {
-            setVim(on);
-            setVimEnabled(on);
-          }}
-        />
       </SetRow>
       {error && (
         <p className="msg error-text" role="alert">

@@ -31,6 +31,29 @@ async function ex(page: Page, command: string) {
   await page.keyboard.press("Enter");
 }
 
+test("the engine stays unloaded while Vim is off, even with the vimrc diagnostics on screen", async ({ app }) => {
+  const loaded: string[] = [];
+  app.on("request", (r) => {
+    if (/codemirror|VimEditor/i.test(r.url())) {
+      loaded.push(r.url());
+    }
+  });
+  await nav(app, "対話").click();
+  await expect(app.getByLabel("質問", { exact: true })).toHaveJSProperty("tagName", "TEXTAREA");
+  await nav(app, "設定").click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  const rc = app.getByLabel("vimrc", { exact: true });
+  await rc.fill("nnoremap x y\nset number");
+  await expect(app.getByText("適用: 1件")).toBeVisible();
+  await expect(app.locator(".vimrc-skips li")).toHaveText(/2行目\s*set number\s*使えないオプションがあります/);
+  expect(loaded).toEqual([]);
+
+  await app.getByLabel("対話の入力欄とメモでVimキーバインドを使う").check();
+  await app.keyboard.press("Escape");
+  await expect(chatInput(app)).toHaveAttribute("contenteditable", "true");
+  expect(loaded.length, "turning it on loads the editor").toBeGreaterThan(0);
+});
+
 test("the editor is the label's and focusPane's #chat-q", async ({ page }) => {
   await chat(page);
   await expect(page.locator("#chat-q")).toHaveClass(/cm-content/);
@@ -240,6 +263,28 @@ test("a mapped key still ends a chord the app is reading", async ({ page }) => {
   await isEmpty(page);
 });
 
+test("changing the vimrc applies to the open editor, and an old mapping goes", async ({ page }) => {
+  await chat(page, "nnoremap Q x");
+  await page.keyboard.type("abc");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+Q");
+  await expect(chatInput(page)).toHaveText("ab");
+
+  await nav(page, "設定").click();
+  await page.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await page.getByLabel("vimrc", { exact: true }).fill('let mapleader=","\nnnoremap Z x');
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await chatInput(page).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("$");
+  await page.keyboard.press("Shift+Q");
+  await expect(chatInput(page), "Q is the engine's again: it does nothing here").toHaveText("ab");
+  await page.keyboard.press("Shift+Z");
+  await expect(chatInput(page), "the new mapping works, once re-applied over a removed default").toHaveText("a");
+});
+
 test("set clipboard+=unnamed: a plain yank also reaches the system clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await chat(page, "set clipboard+=unnamed");
@@ -258,6 +303,40 @@ test("without clipboard in the vimrc a yank stays in the editor", async ({ page,
   await page.keyboard.type("0yw$p");
   await expect(chatInput(page)).toHaveText("copiedcopied");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("before");
+});
+
+test("Settings: the toggle, a monospaced vimrc, reading a file in, and the lines left out", async ({ app }) => {
+  await nav(app, "設定").click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "要約・対話" }).click();
+  await expect(app.getByLabel("対話の入力欄とメモでVimキーバインドを使う"), "the toggle moved out of chat settings").toHaveCount(0);
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+
+  const rc = app.getByLabel("vimrc", { exact: true });
+  await expect(rc).toHaveCSS("font-family", /JetBrains Mono/);
+  await expect(app.locator(".vimrc-skips")).toHaveCount(0);
+  await app.locator("input[type=file]").setInputFiles({
+    name: ".vimrc",
+    mimeType: "",
+    buffer: Buffer.from(["nnoremap j gj", "Plug 'someone/something'", "autocmd BufRead * set pcre", "tnoremap x y", "nnoremap a <c-w>w"].join("\n")),
+  });
+  await expect(rc).toHaveValue(/^nnoremap j gj\n/);
+  await expect(app.getByText("適用: 1件")).toBeVisible();
+  await expect(app.locator(".vimrc-skips li")).toHaveText([
+    /2行目\s*Plug 'someone\/something'\s*プラグインの設定です/,
+    /3行目\s*autocmd BufRead \* set pcre\s*スクリプトは実行しません/,
+    /4行目\s*tnoremap x y\s*このモードはありません/,
+    /5行目\s*nnoremap a <c-w>w\s*ペインの移動はアプリのキーで行います/,
+  ]);
+
+  await app.locator("input[type=file]").setInputFiles({ name: "binary", mimeType: "", buffer: Buffer.from([0xff, 0xfe, 0x00]) });
+  await expect(app.getByRole("alert")).toHaveText("UTF-8のテキストファイルではありません");
+  await expect(rc, "a file that cannot be read leaves the text").toHaveValue(/^nnoremap j gj\n/);
+
+  await app.reload();
+  await expect(list(app).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await nav(app, "設定").click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await expect(app.getByLabel("vimrc", { exact: true }), "it is kept").toHaveValue(/^nnoremap j gj\n/);
 });
 
 test.describe("IME", () => {
