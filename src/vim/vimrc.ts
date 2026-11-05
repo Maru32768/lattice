@@ -198,13 +198,14 @@ const KEY_NAMES: Record<string, string> = {
 };
 
 /** Key names in the spelling the engine matches, which is the one it makes from key events: `<c-h>` is `<C-h>`, `<esc>` is `<Esc>`. */
-export function engineKeys(keys: string): string {
+function engineKeys(keys: string): string {
   return keys.replace(/<((?:[csma]-)*)([^<>\s]+)>/gi, (whole, mods: string, name: string) => {
     const upper = mods.toUpperCase();
     const shift = upper.includes("S-");
     const single = name.length === 1;
     const known = KEY_NAMES[name.toLowerCase()] ?? (/^f\d+$/i.test(name) ? name.toUpperCase() : undefined);
-    if (!known && !single) {
+    // Other brackets are text: a mapping can type `<b>`.
+    if (!known && !(single && mods)) {
       return whole;
     }
     const prefix = ["C-", "A-", "M-", "S-"].filter((m) => upper.includes(m)).join("");

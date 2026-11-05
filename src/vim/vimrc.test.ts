@@ -108,6 +108,10 @@ test("a colon is text in insert mode until the mapping leaves it", () => {
   assert.deepEqual(skips(parse("inoremap jk <c-o>:Foo<cr>")), [[1, "unknownEx"]]);
 });
 
+test("a bracket that names no key is text", () => {
+  assert.deepEqual(exOf(parse("inoremap <c-b> <B>x</B>")), ["inoremap <C-b> <B>x</B>"]);
+});
+
 test('`"` starts a comment on set lines and on its own line, never inside a mapping', () => {
   assert.deepEqual(exOf(parse('" a comment\nnnoremap x "zyiw\nset pcre " regexes\n   " indented')), ['nnoremap x "zyiw', "set pcre"]);
 });
