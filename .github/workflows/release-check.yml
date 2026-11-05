@@ -1,0 +1,87 @@
+# Checks a release's files as uploaded and starts them on a clean runner. It runs after every release build, and by hand
+# to recheck a tag without rebuilding. It changes nothing on the release. See docs/release.md.
+name: Release check
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.3.0
+        type: string
+        required: true
+
+permissions:
+  # Only a token that can write sees a draft release.
+  contents: write
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # verify-release.ts reads the public key at this tag and at the one before it.
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v5
+
+      - name: Check the uploaded files
+        shell: pwsh
+        run: |
+          gh release download $env:TAG --dir release
+          if ($LASTEXITCODE -ne 0) { throw "Could not download the files of $env:TAG" }
+          Expand-Archive "release/Lattice_$($env:TAG.Substring(1))_x64-portable.zip" release
+          mise exec -- node scripts/verify-release.ts $env:TAG release
+
+      - name: Start the portable copy, then the installed one, and uninstall
+        shell: pwsh
+        run: |
+          function Test-App($exe, $db, $port) {
+            $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$port"
+            $app = Start-Process $exe -PassThru
+            mise exec -- node scripts/smoke-webview.ts $port
+            if ($LASTEXITCODE -ne 0) { throw "$exe did not render its main window" }
+            if (-not (Test-Path $db)) { throw "$exe did not create $db" }
+            & (Join-Path (Split-Path $exe) 'lattice-cli.exe') list
+            if ($LASTEXITCODE -ne 0) { throw "The CLI beside $exe could not read $db" }
+            Stop-Process -Id $app.Id -Force
+            $app.WaitForExit()
+          }
+
+          $version = $env:TAG.Substring(1)
+          $portable = (Resolve-Path "release/Lattice_${version}_x64-portable").Path
+          $installed = "$env:LOCALAPPDATA\Lattice"
+          $db = "$env:APPDATA\Lattice\lattice.db"
+
+          # First, while no default library exists, so the portable CLI can only be reading its own.
+          Test-App "$portable\Lattice.exe" "$portable\data\lattice.db" 9222
+          if (Test-Path $db) { throw "The portable copy wrote to $db" }
+
+          $setup = Start-Process "release\Lattice_${version}_x64-setup.exe" -ArgumentList '/S' -Wait -PassThru
+          if ($setup.ExitCode -ne 0) { throw "The installer exited with $($setup.ExitCode)" }
+          Test-App "$installed\lattice.exe" $db 9223
+
+          Start-Process "$installed\uninstall.exe" -ArgumentList '/S' -Wait
+          foreach ($exe in 'lattice.exe', 'lattice-cli.exe') {
+            if (Test-Path "$installed\$exe") { throw "Uninstalling left $exe" }
+          }
+          if (-not (Test-Path $db)) { throw "Uninstalling removed the library" }
+          "Portable copy, install, start, CLI and uninstall checked"
+
+      - name: Show the app's logs
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem "release/*/data/logs/*", "$env:LOCALAPPDATA/Lattice/logs/*" -File -ErrorAction SilentlyContinue | ForEach-Object {
+            "== $_"
+            Get-Content $_ -Tail 40
+          }
