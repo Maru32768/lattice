@@ -4,9 +4,38 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder as placeholderText } from "@codemirror/view";
 import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { Vim, getCM, vim as vimKeys } from "@replit/codemirror-vim";
+import { EX_ALIASES, type ActionId } from "../lib/keymap";
+import { vimBridge } from "./vim";
 
 /** The extension gave the view its engine state as the view was made. */
 const cmOf = (view: EditorView) => getCM(view) as Parameters<typeof Vim.handleEx>[0];
+
+// ---- Ex commands -------------------------------------------------------------------------------
+
+/** `Vim.defineEx` is global: what `:w` and `:q` mean is each editor's own. */
+const commands = new WeakMap<EditorView, { write: () => void; quit: () => void }>();
+
+/** The engine refocuses the editor after it runs a command from its prompt: what moves the focus has to wait for that. */
+const afterPrompt = (f: () => void) => queueMicrotask(f);
+
+Vim.defineEx("write", "w", (cm) => afterPrompt(() => commands.get(cm.cm6 as EditorView)?.write()));
+Vim.defineEx("quit", "q", (cm) => afterPrompt(() => commands.get(cm.cm6 as EditorView)?.quit()));
+
+const WINCMD: Record<string, ActionId> = { h: "paneLeft", j: "paneDown", k: "paneUp", l: "paneRight" };
+Vim.defineEx("wincmd", "winc", (_, params) => {
+  const arg = params.argString?.trim() ?? "";
+  const id = WINCMD[arg] ?? EX_ALIASES[`wincmd${arg}`];
+  if (id) {
+    afterPrompt(() => vimBridge.run(id));
+  }
+});
+for (const [name, id] of Object.entries(EX_ALIASES)) {
+  if (!name.includes("=")) {
+    Vim.defineEx(name, undefined, () => afterPrompt(() => vimBridge.run(id)));
+  }
+}
+
+// ---- the editor --------------------------------------------------------------------------------
 
 const hint = new Compartment();
 
@@ -24,6 +53,7 @@ export default function VimEditor({
   autoFocus,
   onChange,
   onWrite,
+  onQuit,
   onMode,
   onBlur,
 }: {
@@ -35,8 +65,10 @@ export default function VimEditor({
   placeholder: string;
   autoFocus?: boolean;
   onChange: (text: string) => void;
-  /** Ctrl+Enter. */
+  /** Ctrl+Enter and `:w`. */
   onWrite: (text: string) => void;
+  /** `:q`. */
+  onQuit: () => void;
   onMode: (mode: string) => void;
   onBlur?: () => void;
 }) {
@@ -45,6 +77,7 @@ export default function VimEditor({
 
   const changed = useEffectEvent(onChange);
   const write = useEffectEvent(onWrite);
+  const quit = useEffectEvent(onQuit);
   const mode = useEffectEvent(onMode);
   const blurred = useEffectEvent(() => onBlur?.());
 
@@ -96,6 +129,7 @@ export default function VimEditor({
         ],
       }),
     });
+    commands.set(view, { write: () => write(view.state.doc.toString()), quit: () => quit() });
     const cm = cmOf(view);
     for (const event of ["vim-mode-change", "vim-keypress", "vim-command-done"]) {
       cm.on(event, () => report(view));

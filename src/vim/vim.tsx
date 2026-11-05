@@ -2,6 +2,7 @@
 // This file is in the main chunk, so CodeMirror stays out of it: the editor loads only when Vim is on.
 import { lazy, useSyncExternalStore } from "react";
 import { useT } from "../i18n";
+import type { ActionId } from "../lib/keymap";
 
 const ON_KEY = "lattice.chatVim";
 
@@ -50,6 +51,12 @@ export function setVimEnabled(value: boolean) {
 }
 
 export const useVimEnabled = () => useSyncExternalStore(subscribe, vimEnabled);
+
+/** How the app and the lazily loaded editor reach each other. */
+export const vimBridge = {
+  /** Set by the app: runs one of its actions, for the editor's Ex commands. */
+  run: (_id: ActionId) => {},
+};
 
 export const VimEditor = lazy(() => import("./VimEditor"));
 

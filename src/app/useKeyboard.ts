@@ -8,6 +8,7 @@ import { IDLE, actionFor, chordFrom, keyOf, pageKeys, scopeOf, stepKeys, type Ac
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
 import { focus as focusLayout, pageByKey, tabById, unzoom, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
+import { vimBridge } from "../vim/vim";
 import { IS_MAIN } from "./host";
 
 /** Shortcuts that, pressed in the page, open something in the app: the page's webview gives up the keyboard. */
@@ -349,6 +350,7 @@ export function useShortcuts({
       e.stopPropagation();
     }
   });
+  const onEditorAction = useEffectEvent((id: ActionId) => run(id, 1, ""));
 
   useEffect(() => {
     const capture = (e: KeyboardEvent) => {
@@ -363,6 +365,7 @@ export function useShortcuts({
     };
     window.addEventListener("keydown", capture, true);
     window.addEventListener("keydown", down);
+    vimBridge.run = (id) => onEditorAction(id);
     const unlisten = listen<{ tab: string; key: string; count: number }>("browser-key", (e) => onPageKey(e.payload));
     return () => {
       window.removeEventListener("keydown", capture, true);

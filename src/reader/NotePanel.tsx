@@ -88,6 +88,7 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
             autoFocus
             onChange={typed}
             onWrite={flush}
+            onQuit={onClose}
             onMode={setVimMode}
             onBlur={flush}
           />
