@@ -1421,7 +1421,8 @@ export default function App() {
                 scope={scope}
                 facets={facets}
                 actions={paletteActions}
-                onAction={(id) => shortcuts.run(id, 1, "")}
+                // Once the palette has gone and given back the keyboard: a find bar takes it next.
+                onAction={(id) => window.setTimeout(() => shortcuts.run(id, 1, ""))}
                 onClose={() => setPalette(null)}
               />
             )}

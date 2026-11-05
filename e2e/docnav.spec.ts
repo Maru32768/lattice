@@ -381,6 +381,22 @@ test("a mode ends for a key of the app's, whose own keys then work", async ({ re
   await reader.keyboard.press("Escape");
 });
 
+test("the palette lists the document's actions but not the small steps, and running one leaves the keyboard with it", async ({ reader }) => {
+  await reader.keyboard.press(":");
+  await reader.keyboard.type("本文を検索");
+  await expect(palette(reader).getByRole("option")).toHaveText([/本文を検索/]);
+  await reader.keyboard.press("Enter");
+  await expect(palette(reader)).toBeHidden();
+  await expect.poll(async () => (await drawn(reader)).query).toBe("");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).query).toBe("needle");
+  await reader.keyboard.press("Escape");
+
+  await reader.keyboard.press(":");
+  await reader.keyboard.type("下へスクロール");
+  await expect(palette(reader).getByRole("option")).toHaveCount(0);
+});
+
 const PAGE_LAYOUT = {
   root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 },
   focused: 1,
@@ -397,6 +413,17 @@ base("the second key of a chord that reached the app runs in the page, and the p
   await expect.poll(() => callsOf(shell, "browser_run_doc")).toEqual([{ key: "k1", action: "docTop", count: 1 }]);
   await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
   await expect(shell.locator(".prefix-hint")).toBeHidden();
+});
+
+base("from the palette a local action runs in the page", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.keyboard.press("Control+p");
+  await palette(shell).getByRole("combobox").fill(">リンクをキーで開く");
+  await expect(palette(shell).getByRole("option")).toHaveCount(1);
+  await shell.keyboard.press("Enter");
+  await expect.poll(() => callsOf(shell, "browser_run_doc")).toEqual([{ key: "k1", action: "hints", count: 1 }]);
 });
 
 base("a page's quote goes to the chat, unsent", async ({ shell }) => {
