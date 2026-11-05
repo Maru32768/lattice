@@ -11,8 +11,10 @@ import {
   cycle,
   docOf,
   dropOn,
+  even,
   focus,
   focusedPane,
+  grow,
   move,
   navigated,
   open,
@@ -24,7 +26,10 @@ import {
   serialize,
   single,
   split,
+  swap,
   tabById,
+  toggleZoom,
+  unzoom,
   type Workspace,
 } from "./layout.ts";
 
@@ -196,6 +201,122 @@ test("resize sets a child's fraction, its neighbour takes the rest, and both sto
   l = resize(l, id, 0, -5);
   assert.deepEqual(pct(), [lo, hi]);
   assert.deepEqual(resize(l, id, 5, 0.5), l, "no such child");
+});
+
+/** Articles 1, 2, 3 side by side, the last pane focused. */
+function threeAcross() {
+  let l = open(single(), reader(1));
+  l = open(split(l, l.focused, "row"), reader(2));
+  return open(split(l, l.focused, "row"), reader(3));
+}
+const pct = (l: Workspace) => (l.root.kind === "split" ? l.root.sizes.map((s) => Math.round(s * 100)) : []);
+const zoomedTwo = () => toggleZoom(open(split(open(single(), reader(1)), 1, "row"), reader(2)));
+
+test("toggleZoom zooms the focused pane and ends it; neither is saved", () => {
+  const on = zoomedTwo();
+  assert.equal(on.zoomed, on.focused);
+  assert.equal(toggleZoom(on).zoomed, undefined);
+  assert.equal(parse(serialize(on))?.zoomed, undefined);
+  assert.equal(serialize(on), serialize(toggleZoom(on)), "the saved layout does not change");
+  assert.equal(unzoom(on).zoomed, undefined);
+  const off = unzoom(on);
+  assert.equal(unzoom(off), off, "nothing to end: unchanged");
+});
+
+test("a split, a pane closing, a tab leaving for another pane and moving to another pane all end the zoom", () => {
+  const on = zoomedTwo();
+  const [left, right] = panes(on.root);
+  assert.equal(split(on, on.focused, "row").zoomed, undefined, "split");
+  assert.equal(closePane(on, on.focused).zoomed, undefined, "close");
+  assert.equal(close(on, activeTab(right)!.id).zoomed, undefined, "the pane's last tab closes it");
+  assert.equal(focus(on, left.id).zoomed, undefined, "the focus moves");
+  assert.equal(activate(on, activeTab(left)!.id).zoomed, undefined, "a tab in another pane is shown");
+  assert.equal(open(on, reader(5), "active", left.id).zoomed, undefined, "a document opens in another pane");
+  assert.equal(move(on, activeTab(right)!.id, left.id, 0).zoomed, undefined, "a tab moves out, closing its pane");
+  assert.equal(swap(on, 1).zoomed, undefined, "swap");
+});
+
+test("what stays in the zoomed pane leaves the zoom alone", () => {
+  const on = zoomedTwo();
+  assert.equal(open(on, reader(7), "new").zoomed, on.focused, "a new tab in it");
+  assert.equal(cycle(open(on, reader(7), "new"), 1).zoomed, on.focused, "another of its tabs");
+  assert.equal(close(open(on, reader(7), "new"), activeTab(focusedPane(on))!.id).zoomed, on.focused, "one of its tabs closing");
+  assert.equal(focus(on, on.focused), on, "the focus staying");
+});
+
+test("previous is the pane focused before, through a split too; an unknown one goes nowhere", () => {
+  const one = open(single(), reader(1));
+  assert.equal(one.previous, undefined);
+  const two = split(one, 1, "row");
+  assert.equal(two.previous, 1, "a split moves the focus to the new pane");
+  const back = focus(two, 1);
+  assert.equal(back.previous, two.focused);
+  assert.equal(focus(back, back.previous).focused, two.focused);
+  const closed = closePane(two, 1);
+  assert.equal(focus(closed, closed.previous!), closed, "that pane is gone");
+});
+
+test("grow moves the border on that side; at the split's edge the other one, which shrinks the pane", () => {
+  const l = even(threeAcross());
+  const [first, middle] = panes(l.root);
+  assert.deepEqual(pct(l), [33, 33, 33]);
+  assert.deepEqual(pct(grow(l, "left", 0.1)), [33, 23, 43], "the last pane grows to its left");
+  assert.deepEqual(pct(grow(l, "right", 0.1)), [33, 43, 23], "... and has only that border to move right: it shrinks");
+  const second = focus(l, middle.id);
+  assert.deepEqual(pct(grow(second, "left", 0.1)), [23, 43, 33], "a middle pane grows either way");
+  assert.deepEqual(pct(grow(second, "right", 0.1)), [33, 43, 23]);
+  const leftmost = focus(l, first.id);
+  assert.deepEqual(pct(grow(leftmost, "right", 0.1)), [43, 23, 33]);
+  assert.deepEqual(pct(grow(leftmost, "left", 0.1)), [23, 43, 33], "the first pane shrinks when moved left");
+  assert.deepEqual(pct(grow(leftmost, "left", 0.9)), [15, 52, 33], "stops at MIN_SIZE");
+});
+
+test("grow uses the innermost split on its axis, and nothing without one", () => {
+  let l = open(single(), reader(1));
+  l = open(split(l, l.focused, "row"), reader(2));
+  const across = l.root.kind === "split" ? l.root.id : -1;
+  l = open(split(l, l.focused, "column"), reader(3));
+  const column = l.root.kind === "split" ? l.root.children[1] : undefined;
+  const sizesOf = (w: Workspace, id: number) => {
+    const walk = (n: Workspace["root"]): number[] | undefined => (n.kind === "pane" ? undefined : n.id === id ? n.sizes : n.children.map(walk).find((s) => s));
+    return walk(w.root)?.map((s) => Math.round(s * 100));
+  };
+  const down = grow(l, "up", 0.1);
+  assert.deepEqual(sizesOf(down, column!.id), [40, 60], "the stacked split");
+  assert.deepEqual(sizesOf(down, across), [50, 50], "not the split around it");
+  assert.deepEqual(sizesOf(grow(l, "left", 0.1), across), [40, 60], "the row around it, for the other axis");
+  const alone = toggleZoom(open(single(), reader(1)));
+  assert.equal(grow(alone, "left", 0.1), alone, "no split at all");
+  assert.equal(grow(toggleZoom(l), "up", 0.1).zoomed, undefined, "a grow would not show under the zoom: it ends");
+});
+
+test("swap trades the focused pane's tabs with its neighbour's, wrapping; the focus goes with them", () => {
+  const l = threeAcross();
+  const [a, b, c] = panes(l.root).map((p) => p.id);
+  const before = activeTab(focusedPane(l));
+  const next = swap(l, 1);
+  assert.deepEqual(picture(next), ["3*", "2*", "1*"], "after the last comes the first");
+  assert.equal(next.focused, a);
+  assert.equal(activeTab(focusedPane(next)), before);
+  const prev = swap(l, -1);
+  assert.deepEqual(picture(prev), ["1*", "3*", "2*"]);
+  assert.equal(prev.focused, b);
+  assert.equal(prev.previous, c);
+  assert.deepEqual(pct(swap(even(l), 1)), pct(even(l)), "the places keep their sizes");
+  const alone = open(single(), reader(1));
+  assert.equal(swap(alone, 1), alone, "one pane: nothing to swap with");
+});
+
+test("even makes every split's children equal, nested ones too", () => {
+  let l = open(single(), reader(1));
+  l = split(split(l, l.focused, "row"), l.next, "column");
+  const lopsided = resize(l, l.root.kind === "split" ? l.root.id : -1, 0, 0.8);
+  const evened = even(lopsided);
+  assert.deepEqual(pct(lopsided), [80, 20]);
+  assert.deepEqual(pct(evened), [50, 50]);
+  const nested = evened.root.kind === "split" ? evened.root.children[1] : undefined;
+  assert.deepEqual(nested?.kind === "split" && nested.sizes, [0.5, 0.5]);
+  assert.equal(even(toggleZoom(l)).zoomed, undefined);
 });
 
 test("navigated keeps the title on the same URL and clears it on another; a Reader tab ignores page events", () => {

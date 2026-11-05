@@ -7,6 +7,7 @@ export type Id = number;
 export type Dir = "row" | "column";
 /** Where a tab dropped on a pane's body goes: into the pane, or into a new pane split off on that side. */
 export type Zone = "center" | "left" | "right" | "top" | "bottom";
+export type Side = "left" | "right" | "up" | "down";
 
 export interface ReaderTab {
   kind: "reader";
@@ -78,14 +79,18 @@ export interface Split {
 export type Node = Pane | Split;
 
 /**
- * Everything that belongs to one workspace lives here: the pane tree and the focused pane. One per
- * window today; several named workspaces would become a list of these.
+ * Everything that belongs to one workspace lives here: the pane tree, the focused pane, the one
+ * before it and the zoom. One per window today; several named workspaces would become a list of these.
  */
 export interface Workspace {
   root: Node;
   focused: Id;
   /** Next pane or tab id. */
   next: Id;
+  /** The pane alone on screen (tmux's zoom), always the focused one. Not saved. */
+  zoomed?: Id;
+  /** The pane focused before this one. Not saved. */
+  previous?: Id;
 }
 
 /** A child of a split is never thinner than this fraction of it. */
@@ -163,12 +168,19 @@ function removePane(l: Workspace, id: Id): Workspace {
   const root = without(l.root, id) ?? { kind: "pane" as const, id, tabs: [], active: null };
   const after = panes(root);
   const focused = l.focused === id ? (after[Math.min(i, after.length - 1)] ?? firstPane(root)).id : l.focused;
-  return { ...l, root, focused };
+  return { ...l, root, focused, zoomed: undefined };
 }
 
 // ---- operations ---------------------------------------------------------------------------------
 
-export const focus = (l: Workspace, pane: Id): Workspace => (paneById(l, pane) && l.focused !== pane ? { ...l, focused: pane } : l);
+/** Another pane takes the focus; the zoom ends, as it did not show that pane. */
+export const focus = (l: Workspace, pane: Id): Workspace =>
+  paneById(l, pane) && l.focused !== pane ? { ...l, focused: pane, previous: l.focused, zoomed: undefined } : l;
+
+/** The focused pane alone on screen, or everything back. */
+export const toggleZoom = (l: Workspace): Workspace => ({ ...l, zoomed: l.zoomed == null ? l.focused : undefined });
+
+export const unzoom = (l: Workspace): Workspace => (l.zoomed == null ? l : { ...l, zoomed: undefined });
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   if (doc.kind === "reader") {
@@ -314,7 +326,7 @@ export function split(l: Workspace, id: Id, dir: Dir, before = false): Workspace
   if (!paneById(l, id)) {
     return l;
   }
-  return { root: rec(l.root), focused: fresh.id, next: l.next + 2 };
+  return { ...l, root: rec(l.root), focused: fresh.id, previous: l.focused, next: l.next + 2, zoomed: undefined };
 }
 
 /** Tab `tab` dropped on pane `pane`'s body: its center moves the tab to the end of that pane (its own pane: nothing), an edge into a new pane split off on that side. */
@@ -350,6 +362,54 @@ export function resize(l: Workspace, splitId: Id, i: number, size: number): Work
     return { ...n, sizes: n.sizes.toSpliced(i, 2, next, a + b - next) };
   };
   return { ...l, root: rec(l.root) };
+}
+
+/** The innermost split along `dir` that holds pane `id`, and which of its children does. */
+function splitAlong(n: Node, id: Id, dir: Dir): { node: Split; child: number } | null {
+  if (n.kind === "pane") {
+    return null;
+  }
+  const child = n.children.findIndex((c) => panes(c).some((p) => p.id === id));
+  const inner = n.children[child];
+  if (!inner) {
+    return null;
+  }
+  return splitAlong(inner, id, dir) ?? (n.dir === dir ? { node: n, child } : null);
+}
+
+/**
+ * Moves the focused pane's border on `side` that way, by `step` of the innermost split along that axis: the pane grows.
+ * At the split's edge there is no border on that side, so its other one moves and the pane shrinks, as tmux's resize-pane.
+ */
+export function grow(l: Workspace, side: Side, step: number): Workspace {
+  const hit = splitAlong(l.root, l.focused, side === "left" || side === "right" ? "row" : "column");
+  if (!hit) {
+    return l;
+  }
+  const forward = side === "right" || side === "down";
+  const at = forward ? Math.min(hit.child, hit.node.children.length - 2) : Math.max(hit.child - 1, 0);
+  return { ...resize(l, hit.node.id, at, (hit.node.sizes[at] ?? 0) + (forward ? step : -step)), zoomed: undefined };
+}
+
+/**
+ * The focused pane's tabs change places with those of the next or previous pane in reading order, wrapping; the focus goes with them.
+ * shortcut: both documents mount anew, so a Reader starts at its top as after a tab switch; keep the scroll when tabs do.
+ */
+export function swap(l: Workspace, d: 1 | -1): Workspace {
+  const all = panes(l.root);
+  const i = all.findIndex((p) => p.id === l.focused);
+  const [a, b] = [all[i], all[(i + d + all.length) % all.length]];
+  if (!a || !b || a === b) {
+    return l;
+  }
+  const holding = (p: Pane, from: Pane): Pane => ({ ...p, tabs: from.tabs, active: from.active });
+  return focus({ ...l, root: mapPanes(l.root, (p) => (p === a ? holding(a, b) : p === b ? holding(b, a) : p)) }, b.id);
+}
+
+/** Every split's children the same size. */
+export function even(l: Workspace): Workspace {
+  const rec = (n: Node): Node => (n.kind === "pane" ? n : { ...n, children: n.children.map(rec), sizes: n.children.map(() => 1 / n.children.length) });
+  return { ...l, root: rec(l.root), zoomed: undefined };
 }
 
 /** Changes a page tab (a navigation, a title, the Index state); nothing when the tab is gone or a Reader now. */
