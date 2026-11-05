@@ -8,14 +8,14 @@ import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
 /** Typing pauses this long before the memo is saved. */
 const SAVE_MS = 800;
 
-// Saving does not reload the article view (it would reload the library too), so the text saved
-// this session outlives the view's `note` here, by article id.
+// Saving does not reload the article view (it would reload the library too), and a panel remounted by a pane
+// swap comes up before the old one has flushed. So the text typed this session outlives the view's `note` here, by article id.
 // shortcut: another window keeps the memo it loaded until its article view is reloaded.
-const saved = new Map<number, string>();
+const typedText = new Map<number, string>();
 /** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
-const noteOf = (view: ArticleView) => saved.get(view.article.id) ?? view.note ?? "";
+const noteOf = (view: ArticleView) => typedText.get(view.article.id) ?? view.note ?? "";
 /** Whether the article has a memo: the toolbar marks メモ. */
 export const hasNote = (view: ArticleView) => noteOf(view).trim() !== "";
 
@@ -43,10 +43,7 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     queue = queue
       .then(() => api.setArticleNote(id, body))
       .then(
-        () => {
-          saved.set(id, body);
-          setStatus("saved");
-        },
+        () => setStatus("saved"),
         (e: unknown) => {
           setStatus(null);
           setError(String(e));
@@ -54,6 +51,7 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       );
   };
   const typed = (value: string) => {
+    typedText.set(id, value);
     setText(value);
     setError(null);
     setStatus(null);
