@@ -51,6 +51,7 @@ export function createUi() {
   }
   const root = host.attachShadow({ mode: "closed" });
   const marks = make("div", {});
+  let badge: HTMLElement | null = null;
   root.append(marks);
   document.documentElement.append(host);
 
@@ -91,6 +92,13 @@ export function createUi() {
           }),
         ),
       );
+    },
+    /** The mode's name in the corner of `view`. */
+    badge(text: string, view: View) {
+      badge?.remove();
+      badge = strip(view, { font: "700 11px/1.5 ui-monospace, Consolas, monospace" });
+      badge.textContent = text;
+      root.append(badge);
     },
     /** The find bar, with its input and its count for the caller to use. */
     bar(label: string, view: View) {

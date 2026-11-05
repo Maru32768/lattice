@@ -11,7 +11,7 @@ Object.assign(globalThis, {
 });
 
 const { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes } = await import("./text.ts");
-const { hintLabels } = await import("./hints.ts");
+const { hintLabels, spread } = await import("./hints.ts");
 
 test("hint labels are all different, none the start of another, and short while few", () => {
   const labels = hintLabels(100);
@@ -23,6 +23,15 @@ test("hint labels are all different, none the start of another, and short while 
     "the word hints' cap is every two-letter label",
   );
   assert.deepEqual(hintLabels(0), []);
+});
+
+test("spread keeps at most the cap, from all over the list", () => {
+  const items = Array.from({ length: 1000 }, (_, i) => i);
+  const kept = spread(items, 196);
+  assert.equal(kept.length, 196);
+  assert.equal(kept[0], 0);
+  assert.ok(kept.at(-1)! > 990);
+  assert.deepEqual(spread([1, 2, 3], 196), [1, 2, 3]);
 });
 
 test("the document's text leaves out what a reader cannot see or select", () => {

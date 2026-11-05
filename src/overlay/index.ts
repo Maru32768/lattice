@@ -740,13 +740,14 @@ function applyStep(step: KeyStep) {
   if (step.kind === "run" && !step.action.local) {
     return tellApp(step.sequence, step.count);
   }
-  if (step.kind === "run") {
-    docNav.run(step.action.id, step.count);
-  }
+  // The hint first: labels take a moment to collect, and past its delay it would take the keyboard from under them.
   if (step.seq.first) {
     tellApp(step.seq.first);
   } else if (hinted) {
     tellApp("");
+  }
+  if (step.kind === "run") {
+    docNav.run(step.action.id, step.count);
   }
 }
 
