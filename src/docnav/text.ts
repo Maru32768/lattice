@@ -25,6 +25,26 @@ export function textNodes(root: Element): Text[] {
   return out;
 }
 
+/** The first character of `node` below `top`: the first of its lines may have scrolled away. */
+export function firstVisibleOffset(node: Text, top: number): number {
+  const r = document.createRange();
+  let [lo, hi] = [0, node.length - 1];
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    r.setStart(node, mid);
+    r.setEnd(node, mid + 1);
+    if (r.getBoundingClientRect().bottom > top) {
+      hi = mid;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  while (lo < node.length - 1 && /\s/u.test(node.data.charAt(lo))) {
+    lo++;
+  }
+  return lo;
+}
+
 export interface DocText {
   /** The text with all its whitespace gone. */
   text: string;
