@@ -56,6 +56,12 @@ const PATHS = {
       <path d="M4 19h16" />
     </>
   ),
+  keyboard: (
+    <>
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8" />
+    </>
+  ),
   gear: (
     <>
       <circle cx="12" cy="12" r="3" />
