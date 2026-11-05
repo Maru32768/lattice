@@ -180,6 +180,7 @@
     "allow-browser-set-keys",
     "allow-browser-focus",
     "allow-browser-run-doc",
+    "allow-browser-repeat-keys",
     "allow-update-info",
     "allow-update-check",
     "allow-update-install"

@@ -280,6 +280,7 @@ export const browser = {
   focus: (tab: string) => invoke<void>("browser_focus", { tab }),
   /** Runs one of the document's own actions (`local` in the key map) in the page. */
   runDoc: (key: string, action: ActionId, count: number) => invoke<void>("browser_run_doc", { key, action, count }),
+  repeatKeys: (key: string, first: string) => invoke<void>("browser_repeat_keys", { key, first }),
 };
 
 /**

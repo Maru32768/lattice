@@ -163,6 +163,7 @@ const COMMANDS: &[&str] = &[
     "browser_set_keys",
     "browser_focus",
     "browser_run_doc",
+    "browser_repeat_keys",
     "overlay_key",
     "overlay_vocab",
     "overlay_ask",
