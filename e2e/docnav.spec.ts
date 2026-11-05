@@ -315,6 +315,17 @@ test("Esc in the find bar goes back to where it began, the selection too; the fi
   expect(await selected(reader)).toBe("Alpha");
 });
 
+test("a match is not left under the find bar", async ({ reader }) => {
+  const clearance = () => reader.locator("#p2").evaluate((el) => el.closest(".doc-scroll")!.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom);
+  await reader.locator("#p2").evaluate((el) => el.scrollIntoView({ block: "end" }));
+  expect(await clearance()).toBeLessThan(5);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("another");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  await expect.poll(clearance).toBeGreaterThan(48);
+  await reader.keyboard.press("Escape");
+});
+
 test("a query with no match shows no match and stays where it began", async ({ reader }) => {
   const top = await scrollTop(reader);
   await reader.keyboard.press("/");
