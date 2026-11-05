@@ -804,6 +804,7 @@ export default function App() {
       const pane = docPane();
       return pane && scrollerIn(pane);
     },
+    findLabel: () => t("keys.docFind"),
     print: () => window.print(),
   });
 
@@ -939,9 +940,9 @@ export default function App() {
     // The focused sidebar row moves itself (NavFolders); nowhere else has rows to move.
     moveUp: none,
     moveDown: none,
-    docFind: none,
-    findNext: none,
-    findPrev: none,
+    docFind: docAction("docFind"),
+    findNext: docAction("findNext"),
+    findPrev: docAction("findPrev"),
     hints: docAction("hints"),
     hintsNew: docAction("hintsNew"),
     wordHints: none,

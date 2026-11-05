@@ -72,6 +72,9 @@ const drawn = (page: Page) =>
     };
   });
 
+const selected = (page: Page) => page.evaluate(() => window.getSelection()!.toString());
+const scrollTop = (page: Page) => page.locator(".doc-scroll").evaluate((el) => el.scrollTop);
+
 /** Types the label nearest the element's top left, as a reader would read it off the screen. */
 async function typeLabelOf(page: Page, selector: string) {
   const at = await page.locator(selector).evaluate((el) => {
@@ -124,6 +127,64 @@ test("F clicks with Ctrl held, which opens a link behind", async ({ reader }) =>
   await reader.keyboard.press("Shift+F");
   await typeLabelOf(reader, "#plain");
   await expect.poll(() => clicked(reader)).toEqual({ ctrl: true });
+});
+
+test("/ finds as it is typed, Enter keeps the match, n and N go on and round", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await expect.poll(async () => (await drawn(reader)).query).toBe("");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/2");
+  await expect(reader.locator(".row.cur"), "what is typed stays in the bar").toHaveCount(1);
+  const barScroll = await scrollTop(reader);
+  await reader.keyboard.press("Enter");
+  expect(await selected(reader)).toBe("needle");
+  expect((await drawn(reader)).open).toBe(false);
+  await expect(reader.locator(".doc-scroll"), "the keyboard goes back to the document").toBeFocused();
+  expect(await scrollTop(reader)).toBe(barScroll);
+
+  await reader.keyboard.press("n");
+  expect(await selected(reader), "the other one").toBe("Needle");
+  await expect.poll(() => scrollTop(reader), "and it is on screen").toBeGreaterThan(barScroll);
+  await reader.keyboard.press("n");
+  expect(await selected(reader), "round to the first").toBe("needle");
+  await reader.keyboard.press("Shift+N");
+  expect(await selected(reader), "back round to the last").toBe("Needle");
+});
+
+test("a capital in the query minds case", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("Needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  await reader.keyboard.press("Enter");
+  expect(await selected(reader)).toBe("Needle");
+});
+
+test("Esc in the find bar goes back to where it began, the selection too; the find leaves nothing for n", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((el) => {
+    window.getSelection()!.setBaseAndExtent(el.firstChild!, 0, el.firstChild!, 5);
+  });
+  const top = await scrollTop(reader);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("Three");
+  await expect.poll(() => scrollTop(reader), "it went to the match").toBeGreaterThan(top);
+  await reader.keyboard.press("Escape");
+  expect(await scrollTop(reader)).toBe(top);
+  expect(await selected(reader)).toBe("Alpha");
+  expect((await drawn(reader)).open).toBe(false);
+  await reader.keyboard.press("n");
+  expect(await selected(reader)).toBe("Alpha");
+});
+
+test("a query with no match shows no match and stays where it began", async ({ reader }) => {
+  const top = await scrollTop(reader);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("Thre");
+  await expect.poll(() => scrollTop(reader)).toBeGreaterThan(top);
+  await reader.keyboard.type("xx");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("0/0");
+  await expect.poll(() => scrollTop(reader)).toBe(top);
+  await reader.keyboard.press("Enter");
+  expect((await drawn(reader)).open).toBe(false);
 });
 
 const PAGE_LAYOUT = {

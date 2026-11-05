@@ -23,4 +23,8 @@ translate_page: string, retranslate_page: string,
 /**
  * The PDF viewer's word when it cannot open the file.
  */
-pdf_failed: string, };
+pdf_failed: string, 
+/**
+ * The find bar's name, for screen readers.
+ */
+find: string, };

@@ -272,7 +272,7 @@ export function useShortcuts({
         return;
       }
     }
-    const inField = !!t.closest("input, textarea, select, [contenteditable='true']");
+    const inField = !!t.closest("input, textarea, select, [contenteditable='true'], [data-lattice-field]");
     // A pop-out has no list for the keys to mean, and under the zoom none is on screen.
     const scope = scopeOf(focus.keyPane()?.dataset.pane ?? (IS_MAIN && layout.zoomed == null ? "list" : "doc"));
     const step = stepKeys(getBindings(), seq, key, { scope, inField, now: Date.now() });

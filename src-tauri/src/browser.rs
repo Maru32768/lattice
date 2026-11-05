@@ -85,6 +85,8 @@ pub struct OverlayLabels {
     retranslate_page: String,
     /// The PDF viewer's word when it cannot open the file.
     pdf_failed: String,
+    /// The find bar's name, for screen readers.
+    find: String,
 }
 
 /// What the overlay reads keys with (`PageKeys` in `src/lib/keymap.ts`), passed through to the page.
