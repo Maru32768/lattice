@@ -4,8 +4,19 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Read with the keyboard.** In the Reader and the Page view (web pages and PDFs), `f` opens a link by its label, `gw` picks a word, `v` gives a caret and visual mode (`y` copies, `s` saves to Vocabulary, `a` quotes in the chat), `/` finds in the document, `]]` and `[[` go to headings, `gi` goes to an input field, and `yy` copies the URL. Counts work too, as in `5j`.
+- **tmux pane actions.** After `Ctrl+B`, `;` goes to the previous pane, `q` to a numbered pane, `Shift+H` and its neighbors resize (within 500 ms the second key alone repeats), `{` and `}` swap, `Shift+E` evens, `1` to `9` and `0` go to a numbered tab, and `w` lists the tabs.
+- **Vim editing and the vimrc.** Vim key bindings now work in both the chat box and notes, with the rest of Vim's editing. `:w`, `:q`, `:wincmd`, `:split` and others work too. Paste or load the text of a `.vimrc` in **Settings › Shortcuts**: mappings and some `set` options take effect, and each line left out is listed with its reason.
+- `?` opens the key list. `:` or `;` opens the palette with `>` already typed. In the palette, `t:` searches the open tabs.
+
 ### Changed
 
+- **The default keys are now Vim first.** The command palette is `Ctrl+P` (it was `Ctrl+K`), panes move with `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, and printing is `Ctrl+Shift+P`. On a document `j` and `k` scroll, and the next and previous article are `Shift+J` and `Shift+K`. `v` moved to `g v`, `y` to `g y`, `[` and `]` to `-` and `=`, and `f` to `Ctrl+B z`. Keys you changed in **Settings › Shortcuts** stay as they are.
+- **Focus mode shows only the focused pane.** The navigation, the article list, the chat and the other panes hide. Press it again to bring them back.
+- The Vim key bindings setting moved from **Settings › Summaries & chat** to **Settings › Shortcuts**. Your setting stays as it was.
+- `Esc` in a web page's text field leaves the field, unless the page uses it itself.
 - Windows 10 is no longer a supported platform, and releases are no longer tested on it. The app is not blocked from running there.
 
 ## [0.3.0] - 2026-11-06

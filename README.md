@@ -43,7 +43,7 @@ To build from source, see the [developer guide](docs/development.md).
 ## Getting started
 
 1. Open **Settings** with the gear at the bottom left, and set up at least one provider under **AI providers**. Translation, summaries, classification, chat and quizzes need one. Saving, reading and full-text search work without one.
-2. Press `Ctrl+K`, paste an article's URL and choose **Save to library (import)**. In Lattice, the library is the set of articles you have saved.
+2. Press `Ctrl+P`, paste an article's URL and choose **Save to library (import)**. In Lattice, the library is the set of articles you have saved.
 3. Open the article from the list and switch between **Original**, **Mixed** and **Translated** in the toolbar. Switching to **Mixed** or **Translated** starts translating an article that is not translated yet.
 
 To subscribe to a feed, use **Manage** next to **Source** in the sidebar. To import files, use the ＋ at the top of the navigation (**Add articles**).
@@ -53,7 +53,7 @@ To subscribe to a feed, use **Manage** next to **Source** in the sidebar. To imp
 The [user guide](docs/guide.md) explains every feature. Places you may want first:
 
 - [Set up an AI provider](docs/guide.md#set-up-an-ai-provider)
-- [Keyboard shortcuts](docs/guide.md#keyboard-shortcuts) (`Ctrl+K` opens the command palette; change keys in **Settings › Shortcuts**)
+- [Keyboard shortcuts](docs/guide.md#keyboard-shortcuts) (`Ctrl+P` opens the command palette; change keys in **Settings › Shortcuts**)
 - [Data and backups](docs/guide.md#data-and-backups)
 - [Privacy and safety](docs/guide.md#privacy-and-safety) (what is sent to AI providers)
 
