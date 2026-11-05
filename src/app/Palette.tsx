@@ -77,8 +77,25 @@ interface Command {
   key?: string;
 }
 
-/** Actions with no meaning here: they act on the list's cursor or the palette itself, or need a key's number. */
-const NOT_COMMANDS = new Set<ActionId>(["escape", "next", "prev", "open", "openPage", "moveUp", "moveDown", "palette", "command", "tabByNumber"]);
+/** Actions with no meaning here: they act on the list's cursor or the palette itself, need a key's number, or are small steps nobody picks from a list. */
+const NOT_COMMANDS = new Set<ActionId>([
+  "escape",
+  "next",
+  "prev",
+  "open",
+  "openPage",
+  "moveUp",
+  "moveDown",
+  "palette",
+  "command",
+  "tabByNumber",
+  "scrollDown",
+  "scrollUp",
+  "scrollLeft",
+  "scrollRight",
+  "halfDown",
+  "halfUp",
+]);
 
 const URLISH = /^(https?:\/\/\S+|[\w-]+(\.[\w-]+)+(\/\S*)?)$/i;
 const LIMIT = 5;
@@ -254,7 +271,7 @@ export function Palette({
         icon: "gear" as const,
         run: () => actions.settings(s.id),
       })),
-      ...ACTIONS.filter((a) => !a.local && !NOT_COMMANDS.has(a.id)).map((a): Command => ({
+      ...ACTIONS.filter((a) => !NOT_COMMANDS.has(a.id)).map((a): Command => ({
         label: actionLabel(t, a.id),
         keys: Object.keys(EX_ALIASES)
           .filter((name) => EX_ALIASES[name] === a.id)
