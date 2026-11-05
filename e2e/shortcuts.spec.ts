@@ -92,8 +92,8 @@ test("the default keys after Ctrl+B can be removed, and a single key under a fir
 
 test("actions are grouped by where they run, and the same key in two groups is no conflict", async ({ app }) => {
   await openShortcuts(app);
-  await expect(app.locator(".stg main h2")).toHaveText(["どこでも", "一覧", "本文"]);
-  const group = (i: number) => app.locator(".stg main .grp").nth(i);
+  await expect(app.locator(".stg main h2")).toHaveText(["Vim", "どこでも", "一覧", "本文"]);
+  const group = (i: number) => app.locator(".stg main .grp").nth(i + 1);
   await expect(group(0).locator(".set .h").getByText("コマンドパレット", { exact: true })).toBeVisible();
   await expect(group(1).locator(".set .h").getByText("次の項目へ", { exact: true })).toBeVisible();
   await expect(group(2).locator(".set .h").getByText("下へスクロール", { exact: true })).toBeVisible();
