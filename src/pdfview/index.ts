@@ -561,11 +561,15 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     });
   }
   // The overlay changes a region's text and state: only ever its children and that attribute, never its style.
-  new MutationObserver((records) => {
+  // Those, and whether the overlay is on at all, decide which regions a find reads: canvases and links do not.
+  const changes = new MutationObserver((records) => {
     const refit = new Set<HTMLElement>();
     const stateOn = new Set<Element>();
     for (const r of records) {
       const region = (r.target instanceof Element ? r.target : r.target.parentElement)?.closest<HTMLElement>(".region");
+      if (region || r.target === document.documentElement) {
+        textVersion++;
+      }
       if (region) {
         if (r.type === "attributes") {
           stateOn.add(region.closest(".page")!);
@@ -576,7 +580,9 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     }
     refit.forEach(fit);
     stateOn.forEach((host) => showPageAction(host, labels));
-  }).observe(pages, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-lattice-block"] });
+  });
+  changes.observe(pages, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["data-lattice-block"] });
+  changes.observe(document.documentElement, { attributes: true, attributeFilter: ["data-lattice-on"] });
   window.__lattice?.scrollToUnfoundText();
   await addOutline(doc, placed, labels);
 }
