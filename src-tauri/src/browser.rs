@@ -835,6 +835,18 @@ pub async fn browser_run_doc(app: AppHandle, key: String, action: String, count:
     wv.eval(format!("window.__lattice&&window.__lattice.runDoc({arg},{count})")).map_err(|e| e.to_string())
 }
 
+/// Opens the repeat window of a chord beginning with `first` in the tab's page: the app read that chord's
+/// second key under its hint, but the page takes the keyboard back as the hint goes, so the next key lands
+/// there. App only: all it sets is the page's own key state.
+#[tauri::command]
+pub async fn browser_repeat_keys(app: AppHandle, key: String, first: String) -> Result<(), String> {
+    let Some(wv) = app.get_webview(&label(&key)?) else {
+        return Ok(());
+    };
+    let arg = serde_json::to_string(&first).expect("string serializes");
+    wv.eval(format!("window.__lattice&&window.__lattice.repeatKeys({arg})")).map_err(|e| e.to_string())
+}
+
 /// The keyboard goes to the tab's page, so its keys work right after a move into its pane.
 #[tauri::command]
 pub async fn browser_focus(app: AppHandle, tab: String) -> Result<(), String> {

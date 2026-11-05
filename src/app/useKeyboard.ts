@@ -308,6 +308,10 @@ export function useShortcuts({
     run(id, step.count, step.sequence);
     if (backTo && !LEAVES_PAGE.has(id) && !isPaneMove(id)) {
       focus.focusPage(backTo);
+      // The next key lands in the page, whose own sequence knows nothing of this chord: it would run that key as its own.
+      if (step.seq.repeat) {
+        browser.repeatKeys(backTo, step.seq.repeat.first).catch(() => {});
+      }
     }
   });
 

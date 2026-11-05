@@ -30,7 +30,7 @@ import {
   unitsByBlock,
   withAtoms,
 } from "./logic.ts";
-import { IDLE, keyOf, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
+import { IDLE, REPEAT_MS, keyOf, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
 import { createDocNav, type DocHost } from "../docnav/controller.ts";
 import { pageScroller } from "../docnav/scroll.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -69,6 +69,8 @@ declare global {
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
       /** Runs a document action in this page (`browser_run_doc`). */
       runDoc(action: ActionId, count: number): void;
+      /** Opens the repeat window of a chord the app read for this page (`browser_repeat_keys`). */
+      repeatKeys(first: string): void;
       /** The PDF viewer's: draws the text of all its pages. */
       allText?(more: () => void): void;
     };
@@ -889,6 +891,9 @@ if (window.top === window && !window.__lattice) {
     scrollToUnfoundText: () => unfoundText != null && scrollToText(unfoundText),
     snapshot,
     runDoc: (action, count) => docNav.run(action, count),
+    repeatKeys: (first) => {
+      keySeq = { ...IDLE, repeat: { first, until: Date.now() + REPEAT_MS } };
+    },
   };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);

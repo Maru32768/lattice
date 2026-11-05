@@ -273,6 +273,24 @@ test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
   await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
 });
 
+test("a chord the app read for a page gives the page the keyboard back with the window of its repeat", async ({ shell }) => {
+  await open(shell, across(90, pane(1, page(2, "k1")), pane(3, page(4, "k2"))), 1);
+  const hint = () => shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B", count: 1 }));
+  await hint();
+  await expect(shell.locator(".prefix-hint")).toBeVisible();
+  const before = (await callsOf(shell, "browser_focus")).length;
+  await shell.keyboard.press("Shift+L");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
+  await expect.poll(() => callsOf(shell, "browser_repeat_keys")).toEqual([{ key: "k1", first: "Ctrl+B" }]);
+  expect((await callsOf(shell, "browser_focus")).slice(before)).toEqual([{ tab: "k1" }]);
+
+  await hint();
+  await expect(shell.locator(".prefix-hint")).toBeVisible();
+  await shell.keyboard.press("Shift+E");
+  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "50");
+  expect(await callsOf(shell, "browser_repeat_keys"), "a key that does not repeat opens no window").toHaveLength(1);
+});
+
 test("Ctrl+B } and { swap the focused pane with the next and the previous; the focus goes with its tabs", async ({ shell }) => {
   await open(shell, across(90, pane(1, reader(2, 0)), pane(3, reader(4, 1)), pane(5, reader(6, 2))), 1);
   const titles = shell.locator(".dpane .art-title");
