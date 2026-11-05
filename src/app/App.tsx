@@ -965,8 +965,16 @@ export default function App() {
     focusInput: docAction("focusInput"),
     docBack: docAction("docBack"),
     docForward: docAction("docForward"),
-    copyUrl: none,
-    print: none,
+    copyUrl: () => {
+      if (cur?.kind === "page") {
+        // The clipboard refuses a window without the keyboard, and a page has it: it comes here for a moment.
+        const back = () => paneFocus.focusPage(cur.key);
+        void focusApp().then(() => navigator.clipboard.writeText(cur.url).catch(fail).finally(back));
+      } else if (current) {
+        copyUrl(current.original_url);
+      }
+    },
+    print: docAction("print"),
   };
   const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus, docKeys: docNav.onKey });
 

@@ -348,6 +348,20 @@ test("H and L step through the app's history in the Reader", async ({ reader }) 
   await expect(reader.locator(".art-title")).toHaveText(label(1));
 });
 
+test("yy copies the article's URL, and Ctrl+Shift+P prints", async ({ reader }) => {
+  await press(reader, "y", "y");
+  await expect.poll(() => reader.evaluate(() => (window as unknown as { __clip?: string }).__clip)).toBe(order[0].original_url);
+  await reader.keyboard.press("Control+Shift+P");
+  await expect.poll(() => reader.evaluate(() => (window as unknown as { __printed?: number }).__printed)).toBe(1);
+
+  await reader.emulateMedia({ media: "print" });
+  await expect(list(reader), "only the document goes on paper").toBeHidden();
+  const { height, of } = await reader.locator(".doc-scroll").evaluate((el) => ({ height: el.clientHeight, of: el.scrollHeight }));
+  expect(height, "at its full length").toBe(of);
+  expect(height).toBeGreaterThan(3000);
+  await reader.emulateMedia({ media: "screen" });
+});
+
 test("gi goes to the first text field on screen; in the chat that is its input", async ({ app }) => {
   await app.getByRole("button", { name: "対話" }).click();
   await app.locator(".chat-log").click({ position: { x: 5, y: 5 } });
