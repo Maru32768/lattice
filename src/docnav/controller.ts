@@ -63,6 +63,8 @@ const MAX_QUOTE = 4000;
 const CHROME = "nav,header,footer,aside,[role='navigation'],[role='banner'],[role='contentinfo']";
 
 const BLUR_MS = 100;
+/** What the find bar covers of the bottom of the view. */
+const BAR_HEIGHT = 48;
 
 const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
 const isTyped = (key: string) => key.replace(/^Shift\+/, "").length === 1;
@@ -187,15 +189,16 @@ export function createDocNav(host: () => DocHost) {
 
   // ---- moving the view -----------------------------------------------------------------------
 
-  /** Brings `rect` into view, `margin` from the edge it came in by. */
-  function reveal(rect: DOMRect | null, margin: number) {
+  /** Brings `rect` into view above `covered`, `margin` from the edge it came in by. */
+  function reveal(rect: DOMRect | null, margin: number, covered = 0) {
     const scroller = host().scroller();
     if (!rect || !scroller) {
       return;
     }
     const v = viewOf(scroller);
+    const bottom = v.bottom - covered;
     // A pixel's grace: a box lined up with the edge is often a fraction of one over it.
-    const top = rect.top < v.top - 1 ? rect.top - v.top - margin : rect.bottom > v.bottom + 1 ? rect.bottom - v.bottom + margin : 0;
+    const top = rect.top < v.top - 1 ? rect.top - v.top - margin : rect.bottom > bottom + 1 ? rect.bottom - bottom + margin : 0;
     const left = rect.left < v.left - 1 ? rect.left - v.left - margin : rect.right > v.right + 1 ? rect.right - v.right + margin : 0;
     if (top || left) {
       scroller.scrollBy({ top, left, behavior: "instant" });
@@ -210,7 +213,7 @@ export function createDocNav(host: () => DocHost) {
     }
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const v = viewOf(host().scroller());
-    reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2);
+    reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2, BAR_HEIGHT);
   }
 
   function select(r: Range) {
