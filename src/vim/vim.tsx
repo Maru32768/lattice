@@ -1,10 +1,11 @@
-// Vim in the text fields: whether it is on, per device like the shortcuts, and the way to the editor.
-// This file is in the main chunk, so CodeMirror stays out of it: the editor loads only when Vim is on.
+// Vim in the text fields: whether it is on and the vimrc text, both per device like the shortcuts, and the way to the
+// editor. This file is in the main chunk, so CodeMirror stays out of it: the editor loads only when Vim is on.
 import { lazy, useSyncExternalStore } from "react";
 import { useT } from "../i18n";
 import type { ActionId } from "../lib/keymap";
 
 const ON_KEY = "lattice.chatVim";
+const VIMRC_KEY = "lattice.vimrc";
 
 function stored(key: string): string | null {
   try {
@@ -27,6 +28,7 @@ function store(key: string, value: string | null) {
 }
 
 let on = stored(ON_KEY) === "on";
+let vimrc = stored(VIMRC_KEY) ?? "";
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((f) => f());
 const subscribe = (f: () => void) => {
@@ -34,10 +36,11 @@ const subscribe = (f: () => void) => {
   return () => void listeners.delete(f);
 };
 
-// Another window changed it: follow it.
+// Another window changed them: follow it.
 window.addEventListener("storage", (e) => {
-  if (e.key === ON_KEY) {
+  if (e.key === ON_KEY || e.key === VIMRC_KEY) {
     on = stored(ON_KEY) === "on";
+    vimrc = stored(VIMRC_KEY) ?? "";
     changed();
   }
 });
@@ -50,12 +53,23 @@ export function setVimEnabled(value: boolean) {
   changed();
 }
 
+export const getVimrc = () => vimrc;
+
+export function setVimrc(text: string) {
+  vimrc = text;
+  store(VIMRC_KEY, text || null);
+  changed();
+}
+
 export const useVimEnabled = () => useSyncExternalStore(subscribe, vimEnabled);
+export const useVimrc = () => useSyncExternalStore(subscribe, getVimrc);
 
 /** How the app and the lazily loaded editor reach each other. */
 export const vimBridge = {
   /** Set by the app: runs one of its actions, for the editor's Ex commands. */
   run: (_id: ActionId) => {},
+  /** Set by the editor: whether the vimrc maps this key in the mode of `editor`, so the app should leave it alone. */
+  owns: (_e: KeyboardEvent, _editor: Element) => false,
 };
 
 export const VimEditor = lazy(() => import("./VimEditor"));
