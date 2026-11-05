@@ -1,6 +1,6 @@
 // Moving around a document by keys: the Reader's host of the controller the page overlay also runs.
 import { test as base, expect, callsOf, list, listRow } from "./harness.ts";
-import { ARTICLES } from "./fixtures.ts";
+import { ARTICLES, SNAPSHOT_ID } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
 const order = [...ARTICLES].sort((a, b) => b.saved_at.localeCompare(a.saved_at) || b.id - a.id);
@@ -240,6 +240,35 @@ test("gg and G in visual mode stop at the document's ends, not the page's", asyn
   expect(await selected(reader)).toContain(label(0));
 });
 
+test("in visual mode s saves the selected word and a puts the quote in the chat's input without sending it", async ({ reader }) => {
+  // A word in one of the article's own blocks: only those have a sentence to save it with.
+  await (await listRow(reader, ARTICLES.find((a) => a.id === SNAPSHOT_ID)!.title!)).click();
+  await reader.keyboard.press("Control+l");
+  const selectWord = () =>
+    reader
+      .locator(".reader .blk.paragraph")
+      .first()
+      .evaluate((el) => {
+        const node = document.createTreeWalker(el, NodeFilter.SHOW_TEXT).nextNode() as Text;
+        window.getSelection()!.setBaseAndExtent(node, 0, node, node.data.search(/\s|$/));
+      });
+  await selectWord();
+  const word = await selected(reader);
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("VISUAL");
+  await reader.keyboard.press("s");
+  await expect.poll(async () => ((await callsOf(reader, "vocab_add")) as { capture: { surface: string } }[]).map((c) => c.capture.surface)).toEqual([word]);
+  expect((await drawn(reader)).open).toBe(false);
+
+  // The saved word is marked now: its block was drawn anew.
+  await selectWord();
+  await reader.keyboard.press("v");
+  await reader.keyboard.press("a");
+  await expect(reader.locator("#chat-q")).toHaveValue(`> ${word}\n`);
+  await expect(reader.locator("#chat-q")).toBeFocused();
+  expect(await callsOf(reader, "chat_ask"), "never sent").toEqual([]);
+});
+
 test("/ finds as it is typed, Enter keeps the match, n and N go on and round", async ({ reader }) => {
   await reader.keyboard.press("/");
   await expect.poll(async () => (await drawn(reader)).query).toBe("");
@@ -325,4 +354,37 @@ base("the second key of a chord that reached the app runs in the page, and the p
   await expect.poll(() => callsOf(shell, "browser_run_doc")).toEqual([{ key: "k1", action: "docTop", count: 1 }]);
   await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
   await expect(shell.locator(".prefix-hint")).toBeHidden();
+});
+
+base("a page's quote goes to the chat, unsent", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "k1", quote: "a quoted line" }));
+  await expect(shell.locator("#chat-q")).toHaveValue("> a quoted line\n");
+  await expect(shell.locator("#chat-q")).toBeFocused();
+  expect(await callsOf(shell, "chat_ask")).toEqual([]);
+});
+
+base("a quote from a document window goes to the main window, for the chat there", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "k1", quote: "from a pop-out" }));
+  const requests = async () =>
+    ((await callsOf(shell, "plugin:event|emit_to")) as { event: string; payload: { kind: string; quote?: string } }[])
+      .filter((c) => c.event === "main-request" && c.payload.kind === "chat")
+      .map((c) => c.payload.quote);
+  await expect.poll(requests).toEqual(["from a pop-out"]);
+});
+
+base("the main window's quote fills the chat dock once: closed and opened again, it starts empty", async ({ app }) => {
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "chat", scopeKey: "all", quote: "first" }));
+  await expect(app.locator("#chat-q")).toHaveValue("> first\n");
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "chat", scopeKey: "all", quote: "second" }));
+  await expect(app.locator("#chat-q"), "a draft is kept").toHaveValue("> first\n> second\n");
+  await app.getByRole("button", { name: "対話ペインを閉じる" }).click();
+  await expect(app.locator(".chat")).toHaveCount(0);
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await expect(app.locator("#chat-q")).toHaveValue("");
 });

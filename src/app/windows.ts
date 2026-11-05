@@ -66,7 +66,7 @@ export function storageKeys(): string[] {
  */
 export type MainRequest =
   | { kind: "open"; docs: Doc[]; at?: { pane: Id; index: number } }
-  | { kind: "chat"; scopeKey?: string }
+  | { kind: "chat"; scopeKey?: string; quote?: string }
   | { kind: "chatDocked" }
   | { kind: "chatClosed" }
   /** A document window's saved articles in tabs, for the chat's 開いている記事 (empty as it closes). */

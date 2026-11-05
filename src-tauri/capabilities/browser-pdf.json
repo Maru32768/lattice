@@ -3,5 +3,5 @@
   "identifier": "browser-pdf",
   "description": "The PDF viewer in a Page tab: Tauri counts its custom protocol as the local origin, so browser-overlay's remote rule misses it. The same overlay commands, nothing more",
   "webviews": ["browser-*"],
-  "permissions": ["allow-overlay-config", "allow-overlay-translate", "allow-overlay-snapshot", "allow-overlay-history", "allow-overlay-progress", "allow-overlay-key", "allow-overlay-vocab", "allow-overlay-print"]
+  "permissions": ["allow-overlay-config", "allow-overlay-translate", "allow-overlay-snapshot", "allow-overlay-history", "allow-overlay-progress", "allow-overlay-key", "allow-overlay-vocab", "allow-overlay-ask", "allow-overlay-print"]
 }

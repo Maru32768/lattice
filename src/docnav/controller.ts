@@ -5,6 +5,7 @@
  *
  * The ideas come from Vimium's content scripts (MIT License, Copyright (c) 2010 Phil Crosby, Ilya Sukhar).
  */
+import { collapse, isWord } from "../vocab/vocab.ts";
 import type { ActionId } from "../lib/keymap.ts";
 import { hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
@@ -18,6 +19,10 @@ export interface DocHost {
   scroller(): Element | null;
   /** The find bar's name, for screen readers. */
   findLabel(): string;
+  /** Saves the selected word to the vocabulary. */
+  saveWord(): void;
+  /** Puts the quote in the chat's input, and sends nothing. */
+  ask(quote: string): void;
   print(): void;
 }
 
@@ -47,6 +52,8 @@ type DocMode =
   | { kind: "find"; query: string; doc: DocText; origin: TextPoint | null; starts: number[]; length: number; at: number; place: Place; count: HTMLElement };
 
 const NORMAL: DocMode = { kind: "normal" };
+/** A long quote is cut, as the chat input is no place for a whole article, and the backend refuses more. */
+const MAX_QUOTE = 4000;
 /** Text a reader does not start from when `v` looks for where they are reading. */
 const CHROME = "nav,header,footer,aside,[role='navigation'],[role='banner'],[role='contentinfo']";
 
@@ -341,6 +348,15 @@ export function createDocNav(host: () => DocHost) {
       document.execCommand("copy");
       s.collapseToStart();
       enter(NORMAL);
+    } else if (m.kind === "visual" && key === "S") {
+      if (isWord(s.toString())) {
+        enter(NORMAL);
+        host().saveWord();
+      }
+    } else if (m.kind === "visual" && key === "A") {
+      const quote = collapse(s.toString()).slice(0, MAX_QUOTE);
+      enter(NORMAL);
+      host().ask(quote);
     } else {
       moveBy(m, key);
     }

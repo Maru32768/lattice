@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { api, type ChatMessage, type ChatThread, type Citation } from "../api";
-import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations } from "./chat";
+import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations, withQuote } from "./chat";
 import { type FilterGroup, parseFilterKey } from "../library/scopes";
 import { FilterOptgroups } from "../library/FilterOptgroups";
 import { Menu } from "../ui/Popover";
@@ -85,8 +85,8 @@ export function ChatPane({
   groups: FilterGroup[];
   /** The list's current scope as a chat scope option (filterKey + label); null when it is 全記事. */
   current: { key: string; label: string } | null;
-  /** A scope chosen from outside (Reader 質問, palette); `seq` re-applies the same key. */
-  request: { key: string; seq: number } | null;
+  /** A scope chosen from outside (Reader 質問, palette); `seq` re-applies the same key. `quote` goes into the input, for the user to ask about. */
+  request: { key: string; seq: number; quote?: string } | null;
   onCite: OnCite;
   onClose: () => void;
   /** Main window only: moves the dock to its own window (G52). */
@@ -100,7 +100,7 @@ export function ChatPane({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
   const [picked, setPicked] = useState(request != null);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(request?.quote ? withQuote("", request.quote) : "");
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const vimOn = useVimEnabled();
@@ -126,6 +126,9 @@ export function ChatPane({
     setRequestSeq(request.seq);
     setPicked(true);
     setScopeKey(request.key);
+    if (request.quote) {
+      setQuestion(withQuote(question, request.quote));
+    }
   }
   useEffect(() => {
     if (requestSeq != null) {

@@ -13,6 +13,9 @@ export function splitCitations(answer: string, cited: Set<number>): ({ n: number
 }
 
 /** A saved article open in a tab, as a chat scope option. */
+/** The draft with `quote` added to ask about: a Markdown quote on its own line, with the question to come after it. */
+export const withQuote = (draft: string, quote: string) => `${draft && !draft.endsWith("\n") ? `${draft}\n` : draft}> ${quote}\n`;
+
 export interface OpenDoc {
   id: number;
   title: string;

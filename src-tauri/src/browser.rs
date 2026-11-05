@@ -4,7 +4,7 @@
 //!
 //! Trust boundary: the pages are remote and untrusted. Their webviews (labels `browser-<tab>`)
 //! get only the capability in `capabilities/browser.json` (overlay_config / overlay_translate /
-//! overlay_snapshot / overlay_history / overlay_progress / overlay_key / overlay_vocab / overlay_print), translate calls are refused
+//! overlay_snapshot / overlay_history / overlay_progress / overlay_key / overlay_vocab / overlay_ask / overlay_print), translate calls are refused
 //! unless the user has switched translation on, snapshots unless the app asked for one, and word
 //! captures unless the page is on screen and the last one is a moment ago. The background
 //! renderer's hidden webview (`renderer.rs`) gets the same capability, never translation.
@@ -917,6 +917,32 @@ fn take_key(t: &TabState, keys: Option<&PageKeys>, key: &str) -> bool {
     t.visibility.wanted && !t.visibility.loading && key.len() <= 64 && listed
 }
 
+/// A page can call overlay_ask on its own, so a quote is bounded (the overlay cuts it at 4000 characters).
+const MAX_QUOTE_BYTES: usize = 16 * 1024;
+
+/// Called by the overlay for `a` in visual mode: the selection goes into the chat's input. Exposed to
+/// remote pages, so the quote is untrusted: it is only ever text in that input, and only the user can
+/// send it. Only while the page is on screen.
+#[tauri::command]
+pub fn overlay_ask(browser: State<'_, Browser>, webview: Webview, quote: String) -> Result<(), String> {
+    if !is_browser(webview.label()) {
+        return Err("not a browser webview".into());
+    }
+    if !browser.with_tab(webview.label(), |t| take_quote(t, &quote)) {
+        return Err("quote refused".into());
+    }
+    #[derive(Clone, Serialize)]
+    struct Quote {
+        quote: String,
+    }
+    emit_tab(&webview, "browser-ask", Quote { quote });
+    Ok(())
+}
+
+fn take_quote(t: &TabState, quote: &str) -> bool {
+    t.visibility.wanted && !t.visibility.loading && quote.len() <= MAX_QUOTE_BYTES
+}
+
 /// Called by the overlay for its print key and `window.print()`. WebView2's own print preview is drawn
 /// inside the page's child webview and showed up behind the page; the system dialog is a window of
 /// its own. Exposed to remote pages, which can call print() anyway; only while the page is on
@@ -1094,6 +1120,17 @@ mod tests {
         assert!(!take_key(&t, Some(&keys), &long), "too long");
         t.visibility.loading = true;
         assert!(!take_key(&t, Some(&keys), "Ctrl+B"), "loading");
+    }
+
+    #[test]
+    fn a_page_quotes_only_on_screen_and_within_the_bound() {
+        let mut t = TabState::default();
+        assert!(!take_quote(&t, "q"), "hidden");
+        t.visibility.wanted = true;
+        assert!(take_quote(&t, "q"));
+        assert!(!take_quote(&t, &"q".repeat(MAX_QUOTE_BYTES + 1)), "too long");
+        t.visibility.loading = true;
+        assert!(!take_quote(&t, "q"), "loading");
     }
 
     #[test]
