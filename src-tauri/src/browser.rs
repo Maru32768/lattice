@@ -821,6 +821,15 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
     .map_err(|e| e.to_string())
 }
 
+/// The keyboard goes to the tab's page, so its keys work right after a move into its pane.
+#[tauri::command]
+pub async fn browser_focus(app: AppHandle, tab: String) -> Result<(), String> {
+    match app.get_webview(&label(&tab)?) {
+        Some(wv) => wv.set_focus().map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 #[tauri::command]
 pub async fn browser_set_translation(
     app: AppHandle,

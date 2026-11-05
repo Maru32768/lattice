@@ -774,6 +774,11 @@ export default function App() {
 
   const scrollPane = (id: DocScroll) => (count: number) => {
     const chat = paneFocus.keyPane()?.dataset.pane === "chat";
+    // A page scrolls itself: the key reached the app only because the app held the keyboard, which goes back.
+    // shortcut: this key is spent on that and the next one scrolls; run it in the page once the app can.
+    if (!chat && screen === "library" && cur?.kind === "page") {
+      return paneFocus.focusPage(cur.key);
+    }
     const root = document.querySelector(chat ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused");
     const el = root && scrollerIn(root);
     if (el) {

@@ -507,7 +507,7 @@ ${t("browserView.addToGroup", { name: saveGroup })}`
       )}
       <div className="doc-body">
         {/* The native webview stays hidden until an opened page has loaded, uncovering this. */}
-        <div ref={host} className="page-host">
+        <div ref={host} className="page-host" data-page-key={id}>
           {still ? <img className="page-still" src={still} alt="" /> : loading && <span className="muted">{t("browserView.loadingEllipsis")}</span>}
         </div>
         {panel === "quiz" && shown && act && (

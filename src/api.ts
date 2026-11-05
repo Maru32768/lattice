@@ -276,6 +276,8 @@ export const browser = {
   go: (tab: string, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),
   setTranslation: (enabled: boolean, percent: number | null, labels: OverlayLabels) => invoke<void>("browser_set_translation", { enabled, percent, labels }),
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
+  /** Gives the page's webview the keyboard. */
+  focus: (tab: string) => invoke<void>("browser_focus", { tab }),
 };
 
 /**

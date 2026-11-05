@@ -1665,6 +1665,7 @@ pub fn run() {
             browser::overlay_history,
             browser::overlay_progress,
             browser::browser_set_keys,
+            browser::browser_focus,
             browser::overlay_key,
             browser::overlay_print,
             popout::open_window,
