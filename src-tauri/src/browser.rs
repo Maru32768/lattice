@@ -821,6 +821,18 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
     .map_err(|e| e.to_string())
 }
 
+/// Runs a document action in the tab's page (`docNav.run` in the overlay): for the palette, and for
+/// the second key of a chord, which reaches the app once its hint has taken the keyboard. App only:
+/// no page gets this, and a page only ever runs these actions on itself.
+#[tauri::command]
+pub async fn browser_run_doc(app: AppHandle, key: String, action: String, count: u32) -> Result<(), String> {
+    let Some(wv) = app.get_webview(&label(&key)?) else {
+        return Ok(());
+    };
+    let arg = serde_json::to_string(&action).expect("string serializes");
+    wv.eval(format!("window.__lattice&&window.__lattice.runDoc({arg},{count})")).map_err(|e| e.to_string())
+}
+
 /// The keyboard goes to the tab's page, so its keys work right after a move into its pane.
 #[tauri::command]
 pub async fn browser_focus(app: AppHandle, tab: String) -> Result<(), String> {

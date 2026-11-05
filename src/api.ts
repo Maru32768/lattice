@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { PageKeys } from "./lib/keymap";
+import type { ActionId, PageKeys } from "./lib/keymap";
 import type { DragStart, WindowGeom } from "./layout/tabDrag";
 import type { Lang, T } from "./i18n/index.ts";
 
@@ -278,6 +278,8 @@ export const browser = {
   setKeys: (keys: PageKeys) => invoke<void>("browser_set_keys", { keys }),
   /** Gives the page's webview the keyboard. */
   focus: (tab: string) => invoke<void>("browser_focus", { tab }),
+  /** Runs one of the document's own actions (`local` in the key map) in the page. */
+  runDoc: (key: string, action: ActionId, count: number) => invoke<void>("browser_run_doc", { key, action, count }),
 };
 
 /**

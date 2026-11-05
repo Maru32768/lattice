@@ -179,6 +179,7 @@
     "allow-browser-set-translation",
     "allow-browser-set-keys",
     "allow-browser-focus",
+    "allow-browser-run-doc",
     "allow-update-info",
     "allow-update-check",
     "allow-update-install"

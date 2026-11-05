@@ -31,7 +31,8 @@ import {
   withAtoms,
 } from "./logic.ts";
 import { IDLE, keyOf, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
-import { isDocScroll, pageScroller, scrollDoc } from "../docnav/scroll.ts";
+import { createDocNav, type DocHost } from "../docnav/controller.ts";
+import { pageScroller } from "../docnav/scroll.ts";
 import type { OverlayLabels } from "../api.ts";
 import { captureIn, collapse, isWord } from "../vocab/vocab.ts";
 
@@ -66,6 +67,8 @@ declare global {
       showSavedIdle(): void;
       scrollToUnfoundText(): void;
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
+      /** Runs a document action in this page (`browser_run_doc`). */
+      runDoc(action: ActionId, count: number): void;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
@@ -721,16 +724,12 @@ const inField = (t: EventTarget | undefined) => t instanceof HTMLElement && (t.i
 /** Tells the app: a whole sequence to run, a chord's first key for its hint, or nothing ("") to hide that hint. */
 const tellApp = (key: string, count = 1) => void invoke("overlay_key", { key, count }).catch(() => {});
 
-function runLocal(id: ActionId, count: number) {
-  if (id === "print") {
-    window.print();
-  } else if (isDocScroll(id)) {
-    const el = pageScroller();
-    if (el) {
-      scrollDoc(el, id, count);
-    }
-  }
-}
+const pageDoc: DocHost = {
+  root: () => document.body,
+  scroller: pageScroller,
+  print: () => window.print(),
+};
+const docNav = createDocNav(() => pageDoc);
 
 function applyStep(step: KeyStep) {
   const hinted = keySeq.first != null;
@@ -739,7 +738,7 @@ function applyStep(step: KeyStep) {
     return tellApp(step.sequence, step.count);
   }
   if (step.kind === "run") {
-    runLocal(step.action.id, step.count);
+    docNav.run(step.action.id, step.count);
   }
   if (step.seq.first) {
     tellApp(step.seq.first);
@@ -861,6 +860,7 @@ if (window.top === window && !window.__lattice) {
     showSavedIdle,
     scrollToUnfoundText: () => unfoundText != null && scrollToText(unfoundText),
     snapshot,
+    runDoc: (action, count) => docNav.run(action, count),
   };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
   const pagePrint = window.print.bind(window);

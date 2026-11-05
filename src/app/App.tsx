@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "re
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
+import { browser } from "../api";
 import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
@@ -25,7 +26,7 @@ import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
 import { paneOf, stepNav } from "../layout/panes";
-import { scrollDoc, scrollerIn, type DocScroll } from "../docnav/scroll";
+import { scrollerIn } from "../docnav/scroll";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TitleBar } from "./TitleBar";
@@ -62,6 +63,7 @@ import type { TabLabel } from "../layout/TabStrip";
 import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
+import type { ActionId } from "../lib/keymap";
 
 // Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
 const chunkImport = () => import("../import/ImportView");
@@ -102,6 +104,7 @@ import { useChatBridge } from "./useChatBridge";
 import { dockChat, useWindows } from "./useWindows";
 import { useHistory } from "./useHistory";
 import { MENU_TARGETS, useKeySeq, usePaneFocus, useShortcuts, type ActionHandlers } from "./useKeyboard";
+import { useDocNav } from "./useDocNav";
 import "./App.css";
 
 const clampIndex = (i: number, n: number) => Math.max(0, Math.min(n - 1, i));
@@ -789,18 +792,28 @@ export default function App() {
     }
   };
 
-  const scrollPane = (id: DocScroll) => (count: number) => {
-    const chat = paneFocus.keyPane()?.dataset.pane === "chat";
-    // A page scrolls itself: the key reached the app only because the app held the keyboard, which goes back.
-    // shortcut: this key is spent on that and the next one scrolls; run it in the page once the app can.
-    if (!chat && screen === "library" && cur?.kind === "page") {
-      return paneFocus.focusPage(cur.key);
-    }
-    // The chat window has only the chat, wherever focus is.
-    const root = document.querySelector(chat ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused, [data-pane='chat']");
-    const el = root && scrollerIn(root);
-    if (el) {
-      scrollDoc(el, id, count);
+  /** The pane whose document the keys are in; the chat window has only the chat, wherever focus is. */
+  const docPane = () =>
+    document.querySelector(paneFocus.keyPane()?.dataset.pane === "chat" ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused, [data-pane='chat']");
+  const docNav = useDocNav({
+    root: () => {
+      const pane = docPane();
+      return pane?.querySelector(".doc-scroll") ?? pane;
+    },
+    scroller: () => {
+      const pane = docPane();
+      return pane && scrollerIn(pane);
+    },
+    print: () => window.print(),
+  });
+
+  /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
+  const docAction = (id: ActionId) => (count: number) => {
+    if (paneFocus.keyPane()?.dataset.pane !== "chat" && screen === "library" && cur?.kind === "page") {
+      browser.runDoc(cur.key, id, count).catch(fail);
+      paneFocus.focusPage(cur.key);
+    } else {
+      docNav.run(id, count);
     }
   };
 
@@ -841,14 +854,14 @@ export default function App() {
     listHalfUp: (n) => step(-n * halfList()),
     open: () => openCursor(false),
     openPage: () => openCursor(true),
-    scrollDown: scrollPane("scrollDown"),
-    scrollUp: scrollPane("scrollUp"),
-    scrollLeft: scrollPane("scrollLeft"),
-    scrollRight: scrollPane("scrollRight"),
-    halfDown: scrollPane("halfDown"),
-    halfUp: scrollPane("halfUp"),
-    docTop: scrollPane("docTop"),
-    docBottom: scrollPane("docBottom"),
+    scrollDown: docAction("scrollDown"),
+    scrollUp: docAction("scrollUp"),
+    scrollLeft: docAction("scrollLeft"),
+    scrollRight: docAction("scrollRight"),
+    halfDown: docAction("halfDown"),
+    halfUp: docAction("halfUp"),
+    docTop: docAction("docTop"),
+    docBottom: docAction("docBottom"),
     nextArticle: (n) => stepArticle(n),
     prevArticle: (n) => stepArticle(-n),
     favorite: () => void (current && toggleFavorite(current)),
