@@ -32,8 +32,14 @@ export function useChatBridge(own: { article: DocRef; docs: OpenDoc[] }) {
   const [remoteArticle, setRemoteArticle] = useState<DocRef>(null);
   const [mainOpen, setMainOpen] = useState<OpenDoc[]>([]);
   const [docWindowsOpen, setDocWindowsOpen] = useState<Record<string, OpenDoc[]>>({});
-  const [chatScope, setChatScope] = useState<{ key: string; seq: number } | null>(null);
-  const askScope = (key: string) => setChatScope((c) => ({ key, seq: (c?.seq ?? 0) + 1 }));
+  const [chatScope, setChatScope] = useState<{ key: string; seq: number; quote?: string } | null>(null);
+  const askScope = (key: string, quote?: string) => setChatScope((c) => ({ key, quote, seq: (c?.seq ?? 0) + 1 }));
+  useEffect(() => {
+    if (chatScope?.quote != null) {
+      // oxlint-disable-next-line react/set-state-in-effect -- the pane has read it by now: a dock opened again later starts empty
+      setChatScope((c) => c && { key: c.key, seq: c.seq });
+    }
+  }, [chatScope]);
 
   const article = HOST.kind === "chat" ? remoteArticle : own.article;
   const docs = HOST.kind === "chat" ? mainOpen : mergeDocs([own.docs, ...Object.values(docWindowsOpen)]);
@@ -61,7 +67,9 @@ export function useChatBridge(own: { article: DocRef; docs: OpenDoc[] }) {
       listen<DocRef>("doc-current", (e) => setRemoteArticle(e.payload)),
       ...(HOST.kind === "chat"
         ? [
-            getCurrentWindow().listen<{ key: string }>("chat-request", (e) => setChatScope((c) => ({ key: e.payload.key, seq: (c?.seq ?? 0) + 1 }))),
+            getCurrentWindow().listen<{ key: string; quote?: string }>("chat-request", (e) =>
+              setChatScope((c) => ({ key: e.payload.key, quote: e.payload.quote, seq: (c?.seq ?? 0) + 1 })),
+            ),
             listen<OpenDoc[]>("open-docs", (e) => setMainOpen(e.payload)),
           ]
         : []),

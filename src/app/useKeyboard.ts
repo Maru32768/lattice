@@ -22,7 +22,7 @@ const EDITOR = ".cm-editor";
 
 type SetLayout = (f: (l: Workspace) => Workspace) => void;
 
-const focusApp = () =>
+export const focusApp = () =>
   getCurrentWebview()
     .setFocus()
     .catch(() => {});

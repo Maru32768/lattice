@@ -730,6 +730,11 @@ const pageDoc: DocHost = {
   root: () => document.body,
   scroller: pageScroller,
   findLabel: () => state.config.labels.find,
+  saveWord: () => {
+    offerSave();
+    saveBtn?.btn.click();
+  },
+  ask: (quote) => void invoke("overlay_ask", { quote }).catch(() => {}),
   print: () => window.print(),
 };
 const docNav = createDocNav(() => pageDoc);

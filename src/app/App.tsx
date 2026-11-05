@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
-import { emit, emitTo } from "@tauri-apps/api/event";
+import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
 import { browser } from "../api";
@@ -103,7 +103,7 @@ import { usePageLang } from "./usePageLang";
 import { useChatBridge } from "./useChatBridge";
 import { dockChat, useWindows } from "./useWindows";
 import { useHistory } from "./useHistory";
-import { MENU_TARGETS, useKeySeq, usePaneFocus, useShortcuts, type ActionHandlers } from "./useKeyboard";
+import { MENU_TARGETS, focusApp, useKeySeq, usePaneFocus, useShortcuts, type ActionHandlers } from "./useKeyboard";
 import { useDocNav } from "./useDocNav";
 import "./App.css";
 
@@ -578,13 +578,14 @@ export default function App() {
     }
   }
 
-  function openChat(key?: string) {
+  /** `quote`: goes into the chat's input, for the user to ask about. */
+  function openChat(key?: string, quote?: string) {
     if (!IS_MAIN) {
-      return void toMain({ kind: "chat", scopeKey: key });
+      return void toMain({ kind: "chat", scopeKey: key, quote });
     }
     if (win.chatWindow) {
       if (key) {
-        void emitTo(CHAT, "chat-request", { key });
+        void emitTo(CHAT, "chat-request", { key, quote });
       }
       windows.open(CHAT).catch(fail);
       return;
@@ -592,7 +593,7 @@ export default function App() {
     win.setChatOpen(true);
     setLayout(unzoom);
     if (key) {
-      chat.askScope(key);
+      chat.askScope(key, quote);
     }
   }
 
@@ -636,7 +637,7 @@ export default function App() {
         setLayout((l) => r.docs.reduce((acc, d, i) => open(acc, d, "new", r.at?.pane, r.at && r.at.index + i), l));
         break;
       case "chat":
-        openChat(r.scopeKey);
+        openChat(r.scopeKey, r.quote);
         return;
       case "chatDocked":
         win.setChatWindow(false);
@@ -795,6 +796,7 @@ export default function App() {
   /** The pane whose document the keys are in; the chat window has only the chat, wherever focus is. */
   const docPane = () =>
     document.querySelector(paneFocus.keyPane()?.dataset.pane === "chat" ? "[data-pane='chat']" : "main[data-pane='doc'], .dpane.focused, [data-pane='chat']");
+  const askAbout = (quote: string) => openChat(current ? "article" : "all", quote);
   const docNav = useDocNav({
     root: () => {
       const pane = docPane();
@@ -805,8 +807,18 @@ export default function App() {
       return pane && scrollerIn(pane);
     },
     findLabel: () => t("keys.docFind"),
+    saveWord,
+    ask: askAbout,
     print: () => window.print(),
   });
+  const onPageAsk = useEffectEvent((quote: string) => {
+    void focusApp();
+    askAbout(quote);
+  });
+  useEffect(() => {
+    const sub = listen<{ quote: string }>("browser-ask", (e) => onPageAsk(e.payload.quote));
+    return () => void sub.then((f) => f());
+  }, []);
 
   /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
   const docAction = (id: ActionId) => (count: number) => {

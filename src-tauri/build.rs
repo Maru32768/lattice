@@ -165,6 +165,7 @@ const COMMANDS: &[&str] = &[
     "browser_run_doc",
     "overlay_key",
     "overlay_vocab",
+    "overlay_ask",
     "overlay_print",
     "open_window",
     "close_window",
