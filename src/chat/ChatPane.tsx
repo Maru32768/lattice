@@ -7,6 +7,7 @@ import { Menu } from "../ui/Popover";
 import { Icon, Kbd } from "../ui/Icon";
 import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
 import { onMiddle } from "../lib/middle";
+import { useLatest } from "../lib/useLatest";
 import { useT, type PlainKey } from "../i18n";
 
 const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetrieval", none: null } as const satisfies Record<string, PlainKey | null>;
@@ -102,11 +103,14 @@ export function ChatPane({
   const [picked, setPicked] = useState(request != null);
   const [question, setQuestion] = useState(request?.quote ? withQuote("", request.quote) : "");
   const [pending, setPending] = useState<string | null>(null);
+  /** The question of a failed send that found a new draft in the input: the log keeps it to copy from. */
+  const [unsent, setUnsent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const vimOn = useVimEnabled();
   const [vimMode, setVimMode] = useState("INSERT");
-  /** Grows when the question is set from here: the Vim editor starts over on the new text, in insert mode. */
-  const [editorSeq, setEditorSeq] = useState(0);
+  /** `seq` grows when the question is set from here: the Vim editor starts over on the new text, in insert mode. `focus`: it takes the keyboard. */
+  const [editor, setEditor] = useState({ seq: 0, focus: request != null });
+  const latestQuestion = useLatest(question);
   const log = useRef<HTMLDivElement>(null);
 
   const fail = (e: unknown) => setError(String(e));
@@ -128,8 +132,8 @@ export function ChatPane({
     setScopeKey(request.key);
     if (request.quote) {
       setQuestion(withQuote(question, request.quote));
-      setEditorSeq((n) => n + 1);
     }
+    setEditor({ seq: editor.seq + (request.quote ? 1 : 0), focus: true });
   }
   useEffect(() => {
     if (requestSeq != null) {
@@ -155,6 +159,7 @@ export function ChatPane({
   async function openThread(id: number | null) {
     const seq = ++openSeq.current;
     setError(null);
+    setUnsent(null);
     setThreadId(id);
     const ms =
       id == null
@@ -190,8 +195,9 @@ export function ChatPane({
     }
     setPending(q);
     setQuestion("");
-    setEditorSeq((n) => n + 1);
+    setEditor((e) => ({ seq: e.seq + 1, focus: true }));
     setError(null);
+    setUnsent(null);
     try {
       const m = await api.chatAsk(threadId, q, s);
       setThreadId(m.thread_id);
@@ -199,8 +205,14 @@ export function ChatPane({
       void loadThreads();
     } catch (e) {
       fail(e);
-      setQuestion(q);
-      setEditorSeq((n) => n + 1);
+      if (latestQuestion.current.trim()) {
+        setUnsent(q);
+      } else {
+        setQuestion(q);
+        // The failure can come long after the send, with the keyboard gone elsewhere.
+        const inInput = document.activeElement?.id === "chat-q";
+        setEditor((ed) => ({ seq: ed.seq + 1, focus: inInput }));
+      }
     }
     setPending(null);
   }
@@ -297,7 +309,7 @@ export function ChatPane({
           {last && MODE_LABEL[last.mode] && <span className="push">{t(MODE_LABEL[last.mode]!)}</span>}
         </div>
         <div className="chat-log" ref={log}>
-          {messages.length === 0 && !pending && <p className="muted chat-hint">{t("chatPane.intro")}</p>}
+          {messages.length === 0 && !pending && !unsent && <p className="muted chat-hint">{t("chatPane.intro")}</p>}
           {messages.map((m) => (
             <div key={m.id} className="turn">
               <p className="question">{m.question}</p>
@@ -311,6 +323,11 @@ export function ChatPane({
                 <span className="dot" />
                 {t("chatPane.answering")}
               </p>
+            </div>
+          )}
+          {unsent && (
+            <div className="turn">
+              <p className="question">{unsent}</p>
             </div>
           )}
           {error && (
@@ -332,13 +349,13 @@ export function ChatPane({
           {vimOn ? (
             <Suspense fallback={<div className="vim-editor" />}>
               <VimEditor
-                key={editorSeq}
+                key={editor.seq}
                 id="chat-q"
                 className="vim-editor"
                 initial={question}
                 label={t("chatPane.question")}
                 placeholder={askHint}
-                autoFocus={requestSeq != null || editorSeq > 0}
+                autoFocus={editor.focus}
                 onChange={setQuestion}
                 onWrite={(text) => void ask(text)}
                 onQuit={() => document.getElementById("chat-q")?.blur()}
