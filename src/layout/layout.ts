@@ -393,7 +393,7 @@ export function grow(l: Workspace, side: Side, step: number): Workspace {
 
 /**
  * The focused pane's tabs change places with those of the next or previous pane in reading order, wrapping; the focus goes with them.
- * shortcut: both documents mount anew, so a Reader starts at its top as after a tab switch; keep the scroll when tabs do.
+ * shortcut: both documents mount anew, so a Reader starts at its top as after a tab switch, until tabs keep their scroll.
  */
 export function swap(l: Workspace, d: 1 | -1): Workspace {
   const all = panes(l.root);
