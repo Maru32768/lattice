@@ -5,7 +5,7 @@ import { browser } from "../api";
 import { PREFIX_MS, actionFor, chordFrom, getBindings, pageKeys, useBindings, type ActionId } from "../lib/keys";
 import { keyOf } from "../lib/keyname";
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
-import { focus as focusLayout, pageByKey, tabById, type Layout } from "../layout/layout";
+import { focus as focusLayout, pageByKey, tabById, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
 
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
@@ -13,14 +13,14 @@ const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "c
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 
-type SetLayout = (f: (l: Layout) => Layout) => void;
+type SetLayout = (f: (l: Workspace) => Workspace) => void;
 
 /**
  * Which pane has the keyboard: the one focus was moved to (outlined until the pointer is used),
  * and the one last clicked, where arrows scroll instead of moving the list cursor when it is the
  * document or chat. A click in a document pane, or in a page, focuses that pane: the next document opens there.
  */
-export function usePaneFocus(layout: Layout, setLayout: SetLayout) {
+export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   const [kbPane, setKbPane] = useState<string | null>(null);
   const pointerPane = useRef<string | null>(null);
   useEffect(() => {
@@ -96,7 +96,7 @@ export function useShortcuts({
 }: {
   actions: Record<Exclude<ActionId, PaneMove>, () => void>;
   prefix: ReturnType<typeof usePrefix>;
-  layout: Layout;
+  layout: Workspace;
   setLayout: SetLayout;
   focus: ReturnType<typeof usePaneFocus>;
 }) {

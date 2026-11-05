@@ -16,7 +16,7 @@ import {
   tabById,
   type Dir,
   type Id,
-  type Layout,
+  type Workspace,
   type Node,
   type Pane,
   type Tab,
@@ -45,7 +45,7 @@ import { topStrips } from "./chrome";
 import { WindowControls, dragWindow } from "../app/TitleBar";
 import { withStarts } from "../lib/runs";
 
-type Update = (f: (l: Layout) => Layout) => void;
+type Update = (f: (l: Workspace) => Workspace) => void;
 
 /**
  * Drag handle between two children of a split (the pane splitters' look and keys). Sets child
@@ -157,7 +157,7 @@ function NodeView({
   title,
 }: {
   n: Node;
-  layout: Layout;
+  layout: Workspace;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;
@@ -275,7 +275,7 @@ export function DocArea({
   onSend,
   onTear,
 }: {
-  layout: Layout;
+  layout: Workspace;
   onLayout: Update;
   labelOf: (t: Tab) => TabLabel;
   renderPane: (p: Pane) => React.ReactNode;

@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { browser, tabDrag, windows } from "../api";
-import { allTabs, close, docOf, open, serialize, single, tabById, type Doc, type Id, type Layout, type Tab } from "../layout/layout";
+import { allTabs, close, docOf, open, serialize, single, tabById, type Doc, type Id, type Workspace, type Tab } from "../layout/layout";
 import type { DropTarget } from "../layout/TabStrip";
 import { TAB_DRAG_END, TAB_DRAG_TAKE, type Take } from "../layout/tabDrag";
 import { HOST, IS_MAIN, STORAGE } from "./host";
@@ -38,8 +38,8 @@ export function useWindows({
   forgetPage,
   fail,
 }: {
-  layout: Layout;
-  setLayout: (f: (l: Layout) => Layout) => void;
+  layout: Workspace;
+  setLayout: (f: (l: Workspace) => Workspace) => void;
   forgetPage: (t: Tab) => void;
   fail: (e: unknown) => void;
 }) {

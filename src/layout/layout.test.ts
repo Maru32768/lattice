@@ -25,13 +25,13 @@ import {
   single,
   split,
   tabById,
-  type Layout,
+  type Workspace,
 } from "./layout.ts";
 
 const reader = (articleId: number) => ({ kind: "reader" as const, articleId });
 const page = (url: string) => ({ kind: "page" as const, url });
 /** Article ids (or URLs) of the panes' tabs, with the active one starred, in reading order. */
-const picture = (l: Layout) =>
+const picture = (l: Workspace) =>
   panes(l.root).map((p) => p.tabs.map((t) => `${t.kind === "reader" ? t.articleId : t.url}${t.id === p.active ? "*" : ""}`).join(" "));
 
 test("openBehind: links opened from a page line up after it in click order, and the page stays in front", () => {
