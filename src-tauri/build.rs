@@ -161,6 +161,7 @@ const COMMANDS: &[&str] = &[
     "overlay_history",
     "overlay_progress",
     "browser_set_keys",
+    "browser_focus",
     "overlay_key",
     "overlay_vocab",
     "overlay_print",

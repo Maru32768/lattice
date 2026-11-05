@@ -889,6 +889,7 @@ export const handlers = {
   browser_go: none,
   browser_set_translation: none,
   browser_set_keys: none,
+  browser_focus: none,
   open_window: none,
   close_window: none,
   window_ready: none,

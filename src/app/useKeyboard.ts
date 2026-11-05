@@ -32,6 +32,9 @@ const HINT_MS = 400;
 
 type SetLayout = (f: (l: Workspace) => Workspace) => void;
 
+/** The page pane `p` shows, by its webview's key. */
+const pageIn = (p: Element | null) => p?.querySelector<HTMLElement>("[data-page-key]")?.dataset.pageKey;
+
 /**
  * Which pane has the keyboard: the one focus was moved to (outlined until the pointer is used), and
  * the one it or the pointer was in last. A click in a document pane, or in a page, focuses that
@@ -40,6 +43,8 @@ type SetLayout = (f: (l: Workspace) => Workspace) => void;
 export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   const [kbPane, setKbPane] = useState<string | null>(null);
   const lastPane = useRef<HTMLElement | null>(null);
+  /** The page `focusPage` gave the keyboard to, until its focus event comes. */
+  const keyedPage = useRef<string | null>(null);
   useEffect(() => {
     const focusin = (e: FocusEvent) => {
       const p = paneOf(e.target as Element);
@@ -67,8 +72,11 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
   const onPageFocus = useEffectEvent((tab: string) => {
     // The click never reached this document: replay it as a press outside every open menu and
     // popover (Radix dismisses a left press on its click). Not for a page under an overlay: hiding
-    // it behind its still gives it the focus too, which would close the menu that hid it.
-    if (pageClickable(tab)) {
+    // it behind its still gives it the focus too, which would close the menu that hid it. Nor when
+    // the keys moved here: no click, and the pane keeps its outline.
+    const keyed = keyedPage.current === tab;
+    keyedPage.current = null;
+    if (!keyed && pageClickable(tab)) {
       document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
       document.body.click();
     }
@@ -78,7 +86,9 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
       return;
     }
     setLayout((l) => focusLayout(l, hit.pane.id));
-    setKbPane(null);
+    if (!keyed) {
+      setKbPane(null);
+    }
     lastPane.current = document.querySelector<HTMLElement>(`[data-pane-id='${hit.pane.id}']`);
   });
   useEffect(() => {
@@ -92,7 +102,14 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     lastPane.current = p;
   };
 
-  return { kbPane, setKbPane, keyPane, setLastPane };
+  /** The keyboard goes to the page `tab`; what the app focused last is stale from here on. */
+  const focusPage = (tab: string) => {
+    keyedPage.current = tab;
+    (document.activeElement as HTMLElement | null)?.blur();
+    browser.focus(tab).catch(() => {});
+  };
+
+  return { kbPane, setKbPane, keyPane, setLastPane, focusPage };
 }
 
 /**
@@ -155,7 +172,13 @@ export function useShortcuts({
     if (!p) {
       return null;
     }
-    focusPane(p);
+    const page = pageIn(p);
+    if (page) {
+      focus.setLastPane(p);
+      focus.focusPage(page);
+    } else {
+      focusPane(p);
+    }
     focus.setKbPane(p.dataset.pane!);
     if (p.dataset.paneId) {
       setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
@@ -212,8 +235,13 @@ export function useShortcuts({
     if (step.kind === "none") {
       return;
     }
+    // The hint took the keyboard from this page to read the second key: it goes back, unless the action moves on.
+    const backTo = seq.first && !inField ? pageIn(focus.keyPane()) : undefined;
     if (step.kind !== "run") {
       e.preventDefault();
+      if (backTo) {
+        focus.focusPage(backTo);
+      }
       return;
     }
     const { id } = step.action;
@@ -228,6 +256,9 @@ export function useShortcuts({
     // Plain keys on a focused button would also activate it.
     e.preventDefault();
     run(id, step.count, step.sequence);
+    if (backTo && !LEAVES_PAGE.has(id) && !isPaneMove(id)) {
+      focus.focusPage(backTo);
+    }
   });
 
   // What the page overlay forwarded: keyboard focus is in that page's pane. Its `stepKeys` has read
@@ -260,7 +291,8 @@ export function useShortcuts({
       return;
     }
     if (isPaneMove(action.id)) {
-      if (movePane(action.id, paneEl)) {
+      const to = movePane(action.id, paneEl);
+      if (to && !pageIn(to)) {
         void focusApp();
       }
       return;
