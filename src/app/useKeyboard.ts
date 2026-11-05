@@ -343,19 +343,22 @@ export function useShortcuts({
   });
 
   // The engine in a Vim editor would use the app's keys and stop them (Ctrl+B is its page up), so the app reads them
-  // first and keeps those it claims.
-  const onEditorKey = useEffectEvent((e: KeyboardEvent) => {
-    onKey(e);
-    if (e.defaultPrevented) {
-      e.stopPropagation();
+  // first and keeps those it claims. A key the vimrc maps in this mode is the engine's, unless it ends a chord under way.
+  const onEditorKey = useEffectEvent((e: KeyboardEvent, editor: Element) => {
+    if (keySeq.seq.current.first || !vimBridge.owns(e, editor)) {
+      onKey(e);
+      if (e.defaultPrevented) {
+        e.stopPropagation();
+      }
     }
   });
   const onEditorAction = useEffectEvent((id: ActionId) => run(id, 1, ""));
 
   useEffect(() => {
     const capture = (e: KeyboardEvent) => {
-      if ((e.target as Element).closest(EDITOR)) {
-        onEditorKey(e);
+      const editor = (e.target as Element).closest(EDITOR);
+      if (editor) {
+        onEditorKey(e, editor);
       }
     };
     const down = (e: KeyboardEvent) => {
