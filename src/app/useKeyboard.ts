@@ -204,12 +204,15 @@ export function useShortcuts({
   layout,
   setLayout,
   focus,
+  docKeys,
 }: {
   actions: ActionHandlers;
   keySeq: ReturnType<typeof useKeySeq>;
   layout: Workspace;
   setLayout: SetLayout;
   focus: ReturnType<typeof usePaneFocus>;
+  /** Whether the document's mode took the key: it hears each key first. */
+  docKeys: (key: string) => boolean;
 }) {
   const bindings = useBindings();
   useEffect(() => {
@@ -244,6 +247,9 @@ export function useShortcuts({
     const key = keyOf(e);
     if (!key) {
       return;
+    }
+    if (docKeys(key)) {
+      return e.preventDefault();
     }
     const t = e.target as HTMLElement;
     const seq = keySeq.seq.current;

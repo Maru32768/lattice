@@ -755,6 +755,11 @@ function onKey(e: KeyboardEvent) {
   if (!key) {
     return;
   }
+  if (docNav.onKey(key)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   // composedPath: the field itself, not its shadow host.
   const step = stepKeys(keys.bindings, keySeq, key, { scope: "doc", inField: inField(e.composedPath()[0]), now: Date.now() });
   if (step.kind === "none") {
