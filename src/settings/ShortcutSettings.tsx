@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { ACTIONS, actionLabel, chordFrom, conflicts, isCustom, keyLabel, resetKeys, setKeys, useBindings, type ActionId } from "../lib/keys";
-import { keyOf } from "../lib/keyname";
+import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
+import { ACTIONS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
 
 /** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */

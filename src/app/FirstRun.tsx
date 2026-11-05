@@ -2,7 +2,8 @@ import { useRef } from "react";
 import { Kbd } from "../ui/Icon";
 import { useCover } from "../ui/Popover";
 import { useT } from "../i18n";
-import { actionLabel, afterFirst, keyLabel, useBindings } from "../lib/keys";
+import { useBindings } from "../lib/keys";
+import { actionLabel, afterFirst, keyLabel } from "../lib/keymap";
 
 /** States board #8: an empty library. */
 export function FirstRun({

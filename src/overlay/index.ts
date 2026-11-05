@@ -30,9 +30,8 @@ import {
   unitsByBlock,
   withAtoms,
 } from "./logic.ts";
-import type { PageKeys } from "../lib/keys.ts";
+import { keyOf, type PageKeys } from "../lib/keymap.ts";
 import type { OverlayLabels } from "../api.ts";
-import { keyOf } from "../lib/keyname.ts";
 import { captureIn, collapse, isWord } from "../vocab/vocab.ts";
 
 interface Unit {

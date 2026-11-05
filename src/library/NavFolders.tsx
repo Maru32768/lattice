@@ -6,7 +6,7 @@ import type { FeedRow, FolderRow } from "../api";
 import { feedName } from "./groups";
 import { feedDrop, feedGroups, feedStep, folderDrop, folderTree, loadCollapsed, moved, saveCollapsed, type FeedOrder, type NavRow } from "../feeds/feedFolders";
 import { useBindings } from "../lib/keys";
-import { keyOf } from "../lib/keyname";
+import { keyOf } from "../lib/keymap";
 import { sameScope, type Scope } from "./library";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
