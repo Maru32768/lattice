@@ -18,6 +18,8 @@ import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/lib
 import { highlight } from "../search/search";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
+import { useBindings } from "../lib/keys";
+import { keyLabel } from "../lib/keymap";
 import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
@@ -362,6 +364,8 @@ export function ViewSeg({
   pageDisabled?: boolean;
 }) {
   const t = useT();
+  const key = useBindings().view[0];
+  const withKey = (name: string) => (key ? `${name} (${keyLabel(key)})` : name);
   return (
     <>
       <div className="seg" role="group" aria-label={t("reader.view")}>
@@ -371,7 +375,7 @@ export function ViewSeg({
           onClick={onReader}
           disabled={readerDisabled}
           aria-label="Reader"
-          title={readerDisabled ? t("reader.readerDisabled") : "Reader (v)"}
+          title={readerDisabled ? t("reader.readerDisabled") : withKey("Reader")}
         >
           <Icon name="reader" size="md" />
           <span className="lbl">Reader</span>
@@ -382,13 +386,13 @@ export function ViewSeg({
           onClick={onPage}
           disabled={pageDisabled}
           aria-label="Page"
-          title={pageDisabled ? t("reader.pageDisabled") : "Page (v)"}
+          title={pageDisabled ? t("reader.pageDisabled") : withKey("Page")}
         >
           <Icon name="page" size="md" />
           <span className="lbl">Page</span>
         </button>
       </div>
-      <Kbd>v</Kbd>
+      <ActionKey id="view" />
     </>
   );
 }
@@ -622,8 +626,8 @@ function TranslationStatus({
   const t = useT();
   const keys = (
     <span className="keys">
-      <Kbd>[</Kbd>
-      <Kbd>]</Kbd>
+      <ActionKey id="less" />
+      <ActionKey id="more" />
       {t("reader.ratioHint")}
     </span>
   );
