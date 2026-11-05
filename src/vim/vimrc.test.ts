@@ -1,0 +1,219 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { Vim } from "@replit/codemirror-vim";
+import { ENGINE_EX, ENGINE_OPTIONS, KNOWN, mappedKeys, parseVimrc, type VimrcEntry } from "./vimrc.ts";
+
+const parse = (text: string) => parseVimrc(text, KNOWN);
+const exOf = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "ex" ? [e.ex] : []));
+const skips = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "skip" ? [[e.line, e.reason]] : []));
+
+test("the mappings a vimrc of habits relies on apply, in the engine's key spelling", () => {
+  const entries = parse(
+    [
+      "noremap ; :",
+      "nnoremap j gj",
+      "nnoremap H ^",
+      "xnoremap H ^",
+      "inoremap <c-h> <left>",
+      "nnoremap <esc><esc> :noh<cr>",
+      "vmap <C-S-x> d",
+      "imap jk <Esc>:w<cr>a",
+    ].join("\n"),
+  );
+  assert.deepEqual(exOf(entries), [
+    "noremap ; :",
+    "nnoremap j gj",
+    "nnoremap H ^",
+    "vnoremap H ^",
+    "inoremap <C-h> <Left>",
+    "nnoremap <Esc><Esc> :noh<CR>",
+    "vmap <C-S-X> d",
+    "imap jk <Esc>:w<CR>a",
+  ]);
+  assert.deepEqual(skips(entries), []);
+});
+
+test("the leader is substituted first, and its own key gives up the command it has", () => {
+  assert.deepEqual(exOf(parse('let mapleader = "\\<space>"\nnnoremap <leader>w :w<cr>\nnnoremap <Leader>q :q<cr>')), [
+    "unmap <Space>",
+    "nnoremap <Space>w :w<CR>",
+    "nnoremap <Space>q :q<CR>",
+  ]);
+  assert.deepEqual(exOf(parse(`let g:mapleader=','\nnmap <leader>x y`)), ["unmap ,", "nmap ,x y"]);
+  assert.deepEqual(exOf(parse('let mapleader = " "\nnmap <leader>x y')), ["unmap <Space>", "nmap <Space>x y"]);
+  assert.deepEqual(exOf(parse("nmap <leader>x y")), ["nmap \\x y"], "Vim's default leader");
+  assert.deepEqual(exOf(parse('let maplocalleader = ","\nnmap <localleader>x y\nnmap <leader>x z')), ["unmap ,", "nmap ,x y", "nmap \\x z"]);
+});
+
+test("map arguments are stripped, <expr> is not understood", () => {
+  assert.deepEqual(exOf(parse("nnoremap <silent> <unique> <nowait> <buffer> <script> x :w<cr>")), ["nnoremap x :w<CR>"]);
+  assert.deepEqual(skips(parse("nnoremap <expr> x foo()")), [[1, "expr"]]);
+  assert.deepEqual(skips(parse("nnoremap <silent> <expr> x foo()")), [[1, "expr"]]);
+});
+
+test("<nop> is its own entry with its mode", () => {
+  assert.deepEqual(parse("nnoremap Q <nop>\nnoremap <c-a> <Nop>\nimap <F1> <NOP>\nxnoremap x <nop>"), [
+    { kind: "nop", line: 1, lhs: "Q", context: "normal" },
+    { kind: "nop", line: 2, lhs: "<C-a>", context: null },
+    { kind: "nop", line: 3, lhs: "<F1>", context: "insert" },
+    { kind: "nop", line: 4, lhs: "x", context: "visual" },
+  ]);
+  assert.deepEqual(skips(parse("onoremap x <nop>")), [[1, "mode"]], "no such context in the entry's type");
+});
+
+test("a <nop> on a key that leads other mappings gives the key up instead, or the engine would stop at it", () => {
+  assert.deepEqual(parse("nnoremap <space> <nop>\nnnoremap <space>w :w<cr>"), [
+    { kind: "ex", line: 1, ex: "unmap <Space>" },
+    { kind: "ex", line: 2, ex: "nnoremap <Space>w :w<CR>" },
+  ]);
+  assert.equal(parse("inoremap <c-x> <nop>\nnnoremap <c-x>y z")[0].kind, "nop", "the longer mapping is in another mode");
+});
+
+test("a right-hand side that runs an unknown command skips the whole mapping, so the earlier one survives", () => {
+  const entries = parse(
+    [
+      "noremap ; :",
+      "nnoremap ; :set norelativenumber<cr>:",
+      "nnoremap gc :Commentary<cr>j",
+      "nnoremap <leader>r :so $MYVIMRC<cr>",
+      "nnoremap <leader>l :let @/ = ''<cr>",
+      "nnoremap <leader>c :<c-u>call Foo()<cr>",
+    ].join("\n"),
+  );
+  assert.deepEqual(exOf(entries), ["noremap ; :"]);
+  assert.deepEqual(skips(entries), [
+    [2, "unknownOption"],
+    [3, "unknownEx"],
+    [4, "unknownEx"],
+    [5, "unknownEx"],
+    [6, "unknownEx"],
+  ]);
+});
+
+test("a right-hand side's known commands pass: short names, ranges, set options, a prompt left open", () => {
+  assert.deepEqual(exOf(parse("nnoremap a :noh<cr>")), ["nnoremap a :noh<CR>"]);
+  assert.deepEqual(exOf(parse("nnoremap a :%s/x/y/g<cr>")), ["nnoremap a :%s/x/y/g<CR>"]);
+  assert.deepEqual(exOf(parse("vnoremap a :'<,'>sort<cr>")), ["vnoremap a :'<,'>sort<CR>"]);
+  assert.deepEqual(exOf(parse("nnoremap a :set nopcre<cr>")), ["nnoremap a :set nopcre<CR>"]);
+  assert.deepEqual(exOf(parse("nnoremap a :wincmd h<cr>")), ["nnoremap a :wincmd h<CR>"]);
+  assert.deepEqual(exOf(parse("nnoremap a :tabnew<cr>")), ["nnoremap a :tabnew<CR>"]);
+  assert.deepEqual(exOf(parse("nnoremap a :%s/")), ["nnoremap a :%s/"]);
+  assert.deepEqual(exOf(parse("vnoremap a :<c-u>w<cr>")), ["vnoremap a :w<CR>"], "the engine would type <C-u> into the command");
+});
+
+test("a colon is text in insert mode until the mapping leaves it", () => {
+  assert.deepEqual(exOf(parse("inoremap <c-d> std::vector")), ["inoremap <C-d> std::vector"]);
+  assert.deepEqual(skips(parse("inoremap jk <esc>:Foo<cr>")), [[1, "unknownEx"]]);
+  assert.deepEqual(skips(parse("inoremap jk <c-o>:Foo<cr>")), [[1, "unknownEx"]]);
+});
+
+test('`"` starts a comment on set lines and on its own line, never inside a mapping', () => {
+  assert.deepEqual(exOf(parse('" a comment\nnnoremap x "zyiw\nset pcre " regexes\n   " indented')), ['nnoremap x "zyiw', "set pcre"]);
+});
+
+test("set: one entry per option, each validated; clipboard's += becomes a plain value", () => {
+  const entries = parse(
+    "set nopcre number textwidth=72\nset clipboard+=unnamed\nset clipboard^=unnamedplus\nset cb=unnamed\nset clipboard-=unnamed\nset tw+=2",
+  );
+  assert.deepEqual(exOf(entries), ["set nopcre", "set textwidth=72", "set clipboard=unnamed", "set clipboard=unnamedplus", "set cb=unnamed"]);
+  assert.deepEqual(skips(entries), [
+    [1, "unknownOption"],
+    [5, "unknownOption"],
+    [6, "unknownOption"],
+  ]);
+  assert.deepEqual(exOf(parse("se pcre | setlocal nopcre")), ["set pcre", "set nopcre"]);
+  assert.deepEqual(skips(parse("set pcre | syntax on")), [[1, "script"]]);
+});
+
+test("blocks are skipped whole, one entry at their first line, nesting and one-liners included", () => {
+  const entries = parse(
+    [
+      "if has('win32')",
+      "  nnoremap a b",
+      "  if 1",
+      "    nnoremap c d",
+      "  endif",
+      "endif",
+      "function! Foo() abort",
+      "  set pcre",
+      "endfunction",
+      "augroup mine",
+      "  autocmd!",
+      "  autocmd BufRead * set pcre",
+      "augroup END",
+      "if 1 | set pcre | endif",
+      "nnoremap e f",
+    ].join("\n"),
+  );
+  assert.deepEqual(exOf(entries), ["nnoremap e f"]);
+  assert.deepEqual(skips(entries), [
+    [1, "script"],
+    [7, "script"],
+    [10, "script"],
+    [14, "script"],
+  ]);
+});
+
+test("continuation lines fold into the line they continue, keeping its number", () => {
+  assert.deepEqual(parse('" one\nnnoremap a\n  \\ b\nset pcre'), [
+    { kind: "ex", line: 2, ex: "nnoremap a b" },
+    { kind: "ex", line: 4, ex: "set pcre" },
+  ]);
+});
+
+test("the reasons a line is left out", () => {
+  const cases: [string, string][] = [
+    ["Plug 'tpope/vim-surround'", "plugin"],
+    ["call plug#begin()", "plugin"],
+    ["nmap gc <Plug>Commentary", "plugin"],
+    ["tnoremap <esc> x", "mode"],
+    ["cnoremap x y", "mode"],
+    ["sunmap x", "mode"],
+    ["snoremap x y", "mode"],
+    ["autocmd BufRead * set pcre", "script"],
+    ["let g:foo = 1", "script"],
+    ["call Foo()", "script"],
+    ["colorscheme desert", "script"],
+    ["highlight Normal guibg=NONE", "script"],
+    ["syntax on", "script"],
+    ["nohlsearch", "script"],
+    ["FooBar baz", "unknownEx"],
+    ["set number", "unknownOption"],
+    ["nnoremap <c-w>x y", "app"],
+    ["nnoremap x <C-w>w", "app"],
+    ["nnoremap x", "script"],
+  ];
+  for (const [line, reason] of cases) {
+    assert.deepEqual(skips(parse(line)), [[1, reason]], line);
+    assert.equal(parse(line).length, 1, line);
+  }
+  assert.equal((parse("  FooBar  ")[0] as { text: string }).text, "FooBar", "the text is what the user wrote");
+});
+
+test("mappedKeys lists each mapping's first key by the modes it works in", () => {
+  const keys = mappedKeys(
+    parse("inoremap <c-h> <left>\nnnoremap <c-j>x y\nvmap <c-k> y\nmap <c-l> y\nonoremap <c-o> y\nnoremap Q <nop>\nimap <c-a> <nop>\nset pcre"),
+  );
+  assert.deepEqual([...keys.insert], ["<C-h>", "<C-a>"]);
+  assert.deepEqual([...keys.normal], ["<C-j>", "<C-l>", "<C-o>", "Q"]);
+  assert.deepEqual([...keys.visual], ["<C-k>", "<C-l>", "Q"]);
+});
+
+test("the Ex and option tables match the engine", () => {
+  const source = readFileSync(new URL("../../node_modules/@replit/codemirror-vim-core/vim.js", import.meta.url), "utf8");
+  const map = /var defaultExCommandMap = \[([\s\S]*?)\n\s*\];/.exec(source)![1];
+  const engineEx = [...map.matchAll(/name: '(\w+)'(?:, shortName: '(\w+)')?/g)].map((m) => (m[2] ? [m[1], m[2]] : [m[1]]));
+  const defined = [...source.matchAll(/vimApi\.defineEx\("(\w+)", "(\w+)"/g)].map((m) => [m[1], m[2]]);
+  assert.deepEqual(ENGINE_EX, [...engineEx, ...defined]);
+
+  const options = [...source.matchAll(/defineOption\('(\w+)', [^,]+, '\w+'(?:, \[([^\]]*)\])?/g)].flatMap((m) => [
+    m[1],
+    ...[...(m[2] ?? "").matchAll(/'(\w+)'/g)].map((a) => a[1]),
+  ]);
+  assert.deepEqual(new Set(ENGINE_OPTIONS), new Set(options));
+  for (const name of ENGINE_OPTIONS) {
+    assert.ok(!(Vim.getOption(name) instanceof Error), name);
+  }
+  assert.ok(Vim.getOption("nosuch") instanceof Error, "the engine does report an unknown option");
+});
