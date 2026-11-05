@@ -10,6 +10,8 @@ import type { Screen } from "../library/Nav";
 import { SECTIONS, type SettingsSection } from "../settings/sections";
 import type { LanguageMode } from "../reader/mixed";
 import { useT, type PlainKey } from "../i18n";
+import { useBindings } from "../lib/keys";
+import { ACTIONS, EX_ALIASES, actionLabel, keyLabel, type ActionId } from "../lib/keymap";
 
 export interface PaletteActions {
   scope: (s: Scope) => void;
@@ -66,7 +68,12 @@ interface Command {
   run: (n: number | null) => void;
   /** Label when the query carries a number (">translate 70"). */
   withNumber?: (n: number) => string;
+  /** The key that runs it too, shown on the right. */
+  key?: string;
 }
+
+/** Actions with no meaning here: they act on the list's cursor or the palette itself, or need a key's number. */
+const NOT_COMMANDS = new Set<ActionId>(["escape", "next", "prev", "open", "openPage", "moveUp", "moveDown", "palette", "command", "tabByNumber"]);
 
 const URLISH = /^(https?:\/\/\S+|[\w-]+(\.[\w-]+)+(\/\S*)?)$/i;
 const LIMIT = 5;
@@ -98,6 +105,7 @@ export function Palette({
   scope,
   facets,
   actions,
+  onAction,
   onClose,
 }: {
   initial: string;
@@ -110,9 +118,12 @@ export function Palette({
   scope: Scope;
   facets: Facets;
   actions: PaletteActions;
+  /** Runs a keyboard action picked as a command. */
+  onAction: (id: ActionId) => void;
   onClose: () => void;
 }) {
   const t = useT();
+  const bindings = useBindings();
   const [q, setQ] = useState(initial);
   const [act, setAct] = useState(0);
   /** The saved article at `url`, once asked. */
@@ -235,8 +246,17 @@ export function Palette({
         icon: "gear" as const,
         run: () => actions.settings(s.id),
       })),
+      ...ACTIONS.filter((a) => !a.local && !NOT_COMMANDS.has(a.id)).map((a): Command => ({
+        label: actionLabel(t, a.id),
+        keys: Object.keys(EX_ALIASES)
+          .filter((name) => EX_ALIASES[name] === a.id)
+          .join(" "),
+        icon: "keyboard",
+        key: bindings[a.id][0],
+        run: () => onAction(a.id),
+      })),
     ],
-    [genreCounts, feeds, folders, groups, actions, t],
+    [genreCounts, feeds, folders, groups, actions, onAction, bindings, t],
   );
 
   const items: Item[] = useMemo(() => {
@@ -331,12 +351,19 @@ export function Palette({
       const num = words.map(Number).find((n) => Number.isInteger(n) && n >= 0 && n <= 100) ?? null;
       const terms = words.filter((w) => !/^\d+$/.test(w));
       // Per-genre, per-source and per-group commands only once the query asks for them.
-      const cmds = commands.filter((c) =>
-        terms.length ? terms.every((w) => `${c.label} ${c.keys}`.toLowerCase().includes(w)) : !/^(genre|source|group) /.test(c.keys),
-      );
+      const exactName = (c: Command) => !!tl && c.keys.split(" ").includes(tl);
+      const cmds = commands
+        .filter((c) => (terms.length ? terms.every((w) => `${c.label} ${c.keys}`.toLowerCase().includes(w)) : !/^(genre|source|group) /.test(c.keys)))
+        .sort((a, b) => Number(exactName(b)) - Number(exactName(a)));
       const shownCmds = !prefix && text ? cmds.slice(0, 3) : cmds;
       for (const c of shownCmds) {
-        out.push({ group: "commands", icon: c.icon, label: num != null && c.withNumber ? c.withNumber(num) : c.label, run: () => c.run(num) });
+        out.push({
+          group: "commands",
+          icon: c.icon,
+          label: num != null && c.withNumber ? c.withNumber(num) : c.label,
+          right: c.key && <Kbd>{keyLabel(c.key)}</Kbd>,
+          run: () => c.run(num),
+        });
       }
       if (prefix === ">") {
         return out;

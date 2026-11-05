@@ -900,7 +900,7 @@ export default function App() {
     copyUrl: none,
     print: none,
   };
-  useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
+  const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
 
   // A Reader opened over the one that had the keyboard takes it, so the arrows and Space keep scrolling.
   const shownArticle = curView?.article.id;
@@ -1340,6 +1340,7 @@ export default function App() {
                 scope={scope}
                 facets={facets}
                 actions={paletteActions}
+                onAction={(id) => shortcuts.run(id, 1, "")}
                 onClose={() => setPalette(null)}
               />
             )}
