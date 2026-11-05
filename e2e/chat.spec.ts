@@ -24,9 +24,9 @@ test("the chat budget sends the setting and keeps it when the section is reopene
 test("Vim keys in the chat input: off by default, modes, motions, edits, undo, Ctrl+Enter sends", async ({ app }) => {
   const chatButton = app.locator(".nav").getByRole("button", { name: "対話" });
   await chatButton.click();
-  const q = app.getByLabel("質問", { exact: true });
-  await q.fill("plain");
-  await q.press("Escape");
+  const plain = app.getByLabel("質問", { exact: true });
+  await plain.fill("plain");
+  await plain.press("Escape");
   await expect(app.locator(".vim-mode")).toHaveCount(0);
 
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
@@ -34,34 +34,42 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
   await app.getByLabel("質問の入力欄でVimキーバインドを使う").check();
   await app.keyboard.press("Escape");
 
-  await q.fill("");
+  // What the textarea held goes on in the editor.
+  const q = app.getByRole("textbox", { name: "質問", exact: true });
+  await expect(q).toHaveText("plain");
   await q.focus();
   const mode = app.locator(".chat-f-row .vim-mode");
   await expect(mode).toHaveText("INSERT");
-  await q.pressSequentially("hello big world");
-  await q.press("Escape");
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press("Backspace");
+  await app.keyboard.type("hello big world");
+  await expect(q).toHaveText("hello big world");
+  await app.keyboard.press("Escape");
   await expect(mode).toHaveText("NORMAL");
-  expect(await q.evaluate((t: HTMLTextAreaElement) => t.selectionEnd - t.selectionStart), "block cursor").toBe(1);
-  await q.pressSequentially("zq");
-  await expect(q, "normal mode does not type").toHaveValue("hello big world");
+  await expect(app.locator(".cm-fat-cursor"), "block cursor").toHaveCount(1);
+  await app.keyboard.type("zq");
+  await expect(q, "normal mode does not type").toHaveText("hello big world");
+  await expect(mode).toHaveText("NORMAL");
 
-  await q.pressSequentially("bb");
-  await q.press("d");
+  await app.keyboard.type("bb");
+  await app.keyboard.press("d");
   await expect(mode).toHaveText("NORMAL d");
-  await q.press("w");
-  await expect(q).toHaveValue("hello world");
-  await q.press("u");
-  await expect(q).toHaveValue("hello big world");
-  await q.pressSequentially("0cwhi");
+  await app.keyboard.press("w");
+  await expect(q).toHaveText("hello world");
+  await app.keyboard.press("u");
+  await expect(q).toHaveText("hello big world");
+  await app.keyboard.type("0cwhi");
   await expect(mode).toHaveText("INSERT");
-  await q.press("Escape");
-  await q.pressSequentially("A!");
-  await expect(q).toHaveValue("hi big world!");
-  await q.press("Escape");
+  await app.keyboard.press("Escape");
+  await app.keyboard.type("A!");
+  await expect(q).toHaveText("hi big world!");
+  await app.keyboard.press("Escape");
 
-  await q.press("Control+Enter");
-  expect((await callsOf(app, "chat_ask")).map((a) => (a as { question: string }).question)).toEqual(["hi big world!"]);
+  await app.keyboard.press("Control+Enter");
+  await expect.poll(async () => (await callsOf(app, "chat_ask")).map((a) => (a as { question: string }).question)).toEqual(["hi big world!"]);
+  await expect(app.locator(".chat-f .cm-placeholder"), "the sent question is gone").toBeVisible();
   await expect(mode, "a sent question starts the next one in insert mode").toHaveText("INSERT");
+  await expect(q, "the next question can be typed right away").toBeFocused();
 });
 
 test("the chat scope offers each open article and all of them, and follows the tabs", async ({ app }) => {

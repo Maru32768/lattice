@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "../ui/SetRow";
 import { api, type ChatBudget } from "../api";
-import { setVimEnabled, vimEnabled } from "../chat/vim";
+import { setVimEnabled, vimEnabled } from "../vim/vim";
 import { useT, type PlainKey } from "../i18n";
 
 // Sizes mirror `chat::Budget::limits` (context characters per question).
