@@ -459,3 +459,9 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 .first-cards .muted { font-size: 12px; }
 .first-run p { margin: 0; font-size: 12px; }
 .linkish { padding: 0; border: 0; background: none; color: var(--acc); text-decoration: underline; font-size: inherit; }
+
+/* Printing the Reader: the focused document alone, at its full length. */
+@media print {
+  html, body, #root, .shell, .app, .doc-area-wrap, .doc-area, .split, .cell, .dpane, .doc, .doc-body, .doc-scroll { display: block !important; height: auto !important; overflow: visible !important; }
+  .shell > :not(.app), .app > :not(.doc-area-wrap), .doc-area-wrap > :not(.doc-area), .dpane:not(.focused), .dpane > .tabs, .dpane .docbar, .dpane .splitter { display: none !important; }
+}
