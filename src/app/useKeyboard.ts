@@ -1,11 +1,12 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser } from "../api";
 import { getBindings, useBindings } from "../lib/keys";
 import { IDLE, actionFor, chordFrom, keyOf, pageKeys, scopeOf, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
-import { focus as focusLayout, pageByKey, tabById, type Workspace } from "../layout/layout";
+import { focus as focusLayout, pageByKey, tabById, unzoom, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
 import { IS_MAIN } from "./host";
 
@@ -76,7 +77,8 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     }
     const t = pageByKey(layout, tab);
     const hit = t && tabById(layout, t.id);
-    if (!hit) {
+    // A page out of sight under the zoom can get the focus as one hidden behind its still does: the user chose nothing.
+    if (!hit || (layout.zoomed != null && layout.zoomed !== hit.pane.id)) {
       return;
     }
     setLayout((l) => focusLayout(l, hit.pane.id));
@@ -111,6 +113,30 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     browser.focus(tab).catch(() => {});
   };
 
+  /** The keyboard goes into pane `p`, whichever kind it is; a document pane also takes the focus. */
+  const enterPane = (p: HTMLElement) => {
+    const page = pageIn(p);
+    if (page) {
+      focusPage(page);
+    } else {
+      focusPane(p);
+    }
+    setKbPane(p.dataset.pane!);
+    if (p.dataset.paneId) {
+      setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+    }
+  };
+
+  /** The focus goes to document pane `id` and the keyboard with it: from a document, `followDoc` takes it along once that pane is on screen. */
+  const enterDoc = (id: number) => {
+    const p = paneById(id);
+    if (p && keyPane()?.dataset.pane !== "doc") {
+      enterPane(p);
+    } else {
+      setLayout((l) => focusLayout(l, id));
+    }
+  };
+
   /**
    * The keyboard goes to what document pane `id` shows (a page by its webview's key, else the app's
    * own document): for when a key or a closing overlay changed that. Only from the document: a list
@@ -130,7 +156,7 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     pane?.querySelector<HTMLElement>(".doc-scroll")?.focus();
   };
 
-  return { kbPane, setKbPane, keyPane, setLastPane, focusPage, followDoc };
+  return { kbPane, setKbPane, keyPane, setLastPane, focusPage, enterPane, enterDoc, followDoc };
 }
 
 /**
@@ -189,19 +215,13 @@ export function useShortcuts({
 
   /** The pane focus moved to, if any. */
   function movePane(move: PaneMove, from: HTMLElement | null): HTMLElement | null {
+    // Zoomed, no other pane is on screen to measure: as in tmux, the move ends the zoom and goes by where the panes then are.
+    if (layout.zoomed != null) {
+      flushSync(() => setLayout(unzoom));
+    }
     const p = paneAfter(move, from);
-    if (!p) {
-      return null;
-    }
-    const page = pageIn(p);
-    if (page) {
-      focus.focusPage(page);
-    } else {
-      focusPane(p);
-    }
-    focus.setKbPane(p.dataset.pane!);
-    if (p.dataset.paneId) {
-      setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
+    if (p) {
+      focus.enterPane(p);
     }
     return p;
   }
