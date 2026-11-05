@@ -9,28 +9,22 @@ import { focus as focusLayout, pageByKey, tabById, type Workspace } from "../lay
 import { openOverlays, pageClickable } from "../ui/Popover";
 import { IS_MAIN } from "./host";
 
-/** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>([
-  "palette",
-  "command",
-  "keyHelp",
-  "view",
-  "newTab",
-  "closeTab",
-  "nextTab",
-  "prevTab",
-  "tabByNumber",
-  "tabList",
-  "splitRight",
-  "splitDown",
-  "popOut",
-]);
+/** Shortcuts that, pressed in the page, open something in the app: the page's webview gives up the keyboard. */
+const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab", "tabList", "popOut"]);
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
 const HINT_MS = 400;
 
 type SetLayout = (f: (l: Workspace) => Workspace) => void;
+
+const focusApp = () =>
+  getCurrentWebview()
+    .setFocus()
+    .catch(() => {});
+
+const focusedDoc = () => document.querySelector<HTMLElement>(".dpane.focused");
+const paneById = (id: number) => document.querySelector<HTMLElement>(`[data-pane-id='${id}']`);
 
 /** The page pane `p` shows, by its webview's key. */
 const pageIn = (p: Element | null) => p?.querySelector<HTMLElement>("[data-page-key]")?.dataset.pageKey;
@@ -89,27 +83,54 @@ export function usePaneFocus(layout: Workspace, setLayout: SetLayout) {
     if (!keyed) {
       setKbPane(null);
     }
-    lastPane.current = document.querySelector<HTMLElement>(`[data-pane-id='${hit.pane.id}']`);
+    lastPane.current = paneById(hit.pane.id);
   });
   useEffect(() => {
     const sub = listen<{ tab: string }>("browser-focus", (e) => onPageFocus(e.payload.tab));
     return () => void sub.then((f) => f());
   }, []);
 
-  /** The pane the keyboard is in: the one with DOM focus, else the last it or the pointer was in, while that is still on screen. */
-  const keyPane = () => paneOf(document.activeElement) ?? (lastPane.current?.isConnected ? lastPane.current : null);
+  /**
+   * The pane the keyboard is in: the one with DOM focus, else the last it or the pointer was in,
+   * while that is still on screen. A document pane stands for the documents: whichever is focused by
+   * now, as a split or a close moves that.
+   */
+  const keyPane = () => {
+    const last = lastPane.current;
+    return paneOf(document.activeElement) ?? (last?.dataset.paneId ? focusedDoc() : last?.isConnected ? last : null);
+  };
   const setLastPane = (p: HTMLElement | null) => {
     lastPane.current = p;
   };
 
   /** The keyboard goes to the page `tab`; what the app focused last is stale from here on. */
   const focusPage = (tab: string) => {
+    lastPane.current = focusedDoc();
     keyedPage.current = tab;
     (document.activeElement as HTMLElement | null)?.blur();
     browser.focus(tab).catch(() => {});
   };
 
-  return { kbPane, setKbPane, keyPane, setLastPane, focusPage };
+  /**
+   * The keyboard goes to what document pane `id` shows (a page by its webview's key, else the app's
+   * own document): for when a key or a closing overlay changed that. Only from the document: a list
+   * that opens articles keeps its cursor, and a field or a tab in that pane keeps what it has.
+   */
+  const followDoc = (id: number, shown: string | number | undefined) => {
+    const active = document.activeElement as HTMLElement;
+    const pane = paneById(id);
+    if (keyPane()?.dataset.pane !== "doc" || (active !== document.body && pane?.contains(active))) {
+      return;
+    }
+    if (typeof shown === "string") {
+      return focusPage(shown);
+    }
+    active.blur();
+    void focusApp();
+    pane?.querySelector<HTMLElement>(".doc-scroll")?.focus();
+  };
+
+  return { kbPane, setKbPane, keyPane, setLastPane, focusPage, followDoc };
 }
 
 /**
@@ -174,7 +195,6 @@ export function useShortcuts({
     }
     const page = pageIn(p);
     if (page) {
-      focus.setLastPane(p);
       focus.focusPage(page);
     } else {
       focusPane(p);
@@ -267,15 +287,11 @@ export function useShortcuts({
     if (!key) {
       return keySeq.track(IDLE);
     }
-    const focusApp = () =>
-      getCurrentWebview()
-        .setFocus()
-        .catch(() => {});
     // What the app focused last is stale (j / k in the nav would step the nav).
     (document.activeElement as HTMLElement | null)?.blur();
     const page = pageByKey(layout, tab);
     const pane = page && tabById(layout, page.id)?.pane.id;
-    const paneEl = document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`);
+    const paneEl = pane == null ? null : paneById(pane);
     if (pane != null) {
       setLayout((l) => focusLayout(l, pane));
       focus.setLastPane(paneEl);

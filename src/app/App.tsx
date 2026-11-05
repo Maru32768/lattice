@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { emit, emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
@@ -755,8 +755,6 @@ export default function App() {
   // ---- keyboard -----------------------------------------------------------------------------
   const paneFocus = usePaneFocus(layout, setLayout);
   const keySeq = useKeySeq();
-  /** `J` / `K` replaced the Reader that had the keyboard; the next one shown takes it. */
-  const keepDocFocus = useRef(false);
 
   const step = (d: number) => {
     const nav = paneOf(document.activeElement);
@@ -793,7 +791,6 @@ export default function App() {
     const a = articleFrom(selectedId, d);
     if (a && a.id !== selectedId) {
       openArticle(a);
-      keepDocFocus.current = true;
     }
   };
 
@@ -905,14 +902,15 @@ export default function App() {
   };
   const shortcuts = useShortcuts({ actions, keySeq, layout, setLayout, focus: paneFocus });
 
-  // A Reader opened over the one that had the keyboard takes it, so the arrows and Space keep scrolling.
-  const shownArticle = curView?.article.id;
+  // What the focused pane comes to show takes the keyboard, so the keys go on working: a tab, a split, `J`, an overlay closing.
+  const overlaid = palette != null || keyHelp;
+  const shownDoc = cur?.kind === "page" ? cur.key : curView?.article.id;
+  const followDoc = useEffectEvent((pane: number, shown: typeof shownDoc) => paneFocus.followDoc(pane, shown));
   useEffect(() => {
-    if (shownArticle != null && keepDocFocus.current) {
-      keepDocFocus.current = false;
-      document.querySelector<HTMLElement>(".dpane.focused .doc-scroll")?.focus();
+    if (!overlaid && screen === "library") {
+      followDoc(layout.focused, shownDoc);
     }
-  }, [shownArticle]);
+  }, [layout.focused, shownDoc, overlaid, screen]);
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
