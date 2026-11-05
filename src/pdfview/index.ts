@@ -337,21 +337,25 @@ const wasStopped = (e: unknown) => e instanceof Error && (e.name === "RenderingC
 /** Draws a page at its width on screen; again when that changes. */
 async function draw(page: PDFPageProxy, host: HTMLElement) {
   const width = drawnWidth(host);
-  if (!width || host.dataset.drawn === String(width)) {
+  if (!width) {
+    return;
+  }
+  const pageWidth = page.getViewport({ scale: 1 }).width;
+  const cssViewport = page.getViewport({ scale: host.clientWidth / pageWidth });
+  const text = host.querySelector<HTMLElement>(".textLayer")!;
+  // Before the check below: at `MAX_DRAWN_WIDTH` the canvas stays as it is while the page grows, and the selectable text must keep up.
+  text.style.setProperty("--total-scale-factor", String(cssViewport.scale));
+  if (host.dataset.drawn === String(width)) {
     return;
   }
   drawing.get(host)?.cancel();
   host.dataset.drawn = String(width);
-  const pageWidth = page.getViewport({ scale: 1 }).width;
   const { canvas, task } = startDrawing(page, width);
   drawing.set(host, task);
   await task.promise;
   host.querySelector("canvas")?.remove();
   host.prepend(canvas);
-  const text = host.querySelector<HTMLElement>(".textLayer")!;
   text.replaceChildren();
-  const cssViewport = page.getViewport({ scale: host.clientWidth / pageWidth });
-  text.style.setProperty("--total-scale-factor", String(cssViewport.scale));
   const layer = new TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport: cssViewport });
   drawing.set(host, layer);
   await layer.render();
@@ -538,7 +542,8 @@ addEventListener(
   { passive: false },
 );
 addEventListener("keydown", (e) => {
-  const next = !e.ctrlKey ? null : e.key === "+" || e.key === "=" ? zoom * ZOOM_STEP : e.key === "-" ? zoom / ZOOM_STEP : e.key === "0" ? 1 : null;
+  // No Ctrl+- to zoom out: that is the app's 下に分割, which the overlay forwards before this sees it.
+  const next = !e.ctrlKey ? null : e.key === "+" || e.key === "=" ? zoom * ZOOM_STEP : e.key === "0" ? 1 : null;
   if (next != null) {
     e.preventDefault();
     setZoom(next);

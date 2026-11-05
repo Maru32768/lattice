@@ -620,10 +620,12 @@ function hideSave() {
 /** The PDF viewer's paragraph lying over a selection in its text layer, whose elements are a line's run each. */
 function paragraphOver(range: Range, el: Element, text: string): string | null {
   const at = range.getBoundingClientRect();
+  // Its middle: pdf.js rounds a run's place, so a line's first word can start just outside the paragraph's box.
+  const [x, y] = [at.left + at.width / 2, at.top + at.height / 2];
   const regions = el.closest(".textLayer")?.parentElement?.querySelectorAll(".region") ?? [];
   for (const region of regions) {
     const box = region.getBoundingClientRect();
-    if (at.left >= box.left && at.right <= box.right && at.top >= box.top && at.bottom <= box.bottom && region.textContent?.includes(text)) {
+    if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom && region.textContent?.includes(text)) {
       return region.textContent;
     }
   }

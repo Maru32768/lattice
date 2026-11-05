@@ -346,9 +346,7 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
         }
     }
     for (snippet, result) in snippets.iter().zip(&mut out.results) {
-        if let Some((units, _)) = result {
-            *units = keep_scripts(snippet, std::mem::take(units));
-        }
+        *result = result.take().and_then(|(units, origin)| Some((keep_scripts(snippet, units)?, origin)));
     }
 
     out
@@ -360,12 +358,14 @@ pub(crate) fn scripted(html: &str) -> bool {
 }
 
 /// A model may drop a snippet's scripts from its sources. `saved_units` takes flat units for a plain
-/// block's and asks again on every view, so these become one unit whose source has the scripts.
-fn keep_scripts(snippet: &str, units: Vec<Unit>) -> Vec<Unit> {
+/// block's and asks again on every view, so these become one unit whose source has the scripts. None
+/// when that unit lost a ⟦n⟧ token: the overlay would not show it, and it is not worth saving.
+fn keep_scripts(snippet: &str, units: Vec<Unit>) -> Option<Vec<Unit>> {
     if scripted(snippet) && !units.iter().any(|u| scripted(&u.source)) {
-        return vec![Unit { source: snippet.to_string(), translation: joined_translation(&units) }];
+        let whole = Unit { source: snippet.to_string(), translation: joined_translation(&units) };
+        return keeps_atoms(&whole).then(|| vec![whole]);
     }
-    units
+    Some(units)
 }
 
 /// Snippet HTML for an IR block, in the same shape the page overlay sends:
@@ -579,11 +579,14 @@ pub(crate) mod tests {
         let unit = |source: &str, translation: &str| Unit { source: source.into(), translation: translation.into() };
         let snippet = "E=mc<sup>2</sup> holds. It is known.";
         let flat = vec![unit("E=mc2 holds. ", "成り立つ。"), unit("It is known.", "知られている。")];
-        assert_eq!(keep_scripts(snippet, flat), [unit(snippet, "成り立つ。知られている。")]);
+        assert_eq!(keep_scripts(snippet, flat), Some(vec![unit(snippet, "成り立つ。知られている。")]));
         let kept = vec![unit("E=mc<sup>2</sup> holds. ", "成り立つ。"), unit("It is known.", "知られている。")];
-        assert_eq!(keep_scripts(snippet, kept.clone()), kept, "the sentences stay when the scripts did");
+        assert_eq!(keep_scripts(snippet, kept.clone()), Some(kept), "the sentences stay when the scripts did");
         let plain = vec![unit("One. ", "一。"), unit("Two.", "二。")];
-        assert_eq!(keep_scripts("One. Two.", plain.clone()), plain);
+        assert_eq!(keep_scripts("One. Two.", plain.clone()), Some(plain));
+        let with_token = "E=mc<sup>2</sup> ⟦1⟧ holds. It is known.";
+        let lost = vec![unit("E=mc2 ⟦1⟧ holds. ", "成り立つ。"), unit("It is known.", "知られている。")];
+        assert_eq!(keep_scripts(with_token, lost), None, "what the overlay would refuse each time is not saved");
     }
 
     #[tokio::test]
