@@ -10,6 +10,7 @@ import {
   focusedPane,
   move,
   open,
+  paneById,
   panes,
   resize,
   split,
@@ -180,13 +181,14 @@ function NodeView({
   if (n.kind === "split") {
     // `sizes` has one share per child (layout.ts keeps them together).
     const sizeOf = (i: number) => n.sizes[i] ?? 1 / n.children.length;
+    const { zoomed } = layout;
     return (
       <div className={`split ${n.dir === "row" ? "across" : "down"}`}>
         {withStarts(n.children, (c) => panes(c).length, index).map(({ item: c, start }, i) => {
           const size = sizeOf(i - 1);
           return (
             <Fragment key={c.id}>
-              {i > 0 && (
+              {i > 0 && zoomed == null && (
                 <SplitHandle
                   dir={n.dir}
                   size={size}
@@ -199,7 +201,12 @@ function NodeView({
                   }
                 />
               )}
-              <div className="cell" style={{ flex: `${sizeOf(i)} 1 0px` }}>
+              {/* Hidden, not unmounted: a Reader under the zoom keeps its scroll. */}
+              <div
+                className="cell"
+                hidden={zoomed != null && !panes(c).some((p) => p.id === zoomed)}
+                style={{ flex: zoomed == null ? `${sizeOf(i)} 1 0px` : "1 1 0px" }}
+              >
                 <NodeView
                   n={c}
                   layout={layout}
@@ -471,7 +478,7 @@ export function DocArea({
         onDrag={drag}
         onDrop={() => void tabDrag.release(false).catch(() => {})}
         index={0}
-        title={movable ? topStrips(layout.root) : null}
+        title={movable ? topStrips((layout.zoomed != null && paneById(layout, layout.zoomed)) || layout.root) : null}
       />
     </div>
   );

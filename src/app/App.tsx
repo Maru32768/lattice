@@ -40,10 +40,13 @@ import {
   closePane,
   closeWhere,
   cycle,
+  focus as focusLayout,
   focusedPane,
   open,
   split,
   tabById,
+  toggleZoom,
+  unzoom,
   update,
   type Id,
   type Pane,
@@ -250,6 +253,7 @@ export default function App() {
     setScopeState(s);
     setFacets(NO_FACETS);
     setScreen("library");
+    setLayout(unzoom);
     if (search?.query) {
       runSearch(search.query);
     }
@@ -261,6 +265,7 @@ export default function App() {
     }
     setScreen("library");
     setListOpen(true);
+    setLayout(unzoom);
     startSearch(q);
   }
 
@@ -270,6 +275,7 @@ export default function App() {
     }
     setScreen("library");
     setListOpen(true);
+    setLayout(unzoom);
     enter();
   }
 
@@ -571,6 +577,7 @@ export default function App() {
       return;
     }
     win.setChatOpen(true);
+    setLayout(unzoom);
     if (key) {
       chat.askScope(key);
     }
@@ -621,6 +628,7 @@ export default function App() {
       case "chatDocked":
         win.setChatWindow(false);
         win.setChatOpen(true);
+        setLayout(unzoom);
         break;
       // Closed, not docked: the next 対話 opens the dock, as after a restart.
       case "chatClosed":
@@ -693,6 +701,7 @@ export default function App() {
       }
       setFacets(f);
       setScreen("library");
+      setLayout(unzoom);
     },
     open: (a, t) => openReader(a.id, undefined, whereFromPalette(t)),
     page: (url, t) => openPage(url, undefined, undefined, whereFromPalette(t)),
@@ -766,12 +775,6 @@ export default function App() {
     }
   };
 
-  const toggleFocusMode = () => {
-    const collapse = navOpen || listOpen;
-    setNavOpen(!collapse);
-    setListOpen(!collapse);
-  };
-
   const scrollPane = (id: DocScroll) => (count: number) => {
     const chat = paneFocus.keyPane()?.dataset.pane === "chat";
     // A page scrolls itself: the key reached the app only because the app held the keyboard, which goes back.
@@ -821,7 +824,12 @@ export default function App() {
     prevArticle: (n) => stepArticle(-n),
     favorite: () => void (current && toggleFavorite(current)),
     read: () => void (current && toggleRead(current)),
-    focus: toggleFocusMode,
+    focus: () => {
+      setScreen("library");
+      setLayout(toggleZoom);
+      // What the zoom hides cannot keep the keyboard.
+      paneFocus.enterDoc(layout.focused);
+    },
     view: toggleView,
     summary: () => {
       if (cur?.kind === "reader" || cur?.kind === "page") {
@@ -1046,8 +1054,8 @@ export default function App() {
     const articleActs = (a: ArticleRow, page: boolean): DocActions => {
       const vAct = (task: (id: number) => Promise<unknown>) => () => void act(() => task(a.id), a.id);
       return {
-        focusMode: !navOpen && !listOpen,
-        onFocusMode: toggleFocusMode,
+        focusMode: layout.zoomed === pane.id,
+        onFocusMode: () => setLayout((l) => toggleZoom(focusLayout(l, pane.id))),
         onFavorite: () => void toggleFavorite(a),
         onToggleRead: () => void toggleRead(a),
         onAsk: () => openChat("article"),
@@ -1069,6 +1077,7 @@ export default function App() {
         <BrowserView
           key={tab.id}
           tab={tab}
+          hidden={layout.zoomed != null && layout.zoomed !== pane.id}
           saved={saved}
           view={saved && (views.get(saved.id) ?? null)}
           act={saved && articleActs(saved, true)}
@@ -1154,7 +1163,7 @@ export default function App() {
         {IS_MAIN && <UpdateNotice onOpenUrl={(url) => openPage(url)} />}
         <ContextMenu label={t("articleMenu.label")} items={ctxItems} targets={MENU_TARGETS}>
           <div
-            className="app"
+            className={screen === "library" && layout.zoomed != null ? "app zoomed" : "app"}
             data-kb-pane={paneFocus.kbPane ?? undefined}
             style={
               {

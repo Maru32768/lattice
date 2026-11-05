@@ -142,6 +142,7 @@ function UrlBar({ url, editAt, onGo }: { url: string; editAt: number; onGo: (inp
  */
 export function BrowserView({
   tab,
+  hidden,
   saved,
   view,
   act,
@@ -156,6 +157,8 @@ export function BrowserView({
   onError,
 }: {
   tab: PageTab;
+  /** Its pane is out of sight, another being zoomed: the view stays mounted, so the webview follows by this. */
+  hidden: boolean;
   saved: ArticleRow | null;
   /** The saved article's view (its summary), once loaded. */
   view: ArticleView | null;
@@ -216,7 +219,7 @@ export function BrowserView({
     return w && w.page === page && performance.now() - w.at < maxAge ? w : null;
   };
   const warmUp = useEffectEvent(() => {
-    if (covered || warmFor(WARM_MS / 2)) {
+    if (hidden || covered || warmFor(WARM_MS / 2)) {
       return;
     }
     warm.current = { png: grab(), at: performance.now(), page };
@@ -240,7 +243,7 @@ export function BrowserView({
         opening.current = false;
       });
   });
-  const placeable = useEffectEvent(() => !covered && !opening.current);
+  const placeable = useEffectEvent(() => !hidden && !covered && !opening.current);
   /** The bounds last sent; `follow` sends again only on a change. */
   const sent = useRef("");
   const sync = useEffectEvent(async () => {
@@ -300,6 +303,12 @@ export function BrowserView({
 
   useEffect(() => {
     let live = true;
+    // At once and with no still: nothing shows where it was, and until it hides it lies over the pane that grew.
+    if (hidden) {
+      pageDrawn(id, null);
+      browser.hide(id).catch(() => {});
+      return;
+    }
     if (!covered) {
       pageDrawn(id, () => host.current?.getBoundingClientRect());
       void (async () => {
@@ -333,7 +342,7 @@ export function BrowserView({
     return () => {
       live = false;
     };
-  }, [id, covered]);
+  }, [id, covered, hidden]);
 
   useEffect(() => {
     const resize = () => {
