@@ -261,6 +261,45 @@ test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
   await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
 });
 
+test("Ctrl+B } and { swap the focused pane with the next and the previous; the focus goes with its tabs", async ({ shell }) => {
+  await open(shell, across(90, pane(1, reader(2, 0)), pane(3, reader(4, 1)), pane(5, reader(6, 2))), 1);
+  const titles = shell.locator(".dpane .art-title");
+  await expect(titles).toHaveText([label(0), label(1), label(2)]);
+  await list(shell).locator(".row").first().focus();
+  await shell.keyboard.press("Control+l");
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+
+  await press(shell, "Control+b", "}");
+  await expect(titles).toHaveText([label(1), label(0), label(2)]);
+  await expect(focusedTitle(shell)).toHaveText(label(0));
+  await expect(panes(shell).nth(1).locator(".doc-scroll"), "the keyboard goes along").toBeFocused();
+
+  await press(shell, "Control+b", "{");
+  await expect(titles).toHaveText([label(0), label(1), label(2)]);
+  await expect(focusedTitle(shell)).toHaveText(label(0));
+
+  await press(shell, "Control+b", "{");
+  await expect(titles, "from the first it wraps to the last").toHaveText([label(2), label(1), label(0)]);
+  await expect(panes(shell).nth(2)).toHaveClass(/focused/);
+});
+
+test("a swap places both pages' webviews where their tabs now are, without reloading them", async ({ shell }) => {
+  await twoPages(shell);
+  const xOf = async (key: string) =>
+    ((await callsOf(shell, "browser_set_bounds")) as { tab: string; bounds: { x: number } }[]).findLast((c) => c.tab === key)?.bounds.x;
+  await expect.poll(() => xOf("k2")).toBeGreaterThan(0);
+  const [left, right] = [await xOf("k1"), await xOf("k2")];
+  const opened = (await callsOf(shell, "browser_open")).length;
+
+  await press(shell, "Control+b", "}");
+  await expect.poll(() => xOf("k1")).toBe(right);
+  await expect.poll(() => xOf("k2")).toBe(left);
+  expect(await callsOf(shell, "browser_open")).toHaveLength(opened);
+  await shell.waitForTimeout(300);
+  expect(await lastOf(shell, "k1"), "the move's unmount sent no hide after the show").toBe("browser_set_bounds");
+  expect(await lastOf(shell, "k2")).toBe("browser_set_bounds");
+});
+
 test("Ctrl+B Shift+E evens out every split", async ({ shell }) => {
   await open(shell, across(90, pane(1, reader(2, 0)), down(91, pane(3, reader(4, 1)), pane(5, reader(6, 2)))), 3);
   await press(shell, "Control+b", "Shift+H");
