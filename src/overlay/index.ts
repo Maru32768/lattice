@@ -619,6 +619,7 @@ function ensureSaveButton() {
 
 function hideSave() {
   clearTimeout(saveTimer);
+  offered = null;
   if (saveBtn) {
     saveBtn.btn.style.display = "none";
   }
