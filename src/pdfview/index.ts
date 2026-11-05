@@ -308,6 +308,11 @@ function regionEl(r: Region, width: number, height: number) {
       el.append(runNode(run));
     }
   }
+  // What `]]` goes to, and what a screen reader calls it.
+  if (r.level != null) {
+    el.role = "heading";
+    el.ariaLevel = String(r.level);
+  }
   boxes.set(el, { top: r.y0 / height, height: (r.y1 - r.y0) / height, up: r.room_up / height, down: r.room_down / height });
   Object.assign(el.style, {
     left: percent(r.x0, width),
@@ -492,6 +497,12 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     pages.append(host);
     visible.observe(host);
     resized.observe(host);
+  }
+  // A PDF with no headings found: `]]` goes by page.
+  if (!placed.some((r) => r.level != null)) {
+    places.forEach(({ host }) => {
+      host.dataset.docHeading = "1";
+    });
   }
   // The overlay changes a region's text and state: only ever its children and that attribute, never its style.
   new MutationObserver((records) => {
