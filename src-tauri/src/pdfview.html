@@ -36,6 +36,8 @@
         line-height: 1;
         text-size-adjust: none;
         transform-origin: 0 0;
+        /* Each span is a layer of its own: with every page's text kept, a hit test took 5 ms on 25 pages. */
+        content-visibility: auto;
       }
       .textLayer span,
       .textLayer br {

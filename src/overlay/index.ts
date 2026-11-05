@@ -69,6 +69,8 @@ declare global {
       snapshot(nonce: string, wait?: { quietMs: number; maxMs: number } | null): Promise<void>;
       /** Runs a document action in this page (`browser_run_doc`). */
       runDoc(action: ActionId, count: number): void;
+      /** The PDF viewer's: draws the text of all its pages. */
+      allText?(more: () => void): void;
     };
     __TAURI_INTERNALS__?: { invoke: Invoke };
   }
@@ -737,6 +739,7 @@ const pageDoc: DocHost = {
   ask: (quote) => void invoke("overlay_ask", { quote }).catch(() => {}),
   history: (d) => history.go(d),
   print: () => window.print(),
+  allText: (more) => window.__lattice?.allText?.(more),
 };
 const docNav = createDocNav(() => pageDoc);
 

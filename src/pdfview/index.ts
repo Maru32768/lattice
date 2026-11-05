@@ -336,6 +336,46 @@ function startDrawing(page: PDFPageProxy, width: number) {
 
 /** What is being drawn on each page: a page scrolled past or drawn anew stops it, or it runs on and holds its canvas. */
 const drawing = new WeakMap<HTMLElement, { cancel(): void }>();
+/** Each page's selectable text, once begun. It follows a zoom by itself, through `--total-scale-factor`, so a selection outlives one. */
+const texts = new WeakMap<HTMLElement, { layer: TextLayer; done: Promise<unknown> }>();
+/** The overlay's find and a long selection reach over every page: from then on `forget` leaves the text alone. */
+let keepText = false;
+
+function drawText(page: PDFPageProxy, host: HTMLElement) {
+  let text = texts.get(host);
+  if (!text) {
+    const container = host.querySelector<HTMLElement>(".textLayer")!;
+    const viewport = page.getViewport({ scale: host.clientWidth / page.getViewport({ scale: 1 }).width });
+    container.style.setProperty("--total-scale-factor", String(viewport.scale));
+    const layer = new TextLayer({ textContentSource: page.streamTextContent(), container, viewport });
+    text = { layer, done: layer.render() };
+    texts.set(host, text);
+  }
+  return text.done;
+}
+
+/**
+ * Draws the text of every page, those far from the screen too; `more` says that some came.
+ * shortcut: it stays until the PDF closes, about 300 spans and 10 ms a page, so a thousand pages hold 300000 spans; drop the pages far from a selection if such PDFs turn up.
+ */
+function allText(more: () => void) {
+  keepText = true;
+  void (async () => {
+    let told = performance.now();
+    // `places` may still be growing: a for-of takes in what is added on the way.
+    for (const { page, host } of places) {
+      await drawText(page, host);
+      if (performance.now() - told > 200) {
+        more();
+        told = performance.now();
+      }
+    }
+    more();
+  })().catch((e: unknown) => console.warn("[lattice] drawing a PDF's text", e));
+}
+if (window.__lattice) {
+  window.__lattice.allText = allText;
+}
 
 const wasStopped = (e: unknown) => e instanceof Error && (e.name === "RenderingCancelledException" || e.name === "AbortException");
 
@@ -360,10 +400,7 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   await task.promise;
   host.querySelector("canvas")?.remove();
   host.prepend(canvas);
-  text.replaceChildren();
-  const layer = new TextLayer({ textContentSource: page.streamTextContent(), container: text, viewport: cssViewport });
-  drawing.set(host, layer);
-  await layer.render();
+  await drawText(page, host);
 }
 
 /** A long PDF would hold hundreds of MB of canvases: only pages near the screen keep theirs. */
@@ -371,7 +408,11 @@ function forget(host: HTMLElement) {
   drawing.get(host)?.cancel();
   delete host.dataset.drawn;
   host.querySelector("canvas")?.remove();
-  host.querySelector(".textLayer")?.replaceChildren();
+  if (!keepText) {
+    texts.get(host)?.layer.cancel();
+    texts.delete(host);
+    host.querySelector(".textLayer")?.replaceChildren();
+  }
 }
 
 /**
