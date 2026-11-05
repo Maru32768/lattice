@@ -349,10 +349,12 @@ export function useShortcuts({
     actions[action.id](count, key);
   });
 
-  // The engine in a Vim editor would use the app's keys and stop them (Ctrl+B is its page up), so the app reads them
-  // first and keeps those it claims. A key the vimrc maps in this mode is the engine's, unless it ends a chord under way.
-  const onEditorKey = useEffectEvent((e: KeyboardEvent, editor: Element) => {
-    if (keySeq.seq.current.first || !vimBridge.owns(e, editor)) {
+  // The engine in a Vim editor would use the app's keys and stop them (Ctrl+B is its page up), and the find bar stops what
+  // is typed in it, so the app reads these first and keeps those it claims. A key the vimrc maps in this mode is the
+  // engine's. The second key of a chord under way is the app's wherever it lands.
+  const onCaptureKey = useEffectEvent((e: KeyboardEvent) => {
+    const editor = (e.target as Element).closest(EDITOR);
+    if (keySeq.seq.current.first || (editor && !vimBridge.owns(e, editor))) {
       onKey(e);
       if (e.defaultPrevented) {
         e.stopPropagation();
@@ -362,12 +364,7 @@ export function useShortcuts({
   const onEditorAction = useEffectEvent((id: ActionId) => run(id, 1, ""));
 
   useEffect(() => {
-    const capture = (e: KeyboardEvent) => {
-      const editor = (e.target as Element).closest(EDITOR);
-      if (editor) {
-        onEditorKey(e, editor);
-      }
-    };
+    const capture = (e: KeyboardEvent) => onCaptureKey(e);
     const down = (e: KeyboardEvent) => {
       if (!(e.target as Element).closest(EDITOR)) {
         onKey(e);

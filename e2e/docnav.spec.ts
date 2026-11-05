@@ -392,6 +392,46 @@ test("a mode ends for a key of the app's, whose own keys then work", async ({ re
   await reader.keyboard.press("Escape");
 });
 
+test("an app key from the find bar ends the find, and the keyboard stays where the key sent it", async ({ reader }) => {
+  const find = async () => {
+    await reader.keyboard.press("/");
+    await reader.keyboard.type("needle");
+    await expect.poll(async () => (await drawn(reader)).text).toContain("1/2");
+  };
+  await find();
+  await reader.keyboard.press("Control+p");
+  await expect(palette(reader)).toBeVisible();
+  await expect.poll(async () => (await drawn(reader)).open, "the find ended").toBe(false);
+  await expect(palette(reader).getByRole("combobox")).toBeFocused();
+  await reader.keyboard.type("x");
+  await expect(palette(reader).getByRole("combobox"), "the palette types").toHaveValue("x");
+  await reader.keyboard.press("Escape");
+  await expect(reader.locator(".doc-scroll"), "and the palette gives it back").toBeFocused();
+
+  await find();
+  await reader.keyboard.press("Control+h");
+  await expect.poll(async () => (await drawn(reader)).open).toBe(false);
+  await expect(reader.locator("[data-pane='list']").locator(":focus"), "a pane move is not undone").toHaveCount(1);
+  await reader.keyboard.press("Control+l");
+  await expect(reader.locator(".doc-scroll")).toBeFocused();
+
+  await find();
+  await press(reader, "Control+b", "w");
+  await expect(palette(reader)).toBeVisible();
+  await expect.poll(async () => (await drawn(reader)).open).toBe(false);
+  await reader.keyboard.type("x");
+  await expect(palette(reader).getByRole("combobox"), "the chord's second key was not typed in the bar").toHaveValue(/x$/);
+});
+
+test("a Ctrl key that is no app key stays in the find bar", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await reader.keyboard.press("Control+a");
+  await reader.keyboard.type("Three");
+  await expect.poll(async () => (await drawn(reader)).query, "Ctrl+A selected what was typed").toBe("Three");
+  await reader.keyboard.press("Escape");
+});
+
 test("the palette lists the document's actions but not the small steps, and running one leaves the keyboard with it", async ({ reader }) => {
   await reader.keyboard.press(":");
   await reader.keyboard.type("本文を検索");
