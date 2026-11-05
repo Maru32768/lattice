@@ -350,6 +350,32 @@ test("]] and [[ go to the next and the previous heading", async ({ reader }) => 
   await expect.poll(() => at("#h-one").then((t) => Math.abs(t) < 2)).toBe(true);
 });
 
+test("]] and [[ go to a heading again once the view has moved off it, and past one that cannot reach the top", async ({ reader }) => {
+  const at = (id: string) => reader.locator(id).evaluate((el) => el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top);
+  const onTop = (id: string) => expect.poll(() => at(id).then((t) => Math.abs(t) < 2), `${id} at the top`).toBe(true);
+  await reader.locator("#h-one").evaluate((el) => el.scrollIntoView());
+  await press(reader, "]", "]");
+  await onTop("#h-two");
+  await reader.keyboard.press("k");
+  await expect.poll(() => at("#h-two"), "k moved the view").toBeGreaterThan(2);
+  await press(reader, "]", "]");
+  await onTop("#h-two");
+
+  await press(reader, "[", "[");
+  await onTop("#h-one");
+  await reader.keyboard.press("j");
+  await expect.poll(() => at("#h-one"), "j moved the view").toBeLessThan(-2);
+  await press(reader, "[", "[");
+  await onTop("#h-one");
+
+  // A scroll margin stops a heading short of the top, and the document's end can too: the next one must still be next.
+  await reader.locator(".doc-scroll").evaluate((el) => void ((el as HTMLElement).style.scrollPaddingTop = "60px"));
+  await press(reader, "]", "]");
+  await expect.poll(() => at("#h-two").then((t) => Math.abs(t - 60) < 2), "#h-two under the margin").toBe(true);
+  await press(reader, "]", "]");
+  await expect.poll(() => at("#h-two"), "and on past it").toBeLessThan(0);
+});
+
 test("H and L step through the app's history in the Reader", async ({ reader }) => {
   await reader.keyboard.press("Shift+J");
   await expect(reader.locator(".art-title")).toHaveText(label(1));
