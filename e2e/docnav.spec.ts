@@ -483,6 +483,35 @@ test("a Ctrl key that is no app key stays in the find bar", async ({ reader }) =
   await reader.keyboard.press("Escape");
 });
 
+test("a click into a frame ends the labels and the mode, which that window never hears of", async ({ reader }) => {
+  await reader.locator("#extra").evaluate((el) => {
+    const frame = document.createElement("iframe");
+    frame.id = "frame";
+    frame.srcdoc = "<p>inside</p>";
+    el.prepend(frame);
+  });
+  const clickIn = () => reader.frameLocator("#frame").locator("p").click();
+  await reader.locator("#frame").evaluate((el) => el.scrollIntoView());
+
+  await reader.keyboard.press("f");
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBeGreaterThan(0);
+  await clickIn();
+  await expect.poll(async () => (await drawn(reader)).open, "the labels went").toBe(false);
+
+  await reader.locator(".doc-scroll").focus();
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("CARET");
+  await clickIn();
+  await expect.poll(async () => (await drawn(reader)).open, "the badge went").toBe(false);
+
+  await reader.locator(".doc-scroll").focus();
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await clickIn();
+  await expect.poll(async () => (await drawn(reader)).open, "the bar went").toBe(false);
+  expect(await reader.evaluate(() => document.activeElement?.id), "the frame keeps the keyboard").toBe("frame");
+});
+
 test("the palette lists the document's actions but not the small steps, and running one leaves the keyboard with it", async ({ reader }) => {
   await reader.keyboard.press(":");
   await reader.keyboard.type("本文を検索");

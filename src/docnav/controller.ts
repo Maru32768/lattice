@@ -130,7 +130,8 @@ export function createDocNav(host: () => DocHost) {
   // Not at once: WebView2 takes the keyboard away and gives it back as it shows a page again.
   function onBlur() {
     window.setTimeout(() => {
-      if (!document.hasFocus()) {
+      // A frame with the keyboard shows only here: this window sees no press in it, and `hasFocus` stays true.
+      if (!document.hasFocus() || document.activeElement?.matches("iframe,frame,object,embed")) {
         endFind(true);
         enter(NORMAL);
       }
