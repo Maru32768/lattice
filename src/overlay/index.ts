@@ -709,7 +709,7 @@ function reportHistory() {
 // The page's webview has keyboard focus, so the app's shortcuts are picked up here and forwarded.
 
 let keys: PageKeys | null = null;
-/** Until when the key after the pane prefix (Ctrl+B) goes to the app. */
+/** Until when the key after the first key of a two-key binding goes to the app. */
 let prefixUntil = 0;
 
 function setKeys(k: PageKeys | null) {

@@ -893,7 +893,7 @@ pub fn overlay_key(browser: State<'_, Browser>, webview: Webview, key: String) -
 }
 
 /// Whether the tab may forward `key` at `now`: on screen, and `key` one of those the overlay was told
-/// to forward, or any key within `prefix_ms` of the pane prefix (as the overlay's `forward`); if so,
+/// to forward, or any key within `prefix_ms` of a two-key binding's first key (as the overlay's `forward`); if so,
 /// arms or disarms the prefix the same way.
 fn take_key(t: &mut TabState, keys: Option<&PageKeys>, key: &str, now: Instant) -> bool {
     let Some(k) = keys else {

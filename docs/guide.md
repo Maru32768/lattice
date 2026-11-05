@@ -345,6 +345,8 @@ As in tmux, press `Ctrl+B` and then one of these keys. After `Ctrl+B`, the scree
 | `c` `n` `p` | New tab, next tab, previous tab |
 | `z` | Focus mode |
 
+You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+B`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
+
 ### Open a tab in its own window
 
 A tab can leave the main window and open in its own window (a document window).
@@ -736,7 +738,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Split pane right | `Ctrl+\` |
 | Split pane down | `Ctrl+-` |
 | Open the tab in a new window / move it back to the main window | `Ctrl+Shift+N` |
-| Pane prefix ([keys that follow](#control-panes-with-the-keyboard)) | `Ctrl+B` |
+| Pane actions ([keys that follow `Ctrl+B`](#control-panes-with-the-keyboard)) | `Ctrl+B`, then the next key |
 
 ### Fixed keys
 

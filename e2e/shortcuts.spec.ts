@@ -15,6 +15,8 @@ test("a recorded key runs the action, survives a reload, and can be removed", as
   await next.getByRole("button", { name: "+ キーを追加" }).click();
   await expect(next.getByRole("button", { name: /キーを押してください/ })).toBeVisible();
   await app.keyboard.press("n");
+  await expect(next.getByRole("button", { name: "n › 次のキー(Enterで確定 / Escで取消)" })).toBeVisible();
+  await app.keyboard.press("Enter");
   await expect(next.locator(".kbd.key")).toHaveText(["j×", "↓×", "n×"]);
 
   await app.keyboard.press("Escape");
@@ -33,6 +35,61 @@ test("a recorded key runs the action, survives a reload, and can be removed", as
   await expect(row(app, "次の項目へ").getByRole("button", { name: "既定に戻す" })).toBeDisabled();
 });
 
+test("a two-key binding starts from any key and runs only after both", async ({ app }) => {
+  await openShortcuts(app);
+  const next = row(app, "次の項目へ");
+  await next.getByRole("button", { name: "+ キーを追加" }).click();
+  await app.keyboard.press("g");
+  await app.keyboard.press("q");
+  await expect(next.locator(".kbd.key")).toHaveText(["j×", "↓×", "g › q×"]);
+
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  const cursor = list(app).locator(".row.cur");
+  await app.keyboard.press("q");
+  await expect(cursor).toHaveCount(0);
+  await app.keyboard.press("g");
+  await expect(app.locator(".prefix-hint")).toContainText("次の項目へ");
+  await expect(app.locator(".prefix-hint")).not.toContainText("ペイン");
+  await app.keyboard.press("q");
+  await expect(app.locator(".prefix-hint")).toBeHidden();
+  await expect(cursor).toHaveCount(1);
+});
+
+test("keys forwarded from a focused page start and complete a two-key binding", async ({ app }) => {
+  const fromPage = (key: string) => app.evaluate((k) => window.__e2e.emit("browser-key", { tab: "none", key: k }), key);
+  await expect(list(app)).toBeVisible();
+  const panes = app.locator("[data-pane-id]");
+  await expect(panes).toHaveCount(1);
+  await fromPage("Ctrl+B");
+  await expect(app.locator(".prefix-hint")).toBeVisible();
+  await fromPage('"');
+  await expect(app.locator(".prefix-hint")).toBeHidden();
+  await expect(panes).toHaveCount(2);
+});
+
+test("the default keys after Ctrl+B can be removed, and a single key under a first key is flagged", async ({ app }) => {
+  await openShortcuts(app);
+  const down = row(app, "ペインを下に分割");
+  await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl B › "×']);
+  await down.getByRole("button", { name: 'ペインを下に分割からCtrl B › "を外す' }).click();
+  await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×"]);
+
+  const fav = row(app, "お気に入り");
+  await fav.getByRole("button", { name: "+ キーを追加" }).click();
+  await app.keyboard.press("Control+b");
+  await app.keyboard.press("Enter");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "Ctrl B×"]);
+  await expect(fav.getByRole("note")).toHaveText("Ctrl Bは「左のペインへ移動」の2段階キーの1打目なので、単独では働きません");
+
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  await app.keyboard.press("Control+b");
+  await expect(app.locator(".prefix-hint")).toBeVisible();
+  await expect(app.locator(".prefix-hint")).not.toContainText("ペインを下に分割");
+  await expect(app.locator(".prefix-hint")).toContainText("ペインを右に分割");
+});
+
 test("a key bound to two actions is flagged, and Esc cancels recording", async ({ app }) => {
   await openShortcuts(app);
   const fav = row(app, "お気に入り");
@@ -43,6 +100,7 @@ test("a key bound to two actions is flagged, and Esc cancels recording", async (
 
   await fav.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("j");
+  await app.keyboard.press("Enter");
   await expect(fav.getByRole("note")).toHaveText("jは「次の項目へ」にも割り当てられています");
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);

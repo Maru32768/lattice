@@ -57,27 +57,23 @@ export function neighbor<T extends Rect>(from: Rect, all: T[], dx: number, dy: n
   return best;
 }
 
-const DIRS: Record<string, [number, number]> = {
-  ArrowLeft: [-1, 0],
-  H: [-1, 0],
-  ArrowRight: [1, 0],
-  L: [1, 0],
-  ArrowUp: [0, -1],
-  K: [0, -1],
-  ArrowDown: [0, 1],
-  J: [0, 1],
-};
+const DIRS = {
+  paneLeft: [-1, 0],
+  paneRight: [1, 0],
+  paneUp: [0, -1],
+  paneDown: [0, 1],
+} as const;
 
-/** The pane a tmux-style key after the prefix moves to from `from`: arrows / h j k l to a neighbour, o cycles. Null: nothing there. */
-export function paneAfter(key: string, from: HTMLElement | null): HTMLElement | null {
+export type PaneMove = keyof typeof DIRS | "paneNext";
+export const isPaneMove = (id: string): id is PaneMove => id === "paneNext" || id in DIRS;
+
+/** The pane `move` goes to from `from`: the neighbour that way, or the next in turn. Null: nothing there. */
+export function paneAfter(move: PaneMove, from: HTMLElement | null): HTMLElement | null {
   const all = [...document.querySelectorAll<HTMLElement>("[data-pane]")];
-  if (key === "O") {
+  if (move === "paneNext") {
     return all[(all.indexOf(from!) + 1) % all.length] ?? null;
   }
-  const d = DIRS[key];
-  if (!d) {
-    return null;
-  }
+  const d = DIRS[move];
   if (!from) {
     return all[0] ?? null;
   }

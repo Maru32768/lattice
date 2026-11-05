@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Kbd } from "../ui/Icon";
 import { useCover } from "../ui/Popover";
 import { useT } from "../i18n";
+import { actionLabel, afterFirst, keyLabel, useBindings } from "../lib/keys";
 
 /** States board #8: an empty library. */
 export function FirstRun({
@@ -58,50 +59,23 @@ export function FirstRun({
   );
 }
 
-/** Shown while the pane prefix is armed. */
-export function PrefixHint({ prefix }: { prefix: string }) {
+/** Shown after the first key of a two-key binding: what can follow it. */
+export function PrefixHint({ first }: { first: string }) {
   const t = useT();
+  const bindings = useBindings();
   const ref = useRef<HTMLDivElement>(null);
   useCover(ref, true);
   return (
     <div ref={ref} className="prefix-hint" role="status">
-      <Kbd>{prefix}</Kbd>
-      <span>
-        <Kbd>←</Kbd>
-        <Kbd>→</Kbd>
-        <Kbd>↑</Kbd>
-        <Kbd>↓</Kbd> <Kbd>h</Kbd>
-        <Kbd>j</Kbd>
-        <Kbd>k</Kbd>
-        <Kbd>l</Kbd>
-        {t("app.prefixMove")}
-      </span>
-      <span>
-        <Kbd>o</Kbd>
-        {t("app.prefixNext")}
-      </span>
-      <span>
-        <Kbd>%</Kbd>
-        {t("app.prefixSplitRight")}
-      </span>
-      <span>
-        <Kbd>"</Kbd>
-        {t("app.prefixSplitDown")}
-      </span>
-      <span>
-        <Kbd>x</Kbd>
-        {t("app.prefixClose")}
-      </span>
-      <span>
-        <Kbd>c</Kbd>
-        <Kbd>n</Kbd>
-        <Kbd>p</Kbd>
-        {t("app.prefixTabs")}
-      </span>
-      <span>
-        <Kbd>z</Kbd>
-        {t("app.prefixFocus")}
-      </span>
+      <Kbd>{keyLabel(first)}</Kbd>
+      {afterFirst(bindings, first).map(([id, seconds]) => (
+        <span key={id}>
+          {seconds.map((k) => (
+            <Kbd key={k}>{keyLabel(k)}</Kbd>
+          ))}{" "}
+          {actionLabel(t, id)}
+        </span>
+      ))}
     </div>
   );
 }

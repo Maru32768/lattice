@@ -2,26 +2,16 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser } from "../api";
-import { PREFIX_MS, actionFor, getBindings, pageKeys, useBindings, type ActionId } from "../lib/keys";
+import { PREFIX_MS, actionFor, chordFrom, getBindings, pageKeys, useBindings, type ActionId } from "../lib/keys";
 import { keyOf } from "../lib/keyname";
-import { focusPane, paneAfter, paneOf } from "../layout/panes";
-import { closePane, focus as focusLayout, pageByKey, tabById, type Layout } from "../layout/layout";
+import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
+import { focus as focusLayout, pageByKey, tabById, type Layout } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
 
 /** Shortcuts that, pressed in the page, move on to the app: the page's webview gives up the keyboard. */
 const LEAVES_PAGE = new Set<ActionId>(["palette", "search", "view", "newTab", "closeTab", "nextTab", "prevTab", "splitRight", "splitDown", "popOut"]);
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
-/** tmux keys after the prefix that act on panes and tabs rather than move. */
-const PREFIXED: Record<string, ActionId | "closePane"> = {
-  '"': "splitDown",
-  "%": "splitRight",
-  X: "closePane",
-  C: "newTab",
-  N: "nextTab",
-  P: "prevTab",
-  Z: "focus",
-};
 
 type SetLayout = (f: (l: Layout) => Layout) => void;
 
@@ -76,26 +66,26 @@ export function usePaneFocus(layout: Layout, setLayout: SetLayout) {
   return { kbPane, setKbPane, pointerPane };
 }
 
-/** The tmux-style pane prefix (Ctrl+B): armed until the next key or PREFIX_MS. */
+/** The first key of a two-key binding, as tmux's prefix: armed until the next key or PREFIX_MS. */
 export function usePrefix() {
-  const [prefix, setPrefix] = useState(false);
+  const [prefix, setPrefix] = useState<string | null>(null);
   const timer = useRef(0);
-  const arm = () => {
-    setPrefix(true);
+  const arm = (key: string) => {
+    setPrefix(key);
     clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setPrefix(false), PREFIX_MS);
+    timer.current = window.setTimeout(() => setPrefix(null), PREFIX_MS);
   };
   const disarm = () => {
     clearTimeout(timer.current);
-    setPrefix(false);
+    setPrefix(null);
   };
   return { prefix, arm, disarm };
 }
 
 /**
- * The app's shortcuts: keys pressed in the app, and the ones a page's overlay forwards. With the
- * prefix armed the next key acts on panes; otherwise the bound action runs, unless a field, an
- * open overlay or a control owns the key. Also sends the page overlay the keys it forwards.
+ * The app's shortcuts: keys pressed in the app, and the ones a page's overlay forwards. After the
+ * first key of a two-key binding the next key completes it; otherwise the bound action runs, unless
+ * a field, an open overlay or a control owns the key. Also sends the page overlay the keys it forwards.
  */
 export function useShortcuts({
   actions,
@@ -104,7 +94,7 @@ export function useShortcuts({
   setLayout,
   focus,
 }: {
-  actions: Record<ActionId, () => void>;
+  actions: Record<Exclude<ActionId, PaneMove>, () => void>;
   prefix: ReturnType<typeof usePrefix>;
   layout: Layout;
   setLayout: SetLayout;
@@ -116,18 +106,8 @@ export function useShortcuts({
   }, [bindings]);
 
   /** True when focus moved to another pane. */
-  function paneKey(key: string, from = paneOf(document.activeElement)): boolean {
-    prefix.disarm();
-    const act = PREFIXED[key];
-    if (act === "closePane") {
-      setLayout((l) => closePane(l, l.focused));
-      return false;
-    }
-    if (act) {
-      actions[act]();
-      return false;
-    }
-    const p = paneAfter(key, from);
+  function movePane(move: PaneMove, from = paneOf(document.activeElement)): boolean {
+    const p = paneAfter(move, from);
     if (!p) {
       return false;
     }
@@ -137,6 +117,14 @@ export function useShortcuts({
       setLayout((l) => focusLayout(l, Number(p.dataset.paneId)));
     }
     return true;
+  }
+
+  function run(id: ActionId) {
+    if (isPaneMove(id)) {
+      movePane(id);
+    } else {
+      actions[id]();
+    }
   }
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
@@ -149,7 +137,11 @@ export function useShortcuts({
     }
     if (prefix.prefix) {
       e.preventDefault();
-      paneKey(key);
+      prefix.disarm();
+      const bound = actionFor(getBindings(), `${prefix.prefix} ${key}`);
+      if (bound) {
+        run(bound.id);
+      }
       return;
     }
     // The menu key / Shift+F10: the context menu of the focused row or tab, else of the list cursor's row.
@@ -165,7 +157,8 @@ export function useShortcuts({
       on.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 16, clientY: r.bottom }));
       return;
     }
-    const action = actionFor(getBindings(), key);
+    const chord = chordFrom(getBindings(), key);
+    const action = chord ?? actionFor(getBindings(), key);
     if (!action) {
       return;
     }
@@ -182,6 +175,11 @@ export function useShortcuts({
     if (inField && !action.inFields) {
       return;
     }
+    if (chord) {
+      e.preventDefault();
+      prefix.arm(key);
+      return;
+    }
     const focused = document.activeElement !== document.body ? paneOf(document.activeElement)?.dataset.pane : focus.pointerPane.current;
     if (key.startsWith("Arrow") && (focused === "doc" || focused === "chat")) {
       return;
@@ -196,7 +194,7 @@ export function useShortcuts({
     }
     // Plain keys on a focused button would also activate it.
     e.preventDefault();
-    actions[action.id]();
+    run(action.id);
   });
 
   // A shortcut the page overlay forwarded: keyboard focus is in that page's pane.
@@ -212,14 +210,24 @@ export function useShortcuts({
     if (pane != null) {
       setLayout((l) => focusLayout(l, pane));
     }
-    if (prefix.prefix) {
-      if (paneKey(key, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) {
-        void focusApp();
-      }
+    const first = prefix.prefix;
+    if (first) {
+      prefix.disarm();
+    }
+    const chord = first ? undefined : chordFrom(getBindings(), key);
+    const action = chord ?? actionFor(getBindings(), first ? `${first} ${key}` : key);
+    // The second key skips the check: the hint for the first key counts as an open overlay itself.
+    if (!action || (!first && openOverlays() && action.id !== "palette")) {
       return;
     }
-    const action = actionFor(getBindings(), key);
-    if (!action || (openOverlays() && action.id !== "palette")) {
+    if (chord) {
+      prefix.arm(key);
+      return;
+    }
+    if (isPaneMove(action.id)) {
+      if (movePane(action.id, document.querySelector<HTMLElement>(`[data-pane-id='${pane}']`))) {
+        void focusApp();
+      }
       return;
     }
     if (LEAVES_PAGE.has(action.id)) {
@@ -237,6 +245,4 @@ export function useShortcuts({
       void unlisten.then((f) => f());
     };
   }, []);
-
-  return bindings;
 }

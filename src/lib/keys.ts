@@ -3,8 +3,10 @@
 import { useSyncExternalStore } from "react";
 import { keyOf } from "./keyname.ts";
 import type { T } from "../i18n/index.ts";
+import type { PaneMove } from "../layout/panes.ts";
 
 export type ActionId =
+  | PaneMove
   | "palette"
   | "search"
   | "next"
@@ -19,13 +21,13 @@ export type ActionId =
   | "less"
   | "more"
   | "escape"
-  | "pane"
   | "newTab"
   | "closeTab"
   | "nextTab"
   | "prevTab"
   | "splitRight"
   | "splitDown"
+  | "closePane"
   | "saveWord"
   | "speak"
   | "popOut"
@@ -41,6 +43,10 @@ export interface ActionDef {
   inFields?: boolean;
 }
 
+/**
+ * A binding is one key or, as in tmux, two pressed in turn: `Ctrl+B "`. No single key contains a
+ * space (the space bar is "Space"), so a space always separates the two.
+ */
 export const ACTIONS: ActionDef[] = [
   { id: "palette", keys: ["Ctrl+K"], inFields: true },
   { id: "search", keys: ["/"] },
@@ -50,19 +56,24 @@ export const ACTIONS: ActionDef[] = [
   { id: "openPage", keys: ["Shift+Enter"] },
   { id: "favorite", keys: ["S"] },
   { id: "read", keys: ["M"] },
-  { id: "focus", keys: ["F"] },
+  { id: "focus", keys: ["F", "Ctrl+B Z"] },
   { id: "view", keys: ["V"] },
   { id: "summary", keys: ["Y"] },
   { id: "less", keys: ["["] },
   { id: "more", keys: ["]"] },
   { id: "escape", keys: ["Escape"], inFields: true },
-  { id: "pane", keys: ["Ctrl+B"], inFields: true },
-  { id: "newTab", keys: ["Ctrl+T"], inFields: true },
+  { id: "paneLeft", keys: ["Ctrl+B ArrowLeft", "Ctrl+B H"], inFields: true },
+  { id: "paneRight", keys: ["Ctrl+B ArrowRight", "Ctrl+B L"], inFields: true },
+  { id: "paneUp", keys: ["Ctrl+B ArrowUp", "Ctrl+B K"], inFields: true },
+  { id: "paneDown", keys: ["Ctrl+B ArrowDown", "Ctrl+B J"], inFields: true },
+  { id: "paneNext", keys: ["Ctrl+B O"], inFields: true },
+  { id: "newTab", keys: ["Ctrl+T", "Ctrl+B C"], inFields: true },
   { id: "closeTab", keys: ["Ctrl+W"], inFields: true },
-  { id: "nextTab", keys: ["Ctrl+Tab"], inFields: true },
-  { id: "prevTab", keys: ["Ctrl+Shift+Tab"], inFields: true },
-  { id: "splitRight", keys: ["Ctrl+\\"], inFields: true },
-  { id: "splitDown", keys: ["Ctrl+-"], inFields: true },
+  { id: "nextTab", keys: ["Ctrl+Tab", "Ctrl+B N"], inFields: true },
+  { id: "prevTab", keys: ["Ctrl+Shift+Tab", "Ctrl+B P"], inFields: true },
+  { id: "splitRight", keys: ["Ctrl+\\", "Ctrl+B %"], inFields: true },
+  { id: "splitDown", keys: ["Ctrl+-", 'Ctrl+B "'], inFields: true },
+  { id: "closePane", keys: ["Ctrl+B X"], inFields: true },
   { id: "saveWord", keys: ["W"] },
   { id: "speak", keys: ["R"] },
   { id: "popOut", keys: ["Ctrl+Shift+N"], inFields: true },
@@ -87,8 +98,12 @@ export const DEFAULT_BINDINGS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.k
 
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };
 
-/** Display form: "Ctrl+K" → "Ctrl K", "J" → "j", "ArrowDown" → "↓". */
+/** Display form: "Ctrl+K" → "Ctrl K", "J" → "j", "ArrowDown" → "↓", `Ctrl+B "` → `Ctrl B › "`. */
 export function keyLabel(k: string): string {
+  const [first, second] = k.split(" ");
+  if (second) {
+    return `${keyLabel(first!)} › ${keyLabel(second)}`;
+  }
   const mods: string[] = [];
   let rest = k;
   for (const m of ["Ctrl+", "Alt+", "Shift+"]) {
@@ -106,6 +121,31 @@ export function actionFor(b: Bindings, key: string): ActionDef | undefined {
   return ACTIONS.find((a) => b[a.id].includes(key));
 }
 
+/**
+ * An action whose two-key binding starts with `key`, preferring one that runs in text fields so
+ * the first key works there if any of them does. Such a key waits for its second key: alone, it
+ * never runs an action it is also bound to.
+ */
+export function chordFrom(b: Bindings, key: string): ActionDef | undefined {
+  const all = ACTIONS.filter((a) => b[a.id].some((k) => k.startsWith(`${key} `)));
+  return all.find((a) => a.inFields) ?? all[0];
+}
+
+/** What can follow `first`: each action with its second keys; a key on two actions counts for the first, as in `actionFor`. */
+export function afterFirst(b: Bindings, first: string): [ActionId, string[]][] {
+  const seen = new Set<string>();
+  const out: [ActionId, string[]][] = [];
+  for (const a of ACTIONS) {
+    const seconds = b[a.id].filter((k) => k.startsWith(`${first} `)).map((k) => k.slice(first.length + 1));
+    const fresh = seconds.filter((k) => !seen.has(k));
+    fresh.forEach((k) => seen.add(k));
+    if (fresh.length) {
+      out.push([a.id, fresh]);
+    }
+  }
+  return out;
+}
+
 /** Keys bound to more than one action, with those actions in registry order. */
 export function conflicts(b: Bindings): Map<string, ActionId[]> {
   const by = new Map<string, ActionId[]>();
@@ -117,7 +157,7 @@ export function conflicts(b: Bindings): Map<string, ActionId[]> {
   return new Map([...by].filter(([, ids]) => ids.length > 1));
 }
 
-/** How long the pane prefix (Ctrl+B) waits for its follow-up key. */
+/** How long the first key of a two-key binding waits for the second. */
 export const PREFIX_MS = 1500;
 
 /** The app shortcuts the page overlay forwards while the page has keyboard focus. */
@@ -126,7 +166,7 @@ export interface PageKeys {
   inFields: string[];
   /** Forwarded only outside the page's fields. */
   outside: string[];
-  /** The pane prefix: the key after it is forwarded too, within prefixMs. */
+  /** First keys of two-key bindings: the key after one is forwarded too, whatever it is, within prefixMs. */
   prefix: string[];
   prefixMs: number;
 }
@@ -134,40 +174,64 @@ export interface PageKeys {
 const MODIFIED = /^(Ctrl|Alt)\+/;
 
 export function pageKeys(b: Bindings): PageKeys {
-  const out: PageKeys = { inFields: [], outside: [], prefix: b.pane, prefixMs: PREFIX_MS };
+  const inFields = new Set<string>();
+  const outside = new Set<string>();
+  const prefix = new Set<string>();
   for (const a of ACTIONS) {
     // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
     if (PAGE_OWN.has(a.id)) {
       continue;
     }
     for (const k of b[a.id]) {
-      const mod = MODIFIED.test(k);
+      const [first, second] = k.split(" ") as [string, string?];
+      const mod = MODIFIED.test(first);
       // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.
-      if (!mod && k.replace(/^Shift\+/, "").length > 1) {
+      if (!mod && first.replace(/^Shift\+/, "").length > 1) {
         continue;
       }
-      (mod && a.inFields ? out.inFields : out.outside).push(k);
+      (mod && a.inFields ? inFields : outside).add(first);
+      if (second) {
+        prefix.add(first);
+      }
     }
   }
-  return out;
+  return { inFields: [...inFields], outside: [...outside].filter((k) => !inFields.has(k)), prefix: [...prefix], prefixMs: PREFIX_MS };
 }
 
 export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_BINDINGS, ...overrides });
 
 // ---- persisted store ----------------------------------------------------------------------------
 const STORAGE_KEY = "lattice.shortcuts";
+const STORAGE_VERSION = 2;
+
+const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k) => typeof k === "string") ? v : undefined);
+
+/**
+ * The overrides in a stored value. Version 1 had a `pane` action, whose keys led fixed second keys
+ * that no override could touch: those now become two-key bindings under the keys it had.
+ */
+export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
+  const out: Partial<Bindings> = {};
+  const current = raw.version === STORAGE_VERSION;
+  const pane = keysIn(raw.pane) ?? ["Ctrl+B"];
+  const paneMoved = !current && (pane.length !== 1 || pane[0] !== "Ctrl+B");
+  for (const a of ACTIONS) {
+    const v = keysIn(raw[a.id]);
+    const seconds = a.keys.filter((k) => k.includes(" ")).map((k) => k.slice(k.indexOf(" ") + 1));
+    if (current) {
+      if (v) {
+        out[a.id] = v;
+      }
+    } else if (v || (paneMoved && seconds.length)) {
+      out[a.id] = [...(v ?? a.keys.filter((k) => !k.includes(" "))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
+    }
+  }
+  return out;
+}
 
 function load(): Partial<Bindings> {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Record<string, unknown>;
-    const out: Partial<Bindings> = {};
-    for (const a of ACTIONS) {
-      const v = raw[a.id];
-      if (Array.isArray(v) && v.every((k) => typeof k === "string")) {
-        out[a.id] = v;
-      }
-    }
-    return out;
+    return fromStored(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Record<string, unknown>);
   } catch {
     return {};
   }
@@ -181,7 +245,7 @@ function commit(next: Partial<Bindings>) {
   overrides = next;
   bindings = merge(next);
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, version: STORAGE_VERSION }));
   } catch {
     // Blocked storage: the change lasts for this session only.
   }

@@ -17,6 +17,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The Page view of a PDF shows the saved original. It works for a PDF imported from a file too, and offline. **Mixed** and **Translated** draw the translation over the original's paragraphs. The ☰ at the top left opens the contents, and links inside the PDF work.
 - In a PDF's Page view, the button at the top right of a page translates only that page, or translates it again. Retranslating a whole long PDF is no longer the only way to redo a page.
 - Automatic translation can be turned off per article in the ⋯ menu, and per file on the import screen's Markdown and PDF tabs. Importing, switching the view and scrolling in the Page view then start no translation for it, and **Translate** still works.
+- **Settings › Shortcuts** can give any action a two-step key, as in tmux. The first key can be any key: click **+ Add key** and press two keys in turn. For a single key, press `Enter` after the first key. The keys after `Ctrl+B`, such as `"`, `%` and the pane moves, can be removed or changed there too.
 
 ### Changed
 

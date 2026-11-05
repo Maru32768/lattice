@@ -24,8 +24,8 @@ import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
-import { keyLabel, type ActionId } from "../lib/keys";
-import { paneOf, stepNav } from "../layout/panes";
+import type { ActionId } from "../lib/keys";
+import { paneOf, stepNav, type PaneMove } from "../layout/panes";
 import { Palette, type PaletteActions } from "./Palette";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { TitleBar } from "./TitleBar";
@@ -37,6 +37,7 @@ import {
   activeTab,
   allTabs,
   close,
+  closePane,
   closeWhere,
   cycle,
   focusedPane,
@@ -749,14 +750,13 @@ export default function App() {
     }
   };
 
-  const actions: Record<ActionId, () => void> = {
+  const actions: Record<Exclude<ActionId, PaneMove>, () => void> = {
     palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
     search: enterSearch,
     next: () => step(1),
     prev: () => step(-1),
     open: () => openCursor(false),
     openPage: () => openCursor(true),
-    pane: prefix.arm,
     favorite: () => void (current && toggleFavorite(current)),
     read: () => void (current && toggleRead(current)),
     focus: () => {
@@ -798,6 +798,7 @@ export default function App() {
       setScreen("library");
       setLayout((l) => split(l, l.focused, "column"));
     },
+    closePane: () => setLayout((l) => closePane(l, l.focused)),
     saveWord,
     speak: replayWord,
     popOut: () => {
@@ -812,7 +813,7 @@ export default function App() {
     moveUp: () => {},
     moveDown: () => {},
   };
-  const bindings = useShortcuts({ actions, prefix, layout, setLayout, focus: paneFocus });
+  useShortcuts({ actions, prefix, layout, setLayout, focus: paneFocus });
 
   // ---- render ---------------------------------------------------------------------------------
   const title = scopeLabel(scope, articles, groupRows, t, folders, feeds);
@@ -1270,7 +1271,7 @@ export default function App() {
                 <p>{t("app.markReadDesc", { title })}</p>
               </ConfirmDialog>
             )}
-            {prefix.prefix && <PrefixHint prefix={keyLabel(bindings.pane[0] ?? "Ctrl+B")} />}
+            {prefix.prefix && <PrefixHint first={prefix.prefix} />}
             {groupPick && (
               <GroupPicker
                 groups={groupRows}

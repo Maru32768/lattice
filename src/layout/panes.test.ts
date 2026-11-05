@@ -27,18 +27,18 @@ const pane = (sel: string) => document.querySelector<HTMLElement>(sel)!;
 const name = (el: HTMLElement | null) => (el ? el.dataset.pane + (el.dataset.paneId ? `:${el.dataset.paneId}` : "") : null);
 
 test("paneAfter: neighbours by geometry stop at the edges, up / down reach stacked panes, o cycles", () => {
-  assert.equal(name(paneAfter("L", pane("[data-pane=nav]"))), "list");
-  assert.equal(name(paneAfter("ArrowLeft", pane("[data-pane=list]"))), "nav");
-  assert.equal(name(paneAfter("H", pane("[data-pane=nav]"))), null);
-  assert.equal(name(paneAfter("ArrowRight", pane("[data-pane=list]"))), "doc:1", "the top pane when two are stacked to the right");
-  assert.equal(name(paneAfter("J", pane("[data-pane-id='1']"))), "doc:2");
-  assert.equal(name(paneAfter("ArrowUp", pane("[data-pane-id='2']"))), "doc:1");
-  assert.equal(name(paneAfter("K", pane("[data-pane-id='1']"))), null);
-  assert.equal(name(paneAfter("L", pane("[data-pane-id='2']"))), "chat");
-  assert.equal(name(paneAfter("ArrowLeft", pane("[data-pane=chat]"))), "doc:1", "the first of several candidates at the same distance");
-  assert.equal(name(paneAfter("O", pane("[data-pane=chat]"))), "nav");
-  assert.equal(name(paneAfter("L", null)), "nav");
-  assert.equal(name(paneAfter("J", pane("[data-pane=list]"))), null, "nothing below a full-height pane");
+  assert.equal(name(paneAfter("paneRight", pane("[data-pane=nav]"))), "list");
+  assert.equal(name(paneAfter("paneLeft", pane("[data-pane=list]"))), "nav");
+  assert.equal(name(paneAfter("paneLeft", pane("[data-pane=nav]"))), null);
+  assert.equal(name(paneAfter("paneRight", pane("[data-pane=list]"))), "doc:1", "the top pane when two are stacked to the right");
+  assert.equal(name(paneAfter("paneDown", pane("[data-pane-id='1']"))), "doc:2");
+  assert.equal(name(paneAfter("paneUp", pane("[data-pane-id='2']"))), "doc:1");
+  assert.equal(name(paneAfter("paneUp", pane("[data-pane-id='1']"))), null);
+  assert.equal(name(paneAfter("paneRight", pane("[data-pane-id='2']"))), "chat");
+  assert.equal(name(paneAfter("paneLeft", pane("[data-pane=chat]"))), "doc:1", "the first of several candidates at the same distance");
+  assert.equal(name(paneAfter("paneNext", pane("[data-pane=chat]"))), "nav");
+  assert.equal(name(paneAfter("paneRight", null)), "nav");
+  assert.equal(name(paneAfter("paneDown", pane("[data-pane=list]"))), null, "nothing below a full-height pane");
 });
 
 test("neighbor skips panes that only touch at a corner and panes behind the start", () => {

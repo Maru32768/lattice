@@ -1,6 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_BINDINGS, actionFor, conflicts, getBindings, isCustom, keyLabel, merge, pageKeys, resetKeys, setKeys } from "./keys.ts";
+import {
+  DEFAULT_BINDINGS,
+  actionFor,
+  afterFirst,
+  chordFrom,
+  conflicts,
+  fromStored,
+  getBindings,
+  isCustom,
+  keyLabel,
+  merge,
+  pageKeys,
+  resetKeys,
+  setKeys,
+} from "./keys.ts";
 import { keyOf } from "./keyname.ts";
 
 const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
@@ -56,6 +70,51 @@ test("pageKeys: Ctrl keys of in-field actions go from page fields too; named key
   assert.ok(custom.outside.includes("P") && !custom.inFields.includes("P"), "a plain key never from a field");
   assert.ok(custom.outside.includes("Ctrl+S"), "an action that skips the app's fields skips the page's");
   assert.ok(custom.outside.includes("Shift+J") && !custom.outside.includes("Space"));
+});
+
+test("two-key bindings: any first key, shown in turn, with what can follow it", () => {
+  assert.equal(actionFor(DEFAULT_BINDINGS, 'Ctrl+B "')?.id, "splitDown");
+  assert.equal(actionFor(DEFAULT_BINDINGS, '"'), undefined, "not without the first key");
+  assert.equal(keyLabel('Ctrl+B "'), 'Ctrl B › "');
+  assert.equal(keyLabel("Ctrl+B X"), "Ctrl B › x");
+  assert.equal(keyLabel("G Space"), "g › Space");
+
+  const b = merge({ favorite: ["S", "G G"], read: ["G G", "G M"], splitDown: ["Ctrl+-"] });
+  assert.equal(chordFrom(b, "G")?.id, "favorite");
+  assert.equal(chordFrom(b, "S"), undefined);
+  assert.deepEqual(afterFirst(b, "G"), [
+    ["favorite", ["G"]],
+    ["read", ["M"]],
+  ]);
+  assert.ok(!afterFirst(b, "Ctrl+B").some(([id]) => id === "splitDown"), "a removed key leaves the hint");
+  assert.deepEqual(afterFirst(DEFAULT_BINDINGS, "Ctrl+B")[0], ["focus", ["Z"]]);
+});
+
+test("chordFrom: a first key works in fields if any of its bindings does", () => {
+  const b = merge({ favorite: ["Ctrl+G S"], newTab: ["Ctrl+G T"] });
+  assert.equal(chordFrom(b, "Ctrl+G")?.id, "newTab");
+});
+
+test("pageKeys: a two-key binding forwards its first key by the same rules, and arms the overlay", () => {
+  const k = pageKeys(merge({ favorite: ["G G", "Ctrl+G S"], read: ["Enter X"], next: ["Ctrl+Y Y"] }));
+  assert.ok(k.outside.includes("G") && !k.inFields.includes("G"), "a plain first key never from a field");
+  assert.ok(k.outside.includes("Ctrl+G"), "an action that skips the app's fields skips the page's");
+  assert.ok(!k.outside.includes("Enter") && !k.prefix.includes("Enter"), "Enter stays the page's, also as a first key");
+  assert.deepEqual(k.prefix.sort(), ["Ctrl+B", "Ctrl+G", "Ctrl+Y", "G"]);
+  assert.ok(![...k.inFields, ...k.outside].some((x) => x.includes(" ")));
+});
+
+test("fromStored: version 1's pane keys and fixed second keys become two-key bindings; version 2 stays as saved", () => {
+  assert.deepEqual(fromStored({ splitDown: ["Ctrl+Shift+D"], favorite: ["X"], next: "J" }), {
+    splitDown: ["Ctrl+Shift+D", 'Ctrl+B "'],
+    favorite: ["X"],
+  });
+  const moved = fromStored({ pane: ["Ctrl+G"], splitDown: ["Ctrl+Shift+D"] });
+  assert.deepEqual(moved.splitDown, ["Ctrl+Shift+D", 'Ctrl+G "']);
+  assert.deepEqual(moved.splitRight, ["Ctrl+\\", "Ctrl+G %"], "no override of its own: the default key stays");
+  assert.deepEqual(moved.paneLeft, ["Ctrl+G ArrowLeft", "Ctrl+G H"]);
+  assert.deepEqual(fromStored({ pane: [] }).closePane, []);
+  assert.deepEqual(fromStored({ splitDown: ["Ctrl+Shift+D"], pane: ["Ctrl+G"], version: 2 }), { splitDown: ["Ctrl+Shift+D"] });
 });
 
 test("custom keys: setting an action's defaults back clears its override; reset restores one action or all", () => {
