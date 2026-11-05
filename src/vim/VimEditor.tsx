@@ -151,7 +151,7 @@ export default function VimEditor({
   const report = useEffectEvent((view: EditorView) => {
     const state = getCM(view)?.state.vim;
     if (state) {
-      const waiting = !state.insertMode && (state.inputState.keyBuffer.length > 0 || state.inputState.operator);
+      const waiting = !state.insertMode && (state.inputState.keyBuffer.some((k) => k !== "<Esc>") || state.inputState.operator);
       mode(`${(state.mode ?? "normal").toUpperCase()}${waiting ? ` ${state.status}` : ""}`);
       // The engine clears its record of the keys only when a command runs, not when they add up to nothing.
       if (!waiting) {
@@ -186,6 +186,12 @@ export default function VimEditor({
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   write(v.state.doc.toString());
                   return true;
+                }
+                // Vim gives up on a mapped <Esc><Esc> after a moment and reads the next key afresh. The engine has no
+                // such timeout and would swallow that key, and people mash Esc.
+                const input = getCM(v)?.state.vim?.inputState;
+                if (input?.keyBuffer[0] === "<Esc>" && e.key !== "Escape") {
+                  input.keyBuffer.length = 0;
                 }
                 return false;
               },
