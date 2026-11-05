@@ -77,7 +77,7 @@ test("every settings section has an English title, and a backend error is shown 
 });
 
 test("the command palette matches English commands", async ({ app }) => {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   const input = app.getByPlaceholder("Type a search, a command or a URL");
   await expect(input).toBeFocused();
   await input.fill(">unread");

@@ -176,7 +176,7 @@ test("the closed list is one button that opens it again; j / k still move the cu
   const rail = app.getByRole("region", { name: "記事一覧(折りたたみ)" });
   await expect(rail.getByRole("button")).toHaveCount(1);
   await expect(rail).toHaveText("");
-  await app.locator(".doc-area-wrap").click({ position: { x: 5, y: 200 } });
+  await rail.getByRole("button").focus();
   await app.keyboard.press("j");
   await app.keyboard.press("j");
   await rail.getByRole("button", { name: "記事一覧を開く" }).click();
@@ -237,7 +237,15 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
   const reader = await tools(app);
   await openPage(app, snapshot.title!);
   const page = await tools(app);
-  expect(reader.buttons).toEqual(["お気に入り(s)", "既読にする(m)", "質問", "理解度チェック", "メモ", "フォーカスモード(f)", expect.stringMatching(/^その他/)]);
+  expect(reader.buttons).toEqual([
+    "お気に入り(s)",
+    "既読にする(m)",
+    "質問",
+    "理解度チェック",
+    "メモ",
+    "フォーカスモード(Ctrl+B z)",
+    expect.stringMatching(/^その他/),
+  ]);
   // Page adds its summary strip's toggle before フォーカス.
   expect(page.buttons).toEqual([...reader.buttons.slice(0, 5), "要約", ...reader.buttons.slice(5)]);
   expect(reader.items[1]).toBe("描画して取り込み直す");

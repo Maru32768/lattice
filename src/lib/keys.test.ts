@@ -11,7 +11,9 @@ test("fromStored: version 1's pane keys and fixed second keys become two-key bin
   const moved = fromStored({ pane: ["Ctrl+G"], splitDown: ["Ctrl+Shift+D"] });
   assert.deepEqual(moved.splitDown, ["Ctrl+Shift+D", 'Ctrl+G "']);
   assert.deepEqual(moved.splitRight, ["Ctrl+\\", "Ctrl+G %"], "no override of its own: the default key stays");
-  assert.deepEqual(moved.paneLeft, ["Ctrl+G ArrowLeft", "Ctrl+G H"]);
+  assert.deepEqual(moved.paneLeft, ["Ctrl+H", "Ctrl+G ArrowLeft", "Ctrl+G H"]);
+  assert.deepEqual(moved.nextTab, ["Ctrl+Tab", "G T", "Ctrl+G N"], "a two-key default under another first key stays as it is");
+  assert.deepEqual(fromStored({ view: ["X"] }), { view: ["X"] }, "so does an override of one");
   assert.deepEqual(fromStored({ pane: [] }).closePane, []);
   assert.deepEqual(fromStored({ splitDown: ["Ctrl+Shift+D"], pane: ["Ctrl+G"], version: 2 }), { splitDown: ["Ctrl+Shift+D"] });
 });

@@ -34,10 +34,10 @@ test("the language segment switches every block; a block flips on its own", asyn
   await app.locator(`#b-${translatable[1].id}`).getByRole("button", { name: "このblockを訳文に切り替え" }).click();
   expect(await shown(app)).toEqual(["ja", "ja", "ja", "ja", "ja"]);
 
-  await seg.getByRole("button", { name: "日本語の割合を下げる([)" }).click();
+  await seg.getByRole("button", { name: "日本語の割合を下げる(-)" }).click();
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 60%");
-  await app.keyboard.press("]");
-  await app.keyboard.press("]");
+  await app.keyboard.press("=");
+  await app.keyboard.press("=");
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 80%");
 });
 
@@ -52,18 +52,23 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
   await expect(app.locator(".art-meta")).toContainText("ローカル");
 });
 
-test("y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
+test("g y opens and closes the summary, in the Reader and as the Page view's strip", async ({ app }) => {
+  const press = async (...keys: string[]) => {
+    for (const k of keys) {
+      await app.keyboard.press(k);
+    }
+  };
   await open(app, snapshot.title!);
-  await app.keyboard.press("y");
+  await press("g", "y");
   await expect(app.locator(".summary-body")).toContainText("MVCCで実装する");
-  await app.keyboard.press("y");
+  await press("g", "y");
   await expect(app.locator(".summary-body")).toHaveCount(0);
 
-  await app.keyboard.press("v");
+  await press("g", "v");
   await expect(app.locator(".page-summary")).toHaveCount(0);
-  await app.keyboard.press("y");
+  await press("g", "y");
   await expect(app.locator(".page-summary .summary-body"), "shown by the key: opened to the text").toContainText("MVCCで実装する");
-  await app.keyboard.press("y");
+  await press("g", "y");
   await expect(app.locator(".page-summary")).toHaveCount(0);
 });
 
@@ -75,8 +80,8 @@ test("a paragraph mixes sentence by sentence, and one sentence flips from its to
   const para = app.locator(`#b-${sentences.id}`);
   /** The language each sentence of the paragraph shows. */
   const langs = () => para.locator(".sent").evaluateAll((els) => els.map((e) => (e.classList.contains("tr") ? "ja" : "en")));
-  await app.keyboard.press("[");
-  await app.keyboard.press("[");
+  await app.keyboard.press("-");
+  await app.keyboard.press("-");
   await expect(seg.getByRole("button", { name: /混在/ })).toHaveText("混在 50%");
   expect(await langs(), "half and half alternates within the paragraph").toEqual(expect.arrayContaining(["ja", "en"]));
   const half = await langs();

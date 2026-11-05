@@ -1,6 +1,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_BINDINGS, actionFor, afterFirst, chordFrom, conflicts, keyLabel, keyOf, merge, pageKeys } from "./keymap.ts";
+import {
+  ACTIONS,
+  DEFAULT_BINDINGS,
+  EX_ALIASES,
+  IDLE,
+  REPEAT_MS,
+  actionFor,
+  afterFirst,
+  chordFrom,
+  conflicts,
+  keyLabel,
+  keyOf,
+  merge,
+  pageKeys,
+  scopeOf,
+  stepKeys,
+  type Bindings,
+  type KeyScope,
+  type KeySeq,
+  type KeyStep,
+} from "./keymap.ts";
 
 const ev = (key: string, mods: Partial<Record<"ctrlKey" | "metaKey" | "altKey" | "shiftKey", boolean>> = {}) => ({
   key,
@@ -25,54 +45,65 @@ test("keyOf: canonical keys; Shift only where the key does not print it", () => 
 
 test("keyLabel: display form", () => {
   assert.deepEqual(["Ctrl+K", "J", "Shift+J", "ArrowDown", "Escape", "Ctrl++", "/"].map(keyLabel), ["Ctrl K", "j", "Shift J", "↓", "Esc", "Ctrl +", "/"]);
-});
-
-test("actionFor: defaults, several keys per action, overrides replace an action's keys", () => {
-  assert.equal(actionFor(DEFAULT_BINDINGS, "J")?.id, "next");
-  assert.equal(actionFor(DEFAULT_BINDINGS, "ArrowDown")?.id, "next");
-  assert.equal(actionFor(DEFAULT_BINDINGS, "Ctrl+K")?.id, "palette");
-  assert.equal(actionFor(DEFAULT_BINDINGS, "Q"), undefined);
-  const b = merge({ next: ["N"] });
-  assert.equal(actionFor(b, "N")?.id, "next");
-  assert.equal(actionFor(b, "J"), undefined);
-  assert.equal(actionFor(b, "K")?.id, "prev");
-});
-
-test("conflicts: a key bound to two actions, first in registry order wins", () => {
-  assert.equal(conflicts(DEFAULT_BINDINGS).size, 0);
-  const b = merge({ favorite: ["S", "J"] });
-  assert.deepEqual([...conflicts(b)], [["J", ["next", "favorite"]]]);
-  assert.equal(actionFor(b, "J")?.id, "next");
-});
-
-test("pageKeys: Ctrl keys of in-field actions go from page fields too; named keys stay the page's", () => {
-  const k = pageKeys(DEFAULT_BINDINGS);
-  assert.deepEqual(k.inFields, ["Ctrl+K", "Ctrl+B", "Ctrl+T", "Ctrl+W", "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+\\", "Ctrl+-", "Ctrl+Shift+N"]);
-  assert.deepEqual(k.outside, ["/", "J", "K", "S", "M", "F", "V", "Y", "[", "]"]);
-  assert.deepEqual(k.prefix, ["Ctrl+B"]);
-  assert.ok(![...k.inFields, ...k.outside].some((x) => x.startsWith("Alt+Arrow")), "back / forward over a page are the page's own history");
-  const custom = pageKeys(merge({ palette: ["P"], favorite: ["Ctrl+S"], next: ["Shift+J", "Space"] }));
-  assert.ok(custom.outside.includes("P") && !custom.inFields.includes("P"), "a plain key never from a field");
-  assert.ok(custom.outside.includes("Ctrl+S"), "an action that skips the app's fields skips the page's");
-  assert.ok(custom.outside.includes("Shift+J") && !custom.outside.includes("Space"));
-});
-
-test("two-key bindings: any first key, shown in turn, with what can follow it", () => {
-  assert.equal(actionFor(DEFAULT_BINDINGS, 'Ctrl+B "')?.id, "splitDown");
-  assert.equal(actionFor(DEFAULT_BINDINGS, '"'), undefined, "not without the first key");
   assert.equal(keyLabel('Ctrl+B "'), 'Ctrl B › "');
   assert.equal(keyLabel("Ctrl+B X"), "Ctrl B › x");
   assert.equal(keyLabel("G Space"), "g › Space");
+});
 
-  const b = merge({ favorite: ["S", "G G"], read: ["G G", "G M"], splitDown: ["Ctrl+-"] });
-  assert.equal(chordFrom(b, "G")?.id, "favorite");
-  assert.equal(chordFrom(b, "S"), undefined);
-  assert.deepEqual(afterFirst(b, "G"), [
-    ["favorite", ["G"]],
-    ["read", ["M"]],
-  ]);
-  assert.ok(!afterFirst(b, "Ctrl+B").some(([id]) => id === "splitDown"), "a removed key leaves the hint");
-  assert.deepEqual(afterFirst(DEFAULT_BINDINGS, "Ctrl+B")[0], ["focus", ["Z"]]);
+test("actionFor: defaults, several keys per action, overrides replace an action's keys, and the scope picks among a key's actions", () => {
+  assert.equal(actionFor(DEFAULT_BINDINGS, "J", "list")?.id, "next");
+  assert.equal(actionFor(DEFAULT_BINDINGS, "J", "doc")?.id, "scrollDown");
+  assert.equal(actionFor(DEFAULT_BINDINGS, "ArrowDown", "list")?.id, "next");
+  assert.equal(actionFor(DEFAULT_BINDINGS, "ArrowDown", "doc"), undefined, "the arrows scroll a document natively");
+  assert.equal(actionFor(DEFAULT_BINDINGS, "Ctrl+P", "doc")?.id, "palette");
+  assert.equal(actionFor(DEFAULT_BINDINGS, "Q", "list"), undefined);
+  const b = merge({ next: ["N"] });
+  assert.equal(actionFor(b, "N", "list")?.id, "next");
+  assert.equal(actionFor(b, "J", "list"), undefined);
+  assert.equal(actionFor(b, "K", "list")?.id, "prev");
+});
+
+test("the default table has no conflict, and every Ex name is a real action", () => {
+  assert.deepEqual([...conflicts(DEFAULT_BINDINGS).keys()], []);
+  assert.equal(new Set(ACTIONS.map((a) => a.id)).size, ACTIONS.length);
+  const ids = new Set(ACTIONS.map((a) => a.id));
+  assert.ok(Object.values(EX_ALIASES).every((id) => ids.has(id)));
+  assert.equal(EX_ALIASES.vsplit, "splitRight");
+  assert.equal(EX_ALIASES.only, EX_ALIASES.zoom);
+});
+
+test("conflicts: only where the scopes overlap, first in registry order wins", () => {
+  const ids = (b: Bindings, key: string) =>
+    conflicts(b)
+      .get(key)
+      ?.map((a) => a.id);
+  assert.equal(ids(DEFAULT_BINDINGS, "J"), undefined, "next in a list, scrollDown in a document");
+  const fav = merge({ favorite: ["S", "J"] });
+  assert.deepEqual(ids(fav, "J"), ["favorite", "next", "scrollDown"], "an everywhere action overlaps both scopes");
+  assert.equal(actionFor(fav, "J", "list")?.id, "favorite");
+  const twoList = merge({ search: ["/", "D"] });
+  assert.deepEqual(ids(twoList, "D"), ["search", "listHalfDown"], "the document's D does not overlap the list's two");
+});
+
+test("chordFrom and afterFirst: any first key, by scope, with what can follow it", () => {
+  assert.equal(actionFor(DEFAULT_BINDINGS, 'Ctrl+B "', "list")?.id, "splitDown");
+  assert.equal(actionFor(DEFAULT_BINDINGS, '"', "list"), undefined, "not without the first key");
+
+  assert.equal(chordFrom(DEFAULT_BINDINGS, "Y", "doc")?.id, "copyUrl");
+  assert.equal(chordFrom(DEFAULT_BINDINGS, "Y", "list"), undefined, "y y is the document's");
+  assert.equal(chordFrom(DEFAULT_BINDINGS, "S", "doc"), undefined);
+
+  const b = merge({ favorite: ["S", "G Q"], read: ["G Q", "G M"], splitDown: ["Ctrl+-"] });
+  assert.deepEqual(
+    afterFirst(b, "G", "list").filter(([id]) => id === "favorite" || id === "read"),
+    [
+      ["favorite", ["Q"]],
+      ["read", ["M"]],
+    ],
+  );
+  assert.ok(!afterFirst(b, "Ctrl+B", "doc").some(([id]) => id === "splitDown"), "a removed key leaves the hint");
+  assert.ok(afterFirst(DEFAULT_BINDINGS, "Ctrl+B", "doc").some(([id]) => id === "visual"));
+  assert.ok(!afterFirst(DEFAULT_BINDINGS, "Ctrl+B", "list").some(([id]) => id === "visual"), "the hint filters by scope");
 });
 
 test("chordFrom: a first key works in fields if any of its bindings does", () => {
@@ -80,11 +111,165 @@ test("chordFrom: a first key works in fields if any of its bindings does", () =>
   assert.equal(chordFrom(b, "Ctrl+G")?.id, "newTab");
 });
 
-test("pageKeys: a two-key binding forwards its first key by the same rules, and arms the overlay", () => {
-  const k = pageKeys(merge({ favorite: ["G G", "Ctrl+G S"], read: ["Enter X"], next: ["Ctrl+Y Y"] }));
-  assert.ok(k.outside.includes("G") && !k.inFields.includes("G"), "a plain first key never from a field");
-  assert.ok(k.outside.includes("Ctrl+G"), "an action that skips the app's fields skips the page's");
-  assert.ok(!k.outside.includes("Enter") && !k.prefix.includes("Enter"), "Enter stays the page's, also as a first key");
-  assert.deepEqual(k.prefix.sort(), ["Ctrl+B", "Ctrl+G", "Ctrl+Y", "G"]);
-  assert.ok(![...k.inFields, ...k.outside].some((x) => x.includes(" ")));
+test("scopeOf: documents and the chat log read, everything else is a list", () => {
+  assert.deepEqual(["doc", "chat", "list", "nav", null, undefined].map(scopeOf), ["doc", "doc", "list", "list", "list", "list"]);
+});
+
+// ---- stepKeys -----------------------------------------------------------------------------------
+
+const NOW = 1000;
+const step = (key: string, seq: KeySeq = IDLE, o: { scope?: KeyScope; inField?: boolean; now?: number; b?: Bindings } = {}) =>
+  stepKeys(o.b ?? DEFAULT_BINDINGS, seq, key, { scope: o.scope ?? "list", inField: o.inField ?? false, now: o.now ?? NOW });
+
+/** Each key in turn, from idle. */
+function press(keys: string[], o: Parameters<typeof step>[2] = {}): KeyStep {
+  let seq = IDLE;
+  let last: KeyStep = { kind: "none", seq };
+  for (const k of keys) {
+    last = step(k, seq, o);
+    seq = last.seq;
+  }
+  return last;
+}
+const ran = (s: KeyStep) => (s.kind === "run" ? [s.action.id, s.count, s.sequence] : s.kind);
+
+test("stepKeys: a single key runs its action, an unbound one is left alone", () => {
+  assert.deepEqual(ran(step("J")), ["next", 1, "J"]);
+  assert.equal(step("Q").kind, "none");
+  assert.deepEqual(step("Q").seq, IDLE);
+});
+
+test("stepKeys: a chord's first key waits, and the second runs it", () => {
+  const first = step("Ctrl+B");
+  assert.equal(first.kind, "wait");
+  assert.equal(first.seq.first, "Ctrl+B");
+  assert.deepEqual(ran(step("X", first.seq)), ["closePane", 1, "Ctrl+B X"]);
+  assert.deepEqual(step("X", first.seq).seq, IDLE);
+  assert.deepEqual(ran(press(["G", "T"])), ["nextTab", 1, "G T"]);
+  assert.deepEqual(ran(press(["Ctrl+B", "2"])), ["tabByNumber", 1, "Ctrl+B 2"], "a digit as the second key is no count");
+});
+
+test("stepKeys: a key that starts a chord never runs alone", () => {
+  const b = merge({ favorite: ["G"] });
+  assert.equal(step("G", IDLE, { b }).kind, "wait");
+});
+
+test("stepKeys: Esc and an unbound second key cancel, and are swallowed", () => {
+  const first = step("Ctrl+B").seq;
+  assert.equal(step("Escape", first).kind, "cancel");
+  assert.deepEqual(step("Escape", first).seq, IDLE);
+  assert.equal(step("Q", step("G").seq).kind, "cancel");
+  assert.deepEqual(step("Q", step("G").seq).seq, IDLE);
+  assert.equal(press(["5", "Escape"]).kind, "cancel", "a count on its own, too");
+  assert.deepEqual(ran(step("Escape")), ["escape", 1, "Escape"], "Esc with nothing pending is an action");
+});
+
+test("stepKeys: a count multiplies a counted action and only those", () => {
+  assert.equal(step("5").kind, "wait");
+  assert.deepEqual(ran(press(["5", "J"])), ["next", 5, "J"]);
+  assert.deepEqual(ran(press(["1", "2", "J"])), ["next", 12, "J"]);
+  assert.deepEqual(ran(press(["1", "0", "J"])), ["next", 10, "J"], "0 once a count has begun");
+  assert.deepEqual(ran(press(["5", "S"])), ["favorite", 1, "S"], "not counted: the count is ignored");
+  assert.equal(step("0").kind, "none", "0 cannot start a count");
+  assert.deepEqual(press(["5", "Q"]).seq, IDLE, "an unbound key forgets the count");
+  assert.equal(press(["5", "Q"]).kind, "none");
+});
+
+test("stepKeys: a count before a chord reaches the action when it is counted", () => {
+  const b = merge({ listHalfDown: ["Z Z"] });
+  assert.deepEqual(ran(press(["3", "Z", "Z"], { b })), ["listHalfDown", 3, "Z Z"]);
+  assert.deepEqual(ran(press(["3", "G", "G"])), ["listFirst", 1, "G G"]);
+});
+
+test("stepKeys: a digit bound where the keyboard is, is no count", () => {
+  const b = merge({ favorite: ["1"], read: ["2 M"] });
+  assert.deepEqual(ran(step("1", IDLE, { b })), ["favorite", 1, "1"]);
+  assert.equal(step("2", IDLE, { b }).seq.first, "2", "nor a chord's first key");
+  const onlyInDoc = merge({ scrollDown: ["1"] });
+  assert.deepEqual(ran(step("1", IDLE, { b: onlyInDoc, scope: "doc" })), ["scrollDown", 1, "1"]);
+  assert.equal(step("1", IDLE, { b: onlyInDoc, scope: "list" }).seq.count, 1, "bound only elsewhere: a count here");
+});
+
+test("stepKeys: the second key alone repeats a repeat action within the window, which each repeat extends", () => {
+  const s = press(["Ctrl+B", "Shift+H"], { scope: "list" });
+  assert.deepEqual(ran(s), ["paneGrowLeft", 1, "Ctrl+B Shift+H"]);
+  assert.deepEqual(s.seq.repeat, { first: "Ctrl+B", until: NOW + REPEAT_MS });
+
+  const late = NOW + REPEAT_MS - 1;
+  const again = step("Shift+H", s.seq, { now: late });
+  assert.deepEqual(ran(again), ["paneGrowLeft", 1, "Ctrl+B Shift+H"]);
+  assert.equal(again.seq.repeat?.until, late + REPEAT_MS);
+  assert.deepEqual(ran(step("Shift+L", s.seq, { now: late })), ["paneGrowRight", 1, "Ctrl+B Shift+L"], "any repeat action under the same first key");
+});
+
+test("stepKeys: past the window, or on another key, the key is read fresh", () => {
+  const s = press(["Ctrl+B", "Shift+H"], { scope: "doc" });
+  assert.deepEqual(ran(step("Shift+H", s.seq, { scope: "doc", now: NOW + REPEAT_MS })), ["docBack", 1, "Shift+H"], "expired");
+  const other = step("J", s.seq, { scope: "doc", now: NOW + 1 });
+  assert.deepEqual(ran(other), ["scrollDown", 1, "J"], "Ctrl+B J exists but does not repeat");
+  assert.equal(other.seq.repeat, null);
+  assert.equal(press(["Ctrl+B", "X"]).seq.repeat, null, "an action that does not repeat opens no window");
+});
+
+test("stepKeys: a plain key in a field never runs or starts a chord, even on an inFields action", () => {
+  const inField = { inField: true };
+  assert.equal(step("G", IDLE, inField).kind, "none", "g t runs in fields, a typed g stays typed");
+  assert.equal(step("?", IDLE, inField).kind, "none");
+  assert.equal(step(":", IDLE, inField).kind, "none");
+  assert.equal(step("Shift+G", IDLE, inField).kind, "none");
+  assert.equal(step("5", IDLE, inField).kind, "none", "no count either");
+  assert.equal(step("J", IDLE, inField).kind, "none");
+});
+
+test("stepKeys: Esc and modified keys in a field follow inFields", () => {
+  const inField = { inField: true };
+  assert.deepEqual(ran(step("Ctrl+P", IDLE, inField)), ["palette", 1, "Ctrl+P"]);
+  assert.deepEqual(ran(step("Escape", IDLE, inField)), ["escape", 1, "Escape"]);
+  assert.equal(step("Ctrl+D", IDLE, inField).kind, "none", "halfDown is not inFields");
+  assert.equal(step("Enter", IDLE, inField).kind, "none");
+  assert.equal(step("Ctrl+B", IDLE, inField).kind, "wait");
+  assert.deepEqual(ran(press(["Ctrl+B", "Shift+E"], inField)), ["paneEven", 1, "Ctrl+B Shift+E"]);
+  const b = merge({ favorite: ["Ctrl+B S"] });
+  assert.equal(press(["Ctrl+B", "S"], { b, inField: true }).kind, "cancel", "the second key's action must run in fields too");
+});
+
+test("stepKeys: the same key means what it means in the keyboard's scope", () => {
+  assert.deepEqual(ran(step("J", IDLE, { scope: "list" })), ["next", 1, "J"]);
+  assert.deepEqual(ran(step("J", IDLE, { scope: "doc" })), ["scrollDown", 1, "J"]);
+  assert.deepEqual(ran(press(["G", "G"], { scope: "list" })), ["listFirst", 1, "G G"]);
+  assert.deepEqual(ran(press(["G", "G"], { scope: "doc" })), ["docTop", 1, "G G"]);
+  assert.equal(step("ArrowDown", IDLE, { scope: "doc" }).kind, "none");
+  assert.equal(press(["G", "W"], { scope: "list" }).kind, "cancel", "g w is the document's");
+  assert.deepEqual(ran(press(["G", "W"], { scope: "doc" })), ["wordHints", 1, "G W"]);
+});
+
+// ---- pageKeys -----------------------------------------------------------------------------------
+
+test("pageKeys: the page's own keys and the list's are out; the rest stepKeys reads in the doc scope", () => {
+  const k = pageKeys(DEFAULT_BINDINGS);
+  const inPage = (key: string, seq = IDLE, inField = false) => stepKeys(k.bindings, seq, key, { scope: "doc", inField, now: NOW });
+  assert.deepEqual(ran(inPage("J")), ["scrollDown", 1, "J"]);
+  assert.equal(inPage("Enter").kind, "none", "the page's");
+  assert.equal(inPage("Escape").kind, "none");
+  assert.equal(inPage("ArrowDown").kind, "none");
+  assert.equal(inPage("Alt+ArrowLeft").kind, "none", "its history");
+  assert.equal(inPage("W").kind, "none", "the overlay has its own button for a selected word");
+  assert.equal(inPage("R").kind, "none");
+  assert.deepEqual(ran(inPage("Ctrl+P", IDLE, true)), ["palette", 1, "Ctrl+P"], "even from a page field");
+  assert.equal(inPage("J", IDLE, true).kind, "none", "typing in a page field");
+});
+
+test("pageKeys: sequences are the app's actions, first the chords' first keys", () => {
+  const k = pageKeys(DEFAULT_BINDINGS);
+  assert.ok(k.sequences.includes("Ctrl+P") && k.sequences.includes("Ctrl+B X") && k.sequences.includes("Shift+J"));
+  assert.ok(!k.sequences.includes("J"), "a local action never reaches the app");
+  assert.ok(!k.sequences.includes("G G"));
+  assert.ok(!k.sequences.includes("Enter") && !k.sequences.includes("Alt+ArrowLeft"));
+  assert.deepEqual(k.first.sort(), ["Ctrl+B", "G", "Y", "[", "]"]);
+
+  const custom = pageKeys(merge({ favorite: ["G Q", "Ctrl+G S"], read: ["Enter X"], view: ["Space"] }));
+  assert.ok(custom.first.includes("Ctrl+G"));
+  assert.ok(!custom.first.includes("Enter"), "Enter stays the page's, also as a first key");
+  assert.deepEqual(custom.bindings.view, [], "as does Space");
+  assert.deepEqual(custom.bindings.read, []);
 });

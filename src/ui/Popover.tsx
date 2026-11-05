@@ -196,7 +196,7 @@ export interface MenuItem {
 }
 
 /** j / k (the list bindings) step through a menu as the arrows do; Radix handles the arrows. */
-function stepKeys(e: React.KeyboardEvent<HTMLElement>) {
+function stepMenu(e: React.KeyboardEvent<HTMLElement>) {
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     return;
   }
@@ -281,7 +281,7 @@ const menuProps = (label: string, s: ReturnType<typeof useSurface>, height: stri
   collisionPadding: 8,
   style: { ...s.style, maxHeight: `var(${height})`, overflowY: "auto" as const },
   onCloseAutoFocus: keepFocus,
-  onKeyDown: stepKeys,
+  onKeyDown: stepMenu,
 });
 
 /**

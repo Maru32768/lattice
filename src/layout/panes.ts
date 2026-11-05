@@ -88,7 +88,7 @@ export function paneAfter(move: PaneMove, from: HTMLElement | null): HTMLElement
 const NAV_ITEMS = ".ni, .nav-search, .nav-rail .ib";
 
 /** j / k in the nav: move focus between its items (Enter then selects the focused one). */
-export function stepNav(nav: HTMLElement, d: 1 | -1) {
+export function stepNav(nav: HTMLElement, d: number) {
   const items = [...nav.querySelectorAll<HTMLButtonElement>(NAV_ITEMS)].filter((b) => !b.disabled);
   const i = items.indexOf(document.activeElement as HTMLButtonElement);
   items[i < 0 ? 0 : Math.max(0, Math.min(items.length - 1, i + d))]?.focus();

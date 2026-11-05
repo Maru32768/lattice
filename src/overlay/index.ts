@@ -22,15 +22,16 @@ import {
   keepsAtoms,
   pageTarget,
   plainText,
-  routeKey,
   sanitize,
   snippetHtml,
   splitByLineBreaks,
+  takesBeforePage,
   translatedShare,
   unitsByBlock,
   withAtoms,
 } from "./logic.ts";
-import { keyOf, type PageKeys } from "../lib/keymap.ts";
+import { IDLE, keyOf, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
+import { isDocScroll, pageScroller, scrollDoc } from "../docnav/scroll.ts";
 import type { OverlayLabels } from "../api.ts";
 import { captureIn, collapse, isWord } from "../vocab/vocab.ts";
 
@@ -708,43 +709,78 @@ function reportHistory() {
 // The page's webview has keyboard focus, so the app's shortcuts are picked up here and forwarded.
 
 let keys: PageKeys | null = null;
-/** Until when the key after the first key of a two-key binding goes to the app. */
-let prefixUntil = 0;
+let keySeq = IDLE;
 
 function setKeys(k: PageKeys | null) {
   keys = k;
+  keySeq = IDLE;
 }
 
 const inField = (t: EventTarget | undefined) => t instanceof HTMLElement && (t.isContentEditable || !!t.closest("input, textarea, select"));
 
-function forward(key: string, armed: boolean) {
-  prefixUntil = !armed && keys?.prefix.includes(key) ? Date.now() + keys.prefixMs : 0;
-  invoke("overlay_key", { key }).catch(() => {});
+/** Tells the app: a whole sequence to run, a chord's first key for its hint, or nothing ("") to hide that hint. */
+const tellApp = (key: string, count = 1) => void invoke("overlay_key", { key, count }).catch(() => {});
+
+function runLocal(id: ActionId, count: number) {
+  if (id === "print") {
+    window.print();
+  } else if (isDocScroll(id)) {
+    const el = pageScroller();
+    if (el) {
+      scrollDoc(el, id, count);
+    }
+  }
+}
+
+function applyStep(step: KeyStep) {
+  const hinted = keySeq.first != null;
+  keySeq = step.seq;
+  if (step.kind === "run" && !step.action.local) {
+    return tellApp(step.sequence, step.count);
+  }
+  if (step.kind === "run") {
+    runLocal(step.action.id, step.count);
+  }
+  if (step.seq.first) {
+    tellApp(step.seq.first);
+  } else if (hinted) {
+    tellApp("");
+  }
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.isComposing) {
+  if (e.isComposing || !keys) {
     return;
   }
   const key = keyOf(e);
-  if (key === "Ctrl+P") {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    return window.print();
-  }
-  if (!keys) {
+  if (!key) {
     return;
   }
-  const armed = Date.now() < prefixUntil;
   // composedPath: the field itself, not its shadow host.
-  const route = routeKey(keys, key, inField(e.composedPath()[0]), armed);
-  if (route === "take") {
+  const step = stepKeys(keys.bindings, keySeq, key, { scope: "doc", inField: inField(e.composedPath()[0]), now: Date.now() });
+  if (step.kind === "none") {
+    keySeq = step.seq;
+  } else if (takesBeforePage(keySeq, key, step)) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    forward(key!, armed);
-  } else if (route === "unlessHandled") {
-    setTimeout(() => e.defaultPrevented || forward(key!, armed));
+    applyStep(step);
+  } else {
+    setTimeout(() => {
+      if (e.defaultPrevented) {
+        keySeq = IDLE;
+      } else {
+        applyStep(step);
+      }
+    });
   }
+}
+
+/** A press in the page ends a sequence under way. */
+function onPagePress() {
+  if (keySeq.first) {
+    tellApp("");
+  }
+  keySeq = IDLE;
 }
 
 function configure(c: Partial<Config>) {
@@ -835,6 +871,11 @@ if (window.top === window && !window.__lattice) {
     );
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
+  window.addEventListener("pointerdown", onPagePress, true);
+  // Quietly: the app takes the keyboard to read a second key once its hint covers the page.
+  window.addEventListener("blur", () => {
+    keySeq = IDLE;
+  });
   // After the selection settles (a click inside it collapses it only after mouseup).
   document.addEventListener("mouseup", (e) => {
     if (!e.composedPath().some((n) => n === saveBtn?.host)) {

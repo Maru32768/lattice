@@ -34,7 +34,7 @@ const paste = (target: Locator, file: Fake, text?: string) =>
   );
 
 async function openImport(app: Page, tab: string) {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type(`>${tab}`);
   await app.keyboard.press("Enter");
 }
@@ -121,7 +121,7 @@ test("a file dropped where nothing takes it never navigates the app; text dragge
   expect(await drop(app.locator("nav").first(), PDF)).toBe(true);
   await expect(app.getByRole("region", { name: "PDF" })).toBeVisible();
 
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   const field = app.getByRole("dialog", { name: "コマンドパレット" }).locator("input").first();
   expect(await drop(field, PDF), "a file on a field is cancelled too").toBe(true);
   const textDrag = await field.evaluate((el) => {

@@ -1,7 +1,7 @@
 import { test, expect, callsOf } from "./harness.ts";
 
 test("a PDF picked on the import screen opens in the Reader, and Page shows the saved original", async ({ app }) => {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type(">pdf");
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option")).toHaveText(["PDF(論文)を取り込む"]);
   await app.keyboard.press("Enter");
@@ -41,7 +41,7 @@ test("a PDF picked on the import screen opens in the Reader, and Page shows the 
 });
 
 test("the PDF tab's 自動で翻訳しない goes with the import", async ({ app }) => {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type(">pdf");
   await app.keyboard.press("Enter");
   await app.getByRole("checkbox", { name: "自動で翻訳しない" }).check();

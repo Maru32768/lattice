@@ -124,7 +124,7 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
     .poll(async () => (await callsOf(app, "chat_ask")).map((c) => (c as { scope: unknown }).scope))
     .toEqual([{ kind: "filter", filter: { kind: "group", id: mvcc.id } }]);
 
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type("?vacuum");
   await app.keyboard.press("Enter");
   await expect
@@ -139,7 +139,7 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
 
 test("imports land in the chosen groups; the list's group is chosen first", async ({ app }) => {
   await navItem(app, rust.name).click();
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type(">一括");
   await app.keyboard.press("Enter");
   const field = app.locator(".import-groups");
@@ -169,19 +169,19 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
 });
 
 test("the palette opens a group, adds the open article to one, and saves a URL into the list's group", async ({ app }) => {
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type("グループ rust");
   await app.getByRole("option", { name: `グループ: ${rust.name}` }).click();
   await expect(list(app).locator("h1")).toHaveText(rust.name);
 
   await list(app).locator(".row").first().click();
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type("この記事をグループに追加");
   await app.getByRole("option", { name: "この記事をグループに追加…" }).click();
   await expect(picker(app)).toBeVisible();
   await app.keyboard.press("Escape");
 
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.type("https://example.com/into-group");
   await app.getByRole("option", { name: `ライブラリに保存してグループ「${rust.name}」に入れる` }).click();
   await expect.poll(() => callsOf(app, "group_add")).toHaveLength(1);

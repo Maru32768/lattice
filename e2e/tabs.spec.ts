@@ -99,7 +99,7 @@ test("the layout with its tabs survives a reload", async ({ app }) => {
 
 test("a Page tab gets its own webview, titled by its host until the page names itself", async ({ app }) => {
   const url = "https://example.com/new-post";
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.insertText(url);
   await app.keyboard.press("Enter");
   await expect(titles(app)).toHaveText(["example.com"]);
@@ -141,7 +141,7 @@ test("a chat citation and a palette article open in a new tab on Ctrl / middle c
   await expect(tabs(app).nth(0), "citations open behind the article being read").toHaveAttribute("aria-selected", "true");
 
   // The palette is not a page being read: its new tab comes to the front, right after the active one.
-  await app.keyboard.press("Control+k");
+  await app.keyboard.press("Control+p");
   await app.keyboard.insertText(c.title!);
   await app.locator(".pal .it-l").getByText(c.title!, { exact: true }).click({ button: "middle" });
   await expect(titles(app)).toHaveText([a.title!, c.title!, b.title!, b.title!]);

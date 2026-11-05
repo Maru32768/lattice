@@ -1,9 +1,9 @@
 import { useRef } from "react";
-import { Kbd } from "../ui/Icon";
+import { ActionKey, Kbd } from "../ui/Icon";
 import { useCover } from "../ui/Popover";
 import { useT } from "../i18n";
 import { useBindings } from "../lib/keys";
-import { actionLabel, afterFirst, keyLabel } from "../lib/keymap";
+import { actionLabel, afterFirst, keyLabel, type KeyScope } from "../lib/keymap";
 
 /** States board #8: an empty library. */
 export function FirstRun({
@@ -27,8 +27,7 @@ export function FirstRun({
         <button className="btn" onClick={onPaste}>
           <span className="h">{t("app.pasteUrl")}</span>
           <span className="muted">
-            <Kbd>Ctrl</Kbd>
-            <Kbd>K</Kbd>
+            <ActionKey id="palette" />
             {t("app.pasteHint")}
           </span>
         </button>
@@ -60,8 +59,8 @@ export function FirstRun({
   );
 }
 
-/** Shown after the first key of a two-key binding: what can follow it. */
-export function PrefixHint({ first }: { first: string }) {
+/** Shown a moment after the first key of a two-key binding: what can follow it where the keyboard is. */
+export function PrefixHint({ first, scope }: { first: string; scope: KeyScope }) {
   const t = useT();
   const bindings = useBindings();
   const ref = useRef<HTMLDivElement>(null);
@@ -69,7 +68,7 @@ export function PrefixHint({ first }: { first: string }) {
   return (
     <div ref={ref} className="prefix-hint" role="status">
       <Kbd>{keyLabel(first)}</Kbd>
-      {afterFirst(bindings, first).map(([id, seconds]) => (
+      {afterFirst(bindings, first, scope).map(([id, seconds]) => (
         <span key={id}>
           {seconds.map((k) => (
             <Kbd key={k}>{keyLabel(k)}</Kbd>
