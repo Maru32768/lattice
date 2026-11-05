@@ -131,6 +131,9 @@ mise exec -- node scripts/icons.ts
 | `src` | The React frontend, one folder per feature (`library`, `reader`, `browser`, `chat`, `search`, `feeds`, `import`, `quiz`, `vocab`, `jobs`, `settings`), the app shell (`app`) and pane layout (`layout`), with shared UI parts in `ui` and helpers in `lib`. `api.ts` (the IPC client) and `main.tsx` stay at the top. |
 | `src/i18n` | The UI text catalogs and the translation functions. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots, shortcut forwarding). |
+| `src/lib/keymap.ts` | The key table and the one key state machine, shared by the app and the overlay. |
+| `src/docnav` | Keyboard reading of a document (labels, caret, find), shared by the Reader and the overlay. |
+| `src/vim` | The Vim editor for the chat input and notes, and the vimrc parser. |
 | `e2e` | Browser tests: the mock backend, sample data and Playwright specs. |
 | `infra/r2` | Terraform for the R2 backup bucket. |
 | `scripts` | Version bump, license list, i18n extraction, icon generation. |

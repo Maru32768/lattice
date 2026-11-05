@@ -34,12 +34,12 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 | G6 | アプリアイコン | 進行中 | 格子のアイコンを作り、ウィンドウ・タスクバー・アプリ左上で使う。 |
 | G7 | Page表示でselectを開くとページが真っ白になる | 進行中 | popoverを一覧ペイン内に収め、webviewと重なるときだけ隠す。 |
 | G8 | 戻る / 進むを履歴がないときは無効に | 進行中 | ページから`canGoBack` / `canGoForward`を通知する。 |
-| G9 | ショートカットの変更・1つの操作に複数キー | 進行中 | 操作とキーの対応を1つの表にし、設定画面で編集する。 |
+| G9 | ショートカットの変更・1つの操作に複数キー | 済 | 操作とキーの対応を1つの表にし(`src/lib/keymap.ts`の`ACTIONS`)、設定画面で編集する。 |
 | G10 | 文書ペインのない画面で対話を開くと右に余白 | 進行中 | 管理画面が残りの幅を使う。 |
 | G11 | README(英語・日本語) | 進行中 | 先頭で言語を切り替える。他人が使う前提でセットアップと設定を書く。 |
 | G12 | フィード・記事にfavicon | 進行中 | backendがドメインごとに取得してDBに保存し、`data:` URLで渡す。 |
 | G13 | 矢印キーで移動 | 進行中 | j/kと同じ操作にする。 |
-| G14 | tmuxと同じキーでペイン移動 | 進行中 | `Ctrl+B`の後に矢印・h/j/k/l・o。 |
+| G14 | tmuxと同じキーでペイン移動 | 済 | `Ctrl+B`の後に矢印・h/j/k/l・o・`;`・q、大きさの変更と入れ替え。design-review §31。 |
 | G15 | Pageのツールバーがはみ出すと右側を押せない | 進行中 | はみ出したら横スクロール。 |
 | G16 | 開いている記事を選ぶと再読み込みされる | 進行中 | 同じ記事・同じ表示なら何もしない。 |
 | G17 | 既読の条件 | 進行中 | 開いたら既読にするが、scopeかfacetを変えるまでは未読一覧に残す。 |
@@ -68,8 +68,8 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 | G40 | CIでテスト | 済 | `.github/workflows/ci.yml`: masterへのpushとPRで、windows-latest・`jdx/mise-action`(`mise.toml`の版)・cargoとnpmとPlaywrightのブラウザのcacheの上で、overlayのビルド、rustfmt、clippy、Rustのテスト、`npm test`、oxlint、型チェックとビルド、E2Eを順に実行する。失敗時はPlaywrightのレポートをartifactに残す(design-review §18)。 |
 | G41 | リリースフロー | 済 | バージョンは`package.json`・`package-lock.json`・workspaceの`Cargo.toml`(両crateが継承、`tauri.conf.json`は持たない)・`Cargo.lock`にあり、`npm run bump -- <x.y.z>`で揃え、`npm test`がずれを検出する。`CHANGELOG.md`(Keep a Changelog)。`v*`タグで`.github/workflows/release.yml`がNSISインストーラー・portable zip・`THIRD_PARTY_LICENSES`をdraft releaseに載せる(署名鍵のsecretがあればupdater用の`.sig`と`latest.json`も)。ライセンス一覧はcargo-aboutと`scripts/licenses.ts`で生成(`mise run licenses`)。draftの成果物は`.github/workflows/release-check.yml`が検証し、実際に起動して確かめる。手順は`docs/release.md`。 |
 | G42 | 静的解析 | 済 | `mise run lint`: rustfmt(`rustfmt.toml`は既存の長い行に合わせた)、clippy(`--all-targets -D warnings`)、oxlint(type-aware。hooks・promise・`no-unsafe-*`など、外した規則は`oxlint.config.ts`に理由を書いた)。`mise run test`はlintの後に走る。型チェックは従来どおり`npm run build`(design-review §18)。 |
-| G43 | 対話の入力欄でVimキーバインド | 済 | 設定 › 要約・対話 で有効にする(既定はオフ、端末ごとにlocalStorage)。挿入モードで始まり、Escでノーマルモード。h j k l w b e 0 $ gg G、i a I A o O、x dd dw cw yy p、u。送信はどちらのモードでもCtrl+Enter。`src/chat/vim.ts`の純粋な状態機械で、依存は足していない。 |
-| G44 | アプリ全体をVim風に操作 | 後 | ChromeのVimiumのように、リンクのヒント表示などで操作する。G9のキー設定の上に作る。 |
+| G43 | 対話の入力欄でVimキーバインド | 済 | 設定 › 要約・対話 で有効にする(既定はオフ、端末ごとにlocalStorage)。挿入モードで始まり、Escでノーマルモード。h j k l w b e 0 $ gg G、i a I A o O、x dd dw cw yy p、u。送信はどちらのモードでもCtrl+Enter。当初は純粋な状態機械で依存を足さなかったが、J6でCodeMirrorに置き換え、設定は 設定 › ショートカット に移した。 |
+| G44 | アプリ全体をVim風に操作 | 済 | ChromeのVimiumのように、リンクのヒント表示などで操作する。Reader・Page・PDFで同じ`src/docnav`を使う。design-review §31。 |
 | G45 | モデルごとのeffort設定 | 済 | chainの各段に任意のeffort(`low`〜`max`、Geminiは`low`〜`high`)。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`(既定は従来どおりlow)、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定はproviderの既定で、保存済みのchainはそのまま読める。 |
 | G46 | タスクバーに未読数バッジ | 済 | 未読数を描いた画像をWindowsのoverlay iconにする(99+ まで、0で消す)。UIの未読数の変化を500 msまとめてbackendに渡す。設定「タスクバー」でオフにできる(design-review §16)。 |
 | G47 | スマホから使える簡易版 | 将来 | 同期の仕組みが前提(R2バックアップの延長か、別の仕組みか)。 |
@@ -152,7 +152,7 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 | J3 | フィード管理画面の並べ替えをドラッグに | 済 | H26の管理画面は上下ボタンだった。AIプロバイダの段と同じ ⋮⋮ のハンドル(dnd-kit、ポインタとキーボード)でフィードの表とフォルダの欄を並べ替える(`src/ui/SortableRow.tsx`)。別のフォルダのフィードの上に落とすとそのフォルダへ移す(ナビと同じ`feedDrop`)。上下ボタンは外した。読み上げのlive regionはナビと同じくページの外へ出す。 |
 | J4 | フィードの記事がIndex済みなのに「Indexに追加」が出る | 済 | フィードが`http://`でリンクする記事(brooker.co.za)をhttpの正規化URLで保存し、アプリ内ブラウザはhttpsに着くので一致しなかった。`url_norm`がhttpをhttpsに畳み(独自のポートを持つURLは除く。取得は元のURLのまま)、migrationで保存済みのURLを正規化し直す(`RENORMALIZE_AT`)。httpとhttpsで二重に保存されていた記事は、httpsの方がPageと一致する。 |
 | J5 | Windows Authenticode署名 | 後 | SignPath Foundation (OSS向けに無料)を検討し、公開からの期間が短いことと、今は警告で困っていないことから見送った(2026-10-27)。選択肢・SignPathの条件・release workflowの設計(`tauri bundle --no-binary-patching`が要ることなど)・artifact configuration・未確認の点は`docs/authenticode.md`。`lattice-cli.exe`のバージョン情報(`build.rs`)とguideの「通信する相手」は先に入れた。 |
-| J6 | Vimキーバインドの強化 | 後 | G43は対話の入力欄だけで、visual mode・count・`.`・テキストオブジェクトがない。メモ(J1)にも同じキーを効かせ、visual mode(`v` / `V`)・count・`.`・`ciw`などのテキストオブジェクト・検索(`/`)を足す。使うのはVimに慣れた人なので、専用の設定画面は作らず、`.vimrc`風のテキスト(`nnoremap`・`inoremap`と一部の`set`)を設定に書けるようにする案。`src/chat/vim.ts`の状態機械を広げ、textareaの部品として対話とメモで共有する。 |
+| J6 | Vimキーバインドの強化 | 済 | 対話の入力欄とメモで`@replit/codemirror-vim`を使い、別チャンクで読み込む。`.vimrc`のテキスト(マッピングと一部の`set`)を 設定 › ショートカット に書くか読み込む。適用しない行は理由を添えて出す。プラグイン互換(surroundなど)は作らない。design-review §31。 |
 | J7 | 処理ごとのAIプロバイダ | 後 | 翻訳・要約・分類・対話などで求めるモデルとエフォートの水準が違う。今は1つのfallback chainをすべての処理が使う。処理ごとにchainを選べるようにし、未設定の処理は既定のchainを使う。 |
 | J8 | 対話ごとのモデル選択 | 後 | 対話ペインで会話ごとにprovider・モデル・エフォートを選ぶ(J7の対話用のchainを既定にする)。会話に選択を保存する。 |
 | J9 | 取り込み時点で翻訳を始める | 済 | 既存の 設定 › 翻訳「保存した記事を自動で翻訳」(H1、既定オフ)。フィードの記事もingest jobの後に翻訳を積むので対象。日本語の記事は訳さない。 |
@@ -184,6 +184,7 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 |---|---|---|---|
 | L1 | ページ単位の再翻訳(優先度高) | 済 | PDFは大きく、全文の再翻訳はコストが高い。今見ているページのブロックだけを訳し直す。ブロック単位の翻訳なので、ページの境界を多少はみ出してよい。決定: PDFのPage表示のページごとのボタンで、overlayの経路で訳す(jobにしない)。ページをまたぐブロックは続きも一緒に訳す。訳し直しは古い行を消さないので、失敗しても古い訳が残る(design-review G31)。 |
 | L2 | 自動翻訳のオフとページ単位の手動翻訳(優先度高) | 済 | 自動翻訳をファイルや記事ごとにオフにできるようにする(PDFに限らない)。オフのPDFでは、ページ単位で手動で翻訳する。決定: `articles.translate_manual`で、取り込み時・表示の切り替え時・Page表示のスクロール時の翻訳を止める。⋯ メニューとインポート画面で切り替える。明示の翻訳は効く。オフにすると実行中のjobも止める(design-review G31)。 |
+| L3 | 名前付きのペイン構成(ワークスペース) | 後 | ワークスペースごとにペイン構成を名前を付けて保存し、切り替える。Pane→Tabの階層は保つ。tmuxの階層は再現しない。今は`Workspace`が1ウィンドウに1つで、複数にするときはこれを並べる。design-review §31。 |
 
 ## 3. 機能別の実装状況と今後の計画
 

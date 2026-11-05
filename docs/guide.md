@@ -34,7 +34,7 @@ The main window has these areas, from left to right.
 | Document area | Articles and web pages open here in tabs. You can split it into several panes |
 | Chat pane | Opens at the right edge when you click **Chat** in the navigation |
 
-The title bar at the top has back and forward buttons (‹ ›) for the places you visited in the app, and a box that opens the command palette (**Search, commands, URLs**, `Ctrl+K`).
+The title bar at the top has back and forward buttons (‹ ›) for the places you visited in the app, and a box that opens the command palette (**Search, commands, URLs**, `Ctrl+P`).
 
 - Drag the border between two areas to resize them. Double-click a border to restore its default width. Widths are kept for the next start.
 - Close the navigation with the button at its top, and the article list with its own button. A closed article list becomes a thin strip, and the same button opens it again.
@@ -84,7 +84,7 @@ Each way in this chapter can start from the ＋ at the top of the navigation (**
 
 ### Save a URL
 
-1. Press `Ctrl+K` to open the command palette.
+1. Press `Ctrl+P` to open the command palette.
 2. Paste the URL.
 3. Choose **Save to library (import)**, or press `Ctrl+Enter`.
 
@@ -216,7 +216,7 @@ Some pages have almost no text in the HTML that is first downloaded and show the
 
 ### Reader and Page view
 
-A saved article can be read in two views. Switch with **Reader** and **Page** at the left end of the toolbar, or press `v`.
+A saved article can be read in two views. Switch with **Reader** and **Page** at the left end of the toolbar, or press `g v`.
 
 - The **Reader** shows the text extracted from the page, with headings, lists, code, tables and saved images. It never loads anything from the web to show it.
 - The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader.
@@ -237,7 +237,7 @@ The switch right of **Reader** and **Page** chooses the language of the text.
 
 - **Original**: the text as written.
 - **Translated**: the translation.
-- **Mixed**: only some sentences are translated. The percentage next to it is the share shown in the app's display language (English): the original's share in an English article, the translation's in a Japanese one. Press `[` to lower it by 10% and `]` to raise it by 10%.
+- **Mixed**: only some sentences are translated. The percentage next to it is the share shown in the app's display language (English): the original's share in an English article, the translation's in a Japanese one. Press `-` to lower it by 10% and `=` to raise it by 10%.
 
 The article's language sets the direction: Japanese articles are translated into English, and articles in any other language into Japanese. Switching the app's display language does not change this.
 
@@ -287,7 +287,7 @@ Click **Summarize** under **Summary** at the top of the Reader, and the AI summa
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
 - If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
-In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
+In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `g y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
 
 ### See search matches in an article
 
@@ -295,7 +295,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Focus mode
 
-`f` or the focus mode button hides the navigation and the article list together, giving the text more room. Press `f` again to bring them back. With the article list hidden, `j` and `k` still move to the next and previous article.
+`Ctrl+B z` or the focus mode button shows only the focused pane. The navigation, the article list, the chat and the other panes hide. Press it again to bring them back; a navigation or list you had collapsed stays collapsed. Moving to another pane, splitting, closing, swapping or resizing panes, filtering, searching and opening the chat also end focus mode. With the article list hidden, `Shift+J` and `Shift+K` still move to the next and previous article.
 
 ### Back and forward
 
@@ -305,7 +305,37 @@ When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse butto
 
 ### Print a page
 
-Press `Ctrl+P` in the Page view to open the Windows print dialog.
+Press `Ctrl+Shift+P` in the Page view to open the Windows print dialog. In the Reader, it prints only the document in the focused pane.
+
+### Read with the keyboard
+
+The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too.
+
+| Key | Action |
+|---|---|
+| `j` `k` `h` `l` | Scroll |
+| `d` `u` or `Ctrl+D` `Ctrl+U` | Scroll half a screen |
+| `gg` `G` | Top and bottom of the document |
+| `Shift+J` `Shift+K` | Open the next or previous article in the focused pane |
+| `f` | Put labels on the links, buttons and fields on screen. Type a label to press that one |
+| `Shift+F` | Like `f`, but a link opens in a tab behind |
+| `gw` | Put labels on the words on screen, Japanese too. Type a label to select that word in visual mode |
+| `v` `V` | Caret and visual mode (see below) |
+| `/` | Find in the document |
+| `n` `Shift+N` | Next and previous match |
+| `]]` `[[` | Next and previous heading (in a PDF, heading paragraphs or pages) |
+| `gi` | First input field |
+| `Shift+H` `Shift+L` | Back and forward in the page's history |
+| `yy` | Copy the URL |
+
+**Caret and visual mode.** `v` puts a caret on the first character on screen. Press `v` again for visual mode, or `V` for whole lines. `h` `j` `k` `l` `w` `b` `e` `0` `^` `$` `gg` `G` move it, and `H` is `^`, `L` is `$`. In visual mode:
+
+- `y` copies the selection and ends.
+- `s` saves the selected word to Vocabulary.
+- `a` puts the selection in the chat box as a quote. It sends nothing.
+- `Esc` ends it.
+
+**Find.** `/` opens the find bar, and each key you type moves to a match. Lowercase text ignores case, and text with a capital letter matches case. `Enter` closes the bar and keeps the match selected, and `Esc` returns to where the find began. `n` and `Shift+N` wrap around at the ends.
 
 ## Tabs, panes and windows
 
@@ -333,17 +363,30 @@ The focused pane has a frame. Clicking inside a pane focuses it, and the next do
 
 ### Control panes with the keyboard
 
-As in tmux, press `Ctrl+B` and then one of these keys. After `Ctrl+B`, the screen shows a guide to the keys.
+`Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L` move to the pane in that direction. The same keys reach the navigation, the article list and the chat.
+
+For the rest, as in tmux, press `Ctrl+B` and then one of these keys. If you pause after `Ctrl+B`, the screen shows a guide to the keys.
 
 | Key after `Ctrl+B` | Action |
 |---|---|
 | `←` `→` `↑` `↓` or `h` `j` `k` `l` | Move to the pane in that direction |
 | `o` | Move to the next pane |
+| `;` | Move to the previous pane |
+| `q` | Show pane numbers. A digit moves to that pane, and any other key or a click cancels |
 | `%` | Split right |
 | `"` | Split down |
 | `x` | Close the pane |
+| `Shift+H` `Shift+J` `Shift+K` `Shift+L` or `Ctrl` plus an arrow key | Move the pane's border that way. In the navigation, the article list and the chat, change the width. Within 500 ms the second key alone repeats it |
+| `{` `}` | Swap with the previous or next pane. At the ends it wraps around |
+| `Shift+E` | Make the panes the same size |
 | `c` `n` `p` | New tab, next tab, previous tab |
-| `z` | Focus mode |
+| `1` to `9`, `0` | Go to the tab with that number (`0` is the tenth) |
+| `w` | List tabs. The palette opens with `t:` already typed |
+| `&` | Close the tab |
+| `!` | Open the tab in a new window / move it back to the main window |
+| `z` | [Focus mode](#focus-mode) |
+| `:` | Run a command |
+| `?` | Key list |
 
 You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+B`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
 
@@ -436,7 +479,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 **Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
 
-**Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view.
+**Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor, `gg` and `G` go to the first and last article, and `d` and `u` move half a screen. A number in front, as in `5j`, moves that many. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view.
 
 ### The right-click menu
 
@@ -476,13 +519,14 @@ Press `/` to search your saved articles. Lattice's search is a hybrid of full-te
 
 ### The command palette
 
-Press `Ctrl+K` or click the box in the title bar to open the palette. Type to search article titles, tags, sources, genres and commands together. Start with one of these to search only one kind:
+Press `Ctrl+P` or click the box in the title bar to open the palette. `:` or `;` opens it with `>` already typed. Type to search article titles, tags, sources, genres and commands together. Start with one of these to search only one kind:
 
 | Prefix | Searches |
 |---|---|
 | `#` | Tags |
 | `@` | Sources (feeds and folders) |
 | `g:` | Genres |
+| `t:` | Open tabs |
 | `>` | Commands only |
 | `?` | The text of your saved articles (search) |
 
@@ -498,10 +542,11 @@ Besides switching lists, the commands include:
 - **Open today's review**, **Open vocabulary**, **Open jobs**, **Open chat**, **Manage feeds** and **Open settings**
 - **Bulk import**, **Import Markdown** and **Import a PDF (paper)**
 - **Retry all failed jobs**
+- The actions keys perform (**Split pane right** and so on). Vim names such as `split` `vsplit` `tabnew` `tabnext` `tabprev` `close` `zoom` `only` `tabclose` find them too.
 
 ### Chat with your articles
 
-Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing.
+Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
 **Scope.** **Scope** chooses which articles the answer is based on.
 
@@ -526,7 +571,6 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
 | **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
-| **Vim key bindings in the question box** | Use Vim keys in the question box. It starts in insert mode, and `Esc` switches to normal mode. `Ctrl+Enter` sends in either mode. Stored on this computer only. |
 
 ## Learn from what you read
 
@@ -549,6 +593,7 @@ When you have answered every question, **Add to review** puts them in [Today's r
 Click **Note** on the Reader or Page toolbar to open a note beside the article. Each article has one note in plain text. Lattice saves it when you stop typing and shows **Saved** above it.
 
 - An article with a note has **Note** highlighted on its toolbar.
+- With [Vim key bindings](#vim-key-bindings) on, the note takes Vim keys.
 - The note and the quiz open in the same place. Opening one closes the other.
 - Notes are in the JSON export and in backups. Clearing a note deletes it.
 
@@ -667,11 +712,12 @@ Choose Japanese or English for menus, buttons and messages. At first, Lattice fo
 
 ### Shortcuts
 
-Lists every shortcut.
+Lists every shortcut, grouped by where it works: **Everywhere**, **Lists** and **Documents**.
 
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
 - When a key is assigned to two actions, the one higher in the list wins, and a warning appears.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys.
+- **Vim** sets up [Vim key bindings](#vim-key-bindings) and the vimrc.
 
 Shortcuts are stored on this computer only.
 
@@ -699,10 +745,16 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 
 | Action | Default key |
 |---|---|
-| Command palette | `Ctrl+K` |
+| Command palette | `Ctrl+P` |
+| Run a command | `:`, `;` |
+| Key list | `?` |
 | Search | `/` |
 | Next item | `j`, `↓` |
 | Previous item | `k`, `↑` |
+| First in the list | `gg` |
+| Last in the list | `G` |
+| Half a screen down the list | `d`, `Ctrl+D` |
+| Half a screen up the list | `u`, `Ctrl+U` |
 | Open the article at the cursor | `Enter` |
 | Open the article at the cursor in Page | `Shift+Enter` |
 | Back, clear filters | `Esc` |
@@ -715,17 +767,17 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 
 | Action | Default key |
 |---|---|
-| Switch Reader / Page | `v` |
-| Open or close the summary | `y` |
-| Less English text | `[` |
-| More English text | `]` |
+| Switch between Reader and Page | `g v` |
+| Open or close the summary | `g y` |
+| Less English text | `-` |
+| More English text | `=` |
 | Favorite | `s` |
 | Read / unread | `m` |
-| Focus mode | `f` |
+| Focus mode | `Ctrl+B z` |
 | Save the selected English word to Vocabulary | `w` |
 | Hear a word card again | `r` |
 
-`[` and `]` change the share shown in the display language (English). The same share gives as much English in a Japanese article as in an English one.
+`-` and `=` change the share shown in the display language (English). The same share gives as much English in a Japanese article as in an English one. For the keys that scroll and find in a document, see [Read with the keyboard](#read-with-the-keyboard).
 
 ### Tabs, panes and windows
 
@@ -733,8 +785,12 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 |---|---|
 | New tab | `Ctrl+T` |
 | Close tab | `Ctrl+W` |
-| Next tab | `Ctrl+Tab` |
-| Previous tab | `Ctrl+Shift+Tab` |
+| Next tab | `Ctrl+Tab`, `gt` |
+| Previous tab | `Ctrl+Shift+Tab`, `gT` |
+| Move to the pane on the left | `Ctrl+H` |
+| Move to the pane below | `Ctrl+J` |
+| Move to the pane above | `Ctrl+K` |
+| Move to the pane on the right | `Ctrl+L` |
 | Split pane right | `Ctrl+\` |
 | Split pane down | `Ctrl+-` |
 | Open the tab in a new window / move it back to the main window | `Ctrl+Shift+N` |
@@ -752,7 +808,6 @@ These keys cannot be changed in **Settings › Shortcuts**.
 | `Tab` | The palette | Add the selected item to the filters |
 | `Ctrl+Enter` | The palette | Search for what you typed, or save a pasted URL |
 | Menu key, `Shift+F10` | A list row, a tab, a feed folder in the navigation | Open the right-click menu |
-| `Ctrl+P` | A web page in the Page view | Print |
 | `Esc` | A tab being dragged | Cancel the drag and put it back |
 | Mouse back and forward buttons | Anywhere | Move through the app history (the page's history over a web page) |
 
@@ -760,11 +815,30 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 When you click a web page in the Page view, the keyboard goes to that page. Lattice's shortcuts still work under these conditions:
 
-- Shortcuts with `Ctrl`, such as `Ctrl+K` and `Ctrl+B`, work even inside the page's text fields.
+- Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+B`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
-- `Enter`, `Esc`, the arrow keys and `Space` belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts.
+- `Enter`, the arrow keys and `Space` belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts.
+- `Esc` leaves the page's text field, unless the page uses it itself.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
 - `w` and `r` do not work on a page. Save words with the button that appears above the page.
+
+### Vim key bindings
+
+Turn on **Vim key bindings in the chat input and notes** in **Settings › Shortcuts** to use Vim keys in the chat box and in notes. It is off by default and stored on this computer only. Modes, counts, `.`, text objects, search, macros and the rest of Vim's editing work as in Vim.
+
+- It starts in insert mode with the cursor at the end of the text.
+- `Esc` switches to normal mode. It does not leave the box.
+- To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+B`, or `:q`.
+- `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note.
+- `:q` only leaves the chat box, and closes the note.
+- `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.
+
+**vimrc.** Write the text of your `.vimrc` under **vimrc** in the same place, or read it with **Load from file**. Mappings such as `nnoremap` and some `set` options take effect. Scripts and plugins are left out. The text is copied here, with no link to the file, and stored on this computer only.
+
+- Below it, you see how many lines applied, and each line left out with its reason.
+- A key the vimrc maps in the current mode goes to the editor before the app. If you map `Ctrl+H` in insert mode, for example, that key no longer moves between panes in insert mode.
+- Mappings that use `<C-w>` are not applied. Panes move with the app's keys.
+- `set clipboard+=unnamed` also copies a yank to the Windows clipboard (only a yank with no register named). `p` does not read the Windows clipboard.
 
 ## CLI and MCP
 
@@ -876,7 +950,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
 
 ### Move the data folder
 
@@ -1017,7 +1091,7 @@ See [Pages that don't extract well](#pages-that-dont-extract-well) for details.
 
 ### Shortcuts do nothing on a web page
 
-The keyboard is going to the web page. Single-key shortcuts work only outside the page's text fields, and only when the page does not use that key itself. `Ctrl+K` always works. Click outside the page (the article list, for example) to give the keyboard back to Lattice.
+The keyboard is going to the web page. Single-key shortcuts work only outside the page's text fields, and only when the page does not use that key itself. `Ctrl+P` always works. Click outside the page (the article list, for example) to give the keyboard back to Lattice.
 
 ### A menu over a web page appears a moment late
 
