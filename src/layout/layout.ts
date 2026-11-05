@@ -1,6 +1,6 @@
 // The document area as a tree: split nodes (direction, children, size fractions) over panes, each
 // with an ordered tab list and an active tab. One pane is focused: that is where documents open.
-// Every operation is a pure function (Layout, …) => Layout.
+// Every operation is a pure function (Workspace, …) => Workspace.
 import type { Focus } from "../reader/Reader";
 
 export type Id = number;
@@ -77,7 +77,11 @@ export interface Split {
 
 export type Node = Pane | Split;
 
-export interface Layout {
+/**
+ * Everything that belongs to one workspace lives here: the pane tree and the focused pane. One per
+ * window today; several named workspaces would become a list of these.
+ */
+export interface Workspace {
   root: Node;
   focused: Id;
   /** Next pane or tab id. */
@@ -87,7 +91,7 @@ export interface Layout {
 /** A child of a split is never thinner than this fraction of it. */
 export const MIN_SIZE = 0.15;
 
-export const single = (): Layout => ({ root: { kind: "pane", id: 1, tabs: [], active: null }, focused: 1, next: 2 });
+export const single = (): Workspace => ({ root: { kind: "pane", id: 1, tabs: [], active: null }, focused: 1, next: 2 });
 
 // ---- queries ------------------------------------------------------------------------------------
 
@@ -111,11 +115,11 @@ function firstPane(n: Node): Pane {
   }
 }
 
-export const paneById = (l: Layout, id: Id) => panes(l.root).find((p) => p.id === id);
-export const focusedPane = (l: Layout) => paneById(l, l.focused) ?? firstPane(l.root);
+export const paneById = (l: Workspace, id: Id) => panes(l.root).find((p) => p.id === id);
+export const focusedPane = (l: Workspace) => paneById(l, l.focused) ?? firstPane(l.root);
 export const activeTab = (p: Pane | undefined) => p?.tabs.find((t) => t.id === p.active);
 /** The pane holding tab `id`, and the tab. */
-export function tabById(l: Layout, id: Id): { pane: Pane; tab: Tab } | undefined {
+export function tabById(l: Workspace, id: Id): { pane: Pane; tab: Tab } | undefined {
   for (const pane of panes(l.root)) {
     const tab = pane.tabs.find((t) => t.id === id);
     if (tab) {
@@ -124,9 +128,9 @@ export function tabById(l: Layout, id: Id): { pane: Pane; tab: Tab } | undefined
   }
   return undefined;
 }
-export const allTabs = (l: Layout) => panes(l.root).flatMap((p) => p.tabs);
+export const allTabs = (l: Workspace) => panes(l.root).flatMap((p) => p.tabs);
 /** The page tab whose webview is `key` (how the backend's events name a tab). */
-export const pageByKey = (l: Layout, key: string) => allTabs(l).find((t): t is PageTab => t.kind === "page" && t.key === key);
+export const pageByKey = (l: Workspace, key: string) => allTabs(l).find((t): t is PageTab => t.kind === "page" && t.key === key);
 
 // ---- tree edits ---------------------------------------------------------------------------------
 
@@ -134,7 +138,7 @@ function mapPanes(n: Node, f: (p: Pane) => Pane): Node {
   return n.kind === "pane" ? f(n) : { ...n, children: n.children.map((c) => mapPanes(c, f)) };
 }
 
-const replacePane = (l: Layout, p: Pane): Layout => ({ ...l, root: mapPanes(l.root, (x) => (x.id === p.id ? p : x)) });
+const replacePane = (l: Workspace, p: Pane): Workspace => ({ ...l, root: mapPanes(l.root, (x) => (x.id === p.id ? p : x)) });
 
 /** Without pane `id`; a split left with one child becomes that child. The root pane only empties. */
 function without(n: Node, id: Id): Node | null {
@@ -153,7 +157,7 @@ function without(n: Node, id: Id): Node | null {
   return { ...n, children: kept.map(([c]) => c), sizes: kept.map(([, w]) => w / total) };
 }
 
-function removePane(l: Layout, id: Id): Layout {
+function removePane(l: Workspace, id: Id): Workspace {
   const before = panes(l.root);
   const i = before.findIndex((p) => p.id === id);
   const root = without(l.root, id) ?? { kind: "pane" as const, id, tabs: [], active: null };
@@ -164,7 +168,7 @@ function removePane(l: Layout, id: Id): Layout {
 
 // ---- operations ---------------------------------------------------------------------------------
 
-export const focus = (l: Layout, pane: Id): Layout => (paneById(l, pane) && l.focused !== pane ? { ...l, focused: pane } : l);
+export const focus = (l: Workspace, pane: Id): Workspace => (paneById(l, pane) && l.focused !== pane ? { ...l, focused: pane } : l);
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   if (doc.kind === "reader") {
@@ -194,7 +198,7 @@ function shows(t: Tab, doc: Doc): boolean {
  * pane is empty). In another pane when `pane` is given. A new tab goes right after the active one,
  * or at `index` (a tab dropped from another window); "behind" leaves the active tab in front (`openBehind`).
  */
-export function open(l: Layout, doc: Doc, where: Where = "active", pane = l.focused, index?: number): Layout {
+export function open(l: Workspace, doc: Doc, where: Where = "active", pane = l.focused, index?: number): Workspace {
   const p = paneById(l, pane) ?? focusedPane(l);
   const cur = activeTab(p);
   if (cur && where === "behind") {
@@ -216,7 +220,7 @@ export function open(l: Layout, doc: Doc, where: Where = "active", pane = l.focu
  * A document opened from tab `source` without leaving it (a middle-clicked link or row): after `source` and the tabs
  * opened behind it before, so several line up in the order they were clicked. Neither the active tab nor focus moves.
  */
-export function openBehind(l: Layout, doc: Doc, source: Id): Layout {
+export function openBehind(l: Workspace, doc: Doc, source: Id): Workspace {
   const hit = tabById(l, source);
   if (!hit) {
     return l;
@@ -230,7 +234,7 @@ export function openBehind(l: Layout, doc: Doc, source: Id): Layout {
   return { ...replacePane(l, { ...pane, tabs: pane.tabs.toSpliced(at, 0, tab) }), next: l.next + 1 };
 }
 
-export function activate(l: Layout, tab: Id): Layout {
+export function activate(l: Workspace, tab: Id): Workspace {
   const hit = tabById(l, tab);
   if (!hit) {
     return l;
@@ -239,7 +243,7 @@ export function activate(l: Layout, tab: Id): Layout {
 }
 
 /** The focused pane's active tab moves `d` along the strip, wrapping. */
-export function cycle(l: Layout, d: 1 | -1): Layout {
+export function cycle(l: Workspace, d: 1 | -1): Workspace {
   const p = focusedPane(l);
   const n = p.tabs.length;
   if (n < 2) {
@@ -250,7 +254,7 @@ export function cycle(l: Layout, d: 1 | -1): Layout {
   return next ? activate(l, next.id) : l;
 }
 
-export function close(l: Layout, tab: Id): Layout {
+export function close(l: Workspace, tab: Id): Workspace {
   const hit = tabById(l, tab);
   if (!hit) {
     return l;
@@ -266,14 +270,14 @@ export function close(l: Layout, tab: Id): Layout {
 }
 
 /** Closes every tab `pred` accepts (an article that was deleted, …). */
-export function closeWhere(l: Layout, pred: (t: Tab) => boolean): Layout {
+export function closeWhere(l: Workspace, pred: (t: Tab) => boolean): Workspace {
   return allTabs(l)
     .filter(pred)
     .reduce((acc, t) => close(acc, t.id), l);
 }
 
 /** Moves a tab to position `index` of pane `to` (its own pane included) and shows it there. */
-export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
+export function move(l: Workspace, tab: Id, to: Id, index: number): Workspace {
   const hit = tabById(l, tab);
   const target = paneById(l, to);
   if (!hit || !target) {
@@ -293,7 +297,7 @@ export function move(l: Layout, tab: Id, to: Id, index: number): Layout {
 }
 
 /** Splits pane `id` along `dir`; the new, empty pane takes half (after it, or `before`) and the focus. */
-export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
+export function split(l: Workspace, id: Id, dir: Dir, before = false): Workspace {
   const fresh: Pane = { kind: "pane", id: l.next, tabs: [], active: null };
   const rec = (n: Node): Node => {
     if (n.kind === "pane") {
@@ -314,7 +318,7 @@ export function split(l: Layout, id: Id, dir: Dir, before = false): Layout {
 }
 
 /** Tab `tab` dropped on pane `pane`'s body: its center moves the tab to the end of that pane (its own pane: nothing), an edge into a new pane split off on that side. */
-export function dropOn(l: Layout, tab: Id, pane: Id, zone: Zone): Layout {
+export function dropOn(l: Workspace, tab: Id, pane: Id, zone: Zone): Workspace {
   const target = paneById(l, pane);
   if (!target || !tabById(l, tab)) {
     return l;
@@ -327,10 +331,10 @@ export function dropOn(l: Layout, tab: Id, pane: Id, zone: Zone): Layout {
 }
 
 /** The only pane stays: closing it would close every tab, which Ctrl+W does one at a time. */
-export const closePane = (l: Layout, id: Id): Layout => (paneById(l, id) && l.root.kind === "split" ? removePane(l, id) : l);
+export const closePane = (l: Workspace, id: Id): Workspace => (paneById(l, id) && l.root.kind === "split" ? removePane(l, id) : l);
 
 /** Sets child `i` of a split to `size` (a fraction of the split); child `i + 1` takes the difference, both within MIN_SIZE. */
-export function resize(l: Layout, splitId: Id, i: number, size: number): Layout {
+export function resize(l: Workspace, splitId: Id, i: number, size: number): Workspace {
   const rec = (n: Node): Node => {
     if (n.kind === "pane") {
       return n;
@@ -349,7 +353,7 @@ export function resize(l: Layout, splitId: Id, i: number, size: number): Layout 
 }
 
 /** Changes a page tab (a navigation, a title, the Index state); nothing when the tab is gone or a Reader now. */
-export function update(l: Layout, tab: Id, patch: Partial<Omit<PageTab, "kind" | "id">>): Layout {
+export function update(l: Workspace, tab: Id, patch: Partial<Omit<PageTab, "kind" | "id">>): Workspace {
   const hit = tabById(l, tab);
   if (hit?.tab.kind !== "page") {
     return l;
@@ -358,7 +362,7 @@ export function update(l: Layout, tab: Id, patch: Partial<Omit<PageTab, "kind" |
 }
 
 /** The page reported where it is: a new URL drops the old title until the page sets its own. */
-export function navigated(l: Layout, tab: Id, e: { url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }): Layout {
+export function navigated(l: Workspace, tab: Id, e: { url: string; loading: boolean; canGoBack: boolean; canGoForward: boolean }): Workspace {
   const t = tabById(l, tab)?.tab;
   if (t?.kind !== "page") {
     return l;
@@ -387,7 +391,7 @@ function strip(n: Node): unknown {
   };
 }
 
-export const serialize = (l: Layout): string => JSON.stringify({ root: strip(l.root), focused: l.focused } satisfies Stored);
+export const serialize = (l: Workspace): string => JSON.stringify({ root: strip(l.root), focused: l.focused } satisfies Stored);
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === "string";
@@ -449,7 +453,7 @@ function parseNode(v: unknown, ids: number[]): Node | null {
   return { kind: "pane", id: o.id, tabs, active };
 }
 
-export function parse(json: string): Layout | null {
+export function parse(json: string): Workspace | null {
   try {
     const s = JSON.parse(json) as Stored;
     const ids: number[] = [];
@@ -466,7 +470,7 @@ export function parse(json: string): Layout | null {
   }
 }
 
-export function load(key = LAYOUT_KEY): Layout {
+export function load(key = LAYOUT_KEY): Workspace {
   try {
     return parse(localStorage.getItem(key) ?? "") ?? single();
   } catch {
@@ -477,7 +481,7 @@ export function load(key = LAYOUT_KEY): Layout {
 /** What each key last held: transient page state (loading, translating progress) changes the layout, not what is saved. */
 const written = new Map<string, string>();
 
-export function save(l: Layout, key = LAYOUT_KEY) {
+export function save(l: Workspace, key = LAYOUT_KEY) {
   const s = serialize(l);
   if (written.get(key) === s) {
     return;

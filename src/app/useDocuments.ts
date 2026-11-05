@@ -14,7 +14,7 @@ import {
   save as saveLayout,
   update,
   type Id,
-  type Layout,
+  type Workspace,
   type PageTab,
   type Tab,
 } from "../layout/layout";
@@ -23,7 +23,7 @@ import { HOST, STORAGE } from "./host";
 
 /** The documents: the pane tree with its tabs, the article views its Reader and saved Page tabs show, and the pages' webviews. */
 export function useDocuments(fail: (e: unknown) => void) {
-  const [layout, setLayout] = useState<Layout>(() => loadLayout(STORAGE));
+  const [layout, setLayout] = useState<Workspace>(() => loadLayout(STORAGE));
   useEffect(() => {
     if (HOST.kind !== "chat") {
       saveLayout(layout, STORAGE);
@@ -54,7 +54,7 @@ export function useDocuments(fail: (e: unknown) => void) {
       .then((a) => setLayout((l) => update(l, tab, { saved: a?.id ?? null })))
       .catch(() => {});
   /** A page event names its tab by webview key; the layout op takes the tab id. */
-  const onPage = (key: string, f: (l: Layout, tab: PageTab) => Layout) =>
+  const onPage = (key: string, f: (l: Workspace, tab: PageTab) => Workspace) =>
     setLayout((l) => {
       const t = pageByKey(l, key);
       return t ? f(l, t) : l;
