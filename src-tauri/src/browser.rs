@@ -123,6 +123,8 @@ struct TabState {
     parked: Option<Instant>,
     /// The page's last word capture (overlay_vocab).
     captured: Option<Instant>,
+    /// The page's last quote (overlay_ask).
+    asked: Option<Instant>,
     /// The saved PDFs the app opened in this tab, which Back and Forward can return to: the only ones the tab may load (`pdf_allowed`).
     pdfs: HashSet<i64>,
     /// How many documents have begun loading, which `pushState` and in-page links do not count as.
@@ -131,7 +133,16 @@ struct TabState {
 
 impl Default for TabState {
     fn default() -> Self {
-        Self { focus: None, visibility: Visibility::default(), history: (true, true), parked: None, captured: None, pdfs: HashSet::new(), documents: 0 }
+        Self {
+            focus: None,
+            visibility: Visibility::default(),
+            history: (true, true),
+            parked: None,
+            captured: None,
+            asked: None,
+            pdfs: HashSet::new(),
+            documents: 0,
+        }
     }
 }
 
@@ -931,6 +942,9 @@ fn take_key(t: &TabState, keys: Option<&PageKeys>, key: &str) -> bool {
 
 /// A page can call overlay_ask on its own, so a quote is bounded (the overlay cuts it at 4000 characters).
 const MAX_QUOTE_BYTES: usize = 16 * 1024;
+/// And quotes are spaced at least this far apart: a reader selects text for each, while a script's loop
+/// would keep opening the chat, taking the keyboard and growing the draft.
+const QUOTE_GAP: Duration = Duration::from_secs(1);
 
 /// Called by the overlay for `a` in visual mode: the selection goes into the chat's input. Exposed to
 /// remote pages, so the quote is untrusted: it is only ever text in that input, and only the user can
@@ -940,7 +954,7 @@ pub fn overlay_ask(browser: State<'_, Browser>, webview: Webview, quote: String)
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
-    if !browser.with_tab(webview.label(), |t| take_quote(t, &quote)) {
+    if !browser.with_tab(webview.label(), |t| take_quote(t, &quote, Instant::now())) {
         return Err("quote refused".into());
     }
     #[derive(Clone, Serialize)]
@@ -951,8 +965,13 @@ pub fn overlay_ask(browser: State<'_, Browser>, webview: Webview, quote: String)
     Ok(())
 }
 
-fn take_quote(t: &TabState, quote: &str) -> bool {
-    t.visibility.wanted && !t.visibility.loading && quote.len() <= MAX_QUOTE_BYTES
+/// Whether the tab may quote at `now` (on screen, within the bound, `QUOTE_GAP` since its last one); if so, records it.
+fn take_quote(t: &mut TabState, quote: &str, now: Instant) -> bool {
+    let ok = t.visibility.wanted && !t.visibility.loading && quote.len() <= MAX_QUOTE_BYTES && t.asked.is_none_or(|at| now.duration_since(at) >= QUOTE_GAP);
+    if ok {
+        t.asked = Some(now);
+    }
+    ok
 }
 
 /// Called by the overlay for its print key and `window.print()`. WebView2's own print preview is drawn
@@ -1136,13 +1155,25 @@ mod tests {
 
     #[test]
     fn a_page_quotes_only_on_screen_and_within_the_bound() {
+        let now = Instant::now();
         let mut t = TabState::default();
-        assert!(!take_quote(&t, "q"), "hidden");
+        assert!(!take_quote(&mut t, "q", now), "hidden");
         t.visibility.wanted = true;
-        assert!(take_quote(&t, "q"));
-        assert!(!take_quote(&t, &"q".repeat(MAX_QUOTE_BYTES + 1)), "too long");
+        assert!(!take_quote(&mut t, &"q".repeat(MAX_QUOTE_BYTES + 1), now), "too long");
+        assert!(take_quote(&mut t, "q", now), "a refused quote starts no gap");
         t.visibility.loading = true;
-        assert!(!take_quote(&t, "q"), "loading");
+        assert!(!take_quote(&mut t, "q", now + 3 * QUOTE_GAP), "loading");
+    }
+
+    #[test]
+    fn a_page_cannot_quote_in_a_loop() {
+        let now = Instant::now();
+        let mut t = TabState::default();
+        t.visibility.wanted = true;
+        assert!(take_quote(&mut t, "q", now));
+        assert!(!take_quote(&mut t, "q", now + Duration::from_millis(300)), "too soon");
+        assert!(!take_quote(&mut t, "q", now + Duration::from_millis(999)), "a refusal does not move the gap, and it has not passed");
+        assert!(take_quote(&mut t, "q", now + QUOTE_GAP));
     }
 
     #[test]
