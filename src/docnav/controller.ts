@@ -7,7 +7,7 @@
  */
 import { collapse, isWord } from "../vocab/vocab.ts";
 import type { ActionId } from "../lib/keymap.ts";
-import { hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
+import { firstField, hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
 import { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
 import { createUi, type DocUi, type View } from "./ui.ts";
@@ -23,6 +23,8 @@ export interface DocHost {
   saveWord(): void;
   /** Puts the quote in the chat's input, and sends nothing. */
   ask(quote: string): void;
+  /** A step in the document's history. */
+  history(d: 1 | -1): void;
   print(): void;
 }
 
@@ -52,6 +54,7 @@ type DocMode =
   | { kind: "find"; query: string; doc: DocText; origin: TextPoint | null; starts: number[]; length: number; at: number; place: Place; count: HTMLElement };
 
 const NORMAL: DocMode = { kind: "normal" };
+const HEADINGS = "h1,h2,h3,h4,h5,h6,[role='heading'],[data-doc-heading]";
 /** A long quote is cut, as the chat input is no place for a whole article, and the backend refuses more. */
 const MAX_QUOTE = 4000;
 /** Text a reader does not start from when `v` looks for where they are reading. */
@@ -105,6 +108,8 @@ export function createDocNav(host: () => DocHost) {
   let ui: DocUi | null = null;
   /** What `n` and `N` look for: the query last kept with Enter. */
   let lastQuery = "";
+  /** The heading `]]` went to last: at the end of a document it stays below the top, and the next one must still be next. */
+  let lastHeading: Element | null = null;
 
   const selection = () => window.getSelection()!;
 
@@ -208,6 +213,25 @@ export function createDocNav(host: () => DocHost) {
     const s = selection();
     s.removeAllRanges();
     s.addRange(r);
+  }
+
+  function goHeading(dir: 1 | -1) {
+    const root = host().root();
+    if (!root) {
+      return;
+    }
+    const all = Array.from(root.querySelectorAll(HEADINGS)).filter((h) => h.getClientRects().length > 0 && !h.closest("[data-lattice-ui]"));
+    const top = viewOf(host().scroller()).top;
+    const tops = all.map((h) => h.getBoundingClientRect().top - top);
+    let i = dir > 0 ? tops.findIndex((t) => t > 2) : tops.findLastIndex((t) => t < -2);
+    if (i >= 0 && all[i] === lastHeading) {
+      i += dir;
+    }
+    const to = all[i];
+    if (to) {
+      lastHeading = to;
+      to.scrollIntoView({ block: "start", behavior: "instant" });
+    }
   }
 
   // ---- hints -----------------------------------------------------------------------------------
@@ -493,6 +517,14 @@ export function createDocNav(host: () => DocHost) {
     hintsNew: () => startHints(linkTargetsIn(), true),
     wordHints: startWordHints,
     visual: startVisual,
+    nextHeading: () => goHeading(1),
+    prevHeading: () => goHeading(-1),
+    focusInput: () => {
+      const root = host().root();
+      (root && firstField(root))?.focus();
+    },
+    docBack: () => host().history(-1),
+    docForward: () => host().history(1),
     print: () => host().print(),
   };
 

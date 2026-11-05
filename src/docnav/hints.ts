@@ -131,6 +131,11 @@ export function linkTargets(root: Element): Target[] {
   return out;
 }
 
+/** The first text field on screen in `root`. */
+export function firstField(root: Element): HTMLElement | null {
+  return (allIn(root).find((el) => el.matches(TEXT_FIELD) && reachable(el)) as HTMLElement | undefined) ?? null;
+}
+
 /** Whether a reader can see `parent`'s text at this point: nothing with text lies over it. An empty box, as a PDF's link, hides nothing. */
 function seenAt(r: DOMRect, parent: Element): boolean {
   const hit = hitAt(r.left + r.width / 2, r.top + r.height / 2);

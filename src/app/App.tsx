@@ -809,6 +809,7 @@ export default function App() {
     findLabel: () => t("keys.docFind"),
     saveWord,
     ask: askAbout,
+    history: (d) => history.step(d),
     print: () => window.print(),
   });
   const onPageAsk = useEffectEvent((quote: string) => {
@@ -959,11 +960,11 @@ export default function App() {
     hintsNew: docAction("hintsNew"),
     wordHints: docAction("wordHints"),
     visual: docAction("visual"),
-    nextHeading: none,
-    prevHeading: none,
-    focusInput: none,
-    docBack: none,
-    docForward: none,
+    nextHeading: docAction("nextHeading"),
+    prevHeading: docAction("prevHeading"),
+    focusInput: docAction("focusInput"),
+    docBack: docAction("docBack"),
+    docForward: docAction("docForward"),
     copyUrl: none,
     print: none,
   };

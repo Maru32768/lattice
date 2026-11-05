@@ -735,6 +735,7 @@ const pageDoc: DocHost = {
     saveBtn?.btn.click();
   },
   ask: (quote) => void invoke("overlay_ask", { quote }).catch(() => {}),
+  history: (d) => history.go(d),
   print: () => window.print(),
 };
 const docNav = createDocNav(() => pageDoc);
@@ -770,7 +771,17 @@ function onKey(e: KeyboardEvent) {
     return;
   }
   // composedPath: the field itself, not its shadow host.
-  const step = stepKeys(keys.bindings, keySeq, key, { scope: "doc", inField: inField(e.composedPath()[0]), now: Date.now() });
+  const target = e.composedPath()[0];
+  const field = inField(target);
+  // The way out of a field that `f` or `gi` went into, unless the page has a use for Esc there.
+  if (key === "Escape" && field) {
+    setTimeout(() => {
+      if (!e.defaultPrevented) {
+        (target as HTMLElement).blur();
+      }
+    });
+  }
+  const step = stepKeys(keys.bindings, keySeq, key, { scope: "doc", inField: field, now: Date.now() });
   if (step.kind === "none") {
     keySeq = step.seq;
   } else if (takesBeforePage(keySeq, key, step)) {

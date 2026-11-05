@@ -327,6 +327,35 @@ test("a query with no match shows no match and stays where it began", async ({ r
   expect((await drawn(reader)).open).toBe(false);
 });
 
+test("]] and [[ go to the next and the previous heading", async ({ reader }) => {
+  const at = (id: string) => reader.locator(id).evaluate((el) => el.getBoundingClientRect().top - el.closest(".doc-scroll")!.getBoundingClientRect().top);
+  await reader.locator("#h-one").evaluate((el) => el.scrollIntoView());
+  await press(reader, "]", "]");
+  await expect.poll(() => at("#h-two").then((t) => Math.abs(t) < 2)).toBe(true);
+  await press(reader, "]", "]");
+  await press(reader, "[", "[");
+  await expect.poll(() => at("#h-two").then((t) => Math.abs(t) < 2)).toBe(true);
+  await press(reader, "[", "[");
+  await expect.poll(() => at("#h-one").then((t) => Math.abs(t) < 2)).toBe(true);
+});
+
+test("H and L step through the app's history in the Reader", async ({ reader }) => {
+  await reader.keyboard.press("Shift+J");
+  await expect(reader.locator(".art-title")).toHaveText(label(1));
+  await reader.keyboard.press("Shift+H");
+  await expect(reader.locator(".art-title")).toHaveText(label(0));
+  await reader.keyboard.press("Shift+L");
+  await expect(reader.locator(".art-title")).toHaveText(label(1));
+});
+
+test("gi goes to the first text field on screen; in the chat that is its input", async ({ app }) => {
+  await app.getByRole("button", { name: "対話" }).click();
+  await app.locator(".chat-log").click({ position: { x: 5, y: 5 } });
+  await press(app, "g", "i");
+  await expect(app.locator("#chat-q")).toBeFocused();
+  await expect(app.locator("#chat-q"), "the i is not typed").toHaveValue("");
+});
+
 test("a mode ends for a key of the app's, whose own keys then work", async ({ reader }) => {
   await reader.keyboard.press("v");
   await expect.poll(async () => (await drawn(reader)).open).toBe(true);
