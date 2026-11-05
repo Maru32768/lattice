@@ -310,3 +310,39 @@ test("Ctrl+B Shift+E evens out every split", async ({ shell }) => {
   await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "50");
   await expect(shell.getByRole("separator", { name: "ペインの高さ" })).toHaveAttribute("aria-valuenow", "50");
 });
+
+test("Ctrl+B ; goes back to the pane focused before, and the keyboard goes with it", async ({ shell }) => {
+  await twoReaders(shell);
+  await press(shell, "Control+b", ";");
+  await expect(panes(shell).nth(1), "no pane before it yet").toHaveClass(/focused/);
+
+  await list(shell).locator(".row").first().focus();
+  await shell.keyboard.press("Control+l");
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+
+  await press(shell, "Control+b", ";");
+  await expect(panes(shell).nth(1)).toHaveClass(/focused/);
+  await expect(panes(shell).nth(1).locator(".doc-scroll")).toBeFocused();
+  await press(shell, "Control+b", ";");
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+});
+
+test("Ctrl+B ; from the list takes the keyboard into that document; from under the zoom it ends the zoom", async ({ shell }) => {
+  await twoReaders(shell);
+  await panes(shell).first().locator(".doc-scroll").click();
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+  await list(shell).locator(".row").first().focus();
+  await press(shell, "Control+b", ";");
+  await expect(panes(shell).nth(1)).toHaveClass(/focused/);
+  await expect(panes(shell).nth(1).locator(".doc-scroll")).toBeFocused();
+  await expect(shell.locator(".app")).toHaveAttribute("data-kb-pane", "doc");
+
+  await press(shell, "Control+b", "z");
+  await expect(panes(shell).first()).toBeHidden();
+  await press(shell, "Control+b", ";");
+  await expect(panes(shell).first()).toBeVisible();
+  await expect(panes(shell).first()).toHaveClass(/focused/);
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+});
