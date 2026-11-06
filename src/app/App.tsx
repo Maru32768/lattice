@@ -804,7 +804,7 @@ export default function App() {
     },
     scroller: () => {
       const pane = docPane();
-      return pane && scrollerIn(pane);
+      return pane && (pane.querySelector(".doc-scroll") ?? scrollerIn(pane));
     },
     findLabel: () => t("keys.docFind"),
     saveWord,

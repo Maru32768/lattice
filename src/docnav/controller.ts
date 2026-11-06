@@ -113,7 +113,6 @@ export function createDocNav(host: () => DocHost) {
   const selection = () => window.getSelection()!;
 
   function draw() {
-    const view = viewOf(host().scroller());
     if (mode.kind === "hints") {
       const { typed } = mode;
       ui?.labels(
@@ -125,9 +124,9 @@ export function createDocNav(host: () => DocHost) {
           }),
       );
     } else if (mode.kind === "caret") {
-      ui?.badge("CARET", view);
+      ui?.badge("CARET", viewOf(host().scroller()));
     } else if (mode.kind === "visual") {
-      ui?.badge(mode.line ? "V-LINE" : "VISUAL", view);
+      ui?.badge(mode.line ? "V-LINE" : "VISUAL", viewOf(host().scroller()));
     } else if (mode.kind === "find") {
       ui?.boxes(mode.at >= 0 ? Array.from(rangeAt(mode.doc, mode.starts[mode.at]!, mode.length).getClientRects()) : []);
       mode.count.textContent = mode.query.trim() ? `${mode.at + 1}/${mode.starts.length}` : "";
