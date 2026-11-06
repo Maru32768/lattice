@@ -823,7 +823,12 @@ export default function App() {
     saveWord,
     ask: askAbout,
     history: (d) => history.step(d),
-    print: () => window.print(),
+    print: () => {
+      // What the print styles leave of anything but the focused Reader is a blank sheet.
+      if (screen === "library" && cur?.kind === "reader" && paneFocus.keyPane()?.dataset.pane !== "chat") {
+        window.print();
+      }
+    },
   });
   const onPageAsk = useEffectEvent((tab: string, quote: string) => {
     // A page on screen can call this by itself, and the quote takes the keyboard and writes in the draft: only the page the user is in may.
@@ -839,16 +844,22 @@ export default function App() {
   }, []);
 
   /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
+  const pageOfKeys = () => (paneFocus.keyPane()?.dataset.pane !== "chat" && screen === "library" && cur?.kind === "page" ? cur : null);
   const docAction = (id: ActionId) => (count: number) => {
-    if (paneFocus.keyPane()?.dataset.pane !== "chat" && screen === "library" && cur?.kind === "page") {
-      browser.runDoc(cur.key, id, count).catch(fail);
-      paneFocus.focusPage(cur.key);
+    const page = pageOfKeys();
+    if (page) {
+      browser.runDoc(page.key, id, count).catch(fail);
+      paneFocus.focusPage(page.key);
     } else {
       docNav.run(id, count);
     }
   };
 
   const stepArticle = (d: number) => {
+    // A page that is no article has no place in the list to step from.
+    if (cur?.kind === "page" && selectedId === null) {
+      return;
+    }
     const a = articleFrom(selectedId, d);
     if (a && a.id !== selectedId) {
       openArticle(a);
@@ -983,11 +994,12 @@ export default function App() {
     docBack: docAction("docBack"),
     docForward: docAction("docForward"),
     copyUrl: () => {
-      if (cur?.kind === "page") {
+      const page = pageOfKeys();
+      if (page) {
         // The clipboard refuses a window without the keyboard, and a page has it: it comes here for a moment.
-        const back = () => paneFocus.focusPage(cur.key);
-        void focusApp().then(() => navigator.clipboard.writeText(cur.url).catch(fail).finally(back));
-      } else if (current) {
+        const back = () => paneFocus.focusPage(page.key);
+        void focusApp().then(() => navigator.clipboard.writeText(page.url).catch(fail).finally(back));
+      } else if (current && screen === "library") {
         copyUrl(current.original_url);
       }
     },

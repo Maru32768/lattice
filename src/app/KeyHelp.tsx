@@ -38,7 +38,7 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
         }
       }}
     >
-      <div className="pal key-help" role="dialog" aria-modal="true" aria-label={t("keys.keyHelp")} onKeyDown={keys}>
+      <div className="pal key-help" role="dialog" aria-modal="true" aria-label={t("keys.keyHelp")} tabIndex={-1} onKeyDown={keys}>
         <h2>{t("keys.keyHelp")}</h2>
         <div className="pal-list" ref={body} tabIndex={-1}>
           {ACTION_GROUPS.map((g) => (

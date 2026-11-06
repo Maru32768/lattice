@@ -144,6 +144,11 @@ test("Ctrl+B ? and ? list every binding by where it runs; Esc and ? close the li
   await expect(help).toBeVisible();
   await app.keyboard.press("?");
   await expect(help).toBeHidden();
+
+  await app.keyboard.press("?");
+  await help.locator("h2").click();
+  await app.keyboard.press("Escape");
+  await expect(help, "a click on its heading leaves the keys with it").toBeHidden();
 });
 
 test("the hint shows only after a moment, lists what follows, and Esc ends the sequence without acting", async ({ app }) => {
@@ -172,6 +177,18 @@ test("an unbound second key ends the sequence and does nothing else", async ({ a
   await expect(cur).toHaveCount(0);
   await app.keyboard.press("j");
   await expect(cur).toHaveCount(1);
+});
+
+test("the next article key on a page that is no article stays on the page", async ({ shell }) => {
+  const LAYOUT = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await expect(list(shell).locator(".row").first()).toBeVisible();
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Shift+J", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Shift+K", count: 1 }));
+  await shell.waitForTimeout(500);
+  expect(await shell.evaluate(() => localStorage.getItem("lattice.layout")), "an article would open over it").toContain("https://example.com/p");
 });
 
 test("what a page sends runs by its whole sequence, with its count", async ({ app }) => {
