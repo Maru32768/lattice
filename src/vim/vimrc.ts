@@ -6,6 +6,8 @@ export type SkipReason = "plugin" | "script" | "mode" | "expr" | "unknownEx" | "
 export type VimrcEntry =
   | { kind: "ex"; line: number; ex: string }
   | { kind: "nop"; line: number; lhs: string; context: VimrcContext }
+  /** A key that gives up the engine's own command, which comes before every mapping: a mapping written earlier stays. */
+  | { kind: "free"; line: number; lhs: string }
   | { kind: "skip"; line: number; text: string; reason: SkipReason };
 export interface KnownNames {
   ex: Set<string>;
@@ -232,7 +234,8 @@ function rhsProblem(rhs: string, insert: boolean, known: KnownNames): SkipReason
   if (from < 0) {
     return null;
   }
-  for (const [, ex] of rhs.slice(from).matchAll(/:(.*?)(?:<CR>|$)/g)) {
+  // A colon a motion or a register takes is no Ex command (`f:`, `":`); after `gt` or `zt`, whole commands themselves, it is.
+  for (const [, ex] of rhs.slice(from).matchAll(/(?<!(?:^|[^gz])[fFtTr]|"):(.*?)(?:<CR>|$)/g)) {
     const m = /^(?:%|(?:[.$\d+-]|'.)*(?:,(?:[.$\d+-]|'.)*)?)\s*(\w+|[!#&*<=>@~])?\s*(.*)$/.exec(ex!);
     const name = m?.[1];
     if (!name) {
@@ -319,7 +322,7 @@ function leaderKey(value: string): string {
 
 /** The entries of `text`, in order: what applies and, with a reason, what does not. */
 export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
-  const out: VimrcEntry[] = [];
+  let out: VimrcEntry[] = [];
   const leaders = { mapleader: DEFAULT_LEADER, maplocalleader: DEFAULT_LEADER };
   let depth = 0;
   for (const { line, text: raw } of logicalLines(text)) {
@@ -335,12 +338,12 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       depth = depthAfter(original, depth);
       continue;
     }
-    const leader = /^let\s+(?:g:)?(map(?:local)?leader)\s*=\s*(["'])(.*)\2\s*$/.exec(original);
+    const leader = /^let\s+(?:g:)?(map(?:local)?leader)\s*=\s*(["'])(.*?)\2\s*(?:".*)?$/.exec(original);
     if (leader) {
       const key = leaderKey(leader[3]!);
       leaders[leader[1] as keyof typeof leaders] = key;
       // A key with a command of its own runs at once, so without this `<leader>x` could never be reached.
-      out.push({ kind: "ex", line, ex: `unmap ${key}` });
+      out.push({ kind: "free", line, lhs: key });
       continue;
     }
     const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text: original, reason });
@@ -355,6 +358,14 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       out.push(skip("mode"));
     } else if (SET.has(cmd)) {
       out.push(...parseSet(line, s, known));
+    } else if (cmd === "unmap" && rest) {
+      // As in Vim, it undoes what the file mapped so far in these modes and the key's own command stays. With nothing to undo, that command goes.
+      const lhs = engineKeys(rest);
+      const kept = out.filter((e) => {
+        const m = mappingOf(e);
+        return m?.lhs !== lhs || m.modes.includes("insert");
+      });
+      out = kept.length < out.length ? kept : [...out, { kind: "free", line, lhs }];
     } else if (CLEARS.has(cmd)) {
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
     } else if (SCRIPT.has(cmd.replace(/!$/, "")) || known.ex.has(cmd)) {
@@ -370,7 +381,7 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
   return out.map((e) => {
     const nop = e.kind === "nop" ? mappingOf(e)! : null;
     const leads = nop && mappings.some((m) => m.lhs !== nop.lhs && m.lhs.startsWith(nop.lhs) && m.modes.some((mode) => nop.modes.includes(mode)));
-    return leads ? { kind: "ex", line: e.line, ex: `unmap ${nop.lhs}` } : e;
+    return leads ? { kind: "free", line: e.line, lhs: nop.lhs } : e;
   });
 }
 

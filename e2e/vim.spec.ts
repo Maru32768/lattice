@@ -242,6 +242,24 @@ test("with Esc Esc mapped, a lone Esc in normal mode does not eat the next key",
   await expect(chatInput(page)).toBeFocused();
 });
 
+test("an unmap applies in its place in the vimrc: a later line can map the key again", async ({ page }) => {
+  await chat(page, "nnoremap x rZ\nunmap x\nnnoremap s rZ\nunmap s\nnnoremap s rY");
+  await page.keyboard.type("abc");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("s");
+  await expect(chatInput(page)).toHaveText("abY");
+  await page.keyboard.press("x");
+  await expect(chatInput(page), "x is back to its own command").toHaveText("ab");
+});
+
+test("a leader with a command of its own in one mode still leads", async ({ page }) => {
+  await chat(page, 'let mapleader = "s"\nnnoremap <leader>x rZ');
+  await page.keyboard.type("abc");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type("sx");
+  await expect(chatInput(page)).toHaveText("abZ");
+});
+
 test("gj moves by screen line, as a vimrc's j asks", async ({ page }) => {
   await chat(page, "nnoremap j gj");
   const long = Array.from({ length: 60 }, (_, i) => `word${i}`).join(" ");

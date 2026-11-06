@@ -5,7 +5,7 @@ import { Vim } from "@replit/codemirror-vim";
 import { ENGINE_EX, ENGINE_OPTIONS, KNOWN, mappedKeys, parseVimrc, type VimrcEntry } from "./vimrc.ts";
 
 const parse = (text: string) => parseVimrc(text, KNOWN);
-const exOf = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "ex" ? [e.ex] : []));
+const exOf = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "ex" ? [e.ex] : e.kind === "free" ? [`unmap ${e.lhs}`] : []));
 const skips = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "skip" ? [[e.line, e.reason]] : []));
 
 test("the mappings a vimrc of habits relies on apply, in the engine's key spelling", () => {
@@ -46,6 +46,33 @@ test("the leader is substituted first, and its own key gives up the command it h
   assert.deepEqual(exOf(parse('let maplocalleader = ","\nnmap <localleader>x y\nnmap <leader>x z')), ["unmap ,", "nmap ,x y", "nmap \\x z"]);
 });
 
+test("a leader's line can end in a comment, and its value can be a quote of the other kind", () => {
+  assert.deepEqual(exOf(parse('let mapleader = " " " space as leader\nnnoremap <leader>x dd')), ["unmap <Space>", "nnoremap <Space>x dd"]);
+  assert.deepEqual(exOf(parse(`let mapleader = '"'\nnnoremap <leader>x dd`)), ['unmap "', 'nnoremap "x dd']);
+});
+
+test("a colon a motion or a register takes is no Ex command", () => {
+  assert.deepEqual(skips(parse('nnoremap Q f:lD\nnnoremap R t:x\nnnoremap S ":p')), []);
+  assert.deepEqual(skips(parse("nnoremap Q gt:nosuch<cr>\nnnoremap R zt:nosuch<cr>\nnnoremap S :nosuch<cr>")), [
+    [1, "unknownEx"],
+    [2, "unknownEx"],
+    [3, "unknownEx"],
+  ]);
+});
+
+test("an unmap undoes the mappings above it, and with none takes the key's own command", () => {
+  assert.deepEqual(parse("nnoremap x y\nvnoremap x z\nunmap x"), []);
+  assert.deepEqual(parse("unmap x\nnnoremap x y"), [
+    { kind: "free", line: 1, lhs: "x" },
+    { kind: "ex", line: 2, ex: "nnoremap x y" },
+  ]);
+  assert.deepEqual(parse("inoremap x y\nunmap x"), [
+    { kind: "ex", line: 1, ex: "inoremap x y" },
+    { kind: "free", line: 2, lhs: "x" },
+  ]);
+  assert.deepEqual(parse("nnoremap x <nop>\nunmap x"), []);
+});
+
 test("no vimrc text throws: Settings and the editor parse it as they come up, and it is stored", () => {
   for (const leader of ["mapleader", "maplocalleader"]) {
     const entries = parse(`let ${leader} = ""\n<leader>\n<localleader>\nnmap <leader>x y\nnmap <localleader>x z`);
@@ -79,7 +106,7 @@ test("<nop> is its own entry with its mode", () => {
 
 test("a <nop> on a key that leads other mappings gives the key up instead, or the engine would stop at it", () => {
   assert.deepEqual(parse("nnoremap <space> <nop>\nnnoremap <space>w :w<cr>"), [
-    { kind: "ex", line: 1, ex: "unmap <Space>" },
+    { kind: "free", line: 1, lhs: "<Space>" },
     { kind: "ex", line: 2, ex: "nnoremap <Space>w :w<CR>" },
   ]);
   assert.equal(parse("inoremap <c-x> <nop>\nnnoremap <c-x>y z")[0].kind, "nop", "the longer mapping is in another mode");

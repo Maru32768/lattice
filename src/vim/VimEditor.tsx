@@ -73,14 +73,19 @@ function applyVimrc(text: string, view: EditorView) {
   // shortcut: other options, and default commands a vimrc removed, stay until the app restarts, upgrade if people edit those and expect them back at once.
   Vim.setOption("clipboard", "");
   for (const e of entries) {
-    if (e.kind === "ex" && e.ex.startsWith("unmap ") && Vim.unmap(e.ex.slice("unmap ".length), ANY_MODE)) {
-      Vim.mapCommand(UNMAPPED, "idle", "", {}, {});
+    if (e.kind === "free") {
+      // The engine's own commands are by context, and it removes only an exact match.
+      for (const context of [ANY_MODE, "normal", "visual", "operatorPending"]) {
+        if (Vim.unmap(e.lhs, context)) {
+          Vim.mapCommand(UNMAPPED, "idle", "", {}, {});
+        }
+      }
     }
   }
   for (const e of entries) {
     if (e.kind === "nop") {
       Vim.mapCommand(e.lhs, "action", "nop", {}, e.context ? { context: e.context } : {});
-    } else if (e.kind === "ex" && !e.ex.startsWith("unmap ")) {
+    } else if (e.kind === "ex") {
       // Not through `handleEx`: the engine's `:map` keeps only one word of a right-hand side.
       const map = /^(n|v|i|o|)(nore)?map (\S+) (.*)$/.exec(e.ex);
       if (!map) {
