@@ -1,4 +1,4 @@
-import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, useRef, useState } from "react";
+import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "../api";
 import { translatedShare } from "../overlay/logic";
@@ -24,6 +24,7 @@ import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
+import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
 import { onMiddle } from "../lib/middle";
 import { useLatest } from "../lib/useLatest";
@@ -908,6 +909,7 @@ export function Summary({ view, onSummarize, request, initialOpen }: { view: Art
 }
 
 export function Reader({
+  tabId,
   view,
   act,
   focus,
@@ -931,6 +933,8 @@ export function Reader({
   groupRequest,
   summaryRequest,
 }: {
+  /** Whose place this Reader keeps across a remount. */
+  tabId: number;
   view: ArticleView;
   act: DocActions;
   focus?: Focus;
@@ -993,13 +997,15 @@ export function Reader({
   const chars = blocks.reduce((n, b) => n + b.text.length, 0);
 
   const focusBlock = focus?.block;
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (focusBlock != null) {
       // Scoped to this Reader: the same article may be open in another pane.
       blocksEl.current?.querySelector(`#b-${focusBlock}`)?.scrollIntoView({ block: "center" });
     }
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focusBlock, focus?.seq, blocks.length]);
+  // After the effect above: a kept place wins over a request the reader has moved on from.
+  const scrollEl = useReadingPlace(tabId, a.id);
 
   const shows = (id: number, i: number) => selected.has(`${id}:${i}`) !== flipped.has(`${id}:${i}`);
   /** Whether any sentence of the block shows its translation (its marker, and what flipping the block does). */
@@ -1166,7 +1172,7 @@ export function Reader({
       </div>
 
       <div className="doc-body">
-        <div className="doc-scroll" tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
+        <div className="doc-scroll" ref={scrollEl} tabIndex={-1} data-pane-target onScroll={cap && !cap.status ? () => setCap(null) : undefined}>
           <article className="reader">
             <div className="art-meta">
               {a.feed_title && <span className="src">{a.feed_title}</span>}

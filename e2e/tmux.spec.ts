@@ -521,3 +521,102 @@ test("with one pane the tab list names no panes", async ({ app }) => {
   await expect(palette(app).getByRole("option")).toHaveCount(1);
   await expect(palette(app).locator(".it .r")).toHaveCount(0);
 });
+
+/** Blocks whose height follows their width, as text does: a bare scrollTop lands on other text in a narrower pane. */
+const tallBlocks = (app: Page) => app.addStyleTag({ content: "[id^='b-'] { aspect-ratio: 1 / 3; }" });
+/** The block at the top of the only Reader's view, and how far into it the view starts. */
+const placeIn = (app: Page) =>
+  app.locator(".doc-scroll").evaluate((el) => {
+    const top = el.getBoundingClientRect().top;
+    const block = [...el.querySelectorAll("[id^='b-']")].find((b) => b.getBoundingClientRect().bottom > top)!;
+    const r = block.getBoundingClientRect();
+    return { id: block.id, within: (top - r.top) / r.height };
+  });
+/** Scrolls the only Reader a third of the way into its second block. */
+async function readOn(app: Page) {
+  await expect(app.locator(".doc-scroll")).toBeVisible();
+  await app.locator(".doc-scroll").evaluate((el) => {
+    const b = el.querySelectorAll("[id^='b-']")[1].getBoundingClientRect();
+    el.scrollTop += b.top - el.getBoundingClientRect().top + b.height / 3;
+  });
+  return placeIn(app);
+}
+const expectPlace = (app: Page, place: { id: string; within: number }) =>
+  expect
+    .poll(async () => {
+      const now = await placeIn(app);
+      return now.id === place.id && Math.abs(now.within - place.within) < 0.02 ? place : now;
+    })
+    .toEqual(place);
+
+test("a Reader keeps the text at the top of its view when its pane splits, closes and swaps", async ({ shell }) => {
+  await open(shell, pane(1, reader(2, 2)), 1);
+  await tallBlocks(shell);
+  const place = await readOn(shell);
+  await list(shell).locator(".row").first().focus();
+  await press(shell, "Control+l");
+  await expect(shell.locator(".doc-scroll")).toBeFocused();
+
+  await press(shell, "Control+\\");
+  await expect(panes(shell)).toHaveCount(2);
+  await expectPlace(shell, place);
+
+  // Into a split of the other direction, a level down.
+  await press(shell, "Control+h", "Control+-");
+  await expect(panes(shell)).toHaveCount(3);
+  await expectPlace(shell, place);
+
+  await press(shell, "Control+k");
+  await expect(panes(shell).first().locator(".doc-scroll")).toBeFocused();
+  await press(shell, "Control+b", "}");
+  await expect(panes(shell).nth(1).locator(".doc-scroll")).toBeFocused();
+  await expectPlace(shell, place);
+
+  // The empty panes close, and the Reader's goes up a level each time.
+  await press(shell, "Control+k", "Control+b", "x");
+  await expect(panes(shell)).toHaveCount(2);
+  await expectPlace(shell, place);
+  await press(shell, "Control+l", "Control+b", "x");
+  await expect(panes(shell)).toHaveCount(1);
+  await expectPlace(shell, place);
+});
+
+test("a tab shown again keeps its place", async ({ shell }) => {
+  await open(shell, pane(1, reader(2, 2), reader(3, 3)), 1);
+  await tallBlocks(shell);
+  const place = await readOn(shell);
+
+  await press(shell, "Control+l", "Control+b", "2");
+  await expect(focusedTitle(shell)).toHaveText(label(3));
+  await press(shell, "Control+b", "1");
+  await expect(focusedTitle(shell)).toHaveText(label(2));
+  await expectPlace(shell, place);
+});
+
+test("the next article and back again start at the top", async ({ app }) => {
+  await (await listRow(app, label(2))).click();
+  await expect(focusedTitle(app)).toHaveText(label(2));
+  await tallBlocks(app);
+  await readOn(app);
+
+  await press(app, "Control+l", "Shift+J");
+  await expect(focusedTitle(app)).toHaveText(label(3));
+  await press(app, "Shift+K");
+  await expect(focusedTitle(app)).toHaveText(label(2));
+  await expect.poll(() => app.locator(".doc-scroll").evaluate((el) => el.scrollTop)).toBe(0);
+});
+
+test("a Reader opened at a search hit stays where it was scrolled to when its pane splits", async ({ app }) => {
+  await press(app, "/");
+  await app.keyboard.type("mvcc");
+  await press(app, "Enter");
+  await expect(app.getByRole("region", { name: "検索結果" }).locator(".hit").first()).toBeVisible();
+  await press(app, "ArrowDown", "Enter");
+  await expect(app.locator(".blk.is-hit")).toBeVisible();
+  await tallBlocks(app);
+  const place = await readOn(app);
+
+  await press(app, "Control+\\");
+  await expect(panes(app)).toHaveCount(2);
+  await expectPlace(app, place);
+});
