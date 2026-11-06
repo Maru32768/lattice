@@ -4,7 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
-import type { KeySeq, KeyStep } from "../lib/keymap.ts";
+import { isModified, type KeySeq, type KeyStep } from "../lib/keymap.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;
@@ -226,4 +226,4 @@ export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragan
  * page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
  */
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
-  seq.first != null || /^(Ctrl|Alt)\+/.test(key) || (step.kind === "run" && !!step.action.repeat);
+  seq.first != null || isModified(key) || (step.kind === "run" && !!step.action.repeat);

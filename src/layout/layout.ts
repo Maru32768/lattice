@@ -391,10 +391,7 @@ export function grow(l: Workspace, side: Side, step: number): Workspace {
   return { ...resize(l, hit.node.id, at, (hit.node.sizes[at] ?? 0) + (forward ? step : -step)), zoomed: undefined };
 }
 
-/**
- * The focused pane's tabs change places with those of the next or previous pane in reading order, wrapping; the focus goes with them.
- * shortcut: both documents mount anew, so a Reader starts at its top as after a tab switch, until tabs keep their scroll.
- */
+/** The focused pane's tabs change places with those of the next or previous pane in reading order, wrapping; the focus goes with them. */
 export function swap(l: Workspace, d: 1 | -1): Workspace {
   const all = panes(l.root);
   const i = all.findIndex((p) => p.id === l.focused);

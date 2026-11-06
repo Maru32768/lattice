@@ -326,7 +326,9 @@ export type KeyStep =
 export const REPEAT_MS = 500;
 
 /** Typed text, not a shortcut, when a field has focus. */
-const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
+export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
+/** A shortcut whatever has the focus, and a browser's own key to keep from it. */
+export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
 
 function running(action: ActionDef, sequence: string, first: string | null, count: number, now: number): KeyStep {
   const repeat = action.repeat && first ? { first, until: now + REPEAT_MS } : null;
@@ -397,7 +399,7 @@ export function pageKeys(b: Bindings): PageKeys {
     // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
     const applicable = a.scope === "list" || PAGE_OWN.has(a.id) ? [] : b[a.id];
     // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.
-    bindings[a.id] = applicable.filter((k) => /^(Ctrl|Alt)\+/.test(k) || isPrintable(k.split(" ")[0]!));
+    bindings[a.id] = applicable.filter((k) => isModified(k) || isPrintable(k.split(" ")[0]!));
     for (const k of bindings[a.id]) {
       if (!a.local) {
         sequences.add(k);

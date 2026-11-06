@@ -6,7 +6,7 @@
  * The ideas come from Vimium's content scripts (MIT License, Copyright (c) 2010 Phil Crosby, Ilya Sukhar).
  */
 import { collapse, isWord } from "../vocab/vocab.ts";
-import type { ActionId } from "../lib/keymap.ts";
+import { isModified, isPrintable, type ActionId } from "../lib/keymap.ts";
 import { firstField, hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
 import { docText, firstVisibleOffset, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
@@ -67,9 +67,6 @@ const CHROME = "nav,header,footer,aside,[role='navigation'],[role='banner'],[rol
 const BLUR_MS = 100;
 /** What the find bar covers of the bottom of the view. */
 const BAR_HEIGHT = 48;
-
-const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
-const isTyped = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 
 function viewOf(scroller: Element | null): View {
   return scroller && scroller !== document.scrollingElement ? scroller.getBoundingClientRect() : { top: 0, left: 0, bottom: innerHeight, right: innerWidth };
@@ -252,7 +249,7 @@ export function createDocNav(host: () => DocHost) {
       enter(NORMAL);
     } else if (key === "Backspace") {
       enter({ ...m, typed: m.typed.slice(0, -1) });
-    } else if (isTyped(key)) {
+    } else if (isPrintable(key)) {
       const typed = m.typed + key.slice(-1);
       const left = m.targets.filter((t) => t.label.startsWith(typed));
       if (left.length === 1) {
@@ -361,7 +358,7 @@ export function createDocNav(host: () => DocHost) {
       enter(NORMAL);
       return true;
     }
-    if (!isTyped(key)) {
+    if (!isPrintable(key)) {
       return false;
     }
     if (m.g) {

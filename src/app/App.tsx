@@ -1,8 +1,7 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
-import { browser } from "../api";
+import { api, browser, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
 import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
