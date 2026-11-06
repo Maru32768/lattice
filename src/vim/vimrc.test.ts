@@ -73,6 +73,12 @@ test("an unmap undoes the mappings above it, and with none takes the key's own c
   assert.deepEqual(parse("nnoremap x <nop>\nunmap x"), []);
 });
 
+test("a key that names an Ex command is left out: the engine throws on freeing one", () => {
+  assert.deepEqual(skips(parse("unmap :x")), [[1, "script"]]);
+  assert.deepEqual(skips(parse('let mapleader = ":x"')), [[1, "script"]]);
+  assert.deepEqual(parse("unmap :"), [{ kind: "free", line: 1, lhs: ":" }], "a lone colon is an ordinary key");
+});
+
 test("no vimrc text throws: Settings and the editor parse it as they come up, and it is stored", () => {
   for (const leader of ["mapleader", "maplocalleader"]) {
     const entries = parse(`let ${leader} = ""\n<leader>\n<localleader>\nnmap <leader>x y\nnmap <localleader>x z`);

@@ -278,8 +278,7 @@ function parseMap(line: number, text: string, cmd: string, rest: string, known: 
   if (lhs.startsWith("<C-w>") || rhs.startsWith("<C-w>")) {
     return skip("app");
   }
-  // To the engine this would rename an Ex command, and it refuses that with a mode.
-  if (/^:./.test(lhs)) {
+  if (EX_NAME.test(lhs)) {
     return skip("script");
   }
   if (/^<nop>$/i.test(rhs)) {
@@ -313,6 +312,8 @@ function parseSet(line: number, text: string, known: KnownNames): VimrcEntry[] {
 }
 
 const DEFAULT_LEADER = "\\";
+/** A key that to the engine names an Ex command: its `map` and `unmap` refuse one with a mode, and `unmap` throws. */
+const EX_NAME = /^:./;
 
 /** A leader as written in `let mapleader = "..."`, spelled as a key. As in Vim, an empty one is the default. */
 function leaderKey(value: string): string {
@@ -338,15 +339,15 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       depth = depthAfter(original, depth);
       continue;
     }
+    const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text: original, reason });
     const leader = /^let\s+(?:g:)?(map(?:local)?leader)\s*=\s*(["'])(.*?)\2\s*(?:".*)?$/.exec(original);
     if (leader) {
       const key = leaderKey(leader[3]!);
       leaders[leader[1] as keyof typeof leaders] = key;
       // A key with a command of its own runs at once, so without this `<leader>x` could never be reached.
-      out.push({ kind: "free", line, lhs: key });
+      out.push(EX_NAME.test(key) ? skip("script") : { kind: "free", line, lhs: key });
       continue;
     }
-    const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text: original, reason });
     const s = original.replace(/<(local)?leader>/gi, (_, local?: string) => (local ? leaders.maplocalleader : leaders.mapleader));
     // A leader of spaces can leave nothing here, and a line can hold a lone CR, where `.` alone stops. This pattern matches any text.
     const [, cmd = "", rest = ""] = /^(\S*)\s*(.*)$/s.exec(s)!;
@@ -365,7 +366,7 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
         const m = mappingOf(e);
         return m?.lhs !== lhs || m.modes.includes("insert");
       });
-      out = kept.length < out.length ? kept : [...out, { kind: "free", line, lhs }];
+      out = kept.length < out.length ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs }];
     } else if (CLEARS.has(cmd)) {
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
     } else if (SCRIPT.has(cmd.replace(/!$/, "")) || known.ex.has(cmd)) {
