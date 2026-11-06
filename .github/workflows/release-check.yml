@@ -45,11 +45,30 @@ jobs:
       - name: Start the portable copy, then the installed one, and uninstall
         shell: pwsh
         run: |
-          function Test-App($exe, $db, $port) {
-            $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=$port"
+          Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+
+          # Elements with a name on screen, read through UI Automation. The packaged app takes no WebView2 debug port.
+          function Get-NamedCount($window) {
+            $root = [Windows.Automation.AutomationElement]::FromHandle($window)
+            $all = $root.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+            @($all | Where-Object { $_.Current.Name }).Count
+          }
+
+          function Test-App($exe, $db) {
             $app = Start-Process $exe -PassThru
-            mise exec -- node scripts/smoke-webview.ts $port
-            if ($LASTEXITCODE -ne 0) { throw "$exe did not render its main window" }
+            # A white window keeps its process and has only its title and the web content's own name, so require more.
+            $named = 0
+            foreach ($try in 1..24) {
+              Start-Sleep -Seconds 5
+              $app.Refresh()
+              if ($app.HasExited) { throw "$exe exited with $($app.ExitCode)" }
+              if ($app.MainWindowHandle -eq 0) { continue }
+              # The page may redraw during a read.
+              try { $named = Get-NamedCount $app.MainWindowHandle } catch { continue }
+              if ($named -gt 10) { break }
+            }
+            if ($named -le 10) { throw "$exe did not render: $named named elements on screen" }
+            "$exe rendered $named named elements"
             if (-not (Test-Path $db)) { throw "$exe did not create $db" }
             & (Join-Path (Split-Path $exe) 'lattice-cli.exe') list
             if ($LASTEXITCODE -ne 0) { throw "The CLI beside $exe could not read $db" }
@@ -63,12 +82,12 @@ jobs:
           $db = "$env:APPDATA\Lattice\lattice.db"
 
           # First, while no default library exists, so the portable CLI can only be reading its own.
-          Test-App "$portable\Lattice.exe" "$portable\data\lattice.db" 9222
+          Test-App "$portable\Lattice.exe" "$portable\data\lattice.db"
           if (Test-Path $db) { throw "The portable copy wrote to $db" }
 
           $setup = Start-Process "release\Lattice_${version}_x64-setup.exe" -ArgumentList '/S' -Wait -PassThru
           if ($setup.ExitCode -ne 0) { throw "The installer exited with $($setup.ExitCode)" }
-          Test-App "$installed\lattice.exe" $db 9223
+          Test-App "$installed\lattice.exe" $db
 
           Start-Process "$installed\uninstall.exe" -ArgumentList '/S' -Wait
           foreach ($exe in 'lattice.exe', 'lattice-cli.exe') {
@@ -77,11 +96,23 @@ jobs:
           if (-not (Test-Path $db)) { throw "Uninstalling removed the library" }
           "Portable copy, install, start, CLI and uninstall checked"
 
-      - name: Show the app's logs
+      - name: Save what the app left
         if: failure()
         shell: pwsh
         run: |
+          Get-Process lattice, msedgewebview2 -ErrorAction SilentlyContinue | Format-Table Id, ProcessName, StartTime
           Get-ChildItem "release/*/data/logs/*", "$env:LOCALAPPDATA/Lattice/logs/*" -File -ErrorAction SilentlyContinue | ForEach-Object {
             "== $_"
             Get-Content $_ -Tail 40
           }
+          Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+          $bounds = [Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $screen = [Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+          [Drawing.Graphics]::FromImage($screen).CopyFromScreen(0, 0, 0, 0, $screen.Size)
+          $screen.Save("$PWD\screen.png")
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: release-check-screen
+          path: screen.png
