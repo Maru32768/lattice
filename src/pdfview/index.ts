@@ -360,17 +360,15 @@ let allPlaced = () => {};
 const placing = new Promise<void>((done) => {
   allPlaced = done;
 });
-let drawingAll = false;
 
 /**
  * Draws the text of every page, those far from the screen too; `more` says that some came. Once, however often asked.
  * shortcut: it stays until the PDF closes, about 300 spans and 10 ms a page, so a thousand pages hold 300000 spans; drop the pages far from a selection if such PDFs turn up.
  */
 function allText(more: () => void) {
-  if (drawingAll) {
+  if (keepText) {
     return;
   }
-  drawingAll = true;
   keepText = true;
   void (async () => {
     await placing;
