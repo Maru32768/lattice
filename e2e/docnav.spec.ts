@@ -265,6 +265,23 @@ test("gg and G in visual mode stop at the document's ends, not the page's", asyn
   expect(await selected(reader)).toContain(label(0));
 });
 
+test("G in caret mode reaches the document's end, with the panes beside the Reader left out", async ({ reader }) => {
+  await reader.locator(".doc-scroll").evaluate((el) => {
+    const next = document.createElement("div");
+    next.textContent = "the next pane";
+    el.after(next);
+  });
+  await reader.locator("#p0").evaluate((el) => el.scrollIntoView());
+  await reader.keyboard.press("v");
+  await reader.keyboard.press("Shift+G");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("CARET");
+  const end = await reader.locator(".doc-scroll").evaluate((root) => {
+    const s = window.getSelection()!;
+    return { inside: root.contains(s.focusNode), text: s.toString(), last: root.textContent!.trimEnd().at(-1) };
+  });
+  expect(end).toEqual({ inside: true, text: end.last, last: end.last });
+});
+
 test("in visual mode s saves the selected word and a puts the quote in the chat's input without sending it", async ({ reader }) => {
   // A word in one of the article's own blocks: only those have a sentence to save it with.
   await (await listRow(reader, ARTICLES.find((a) => a.id === SNAPSHOT_ID)!.title!)).click();

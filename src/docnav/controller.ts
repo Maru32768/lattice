@@ -316,7 +316,7 @@ export function createDocNav(host: () => DocHost) {
     const at = firstVisibleText(textNodes(root), view);
     if (at) {
       s.collapse(at.node, at.offset);
-      showBlock(s);
+      showBlock(s, root);
       askAllText();
       enter({ kind: "caret", g: false });
     }
@@ -333,13 +333,13 @@ export function createDocNav(host: () => DocHost) {
     if (m.kind === "caret") {
       s.collapseToStart();
       motion(s, "move", root);
-      showBlock(s);
+      showBlock(s, root);
     } else {
       motion(s, "extend", root);
       if (m.line) {
         shapeLines(s, m.line);
       } else if (!s.toString()) {
-        showBlock(s);
+        showBlock(s, root);
       }
     }
     // `j` from the Reader's last line would land in the next pane, `k` from a PDF's first on the viewer's own controls.
@@ -375,7 +375,10 @@ export function createDocNav(host: () => DocHost) {
         enter({ kind: "visual", line: null, g: false });
       } else {
         s.collapse(s.focusNode, s.focusOffset);
-        showBlock(s);
+        const root = host().root();
+        if (root) {
+          showBlock(s, root);
+        }
         enter({ kind: "caret", g: false });
       }
     } else if (key === "Shift+V") {

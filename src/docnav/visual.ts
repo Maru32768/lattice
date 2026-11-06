@@ -155,9 +155,16 @@ export const MOTIONS: Record<string, Motion> = {
   "Shift+G": docEnd,
 };
 
-/** A block over one character: an ordinary caret cannot be seen in text that is not editable. */
-export function showBlock(s: Selection) {
+/**
+ * A block over one character: an ordinary caret cannot be seen in text that is not editable.
+ * At the end of `root`, the character before: the next one is another pane's.
+ */
+export function showBlock(s: Selection, root: Element) {
+  const [node, offset] = [s.focusNode!, s.focusOffset];
   s.modify("extend", "forward", "character");
+  if (!root.contains(s.focusNode)) {
+    s.extend(node, offset);
+  }
   if (!s.toString()) {
     s.modify("extend", "backward", "character");
   }
