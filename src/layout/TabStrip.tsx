@@ -206,10 +206,10 @@ export function TabStrip({
         <Icon name="plus" />
       </button>
       <span className="grow" />
-      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={keyTitle("splitRight", t("tabStrip.splitRightHint"))}>
+      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={keyTitle("splitRight", t("tabStrip.splitRight"))}>
         <Icon name="vsplit" />
       </button>
-      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={keyTitle("splitDown", t("tabStrip.splitDownHint"))}>
+      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={keyTitle("splitDown", t("tabStrip.splitDown"))}>
         <Icon name="hsplit" />
       </button>
       {pane.active != null && (

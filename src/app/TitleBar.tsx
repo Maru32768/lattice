@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "./logo.svg";
 import { useT } from "../i18n";
-import { ActionKey, Icon } from "../ui/Icon";
-import { useBindings } from "../lib/keys";
-import { keyLabel } from "../lib/keymap";
+import { ActionKey, Icon, useKeyTitle } from "../ui/Icon";
 
 // Windows 11 caption glyphs, 10×10.
 const GLYPHS = {
@@ -88,8 +86,7 @@ export function TitleBar({
   onPalette?: () => void;
 }) {
   const t = useT();
-  const bindings = useBindings();
-  const withKey = (label: string, keys: string[]) => (keys[0] ? t("common.withKey", { label, key: keyLabel(keys[0]) }) : label);
+  const keyTitle = useKeyTitle();
   return (
     <header className="titlebar" onMouseDown={dragWindow}>
       <img className="tb-icon" src={logo} alt="" width={16} height={16} draggable={false} />
@@ -101,7 +98,7 @@ export function TitleBar({
             onClick={() => history.onGo(-1)}
             disabled={!history.back}
             aria-label={t("titleBar.back")}
-            title={withKey(t("titleBar.back"), bindings.back)}
+            title={keyTitle("back", t("titleBar.back"))}
           >
             <Icon name="left" />
           </button>
@@ -110,7 +107,7 @@ export function TitleBar({
             onClick={() => history.onGo(1)}
             disabled={!history.forward}
             aria-label={t("titleBar.forward")}
-            title={withKey(t("titleBar.forward"), bindings.forward)}
+            title={keyTitle("forward", t("titleBar.forward"))}
           >
             <Icon name="right" />
           </button>
