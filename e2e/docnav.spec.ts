@@ -277,7 +277,7 @@ test("G in caret mode reaches the document's end, with the panes beside the Read
   await expect.poll(async () => (await drawn(reader)).text).toContain("CARET");
   const end = await reader.locator(".doc-scroll").evaluate((root) => {
     const s = window.getSelection()!;
-    return { inside: root.contains(s.focusNode), text: s.toString(), last: root.textContent!.trimEnd().at(-1) };
+    return { inside: root.contains(s.focusNode), text: s.toString(), last: root.textContent.trimEnd().at(-1) };
   });
   expect(end).toEqual({ inside: true, text: end.last, last: end.last });
 });
