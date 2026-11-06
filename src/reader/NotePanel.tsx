@@ -12,6 +12,11 @@ const SAVE_MS = 800;
 // swap comes up before the old one has flushed. So the text typed this session outlives the view's `note` here, by article id.
 // shortcut: another window keeps the memo it loaded until its article view is reloaded.
 const typedText = new Map<number, string>();
+/**
+ * The error of an article's last save that failed: its text is only in `typedText`, so the panel that comes up next says so and saves again.
+ * shortcut: a failure after the panel closed shows only when it opens again, upgrade if saves ever fail for long.
+ */
+const failedSaves = new Map<number, string>();
 /** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -25,12 +30,12 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
   const id = view.article.id;
   const [text, setText] = useState(() => noteOf(view));
   const [status, setStatus] = useState<"saving" | "saved" | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(() => failedSaves.get(id) ?? null);
   const vimOn = useVimEnabled();
   const [vimMode, setVimMode] = useState("INSERT");
   const timer = useRef(0);
   /** Text typed but not yet sent. */
-  const pending = useRef<string | null>(null);
+  const pending = useRef(failedSaves.has(id) ? text : null);
 
   const flush = () => {
     clearTimeout(timer.current);
@@ -43,8 +48,12 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     queue = queue
       .then(() => api.setArticleNote(id, body))
       .then(
-        () => setStatus("saved"),
+        () => {
+          failedSaves.delete(id);
+          setStatus("saved");
+        },
         (e: unknown) => {
+          failedSaves.set(id, String(e));
           setStatus(null);
           setError(String(e));
         },

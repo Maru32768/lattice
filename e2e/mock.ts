@@ -648,7 +648,12 @@ export const handlers = {
   },
   set_articles_on_screen: none,
   add_genre: ({ name }: { name: string }) => void addedGenres.add(name.trim()),
-  set_article_note: ({ id, body }: { id: number; body: string }) => void (body.trim() ? notes.set(id, body) : notes.delete(id)),
+  set_article_note: ({ id, body }: { id: number; body: string }) => {
+    if (body.includes("the disk is full")) {
+      reject("file.tooLarge", { max: 1 });
+    }
+    void (body.trim() ? notes.set(id, body) : notes.delete(id));
+  },
   set_genre: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
     a.genre = name || null;

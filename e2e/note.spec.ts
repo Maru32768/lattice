@@ -30,6 +30,27 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
   await expect(panel.getByRole("textbox", { name: "メモ" })).toHaveValue("2PLと比べる");
 });
 
+test("メモ: a save that failed still says so when the panel comes back, and is sent again", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  await note.fill("the disk is full");
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await button.click();
+  await expect(panel).toHaveCount(0);
+
+  await button.click();
+  await expect(panel.getByRole("alert"), "the text was never saved").toBeVisible();
+  await expect(note).toHaveValue("the disk is full");
+  await note.fill("written after all");
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await button.click();
+  await button.click();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "ジャンルを管理" }).click();
   const name = app.getByRole("textbox", { name: "追加するジャンルの名前" });
