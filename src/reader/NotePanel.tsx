@@ -17,8 +17,8 @@ const typedText = new Map<number, string>();
  * shortcut: a failure after the panel closed shows only when it opens again, upgrade if saves ever fail for long.
  */
 const failedSaves = new Map<number, string>();
-/** Each article's open panel, for a failure that comes in after a pane swap: the panel that sent the save may be gone by then. */
-const panels = new Map<number, (error: string, body: string) => void>();
+/** The open panels, told how each save ended: the panel that sent it may be gone by then after a pane swap, and two panes can show one article. */
+const panels = new Set<(id: number, error: string | null, body: string) => void>();
 /** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -52,26 +52,38 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       .then(
         () => {
           failedSaves.delete(id);
-          setStatus("saved");
-          setError(null);
+          panels.forEach((tell) => tell(id, null, body));
         },
         (e: unknown) => {
           failedSaves.set(id, String(e));
-          panels.get(id)?.(String(e), body);
+          panels.forEach((tell) => tell(id, String(e), body));
         },
       );
   };
-  const saveFailed = useEffectEvent((message: string, body: string) => {
+  const saveEnded = useEffectEvent((message: string | null, body: string) => {
+    setError(message);
+    if (message === null) {
+      setStatus("saved");
+      // A panel that came up over the failure holds this text to try again.
+      if (pending.current === body) {
+        pending.current = null;
+      }
+      return;
+    }
     // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
     if (typedText.get(id) === body && pending.current === null) {
       pending.current = body;
     }
     setStatus(null);
-    setError(message);
   });
   useEffect(() => {
-    panels.set(id, (message, body) => saveFailed(message, body));
-    return () => void panels.delete(id);
+    const tell = (saved: number, message: string | null, body: string) => {
+      if (saved === id) {
+        saveEnded(message, body);
+      }
+    };
+    panels.add(tell);
+    return () => void panels.delete(tell);
   }, [id]);
   const typed = (value: string) => {
     typedText.set(id, value);

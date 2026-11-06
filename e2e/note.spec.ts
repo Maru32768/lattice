@@ -88,6 +88,25 @@ test("メモ: a failure that comes in after the panel was remounted reaches the 
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
+test("メモ: a retry that lands after a remount clears the alert of the panel that is open", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  await note.fill("the disk is full");
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await app.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
+  await holdNotes(app);
+  // The old panel's retry is still on its way as the new one comes up over the failure.
+  await button.click();
+  await button.click();
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await app.evaluate(() => (window as unknown as { __letNotesGo: () => void }).__letNotesGo());
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+});
+
 test("メモ: a failed save never comes back over newer text queued behind it", async ({ app }) => {
   await open(app, SNAPSHOT_ID);
   const button = app.getByRole("button", { name: "メモ", exact: true });
