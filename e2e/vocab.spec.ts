@@ -254,3 +254,25 @@ test("a word's card opens the passage it came from", async ({ app }) => {
   await expect(app.locator("#b-104")).toHaveClass(/is-cite/);
   await expect(app.locator("#b-104 .blk-label")).toHaveText("単語の出典");
 });
+
+test("a word's source wins over the place its article was left at", async ({ app }) => {
+  await openSnapshot(app);
+  await select(app, 104, "writers");
+  await app.getByRole("button", { name: /単語を登録/ }).click();
+  await expect(app.locator(".vw-cap")).toContainText("登録しました");
+  await app.addStyleTag({ content: "[id^='b-'] { aspect-ratio: 1 / 3; }" });
+  await app.locator(".doc-scroll").evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await app.locator(".nav .ni").filter({ hasText: "今日の復習" }).click();
+  await app.getByRole("button", { name: "復習を始める" }).click();
+  const session = app.getByRole("region", { name: "復習カード" });
+  for (let i = 0; i < REVIEW.length; i++) {
+    await session.getByRole("button", { name: "カードの操作" }).click();
+    await app.getByRole("menuitem", { name: "このカードを復習から外す" }).click();
+  }
+  await session.getByRole("button", { name: "答えを見る" }).click();
+  await session.getByRole("button", { name: "出典へ" }).click();
+  await expect(app.locator("#b-104")).toHaveClass(/is-cite/);
+  await expect(app.locator("#b-104")).toBeInViewport();
+});

@@ -6,10 +6,13 @@ import { useLayoutEffect, useRef } from "react";
  * how far into it the view starts. `block` is null above the first block, in the article's header, where `at` is a scrollTop.
  * shortcut: a Reader hidden under the zoom has no place to read and comes back at its top, upgrade if closing a zoomed pane proves common.
  */
-const places = new Map<number, { article: number; block: string | null; at: number }>();
+const places = new Map<number, { article: number; seq: number | undefined; block: string | null; at: number }>();
 
-/** Keeps tab `tab`'s place in `article` across a remount, for the scroller given the ref it returns. */
-export function useReadingPlace(tab: number, article: number) {
+/**
+ * Keeps tab `tab`'s place in `article` across a remount, for the scroller given the ref it returns.
+ * A new jump request (`seq`) is where the reader asked to go, so it replaces the place.
+ */
+export function useReadingPlace(tab: number, article: number, seq: number | undefined) {
   const scroller = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const view = scroller.current;
@@ -18,7 +21,7 @@ export function useReadingPlace(tab: number, article: number) {
     }
     const place = places.get(tab);
     places.delete(tab);
-    if (place?.article === article) {
+    if (place?.article === article && place.seq === seq) {
       const r = place.block && view.querySelector(`#${place.block}`)?.getBoundingClientRect();
       if (r) {
         view.scrollTop += r.top + place.at * r.height - view.getBoundingClientRect().top;
@@ -30,8 +33,11 @@ export function useReadingPlace(tab: number, article: number) {
       const top = view.getBoundingClientRect().top;
       const block = [...view.querySelectorAll("[id^='b-']")].find((b) => b.getBoundingClientRect().bottom > top);
       const r = block?.getBoundingClientRect();
-      places.set(tab, block && r && r.top <= top ? { article, block: block.id, at: (top - r.top) / r.height } : { article, block: null, at: view.scrollTop });
+      places.set(
+        tab,
+        block && r && r.top <= top ? { article, seq, block: block.id, at: (top - r.top) / r.height } : { article, seq, block: null, at: view.scrollTop },
+      );
     };
-  }, [tab, article]);
+  }, [tab, article, seq]);
   return scroller;
 }
