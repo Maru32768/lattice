@@ -14,7 +14,8 @@ function VimSettings() {
   const t = useT();
   const on = useVimEnabled();
   const vimrc = useVimrc();
-  // Half-typed lines stay here: `unmap <leader>x` passes through `unmap <`, and what an editor gives up stays gone until the app restarts.
+  // Half-typed lines stay here while it is typed in: `unmap <leader>x` passes through `unmap <`, and what an editor gives up stays gone until the app restarts.
+  // Leaving the field applies it, also by leaving the window: losing the text would be worse than a key gone until a restart.
   // shortcut: a window closed by a key while this field has the keyboard loses what it holds, upgrade if vimrcs get edited here at length.
   const [draft, setDraft] = useState(vimrc);
   const [stored, setStored] = useState(vimrc);

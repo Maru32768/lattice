@@ -397,12 +397,14 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
 type Mode = "normal" | "visual" | "insert";
 /** The modes a map command works in, by its first letter. Operator-pending keys wait in normal mode. */
 const MODES_OF: Record<string, Mode[]> = { "": ["normal", "visual"], n: ["normal"], o: ["normal"], v: ["visual"], i: ["insert"] };
+/** A mapping's line: its mode letter, for which the `n` of `noremap` does not count, and its key. */
+const MAP_LINE = /^(n|o|v|i|)(?:nore)?map (\S+)/;
 
 function mappingOf(e: VimrcEntry): { lhs: string; modes: Mode[] } | null {
   if (e.kind === "nop") {
     return { lhs: e.lhs, modes: e.context ? [e.context] : MODES_OF[""]! };
   }
-  const m = e.kind === "ex" ? /^(n|o|v|i|)(?:nore)?map (\S+)/.exec(e.ex) : null;
+  const m = e.kind === "ex" ? MAP_LINE.exec(e.ex) : null;
   return m && { lhs: m[2]!, modes: MODES_OF[m[1]!]! };
 }
 
@@ -415,7 +417,7 @@ function clearedBy(cmd: string, e: VimrcEntry): boolean {
     return false;
   }
   const mode = /^[nvio]?/.exec(cmd)![0];
-  const mapped = e.kind === "nop" ? (e.context?.charAt(0) ?? "") : e.kind === "ex" ? /^[nvio]?/.exec(e.ex)![0] : "";
+  const mapped = e.kind === "nop" ? (e.context?.charAt(0) ?? "") : e.kind === "ex" ? MAP_LINE.exec(e.ex)![1]! : "";
   return !mode || mode === mapped;
 }
 

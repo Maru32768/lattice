@@ -91,6 +91,7 @@ test("a clear command takes the mappings above it from what counts as mapped, by
   assert.deepEqual(mapped("nnoremap Q x\nvnoremap W x\ninoremap E x\nnnoremap R <nop>\nvmapclear"), { normal: ["Q", "R"], visual: [], insert: ["E"] });
   assert.deepEqual(mapped("nnoremap Q x\nmapclear\nnnoremap W x"), { normal: ["W"], visual: [], insert: [] }, "what comes after stays");
   assert.deepEqual(exOf(parse("nnoremap Q x\nmapclear")), ["mapclear"], "the engine still runs it");
+  assert.deepEqual(exOf(parse("noremap Q x\nnmapclear")), ["noremap Q x", "nmapclear"], "the n of noremap is no mode: the engine keeps it for the other modes");
 });
 
 test("a key that names an Ex command is left out: the engine throws on freeing one", () => {
