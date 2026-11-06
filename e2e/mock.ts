@@ -649,7 +649,7 @@ export const handlers = {
   set_articles_on_screen: none,
   add_genre: ({ name }: { name: string }) => void addedGenres.add(name.trim()),
   set_article_note: ({ id, body }: { id: number; body: string }) => {
-    if (body.includes("the disk is full")) {
+    if (body.includes("the disk is full") && !(window as unknown as { __diskFreed?: boolean }).__diskFreed) {
       reject("file.tooLarge", { max: 1 });
     }
     void (body.trim() ? notes.set(id, body) : notes.delete(id));

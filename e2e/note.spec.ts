@@ -30,7 +30,8 @@ test("メモ: written beside the Reader, saved as you type, back when the articl
   await expect(panel.getByRole("textbox", { name: "メモ" })).toHaveValue("2PLと比べる");
 });
 
-test("メモ: a save that failed still says so when the panel comes back, and is sent again", async ({ app }) => {
+test("メモ: a save that failed is sent again on the way out, says so when the panel comes back, and the alert goes once it lands", async ({ app }) => {
+  const saves = async () => (await callsOf(app, "set_article_note")).length;
   await open(app, SNAPSHOT_ID);
   const button = app.getByRole("button", { name: "メモ", exact: true });
   await button.click();
@@ -38,14 +39,19 @@ test("メモ: a save that failed still says so when the panel comes back, and is
   const note = panel.getByRole("textbox", { name: "メモ" });
   await note.fill("the disk is full");
   await expect(panel.getByRole("alert")).toBeVisible();
+  expect(await saves()).toBe(1);
   await button.click();
   await expect(panel).toHaveCount(0);
+  await expect.poll(saves, "closing the panel tried again").toBeGreaterThan(1);
 
   await button.click();
   await expect(panel.getByRole("alert"), "the text was never saved").toBeVisible();
   await expect(note).toHaveValue("the disk is full");
-  await note.fill("written after all");
-  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await app.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
+  await note.blur();
+  await expect(panel.getByRole("status"), "with nothing new typed").toHaveText("保存しました");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  expect((await callsOf(app, "set_article_note")).at(-1)).toEqual({ id: SNAPSHOT_ID, body: "the disk is full" });
   await button.click();
   await button.click();
   await expect(panel.getByRole("alert")).toHaveCount(0);

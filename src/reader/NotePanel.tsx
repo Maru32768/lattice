@@ -51,9 +51,14 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         () => {
           failedSaves.delete(id);
           setStatus("saved");
+          setError(null);
         },
         (e: unknown) => {
           failedSaves.set(id, String(e));
+          // The next way out (a blur, `:w`, closing) tries again, unless something newer was typed meanwhile.
+          if (pending.current === null) {
+            pending.current = body;
+          }
           setStatus(null);
           setError(String(e));
         },
