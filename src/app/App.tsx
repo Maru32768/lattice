@@ -999,7 +999,7 @@ export default function App() {
         // The clipboard refuses a window without the keyboard, and a page has it: it comes here for a moment.
         const back = () => paneFocus.focusPage(page.key);
         void focusApp().then(() => navigator.clipboard.writeText(page.url).catch(fail).finally(back));
-      } else if (current && screen === "library") {
+      } else if (current && screen === "library" && paneFocus.keyPane()?.dataset.pane !== "chat") {
         copyUrl(current.original_url);
       }
     },

@@ -751,6 +751,13 @@ base("yy under the hint keeps the keyboard in the app until the URL is copied, t
   await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
 });
 
+test("yy in the chat log leaves the Reader beside it alone", async ({ reader }) => {
+  await reader.locator(".nav").getByRole("button", { name: "対話", exact: true }).click();
+  await reader.locator(".chat-log").click({ position: { x: 5, y: 5 } });
+  await press(reader, "y", "y");
+  expect(await reader.evaluate(() => (window as unknown as { __clip?: string }).__clip)).toBeUndefined();
+});
+
 base("yy in the chat log or on Settings leaves the Page tab beside it alone", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
   await shell.addInitScript(() => {
