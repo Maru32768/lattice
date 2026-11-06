@@ -25,6 +25,7 @@ import {
   sanitize,
   snippetHtml,
   splitByLineBreaks,
+  opensBrowserPrint,
   takesBeforePage,
   translatedShare,
   unitsByBlock,
@@ -749,9 +750,8 @@ const pageDoc: DocHost = {
 };
 const docNav = createDocNav(() => pageDoc);
 
-function applyStep(step: KeyStep) {
-  const hinted = keySeq.first != null;
-  keySeq = step.seq;
+/** `hinted`: whether the app was showing the sequence's hint when the key came. */
+function applyStep(step: KeyStep, hinted: boolean) {
   if (step.kind === "run" && !step.action.local) {
     return tellApp(step.sequence, step.count);
   }
@@ -766,13 +766,25 @@ function applyStep(step: KeyStep) {
   }
 }
 
+/** WebView2's own print preview opens behind the page in this child webview: a print key nothing took goes to the system dialog, as `window.print` does here. */
+function printInstead(e: KeyboardEvent, key: string) {
+  if (opensBrowserPrint(key)) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    window.print();
+  }
+}
+
 function onKey(e: KeyboardEvent) {
-  if (e.isComposing || !keys) {
+  if (e.isComposing) {
     return;
   }
   const key = keyOf(e);
   if (!key) {
     return;
+  }
+  if (!keys) {
+    return printInstead(e, key);
   }
   if (docNav.onKey(key)) {
     e.preventDefault();
@@ -791,18 +803,22 @@ function onKey(e: KeyboardEvent) {
     });
   }
   const step = stepKeys(keys.bindings, keySeq, key, { scope: "doc", inField: field, now: Date.now() });
+  const taken = takesBeforePage(keySeq, key, step);
+  const hinted = keySeq.first != null;
+  // Now and not in the timer: on a busy page the next key of a chord or a count comes before it fires.
+  keySeq = step.seq;
   if (step.kind === "none") {
-    keySeq = step.seq;
-  } else if (takesBeforePage(keySeq, key, step)) {
+    printInstead(e, key);
+  } else if (taken) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    applyStep(step);
+    applyStep(step, hinted);
   } else {
     setTimeout(() => {
       if (e.defaultPrevented) {
         keySeq = IDLE;
       } else {
-        applyStep(step);
+        applyStep(step, hinted);
       }
     });
   }

@@ -225,5 +225,8 @@ export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragan
  * Alt key, which may have a browser default to suppress (Ctrl+S). Any other key of ours goes once the
  * page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
  */
+/** The keys a browser prints on, by its own preview and by the system's dialog. */
+export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "Ctrl+Shift+P";
+
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
   seq.first != null || isModified(key) || (step.kind === "run" && !!step.action.repeat);
