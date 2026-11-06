@@ -55,8 +55,8 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         },
         (e: unknown) => {
           failedSaves.set(id, String(e));
-          // The next way out (a blur, `:w`, closing) tries again, unless something newer was typed meanwhile.
-          if (pending.current === null) {
+          // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
+          if (typedText.get(id) === body && pending.current === null) {
             pending.current = body;
           }
           setStatus(null);

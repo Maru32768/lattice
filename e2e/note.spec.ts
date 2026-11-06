@@ -57,6 +57,33 @@ test("メモ: a save that failed is sent again on the way out, says so when the 
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
+test("メモ: a failed save never comes back over newer text queued behind it", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  // A slow store: the first save is still on its way when the second is queued behind it.
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, ...rest: unknown[]) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; __letNotesGo: () => void };
+    const held = new Promise<void>((go) => (w.__letNotesGo = go));
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, ...rest) => (cmd === "set_article_note" ? held.then(() => invoke(cmd, ...rest)) : invoke(cmd, ...rest));
+  });
+  await note.fill("the disk is full");
+  await note.blur();
+  await note.fill("written after it");
+  await note.blur();
+  await app.evaluate(() => (window as unknown as { __letNotesGo: () => void }).__letNotesGo());
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await button.click();
+  await expect(panel).toHaveCount(0);
+  const saves = await callsOf(app, "set_article_note");
+  expect(saves.map((s) => (s as { body: string }).body)).toEqual(["the disk is full", "written after it"]);
+});
+
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "ジャンルを管理" }).click();
   const name = app.getByRole("textbox", { name: "追加するジャンルの名前" });
