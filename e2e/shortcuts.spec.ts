@@ -118,3 +118,11 @@ test("a key bound to two actions is flagged, and Esc cancels recording", async (
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
 });
+
+test("the Reader's buttons name the key as it is bound now", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ less: ["["], favorite: [], version: 2 })));
+  await page.goto("/");
+  await list(page).locator(".row").first().click();
+  await expect(page.getByRole("button", { name: "日本語の割合を下げる([)" })).toHaveAttribute("title", "日本語の割合を下げる([)");
+  await expect(page.getByRole("button", { name: "お気に入り", exact: true }), "with no key it names none").toBeVisible();
+});

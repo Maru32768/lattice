@@ -17,9 +17,7 @@ import {
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
 import { highlight } from "../search/search";
 import { Menu, type MenuItem } from "../ui/Popover";
-import { ActionKey, Dif, Icon, Kbd } from "../ui/Icon";
-import { useBindings } from "../lib/keys";
-import { keyLabel } from "../lib/keymap";
+import { ActionKey, Dif, Icon, Kbd, useKeyTitle } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
@@ -365,8 +363,7 @@ export function ViewSeg({
   pageDisabled?: boolean;
 }) {
   const t = useT();
-  const key = useBindings().view[0];
-  const withKey = (name: string) => (key ? `${name} (${keyLabel(key)})` : name);
+  const keyTitle = useKeyTitle();
   return (
     <>
       <div className="seg" role="group" aria-label={t("reader.view")}>
@@ -376,7 +373,7 @@ export function ViewSeg({
           onClick={onReader}
           disabled={readerDisabled}
           aria-label="Reader"
-          title={readerDisabled ? t("reader.readerDisabled") : withKey("Reader")}
+          title={readerDisabled ? t("reader.readerDisabled") : keyTitle("view", "Reader")}
         >
           <Icon name="reader" size="md" />
           <span className="lbl">Reader</span>
@@ -387,7 +384,7 @@ export function ViewSeg({
           onClick={onPage}
           disabled={pageDisabled}
           aria-label="Page"
-          title={pageDisabled ? t("reader.pageDisabled") : withKey("Page")}
+          title={pageDisabled ? t("reader.pageDisabled") : keyTitle("view", "Page")}
         >
           <Icon name="page" size="md" />
           <span className="lbl">Page</span>
@@ -411,6 +408,7 @@ export function LangSeg({
   label?: string;
 }) {
   const t = useT();
+  const keyTitle = useKeyTitle();
   const step = (d: number) => onChange("mixed", Math.max(0, Math.min(100, percent + d)));
   return (
     <div className="seg" role="group" aria-label={label ?? t("reader.language")}>
@@ -421,10 +419,10 @@ export function LangSeg({
         {t("reader.mixed")}
         <span className="mono">{percent}%</span>
       </button>
-      <button className="step" onClick={() => step(-10)} aria-label={t("reader.less")} title={t("reader.less")}>
+      <button className="step" onClick={() => step(-10)} aria-label={keyTitle("less", t("reader.less"))} title={keyTitle("less", t("reader.less"))}>
         −
       </button>
-      <button className="step" onClick={() => step(10)} aria-label={t("reader.more")} title={t("reader.more")}>
+      <button className="step" onClick={() => step(10)} aria-label={keyTitle("more", t("reader.more"))} title={keyTitle("more", t("reader.more"))}>
         +
       </button>
       <button className={mode === "translated" ? "on" : ""} aria-pressed={mode === "translated"} onClick={() => onChange("translated", percent)}>
@@ -504,6 +502,7 @@ export function ArticleTools({
   children?: React.ReactNode;
 }) {
   const t = useT();
+  const keyTitle = useKeyTitle();
   const a = view.article;
   const failed = a.fetch_status === "failed" || a.extraction_status === "failed";
   const local = isLocal(a.original_url);
@@ -518,17 +517,12 @@ export function ArticleTools({
         className={`tb${a.favorite ? " on" : ""}`}
         onClick={act.onFavorite}
         aria-pressed={a.favorite}
-        aria-label={t("browserView.favorite")}
-        title={t("browserView.favorite")}
+        aria-label={keyTitle("favorite", t("browserView.favorite"))}
+        title={keyTitle("favorite", t("browserView.favorite"))}
       >
         <Icon name="star" />
       </button>
-      <button
-        className="tb"
-        onClick={act.onToggleRead}
-        title={t("common.withKey", { label: readLabel, key: "m" })}
-        aria-label={t("common.withKey", { label: readLabel, key: "m" })}
-      >
+      <button className="tb" onClick={act.onToggleRead} title={keyTitle("read", readLabel)} aria-label={keyTitle("read", readLabel)}>
         <Icon name="check" />
         <span className="lbl">{readLabel}</span>
       </button>
@@ -559,7 +553,13 @@ export function ArticleTools({
         <span className="lbl">{t("notePanel.title")}</span>
       </button>
       {children}
-      <button className="tb" onClick={act.onFocusMode} aria-pressed={act.focusMode} aria-label={t("reader.focus")} title={t("reader.focus")}>
+      <button
+        className="tb"
+        onClick={act.onFocusMode}
+        aria-pressed={act.focusMode}
+        aria-label={keyTitle("focus", t("reader.focus"))}
+        title={keyTitle("focus", t("reader.focus"))}
+      >
         <Icon name="focus" />
       </button>
       <Menu

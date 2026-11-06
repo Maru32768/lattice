@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from "react";
 import { Favicon } from "../ui/Favicon";
-import { Icon, type IconName } from "../ui/Icon";
+import { Icon, useKeyTitle, type IconName } from "../ui/Icon";
 import type { Dir, Id, Pane, Tab } from "./layout";
 import { useT } from "../i18n";
 
@@ -86,6 +86,7 @@ export function TabStrip({
   end?: React.ReactNode;
 }) {
   const t = useT();
+  const keyTitle = useKeyTitle();
   const press = useRef<(TabDrag & { moved: boolean }) | null>(null);
   const heldEl = useRef<HTMLDivElement | null>(null);
 
@@ -191,7 +192,7 @@ export function TabStrip({
               className="x"
               onClick={() => onClose(tab.id)}
               aria-label={t("tabStrip.closeTitle", { title })}
-              title={t("tabStrip.closeHint")}
+              title={keyTitle("closeTab", t("common.close"))}
               tabIndex={-1}
             >
               <Icon name="x" size="sm" />
@@ -205,10 +206,10 @@ export function TabStrip({
         <Icon name="plus" />
       </button>
       <span className="grow" />
-      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={t("tabStrip.splitRightHint")}>
+      <button className="ib" onClick={() => onSplit("row")} aria-label={t("tabStrip.splitRight")} title={keyTitle("splitRight", t("tabStrip.splitRightHint"))}>
         <Icon name="vsplit" />
       </button>
-      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={t("tabStrip.splitDownHint")}>
+      <button className="ib" onClick={() => onSplit("column")} aria-label={t("tabStrip.splitDown")} title={keyTitle("splitDown", t("tabStrip.splitDownHint"))}>
         <Icon name="hsplit" />
       </button>
       {pane.active != null && (

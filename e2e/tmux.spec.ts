@@ -30,7 +30,7 @@ const twoReaders = (shell: Page) => open(shell, across(90, pane(1, reader(2, 0))
 
 const panes = (app: Page) => app.locator(".dpane");
 const focusedTitle = (app: Page) => app.locator(".dpane.focused .art-title");
-const zoomButton = (app: Page) => app.locator(".dpane.focused").getByRole("button", { name: "フォーカスモード(Ctrl+B z)" });
+const zoomButton = (app: Page) => app.locator(".dpane.focused").getByRole("button", { name: "フォーカスモード(Ctrl B › z)" });
 
 test("Ctrl+B z leaves the focused pane alone on the screen, and again brings back everything as it was", async ({ shell }) => {
   await twoReaders(shell);
@@ -62,7 +62,7 @@ test("Ctrl+B z leaves the focused pane alone on the screen, and again brings bac
 test("the focus-mode button zooms the pane it is in", async ({ shell }) => {
   await twoReaders(shell);
   const left = panes(shell).first();
-  const button = left.getByRole("button", { name: "フォーカスモード(Ctrl+B z)" });
+  const button = left.getByRole("button", { name: "フォーカスモード(Ctrl B › z)" });
   await button.click();
   await expect(panes(shell).nth(1)).toBeHidden();
   await expect(left).toBeVisible();
@@ -269,8 +269,9 @@ test("with the keyboard in the list, the nav or the chat, the same keys change t
 
 test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
   await open(shell, across(90, pane(1, page(2, "k1")), pane(3, page(4, "k2"))), 1);
+  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
   await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
-  await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
+  await expect(paneWidthHandle(shell), "the key sent while the app held the keyboard did nothing").toHaveAttribute("aria-valuenow", "54");
 });
 
 test("a chord the app read for a page gives the page the keyboard back with the window of its repeat", async ({ shell }) => {

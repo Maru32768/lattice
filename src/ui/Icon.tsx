@@ -204,6 +204,16 @@ export function Dif({ d }: { d: number | null }) {
 export const Kbd = ({ children }: { children: string }) => <span className="kbd">{children}</span>;
 
 /** The first key bound to a shell action (Settings › ショートカット), as a key chip. */
+/** Names an action with its first key as bound now, for a title. */
+export function useKeyTitle() {
+  const t = useT();
+  const bindings = useBindings();
+  return (id: ActionId, name: string) => {
+    const key = bindings[id][0];
+    return key ? t("common.withKey", { label: name, key: keyLabel(key) }) : name;
+  };
+}
+
 export function ActionKey({ id }: { id: ActionId }) {
   const k = useBindings()[id][0];
   return k ? <Kbd>{keyLabel(k)}</Kbd> : null;

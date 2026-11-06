@@ -15,6 +15,7 @@ import {
   type VocabContext,
 } from "../api";
 import { BrowserView } from "../browser/BrowserView";
+import { useKeyTitle } from "../ui/Icon";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
 import type { ImportTab } from "../import/ImportView";
@@ -126,6 +127,7 @@ const GROW_PX = 32;
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
   const t = useT();
+  const keyTitle = useKeyTitle();
   useEffect(() => {
     // The backend's choice wins over the cached one; the first start stores the detected language.
     api
@@ -1108,8 +1110,8 @@ export default function App() {
     }
   }, [windowTitle]);
   const windowAction = IS_MAIN
-    ? { label: t("tabStrip.popOut"), hint: t("tabStrip.popOutHint"), icon: "popout" as const, onSelect: win.popOutTab }
-    : { label: t("tabStrip.popIn"), hint: t("tabStrip.popInHint"), icon: "popin" as const, onSelect: win.returnTab };
+    ? { label: t("tabStrip.popOut"), hint: keyTitle("popOut", t("tabStrip.popOutHint")), icon: "popout" as const, onSelect: win.popOutTab }
+    : { label: t("tabStrip.popIn"), hint: keyTitle("popOut", t("tabStrip.popInHint")), icon: "popin" as const, onSelect: win.returnTab };
 
   const renderPane = (pane: Pane) => {
     const tab = activeTab(pane);
