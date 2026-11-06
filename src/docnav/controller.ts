@@ -84,16 +84,6 @@ function viewOf(scroller: Element | null): View {
   return scroller && scroller !== document.scrollingElement ? scroller.getBoundingClientRect() : { top: 0, left: 0, bottom: innerHeight, right: innerWidth };
 }
 
-/** Whether `el` stays where it is as the document scrolls under it. */
-function staysPut(el: Element): boolean {
-  for (let at: Element | null = el; at; at = at.parentElement) {
-    if (/fixed|sticky/.test(getComputedStyle(at).position)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
 
 /** Where the reader is: the first text on screen, the page's own header and menus only if there is nothing else. */
@@ -237,20 +227,24 @@ export function createDocNav(host: () => DocHost) {
 
   /** Moves the view only for a match a reader cannot see: off screen, or in a box that scrolls by itself (a code block), which it comes out of first. */
   function revealRange(r: Range) {
-    const rect = r.getBoundingClientRect();
-    if (document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.contains(r.startContainer)) {
+    /** What is on top at the match's middle: a reader sees the match if that holds or is part of it, and not if it is a header over it. */
+    const onTop = () => {
+      const rect = r.getBoundingClientRect();
+      return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    };
+    const over = onTop();
+    if (over && r.intersectsNode(over)) {
       return;
     }
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const v = viewOf(host().scroller());
     reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2, BAR_HEIGHT);
     // Under a sticky header a match is in view to all of the above, and a reader still cannot see it.
-    const seen = r.getBoundingClientRect();
-    const over = document.elementFromPoint(seen.left + seen.width / 2, seen.top + seen.height / 2);
-    if (over && !over.contains(r.startContainer) && staysPut(over)) {
+    const still = onTop();
+    if (still && !r.intersectsNode(still)) {
       host()
         .scroller()
-        ?.scrollBy({ top: seen.top - v.top - (v.bottom - v.top) / 2, behavior: "instant" });
+        ?.scrollBy({ top: r.getBoundingClientRect().top - v.top - (v.bottom - v.top) / 2, behavior: "instant" });
     }
   }
 
@@ -315,10 +309,11 @@ export function createDocNav(host: () => DocHost) {
     if (!root) {
       return;
     }
+    const scroller = host().scroller();
     const targets = visibleWords(root).map((range): Target => ({
       rect: () => {
         const r = range.getClientRects()[0];
-        return r && meets(r, viewOf(host().scroller())) ? r : null;
+        return r && meets(r, viewOf(scroller)) ? r : null;
       },
       pick: () => {
         select(range);

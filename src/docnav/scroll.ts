@@ -40,20 +40,20 @@ function viewportScrolls(): boolean {
   return !/hidden|clip/.test(root === "visible" ? getComputedStyle(document.body).overflowY : root);
 }
 
-/** The last walk's box: a walk reads every element, and a held `j` or a scroll in caret mode asks on each event. */
+/** How long a walk's box holds: a walk reads every element, a held `j` asks on each repeat, and a route change can make another box the largest. */
+const BOX_MS = 1000;
 let pageBox: Element | null = null;
+let boxAt = 0;
 
-/**
- * What scrolls a whole page: the viewport, or for an app-like site its largest scrolling box.
- * shortcut: a larger box that comes up while the last one still scrolls goes unseen, upgrade if a site turns out to keep both.
- */
+/** What scrolls a whole page: the viewport, or for an app-like site its largest scrolling box. */
 export function pageScroller(): Element | null {
   const root = document.scrollingElement;
   if (root && root.scrollHeight > root.clientHeight && viewportScrolls()) {
     return root;
   }
-  if (!pageBox?.isConnected || pageBox.scrollHeight <= pageBox.clientHeight) {
+  if (!pageBox?.isConnected || pageBox.scrollHeight <= pageBox.clientHeight || performance.now() - boxAt > BOX_MS) {
     pageBox = scrollerIn(document.body);
+    boxAt = performance.now();
   }
   return pageBox;
 }
