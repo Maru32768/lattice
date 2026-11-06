@@ -769,25 +769,25 @@ function applyStep(step: KeyStep, hinted: boolean) {
   }
 }
 
-/** WebView2's own print preview opens behind the page in this child webview: a print key nothing took goes to the system dialog, as `window.print` does here. */
-function printInstead(e: KeyboardEvent, key: string) {
-  if (opensBrowserPrint(key)) {
+/**
+ * WebView2's own print preview opens behind the page in this child webview: a print key that neither the overlay nor the page took goes to
+ * the system dialog, as `window.print` does here. After the page, which may use the key itself: Ctrl+Shift+P is a web editor's command palette.
+ */
+function printUnclaimed(e: KeyboardEvent) {
+  const key = keyOf(e);
+  if (!e.defaultPrevented && key && opensBrowserPrint(key)) {
     e.preventDefault();
-    e.stopImmediatePropagation();
     window.print();
   }
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.isComposing) {
+  if (e.isComposing || !keys) {
     return;
   }
   const key = keyOf(e);
   if (!key) {
     return;
-  }
-  if (!keys) {
-    return printInstead(e, key);
   }
   if (docNav.onKey(key)) {
     e.preventDefault();
@@ -811,8 +811,9 @@ function onKey(e: KeyboardEvent) {
   // Now and not in the timer: on a busy page the next key of a chord or a count comes before it fires.
   keySeq = step.seq;
   if (step.kind === "none") {
-    printInstead(e, key);
-  } else if (taken) {
+    return;
+  }
+  if (taken) {
     e.preventDefault();
     e.stopImmediatePropagation();
     applyStep(step, hinted);
@@ -928,6 +929,7 @@ if (window.top === window && !window.__lattice) {
     );
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
+  window.addEventListener("keydown", printUnclaimed);
   window.addEventListener("pointerdown", onPagePress, true);
   // Quietly: the app takes the keyboard to read a second key once its hint covers the page.
   window.addEventListener("blur", () => {
