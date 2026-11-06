@@ -37,7 +37,9 @@ export function scrollerIn(root: Element): Element | null {
 /** Whether a reader can scroll the viewport: it takes its overflow from the root element, or from the body if the root leaves it visible. */
 function viewportScrolls(): boolean {
   const root = getComputedStyle(document.documentElement).overflowY;
-  return !/hidden|clip/.test(root === "visible" ? getComputedStyle(document.body).overflowY : root);
+  // A standalone SVG has no body.
+  const body = document.body as HTMLElement | null;
+  return !/hidden|clip/.test(root === "visible" && body ? getComputedStyle(body).overflowY : root);
 }
 
 /** How long a walk's box holds: a walk reads every element, a held `j` asks on each repeat, and a route change can make another box the largest. */

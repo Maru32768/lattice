@@ -44,6 +44,8 @@ interface Place {
   ranges: Range[];
   top: number;
   left: number;
+  pageTop: number;
+  pageLeft: number;
   focus: Element | null;
 }
 
@@ -82,6 +84,16 @@ const BAR_HEIGHT = 48;
 
 function viewOf(scroller: Element | null): View {
   return scroller && scroller !== document.scrollingElement ? scroller.getBoundingClientRect() : { top: 0, left: 0, bottom: innerHeight, right: innerWidth };
+}
+
+/** Whether `el` stays where it is as `scroller` moves what is under it. */
+function staysPut(el: Element, scroller: Element | null): boolean {
+  for (let at: Element | null = el; at && at !== scroller; at = at.parentElement) {
+    if (/fixed|sticky/.test(getComputedStyle(at).position)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
@@ -237,14 +249,13 @@ export function createDocNav(host: () => DocHost) {
       return;
     }
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
-    const v = viewOf(host().scroller());
+    const scroller = host().scroller();
+    const v = viewOf(scroller);
     reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2, BAR_HEIGHT);
-    // Under a sticky header a match is in view to all of the above, and a reader still cannot see it.
+    // Under a sticky header a match is in view to all of the above, and a reader still cannot see it. Other boxes on top (a PDF's translated region) leave it readable.
     const still = onTop();
-    if (still && !r.intersectsNode(still)) {
-      host()
-        .scroller()
-        ?.scrollBy({ top: r.getBoundingClientRect().top - v.top - (v.bottom - v.top) / 2, behavior: "instant" });
+    if (still && !r.intersectsNode(still) && staysPut(still, scroller)) {
+      scroller?.scrollBy({ top: r.getBoundingClientRect().top - v.top - (v.bottom - v.top) / 2, behavior: "instant" });
     }
   }
 
@@ -313,7 +324,8 @@ export function createDocNav(host: () => DocHost) {
     const targets = visibleWords(root).map((range): Target => ({
       rect: () => {
         const r = range.getClientRects()[0];
-        return r && meets(r, viewOf(scroller)) ? r : null;
+        // Against the box that scrolls the word: a page's header and sidebar are outside the scroller and on screen.
+        return r && meets(r, viewOf(scroller?.contains(range.startContainer) ? scroller : null)) ? r : null;
       },
       pick: () => {
         select(range);
@@ -375,7 +387,10 @@ export function createDocNav(host: () => DocHost) {
     if (m.kind === "caret") {
       s.collapseToStart();
       motion(s, "move", root);
-      showBlock(s, root);
+      // Out of the document it would step back in at some other place: the check below puts the caret back where it was.
+      if (root.contains(s.focusNode)) {
+        showBlock(s, root);
+      }
     } else {
       motion(s, "extend", root);
       if (m.line) {
@@ -480,6 +495,8 @@ export function createDocNav(host: () => DocHost) {
   }
 
   function backToPlace(place: Place) {
+    // The viewport too: a match's scrollIntoView moves one with overflow hidden, which the reader cannot scroll back.
+    window.scrollTo({ top: place.pageTop, left: place.pageLeft, behavior: "instant" });
     host().scroller()?.scrollTo({ top: place.top, left: place.left, behavior: "instant" });
   }
 
@@ -522,6 +539,8 @@ export function createDocNav(host: () => DocHost) {
       ranges: Array.from({ length: s.rangeCount }, (_, i) => s.getRangeAt(i)),
       top: scroller?.scrollTop ?? 0,
       left: scroller?.scrollLeft ?? 0,
+      pageTop: window.scrollY,
+      pageLeft: window.scrollX,
       focus: document.activeElement,
     };
     const { input, count } = openUi().bar(host().findLabel(), view);

@@ -843,8 +843,8 @@ export default function App() {
     return () => void sub.then((f) => f());
   }, []);
 
-  /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
   const pageOfKeys = () => (paneFocus.keyPane()?.dataset.pane !== "chat" && screen === "library" && cur?.kind === "page" ? cur : null);
+  /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
   const docAction = (id: ActionId) => (count: number) => {
     const page = pageOfKeys();
     if (page) {

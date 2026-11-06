@@ -301,6 +301,34 @@ test("G in caret mode reaches the document's end, with the panes beside the Read
   expect(end).toEqual({ inside: true, text: end.last, last: end.last });
 });
 
+test("j on the document's last line leaves the caret where it was, not at the end of the line", async ({ reader }) => {
+  await reader.locator(".doc-scroll").evaluate((el) => {
+    const box = document.createElement("div");
+    box.id = "last-line";
+    box.textContent = "the last line of all";
+    el.append(box);
+    const next = document.createElement("div");
+    next.textContent = "the next pane";
+    el.after(next);
+  });
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("CARET");
+  const place = () =>
+    reader.evaluate(() => {
+      const s = window.getSelection()!;
+      return [s.focusNode?.parentElement?.id, s.anchorOffset];
+    });
+  await reader.evaluate(() => {
+    const s = window.getSelection()!;
+    s.collapse(document.getElementById("last-line")!.firstChild, 4);
+    s.modify("extend", "forward", "character");
+  });
+  const before = await place();
+  await reader.keyboard.press("j");
+  await reader.waitForTimeout(50);
+  expect(await place()).toEqual(before);
+});
+
 test("in visual mode s saves the selected word and a puts the quote in the chat's input without sending it", async ({ reader }) => {
   // A word in one of the article's own blocks: only those have a sentence to save it with.
   await (await listRow(reader, ARTICLES.find((a) => a.id === SNAPSHOT_ID)!.title!)).click();
@@ -418,6 +446,23 @@ test("a match whose node shrinks under the find does not lose the selection to a
   await reader.keyboard.press("Enter");
   expect(errors).toEqual([]);
   expect(await selected(reader)).toBe("Needle");
+});
+
+test("a match under a box that scrolls with it stays where it is: a PDF's translated regions lie over its text", async ({ reader }) => {
+  const top = await reader.locator("#p0").evaluate((p) => {
+    const box = p.parentElement!;
+    box.style.position = "relative";
+    const over = document.createElement("div");
+    over.style.cssText = `position:absolute;left:0;right:0;top:${(p as HTMLElement).offsetTop}px;height:${(p as HTMLElement).offsetHeight}px;z-index:5`;
+    box.append(over);
+    const view = box.closest(".doc-scroll")!;
+    view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 100;
+    return view.scrollTop;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("Alpha");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/");
+  expect(await scrollTop(reader)).toBe(top);
 });
 
 test("a match under a sticky header is brought out from under it", async ({ reader }) => {
