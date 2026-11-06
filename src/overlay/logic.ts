@@ -220,13 +220,13 @@ export function unitsByBlock<U>(blocks: { parts: string[] }[], answers: (U[] | n
 /** Whether a space must follow `text` before more Latin-script text (as segments::joined_translation). */
 export const endsSpaced = (text: string) => /[^\s\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]$/u.test(text);
 
+/** The keys a browser prints on, by its own preview and by the system's dialog. */
+export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "Ctrl+Shift+P";
+
 /**
  * Whether the overlay takes a key before the page sees it: a second key, a repeat of one, or a Ctrl /
  * Alt key, which may have a browser default to suppress (Ctrl+S). Any other key of ours goes once the
  * page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
  */
-/** The keys a browser prints on, by its own preview and by the system's dialog. */
-export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "Ctrl+Shift+P";
-
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
   seq.first != null || isModified(key) || (step.kind === "run" && !!step.action.repeat);

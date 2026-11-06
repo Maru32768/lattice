@@ -757,7 +757,10 @@ function applyStep(step: KeyStep, hinted: boolean) {
   }
   // The hint first: labels take a moment to collect, and past its delay it would take the keyboard from under them.
   if (step.seq.first) {
-    tellApp(step.seq.first);
+    // On a busy page this runs after the next key, and a hint for a sequence already over would stay up.
+    if (keySeq === step.seq) {
+      tellApp(step.seq.first);
+    }
   } else if (hinted) {
     tellApp("");
   }
@@ -815,10 +818,10 @@ function onKey(e: KeyboardEvent) {
     applyStep(step, hinted);
   } else {
     setTimeout(() => {
-      if (e.defaultPrevented) {
-        keySeq = IDLE;
-      } else {
+      if (!e.defaultPrevented) {
         applyStep(step, hinted);
+      } else if (keySeq === step.seq) {
+        keySeq = IDLE;
       }
     });
   }
@@ -916,11 +919,12 @@ if (window.top === window && !window.__lattice) {
     },
   };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.
+  // Refused (the page is loading or hidden), it stays unprinted: the preview is what this keeps away.
   const pagePrint = window.print.bind(window);
   window.print = () =>
     void invoke("overlay_print").then(
       (shown) => shown || pagePrint(),
-      () => pagePrint(),
+      () => {},
     );
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
