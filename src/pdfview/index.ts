@@ -399,11 +399,6 @@ async function draw(page: PDFPageProxy, host: HTMLElement) {
   if (!width) {
     return;
   }
-  const pageWidth = page.getViewport({ scale: 1 }).width;
-  const cssViewport = page.getViewport({ scale: host.clientWidth / pageWidth });
-  const text = host.querySelector<HTMLElement>(".textLayer")!;
-  // Before the check below: at `MAX_DRAWN_WIDTH` the canvas stays as it is while the page grows, and the selectable text must keep up.
-  text.style.setProperty("--total-scale-factor", String(cssViewport.scale));
   if (host.dataset.drawn === String(width)) {
     return;
   }
@@ -507,6 +502,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
   const labels = await viewerLabels();
   const pages = document.getElementById("pages")!;
   const drawOn = new Map<Element, () => void>();
+  const pageWidths = new Map<Element, number>();
   const visible = new IntersectionObserver(
     (entries) =>
       entries.forEach((e) => {
@@ -520,8 +516,11 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
   );
   const resized = new ResizeObserver((entries) =>
     entries.forEach((e) => {
-      if ((e.target as HTMLElement).dataset.drawn) {
-        drawOn.get(e.target)?.();
+      // Whatever the canvas does: it stays at `MAX_DRAWN_WIDTH` and is gone from a far page, while a find measures every kept text layer.
+      const host = e.target as HTMLElement;
+      host.querySelector<HTMLElement>(".textLayer")!.style.setProperty("--total-scale-factor", String(host.clientWidth / pageWidths.get(host)!));
+      if (host.dataset.drawn) {
+        drawOn.get(host)?.();
       }
     }),
   );
@@ -549,6 +548,7 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
       void draw(page, host).catch(failed);
       void addLinks(doc, page, host).catch(failed);
     });
+    pageWidths.set(host, width);
     places.push({ page, host, size: viewport });
     pages.append(host);
     visible.observe(host);
