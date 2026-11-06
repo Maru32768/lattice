@@ -1,7 +1,19 @@
 import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, browser, isLocal, isPdfPage, pageUrl, windows, type ArticleRow, type ArticleView, type Citation, type SearchHit, type VocabContext } from "../api";
+import {
+  api,
+  browser,
+  isLocal,
+  isPdfPage,
+  pageUrl,
+  windows,
+  type ArticleRow,
+  type ArticleView,
+  type Citation,
+  type SearchHit,
+  type VocabContext,
+} from "../api";
 import { BrowserView } from "../browser/BrowserView";
 import { autoTranslates, translateOnSwitch, type LanguageMode } from "../reader/mixed";
 
@@ -811,12 +823,16 @@ export default function App() {
     history: (d) => history.step(d),
     print: () => window.print(),
   });
-  const onPageAsk = useEffectEvent((quote: string) => {
+  const onPageAsk = useEffectEvent((tab: string, quote: string) => {
+    // A page on screen can call this by itself, and the quote takes the keyboard and writes in the draft: only the page the user is in may.
+    if (document.hasFocus() || cur?.kind !== "page" || cur.key !== tab) {
+      return;
+    }
     void focusApp();
     askAbout(quote);
   });
   useEffect(() => {
-    const sub = listen<{ quote: string }>("browser-ask", (e) => onPageAsk(e.payload.quote));
+    const sub = listen<{ tab: string; quote: string }>("browser-ask", (e) => onPageAsk(e.payload.tab, e.payload.quote));
     return () => void sub.then((f) => f());
   }, []);
 

@@ -175,7 +175,8 @@ test("an unbound second key ends the sequence and does nothing else", async ({ a
 });
 
 test("what a page sends runs by its whole sequence, with its count", async ({ app }) => {
-  const fromPage = (key: string, count = 1) => app.evaluate(({ key, count }) => window.__e2e.emit("browser-key", { tab: "none", key, count }), { key, count });
+  const fromPage = (key: string, count = 1) =>
+    app.evaluate(({ key, count }) => window.__e2e.fromPage("browser-key", { tab: "none", key, count }), { key, count });
   await (await listRow(app, label(0))).click();
   await expect(app.locator(".art-title")).toHaveText(label(0));
   await fromPage("Shift+J", 3);
@@ -264,7 +265,7 @@ test("the keyboard follows the focused pane to a page, and back from one", async
   await expect(palette(shell)).toBeHidden();
   await expect.poll(() => callsOf(shell, "browser_focus"), "the palette closing returns it").toHaveLength(2);
 
-  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B 1", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B 1", count: 1 }));
   await expect(shell.locator(".art-title")).toHaveText(label(0));
   await expect(shell.locator(".doc-scroll")).toBeFocused();
 });

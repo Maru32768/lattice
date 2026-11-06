@@ -6,11 +6,17 @@ import { api } from "../src/api.ts";
 
 declare global {
   interface Window {
-    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; deleteArticle: typeof api.deleteArticle };
+    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; fromPage: typeof emit; deleteArticle: typeof api.deleteArticle };
   }
 }
 
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, deleteArticle: api.deleteArticle };
+/** An event from a page that holds the keyboard: a real one takes it from this document, which Playwright's always has. */
+const fromPage: typeof emit = async (event, payload) => {
+  document.hasFocus = () => false;
+  await emit(event, payload);
+  delete (document as Partial<Document>).hasFocus;
+};
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");

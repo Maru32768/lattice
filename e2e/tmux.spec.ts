@@ -269,13 +269,13 @@ test("with the keyboard in the list, the nav or the chat, the same keys change t
 
 test("a page's Ctrl+B Shift+L grows its document", async ({ shell }) => {
   await open(shell, across(90, pane(1, page(2, "k1")), pane(3, page(4, "k2"))), 1);
-  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B Shift+L", count: 1 }));
   await expect(paneWidthHandle(shell)).toHaveAttribute("aria-valuenow", "54");
 });
 
 test("a chord the app read for a page gives the page the keyboard back with the window of its repeat", async ({ shell }) => {
   await open(shell, across(90, pane(1, page(2, "k1")), pane(3, page(4, "k2"))), 1);
-  const hint = () => shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B", count: 1 }));
+  const hint = () => shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B", count: 1 }));
   await hint();
   await expect(shell.locator(".prefix-hint")).toBeVisible();
   const before = (await callsOf(shell, "browser_focus")).length;
@@ -484,7 +484,7 @@ test("any other key, a digit with no pane and a pointer press end the numbers an
 test("the numbers hide the pages under them, which come back when they end, with the keyboard", async ({ shell }) => {
   await twoPages(shell);
   await expect.poll(() => lastOf(shell, "k2")).toBe("browser_set_bounds");
-  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "Ctrl+B Q", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B Q", count: 1 }));
   await expect(numbers(shell)).toBeVisible();
   await expect.poll(() => lastOf(shell, "k1")).toBe("browser_hide");
   await expect.poll(() => lastOf(shell, "k2")).toBe("browser_hide");

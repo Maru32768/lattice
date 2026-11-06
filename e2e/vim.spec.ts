@@ -416,9 +416,11 @@ test.describe("IME", () => {
 });
 
 test("a page's quote lands in the Vim editor after what was typed, and typing goes on from it", async ({ shell }) => {
+  const layout = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 3, key: "k1", url: "https://example.com/p", title: "P" }], active: 3 }, focused: 1 };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(layout));
   await chat(shell);
   await shell.keyboard.type("draft");
-  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "none", quote: "a quoted line" }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-ask", { tab: "k1", quote: "a quoted line" }));
   await expect(chatInput(shell)).toContainText("draft");
   await expect(chatInput(shell)).toContainText("> a quoted line");
   await expect(chatInput(shell)).toBeFocused();

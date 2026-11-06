@@ -57,7 +57,7 @@ test("a two-key binding starts from any key and runs only after both", async ({ 
 });
 
 test("keys forwarded from a focused page start and complete a two-key binding", async ({ app }) => {
-  const fromPage = (key: string) => app.evaluate((k) => window.__e2e.emit("browser-key", { tab: "none", key: k, count: 1 }), key);
+  const fromPage = (key: string) => app.evaluate((k) => window.__e2e.fromPage("browser-key", { tab: "none", key: k, count: 1 }), key);
   await expect(list(app)).toBeVisible();
   const panes = app.locator("[data-pane-id]");
   await expect(panes).toHaveCount(1);

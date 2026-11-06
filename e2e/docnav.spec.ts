@@ -554,7 +554,7 @@ base("the second key of a chord that reached the app runs in the page, and the p
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
   await shell.goto("/");
   await expect(shell.locator(".page-host")).toBeVisible();
-  await shell.evaluate(() => window.__e2e.emit("browser-key", { tab: "k1", key: "G", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "G", count: 1 }));
   await expect(shell.locator(".prefix-hint")).toBeVisible();
   const focused = (await callsOf(shell, "browser_focus")).length;
   await shell.keyboard.press("g");
@@ -600,17 +600,55 @@ base("a page's quote goes to the chat, unsent", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
   await shell.goto("/");
   await expect(shell.locator(".page-host")).toBeVisible();
-  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "k1", quote: "a quoted line" }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-ask", { tab: "k1", quote: "a quoted line" }));
   await expect(shell.locator("#chat-q")).toHaveValue("> a quoted line\n");
   await expect(shell.locator("#chat-q")).toBeFocused();
   expect(await callsOf(shell, "chat_ask")).toEqual([]);
+});
+
+base("a quote from a page that does not hold the keyboard is ignored", async ({ shell }) => {
+  const twoPages = {
+    root: {
+      kind: "split",
+      id: 90,
+      dir: "row",
+      sizes: [0.5, 0.5],
+      children: [PAGE_LAYOUT.root, { kind: "pane", id: 4, tabs: [{ kind: "page", id: 5, key: "k2", url: "https://example.com/q", title: "Q" }], active: 5 }],
+    },
+    focused: 1,
+  };
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(twoPages));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toHaveCount(2);
+  await shell.evaluate(() => window.__e2e.fromPage("browser-ask", { tab: "k2", quote: "from the side" }));
+  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "k1", quote: "while the app has the keyboard" }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-ask", { tab: "k1", quote: "the real one" }));
+  await expect(shell.locator("#chat-q")).toHaveValue("> the real one\n");
+});
+
+base("yy under the hint keeps the keyboard in the app until the URL is copied, then gives it back", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.addInitScript(() => {
+    navigator.clipboard.writeText = () => {
+      (window as unknown as { __focusesAtWrite: number }).__focusesAtWrite = window.__e2e.calls.filter((c) => c.cmd === "browser_focus").length;
+      return Promise.resolve();
+    };
+  });
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Y", count: 1 }));
+  await expect(shell.locator(".prefix-hint")).toBeVisible();
+  const focused = (await callsOf(shell, "browser_focus")).length;
+  await shell.keyboard.press("y");
+  await expect.poll(() => shell.evaluate(() => (window as unknown as { __focusesAtWrite?: number }).__focusesAtWrite)).toBe(focused);
+  await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
 });
 
 base("a quote from a document window goes to the main window, for the chat there", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.window.doc-1", l), JSON.stringify(PAGE_LAYOUT));
   await shell.goto("/?window=doc-1");
   await expect(shell.locator(".page-host")).toBeVisible();
-  await shell.evaluate(() => window.__e2e.emit("browser-ask", { tab: "k1", quote: "from a pop-out" }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-ask", { tab: "k1", quote: "from a pop-out" }));
   const requests = async () =>
     ((await callsOf(shell, "plugin:event|emit_to")) as { event: string; payload: { kind: string; quote?: string } }[])
       .filter((c) => c.event === "main-request" && c.payload.kind === "chat")

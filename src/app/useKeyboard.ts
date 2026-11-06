@@ -12,7 +12,7 @@ import { vimBridge } from "../vim/vim";
 import { IS_MAIN } from "./host";
 
 /** Shortcuts that, pressed in the page, open something in the app: the page's webview gives up the keyboard. */
-const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab", "tabList", "popOut", "paneNumbers"]);
+const LEAVES_PAGE = new Set<ActionId>(["palette", "command", "keyHelp", "newTab", "tabList", "popOut", "paneNumbers", "copyUrl"]);
 /** What has a right-click menu: list rows and document tabs (H3). */
 export const MENU_TARGETS = ".row[data-id], [role='tab'][data-tab], [data-folder]";
 /** Showing the hint covers a page's webview, which would flash on every `gg`: which-key's delay. */
@@ -320,6 +320,10 @@ export function useShortcuts({
   const onPageKey = useEffectEvent(({ tab, key, count }: { tab: string; key: string; count: number }) => {
     if (!key) {
       return keySeq.track(IDLE);
+    }
+    // A page on screen can call this by itself: while the user is in the app it would run shortcuts under their hands.
+    if (document.hasFocus()) {
+      return;
     }
     // What the app focused last is stale (j / k in the nav would step the nav).
     (document.activeElement as HTMLElement | null)?.blur();
