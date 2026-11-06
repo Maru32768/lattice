@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useEffectEvent, useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
 import { ACTIONS, ACTION_GROUPS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
@@ -14,8 +14,23 @@ function VimSettings() {
   const t = useT();
   const on = useVimEnabled();
   const vimrc = useVimrc();
+  // Half-typed lines stay here: `unmap <leader>x` passes through `unmap <`, and what an editor gives up stays gone until the app restarts.
+  // shortcut: a window closed by a key while this field has the keyboard loses what it holds, upgrade if vimrcs get edited here at length.
+  const [draft, setDraft] = useState(vimrc);
+  const [stored, setStored] = useState(vimrc);
+  if (stored !== vimrc) {
+    setStored(vimrc);
+    setDraft(vimrc);
+  }
+  const apply = () => {
+    if (draft !== vimrc) {
+      setVimrc(draft);
+    }
+  };
+  const applyOnLeave = useEffectEvent(apply);
+  useEffect(() => () => applyOnLeave(), []);
   const [error, setError] = useState<string | null>(null);
-  const entries = parseVimrc(vimrc, KNOWN);
+  const entries = parseVimrc(draft, KNOWN);
   const skipped = entries.flatMap((e) => (e.kind === "skip" ? [e] : []));
 
   async function load(file: File | undefined) {
@@ -44,7 +59,16 @@ function VimSettings() {
             {t("shortcutSettings.vimrc")}
           </label>
           <div className="d">{t("shortcutSettings.vimrcDesc")}</div>
-          <textarea id="vim-rc" className="mono" value={vimrc} rows={8} spellCheck={false} wrap="off" onChange={(e) => setVimrc(e.target.value)} />
+          <textarea
+            id="vim-rc"
+            className="mono"
+            value={draft}
+            rows={8}
+            spellCheck={false}
+            wrap="off"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={apply}
+          />
           <div className="acts">
             <label className="btn sm">
               {t("shortcutSettings.vimrcLoad")}
@@ -57,7 +81,7 @@ function VimSettings() {
                 }}
               />
             </label>
-            {vimrc.trim() && <span className="muted">{t("shortcutSettings.vimrcApplied", { n: entries.length - skipped.length })}</span>}
+            {draft.trim() && <span className="muted">{t("shortcutSettings.vimrcApplied", { n: entries.length - skipped.length })}</span>}
             {error && (
               <span className="error-text" role="alert">
                 {error}

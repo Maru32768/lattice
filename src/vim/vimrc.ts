@@ -6,9 +6,12 @@ export type SkipReason = "plugin" | "script" | "mode" | "expr" | "unknownEx" | "
 export type VimrcEntry =
   | { kind: "ex"; line: number; ex: string }
   | { kind: "nop"; line: number; lhs: string; context: VimrcContext }
-  /** A key that gives up the engine's own command, which comes before every mapping: a mapping written earlier stays. */
-  | { kind: "free"; line: number; lhs: string }
+  /** A key that gives up the engine's own command in these modes, which comes before every mapping: a mapping written earlier stays. */
+  | { kind: "free"; line: number; lhs: string; modes: FreedMode[] }
   | { kind: "skip"; line: number; text: string; reason: SkipReason };
+/** Insert mode has no command for a key to give up: there a key is text. */
+export type FreedMode = "normal" | "visual";
+const BOTH_MODES: FreedMode[] = ["normal", "visual"];
 export interface KnownNames {
   ex: Set<string>;
   options: Set<string>;
@@ -234,8 +237,8 @@ function rhsProblem(rhs: string, insert: boolean, known: KnownNames): SkipReason
   if (from < 0) {
     return null;
   }
-  // A colon a motion or a register takes is no Ex command (`f:`, `":`); after `gt` or `zt`, whole commands themselves, it is.
-  for (const [, ex] of rhs.slice(from).matchAll(/(?<!(?:^|[^gz])[fFtTr]|"):(.*?)(?:<CR>|$)/g)) {
+  // A colon a motion or a register takes is no Ex command (`f:`, `":`); after `gt` or `zt`, whole commands themselves, it is, while `gg` and `zz` leave the `f` its own.
+  for (const [, ex] of rhs.slice(from).matchAll(/(?<!(?:^|[^gz]|gg|zz)[fFtTr]|"):(.*?)(?:<CR>|$)/g)) {
     const m = /^(?:%|(?:[.$\d+-]|'.)*(?:,(?:[.$\d+-]|'.)*)?)\s*(\w+|[!#&*<=>@~])?\s*(.*)$/.exec(ex!);
     const name = m?.[1];
     if (!name) {
@@ -317,7 +320,7 @@ const EX_NAME = /^:./;
 
 /** A leader as written in `let mapleader = "..."`, spelled as a key. As in Vim, an empty one is the default. */
 function leaderKey(value: string): string {
-  const key = value.replace(/\\(<[^>]+>)/, "$1").replace(/\\\\/, "\\");
+  const key = value.replace(/\\(<[^>]+>)/, "$1").replace(/\\([\\"])/, "$1");
   return engineKeys(key === " " ? "<Space>" : key || DEFAULT_LEADER);
 }
 
@@ -340,12 +343,12 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       continue;
     }
     const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text: original, reason });
-    const leader = /^let\s+(?:g:)?(map(?:local)?leader)\s*=\s*(["'])(.*?)\2\s*(?:".*)?$/.exec(original);
+    const leader = /^let\s+(?:g:)?(map(?:local)?leader)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'([^']*)')\s*(?:".*)?$/.exec(original);
     if (leader) {
-      const key = leaderKey(leader[3]!);
+      const key = leaderKey(leader[2] ?? leader[3]!);
       leaders[leader[1] as keyof typeof leaders] = key;
       // A key with a command of its own runs at once, so without this `<leader>x` could never be reached.
-      out.push(EX_NAME.test(key) ? skip("script") : { kind: "free", line, lhs: key });
+      out.push(EX_NAME.test(key) ? skip("script") : { kind: "free", line, lhs: key, modes: BOTH_MODES });
       continue;
     }
     const s = original.replace(/<(local)?leader>/gi, (_, local?: string) => (local ? leaders.maplocalleader : leaders.mapleader));
@@ -366,8 +369,9 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
         const m = mappingOf(e);
         return m?.lhs !== lhs || m.modes.includes("insert");
       });
-      out = kept.length < out.length ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs }];
+      out = kept.length < out.length ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
     } else if (CLEARS.has(cmd)) {
+      out = cmd === "unmap" ? out : out.filter((e) => !clearedBy(cmd, e));
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
     } else if (SCRIPT.has(cmd.replace(/!$/, "")) || known.ex.has(cmd)) {
       // A command the engine could run edits the text, which is no setting to run whenever the vimrc loads.
@@ -379,10 +383,14 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
   // The engine runs a whole match at once, however many longer mappings share its start, so a key that does nothing
   // on its own and leads others must not be mapped: with no command of its own it waits for the next key.
   const mappings = out.flatMap((e) => mappingOf(e) ?? []);
-  return out.map((e) => {
+  return out.flatMap((e): VimrcEntry[] => {
     const nop = e.kind === "nop" ? mappingOf(e)! : null;
     const leads = nop && mappings.some((m) => m.lhs !== nop.lhs && m.lhs.startsWith(nop.lhs) && m.modes.some((mode) => nop.modes.includes(mode)));
-    return leads ? { kind: "free", line: e.line, lhs: nop.lhs } : e;
+    if (!leads) {
+      return [e];
+    }
+    const modes = nop.modes.filter((mode) => mode !== "insert");
+    return modes.length ? [{ kind: "free", line: e.line, lhs: nop.lhs, modes }] : [];
   });
 }
 
@@ -396,6 +404,19 @@ function mappingOf(e: VimrcEntry): { lhs: string; modes: Mode[] } | null {
   }
   const m = e.kind === "ex" ? /^(n|o|v|i|)(?:nore)?map (\S+)/.exec(e.ex) : null;
   return m && { lhs: m[2]!, modes: MODES_OF[m[1]!]! };
+}
+
+/**
+ * Whether a clear command leaves nothing of mapping `e`, as the engine runs it: plain `mapclear` takes every mode.
+ * shortcut: a `map` under `nmapclear` still counts as mapped in normal mode, upgrade if a vimrc needs the app's key back there.
+ */
+function clearedBy(cmd: string, e: VimrcEntry): boolean {
+  if (e.kind !== "nop" && !mappingOf(e)) {
+    return false;
+  }
+  const mode = /^[nvio]?/.exec(cmd)![0];
+  const mapped = e.kind === "nop" ? (e.context?.charAt(0) ?? "") : e.kind === "ex" ? /^[nvio]?/.exec(e.ex)![0] : "";
+  return !mode || mode === mapped;
 }
 
 /**

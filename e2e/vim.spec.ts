@@ -339,6 +339,18 @@ test("without clipboard in the vimrc a yank stays in the editor", async ({ page,
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("before");
 });
 
+test("Settings: a half-typed line of the vimrc reaches the editors only when the field is left", async ({ app }) => {
+  const stored = () => app.evaluate(() => localStorage.getItem("lattice.vimrc"));
+  await nav(app, "設定").click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  const rc = app.getByLabel("vimrc", { exact: true });
+  await rc.fill("unmap <");
+  await expect(app.getByText("適用: 1件"), "what it would do shows as it is typed").toBeVisible();
+  expect(await stored()).toBeNull();
+  await rc.blur();
+  await expect.poll(stored).toBe("unmap <");
+});
+
 test("Settings: the toggle, a monospaced vimrc, reading a file in, and the lines left out", async ({ app }) => {
   await nav(app, "設定").click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "要約・対話" }).click();

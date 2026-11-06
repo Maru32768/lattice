@@ -49,6 +49,8 @@ test("the leader is substituted first, and its own key gives up the command it h
 test("a leader's line can end in a comment, and its value can be a quote of the other kind", () => {
   assert.deepEqual(exOf(parse('let mapleader = " " " space as leader\nnnoremap <leader>x dd')), ["unmap <Space>", "nnoremap <Space>x dd"]);
   assert.deepEqual(exOf(parse(`let mapleader = '"'\nnnoremap <leader>x dd`)), ['unmap "', 'nnoremap "x dd']);
+  assert.deepEqual(exOf(parse('let mapleader = "\\""\nnnoremap <leader>x dd')), ['unmap "', 'nnoremap "x dd'], "an escaped quote in double quotes");
+  assert.deepEqual(exOf(parse('let mapleader = "\\\\" " a backslash\nnnoremap <leader>x dd')), ["unmap \\", "nnoremap \\x dd"]);
 });
 
 test("a colon a motion or a register takes is no Ex command", () => {
@@ -63,20 +65,38 @@ test("a colon a motion or a register takes is no Ex command", () => {
 test("an unmap undoes the mappings above it, and with none takes the key's own command", () => {
   assert.deepEqual(parse("nnoremap x y\nvnoremap x z\nunmap x"), []);
   assert.deepEqual(parse("unmap x\nnnoremap x y"), [
-    { kind: "free", line: 1, lhs: "x" },
+    { kind: "free", line: 1, lhs: "x", modes: ["normal", "visual"] },
     { kind: "ex", line: 2, ex: "nnoremap x y" },
   ]);
   assert.deepEqual(parse("inoremap x y\nunmap x"), [
     { kind: "ex", line: 1, ex: "inoremap x y" },
-    { kind: "free", line: 2, lhs: "x" },
+    { kind: "free", line: 2, lhs: "x", modes: ["normal", "visual"] },
   ]);
   assert.deepEqual(parse("nnoremap x <nop>\nunmap x"), []);
+});
+
+test("a key gives up its command only in the modes of the <nop> that leads, and in insert mode has none to give up", () => {
+  assert.deepEqual(parse("vnoremap s <Nop>\nvnoremap sa y")[0], { kind: "free", line: 1, lhs: "s", modes: ["visual"] });
+  assert.deepEqual(parse("noremap s <Nop>\nnoremap sa y")[0], { kind: "free", line: 1, lhs: "s", modes: ["normal", "visual"] });
+  assert.deepEqual(parse("inoremap j <nop>\ninoremap jk <esc>"), [{ kind: "ex", line: 2, ex: "inoremap jk <Esc>" }]);
+});
+
+test("a clear command takes the mappings above it from what counts as mapped, by its mode", () => {
+  const mapped = (text: string) => {
+    const m = mappedKeys(parse(text));
+    return { normal: [...m.normal], visual: [...m.visual], insert: [...m.insert] };
+  };
+  assert.deepEqual(mapped("nnoremap <c-p> x\nmapclear"), { normal: [], visual: [], insert: [] });
+  assert.deepEqual(mapped("nnoremap <c-p> x\nnmapc"), { normal: [], visual: [], insert: [] });
+  assert.deepEqual(mapped("nnoremap Q x\nvnoremap W x\ninoremap E x\nnnoremap R <nop>\nvmapclear"), { normal: ["Q", "R"], visual: [], insert: ["E"] });
+  assert.deepEqual(mapped("nnoremap Q x\nmapclear\nnnoremap W x"), { normal: ["W"], visual: [], insert: [] }, "what comes after stays");
+  assert.deepEqual(exOf(parse("nnoremap Q x\nmapclear")), ["mapclear"], "the engine still runs it");
 });
 
 test("a key that names an Ex command is left out: the engine throws on freeing one", () => {
   assert.deepEqual(skips(parse("unmap :x")), [[1, "script"]]);
   assert.deepEqual(skips(parse('let mapleader = ":x"')), [[1, "script"]]);
-  assert.deepEqual(parse("unmap :"), [{ kind: "free", line: 1, lhs: ":" }], "a lone colon is an ordinary key");
+  assert.deepEqual(parse("unmap :"), [{ kind: "free", line: 1, lhs: ":", modes: ["normal", "visual"] }], "a lone colon is an ordinary key");
 });
 
 test("no vimrc text throws: Settings and the editor parse it as they come up, and it is stored", () => {
@@ -112,7 +132,7 @@ test("<nop> is its own entry with its mode", () => {
 
 test("a <nop> on a key that leads other mappings gives the key up instead, or the engine would stop at it", () => {
   assert.deepEqual(parse("nnoremap <space> <nop>\nnnoremap <space>w :w<cr>"), [
-    { kind: "free", line: 1, lhs: "<Space>" },
+    { kind: "free", line: 1, lhs: "<Space>", modes: ["normal"] },
     { kind: "ex", line: 2, ex: "nnoremap <Space>w :w<CR>" },
   ]);
   assert.equal(parse("inoremap <c-x> <nop>\nnnoremap <c-x>y z")[0].kind, "nop", "the longer mapping is in another mode");

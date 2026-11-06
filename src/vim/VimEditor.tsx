@@ -7,7 +7,7 @@ import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { Vim, getCM, vim as vimKeys } from "@replit/codemirror-vim";
 import { EX_ALIASES, type ActionId } from "../lib/keymap";
 import { getVimrc, useVimrc, vimBridge } from "./vim";
-import { KNOWN, mappedKeys, parseVimrc } from "./vimrc";
+import { KNOWN, mappedKeys, parseVimrc, type FreedMode } from "./vimrc";
 
 /** The extension gave the view its engine state as the view was made. */
 const cmOf = (view: EditorView) => getCM(view) as Parameters<typeof Vim.handleEx>[0];
@@ -26,7 +26,7 @@ Vim.defineEx("quit", "q", (cm) => afterPrompt(() => commands.get(cm.cm6 as Edito
 const WINCMD: Record<string, ActionId> = { h: "paneLeft", j: "paneDown", k: "paneUp", l: "paneRight" };
 Vim.defineEx("wincmd", "winc", (_, params) => {
   const arg = params.argString?.trim() ?? "";
-  const id = WINCMD[arg] ?? EX_ALIASES[`wincmd${arg}`];
+  const id = Object.hasOwn(WINCMD, arg) ? WINCMD[arg] : EX_ALIASES[`wincmd${arg}`];
   if (id) {
     afterPrompt(() => vimBridge.run(id));
   }
@@ -55,6 +55,7 @@ registers.pushText = (name, operator, text, linewise, blockwise) => {
 // The engine's types want a context where it also takes none, meaning every mode.
 const ANY_MODE = undefined as unknown as string;
 const MAP_CONTEXT: Record<string, string> = { "": ANY_MODE, n: "normal", v: "visual", i: "insert", o: "operatorPending" };
+const FREED_CONTEXTS: Record<FreedMode, string[]> = { normal: ["normal", "operatorPending"], visual: ["visual"] };
 /** Holds a removed command's place in the keymap: the engine tells its defaults from the user's by counting. */
 const UNMAPPED = "<unmapped>";
 
@@ -74,8 +75,8 @@ function applyVimrc(text: string, view: EditorView) {
   Vim.setOption("clipboard", "");
   for (const e of entries) {
     if (e.kind === "free") {
-      // The engine's own commands are by context, and it removes only an exact match.
-      for (const context of [ANY_MODE, "normal", "visual", "operatorPending"]) {
+      // The engine removes only an exact context. A command with none (`j`, `<Space>`) cannot be split, so it goes from every mode.
+      for (const context of [ANY_MODE, ...e.modes.flatMap((mode) => FREED_CONTEXTS[mode])]) {
         if (Vim.unmap(e.lhs, context)) {
           Vim.mapCommand(UNMAPPED, "idle", "", {}, {});
         }
