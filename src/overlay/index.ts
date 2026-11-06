@@ -771,7 +771,8 @@ function applyStep(step: KeyStep, hinted: boolean) {
 
 /**
  * WebView2's own print preview opens behind the page in this child webview: a print key that neither the overlay nor the page took goes to
- * the system dialog, as `window.print` does here. After the page, which may use the key itself: Ctrl+Shift+P is a web editor's command palette.
+ * the system dialog, as `window.print` does here. After the page: with `print` unbound, Ctrl+Shift+P can be a web editor's command palette.
+ * shortcut: a page's own listener on window runs after this one, upgrade if a site needs it.
  */
 function printUnclaimed(e: KeyboardEvent) {
   const key = keyOf(e);

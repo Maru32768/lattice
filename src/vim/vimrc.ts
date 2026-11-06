@@ -117,7 +117,13 @@ const SET = table([
   ["setlocal", "setl"],
   ["setglobal", "setg"],
 ]);
-const CLEARS = table([["unmap"], ["mapclear", "mapc"], ["nmapclear", "nmapc"], ["vmapclear", "vmapc"], ["imapclear", "imapc"], ["omapclear", "omapc"]]);
+const CLEARS = table([
+  ["mapclear", "mapc"],
+  ["nmapclear", "nmapc"],
+  ["vmapclear", "vmapc"],
+  ["imapclear", "imapc"],
+  ["omapclear", "omapc"],
+]);
 const SCRIPT = table([
   ["autocmd", "au"],
   ["let"],
@@ -371,7 +377,7 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       });
       out = kept.length < out.length ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
     } else if (CLEARS.has(cmd)) {
-      out = cmd === "unmap" ? out : out.filter((e) => !clearedBy(cmd, e));
+      out = out.filter((e) => !clearedBy(cmd, e));
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
     } else if (SCRIPT.has(cmd.replace(/!$/, "")) || known.ex.has(cmd)) {
       // A command the engine could run edits the text, which is no setting to run whenever the vimrc loads.
@@ -413,7 +419,7 @@ function mappingOf(e: VimrcEntry): { lhs: string; modes: Mode[] } | null {
  * shortcut: a `map` under `nmapclear` still counts as mapped in normal mode, upgrade if a vimrc needs the app's key back there.
  */
 function clearedBy(cmd: string, e: VimrcEntry): boolean {
-  if (e.kind !== "nop" && !mappingOf(e)) {
+  if (!mappingOf(e)) {
     return false;
   }
   const mode = /^[nvio]?/.exec(cmd)![0];

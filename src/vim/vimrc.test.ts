@@ -94,6 +94,11 @@ test("a clear command takes the mappings above it from what counts as mapped, by
   assert.deepEqual(exOf(parse("noremap Q x\nnmapclear")), ["noremap Q x", "nmapclear"], "the n of noremap is no mode: the engine keeps it for the other modes");
 });
 
+test("an unmap with no key does nothing, and says so", () => {
+  assert.deepEqual(skips(parse("nnoremap Q x\nunmap")), [[2, "script"]]);
+  assert.deepEqual(exOf(parse("nnoremap Q x\nunmap")), ["nnoremap Q x"]);
+});
+
 test("a key that names an Ex command is left out: the engine throws on freeing one", () => {
   assert.deepEqual(skips(parse("unmap :x")), [[1, "script"]]);
   assert.deepEqual(skips(parse('let mapleader = ":x"')), [[1, "script"]]);
