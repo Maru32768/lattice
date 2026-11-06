@@ -1170,6 +1170,7 @@ export default function App() {
     return (
       <Reader
         key={a.id}
+        tabId={tab.id}
         view={v}
         act={articleActs(a, false)}
         focus={tab.focus}

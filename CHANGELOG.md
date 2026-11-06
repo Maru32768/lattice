@@ -19,6 +19,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - `Esc` in a web page's text field leaves the field, unless the page uses it itself.
 - Windows 10 is no longer a supported platform, and releases are no longer tested on it. The app is not blocked from running there.
 
+### Fixed
+
+- The Reader went back to the top when its pane split, closed or swapped, and when you came back to its tab. It now keeps the paragraph you were reading.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
