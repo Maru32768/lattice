@@ -57,20 +57,44 @@ test("メモ: a save that failed is sent again on the way out, says so when the 
   await expect(panel.getByRole("alert")).toHaveCount(0);
 });
 
-test("メモ: a failed save never comes back over newer text queued behind it", async ({ app }) => {
-  await open(app, SNAPSHOT_ID);
-  const button = app.getByRole("button", { name: "メモ", exact: true });
-  await button.click();
-  const panel = app.getByRole("complementary", { name: "メモ" });
-  const note = panel.getByRole("textbox", { name: "メモ" });
-  // A slow store: the first save is still on its way when the second is queued behind it.
-  await app.evaluate(() => {
+/** A slow store: a save stays on its way until `__letNotesGo` is called. */
+const holdNotes = (app: Page) =>
+  app.evaluate(() => {
     type Invoke = (cmd: string, ...rest: unknown[]) => Promise<unknown>;
     const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; __letNotesGo: () => void };
     const held = new Promise<void>((go) => (w.__letNotesGo = go));
     const invoke = w.__TAURI_INTERNALS__.invoke;
     w.__TAURI_INTERNALS__.invoke = (cmd, ...rest) => (cmd === "set_article_note" ? held.then(() => invoke(cmd, ...rest)) : invoke(cmd, ...rest));
   });
+
+test("メモ: a failure that comes in after the panel was remounted reaches the panel that is open, and it can try again", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  await holdNotes(app);
+  await note.fill("the disk is full");
+  await note.blur();
+  await button.click();
+  await button.click();
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+  await app.evaluate(() => (window as unknown as { __letNotesGo: () => void }).__letNotesGo());
+  await expect(panel.getByRole("alert")).toBeVisible();
+  await app.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
+  await note.focus();
+  await note.blur();
+  await expect(panel.getByRole("status")).toHaveText("保存しました");
+  await expect(panel.getByRole("alert")).toHaveCount(0);
+});
+
+test("メモ: a failed save never comes back over newer text queued behind it", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  const button = app.getByRole("button", { name: "メモ", exact: true });
+  await button.click();
+  const panel = app.getByRole("complementary", { name: "メモ" });
+  const note = panel.getByRole("textbox", { name: "メモ" });
+  await holdNotes(app);
   await note.fill("the disk is full");
   await note.blur();
   await note.fill("written after it");

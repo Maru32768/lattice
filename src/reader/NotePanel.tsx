@@ -17,6 +17,8 @@ const typedText = new Map<number, string>();
  * shortcut: a failure after the panel closed shows only when it opens again, upgrade if saves ever fail for long.
  */
 const failedSaves = new Map<number, string>();
+/** Each article's open panel, for a failure that comes in after a pane swap: the panel that sent the save may be gone by then. */
+const panels = new Map<number, (error: string, body: string) => void>();
 /** Saves run one at a time, in typing order: two in flight could land out of order and keep the older text. */
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -55,15 +57,22 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
         },
         (e: unknown) => {
           failedSaves.set(id, String(e));
-          // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
-          if (typedText.get(id) === body && pending.current === null) {
-            pending.current = body;
-          }
-          setStatus(null);
-          setError(String(e));
+          panels.get(id)?.(String(e), body);
         },
       );
   };
+  const saveFailed = useEffectEvent((message: string, body: string) => {
+    // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
+    if (typedText.get(id) === body && pending.current === null) {
+      pending.current = body;
+    }
+    setStatus(null);
+    setError(message);
+  });
+  useEffect(() => {
+    panels.set(id, (message, body) => saveFailed(message, body));
+    return () => void panels.delete(id);
+  }, [id]);
   const typed = (value: string) => {
     typedText.set(id, value);
     setText(value);
