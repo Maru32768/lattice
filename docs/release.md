@@ -122,7 +122,7 @@ The browser E2E suite uses a mock backend in Chromium. It does not verify native
 `.github/workflows/release-check.yml` runs after the build and changes nothing on the release. If it fails, the Release workflow fails and the draft stays unpublished.
 
 - `scripts/verify-release.ts` checks the files as uploaded. `latest.json` must name this version, the uploaded installer and its signature. The signature must verify against the public key in the tag, and that key must match the previous tag's, because installed copies reject any other. The portable zip must hold both executables, its marker and the license files. The license list must name this version.
-- The job starts the portable copy, then the installed copy after a silent install. Each must render its main window (`scripts/smoke-webview.ts`), create its database in the right folder and answer `lattice-cli list`. The portable copy must write nothing to `%APPDATA%\Lattice`. Uninstalling must remove both executables and keep the database.
+- The job starts the portable copy, then the installed copy after a silent install. Each must render its main window, read through Windows UI Automation, create its database in the right folder and answer `lattice-cli list`. The portable copy must write nothing to `%APPDATA%\Lattice`. Uninstalling must remove both executables and keep the database. On failure, the run keeps a screenshot as the `release-check-screen` artifact.
 
 To recheck a tag without rebuilding:
 
