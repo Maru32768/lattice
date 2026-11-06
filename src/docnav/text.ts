@@ -120,6 +120,17 @@ export function rangeAt(doc: DocText, start: number, length: number): Range {
   return r;
 }
 
+/** Whether the document still has the match at `start`: `rangeAt` throws on a node that has shrunk, and a Range in one that has gone selects nothing. */
+export function matchIsLive(doc: DocText, start: number, length: number): boolean {
+  for (let i = start; i < start + length; i++) {
+    const node = doc.nodes[doc.nodeAt[i]!]!;
+    if (!node.isConnected || node.data.charAt(doc.offsetAt[i]!) !== doc.text.charAt(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** The index in `doc.text` of the first character at or after this point; null for a point outside the text. */
 export function indexOfPoint(doc: DocText, node: Node, offset: number): number | null {
   const n = doc.nodes.indexOf(node as Text);

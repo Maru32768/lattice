@@ -179,6 +179,25 @@ test("Japanese text has words to hint", async ({ reader }) => {
   await reader.keyboard.press("Escape");
 });
 
+test("gw takes the labels off the words scrolled out of the view", async ({ reader }) => {
+  await press(reader, "g", "w");
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBeGreaterThan(0);
+  await reader.locator(".doc-scroll").evaluate((el) => (el.scrollTop = 1000));
+  await expect.poll(async () => (await drawn(reader)).labels.length).toBe(0);
+});
+
+test("a quote cut at its limit does not end in half a character, which the backend would refuse", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((el) => {
+    el.textContent = `${"x".repeat(3999)}😀 tail`;
+    window.getSelection()!.selectAllChildren(el);
+  });
+  await reader.keyboard.press("v");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("VISUAL");
+  await reader.keyboard.press("a");
+  await expect(reader.locator("#chat-q")).toBeFocused();
+  expect(await reader.locator("#chat-q").evaluate((el) => (el as HTMLTextAreaElement).value.isWellFormed())).toBe(true);
+});
+
 test("gw puts labels on what is on screen of a long text node, from its first visible line to its last", async ({ reader }) => {
   const lines = Array.from({ length: 3000 }, (_, i) => `line${i} word${i} more${i}`);
   await reader.locator("#extra").evaluate((el, text) => {
@@ -367,6 +386,65 @@ test("a click in the document ends a find as Enter does: n goes on from it", asy
   await expect.poll(() => selected(reader)).toBe("needle");
 });
 
+test("a click in the document with no match kept leaves the view where it is: only Esc goes back", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("no such text");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("0/0");
+  await reader.locator("#p2").evaluate((el) => el.scrollIntoView({ block: "center" }));
+  const top = await scrollTop(reader);
+  expect(top).toBeGreaterThan(0);
+  await reader.locator("#p2").click();
+  await expect.poll(async () => (await drawn(reader)).open).toBe(false);
+  expect(await scrollTop(reader)).toBe(top);
+});
+
+test("a match whose text changes under the find is looked for again, and Enter still selects it", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/2");
+  await reader.locator("#p1").evaluate((el) => (el.textContent = "A new needle, as a translation draws its node anew."));
+  await reader.keyboard.press("Enter");
+  expect(await selected(reader)).toBe("needle");
+  expect(await reader.evaluate(() => window.getSelection()!.anchorNode!.isConnected)).toBe(true);
+});
+
+test("a match whose node shrinks under the find does not lose the selection to an error", async ({ reader }) => {
+  const errors: string[] = [];
+  reader.on("pageerror", (e) => errors.push(e.message));
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/2");
+  await reader.locator("#p1").evaluate((el) => ((el.firstChild as Text).data = "S"));
+  await reader.keyboard.press("Enter");
+  expect(errors).toEqual([]);
+  expect(await selected(reader)).toBe("Needle");
+});
+
+test("a match under a sticky header is brought out from under it", async ({ reader }) => {
+  await reader.locator("#extra").evaluate((box) => {
+    const header = document.createElement("div");
+    header.id = "stuck";
+    header.style.cssText = "position:sticky;top:0;height:200px;background:#fff;z-index:5";
+    header.textContent = "A header";
+    box.prepend(header);
+    const p = box.querySelector("#p0")!;
+    const view = box.closest(".doc-scroll")!;
+    view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 50;
+  });
+  const hidden = () =>
+    reader.locator("#p0").evaluate((p) => {
+      const r = document.createRange();
+      r.selectNodeContents(p);
+      const box = r.getBoundingClientRect();
+      return !document.elementFromPoint(box.left + 10, box.top + box.height / 2)?.contains(p);
+    });
+  expect(await hidden(), "the header is over it").toBe(true);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("epsilon");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  await expect.poll(hidden, "where a reader can see it").toBe(false);
+});
+
 test("find counts what a reader can open to only once it is open", async ({ reader }) => {
   await reader.locator("#p1").evaluate((el) => {
     el.insertAdjacentHTML(
@@ -461,6 +539,13 @@ test("yy copies the article's URL, and Ctrl+Shift+P prints", async ({ reader }) 
   expect(height, "at its full length").toBe(of);
   expect(height).toBeGreaterThan(3000);
   await reader.emulateMedia({ media: "screen" });
+});
+
+test("the print key prints only a Reader: anywhere else the print styles leave a blank sheet", async ({ reader }) => {
+  await reader.locator(".nav").getByRole("button", { name: "設定", exact: true }).click();
+  await reader.locator("main[data-pane='doc']").click({ position: { x: 5, y: 5 } });
+  await reader.keyboard.press("Control+Shift+P");
+  expect(await reader.evaluate(() => (window as unknown as { __printed?: number }).__printed)).toBeUndefined();
 });
 
 test("gi goes to the first text field on screen; in the chat that is its input", async ({ app }) => {
@@ -664,6 +749,29 @@ base("yy under the hint keeps the keyboard in the app until the URL is copied, t
   await shell.keyboard.press("y");
   await expect.poll(() => shell.evaluate(() => (window as unknown as { __focusesAtWrite?: number }).__focusesAtWrite)).toBe(focused);
   await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
+});
+
+base("yy in the chat log or on Settings leaves the Page tab beside it alone", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.addInitScript(() => {
+    navigator.clipboard.writeText = (text) => {
+      (window as unknown as { __clip: string }).__clip = text;
+      return Promise.resolve();
+    };
+  });
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  const clip = () => shell.evaluate(() => (window as unknown as { __clip?: string }).__clip);
+
+  await shell.locator(".nav").getByRole("button", { name: "対話", exact: true }).click();
+  await shell.locator(".chat-log").click({ position: { x: 5, y: 5 } });
+  await press(shell, "y", "y");
+  expect(await clip(), "from the chat log").toBeUndefined();
+
+  await shell.locator(".nav").getByRole("button", { name: "設定", exact: true }).click();
+  await shell.locator("main[data-pane='doc']").click({ position: { x: 5, y: 5 } });
+  await press(shell, "y", "y");
+  expect(await clip(), "from Settings").toBeUndefined();
 });
 
 base("a quote from a document window goes to the main window, for the chat there", async ({ shell }) => {

@@ -16,7 +16,7 @@ const MOVES = {
 };
 
 export type DocScroll = keyof typeof MOVES;
-export const isDocScroll = (id: string): id is DocScroll => id in MOVES;
+export const isDocScroll = (id: string): id is DocScroll => Object.hasOwn(MOVES, id);
 export const scrollDoc = (el: Element, id: DocScroll, count: number) => MOVES[id](el, count);
 
 /** The largest box in `root` (itself included) that can scroll: what a reader of `root` means by "the document". */
@@ -40,8 +40,20 @@ function viewportScrolls(): boolean {
   return !/hidden|clip/.test(root === "visible" ? getComputedStyle(document.body).overflowY : root);
 }
 
-/** What scrolls a whole page: the viewport, or for an app-like site its largest scrolling box. */
+/** The last walk's box: a walk reads every element, and a held `j` or a scroll in caret mode asks on each event. */
+let pageBox: Element | null = null;
+
+/**
+ * What scrolls a whole page: the viewport, or for an app-like site its largest scrolling box.
+ * shortcut: a larger box that comes up while the last one still scrolls goes unseen, upgrade if a site turns out to keep both.
+ */
 export function pageScroller(): Element | null {
   const root = document.scrollingElement;
-  return root && root.scrollHeight > root.clientHeight && viewportScrolls() ? root : scrollerIn(document.body);
+  if (root && root.scrollHeight > root.clientHeight && viewportScrolls()) {
+    return root;
+  }
+  if (!pageBox?.isConnected || pageBox.scrollHeight <= pageBox.clientHeight) {
+    pageBox = scrollerIn(document.body);
+  }
+  return pageBox;
 }

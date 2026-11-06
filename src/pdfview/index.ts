@@ -373,12 +373,15 @@ function allText(more: () => void) {
   void (async () => {
     await placing;
     let told = performance.now();
+    // Longer each time: a find walks all the text so far on each `more`, and on a long PDF that would hold up the typing.
+    let wait = 200;
     for (const { page, host } of places) {
       // A page that fails must not cost a find the pages after it.
       await drawText(page, host).catch((e: unknown) => console.warn("[lattice] drawing a page's text", e));
-      if (performance.now() - told > 200) {
+      if (performance.now() - told > wait) {
         more();
         told = performance.now();
+        wait *= 2;
       }
     }
     more();

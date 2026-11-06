@@ -9,7 +9,7 @@ import { collapse, isWord } from "../vocab/vocab.ts";
 import { isModified, isPrintable, type ActionId } from "../lib/keymap.ts";
 import { firstField, hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
-import { docText, firstVisibleOffset, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
+import { docText, firstVisibleOffset, indexOfPoint, matchIsLive, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
 import { createUi, type DocUi, type View } from "./ui.ts";
 import { MOTIONS, focusRect, lineAtFocus, shapeLines, showBlock } from "./visual.ts";
 
@@ -47,6 +47,18 @@ interface Place {
   focus: Element | null;
 }
 
+type FindMode = {
+  kind: "find";
+  query: string;
+  doc: DocText;
+  origin: TextPoint | null;
+  starts: number[];
+  length: number;
+  at: number;
+  place: Place;
+  count: HTMLElement;
+};
+
 type DocMode =
   | { kind: "normal" }
   | { kind: "hints"; typed: string; targets: Hint[]; newTab: boolean }
@@ -55,7 +67,7 @@ type DocMode =
   /** `line`: line-wise, from this line. */
   | { kind: "visual"; line: Range | null; g: boolean }
   /** `doc` and `origin`: what the query is looked for in, and from where. `at`: the match shown, in `starts`. */
-  | { kind: "find"; query: string; doc: DocText; origin: TextPoint | null; starts: number[]; length: number; at: number; place: Place; count: HTMLElement };
+  | FindMode;
 
 const NORMAL: DocMode = { kind: "normal" };
 const HEADINGS = "h1,h2,h3,h4,h5,h6,[role='heading'],[data-doc-heading]";
@@ -70,6 +82,16 @@ const BAR_HEIGHT = 48;
 
 function viewOf(scroller: Element | null): View {
   return scroller && scroller !== document.scrollingElement ? scroller.getBoundingClientRect() : { top: 0, left: 0, bottom: innerHeight, right: innerWidth };
+}
+
+/** Whether `el` stays where it is as the document scrolls under it. */
+function staysPut(el: Element): boolean {
+  for (let at: Element | null = el; at; at = at.parentElement) {
+    if (/fixed|sticky/.test(getComputedStyle(at).position)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const meets = (r: DOMRect, v: View) => r.height > 0 && r.bottom > v.top && r.top < v.bottom && r.right > v.left && r.left < v.right;
@@ -109,6 +131,22 @@ export function createDocNav(host: () => DocHost) {
 
   const selection = () => window.getSelection()!;
 
+  /** The find with its match still in the document: a page's scripts and a translation replace text under an open bar. */
+  function current(m: FindMode): FindMode {
+    if (m.at < 0 || matchIsLive(m.doc, m.starts[m.at]!, m.length)) {
+      return m;
+    }
+    const root = host().root();
+    if (!root) {
+      return { ...m, starts: [], at: -1 };
+    }
+    walked = null;
+    const doc = walkOf(root);
+    const origin = m.origin?.node.isConnected ? m.origin : firstVisibleText(doc.nodes, viewOf(host().scroller()));
+    const { starts, length } = matchesIn(doc.text, m.query);
+    return { ...m, doc, origin, starts, length, at: pickMatch(starts, indexOfScreen(doc, origin), 1) };
+  }
+
   function draw() {
     if (mode.kind === "hints") {
       const { typed } = mode;
@@ -125,6 +163,7 @@ export function createDocNav(host: () => DocHost) {
     } else if (mode.kind === "visual") {
       ui?.badge(mode.line ? "V-LINE" : "VISUAL", viewOf(host().scroller()));
     } else if (mode.kind === "find") {
+      mode = current(mode);
       ui?.boxes(mode.at >= 0 ? Array.from(rangeAt(mode.doc, mode.starts[mode.at]!, mode.length).getClientRects()) : []);
       mode.count.textContent = mode.query.trim() ? `${mode.at + 1}/${mode.starts.length}` : "";
     }
@@ -205,6 +244,14 @@ export function createDocNav(host: () => DocHost) {
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const v = viewOf(host().scroller());
     reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2, BAR_HEIGHT);
+    // Under a sticky header a match is in view to all of the above, and a reader still cannot see it.
+    const seen = r.getBoundingClientRect();
+    const over = document.elementFromPoint(seen.left + seen.width / 2, seen.top + seen.height / 2);
+    if (over && !over.contains(r.startContainer) && staysPut(over)) {
+      host()
+        .scroller()
+        ?.scrollBy({ top: seen.top - v.top - (v.bottom - v.top) / 2, behavior: "instant" });
+    }
   }
 
   function select(r: Range) {
@@ -269,7 +316,10 @@ export function createDocNav(host: () => DocHost) {
       return;
     }
     const targets = visibleWords(root).map((range): Target => ({
-      rect: () => range.getClientRects()[0] ?? null,
+      rect: () => {
+        const r = range.getClientRects()[0];
+        return r && meets(r, viewOf(host().scroller())) ? r : null;
+      },
       pick: () => {
         select(range);
         enterVisual();
@@ -395,7 +445,7 @@ export function createDocNav(host: () => DocHost) {
         host().saveWord();
       }
     } else if (m.kind === "visual" && key === "A") {
-      const quote = collapse(s.toString()).slice(0, MAX_QUOTE);
+      const quote = collapse(s.toString()).slice(0, MAX_QUOTE).toWellFormed();
       enter(NORMAL);
       host().ask(quote);
     } else {
@@ -424,10 +474,10 @@ export function createDocNav(host: () => DocHost) {
   /** Shows the query's match nearest the origin, or the place the find began without one. */
   function search(m: Extract<DocMode, { kind: "find" }>, query: string) {
     const { starts, length } = matchesIn(m.doc.text, query);
-    const at = pickMatch(starts, indexOfScreen(m.doc, m.origin), 1);
-    enter({ ...m, query, starts, length, at });
-    if (at >= 0) {
-      revealRange(rangeAt(m.doc, starts[at]!, length));
+    enter({ ...m, query, starts, length, at: pickMatch(starts, indexOfScreen(m.doc, m.origin), 1) });
+    // Drawing it has walked the text again if that had changed, so what to show is in `mode` now.
+    if (mode.kind === "find" && mode.at >= 0) {
+      revealRange(rangeAt(mode.doc, mode.starts[mode.at]!, mode.length));
       draw();
     } else {
       backToPlace(m.place);
@@ -442,7 +492,7 @@ export function createDocNav(host: () => DocHost) {
     if (mode.kind !== "find") {
       return;
     }
-    const m = mode;
+    const m = current(mode);
     const active = document.activeElement;
     // An app key may have moved the keyboard on: it stays there, where a selection of ours would also take the caret out of a field and drop what is typed.
     const moved = active !== ui?.host && active !== document.body;
@@ -454,7 +504,8 @@ export function createDocNav(host: () => DocHost) {
     const kept = keep && m.at >= 0;
     if (kept) {
       lastQuery = m.query;
-    } else {
+    } else if (!keep) {
+      // Only Esc: `search` went back already for a query with no match, and a press must not move what is under the pointer.
       backToPlace(m.place);
     }
     if (!moved) {
