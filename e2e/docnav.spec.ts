@@ -563,6 +563,28 @@ base("the second key of a chord that reached the app runs in the page, and the p
   await expect(shell.locator(".prefix-hint")).toBeHidden();
 });
 
+base("a page's keys scroll its viewport only if a reader could, else its largest scrolling box", async ({ shell }) => {
+  await shell.goto("/");
+  const module = `/@fs/${process.cwd().replaceAll("\\", "/")}/src/docnav/scroll.ts`;
+  const scrollers = await shell.evaluate(async (src) => {
+    const { pageScroller } = (await import(src)) as typeof import("../src/docnav/scroll.ts");
+    const box = document.createElement("div");
+    box.id = "inner";
+    box.style.cssText = "position:fixed;inset:0;overflow:auto";
+    box.innerHTML = "<div style='height:5000px'></div>";
+    const tall = document.createElement("div");
+    tall.style.height = "200vh";
+    document.body.append(box, tall);
+    const pick = (root: string, body: string) => {
+      document.documentElement.style.overflowY = root;
+      document.body.style.overflowY = body;
+      return pageScroller()?.id || pageScroller()?.tagName;
+    };
+    return [pick("visible", "visible"), pick("visible", "hidden"), pick("hidden", "hidden"), pick("clip", "visible"), pick("auto", "hidden")];
+  }, module);
+  expect(scrollers).toEqual(["HTML", "inner", "inner", "inner", "HTML"]);
+});
+
 base("from the palette a local action runs in the page", async ({ shell }) => {
   await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
   await shell.goto("/");

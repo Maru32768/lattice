@@ -34,8 +34,14 @@ export function scrollerIn(root: Element): Element | null {
   return best;
 }
 
+/** Whether a reader can scroll the viewport: it takes its overflow from the root element, or from the body if the root leaves it visible. */
+function viewportScrolls(): boolean {
+  const root = getComputedStyle(document.documentElement).overflowY;
+  return !/hidden|clip/.test(root === "visible" ? getComputedStyle(document.body).overflowY : root);
+}
+
 /** What scrolls a whole page: the viewport, or for an app-like site its largest scrolling box. */
 export function pageScroller(): Element | null {
   const root = document.scrollingElement;
-  return root && root.scrollHeight > root.clientHeight ? root : scrollerIn(document.body);
+  return root && root.scrollHeight > root.clientHeight && viewportScrolls() ? root : scrollerIn(document.body);
 }
