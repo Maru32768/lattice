@@ -320,7 +320,7 @@ The Reader and the Page view (web pages and PDFs) share these keys. They act on 
 | `f` | Put labels on the links, buttons and fields on screen. Type a label to press that one |
 | `Shift+F` | Like `f`, but a link opens in a tab behind |
 | `gw` | Put labels on the words on screen, Japanese too. Type a label to select that word in visual mode |
-| `v` `V` | Caret and visual mode (see below) |
+| `v` | Caret mode, and inside it `v` and `V` for visual mode (see below) |
 | `/` | Find in the document |
 | `n` `Shift+N` | Next and previous match |
 | `]]` `[[` | Next and previous heading (in a PDF, heading paragraphs or pages) |
@@ -755,11 +755,11 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Last in the list | `G` |
 | Half a screen down the list | `d`, `Ctrl+D` |
 | Half a screen up the list | `u`, `Ctrl+U` |
-| Open the article at the cursor | `Enter` |
-| Open the article at the cursor in Page | `Shift+Enter` |
-| Back, clear filters | `Esc` |
-| Back (app history) | `Alt+←` |
-| Forward (app history) | `Alt+→` |
+| Open the article under the cursor | `Enter` |
+| Open the article under the cursor in Page | `Shift+Enter` |
+| Back / clear filters | `Esc` |
+| Back (in-app history) | `Alt+←` |
+| Forward (in-app history) | `Alt+→` |
 | Move a feed or folder up (sidebar) | `Alt+↑` |
 | Move a feed or folder down (sidebar) | `Alt+↓` |
 
@@ -775,7 +775,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Read / unread | `m` |
 | Focus mode | `Ctrl+B z` |
 | Save the selected English word to Vocabulary | `w` |
-| Hear a word card again | `r` |
+| Hear the word card again | `r` |
 
 `-` and `=` change the share shown in the display language (English). The same share gives as much English in a Japanese article as in an English one. For the keys that scroll and find in a document, see [Read with the keyboard](#read-with-the-keyboard).
 
