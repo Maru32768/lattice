@@ -88,8 +88,9 @@ function viewOf(scroller: Element | null): View {
 
 /** Whether `el` stays where it is as `scroller` moves what is under it. */
 function staysPut(el: Element, scroller: Element | null): boolean {
-  for (let at: Element | null = el; at && at !== scroller; at = at.parentElement) {
-    if (/fixed|sticky/.test(getComputedStyle(at).position)) {
+  for (let at: Element | null = el; at !== scroller; at = at.parentElement) {
+    // Up past the top without meeting the scroller: it is outside, like an app's top bar.
+    if (!at || /fixed|sticky/.test(getComputedStyle(at).position)) {
       return true;
     }
   }

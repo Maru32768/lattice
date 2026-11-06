@@ -465,6 +465,30 @@ test("a match under a box that scrolls with it stays where it is: a PDF's transl
   expect(await scrollTop(reader)).toBe(top);
 });
 
+test("a match under a bar outside the box that scrolls is brought out from under it", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((p) => {
+    const view = p.closest(".doc-scroll")!;
+    const top = view.getBoundingClientRect().top;
+    view.scrollTop += p.getBoundingClientRect().top - top - 50;
+    const bar = document.createElement("div");
+    bar.id = "bar";
+    bar.style.cssText = `position:absolute;left:0;right:0;top:${top}px;height:200px;background:#fff;z-index:50`;
+    document.body.append(bar);
+  });
+  const hidden = () =>
+    reader.locator("#p0").evaluate((p) => {
+      const r = document.createRange();
+      r.selectNodeContents(p);
+      const box = r.getBoundingClientRect();
+      return !document.elementFromPoint(box.left + 10, box.top + box.height / 2)?.contains(p);
+    });
+  expect(await hidden(), "the bar is over it").toBe(true);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("Alpha");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/");
+  await expect.poll(hidden, "where a reader can see it").toBe(false);
+});
+
 test("a match under a sticky header is brought out from under it", async ({ reader }) => {
   await reader.locator("#extra").evaluate((box) => {
     const header = document.createElement("div");
