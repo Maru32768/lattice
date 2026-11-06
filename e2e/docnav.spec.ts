@@ -357,6 +357,28 @@ test("Esc in the find bar goes back to where it began, the selection too; the fi
   expect(await selected(reader)).toBe("Alpha");
 });
 
+test("a click in the document ends a find as Enter does: n goes on from it", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/2");
+  await reader.locator("#p0").click();
+  await expect.poll(async () => (await drawn(reader)).open).toBe(false);
+  await reader.keyboard.press("n");
+  await expect.poll(() => selected(reader)).toBe("needle");
+});
+
+test("find counts what a reader can open to only once it is open", async ({ reader }) => {
+  await reader.locator("#p1").evaluate((el) => {
+    el.insertAdjacentHTML(
+      "afterend",
+      `<details><summary>label</summary><p>needle</p>needle</details><div hidden="until-found">needle</div><details open><p>needle</p></details>`,
+    );
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/3");
+});
+
 test("a match is not left under the find bar", async ({ reader }) => {
   const clearance = () => reader.locator("#p2").evaluate((el) => el.closest(".doc-scroll")!.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom);
   await reader.locator("#p2").evaluate((el) => el.scrollIntoView({ block: "end" }));

@@ -133,6 +133,7 @@ export function createDocNav(host: () => DocHost) {
   // Whatever takes the keyboard or the pointer away ends a mode: one left behind would eat the keys of whatever is focused next.
   function onPress(e: Event) {
     if (e.composedPath()[0] !== ui?.host) {
+      endFind(true);
       enter(NORMAL);
     }
   }

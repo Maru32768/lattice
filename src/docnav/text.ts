@@ -3,6 +3,8 @@
 // line and goes into the paragraphs laid invisibly over the text.
 
 const NOT_TEXT = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "TEMPLATE", "TEXTAREA", "SELECT"]);
+/** What a closed `<details>` hides: its content's computed style says nothing of it, while its rects land on the text after it. */
+const CLOSED_DETAILS = "details:not([open]) > :not(summary)";
 
 /** The text nodes in `root` a reader can see and select, in document order. Not our own UI, nor the PDF viewer's invisible paragraphs. */
 export function textNodes(root: Element): Text[] {
@@ -10,12 +12,16 @@ export function textNodes(root: Element): Text[] {
     acceptNode(n) {
       if (n.nodeType === Node.ELEMENT_NODE) {
         const el = n as Element;
-        return NOT_TEXT.has(el.tagName) || el.hasAttribute("data-lattice-ui") || getComputedStyle(el).display === "none"
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_SKIP;
+        if (NOT_TEXT.has(el.tagName) || el.hasAttribute("data-lattice-ui") || el.matches(CLOSED_DETAILS)) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        const { display, contentVisibility } = getComputedStyle(el);
+        return display === "none" || contentVisibility === "hidden" ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP;
       }
       const style = getComputedStyle(n.parentElement!);
-      return n.nodeValue?.trim() && style.visibility !== "hidden" && style.userSelect !== "none" ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      return n.nodeValue?.trim() && style.visibility !== "hidden" && style.userSelect !== "none" && !n.parentElement!.matches("details:not([open])")
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_SKIP;
     },
   });
   const out: Text[] = [];
