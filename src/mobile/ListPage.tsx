@@ -2,14 +2,13 @@ import { useState } from "react";
 import type { MobileIndex } from "../bindings";
 import { useT, type PlainKey } from "../i18n";
 import { relTime } from "../lib/time";
-import { type ListFilter, type ListView, visibleArticles } from "./list";
+import { PAGE, type ListFilter, type ListView, visibleArticles } from "./list";
 
 const FILTERS: { id: ListFilter; label: PlainKey }[] = [
   { id: "unread", label: "mobile.unread" },
   { id: "all", label: "mobile.all" },
   { id: "favorites", label: "mobile.favorites" },
 ];
-const PAGE = 100;
 
 export function ListPage({
   index,

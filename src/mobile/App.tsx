@@ -3,7 +3,7 @@ import type { MobileIndex } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
-import type { ListView } from "./list";
+import { PAGE, type ListView } from "./list";
 import { articleInHash } from "./route";
 import { Unauthorized, adoptToken, hasToken, loadIndex } from "./client";
 
@@ -18,7 +18,7 @@ export function App() {
   const t = useT();
   const articleId = useSyncExternalStore(subscribeHash, () => articleInHash(location.hash));
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
-  const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: 100 });
+  const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
   const [refreshFailed, setRefreshFailed] = useState(false);
   const listScroll = useRef(0);
 

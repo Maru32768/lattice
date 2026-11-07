@@ -1,5 +1,8 @@
 import type { ArticleRow } from "../bindings";
 
+/** How many rows are added at a time. */
+export const PAGE = 100;
+
 export type ListFilter = "unread" | "all" | "favorites";
 export interface ListView {
   filter: ListFilter;
