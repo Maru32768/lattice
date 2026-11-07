@@ -36,6 +36,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - When the app and `lattice-cli` or its MCP server opened the library at the same moment after an update, one of them could fail on the database upgrade. Writes from them at the same moment could also fail at once instead of waiting their turn.
 - One article that the AI provider refused failed the classification or importance rating of up to 20 articles with it, on all five tries. Each retry now takes half as many articles, so the others get through.
 - Asking for a translation, fetch, image download or search indexing while the same job was running was ignored, so a change made meanwhile could stay undone until the next start, or for good. For example, a feed article whose page refused could keep failing even though the feed had its text. These jobs now run once more when they finish.
+- Closing Lattice while it fetched a URL you had just saved left the article loading forever. The fetch now resumes at the next start.
+- A meaning you typed for a word while the AI was still looking it up was replaced by the AI's answer. Your meaning now stays.
 
 ## [0.3.0] - 2026-11-06
 

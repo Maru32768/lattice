@@ -283,7 +283,8 @@ fn pending(store: &Store) -> Result<Vec<Pending>, String> {
 
 /// The entry takes the sense, or merges its captures into the entry that already has the lemma.
 /// An entry asked again (再生成) already has its card and keeps it, with its history, rather than
-/// merge. An entry deleted while the LLM was answering stays deleted.
+/// merge. An entry deleted while the LLM was answering stays deleted, and one whose meaning was
+/// typed by hand keeps it. (再生成 replaces a typed meaning, but it sets the entry pending first.)
 fn apply(c: &Connection, entry_id: i64, s: &Sense, now: i64) -> rusqlite::Result<()> {
     let same: Option<i64> = c
         .query_row(
@@ -300,7 +301,7 @@ fn apply(c: &Connection, entry_id: i64, s: &Sense, now: i64) -> rusqlite::Result
         return Ok(());
     }
     let n = c.execute(
-        "UPDATE vocab_entries SET headword = ?2, pos = ?3, meaning = ?4, definition = ?5, ipa = ?6, example = ?7, state = 'ready' WHERE id = ?1",
+        "UPDATE vocab_entries SET headword = ?2, pos = ?3, meaning = ?4, definition = ?5, ipa = ?6, example = ?7, state = 'ready' WHERE id = ?1 AND state = 'pending'",
         params![entry_id, s.headword, s.pos, s.meaning, s.definition, s.ipa, s.example],
     )?;
     if n > 0 {
@@ -780,6 +781,24 @@ mod tests {
         assert!(vocab_queue(&s, now).is_empty(), "today's one new card was flaky");
         assert_eq!(crate::review::overview(&s, now).unwrap().due, 0);
         assert!(grade(&s, 999, Grade::Good, now).unwrap_err().contains("quiz.cardRemoved"));
+    }
+
+    #[tokio::test]
+    async fn a_meaning_typed_while_the_llm_answers_is_kept() {
+        struct TypesFirst(std::sync::Arc<Store>, i64);
+        impl LlmProvider for TypesFirst {
+            fn name(&self) -> &str {
+                "fake"
+            }
+            async fn complete_json(&self, _: &str, _: &str, _: &Value) -> Result<Completion, LlmError> {
+                set_meaning(&self.0, self.1, "手で入れた意味", 0).unwrap();
+                Ok(Completion { value: json!({"words": [word(1, "skew", "ゆがみ")]}), model: None, provider: "fake".into() })
+            }
+        }
+        let s = std::sync::Arc::new(Store::open_in_memory().unwrap());
+        let id = capture(&s, &cap("skew", "Snapshot isolation permits write skew.")).unwrap().entry_id;
+        run(&s, &TypesFirst(s.clone(), id)).await.unwrap();
+        assert_eq!(list(&s).unwrap()[0].sense.meaning, "手で入れた意味");
     }
 
     #[tokio::test]

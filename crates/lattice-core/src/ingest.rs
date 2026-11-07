@@ -18,7 +18,15 @@ pub async fn save_url(store: &Store, client: &HttpClient, url: &str) -> Result<i
     if !needs_work {
         return Ok(id);
     }
-    fetch_into(store, client, id, url.trim()).await
+    // Through the queue though fetched here: if the app ends during the fetch, the job brings the article back
+    // instead of leaving it 取得中 for good. Not claimed, a runner has it or this host is busy, and finds it saved.
+    store.enqueue_job(JOB_TYPE, id, "{}", &format!("{JOB_TYPE}:{id}")).map_err(|e| e.to_string())?;
+    let job = store.claim_article_job(&[JOB_TYPE], id).map_err(|e| e.to_string())?;
+    let saved = crate::jobs::catch_panic(fetch_into(store, client, id, url.trim())).await;
+    if let Some(job) = job {
+        crate::jobs::finish(store, job.id, saved.as_ref().err().map(String::as_str)).await?;
+    }
+    saved
 }
 
 /// Background half of bulk import: fetches an article registered by `enqueue_urls`. A long queue
@@ -311,6 +319,27 @@ mod tests {
         assert_eq!(store_fetched(&s, third, &page(&different)).unwrap(), third);
         assert_eq!(s.find_article_by_url("https://example.com/third").unwrap(), Some(third));
         assert_eq!(s.find_article_by_url("https://example.com/post").unwrap(), Some(id), "the URL's own article, not the other that names it");
+    }
+
+    #[tokio::test]
+    async fn saving_a_url_leaves_a_job_that_outlives_the_app() {
+        let s = Store::open_in_memory().unwrap();
+        let client = crate::fetch::client();
+        // The app ends during the fetch: the future is dropped where it waits.
+        let mut saving = Box::pin(save_url(&s, &client, "https://example.com/post"));
+        assert!(futures::poll!(&mut saving).is_pending());
+        drop(saving);
+        let v = s.get_article(1, "ja").unwrap().unwrap();
+        assert_eq!((v.article.fetch_status.as_str(), v.jobs[0].job_type.as_str(), v.jobs[0].status.as_str()), ("pending", JOB_TYPE, "running"));
+    }
+
+    #[tokio::test]
+    async fn saving_a_url_finishes_its_job() {
+        let s = Store::open_in_memory().unwrap();
+        // The default network policy refuses it at once: nothing is sent, and the refusal is recorded on the article.
+        let id = save_url(&s, &crate::fetch::client(), "http://127.0.0.1:9/post").await.unwrap();
+        let v = s.get_article(id, "ja").unwrap().unwrap();
+        assert_eq!((v.article.fetch_status.as_str(), v.jobs[0].status.as_str()), ("failed", "succeeded"));
     }
 
     #[test]
