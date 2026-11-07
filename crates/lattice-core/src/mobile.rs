@@ -152,9 +152,10 @@ pub fn regenerate_token(store: &Store) -> Result<String, String> {
     Ok(token)
 }
 
-/// What servers keep and compare instead of the token: comparing hashes gives a timing attack nothing to measure.
-pub fn token_hash(token: &str) -> String {
-    sha256_hex(token)
+/// Whether a request's token is the current one. Read each time, so regenerating it holds for every
+/// server on this library at once, a `lattice-cli serve` too. Comparing hashes gives a timing attack nothing to measure.
+pub fn token_accepted(store: &Store, presented: &str) -> Result<bool, String> {
+    Ok(store.setting(TOKEN).map_err(err)?.is_some_and(|t| sha256_hex(&t) == sha256_hex(presented)))
 }
 
 // ---- addresses ------------------------------------------------------------------------------
@@ -219,8 +220,14 @@ mod tests {
         let second = regenerate_token(&s).unwrap();
         assert_ne!(second, first);
         assert_eq!(token(&s).unwrap(), second);
-        assert_ne!(token_hash(&first), token_hash(&second));
+        assert!(token_accepted(&s, &second).unwrap());
+        assert!(!token_accepted(&s, &first).unwrap());
         assert!(TOKEN.starts_with(crate::store::SECRET_PREFIX));
+    }
+
+    #[test]
+    fn no_token_is_accepted_before_one_exists() {
+        assert!(!token_accepted(&store(), "").unwrap());
     }
 
     #[test]

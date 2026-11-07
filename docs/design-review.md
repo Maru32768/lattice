@@ -929,7 +929,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 
 - **トークンは1つ。** PCが32バイトの乱数を作り、`secret.mobile_token`に保存する(`secret.`なのでバックアップに入らない)。AとBで共通で、作り直すと古いトークンは使えなくなる。
 - **渡し方はQRコード。** URLのfragment(`#t=...`)に入れるので、サーバーのログに残らない。ページはlocalStorageに保存してfragmentを消す。
-- **cookieを使わない。** すべて`Authorization: Bearer`なので、CSRFとDNS rebindingでトークンを使われることがない。Aは定数時間で比較する。Bは`auth.json`に置いたSHA-256と比較するので、アプリだけでトークンを作り直せる(Workerのデプロイは要らない。Workerは60秒キャッシュする)。
+- **cookieを使わない。** すべて`Authorization: Bearer`なので、CSRFとDNS rebindingでトークンを使われることがない。Aはリクエストごとに保存されたトークンを読み、ハッシュどうしを比べる。作り直すとアプリのサーバーにも動いている`lattice-cli serve`にもすぐに効く。Bは`auth.json`に置いたSHA-256と比較するので、アプリだけでトークンを作り直せる(Workerのデプロイは要らない。Workerは60秒キャッシュする)。
 
 ### A: PC内蔵サーバー
 

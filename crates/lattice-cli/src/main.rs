@@ -133,7 +133,7 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16
     } else {
         Ipv4Addr::LOCALHOST
     };
-    let server = lattice_server::start((ip, port).into(), lattice_server::router(store, &token)).await.map_err(|e| e.to_string())?;
+    let server = lattice_server::start((ip, port).into(), lattice_server::router(store)).await.map_err(|e| e.to_string())?;
     let reachable = if lan {
         mobile::lan_ip()
     } else {

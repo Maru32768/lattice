@@ -82,8 +82,9 @@ pub async fn apply(mobile_server: &MobileServer, store: &Arc<Store>) -> Result<(
         ServerMode::Local => Ipv4Addr::LOCALHOST,
         ServerMode::Lan => Ipv4Addr::UNSPECIFIED,
     };
-    let router = lattice_server::router(store.clone(), &mobile::token(store)?);
-    match lattice_server::start(SocketAddr::from((ip, s.port)), router).await {
+    // Made here so that the first request has a token to compare with, and the settings a QR code to show.
+    mobile::token(store)?;
+    match lattice_server::start(SocketAddr::from((ip, s.port)), lattice_server::router(store.clone())).await {
         Ok(server) => {
             log::info!("mobile server listening on {}", server.addr);
             running.server = Some(server);
@@ -133,7 +134,6 @@ pub async fn mobile_regenerate_token(mobile_server: State<'_, MobileServer>, app
         return Err(msg!("mobile.fellBack"));
     }
     mobile::regenerate_token(&app.store)?;
-    apply(&mobile_server, &app.store).await?;
     status(&mobile_server, &app, &loc).await
 }
 

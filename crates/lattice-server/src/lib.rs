@@ -46,34 +46,36 @@ pub const ASSETS: &[Asset] = &[
 /// or loading anything. `'unsafe-inline'` styles: React's `style` attribute (a list item's depth).
 pub const CSP: &str = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-#[derive(Clone)]
-struct Ctx {
-    store: Arc<Store>,
-    token_hash: Arc<str>,
-}
-
-pub fn router(store: Arc<Store>, token: &str) -> Router {
-    let ctx = Ctx { store, token_hash: mobile::token_hash(token).into() };
+pub fn router(store: Arc<Store>) -> Router {
     Router::new()
         .route("/api/ping", get(|headers: HeaderMap| async move { json_response(&headers, b"{}".to_vec()) }))
         .route("/api/index", get(index))
         .route("/api/articles/{id}", get(article))
-        .route_layer(middleware::from_fn_with_state(ctx.clone(), require_token))
+        .route_layer(middleware::from_fn_with_state(store.clone(), require_token))
         .fallback(page)
-        .with_state(ctx)
+        .with_state(store)
 }
 
-async fn require_token(State(ctx): State<Ctx>, request: Request, next: Next) -> Response {
-    let token = request.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
-    if token.is_some_and(|t| mobile::token_hash(t) == *ctx.token_hash) {
-        next.run(request).await
-    } else {
-        error(StatusCode::UNAUTHORIZED, "unauthorized")
+async fn require_token(State(store): State<Arc<Store>>, request: Request, next: Next) -> Response {
+    let token = request.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer ")).map(str::to_owned);
+    let Some(token) = token else {
+        return error(StatusCode::UNAUTHORIZED, "unauthorized");
+    };
+    match blocking(move || mobile::token_accepted(&store, &token)).await {
+        Ok(true) => next.run(request).await,
+        Ok(false) => error(StatusCode::UNAUTHORIZED, "unauthorized"),
+        Err(e) => internal_error(&e),
     }
 }
 
 fn error(status: StatusCode, message: &str) -> Response {
     (status, [(header::CONTENT_TYPE, "application/json")], json!({ "error": message }).to_string()).into_response()
+}
+
+/// The details stay in the log: a phone can do nothing with them.
+fn internal_error(e: &str) -> Response {
+    log::warn!("mobile server: {e}");
+    error(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
 }
 
 fn accepts_gzip(headers: &HeaderMap) -> bool {
@@ -111,21 +113,15 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Sen
     tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-/// The details stay in the log: a phone can do nothing with them.
-fn internal_error(e: &str) -> Response {
-    log::warn!("mobile server: {e}");
-    error(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
-}
-
-async fn index(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
-    match blocking(move || serde_json::to_vec(&mobile::index(&ctx.store)?).map_err(|e| e.to_string())).await {
+async fn index(State(store): State<Arc<Store>>, headers: HeaderMap) -> Response {
+    match blocking(move || serde_json::to_vec(&mobile::index(&store)?).map_err(|e| e.to_string())).await {
         Ok(body) => json_response(&headers, body),
         Err(e) => internal_error(&e),
     }
 }
 
-async fn article(State(ctx): State<Ctx>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
-    match blocking(move || mobile::article(&ctx.store, id)?.map(|doc| serde_json::to_vec(&doc).map_err(|e| e.to_string())).transpose()).await {
+async fn article(State(store): State<Arc<Store>>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
+    match blocking(move || mobile::article(&store, id)?.map(|doc| serde_json::to_vec(&doc).map_err(|e| e.to_string())).transpose()).await {
         Ok(Some(body)) => json_response(&headers, body),
         Ok(None) => error(StatusCode::NOT_FOUND, "no such article"),
         Err(e) => internal_error(&e),
@@ -194,11 +190,10 @@ mod tests {
     use axum::http::Request as HttpRequest;
     use tower::ServiceExt;
 
-    const TOKEN: &str = "test-token";
-
-    fn app() -> (Router, Arc<Store>) {
+    fn app() -> (Router, Arc<Store>, String) {
         let store = Arc::new(Store::open_in_memory().unwrap());
-        (router(store.clone(), TOKEN), store)
+        let token = mobile::token(&store).unwrap();
+        (router(store.clone()), store, token)
     }
 
     async fn get_with(app: &Router, path: &str, token: Option<&str>) -> Response {
@@ -215,31 +210,39 @@ mod tests {
 
     #[tokio::test]
     async fn the_api_needs_the_token() {
-        let (app, _) = app();
+        let (app, _, token) = app();
         for path in ["/api/ping", "/api/index", "/api/articles/1"] {
             assert_eq!(get_with(&app, path, None).await.status(), StatusCode::UNAUTHORIZED, "{path}");
             assert_eq!(get_with(&app, path, Some("wrong")).await.status(), StatusCode::UNAUTHORIZED, "{path}");
         }
-        assert_eq!(get_with(&app, "/api/ping", Some(TOKEN)).await.status(), StatusCode::OK);
+        assert_eq!(get_with(&app, "/api/ping", Some(&token)).await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn a_regenerated_token_takes_over_at_once_without_a_restart() {
+        let (app, store, old) = app();
+        let new = mobile::regenerate_token(&store).unwrap();
+        assert_eq!(get_with(&app, "/api/ping", Some(&old)).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(get_with(&app, "/api/ping", Some(&new)).await.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn serves_the_index_and_articles_as_json() {
-        let (app, store) = app();
+        let (app, store, token) = app();
         let (id, _) = store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
-        let index = get_with(&app, "/api/index", Some(TOKEN)).await;
+        let index = get_with(&app, "/api/index", Some(&token)).await;
         assert_eq!(index.headers()[header::CACHE_CONTROL], "no-store");
         let index: serde_json::Value = serde_json::from_slice(&body(index).await).unwrap();
         assert_eq!(index["articles"][0]["id"], id);
-        let doc: serde_json::Value = serde_json::from_slice(&body(get_with(&app, &format!("/api/articles/{id}"), Some(TOKEN)).await).await).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&body(get_with(&app, &format!("/api/articles/{id}"), Some(&token)).await).await).unwrap();
         assert_eq!(doc["article"]["original_url"], "https://example.com/a");
-        assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(TOKEN)).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(&token)).await.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]
     async fn compresses_for_a_client_that_accepts_it() {
-        let (app, _) = app();
-        let request = HttpRequest::get("/api/index").header(header::AUTHORIZATION, format!("Bearer {TOKEN}")).header(header::ACCEPT_ENCODING, "br, gzip");
+        let (app, _, token) = app();
+        let request = HttpRequest::get("/api/index").header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::ACCEPT_ENCODING, "br, gzip");
         let response = app.oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
         assert_eq!(body(response).await[..2], [0x1f, 0x8b]);
@@ -247,7 +250,7 @@ mod tests {
 
     #[tokio::test]
     async fn serves_the_page_without_the_token_and_guarded() {
-        let (app, _) = app();
+        let (app, _, _) = app();
         let page = get_with(&app, "/", None).await;
         assert_eq!(page.status(), StatusCode::OK);
         assert!(page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().contains("default-src 'self'"));
@@ -269,7 +272,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_stopped_server_frees_its_port_for_the_next() {
-        let (app, _) = app();
+        let (app, _, _) = app();
         let first = start("127.0.0.1:0".parse().unwrap(), app.clone()).await.unwrap();
         let addr = first.addr;
         first.stop().await;
