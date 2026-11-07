@@ -801,21 +801,4 @@ mod tests {
     fn the_secret_stays_out_of_backups() {
         assert!(SECRET_KEY.starts_with(crate::store::SECRET_PREFIX));
     }
-
-    /// Writes a snapshot to a folder, to look at the whole path by hand with the real Worker code:
-    /// MOBILE_SNAPSHOT_DB=<a copy of a library> MOBILE_SNAPSHOT_OUT=<folder> cargo test -p lattice-core write_a_snapshot -- --ignored
-    #[tokio::test]
-    #[ignore = "needs a library; see above"]
-    async fn write_a_snapshot_to_a_folder() {
-        let store = Arc::new(Store::open(std::env::var("MOBILE_SNAPSHOT_DB").unwrap().as_ref()).unwrap());
-        mobile::token(&store).unwrap();
-        let bucket = Memory::default();
-        publish(&store, &&bucket, &[], &|_| {}, always()).await.unwrap();
-        let out = std::path::PathBuf::from(std::env::var("MOBILE_SNAPSHOT_OUT").unwrap());
-        for (key, body) in bucket.objects.lock().unwrap().iter() {
-            let path = out.join(key);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(path, body).unwrap();
-        }
-    }
 }
