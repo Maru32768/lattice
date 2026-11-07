@@ -1,4 +1,4 @@
-import { memo, useEffect, useEffectEvent, useState } from "react";
+import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { ArticleDoc, ArticleRow, VocabCapture } from "../bindings";
 import { useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
@@ -8,6 +8,10 @@ import { captureIn, isWord } from "../vocab/vocab";
 import { type LocalOp, Unauthorized, loadArticle, savedLanguage, saveLanguage, submit, withOps } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
+
+/** How long the word's button outlives its selection: on a phone, tapping the button may collapse the selection first. */
+const KEEP_WORD_MS = 500;
+const WORD_TAKEN_MS = 3000;
 
 const openLink = (href: string) => {
   if (/^https?:/i.test(href)) {
@@ -90,6 +94,7 @@ export function ArticlePage({
   /** The word selected in one prose block, ready to send. */
   const [word, setWord] = useState<VocabCapture | null>(null);
   const [wordTaken, setWordTaken] = useState(false);
+  const timers = useRef({ word: 0, taken: 0 });
 
   const load = async () => {
     setDoc("loading");
@@ -136,14 +141,14 @@ export function ArticlePage({
   );
 
   const onSelectionChange = useEffectEvent(() => {
-    setWordTaken(false);
+    clearTimeout(timers.current.word);
     if (typeof doc === "string" || doc == null || !writable) {
       return;
     }
     const sel = window.getSelection();
     const selected = sel?.toString() ?? "";
     if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(selected)) {
-      setWord(null);
+      timers.current.word = window.setTimeout(() => setWord(null), KEEP_WORD_MS);
       return;
     }
     const range = sel.getRangeAt(0);
@@ -177,7 +182,12 @@ export function ArticlePage({
   });
   useEffect(() => {
     document.addEventListener("selectionchange", onSelectionChange);
-    return () => document.removeEventListener("selectionchange", onSelectionChange);
+    const running = timers.current;
+    return () => {
+      document.removeEventListener("selectionchange", onSelectionChange);
+      clearTimeout(running.word);
+      clearTimeout(running.taken);
+    };
   }, []);
 
   if (typeof doc === "string" || doc == null) {
@@ -271,10 +281,16 @@ export function ArticlePage({
         <div className="m-word">
           <button
             className="btn pri"
+            onPointerDown={() => clearTimeout(timers.current.word)}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => {
               submit({ kind: "vocab_add", capture: word });
-              setWordTaken(true);
               setWord(null);
+              // Or the selection would offer the same word again.
+              window.getSelection()?.removeAllRanges();
+              setWordTaken(true);
+              clearTimeout(timers.current.taken);
+              timers.current.taken = window.setTimeout(() => setWordTaken(false), WORD_TAKEN_MS);
             }}
           >
             {t("vocab.save")}: {word.surface}

@@ -597,6 +597,7 @@ test("a selected word can be saved with its sentence and source", async ({ page 
   });
   await page.getByRole("button", { name: "単語を登録: Second" }).click();
   await expect(page.getByRole("status")).toHaveText("単語を受け付けました");
+  await expect(page.getByRole("button", { name: /単語を登録/ }), "the selection does not offer it again").toHaveCount(0);
   await expect
     .poll(() => sentOps(seen).at(-1)?.op)
     .toEqual({
@@ -610,5 +611,41 @@ test("Japanese or a long selection offers no word", async ({ page }) => {
   await page.getByRole("link", { name: /First article/ }).click();
   await page.evaluate(() => getSelection()!.selectAllChildren([...document.querySelectorAll(".sent")].find((e) => e.textContent === "一文目。")!));
   await page.waitForTimeout(100);
+  await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
+});
+
+test("a tap that collapses the selection first still saves the word", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "原文" }).click();
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "Second".length);
+    getSelection()!.addRange(range);
+  });
+  const button = page.getByRole("button", { name: "単語を登録: Second" });
+  await button.waitFor();
+  await page.evaluate(() => getSelection()!.removeAllRanges());
+  await button.click();
+  await expect.poll(() => sentOps(seen).at(-1)?.op.kind).toBe("vocab_add");
+  await page.waitForTimeout(600);
+  await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
+});
+
+test("a selection given up on takes its button with it", async ({ page }) => {
+  await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "原文" }).click();
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "Second".length);
+    getSelection()!.addRange(range);
+  });
+  await page.getByRole("button", { name: "単語を登録: Second" }).waitFor();
+  await page.evaluate(() => getSelection()!.removeAllRanges());
   await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
 });
