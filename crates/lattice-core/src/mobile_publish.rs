@@ -109,7 +109,8 @@ pub fn worker_origin(store: &Store) -> Result<Option<String>, String> {
     Ok(get(store, WORKER_URL)?.and_then(|u| url::Url::parse(&u).ok()).map(|u| u.origin().ascii_serialization()))
 }
 
-pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
+/// What `save` would refuse, without saving anything. Returns the Worker's address as stored.
+fn check(store: &Store, s: &SnapshotSettings) -> Result<String, String> {
     let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
     let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
     r2::check_credentials(account_id, bucket, key_id, secret)?;
@@ -118,6 +119,14 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     if s.enabled && (account_id.is_empty() || bucket.is_empty() || key_id.is_empty() || !has_secret || worker_url.is_empty()) {
         return Err(msg!("mobile.snapshotIncomplete"));
     }
+    Ok(worker_url)
+}
+
+/// Without leaving the bucket the settings point at now: the app saves through `change`.
+pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
+    let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
+    let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    let worker_url = check(store, s)?;
     // A different bucket holds nothing yet: no QR code until a pass has filled it.
     if get(store, ACCOUNT_ID)?.unwrap_or_default() != account_id || get(store, BUCKET)?.unwrap_or_default() != bucket {
         set(store, LAST_PUBLISH, None)?;
@@ -434,7 +443,13 @@ async fn change_with<B: Bucket>(
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
 ) -> Result<(), String> {
     let s = store.clone();
-    if let Some((current, _)) = blocking(move || creds(&s)).await?
+    let (current, settings) = blocking(move || {
+        // Refused settings must not cut the phone off: they change nothing.
+        check(&s, &settings)?;
+        Ok((creds(&s)?, settings))
+    })
+    .await?;
+    if let Some((current, _)) = current
         && leaves(&current, &settings)
     {
         let scope = scope_of(&current);
@@ -836,6 +851,15 @@ mod tests {
             assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "{why}");
             assert!(store.article_row(id).unwrap().unwrap().favorite, "{why}: what waited in its inbox applied first");
         }
+    }
+
+    #[tokio::test]
+    async fn settings_that_cannot_be_saved_leave_nothing() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        assert!(change_to(&store, settings(true, "Not_A_Bucket", WORKER), &a).await.is_err());
+        assert_eq!(a.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "the phone keeps reading");
     }
 
     #[tokio::test]
