@@ -3,13 +3,12 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 
-use lattice_core::mobile::{self, MobileSettings, ServerMode};
+use lattice_core::mobile::{self, Effects, MobileSettings, ServerMode};
 use lattice_core::msg;
-use lattice_core::store::Store;
 use lattice_server::Server;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Mutex;
 use ts_rs::TS;
 
@@ -69,8 +68,26 @@ fn base_url(s: &MobileSettings) -> Option<String> {
     }
 }
 
+/// The app sees what the phone did as it sees what a job did.
+fn on_applied(handle: &AppHandle, effects: &Effects) {
+    let app = handle.state::<App>();
+    if let Some(id) = effects.article {
+        let _ = handle.emit("article-changed", id);
+    }
+    if effects.vocab {
+        app.wake_llm.iter().for_each(|w| w.notify_one());
+        let _ = handle.emit("vocab-changed", ());
+    }
+    if effects.fetch {
+        app.wake_net.iter().for_each(|w| w.notify_one());
+    }
+}
+
 /// Ends the running server, if any, and starts what the settings ask for.
-pub async fn apply(mobile_server: &MobileServer, store: &Arc<Store>) -> Result<(), String> {
+pub async fn apply(handle: &AppHandle) -> Result<(), String> {
+    let mobile_server = handle.state::<MobileServer>();
+    let app = handle.state::<App>();
+    let store = &app.store;
     let mut running = mobile_server.0.lock().await;
     if let Some(server) = running.server.take() {
         server.stop().await;
@@ -84,7 +101,9 @@ pub async fn apply(mobile_server: &MobileServer, store: &Arc<Store>) -> Result<(
     };
     // Made here so that the first request has a token to compare with, and the settings a QR code to show.
     mobile::token(store)?;
-    match lattice_server::start(SocketAddr::from((ip, s.port)), lattice_server::router(store.clone())).await {
+    let effects_handle = handle.clone();
+    let tell_app: lattice_server::OnApplied = Arc::new(move |effects| on_applied(&effects_handle, effects));
+    match lattice_server::start(SocketAddr::from((ip, s.port)), lattice_server::router(store.clone(), Some(tell_app))).await {
         Ok(server) => {
             log::info!("mobile server listening on {}", server.addr);
             running.server = Some(server);
@@ -117,6 +136,7 @@ pub async fn mobile_status(mobile_server: State<'_, MobileServer>, app: State<'_
 #[tauri::command]
 pub async fn mobile_save(
     settings: MobileSettings,
+    handle: AppHandle,
     mobile_server: State<'_, MobileServer>,
     app: State<'_, App>,
     loc: State<'_, Location>,
@@ -125,7 +145,7 @@ pub async fn mobile_save(
         return Err(msg!("mobile.fellBack"));
     }
     mobile::save_settings(&app.store, &settings)?;
-    apply(&mobile_server, &app.store).await?;
+    apply(&handle).await?;
     status(&mobile_server, &app, &loc).await
 }
 

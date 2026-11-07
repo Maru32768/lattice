@@ -89,6 +89,13 @@ function Inlines({ inlines, ts }: { inlines: Inline[]; ts?: string[] }) {
     </>
   );
 }
+/** The block's text as rendered, sentence by sentence. */
+export function shownText(text: string, pieces: Piece[], shown: (i: number) => boolean): string {
+  return pieces
+    .map((p, i) => (dropsGap(text, pieces, i, shown) ? "" : p.translation != null && shown(i) ? translationText(p.translation) : text.slice(p.start, p.end)))
+    .join("");
+}
+
 /** A prose block sentence by sentence, each in the language `shown` picks; `sentence` gives a translated sentence's span its handlers. */
 export function Sentences({
   block,

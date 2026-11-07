@@ -9,4 +9,8 @@ generated_at: number,
 /**
  * The PC's display language; the page follows it.
  */
-ui_language: string | null, articles: Array<ArticleRow>, };
+ui_language: string | null, articles: Array<ArticleRow>, 
+/**
+ * The operations this list already reflects: the page stops showing them as its own.
+ */
+applied_ops: Array<string>, };

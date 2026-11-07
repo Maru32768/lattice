@@ -2,13 +2,18 @@
 //! (`lattice-server`) and from the snapshot in R2, so the page does not care which it reads.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::sync::Mutex;
 
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::ingest;
 use crate::msg;
 use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, sha256_hex};
 use crate::translate;
+use crate::url_norm::normalize;
+use crate::vocab::{self, Capture};
 
 /// The one credential of both paths. `secret.`, so it stays out of backups.
 const TOKEN: &str = "secret.mobile_token";
@@ -35,6 +40,8 @@ pub struct MobileIndex {
     /// The PC's display language; the page follows it.
     pub ui_language: Option<String>,
     pub articles: Vec<ArticleRow>,
+    /// The operations this list already reflects: the page stops showing them as its own.
+    pub applied_ops: Vec<String>,
 }
 
 /// An article for reading: `ArticleView` without the job list and the memo, which the page does not show.
@@ -53,6 +60,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
         generated_at: unix_now(),
         ui_language: store.setting(translate::UI_LANGUAGE_SETTING).map_err(err)?,
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
+        applied_ops: applied_ops(store)?,
     })
 }
 
@@ -66,6 +74,126 @@ pub fn gzip(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
     enc.write_all(bytes)?;
     enc.finish()
+}
+
+// ---- operations -----------------------------------------------------------------------------
+
+/// Something done on the phone, sent to the PC directly or left in the snapshot's inbox. The id is
+/// the phone's own, so whichever way it arrives and however often, it applies once.
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export)]
+pub struct MobileOp {
+    pub id: String,
+    pub op: OpKind,
+}
+
+#[derive(Debug, Clone, Deserialize, TS)]
+#[ts(export, rename = "MobileOpKind")]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OpKind {
+    VocabAdd { capture: Capture },
+    SetRead { article_id: i64, read: bool },
+    SetFavorite { article_id: i64, favorite: bool },
+    SaveUrl { url: String },
+}
+
+/// What the app has to tell the rest of itself after an operation. Runners find their jobs by themselves
+/// within 30 seconds (`IDLE_POLL`), so waking them only makes it sooner.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Effects {
+    pub article: Option<i64>,
+    pub vocab: bool,
+    pub fetch: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Applied(Effects),
+    /// Sent before: nothing happened this time.
+    AlreadyApplied,
+    /// It can never apply. The coded message says why; sending it again would not help.
+    Rejected(String),
+}
+
+/// `id` becomes an object name in the inbox and a key here, and comes from the network.
+pub fn valid_op_id(id: &str) -> bool {
+    (1..=64).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
+/// Stored ids older than this are forgotten: the phone gives up on an operation well before.
+const KEEP_APPLIED_SECS: i64 = 90 * 24 * 60 * 60;
+/// As many as the list carries. Far more than a phone has outstanding at once.
+const APPLIED_IN_INDEX: i64 = 1000;
+/// `MobileOp::VocabAdd`'s source address is shown as a link.
+const MAX_SOURCE_URL: usize = 2048;
+
+/// Two ways in (the server and the inbox) may hold the same operation at once.
+static APPLYING: Mutex<()> = Mutex::new(());
+
+/// Applies an operation unless it has been before. The operation is recorded after it applies, so a crash in
+/// between applies it again, which changes nothing: each kind only sets a value or adds what is not there yet.
+/// The record is for later: an operation sent again must not undo what the reader has changed on the PC since.
+pub fn apply(store: &Store, op: &MobileOp) -> Result<Outcome, String> {
+    if !valid_op_id(&op.id) {
+        return Ok(Outcome::Rejected(msg!("mobile.badOp")));
+    }
+    let _one_at_a_time = APPLYING.lock().unwrap_or_else(|e| e.into_inner());
+    let seen = store.conn().query_row("SELECT 1 FROM mobile_ops_applied WHERE id = ?1", [&op.id], |_| Ok(())).optional().map_err(err)?.is_some();
+    if seen {
+        return Ok(Outcome::AlreadyApplied);
+    }
+    let effects = match &op.op {
+        OpKind::VocabAdd { capture } => {
+            if let Err(message) = vocab::validate(&capture.surface, &capture.sentence) {
+                return Ok(Outcome::Rejected(message));
+            }
+            vocab::capture(store, &stored_capture(store, capture)?)?;
+            Effects { vocab: true, ..Effects::default() }
+        }
+        OpKind::SetRead { article_id, read } => {
+            store.set_read_status(*article_id, *read).map_err(err)?;
+            Effects { article: Some(*article_id), ..Effects::default() }
+        }
+        OpKind::SetFavorite { article_id, favorite } => {
+            store.set_favorite(*article_id, *favorite).map_err(err)?;
+            Effects { article: Some(*article_id), ..Effects::default() }
+        }
+        OpKind::SaveUrl { url } => {
+            let saved = ingest::enqueue_urls(store, std::slice::from_ref(url))?;
+            if saved.invalid > 0 {
+                return Ok(Outcome::Rejected(msg!("mobile.badUrl")));
+            }
+            Effects { article: saved.ids.first().copied(), fetch: true, ..Effects::default() }
+        }
+    };
+    let now = unix_now();
+    let conn = store.conn();
+    conn.execute("INSERT INTO mobile_ops_applied (id, applied_at) VALUES (?1, ?2)", params![op.id, now]).map_err(err)?;
+    conn.execute("DELETE FROM mobile_ops_applied WHERE applied_at < ?1", [now - KEEP_APPLIED_SECS]).map_err(err)?;
+    Ok(Outcome::Applied(effects))
+}
+
+/// The phone's word for where a capture came from, kept only as far as it still holds: the
+/// article or its blocks may have gone since (re-extracted, deleted), and the address may be anything.
+fn stored_capture(store: &Store, c: &Capture) -> Result<Capture, String> {
+    let exists = |sql: &str, values: &[&dyn rusqlite::ToSql]| store.conn().query_row(sql, values, |_| Ok(())).optional().map(|r| r.is_some()).map_err(err);
+    let article_id = match c.article_id {
+        Some(id) if exists("SELECT 1 FROM articles WHERE id = ?1", &[&id])? => Some(id),
+        _ => None,
+    };
+    let block_id = match (c.block_id, article_id) {
+        (Some(block), Some(article)) if exists("SELECT 1 FROM blocks WHERE id = ?1 AND article_id = ?2", &[&block, &article])? => Some(block),
+        _ => None,
+    };
+    let url = c.url.clone().filter(|u| u.len() <= MAX_SOURCE_URL && normalize(u).is_ok());
+    Ok(Capture { surface: c.surface.clone(), sentence: c.sentence.clone(), article_id, block_id, url })
+}
+
+fn applied_ops(store: &Store) -> Result<Vec<String>, String> {
+    let conn = store.conn();
+    let mut stmt = conn.prepare("SELECT id FROM mobile_ops_applied ORDER BY applied_at DESC LIMIT ?1").map_err(err)?;
+    let ids = stmt.query_map([APPLIED_IN_INDEX], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<Vec<String>>>().map_err(err)?;
+    Ok(ids)
 }
 
 // ---- settings -------------------------------------------------------------------------------
@@ -262,6 +390,118 @@ mod tests {
         assert!(article(&s, id + 1).unwrap().is_none());
         let json = serde_json::to_value(&doc).unwrap();
         assert!(json.get("jobs").is_none() && json.get("note").is_none());
+    }
+
+    fn op(id: &str, op: OpKind) -> MobileOp {
+        MobileOp { id: id.into(), op }
+    }
+
+    fn saved_article(s: &Store) -> i64 {
+        s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap().0
+    }
+
+    fn capture(article_id: Option<i64>, block_id: Option<i64>, url: Option<&str>) -> OpKind {
+        OpKind::VocabAdd { capture: Capture { surface: "word".into(), sentence: "A word here.".into(), article_id, block_id, url: url.map(Into::into) } }
+    }
+
+    #[test]
+    fn operations_set_what_they_say() {
+        let s = store();
+        let id = saved_article(&s);
+        let row = || s.article_row(id).unwrap().unwrap();
+        assert_eq!(
+            apply(&s, &op("a", OpKind::SetRead { article_id: id, read: true })).unwrap(),
+            Outcome::Applied(Effects { article: Some(id), ..Effects::default() })
+        );
+        assert_eq!(row().read_status, "read");
+        apply(&s, &op("b", OpKind::SetFavorite { article_id: id, favorite: true })).unwrap();
+        assert!(row().favorite);
+        assert_eq!(apply(&s, &op("c", capture(Some(id), None, None))).unwrap(), Outcome::Applied(Effects { vocab: true, ..Effects::default() }));
+        assert_eq!(vocab::list(&s).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_operation_sent_again_does_not_undo_what_changed_since() {
+        let s = store();
+        let id = saved_article(&s);
+        let read = op("same-id", OpKind::SetRead { article_id: id, read: true });
+        apply(&s, &read).unwrap();
+        s.set_read_status(id, false).unwrap();
+        assert_eq!(apply(&s, &read).unwrap(), Outcome::AlreadyApplied);
+        assert_eq!(s.article_row(id).unwrap().unwrap().read_status, "unread");
+    }
+
+    #[test]
+    fn the_index_says_which_operations_it_reflects() {
+        let s = store();
+        let id = saved_article(&s);
+        assert!(index(&s).unwrap().applied_ops.is_empty());
+        apply(&s, &op("sent-1", OpKind::SetRead { article_id: id, read: true })).unwrap();
+        assert_eq!(index(&s).unwrap().applied_ops, ["sent-1"]);
+    }
+
+    #[test]
+    fn saving_a_url_queues_a_fetch_once() {
+        let s = store();
+        let url = "https://example.com/new";
+        let Outcome::Applied(first) = apply(&s, &op("a", OpKind::SaveUrl { url: url.into() })).unwrap() else {
+            panic!("applied");
+        };
+        assert!(first.fetch && first.article.is_some());
+        apply(&s, &op("b", OpKind::SaveUrl { url: url.into() })).unwrap();
+        assert_eq!(s.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn what_can_never_apply_is_rejected_and_not_recorded() {
+        let s = store();
+        let rejected = |o: Outcome| matches!(o, Outcome::Rejected(_));
+        assert!(rejected(apply(&s, &op("a", OpKind::SaveUrl { url: "javascript:alert(1)".into() })).unwrap()));
+        let not_in_sentence = OpKind::VocabAdd { capture: Capture { surface: "word".into(), sentence: "Nothing of the kind.".into(), ..Capture::default() } };
+        assert!(rejected(apply(&s, &op("b", not_in_sentence)).unwrap()));
+        for id in ["", "../inbox", "a b", "a/b", &"x".repeat(65)] {
+            assert!(rejected(apply(&s, &op(id, OpKind::SetRead { article_id: 1, read: true })).unwrap()), "{id}");
+        }
+        assert!(index(&s).unwrap().applied_ops.is_empty());
+    }
+
+    #[test]
+    fn a_word_keeps_what_still_holds_of_its_source() {
+        let s = store();
+        let id = saved_article(&s);
+        let source = |o: OpKind| {
+            let OpKind::VocabAdd { capture } = o else {
+                panic!("a capture")
+            };
+            let c = stored_capture(&s, &capture).unwrap();
+            (c.article_id, c.block_id, c.url)
+        };
+        assert_eq!(
+            source(capture(Some(id), Some(999), Some("https://example.com/a"))),
+            (Some(id), None, Some("https://example.com/a".into())),
+            "the block is gone"
+        );
+        assert_eq!(source(capture(Some(id + 1), Some(999), None)), (None, None, None), "the article is gone");
+        assert_eq!(source(capture(None, None, Some("javascript:alert(1)"))), (None, None, None), "not an address to link to");
+        apply(&s, &op("gone", capture(Some(id + 1), Some(999), None))).unwrap();
+    }
+
+    #[test]
+    fn old_records_are_forgotten() {
+        let s = store();
+        s.conn().execute("INSERT INTO mobile_ops_applied (id, applied_at) VALUES ('old', 0)", []).unwrap();
+        let id = saved_article(&s);
+        apply(&s, &op("new", OpKind::SetRead { article_id: id, read: true })).unwrap();
+        assert_eq!(index(&s).unwrap().applied_ops, ["new"]);
+    }
+
+    #[test]
+    fn operations_read_as_the_page_writes_them() {
+        let read: MobileOp = serde_json::from_str(r#"{"id":"a","op":{"kind":"set_read","article_id":1,"read":true}}"#).unwrap();
+        assert!(matches!(read.op, OpKind::SetRead { article_id: 1, read: true }));
+        let word: MobileOp = serde_json::from_str(r#"{"id":"a","op":{"kind":"vocab_add","capture":{"surface":"w","sentence":"w"}}}"#).unwrap();
+        assert!(matches!(word.op, OpKind::VocabAdd { .. }));
+        assert!(serde_json::from_str::<MobileOp>(r#"{"id":"a","op":{"kind":"delete_everything"}}"#).is_err());
     }
 
     #[test]

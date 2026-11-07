@@ -40,6 +40,8 @@ export type * from "./LocalBackup";
 export type * from "./LocationKind";
 export type * from "./MatchSource";
 export type * from "./MobileIndex";
+export type * from "./MobileOp";
+export type * from "./MobileOpKind";
 export type * from "./MobileQr";
 export type * from "./MobileServerMode";
 export type * from "./MobileSettings";

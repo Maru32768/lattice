@@ -2,7 +2,7 @@ import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } fr
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type VocabCapture } from "../api";
 import { translatedShare } from "../overlay/logic";
-import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, dropsGap, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
+import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { ActionKey, Dif, Icon, Kbd, useKeyTitle } from "../ui/Icon";
@@ -16,7 +16,7 @@ import { useLatest } from "../lib/useLatest";
 import { captureIn, isWord } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
-import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, translationText } from "./BlockView";
+import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "./BlockView";
 
 export { WordMarksContext } from "./BlockView";
 
@@ -819,18 +819,6 @@ export function Reader({
   const shows = (id: number, i: number) => selected.has(`${id}:${i}`) !== flipped.has(`${id}:${i}`);
   /** Whether any sentence of the block shows its translation (its marker, and what flipping the block does). */
   const blockShows = (b: Block) => pieces.get(b.id)!.some((p, i) => p.translation != null && shows(b.id, i));
-  /** The block's text as rendered, sentence by sentence. */
-  const shownText = (b: Block) =>
-    pieces
-      .get(b.id)!
-      .map((p, i, ps) =>
-        dropsGap(b.text, ps, i, (j) => shows(b.id, j))
-          ? ""
-          : p.translation != null && shows(b.id, i)
-            ? translationText(p.translation)
-            : b.text.slice(p.start, p.end),
-      )
-      .join("");
 
   /** The word selected in one prose block of this article, as shown (original or translation), and where to put the button. */
   function selectionCapture(): { capture: VocabCapture; x: number; y: number } | null {
@@ -848,7 +836,11 @@ export function Reader({
     const before = document.createRange();
     before.setStart(el, 0);
     before.setEnd(range.startContainer, range.startOffset);
-    const c = captureIn(shownText(block), sel.toString(), before.toString().length);
+    const c = captureIn(
+      shownText(block.text, pieces.get(block.id)!, (j) => shows(block.id, j)),
+      sel.toString(),
+      before.toString().length,
+    );
     if (!c) {
       return null;
     }

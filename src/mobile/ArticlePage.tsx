@@ -1,10 +1,11 @@
 import { memo, useEffect, useEffectEvent, useState } from "react";
-import type { ArticleDoc } from "../bindings";
+import type { ArticleDoc, VocabCapture } from "../bindings";
 import { useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
-import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers } from "../reader/BlockView";
-import { type LanguageMode, type Piece, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
-import { Unauthorized, loadArticle, savedLanguage, saveLanguage } from "./client";
+import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
+import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
+import { captureIn, isWord } from "../vocab/vocab";
+import { type LocalOp, Unauthorized, loadArticle, localOps, savedLanguage, saveLanguage, submit, withOps } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
@@ -29,7 +30,7 @@ const MobileBlock = memo(function MobileBlock({
   onFlip: (block: number, piece: number) => void;
 }) {
   return (
-    <div className={`blk ${block.kind}`}>
+    <div className={`blk ${block.kind}`} data-block={block.id}>
       <BlockView
         block={block}
         marker={marker}
@@ -58,18 +59,30 @@ function flipUnlessSelecting(flip: () => void) {
   }
 }
 
-export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.MouseEvent) => void }) {
+async function fetchDoc(id: number): Promise<ArticleDoc | null | "failed" | "no-token"> {
+  try {
+    return await loadArticle(id);
+  } catch (e) {
+    return e instanceof Unauthorized ? "no-token" : "failed";
+  }
+}
+
+export function ArticlePage({ id, ops, onBack }: { id: number; ops: LocalOp[]; onBack: (e: React.MouseEvent) => void }) {
   const t = useT();
   const [doc, setDoc] = useState<ArticleDoc | null | "loading" | "failed" | "no-token">("loading");
   const [{ mode, percent }, setLanguage] = useState(savedLanguage);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  /** The word selected in one prose block, ready to send. */
+  const [word, setWord] = useState<VocabCapture | null>(null);
+  const [wordSent, setWordSent] = useState(false);
 
   const load = async () => {
     setDoc("loading");
-    try {
-      setDoc(await loadArticle(id));
-    } catch (e) {
-      setDoc(e instanceof Unauthorized ? "no-token" : "failed");
+    const loaded = await fetchDoc(id);
+    setDoc(loaded);
+    // Opening an article reads it, as on the PC. The operations as they are now: this may be the second load of the page.
+    if (typeof loaded === "object" && loaded && withOps(loaded.article, localOps()).read_status === "unread") {
+      submit({ kind: "set_read", article_id: id, read: true });
     }
   };
   // App remounts this page per article.
@@ -112,6 +125,51 @@ export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.Mous
     </header>
   );
 
+  const onSelectionChange = useEffectEvent(() => {
+    setWordSent(false);
+    if (typeof doc === "string" || doc == null) {
+      return;
+    }
+    const sel = window.getSelection();
+    const selected = sel?.toString() ?? "";
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !isWord(selected)) {
+      setWord(null);
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = (node instanceof Element ? node : node.parentElement)?.closest<HTMLElement>("[data-block]");
+    const block = el && doc.blocks.find((b) => String(b.id) === el.dataset.block);
+    if (!el || !block || !TRANSLATABLE.has(block.kind)) {
+      setWord(null);
+      return;
+    }
+    const ps = blockPieces(block);
+    const language = translatedSentences(
+      [{ id: block.id, text: block.text, pieces: ps }],
+      mode,
+      translatedShare(percent, doc.target_language, t.lang),
+      doc.article.original_url,
+    );
+    const shown = (i: number) => language.has(`${block.id}:${i}`) !== flipped.has(`${block.id}:${i}`);
+    const before = document.createRange();
+    before.setStart(el, 0);
+    before.setEnd(range.startContainer, range.startOffset);
+    const capture = captureIn(shownText(block.text, ps, shown), selected, before.toString().length);
+    setWord(
+      capture && {
+        ...capture,
+        article_id: doc.article.id,
+        block_id: block.id,
+        url: /^https?:/i.test(doc.article.original_url) ? doc.article.original_url : null,
+      },
+    );
+  });
+  useEffect(() => {
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, []);
+
   if (typeof doc === "string" || doc == null) {
     return (
       <>
@@ -133,7 +191,8 @@ export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.Mous
     );
   }
 
-  const { article: a, blocks } = doc;
+  const { blocks } = doc;
+  const a = withOps(doc.article, ops);
   const markers = listMarkers(blocks);
   const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
   const selected = translatedSentences(
@@ -171,6 +230,14 @@ export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.Mous
             </a>
           )}
         </p>
+        <div className="m-actions">
+          <button className="btn" aria-pressed={a.favorite} onClick={() => submit({ kind: "set_favorite", article_id: a.id, favorite: !a.favorite })}>
+            {a.favorite ? t("mobile.unfavorite") : t("mobile.favorite")}
+          </button>
+          <button className="btn" onClick={() => submit({ kind: "set_read", article_id: a.id, read: a.read_status !== "read" })}>
+            {a.read_status === "read" ? t("mobile.markUnread") : t("mobile.markRead")}
+          </button>
+        </div>
         {doc.summary && (
           <details className="m-summary">
             <summary>{t("mobile.summary")}</summary>
@@ -187,6 +254,25 @@ export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.Mous
           ))}
         </OpenLink.Provider>
       </main>
+      {word && (
+        <div className="m-word">
+          <button
+            className="btn pri"
+            onClick={() => {
+              submit({ kind: "vocab_add", capture: word });
+              setWordSent(true);
+              setWord(null);
+            }}
+          >
+            {t("vocab.save")}: {word.surface}
+          </button>
+        </div>
+      )}
+      {wordSent && !word && (
+        <div className="m-word" role="status">
+          {t("mobile.sent")}
+        </div>
+      )}
     </>
   );
 }

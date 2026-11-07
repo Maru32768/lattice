@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { MobileIndex } from "../bindings";
+import type { ArticleRow } from "../bindings";
 import { useT, type PlainKey } from "../i18n";
 import { relTime } from "../lib/time";
+import { submit } from "./client";
 import { PAGE, type ListFilter, type ListView, visibleArticles } from "./list";
 
 const FILTERS: { id: ListFilter; label: PlainKey }[] = [
@@ -11,14 +12,17 @@ const FILTERS: { id: ListFilter; label: PlainKey }[] = [
 ];
 
 export function ListPage({
-  index,
+  articles,
+  unsent,
   view,
   refreshFailed,
   onView,
   onOpen,
   onRefresh,
 }: {
-  index: MobileIndex;
+  /** The list as this phone's operations will leave it. */
+  articles: ArticleRow[];
+  unsent: number;
   view: ListView;
   refreshFailed: boolean;
   onView: (v: ListView) => void;
@@ -27,7 +31,14 @@ export function ListPage({
 }) {
   const t = useT();
   const [refreshing, setRefreshing] = useState(false);
-  const rows = visibleArticles(index.articles, view);
+  const rows = visibleArticles(articles, view);
+  const [url, setUrl] = useState("");
+  const save = () => {
+    if (url.trim()) {
+      submit({ kind: "save_url", url: url.trim() });
+      setUrl("");
+    }
+  };
   /** A different list starts at its top. */
   const change = (v: ListView) => {
     onView(v);
@@ -71,6 +82,20 @@ export function ListPage({
           placeholder={t("mobile.searchTitles")}
           aria-label={t("mobile.searchTitles")}
         />
+        <div className="m-save">
+          <input
+            className="input"
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={t("mobile.urlPlaceholder")}
+            aria-label={t("mobile.saveUrl")}
+          />
+          <button className="btn" onClick={save} disabled={!url.trim()}>
+            {t("mobile.saveUrl")}
+          </button>
+        </div>
+        {unsent > 0 && <p className="m-note">{t("mobile.pending", { n: unsent })}</p>}
         {rows.length === 0 && <p className="m-none">{t("mobile.noArticles")}</p>}
         <ul>
           {rows.slice(0, view.shown).map((a) => (

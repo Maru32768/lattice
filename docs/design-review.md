@@ -895,7 +895,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 
 ## 32. スマホからの閲覧(G47)
 
-M1(Aの読み取り)まで実装した。M2以降はまだ設計だけ。スマホのブラウザで記事一覧と原文・混在・訳文を読み、単語の登録・既読・お気に入り・URLの保存を送れるようにする。経路は2つあり、それぞれ設定で有効にする(どちらも既定はオフ)。
+M2(Aの読み取りと操作)まで実装した。M3以降はまだ設計だけ。スマホのブラウザで記事一覧と原文・混在・訳文を読み、単語の登録・既読・お気に入り・URLの保存を送れるようにする。経路は2つあり、それぞれ設定で有効にする(どちらも既定はオフ)。
 
 | 対象 | ファイル(予定) |
 |---|---|
@@ -920,7 +920,7 @@ M1(Aの読み取り)まで実装した。M2以降はまだ設計だけ。スマ�
 - **文書の型。** `MobileIndex { generated_at, ui_language, articles: Vec<ArticleRow> }`と`ArticleDoc { article, target_language, blocks: Vec<StoredBlock>, summary }`。既存の型をそのまま使うので、ts-rsの型定義も増えない。`ArticleView`の`jobs`と`note`は閲覧に使わないので含めない。Tauriの`get_article`(`article_target`・`Store::get_article`・`mark_stale`)は`mobile::article`と共通の関数にまとめる。
 - **サービス層は作らない。** `src-tauri/src/lib.rs`のcommandの多くはすでに`lattice-core`を1行か2行で呼ぶだけで、141個を移す必要はなかった。スマホが使う数個の入口だけを`mobile.rs`に置く。
 - **混在は`src/reader/mixed.ts`を共有する。** `blockPieces`と`translatedSentences`は純粋な関数で、選ぶ文は記事のアドレスと本文で決まるので、PCと同じ文が訳文になる。blockの描画は`Reader.tsx`から`src/reader/BlockView.tsx`に移して共有する(IPCに依存する画像だけ呼び出し側が渡す)。スマホの画面は`Reader.tsx`のものを使わない。
-- **操作は1つの型で、適用は1か所。** `MobileOp { id, at, kind }`で、`id`はスマホが作るUUID、`kind`は`vocab.add`・`article.setRead`・`article.setFavorite`・`url.save`の4種類。A・B・再送のどの経路でも`mobile::apply`を通る。
+- **操作は1つの型で、適用は1か所。** `MobileOp { id, op }`で、`id`はスマホが作る乱数(平文のHTTPでも使えるよう`crypto.randomUUID`は使わない)、`op`は`vocab_add`・`set_read`・`set_favorite`・`save_url`の4種類。A・B・再送のどの経路でも`mobile::apply`を通る。
 - **二重適用は`id`で防ぐ。** `mobile_ops_applied(id, applied_at)`に適用済みの`id`を残し(90日で消す)、同じ`id`は何もせず成功を返す。順序は「適用、記録、inboxから削除」。記録の前に落ちると再適用になるが、同じ文の単語登録は増えず(§22)、既読とお気に入りは同じ値の上書きで、`enqueue_urls`も重複を積まないので結果は変わらない。記録が要るのは、応答を失って後から再送された操作が、その間にPCで変えた状態を戻さないようにするため。
 - **入力は信頼しない。** 単語は`vocab::capture`の検証を通し、URLはbulk importと同じ`enqueue_urls`に渡す。消えた記事を指す操作は、単語ならURLだけを残し、既読とお気に入りなら何もしない。`apply`はjobを積むだけで、runnerは30秒以内に拾う(`IDLE_POLL`、§23)。`src-tauri`は`apply`の戻り値を見てrunnerを起こし、`article-changed`と`vocab-changed`を出す。
 - **LLMの処理はPCに残す。** 単語の意味は既存の`vocab` jobがPCで調べる。それまでスマホには処理待ちと出す。
@@ -950,7 +950,8 @@ M1(Aの読み取り)まで実装した。M2以降はまだ設計だけ。スマ�
 
 - **自動切り替え。** Aのbase URLがHTTPSなら1.5秒でつなぎ(`GET /api/ping`)、失敗したらBを読む。画面には「ライブ」か「◯分前の内容」かを出す。
 - **切り替えはHTTPSのAに限る。** HTTPSのページからHTTPのLANへのfetchはmixed contentで止まる。Chromeは許可を得た場合だけこれを除外する([Local Network Access](https://developer.chrome.com/blog/local-network-access))が、ブラウザごとに違うものには頼らない。LANのAを使うときは、ページ自体をPCから開く。Aは`Access-Control-Allow-Origin`でWorkerのoriginだけを許可する。
-- **未送信の操作はスマホに残す。** 2xxが返るまで保持し、同じ`id`で再送する。一覧には先に反映して見せる。
+- **操作はスマホに先に残す。** localStorageに書いてから送るので、ページを閉じても、PCが止まっていても消えない。2xxが返るまで同じ`id`で再送する。一覧と記事には先に反映して見せる。
+- **いつまで見せるかは時刻で決めない。** `/api/index`の`applied_ops`が、その一覧に反映済みの操作の`id`を返す。そこに入った操作はスマホから消え、以後は一覧の値を信じる。時計のずれにも、Bの反映の遅れにも左右されない。サーバーが受けたのに一覧に現れない操作は30日で諦める。
 - **Service Workerはページと読んだ記事をキャッシュする。** HTTPSでしか動かないので、LANのAでは使えない。
 - **記事は信頼しない。** 本文はテキストとして描画し、リンクはhttp(s)だけにする。CSPは`default-src 'self'; img-src 'self' data:`を基本に、`connect-src`にAのoriginを足す。
 - **UIの文言は`src/i18n`を共有する。** 表示言語は`ui_language`に従う。

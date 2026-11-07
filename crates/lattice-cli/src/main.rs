@@ -121,7 +121,7 @@ fn fail(format: Format, e: &str) -> ExitCode {
 /// Runs until the process is stopped or the library moves. Jobs that the served requests queue wait for
 /// the app's runners (design-review §23). Only the real library is served, as in the app: a stand-in would
 /// show a phone old articles and turn away its token.
-async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16) -> Result<(), String> {
+async fn serve(store: Store, detected_dir: Option<PathBuf>, allow_write: bool, lan: bool, port: u16) -> Result<(), String> {
     if detected_dir.is_some() && location::detect().is_ok_and(|now| now.warning.is_some()) {
         return Err(msg!("mobile.fellBack"));
     }
@@ -134,7 +134,9 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16
     } else {
         Ipv4Addr::LOCALHOST
     };
-    let server = lattice_server::start((ip, port).into(), lattice_server::router(store)).await.map_err(|e| e.to_string())?;
+    // What the phone sends is only stored and queued here, so there is nothing further to tell anyone.
+    let on_applied: Option<lattice_server::OnApplied> = allow_write.then(|| std::sync::Arc::new(|_: &mobile::Effects| {}) as lattice_server::OnApplied);
+    let server = lattice_server::start((ip, port).into(), lattice_server::router(store, on_applied)).await.map_err(|e| e.to_string())?;
     let reachable = if lan {
         mobile::lan_ip()
     } else {
@@ -182,7 +184,7 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e.to_string()),
         },
-        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, ctx.detected_dir, lan, port)) {
+        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, ctx.detected_dir, ctx.allow_write, lan, port)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e),
         },

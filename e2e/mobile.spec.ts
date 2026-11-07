@@ -53,14 +53,25 @@ const ARTICLE = {
   ],
 };
 
+interface Op {
+  id: string;
+  op: { kind: string; [key: string]: unknown };
+}
+
+/** The operations the page sent. */
+const sentOps = (seen: { path: string; body?: Op }[]) => seen.filter((r) => r.path.endsWith("/api/ops")).map((r) => r.body!);
+
 async function start(page: Page, opts: { token?: boolean; index?: unknown } = {}) {
-  const seen: { path: string; auth: string | null }[] = [];
+  const seen: { path: string; auth: string | null; body?: Op }[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
     const auth = route.request().headers()["authorization"] ?? null;
-    seen.push({ path: url.pathname, auth });
+    seen.push({ path: url.pathname, auth, body: route.request().postDataJSON() as Op | undefined });
     if (auth !== "Bearer secret") {
       return route.fulfill({ status: 401, json: { error: "unauthorized" } });
+    }
+    if (url.pathname.endsWith("/api/ops")) {
+      return route.fulfill({ json: { status: "applied" } });
     }
     if (url.pathname.endsWith("/api/index")) {
       return route.fulfill({
@@ -160,11 +171,13 @@ test("the list filters by state and title", async ({ page }) => {
 const LONG = {
   generated_at: 1,
   ui_language: "ja",
+  applied_ops: [],
   articles: Array.from({ length: 150 }, (_, i) => (i === 60 ? row(1, "First article") : row(i + 100, `Article ${i}`))),
 };
 
 test("going back from an article returns to the same place, and adds nothing to history", async ({ page }) => {
   await start(page, { index: LONG });
+  await page.getByRole("button", { name: "すべて" }).click();
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
   const place = await page.evaluate(() => scrollY);
   expect(place).toBeGreaterThan(500);
@@ -182,6 +195,7 @@ test("going back from an article returns to the same place, and adds nothing to 
 
 test("the phone's back button also returns to the same place", async ({ page }) => {
   await start(page, { index: LONG });
+  await page.getByRole("button", { name: "すべて" }).click();
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
   const place = await page.evaluate(() => scrollY);
   await page.getByRole("link", { name: /First article/ }).click();
@@ -210,7 +224,7 @@ test("the answer to the latest request wins, whatever order they come back in", 
       await held;
       return route.fulfill({ status: 401, json: {} });
     }
-    return route.fulfill({ json: { generated_at: 2, ui_language: "ja", articles: [row(9, "Newer article")] } });
+    return route.fulfill({ json: { generated_at: 2, ui_language: "ja", applied_ops: [], articles: [row(9, "Newer article")] } });
   });
   await page.getByRole("button", { name: "更新" }).click();
   await expect.poll(() => calls).toBe(1);
@@ -233,7 +247,7 @@ test("a summary made before the article changed says so", async ({ page }) => {
 
 test("a long list draws a page at a time", async ({ page }) => {
   const articles = Array.from({ length: 150 }, (_, i) => row(i + 1, `Article ${i + 1}`));
-  await start(page, { index: { generated_at: 1, ui_language: "ja", articles } });
+  await start(page, { index: { generated_at: 1, ui_language: "ja", applied_ops: [], articles } });
   await expect(page.getByRole("link")).toHaveCount(100);
   await page.getByRole("button", { name: "もっと見る(残り50件)" }).click();
   await expect(page.getByRole("link")).toHaveCount(150);
@@ -321,4 +335,126 @@ test("every button can be tapped over its whole height", async ({ page }) => {
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "混在" }).click();
   expect(await small()).toEqual([]);
+});
+
+test("opening an article marks it read, here at once and on the PC by an operation", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
+  await expect.poll(() => sentOps(seen).map((o) => o.op)).toEqual([{ kind: "set_read", article_id: 1, read: true }]);
+  await page.getByRole("link", { name: "一覧" }).click();
+  await expect(page.getByRole("link", { name: /First article/ }), "the unread list no longer has it").toHaveCount(0);
+});
+
+test("an article already read is not marked again", async ({ page }) => {
+  const seen = await start(page);
+  await page.route("**/api/articles/2", (route) => route.fulfill({ json: { ...ARTICLE, article: row(2, "Read article", { read_status: "read" }) } }));
+  await page.getByRole("button", { name: "すべて" }).click();
+  await page.getByRole("link", { name: /Read article/ }).click();
+  await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
+  expect(sentOps(seen)).toEqual([]);
+});
+
+test("favorites and read state can be changed from the article", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await page.getByRole("button", { name: "お気に入りから外す" }).waitFor();
+  await page.getByRole("button", { name: "未読に戻す" }).click();
+  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  await expect
+    .poll(() => sentOps(seen).map((o) => o.op))
+    .toEqual([
+      { kind: "set_read", article_id: 1, read: true },
+      { kind: "set_favorite", article_id: 1, favorite: true },
+      { kind: "set_read", article_id: 1, read: false },
+    ]);
+  expect(new Set(sentOps(seen).map((o) => o.id)).size).toBe(3);
+});
+
+test("what cannot be sent waits on the phone, across a reload, and goes when it can", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.abort());
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await page.getByRole("link", { name: "一覧" }).click();
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  await expect(page.getByRole("link", { name: /First article/ }), "still shown as read").toHaveCount(0);
+  await page.unroute("**/api/ops");
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByText("未送信1件")).toHaveCount(0);
+  expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "set_read", article_id: 1, read: true });
+});
+
+test("an operation the list reflects stops being kept, and sending it never happens twice", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await page.getByRole("button", { name: "すべて" }).click();
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await expect.poll(() => sentOps(seen).length).toBe(1);
+  const id = sentOps(seen)[0].id;
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.route("**/api/index", (route) =>
+    route.fulfill({ json: { generated_at: 2, ui_language: "ja", applied_ops: [id], articles: [row(1, "First article")] } }),
+  );
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.locator("a.unread"), "the server's word now counts: it says unread").toHaveCount(1);
+  await page.reload();
+  await expect(page.locator("a.unread")).toHaveCount(1);
+  expect(sentOps(seen).length).toBe(1);
+});
+
+test("an operation the server refuses is dropped, and the reader is told why", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.fulfill({ status: 422, json: { error: '{"code":"mobile.badUrl","params":{}}' } }));
+  await page.getByLabel("URLを保存").fill("ftp://example.com/x");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByRole("alert")).toContainText("http://かhttps://");
+  await expect(page.getByText("未送信")).toHaveCount(0);
+});
+
+test("a URL can be saved from the list", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await expect(page.getByRole("button", { name: "URLを保存" })).toBeDisabled();
+  await page.getByLabel("URLを保存").fill(" https://example.com/new ");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByLabel("URLを保存")).toHaveValue("");
+  await expect.poll(() => sentOps(seen).map((o) => o.op)).toEqual([{ kind: "save_url", url: "https://example.com/new" }]);
+});
+
+test("a selected word can be saved with its sentence and source", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "原文" }).click();
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!;
+    const text = el.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "Second".length);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+  });
+  await page.getByRole("button", { name: "単語を登録: Second" }).click();
+  await expect(page.getByRole("status")).toHaveText("送信しました");
+  await expect
+    .poll(() => sentOps(seen).at(-1)?.op)
+    .toEqual({
+      kind: "vocab_add",
+      capture: { surface: "Second", sentence: "Second sentence.", article_id: 1, block_id: 11, url: "https://example.com/1" },
+    });
+});
+
+test("Japanese or a long selection offers no word", async ({ page }) => {
+  await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.evaluate(() => getSelection()!.selectAllChildren([...document.querySelectorAll(".sent")].find((e) => e.textContent === "一文目。")!));
+  await page.waitForTimeout(100);
+  await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
 });

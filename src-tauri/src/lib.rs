@@ -1457,13 +1457,6 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // a set number of generations per device, so its uploads would push out the real library's backups.
     if !fell_back {
         tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
-        // Nor from there: a phone would read and write the old copy.
-        let (handle, server_store) = (app.handle().clone(), store.clone());
-        tauri::async_runtime::spawn(async move {
-            if let Err(e) = mobile::apply(&handle.state::<mobile::MobileServer>(), &server_store).await {
-                log::warn!("starting the mobile server: {e}");
-            }
-        });
     }
 
     let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
@@ -1490,6 +1483,15 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log_dir,
         picked_dir: Mutex::new(None),
     });
+    // Not from a fallback folder either: a phone would read and write the old copy.
+    if !fell_back {
+        let handle = app.handle().clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = mobile::apply(&handle).await {
+                log::warn!("starting the mobile server: {e}");
+            }
+        });
+    }
     popout::restore_main(app.handle(), &app.state::<App>());
     Ok(())
 }

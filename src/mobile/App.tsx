@@ -5,7 +5,7 @@ import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
 import { PAGE, type ListView } from "./list";
 import { articleInHash } from "./route";
-import { Unauthorized, adoptToken, hasToken, loadIndex } from "./client";
+import { Unauthorized, adoptToken, flushOps, hasToken, loadIndex, localOps, subscribeOps, whenRejected, withOps } from "./client";
 
 const subscribeHash = (changed: () => void) => {
   addEventListener("hashchange", changed);
@@ -20,6 +20,8 @@ export function App() {
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
   const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const ops = useSyncExternalStore(subscribeOps, localOps);
+  const [rejected, setRejected] = useState<string | null>(null);
   const listScroll = useRef(0);
   /** Set when the article on screen was opened from the list, so going back to the list is going back in history. */
   const fromList = useRef(false);
@@ -29,6 +31,8 @@ export function App() {
   const refresh = async () => {
     const request = ++latest.current;
     try {
+      // First: the list then shows them if the server took them.
+      await flushOps();
       const index = await loadIndex();
       if (request !== latest.current) {
         return;
@@ -69,12 +73,25 @@ export function App() {
     return () => removeEventListener("hashchange", onHashChange);
   }, []);
 
+  // What waits on this phone goes as soon as there is a way.
+  useEffect(() => {
+    const send = () => void flushOps();
+    whenRejected(setRejected);
+    addEventListener("online", send);
+    return () => removeEventListener("online", send);
+  }, []);
+
   // Back from an article lands where the reader left the list.
   const reading = articleId != null;
   useLayoutEffect(() => {
     window.scrollTo(0, reading ? 0 : listScroll.current);
   }, [reading]);
 
+  const notice = rejected && (
+    <p role="alert" className="m-toast" onClick={() => setRejected(null)}>
+      {t("mobile.rejected", { error: t.msg(rejected) })}
+    </p>
+  );
   if (load.state === "no-token") {
     return (
       <main className="m-empty">
@@ -85,18 +102,22 @@ export function App() {
   }
   if (articleId != null) {
     return (
-      <ArticlePage
-        key={articleId}
-        id={articleId}
-        onBack={(e) => {
-          // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
-          if (fromList.current) {
-            e.preventDefault();
-            fromList.current = false;
-            history.back();
-          }
-        }}
-      />
+      <>
+        {notice}
+        <ArticlePage
+          key={articleId}
+          id={articleId}
+          ops={ops}
+          onBack={(e) => {
+            // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
+            if (fromList.current) {
+              e.preventDefault();
+              fromList.current = false;
+              history.back();
+            }
+          }}
+        />
+      </>
     );
   }
   if (load.state === "loading") {
@@ -119,16 +140,20 @@ export function App() {
     );
   }
   return (
-    <ListPage
-      index={load.index}
-      view={view}
-      onView={setView}
-      refreshFailed={refreshFailed}
-      onOpen={() => {
-        listScroll.current = window.scrollY;
-        fromList.current = true;
-      }}
-      onRefresh={refresh}
-    />
+    <>
+      {notice}
+      <ListPage
+        articles={load.index.articles.map((a) => withOps(a, ops))}
+        unsent={ops.filter((o) => !o.sent).length}
+        view={view}
+        onView={setView}
+        refreshFailed={refreshFailed}
+        onOpen={() => {
+          listScroll.current = window.scrollY;
+          fromList.current = true;
+        }}
+        onRefresh={refresh}
+      />
+    </>
   );
 }

@@ -31,7 +31,10 @@ test("the built page runs under the server's CSP", async ({ page }) => {
   await page.route("http://phone.test/**", (route) => {
     const path = new URL(route.request().url()).pathname.slice(1) || "index.html";
     if (path === "api/index") {
-      return route.fulfill({ json: { generated_at: 1, ui_language: "ja", articles: [ARTICLE.article] } });
+      return route.fulfill({ json: { generated_at: 1, ui_language: "ja", applied_ops: [], articles: [ARTICLE.article] } });
+    }
+    if (path === "api/ops") {
+      return route.fulfill({ json: { status: "applied" } });
     }
     if (path === "api/articles/1") {
       return route.fulfill({ json: ARTICLE });

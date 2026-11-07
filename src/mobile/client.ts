@@ -1,11 +1,14 @@
 // The phone page's side of the API (design-review §32) and what it remembers on the device.
-import type { ArticleDoc, MobileIndex } from "../bindings";
+import type { ArticleDoc, ArticleRow, MobileIndex, MobileOp, MobileOpKind } from "../bindings";
 import type { LanguageMode } from "../reader/mixed.ts";
 
 const TOKEN = "lattice.mobile.token";
 const LANGUAGE = "lattice.mobile.language";
+const OPS = "lattice.mobile.ops";
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
+/** An operation the server took but no list has shown yet stops counting after this: the PC may have lost it. */
+const KEEP_SENT_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Blocked storage (a private window) must not break the page: it asks for the QR code again instead. */
 function read(key: string): string | null {
@@ -44,8 +47,10 @@ export const hasToken = () => read(TOKEN) != null;
 /** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */
 export class Unauthorized extends Error {}
 
+const authorization = () => ({ Authorization: `Bearer ${read(TOKEN) ?? ""}` });
+
 async function request(path: string): Promise<Response> {
-  const response = await fetch(path, { headers: { Authorization: `Bearer ${read(TOKEN) ?? ""}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  const response = await fetch(path, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (response.status === 401) {
     throw new Unauthorized();
   }
@@ -57,7 +62,9 @@ export async function loadIndex(): Promise<MobileIndex> {
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  return (await response.json()) as MobileIndex;
+  const index = (await response.json()) as MobileIndex;
+  setOps(settled(ops, index.applied_ops, Date.now()));
+  return index;
 }
 
 /** Null when the article is gone. */
@@ -71,6 +78,130 @@ export async function loadArticle(id: number): Promise<ArticleDoc | null> {
   }
   return (await response.json()) as ArticleDoc;
 }
+
+// ---- operations ---------------------------------------------------------------------------------
+
+/** An operation done on this phone, until a list shows it. `sent`: the server has it. `at` is this phone's clock. */
+export interface LocalOp extends MobileOp {
+  at: number;
+  sent: boolean;
+}
+
+function readOps(): LocalOp[] {
+  try {
+    const v = JSON.parse(read(OPS) ?? "[]") as unknown;
+    return Array.isArray(v) ? (v as LocalOp[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+let ops = readOps();
+const listeners = new Set<() => void>();
+
+function setOps(next: LocalOp[]) {
+  if (next.length !== ops.length || next.some((op, i) => op !== ops[i])) {
+    ops = next;
+    write(OPS, JSON.stringify(ops));
+    listeners.forEach((l) => l());
+  }
+}
+
+export const subscribeOps = (changed: () => void) => {
+  listeners.add(changed);
+  return () => {
+    listeners.delete(changed);
+  };
+};
+export const localOps = () => ops;
+
+/** Not crypto.randomUUID, which needs a secure context: the local network's page has plain HTTP. */
+export function newOpId(random: (bytes: Uint8Array<ArrayBuffer>) => void = (b) => crypto.getRandomValues(b)): string {
+  const bytes = new Uint8Array(16);
+  random(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** What a list that reflects `applied` leaves of the local operations. */
+export function settled(local: LocalOp[], applied: string[], now: number): LocalOp[] {
+  const done = new Set(applied);
+  return local.filter((op) => !done.has(op.id) && !(op.sent && now - op.at > KEEP_SENT_MS));
+}
+
+/** A row as the operations not yet shown by a list will leave it. */
+export function withOps(row: ArticleRow, local: LocalOp[]): ArticleRow {
+  return local.reduce((r, { op }) => {
+    if (op.kind === "set_read" && op.article_id === r.id) {
+      return { ...r, read_status: op.read ? "read" : "unread" };
+    }
+    if (op.kind === "set_favorite" && op.article_id === r.id) {
+      return { ...r, favorite: op.favorite };
+    }
+    return r;
+  }, row);
+}
+
+type SendResult = { status: "stopped" } | { status: "done" } | { status: "rejected"; error: string };
+
+/** What came of sending one operation. `stopped`: try again later, as it may yet apply. */
+async function sendOp(op: MobileOp): Promise<SendResult> {
+  let response: Response;
+  try {
+    response = await fetch("api/ops", {
+      method: "POST",
+      headers: { ...authorization(), "Content-Type": "application/json" },
+      body: JSON.stringify({ id: op.id, op: op.op }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    return { status: "stopped" };
+  }
+  if (response.ok) {
+    return { status: "done" };
+  }
+  if (response.status === 400 || response.status === 403 || response.status === 413 || response.status === 422) {
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    return { status: "rejected", error: body.error ?? `HTTP ${response.status}` };
+  }
+  return { status: "stopped" };
+}
+
+let flushing: Promise<void> | null = null;
+/** Why the last operation was turned down, for the page to say once. */
+let onRejected: (error: string) => void = () => {};
+export const whenRejected = (f: (error: string) => void) => {
+  onRejected = f;
+};
+
+/** Sends what has not been sent, in order, stopping at the first that cannot get through for now. */
+export function flushOps(): Promise<void> {
+  flushing ??= (async () => {
+    for (let next = ops.find((o) => !o.sent); next; next = ops.find((o) => !o.sent)) {
+      const id = next.id;
+      const result = await sendOp(next);
+      if (result.status === "stopped") {
+        break;
+      }
+      if (result.status === "rejected") {
+        setOps(ops.filter((o) => o.id !== id));
+        onRejected(result.error);
+      } else {
+        setOps(ops.map((o) => (o.id === id ? { ...o, sent: true } : o)));
+      }
+    }
+  })().finally(() => {
+    flushing = null;
+  });
+  return flushing;
+}
+
+/** Records the operation on this phone first, so it survives a closed page or a sleeping PC, then tries to send it. */
+export function submit(op: MobileOpKind) {
+  setOps([...ops, { id: newOpId(), op, at: Date.now(), sent: false }]);
+  void flushOps();
+}
+
+// ---- language -----------------------------------------------------------------------------------
 
 export interface LanguageChoice {
   mode: LanguageMode;

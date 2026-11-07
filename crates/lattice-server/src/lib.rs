@@ -8,12 +8,13 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, Request, State};
+use axum::extract::{DefaultBodyLimit, FromRef, Path, Request, State};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use lattice_core::mobile;
+use axum::routing::{get, post};
+use lattice_core::mobile::{self, Effects, MobileOp, Outcome};
+use lattice_core::msg;
 use lattice_core::store::Store;
 use serde_json::json;
 use tokio::net::TcpListener;
@@ -46,14 +47,58 @@ pub const ASSETS: &[Asset] = &[
 /// React sets `style` through the CSSOM, which this allows; e2e/mobile-built.spec.ts runs the built page under it.
 const CSP: &str = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
-pub fn router(store: Arc<Store>) -> Router {
+/// What runs after the phone's operation has applied. Without one the server only reads, and turns operations away.
+pub type OnApplied = Arc<dyn Fn(&Effects) + Send + Sync>;
+
+/// Far more than an operation takes, which holds a sentence at most.
+const MAX_OP_BYTES: usize = 16 * 1024;
+
+#[derive(Clone)]
+struct Ctx {
+    store: Arc<Store>,
+    on_applied: Option<OnApplied>,
+}
+
+impl FromRef<Ctx> for Arc<Store> {
+    fn from_ref(ctx: &Ctx) -> Self {
+        ctx.store.clone()
+    }
+}
+
+pub fn router(store: Arc<Store>, on_applied: Option<OnApplied>) -> Router {
+    let ctx = Ctx { store, on_applied };
     Router::new()
         .route("/api/ping", get(|| async { json_headers(Response::new(Body::from("{}"))) }))
         .route("/api/index", get(index))
         .route("/api/articles/{id}", get(article))
-        .route_layer(middleware::from_fn_with_state(store.clone(), require_token))
+        .route("/api/ops", post(submit).layer(DefaultBodyLimit::max(MAX_OP_BYTES)))
+        .route_layer(middleware::from_fn_with_state(ctx.store.clone(), require_token))
         .fallback(page)
-        .with_state(store)
+        .with_state(ctx)
+}
+
+/// A rejection names why in a coded message the page can show.
+async fn submit(State(ctx): State<Ctx>, body: Bytes) -> Response {
+    let Some(on_applied) = ctx.on_applied else {
+        return error(StatusCode::FORBIDDEN, &msg!("mobile.readOnly"));
+    };
+    let Ok(op) = serde_json::from_slice::<MobileOp>(&body) else {
+        return error(StatusCode::BAD_REQUEST, &msg!("mobile.badOp"));
+    };
+    let store = ctx.store;
+    match blocking(move || mobile::apply(&store, &op)).await {
+        Ok(Outcome::Applied(effects)) => {
+            on_applied(&effects);
+            applied()
+        }
+        Ok(Outcome::AlreadyApplied) => applied(),
+        Ok(Outcome::Rejected(message)) => error(StatusCode::UNPROCESSABLE_ENTITY, &message),
+        Err(e) => internal_error(&e),
+    }
+}
+
+fn applied() -> Response {
+    (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json!({ "status": "applied" }).to_string()).into_response()
 }
 
 async fn require_token(State(store): State<Arc<Store>>, request: Request, next: Next) -> Response {
@@ -200,7 +245,7 @@ mod tests {
     fn app() -> (Router, Arc<Store>, String) {
         let store = Arc::new(Store::open_in_memory().unwrap());
         let token = mobile::token(&store).unwrap();
-        (router(store.clone()), store, token)
+        (router(store.clone(), Some(Arc::new(|_| {}))), store, token)
     }
 
     async fn get_with(app: &Router, path: &str, token: Option<&str>) -> Response {
@@ -211,7 +256,7 @@ mod tests {
         app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap()
     }
 
-    async fn body(r: Response) -> Vec<u8> {
+    async fn body_of(r: Response) -> Vec<u8> {
         axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap().to_vec()
     }
 
@@ -251,9 +296,9 @@ mod tests {
         let (id, _) = store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
         let index = get_with(&app, "/api/index", Some(&token)).await;
         assert_eq!(index.headers()[header::CACHE_CONTROL], "no-store");
-        let index: serde_json::Value = serde_json::from_slice(&body(index).await).unwrap();
+        let index: serde_json::Value = serde_json::from_slice(&body_of(index).await).unwrap();
         assert_eq!(index["articles"][0]["id"], id);
-        let doc: serde_json::Value = serde_json::from_slice(&body(get_with(&app, &format!("/api/articles/{id}"), Some(&token)).await).await).unwrap();
+        let doc: serde_json::Value = serde_json::from_slice(&body_of(get_with(&app, &format!("/api/articles/{id}"), Some(&token)).await).await).unwrap();
         assert_eq!(doc["article"]["original_url"], "https://example.com/a");
         assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(&token)).await.status(), StatusCode::NOT_FOUND);
     }
@@ -264,7 +309,58 @@ mod tests {
         let request = HttpRequest::get("/api/index").header(header::AUTHORIZATION, format!("Bearer {token}")).header(header::ACCEPT_ENCODING, "br, gzip");
         let response = app.oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
         assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
-        assert_eq!(body(response).await[..2], [0x1f, 0x8b]);
+        assert_eq!(body_of(response).await[..2], [0x1f, 0x8b]);
+    }
+
+    async fn post_op(app: &Router, token: Option<&str>, body: String) -> Response {
+        let mut request = HttpRequest::post("/api/ops");
+        if let Some(t) = token {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {t}"));
+        }
+        app.clone().oneshot(request.body(Body::from(body)).unwrap()).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_operation_applies_once_and_says_so() {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let token = mobile::token(&store).unwrap();
+        let log = seen.clone();
+        let app = router(store.clone(), Some(Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article))));
+        let (id, _) = store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let body = format!(r#"{{"id":"op-1","op":{{"kind":"set_read","article_id":{id},"read":true}}}}"#);
+        for _ in 0..2 {
+            let response = post_op(&app, Some(&token), body.clone()).await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(serde_json::from_slice::<serde_json::Value>(&body_of(response).await).unwrap()["status"], "applied");
+        }
+        assert_eq!(*seen.lock().unwrap(), [Some(id)], "the second time changed nothing");
+        assert_eq!(store.article_row(id).unwrap().unwrap().read_status, "read");
+    }
+
+    #[tokio::test]
+    async fn operations_need_the_token_and_a_writable_server() {
+        let (app, _, token) = app();
+        let body = r#"{"id":"op-1","op":{"kind":"set_read","article_id":1,"read":true}}"#;
+        assert_eq!(post_op(&app, None, body.into()).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(post_op(&app, Some("wrong"), body.into()).await.status(), StatusCode::UNAUTHORIZED);
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        let token2 = mobile::token(&store).unwrap();
+        let read_only = router(store, None);
+        assert_eq!(post_op(&read_only, Some(&token2), body.into()).await.status(), StatusCode::FORBIDDEN);
+        assert_eq!(post_op(&app, Some(&token), body.into()).await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn what_cannot_apply_is_refused_with_a_reason() {
+        let (app, _, token) = app();
+        assert_eq!(post_op(&app, Some(&token), "not json".into()).await.status(), StatusCode::BAD_REQUEST);
+        let bad_url = post_op(&app, Some(&token), r#"{"id":"a","op":{"kind":"save_url","url":"javascript:alert(1)"}}"#.into()).await;
+        assert_eq!(bad_url.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let reason: serde_json::Value = serde_json::from_slice(&body_of(bad_url).await).unwrap();
+        assert!(reason["error"].as_str().unwrap().contains("mobile.badUrl"));
+        let huge = format!(r#"{{"id":"a","op":{{"kind":"save_url","url":"{}"}}}}"#, "x".repeat(MAX_OP_BYTES));
+        assert_eq!(post_op(&app, Some(&token), huge).await.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 
     #[tokio::test]
@@ -274,7 +370,7 @@ mod tests {
         assert_eq!(page.status(), StatusCode::OK);
         assert!(page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().contains("default-src 'self'"));
         assert_eq!(page.headers()[header::REFERRER_POLICY], "no-referrer");
-        assert!(String::from_utf8(body(page).await).unwrap().contains("mobile.js"));
+        assert!(String::from_utf8(body_of(page).await).unwrap().contains("mobile.js"));
         for path in ["/../Cargo.toml", "/secret", "/api/nothing"] {
             assert_eq!(get_with(&app, path, None).await.status(), StatusCode::NOT_FOUND, "{path}");
         }

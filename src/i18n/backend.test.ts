@@ -15,7 +15,7 @@ function readRust(dir: string): { file: string; usage: ReturnType<typeof rustMes
     return entry.name.endsWith(".rs") ? [{ file, usage: rustMessageUsage(readFileSync(new URL(entry.name, root), "utf8")) }] : [];
   });
 }
-const rust = ["crates/lattice-core/src", "crates/lattice-cli/src", "src-tauri/src"].flatMap(readRust);
+const rust = ["crates/lattice-core/src", "crates/lattice-server/src", "crates/lattice-cli/src", "src-tauri/src"].flatMap(readRust);
 const catalog = new Map<string, string>(Object.entries(ja));
 
 const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
