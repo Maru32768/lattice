@@ -126,10 +126,12 @@ mise exec -- node scripts/icons.ts
 | Path | Contents |
 |---|---|
 | `crates/lattice-core` | Domain logic without Tauri: fetching, extraction, storage, jobs, translation, search, chat, backup. |
-| `crates/lattice-cli` | The `lattice-cli` command and its MCP server, on `lattice-core` alone. |
+| `crates/lattice-server` | The HTTP server for the phone page, started by the app and by `lattice-cli serve`. |
+| `crates/lattice-cli` | The `lattice-cli` command and its MCP server, on `lattice-core` and `lattice-server`. |
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser, pop-out windows. |
 | `src` | The React frontend, one folder per feature (`library`, `reader`, `browser`, `chat`, `search`, `feeds`, `import`, `quiz`, `vocab`, `jobs`, `settings`), the app shell (`app`) and pane layout (`layout`), with shared UI parts in `ui` and helpers in `lib`. `api.ts` (the IPC client) and `main.tsx` stay at the top. |
 | `src/i18n` | The UI text catalogs and the translation functions. |
+| `src/mobile` | The phone page, built into `crates/lattice-server/mobile-dist` by `npm run build:overlay`. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots, shortcut forwarding). |
 | `src/lib/keymap.ts` | The key table and the one key state machine, shared by the app and the overlay. |
 | `src/docnav` | Keyboard reading of a document (labels, caret, find), shared by the Reader and the overlay. |
