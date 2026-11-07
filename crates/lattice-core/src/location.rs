@@ -7,6 +7,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::msg;
+use crate::store::Store;
 use ts_rs::TS;
 
 pub const PORTABLE_MARKERS: [&str; 2] = ["portable", "lattice.portable"];
@@ -123,10 +124,33 @@ fn in_use(loc: Location, default_dir: &Path) -> Location {
         Err(e) if e.kind() != io::ErrorKind::NotFound => e.to_string(),
         _ => msg!("location.noData"),
     };
+    unusable(&loc, default_dir, error)
+}
+
+fn unusable(loc: &Location, default_dir: &Path, error: String) -> Location {
     Location {
         kind: Kind::Default,
         dir: default_dir.to_path_buf(),
         warning: Some(msg!("location.unusable", path = loc.dir.display().to_string(), error = error)),
+    }
+}
+
+/// Opens the database of `loc`. A chosen folder whose database cannot be opened (written by a newer
+/// Lattice, corrupt) falls back like one without a database. A busy one does not: that passes, and
+/// the default folder may hold only an old copy of the library.
+pub fn open_library(loc: Location, default_dir: &Path) -> Result<(Location, Store), String> {
+    let path = loc.dir.join(DB_FILE);
+    match Store::open(&path) {
+        Ok(store) => Ok((loc, store)),
+        Err(e)
+            if loc.kind == Kind::Custom && !matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)) =>
+        {
+            let fallback = unusable(&loc, default_dir, e.to_string());
+            let path = fallback.dir.join(DB_FILE);
+            let store = Store::open(&path).map_err(|e| format!("opening {}: {e}", path.display()))?;
+            Ok((fallback, store))
+        }
+        Err(e) => Err(format!("opening {}: {e}", path.display())),
     }
 }
 
@@ -204,6 +228,28 @@ mod tests {
         assert!(!default.join(BOOTSTRAP_FILE).exists());
         write_bootstrap(&default, &default).unwrap(); // nothing to remove is fine
         std::fs::remove_dir_all(&default).unwrap();
+    }
+
+    #[test]
+    fn a_chosen_folder_whose_database_cannot_be_opened_falls_back_to_the_default() {
+        let root = temp("open");
+        let (chosen, default) = (root.join("chosen"), root.join("default"));
+        std::fs::create_dir_all(&chosen).unwrap();
+        std::fs::create_dir_all(&default).unwrap();
+        let newer = rusqlite::Connection::open(chosen.join(DB_FILE)).unwrap();
+        newer.pragma_update(None, "user_version", 1_000_000).unwrap();
+        drop(newer);
+
+        let custom = Location { kind: Kind::Custom, dir: chosen.clone(), warning: None };
+        let (loc, store) = open_library(custom, &default).unwrap();
+        assert_eq!((loc.kind, loc.dir.as_path()), (Kind::Default, default.as_path()));
+        assert!(loc.warning.as_deref().is_some_and(|w| w.contains("location.unusable") && w.contains("newer than this build")), "{loc:?}");
+        drop(store);
+
+        // The default folder and a portable one have nowhere to go: the error reaches the user.
+        let own = Location { kind: Kind::Default, dir: chosen.clone(), warning: None };
+        assert!(open_library(own, &default).is_err_and(|e| e.contains(DB_FILE) && e.contains("newer than this build")));
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]

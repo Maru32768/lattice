@@ -1110,8 +1110,8 @@ async fn set_data_dir(app: State<'_, App>, copy: bool) -> Result<String, String>
         return Err(msg!("location.noData"));
     }
     if copy {
-        let (store, from, to) = (app.store.clone(), app.data_dir.clone(), target.clone());
-        tauri::async_runtime::spawn_blocking(move || location::copy_data(&store, &from, &to)).await.map_err(err)??;
+        let (from, to) = (app.data_dir.clone(), target.clone());
+        tauri::async_runtime::spawn_blocking(move || location::copy_data(&from, &to)).await.map_err(err)??;
         log::info!("copied the data from {} to {}", app.data_dir.display(), target.display());
     }
     let default_dir = location::default_dir().ok_or_else(|| msg!("location.noDefaultFolder"))?;
@@ -1345,6 +1345,148 @@ fn translation_changed(handle: &tauri::AppHandle, job: &JobRow) {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Opens the library and starts everything that works on it.
+fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let loc = location::detect()?;
+    let log_dir = location::log_dir(&loc, || app.path().local_data_dir())?;
+    let log_file = tauri_plugin_log::TargetKind::Folder { path: log_dir.clone(), file_name: Some("lattice".to_string()) };
+    app.handle().plugin(
+        tauri_plugin_log::Builder::new()
+            .clear_targets()
+            .level(log::LevelFilter::Info)
+            .target(tauri_plugin_log::Target::new(log_file))
+            .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
+            .build(),
+    )?;
+    // Created here rather than from the config so a portable install can give it its own
+    // WebView2 profile folder (tauri.conf.json has `create: false`).
+    let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
+    // Hidden until it is moved to where it last was (`restore_main`, once the store is open).
+    let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.visible(false);
+    if let Some(d) = loc.webview_dir() {
+        main = main.data_directory(d);
+    }
+    main.build()?;
+
+    // Only a chosen folder reads the default, and detect() has found that one.
+    let (loc, store) = location::open_library(loc, &location::default_dir().unwrap_or_default())?;
+    if let Some(w) = &loc.warning {
+        log::warn!("{w}");
+    }
+    let (dir, fell_back) = (loc.dir.clone(), loc.warning.is_some());
+    app.manage(loc);
+    let path = dir.join(location::DB_FILE);
+    let store = Arc::new(store);
+    let llm = LlmChain::new(chain::load(&store)?);
+    let http = HttpClient::configured(&network::settings(&store)?)?;
+    let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http });
+
+    app.state::<Browser>().set_skip_sites(app.handle(), translate::page_skip_sites(&store)?)?;
+    store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
+    images::enqueue_missing(&store)?;
+    classify::enqueue_missing(&store)?;
+    vocab::enqueue_missing(&store)?;
+    feed_filter::enqueue_pending(&store)?;
+
+    let wake_llm: Vec<Arc<Notify>> = (0..=translate::MAX_PARALLEL).map(|_| Arc::new(Notify::new())).collect();
+    let wake_local = Arc::new(Notify::new());
+    let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
+    let wake_render = Arc::new(Notify::new());
+    // Also puts back the jobs left running by a process that is gone (this app's last run, a stopped CLI).
+    let keeper = store.clone();
+    tauri::async_runtime::spawn(async move { jobs::keep_alive(&keeper).await });
+    let runners = [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
+    for (types, wake) in runners {
+        let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
+        let fetchers = wake_net.clone();
+        let on_change = move |job: &JobRow| {
+            let _ = match job.article_id {
+                Some(id) => handle.emit("article-changed", id),
+                // Favicon jobs are per domain, not per article.
+                None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
+                    Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
+                    _ if job.job_type == vocab::JOB_TYPE => handle.emit("vocab-changed", ()),
+                    // The LLM filter has queued the entries it let through.
+                    Some(_) if job.job_type == feed_filter::JOB_TYPE => {
+                        fetchers.iter().for_each(|w| w.notify_one());
+                        handle.emit("feeds-changed", 0)
+                    }
+                    _ => Ok(()),
+                },
+            };
+            if types == NET_JOBS {
+                embedder_wake.notify_one(); // a fetched article has just queued its embed job
+                llm_wake.iter().for_each(|w| w.notify_one()); // ... and maybe its classify (and translate) job
+                render_wake.notify_one(); // ... and, if it came back thin, a render job
+            }
+        };
+        tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
+    }
+    // Rendering is heavy and needs the webview, so it has its own single runner here.
+    let (handle, embedder_wake, llm_wake, net_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_net.clone());
+    let on_render = move |article_id: i64| {
+        let _ = handle.emit("article-changed", article_id);
+        embedder_wake.notify_one();
+        llm_wake.iter().for_each(|w| w.notify_one());
+        net_wake.iter().for_each(|w| w.notify_one()); // the stored rendering has queued its images job
+    };
+    // Translation's own pool: 並列実行数 of its runners take an article each, sharing one gate.
+    let gate = Arc::new(translate::Gate::default());
+    for (index, wake) in wake_llm[1..].iter().enumerate() {
+        let handle = app.handle().clone();
+        let on_change = move |job: &JobRow| translation_changed(&handle, job);
+        tauri::async_runtime::spawn(jobs::run_translate_worker(store.clone(), providers.clone(), index, gate.clone(), wake.clone(), on_change));
+    }
+    // The reserved slot for the articles on screen, beside the LLM runners above.
+    let (on_screen, wake_foreground): (OnScreen, _) = (Arc::default(), Arc::new(Notify::new()));
+    let shown = on_screen.clone();
+    let ids = move || {
+        let mut ids: Vec<i64> = shown.lock().unwrap_or_else(|e| e.into_inner()).values().flatten().copied().collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids
+    };
+    let handle = app.handle().clone();
+    let on_change = move |job: &JobRow| translation_changed(&handle, job);
+    tauri::async_runtime::spawn(jobs::run_foreground(store.clone(), providers.clone(), ids, wake_foreground.clone(), on_change));
+
+    let embed_model = providers.embedder.model_id().to_string();
+    tauri::async_runtime::spawn(renderer::run(app.handle().clone(), store.clone(), embed_model, wake_render.clone(), on_render));
+
+    // Not from a fallback folder: its database is an old copy when the library has moved, and R2 keeps
+    // a set number of generations per device, so its uploads would push out the real library's backups.
+    if !fell_back {
+        tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+    }
+
+    let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
+    tauri::async_runtime::spawn(feeds::poll_forever(store.clone(), providers.http.clone(), move |queued| {
+        if queued > 0 {
+            fetchers.iter().for_each(|w| w.notify_one());
+        }
+        let _ = handle.emit("feeds-changed", queued);
+    }));
+
+    app.manage(App {
+        store,
+        providers,
+        wake_llm,
+        wake_local,
+        wake_net,
+        wake_render,
+        on_screen,
+        wake_foreground,
+        overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY),
+        chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY),
+        db_path: path.display().to_string(),
+        data_dir: dir,
+        log_dir,
+        picked_dir: Mutex::new(None),
+    });
+    popout::restore_main(app.handle(), &app.state::<App>());
+    Ok(())
+}
+
 pub fn run() {
     let mut context = tauri::generate_context!();
     context.config_mut().identifier = location::APP_IDENTIFIER.into();
@@ -1372,142 +1514,13 @@ pub fn run() {
         })
         .on_window_event(popout::on_window_event)
         .setup(|app| {
-            let loc = location::detect()?;
-            let log_dir = location::log_dir(&loc, || app.path().local_data_dir())?;
-            let log_file = tauri_plugin_log::TargetKind::Folder { path: log_dir.clone(), file_name: Some("lattice".to_string()) };
-            app.handle().plugin(
-                tauri_plugin_log::Builder::new()
-                    .clear_targets()
-                    .level(log::LevelFilter::Info)
-                    .target(tauri_plugin_log::Target::new(log_file))
-                    .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
-                    .build(),
-            )?;
-            if let Some(w) = &loc.warning {
-                log::warn!("{w}");
+            if let Err(e) = start(app) {
+                // Returned from here it would be Tauri's panic, with no console to show it in a release build: the app would just never appear, at every launch.
+                log::error!("starting: {e}");
+                use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+                let dialog = app.dialog().message(format!("Lattice could not start.\nLatticeを起動できませんでした。\n\n{e}"));
+                dialog.title("Lattice").kind(MessageDialogKind::Error).show(|_| std::process::exit(1));
             }
-            // Created here rather than from the config so a portable install can give it its own
-            // WebView2 profile folder (tauri.conf.json has `create: false`).
-            let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
-            // Hidden until it is moved to where it last was (`restore_main`, once the store is open).
-            let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.visible(false);
-            if let Some(d) = loc.webview_dir() {
-                main = main.data_directory(d);
-            }
-            main.build()?;
-
-            let (dir, fell_back) = (loc.dir.clone(), loc.warning.is_some());
-            app.manage(loc);
-            let path = dir.join(location::DB_FILE);
-            let store = Arc::new(Store::open(&path)?);
-            let llm = LlmChain::new(chain::load(&store)?);
-            let http = HttpClient::configured(&network::settings(&store)?)?;
-            let providers = Arc::new(Providers { llm, embedder: LocalE5::new(dir.join("models")), http });
-
-            app.state::<Browser>().set_skip_sites(app.handle(), translate::page_skip_sites(&store)?)?;
-            store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
-            images::enqueue_missing(&store)?;
-            classify::enqueue_missing(&store)?;
-            vocab::enqueue_missing(&store)?;
-            feed_filter::enqueue_pending(&store)?;
-
-            let wake_llm: Vec<Arc<Notify>> = (0..=translate::MAX_PARALLEL).map(|_| Arc::new(Notify::new())).collect();
-            let wake_local = Arc::new(Notify::new());
-            let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
-            let wake_render = Arc::new(Notify::new());
-            // Also puts back the jobs left running by a process that is gone (this app's last run, a stopped CLI).
-            let keeper = store.clone();
-            tauri::async_runtime::spawn(async move { jobs::keep_alive(&keeper).await });
-            let runners =
-                [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
-            for (types, wake) in runners {
-                let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
-                let fetchers = wake_net.clone();
-                let on_change = move |job: &JobRow| {
-                    let _ = match job.article_id {
-                        Some(id) => handle.emit("article-changed", id),
-                        // Favicon jobs are per domain, not per article.
-                        None => match job.params.as_deref().and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok()) {
-                            Some(p) if job.job_type == favicons::JOB_TYPE => handle.emit("favicon-changed", p["domain"].as_str()),
-                            _ if job.job_type == vocab::JOB_TYPE => handle.emit("vocab-changed", ()),
-                            // The LLM filter has queued the entries it let through.
-                            Some(_) if job.job_type == feed_filter::JOB_TYPE => {
-                                fetchers.iter().for_each(|w| w.notify_one());
-                                handle.emit("feeds-changed", 0)
-                            }
-                            _ => Ok(()),
-                        },
-                    };
-                    if types == NET_JOBS {
-                        embedder_wake.notify_one(); // a fetched article has just queued its embed job
-                        llm_wake.iter().for_each(|w| w.notify_one()); // ... and maybe its classify (and translate) job
-                        render_wake.notify_one(); // ... and, if it came back thin, a render job
-                    }
-                };
-                tauri::async_runtime::spawn(jobs::run_worker(store.clone(), providers.clone(), types, wake, on_change));
-            }
-            // Rendering is heavy and needs the webview, so it has its own single runner here.
-            let (handle, embedder_wake, llm_wake, net_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_net.clone());
-            let on_render = move |article_id: i64| {
-                let _ = handle.emit("article-changed", article_id);
-                embedder_wake.notify_one();
-                llm_wake.iter().for_each(|w| w.notify_one());
-                net_wake.iter().for_each(|w| w.notify_one()); // the stored rendering has queued its images job
-            };
-            // Translation's own pool: 並列実行数 of its runners take an article each, sharing one gate.
-            let gate = Arc::new(translate::Gate::default());
-            for (index, wake) in wake_llm[1..].iter().enumerate() {
-                let handle = app.handle().clone();
-                let on_change = move |job: &JobRow| translation_changed(&handle, job);
-                tauri::async_runtime::spawn(jobs::run_translate_worker(store.clone(), providers.clone(), index, gate.clone(), wake.clone(), on_change));
-            }
-            // The reserved slot for the articles on screen, beside the LLM runners above.
-            let (on_screen, wake_foreground): (OnScreen, _) = (Arc::default(), Arc::new(Notify::new()));
-            let shown = on_screen.clone();
-            let ids = move || {
-                let mut ids: Vec<i64> = shown.lock().unwrap_or_else(|e| e.into_inner()).values().flatten().copied().collect();
-                ids.sort_unstable();
-                ids.dedup();
-                ids
-            };
-            let handle = app.handle().clone();
-            let on_change = move |job: &JobRow| translation_changed(&handle, job);
-            tauri::async_runtime::spawn(jobs::run_foreground(store.clone(), providers.clone(), ids, wake_foreground.clone(), on_change));
-
-            let embed_model = providers.embedder.model_id().to_string();
-            tauri::async_runtime::spawn(renderer::run(app.handle().clone(), store.clone(), embed_model, wake_render.clone(), on_render));
-
-            // Not from a fallback folder: its database is an old copy when the library has moved, and R2 keeps
-            // a set number of generations per device, so its uploads would push out the real library's backups.
-            if !fell_back {
-                tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
-            }
-
-            let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
-            tauri::async_runtime::spawn(feeds::poll_forever(store.clone(), providers.http.clone(), move |queued| {
-                if queued > 0 {
-                    fetchers.iter().for_each(|w| w.notify_one());
-                }
-                let _ = handle.emit("feeds-changed", queued);
-            }));
-
-            app.manage(App {
-                store,
-                providers,
-                wake_llm,
-                wake_local,
-                wake_net,
-                wake_render,
-                on_screen,
-                wake_foreground,
-                overlay_llm: Semaphore::new(OVERLAY_LLM_CONCURRENCY),
-                chat_llm: Semaphore::new(CHAT_LLM_CONCURRENCY),
-                db_path: path.display().to_string(),
-                data_dir: dir,
-                log_dir,
-                picked_dir: Mutex::new(None),
-            });
-            popout::restore_main(app.handle(), &app.state::<App>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

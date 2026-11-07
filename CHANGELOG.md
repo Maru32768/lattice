@@ -24,6 +24,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The Reader went back to the top when its pane split, closed or swapped, and when you came back to its tab. It now keeps the paragraph you were reading.
 - Saving several articles from a site that names one page (often its home page) as canonical on every page kept only the first. Articles now merge only when their text matches. When they do merge, the tags, star, note and collections you gave the merged article move to the one that stays.
 - While your data folder was unusable and Lattice ran from the default location, backups to R2 kept running, and uploads of the old data there replaced your library's backups one by one. Backups to R2 now stop until the folder is back.
+- If Lattice could not open its database at startup, for example one written by a newer version, the app quit without a word at every launch. A chosen data folder now falls back to the default location with the reason in Settings, and otherwise a message says what is wrong.
+- Interrupting a move of the data folder left a partial database in the new folder, which Lattice then offered to switch to. The database is now written last, and only once complete. Lattice also stays responsive during the copy.
 
 ## [0.3.0] - 2026-11-06
 

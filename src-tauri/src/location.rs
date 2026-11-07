@@ -42,17 +42,27 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Copies the database (a consistent copy of the open one, API keys included) and the data
-/// folders into `to`. Nothing in `from` is changed or deleted.
-pub fn copy_data(store: &Store, from: &Path, to: &Path) -> Result<(), String> {
+/// Copies the data folders and the database (a consistent copy, API keys included) into `to`.
+/// Nothing in `from` is changed or deleted. The database reads through a connection of its own, so
+/// the app stays free meanwhile, and comes last under another name: `lattice.db` in a folder says it
+/// holds Lattice data, so a copy cut short (a full disk, the app closed) must not leave one there.
+pub fn copy_data(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
-    store.copy_to(&to.join(DB_FILE)).map_err(|e| msg!("location.copyDbFailed", error = e.to_string()))?;
     for d in DATA_DIRS {
         if from.join(d).is_dir() {
             copy_dir(&from.join(d), &to.join(d)).map_err(|e| msg!("location.copyFailed", name = d, error = e.to_string()))?;
         }
     }
-    Ok(())
+    let partial = to.join(format!("{DB_FILE}.partial"));
+    let _ = std::fs::remove_file(&partial); // VACUUM INTO refuses a file that is there
+    let copied = Store::open(&from.join(DB_FILE)).and_then(|s| s.copy_to(&partial)).map_err(|e| e.to_string()).and_then(|()| {
+        let synced = std::fs::File::options().write(true).open(&partial).and_then(|f| f.sync_all());
+        synced.and_then(|()| std::fs::rename(&partial, to.join(DB_FILE))).map_err(|e| e.to_string())
+    });
+    if copied.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    copied.map_err(|e| msg!("location.copyDbFailed", error = e))
 }
 
 #[cfg(test)]
@@ -122,6 +132,22 @@ mod tests {
     }
 
     #[test]
+    fn a_copy_cut_short_does_not_leave_a_database_that_counts_as_lattice_data() {
+        let (from, to) = (temp("short-from"), temp("short-to"));
+        drop(Store::open(&from.join(DB_FILE)).unwrap());
+        std::fs::create_dir_all(from.join("models")).unwrap();
+        std::fs::write(to.join("models"), "a file where the folder goes").unwrap();
+        assert!(copy_data(&from, &to).is_err());
+        assert!(!to.join(DB_FILE).exists());
+
+        // The next try finds no leftover in its way.
+        std::fs::remove_file(to.join("models")).unwrap();
+        std::fs::write(to.join(format!("{DB_FILE}.partial")), "the end of a killed run").unwrap();
+        copy_data(&from, &to).unwrap();
+        assert!(Store::open(&to.join(DB_FILE)).is_ok());
+    }
+
+    #[test]
     fn copy_data_copies_the_database_and_folders_and_keeps_the_source() {
         let (from, to) = (temp("from"), temp("to").join("new"));
         let store = Store::open(&from.join(DB_FILE)).unwrap();
@@ -129,7 +155,8 @@ mod tests {
         std::fs::create_dir_all(from.join("models").join("e5")).unwrap();
         std::fs::write(from.join("models").join("e5").join("model.onnx"), "weights").unwrap();
         std::fs::write(from.join("unrelated.txt"), "x").unwrap();
-        copy_data(&store, &from, &to).unwrap();
+        copy_data(&from, &to).unwrap();
+        assert!(!to.join(format!("{DB_FILE}.partial")).exists());
         assert_eq!(Store::open(&to.join(DB_FILE)).unwrap().setting("secret.openai_api_key").unwrap().as_deref(), Some("sk-test"));
         assert_eq!(std::fs::read_to_string(to.join("models").join("e5").join("model.onnx")).unwrap(), "weights");
         assert!(!to.join("unrelated.txt").exists() && !to.join("backups").exists());
