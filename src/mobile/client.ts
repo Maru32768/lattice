@@ -37,6 +37,18 @@ function write(key: string, value: string) {
   }
 }
 
+function forget(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing was stored, then.
+  }
+}
+
+/** Only in a secure context: the local network's plain HTTP page has no caches, and does without. */
+const docs = () => (typeof caches !== "undefined" ? caches.open(DOCS) : null);
+const dropDocs = () => (typeof caches !== "undefined" ? caches.delete(DOCS) : Promise.resolve(false));
+
 /** The `t=` and `l=` (the library's id) of an address fragment such as `#t=abc&l=def`. */
 export function fragmentOf(fragment: string): { token: string; library: string | null } | null {
   const params = new URLSearchParams(fragment.replace(/^#/, ""));
@@ -49,9 +61,13 @@ export function adoptToken(): boolean {
   const found = fragmentOf(location.hash);
   if (found) {
     write(TOKEN, found.token);
-    // Article ids mean something else in another library, so what waits here must not go there. A new token of the same library keeps it.
+    // Article ids mean something else in another library, so nothing kept from one may reach the other. A new token of the same library keeps it all.
     if (found.library !== read(LIBRARY)) {
       updateOps(() => []);
+      void dropDocs();
+      forget(LIVE);
+      live = null;
+      liveAnswers = false;
       write(LIBRARY, found.library ?? "");
     }
     history.replaceState(null, "", location.pathname + location.search);
@@ -102,9 +118,6 @@ async function request(path: string): Promise<Response> {
   }
   return response;
 }
-
-/** Only in a secure context: the local network's plain HTTP page has no caches, and does without. */
-const docs = () => (typeof caches !== "undefined" ? caches.open(DOCS) : null);
 
 async function keep(path: string, response: Response) {
   const cache = await docs();
@@ -177,9 +190,7 @@ export async function disconnect() {
   live = null;
   liveAnswers = false;
   listeners.forEach((l) => l());
-  if (typeof caches !== "undefined") {
-    await caches.delete(DOCS);
-  }
+  await dropDocs();
 }
 
 // ---- operations ---------------------------------------------------------------------------------

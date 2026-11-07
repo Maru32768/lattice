@@ -265,6 +265,23 @@ test("the phone reads from the PC when it can reach it, and from the snapshot wh
   await worker.close();
 });
 
+test("another library's QR code leaves nothing of the first on the phone", async ({ browser }) => {
+  const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), null));
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}&l=first`);
+  await showAll(page);
+  await page.getByRole("link", { name: /Snapshot one/ }).click();
+  await expect(page.getByText("the snapshot's text")).toBeVisible();
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.evaluate(() => (location.hash = "#t=secret&l=second"));
+  await expect
+    .poll(() => page.evaluate(async () => (await caches.has("lattice-docs")) && (await (await caches.open("lattice-docs")).match("api/articles/1")) != null))
+    .toBe(false);
+  await ctx.close();
+  await worker.close();
+});
+
 test("disconnecting this phone leaves nothing of the library on it", async ({ browser }) => {
   const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), null));
   const ctx = await context(browser);
