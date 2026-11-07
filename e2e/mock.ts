@@ -958,7 +958,7 @@ export const handlers = {
     store.mobile = { ...store.mobile, settings, running: on, url, qr: on ? { width: 21, path: "M0 0h1v1h-1z" } : null };
     return store.mobile;
   },
-  mobile_snapshot_save: ({ settings }: { settings: SnapshotSettings }): MobileStatus => {
+  mobile_snapshot_save: ({ settings }: { settings: SnapshotSettings; abandon: boolean }): MobileStatus => {
     const { secret_access_key: secret, ...rest } = settings;
     const has_secret = store.mobile.snapshot.has_secret || !!secret;
     if (settings.enabled && !(settings.account_id && settings.bucket && settings.access_key_id && has_secret && settings.worker_url)) {

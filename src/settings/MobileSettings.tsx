@@ -62,10 +62,11 @@ export function MobileSettings() {
     return () => clearInterval(timer);
   }, [following]);
 
-  async function saveSnapshot() {
+  /** `abandon`: the reader has read why the old bucket cannot be left, and saves anyway. */
+  async function saveSnapshot(abandon: boolean) {
     setError(null);
     try {
-      const s = await mobile.saveSnapshot(snapshot!);
+      const s = await mobile.saveSnapshot(snapshot!, abandon);
       setStatus(s);
       setSnapshot(snapshotForm(s));
     } catch (e) {
@@ -218,7 +219,7 @@ export function MobileSettings() {
         </SetRow>
       </div>
       <div className="btn-row">
-        <button className="btn pri" onClick={() => void saveSnapshot()} disabled={status.fell_back}>
+        <button className="btn pri" onClick={() => void saveSnapshot(false)} disabled={status.fell_back}>
           {t("common.save")}
         </button>
         <button className="btn" onClick={() => void publish()} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
@@ -234,6 +235,14 @@ export function MobileSettings() {
       </p>
       {status.snapshot.last_error && <p className="note err">{t("mobileSettings.publishFailed", { error: t.msg(status.snapshot.last_error) })}</p>}
       {status.snapshot.last_rejected && <p className="note warn">{t("mobileSettings.opRejected", { error: t.msg(status.snapshot.last_rejected) })}</p>}
+      {error?.includes("mobile.leaveFailed") && (
+        <div className="note warn">
+          <p>{t("mobileSettings.abandonDesc")}</p>
+          <button className="btn" onClick={() => void saveSnapshot(true)}>
+            {t("mobileSettings.abandon")}
+          </button>
+        </div>
+      )}
       {status.snapshot_url && status.snapshot_qr && (
         <div className="mobile-qr">
           <Qr qr={status.snapshot_qr} label={t("mobileSettings.snapshotQr")} />

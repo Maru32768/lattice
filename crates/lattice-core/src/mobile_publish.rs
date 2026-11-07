@@ -480,13 +480,17 @@ fn leaves(c: &Creds, s: &SnapshotSettings) -> bool {
 
 /// Saves new settings. Those that leave a bucket the token is out in first leave it with the settings that reach
 /// it, which a save that clears or changes them would lose. If that fails nothing is saved: a lost phone's token would stay good there.
-pub async fn change(store: &Arc<Store>, settings: SnapshotSettings, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
-    change_with(store, settings, |creds| R2Bucket { http: r2::client(), creds }, on_applied).await
+///
+/// `abandon` saves without leaving: for a bucket nothing can reach any more, such as one in an account the reader lost. The
+/// token may stay good there until its Worker is removed, which the settings screen says before offering it.
+pub async fn change(store: &Arc<Store>, settings: SnapshotSettings, abandon: bool, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
+    change_with(store, settings, abandon, |creds| R2Bucket { http: r2::client(), creds }, on_applied).await
 }
 
 async fn change_with<B: Bucket>(
     store: &Arc<Store>,
     settings: SnapshotSettings,
+    abandon: bool,
     bucket_for: impl FnOnce(Creds) -> B,
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
 ) -> Result<(), String> {
@@ -503,6 +507,7 @@ async fn change_with<B: Bucket>(
     .await?;
     if let Some((mut current, _)) = current
         && leaves(&current, &settings)
+        && !abandon
     {
         // A key typed in the same form for the same bucket is the one that reaches it: the stored one may be revoked.
         if settings.account_id.trim() == current.account_id && settings.bucket.trim() == current.bucket {
@@ -906,7 +911,7 @@ mod tests {
     }
 
     async fn change_to(store: &Arc<Store>, settings: SnapshotSettings, bucket: &Memory) -> Result<(), String> {
-        change_with(store, settings, |_| bucket, &|_| {}).await
+        change_with(store, settings, false, |_| bucket, &|_| {}).await
     }
 
     #[tokio::test]
@@ -958,10 +963,21 @@ mod tests {
         run(&store, &a, false).await;
         // The token goes out, then the inbox cannot be read.
         let broken = BrokenList(&a);
-        assert!(change_with(&store, settings(false, "lattice-mobile", WORKER), |_| broken, &|_| {}).await.is_err());
+        assert!(change_with(&store, settings(false, "lattice-mobile", WORKER), false, |_| broken, &|_| {}).await.is_err());
         assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "out already");
         run(&store, &a, false).await;
         assert_eq!(a.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "the reader kept the bucket: the phone reads again");
+    }
+
+    #[tokio::test]
+    async fn a_bucket_nothing_can_reach_can_be_abandoned() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        *a.fail_puts_of.lock().unwrap() = Some(AUTH_KEY.into());
+        assert!(change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.is_err());
+        change_with(&store, settings(false, "lattice-mobile", WORKER), true, |_| &a, &|_| {}).await.unwrap();
+        assert!(!status(&store).unwrap().enabled);
     }
 
     /// Takes puts, fails listings: the network gone between the token's upload and the inbox.

@@ -1372,5 +1372,8 @@ export const ja = {
   "mobile.reloadPlease": "このページとデータの版が合いません。しばらくしてから読み込み直してください。",
   "mobile.reload": "読み込み直す",
   "be.mobile.unreadableArticles": "読み取れない記事は前回の内容のままです: {ids}",
-  "be.mobile.leaveFailed": "前のbucketからトークンを引き上げられなかったので、保存していません。そのbucketに届くキーを入れて保存し直してください: {error}",
+  "be.mobile.leaveFailed":
+    "前のbucketからトークンを引き上げられなかったので、保存していません。Bucketを前の名前に戻し、そこに届くキーを入れて保存してから、改めて変えてください: {error}",
+  "mobileSettings.abandon": "前のbucketを諦めて保存",
+  "mobileSettings.abandonDesc": "前のbucketにもう届かない場合だけ使ってください。そのbucketのWorkerは、削除するまで今のトークンを受け付けます。",
 } as const satisfies Record<string, string>;

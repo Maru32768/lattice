@@ -1391,5 +1391,7 @@ export const en = {
   "mobile.reload": "Reload",
   "be.mobile.unreadableArticles": "Articles that could not be read stay as last published: {ids}",
   "be.mobile.leaveFailed":
-    "Not saved: the token could not be taken out of the bucket left behind. Enter a key that reaches that bucket and save again: {error}",
+    "Not saved: the token could not be taken out of the bucket left behind. Put that bucket's name back with a key that reaches it, save, then change it again: {error}",
+  "mobileSettings.abandon": "Save, giving up the old bucket",
+  "mobileSettings.abandonDesc": "Only if the old bucket can no longer be reached. Its Worker accepts the current token until you remove it.",
 } satisfies Messages;
