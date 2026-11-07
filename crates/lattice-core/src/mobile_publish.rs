@@ -237,10 +237,17 @@ pub(crate) async fn take_inbox<B: Bucket>(store: &Arc<Store>, bucket: &B, on_app
     Ok(applied)
 }
 
+/// What `mobile_published` files a bucket's objects under: what one bucket holds says nothing of another,
+/// and going back to a bucket used before must not trust what it held then.
+fn scope_of(c: &Creds) -> String {
+    format!("{}/{}/", c.account_id, c.bucket)
+}
+
 /// What one pass has seen of the bucket and has put there.
 struct Uploads<'a, B> {
     store: &'a Arc<Store>,
     bucket: &'a B,
+    scope: &'a str,
     /// As listed at the start. `mobile_published` says what this library uploaded, but a bucket can be
     /// emptied, or the library restored from a backup: only an object seen here counts as being there.
     present: HashSet<String>,
@@ -252,7 +259,7 @@ impl<B: Bucket> Uploads<'_, B> {
     async fn put_if_changed(&mut self, key: String, hash: String, raw: Vec<u8>, gzip: bool) -> Result<(), String> {
         self.live.insert(key.clone());
         let there = self.present.contains(&key);
-        let (s, k, h) = (self.store.clone(), key.clone(), hash.clone());
+        let (s, k, h) = (self.store.clone(), format!("{}{key}", self.scope), hash.clone());
         let body = blocking(move || {
             let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [&k], |r| r.get(0)).optional().map_err(err)?;
             if there && known.as_deref() == Some(&h) {
@@ -269,9 +276,8 @@ impl<B: Bucket> Uploads<'_, B> {
             return Ok(());
         };
         self.bucket.put(&key, body).await?;
-        let s = self.store.clone();
-        blocking(move || s.conn().execute("INSERT OR REPLACE INTO mobile_published (key, hash) VALUES (?1, ?2)", params![key, hash]).map(drop).map_err(err))
-            .await
+        let (s, k) = (self.store.clone(), format!("{}{key}", self.scope));
+        blocking(move || s.conn().execute("INSERT OR REPLACE INTO mobile_published (key, hash) VALUES (?1, ?2)", params![k, hash]).map(drop).map_err(err)).await
     }
 
     /// Takes down what the library no longer has. Only under this module's own prefixes: a bucket
@@ -280,12 +286,12 @@ impl<B: Bucket> Uploads<'_, B> {
         for key in self.present.iter().filter(|k| (k.starts_with(ARTICLE_PREFIX) || k.starts_with(PAGE_PREFIX)) && !self.live.contains(*k)) {
             self.bucket.delete(key).await?;
         }
-        let (s, live) = (self.store.clone(), self.live.clone());
+        let (s, live, scope) = (self.store.clone(), self.live.clone(), self.scope.to_string());
         blocking(move || {
             let conn = s.conn();
             let mut stmt = conn.prepare("SELECT key FROM mobile_published").map_err(err)?;
             let keys = stmt.query_map([], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<Vec<String>>>().map_err(err)?;
-            for key in keys.iter().filter(|k| !live.contains(*k)) {
+            for key in keys.iter().filter(|k| k.strip_prefix(&scope).is_some_and(|own| !live.contains(own))) {
                 conn.execute("DELETE FROM mobile_published WHERE key = ?1", [key]).map_err(err)?;
             }
             Ok(())
@@ -326,6 +332,7 @@ fn article_upload(store: &Store, id: i64) -> Result<Option<(String, Vec<u8>)>, S
 pub(crate) async fn publish<B: Bucket>(
     store: &Arc<Store>,
     bucket: &B,
+    scope: &str,
     page: &[PageFile],
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
     keep_going: Arc<dyn Fn(&Store) -> bool + Send + Sync>,
@@ -333,7 +340,7 @@ pub(crate) async fn publish<B: Bucket>(
     take_inbox(store, bucket, on_applied).await?;
 
     let present = bucket.list("").await?.into_iter().collect();
-    let mut uploads = Uploads { store, bucket, present, live: HashSet::new() };
+    let mut uploads = Uploads { store, bucket, scope, present, live: HashSet::new() };
 
     let s = store.clone();
     let auth = blocking(move || mobile::auth_document(&s)).await?;
@@ -388,10 +395,10 @@ pub(crate) async fn publish<B: Bucket>(
 }
 
 /// Whether the bucket holds a token this library put there.
-async fn token_out(store: &Arc<Store>) -> Result<bool, String> {
-    let (s, none) = (store.clone(), sha256_hex(NO_TOKEN));
+async fn token_out(store: &Arc<Store>, scope: &str) -> Result<bool, String> {
+    let (s, key, none) = (store.clone(), format!("{scope}{AUTH_KEY}"), sha256_hex(NO_TOKEN));
     blocking(move || {
-        let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [AUTH_KEY], |r| r.get(0)).optional().map_err(err)?;
+        let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [&key], |r| r.get(0)).optional().map_err(err)?;
         Ok(known.is_some_and(|k| k != none))
     })
     .await
@@ -399,14 +406,14 @@ async fn token_out(store: &Arc<Store>) -> Result<bool, String> {
 
 /// Leaves a bucket: applies what the phone left in its inbox, as it was told it would be, then takes the token
 /// out, so that turning the snapshot off or moving to another bucket also stops this one's readers.
-async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
-    if !token_out(store).await? {
+async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
+    if !token_out(store, scope).await? {
         return Ok(());
     }
     take_inbox(store, bucket, on_applied).await?;
     bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
-    let (s, hash) = (store.clone(), sha256_hex(NO_TOKEN));
-    blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, AUTH_KEY]).map(drop).map_err(err)).await
+    let (s, key, hash) = (store.clone(), format!("{scope}{AUTH_KEY}"), sha256_hex(NO_TOKEN));
+    blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await
 }
 
 /// Whether new settings leave the bucket the current ones point at.
@@ -430,7 +437,8 @@ async fn change_with<B: Bucket>(
     if let Some((current, _)) = blocking(move || creds(&s)).await?
         && leaves(&current, &settings)
     {
-        leave(store, &bucket_for(current), on_applied).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
+        let scope = scope_of(&current);
+        leave(store, &bucket_for(current), &scope, on_applied).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
     }
     let s = store.clone();
     blocking(move || save(&s, &settings)).await
@@ -458,11 +466,11 @@ async fn run_pass<B: Bucket>(
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
     };
-    let (account, name) = (creds_now.account_id.clone(), creds_now.bucket.clone());
+    let (account, name, scope) = (creds_now.account_id.clone(), creds_now.bucket.clone(), scope_of(&creds_now));
     let bucket = bucket_for(creds_now);
     if !enabled {
         // Turned off by a save that could not reach the bucket, or the leaving failed: try again.
-        if let Err(e) = leave(store, &bucket, on_applied).await {
+        if let Err(e) = leave(store, &bucket, &scope, on_applied).await {
             log::warn!("mobile snapshot: withdrawing the token: {e}");
             note(store, LAST_ERROR, Some(e)).await;
         }
@@ -480,7 +488,7 @@ async fn run_pass<B: Bucket>(
         }
     }
     let keep_going = Arc::new(move |s: &Store| creds(s).ok().flatten().is_some_and(|(c, on)| on && c.account_id == account && c.bucket == name));
-    match publish(store, &bucket, page, on_applied, keep_going).await {
+    match publish(store, &bucket, &scope, page, on_applied, keep_going).await {
         Ok(Published { stopped: true, .. }) => {}
         Ok(Published { unreadable, .. }) => {
             note(store, LAST_PUBLISH, Some(unix_now().to_string())).await;
@@ -582,13 +590,14 @@ mod tests {
     }
 
     const PAGE: &[PageFile] = &[("index.html", b"<html>"), ("icon-256.png", b"png")];
+    const SCOPE: &str = "0123456789abcdef0123456789abcdef/lattice-mobile/";
 
     fn always() -> Arc<dyn Fn(&Store) -> bool + Send + Sync> {
         Arc::new(|_| true)
     }
 
     async fn pass(store: &Arc<Store>, bucket: &Memory) {
-        publish(store, &bucket, PAGE, &|_| {}, always()).await.unwrap();
+        publish(store, &bucket, SCOPE, PAGE, &|_| {}, always()).await.unwrap();
     }
 
     #[tokio::test]
@@ -663,7 +672,7 @@ mod tests {
         let (store, bucket, id) = setup();
         let other = store.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap().0;
         *bucket.fail_puts_of.lock().unwrap() = Some(format!("articles/{id}.json"));
-        assert!(publish(&store, &&bucket, PAGE, &|_| {}, always()).await.is_err());
+        assert!(publish(&store, &&bucket, SCOPE, PAGE, &|_| {}, always()).await.is_err());
         assert!(!bucket.has("index.json"), "no list points at what is not there");
         *bucket.fail_puts_of.lock().unwrap() = None;
         bucket.take_puts();
@@ -683,7 +692,7 @@ mod tests {
             .conn()
             .execute("INSERT INTO blocks (article_id, ordinal, kind, text, text_hash, attrs) VALUES (?1, 0, 'paragraph', 't', 'h', 'not json')", [id])
             .unwrap();
-        let published = publish(&store, &&bucket, PAGE, &|_| {}, always()).await.unwrap();
+        let published = publish(&store, &&bucket, SCOPE, PAGE, &|_| {}, always()).await.unwrap();
         assert_eq!(published.unreadable, [id]);
         assert!(bucket.has(&format!("articles/{other}.json")));
         assert!(bucket.has(&format!("articles/{id}.json")), "its last upload stays");
@@ -693,7 +702,7 @@ mod tests {
     #[tokio::test]
     async fn a_pass_stops_when_its_settings_no_longer_hold() {
         let (store, bucket, id) = setup();
-        let published = publish(&store, &&bucket, PAGE, &|_| {}, Arc::new(|_| false)).await.unwrap();
+        let published = publish(&store, &&bucket, SCOPE, PAGE, &|_| {}, Arc::new(|_| false)).await.unwrap();
         assert!(published.stopped);
         assert!(!bucket.has(&format!("articles/{id}.json")) && !bucket.has("index.json"));
     }
@@ -837,6 +846,21 @@ mod tests {
         *a.fail_puts_of.lock().unwrap() = Some(AUTH_KEY.into());
         assert!(change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.unwrap_err().contains("mobile.leaveFailed"));
         assert!(status(&store).unwrap().enabled);
+    }
+
+    #[tokio::test]
+    async fn going_back_to_a_bucket_used_before_trusts_nothing_it_held_then() {
+        let (store, a, _) = setup();
+        let b = Memory::default();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        change_to(&store, settings(true, "another-bucket", WORKER), &a).await.unwrap();
+        run(&store, &b, false).await;
+        let new = mobile::regenerate_token(&store).unwrap();
+        run(&store, &b, false).await;
+        change_to(&store, settings(true, "lattice-mobile", WORKER), &b).await.unwrap();
+        run(&store, &a, false).await;
+        assert_eq!(a.auth()["token_hash"], sha256_hex(new));
     }
 
     #[tokio::test]
