@@ -29,7 +29,12 @@ async function pageFile(event) {
   if (!saved) {
     return network;
   }
-  return Promise.race([network.catch(() => saved), new Promise((resolve) => setTimeout(() => resolve(saved), WAIT_MS))]);
+  // An error page is no better than no answer: with the PC off, a tunnel answers with one.
+  const fresh = network.then(
+    (response) => (response.ok ? response : saved),
+    () => saved,
+  );
+  return Promise.race([fresh, new Promise((resolve) => setTimeout(() => resolve(saved), WAIT_MS))]);
 }
 
 self.addEventListener("fetch", (event) => {
