@@ -114,6 +114,7 @@ export function App() {
       </main>
     );
   }
+  const index = load.state === "ready" ? load.index : null;
   if (articleId != null) {
     return (
       <>
@@ -121,6 +122,7 @@ export function App() {
         <ArticlePage
           key={articleId}
           id={articleId}
+          row={index?.articles.find((a) => a.id === articleId)}
           ops={ops}
           onBack={(e) => {
             // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.

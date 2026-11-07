@@ -502,6 +502,21 @@ test("reloading on an article does not undo marking it unread", async ({ page })
   expect(sentOps(seen).length).toBe(2);
 });
 
+test("the open article follows the list once the list has settled what was done", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("button", { name: "すべて" }).click();
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "未読に戻す" }).waitFor();
+  await expect.poll(() => sentOps(seen).length).toBe(1);
+  await page.route("**/api/index", (route) =>
+    route.fulfill({
+      json: { generated_at: 2, ui_language: "ja", applied_ops: [sentOps(seen)[0].id], articles: [row(1, "First article", { read_status: "read" })] },
+    }),
+  );
+  await page.reload();
+  await expect(page.getByRole("button", { name: "未読に戻す" }), "its own copy still says unread; the list knows better").toBeVisible();
+});
+
 test("another library's QR code clears what waits; a new token of this one keeps it", async ({ page }) => {
   const seen = await start(page, { token: false });
   await page.goto("/mobile.html#t=secret&l=first");

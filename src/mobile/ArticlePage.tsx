@@ -1,5 +1,5 @@
 import { memo, useEffect, useEffectEvent, useState } from "react";
-import type { ArticleDoc, VocabCapture } from "../bindings";
+import type { ArticleDoc, ArticleRow, VocabCapture } from "../bindings";
 import { useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
@@ -67,7 +67,18 @@ async function fetchDoc(id: number): Promise<ArticleDoc | null | "failed" | "no-
   }
 }
 
-export function ArticlePage({ id, ops, onBack }: { id: number; ops: LocalOp[]; onBack: (e: React.MouseEvent) => void }) {
+export function ArticlePage({
+  id,
+  row,
+  ops,
+  onBack,
+}: {
+  id: number;
+  /** The article in the list, which is newer than the page's copy once the list has loaded. */
+  row?: ArticleRow;
+  ops: LocalOp[];
+  onBack: (e: React.MouseEvent) => void;
+}) {
   const t = useT();
   const [doc, setDoc] = useState<ArticleDoc | null | "loading" | "failed" | "no-token">("loading");
   const [{ mode, percent }, setLanguage] = useState(savedLanguage);
@@ -187,7 +198,7 @@ export function ArticlePage({ id, ops, onBack }: { id: number; ops: LocalOp[]; o
   }
 
   const { blocks } = doc;
-  const a = withOps(doc.article, ops);
+  const a = withOps(row ?? doc.article, ops);
   const markers = listMarkers(blocks);
   const pieces = new Map(blocks.map((b) => [b.id, blockPieces(b)]));
   const selected = translatedSentences(
