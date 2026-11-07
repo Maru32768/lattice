@@ -120,6 +120,16 @@ test("a new QR code opened in the same tab is taken without a reload", async ({ 
   expect(page.url()).not.toContain("secret");
 });
 
+test("a failed refresh leaves the list on screen", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  await page.unroute("**/api/**");
+  await page.route("**/api/**", (route) => route.abort());
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("alert")).toHaveText("読み込めませんでした。");
+  await expect(page.getByText("First article")).toBeVisible();
+});
+
 test("the list filters by state and title, and keeps its place after reading", async ({ page }) => {
   await start(page);
   await expect(page.getByRole("link")).toHaveCount(1);

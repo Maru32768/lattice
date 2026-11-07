@@ -19,6 +19,7 @@ export function App() {
   const articleId = useSyncExternalStore(subscribeHash, () => articleInHash(location.hash));
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
   const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: 100 });
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const listScroll = useRef(0);
 
   const refresh = async () => {
@@ -28,8 +29,12 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
+      setRefreshFailed(false);
     } catch (e) {
-      setLoad(e instanceof Unauthorized ? { state: "no-token" } : { state: "failed" });
+      const unauthorized = e instanceof Unauthorized;
+      // What is on screen stays readable without a connection.
+      setLoad((old) => (unauthorized ? { state: "no-token" } : old.state === "ready" ? old : { state: "failed" }));
+      setRefreshFailed(true);
     }
   };
 
@@ -83,5 +88,14 @@ export function App() {
       </main>
     );
   }
-  return <ListPage index={load.index} view={view} onView={setView} onOpen={() => (listScroll.current = window.scrollY)} onRefresh={refresh} />;
+  return (
+    <ListPage
+      index={load.index}
+      view={view}
+      onView={setView}
+      refreshFailed={refreshFailed}
+      onOpen={() => (listScroll.current = window.scrollY)}
+      onRefresh={refresh}
+    />
+  );
 }

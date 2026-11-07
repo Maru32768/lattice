@@ -14,12 +14,14 @@ const PAGE = 100;
 export function ListPage({
   index,
   view,
+  refreshFailed,
   onView,
   onOpen,
   onRefresh,
 }: {
   index: MobileIndex;
   view: ListView;
+  refreshFailed: boolean;
   onView: (v: ListView) => void;
   onOpen: () => void;
   onRefresh: () => Promise<void>;
@@ -52,6 +54,11 @@ export function ListPage({
         </button>
       </header>
       <main className="m-list">
+        {refreshFailed && (
+          <p role="alert" className="m-note">
+            {t("mobile.loadFailed")}
+          </p>
+        )}
         <input
           className="input"
           type="search"
