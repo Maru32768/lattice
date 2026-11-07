@@ -150,7 +150,7 @@ async fn page(method: Method, headers: HeaderMap, request: Request) -> Response 
     response
 }
 
-/// A running server. Dropping it leaves it running; `stop` ends it.
+/// A running server. Dropping it stops it as `stop` does, without waiting.
 pub struct Server {
     pub addr: SocketAddr,
     stop: oneshot::Sender<()>,
@@ -174,13 +174,10 @@ pub async fn start(addr: SocketAddr, router: Router) -> std::io::Result<Server> 
 }
 
 impl Server {
-    /// Stops accepting at once. A phone in the middle of a long download gets a moment to finish, then is cut off.
+    /// Stops accepting at once and waits a moment for requests in progress. A longer one finishes on its own.
     pub async fn stop(self) {
         let _ = self.stop.send(());
-        let abort = self.task.abort_handle();
-        if tokio::time::timeout(Duration::from_secs(2), self.task).await.is_err() {
-            abort.abort();
-        }
+        let _ = tokio::time::timeout(Duration::from_secs(2), self.task).await;
     }
 }
 
@@ -276,8 +273,15 @@ mod tests {
         let first = start("127.0.0.1:0".parse().unwrap(), app.clone()).await.unwrap();
         let addr = first.addr;
         first.stop().await;
-        let second = start(addr, app).await.unwrap();
+        let second = start(addr, app.clone()).await.unwrap();
         assert_eq!(second.addr, addr);
-        second.stop().await;
+        drop(second);
+        for _ in 0..100 {
+            if TcpListener::bind(addr).await.is_ok() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("dropping a server leaves its port taken");
     }
 }
