@@ -5,7 +5,7 @@ import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
 import { PAGE, type ListView } from "./list";
 import { articleInHash } from "./route";
-import { Unauthorized, adoptToken, flushOps, hasToken, loadIndex, localOps, subscribeOps, whenRejected, withOps } from "./client";
+import { Unauthorized, adoptToken, flushOps, hasToken, loadIndex, localOps, submit, subscribeOps, whenRejected, withOps } from "./client";
 
 const subscribeHash = (changed: () => void) => {
   addEventListener("hashchange", changed);
@@ -162,9 +162,13 @@ export function App() {
         view={view}
         onView={setView}
         refreshFailed={refreshFailed}
-        onOpen={() => {
+        onOpen={(a) => {
           listScroll.current = window.scrollY;
           fromList.current = true;
+          // Opening an article reads it, as on the PC. Only this: reloading the page must not undo 未読に戻す.
+          if (a.read_status === "unread") {
+            submit({ kind: "set_read", article_id: a.id, read: true });
+          }
         }}
         onRefresh={refresh}
       />

@@ -26,7 +26,7 @@ export function ListPage({
   view: ListView;
   refreshFailed: boolean;
   onView: (v: ListView) => void;
-  onOpen: () => void;
+  onOpen: (a: ArticleRow) => void;
   onRefresh: () => Promise<void>;
 }) {
   const t = useT();
@@ -114,7 +114,7 @@ export function ListPage({
         <ul>
           {rows.slice(0, view.shown).map((a) => (
             <li key={a.id}>
-              <a href={`#/a/${a.id}`} onClick={onOpen} className={a.read_status === "unread" ? "unread" : ""}>
+              <a href={`#/a/${a.id}`} onClick={() => onOpen(a)} className={a.read_status === "unread" ? "unread" : ""}>
                 <span className="m-title">{a.title ?? a.original_url}</span>
                 <span className="m-meta">
                   {a.favorite && <span aria-label={t("mobile.favorites")}>★ </span>}

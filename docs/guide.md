@@ -851,7 +851,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
 
-Opening an article marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
+Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
 - The QR code contains a token, and anyone with the token and the address can read your library. Don't show the code to others. **Regenerate the token** makes the old token stop working at once. Then scan the new code.
 - Serving to the network is not encrypted, so anyone on the same Wi-Fi may be able to read what is sent. Use it on a network you trust.

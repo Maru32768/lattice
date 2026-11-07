@@ -491,6 +491,17 @@ test("what waits goes when the reader comes back to the page", async ({ page }) 
   expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "save_url", url: "https://example.com/later" });
 });
 
+test("reloading on an article does not undo marking it unread", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "未読に戻す" }).click();
+  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  await expect.poll(() => sentOps(seen).length).toBe(2);
+  await page.reload();
+  await page.getByRole("button", { name: "既読にする" }).waitFor();
+  expect(sentOps(seen).length).toBe(2);
+});
+
 test("another library's QR code clears what waits; a new token of this one keeps it", async ({ page }) => {
   const seen = await start(page, { token: false });
   await page.goto("/mobile.html#t=secret&l=first");

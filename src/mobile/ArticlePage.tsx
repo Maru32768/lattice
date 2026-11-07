@@ -5,7 +5,7 @@ import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
 import { captureIn, isWord } from "../vocab/vocab";
-import { type LocalOp, Unauthorized, loadArticle, localOps, savedLanguage, saveLanguage, submit, withOps } from "./client";
+import { type LocalOp, Unauthorized, loadArticle, savedLanguage, saveLanguage, submit, withOps } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
@@ -78,12 +78,7 @@ export function ArticlePage({ id, ops, onBack }: { id: number; ops: LocalOp[]; o
 
   const load = async () => {
     setDoc("loading");
-    const loaded = await fetchDoc(id);
-    setDoc(loaded);
-    // Opening an article reads it, as on the PC. The operations as they are now: this may be the second load of the page.
-    if (typeof loaded === "object" && loaded && withOps(loaded.article, localOps()).read_status === "unread") {
-      submit({ kind: "set_read", article_id: id, read: true });
-    }
+    setDoc(await fetchDoc(id));
   };
   // App remounts this page per article.
   const firstLoad = useEffectEvent(() => void load());
