@@ -1348,7 +1348,7 @@ export const ja = {
   "mobile.markRead": "既読にする",
   "mobile.pending": "未送信{n}件",
   "mobile.sent": "送信しました",
-  "mobile.rejected": "送れませんでした: {error}",
+  "mobile.rejected": "反映できませんでした({what}): {error}",
   "mobileSettings.snapshot": "PCが止まっていても読む",
   "mobileSettings.snapshotDesc":
     "記事をCloudflare R2に置き、Workerを通してスマホで読みます。操作はR2に残り、PCを起動したときに反映します。{code}のTerraformでbucketとWorkerを作ります。",

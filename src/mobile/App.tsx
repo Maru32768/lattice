@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import type { MobileIndex } from "../bindings";
+import type { MobileIndex, MobileOp } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
@@ -12,6 +12,9 @@ const subscribeHash = (changed: () => void) => {
   return () => removeEventListener("hashchange", changed);
 };
 
+/** What a refusal should name, so that the reader knows what to do again. */
+const whatOf = ({ op }: MobileOp) => (op.kind === "vocab_add" ? op.capture.surface : op.kind === "save_url" ? op.url : "");
+
 type Load = { state: "loading" } | { state: "failed" } | { state: "no-token" } | { state: "ready"; index: MobileIndex };
 
 export function App() {
@@ -21,7 +24,7 @@ export function App() {
   const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
   const [refreshFailed, setRefreshFailed] = useState(false);
   const ops = useSyncExternalStore(subscribeOps, localOps);
-  const [rejected, setRejected] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
   const listScroll = useRef(0);
   /** Set when the article on screen was opened from the list, so going back to the list is going back in history. */
   const fromList = useRef(false);
@@ -76,7 +79,7 @@ export function App() {
   // What waits on this phone goes as soon as there is a way.
   useEffect(() => {
     const send = () => void flushOps();
-    whenRejected(setRejected);
+    whenRejected((op, error) => setRejected((old) => [...old, { what: whatOf(op) || op.op.kind, error }]));
     addEventListener("online", send);
     return () => removeEventListener("online", send);
   }, []);
@@ -87,10 +90,12 @@ export function App() {
     window.scrollTo(0, reading ? 0 : listScroll.current);
   }, [reading]);
 
-  const notice = rejected && (
-    <p role="alert" className="m-toast" onClick={() => setRejected(null)}>
-      {t("mobile.rejected", { error: t.msg(rejected) })}
-    </p>
+  const notice = rejected.length > 0 && (
+    <div role="alert" className="m-toast" onClick={() => setRejected([])}>
+      {rejected.map((r, i) => (
+        <p key={i}>{t("mobile.rejected", { what: r.what, error: t.msg(r.error) })}</p>
+      ))}
+    </div>
   );
   if (load.state === "no-token") {
     return (

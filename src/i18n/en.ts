@@ -1366,7 +1366,7 @@ export const en = {
   "mobile.markRead": "Mark as read",
   "mobile.pending": "{n} not sent",
   "mobile.sent": "Sent",
-  "mobile.rejected": "Could not send: {error}",
+  "mobile.rejected": "Could not apply ({what}): {error}",
   "mobileSettings.snapshot": "Read while the PC is off",
   "mobileSettings.snapshotDesc":
     "Keeps articles in Cloudflare R2, read through a Worker. What you do on the phone waits in R2 until the PC is on. The Terraform in {code} creates the bucket and the Worker.",

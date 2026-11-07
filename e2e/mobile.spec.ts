@@ -408,12 +408,16 @@ test("an operation the list reflects stops being kept, and sending it never happ
   expect(sentOps(seen).length).toBe(1);
 });
 
-test("an operation the server refuses is dropped, and the reader is told why", async ({ page }) => {
+test("an operation the server refuses is dropped, and the reader is told which and why", async ({ page }) => {
   await start(page);
   await page.getByText("First article").waitFor();
   await page.route("**/api/ops", (route) => route.fulfill({ status: 422, json: { error: '{"code":"mobile.badUrl","params":{}}' } }));
-  await page.getByLabel("URLを保存").fill("ftp://example.com/x");
+  await page.getByLabel("URLを保存").fill("https://example.com/one");
   await page.getByRole("button", { name: "URLを保存" }).click();
+  await page.getByLabel("URLを保存").fill("https://example.com/two");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByRole("alert")).toContainText("https://example.com/one");
+  await expect(page.getByRole("alert")).toContainText("https://example.com/two");
   await expect(page.getByRole("alert")).toContainText("http://かhttps://");
   await expect(page.getByText("未送信")).toHaveCount(0);
 });

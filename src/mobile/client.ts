@@ -193,9 +193,9 @@ async function sendOp(op: MobileOp): Promise<SendResult> {
 }
 
 let flushing: Promise<void> | null = null;
-/** Why the last operation was turned down, for the page to say once. */
-let onRejected: (error: string) => void = () => {};
-export const whenRejected = (f: (error: string) => void) => {
+/** An operation turned down for good, and why, for the page to say. */
+let onRejected: (op: MobileOp, error: string) => void = () => {};
+export const whenRejected = (f: typeof onRejected) => {
   onRejected = f;
 };
 
@@ -204,16 +204,16 @@ export function flushOps(): Promise<void> {
   flushing ??= (async () => {
     updateOps((local) => local);
     for (let next = ops.find((o) => !o.sent); next; next = ops.find((o) => !o.sent)) {
-      const id = next.id;
-      const result = await sendOp(next);
+      const sending = next;
+      const result = await sendOp(sending);
       if (result.status === "wait") {
         break;
       }
       if (result.status === "rejected") {
-        updateOps((local) => local.filter((o) => o.id !== id));
-        onRejected(result.error);
+        updateOps((local) => local.filter((o) => o.id !== sending.id));
+        onRejected(sending, result.error);
       } else {
-        updateOps((local) => local.map((o) => (o.id === id ? { ...o, sent: true } : o)));
+        updateOps((local) => local.map((o) => (o.id === sending.id ? { ...o, sent: true } : o)));
       }
     }
   })().finally(() => {

@@ -26,6 +26,7 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; color:
 .m-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .m-word { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 3; display: flex; justify-content: center; font-size: 14px; }
 .m-word .btn { height: 44px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.m-toast p { margin: 0; }
 .m-toast { position: fixed; left: 16px; right: 16px; bottom: 72px; z-index: 4; margin: 0; padding: 10px 12px; background: var(--err-soft); color: var(--err-ink); border-radius: 6px; font-size: 14px; }
 .m-more { width: 100%; margin-top: 12px; }
 
