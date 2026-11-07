@@ -162,6 +162,15 @@ test("the list filters by state and title, and keeps its place after reading", a
   await expect(page.getByRole("link")).toHaveCount(3);
 });
 
+test("a summary made before the article changed says so", async ({ page }) => {
+  await start(page);
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, summary: { ...ARTICLE.summary, stale: true } } }));
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByText("要約", { exact: true }).click();
+  await expect(page.getByText("A short summary.")).toBeVisible();
+  await expect(page.locator(".m-summary .m-note")).toBeVisible();
+});
+
 test("a long list draws a page at a time", async ({ page }) => {
   const articles = Array.from({ length: 150 }, (_, i) => row(i + 1, `Article ${i + 1}`));
   await start(page, { index: { generated_at: 1, ui_language: "ja", articles } });

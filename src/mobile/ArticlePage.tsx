@@ -174,6 +174,7 @@ export function ArticlePage({ id }: { id: number }) {
         {doc.summary && (
           <details className="m-summary">
             <summary>{t("mobile.summary")}</summary>
+            {doc.summary.stale && <p className="m-note">{t("reader.summaryStale")}</p>}
             <p>{doc.summary.text}</p>
           </details>
         )}
