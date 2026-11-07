@@ -21,16 +21,25 @@ export function App() {
   const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
   const [refreshFailed, setRefreshFailed] = useState(false);
   const listScroll = useRef(0);
+  /** Only the latest request may change the screen: an older one can answer last. */
+  const latest = useRef(0);
 
   const refresh = async () => {
+    const request = ++latest.current;
     try {
       const index = await loadIndex();
+      if (request !== latest.current) {
+        return;
+      }
       if (isLang(index.ui_language)) {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
       setRefreshFailed(false);
     } catch (e) {
+      if (request !== latest.current) {
+        return;
+      }
       const unauthorized = e instanceof Unauthorized;
       // What is on screen stays readable without a connection.
       setLoad((old) => (unauthorized ? { state: "no-token" } : old.state === "ready" ? old : { state: "failed" }));

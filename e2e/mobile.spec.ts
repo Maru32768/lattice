@@ -162,6 +162,31 @@ test("the list filters by state and title, and keeps its place after reading", a
   await expect(page.getByRole("link")).toHaveCount(3);
 });
 
+test("the answer to the latest request wins, whatever order they come back in", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  let calls = 0;
+  await page.unroute("**/api/**");
+  await page.route("**/api/index", async (route) => {
+    calls++;
+    if (calls === 1) {
+      await held;
+      return route.fulfill({ status: 401, json: {} });
+    }
+    return route.fulfill({ json: { generated_at: 2, ui_language: "ja", articles: [row(9, "Newer article")] } });
+  });
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect.poll(() => calls).toBe(1);
+  await page.evaluate(() => (location.hash = "#t=secret"));
+  await expect(page.getByText("Newer article")).toBeVisible();
+  release();
+  await page.waitForTimeout(100);
+  await expect(page.getByText("Newer article")).toBeVisible();
+  await expect(page.getByText("QRコードを読み取ってください")).toHaveCount(0);
+});
+
 test("a summary made before the article changed says so", async ({ page }) => {
   await start(page);
   await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, summary: { ...ARTICLE.summary, stale: true } } }));
