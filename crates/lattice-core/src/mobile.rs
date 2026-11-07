@@ -102,7 +102,7 @@ pub fn settings(store: &Store) -> Result<MobileSettings, String> {
 }
 
 /// Well inside what a QR code holds together with the token.
-const MAX_PUBLIC_URL: usize = 256;
+pub const MAX_PUBLIC_URL: usize = 256;
 
 /// The address as the phone uses it: `https://host` or `http://host:port`, without path or trailing slash.
 fn clean_public_url(url: &str) -> Result<String, String> {
@@ -245,9 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn the_longest_address_allowed_still_fits_a_qr_code_with_the_token() {
-        // A QR code holds at most 2953 bytes.
-        assert!(phone_url(&"x".repeat(MAX_PUBLIC_URL), &"f".repeat(64)).len() < 2953);
+    fn an_address_too_long_for_a_qr_code_is_refused() {
         let s = store();
         let long = format!("https://{}.example", "x".repeat(MAX_PUBLIC_URL));
         assert!(save_settings(&s, &MobileSettings { mode: ServerMode::Lan, port: 8787, public_url: long }).is_err());

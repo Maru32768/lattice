@@ -151,6 +151,11 @@ mod tests {
     }
 
     #[test]
+    fn the_longest_address_allowed_fits_a_qr_code_with_the_token() {
+        assert!(qr_of(&mobile::phone_url(&"x".repeat(mobile::MAX_PUBLIC_URL), &"f".repeat(64))).is_ok());
+    }
+
+    #[test]
     fn the_phone_opens_the_tunnel_when_there_is_one() {
         let with = |mode, public_url: &str| base_url(&MobileSettings { mode, port: 8787, public_url: public_url.into() });
         assert_eq!(with(ServerMode::Local, "https://pc.example.ts.net").as_deref(), Some("https://pc.example.ts.net"));
