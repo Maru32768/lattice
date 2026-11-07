@@ -695,6 +695,7 @@ Open **Settings** at the bottom of the navigation. Settings are grouped into **A
 | | **Startup & taskbar** | [Startup and taskbar](#startup-and-taskbar) |
 | | **Updates** | [Updates](#updates) |
 | Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
+| | **Read on a phone** | [Read on a phone](#read-on-a-phone) |
 
 Type a section's name in the palette, for example **Settings: Translation**, to open that section directly.
 
@@ -839,6 +840,29 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Short
 - A key the vimrc maps in the current mode goes to the editor before the app. If you map `Ctrl+H` in insert mode, for example, that key no longer moves between panes in insert mode.
 - Mappings that use `<C-w>` are not applied. Panes move with the app's keys.
 - `set clipboard+=unnamed` also copies a yank to the Windows clipboard (only a yank with no register named). `p` does not read the Windows clipboard.
+
+## Read on a phone
+
+While the PC is on, Lattice can serve your library to a phone's browser. The phone shows the article list, and each article as **Original**, **Mixed** or **Translated**. This is off by default.
+
+1. In **Settings › Read on a phone**, set **Serve from this PC** to **To this network**, then press **Save**.
+2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
+3. To open the page again quickly, add it to the phone's home screen.
+
+Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
+
+- The QR code contains a token, and anyone with the token and the address can read your library. Don't show the code to others. **Regenerate the token** makes the old token stop working at once. Then scan the new code.
+- Serving to the network is not encrypted, so anyone on the same Wi-Fi may be able to read what is sent. Use it on a network you trust.
+
+### Read away from home
+
+A tunnel gives the phone an encrypted way to reach the PC from anywhere. Lattice does not set one up for you. With [Tailscale](https://tailscale.com/docs/features/tailscale-serve) on both the PC and the phone:
+
+1. Set **Serve from this PC** to **Inside this PC only (for a tunnel)**.
+2. Run `tailscale serve --bg 8787` on the PC. It prints an address that ends in `.ts.net`.
+3. Enter that address in **Address the phone opens**, press **Save**, and scan the QR code.
+
+`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open.
 
 ## CLI and MCP
 
