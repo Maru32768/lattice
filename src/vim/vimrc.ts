@@ -336,7 +336,10 @@ function leaderKey(value: string): string {
 /** The entries of `text`, in order: what applies and, with a reason, what does not. */
 export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
   let out: VimrcEntry[] = [];
-  /** The keys of mappings left out: a later `unmap` undoes one, as in Vim, and must not take the key's own command instead. */
+  /**
+   * The keys of mappings left out: a later `unmap` undoes one, as in Vim, and must not take the key's own command instead.
+   * shortcut: not those in a skipped block, and any clear forgets them all, upgrade if a vimrc ever relies on either.
+   */
   const leftOut = new Set<string>();
   const leaders = { mapleader: DEFAULT_LEADER, maplocalleader: DEFAULT_LEADER };
   let depth = 0;
@@ -380,9 +383,10 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
         const m = mappingOf(e);
         return m?.lhs !== lhs || m.modes.includes("insert");
       });
-      const undoes = kept.length < out.length || leftOut.has(lhs);
-      out = undoes ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
+      const undidLeftOut = leftOut.delete(lhs);
+      out = kept.length < out.length || undidLeftOut ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
     } else if (CLEARS.has(cmd)) {
+      leftOut.clear();
       out = out.filter((e) => !clearedBy(cmd, e));
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
     } else if (SCRIPT.has(cmd.replace(/!$/, "")) || known.ex.has(cmd)) {
@@ -392,8 +396,10 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       out.push(skip("unknownEx"));
     }
     const map = MAPS.get(cmd);
-    if (map && !map.startsWith("i") && out.at(-1)?.kind === "skip") {
-      leftOut.add(engineKeys(rest.replace(MAP_ARGS, "").split(/\s/, 1)[0]!));
+    // With no right-hand side it maps nothing: Vim lists what the key has.
+    const key = map && !map.startsWith("i") && out.at(-1)?.kind === "skip" && /^(\S+)\s+\S/.exec(rest.replace(MAP_ARGS, ""));
+    if (key) {
+      leftOut.add(engineKeys(key[1]!));
     }
   }
   // The engine runs a whole match at once, however many longer mappings share its start, so a key that does nothing
