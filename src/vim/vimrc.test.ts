@@ -75,6 +75,11 @@ test("an unmap undoes the mappings above it, and with none takes the key's own c
   assert.deepEqual(parse("nnoremap x <nop>\nunmap x"), []);
 });
 
+test("an unmap of a mapping that was left out keeps the key's own command, unless the mapping was for insert mode", () => {
+  assert.deepEqual(exOf(parse("nnoremap x :MyPluginCmd<cr>\nunmap x")), []);
+  assert.deepEqual(exOf(parse("inoremap x <C-o>:MyPluginCmd<cr>\nunmap x")), ["unmap x"]);
+});
+
 test("a key gives up its command only in the modes of the <nop> that leads, and in insert mode has none to give up", () => {
   assert.deepEqual(parse("vnoremap s <Nop>\nvnoremap sa y")[0], { kind: "free", line: 1, lhs: "s", modes: ["visual"] });
   assert.deepEqual(parse("noremap s <Nop>\nnoremap sa y")[0], { kind: "free", line: 1, lhs: "s", modes: ["normal", "visual"] });

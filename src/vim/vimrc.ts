@@ -8,7 +8,7 @@ export type VimrcEntry =
   | { kind: "nop"; line: number; lhs: string; context: VimrcContext }
   /** A key that gives up the engine's own command in these modes, which comes before every mapping: a mapping written earlier stays. */
   | { kind: "free"; line: number; lhs: string; modes: FreedMode[] }
-  | { kind: "skip"; line: number; text: string; reason: SkipReason };
+  | { kind: "skip"; line: number; text: string; reason: SkipReason; lhs?: string };
 /** Insert mode has no command for a key to give up: there a key is text. */
 export type FreedMode = "normal" | "visual";
 const BOTH_MODES: FreedMode[] = ["normal", "visual"];
@@ -282,20 +282,22 @@ function parseMap(line: number, text: string, cmd: string, rest: string, known: 
     return skip("script");
   }
   const lhs = engineKeys(parts[1]!);
+  // A later `unmap` undoes this line, though it was left out, and must not take the key's own command instead.
+  const skipMap = (reason: SkipReason): VimrcEntry => (cmd.startsWith("i") ? skip(reason) : { kind: "skip", line, text, reason, lhs });
   // `:<C-u>` clears the range Vim prefills; the engine prefills none, and would type those keys into the command.
   const rhs = engineKeys(parts[2]!).replace(/:<C-u>/g, ":");
   if (lhs.startsWith("<C-w>") || rhs.startsWith("<C-w>")) {
-    return skip("app");
+    return skipMap("app");
   }
   if (EX_NAME.test(lhs)) {
-    return skip("script");
+    return skipMap("script");
   }
   if (/^<nop>$/i.test(rhs)) {
     const context = NOP_CONTEXT[cmd];
-    return context === undefined ? skip("mode") : { kind: "nop", line, lhs, context };
+    return context === undefined ? skipMap("mode") : { kind: "nop", line, lhs, context };
   }
   const problem = rhsProblem(rhs, cmd.startsWith("i"), known);
-  return problem ? skip(problem) : { kind: "ex", line, ex: `${cmd} ${lhs} ${rhs}` };
+  return problem ? skipMap(problem) : { kind: "ex", line, ex: `${cmd} ${lhs} ${rhs}` };
 }
 
 function parseSet(line: number, text: string, known: KnownNames): VimrcEntry[] {
@@ -375,7 +377,8 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
         const m = mappingOf(e);
         return m?.lhs !== lhs || m.modes.includes("insert");
       });
-      out = kept.length < out.length ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
+      const undoes = kept.length < out.length || out.some((e) => e.kind === "skip" && e.lhs === lhs);
+      out = undoes ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
     } else if (CLEARS.has(cmd)) {
       out = out.filter((e) => !clearedBy(cmd, e));
       out.push({ kind: "ex", line, ex: `${cmd} ${engineKeys(rest)}`.trim() });
