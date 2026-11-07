@@ -224,7 +224,8 @@ test("the snapshot asks for everything before it turns on, then shows its QR cod
   await app.getByLabel("Secret Access Key").fill("s3cret");
   await app.getByLabel("Workerのアドレス").fill("https://lattice-mobile.example.workers.dev");
   await saves.nth(1).click();
-  await expect(app.getByRole("img", { name: "スナップショットをスマホで開くQRコード" })).toBeVisible();
+  await expect(app.getByText("まだ公開していません"), "the pass ends after the command returns").toBeVisible();
+  await expect(app.getByRole("img", { name: "スナップショットをスマホで開くQRコード" }), "and the screen follows it").toBeVisible();
   await expect(app.getByText("https://lattice-mobile.example.workers.dev/", { exact: true })).toBeVisible();
   await expect(app.getByLabel("Secret Access Key"), "the secret does not come back").toHaveValue("");
   await expect(app.getByRole("button", { name: "今すぐ公開" })).toBeEnabled();

@@ -45,10 +45,10 @@ export function MobileSettings() {
       .catch((e: unknown) => setError(String(e)));
   }, []);
 
-  // A pass can take minutes: follow it until it ends.
-  const publishing = status?.snapshot.running;
+  // A pass starts a moment after the command returns, and can take minutes or start on its schedule.
+  const following = status?.snapshot.enabled;
   useEffect(() => {
-    if (!publishing) {
+    if (!following) {
       return;
     }
     const timer = setInterval(
@@ -60,7 +60,7 @@ export function MobileSettings() {
       3000,
     );
     return () => clearInterval(timer);
-  }, [publishing]);
+  }, [following]);
 
   async function saveSnapshot() {
     setError(null);

@@ -939,7 +939,19 @@ export const handlers = {
   },
   r2_clear_secret: () => void (store.r2 = { ...store.r2, has_secret: false }),
   r2_backup_now: (): string => "lattice/2026-10-20T03-00-00Z.db.gz",
-  mobile_status: (): MobileStatus => store.mobile,
+  mobile_status: (): MobileStatus => {
+    // The backend's pass starts after the command returns and ends later: only a later status shows it.
+    if (store.mobile.snapshot.enabled && store.mobile.snapshot.last_publish == null) {
+      const url = store.mobile.snapshot.worker_url;
+      store.mobile = {
+        ...store.mobile,
+        snapshot: { ...store.mobile.snapshot, last_publish: 1_790_000_000 },
+        snapshot_url: `${url}/#t=${store.mobileToken}&l=library`,
+        snapshot_qr: { width: 21, path: "M0 0h1v1h-1z" },
+      };
+    }
+    return store.mobile;
+  },
   mobile_save: ({ settings }: { settings: MobileSettings }): MobileStatus => {
     const on = settings.mode !== "off";
     const url = on ? `http://192.168.0.2:${settings.port}/#t=${store.mobileToken}` : null;
@@ -954,9 +966,9 @@ export const handlers = {
     }
     store.mobile = {
       ...store.mobile,
-      snapshot: { ...store.mobile.snapshot, ...rest, has_secret, last_publish: settings.enabled ? 1_790_000_000 : null },
-      snapshot_url: settings.enabled ? `${settings.worker_url}/#t=${store.mobileToken}` : null,
-      snapshot_qr: settings.enabled ? { width: 21, path: "M0 0h1v1h-1z" } : null,
+      snapshot: { ...store.mobile.snapshot, ...rest, has_secret, last_publish: null },
+      snapshot_url: null,
+      snapshot_qr: null,
     };
     return store.mobile;
   },
