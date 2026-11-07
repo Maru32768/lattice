@@ -21,7 +21,7 @@ function Qr({ qr, label }: { qr: NonNullable<MobileStatus["qr"]>; label: string 
   return (
     <svg viewBox={`-4 -4 ${qr.width + 8} ${qr.width + 8}`} role="img" aria-label={label} width={240} height={240}>
       <rect x={-4} y={-4} width={qr.width + 8} height={qr.width + 8} fill="#fff" />
-      <path d={qr.path} fill="#000" />
+      <path d={qr.path} fill="#000" shapeRendering="crispEdges" />
     </svg>
   );
 }
