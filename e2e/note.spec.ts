@@ -153,6 +153,31 @@ const twoReaders = {
   focused: 1,
 };
 
+test("メモ: the text another panel holds to retry never overwrites newer text saved since", async ({ shell }) => {
+  const [left, right] = twoReaders.root.children;
+  const sameArticle = { ...twoReaders, root: { ...twoReaders.root, children: [left, { ...right, tabs: [{ ...right!.tabs[0], articleId: SNAPSHOT_ID }] }] } };
+  await shell.addInitScript((layout) => localStorage.setItem("lattice.layout", layout), JSON.stringify(sameArticle));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  const panels = [shell.locator(".dpane").first(), shell.locator(".dpane").nth(1)].map((pane) => pane.getByRole("complementary", { name: "メモ" }));
+  await shell.locator(".dpane").first().getByRole("button", { name: "メモ", exact: true }).click();
+  await shell.locator(".dpane").nth(1).getByRole("button", { name: "メモ", exact: true }).click();
+  const first = panels[0]!.getByRole("textbox", { name: "メモ" });
+  await first.fill("the disk is full");
+  await first.blur();
+  await expect(panels[1]!.getByRole("alert")).toBeVisible();
+  await first.fill("written after it");
+  await first.blur();
+  await expect(panels[1]!.getByRole("alert")).toHaveCount(0);
+  const second = panels[1]!.getByRole("textbox", { name: "メモ" });
+  await second.focus();
+  await second.blur();
+  await shell.locator(".dpane").nth(1).getByRole("button", { name: "メモ", exact: true }).click();
+  await expect(panels[1]!).toHaveCount(0);
+  const saves = await callsOf(shell, "set_article_note");
+  expect(saves.map((s) => (s as { body: string }).body)).toEqual(["the disk is full", "written after it"]);
+});
+
 for (const vim of [false, true]) {
   const editor = vim ? "Vim" : "textarea";
   /** Two Readers side by side, with the left one's note open and the keyboard in it. */

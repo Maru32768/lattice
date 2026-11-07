@@ -42,10 +42,11 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
   const flush = () => {
     clearTimeout(timer.current);
     const body = pending.current;
-    if (body == null) {
+    pending.current = null;
+    // Text held for a retry may be behind what another panel on this article has saved since.
+    if (body == null || typedText.get(id) !== body) {
       return;
     }
-    pending.current = null;
     setStatus("saving");
     queue = queue
       .then(() => api.setArticleNote(id, body))
