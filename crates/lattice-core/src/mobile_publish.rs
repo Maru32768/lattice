@@ -984,17 +984,19 @@ mod tests {
 
     #[tokio::test]
     async fn going_back_to_a_bucket_used_before_trusts_nothing_it_held_then() {
-        let (store, a, _) = setup();
+        let (store, a, id) = setup();
         let b = Memory::default();
         save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
         run(&store, &a, false).await;
         change_to(&store, settings(true, "another-bucket", WORKER), &a).await.unwrap();
         run(&store, &b, false).await;
         let new = mobile::regenerate_token(&store).unwrap();
+        store.conn().execute("UPDATE articles SET title = 'Changed while away'", []).unwrap();
         run(&store, &b, false).await;
         change_to(&store, settings(true, "lattice-mobile", WORKER), &b).await.unwrap();
         run(&store, &a, false).await;
         assert_eq!(a.auth()["token_hash"], sha256_hex(new));
+        assert_eq!(a.json(&format!("articles/{id}.json"))["article"]["title"], "Changed while away", "the article changed while away goes up again");
     }
 
     #[tokio::test]
