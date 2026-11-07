@@ -116,10 +116,8 @@ export const subscribeOps = (changed: () => void) => {
 export const localOps = () => ops;
 
 /** Not crypto.randomUUID, which needs a secure context: the local network's page has plain HTTP. */
-export function newOpId(random: (bytes: Uint8Array<ArrayBuffer>) => void = (b) => crypto.getRandomValues(b)): string {
-  const bytes = new Uint8Array(16);
-  random(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+export function newOpId(): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** What a list that reflects `applied` leaves of the local operations. */

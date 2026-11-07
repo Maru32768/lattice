@@ -74,7 +74,6 @@ test("an operation leaves the phone once a list shows it, or long after the serv
 });
 
 test("an operation's id is what the server takes, without a secure context", () => {
-  const id = newOpId((b) => b.fill(0xab));
-  assert.match(id, /^[0-9a-f]{32}$/);
+  assert.match(newOpId(), /^[0-9a-f]{32}$/);
   assert.notEqual(newOpId(), newOpId());
 });
