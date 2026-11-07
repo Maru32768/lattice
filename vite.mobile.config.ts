@@ -26,7 +26,8 @@ export default defineConfig({
         const manifest = {
           name: "Lattice",
           start_url: "./",
-          display: "standalone",
+          // Not standalone: on an iPhone that has storage of its own, which no QR code can reach.
+          display: "browser",
           background_color: "#18191B",
           icons: ICONS.map(({ file, sizes }) => ({ src: file, sizes, type: "image/png" })),
         };

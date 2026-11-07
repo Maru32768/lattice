@@ -847,7 +847,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 1. In **Settings › Read on a phone**, set **Serve from this PC** to **To this network**, then press **Save**.
 2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
-3. To open the page again quickly, add it to the phone's home screen.
+3. To open the page again quickly, add it to the phone's home screen. It opens in the browser that holds the token.
 
 Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
 
