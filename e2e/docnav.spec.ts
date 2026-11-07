@@ -514,6 +514,33 @@ test("a match under a sticky header is brought out from under it", async ({ read
   await expect.poll(hidden, "where a reader can see it").toBe(false);
 });
 
+test("a match past the edge of a long line in a code block comes into the block", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((p) => {
+    const view = p.closest(".doc-scroll")!;
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<pre id="wide" style="overflow-x:auto;width:200px;white-space:pre;font:16px monospace"><code>${"a".repeat(40)} zymurgy ${"a".repeat(10)}</code></pre>`,
+    );
+    view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 200;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  await expect
+    .poll(() =>
+      reader.locator("#wide").evaluate((pre) => {
+        const text = pre.querySelector("code")!.firstChild!;
+        const r = document.createRange();
+        r.setStart(text, 41);
+        r.setEnd(text, 48);
+        const match = r.getBoundingClientRect();
+        const box = pre.getBoundingClientRect();
+        return match.left >= box.left && match.right <= box.right;
+      }),
+    )
+    .toBe(true);
+});
+
 test("find counts what a reader can open to only once it is open", async ({ reader }) => {
   await reader.locator("#p1").evaluate((el) => {
     el.insertAdjacentHTML(

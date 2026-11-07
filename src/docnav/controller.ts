@@ -246,11 +246,23 @@ export function createDocNav(host: () => DocHost) {
       return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     };
     const over = onTop();
-    if (over && r.intersectsNode(over)) {
+    const common = r.commonAncestorContainer;
+    // Not any node the range touches: past the edge of a code block the middle lands on what holds the block, which holds the match as well.
+    if (over && (common instanceof Element ? common : common.parentElement)?.contains(over)) {
       return;
     }
-    r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const scroller = host().scroller();
+    // `scrollIntoView` leaves an element that already fills its box, as a long line's does: the boxes on the way move by the match's own rect.
+    for (let el = r.startContainer.parentElement; el && el !== scroller; el = el.parentElement) {
+      const rect = r.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      const left = rect.left < box.left || rect.right > box.right ? rect.left - box.left - box.width / 2 : 0;
+      const top = rect.top < box.top || rect.bottom > box.bottom ? rect.top - box.top - box.height / 2 : 0;
+      if (left || top) {
+        el.scrollBy({ left, top, behavior: "instant" });
+      }
+    }
+    r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const v = viewOf(scroller);
     reveal(r.getBoundingClientRect(), (v.bottom - v.top) / 2, BAR_HEIGHT);
     // Under a sticky header a match is in view to all of the above, and a reader still cannot see it. Other boxes on top (a PDF's translated region) leave it readable.
