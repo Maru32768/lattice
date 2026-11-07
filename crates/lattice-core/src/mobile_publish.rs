@@ -292,6 +292,8 @@ impl<B: Bucket> Uploads<'_, B> {
 pub(crate) struct Published {
     /// The settings changed under it: nothing more went up.
     stopped: bool,
+    /// Articles that could not be read, whose last upload stays.
+    unreadable: Vec<i64>,
 }
 
 /// An article's part of its upload. The row is left out: read state, tags and scores change often, and the list carries them.
@@ -352,14 +354,21 @@ pub(crate) async fn publish<B: Bucket>(
                 Ok((false, None))
             }
         })
-        .await?;
+        .await;
+        let key = format!("{ARTICLE_PREFIX}{id}.json");
         match upload {
-            (false, _) => {
+            Ok((false, _)) => {
                 published.stopped = true;
                 return Ok(published);
             }
-            (true, Some((hash, doc))) => uploads.put_if_changed(format!("{ARTICLE_PREFIX}{id}.json"), hash, doc, true).await?,
-            (true, None) => {} // deleted since the list was read
+            Ok((true, Some((hash, doc)))) => uploads.put_if_changed(key, hash, doc, true).await?,
+            Ok((true, None)) => {} // deleted since the list was read
+            // One bad row must not hold back the rest of the library. What went up before stays.
+            Err(e) => {
+                log::warn!("mobile snapshot: article {id}: {e}");
+                published.unreadable.push(id);
+                uploads.live.insert(key);
+            }
         }
     }
 
@@ -432,9 +441,11 @@ async fn run_pass<B: Bucket>(
     let keep_going = Arc::new(move |s: &Store| creds(s).ok().flatten().is_some_and(|(c, on)| on && c.account_id == account && c.bucket == name));
     match publish(store, &bucket, page, on_applied, keep_going).await {
         Ok(Published { stopped: true, .. }) => {}
-        Ok(_) => {
+        Ok(Published { unreadable, .. }) => {
             note(store, LAST_PUBLISH, Some(unix_now().to_string())).await;
-            note(store, LAST_ERROR, None).await;
+            let problem =
+                (!unreadable.is_empty()).then(|| msg!("mobile.unreadableArticles", ids = unreadable.iter().map(i64::to_string).collect::<Vec<_>>().join(", ")));
+            note(store, LAST_ERROR, problem).await;
         }
         Err(e) => {
             log::warn!("mobile snapshot: {e}");
@@ -619,6 +630,23 @@ mod tests {
         let puts = bucket.take_puts();
         assert!(puts.contains(&format!("articles/{id}.json")));
         assert!(!puts.contains(&format!("articles/{other}.json")), "what got through stays through: {puts:?}");
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_article_holds_back_nothing_else() {
+        let (store, bucket, id) = setup();
+        pass(&store, &bucket).await;
+        let other = store.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap().0;
+        // Attributes only a newer build can read.
+        store
+            .conn()
+            .execute("INSERT INTO blocks (article_id, ordinal, kind, text, text_hash, attrs) VALUES (?1, 0, 'paragraph', 't', 'h', 'not json')", [id])
+            .unwrap();
+        let published = publish(&store, &&bucket, PAGE, &|_| {}, always()).await.unwrap();
+        assert_eq!(published.unreadable, [id]);
+        assert!(bucket.has(&format!("articles/{other}.json")));
+        assert!(bucket.has(&format!("articles/{id}.json")), "its last upload stays");
+        assert_eq!(bucket.json("index.json")["articles"].as_array().unwrap().len(), 2);
     }
 
     #[tokio::test]

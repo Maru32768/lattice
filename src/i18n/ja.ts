@@ -1371,4 +1371,5 @@ export const ja = {
   "mobile.savedCopy": "接続できないので、保存した内容を表示しています",
   "mobile.reloadPlease": "このページとデータの版が合いません。しばらくしてから読み込み直してください。",
   "mobile.reload": "読み込み直す",
+  "be.mobile.unreadableArticles": "読み取れない記事は前回の内容のままです: {ids}",
 } as const satisfies Record<string, string>;

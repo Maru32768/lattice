@@ -1389,4 +1389,5 @@ export const en = {
   "mobile.savedCopy": "Cannot connect, so this is the saved copy",
   "mobile.reloadPlease": "This page and its data are of different versions. Reload in a little while.",
   "mobile.reload": "Reload",
+  "be.mobile.unreadableArticles": "Articles that could not be read stay as last published: {ids}",
 } satisfies Messages;
