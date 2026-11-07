@@ -33,9 +33,9 @@ export function App() {
 
   const refresh = async () => {
     const request = ++latest.current;
+    // Not awaited: a sleeping PC would hold up the list by a second timeout, and the list shows what is pending anyway.
+    void flushOps();
     try {
-      // First: the list then shows them if the server took them.
-      await flushOps();
       const index = await loadIndex();
       if (request !== latest.current) {
         return;
