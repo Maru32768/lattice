@@ -112,6 +112,18 @@ test("a token the server no longer takes sends the reader back to the QR code", 
   await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
 });
 
+test("a token the server turns away stays stored: it may have been another server on the port", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  await page.unroute("**/api/**");
+  await page.route("**/api/**", (route) => route.fulfill({ status: 401, json: {} }));
+  await page.reload();
+  await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
+  await page.unroute("**/api/**");
+  await start(page, { token: false });
+  await expect(page.getByText("First article")).toBeVisible();
+});
+
 test("a new QR code opened in the same tab is taken without a reload", async ({ page }) => {
   await start(page, { token: false });
   await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();

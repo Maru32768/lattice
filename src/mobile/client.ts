@@ -14,13 +14,9 @@ function read(key: string): string | null {
   }
 }
 
-function write(key: string, value: string | null) {
+function write(key: string, value: string) {
   try {
-    if (value == null) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, value);
-    }
+    localStorage.setItem(key, value);
   } catch {
     // Forgotten at the next start.
   }
@@ -43,13 +39,12 @@ export function adoptToken(): boolean {
 
 export const hasToken = () => read(TOKEN) != null;
 
-/** The server turned the token down: it was regenerated on the PC, or never given. */
+/** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */
 export class Unauthorized extends Error {}
 
 async function request(path: string): Promise<Response> {
   const response = await fetch(path, { headers: { Authorization: `Bearer ${read(TOKEN) ?? ""}` } });
   if (response.status === 401) {
-    write(TOKEN, null);
     throw new Unauthorized();
   }
   return response;
