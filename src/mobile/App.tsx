@@ -91,7 +91,13 @@ export function App() {
     return (
       <main className="m-empty">
         <p role="alert">{t("mobile.loadFailed")}</p>
-        <button className="btn" onClick={() => void refresh()}>
+        <button
+          className="btn"
+          onClick={() => {
+            setLoad({ state: "loading" });
+            void refresh();
+          }}
+        >
           {t("mobile.retry")}
         </button>
       </main>

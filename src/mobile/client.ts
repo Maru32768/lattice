@@ -4,6 +4,8 @@ import type { LanguageMode } from "../reader/mixed.ts";
 
 const TOKEN = "lattice.mobile.token";
 const LANGUAGE = "lattice.mobile.language";
+/** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
+const TIMEOUT_MS = 30_000;
 
 /** Blocked storage (a private window) must not break the page: it asks for the QR code again instead. */
 function read(key: string): string | null {
@@ -43,7 +45,7 @@ export const hasToken = () => read(TOKEN) != null;
 export class Unauthorized extends Error {}
 
 async function request(path: string): Promise<Response> {
-  const response = await fetch(path, { headers: { Authorization: `Bearer ${read(TOKEN) ?? ""}` } });
+  const response = await fetch(path, { headers: { Authorization: `Bearer ${read(TOKEN) ?? ""}` }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (response.status === 401) {
     throw new Unauthorized();
   }
