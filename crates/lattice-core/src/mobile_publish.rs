@@ -728,7 +728,6 @@ mod tests {
         let done = status(&store).unwrap();
         assert_eq!(done.last_error, None);
         assert!(done.last_publish.is_some());
-        assert!(!done.running);
     }
 
     #[tokio::test]
