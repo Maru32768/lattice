@@ -3,7 +3,7 @@ import type { ArticleDoc } from "../bindings";
 import { useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers } from "../reader/BlockView";
-import { type LanguageMode, type Piece, blockPieces, translatedSentences } from "../reader/mixed";
+import { type LanguageMode, type Piece, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
 import { Unauthorized, loadArticle, savedLanguage, saveLanguage } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
@@ -156,7 +156,8 @@ export function ArticlePage({ id }: { id: number }) {
       }
       return next;
     });
-  const untranslated = mode !== "original" && blocks.length > 0 && !blocks.some((b) => b.translation != null);
+  const nothing = nothingToTranslate(blocks, doc.target_language);
+  const untranslated = mode !== "original" && !nothing && blocks.length > 0 && !blocks.some((b) => b.translation != null);
 
   return (
     <>
@@ -177,6 +178,7 @@ export function ArticlePage({ id }: { id: number }) {
           </details>
         )}
         {untranslated && <p className="m-note">{t("mobile.notTranslated")}</p>}
+        {mode !== "original" && nothing && <p className="m-note">{t(nothing)}</p>}
         {blocks.length === 0 && <p className="m-note">{t("mobile.noText")}</p>}
         <OpenLink.Provider value={openLink}>
           {blocks.map((b, i) => (

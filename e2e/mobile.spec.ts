@@ -192,6 +192,16 @@ test("tapping a sentence shows its other language, and a selection leaves it alo
   await expect(page.getByText("一文目。")).toBeVisible();
 });
 
+test("an article with nothing to translate says so, not that it waits for a translation", async ({ page }) => {
+  await start(page);
+  await page.route("**/api/articles/1", (route) =>
+    route.fulfill({ json: { ...ARTICLE, blocks: [{ id: 20, ordinal: 0, kind: "code", text: "let x = 1;", attrs: {}, translation: null }] } }),
+  );
+  await page.getByRole("link", { name: /First article/ }).click();
+  await expect(page.getByText("let x = 1;")).toBeVisible();
+  await expect(page.getByText("まだ翻訳されていません")).toHaveCount(0);
+});
+
 test("article content cannot run or load anything", async ({ page }) => {
   const remote: string[] = [];
   page.on("request", (r) => {
