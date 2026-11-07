@@ -57,8 +57,14 @@ impl EmbeddingProvider for LocalE5 {
     }
 
     async fn embed(&self, texts: Vec<String>, purpose: Purpose) -> Result<Vec<Vec<f32>>, String> {
-        if !self.download && !self.is_downloaded() {
-            return Err("the embedding model is not downloaded yet (the app downloads it on first use)".into());
+        if !self.is_downloaded() {
+            if !self.download {
+                return Err("the embedding model is not downloaded yet (the app downloads it on first use)".into());
+            }
+            // A search shows its full-text matches instead of waiting for the embed job's download.
+            if matches!(purpose, Purpose::Query) {
+                return Err(crate::msg!("embed.downloading"));
+            }
         }
         // e5 is trained with these prefixes; omitting them noticeably hurts retrieval.
         let prefix = match purpose {
@@ -122,6 +128,14 @@ pub async fn run<E: EmbeddingProvider>(store: &Store, embedder: &E, article_id: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_search_does_not_wait_for_the_first_download() {
+        let dir = std::env::temp_dir().join(format!("lattice-e5-query-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let e = LocalE5::new(dir).embed(vec!["q".into()], Purpose::Query).await.unwrap_err();
+        assert!(e.contains("embed.downloading"), "{e}");
+    }
 
     #[tokio::test]
     async fn offline_never_downloads_and_sees_the_cached_model() {

@@ -715,6 +715,8 @@ impl Store {
         extracted: std::result::Result<ArticleIr, String>,
         canonical_normalized: Option<&str>,
     ) -> Result<i64> {
+        // Before the lock: compressing up to 50 MB holds up every other command and job otherwise.
+        let body = snapshot.map(|f| deflate(f.body));
         let mut c = self.conn();
         let tx = c.transaction()?;
         // Only a not-yet-extracted row merges: re-extraction and re-saves (rendered or refetched)
@@ -763,7 +765,7 @@ impl Store {
             tx.execute(
                 "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body)
                  VALUES (?1, ?2, ?3, ?4, 'deflate', ?5)",
-                params![id, f.final_url, f.status, f.content_type, deflate(f.body)],
+                params![id, f.final_url, f.status, f.content_type, body],
             )?;
             tx.execute("UPDATE articles SET fetch_status = 'ok', fetched_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [id])?;
         }

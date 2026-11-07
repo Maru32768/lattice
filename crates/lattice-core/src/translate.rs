@@ -433,7 +433,7 @@ pub async fn run<P: LlmProvider>(
     let mut seen = std::collections::HashSet::new();
     pending.retain(|b| seen.insert(b.text_hash.clone()) && !target.is_written_in(&b.text));
     let mut missing = 0;
-    let parallel = parallel(store)?;
+    let limit = parallel(store)?;
     // A batch that failed whole says the provider may be down: none starts until another answers, and
     // the job backs off at the end. One that answers says it was that batch's text, so the rest of the
     // article goes on. Calls already made are saved either way: they are paid for.
@@ -445,7 +445,7 @@ pub async fn run<P: LlmProvider>(
         .map(|batch| async move {
             let queued = std::time::Instant::now();
             let _pass = match gate {
-                Some(g) => Some(g.enter(parallel).await),
+                Some(g) => Some(g.enter(self::parallel(store).unwrap_or(limit)).await),
                 None => None,
             };
             if stopped_ref.load(std::sync::atomic::Ordering::Relaxed) {
@@ -470,7 +470,7 @@ pub async fn run<P: LlmProvider>(
             );
             (batch, t)
         })
-        .buffered(parallel);
+        .buffered(limit);
     while let Some((batch, t)) = done.next().await {
         let rows: Vec<SegmentRow> = batch
             .iter()

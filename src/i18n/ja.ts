@@ -1069,6 +1069,8 @@ export const ja = {
   "be.feeds.badOpml": "OPMLを読めません: {error}",
   "be.feeds.invalidUrl": "URLを読めません: {error}",
   "be.feeds.notHttp": "http(s)以外のURLです",
+  "be.images.outOfTime": "時間内に保存できなかった画像があります",
+  "be.embed.downloading": "検索用のモデルをダウンロード中です",
   "be.jobs.interrupted": "前回の実行が途中で止まりました(アプリの異常終了など)",
   "be.feeds.gone": "フィードがありません(削除された可能性があります)",
   "be.feedFolders.emptyName": "フォルダ名が空です",

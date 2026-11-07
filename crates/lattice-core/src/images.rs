@@ -4,6 +4,8 @@
 //! bytes no mapping uses any more. The Reader gets them as `data:` URLs: the app webview never
 //! loads a remote URL. Raster formats only: SVG can carry script, so it stays a link.
 
+use std::time::{Duration, Instant};
+
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -95,7 +97,15 @@ pub(crate) enum Fail {
     Transient(String),
 }
 
+/// How long one try may take. It holds its site's single fetch slot, so articles of that site wait
+/// behind it: a page of images on a host that does not answer, at 30 s each, would hold it for hours.
+const TIME_PER_TRY: Duration = Duration::from_secs(5 * 60);
+
 pub async fn run(store: &Store, client: &HttpClient, article_id: i64) -> Result<(), String> {
+    run_until(store, client, article_id, Instant::now() + TIME_PER_TRY).await
+}
+
+async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline: Instant) -> Result<(), String> {
     let (page, pending, mut used) = {
         let c = store.conn();
         c.execute(
@@ -133,6 +143,10 @@ pub async fn run(store: &Store, client: &HttpClient, article_id: i64) -> Result<
     }
     let mut transient = None;
     for src in pending {
+        // What is saved stays: the job's next try goes on from here, with the host free meanwhile.
+        if Instant::now() >= deadline {
+            return Err(msg!("images.outOfTime"));
+        }
         let over = &msg!("images.articleCap");
         if used >= ARTICLE_CAP {
             record(store, article_id, &src, None, Some(over))?;
@@ -160,22 +174,25 @@ pub async fn run(store: &Store, client: &HttpClient, article_id: i64) -> Result<
 /// Stores `bytes` once per content hash and maps `src` of the article to it.
 pub(crate) fn save(store: &Store, article_id: i64, src: &str, mime: &str, bytes: &[u8]) -> Result<(), String> {
     let hash = crate::store::sha256_hex(bytes);
-    {
-        let c = store.conn();
-        c.execute("INSERT INTO images (hash, mime, bytes) VALUES (?1, ?2, ?3) ON CONFLICT(hash) DO NOTHING", params![hash, mime, bytes]).map_err(err)?;
-    }
-    record(store, article_id, src, Some(&hash), None)
+    let mut c = store.conn();
+    // In one go: bytes no `article_images` row refers to (the article deleted just now) are never collected.
+    let tx = c.transaction().map_err(err)?;
+    tx.execute("INSERT INTO images (hash, mime, bytes) VALUES (?1, ?2, ?3) ON CONFLICT(hash) DO NOTHING", params![hash, mime, bytes]).map_err(err)?;
+    insert_mapping(&tx, article_id, src, Some(&hash), None)?;
+    tx.commit().map_err(err)
 }
 
 fn record(store: &Store, article_id: i64, src: &str, hash: Option<&str>, error: Option<&str>) -> Result<(), String> {
-    store
-        .conn()
-        .execute(
-            "INSERT INTO article_images (article_id, src, hash, error) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(article_id, src) DO NOTHING",
-            params![article_id, src, hash, error],
-        )
-        .map_err(err)?;
+    insert_mapping(&store.conn(), article_id, src, hash, error)
+}
+
+fn insert_mapping(c: &rusqlite::Connection, article_id: i64, src: &str, hash: Option<&str>, error: Option<&str>) -> Result<(), String> {
+    c.execute(
+        "INSERT INTO article_images (article_id, src, hash, error) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(article_id, src) DO NOTHING",
+        params![article_id, src, hash, error],
+    )
+    .map_err(err)?;
     Ok(())
 }
 
@@ -278,6 +295,36 @@ mod tests {
     use crate::ir::{ArticleIr, Block, BlockAttrs, BlockKind};
 
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+
+    /// An article with one image block of `src`.
+    fn with_image(s: &Store, src: &str) -> i64 {
+        let (id, _) = s.upsert_pending("https://example.com/p", "https://example.com/p", "example.com").unwrap();
+        let attrs = BlockAttrs { src: Some(src.into()), ..Default::default() };
+        let ir = ArticleIr { blocks: vec![Block { kind: BlockKind::Image, text: String::new(), inlines: Vec::new(), attrs }], ..Default::default() };
+        let f = Fetched { final_url: "https://example.com/p".into(), status: 200, content_type: None, html: String::new() };
+        s.save_fetched(id, Some(&f), Ok(ir), None).unwrap();
+        id
+    }
+
+    #[tokio::test]
+    async fn a_try_out_of_time_leaves_the_rest_for_the_next_one() {
+        let s = Store::open_in_memory().unwrap();
+        let id = with_image(&s, "https://cdn.example.com/a.png");
+        let e = run_until(&s, &crate::fetch::client(), id, Instant::now()).await.unwrap_err();
+        assert!(e.contains("images.outOfTime"), "{e}");
+        let tried: i64 = s.conn().query_row("SELECT count(*) FROM article_images", [], |r| r.get(0)).unwrap();
+        assert_eq!(tried, 0, "not recorded as failed: the next try goes on from it");
+    }
+
+    #[test]
+    fn an_image_of_an_article_deleted_meanwhile_leaves_no_bytes_behind() {
+        let s = Store::open_in_memory().unwrap();
+        let id = with_image(&s, "https://cdn.example.com/a.png");
+        s.delete_article(id).unwrap();
+        assert!(save(&s, id, "https://cdn.example.com/a.png", "image/png", PNG).is_err());
+        let bytes: i64 = s.conn().query_row("SELECT count(*) FROM images", [], |r| r.get(0)).unwrap();
+        assert_eq!(bytes, 0);
+    }
 
     #[test]
     fn filters_by_type_and_size() {

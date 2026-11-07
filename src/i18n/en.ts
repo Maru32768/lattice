@@ -1083,6 +1083,8 @@ export const en = {
   "be.feeds.badOpml": "Cannot read the OPML file: {error}",
   "be.feeds.invalidUrl": "Cannot read the URL: {error}",
   "be.feeds.notHttp": "Not an http(s) URL",
+  "be.images.outOfTime": "Some images could not be saved in time",
+  "be.embed.downloading": "The search model is still downloading",
   "be.jobs.interrupted": "The last run stopped before it finished (the app crashed, for example)",
   "be.feeds.gone": "The feed no longer exists",
   "be.feedFolders.emptyName": "The folder name is empty",

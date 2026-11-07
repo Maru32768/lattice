@@ -38,6 +38,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Asking for a translation, fetch, image download or search indexing while the same job was running was ignored, so a change made meanwhile could stay undone until the next start, or for good. For example, a feed article whose page refused could keep failing even though the feed had its text. These jobs now run once more when they finish.
 - Closing Lattice while it fetched a URL you had just saved left the article loading forever. The fetch now resumes at the next start.
 - A meaning you typed for a word while the AI was still looking it up was replaced by the AI's answer. Your meaning now stays.
+- An article with many images on a site that did not answer stopped all other fetches from its site for a long time. Saving an article's images now pauses after five minutes and resumes later.
+- The first search waited for the search model's download, about 470 MB. Search now shows full-text matches until it is ready.
 
 ## [0.3.0] - 2026-11-06
 
