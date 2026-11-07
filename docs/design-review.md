@@ -173,6 +173,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - 貼り付けたテキストか、読み込んだファイル(URL一覧、bookmarks HTML、CSV、JSON、Markdown)からhttp(s)のURLを抜き出す(`ingest::extract_urls`)。順序は保ち、正規化したURLで重複を除く。
 - 各URLをpendingの記事として登録し、`ingest` jobを投入する。jobは4本のnetwork runnerが並列に処理する(翻訳やembeddingとは別のrunner)。
 - 取得や抽出に失敗したURLは記事側に記録し(一覧に「失敗」と表示)、全体の処理は止めない。取得に成功した記事にはembed jobを投入する。
+- `ingest` jobは、実行時にまだ取得が必要な記事だけを取得する(`Store::needs_fetch`。取得の後にももう一度確かめる)。同じホストの記事は1件ずつなので待ちが長くなり、その間に利用者がブラウザから保存すると、後から動いたjobがサーバーの薄い本文やエラーでその内容を置き換えていた。
 
 ### Markdownの取り込み(G48)
 

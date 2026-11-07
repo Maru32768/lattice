@@ -121,6 +121,10 @@ pub struct NewSnapshot<'a> {
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
 const MAX_ATTEMPTS: i64 = 5;
+/// Whether a page is still to fetch for an article: it has no text, its last fetch failed, or its text
+/// is the feed's copy (so saving the URL again retries the page). `?2` `FEED_CONTENT_TYPE`.
+const NEEDS_FETCH: &str = "(extraction_status != 'ok' OR fetch_status = 'failed'
+    OR (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1) IS ?2)";
 /// What a failed try does to its job. `?2` the error, `?3` `MAX_ATTEMPTS`.
 const AFTER_FAILURE: &str = "last_error = ?2,
     status = CASE WHEN attempt_count >= ?3 THEN 'failed' ELSE 'pending' END,
@@ -656,8 +660,7 @@ impl Store {
             .optional()
     }
 
-    /// Returns the article id and whether it still needs fetching/extraction: also when its text
-    /// is the feed's copy, so saving the URL again retries the page.
+    /// Returns the article id and whether it still needs fetching/extraction (`NEEDS_FETCH`).
     pub fn upsert_pending(&self, original_url: &str, normalized_url: &str, domain: &str) -> Result<(i64, bool)> {
         let c = self.conn();
         c.execute(
@@ -665,13 +668,14 @@ impl Store {
              ON CONFLICT(normalized_url) DO NOTHING",
             params![original_url, normalized_url, domain],
         )?;
-        c.query_row(
-            "SELECT id, extraction_status != 'ok'
-                 OR (SELECT content_type FROM snapshots WHERE article_id = articles.id ORDER BY id DESC LIMIT 1) IS ?2
-             FROM articles WHERE normalized_url = ?1",
-            params![normalized_url, FEED_CONTENT_TYPE],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )
+        c.query_row(&format!("SELECT id, {NEEDS_FETCH} FROM articles WHERE normalized_url = ?1"), params![normalized_url, FEED_CONTENT_TYPE], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })
+    }
+
+    /// Whether the article still needs fetching, for a job queued before it was saved another way.
+    pub fn needs_fetch(&self, id: i64) -> Result<bool> {
+        self.conn().query_row(&format!("SELECT {NEEDS_FETCH} FROM articles WHERE id = ?1"), params![id, FEED_CONTENT_TYPE], |r| r.get(0))
     }
 
     pub fn record_fetch_failure(&self, id: i64, error: &str) -> Result<()> {

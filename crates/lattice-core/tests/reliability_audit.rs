@@ -298,11 +298,10 @@ fn articles_that_share_a_bogus_canonical_url_are_not_merged() {
     assert_eq!(titles.len(), 2, "two different posts saved, the library has {titles:?}");
 }
 
-/// F3. `ingest::process` fetches again whatever the article's state. A job queued earlier (a bulk
-/// import or feed backlog, serialized per host) that runs after the user saved the page from the
-/// in-app browser replaces that save: here the server refuses, and a good article turns "failed".
+/// A job queued earlier (a bulk import or feed backlog, serialized per host) that runs after the user
+/// saved the page from the in-app browser must not replace that save: here the server would refuse,
+/// and a good article would turn "failed".
 #[tokio::test]
-#[ignore = "reliability audit F3: fails until fixed"]
 async fn a_queued_fetch_does_not_undo_a_newer_save() {
     use lattice_core::ingest;
     let s = Store::open_in_memory().unwrap();

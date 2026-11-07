@@ -21,10 +21,19 @@ pub async fn save_url(store: &Store, client: &HttpClient, url: &str) -> Result<i
     fetch_into(store, client, id, url.trim()).await
 }
 
-/// Background half of bulk import: fetches an article registered by `enqueue_urls`.
+/// Background half of bulk import: fetches an article registered by `enqueue_urls`. A long queue
+/// serialized per host can run this well after the user saved the page from the browser or the
+/// palette: that save must stay, whatever the server answers now. So asked before and after the fetch.
 pub async fn process(store: &Store, client: &HttpClient, article_id: i64) -> Result<i64, String> {
     let url = store.article_url(article_id).map_err(|e| e.to_string())?.ok_or("article no longer exists")?;
-    fetch_into(store, client, article_id, &url).await
+    if !store.needs_fetch(article_id).map_err(|e| e.to_string())? {
+        return Ok(article_id);
+    }
+    let fetched = fetch_resource(client, &url).await;
+    if !store.needs_fetch(article_id).map_err(|e| e.to_string())? {
+        return Ok(article_id);
+    }
+    store_fetch_result(store, article_id, fetched)
 }
 
 /// A page that is refused (bot protection answers 403 to anything but a browser) or has no

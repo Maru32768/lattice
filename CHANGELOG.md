@@ -29,6 +29,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A job whose run ended the app, or stopped it some other way, ran again without limit at every start. It now counts as a failed try and waits like one, up to the usual five. Closing the app normally doesn't count, and its jobs resume at once at the next start.
 - An internal error while rendering a page stopped page rendering until the next start, and one in a feed stopped feed updates. Each now fails only that job or that feed.
 - A local backup that failed partway, for example on a full disk, stayed in the backups folder with your API keys in it and counted as one of the backups to keep. A backup now gets its name only once it is complete and free of keys, and what a failed one leaves is removed.
+- An article you saved from the in-app browser while a bulk import or a feed still had it queued could be replaced by the queued fetch: by a thin page from the server, or marked as failed. The queued fetch now leaves an article that is already saved alone.
 
 ## [0.3.0] - 2026-11-06
 
