@@ -126,7 +126,12 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     if let Some(v) = secret {
         set(store, SECRET_KEY, Some(v))?;
     }
-    Ok(())
+    clear_rejected(store)
+}
+
+/// The reader has acted since: the warning has done its work.
+pub fn clear_rejected(store: &Store) -> Result<(), String> {
+    set(store, LAST_REJECTED, None)
 }
 
 /// The next pass uploads everything again, as if the bucket were empty.
@@ -527,13 +532,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn what_can_never_apply_leaves_the_inbox_and_is_remembered() {
+    async fn what_can_never_apply_leaves_the_inbox_and_is_remembered_until_the_reader_acts() {
         let (store, bucket, _) = setup();
         bucket.with("inbox/1-a.json", "not json");
         bucket.with("inbox/2-b.json", r#"{"id":"b","op":{"kind":"save_url","url":"javascript:x"}}"#);
         assert_eq!(take_inbox(&store, &&bucket, &|_| {}).await.unwrap(), 0);
         assert!(bucket.keys().iter().all(|k| !k.starts_with("inbox/")));
         assert!(status(&store).unwrap().last_rejected.unwrap().contains("mobile.badUrl"));
+        clear_rejected(&store).unwrap();
+        assert_eq!(status(&store).unwrap().last_rejected, None);
     }
 
     #[tokio::test]

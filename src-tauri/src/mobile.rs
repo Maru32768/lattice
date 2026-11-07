@@ -216,6 +216,7 @@ pub async fn mobile_publish_now(
     if again {
         mobile_publish::forget_published(&app.store)?;
     }
+    mobile_publish::clear_rejected(&app.store)?;
     mobile_server.publish_now.notify_one();
     status(&mobile_server, &app, &loc).await
 }
