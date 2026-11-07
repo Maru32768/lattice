@@ -309,7 +309,13 @@ async fn note(store: &Arc<Store>, key: &'static str, value: Option<String>) {
     }
 }
 
-async fn run_pass(store: &Arc<Store>, http: &reqwest::Client, page: &[PageFile], on_applied: &(dyn Fn(&Effects) + Send + Sync), inbox_only: bool) {
+async fn run_pass<B: Bucket>(
+    store: &Arc<Store>,
+    bucket_for: impl FnOnce(Creds) -> B,
+    page: &[PageFile],
+    on_applied: &(dyn Fn(&Effects) + Send + Sync),
+    inbox_only: bool,
+) {
     RUNNING.store(true, Ordering::SeqCst);
     let _running = Running;
     let s = store.clone();
@@ -318,7 +324,7 @@ async fn run_pass(store: &Arc<Store>, http: &reqwest::Client, page: &[PageFile],
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
     };
-    let bucket = R2Bucket { http: http.clone(), creds };
+    let bucket = bucket_for(creds);
     if inbox_only {
         match take_inbox(store, &bucket, on_applied).await {
             // What just applied should show on the phone without waiting for the next full pass.
@@ -353,7 +359,8 @@ pub async fn run_scheduler(store: Arc<Store>, page: Vec<PageFile>, on_applied: B
         let s = store.clone();
         let last = blocking(move || get(&s, LAST_PUBLISH)).await.ok().flatten().and_then(|v| v.parse::<u64>().ok());
         let due = woken || last.is_none_or(|t| unix_now() >= t.saturating_add(PUBLISH_EVERY_SECS));
-        run_pass(&store, &http, &page, on_applied.as_ref(), !due).await;
+        let client = http.clone();
+        run_pass(&store, |creds| R2Bucket { http: client, creds }, &page, on_applied.as_ref(), !due).await;
         woken = tokio::select! {
             _ = tokio::time::sleep(INBOX_EVERY) => false,
             _ = wake.notified() => true,
@@ -393,7 +400,7 @@ mod tests {
         }
     }
 
-    impl Bucket for Memory {
+    impl Bucket for &Memory {
         async fn put(&self, key: &str, body: Vec<u8>) -> Result<(), String> {
             if self.fail_puts_of.lock().unwrap().as_deref() == Some(key) {
                 return Err("no connection".into());
@@ -424,7 +431,7 @@ mod tests {
     const PAGE: &[PageFile] = &[("index.html", b"<html>"), ("icon-256.png", b"png")];
 
     async fn pass(store: &Arc<Store>, bucket: &Memory) {
-        publish(store, bucket, PAGE, &|_| {}).await.unwrap();
+        publish(store, &bucket, PAGE, &|_| {}).await.unwrap();
     }
 
     #[tokio::test]
@@ -483,7 +490,7 @@ mod tests {
         let (store, bucket, id) = setup();
         let other = store.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap().0;
         *bucket.fail_puts_of.lock().unwrap() = Some(format!("articles/{id}.json"));
-        assert!(publish(&store, &bucket, PAGE, &|_| {}).await.is_err());
+        assert!(publish(&store, &&bucket, PAGE, &|_| {}).await.is_err());
         assert!(!bucket.keys().contains(&"index.json".to_string()), "no list points at what is not there");
         *bucket.fail_puts_of.lock().unwrap() = None;
         bucket.take_puts();
@@ -509,11 +516,11 @@ mod tests {
         bucket.with("inbox/000000000000002-b.json", &format!(r#"{{"id":"b","op":{{"kind":"set_read","article_id":{id},"read":false}}}}"#));
         bucket.with("inbox/000000000000001-a.json", &format!(r#"{{"id":"a","op":{{"kind":"set_read","article_id":{id},"read":true}}}}"#));
         let told = Mutex::new(Vec::new());
-        let applied = take_inbox(&store, &bucket, &|e| told.lock().unwrap().push(e.article)).await.unwrap();
+        let applied = take_inbox(&store, &&bucket, &|e| told.lock().unwrap().push(e.article)).await.unwrap();
         assert_eq!(applied, 2);
         assert_eq!(*told.lock().unwrap(), [Some(id), Some(id)]);
         assert_eq!(store.article_row(id).unwrap().unwrap().read_status, "unread", "the later one wins");
-        assert!(bucket.list("inbox/").await.unwrap().is_empty());
+        assert!(bucket.keys().iter().all(|k| !k.starts_with("inbox/")));
         pass(&store, &bucket).await;
         let applied: Vec<String> = serde_json::from_value(bucket.json("index.json")["applied_ops"].clone()).unwrap();
         assert!(applied.contains(&"a".to_string()) && applied.contains(&"b".to_string()));
@@ -524,8 +531,8 @@ mod tests {
         let (store, bucket, _) = setup();
         bucket.with("inbox/1-a.json", "not json");
         bucket.with("inbox/2-b.json", r#"{"id":"b","op":{"kind":"save_url","url":"javascript:x"}}"#);
-        assert_eq!(take_inbox(&store, &bucket, &|_| {}).await.unwrap(), 0);
-        assert!(bucket.list("inbox/").await.unwrap().is_empty());
+        assert_eq!(take_inbox(&store, &&bucket, &|_| {}).await.unwrap(), 0);
+        assert!(bucket.keys().iter().all(|k| !k.starts_with("inbox/")));
         assert!(status(&store).unwrap().last_rejected.unwrap().contains("mobile.badUrl"));
     }
 
@@ -536,9 +543,9 @@ mod tests {
         mobile::apply(&store, &serde_json::from_str(&body).unwrap()).unwrap();
         store.set_read_status(id, false).unwrap();
         bucket.with("inbox/1-same.json", &body);
-        assert_eq!(take_inbox(&store, &bucket, &|_| {}).await.unwrap(), 0);
+        assert_eq!(take_inbox(&store, &&bucket, &|_| {}).await.unwrap(), 0);
         assert_eq!(store.article_row(id).unwrap().unwrap().read_status, "unread");
-        assert!(bucket.list("inbox/").await.unwrap().is_empty());
+        assert!(bucket.keys().iter().all(|k| !k.starts_with("inbox/")));
     }
 
     fn settings(enabled: bool, bucket: &str, worker_url: &str) -> SnapshotSettings {
@@ -552,6 +559,41 @@ mod tests {
         }
     }
 
+    async fn run(store: &Arc<Store>, bucket: &Memory, inbox_only: bool) {
+        run_pass(store, |_| bucket, PAGE, &|_| {}, inbox_only).await;
+    }
+
+    const WORKER: &str = "https://m.example.workers.dev";
+
+    #[tokio::test]
+    async fn a_pass_records_how_it_went() {
+        let (store, bucket, id) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        *bucket.fail_puts_of.lock().unwrap() = Some(format!("articles/{id}.json"));
+        run(&store, &bucket, false).await;
+        let failed = status(&store).unwrap();
+        assert_eq!(failed.last_error.as_deref(), Some("no connection"));
+        assert_eq!(failed.last_publish, None, "no QR code for a snapshot that is not there");
+        *bucket.fail_puts_of.lock().unwrap() = None;
+        run(&store, &bucket, false).await;
+        let done = status(&store).unwrap();
+        assert_eq!(done.last_error, None);
+        assert!(done.last_publish.is_some());
+        assert!(!done.running);
+    }
+
+    #[tokio::test]
+    async fn between_passes_only_the_inbox_is_read_and_an_operation_publishes_at_once() {
+        let (store, bucket, id) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &bucket, true).await;
+        assert!(bucket.take_puts().is_empty(), "nothing to do");
+        bucket.with("inbox/1-a.json", &format!(r#"{{"id":"a","op":{{"kind":"set_favorite","article_id":{id},"favorite":true}}}}"#));
+        run(&store, &bucket, true).await;
+        assert!(bucket.take_puts().contains(&"index.json".to_string()));
+        assert_eq!(bucket.json("index.json")["applied_ops"][0], "a");
+    }
+
     #[test]
     fn turning_it_on_needs_everything_and_a_new_bucket_starts_over() {
         let s = Store::open_in_memory().unwrap();
@@ -559,15 +601,15 @@ mod tests {
         save(&s, &settings(true, "lattice-mobile", "https://m.example.workers.dev/")).unwrap();
         let got = status(&s).unwrap();
         assert!(got.enabled && got.has_secret);
-        assert_eq!(got.worker_url, "https://m.example.workers.dev");
+        assert_eq!(got.worker_url, WORKER);
         assert!(creds(&s).unwrap().is_some());
         s.conn().execute("INSERT INTO mobile_published (key, hash) VALUES ('x', 'y')", []).unwrap();
-        save(&s, &settings(true, "lattice-mobile", "https://m.example.workers.dev")).unwrap();
+        save(&s, &settings(true, "lattice-mobile", WORKER)).unwrap();
         let count = |s: &Store| s.conn().query_row("SELECT COUNT(*) FROM mobile_published", [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!(count(&s), 1, "the same bucket keeps what it knows");
-        save(&s, &settings(true, "another-bucket", "https://m.example.workers.dev")).unwrap();
+        save(&s, &settings(true, "another-bucket", WORKER)).unwrap();
         assert_eq!(count(&s), 0);
-        save(&s, &settings(false, "another-bucket", "https://m.example.workers.dev")).unwrap();
+        save(&s, &settings(false, "another-bucket", WORKER)).unwrap();
         assert!(creds(&s).unwrap().is_none(), "off means no pass runs");
     }
 
@@ -576,7 +618,7 @@ mod tests {
         let s = Store::open_in_memory().unwrap();
         assert_eq!(worker_origin(&s).unwrap(), None);
         save(&s, &settings(false, "lattice-mobile", "https://M.example.workers.dev/")).unwrap();
-        assert_eq!(worker_origin(&s).unwrap().as_deref(), Some("https://m.example.workers.dev"));
+        assert_eq!(worker_origin(&s).unwrap().as_deref(), Some(WORKER));
     }
 
     #[test]
@@ -593,7 +635,7 @@ mod tests {
         mobile::token(&store).unwrap();
         forget_published(&store).unwrap();
         let bucket = Memory::default();
-        publish(&store, &bucket, &[], &|_| {}).await.unwrap();
+        publish(&store, &&bucket, &[], &|_| {}).await.unwrap();
         let out = std::path::PathBuf::from(std::env::var("MOBILE_SNAPSHOT_OUT").unwrap());
         for (key, body) in bucket.objects.lock().unwrap().iter() {
             let path = out.join(key);
