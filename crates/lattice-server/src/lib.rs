@@ -44,7 +44,7 @@ pub const ASSETS: &[Asset] = &[
 
 /// Articles are untrusted. The page renders them as text; this keeps a mistake there from running
 /// or loading anything. `'unsafe-inline'` styles: React's `style` attribute (a list item's depth).
-pub const CSP: &str = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP: &str = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 pub fn router(store: Arc<Store>) -> Router {
     Router::new()

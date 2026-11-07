@@ -72,11 +72,10 @@ pub fn gzip(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
 
 /// Where the PC's server listens. Neither serves TLS: `Local` is for a tunnel in front
 /// (Tailscale Serve, cloudflared) that provides it, `Lan` is plain HTTP on the local network.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, rename = "MobileServerMode")]
 #[serde(rename_all = "snake_case")]
 pub enum ServerMode {
-    #[default]
     Off,
     Local,
     Lan,
