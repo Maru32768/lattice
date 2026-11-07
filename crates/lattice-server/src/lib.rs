@@ -48,7 +48,7 @@ pub const CSP: &str = "default-src 'self'; img-src 'self' data:; style-src 'self
 
 pub fn router(store: Arc<Store>) -> Router {
     Router::new()
-        .route("/api/ping", get(|headers: HeaderMap| async move { json_response(&headers, b"{}".to_vec()) }))
+        .route("/api/ping", get(|| async { json_headers(Response::new(Body::from("{}"))) }))
         .route("/api/index", get(index))
         .route("/api/articles/{id}", get(article))
         .route_layer(middleware::from_fn_with_state(store.clone(), require_token))
@@ -82,47 +82,53 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
     headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|e| e.trim().starts_with("gzip")))
 }
 
-/// A document of the library: never kept by a cache along the way, as the token guards it.
-fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
-    let mut response = encoded(request, "application/json", body);
-    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response
+/// Runs what would hold up the async workers: a store call may wait for its lock behind a job, and compressing takes time.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
-fn encoded(request: &HeaderMap, content_type: &'static str, body: Vec<u8>) -> Response {
-    let gz = if accepts_gzip(request) {
-        mobile::gzip(&body).ok()
+/// `body`, compressed when the client takes that and `compress` says it is worth it.
+async fn encoded(request: &HeaderMap, content_type: &'static str, body: Bytes, compress: bool) -> Response {
+    let gz = if compress && accepts_gzip(request) {
+        let raw = body.clone();
+        blocking(move || mobile::gzip(&raw).map_err(|e| e.to_string())).await.ok()
     } else {
         None
     };
     let mut response = match gz {
         Some(gz) => {
-            let mut r = Response::new(Body::from(Bytes::from(gz)));
+            let mut r = Response::new(Body::from(gz));
             r.headers_mut().insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
             r
         }
-        None => Response::new(Body::from(Bytes::from(body))),
+        None => Response::new(Body::from(body)),
     };
     response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
     response.headers_mut().insert(header::VARY, HeaderValue::from_static("accept-encoding"));
     response
 }
 
-/// Runs a store call off the async workers: the store's lock may be held by a job.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
+/// A document of the library: never kept by a cache along the way, as the token guards it.
+fn json_headers(mut response: Response) -> Response {
+    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+async fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
+    json_headers(encoded(request, "application/json", body.into(), true).await)
 }
 
 async fn index(State(store): State<Arc<Store>>, headers: HeaderMap) -> Response {
     match blocking(move || serde_json::to_vec(&mobile::index(&store)?).map_err(|e| e.to_string())).await {
-        Ok(body) => json_response(&headers, body),
+        Ok(body) => json_response(&headers, body).await,
         Err(e) => internal_error(&e),
     }
 }
 
 async fn article(State(store): State<Arc<Store>>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
     match blocking(move || mobile::article(&store, id)?.map(|doc| serde_json::to_vec(&doc).map_err(|e| e.to_string())).transpose()).await {
-        Ok(Some(body)) => json_response(&headers, body),
+        Ok(Some(body)) => json_response(&headers, body).await,
         Ok(None) => error(StatusCode::NOT_FOUND, "no such article"),
         Err(e) => internal_error(&e),
     }
@@ -141,7 +147,7 @@ async fn page(method: Method, headers: HeaderMap, request: Request) -> Response 
     let Some(asset) = ASSETS.iter().find(|a| a.path == path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let mut response = encoded(&headers, asset.content_type, asset.bytes.to_vec());
+    let mut response = encoded(&headers, asset.content_type, Bytes::from_static(asset.bytes), !asset.content_type.starts_with("image/")).await;
     let h = response.headers_mut();
     h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
     h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
