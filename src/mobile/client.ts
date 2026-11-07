@@ -7,8 +7,11 @@ const LANGUAGE = "lattice.mobile.language";
 const OPS = "lattice.mobile.ops";
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
-/** An operation the server took but no list has shown yet stops counting after this: the PC may have lost it. */
-const KEEP_SENT_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * An operation no list has shown after this is given up on, sent or not. Well under the 90 days the PC
+ * remembers what it applied (`KEEP_APPLIED_SECS`): sent any later, one could undo what changed since.
+ */
+const KEEP_OPS_MS = 60 * 24 * 60 * 60 * 1000;
 
 /** Blocked storage (a private window) must not break the page: it asks for the QR code again instead. */
 function read(key: string): string | null {
@@ -136,7 +139,7 @@ export function newOpId(): string {
 /** What a list that reflects `applied` leaves of the local operations. */
 export function settled(local: LocalOp[], applied: string[], now: number): LocalOp[] {
   const done = new Set(applied);
-  return local.filter((op) => !done.has(op.id) && !(op.sent && now - op.at > KEEP_SENT_MS));
+  return local.filter((op) => !done.has(op.id) && now - op.at <= KEEP_OPS_MS);
 }
 
 /** A row as the operations not yet shown by a list will leave it. */

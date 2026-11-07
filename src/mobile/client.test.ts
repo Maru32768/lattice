@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
 import { type LocalOp, newOpId, resultOf, settled, tokenInFragment, withOps } from "./client.ts";
@@ -56,21 +57,23 @@ test("a row shows this phone's operations in the order they were done", () => {
   assert.equal(withOps(a, []), a, "nothing to do leaves the same object");
 });
 
-test("an operation leaves the phone once a list shows it, or long after the server took it", () => {
-  const month = 30 * 24 * 60 * 60 * 1000;
-  const shown = op("shown", { kind: "set_read", article_id: 1, read: true });
-  const waiting = op("waiting", { kind: "set_read", article_id: 1, read: true }, 1000);
-  const old = op("old", { kind: "set_read", article_id: 1, read: true }, 0);
-  const unsent = op("unsent", { kind: "set_read", article_id: 1, read: true }, 0, false);
-  assert.deepEqual(
-    settled([shown, waiting, old, unsent], ["shown"], month + 500).map((o) => o.id),
-    ["waiting", "unsent"],
-  );
-  assert.deepEqual(
-    settled([unsent], [], 12 * month).map((o) => o.id),
-    ["unsent"],
-    "what was never sent stays: nobody else has it",
-  );
+test("an operation leaves the phone once a list shows it, or when it has waited too long", () => {
+  const day = 24 * 60 * 60 * 1000;
+  const ids = (local: LocalOp[], applied: string[], now: number) => settled(local, applied, now).map((o) => o.id);
+  const read = { kind: "set_read", article_id: 1, read: true } as const;
+  const [shown, waiting, unsent] = [op("shown", read), op("waiting", read, 1000), op("unsent", read, 1000, false)];
+  assert.deepEqual(ids([shown, waiting, unsent], ["shown"], 2000), ["waiting", "unsent"]);
+  assert.deepEqual(ids([waiting, unsent], [], 59 * day), ["waiting", "unsent"]);
+  assert.deepEqual(ids([waiting, unsent], [], 61 * day), [], "sent later, one could undo what changed on the PC since it applied");
+});
+
+test("the phone gives up on an operation before the PC forgets it applied it", () => {
+  const core = readFileSync(new URL("../../crates/lattice-core/src/mobile.rs", import.meta.url), "utf8");
+  const client = readFileSync(new URL("./client.ts", import.meta.url), "utf8");
+  const pc = /KEEP_APPLIED_SECS: i64 = (\d+) \* 24/.exec(core);
+  const phone = /KEEP_OPS_MS = (\d+) \* 24/.exec(client);
+  assert.ok(pc && phone);
+  assert.ok(Number(phone[1]) < Number(pc[1]));
 });
 
 test("only Lattice's own answer settles an operation", () => {
