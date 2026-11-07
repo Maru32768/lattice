@@ -272,6 +272,8 @@ export async function disconnect() {
 export interface LocalOp extends MobileOp {
   at: number;
   sent: boolean;
+  /** When a server took it: an operation made offline reaches the PC long after `at`. */
+  sentAt?: number;
   queued?: boolean;
 }
 
@@ -335,7 +337,7 @@ const SKEW_MS = 5 * 60 * 1000;
 /** What the PC's list leaves: what it shows and the snapshot, made since, shows too. */
 export function settledByPc(local: LocalOp[], applied: string[], snapshotAt: number | null): LocalOp[] {
   const done = new Set(applied);
-  return snapshotAt == null ? local : local.filter((op) => !(done.has(op.id) && snapshotAt * 1000 > op.at + SKEW_MS));
+  return snapshotAt == null ? local : local.filter((op) => !(done.has(op.id) && snapshotAt * 1000 > (op.sentAt ?? op.at) + SKEW_MS));
 }
 
 /** A row as the operations not yet shown by a list will leave it. */
@@ -427,7 +429,7 @@ export function flushOps(): Promise<void> {
         updateOps((local) => local.filter((o) => o.id !== sending.id));
         onRejected(sending, result.error);
       } else {
-        updateOps((local) => local.map((o) => (o.id === sending.id ? { ...o, sent: true, queued: result.queued } : o)));
+        updateOps((local) => local.map((o) => (o.id === sending.id ? { ...o, sent: true, sentAt: Date.now(), queued: result.queued } : o)));
       }
     }
   })().finally(() => {

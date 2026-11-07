@@ -145,4 +145,10 @@ test("the PC's list settles only what the snapshot, made since, shows too", () =
   assert.deepEqual(ids((at - minute) / 1000), ["shown", "not shown"], "made before the operation");
   assert.deepEqual(ids((at + 3 * minute) / 1000), ["shown", "not shown"], "within the clocks' difference");
   assert.deepEqual(ids((at + 10 * minute) / 1000), ["not shown"]);
+  const madeOffline = [{ ...op("shown", read, at), sentAt: at + 60 * minute }];
+  assert.deepEqual(
+    settledByPc(madeOffline, ["shown"], (at + 30 * minute) / 1000).map((o) => o.id),
+    ["shown"],
+    "made offline, sent after that snapshot: it is not in it",
+  );
 });
