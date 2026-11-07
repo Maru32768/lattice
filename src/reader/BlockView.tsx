@@ -67,7 +67,7 @@ function Translation({ text, ts }: { text: string; ts?: string[] }) {
 }
 
 /** The text of a translated sentence as rendered (backticks become <code>). */
-export const translationText = (tr: string) =>
+const translationText = (tr: string) =>
   splitBackticks(shownTranslation(tr))
     .map((s) => s.v)
     .join("");
