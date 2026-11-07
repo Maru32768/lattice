@@ -387,22 +387,46 @@ pub(crate) async fn publish<B: Bucket>(
     Ok(published)
 }
 
-/// Takes the token out of a bucket that has one, so that turning the snapshot off also stops its readers.
-async fn withdraw_token<B: Bucket>(store: &Arc<Store>, bucket: &B) -> Result<(), String> {
-    let s = store.clone();
-    let hash = sha256_hex(NO_TOKEN);
-    let check = hash.clone();
-    let needed = blocking(move || {
+/// Whether the bucket holds a token this library put there.
+async fn token_out(store: &Arc<Store>) -> Result<bool, String> {
+    let (s, none) = (store.clone(), sha256_hex(NO_TOKEN));
+    blocking(move || {
         let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [AUTH_KEY], |r| r.get(0)).optional().map_err(err)?;
-        Ok(known.is_some_and(|k| k != check))
+        Ok(known.is_some_and(|k| k != none))
     })
-    .await?;
-    if !needed {
+    .await
+}
+
+/// Leaves a bucket: takes the token out, so that turning the snapshot off or moving to another bucket also stops this one's readers.
+async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B) -> Result<(), String> {
+    if !token_out(store).await? {
         return Ok(());
     }
     bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
-    let s = store.clone();
+    let (s, hash) = (store.clone(), sha256_hex(NO_TOKEN));
     blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, AUTH_KEY]).map(drop).map_err(err)).await
+}
+
+/// Whether new settings leave the bucket the current ones point at.
+fn leaves(c: &Creds, s: &SnapshotSettings) -> bool {
+    !s.enabled || s.account_id.trim() != c.account_id || s.bucket.trim() != c.bucket || s.access_key_id.trim().is_empty()
+}
+
+/// Saves new settings. Those that leave a bucket the token is out in first leave it with the settings that reach
+/// it, which a save that clears or changes them would lose. If that fails nothing is saved: a lost phone's token would stay good there.
+pub async fn change(store: &Arc<Store>, settings: SnapshotSettings) -> Result<(), String> {
+    change_with(store, settings, |creds| R2Bucket { http: r2::client(), creds }).await
+}
+
+async fn change_with<B: Bucket>(store: &Arc<Store>, settings: SnapshotSettings, bucket_for: impl FnOnce(Creds) -> B) -> Result<(), String> {
+    let s = store.clone();
+    if let Some((current, _)) = blocking(move || creds(&s)).await?
+        && leaves(&current, &settings)
+    {
+        leave(store, &bucket_for(current)).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
+    }
+    let s = store.clone();
+    blocking(move || save(&s, &settings)).await
 }
 
 async fn note(store: &Arc<Store>, key: &'static str, value: Option<String>) {
@@ -430,7 +454,8 @@ async fn run_pass<B: Bucket>(
     let (account, name) = (creds_now.account_id.clone(), creds_now.bucket.clone());
     let bucket = bucket_for(creds_now);
     if !enabled {
-        if let Err(e) = withdraw_token(store, &bucket).await {
+        // Turned off by a save that could not reach the bucket, or the leaving failed: try again.
+        if let Err(e) = leave(store, &bucket).await {
             log::warn!("mobile snapshot: withdrawing the token: {e}");
             note(store, LAST_ERROR, Some(e)).await;
         }
@@ -769,6 +794,40 @@ mod tests {
         save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
         run(&store, &bucket, false).await;
         assert_eq!(bucket.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "and back on");
+    }
+
+    async fn change_to(store: &Arc<Store>, settings: SnapshotSettings, bucket: &Memory) -> Result<(), String> {
+        change_with(store, settings, |_| bucket).await
+    }
+
+    #[tokio::test]
+    async fn leaving_a_bucket_however_the_settings_change_takes_the_token_out_of_it_first() {
+        let cleared = |mut s: SnapshotSettings| {
+            s.account_id = String::new();
+            s.bucket = String::new();
+            s
+        };
+        for (why, next) in [
+            ("turned off and cleared", cleared(settings(false, "lattice-mobile", WORKER))),
+            ("moved to another bucket", settings(true, "another-bucket", WORKER)),
+            ("turned off", settings(false, "lattice-mobile", WORKER)),
+        ] {
+            let (store, a, _) = setup();
+            save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+            run(&store, &a, false).await;
+            change_to(&store, next, &a).await.unwrap();
+            assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "{why}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_bucket_that_cannot_be_left_keeps_the_settings_that_reach_it() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        *a.fail_puts_of.lock().unwrap() = Some(AUTH_KEY.into());
+        assert!(change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.unwrap_err().contains("mobile.leaveFailed"));
+        assert!(status(&store).unwrap().enabled);
     }
 
     #[tokio::test]

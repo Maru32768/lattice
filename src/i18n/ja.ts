@@ -1372,4 +1372,5 @@ export const ja = {
   "mobile.reloadPlease": "このページとデータの版が合いません。しばらくしてから読み込み直してください。",
   "mobile.reload": "読み込み直す",
   "be.mobile.unreadableArticles": "読み取れない記事は前回の内容のままです: {ids}",
+  "be.mobile.leaveFailed": "前のbucketからトークンを引き上げられなかったので、保存していません: {error}",
 } as const satisfies Record<string, string>;

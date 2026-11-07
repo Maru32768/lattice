@@ -197,7 +197,7 @@ pub async fn mobile_snapshot_save(
     if loc.warning.is_some() {
         return Err(msg!("mobile.fellBack"));
     }
-    mobile_publish::save(&app.store, &settings)?;
+    mobile_publish::change(&app.store, settings).await?;
     mobile_server.publish_now.notify_one();
     status(&mobile_server, &app, &loc).await
 }

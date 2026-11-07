@@ -1390,4 +1390,5 @@ export const en = {
   "mobile.reloadPlease": "This page and its data are of different versions. Reload in a little while.",
   "mobile.reload": "Reload",
   "be.mobile.unreadableArticles": "Articles that could not be read stay as last published: {ids}",
+  "be.mobile.leaveFailed": "Not saved: the token could not be taken out of the bucket left behind: {error}",
 } satisfies Messages;
