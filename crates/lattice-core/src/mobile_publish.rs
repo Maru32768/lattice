@@ -120,7 +120,6 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     }
     // A different bucket holds nothing yet: no QR code until a pass has filled it.
     if get(store, ACCOUNT_ID)?.unwrap_or_default() != account_id || get(store, BUCKET)?.unwrap_or_default() != bucket {
-        forget_published(store)?;
         set(store, LAST_PUBLISH, None)?;
         set(store, LAST_ERROR, None)?;
     }
@@ -139,11 +138,6 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
 /// The reader has acted since: the warning has done its work.
 pub fn clear_rejected(store: &Store) -> Result<(), String> {
     set(store, LAST_REJECTED, None)
-}
-
-/// The next pass uploads everything again, as if the bucket were empty.
-pub fn forget_published(store: &Store) -> Result<(), String> {
-    store.conn().execute("DELETE FROM mobile_published", []).map(drop).map_err(err)
 }
 
 /// The bucket's credentials if they are all there, and whether publishing is on.
@@ -293,6 +287,13 @@ impl<B: Bucket> Uploads<'_, B> {
     }
 }
 
+/// How a pass ended, short of an error.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Published {
+    /// The settings changed under it: nothing more went up.
+    stopped: bool,
+}
+
 /// An article's part of its upload. The row is left out: read state, tags and scores change often, and the list carries them.
 fn article_upload(store: &Store, id: i64) -> Result<Option<(String, Vec<u8>)>, String> {
     let Some(doc) = mobile::article(store, id)? else {
@@ -310,9 +311,16 @@ fn article_upload(store: &Store, id: i64) -> Result<Option<(String, Vec<u8>)>, S
     Ok(Some((hash, serde_json::to_vec(&doc).map_err(err)?)))
 }
 
-/// One complete pass. Articles go up before the list, and what is gone comes down after it, so a phone never
-/// finds a listed article missing for long; if one does, it reads the list again.
-pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[PageFile], on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
+/// One complete pass. Articles go up before the list, and what is gone comes down after it, so that
+/// the list does not point at what is not there. `keep_going` is asked per article: a pass can take
+/// minutes, and it must not go on filling a bucket the reader has since corrected.
+pub(crate) async fn publish<B: Bucket>(
+    store: &Arc<Store>,
+    bucket: &B,
+    page: &[PageFile],
+    on_applied: &(dyn Fn(&Effects) + Send + Sync),
+    keep_going: Arc<dyn Fn(&Store) -> bool + Send + Sync>,
+) -> Result<Published, String> {
     take_inbox(store, bucket, on_applied).await?;
 
     let present = bucket.list("").await?.into_iter().collect();
@@ -333,18 +341,32 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
         Ok((index, gz))
     })
     .await?;
+
+    let mut published = Published::default();
     for id in index.articles.iter().map(|a| a.id) {
-        let s = store.clone();
-        let Some((hash, doc)) = blocking(move || article_upload(&s, id)).await? else {
-            continue; // deleted since the list was read
-        };
-        uploads.put_if_changed(format!("{ARTICLE_PREFIX}{id}.json"), hash, doc, true).await?;
+        let (s, go_on) = (store.clone(), keep_going.clone());
+        let upload = blocking(move || {
+            if go_on(&s) {
+                article_upload(&s, id).map(|u| (true, u))
+            } else {
+                Ok((false, None))
+            }
+        })
+        .await?;
+        match upload {
+            (false, _) => {
+                published.stopped = true;
+                return Ok(published);
+            }
+            (true, Some((hash, doc))) => uploads.put_if_changed(format!("{ARTICLE_PREFIX}{id}.json"), hash, doc, true).await?,
+            (true, None) => {} // deleted since the list was read
+        }
     }
 
     // Always, unchanged or not: `generated_at` tells the phone how old the snapshot is.
     bucket.put(INDEX_KEY, gz).await?;
     uploads.remove_the_rest().await?;
-    Ok(())
+    Ok(published)
 }
 
 /// Takes the token out of a bucket that has one, so that turning the snapshot off also stops its readers.
@@ -387,6 +409,7 @@ async fn run_pass<B: Bucket>(
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
     };
+    let (account, name) = (creds_now.account_id.clone(), creds_now.bucket.clone());
     let bucket = bucket_for(creds_now);
     if !enabled {
         if let Err(e) = withdraw_token(store, &bucket).await {
@@ -406,8 +429,10 @@ async fn run_pass<B: Bucket>(
             }
         }
     }
-    match publish(store, &bucket, page, on_applied).await {
-        Ok(()) => {
+    let keep_going = Arc::new(move |s: &Store| creds(s).ok().flatten().is_some_and(|(c, on)| on && c.account_id == account && c.bucket == name));
+    match publish(store, &bucket, page, on_applied, keep_going).await {
+        Ok(Published { stopped: true, .. }) => {}
+        Ok(_) => {
             note(store, LAST_PUBLISH, Some(unix_now().to_string())).await;
             note(store, LAST_ERROR, None).await;
         }
@@ -506,8 +531,12 @@ mod tests {
 
     const PAGE: &[PageFile] = &[("index.html", b"<html>"), ("icon-256.png", b"png")];
 
+    fn always() -> Arc<dyn Fn(&Store) -> bool + Send + Sync> {
+        Arc::new(|_| true)
+    }
+
     async fn pass(store: &Arc<Store>, bucket: &Memory) {
-        publish(store, &bucket, PAGE, &|_| {}).await.unwrap();
+        publish(store, &bucket, PAGE, &|_| {}, always()).await.unwrap();
     }
 
     #[tokio::test]
@@ -582,7 +611,7 @@ mod tests {
         let (store, bucket, id) = setup();
         let other = store.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap().0;
         *bucket.fail_puts_of.lock().unwrap() = Some(format!("articles/{id}.json"));
-        assert!(publish(&store, &&bucket, PAGE, &|_| {}).await.is_err());
+        assert!(publish(&store, &&bucket, PAGE, &|_| {}, always()).await.is_err());
         assert!(!bucket.has("index.json"), "no list points at what is not there");
         *bucket.fail_puts_of.lock().unwrap() = None;
         bucket.take_puts();
@@ -593,13 +622,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn starting_over_uploads_everything_again() {
+    async fn a_pass_stops_when_its_settings_no_longer_hold() {
         let (store, bucket, id) = setup();
-        pass(&store, &bucket).await;
-        forget_published(&store).unwrap();
-        bucket.take_puts();
-        pass(&store, &bucket).await;
-        assert!(bucket.take_puts().contains(&format!("articles/{id}.json")));
+        let published = publish(&store, &&bucket, PAGE, &|_| {}, Arc::new(|_| false)).await.unwrap();
+        assert!(published.stopped);
+        assert!(!bucket.has(&format!("articles/{id}.json")) && !bucket.has("index.json"));
     }
 
     #[tokio::test]
@@ -717,7 +744,7 @@ mod tests {
     }
 
     #[test]
-    fn turning_it_on_needs_everything_and_a_new_bucket_starts_over() {
+    fn turning_it_on_needs_everything_and_a_new_bucket_has_no_snapshot_yet() {
         let s = Store::open_in_memory().unwrap();
         assert!(save(&s, &settings(true, "lattice-mobile", "")).is_err());
         save(&s, &settings(true, "lattice-mobile", "https://m.example.workers.dev/")).unwrap();
@@ -725,14 +752,10 @@ mod tests {
         assert!(got.enabled && got.has_secret);
         assert_eq!(got.worker_url, WORKER);
         assert!(creds(&s).unwrap().is_some_and(|(_, on)| on));
-        s.conn().execute("INSERT INTO mobile_published (key, hash) VALUES ('x', 'y')", []).unwrap();
         set(&s, LAST_PUBLISH, Some("1")).unwrap();
         save(&s, &settings(true, "lattice-mobile", WORKER)).unwrap();
-        let count = |s: &Store| s.conn().query_row("SELECT COUNT(*) FROM mobile_published", [], |r| r.get::<_, i64>(0)).unwrap();
-        assert_eq!(count(&s), 1, "the same bucket keeps what it knows");
         assert_eq!(status(&s).unwrap().last_publish, Some(1), "the same bucket keeps it");
         save(&s, &settings(true, "another-bucket", WORKER)).unwrap();
-        assert_eq!(count(&s), 0);
         assert_eq!(status(&s).unwrap().last_publish, None);
         save(&s, &settings(false, "another-bucket", WORKER)).unwrap();
         assert!(creds(&s).unwrap().is_some_and(|(_, on)| !on));
@@ -758,9 +781,8 @@ mod tests {
     async fn write_a_snapshot_to_a_folder() {
         let store = Arc::new(Store::open(std::env::var("MOBILE_SNAPSHOT_DB").unwrap().as_ref()).unwrap());
         mobile::token(&store).unwrap();
-        forget_published(&store).unwrap();
         let bucket = Memory::default();
-        publish(&store, &&bucket, &[], &|_| {}).await.unwrap();
+        publish(&store, &&bucket, &[], &|_| {}, always()).await.unwrap();
         let out = std::path::PathBuf::from(std::env::var("MOBILE_SNAPSHOT_OUT").unwrap());
         for (key, body) in bucket.objects.lock().unwrap().iter() {
             let path = out.join(key);
