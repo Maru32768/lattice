@@ -232,3 +232,23 @@ test("the snapshot asks for everything before it turns on, then shows its QR cod
   await app.getByRole("button", { name: "今すぐ公開" }).click();
   await expect.poll(() => callsOf(app, "mobile_publish_now").then((c) => c.length)).toBe(1);
 });
+
+test("a bucket nothing reaches any more can be given up, after the screen says what that leaves behind", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();
+  await app.getByLabel("スナップショットを公開").check();
+  await app.getByLabel("Account ID").fill("0123456789abcdef0123456789abcdef");
+  await app.getByLabel("Bucket").fill("unreachable");
+  await app.getByLabel("Access Key ID").fill("AKID");
+  await app.getByLabel("Secret Access Key").fill("s3cret");
+  await app.getByLabel("Workerのアドレス").fill("https://lattice-mobile.example.workers.dev");
+  const save = app.getByRole("button", { name: "保存", exact: true }).nth(1);
+  await save.click();
+  await app.getByLabel("スナップショットを公開").uncheck();
+  await save.click();
+  await expect(app.getByRole("alert")).toContainText("保存していません");
+  const giveUp = app.getByRole("button", { name: "前のbucketを諦めて保存" });
+  await giveUp.click();
+  await expect.poll(() => callsOf(app, "mobile_snapshot_save").then((c) => (c.at(-1) as { abandon: boolean }).abandon)).toBe(true);
+  await expect(giveUp).toHaveCount(0);
+});

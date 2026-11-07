@@ -958,7 +958,11 @@ export const handlers = {
     store.mobile = { ...store.mobile, settings, running: on, url, qr: on ? { width: 21, path: "M0 0h1v1h-1z" } : null };
     return store.mobile;
   },
-  mobile_snapshot_save: ({ settings }: { settings: SnapshotSettings; abandon: boolean }): MobileStatus => {
+  mobile_snapshot_save: ({ settings, abandon }: { settings: SnapshotSettings; abandon: boolean }): MobileStatus => {
+    // A bucket nothing reaches any more (named so in the tests): leaving it fails unless the reader gives it up.
+    if (store.mobile.snapshot.bucket === "unreachable" && store.mobile.snapshot.enabled && !settings.enabled && !abandon) {
+      throw '{"code":"mobile.leaveFailed","params":{"error":"R2 HTTP 403 Forbidden"}}';
+    }
     const { secret_access_key: secret, ...rest } = settings;
     const has_secret = store.mobile.snapshot.has_secret || !!secret;
     if (settings.enabled && !(settings.account_id && settings.bucket && settings.access_key_id && has_secret && settings.worker_url)) {
