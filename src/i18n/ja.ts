@@ -1347,7 +1347,6 @@ export const ja = {
   "mobile.markUnread": "未読に戻す",
   "mobile.markRead": "既読にする",
   "mobile.pending": "未送信{n}件",
-  "mobile.sent": "送信しました",
   "mobile.rejected": "反映できませんでした({what}): {error}",
   "mobileSettings.snapshot": "PCが止まっていても読む",
   "mobileSettings.snapshotDesc":
@@ -1363,6 +1362,7 @@ export const ja = {
   "mobileSettings.opRejected": "スマホの操作を反映できませんでした: {error}",
   "mobileSettings.snapshotQr": "スナップショットをスマホで開くQRコード",
   "be.mobile.snapshotIncomplete": "公開するにはAccount ID・bucket・Access Key ID・Secret Access Key・Workerのアドレスをすべて設定してください",
+  "mobile.wordTaken": "単語を受け付けました",
   "mobile.urlTaken": "URLを受け付けました。本文の取得はPCで行います",
   "mobile.discard": "破棄",
   "mobile.discardConfirm": "まだ送っていない操作を破棄します。よろしいですか?",

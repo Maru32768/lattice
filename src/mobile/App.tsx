@@ -115,6 +115,7 @@ export function App() {
     );
   }
   const index = load.state === "ready" ? load.index : null;
+  const unsent = ops.filter((o) => !o.sent).length;
   if (articleId != null) {
     return (
       <>
@@ -124,6 +125,7 @@ export function App() {
           id={articleId}
           row={index?.articles.find((a) => a.id === articleId)}
           ops={ops}
+          unsent={unsent}
           writable={index != null && !index.read_only}
           onBack={(e) => {
             // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
@@ -161,7 +163,7 @@ export function App() {
       {notice}
       <ListPage
         articles={load.index.articles.map((a) => withOps(a, ops))}
-        unsent={ops.filter((o) => !o.sent).length}
+        unsent={unsent}
         writable={!load.index.read_only}
         view={view}
         onView={setView}

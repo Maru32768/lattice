@@ -71,6 +71,7 @@ export function ArticlePage({
   id,
   row,
   ops,
+  unsent,
   writable,
   onBack,
 }: {
@@ -78,6 +79,7 @@ export function ArticlePage({
   /** The article in the list, which is newer than the page's copy once the list has loaded. */
   row?: ArticleRow;
   ops: LocalOp[];
+  unsent: number;
   writable: boolean;
   onBack: (e: React.MouseEvent) => void;
 }) {
@@ -87,7 +89,7 @@ export function ArticlePage({
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   /** The word selected in one prose block, ready to send. */
   const [word, setWord] = useState<VocabCapture | null>(null);
-  const [wordSent, setWordSent] = useState(false);
+  const [wordTaken, setWordTaken] = useState(false);
 
   const load = async () => {
     setDoc("loading");
@@ -134,7 +136,7 @@ export function ArticlePage({
   );
 
   const onSelectionChange = useEffectEvent(() => {
-    setWordSent(false);
+    setWordTaken(false);
     if (typeof doc === "string" || doc == null || !writable) {
       return;
     }
@@ -248,6 +250,7 @@ export function ArticlePage({
             </button>
           </div>
         )}
+        {unsent > 0 && <p className="m-note">{t("mobile.pending", { n: unsent })}</p>}
         {doc.summary && (
           <details className="m-summary">
             <summary>{t("mobile.summary")}</summary>
@@ -270,7 +273,7 @@ export function ArticlePage({
             className="btn pri"
             onClick={() => {
               submit({ kind: "vocab_add", capture: word });
-              setWordSent(true);
+              setWordTaken(true);
               setWord(null);
             }}
           >
@@ -278,9 +281,9 @@ export function ArticlePage({
           </button>
         </div>
       )}
-      {wordSent && !word && (
+      {wordTaken && !word && (
         <div className="m-word" role="status">
-          {t("mobile.sent")}
+          <span className="m-word-taken">{t("mobile.wordTaken")}</span>
         </div>
       )}
     </>

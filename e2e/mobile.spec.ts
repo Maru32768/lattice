@@ -596,7 +596,7 @@ test("a selected word can be saved with its sentence and source", async ({ page 
     getSelection()!.addRange(range);
   });
   await page.getByRole("button", { name: "単語を登録: Second" }).click();
-  await expect(page.getByRole("status")).toHaveText("送信しました");
+  await expect(page.getByRole("status")).toHaveText("単語を受け付けました");
   await expect
     .poll(() => sentOps(seen).at(-1)?.op)
     .toEqual({
