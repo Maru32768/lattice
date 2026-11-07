@@ -161,6 +161,8 @@ pub fn token_hash(token: &str) -> String {
 
 /// The address other devices reach this PC at: the one the route to the Internet leaves from.
 /// Connecting a UDP socket sends nothing.
+// shortcut: on a full-tunnel VPN this is the VPN's address, and without a default route there is none. The address
+// the phone opens can be typed in the settings. Enumerating the interfaces, which needs a dependency, would remove this.
 pub fn lan_ip() -> Option<IpAddr> {
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
     socket.connect((Ipv4Addr::new(8, 8, 8, 8), 53)).ok()?;
