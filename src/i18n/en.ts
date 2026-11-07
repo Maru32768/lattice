@@ -1387,4 +1387,5 @@ export const en = {
   "mobile.asOf": "As of {time}",
   "mobile.disconnect": "Disconnect this phone",
   "mobile.disconnectConfirm": "Remove the token, saved articles and unsent operations from this phone?",
+  "mobile.savedCopy": "Cannot connect, so this is the saved copy",
 } satisfies Messages;

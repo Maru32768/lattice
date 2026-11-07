@@ -149,7 +149,7 @@ test("a failed refresh leaves the list on screen", async ({ page }) => {
   await page.unroute("**/api/**");
   await page.route("**/api/**", (route) => route.abort());
   await page.getByRole("button", { name: "更新" }).click();
-  await expect(page.getByRole("alert")).toHaveText("読み込めませんでした。");
+  await expect(page.getByRole("alert")).toHaveText("接続できないので、保存した内容を表示しています");
   await expect(page.getByRole("alert")).toBeInViewport();
   await expect(page.getByText("First article")).toBeVisible();
 });

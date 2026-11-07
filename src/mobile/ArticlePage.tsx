@@ -63,7 +63,9 @@ function flipUnlessSelecting(flip: () => void) {
   }
 }
 
-async function fetchDoc(id: number): Promise<ArticleDoc | null | "failed" | "no-token"> {
+type Loaded = { doc: ArticleDoc | null; saved: boolean } | "failed" | "no-token";
+
+async function fetchDoc(id: number): Promise<Loaded> {
   try {
     return await loadArticle(id);
   } catch (e) {
@@ -88,7 +90,8 @@ export function ArticlePage({
   onBack: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
-  const [doc, setDoc] = useState<ArticleDoc | null | "loading" | "failed" | "no-token">("loading");
+  const [loaded, setLoaded] = useState<Loaded | "loading">("loading");
+  const doc = typeof loaded === "object" ? loaded.doc : loaded;
   const [{ mode, percent }, setLanguage] = useState(savedLanguage);
   const [flipped, setFlipped] = useState<Set<string>>(new Set());
   /** The word selected in one prose block, ready to send. */
@@ -97,8 +100,8 @@ export function ArticlePage({
   const timers = useRef({ word: 0, taken: 0 });
 
   const load = async () => {
-    setDoc("loading");
-    setDoc(await fetchDoc(id));
+    setLoaded("loading");
+    setLoaded(await fetchDoc(id));
   };
   // App remounts this page per article.
   const firstLoad = useEffectEvent(() => void load());
@@ -242,6 +245,11 @@ export function ArticlePage({
     <>
       {toolbar}
       <main className="m-article">
+        {typeof loaded === "object" && loaded.saved && (
+          <p role="alert" className="m-note">
+            {t("mobile.savedCopy")}
+          </p>
+        )}
         <h1>{a.title ?? a.original_url}</h1>
         <p className="m-meta">
           {/^https?:/i.test(a.original_url) && (

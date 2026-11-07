@@ -1369,4 +1369,5 @@ export const ja = {
   "mobile.asOf": "{time}の内容",
   "mobile.disconnect": "このスマホの接続を解除",
   "mobile.disconnectConfirm": "トークン、読んだ記事の控え、まだ送っていない操作をこのスマホから消します。よろしいですか?",
+  "mobile.savedCopy": "接続できないので、保存した内容を表示しています",
 } as const satisfies Record<string, string>;

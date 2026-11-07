@@ -179,16 +179,16 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
   return { index, saved };
 }
 
-/** Null when the article is gone. */
-export async function loadArticle(id: number): Promise<ArticleDoc | null> {
-  const { response } = await document(`api/articles/${id}`);
+/** Null when the article is gone, and whether it is the saved copy. */
+export async function loadArticle(id: number): Promise<{ doc: ArticleDoc | null; saved: boolean }> {
+  const { response, saved } = await document(`api/articles/${id}`);
   if (response.status === 404) {
-    return null;
+    return { doc: null, saved };
   }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  return (await response.json()) as ArticleDoc;
+  return { doc: (await response.json()) as ArticleDoc, saved };
 }
 
 /** Leaves nothing of the library on this phone. Other tabs follow through `storage`. */

@@ -80,7 +80,7 @@ export function ListPage({
         </button>
         {refreshFailed && (
           <p role="alert" className="m-bar-note">
-            {t("mobile.loadFailed")}
+            {t("mobile.savedCopy")}
           </p>
         )}
         {isOldList(generatedAt) && <p className="m-bar-age">{t("mobile.asOf", { time: relTime(new Date(generatedAt * 1000).toISOString(), t) })}</p>}

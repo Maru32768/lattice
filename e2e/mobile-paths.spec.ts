@@ -206,11 +206,12 @@ test("without a connection the phone still opens, with the list and the articles
 
   await ctx.setOffline(true);
   await page.reload();
-  await expect(page.getByRole("alert")).toHaveText("読み込めませんでした。");
+  await expect(page.getByRole("alert")).toHaveText("接続できないので、保存した内容を表示しています");
   await showAll(page);
   await expect(page.getByRole("link", { name: /Snapshot two/ }), "the list is the one saved").toBeVisible();
   await page.getByRole("link", { name: /Snapshot one/ }).click();
   await expect(page.getByText("the snapshot's text"), "an article read before").toBeVisible();
+  await expect(page.getByRole("alert"), "and it says this is a saved copy").toHaveText("接続できないので、保存した内容を表示しています");
   await page.getByRole("button", { name: "お気に入りに追加" }).click();
   await page.getByRole("link", { name: "一覧" }).click();
   await expect(page.getByText("未送信1件")).toBeVisible();
