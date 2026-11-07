@@ -125,6 +125,8 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16
     if detected_dir.is_some() && location::detect().is_ok_and(|now| now.warning.is_some()) {
         return Err(msg!("mobile.fellBack"));
     }
+    // The server's errors go to its log, and nothing else shows them here.
+    let _ = log::set_logger(&StderrLogger).map(|()| log::set_max_level(log::LevelFilter::Warn));
     let store = std::sync::Arc::new(store);
     let token = mobile::token(&store)?;
     let ip = if lan {
@@ -155,6 +157,18 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16
 }
 
 const MOVE_CHECK: std::time::Duration = std::time::Duration::from_secs(30);
+
+struct StderrLogger;
+
+impl log::Log for StderrLogger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        true
+    }
+    fn log(&self, record: &log::Record) {
+        eprintln!("{}: {}", record.level(), record.args());
+    }
+    fn flush(&self) {}
+}
 
 fn main() -> ExitCode {
     let cli = Cli::parse();

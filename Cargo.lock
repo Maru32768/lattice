@@ -2817,6 +2817,7 @@ dependencies = [
  "clap",
  "lattice-core",
  "lattice-server",
+ "log",
  "serde",
  "serde_json",
  "tauri-winres",
