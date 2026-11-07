@@ -1,7 +1,5 @@
-//! Reproductions for docs/audits/reliability-audit.md. Each test asserts the behavior the audit
-//! expects, so it fails today: they are `#[ignore]`d to keep `cargo test` green. Run them with
-//! `cargo test -p lattice-core --test reliability_audit -- --ignored`, and drop the `#[ignore]`
-//! of a finding once it is fixed so the test guards it.
+//! The reproductions of docs/audits/reliability-audit.md, kept as regression tests now that each is
+//! fixed: failure paths across a crash, a second process or a provider outage, seen from the outside.
 #![allow(clippy::unwrap_used, reason = "a failed step fails the test")]
 
 use std::path::{Path, PathBuf};
@@ -109,7 +107,7 @@ fn a_job_that_takes_the_process_down_stops_being_retried() {
     assert_eq!(status, "failed", "still claimed at every start after {attempts} attempts");
 }
 
-/// F7. If `finish_job` cannot write (another process holds the write lock for the 3 x 5 s busy
+/// If `finish_job` cannot write (another process holds the write lock for the 3 x 5 s busy
 /// timeout), the job is left `running`, and the Jobs view's retry and enqueue both skip running
 /// jobs (for fetches, the host stays blocked for every other article). Its heartbeat stops with the
 /// failed finish, so within about a minute the next `keep_alive` round puts it back in the queue,
@@ -339,11 +337,10 @@ fn a_failed_backup_leaves_no_copy_with_api_keys() {
     assert!(left.is_empty(), "{left:?} left behind");
 }
 
-/// F10. When the batch call fails, `translate_snippets` retries every snippet of the batch alone, all
-/// at once (`join_all`), outside 並列実行数. A provider that is down or rate-limited gets 1 + N calls
-/// per batch (13 for a full batch), and each walks the whole fallback chain.
+/// When the batch call fails, `translate_snippets` retries the batch's snippets alone. A provider that
+/// is down or rate-limited must not get 1 + N calls per batch (13 for a full batch), each walking the
+/// whole fallback chain.
 #[tokio::test]
-#[ignore = "reliability audit F10: fails until fixed"]
 async fn a_provider_outage_is_not_multiplied_by_the_batch_size() {
     use lattice_core::segments::{Target, translate_snippets};
     struct Down(std::sync::atomic::AtomicUsize);
@@ -364,7 +361,7 @@ async fn a_provider_outage_is_not_multiplied_by_the_batch_size() {
     assert!(calls <= 2, "{calls} calls for one batch of {} while the provider is down", snippets.len());
 }
 
-/// F7. Recovery must not treat every `running` job as left by a dead process: an app start while
+/// Recovery must not treat every `running` job as left by a dead process: an app start while
 /// `lattice-cli save --run` works (or a second launch, before the single-instance guard) would take
 /// over jobs another live process is running, and both would pay for them.
 #[tokio::test]

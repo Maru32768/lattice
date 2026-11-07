@@ -12,7 +12,7 @@
 //! overlay, the saved-article reader and search all share one translation per paragraph.
 
 use dom_query::Document;
-use futures::future::join_all;
+use futures::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use ts_rs::TS;
@@ -305,6 +305,9 @@ pub struct Origin {
     pub model: Option<String>,
 }
 
+/// One batch's single retries in flight at once. `translate::Gate` counts the batch as one call.
+const RETRIES_AT_ONCE: usize = 2;
+
 pub struct Translated {
     /// One entry per input snippet; `None` when the provider never returned a valid result.
     /// Behind a chain, retries may be answered by a different entry than the batch call.
@@ -331,20 +334,38 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
         Ok(r) => out.results = r,
         Err(e) => out.error = Some(e),
     }
-    let missing: Vec<usize> = all.iter().copied().filter(|&i| out.results[i].is_none()).collect();
+    // A rate limit or an outage says nothing about the snippets, and calling once per snippet would only add to it.
+    let missing: Vec<usize> = if matches!(out.error, Some(LlmError::Unavailable(_) | LlmError::RateLimited(_))) {
+        Vec::new()
+    } else {
+        all.iter().copied().filter(|&i| out.results[i].is_none()).collect()
+    };
+    let (mut answered, mut failures) = (out.results.iter().any(Option::is_some), 0);
     // Snippets are re-numbered 0 for single retries, matching what the prompt expects.
-    let retries = join_all(missing.iter().map(|&i| {
-        let input = json!([{"i": 0, "html": snippets[i]}]);
-        let system = &system;
-        async move { (i, call(provider, system, &input, &[0]).await) }
-    }))
-    .await;
-    for (i, r) in retries {
+    let mut retries = stream::iter(missing)
+        .map(|i| {
+            let input = json!([{"i": 0, "html": snippets[i]}]);
+            let system = &system;
+            async move { (i, call(provider, system, &input, &[0]).await) }
+        })
+        .buffer_unordered(RETRIES_AT_ONCE);
+    while let Some((i, r)) = retries.next().await {
         match r {
-            Ok(mut r) => out.results[i] = r.pop().flatten(),
-            Err(e) => out.error = Some(e),
+            Ok(mut r) => {
+                answered = true;
+                out.results[i] = r.pop().flatten();
+            }
+            Err(e) => {
+                failures += usize::from(!matches!(e, LlmError::Malformed(_)));
+                out.error = Some(e);
+                // Several with nothing answered is the provider, not a snippet it refuses: the others would fail too.
+                if !answered && failures >= RETRIES_AT_ONCE {
+                    break;
+                }
+            }
         }
     }
+    drop(retries);
     for (snippet, result) in snippets.iter().zip(&mut out.results) {
         *result = result.take().and_then(|(units, origin)| Some((keep_scripts(snippet, units)?, origin)));
     }
@@ -484,6 +505,37 @@ pub(crate) mod tests {
                 .collect();
             Ok(Completion { value: json!({ "blocks": blocks }), model: Some("fake-1".into()), provider: "fake".into() })
         }
+    }
+
+    /// Refuses any call that contains `poison`, as a provider refuses one paragraph's text.
+    struct Refuses(Fake, &'static str);
+    impl LlmProvider for Refuses {
+        fn name(&self) -> &str {
+            "refuses"
+        }
+        async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+            if input.contains(self.1) {
+                return Err(LlmError::Failed("refused".into()));
+            }
+            self.0.complete_json(system, input, schema).await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_snippet_the_provider_refuses_does_not_take_the_rest_of_its_batch_with_it() {
+        let snippets: Vec<String> = ["Poison first.", "Second one.", "Third one.", "Fourth one."].map(String::from).to_vec();
+        let t = translate_snippets(&Refuses(Fake::new(), "Poison"), &snippets, &Target::default()).await;
+        assert!(t.results[0].is_none());
+        assert!(t.results[1..].iter().all(Option::is_some), "the batch call failed, the others answered alone");
+    }
+
+    #[tokio::test]
+    async fn a_provider_failing_every_call_gets_a_few_retries_not_one_per_snippet() {
+        let fake = Fake { fail: true, ..Fake::new() };
+        let snippets: Vec<String> = (0..12).map(|n| format!("Paragraph {n}.")).collect();
+        let t = translate_snippets(&fake, &snippets, &Target::default()).await;
+        assert!(t.error.is_some() && t.results.iter().all(Option::is_none));
+        assert!(fake.calls.lock().unwrap().len() <= 1 + RETRIES_AT_ONCE + 1, "{} calls", fake.calls.lock().unwrap().len());
     }
 
     #[test]
