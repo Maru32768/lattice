@@ -104,8 +104,8 @@ export function MobileSettings() {
         <div className="mobile-qr">
           {status.qr ? (
             <>
-              <svg viewBox={`-2 -2 ${status.qr.width + 4} ${status.qr.width + 4}`} role="img" aria-label={t("mobileSettings.qr")} width={220} height={220}>
-                <rect x={-2} y={-2} width={status.qr.width + 4} height={status.qr.width + 4} fill="#fff" />
+              <svg viewBox={`-4 -4 ${status.qr.width + 8} ${status.qr.width + 8}`} role="img" aria-label={t("mobileSettings.qr")} width={240} height={240}>
+                <rect x={-4} y={-4} width={status.qr.width + 8} height={status.qr.width + 8} fill="#fff" />
                 <path d={status.qr.path} fill="#000" />
               </svg>
               <p className="sec-d">{t("mobileSettings.scan")}</p>
