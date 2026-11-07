@@ -13,7 +13,7 @@ use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use lattice_core::mobile::{self, Effects, MobileOp, Outcome};
+use lattice_core::mobile::{self, Effects, MobileOp, Outcome, blocking};
 use lattice_core::mobile_publish;
 use lattice_core::msg;
 use lattice_core::store::Store;
@@ -170,11 +170,6 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
         parts.next().is_some_and(|name| name == "gzip") && !parts.any(|p| p.strip_prefix("q=").and_then(|q| q.parse::<f32>().ok()) == Some(0.0))
     };
     headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(offers_gzip))
-}
-
-/// Runs what would hold up the async workers: a store call may wait for its lock behind a job, and compressing takes time.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
 /// `body`, compressed when the client takes that and `compress` says it is worth it.

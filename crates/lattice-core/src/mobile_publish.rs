@@ -13,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Notify;
 use ts_rs::TS;
 
-use crate::mobile::{self, Effects, MobileOp, Outcome};
+use crate::mobile::{self, Effects, MobileOp, Outcome, blocking};
 use crate::msg;
-use crate::r2::{self, Creds};
+use crate::r2::{self, Creds, get, set};
 use crate::store::{Store, sha256_hex};
 
 const ENABLED: &str = "mobile.snapshot.enabled";
@@ -80,14 +80,6 @@ pub struct SnapshotStatus {
     pub last_error: Option<String>,
     /// Why the last operation from the inbox could not apply. The phone was told only that it was left there.
     pub last_rejected: Option<String>,
-}
-
-fn get(store: &Store, key: &str) -> Result<Option<String>, String> {
-    store.setting(key).map_err(err)
-}
-
-fn set(store: &Store, key: &str, value: Option<&str>) -> Result<(), String> {
-    store.set_setting(key, value).map_err(err)
 }
 
 pub fn status(store: &Store) -> Result<SnapshotStatus, String> {
@@ -195,10 +187,6 @@ impl Drop for Running {
     fn drop(&mut self) {
         RUNNING.store(false, Ordering::SeqCst)
     }
-}
-
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
-    tokio::task::spawn_blocking(f).await.map_err(err)?
 }
 
 /// Applies what waits in the inbox, oldest first (the Worker names objects by arrival). An operation is

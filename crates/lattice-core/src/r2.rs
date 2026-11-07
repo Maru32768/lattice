@@ -87,7 +87,7 @@ pub(crate) struct Creds {
     pub(crate) secret: String,
 }
 
-fn get(store: &Store, key: &str) -> Result<Option<String>, String> {
+pub(crate) fn get(store: &Store, key: &str) -> Result<Option<String>, String> {
     store.setting(key).map_err(|e| e.to_string())
 }
 
@@ -95,7 +95,7 @@ fn get_u64(store: &Store, key: &str) -> Result<Option<u64>, String> {
     Ok(get(store, key)?.and_then(|v| v.parse().ok()))
 }
 
-fn set(store: &Store, key: &str, value: Option<&str>) -> Result<(), String> {
+pub(crate) fn set(store: &Store, key: &str, value: Option<&str>) -> Result<(), String> {
     store.set_setting(key, value).map_err(|e| e.to_string())
 }
 

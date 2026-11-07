@@ -80,6 +80,11 @@ pub fn article(store: &Store, id: i64) -> Result<Option<ArticleDoc>, String> {
     Ok(view.map(|v| ArticleDoc { article: v.article, target_language: v.target_language, blocks: v.blocks, summary: v.summary }))
 }
 
+/// Runs what would hold up the async workers: a store call may wait for its lock behind a job, and compressing takes time.
+pub async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f).await.map_err(err)?
+}
+
 pub fn gzip(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
     use std::io::Write;
     let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
