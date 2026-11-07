@@ -2,11 +2,10 @@
 //! (`lattice-server`) and from the snapshot in R2, so the page does not care which it reads.
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use ts_rs::TS;
 
 use crate::msg;
-use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView};
+use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, sha256_hex};
 use crate::translate;
 
 /// The one credential of both paths. `secret.`, so it stays out of backups.
@@ -146,14 +145,14 @@ pub fn token(store: &Store) -> Result<String, String> {
 pub fn regenerate_token(store: &Store) -> Result<String, String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).map_err(err)?;
-    let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    let token = hex(&bytes);
     store.set_setting(TOKEN, Some(&token)).map_err(err)?;
     Ok(token)
 }
 
 /// What servers keep and compare instead of the token: comparing hashes gives a timing attack nothing to measure.
 pub fn token_hash(token: &str) -> String {
-    Sha256::digest(token.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    sha256_hex(token)
 }
 
 #[cfg(test)]
