@@ -51,13 +51,13 @@ export function ListPage({
         <button className="btn" onClick={() => void refresh()} disabled={refreshing}>
           {t("mobile.refresh")}
         </button>
-      </header>
-      <main className="m-list">
         {refreshFailed && (
-          <p role="alert" className="m-note">
+          <p role="alert" className="m-bar-note">
             {t("mobile.loadFailed")}
           </p>
         )}
+      </header>
+      <main className="m-list">
         <input
           className="input"
           type="search"
