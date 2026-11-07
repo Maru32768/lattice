@@ -21,8 +21,8 @@ const json = (status, body) => new Response(JSON.stringify(body), { status, head
 /** The PC keeps `auth.json` current, so a new token needs no deployment. Read at most once a minute per instance. */
 let auth = { hash: null, live: null, at: -Infinity };
 
-async function currentAuth(bucket, now) {
-  if (now - auth.at >= AUTH_TTL_MS) {
+async function currentAuth(bucket, now, fresh = false) {
+  if (fresh || now - auth.at >= AUTH_TTL_MS) {
     const object = await bucket.get("auth.json");
     const doc = object ? await object.json() : {};
     auth = { hash: doc.token_hash ?? null, live: doc.live_origin ?? null, at: now };
@@ -35,12 +35,13 @@ async function sha256(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function authorized(request, bucket, now) {
+/** `fresh` for an operation: once the PC has taken the token out, nothing more may enter the inbox it is about to empty for good. */
+async function authorized(request, bucket, now, fresh = false) {
   const header = request.headers.get("authorization") ?? "";
   if (!header.startsWith("Bearer ")) {
     return false;
   }
-  const { hash } = await currentAuth(bucket, now);
+  const { hash } = await currentAuth(bucket, now, fresh);
   return hash != null && (await sha256(header.slice("Bearer ".length))) === hash;
 }
 
@@ -102,7 +103,7 @@ async function pageFile(bucket, path, now) {
 export async function handle(request, bucket, now = Date.now()) {
   const { pathname } = new URL(request.url);
   if (pathname.startsWith("/api/")) {
-    if (!(await authorized(request, bucket, now))) {
+    if (!(await authorized(request, bucket, now, request.method === "POST"))) {
       return json(401, { error: "unauthorized" });
     }
     if (request.method === "GET" && pathname === "/api/index") {

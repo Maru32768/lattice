@@ -134,3 +134,17 @@ test("the page may connect to the PC's address, when there is one, and to nothin
   assert.match(await csp(), /connect-src 'self' https:\/\/pc\.example\.ts\.net;/);
   assert.match(await csp(), /default-src 'self'/);
 });
+
+test("once the PC takes the token out, no operation enters the inbox, whatever the cache says", async () => {
+  const b = bucket({ "index.json": gzipSync("{}") });
+  assert.equal((await call(b, "/api/index")).status, 200);
+  b.store.set("auth.json", JSON.stringify({ token_hash: null }));
+  const now = clock;
+  const sameMinute = (path: string, init: RequestInit) =>
+    (handle as Handle)(new Request(`https://m.example${path}`, { ...init, headers: { authorization: `Bearer ${TOKEN}` } }), b, now + 1);
+  assert.equal((await sameMinute("/api/ops", { method: "POST", body: op("late") })).status, 401);
+  assert.deepEqual(
+    [...b.store.keys()].filter((k) => k.startsWith("inbox/")),
+    [],
+  );
+});

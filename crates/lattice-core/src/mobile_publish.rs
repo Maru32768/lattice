@@ -419,8 +419,10 @@ async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applie
     if !token_out(store, scope).await? {
         return Ok(());
     }
-    take_inbox(store, bucket, on_applied).await?;
+    // The token first: the Worker reads it afresh for every operation, so after this nothing new arrives, and the inbox can be
+    // emptied for good. Only then is it recorded as out, so that a failure in between is tried again in full.
     bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
+    take_inbox(store, bucket, on_applied).await?;
     let (s, key, hash) = (store.clone(), format!("{scope}{AUTH_KEY}"), sha256_hex(NO_TOKEN));
     blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await
 }
