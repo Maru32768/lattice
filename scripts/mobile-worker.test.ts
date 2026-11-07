@@ -26,7 +26,7 @@ function bucket(objects: Record<string, Uint8Array | string> = {}) {
   };
 }
 
-type Handle = (request: Request, bucket: ReturnType<typeof bucket>, now?: number) => Promise<Response>;
+type Handle = (request: Request, into: ReturnType<typeof bucket>, now?: number) => Promise<Response>;
 const call = (b: ReturnType<typeof bucket>, path: string, init: RequestInit & { token?: string | null } = {}) => {
   const { token = TOKEN, ...rest } = init;
   clock += 120_000;
