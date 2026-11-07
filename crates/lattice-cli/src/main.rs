@@ -118,13 +118,11 @@ fn fail(format: Format, e: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// Runs until the process is stopped. Jobs that the served requests queue wait for the app's runners (design-review §23).
-/// Serves the library it was started on, as the app does, and only the real one: a stand-in or a
-/// library that has moved away would show a phone old articles, and turn away its token.
+/// Runs until the process is stopped or the library moves. Jobs that the served requests queue wait for
+/// the app's runners (design-review §23). Only the real library is served, as in the app: a stand-in would
+/// show a phone old articles and turn away its token.
 async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16) -> Result<(), String> {
-    if let Some(dir) = &detected_dir
-        && location::detect().is_ok_and(|now| now.warning.is_some() || now.dir != *dir)
-    {
+    if detected_dir.is_some() && location::detect().is_ok_and(|now| now.warning.is_some()) {
         return Err(msg!("mobile.fellBack"));
     }
     let store = std::sync::Arc::new(store);
@@ -144,8 +142,19 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16
         Some(base) => println!("{}", mobile::phone_url(&base, &token)),
         None => println!("listening on {}; open it at this PC's address, adding /#t={token}", server.addr),
     }
-    std::future::pending().await
+    // The server outlives a move of the library, as the MCP server does (mcp.rs): the old copy would keep answering.
+    loop {
+        tokio::time::sleep(MOVE_CHECK).await;
+        if let Some(dir) = &detected_dir
+            && location::detect().is_ok_and(|now| now.dir != *dir)
+        {
+            server.stop().await;
+            return Err("The Lattice data folder has changed. Restart lattice-cli serve.".into());
+        }
+    }
 }
+
+const MOVE_CHECK: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
