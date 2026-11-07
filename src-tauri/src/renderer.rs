@@ -8,8 +8,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use lattice_core::render;
 use lattice_core::store::Store;
+use lattice_core::{jobs, render};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl};
 use tokio::sync::{Notify, oneshot};
@@ -51,18 +51,16 @@ async fn run_next(app: &AppHandle, store: &Store, embed_model: &str, on_change: 
     let id = job.article_id.unwrap_or_default();
     on_change(id);
     // Render failures are recorded on the article; only storage errors fail (and retry) the job.
-    let result = match store.article_url(id).map_err(err) {
-        Ok(Some(url)) => {
-            let page = render_page(app, &url).await;
-            if let Err(e) = &page {
-                log::warn!("render article {id} ({url}): {e}");
-            }
-            render::finish(store, id, page, embed_model).map(drop)
+    let result = jobs::catch_panic(async {
+        let url = store.article_url(id).map_err(err)?.ok_or("article no longer exists")?;
+        let page = render_page(app, &url).await;
+        if let Err(e) = &page {
+            log::warn!("render article {id} ({url}): {e}");
         }
-        Ok(None) => Err("article no longer exists".into()),
-        Err(e) => Err(e),
-    };
-    store.finish_job(job.id, result.err().as_deref()).map_err(err)?;
+        render::finish(store, id, page, embed_model).map(drop)
+    })
+    .await;
+    jobs::finish(store, job.id, result.err().as_deref()).await?;
     on_change(id);
     Ok(true)
 }

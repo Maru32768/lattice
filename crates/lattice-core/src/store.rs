@@ -121,6 +121,11 @@ pub struct NewSnapshot<'a> {
 
 /// Jobs that keep failing stop retrying automatically; the user can re-enqueue them.
 const MAX_ATTEMPTS: i64 = 5;
+/// What a failed try does to its job. `?2` the error, `?3` `MAX_ATTEMPTS`.
+const AFTER_FAILURE: &str = "last_error = ?2,
+    status = CASE WHEN attempt_count >= ?3 THEN 'failed' ELSE 'pending' END,
+    next_run_at = strftime('%Y-%m-%dT%H:%M:%fZ','now', '+' || (1 << attempt_count) || ' minutes'),
+    completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')";
 /// Extractions shorter than this (characters) are flagged `thin`: likely rendered by JS.
 pub const THIN_TEXT_CHARS: i64 = 300;
 /// Settings keys holding credentials (API keys, R2 secret). Never leave the machine in backups.
@@ -1070,13 +1075,28 @@ impl Store {
     /// Puts back in the queue the jobs left `running` by a process that is gone, or by a finish that
     /// could not be written: not this Store's, and with no heartbeat for `ABANDONED_AFTER`. The app,
     /// the CLI and the MCP server share the queue, so a job another live process runs stays its own.
+    /// Each counts as a failed try: one that takes its process down must not run again at once, at
+    /// every start, with `finish_job` and so the attempt limit never reached.
     pub fn recover_abandoned_jobs(&self) -> Result<usize> {
         let mine = json(&*self.running());
         self.conn().execute(
-            "UPDATE processing_jobs SET status = 'pending'
-             WHERE status = 'running' AND id NOT IN (SELECT value FROM json_each(?1))
-               AND (heartbeat_at IS NULL OR heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?2))",
-            params![mine, format!("-{} seconds", ABANDONED_AFTER.as_secs())],
+            &format!(
+                "UPDATE processing_jobs SET {AFTER_FAILURE}
+                 WHERE status = 'running' AND id NOT IN (SELECT value FROM json_each(?1))
+                   AND (heartbeat_at IS NULL OR heartbeat_at < strftime('%Y-%m-%dT%H:%M:%fZ','now', ?4))"
+            ),
+            params![mine, crate::msg!("jobs.interrupted"), MAX_ATTEMPTS, format!("-{} seconds", ABANDONED_AFTER.as_secs())],
+        )
+    }
+
+    /// The app is closing: this Store's running jobs go back in the queue as they were. That is not a
+    /// failed try, and the next start takes them at once instead of waiting out a heartbeat and a backoff.
+    pub fn release_running_jobs(&self) -> Result<usize> {
+        let mine = json(&std::mem::take(&mut *self.running()));
+        self.conn().execute(
+            "UPDATE processing_jobs SET status = 'pending', attempt_count = max(attempt_count - 1, 0)
+             WHERE status = 'running' AND id IN (SELECT value FROM json_each(?1))",
+            [mine],
         )
     }
 
@@ -1133,14 +1153,7 @@ impl Store {
                  completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1",
                 [id],
             )?,
-            Some(e) => c.execute(
-                "UPDATE processing_jobs SET last_error = ?2,
-                 status = CASE WHEN attempt_count >= ?3 THEN 'failed' ELSE 'pending' END,
-                 next_run_at = strftime('%Y-%m-%dT%H:%M:%fZ','now', '+' || (1 << attempt_count) || ' minutes'),
-                 completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-                 WHERE id = ?1",
-                params![id, e, MAX_ATTEMPTS],
-            )?,
+            Some(e) => c.execute(&format!("UPDATE processing_jobs SET {AFTER_FAILURE} WHERE id = ?1"), params![id, e, MAX_ATTEMPTS])?,
         };
         Ok(())
     }
@@ -1885,7 +1898,11 @@ mod tests {
         app.exec_for_test(LAPSED);
         app.heartbeat().unwrap();
         assert_eq!(app.recover_abandoned_jobs().unwrap(), 1);
-        assert_eq!(app.claim_next_job(&["t"]).unwrap().map(|j| j.id), Some(job.id), "back in the queue");
+        assert!(app.claim_next_job(&["t"]).unwrap().is_none(), "waits like any failed try");
+        app.exec_for_test("UPDATE processing_jobs SET next_run_at = NULL");
+        let again = app.claim_next_job(&["t"]).unwrap().unwrap();
+        assert_eq!((again.id, again.attempt_count), (job.id, 2), "back in the queue");
+        assert!(again.last_error.is_some_and(|e| e.contains("jobs.interrupted")), "and it says why");
         drop(app);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1924,7 +1941,24 @@ mod tests {
         s.enqueue_job("t", id, "{}", "t:1").unwrap();
         s.exec_for_test("UPDATE processing_jobs SET status = 'running', heartbeat_at = NULL");
         assert_eq!(s.recover_abandoned_jobs().unwrap(), 1);
+        s.exec_for_test("UPDATE processing_jobs SET next_run_at = NULL");
         assert!(s.claim_next_job(&["t"]).unwrap().is_some());
+    }
+
+    #[test]
+    fn closing_the_app_is_not_a_failed_try() {
+        let (dir, app, cli) = shared_db("closing");
+        for (n, s) in [(1, &app), (2, &cli)] {
+            let url = format!("https://a.dev/{n}");
+            let (id, _) = s.upsert_pending(&url, &url, "a.dev").unwrap();
+            s.enqueue_job("t", id, "{}", &format!("t:{n}")).unwrap();
+            s.claim_article_job(&["t"], id).unwrap().unwrap();
+        }
+        assert_eq!(app.release_running_jobs().unwrap(), 1, "the job the CLI runs stays its own");
+        let job = app.claim_next_job(&["t"]).unwrap().unwrap();
+        assert_eq!((job.article_id, job.attempt_count, job.last_error), (Some(1), 1, None), "ready at once, the try not counted");
+        drop((app, cli));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

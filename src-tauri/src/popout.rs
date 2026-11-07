@@ -341,6 +341,9 @@ pub fn on_window_event(w: &Window, e: &WindowEvent) {
                 for (key, json) in &places {
                     save_setting(&state, key, json);
                 }
+                if let Err(e) = state.store.release_running_jobs() {
+                    log::warn!("putting running jobs back in the queue: {e}");
+                }
                 // destroy() raises no second CloseRequested; Destroyed then exits the app.
                 let _ = main.destroy();
             });

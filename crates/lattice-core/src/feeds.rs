@@ -331,7 +331,8 @@ pub async fn refresh_all(store: &Store, client: &HttpClient) -> usize {
     };
     let mut queued = 0;
     for id in ids {
-        match refresh(store, client, id).await {
+        // Its data is untrusted: a panic in one feed must not end polling, for it and the feeds after it, at every start.
+        match crate::jobs::catch_panic(refresh(store, client, id)).await {
             Ok(n) => queued += n,
             Err(e) => log::warn!("feed {id}: {e}"),
         }

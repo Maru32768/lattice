@@ -83,11 +83,9 @@ impl<F: Fn() + Send + Sync + 'static> LlmProvider for Summarizer<F> {
     }
 }
 
-/// F6. Only `finish_job` applies MAX_ATTEMPTS (5). A job whose run takes the process down never
-/// reaches it: a minute after each crash it is back to pending (`recover_abandoned_jobs`) and a
-/// runner claims it at once, with no backoff. One such job is a crash at every launch.
+/// A job whose run takes the process down never reaches `finish_job`, so recovery has to count it
+/// (`recover_abandoned_jobs`), or one such job is a crash at every launch.
 #[test]
-#[ignore = "reliability audit F6: fails until fixed"]
 fn a_job_that_takes_the_process_down_stops_being_retried() {
     let dir = data_dir("poison");
     let db = dir.join("lattice.db");
@@ -97,11 +95,12 @@ fn a_job_that_takes_the_process_down_stops_being_retried() {
         summarize::enqueue(&s, id).unwrap();
         s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().unwrap().id
     };
-    // The process dies mid-job (`finish_job` never runs), and the app runs again a minute later, eight times.
+    // The process dies mid-job (`finish_job` never runs), and the app runs again past the backoff, eight times.
     for _ in 0..8 {
         let s = Store::open(&db).unwrap();
         lapse_heartbeats(&db);
         s.recover_abandoned_jobs().unwrap();
+        rusqlite::Connection::open(&db).unwrap().execute("UPDATE processing_jobs SET next_run_at = NULL", []).unwrap();
         if s.claim_next_job(&[summarize::JOB_TYPE]).unwrap().is_none() {
             break;
         }

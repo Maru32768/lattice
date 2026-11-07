@@ -1069,6 +1069,7 @@ export const ja = {
   "be.feeds.badOpml": "OPMLを読めません: {error}",
   "be.feeds.invalidUrl": "URLを読めません: {error}",
   "be.feeds.notHttp": "http(s)以外のURLです",
+  "be.jobs.interrupted": "前回の実行が途中で止まりました(アプリの異常終了など)",
   "be.feeds.gone": "フィードがありません(削除された可能性があります)",
   "be.feedFolders.emptyName": "フォルダ名が空です",
   "be.feedFolders.nameTooLong": "フォルダ名は{max}文字までです",

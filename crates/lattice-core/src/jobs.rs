@@ -187,6 +187,28 @@ pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
     Ok(ran)
 }
 
+/// `work`'s result, with a panic (release unwinds on purpose) as its error: a job must still reach
+/// `finish_job`, or it stays `running` while its process lives, and a runner must not die with it.
+pub async fn catch_panic<T>(work: impl Future<Output = Result<T, String>>) -> Result<T, String> {
+    std::panic::AssertUnwindSafe(work)
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|p| Err(format!("panic: {}", p.downcast_ref::<&str>().copied().or(p.downcast_ref::<String>().map(String::as_str)).unwrap_or(""))))
+}
+
+/// `Store::finish_job`, tried again: SQLITE_BUSY from the CLI/MCP process would otherwise leave the job `running`.
+pub async fn finish(store: &Store, id: i64, error: Option<&str>) -> Result<(), String> {
+    let mut finished = store.finish_job(id, error);
+    for _ in 0..2 {
+        if finished.is_ok() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        finished = store.finish_job(id, error);
+    }
+    finished.map_err(|e| e.to_string())
+}
+
 async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     providers: &Providers<L, E>,
@@ -196,11 +218,7 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
 ) -> Result<bool, String> {
     on_change(&job);
     let started = std::time::Instant::now();
-    // A panic (release unwinds on purpose) must still reach `finish_job`, or the job stays `running` until restart.
-    let result = std::panic::AssertUnwindSafe(run_job(store, providers, &job, gate, &|| on_change(&job)))
-        .catch_unwind()
-        .await
-        .unwrap_or_else(|p| Err(format!("panic: {}", p.downcast_ref::<&str>().copied().or(p.downcast_ref::<String>().map(String::as_str)).unwrap_or(""))));
+    let result = catch_panic(run_job(store, providers, &job, gate, &|| on_change(&job))).await;
     match &result {
         Err(e) => log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count),
         // LLM jobs take minutes with the CLIs: their durations are what a "stuck" report needs.
@@ -211,16 +229,7 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     }
     let ok = result.is_ok();
     let error = result.err();
-    let mut finished = store.finish_job(job.id, error.as_deref());
-    // SQLITE_BUSY from the CLI/MCP process would otherwise leave the job `running`.
-    for _ in 0..2 {
-        if finished.is_ok() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(250)).await;
-        finished = store.finish_job(job.id, error.as_deref());
-    }
-    finished.map_err(|e| e.to_string())?;
+    finish(store, job.id, error.as_deref()).await?;
     // A word captured while the finished vocab job was still marked running was not re-queued by its capture.
     if ok && job.job_type == vocab::JOB_TYPE {
         vocab::enqueue_missing(store)?;
@@ -715,6 +724,7 @@ mod tests {
         s.exec_for_test("UPDATE processing_jobs SET status = 'running', heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now','-2 minutes')");
         assert!(s.claim_next_job(LLM_JOBS).unwrap().is_none());
         let _ = tokio::time::timeout(Duration::from_millis(50), keep_alive(&s)).await;
+        s.exec_for_test("UPDATE processing_jobs SET next_run_at = NULL"); // a failed try's backoff, past
         assert!(s.claim_next_job(LLM_JOBS).unwrap().is_some(), "claimable again without a restart");
     }
 }
