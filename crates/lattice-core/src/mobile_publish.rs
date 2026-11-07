@@ -421,8 +421,16 @@ async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applie
     }
     // The token first: the Worker reads it afresh for every operation, so after this nothing new arrives, and the inbox can be
     // emptied for good. Only then is it recorded as out, so that a failure in between is tried again in full.
-    bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
-    take_inbox(store, bucket, on_applied).await?;
+    let left = async {
+        bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
+        take_inbox(store, bucket, on_applied).await.map(drop)
+    };
+    match left.await {
+        Ok(()) => {}
+        // Deleted, Worker and all: there is nothing left to stop.
+        Err(e) if e.contains("NoSuchBucket") => log::info!("mobile snapshot: the bucket left is gone"),
+        Err(e) => return Err(e),
+    }
     let (s, key, hash) = (store.clone(), format!("{scope}{AUTH_KEY}"), sha256_hex(NO_TOKEN));
     blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await
 }
@@ -485,9 +493,18 @@ async fn change_with<B: Bucket>(
         Ok((creds(&s)?, settings))
     })
     .await?;
-    if let Some((current, _)) = current
+    if let Some((mut current, _)) = current
         && leaves(&current, &settings)
     {
+        // A key typed in the same form for the same bucket is the one that reaches it: the stored one may be revoked.
+        if settings.account_id.trim() == current.account_id && settings.bucket.trim() == current.bucket {
+            if let Some(secret) = settings.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+                current.secret = secret.to_string();
+            }
+            if !settings.access_key_id.trim().is_empty() {
+                current.access_key_id = settings.access_key_id.trim().to_string();
+            }
+        }
         let scope = scope_of(&current);
         leave(store, &bucket_for(current), &scope, on_applied).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
     }
@@ -587,6 +604,8 @@ mod tests {
         objects: Mutex<BTreeMap<String, Vec<u8>>>,
         puts: Mutex<Vec<String>>,
         fail_puts_of: Mutex<Option<String>>,
+        /// Deleted: every request fails as R2 answers then.
+        gone: std::sync::atomic::AtomicBool,
         /// Holds the next listing until notified.
         gate: Mutex<Option<Arc<Notify>>>,
     }
@@ -615,8 +634,13 @@ mod tests {
         }
     }
 
+    const GONE: &str = "R2 HTTP 404 Not Found: <Error><Code>NoSuchBucket</Code></Error>";
+
     impl Bucket for &Memory {
         async fn put(&self, key: &str, body: Vec<u8>) -> Result<(), String> {
+            if self.gone.load(Ordering::SeqCst) {
+                return Err(GONE.into());
+            }
             if self.fail_puts_of.lock().unwrap().as_deref() == Some(key) {
                 return Err("no connection".into());
             }
@@ -632,6 +656,9 @@ mod tests {
             Ok(())
         }
         async fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
+            if self.gone.load(Ordering::SeqCst) {
+                return Err(GONE.into());
+            }
             let gate = self.gate.lock().unwrap().take();
             if let Some(gate) = gate {
                 gate.notified().await;
@@ -914,6 +941,16 @@ mod tests {
         assert_eq!(a.auth()["token_hash"], serde_json::Value::Null);
         run(&store, &b, false).await;
         assert_eq!(b.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_bucket_deleted_with_its_worker_is_nothing_to_leave() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        a.gone.store(true, Ordering::SeqCst);
+        change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.unwrap();
+        assert!(!status(&store).unwrap().enabled);
     }
 
     #[tokio::test]
