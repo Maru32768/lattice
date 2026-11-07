@@ -261,9 +261,16 @@ pub fn reconcile(raw: &Value, expected: &[usize]) -> Vec<Option<Vec<Unit>>> {
                 return None;
             }
             let units: Vec<Unit> = serde_json::from_value(first?["sentences"].clone()).ok()?;
-            units.iter().any(keeps_atoms).then_some(units)
+            (units.iter().any(keeps_atoms) && !joined_translation(&units).trim().is_empty()).then_some(units)
         })
         .collect()
+}
+
+/// Whether the units' sources spell `snippet`, going by its letters and digits: a model may change the
+/// spacing or the quotes, which says nothing about whose translation this is.
+fn is_of_snippet(units: &[Unit], snippet: &str) -> bool {
+    let spelled = |html: &str| plain_text(html).chars().filter(|c| c.is_alphanumeric()).collect::<String>();
+    spelled(&units.iter().map(|u| u.source.as_str()).collect::<String>()) == spelled(snippet)
 }
 
 /// Whether a unit's translation still has its source's ⟦n⟧ tokens. The overlay shows none that lost one,
@@ -333,6 +340,14 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
     match call(provider, &system, &indexed(&all), &all).await {
         Ok(r) => out.results = r,
         Err(e) => out.error = Some(e),
+    }
+    // A model that mixes up the numbers would put a wrong translation in the cache every article shares,
+    // for good. Those go to the single retries, where there is nothing to mix up: accepted as they come,
+    // so a model that rewords a source costs one call and not the job's every try.
+    for (snippet, result) in snippets.iter().zip(&mut out.results) {
+        if snippets.len() > 1 && result.as_ref().is_some_and(|(units, _)| !is_of_snippet(units, snippet)) {
+            *result = None;
+        }
     }
     // A rate limit or an outage says nothing about the snippets, and calling once per snippet would only add to it.
     let missing: Vec<usize> = if matches!(out.error, Some(LlmError::Unavailable(_) | LlmError::RateLimited(_))) {
@@ -601,6 +616,46 @@ pub(crate) mod tests {
         let units = |ts: &[&str]| ts.iter().map(|t| Unit { source: String::new(), translation: (*t).into() }).collect::<Vec<_>>();
         assert_eq!(joined_translation(&units(&["One example is", "the abuse.", "Done. ", "Next"])), "One example is the abuse. Done. Next");
         assert_eq!(joined_translation(&units(&["最初の文です。", "次の文。", "v2", "を使う"])), "最初の文です。次の文。v2を使う");
+    }
+
+    /// Answers a batch with each snippet's text under the next one's number, and a single call rightly.
+    struct Swaps(Fake);
+    impl LlmProvider for Swaps {
+        fn name(&self) -> &str {
+            "swaps"
+        }
+        async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, LlmError> {
+            let mut c = self.0.complete_json(system, input, schema).await?;
+            let n = serde_json::from_str::<Vec<Value>>(input).unwrap().len() as u64;
+            if n > 1 {
+                for b in c.value["blocks"].as_array_mut().unwrap() {
+                    b["i"] = json!((b["i"].as_u64().unwrap() + 1) % n);
+                }
+            }
+            Ok(c)
+        }
+    }
+
+    #[tokio::test]
+    async fn a_batch_answer_under_the_wrong_number_is_not_taken_for_that_snippet() {
+        let snippets = vec!["First one.".to_string(), "Second one.".to_string()];
+        let p = Swaps(Fake::new());
+        let t = translate_snippets(&p, &snippets, &Target::default()).await;
+        let translated = |i: usize| joined_translation(&t.results[i].as_ref().unwrap().0);
+        assert_eq!((translated(0).as_str(), translated(1).as_str()), ("FIRST ONE.", "SECOND ONE."));
+    }
+
+    #[test]
+    fn a_source_is_compared_by_its_letters_and_digits() {
+        let unit = |source: &str| Unit { source: source.into(), translation: "訳".into() };
+        assert!(is_of_snippet(&[unit("The \u{201c}WAL\u{201d} is "), unit("<b>durable</b>.")], "The \"WAL\" is  durable."));
+        assert!(!is_of_snippet(&[unit("Another paragraph.")], "The WAL is durable."));
+    }
+
+    #[test]
+    fn a_block_with_no_translation_is_not_accepted() {
+        let raw = json!({"blocks": [{"i": 0, "sentences": [{"source": "a", "translation": " "}]}]});
+        assert!(reconcile(&raw, &[0])[0].is_none());
     }
 
     #[test]

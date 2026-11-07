@@ -44,6 +44,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Deleting an article in one window left it in the lists and tabs of the others.
 - An MCP server left running after you moved the data folder kept reading and writing the old copy. It now asks to be restarted.
 - Sessions shorter than 15 minutes never made a backup to R2. The first check now comes after a minute.
+- A translation that the AI returned under the wrong paragraph's number was saved, and the same wrong text then showed wherever that paragraph appeared. Such answers, and empty ones, are now asked again.
 
 ## [0.3.0] - 2026-11-06
 
