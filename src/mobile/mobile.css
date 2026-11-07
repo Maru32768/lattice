@@ -4,7 +4,8 @@ button, a.btn { min-height: 40px; }
 a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
 
 .m-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
-.m-bar .seg button { min-height: 40px; padding: 0 12px; }
+.m-bar .seg { height: 42px; }
+.m-bar .seg button { min-height: 40px; padding: 0 12px; font-size: 14px; }
 .m-share { display: flex; align-items: center; gap: 6px; }
 
 .m-empty { padding: 48px 16px; text-align: center; color: var(--ink2); }

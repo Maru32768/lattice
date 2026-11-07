@@ -195,3 +195,20 @@ test("the page fits the phone's width", async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
 });
+
+test("every button can be tapped over its whole height", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  const small = async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("button")].flatMap((b) => {
+        const r = b.getBoundingClientRect();
+        const hit = (y: number) => document.elementFromPoint(r.left + r.width / 2, y) === b;
+        return r.height >= 40 && hit(r.top + 1) && hit(r.bottom - 1) ? [] : [b.textContent];
+      }),
+    );
+  expect(await small()).toEqual([]);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("button", { name: "混在" }).click();
+  expect(await small()).toEqual([]);
+});
