@@ -1,5 +1,6 @@
 //! `lattice-cli`: the Lattice library from a terminal or an agent, over the database the app
 //! uses (WAL, so the app may be running). Reads by default; changes need `--allow-write`.
+//! `serve` also creates the phone's token if the library has none: nothing else can read with it.
 //! Not named `lattice` because the app's own binary is `lattice.exe` (and Windows file names
 //! ignore case, so `Lattice.exe` in the portable zip would clash too).
 
