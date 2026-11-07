@@ -425,14 +425,22 @@ async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applie
         bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
         take_inbox(store, bucket, on_applied).await.map(drop)
     };
+    let recorded = |hash: String| {
+        let (s, key) = (store.clone(), format!("{scope}{AUTH_KEY}"));
+        blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err))
+    };
     match left.await {
         Ok(()) => {}
         // Deleted, Worker and all: there is nothing left to stop.
         Err(e) if e.contains("NoSuchBucket") => log::info!("mobile snapshot: the bucket left is gone"),
-        Err(e) => return Err(e),
+        Err(e) => {
+            // The token may be out already. Matching no document, this stays as out for the next try, and a pass that keeps
+            // the bucket after all puts the token back.
+            recorded(String::new()).await?;
+            return Err(e);
+        }
     }
-    let (s, key, hash) = (store.clone(), format!("{scope}{AUTH_KEY}"), sha256_hex(NO_TOKEN));
-    blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await
+    recorded(sha256_hex(NO_TOKEN)).await
 }
 
 /// One pass at a time, and saving settings waits for a pass to end: a pass still at work on a bucket could put the token
@@ -941,6 +949,36 @@ mod tests {
         assert_eq!(a.auth()["token_hash"], serde_json::Value::Null);
         run(&store, &b, false).await;
         assert_eq!(b.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()));
+    }
+
+    #[tokio::test]
+    async fn a_leave_that_fails_halfway_lets_a_pass_that_keeps_the_bucket_put_the_token_back() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        // The token goes out, then the inbox cannot be read.
+        let broken = BrokenList(&a);
+        assert!(change_with(&store, settings(false, "lattice-mobile", WORKER), |_| broken, &|_| {}).await.is_err());
+        assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "out already");
+        run(&store, &a, false).await;
+        assert_eq!(a.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "the reader kept the bucket: the phone reads again");
+    }
+
+    /// Takes puts, fails listings: the network gone between the token's upload and the inbox.
+    struct BrokenList<'m>(&'m Memory);
+    impl Bucket for BrokenList<'_> {
+        async fn put(&self, key: &str, body: Vec<u8>) -> Result<(), String> {
+            (&self.0).put(key, body).await
+        }
+        async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
+            (&self.0).get(key).await
+        }
+        async fn delete(&self, key: &str) -> Result<(), String> {
+            (&self.0).delete(key).await
+        }
+        async fn list(&self, _: &str) -> Result<Vec<String>, String> {
+            Err("R2 request failed: connection reset".into())
+        }
     }
 
     #[tokio::test]
