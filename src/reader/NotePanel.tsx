@@ -72,7 +72,7 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
       return;
     }
     // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
-    if (typedText.get(id) === body && pending.current === null) {
+    if (typedText.get(id) === body) {
       pending.current = body;
     }
     setStatus(null);
