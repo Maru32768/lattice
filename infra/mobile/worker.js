@@ -56,6 +56,7 @@ async function document(bucket, key) {
 }
 
 async function takeOp(request, bucket, now) {
+  const hashBefore = (await currentAuth(bucket, now)).hash;
   if (Number(request.headers.get("content-length") ?? 0) > MAX_OP_BYTES) {
     return json(413, { error: "too large" });
   }
@@ -73,7 +74,14 @@ async function takeOp(request, bucket, now) {
     return json(400, { error: BAD_OP });
   }
   // Named by arrival, so the PC applies them in the order the phone sent them.
-  await bucket.put(`inbox/${String(now).padStart(15, "0")}-${id}.json`, text);
+  const key = `inbox/${String(now).padStart(15, "0")}-${id}.json`;
+  await bucket.put(key, text);
+  // The PC may have taken the token out and emptied the inbox for good while this was on its way. Then the phone keeps the
+  // operation and sends it elsewhere; its id applies it once even if this copy is read some day.
+  if ((await currentAuth(bucket, now, true)).hash !== hashBefore) {
+    await bucket.delete(key);
+    return json(401, { error: "unauthorized" });
+  }
   return json(202, { status: "queued" });
 }
 

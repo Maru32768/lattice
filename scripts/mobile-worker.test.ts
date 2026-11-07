@@ -11,6 +11,9 @@ const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 /** Each test runs later than the last, so the Worker's cached `auth.json` has expired. */
 let clock = 1_000_000;
 
+/** Runs after each put: what the PC does meanwhile. */
+let afterPut: (() => void) | null = null;
+
 function bucket(objects: Record<string, Uint8Array | string> = {}) {
   const store = new Map<string, Uint8Array | string>(Object.entries({ "auth.json": JSON.stringify({ token_hash: hash(TOKEN) }), ...objects }));
   return {
@@ -21,6 +24,11 @@ function bucket(objects: Record<string, Uint8Array | string> = {}) {
     },
     put: (key: string, v: string) => {
       store.set(key, v);
+      afterPut?.();
+      return Promise.resolve();
+    },
+    delete: (key: string) => {
+      store.delete(key);
       return Promise.resolve();
     },
   };
@@ -143,6 +151,18 @@ test("once the PC takes the token out, no operation enters the inbox, whatever t
   const sameMinute = (path: string, init: RequestInit) =>
     (handle as Handle)(new Request(`https://m.example${path}`, { ...init, headers: { authorization: `Bearer ${TOKEN}` } }), b, now + 1);
   assert.equal((await sameMinute("/api/ops", { method: "POST", body: op("late") })).status, 401);
+  assert.deepEqual(
+    [...b.store.keys()].filter((k) => k.startsWith("inbox/")),
+    [],
+  );
+});
+
+test("an operation that lands as the PC takes the token out is not left in an inbox no one reads", async () => {
+  const b = bucket();
+  afterPut = () => b.store.set("auth.json", JSON.stringify({ token_hash: null }));
+  const response = await call(b, "/api/ops", { method: "POST", body: op("racing") });
+  afterPut = null;
+  assert.equal(response.status, 401, "the phone keeps it and sends it elsewhere");
   assert.deepEqual(
     [...b.store.keys()].filter((k) => k.startsWith("inbox/")),
     [],
