@@ -200,8 +200,10 @@ pub async fn mobile_snapshot_save(
         return Err(msg!("mobile.fellBack"));
     }
     let tell = handle.clone();
-    mobile_publish::change(&app.store, settings, abandon, &move |effects| on_applied(&tell, effects)).await?;
+    let changed = mobile_publish::change(&app.store, settings, abandon, &move |effects| on_applied(&tell, effects)).await;
+    // Also after a refusal: a leave that failed halfway has taken the token out, and a full pass puts it back.
     mobile_server.publish_now.notify_one();
+    changed?;
     status(&mobile_server, &app, &loc).await
 }
 
