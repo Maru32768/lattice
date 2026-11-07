@@ -232,35 +232,44 @@ export function createDocNav(host: () => DocHost) {
     const bottom = v.bottom - covered;
     // A pixel's grace: a box lined up with the edge is often a fraction of one over it.
     const top = rect.top < v.top - 1 ? rect.top - v.top - margin : rect.bottom > bottom + 1 ? rect.bottom - bottom + margin : 0;
-    const left = rect.left < v.left - 1 ? rect.left - v.left - margin : rect.right > v.right + 1 ? rect.right - v.right + margin : 0;
+    // A margin taken from the height can be wider than a narrow pane, and would carry the box past the other edge.
+    const side = Math.min(margin, (v.right - v.left) / 2);
+    const left = rect.left < v.left - 1 ? rect.left - v.left - side : rect.right > v.right + 1 ? rect.right - v.right + side : 0;
     if (top || left) {
       scroller.scrollBy({ top, left, behavior: "instant" });
     }
   }
 
-  /** Moves the view only for a match a reader cannot see: off screen, or in a box that scrolls by itself (a code block), which it comes out of first. */
+  /** Brings a match past the edge of a box a reader can scroll (a code block) into it. `scrollIntoView` leaves an element that already fills its box, as a long line's does, and a box that cuts its text off (an ellipsis) has no way back. */
+  function revealInBoxes(r: Range, scroller: Element | null) {
+    for (let el = r.startContainer.parentElement; el && el !== scroller; el = el.parentElement) {
+      const rect = r.getBoundingClientRect();
+      const box = el.getBoundingClientRect();
+      const outX = rect.left < box.left - 1 || rect.right > box.right + 1;
+      const outY = rect.top < box.top - 1 || rect.bottom > box.bottom + 1;
+      if (outX || outY) {
+        const { overflowX, overflowY } = getComputedStyle(el);
+        el.scrollBy({
+          left: outX && /auto|scroll/.test(overflowX) ? rect.left + rect.width / 2 - (box.left + box.width / 2) : 0,
+          top: outY && /auto|scroll/.test(overflowY) ? rect.top + rect.height / 2 - (box.top + box.height / 2) : 0,
+          behavior: "instant",
+        });
+      }
+    }
+  }
+
+  /** Moves the view only for a match a reader cannot see: off screen, under a header, or past the edge of a box that scrolls by itself. */
   function revealRange(r: Range) {
-    /** What is on top at the middle of the match's first line (of all its lines, that is the gap between two): a reader sees the match if that is part of it, and not if it is a header over it. */
+    const scroller = host().scroller();
+    revealInBoxes(r, scroller);
+    /** What is on top at the middle of the match's first line (of all its lines, that is the gap between two): a reader sees the match if that holds or is part of it, and not if it is a header over it. */
     const onTop = () => {
       const rect = r.getClientRects()[0];
       return rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
     };
     const over = onTop();
-    const common = r.commonAncestorContainer;
-    // Both: past the edge of a code block the point lands on what holds the block, which the range touches, and a sticky header can sit inside what holds the match.
-    if (over && r.intersectsNode(over) && (common instanceof Element ? common : common.parentElement)?.contains(over)) {
+    if (over && r.intersectsNode(over)) {
       return;
-    }
-    const scroller = host().scroller();
-    // `scrollIntoView` leaves an element that already fills its box, as a long line's does: the boxes on the way move by the match's own rect.
-    for (let el = r.startContainer.parentElement; el && el !== scroller; el = el.parentElement) {
-      const rect = r.getBoundingClientRect();
-      const box = el.getBoundingClientRect();
-      const left = rect.left < box.left || rect.right > box.right ? rect.left - box.left - box.width / 2 : 0;
-      const top = rect.top < box.top || rect.bottom > box.bottom ? rect.top - box.top - box.height / 2 : 0;
-      if (left || top) {
-        el.scrollBy({ left, top, behavior: "instant" });
-      }
     }
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
     const v = viewOf(scroller);

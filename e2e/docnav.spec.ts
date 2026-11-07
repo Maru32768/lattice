@@ -529,6 +529,13 @@ test("a match under a sticky header in the same parent is brought out from under
   await reader.keyboard.type("zymurgy");
   await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
   expect(await scrollTop(reader)).not.toBe(scrolled);
+  const covered = await reader.locator("#both").evaluate((both) => {
+    const r = document.createRange();
+    r.selectNode(both.lastChild!);
+    const box = r.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) !== both;
+  });
+  expect(covered, "where a reader can see it").toBe(false);
 });
 
 test("a match in view that wraps inside a long inline element leaves the view where it is", async ({ reader }) => {
@@ -555,12 +562,12 @@ test("a match past the edge of a long line in a code block comes into the block"
     const view = p.closest(".doc-scroll")!;
     p.insertAdjacentHTML(
       "beforebegin",
-      `<pre id="wide" style="overflow-x:auto;width:200px;white-space:pre;font:16px monospace"><code>${"a".repeat(40)} zymurgy ${"a".repeat(10)}</code></pre>`,
+      `<pre id="wide" style="overflow-x:auto;width:200px;white-space:pre;font:16px monospace"><code>${"a".repeat(40)} zymurgyzythumzz ${"a".repeat(10)}</code></pre>`,
     );
     view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 200;
   });
   await reader.keyboard.press("/");
-  await reader.keyboard.type("zymurgy");
+  await reader.keyboard.type("zymurgyzythumzz");
   await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
   await expect
     .poll(() =>
@@ -568,13 +575,69 @@ test("a match past the edge of a long line in a code block comes into the block"
         const text = pre.querySelector("code")!.firstChild!;
         const r = document.createRange();
         r.setStart(text, 41);
-        r.setEnd(text, 48);
+        r.setEnd(text, 56);
         const match = r.getBoundingClientRect();
         const box = pre.getBoundingClientRect();
         return match.left >= box.left && match.right <= box.right;
       }),
     )
     .toBe(true);
+});
+
+test("a match past an ellipsis leaves the line as it was: a reader could not scroll it back", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((p) => {
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<div id="cut" style="overflow:hidden;width:200px;white-space:nowrap;text-overflow:ellipsis">${"a".repeat(60)} zymurgy</div>`,
+    );
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  expect(await reader.locator("#cut").evaluate((el) => el.scrollLeft)).toBe(0);
+});
+
+test("a match in view inside text the pointer passes through leaves the view where it is", async ({ reader }) => {
+  const top = await reader.locator("#p0").evaluate((p) => {
+    const view = p.closest(".doc-scroll")!;
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<div><span id="through" style="display:block;pointer-events:none;height:${view.clientHeight * 2}px">zymurgy</span></div>`,
+    );
+    const span = p.parentElement!.querySelector("#through")!;
+    view.scrollTop += span.getBoundingClientRect().top - view.getBoundingClientRect().top - 40;
+    return view.scrollTop;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  expect(await scrollTop(reader)).toBe(top);
+});
+
+test("a match off to the side of a narrow pane stops inside it, not past its other edge", async ({ reader }) => {
+  await reader.locator("#p0").evaluate((p) => {
+    const view = p.closest<HTMLElement>(".doc-scroll")!;
+    view.style.width = "300px";
+    view.style.flex = "none";
+    view.style.overflowX = "auto";
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<pre id="long" style="overflow:visible;white-space:pre;font:16px monospace;width:max-content">${"a".repeat(100)} zymurgy ${"a".repeat(100)}</pre>`,
+    );
+    view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 200;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  const inView = await reader.locator("#long").evaluate((pre) => {
+    const r = document.createRange();
+    r.setStart(pre.firstChild!, 101);
+    r.setEnd(pre.firstChild!, 108);
+    const match = r.getBoundingClientRect();
+    const view = pre.closest(".doc-scroll")!.getBoundingClientRect();
+    return match.left >= view.left && match.right <= view.right;
+  });
+  expect(inView).toBe(true);
 });
 
 test("find counts what a reader can open to only once it is open", async ({ reader }) => {
