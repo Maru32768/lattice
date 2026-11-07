@@ -593,23 +593,12 @@ mod tests {
         mobile::token(&store).unwrap();
         forget_published(&store).unwrap();
         let bucket = Memory::default();
-        let started = std::time::Instant::now();
-        pass_without_page(&store, &bucket).await;
-        println!("first pass: {:?}, {} objects", started.elapsed(), bucket.keys().len());
-        let started = std::time::Instant::now();
-        pass_without_page(&store, &bucket).await;
-        println!("unchanged pass: {:?}", started.elapsed());
+        publish(&store, &bucket, &[], &|_| {}).await.unwrap();
         let out = std::path::PathBuf::from(std::env::var("MOBILE_SNAPSHOT_OUT").unwrap());
-        let objects = bucket.objects.lock().unwrap();
-        println!("total bytes: {}", objects.values().map(Vec::len).sum::<usize>());
-        for (key, body) in objects.iter() {
+        for (key, body) in bucket.objects.lock().unwrap().iter() {
             let path = out.join(key);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, body).unwrap();
         }
-    }
-
-    async fn pass_without_page(store: &Arc<Store>, bucket: &Memory) {
-        publish(store, bucket, &[], &|_| {}).await.unwrap();
     }
 }
