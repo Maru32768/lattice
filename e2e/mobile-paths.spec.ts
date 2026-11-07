@@ -378,8 +378,13 @@ test("what the PC's list has shown stays on the phone when the PC goes off and a
   await page.getByRole("link", { name: "一覧" }).click();
   await page.getByRole("button", { name: "更新" }).click();
   await expect(page.getByRole("link", { name: /Live one/ }), "the PC's list knows best while it answers").not.toContainText("★");
+  await ctx.setOffline(true);
+  await page.reload();
+  await expect(page.getByRole("alert"), "the saved copy is the PC's list").toBeVisible();
+  await ctx.setOffline(false);
   await live.close();
   await page.getByRole("button", { name: "更新" }).click();
+  await showAll(page);
   await expect(page.getByRole("link", { name: /Snapshot one/ }), "the snapshot is older than the operation").toContainText("★");
   await ctx.close();
   await worker.close();

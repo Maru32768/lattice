@@ -233,7 +233,8 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
   const index = found.doc as MobileIndex;
   appliedInList = new Set(index.applied_ops);
   // The PC's list settles nothing: if the PC goes off, the older snapshot takes over, and the phone must go on showing what it did.
-  if (!found.fromLive) {
+  // Nor does a saved copy: it may be the PC's list.
+  if (!found.fromLive && !found.saved) {
     updateOps((local) => settled(local, index.applied_ops, Date.now()));
   }
   return { index, saved: found.saved };
