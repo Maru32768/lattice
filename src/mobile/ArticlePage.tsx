@@ -71,12 +71,14 @@ export function ArticlePage({
   id,
   row,
   ops,
+  writable,
   onBack,
 }: {
   id: number;
   /** The article in the list, which is newer than the page's copy once the list has loaded. */
   row?: ArticleRow;
   ops: LocalOp[];
+  writable: boolean;
   onBack: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
@@ -133,7 +135,7 @@ export function ArticlePage({
 
   const onSelectionChange = useEffectEvent(() => {
     setWordSent(false);
-    if (typeof doc === "string" || doc == null) {
+    if (typeof doc === "string" || doc == null || !writable) {
       return;
     }
     const sel = window.getSelection();
@@ -236,14 +238,16 @@ export function ArticlePage({
             </a>
           )}
         </p>
-        <div className="m-actions">
-          <button className="btn" aria-pressed={a.favorite} onClick={() => submit({ kind: "set_favorite", article_id: a.id, favorite: !a.favorite })}>
-            {a.favorite ? t("mobile.unfavorite") : t("mobile.favorite")}
-          </button>
-          <button className="btn" onClick={() => submit({ kind: "set_read", article_id: a.id, read: a.read_status !== "read" })}>
-            {a.read_status === "read" ? t("mobile.markUnread") : t("mobile.markRead")}
-          </button>
-        </div>
+        {writable && (
+          <div className="m-actions">
+            <button className="btn" aria-pressed={a.favorite} onClick={() => submit({ kind: "set_favorite", article_id: a.id, favorite: !a.favorite })}>
+              {a.favorite ? t("mobile.unfavorite") : t("mobile.favorite")}
+            </button>
+            <button className="btn" onClick={() => submit({ kind: "set_read", article_id: a.id, read: a.read_status !== "read" })}>
+              {a.read_status === "read" ? t("mobile.markUnread") : t("mobile.markRead")}
+            </button>
+          </div>
+        )}
         {doc.summary && (
           <details className="m-summary">
             <summary>{t("mobile.summary")}</summary>

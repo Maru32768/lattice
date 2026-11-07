@@ -44,6 +44,8 @@ pub struct MobileIndex {
     pub articles: Vec<ArticleRow>,
     /// The operations this list already reflects: the page stops showing them as its own.
     pub applied_ops: Vec<String>,
+    /// The server turns operations away (`lattice-cli serve` without `--allow-write`): the page offers none.
+    pub read_only: bool,
 }
 
 /// An article for reading: `ArticleView` without the job list and the memo, which the page does not show.
@@ -66,6 +68,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
         ui_language: store.setting(translate::UI_LANGUAGE_SETTING).map_err(err)?,
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
         applied_ops,
+        read_only: false,
     })
 }
 

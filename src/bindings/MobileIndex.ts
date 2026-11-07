@@ -13,4 +13,8 @@ ui_language: string | null, articles: Array<ArticleRow>,
 /**
  * The operations this list already reflects: the page stops showing them as its own.
  */
-applied_ops: Array<string>, };
+applied_ops: Array<string>, 
+/**
+ * The server turns operations away (`lattice-cli serve` without `--allow-write`): the page offers none.
+ */
+read_only: boolean, };

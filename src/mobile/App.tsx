@@ -124,6 +124,7 @@ export function App() {
           id={articleId}
           row={index?.articles.find((a) => a.id === articleId)}
           ops={ops}
+          writable={index != null && !index.read_only}
           onBack={(e) => {
             // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
             if (fromList.current) {
@@ -161,6 +162,7 @@ export function App() {
       <ListPage
         articles={load.index.articles.map((a) => withOps(a, ops))}
         unsent={ops.filter((o) => !o.sent).length}
+        writable={!load.index.read_only}
         view={view}
         onView={setView}
         refreshFailed={refreshFailed}
@@ -168,7 +170,7 @@ export function App() {
           listScroll.current = window.scrollY;
           fromList.current = true;
           // Opening an article reads it, as on the PC. Only this: reloading the page must not undo 未読に戻す.
-          if (a.read_status === "unread") {
+          if (a.read_status === "unread" && !load.index.read_only) {
             submit({ kind: "set_read", article_id: a.id, read: true });
           }
         }}

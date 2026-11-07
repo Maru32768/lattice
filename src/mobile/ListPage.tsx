@@ -14,6 +14,7 @@ const FILTERS: { id: ListFilter; label: PlainKey }[] = [
 export function ListPage({
   articles,
   unsent,
+  writable,
   view,
   refreshFailed,
   onView,
@@ -23,6 +24,7 @@ export function ListPage({
   /** The list as this phone's operations will leave it. */
   articles: ArticleRow[];
   unsent: number;
+  writable: boolean;
   view: ListView;
   refreshFailed: boolean;
   onView: (v: ListView) => void;
@@ -82,19 +84,21 @@ export function ListPage({
           placeholder={t("mobile.searchTitles")}
           aria-label={t("mobile.searchTitles")}
         />
-        <div className="m-save">
-          <input
-            className="input"
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={t("mobile.urlPlaceholder")}
-            aria-label={t("mobile.saveUrl")}
-          />
-          <button className="btn" onClick={save} disabled={!url.trim()}>
-            {t("mobile.saveUrl")}
-          </button>
-        </div>
+        {writable && (
+          <div className="m-save">
+            <input
+              className="input"
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={t("mobile.urlPlaceholder")}
+              aria-label={t("mobile.saveUrl")}
+            />
+            <button className="btn" onClick={save} disabled={!url.trim()}>
+              {t("mobile.saveUrl")}
+            </button>
+          </div>
+        )}
         {unsent > 0 && (
           <p className="m-note">
             {t("mobile.pending", { n: unsent })}{" "}

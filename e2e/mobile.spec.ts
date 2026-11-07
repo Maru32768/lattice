@@ -491,6 +491,28 @@ test("what waits goes when the reader comes back to the page", async ({ page }) 
   expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "save_url", url: "https://example.com/later" });
 });
 
+test("a read-only server offers no operations and marks nothing", async ({ page }) => {
+  const seen = await start(page, {
+    index: { generated_at: 1, ui_language: "ja", applied_ops: [], read_only: true, articles: [row(1, "First article")] },
+  });
+  await expect(page.getByLabel("URLを保存")).toHaveCount(0);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("heading", { name: "First article" }).waitFor();
+  await expect(page.getByRole("button", { name: /お気に入り|未読|既読/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "原文" }).click();
+  await page.evaluate(() => {
+    const text = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "Second sentence.")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, "Second".length);
+    getSelection()!.addRange(range);
+  });
+  await page.waitForTimeout(100);
+  await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
+  expect(sentOps(seen)).toEqual([]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("reloading on an article does not undo marking it unread", async ({ page }) => {
   const seen = await start(page);
   await page.getByRole("link", { name: /First article/ }).click();

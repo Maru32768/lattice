@@ -173,8 +173,14 @@ async fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
     json_headers(encoded(request, "application/json", body.into(), true).await)
 }
 
-async fn index(State(store): State<Arc<Store>>, headers: HeaderMap) -> Response {
-    match blocking(move || serde_json::to_vec(&mobile::index(&store)?).map_err(|e| e.to_string())).await {
+async fn index(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    let read_only = ctx.on_applied.is_none();
+    let store = ctx.store;
+    let index = move || {
+        let index = mobile::MobileIndex { read_only, ..mobile::index(&store)? };
+        serde_json::to_vec(&index).map_err(|e| e.to_string())
+    };
+    match blocking(index).await {
         Ok(body) => json_response(&headers, body).await,
         Err(e) => internal_error(&e),
     }
@@ -303,6 +309,7 @@ mod tests {
         assert_eq!(index.headers()[header::CACHE_CONTROL], "no-store");
         let index: serde_json::Value = serde_json::from_slice(&body_of(index).await).unwrap();
         assert_eq!(index["articles"][0]["id"], id);
+        assert_eq!(index["read_only"], false);
         let doc: serde_json::Value = serde_json::from_slice(&body_of(get_with(&app, &format!("/api/articles/{id}"), Some(&token)).await).await).unwrap();
         assert_eq!(doc["article"]["original_url"], "https://example.com/a");
         assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(&token)).await.status(), StatusCode::NOT_FOUND);
@@ -353,6 +360,8 @@ mod tests {
         let token2 = mobile::token(&store).unwrap();
         let read_only = router(store, None);
         assert_eq!(post_op(&read_only, Some(&token2), body.into()).await.status(), StatusCode::FORBIDDEN);
+        let said: serde_json::Value = serde_json::from_slice(&body_of(get_with(&read_only, "/api/index", Some(&token2)).await).await).unwrap();
+        assert_eq!(said["read_only"], true, "so the page offers no operations");
         assert_eq!(post_op(&app, Some(&token), body.into()).await.status(), StatusCode::OK);
     }
 
