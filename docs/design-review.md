@@ -11,7 +11,7 @@
 | **Tauri 2** | 採用 | Electronに比べて軽量。capabilityによるIPC権限制御が 旧要件 §25 Security(記事HTMLからnative APIを呼ばせない)に直接効く。 |
 | **Rust** | 採用 | fetch・抽出・SQLite・job runnerをUIプロセスから分離できる。ドメインロジックは`crates/lattice-core`に置き、Tauriには依存させない(CLIやbulk importから再利用できる)。 |
 | **React + TypeScript** | 採用 | ReaderはIRのblock列をコンポーネントとして描画するだけなので、どのUIフレームワークでも成立する。慣れたものを使えばよい。 |
-| **SQLite** | 採用 | 要件どおり。`rusqlite`(bundled)を使い、FTS5は同梱ビルドに含まれる。WALモードで動かす。 |
+| **SQLite** | 採用 | 要件どおり。`rusqlite`(bundled)を使い、FTS5は同梱ビルドに含まれる。WALモードで動かす。アプリ・CLI・MCPサーバーが同じファイルを開くので、transactionは既定で`IMMEDIATE`にする(読んでから書くDEFERREDのtransactionは、間に別のプロセスがcommitすると`busy_timeout`を待たずに失敗する)。 |
 | **Cloudflare** | **MVPでは不採用** | 旧要件 §1「初期段階ではクラウドサービスを前提としない」、旧要件 §2.1と矛盾する。将来の候補としてR2は暗号化backup／同期先、Workers Cronはremote RSS collector(取得した記事をdesktopがpullする)。現時点ではコードも抽象化も入れない。 |
 
 ### 選定したライブラリ

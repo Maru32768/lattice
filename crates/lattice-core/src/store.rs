@@ -535,13 +535,21 @@ impl Store {
     }
 
     fn init(mut conn: Connection) -> Result<Self> {
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;")?;
-        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        // The app, the CLI and the MCP server share the file. A deferred transaction that reads first fails
+        // at once, whatever the busy timeout, if another process commits before its first write.
+        conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
+        let user_version = |c: &Connection| c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0));
+        let version = user_version(&conn)?;
         if version as usize > MIGRATIONS.len() {
             return Err(rusqlite::Error::ToSqlConversionFailure(format!("database version {version} is newer than this build ({})", MIGRATIONS.len()).into()));
         }
         for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
             let tx = conn.transaction()?;
+            // Another process may have run it while this one waited for the lock.
+            if user_version(&tx)? as usize > i {
+                continue;
+            }
             tx.execute_batch(sql)?;
             if RENORMALIZE_AT.contains(&(i + 1)) {
                 renormalize_urls(&tx)?;
@@ -1965,6 +1973,43 @@ mod tests {
         assert_eq!(s.recover_abandoned_jobs().unwrap(), 1);
         s.exec_for_test("UPDATE processing_jobs SET next_run_at = NULL");
         assert!(s.claim_next_job(&["t"]).unwrap().is_some());
+    }
+
+    #[test]
+    fn processes_opening_an_old_database_at_once_migrate_it_once() {
+        let dir = std::env::temp_dir().join(format!("lattice-migrate-race-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("lattice.db");
+        Connection::open(&db).unwrap().pragma_update(None, "journal_mode", "WAL").unwrap();
+        let openers: Vec<_> = (0..4)
+            .map(|_| {
+                let db = db.clone();
+                std::thread::spawn(move || Store::open(&db).map(drop).map_err(|e| e.to_string()))
+            })
+            .collect();
+        for opener in openers {
+            assert_eq!(opener.join().unwrap(), Ok(()));
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_transaction_holds_the_write_lock_from_its_start() {
+        let (dir, app, cli) = shared_db("immediate");
+        cli.conn().busy_timeout(std::time::Duration::ZERO).unwrap();
+        {
+            let mut c = app.conn();
+            let tx = c.transaction().unwrap();
+            let _: i64 = tx.query_row("SELECT count(*) FROM settings", [], |r| r.get(0)).unwrap();
+            // The CLI's write cannot slip in between this read and a write that follows it.
+            assert!(cli.set_setting("k", Some("v")).is_err());
+            tx.execute("INSERT INTO settings (key, value) VALUES ('a', 'b')", []).unwrap();
+            tx.commit().unwrap();
+        }
+        assert!(cli.set_setting("k", Some("v")).is_ok());
+        drop((app, cli));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
