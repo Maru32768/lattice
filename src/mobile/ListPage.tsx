@@ -3,6 +3,7 @@ import type { ArticleRow } from "../bindings";
 import { useT, type PlainKey } from "../i18n";
 import { relTime } from "../lib/time";
 import { discardUnsent, submit } from "./client";
+import { savableUrl } from "./urls";
 import { PAGE, type ListFilter, type ListView, visibleArticles } from "./list";
 
 const FILTERS: { id: ListFilter; label: PlainKey }[] = [
@@ -35,10 +36,13 @@ export function ListPage({
   const [refreshing, setRefreshing] = useState(false);
   const rows = visibleArticles(articles, view);
   const [url, setUrl] = useState("");
+  const [saved, setSaved] = useState(false);
+  const typed = url.trim();
   const save = () => {
-    if (url.trim()) {
-      submit({ kind: "save_url", url: url.trim() });
+    if (savableUrl(typed)) {
+      submit({ kind: "save_url", url: typed });
       setUrl("");
+      setSaved(true);
     }
   };
   /** A different list starts at its top. */
@@ -90,14 +94,27 @@ export function ListPage({
               className="input"
               type="url"
               value={url}
-              onChange={(e) => setUrl(e.target.value)}
+              onChange={(e) => {
+                setUrl(e.target.value);
+                setSaved(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  save();
+                }
+              }}
               placeholder={t("mobile.urlPlaceholder")}
               aria-label={t("mobile.saveUrl")}
             />
-            <button className="btn" onClick={save} disabled={!url.trim()}>
+            <button className="btn" onClick={save} disabled={!savableUrl(typed)}>
               {t("mobile.saveUrl")}
             </button>
           </div>
+        )}
+        {saved && (
+          <p role="status" className="m-note">
+            {t("mobile.urlTaken")}
+          </p>
         )}
         {unsent > 0 && (
           <p className="m-note">

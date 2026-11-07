@@ -1381,6 +1381,7 @@ export const en = {
   "mobileSettings.opRejected": "An operation from the phone could not apply: {error}",
   "mobileSettings.snapshotQr": "QR code to open the snapshot on a phone",
   "be.mobile.snapshotIncomplete": "To publish, set the Account ID, bucket, Access Key ID, Secret Access Key and Worker address",
+  "mobile.urlTaken": "URL taken. The PC fetches the text",
   "mobile.discard": "Discard",
   "mobile.discardConfirm": "Discard the operations not sent yet?",
 } satisfies Messages;

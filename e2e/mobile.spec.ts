@@ -557,14 +557,29 @@ test("another library's QR code clears what waits; a new token of this one keeps
   expect(sentOps(seen)).toEqual([]);
 });
 
-test("a URL can be saved from the list", async ({ page }) => {
+test("a URL can be saved from the list, by the button or the keyboard's Go", async ({ page }) => {
   const seen = await start(page);
   await page.getByText("First article").waitFor();
-  await expect(page.getByRole("button", { name: "URLを保存" })).toBeDisabled();
-  await page.getByLabel("URLを保存").fill(" https://example.com/new ");
-  await page.getByRole("button", { name: "URLを保存" }).click();
-  await expect(page.getByLabel("URLを保存")).toHaveValue("");
-  await expect.poll(() => sentOps(seen).map((o) => o.op)).toEqual([{ kind: "save_url", url: "https://example.com/new" }]);
+  const box = page.getByLabel("URLを保存");
+  const button = page.getByRole("button", { name: "URLを保存" });
+  await expect(button).toBeDisabled();
+  await box.fill("example.com/no-scheme");
+  await expect(button, "refused while the text is there to correct").toBeDisabled();
+  await box.press("Enter");
+  await expect(box).toHaveValue("example.com/no-scheme");
+  await box.fill(" https://example.com/new ");
+  await button.click();
+  await expect(box).toHaveValue("");
+  await expect(page.getByRole("status")).toContainText("受け付けました");
+  await box.fill("https://example.com/go");
+  await box.press("Enter");
+  await expect(box).toHaveValue("");
+  await expect
+    .poll(() => sentOps(seen).map((o) => o.op))
+    .toEqual([
+      { kind: "save_url", url: "https://example.com/new" },
+      { kind: "save_url", url: "https://example.com/go" },
+    ]);
 });
 
 test("a selected word can be saved with its sentence and source", async ({ page }) => {

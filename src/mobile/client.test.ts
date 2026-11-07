@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
 import { type LocalOp, fragmentOf, newOpId, resultOf, settled, withOps } from "./client.ts";
+import { savableUrl } from "./urls.ts";
 import { visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
 
@@ -97,6 +98,15 @@ test("only Lattice's own answer settles an operation", () => {
   ];
   for (const [status, body, why] of waits) {
     assert.deepEqual(resultOf(status, body), { status: "wait" }, why);
+  }
+});
+
+test("an address must be one the PC can fetch, before it leaves the box", () => {
+  for (const good of ["https://example.com/a", "http://example.com"]) {
+    assert.ok(savableUrl(good), good);
+  }
+  for (const bad of ["example.com/a", "ftp://example.com", "javascript:alert(1)", "https://a b", "https://", `https://${"x".repeat(2048)}`]) {
+    assert.ok(!savableUrl(bad), bad);
   }
 });
 
