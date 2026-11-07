@@ -686,3 +686,14 @@ test("an operation past its time is never sent", async ({ page }) => {
   await page.waitForTimeout(200);
   expect(sentOps(seen)).toEqual([]);
 });
+
+test("a token the server turns away can be tried again without a new QR code", async ({ page }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/index", (route) => route.fulfill({ status: 401, json: { error: "unauthorized" } }));
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
+  await page.unroute("**/api/index");
+  await page.getByRole("button", { name: "もう一度" }).click();
+  await expect(page.getByText("First article")).toBeVisible();
+});

@@ -128,6 +128,18 @@ export function App() {
       <main className="m-empty">
         <h1>Lattice</h1>
         <p>{t("mobile.noToken")}</p>
+        {/* A token just regenerated reaches the Worker a little later, and this may be another server on the port. */}
+        {hasToken() && (
+          <button
+            className="btn"
+            onClick={() => {
+              setLoad({ state: "loading" });
+              void refresh();
+            }}
+          >
+            {t("mobile.retry")}
+          </button>
+        )}
       </main>
     );
   }
