@@ -45,6 +45,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - An MCP server left running after you moved the data folder kept reading and writing the old copy. It now asks to be restarted.
 - Sessions shorter than 15 minutes never made a backup to R2. The first check now comes after a minute.
 - A translation that the AI returned under the wrong paragraph's number was saved, and the same wrong text then showed wherever that paragraph appeared. Such answers, and empty ones, are now asked again.
+- Switching tabs while a web page was first opening could leave that page drawn over the tab you switched to.
 
 ## [0.3.0] - 2026-11-06
 

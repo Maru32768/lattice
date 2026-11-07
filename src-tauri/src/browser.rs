@@ -114,6 +114,8 @@ pub struct Browser {
 }
 
 struct TabState {
+    /// `browser_hide` came while there was no webview yet, so `browser_open` must not show the one it is creating.
+    hidden_while_opening: bool,
     /// Text to scroll to once the next page finishes loading (search-result jumps).
     focus: Option<String>,
     visibility: Visibility,
@@ -134,6 +136,7 @@ struct TabState {
 impl Default for TabState {
     fn default() -> Self {
         Self {
+            hidden_while_opening: false,
             focus: None,
             visibility: Visibility::default(),
             history: (true, true),
@@ -586,7 +589,10 @@ pub async fn browser_open(
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
-    browser.with_tab(&label, |t| t.focus = focus_text);
+    browser.with_tab(&label, |t| {
+        t.focus = focus_text;
+        t.hidden_while_opening = false;
+    });
     browser.evict(&app);
     let (popup_target, popup_label) = (app.clone(), label.clone());
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
@@ -641,7 +647,8 @@ pub async fn browser_open(
         .map_err(|e| e.to_string())?;
     #[cfg(windows)]
     watch_focus(&wv);
-    update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())
+    let wanted = !browser.with_tab(&label, |t| t.hidden_while_opening);
+    update_visibility(&wv, &browser, |v| *v = Visibility { wanted, ..opened }).map_err(|e| e.to_string())
 }
 
 /// Also shows the webview (once loaded) in the calling window: the placeholder only exists while
@@ -664,9 +671,17 @@ pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: 
 
 #[tauri::command]
 pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String) -> Result<(), String> {
-    match app.get_webview(&label(&tab)?) {
+    let label = label(&tab)?;
+    match app.get_webview(&label) {
         Some(wv) => update_visibility(&wv, &browser, |v| v.wanted = false).map_err(|e| e.to_string()),
-        None => Ok(()),
+        // Creating a webview pumps the main thread, so this can run in the middle of `browser_open`, which
+        // would then show the page over whatever the user has switched to.
+        None => {
+            if let Some(t) = lock(&browser.tabs).get_mut(&label) {
+                t.hidden_while_opening = true;
+            }
+            Ok(())
+        }
     }
 }
 
