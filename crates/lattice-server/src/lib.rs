@@ -79,7 +79,12 @@ fn internal_error(e: &str) -> Response {
 }
 
 fn accepts_gzip(headers: &HeaderMap) -> bool {
-    headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|e| e.trim().starts_with("gzip")))
+    let offers_gzip = |value: &str| {
+        let mut parts = value.split(';').map(str::trim);
+        parts.next().is_some_and(|name| name.eq_ignore_ascii_case("gzip"))
+            && !parts.any(|p| p.replace(' ', "").starts_with("q=0") && p.trim_start_matches(['q', '=', '0', '.', ' ']).is_empty())
+    };
+    headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(offers_gzip))
 }
 
 /// Runs what would hold up the async workers: a store call may wait for its lock behind a job, and compressing takes time.
@@ -227,6 +232,18 @@ mod tests {
         let new = mobile::regenerate_token(&store).unwrap();
         assert_eq!(get_with(&app, "/api/ping", Some(&old)).await.status(), StatusCode::UNAUTHORIZED);
         assert_eq!(get_with(&app, "/api/ping", Some(&new)).await.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn gzip_is_used_only_when_the_client_offers_it() {
+        let accepts = |v: &str| accepts_gzip(&HeaderMap::from_iter([(header::ACCEPT_ENCODING, HeaderValue::from_str(v).unwrap())]));
+        for yes in ["gzip", "GZIP", "br, gzip", "gzip;q=0.5", "gzip; q=1", "deflate , gzip ; q=0.1"] {
+            assert!(accepts(yes), "{yes}");
+        }
+        for no in ["identity", "br", "gzip;q=0", "gzip; q=0.0", "x-gzip"] {
+            assert!(!accepts(no), "{no}");
+        }
+        assert!(!accepts_gzip(&HeaderMap::new()));
     }
 
     #[tokio::test]
