@@ -936,7 +936,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 - **待ち受けは3択。** オフ(既定)、`127.0.0.1`、LAN。`127.0.0.1`はTailscale Serve(tailnetの中だけにHTTPSで出す)やcloudflaredの後ろに置くときに選ぶ。アプリはTLSを持たない。証明書の管理をトンネルに任せられるため。
 - **LANはHTTPになる。** 同じWi-Fiの相手にはトークンと本文が読めるので、設定画面でそう説明する。LANで待ち受けるとWindows Firewallの確認が出る。
 - **storeは`spawn_blocking`で読む。** storeはロックを持つ同期APIなので、axumのworkerを止めないようにする。
-- **`lattice-server`を別のcrateにする。** `src-tauri`が起動するが、Tauriに依存しないので、将来`lattice-cli`からも起動できる。
+- **`lattice-server`を別のcrateにする。** `src-tauri`と`lattice-cli serve`が起動する。CLIもアプリと同じく、元のライブラリを開けなかったときと、ライブラリが移動したあとは配信しない。
 
 ### B: スナップショットとinbox
 

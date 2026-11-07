@@ -17,6 +17,7 @@ use lattice_core::fetch::HttpClient;
 use lattice_core::jobs::Providers;
 use lattice_core::location::{self, DB_FILE};
 use lattice_core::mobile;
+use lattice_core::msg;
 use lattice_core::network;
 use lattice_core::store::Store;
 use serde_json::{Value, json};
@@ -117,7 +118,14 @@ fn fail(format: Format, e: &str) -> ExitCode {
 }
 
 /// Runs until the process is stopped. Jobs that the served requests queue wait for the app's runners (design-review §23).
-async fn serve(store: Store, lan: bool, port: u16) -> Result<(), String> {
+/// Serves the library it was started on, as the app does, and only the real one: a stand-in or a
+/// library that has moved away would show a phone old articles, and turn away its token.
+async fn serve(store: Store, detected_dir: Option<PathBuf>, lan: bool, port: u16) -> Result<(), String> {
+    if let Some(dir) = &detected_dir
+        && location::detect().is_ok_and(|now| now.warning.is_some() || now.dir != *dir)
+    {
+        return Err(msg!("mobile.fellBack"));
+    }
     let store = std::sync::Arc::new(store);
     let token = mobile::token(&store)?;
     let ip = if lan {
@@ -150,7 +158,7 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e.to_string()),
         },
-        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, lan, port)) {
+        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, ctx.detected_dir, lan, port)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e),
         },
