@@ -109,7 +109,7 @@ type Handle = (request: Request, bucket: Bucket, now: number) => Promise<Respons
 let clock = 0;
 
 /** The PC's server as the page sees it across origins. */
-function livePc(workerOrigin: () => string, ops: unknown[]) {
+function livePc(workerOrigin: () => string, ops: unknown[], applied: () => string[] = () => []) {
   return async (request: Request) => {
     const cors = { "access-control-allow-origin": workerOrigin(), "access-control-allow-headers": "authorization, content-type", vary: "origin" };
     if (request.method === "OPTIONS") {
@@ -128,7 +128,7 @@ function livePc(workerOrigin: () => string, ops: unknown[]) {
           format: 1,
           generated_at: Math.floor(Date.now() / 1000),
           ui_language: "ja",
-          applied_ops: [],
+          applied_ops: applied(),
           read_only: false,
           live_url: null,
           articles: [row(1, "Live one")],
@@ -320,6 +320,36 @@ test("on a poor connection the saved copy shows without waiting out the timeout"
   await showAll(page);
   await expect(page.getByRole("link", { name: /Snapshot one/ })).toBeVisible();
   expect(Date.now() - started).toBeLessThan(10_000);
+  await ctx.close();
+  await worker.close();
+});
+
+test("what the PC's list has shown stays on the phone when the PC goes off and an older snapshot returns", async ({ browser }) => {
+  const ops: { id: string }[] = [];
+  let workerOrigin = "";
+  const live = await serve(
+    livePc(
+      () => workerOrigin,
+      ops,
+      () => ops.map((o) => o.id),
+    ),
+  );
+  const bucket = snapshotBucket(Math.floor(Date.now() / 1000) - 3600, live.origin);
+  const worker = await workerServer(bucket);
+  workerOrigin = worker.origin;
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await showAll(page);
+  await page.getByRole("link", { name: /Live one/ }).click();
+  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await expect.poll(() => ops.length).toBe(1);
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("link", { name: /Live one/ }), "the PC's list knows best while it answers").not.toContainText("★");
+  await live.close();
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("link", { name: /Snapshot one/ }), "the snapshot is older than the operation").toContainText("★");
   await ctx.close();
   await worker.close();
 });

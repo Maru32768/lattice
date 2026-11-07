@@ -119,12 +119,12 @@ async function liveNow(): Promise<boolean> {
 }
 
 /** The API by way of the PC if it answers, then of wherever this page came from. */
-async function request(path: string): Promise<Response> {
+async function request(path: string): Promise<{ response: Response; fromLive: boolean }> {
   if (await liveNow()) {
     try {
       const response = await fetch(`${live}/${path}`, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (response.status !== 401 && response.status < 500) {
-        return response;
+        return { response, fromLive: true };
       }
     } catch {
       // Gone since it was last asked.
@@ -135,7 +135,7 @@ async function request(path: string): Promise<Response> {
   if (response.status === 401) {
     throw new Unauthorized();
   }
-  return response;
+  return { response, fromLive: false };
 }
 
 async function keep(path: string, doc: unknown) {
@@ -164,10 +164,10 @@ async function savedDoc(path: string): Promise<Doc | null> {
  * A document from the network, kept for later. Null when the server says it is gone. An answer that is not a document of
  * ours, such as a tunnel's page with the PC off or a login page, throws: it must neither show nor replace the saved copy.
  */
-async function fetched(path: string): Promise<Doc | null> {
-  const response = await request(path);
+async function fetched(path: string): Promise<{ doc: Doc | null; fromLive: boolean }> {
+  const { response, fromLive } = await request(path);
   if (response.status === 404) {
-    return null;
+    return { doc: null, fromLive };
   }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -180,22 +180,23 @@ async function fetched(path: string): Promise<Doc | null> {
     throw new FormatMismatch();
   }
   await keep(path, doc).catch(() => {});
-  return doc;
+  return { doc, fromLive };
 }
 
 /** What `document` found: `saved` says it is the copy on this phone, because the network failed or was too slow. */
 interface Found {
   doc: Doc | null;
   saved: boolean;
+  fromLive: boolean;
 }
 
 async function document(path: string): Promise<Found> {
-  const network = fetched(path).then((doc): Found => ({ doc, saved: false }));
+  const network = fetched(path).then((f): Found => ({ ...f, saved: false }));
   const saved = await savedDoc(path);
   if (!saved) {
     return network;
   }
-  const fallback: Found = { doc: saved, saved: true };
+  const fallback: Found = { doc: saved, saved: true, fromLive: false };
   // The answer still arrives later, and replaces the copy for next time.
   const late = new Promise<Found>((resolve) => setTimeout(() => resolve(fallback), SAVED_AFTER_MS));
   const answered = network.then(
@@ -219,7 +220,7 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
   }
   // The snapshot says where the PC is. It may be there right now.
   const named = (found.doc as MobileIndex).live_url;
-  if (!found.saved && !liveAnswers && named && named !== live) {
+  if (!found.saved && !found.fromLive && named && named !== live) {
     live = named;
     write(LIVE, named);
     await askLive();
@@ -229,7 +230,10 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
     }
   }
   const index = found.doc as MobileIndex;
-  updateOps((local) => settled(local, index.applied_ops, Date.now()));
+  // The PC's list settles nothing: if the PC goes off, the older snapshot takes over, and the phone must go on showing what it did.
+  if (!found.fromLive) {
+    updateOps((local) => settled(local, index.applied_ops, Date.now()));
+  }
   return { index, saved: found.saved };
 }
 

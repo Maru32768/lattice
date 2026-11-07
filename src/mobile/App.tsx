@@ -133,6 +133,8 @@ export function App() {
   }
   const index = load.state === "ready" ? load.index : null;
   const unsent = ops.filter((o) => !o.sent).length;
+  // Those the list on screen already shows: it may be the PC's, which settles nothing.
+  const shownOps = ops.filter((o) => !index?.applied_ops.includes(o.id));
   if (articleId != null) {
     return (
       <>
@@ -141,7 +143,7 @@ export function App() {
           key={articleId}
           id={articleId}
           row={index?.articles.find((a) => a.id === articleId)}
-          ops={ops}
+          ops={shownOps}
           unsent={unsent}
           writable={index != null && !index.read_only}
           onBack={(e) => {
@@ -179,7 +181,7 @@ export function App() {
     <>
       {notice}
       <ListPage
-        articles={load.index.articles.map((a) => withOps(a, ops))}
+        articles={load.index.articles.map((a) => withOps(a, shownOps))}
         unsent={unsent}
         writable={!load.index.read_only}
         view={view}
