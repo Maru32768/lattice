@@ -39,6 +39,7 @@ const PUBLISH_EVERY_SECS: u64 = 15 * 60;
 /// Past the busy first minute of a start, as for the backup.
 const FIRST_CHECK: Duration = Duration::from_secs(90);
 
+/// For the settings screen only: `run_scheduler` runs one pass at a time by itself.
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
 fn err(e: impl ToString) -> String {
@@ -309,16 +310,14 @@ async fn note(store: &Arc<Store>, key: &'static str, value: Option<String>) {
 }
 
 async fn run_pass(store: &Arc<Store>, http: &reqwest::Client, page: &[PageFile], on_applied: &(dyn Fn(&Effects) + Send + Sync), inbox_only: bool) {
+    RUNNING.store(true, Ordering::SeqCst);
+    let _running = Running;
     let s = store.clone();
     let creds = match blocking(move || creds(&s)).await {
         Ok(Some(c)) => c,
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
     };
-    if RUNNING.swap(true, Ordering::SeqCst) {
-        return;
-    }
-    let _running = Running;
     let bucket = R2Bucket { http: http.clone(), creds };
     if inbox_only {
         match take_inbox(store, &bucket, on_applied).await {
