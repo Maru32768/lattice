@@ -356,7 +356,7 @@ pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String
                 out.results[i] = r.pop().flatten();
             }
             Err(e) => {
-                failures += usize::from(!matches!(e, LlmError::Malformed(_)));
+                failures += usize::from(!matches!(e, LlmError::Malformed(_) | LlmError::Declined(_)));
                 out.error = Some(e);
                 // Several with nothing answered is the provider, not a snippet it refuses: the others would fail too.
                 if !answered && failures >= RETRIES_AT_ONCE {

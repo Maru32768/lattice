@@ -40,6 +40,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A meaning you typed for a word while the AI was still looking it up was replaced by the AI's answer. Your meaning now stays.
 - An article with many images on a site that did not answer stopped all other fetches from its site for a long time. Saving an article's images now pauses after five minutes and resumes later.
 - The first search waited for the search model's download, about 470 MB. Search now shows full-text matches until it is ready.
+- One article an API provider refused put that provider on a five-minute break, which sent all other jobs to the next one in the chain, possibly a paid API. A refusal now affects only that text.
+- Deleting an article in one window left it in the lists and tabs of the others.
+- An MCP server left running after you moved the data folder kept reading and writing the old copy. It now asks to be restarted.
+- Sessions shorter than 15 minutes never made a backup to R2. The first check now comes after a minute.
 
 ## [0.3.0] - 2026-11-06
 

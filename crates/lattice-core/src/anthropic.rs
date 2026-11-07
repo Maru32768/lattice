@@ -41,7 +41,7 @@ impl Anthropic {
 
 fn parse_completion(v: &Value) -> Result<Completion, LlmError> {
     match v["stop_reason"].as_str() {
-        Some("refusal") => return Err(LlmError::Failed(format!("refused: {}", v["stop_details"]["category"].as_str().unwrap_or("")))),
+        Some("refusal") => return Err(LlmError::Declined(format!("refused: {}", v["stop_details"]["category"].as_str().unwrap_or("")))),
         Some("max_tokens") => return Err(LlmError::Malformed("max_tokens".into())),
         _ => {}
     }
@@ -91,7 +91,7 @@ mod tests {
         let c = parse_completion(&v).unwrap();
         assert_eq!((c.value["summary"].as_str(), c.model.as_deref(), c.provider.as_str()), (Some("s"), Some("claude-opus-5-5"), "anthropic-api"));
         let refused = json!({"stop_reason": "refusal", "stop_details": {"type": "refusal", "category": "cyber"}, "content": []});
-        assert!(matches!(parse_completion(&refused), Err(LlmError::Failed(m)) if m.contains("cyber")));
+        assert!(matches!(parse_completion(&refused), Err(LlmError::Declined(m)) if m.contains("cyber")));
         let cut = json!({"stop_reason": "max_tokens", "content": [{"type": "text", "text": "{\"summ"}]});
         assert!(matches!(parse_completion(&cut), Err(LlmError::Malformed(m)) if m == "max_tokens"));
     }

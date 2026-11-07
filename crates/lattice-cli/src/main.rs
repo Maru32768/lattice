@@ -51,16 +51,17 @@ enum Cmd {
 }
 
 fn open(cli: &Cli) -> Result<Ctx, String> {
-    let dir = match &cli.data_dir {
-        Some(d) => d.clone(),
+    let detected_dir = match &cli.data_dir {
+        Some(_) => None,
         None => {
             let loc = location::detect().map_err(|e| e.to_string())?;
             if let Some(w) = &loc.warning {
                 eprintln!("{}", render(cli.format, "warning", w));
             }
-            loc.dir
+            Some(loc.dir)
         }
     };
+    let dir = cli.data_dir.clone().or_else(|| detected_dir.clone()).ok_or("no data folder")?;
     let db = dir.join(DB_FILE);
     if !db.is_file() {
         return Err(format!("no Lattice database at {}: start the app once, or pass --data-dir", db.display()));
@@ -70,7 +71,7 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
     let http = HttpClient::configured(&network::settings(&store)?)?;
     let providers = Providers { llm, embedder: LocalE5::offline(dir.join("models")), http };
     let allow_write = cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1");
-    Ok(Ctx { store, providers, allow_write })
+    Ok(Ctx { store, providers, allow_write, detected_dir })
 }
 
 /// A `warning` or `error` line. Backend messages are coded JSON (`msg!`, `{"code","params"}`):

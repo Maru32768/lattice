@@ -41,7 +41,7 @@ fn parse_completion(v: &Value) -> Result<Completion, LlmError> {
     for c in content {
         match c["type"].as_str() {
             Some("output_text") => text = c["text"].as_str(),
-            Some("refusal") => return Err(LlmError::Failed(format!("refused: {}", c["refusal"].as_str().unwrap_or("")))),
+            Some("refusal") => return Err(LlmError::Declined(format!("refused: {}", c["refusal"].as_str().unwrap_or("")))),
             _ => {}
         }
     }
@@ -84,7 +84,7 @@ mod tests {
         let c = parse_completion(&v).unwrap();
         assert_eq!((c.value["summary"].as_str(), c.model.as_deref()), (Some("s"), Some("gpt-6-luna-2026-09-01")));
         let refused = json!({"output": [{"type": "message", "content": [{"type": "refusal", "refusal": "no"}]}]});
-        assert!(matches!(parse_completion(&refused), Err(LlmError::Failed(_))));
+        assert!(matches!(parse_completion(&refused), Err(LlmError::Declined(_))));
         let cut = json!({"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": []});
         assert!(matches!(parse_completion(&cut), Err(LlmError::Malformed(m)) if m == "max_output_tokens"));
     }

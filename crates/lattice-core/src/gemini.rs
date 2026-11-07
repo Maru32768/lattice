@@ -44,7 +44,7 @@ fn parse_completion(v: &Value) -> Result<Completion, LlmError> {
     let text: String = cand["content"]["parts"].as_array().into_iter().flatten().filter_map(|p| p["text"].as_str()).collect();
     if text.is_empty() {
         let why = v["promptFeedback"]["blockReason"].as_str().or(cand["finishReason"].as_str()).unwrap_or("no candidates");
-        return Err(LlmError::Malformed(why.to_string()));
+        return Err(LlmError::Declined(why.to_string()));
     }
     let value: Value = serde_json::from_str(&text).map_err(|e| LlmError::Malformed(e.to_string()))?;
     Ok(Completion { value, model: v["modelVersion"].as_str().map(str::to_string), provider: "gemini-api".into() })
@@ -80,6 +80,6 @@ mod tests {
         let c = parse_completion(&v).unwrap();
         assert_eq!((c.value["summary"].as_str(), c.model.as_deref()), (Some("s"), Some("gemini-3-flash")));
         let blocked = json!({"promptFeedback": {"blockReason": "SAFETY"}});
-        assert!(matches!(parse_completion(&blocked), Err(LlmError::Malformed(m)) if m == "SAFETY"));
+        assert!(matches!(parse_completion(&blocked), Err(LlmError::Declined(m)) if m == "SAFETY"));
     }
 }

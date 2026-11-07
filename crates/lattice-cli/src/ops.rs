@@ -2,6 +2,8 @@
 //! (clap) and from MCP tool calls (serde, `{"name": ..., "arguments": {...}}`) alike, and every
 //! operation answers with JSON plus a plain-text rendering of the same result.
 
+use std::path::PathBuf;
+
 use clap::Subcommand;
 use lattice_core::chain::LlmChain;
 use lattice_core::chat::{self, Scope};
@@ -109,6 +111,8 @@ pub struct Ctx {
     pub store: Store,
     pub providers: Providers<LlmChain, LocalE5>,
     pub allow_write: bool,
+    /// The folder `location::detect` found at the start; `None` with `--data-dir`.
+    pub detected_dir: Option<PathBuf>,
 }
 
 /// One result in both output formats.
@@ -382,7 +386,7 @@ pub(crate) mod tests {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));
-        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, allow_write: true }
+        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, allow_write: true, detected_dir: None }
     }
 
     #[test]

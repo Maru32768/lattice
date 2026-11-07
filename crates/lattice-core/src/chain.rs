@@ -283,9 +283,10 @@ async fn attempt<P: LlmProvider>(s: &Slot<P>, patient: bool, system: &str, input
         }
         Err(e) => {
             log::warn!("{} ({}) failed: {e}", s.llm.name(), s.model.as_deref().unwrap_or("default"));
-            // Malformed output is usually a one-off; limits, auth and timeouts persist.
+            // Malformed output is usually a one-off, and a declined text says nothing of the next one (nor
+            // should it send every other job to a paid fallback for minutes); limits, auth and timeouts persist.
             let cooldown = match e {
-                LlmError::Malformed(_) => None,
+                LlmError::Malformed(_) | LlmError::Declined(_) => None,
                 // Back as soon as the limit lets it: what the entry can answer goes to it, and only the rest elsewhere.
                 LlmError::RateLimited(wait) => Some(wait),
                 _ => Some(COOLDOWN),
@@ -413,6 +414,26 @@ mod tests {
         over.complete_json("", "x", &schema).await.unwrap();
         over.complete_json("", "x", &schema).await.unwrap();
         assert_eq!(asked_now(&over), 2, "first again once the limit is over, not after the usual cooldown");
+    }
+
+    #[tokio::test]
+    async fn a_declined_text_does_not_cool_its_entry() {
+        struct Declines;
+        impl LlmProvider for Declines {
+            fn name(&self) -> &str {
+                "declines"
+            }
+            async fn complete_json(&self, _: &str, input: &str, _: &Value) -> Result<Completion, LlmError> {
+                match input {
+                    "refused" => Err(LlmError::Declined("refused".into())),
+                    _ => Ok(Completion { value: serde_json::json!({}), model: None, provider: "first".into() }),
+                }
+            }
+        }
+        let chain = LlmChain::new(vec![(Declines, None)]);
+        assert!(matches!(chain.complete_json("", "refused", &serde_json::json!({})).await, Err(LlmError::Declined(_))));
+        assert!(!chain.health()[0].cooling, "other articles still go to it: {:?}", chain.health());
+        assert_eq!(chain.complete_json("", "other", &serde_json::json!({})).await.unwrap().provider, "first");
     }
 
     #[tokio::test]

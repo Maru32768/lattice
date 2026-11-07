@@ -25,6 +25,9 @@ pub enum LlmError {
     Failed(String),
     #[error("malformed provider output: {0}")]
     Malformed(String),
+    /// Declined this input (a refusal, a safety block, HTTP 400). The provider is fine for other text.
+    #[error("provider declined: {0}")]
+    Declined(String),
     /// From `complete_json_now`: usable again after this long.
     #[error("rate limited for {0:.0?}")]
     RateLimited(std::time::Duration),
@@ -145,6 +148,7 @@ pub(crate) async fn post_json(req: reqwest::RequestBuilder, body: &Value) -> Res
     let msg = format!("HTTP {status}: {msg}");
     Err(match status.as_u16() {
         401 | 403 | 429 | 529 => LlmError::Unavailable(msg),
+        400 => LlmError::Declined(msg),
         _ => LlmError::Failed(msg),
     })
 }

@@ -34,10 +34,17 @@ export function useDocuments(fail: (e: unknown) => void) {
   const [views, setViews] = useState<Map<number, ArticleView>>(() => new Map());
   const viewsRef = useLatest(views);
 
-  const loadView = (id: number) =>
-    api
+  /** Grows with each read per article: an older one that lands last must not replace a newer view. */
+  const viewSeq = useRef(new Map<number, number>());
+  const loadView = (id: number) => {
+    const seq = (viewSeq.current.get(id) ?? 0) + 1;
+    viewSeq.current.set(id, seq);
+    return api
       .getArticle(id)
       .then((v) => {
+        if (seq !== viewSeq.current.get(id)) {
+          return;
+        }
         if (v) {
           setViews((m) => new Map(m).set(id, v));
         }
@@ -47,6 +54,7 @@ export function useDocuments(fail: (e: unknown) => void) {
         }
       })
       .catch(fail);
+  };
   /** Whether the page a tab shows is in the Index. */
   const refreshSaved = (tab: Id, url: string) =>
     api

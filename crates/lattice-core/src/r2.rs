@@ -31,6 +31,7 @@ const LAST_PRUNE_ERROR: &str = "r2.last_prune_error";
 
 const DEFAULT_INTERVAL_HOURS: u64 = 24;
 const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
+const FIRST_CHECK: Duration = Duration::from_secs(60);
 /// A failed backup is retried after this long, not on every check.
 const RETRY_AFTER_SECS: u64 = 3600;
 /// R2 requires equal-sized parts (except the last), at least 5 MiB. 64 MiB × 10,000 parts ≈ 640 GB.
@@ -186,8 +187,9 @@ fn due(store: &Store, now: u64) -> Result<bool, String> {
 /// last-success time, so the schedule survives restarts.
 pub async fn run_scheduler(store: Arc<Store>, db_path: PathBuf, tmp_dir: PathBuf) {
     let http = client();
+    // Soon after the start, past the busy first minute: a session shorter than `CHECK_EVERY` would never back up.
+    tokio::time::sleep(FIRST_CHECK).await;
     loop {
-        tokio::time::sleep(CHECK_EVERY).await;
         match due(&store, unix_now()) {
             Ok(true) => {
                 let _ = backup_now(&store, &http, &db_path, &tmp_dir).await;
@@ -195,6 +197,7 @@ pub async fn run_scheduler(store: Arc<Store>, db_path: PathBuf, tmp_dir: PathBuf
             Ok(false) => {}
             Err(e) => log::warn!("r2 schedule check: {e}"),
         }
+        tokio::time::sleep(CHECK_EVERY).await;
     }
 }
 

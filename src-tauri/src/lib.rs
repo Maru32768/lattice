@@ -711,8 +711,11 @@ fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, Stri
 
 /// Removes the article and everything derived from it (`Store::delete_article`).
 #[tauri::command(async)]
-fn delete_article(app: State<'_, App>, id: i64) -> Result<bool, String> {
-    app.store.delete_article(id).map_err(err)
+fn delete_article(handle: tauri::AppHandle, app: State<'_, App>, id: i64) -> Result<bool, String> {
+    let deleted = app.store.delete_article(id).map_err(err)?;
+    // The other windows drop it from their lists and close its tabs.
+    let _ = handle.emit("article-changed", id);
+    Ok(deleted)
 }
 
 #[tauri::command(async)]

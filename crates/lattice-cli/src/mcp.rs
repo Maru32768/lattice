@@ -8,6 +8,8 @@ use std::io::{self, BufRead, Write};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
 
+use lattice_core::location;
+
 use crate::ops::{self, Ctx, Op};
 
 /// The newest first; a client asking for another gets the newest (tools work the same in all).
@@ -91,6 +93,13 @@ fn call(ctx: &Ctx, rt: &Runtime, params: &Value) -> Result<Value, String> {
         json!({})
     };
     let op = serde_json::from_value::<Op>(json!({ "name": params["name"], "arguments": arguments })).map_err(|e| e.to_string())?;
+    // The server outlives a move of the library: answering from the old copy would mislead the agent, and
+    // what it saves there no app would ever process.
+    if let Some(dir) = &ctx.detected_dir
+        && location::detect().is_ok_and(|now| now.dir != *dir)
+    {
+        return Ok(json!({ "content": [{ "type": "text", "text": "The Lattice data folder has changed. Restart this MCP server." }], "isError": true }));
+    }
     // Errors can quote untrusted content too (a page's text in a provider error, a feed title).
     let (text, is_error) = match rt.block_on(ops::run(ctx, op)) {
         Ok(out) => (out.json.to_string(), false),
