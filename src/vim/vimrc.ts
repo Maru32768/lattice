@@ -8,7 +8,7 @@ export type VimrcEntry =
   | { kind: "nop"; line: number; lhs: string; context: VimrcContext }
   /** A key that gives up the engine's own command in these modes, which comes before every mapping: a mapping written earlier stays. */
   | { kind: "free"; line: number; lhs: string; modes: FreedMode[] }
-  | { kind: "skip"; line: number; text: string; reason: SkipReason; lhs?: string };
+  | { kind: "skip"; line: number; text: string; reason: SkipReason };
 /** Insert mode has no command for a key to give up: there a key is text. */
 export type FreedMode = "normal" | "visual";
 const BOTH_MODES: FreedMode[] = ["normal", "visual"];
@@ -271,9 +271,12 @@ const NOP_CONTEXT: Partial<Record<string, VimrcContext>> = {
   inoremap: "insert",
 };
 
+/** What can stand between a map command and its key. */
+const MAP_ARGS = /^(?:<(?:silent|unique|script|nowait|buffer|expr)>\s*)*/i;
+
 function parseMap(line: number, text: string, cmd: string, rest: string, known: KnownNames): VimrcEntry {
   const skip = (reason: SkipReason): VimrcEntry => ({ kind: "skip", line, text, reason });
-  const special = /^(?:<(?:silent|unique|script|nowait|buffer|expr)>\s*)*/i.exec(rest)![0];
+  const special = MAP_ARGS.exec(rest)![0];
   if (/<expr>/i.test(special)) {
     return skip("expr");
   }
@@ -282,22 +285,20 @@ function parseMap(line: number, text: string, cmd: string, rest: string, known: 
     return skip("script");
   }
   const lhs = engineKeys(parts[1]!);
-  // A later `unmap` undoes this line, though it was left out, and must not take the key's own command instead.
-  const skipMap = (reason: SkipReason): VimrcEntry => (cmd.startsWith("i") ? skip(reason) : { kind: "skip", line, text, reason, lhs });
   // `:<C-u>` clears the range Vim prefills; the engine prefills none, and would type those keys into the command.
   const rhs = engineKeys(parts[2]!).replace(/:<C-u>/g, ":");
   if (lhs.startsWith("<C-w>") || rhs.startsWith("<C-w>")) {
-    return skipMap("app");
+    return skip("app");
   }
   if (EX_NAME.test(lhs)) {
-    return skipMap("script");
+    return skip("script");
   }
   if (/^<nop>$/i.test(rhs)) {
     const context = NOP_CONTEXT[cmd];
-    return context === undefined ? skipMap("mode") : { kind: "nop", line, lhs, context };
+    return context === undefined ? skip("mode") : { kind: "nop", line, lhs, context };
   }
   const problem = rhsProblem(rhs, cmd.startsWith("i"), known);
-  return problem ? skipMap(problem) : { kind: "ex", line, ex: `${cmd} ${lhs} ${rhs}` };
+  return problem ? skip(problem) : { kind: "ex", line, ex: `${cmd} ${lhs} ${rhs}` };
 }
 
 function parseSet(line: number, text: string, known: KnownNames): VimrcEntry[] {
@@ -335,6 +336,8 @@ function leaderKey(value: string): string {
 /** The entries of `text`, in order: what applies and, with a reason, what does not. */
 export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
   let out: VimrcEntry[] = [];
+  /** The keys of mappings left out: a later `unmap` undoes one, as in Vim, and must not take the key's own command instead. */
+  const leftOut = new Set<string>();
   const leaders = { mapleader: DEFAULT_LEADER, maplocalleader: DEFAULT_LEADER };
   let depth = 0;
   for (const { line, text: raw } of logicalLines(text)) {
@@ -377,7 +380,7 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
         const m = mappingOf(e);
         return m?.lhs !== lhs || m.modes.includes("insert");
       });
-      const undoes = kept.length < out.length || out.some((e) => e.kind === "skip" && e.lhs === lhs);
+      const undoes = kept.length < out.length || leftOut.has(lhs);
       out = undoes ? kept : [...out, EX_NAME.test(lhs) ? skip("script") : { kind: "free", line, lhs, modes: BOTH_MODES }];
     } else if (CLEARS.has(cmd)) {
       out = out.filter((e) => !clearedBy(cmd, e));
@@ -387,6 +390,10 @@ export function parseVimrc(text: string, known: KnownNames): VimrcEntry[] {
       out.push(skip("script"));
     } else {
       out.push(skip("unknownEx"));
+    }
+    const map = MAPS.get(cmd);
+    if (map && !map.startsWith("i") && out.at(-1)?.kind === "skip") {
+      leftOut.add(engineKeys(rest.replace(MAP_ARGS, "").split(/\s/, 1)[0]!));
     }
   }
   // The engine runs a whole match at once, however many longer mappings share its start, so a key that does nothing
