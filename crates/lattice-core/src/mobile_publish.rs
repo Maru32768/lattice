@@ -507,7 +507,13 @@ async fn change_with<B: Bucket>(
         Ok((creds(&s)?, settings))
     })
     .await?;
-    let leaving_bucket = current.as_ref().is_some_and(|(c, _)| leaves(c, &settings)) && !abandon;
+    let leaving = current.as_ref().is_some_and(|(c, _)| leaves(c, &settings));
+    if leaving && abandon {
+        // Given up: nothing will try to reach it again. The reader was told its Worker keeps the token.
+        let (s, key, hash) = (store.clone(), format!("{}{AUTH_KEY}", scope_of(&current.as_ref().expect("leaving has creds").0)), sha256_hex(NO_TOKEN));
+        blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await?;
+    }
+    let leaving_bucket = leaving && !abandon;
     // Only a save that leaves the bucket waits for a running pass: one that keeps it has nothing to take back from it.
     let _pass = if leaving_bucket {
         let stopping = Leaving::new(store);
@@ -563,9 +569,12 @@ async fn run_pass<B: Bucket>(
     let bucket = bucket_for(creds_now);
     if !enabled {
         // Turned off by a save that could not reach the bucket, or the leaving failed: try again.
-        if let Err(e) = leave(store, &bucket, &scope, on_applied).await {
-            log::warn!("mobile snapshot: withdrawing the token: {e}");
-            note(store, LAST_ERROR, Some(e)).await;
+        match leave(store, &bucket, &scope, on_applied).await {
+            Ok(()) => note(store, LAST_ERROR, None).await,
+            Err(e) => {
+                log::warn!("mobile snapshot: withdrawing the token: {e}");
+                note(store, LAST_ERROR, Some(e)).await;
+            }
         }
         return;
     }
@@ -991,6 +1000,11 @@ mod tests {
         assert!(change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.is_err());
         change_with(&store, settings(false, "lattice-mobile", WORKER), true, |_| &a, &|_| {}).await.unwrap();
         assert!(!status(&store).unwrap().enabled);
+        a.take_puts();
+        run(&store, &a, true).await;
+        assert!(a.take_puts().is_empty(), "nothing tries to reach it again");
+        assert_eq!(status(&store).unwrap().last_error, None);
+        change_to(&store, settings(false, "lattice-mobile", "https://other.example.workers.dev"), &a).await.unwrap();
     }
 
     /// Takes puts, fails listings: the network gone between the token's upload and the inbox.
