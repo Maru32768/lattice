@@ -135,7 +135,7 @@ async fn status(mobile_server: &MobileServer, app: &App, loc: &Location) -> Resu
     // A failure must not lock the settings screen: the address shows in place of the code.
     let qr = url.as_deref().and_then(|u| qr_of(u).inspect_err(|e| log::warn!("mobile QR code: {e}")).ok());
     let snapshot = mobile_publish::status(&app.store)?;
-    let snapshot_url = if snapshot.enabled && snapshot.last_publish.is_some() {
+    let snapshot_url = if snapshot.enabled && snapshot.last_publish.is_some() && loc.warning.is_none() {
         Some(mobile::phone_url(&app.store, &snapshot.worker_url)?)
     } else {
         None
