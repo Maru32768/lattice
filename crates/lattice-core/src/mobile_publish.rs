@@ -960,9 +960,11 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
             gate.notify_one();
         };
+        a.take_puts();
         let (_, changed, _) = tokio::join!(run(&store, &a, false), change_to(&store, settings(true, "another-bucket", WORKER), &a), release);
         changed.unwrap();
         assert_eq!(a.auth()["token_hash"], serde_json::Value::Null);
+        assert!(!a.take_puts().contains(&INDEX_KEY.to_string()), "the pass stopped at its first article, not after the whole library");
         run(&store, &b, false).await;
         assert_eq!(b.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()));
     }
