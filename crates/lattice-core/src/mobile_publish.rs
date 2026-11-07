@@ -113,9 +113,11 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     if s.enabled && (account_id.is_empty() || bucket.is_empty() || key_id.is_empty() || !has_secret || worker_url.is_empty()) {
         return Err(msg!("mobile.snapshotIncomplete"));
     }
-    // A different bucket has none of what this one holds.
+    // A different bucket holds nothing yet: no QR code until a pass has filled it.
     if get(store, ACCOUNT_ID)?.unwrap_or_default() != account_id || get(store, BUCKET)?.unwrap_or_default() != bucket {
         forget_published(store)?;
+        set(store, LAST_PUBLISH, None)?;
+        set(store, LAST_ERROR, None)?;
     }
     let opt = |v: &str| (!v.is_empty()).then(|| v.to_string());
     set(store, ENABLED, s.enabled.then_some("1"))?;
@@ -611,11 +613,14 @@ mod tests {
         assert_eq!(got.worker_url, WORKER);
         assert!(creds(&s).unwrap().is_some());
         s.conn().execute("INSERT INTO mobile_published (key, hash) VALUES ('x', 'y')", []).unwrap();
+        set(&s, LAST_PUBLISH, Some("1")).unwrap();
         save(&s, &settings(true, "lattice-mobile", WORKER)).unwrap();
         let count = |s: &Store| s.conn().query_row("SELECT COUNT(*) FROM mobile_published", [], |r| r.get::<_, i64>(0)).unwrap();
         assert_eq!(count(&s), 1, "the same bucket keeps what it knows");
+        assert_eq!(status(&s).unwrap().last_publish, Some(1), "the same bucket keeps it");
         save(&s, &settings(true, "another-bucket", WORKER)).unwrap();
         assert_eq!(count(&s), 0);
+        assert_eq!(status(&s).unwrap().last_publish, None);
         save(&s, &settings(false, "another-bucket", WORKER)).unwrap();
         assert!(creds(&s).unwrap().is_none(), "off means no pass runs");
     }
