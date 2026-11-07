@@ -12,6 +12,8 @@ const DOCS = "lattice-docs";
 const KEEP_DOCS = 200;
 /** A PC that is off must not hold up the snapshot: this long, then the snapshot. */
 const PROBE_MS = 2500;
+/** An answer from the PC is good for this long. */
+const LIVE_ANSWER_MS = 30_000;
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
 /**
@@ -88,8 +90,10 @@ const authorization = () => ({ Authorization: `Bearer ${read(TOKEN) ?? ""}` });
  */
 let live: string | null = read(LIVE);
 let liveAnswers = false;
+let liveAskedAt = 0;
 
 async function askLive() {
+  liveAskedAt = Date.now();
   liveAnswers =
     live != null &&
     new URL(live).origin !== location.origin &&
@@ -99,9 +103,17 @@ async function askLive() {
     ));
 }
 
+/** As of now: a PC that has gone to sleep since would hold up a request for the whole timeout. */
+async function liveNow(): Promise<boolean> {
+  if (live != null && Date.now() - liveAskedAt > LIVE_ANSWER_MS) {
+    await askLive();
+  }
+  return liveAnswers;
+}
+
 /** The API by way of the PC if it answers, then of wherever this page came from. */
 async function request(path: string): Promise<Response> {
-  if (liveAnswers) {
+  if (await liveNow()) {
     try {
       const response = await fetch(`${live}/${path}`, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
       if (response.status !== 401) {
@@ -308,7 +320,7 @@ async function sendTo(base: string, op: MobileOp): Promise<SendResult> {
 
 /** To the PC if it answers, else to wherever this page came from. Both ways are safe together: the operation's id applies it once. */
 async function sendOp(op: MobileOp): Promise<SendResult> {
-  if (liveAnswers) {
+  if (await liveNow()) {
     const result = await sendTo(`${live}/`, op);
     if (result.status !== "wait") {
       return result;
