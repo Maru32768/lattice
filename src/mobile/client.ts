@@ -140,55 +140,73 @@ async function keep(path: string, response: Response) {
   }
 }
 
-/** A document, and whether it is the saved copy because the network failed. */
-async function document(path: string): Promise<{ response: Response; saved: boolean }> {
+/** A document as it crosses the network. */
+type Doc = MobileIndex | ArticleDoc;
+
+async function savedDoc(path: string): Promise<Doc | null> {
   try {
-    const response = await request(path);
-    if (response.ok) {
-      await keep(path, response.clone()).catch(() => {});
-    }
-    return { response, saved: false };
+    const saved = await (await docs())?.match(path);
+    return saved ? ((await saved.json()) as Doc) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A document from the network, kept for later. Null when the server says it is gone. An error page, such as a tunnel's
+ * with the PC off, throws: it must not hide the saved copy.
+ */
+async function fetched(path: string): Promise<Doc | null> {
+  const response = await request(path);
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  await keep(path, response.clone()).catch(() => {});
+  return (await response.json()) as Doc;
+}
+
+/** A document, and whether it is the saved copy because the network failed. */
+async function document(path: string): Promise<{ doc: Doc | null; saved: boolean }> {
+  try {
+    return { doc: await fetched(path), saved: false };
   } catch (e) {
-    const saved = e instanceof Unauthorized ? undefined : await (await docs())?.match(path);
+    const saved = e instanceof Unauthorized ? null : await savedDoc(path);
     if (!saved) {
       throw e;
     }
-    return { response: saved, saved: true };
+    return { doc: saved, saved: true };
   }
 }
 
 /** The list, and whether it is the saved copy. */
 export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean }> {
   await askLive();
-  let { response, saved } = await document("api/index");
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+  let found = await document("api/index");
+  if (found.doc == null) {
+    throw new Error("no list yet");
   }
-  let index = (await response.json()) as MobileIndex;
   // The snapshot says where the PC is. It may be there right now.
-  if (!saved && !liveAnswers && index.live_url && index.live_url !== live) {
-    live = index.live_url;
-    write(LIVE, live);
+  const named = (found.doc as MobileIndex).live_url;
+  if (!found.saved && !liveAnswers && named && named !== live) {
+    live = named;
+    write(LIVE, named);
     await askLive();
     if (liveAnswers) {
-      ({ response, saved } = await document("api/index"));
-      index = (await response.json()) as MobileIndex;
+      found = await document("api/index");
     }
   }
+  const index = found.doc as MobileIndex;
   updateOps((local) => settled(local, index.applied_ops, Date.now()));
-  return { index, saved };
+  return { index, saved: found.saved };
 }
 
 /** Null when the article is gone, and whether it is the saved copy. */
 export async function loadArticle(id: number): Promise<{ doc: ArticleDoc | null; saved: boolean }> {
-  const { response, saved } = await document(`api/articles/${id}`);
-  if (response.status === 404) {
-    return { doc: null, saved };
-  }
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-  return { doc: (await response.json()) as ArticleDoc, saved };
+  const { doc, saved } = await document(`api/articles/${id}`);
+  return { doc: doc as ArticleDoc | null, saved };
 }
 
 /** Leaves nothing of the library on this phone. Other tabs follow through `storage`. */

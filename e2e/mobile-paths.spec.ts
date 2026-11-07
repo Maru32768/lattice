@@ -266,6 +266,35 @@ test("the phone reads from the PC when it can reach it, and from the snapshot wh
   await worker.close();
 });
 
+test("an error page in place of the list or the page itself does not hide the saved copy", async ({ browser }) => {
+  const bucket = snapshotBucket(Math.floor(Date.now() / 1000), null);
+  let down = false;
+  const worker = await serve((request) =>
+    down
+      ? new Response("<h1>530 origin is off</h1>", { status: 530, headers: { "content-type": "text/html" } })
+      : (handle as Handle)(request, bucket, (clock += 120_000)),
+  );
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await underServiceWorker(page);
+  await showAll(page);
+  await page.getByRole("link", { name: /Snapshot one/ }).click();
+  await expect(page.getByText("the snapshot's text")).toBeVisible();
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.reload();
+  await page.getByText("更新").waitFor();
+  down = true;
+  await page.reload();
+  await expect(page.getByRole("alert")).toHaveText("接続できないので、保存した内容を表示しています");
+  await showAll(page);
+  await page.getByRole("link", { name: /Snapshot one/ }).click();
+  await expect(page.getByText("the snapshot's text")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveText("接続できないので、保存した内容を表示しています");
+  await ctx.close();
+  await worker.close();
+});
+
 test("another library's QR code leaves nothing of the first on the phone", async ({ browser }) => {
   const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), null));
   const ctx = await context(browser);
