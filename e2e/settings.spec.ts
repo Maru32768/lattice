@@ -228,6 +228,6 @@ test("the snapshot asks for everything before it turns on, then shows its QR cod
   await expect(app.getByText("https://lattice-mobile.example.workers.dev/", { exact: true })).toBeVisible();
   await expect(app.getByLabel("Secret Access Key"), "the secret does not come back").toHaveValue("");
   await expect(app.getByRole("button", { name: "今すぐ公開" })).toBeEnabled();
-  await app.getByRole("button", { name: "すべて上げ直す" }).click();
-  await expect.poll(() => callsOf(app, "mobile_publish_now")).toEqual([{ again: true }]);
+  await app.getByRole("button", { name: "今すぐ公開" }).click();
+  await expect.poll(() => callsOf(app, "mobile_publish_now").then((c) => c.length)).toBe(1);
 });

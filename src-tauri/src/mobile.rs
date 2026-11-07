@@ -202,19 +202,10 @@ pub async fn mobile_snapshot_save(
     status(&mobile_server, &app, &loc).await
 }
 
-/// `again`: uploads everything, for a bucket emptied or restored behind this library's back.
 #[tauri::command]
-pub async fn mobile_publish_now(
-    again: bool,
-    mobile_server: State<'_, MobileServer>,
-    app: State<'_, App>,
-    loc: State<'_, Location>,
-) -> Result<MobileStatus, String> {
+pub async fn mobile_publish_now(mobile_server: State<'_, MobileServer>, app: State<'_, App>, loc: State<'_, Location>) -> Result<MobileStatus, String> {
     if loc.warning.is_some() {
         return Err(msg!("mobile.fellBack"));
-    }
-    if again {
-        mobile_publish::forget_published(&app.store)?;
     }
     mobile_publish::clear_rejected(&app.store)?;
     mobile_server.publish_now.notify_one();

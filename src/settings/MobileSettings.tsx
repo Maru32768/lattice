@@ -73,10 +73,10 @@ export function MobileSettings() {
     }
   }
 
-  async function publish(again: boolean) {
+  async function publish() {
     setError(null);
     try {
-      setStatus(await mobile.publishNow(again));
+      setStatus(await mobile.publishNow());
     } catch (e) {
       setError(String(e));
     }
@@ -221,11 +221,8 @@ export function MobileSettings() {
         <button className="btn pri" onClick={() => void saveSnapshot()} disabled={status.fell_back}>
           {t("common.save")}
         </button>
-        <button className="btn" onClick={() => void publish(false)} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
+        <button className="btn" onClick={() => void publish()} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
           {t("mobileSettings.publishNow")}
-        </button>
-        <button className="btn" onClick={() => void publish(true)} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
-          {t("mobileSettings.publishAgain")}
         </button>
       </div>
       <p className="sec-d">

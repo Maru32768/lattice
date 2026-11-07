@@ -1354,7 +1354,6 @@ export const ja = {
   "mobileSettings.snapshotEnabled": "スナップショットを公開",
   "mobileSettings.workerUrl": "Workerのアドレス",
   "mobileSettings.publishNow": "今すぐ公開",
-  "mobileSettings.publishAgain": "すべて上げ直す",
   "mobileSettings.publishing": "公開中です…",
   "mobileSettings.lastPublish": "前回の公開: {time}",
   "mobileSettings.neverPublished": "まだ公開していません",

@@ -325,7 +325,7 @@ export const mobile = {
   save: (settings: MobileSettings) => invoke<MobileStatus>("mobile_save", { settings }),
   regenerateToken: () => invoke<MobileStatus>("mobile_regenerate_token"),
   saveSnapshot: (settings: SnapshotSettings) => invoke<MobileStatus>("mobile_snapshot_save", { settings }),
-  publishNow: (again: boolean) => invoke<MobileStatus>("mobile_publish_now", { again }),
+  publishNow: () => invoke<MobileStatus>("mobile_publish_now"),
 };
 
 /** In-place updates from the GitHub releases. */

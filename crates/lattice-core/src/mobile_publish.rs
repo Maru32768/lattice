@@ -31,6 +31,8 @@ const LAST_REJECTED: &str = "mobile.snapshot.last_rejected";
 const AUTH_KEY: &str = "auth.json";
 const INDEX_KEY: &str = "index.json";
 const INBOX_PREFIX: &str = "inbox/";
+const PAGE_PREFIX: &str = "page/";
+const ARTICLE_PREFIX: &str = "articles/";
 
 /// What the bucket holds once the snapshot is turned off: the Worker answers every token with 401.
 const NO_TOKEN: &[u8] = br#"{"token_hash":null,"live_origin":null}"#;
@@ -234,27 +236,61 @@ pub(crate) async fn take_inbox<B: Bucket>(store: &Arc<Store>, bucket: &B, on_app
     Ok(applied)
 }
 
-/// Uploads `raw` under `key` unless the bucket has what `hash` stands for. Compressed when `gzip`, which the Worker assumes by the key.
-async fn put_if_changed<B: Bucket>(store: &Arc<Store>, bucket: &B, key: String, hash: String, raw: Vec<u8>, gzip: bool) -> Result<(), String> {
-    let (s, k, h) = (store.clone(), key.clone(), hash.clone());
-    let body = blocking(move || {
-        let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [&k], |r| r.get(0)).optional().map_err(err)?;
-        if known.as_deref() == Some(&h) {
-            return Ok(None);
+/// What one pass has seen of the bucket and has put there.
+struct Uploads<'a, B> {
+    store: &'a Arc<Store>,
+    bucket: &'a B,
+    /// As listed at the start. `mobile_published` says what this library uploaded, but a bucket can be
+    /// emptied, or the library restored from a backup: only an object seen here counts as being there.
+    present: HashSet<String>,
+    live: HashSet<String>,
+}
+
+impl<B: Bucket> Uploads<'_, B> {
+    /// Uploads `raw` under `key` unless the bucket has what `hash` stands for. Compressed when `gzip`, which the Worker assumes by the key.
+    async fn put_if_changed(&mut self, key: String, hash: String, raw: Vec<u8>, gzip: bool) -> Result<(), String> {
+        self.live.insert(key.clone());
+        let there = self.present.contains(&key);
+        let (s, k, h) = (self.store.clone(), key.clone(), hash.clone());
+        let body = blocking(move || {
+            let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [&k], |r| r.get(0)).optional().map_err(err)?;
+            if there && known.as_deref() == Some(&h) {
+                return Ok(None);
+            }
+            Ok(Some(if gzip {
+                mobile::gzip(&raw).map_err(err)?
+            } else {
+                raw
+            }))
+        })
+        .await?;
+        let Some(body) = body else {
+            return Ok(());
+        };
+        self.bucket.put(&key, body).await?;
+        let s = self.store.clone();
+        blocking(move || s.conn().execute("INSERT OR REPLACE INTO mobile_published (key, hash) VALUES (?1, ?2)", params![key, hash]).map(drop).map_err(err))
+            .await
+    }
+
+    /// Takes down what the library no longer has. Only under this module's own prefixes: a bucket
+    /// entered by mistake may hold other things, such as backups.
+    async fn remove_the_rest(&self) -> Result<(), String> {
+        for key in self.present.iter().filter(|k| (k.starts_with(ARTICLE_PREFIX) || k.starts_with(PAGE_PREFIX)) && !self.live.contains(*k)) {
+            self.bucket.delete(key).await?;
         }
-        Ok(Some(if gzip {
-            mobile::gzip(&raw).map_err(err)?
-        } else {
-            raw
-        }))
-    })
-    .await?;
-    let Some(body) = body else {
-        return Ok(());
-    };
-    bucket.put(&key, body).await?;
-    let s = store.clone();
-    blocking(move || s.conn().execute("INSERT OR REPLACE INTO mobile_published (key, hash) VALUES (?1, ?2)", params![key, hash]).map(drop).map_err(err)).await
+        let (s, live) = (self.store.clone(), self.live.clone());
+        blocking(move || {
+            let conn = s.conn();
+            let mut stmt = conn.prepare("SELECT key FROM mobile_published").map_err(err)?;
+            let keys = stmt.query_map([], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<Vec<String>>>().map_err(err)?;
+            for key in keys.iter().filter(|k| !live.contains(*k)) {
+                conn.execute("DELETE FROM mobile_published WHERE key = ?1", [key]).map_err(err)?;
+            }
+            Ok(())
+        })
+        .await
+    }
 }
 
 /// An article's part of its upload. The row is left out: read state, tags and scores change often, and the list carries them.
@@ -279,16 +315,15 @@ fn article_upload(store: &Store, id: i64) -> Result<Option<(String, Vec<u8>)>, S
 pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[PageFile], on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
     take_inbox(store, bucket, on_applied).await?;
 
-    let mut live: HashSet<String> = HashSet::new();
+    let present = bucket.list("").await?.into_iter().collect();
+    let mut uploads = Uploads { store, bucket, present, live: HashSet::new() };
+
     let s = store.clone();
     let auth = blocking(move || mobile::auth_document(&s)).await?;
-    live.insert(AUTH_KEY.to_string());
-    put_if_changed(store, bucket, AUTH_KEY.to_string(), sha256_hex(&auth), auth, false).await?;
+    uploads.put_if_changed(AUTH_KEY.to_string(), sha256_hex(&auth), auth, false).await?;
 
     for (name, bytes) in page {
-        let key = format!("page/{name}");
-        live.insert(key.clone());
-        put_if_changed(store, bucket, key, sha256_hex(bytes), bytes.to_vec(), !name.ends_with(".png")).await?;
+        uploads.put_if_changed(format!("{PAGE_PREFIX}{name}"), sha256_hex(bytes), bytes.to_vec(), !name.ends_with(".png")).await?;
     }
 
     let s = store.clone();
@@ -303,27 +338,12 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
         let Some((hash, doc)) = blocking(move || article_upload(&s, id)).await? else {
             continue; // deleted since the list was read
         };
-        let key = format!("articles/{id}.json");
-        live.insert(key.clone());
-        put_if_changed(store, bucket, key, hash, doc, true).await?;
+        uploads.put_if_changed(format!("{ARTICLE_PREFIX}{id}.json"), hash, doc, true).await?;
     }
 
     // Always, unchanged or not: `generated_at` tells the phone how old the snapshot is.
     bucket.put(INDEX_KEY, gz).await?;
-
-    let s = store.clone();
-    let known: Vec<String> = blocking(move || {
-        let conn = s.conn();
-        let mut stmt = conn.prepare("SELECT key FROM mobile_published").map_err(err)?;
-        let keys = stmt.query_map([], |r| r.get(0)).map_err(err)?.collect::<rusqlite::Result<Vec<String>>>().map_err(err)?;
-        Ok(keys)
-    })
-    .await?;
-    for key in known.into_iter().filter(|k| !live.contains(k)) {
-        bucket.delete(&key).await?;
-        let s = store.clone();
-        blocking(move || s.conn().execute("DELETE FROM mobile_published WHERE key = ?1", [&key]).map(drop).map_err(err)).await?;
-    }
+    uploads.remove_the_rest().await?;
     Ok(())
 }
 
@@ -439,6 +459,9 @@ mod tests {
         fn keys(&self) -> Vec<String> {
             self.objects.lock().unwrap().keys().cloned().collect()
         }
+        fn has(&self, key: &str) -> bool {
+            self.objects.lock().unwrap().contains_key(key)
+        }
         fn json(&self, key: &str) -> serde_json::Value {
             let objects = self.objects.lock().unwrap();
             let mut text = String::new();
@@ -519,6 +542,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn what_the_bucket_lost_goes_up_again() {
+        let (store, bucket, id) = setup();
+        pass(&store, &bucket).await;
+        let key = format!("articles/{id}.json");
+        bucket.objects.lock().unwrap().remove(&key);
+        bucket.objects.lock().unwrap().remove("auth.json");
+        bucket.take_puts();
+        pass(&store, &bucket).await;
+        assert!(bucket.has(&key) && bucket.has("auth.json"), "the bucket was emptied or the library restored");
+    }
+
+    #[tokio::test]
     async fn a_new_token_replaces_the_old_one_in_the_next_pass() {
         let (store, bucket, _) = setup();
         pass(&store, &bucket).await;
@@ -530,13 +565,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_deleted_article_comes_down_after_the_list() {
+    async fn a_deleted_article_comes_down_and_nothing_else_of_a_mistaken_bucket_does() {
         let (store, bucket, id) = setup();
+        bucket.with("lattice/my-pc/lattice-20261017T030000Z.db.gz", "a backup");
         pass(&store, &bucket).await;
+        bucket.with("articles/999.json", "an article restored away");
         store.delete_article(id).unwrap();
         pass(&store, &bucket).await;
-        assert!(!bucket.keys().contains(&format!("articles/{id}.json")));
-        assert_eq!(bucket.json("index.json")["articles"].as_array().unwrap().len(), 0);
+        assert!(!bucket.has(&format!("articles/{id}.json")));
+        assert!(!bucket.has("articles/999.json"));
+        assert!(bucket.has("lattice/my-pc/lattice-20261017T030000Z.db.gz"), "a backup in a bucket entered by mistake stays");
     }
 
     #[tokio::test]
@@ -545,7 +583,7 @@ mod tests {
         let other = store.upsert_pending("https://example.com/b", "https://example.com/b", "example.com").unwrap().0;
         *bucket.fail_puts_of.lock().unwrap() = Some(format!("articles/{id}.json"));
         assert!(publish(&store, &&bucket, PAGE, &|_| {}).await.is_err());
-        assert!(!bucket.keys().contains(&"index.json".to_string()), "no list points at what is not there");
+        assert!(!bucket.has("index.json"), "no list points at what is not there");
         *bucket.fail_puts_of.lock().unwrap() = None;
         bucket.take_puts();
         pass(&store, &bucket).await;

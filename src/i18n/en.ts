@@ -1372,7 +1372,6 @@ export const en = {
   "mobileSettings.snapshotEnabled": "Publish a snapshot",
   "mobileSettings.workerUrl": "Worker address",
   "mobileSettings.publishNow": "Publish now",
-  "mobileSettings.publishAgain": "Upload everything again",
   "mobileSettings.publishing": "Publishing…",
   "mobileSettings.lastPublish": "Last published: {time}",
   "mobileSettings.neverPublished": "Not published yet",
