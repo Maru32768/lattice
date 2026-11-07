@@ -213,7 +213,12 @@ pub(crate) async fn take_inbox<B: Bucket>(store: &Arc<Store>, bucket: &B, on_app
     keys.sort();
     let mut applied = 0;
     for key in keys {
-        let body = bucket.get(&key).await?;
+        let body = match bucket.get(&key).await {
+            Ok(body) => body,
+            // The Worker took it back: it arrived as the token went out, and the phone keeps it.
+            Err(e) if e.contains("NoSuchKey") => continue,
+            Err(e) => return Err(e),
+        };
         let store = store.clone();
         let outcome = blocking(move || {
             let outcome = match serde_json::from_slice::<MobileOp>(&body) {
@@ -1005,6 +1010,31 @@ mod tests {
         assert!(a.take_puts().is_empty(), "nothing tries to reach it again");
         assert_eq!(status(&store).unwrap().last_error, None);
         change_to(&store, settings(false, "lattice-mobile", "https://other.example.workers.dev"), &a).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_operation_the_worker_took_back_is_no_reason_to_fail() {
+        let (store, a, _) = setup();
+        let missing = Missing(&a);
+        a.with("inbox/1-gone.json", "taken back by the Worker before it could be read");
+        assert_eq!(take_inbox(&store, &missing, &|_| {}).await.unwrap(), 0);
+    }
+
+    /// Lists a key whose read finds it gone, as when the Worker takes an operation back.
+    struct Missing<'m>(&'m Memory);
+    impl Bucket for Missing<'_> {
+        async fn put(&self, key: &str, body: Vec<u8>) -> Result<(), String> {
+            (&self.0).put(key, body).await
+        }
+        async fn get(&self, _: &str) -> Result<Vec<u8>, String> {
+            Err("R2 HTTP 404 Not Found: <Error><Code>NoSuchKey</Code></Error>".into())
+        }
+        async fn delete(&self, key: &str) -> Result<(), String> {
+            (&self.0).delete(key).await
+        }
+        async fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
+            (&self.0).list(prefix).await
+        }
     }
 
     /// Takes puts, fails listings: the network gone between the token's upload and the inbox.
