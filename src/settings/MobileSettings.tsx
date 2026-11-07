@@ -23,12 +23,22 @@ export function MobileSettings() {
       .catch((e: unknown) => setError(String(e)));
   }, []);
 
-  async function run(action: () => Promise<MobileStatus>) {
+  async function save() {
     setError(null);
     try {
-      const s = await action();
+      const s = await mobile.save(form!);
       setStatus(s);
       setForm(s.settings);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  /** Leaves the form alone: what is typed there has not been saved yet. */
+  async function regenerate() {
+    setError(null);
+    try {
+      setStatus(await mobile.regenerateToken());
     } catch (e) {
       setError(String(e));
     }
@@ -78,10 +88,10 @@ export function MobileSettings() {
         </SetRow>
       </div>
       <div className="btn-row">
-        <button className="btn pri" onClick={() => void run(() => mobile.save(form))} disabled={status.fell_back || !portOk}>
+        <button className="btn pri" onClick={() => void save()} disabled={status.fell_back || !portOk}>
           {t("common.save")}
         </button>
-        <button className="btn" onClick={() => void run(mobile.regenerateToken)} disabled={status.fell_back}>
+        <button className="btn" onClick={() => void regenerate()} disabled={status.fell_back}>
           {t("mobileSettings.regenerate")}
         </button>
       </div>
