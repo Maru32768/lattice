@@ -146,6 +146,7 @@ export function App() {
           ops={shownOps}
           unsent={unsent}
           writable={index != null && !index.read_only}
+          onGone={() => void refresh()}
           onBack={(e) => {
             // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
             if (fromList.current) {

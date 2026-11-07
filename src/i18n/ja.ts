@@ -1329,7 +1329,7 @@ export const ja = {
   "mobile.noArticles": "記事がありません。",
   "mobile.more": "もっと見る(残り{n}件)",
   "mobile.back": "一覧",
-  "mobile.gone": "この記事はもうありません。",
+  "mobile.gone": "この記事を読めません。削除されたか、まだ公開されていません。",
   "mobile.summary": "要約",
   "mobile.notTranslated": "この記事はまだ翻訳されていません。",
   "mobile.noText": "本文がありません。",

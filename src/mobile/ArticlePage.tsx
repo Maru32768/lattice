@@ -80,6 +80,7 @@ export function ArticlePage({
   ops,
   unsent,
   writable,
+  onGone,
   onBack,
 }: {
   id: number;
@@ -88,6 +89,8 @@ export function ArticlePage({
   ops: LocalOp[];
   unsent: number;
   writable: boolean;
+  /** The server no longer has it: the list should know. */
+  onGone: () => void;
   onBack: (e: React.MouseEvent) => void;
 }) {
   const t = useT();
@@ -102,7 +105,11 @@ export function ArticlePage({
 
   const load = async () => {
     setLoaded("loading");
-    setLoaded(await fetchDoc(id));
+    const result = await fetchDoc(id);
+    setLoaded(result);
+    if (typeof result === "object" && result.doc == null) {
+      onGone();
+    }
   };
   // App remounts this page per article.
   const firstLoad = useEffectEvent(() => void load());

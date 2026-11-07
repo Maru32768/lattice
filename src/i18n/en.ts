@@ -1347,7 +1347,7 @@ export const en = {
   "mobile.noArticles": "No articles.",
   "mobile.more": "Show more ({n} left)",
   "mobile.back": "List",
-  "mobile.gone": "This article no longer exists.",
+  "mobile.gone": "This article cannot be read. It was deleted, or it is not published yet.",
   "mobile.summary": "Summary",
   "mobile.notTranslated": "This article has not been translated yet.",
   "mobile.noText": "There is no text.",
