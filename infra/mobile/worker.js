@@ -56,7 +56,6 @@ async function document(bucket, key) {
 }
 
 async function takeOp(request, bucket, now) {
-  const hashBefore = (await currentAuth(bucket, now)).hash;
   if (Number(request.headers.get("content-length") ?? 0) > MAX_OP_BYTES) {
     return json(413, { error: "too large" });
   }
@@ -78,7 +77,7 @@ async function takeOp(request, bucket, now) {
   await bucket.put(key, text);
   // The PC may have taken the token out and emptied the inbox for good while this was on its way. Then the phone keeps the
   // operation and sends it elsewhere; its id applies it once even if this copy is read some day.
-  if ((await currentAuth(bucket, now, true)).hash !== hashBefore) {
+  if (!(await authorized(request, bucket, now, true))) {
     await bucket.delete(key);
     return json(401, { error: "unauthorized" });
   }
