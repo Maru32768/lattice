@@ -425,6 +425,36 @@ async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applie
     blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, key]).map(drop).map_err(err)).await
 }
 
+/// One pass at a time, and saving settings waits for a pass to end: a pass still at work on a bucket could put the token
+/// back there after a save has taken it out. `LEAVING` names the libraries (by address) whose running pass should stop at its next article.
+static PASS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static LEAVING: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
+
+fn address(store: &Store) -> usize {
+    std::ptr::from_ref(store) as usize
+}
+
+fn leaving(store: &Store) -> bool {
+    LEAVING.lock().unwrap_or_else(|e| e.into_inner()).contains(&address(store))
+}
+
+/// Marks a library as leaving for as long as it lives, however the save ends.
+struct Leaving(usize);
+impl Leaving {
+    fn new(store: &Store) -> Self {
+        LEAVING.lock().unwrap_or_else(|e| e.into_inner()).push(address(store));
+        Leaving(address(store))
+    }
+}
+impl Drop for Leaving {
+    fn drop(&mut self) {
+        let mut all = LEAVING.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(i) = all.iter().position(|a| *a == self.0) {
+            all.swap_remove(i);
+        }
+    }
+}
+
 /// Whether new settings leave the bucket the current ones point at.
 fn leaves(c: &Creds, s: &SnapshotSettings) -> bool {
     !s.enabled || s.account_id.trim() != c.account_id || s.bucket.trim() != c.bucket || s.access_key_id.trim().is_empty()
@@ -442,6 +472,9 @@ async fn change_with<B: Bucket>(
     bucket_for: impl FnOnce(Creds) -> B,
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
 ) -> Result<(), String> {
+    let stopping = Leaving::new(store);
+    let _pass = PASS.lock().await;
+    drop(stopping);
     let s = store.clone();
     let (current, settings) = blocking(move || {
         // Refused settings must not cut the phone off: they change nothing.
@@ -474,6 +507,7 @@ async fn run_pass<B: Bucket>(
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
     inbox_only: bool,
 ) {
+    let _pass = PASS.lock().await;
     RUNNING.store(true, Ordering::SeqCst);
     let _running = Running;
     let s = store.clone();
@@ -503,7 +537,7 @@ async fn run_pass<B: Bucket>(
             }
         }
     }
-    let keep_going = Arc::new(move |s: &Store| creds(s).ok().flatten().is_some_and(|(c, on)| on && c.account_id == account && c.bucket == name));
+    let keep_going = Arc::new(move |s: &Store| !leaving(s) && creds(s).ok().flatten().is_some_and(|(c, on)| on && c.account_id == account && c.bucket == name));
     match publish(store, &bucket, &scope, page, on_applied, keep_going).await {
         Ok(Published { stopped: true, .. }) => {}
         Ok(Published { unreadable, .. }) => {
@@ -551,6 +585,8 @@ mod tests {
         objects: Mutex<BTreeMap<String, Vec<u8>>>,
         puts: Mutex<Vec<String>>,
         fail_puts_of: Mutex<Option<String>>,
+        /// Holds the next listing until notified.
+        gate: Mutex<Option<Arc<Notify>>>,
     }
 
     impl Memory {
@@ -594,6 +630,10 @@ mod tests {
             Ok(())
         }
         async fn list(&self, prefix: &str) -> Result<Vec<String>, String> {
+            let gate = self.gate.lock().unwrap().take();
+            if let Some(gate) = gate {
+                gate.notified().await;
+            }
             Ok(self.keys().into_iter().filter(|k| k.starts_with(prefix)).collect())
         }
     }
@@ -852,6 +892,26 @@ mod tests {
             assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "{why}");
             assert!(store.article_row(id).unwrap().unwrap().favorite, "{why}: what waited in its inbox applied first");
         }
+    }
+
+    #[tokio::test]
+    async fn a_pass_running_while_settings_leave_its_bucket_cannot_put_the_token_back() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        mobile::regenerate_token(&store).unwrap();
+        let gate = Arc::new(Notify::new());
+        *a.gate.lock().unwrap() = Some(gate.clone());
+        let b = Memory::default();
+        let release = async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            gate.notify_one();
+        };
+        let (_, changed, _) = tokio::join!(run(&store, &a, false), change_to(&store, settings(true, "another-bucket", WORKER), &a), release);
+        changed.unwrap();
+        assert_eq!(a.auth()["token_hash"], serde_json::Value::Null);
+        run(&store, &b, false).await;
+        assert_eq!(b.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()));
     }
 
     #[tokio::test]
