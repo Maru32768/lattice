@@ -241,8 +241,8 @@ export function MobileSettings() {
       {status.snapshot.last_rejected && <p className="note warn">{t("mobileSettings.opRejected", { error: t.msg(status.snapshot.last_rejected) })}</p>}
       {error?.includes("mobile.leaveFailed") && (
         <div className="note warn">
-          <p>{t("mobileSettings.abandonDesc")}</p>
-          <button className="btn" onClick={() => void saveSnapshot(true)} disabled={saving}>
+          <p id="snapshot-abandon-desc">{t("mobileSettings.abandonDesc")}</p>
+          <button className="btn" onClick={() => void saveSnapshot(true)} disabled={saving} aria-describedby="snapshot-abandon-desc">
             {t("mobileSettings.abandon")}
           </button>
         </div>

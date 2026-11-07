@@ -248,6 +248,7 @@ test("a bucket nothing reaches any more can be given up, after the screen says w
   await save.click();
   await expect(app.getByRole("alert")).toContainText("保存していません");
   const giveUp = app.getByRole("button", { name: "前のbucketを諦めて保存" });
+  await expect(giveUp).toHaveAccessibleDescription(/削除するまで今のトークンを受け付けます/);
   await giveUp.click();
   await expect.poll(() => callsOf(app, "mobile_snapshot_save").then((c) => (c.at(-1) as { abandon: boolean }).abandon)).toBe(true);
   await expect(giveUp).toHaveCount(0);
