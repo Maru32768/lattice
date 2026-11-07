@@ -402,7 +402,7 @@ export const whenRejected = (f: typeof onRejected) => {
 /** Sends what has not been sent, in order, stopping at the first that cannot get through for now. */
 export function flushOps(): Promise<void> {
   flushing ??= (async () => {
-    updateOps((local) => local);
+    updateOps((local) => settled(local, [], Date.now()));
     for (let next = ops.find((o) => !o.sent); next; next = ops.find((o) => !o.sent)) {
       const sending = next;
       const result = await sendOp(sending);

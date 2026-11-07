@@ -672,3 +672,17 @@ test("a login page answered in place of the list is not taken for it", async ({ 
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(page.getByText("First article")).toBeVisible();
 });
+
+test("an operation past its time is never sent", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("seeded")) {
+      localStorage.setItem("seeded", "1");
+      const old = Date.now() - 61 * 24 * 60 * 60 * 1000;
+      localStorage.setItem("lattice.mobile.ops", JSON.stringify([{ id: "old", op: { kind: "set_read", article_id: 1, read: true }, at: old, sent: false }]));
+    }
+  });
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await page.waitForTimeout(200);
+  expect(sentOps(seen)).toEqual([]);
+});
