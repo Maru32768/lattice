@@ -141,7 +141,7 @@ pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     if let Some(v) = secret {
         set(store, SECRET_KEY, Some(v))?;
     }
-    clear_rejected(store)
+    Ok(())
 }
 
 /// The reader has acted since: the warning has done its work.
@@ -446,6 +446,7 @@ async fn change_with<B: Bucket>(
     let (current, settings) = blocking(move || {
         // Refused settings must not cut the phone off: they change nothing.
         check(&s, &settings)?;
+        clear_rejected(&s)?;
         Ok((creds(&s)?, settings))
     })
     .await?;
@@ -860,6 +861,16 @@ mod tests {
         run(&store, &a, false).await;
         assert!(change_to(&store, settings(true, "Not_A_Bucket", WORKER), &a).await.is_err());
         assert_eq!(a.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "the phone keeps reading");
+    }
+
+    #[tokio::test]
+    async fn a_refusal_found_while_leaving_stays_on_the_settings_screen() {
+        let (store, a, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &a, false).await;
+        a.with("inbox/1-bad.json", r#"{"id":"bad","op":{"kind":"save_url","url":"javascript:x"}}"#);
+        change_to(&store, settings(false, "lattice-mobile", WORKER), &a).await.unwrap();
+        assert!(status(&store).unwrap().last_rejected.is_some());
     }
 
     #[tokio::test]
