@@ -28,6 +28,11 @@ export function ListPage({
   const t = useT();
   const [refreshing, setRefreshing] = useState(false);
   const rows = visibleArticles(index.articles, view);
+  /** A different list starts at its top. */
+  const change = (v: ListView) => {
+    onView(v);
+    window.scrollTo(0, 0);
+  };
   const refresh = async () => {
     setRefreshing(true);
     await onRefresh();
@@ -42,7 +47,7 @@ export function ListPage({
               key={f.id}
               className={view.filter === f.id ? "on" : ""}
               aria-pressed={view.filter === f.id}
-              onClick={() => onView({ ...view, filter: f.id, shown: PAGE })}
+              onClick={() => change({ ...view, filter: f.id, shown: PAGE })}
             >
               {t(f.label)}
             </button>
@@ -62,7 +67,7 @@ export function ListPage({
           className="input"
           type="search"
           value={view.query}
-          onChange={(e) => onView({ ...view, query: e.target.value, shown: PAGE })}
+          onChange={(e) => change({ ...view, query: e.target.value, shown: PAGE })}
           placeholder={t("mobile.searchTitles")}
           aria-label={t("mobile.searchTitles")}
         />

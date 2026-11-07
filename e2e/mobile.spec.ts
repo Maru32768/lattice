@@ -190,6 +190,13 @@ test("the phone's back button also returns to the same place", async ({ page }) 
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(place);
 });
 
+test("a different list starts at its top", async ({ page }) => {
+  await start(page, { index: LONG });
+  await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "すべて" }).click();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+});
+
 test("the answer to the latest request wins, whatever order they come back in", async ({ page }) => {
   await start(page);
   await page.getByText("First article").waitFor();
