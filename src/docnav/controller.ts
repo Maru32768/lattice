@@ -240,15 +240,15 @@ export function createDocNav(host: () => DocHost) {
 
   /** Moves the view only for a match a reader cannot see: off screen, or in a box that scrolls by itself (a code block), which it comes out of first. */
   function revealRange(r: Range) {
-    /** What is on top at the match's middle: a reader sees the match if that holds or is part of it, and not if it is a header over it. */
+    /** What is on top at the middle of the match's first line (of all its lines, that is the gap between two): a reader sees the match if that is part of it, and not if it is a header over it. */
     const onTop = () => {
-      const rect = r.getBoundingClientRect();
-      return document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const rect = r.getClientRects()[0];
+      return rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
     };
     const over = onTop();
     const common = r.commonAncestorContainer;
-    // Not any node the range touches: past the edge of a code block the middle lands on what holds the block, which holds the match as well.
-    if (over && (common instanceof Element ? common : common.parentElement)?.contains(over)) {
+    // Both: past the edge of a code block the point lands on what holds the block, which the range touches, and a sticky header can sit inside what holds the match.
+    if (over && r.intersectsNode(over) && (common instanceof Element ? common : common.parentElement)?.contains(over)) {
       return;
     }
     const scroller = host().scroller();

@@ -514,6 +514,42 @@ test("a match under a sticky header is brought out from under it", async ({ read
   await expect.poll(hidden, "where a reader can see it").toBe(false);
 });
 
+test("a match under a sticky header in the same parent is brought out from under it", async ({ reader }) => {
+  const scrolled = await reader.locator("#extra").evaluate((box) => {
+    box.insertAdjacentHTML(
+      "afterbegin",
+      `<div id="both"><div style="position:sticky;top:0;height:200px;background:#fff;z-index:5">A header</div>zymurgy</div>`,
+    );
+    const view = box.closest(".doc-scroll")!;
+    const both = box.querySelector("#both")!;
+    view.scrollTop += both.getBoundingClientRect().top - view.getBoundingClientRect().top + 150;
+    return view.scrollTop;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  expect(await scrollTop(reader)).not.toBe(scrolled);
+});
+
+test("a match in view that wraps inside a long inline element leaves the view where it is", async ({ reader }) => {
+  const top = await reader.locator("#p0").evaluate((p) => {
+    const view = p.closest(".doc-scroll")!;
+    const line = `${"a".repeat(19)} `;
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<p style="width:20ch;font:16px/1.8 monospace;margin:0"><span id="sent">${line.repeat(4)}${"a".repeat(12)} zymurgy zythum ${line.repeat(2)}</span></p>`,
+    );
+    const sent = p.parentElement!.querySelector("#sent")!;
+    // Its first lines above the view, and the match on the two lines after them.
+    view.scrollTop += sent.getBoundingClientRect().top - view.getBoundingClientRect().top + 60;
+    return view.scrollTop;
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy zythum");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  expect(await scrollTop(reader)).toBe(top);
+});
+
 test("a match past the edge of a long line in a code block comes into the block", async ({ reader }) => {
   await reader.locator("#p0").evaluate((p) => {
     const view = p.closest(".doc-scroll")!;
