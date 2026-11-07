@@ -126,6 +126,8 @@ impl CodexCli {
 
         let result = async {
             let mut child = cmd.spawn().map_err(|e| crate::llm::spawn_error(&self.program, &e))?;
+            #[cfg(windows)]
+            crate::llm::end_with_this_process(&child);
             let mut stdin = child.stdin.take().expect("stdin piped");
             let mut stdout = child.stdout.take().expect("stdout piped");
             let stderr = child.stderr.take().expect("stderr piped");

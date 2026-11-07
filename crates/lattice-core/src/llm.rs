@@ -30,6 +30,42 @@ pub enum LlmError {
     RateLimited(std::time::Duration),
 }
 
+/// Ends `child`, and what it starts, with this process however this process ends. `kill_on_drop` is
+/// not enough: it is a destructor, the app leaves through `std::process::exit`, and Windows lets a
+/// process's children outlive it, so a call in flight would go on using the user's quota with nowhere
+/// to send its answer. The children go in a job, not the app: an installer or a restart must outlive it.
+#[cfg(windows)]
+#[allow(unsafe_code, reason = "Windows job object calls")]
+pub fn end_with_this_process(child: &tokio::process::Child) {
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JobObjectExtendedLimitInformation, SetInformationJobObject,
+    };
+    // Never closed: the handle's end with the process is what ends the job. Null when it could not be set up.
+    static JOB: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let job = *JOB.get_or_init(|| {
+        // SAFETY: null attributes and name are allowed; a zeroed limit struct is valid, and it outlives the call that reads its size.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let size = size_of_val(&limits) as u32;
+            if job.is_null() || SetInformationJobObject(job, JobObjectExtendedLimitInformation, (&raw const limits).cast(), size) == 0 {
+                log::warn!("no job object for CLI calls: {}", std::io::Error::last_os_error());
+                return 0;
+            }
+            job as usize
+        }
+    });
+    if let Some(process) = child.raw_handle()
+        && job != 0
+        // SAFETY: `job` lives as long as this process, and `process` while `child` is borrowed.
+        && unsafe { AssignProcessToJobObject(job as _, process as _) } == 0
+    {
+        log::warn!("adding a CLI call to the job object: {}", std::io::Error::last_os_error());
+    }
+}
+
 /// A CLI provider that could not be started; not installed (or not on PATH) is the usual case.
 pub(crate) fn spawn_error(program: &str, e: &std::io::Error) -> LlmError {
     if e.kind() == std::io::ErrorKind::NotFound {

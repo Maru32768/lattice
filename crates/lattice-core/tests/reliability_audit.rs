@@ -181,12 +181,11 @@ fn merging_a_refetched_article_into_an_existing_one_keeps_the_users_data() {
 
 const AS_APP: &str = "LATTICE_AUDIT_AS_APP";
 
-/// F8. The CLI providers rely on `kill_on_drop(true)` (claude.rs, codex.rs), a destructor. Tauri
-/// leaves through `std::process::exit` (tauri app.rs `run`), which runs none, and Windows does not
-/// end a process's children with it: a CLI call in flight when the app quits keeps running.
+/// `kill_on_drop(true)` is a destructor. Tauri leaves through `std::process::exit` (tauri app.rs `run`),
+/// which runs none, and Windows does not end a process's children with it: without
+/// `end_with_this_process`, a CLI call in flight when the app quits keeps running.
 #[cfg(windows)]
 #[test]
-#[ignore = "reliability audit F8: fails until fixed"]
 fn a_cli_call_in_flight_does_not_outlive_the_app() {
     if std::env::var_os(AS_APP).is_some() {
         // The app: a job waits on its CLI child, then the user quits.
@@ -200,6 +199,7 @@ fn a_cli_call_in_flight_does_not_outlive_the_app() {
                 .kill_on_drop(true)
                 .spawn()
                 .unwrap();
+            lattice_core::llm::end_with_this_process(&child);
             println!("child-pid {}", child.id().unwrap());
             std::process::exit(0);
         });
@@ -207,7 +207,7 @@ fn a_cli_call_in_flight_does_not_outlive_the_app() {
     use std::io::BufRead;
     let me = std::env::current_exe().unwrap();
     let mut app = std::process::Command::new(me)
-        .args(["--exact", "a_cli_call_in_flight_does_not_outlive_the_app", "--ignored", "--nocapture"])
+        .args(["--exact", "a_cli_call_in_flight_does_not_outlive_the_app", "--nocapture"])
         .env(AS_APP, "1")
         .stdout(std::process::Stdio::piped())
         .spawn()

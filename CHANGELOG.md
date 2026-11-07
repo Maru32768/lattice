@@ -30,6 +30,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - An internal error while rendering a page stopped page rendering until the next start, and one in a feed stopped feed updates. Each now fails only that job or that feed.
 - A local backup that failed partway, for example on a full disk, stayed in the backups folder with your API keys in it and counted as one of the backups to keep. A backup now gets its name only once it is complete and free of keys, and what a failed one leaves is removed.
 - An article you saved from the in-app browser while a bulk import or a feed still had it queued could be replaced by the queued fetch: by a thin page from the server, or marked as failed. The queued fetch now leaves an article that is already saved alone.
+- Closing Lattice during a translation or another AI task left the `claude` and `codex` processes running, which went on using your quota. They now end with the app, however it ends.
 
 ## [0.3.0] - 2026-11-06
 
