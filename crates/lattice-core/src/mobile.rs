@@ -23,6 +23,9 @@ const MODE: &str = "mobile.mode";
 const PORT: &str = "mobile.port";
 const PUBLIC_URL: &str = "mobile.public_url";
 pub const DEFAULT_PORT: u16 = 8787;
+/// The documents' form. A page and its documents can differ for a while, across an update: `FORMAT` in
+/// `src/mobile/client.ts` must match, and the page asks to be reloaded when it does not.
+pub const FORMAT: u32 = 1;
 
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -37,6 +40,7 @@ fn unix_now() -> i64 {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct MobileIndex {
+    pub format: u32,
     /// When this list was made, in Unix seconds: how old a snapshot is.
     pub generated_at: i64,
     /// The PC's display language; the page follows it.
@@ -54,6 +58,7 @@ pub struct MobileIndex {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct ArticleDoc {
+    pub format: u32,
     pub article: ArticleRow,
     #[ts(type = "\"ja\" | \"en\"")]
     pub target_language: &'static str,
@@ -66,6 +71,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
     // list. The other way round, the list would claim one it does not show, and the phone would drop it.
     let applied_ops = applied_ops(store)?;
     Ok(MobileIndex {
+        format: FORMAT,
         generated_at: unix_now(),
         ui_language: store.setting(translate::UI_LANGUAGE_SETTING).map_err(err)?,
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
@@ -77,7 +83,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
 
 pub fn article(store: &Store, id: i64) -> Result<Option<ArticleDoc>, String> {
     let view = translate::article_view(store, id)?;
-    Ok(view.map(|v| ArticleDoc { article: v.article, target_language: v.target_language, blocks: v.blocks, summary: v.summary }))
+    Ok(view.map(|v| ArticleDoc { format: FORMAT, article: v.article, target_language: v.target_language, blocks: v.blocks, summary: v.summary }))
 }
 
 /// Runs what would hold up the async workers: a store call may wait for its lock behind a job, and compressing takes time.

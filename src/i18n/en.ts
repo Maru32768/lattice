@@ -1388,4 +1388,6 @@ export const en = {
   "mobile.disconnect": "Disconnect this phone",
   "mobile.disconnectConfirm": "Remove the token, saved articles and unsent operations from this phone?",
   "mobile.savedCopy": "Cannot connect, so this is the saved copy",
+  "mobile.reloadPlease": "This page and its data are of different versions. Reload in a little while.",
+  "mobile.reload": "Reload",
 } satisfies Messages;

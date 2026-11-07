@@ -9,6 +9,7 @@ const CSP = /const CSP: &str = "([^"]+)"/.exec(SERVER)![1];
 const TYPES: Record<string, string> = { html: "text/html", js: "text/javascript", css: "text/css", webmanifest: "application/manifest+json", png: "image/png" };
 
 const ARTICLE = {
+  format: 1,
   article: { id: 1, title: "First article", original_url: "https://example.com/1", domain: "example.com", read_status: "unread", favorite: false },
   target_language: "ja",
   summary: null,
@@ -31,7 +32,7 @@ test("the built page runs under the server's CSP", async ({ page }) => {
   await page.route("http://phone.test/**", (route) => {
     const path = new URL(route.request().url()).pathname.slice(1) || "index.html";
     if (path === "api/index") {
-      return route.fulfill({ json: { generated_at: 1, ui_language: "ja", applied_ops: [], articles: [ARTICLE.article] } });
+      return route.fulfill({ json: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], articles: [ARTICLE.article] } });
     }
     if (path === "api/ops") {
       return route.fulfill({ json: { status: "applied" } });

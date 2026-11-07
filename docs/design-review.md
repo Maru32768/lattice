@@ -917,7 +917,7 @@ M4まで実装した。Workerは実際のCloudflareにはデプロイしてお�
 ### 設計の判断
 
 - **同じAPIを2か所で出す。** パスは`GET /api/index`、`GET /api/articles/{id}`、`POST /api/ops`で、AとBで応答の形も同じにする。ページの違いはbase URLと、操作の応答が200か202かだけになる。以前の案にあった`Source`の抽象は要らない。
-- **文書の型。** `MobileIndex { generated_at, ui_language, articles: Vec<ArticleRow>, applied_ops, read_only }`と`ArticleDoc { article, target_language, blocks: Vec<StoredBlock>, summary }`。記事とblockは既存の型をそのまま使う。`ArticleView`の`jobs`と`note`は閲覧に使わないので含めない。Tauriの`get_article`(`article_target`・`Store::get_article`・`mark_stale`)は`mobile::article`と共通の関数にまとめる。
+- **文書の型。** `MobileIndex { format, generated_at, ui_language, articles: Vec<ArticleRow>, applied_ops, read_only }`と`ArticleDoc { format, article, target_language, blocks: Vec<StoredBlock>, summary }`。`format`はページと文書の版の違いを見つけるためのもので、合わなければページは読み込み直しを促す。Service Workerが古いページを返しているとき、公開の途中、アプリの更新の前後に起きる。記事とblockは既存の型をそのまま使う。`ArticleView`の`jobs`と`note`は閲覧に使わないので含めない。Tauriの`get_article`(`article_target`・`Store::get_article`・`mark_stale`)は`mobile::article`と共通の関数にまとめる。
 - **サービス層は作らない。** `src-tauri/src/lib.rs`のcommandの多くはすでに`lattice-core`を1行か2行で呼ぶだけで、141個を移す必要はなかった。スマホが使う数個の入口だけを`mobile.rs`に置く。
 - **混在は`src/reader/mixed.ts`を共有する。** `blockPieces`と`translatedSentences`は純粋な関数で、選ぶ文は記事のアドレスと本文で決まるので、PCと同じ文が訳文になる。blockの描画は`Reader.tsx`から`src/reader/BlockView.tsx`に移して共有する(IPCに依存する画像だけ呼び出し側が渡す)。スマホの画面は`Reader.tsx`のものを使わない。
 - **操作は1つの型で、適用は1か所。** `MobileOp { id, op }`で、`id`はスマホが作る乱数(平文のHTTPでも使えるよう`crypto.randomUUID`は使わない)、`op`は`vocab_add`・`set_read`・`set_favorite`・`save_url`の4種類。A・B・再送のどの経路でも`mobile::apply`を通る。

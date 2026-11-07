@@ -15,6 +15,7 @@ const row = (id: number, title: string, more: Record<string, unknown> = {}) => (
 });
 
 const ARTICLE = {
+  format: 1,
   article: row(1, "First article"),
   target_language: "ja",
   summary: { text: "A short summary.", created_at: "2026-11-01T00:00:00Z", stale: false },
@@ -76,6 +77,7 @@ async function start(page: Page, opts: { token?: boolean; index?: unknown } = {}
     if (url.pathname.endsWith("/api/index")) {
       return route.fulfill({
         json: opts.index ?? {
+          format: 1,
           generated_at: 1,
           ui_language: "ja",
           articles: [
@@ -169,6 +171,7 @@ test("the list filters by state and title", async ({ page }) => {
 });
 
 const LONG = {
+  format: 1,
   generated_at: 1,
   ui_language: "ja",
   applied_ops: [],
@@ -224,7 +227,7 @@ test("the answer to the latest request wins, whatever order they come back in", 
       await held;
       return route.fulfill({ status: 401, json: {} });
     }
-    return route.fulfill({ json: { generated_at: 2, ui_language: "ja", applied_ops: [], articles: [row(9, "Newer article")] } });
+    return route.fulfill({ json: { format: 1, generated_at: 2, ui_language: "ja", applied_ops: [], articles: [row(9, "Newer article")] } });
   });
   await page.getByRole("button", { name: "更新" }).click();
   await expect.poll(() => calls).toBe(1);
@@ -247,7 +250,7 @@ test("a summary made before the article changed says so", async ({ page }) => {
 
 test("a long list draws a page at a time", async ({ page }) => {
   const articles = Array.from({ length: 150 }, (_, i) => row(i + 1, `Article ${i + 1}`));
-  await start(page, { index: { generated_at: 1, ui_language: "ja", applied_ops: [], articles } });
+  await start(page, { index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], articles } });
   await expect(page.getByRole("link")).toHaveCount(100);
   await page.getByRole("button", { name: "もっと見る(残り50件)" }).click();
   await expect(page.getByRole("link")).toHaveCount(150);
@@ -399,7 +402,7 @@ test("an operation the list reflects stops being kept, and sending it never happ
   const id = sentOps(seen)[0].id;
   await page.getByRole("link", { name: "一覧" }).click();
   await page.route("**/api/index", (route) =>
-    route.fulfill({ json: { generated_at: 2, ui_language: "ja", applied_ops: [id], articles: [row(1, "First article")] } }),
+    route.fulfill({ json: { format: 1, generated_at: 2, ui_language: "ja", applied_ops: [id], articles: [row(1, "First article")] } }),
   );
   await page.getByRole("button", { name: "更新" }).click();
   await expect(page.locator("a.unread"), "the server's word now counts: it says unread").toHaveCount(1);
@@ -493,7 +496,7 @@ test("what waits goes when the reader comes back to the page", async ({ page }) 
 
 test("a read-only server offers no operations and marks nothing", async ({ page }) => {
   const seen = await start(page, {
-    index: { generated_at: 1, ui_language: "ja", applied_ops: [], read_only: true, articles: [row(1, "First article")] },
+    index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], read_only: true, articles: [row(1, "First article")] },
   });
   await expect(page.getByLabel("URLを保存")).toHaveCount(0);
   await page.getByRole("link", { name: /First article/ }).click();
@@ -532,7 +535,7 @@ test("the open article follows the list once the list has settled what was done"
   await expect.poll(() => sentOps(seen).length).toBe(1);
   await page.route("**/api/index", (route) =>
     route.fulfill({
-      json: { generated_at: 2, ui_language: "ja", applied_ops: [sentOps(seen)[0].id], articles: [row(1, "First article", { read_status: "read" })] },
+      json: { format: 1, generated_at: 2, ui_language: "ja", applied_ops: [sentOps(seen)[0].id], articles: [row(1, "First article", { read_status: "read" })] },
     }),
   );
   await page.reload();
@@ -648,4 +651,15 @@ test("a selection given up on takes its button with it", async ({ page }) => {
   await page.getByRole("button", { name: "単語を登録: Second" }).waitFor();
   await page.evaluate(() => getSelection()!.removeAllRanges());
   await expect(page.getByRole("button", { name: /単語を登録/ })).toHaveCount(0);
+});
+
+test("a document of another format asks for a reload instead of going blank", async ({ page }) => {
+  await start(page, { index: { format: 2, generated_at: 1, ui_language: "ja", applied_ops: [], articles: "not what this page knows" } });
+  await expect(page.getByRole("alert")).toContainText("読み込み直してください");
+  await expect(page.getByRole("button", { name: "読み込み直す" })).toBeVisible();
+});
+
+test("something the page cannot draw asks for a reload instead of going blank", async ({ page }) => {
+  await start(page, { index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], articles: "not a list" } });
+  await expect(page.getByRole("alert")).toContainText("読み込み直してください");
 });

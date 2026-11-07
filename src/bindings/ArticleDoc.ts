@@ -6,4 +6,4 @@ import type { SummaryView } from "./SummaryView";
 /**
  * An article for reading: `ArticleView` without the job list and the memo, which the page does not show.
  */
-export type ArticleDoc = { article: ArticleRow, target_language: "ja" | "en", blocks: Array<Block>, summary: SummaryView | null, };
+export type ArticleDoc = { format: number, article: ArticleRow, target_language: "ja" | "en", blocks: Array<Block>, summary: SummaryView | null, };

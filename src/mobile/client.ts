@@ -2,6 +2,8 @@
 import type { ArticleDoc, ArticleRow, MobileIndex, MobileOp, MobileOpKind } from "../bindings";
 import type { LanguageMode } from "../reader/mixed.ts";
 
+/** The documents this page can read. `mobile::FORMAT`: a page and its documents can differ for a while, across an update. */
+const FORMAT = 1;
 const TOKEN = "lattice.mobile.token";
 const LIBRARY = "lattice.mobile.library";
 const LANGUAGE = "lattice.mobile.language";
@@ -82,6 +84,9 @@ export const hasToken = () => read(TOKEN) != null;
 /** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */
 export class Unauthorized extends Error {}
 
+/** A document of a format this page cannot read: one of the two is about to be replaced by the other's version. */
+export class FormatMismatch extends Error {}
+
 const authorization = () => ({ Authorization: `Bearer ${read(TOKEN) ?? ""}` });
 
 /**
@@ -140,13 +145,14 @@ async function keep(path: string, response: Response) {
   }
 }
 
-/** A document as it crosses the network. */
+/** A document as it crosses the network: its `format` says whether this page can read the rest. */
 type Doc = MobileIndex | ArticleDoc;
 
 async function savedDoc(path: string): Promise<Doc | null> {
   try {
     const saved = await (await docs())?.match(path);
-    return saved ? ((await saved.json()) as Doc) : null;
+    const doc = saved ? ((await saved.json()) as Doc) : null;
+    return doc?.format === FORMAT ? doc : null;
   } catch {
     return null;
   }
@@ -165,7 +171,11 @@ async function fetched(path: string): Promise<Doc | null> {
     throw new Error(`HTTP ${response.status}`);
   }
   await keep(path, response.clone()).catch(() => {});
-  return (await response.json()) as Doc;
+  const doc = (await response.json()) as Doc;
+  if (doc.format !== FORMAT) {
+    throw new FormatMismatch();
+  }
+  return doc;
 }
 
 /** A document, and whether it is the saved copy because the network failed. */
@@ -173,7 +183,7 @@ async function document(path: string): Promise<{ doc: Doc | null; saved: boolean
   try {
     return { doc: await fetched(path), saved: false };
   } catch (e) {
-    const saved = e instanceof Unauthorized ? null : await savedDoc(path);
+    const saved = e instanceof Unauthorized || e instanceof FormatMismatch ? null : await savedDoc(path);
     if (!saved) {
       throw e;
     }

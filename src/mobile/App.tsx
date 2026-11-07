@@ -5,7 +5,21 @@ import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
 import { PAGE, type ListView } from "./list";
 import { articleInHash } from "./route";
-import { Unauthorized, adoptToken, disconnect, flushOps, hasToken, loadIndex, localOps, submit, subscribeOps, whenRejected, withOps } from "./client";
+import { Crashed } from "./ErrorBoundary";
+import {
+  FormatMismatch,
+  Unauthorized,
+  adoptToken,
+  disconnect,
+  flushOps,
+  hasToken,
+  loadIndex,
+  localOps,
+  submit,
+  subscribeOps,
+  whenRejected,
+  withOps,
+} from "./client";
 
 const subscribeHash = (changed: () => void) => {
   addEventListener("hashchange", changed);
@@ -15,7 +29,7 @@ const subscribeHash = (changed: () => void) => {
 /** What a refusal should name, so that the reader knows what to do again. */
 const whatOf = ({ op }: MobileOp) => (op.kind === "vocab_add" ? op.capture.surface : op.kind === "save_url" ? op.url : "");
 
-type Load = { state: "loading" } | { state: "failed" } | { state: "no-token" } | { state: "ready"; index: MobileIndex };
+type Load = { state: "loading" } | { state: "failed" } | { state: "no-token" } | { state: "format" } | { state: "ready"; index: MobileIndex };
 
 export function App() {
   const t = useT();
@@ -49,9 +63,9 @@ export function App() {
       if (request !== latest.current) {
         return;
       }
-      const unauthorized = e instanceof Unauthorized;
+      const fatal: Load | null = e instanceof Unauthorized ? { state: "no-token" } : e instanceof FormatMismatch ? { state: "format" } : null;
       // What is on screen stays readable without a connection.
-      setLoad((old) => (unauthorized ? { state: "no-token" } : old.state === "ready" ? old : { state: "failed" }));
+      setLoad((old) => fatal ?? (old.state === "ready" ? old : { state: "failed" }));
       setRefreshFailed(true);
     }
   };
@@ -106,6 +120,9 @@ export function App() {
       ))}
     </div>
   );
+  if (load.state === "format") {
+    return <Crashed />;
+  }
   if (load.state === "no-token") {
     return (
       <main className="m-empty">

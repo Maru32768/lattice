@@ -119,3 +119,9 @@ test("a list says how old it is only when that matters", () => {
   assert.equal(isOldList(1000, 1_100_000), false);
   assert.equal(isOldList(1000, 1_121_000), true);
 });
+
+test("the page and the server agree on the documents' format", () => {
+  const core = readFileSync(new URL("../../crates/lattice-core/src/mobile.rs", import.meta.url), "utf8");
+  const client = readFileSync(new URL("./client.ts", import.meta.url), "utf8");
+  assert.equal(/pub const FORMAT: u32 = (\d+);/.exec(core)?.[1], /const FORMAT = (\d+);/.exec(client)?.[1]);
+});

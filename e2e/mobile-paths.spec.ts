@@ -25,6 +25,7 @@ const row = (id: number, title: string) => ({
   favorite: false,
 });
 const article = (id: number, title: string, text: string) => ({
+  format: 1,
   article: row(id, title),
   target_language: "ja",
   summary: null,
@@ -72,6 +73,7 @@ function snapshotBucket(generatedAt: number, liveOrigin: string | null) {
       "index.json",
       gzipSync(
         JSON.stringify({
+          format: 1,
           generated_at: generatedAt,
           ui_language: "ja",
           applied_ops: [],
@@ -122,7 +124,15 @@ function livePc(workerOrigin: () => string, ops: unknown[]) {
     }
     if (pathname === "/api/index") {
       return Response.json(
-        { generated_at: Math.floor(Date.now() / 1000), ui_language: "ja", applied_ops: [], read_only: false, live_url: null, articles: [row(1, "Live one")] },
+        {
+          format: 1,
+          generated_at: Math.floor(Date.now() / 1000),
+          ui_language: "ja",
+          applied_ops: [],
+          read_only: false,
+          live_url: null,
+          articles: [row(1, "Live one")],
+        },
         { headers: cors },
       );
     }

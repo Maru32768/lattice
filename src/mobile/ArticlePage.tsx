@@ -5,7 +5,8 @@ import { translatedShare } from "../overlay/logic";
 import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText } from "../reader/BlockView";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
 import { captureIn, isWord } from "../vocab/vocab";
-import { type LocalOp, Unauthorized, loadArticle, savedLanguage, saveLanguage, submit, withOps } from "./client";
+import { Crashed } from "./ErrorBoundary";
+import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, savedLanguage, saveLanguage, submit, withOps } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
@@ -63,13 +64,13 @@ function flipUnlessSelecting(flip: () => void) {
   }
 }
 
-type Loaded = { doc: ArticleDoc | null; saved: boolean } | "failed" | "no-token";
+type Loaded = { doc: ArticleDoc | null; saved: boolean } | "failed" | "no-token" | "format";
 
 async function fetchDoc(id: number): Promise<Loaded> {
   try {
     return await loadArticle(id);
   } catch (e) {
-    return e instanceof Unauthorized ? "no-token" : "failed";
+    return e instanceof Unauthorized ? "no-token" : e instanceof FormatMismatch ? "format" : "failed";
   }
 }
 
@@ -193,6 +194,9 @@ export function ArticlePage({
     };
   }, []);
 
+  if (doc === "format") {
+    return <Crashed />;
+  }
   if (typeof doc === "string" || doc == null) {
     return (
       <>

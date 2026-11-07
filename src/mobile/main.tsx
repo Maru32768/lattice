@@ -4,6 +4,7 @@ import "../theme.css";
 import "./mobile.css";
 import { App } from "./App";
 import { adoptToken } from "./client";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 // The list restores its own place (App.tsx): the browser would try before the rows are drawn.
 history.scrollRestoration = "manual";
@@ -15,6 +16,8 @@ if (isSecureContext && "serviceWorker" in navigator) {
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>,
 );
