@@ -1330,7 +1330,7 @@ export const en = {
   "mobileSettings.publicUrlDesc": "With a tunnel such as Tailscale Serve, enter its address. Empty uses this PC's address.",
   "mobileSettings.regenerate": "Regenerate the token",
   "mobileSettings.lanWarning":
-    "Serving to the network is not encrypted. Anyone on the same Wi-Fi may be able to read the text and the token. Use it on a network you trust.",
+    "Serving to the network is not encrypted. Anyone on the same Wi-Fi may be able to read the text and the token, and change articles with the token. Use it on a network you trust.",
   "mobileSettings.needsUrl": "Serving. Enter the address the phone opens to get a QR code.",
   "mobileSettings.qr": "QR code to open on a phone",
   "mobileSettings.scan": "Scan it with the phone's camera to open. The code contains the token, so don't show it to others.",

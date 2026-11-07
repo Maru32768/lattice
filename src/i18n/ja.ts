@@ -1312,7 +1312,7 @@ export const ja = {
   "mobileSettings.publicUrlDesc": "Tailscale Serveなどのトンネルを使うときに、そのアドレスを入れます。空ならこのPCのアドレスを使います。",
   "mobileSettings.regenerate": "トークンを作り直す",
   "mobileSettings.lanWarning":
-    "同じネットワークへの配信は暗号化されません。同じWi-Fiの人には本文とトークンを読み取られる可能性があります。信頼できるネットワークで使ってください。",
+    "同じネットワークへの配信は暗号化されません。同じWi-Fiの人に本文とトークンを読み取られ、トークンで記事の状態を変えられる可能性があります。信頼できるネットワークで使ってください。",
   "mobileSettings.needsUrl": "配信中です。スマホが開くアドレスを入れるとQRコードが出ます。",
   "mobileSettings.qr": "スマホで開くQRコード",
   "mobileSettings.scan": "スマホのカメラで読み取ると開きます。このQRコードはトークンを含むので、人に見せないでください。",
