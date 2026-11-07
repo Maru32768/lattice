@@ -434,6 +434,12 @@ pub async fn run<P: LlmProvider>(
     pending.retain(|b| seen.insert(b.text_hash.clone()) && !target.is_written_in(&b.text));
     let mut missing = 0;
     let parallel = parallel(store)?;
+    // A batch that failed whole says the provider may be down: none starts until another answers, and
+    // the job backs off at the end. One that answers says it was that batch's text, so the rest of the
+    // article goes on. Calls already made are saved either way: they are paid for.
+    let stopped = std::sync::atomic::AtomicBool::new(false);
+    let mut failed = None;
+    let stopped_ref = &stopped;
     // `buffered` keeps the article's order: the top of the article is saved (and shown) first.
     let mut done = stream::iter(batches(pending))
         .map(|batch| async move {
@@ -442,6 +448,10 @@ pub async fn run<P: LlmProvider>(
                 Some(g) => Some(g.enter(parallel).await),
                 None => None,
             };
+            if stopped_ref.load(std::sync::atomic::Ordering::Relaxed) {
+                let results = vec![None; batch.len()];
+                return (batch, segments::Translated { results, error: None });
+            }
             let (waited, sent) = (queued.elapsed(), std::time::Instant::now());
             let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
             let t = segments::translate_snippets(provider, &snippets, target).await;
@@ -468,14 +478,19 @@ pub async fn run<P: LlmProvider>(
             .filter_map(|(b, r)| r.as_ref().map(|(units, o)| (b.text_hash.as_str(), &units[..], o.provider.as_str(), o.model.as_deref())))
             .collect();
         missing += batch.len() - rows.len();
-        if rows.is_empty()
-            && let Some(e) = t.error
-        {
-            // Provider down or rate-limited: back off instead of hammering (batches in flight are dropped).
-            return Err(e.to_string());
+        match (rows.is_empty(), t.error) {
+            (false, _) => stopped.store(false, std::sync::atomic::Ordering::Relaxed),
+            (true, Some(e)) => {
+                stopped.store(true, std::sync::atomic::Ordering::Relaxed);
+                failed.get_or_insert(e.to_string());
+            }
+            (true, None) => {}
         }
         store.insert_segments(&key, PROMPT_VERSION, &rows).map_err(|e| e.to_string())?;
         on_progress();
+    }
+    if let Some(e) = failed {
+        return Err(e);
     }
     if missing > 0 {
         return Err(msg!("translate.missingBlocks", missing = missing));

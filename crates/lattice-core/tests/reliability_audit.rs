@@ -244,12 +244,11 @@ impl LlmProvider for Translator {
     }
 }
 
-/// F9. `translate::run` saves batches in article order (`buffered`) and returns at the first batch
-/// whose call and retries all failed. Batches already answered behind it are dropped unsaved, and
-/// sent again (and billed again) on each of the job's five attempts; a block that always fails
-/// keeps the rest of the article from ever being saved.
+/// `translate::run` saves batches in article order (`buffered`). A batch whose call and retries all
+/// failed must not drop the ones already answered behind it: they would be sent again (and billed
+/// again) on each of the job's five attempts, and a block that always fails would keep the rest of
+/// the article from ever being saved.
 #[tokio::test]
-#[ignore = "reliability audit F9: fails until fixed"]
 async fn translations_already_returned_are_saved_when_an_earlier_batch_fails() {
     use lattice_core::segments::Target;
     use lattice_core::translate;
