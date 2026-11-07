@@ -892,3 +892,97 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 - **vimrcは解釈しない。** マッピングと一部の`set`だけを読み、スクリプトは実行しない。プラグインの互換(surround、CamelCaseMotion、textobj)も作らない。適用しない行は行番号と理由を出す。ファイルは内容をコピーし、連動しない。保存は端末ごと。任意のテキストを読むので、パーサは例外を投げない(ファズで確かめた)。
 - **ページは信頼しない。** ページが呼べるのは`overlay_*`だけで、`browser_focus`・`browser_run_doc`・`browser_repeat_keys`はアプリ専用。`overlay_ask`は引用を長さで制限し、1秒に1回まで受ける。引用は入力欄に入るだけで、送るのは利用者。ページは`overlay_key`でアプリのキーを押せるが、それ以上のことはできず、画面に出ている間だけ。
 - **採らなかったもの。** 外部のTOML設定、キーのプリセット(Default / Vim / Emacs)、Vimscriptの評価、プラグイン互換、ワークスペースのUI。設定の場所を増やしても、この規模では得るものが少ない。
+
+## 32. スマホからの閲覧(G47)
+
+設計だけで、まだ実装していない。スマホのブラウザで記事一覧と原文・混在・訳文を読み、単語の登録・既読・お気に入り・URLの保存を送れるようにする。経路は2つあり、それぞれ設定で有効にする(どちらも既定はオフ)。
+
+| 対象 | ファイル(予定) |
+|---|---|
+| 一覧と記事の文書・操作の適用 | `crates/lattice-core/src/mobile.rs` |
+| スナップショットの公開とinboxの取り込み | `crates/lattice-core/src/mobile_publish.rs`(署名は`r2.rs`を共有) |
+| HTTPサーバー(A) | `crates/lattice-server`(axum。Tauriに依存しない) |
+| スマホのページ | `src/mobile`、`vite.mobile.config.ts` |
+| Worker(B)とbucket | `infra/mobile`(Terraform) |
+| 設定画面 | `src/settings/MobileSettings.tsx` |
+
+| | A: ライブ | B: スナップショット |
+|---|---|---|
+| ページとAPIを出すもの | PCの`lattice-server` | Cloudflare Worker |
+| 読むデータ | DBをその場で読む | PCがR2に上げたJSON |
+| 操作 | その場で適用する(200) | inboxに置き、PCが後で適用する(202) |
+| PCが止まっているとき | 使えない | 読める。操作もinboxに残る |
+| 利用者の準備 | なし(外から使うならTailscaleなど) | Cloudflareのbucketとデプロイ |
+
+### 設計の判断
+
+- **同じAPIを2か所で出す。** パスは`GET /api/index`、`GET /api/articles/{id}`、`POST /api/ops`で、AとBで応答の形も同じにする。ページの違いはbase URLと、操作の応答が200か202かだけになる。以前の案にあった`Source`の抽象は要らない。
+- **文書の型。** `MobileIndex { generated_at, ui_language, articles: Vec<ArticleRow> }`と`ArticleDoc { article, target_language, blocks: Vec<StoredBlock>, summary }`。既存の型をそのまま使うので、ts-rsの型定義も増えない。`ArticleView`の`jobs`と`note`は閲覧に使わないので含めない。Tauriの`get_article`(`article_target`・`Store::get_article`・`mark_stale`)は`mobile::article`と共通の関数にまとめる。
+- **サービス層は作らない。** `src-tauri/src/lib.rs`のcommandの多くはすでに`lattice-core`を1行か2行で呼ぶだけで、141個を移す必要はなかった。スマホが使う数個の入口だけを`mobile.rs`に置く。
+- **混在は`src/reader/mixed.ts`を共有する。** `blockPieces`と`translatedSentences`は純粋な関数で、選ぶ文は記事のアドレスと本文で決まるので、PCと同じ文が訳文になる。`Reader.tsx`はIPCに依存するので、blockの描画はスマホ用に別に書く。
+- **操作は1つの型で、適用は1か所。** `MobileOp { id, at, kind }`で、`id`はスマホが作るUUID、`kind`は`vocab.add`・`article.setRead`・`article.setFavorite`・`url.save`の4種類。A・B・再送のどの経路でも`mobile::apply`を通る。
+- **二重適用は`id`で防ぐ。** `mobile_ops_applied(id, applied_at)`に適用済みの`id`を残し(90日で消す)、同じ`id`は何もせず成功を返す。順序は「適用、記録、inboxから削除」。記録の前に落ちると再適用になるが、同じ文の単語登録は増えず(§22)、既読とお気に入りは同じ値の上書きで、`enqueue_urls`も重複を積まないので結果は変わらない。記録が要るのは、応答を失って後から再送された操作が、その間にPCで変えた状態を戻さないようにするため。
+- **入力は信頼しない。** 単語は`vocab::capture`の検証を通し、URLはbulk importと同じ`enqueue_urls`に渡す。消えた記事を指す操作は、単語ならURLだけを残し、既読とお気に入りなら何もしない。`apply`はjobを積むだけで、runnerは30秒以内に拾う(`IDLE_POLL`、§23)。`src-tauri`は`apply`の戻り値を見てrunnerを起こし、`article-changed`と`vocab-changed`を出す。
+- **LLMの処理はPCに残す。** 単語の意味は既存の`vocab` jobがPCで調べる。それまでスマホには処理待ちと出す。
+
+### 認証
+
+- **トークンは1つ。** PCが32バイトの乱数を作り、`secret.mobile_token`に保存する(`secret.`なのでバックアップに入らない)。AとBで共通で、作り直すと古いトークンは使えなくなる。
+- **渡し方はQRコード。** URLのfragment(`#t=...`)に入れるので、サーバーのログに残らない。ページはlocalStorageに保存してfragmentを消す。
+- **cookieを使わない。** すべて`Authorization: Bearer`なので、CSRFとDNS rebindingでトークンを使われることがない。Aは定数時間で比較する。Bは`auth.json`に置いたSHA-256と比較するので、アプリだけでトークンを作り直せる(Workerのデプロイは要らない。Workerは60秒キャッシュする)。
+
+### A: PC内蔵サーバー
+
+- **待ち受けは3択。** オフ(既定)、`127.0.0.1`、LAN。`127.0.0.1`はTailscale Serve(tailnetの中だけにHTTPSで出す)やcloudflaredの後ろに置くときに選ぶ。アプリはTLSを持たない。証明書の管理をトンネルに任せられるため。
+- **LANはHTTPになる。** 同じWi-Fiの相手にはトークンと本文が読めるので、設定画面でそう説明する。LANで待ち受けるとWindows Firewallの確認が出る。
+- **storeは`spawn_blocking`で読む。** storeはロックを持つ同期APIなので、axumのworkerを止めないようにする。
+- **`lattice-server`を別のcrateにする。** `src-tauri`が起動するが、Tauriに依存しないので、将来`lattice-cli`からも起動できる。
+
+### B: スナップショットとinbox
+
+- **bucketを分ける。** Workerのbindingはbucket単位なので、別のbucketにすればWorkerからバックアップ(DB全体)に届かない。アクセスキーも別にして、`r2.rs`の`Creds`と署名を共有する。
+- **Workerにできることを絞る。** 読めるのは`index.json`と`articles/*.json`、書けるのは`inbox/<id>.json`だけで、1件8KBまで。
+- **公開は差分で。** 記事ごとのJSONのハッシュを`mobile_published(article_id, hash)`に残し、変わったものだけをgzipで上げる。順序は「記事、`index.json`、消えた記事の削除」で、一覧にあるのに本文がない状態を作らない。古い一覧で404になったら、ページは一覧を読み直す。間隔の初期値は15分。
+- **対象は全記事にする。** 2026-11-08に実際のDBで測ると、3205記事、原文2,995万文字、`segment_translations`の`units`が5,125万文字。記事あたりの原文は中央値6千文字、99%点で5.2万文字、最大で88.8万文字。全記事のJSONは非圧縮で100〜200MBと見積もる(文字数からの推定で、未計測)。この量なら件数の設定を増やす理由がない。一覧は100件ずつ描画する。
+- **inboxの取り込み。** アプリの起動中に5分ごとに一覧し、`at`の順に`mobile::apply`を通して消す。
+
+### スマホのページ
+
+- **自動切り替え。** Aのbase URLがHTTPSなら1.5秒でつなぎ(`GET /api/ping`)、失敗したらBを読む。画面には「ライブ」か「◯分前の内容」かを出す。
+- **切り替えはHTTPSのAに限る。** HTTPSのページからHTTPのLANへのfetchはmixed contentで止まる。Chromeは許可を得た場合だけこれを除外する([Local Network Access](https://developer.chrome.com/blog/local-network-access))が、ブラウザごとに違うものには頼らない。LANのAを使うときは、ページ自体をPCから開く。Aは`Access-Control-Allow-Origin`でWorkerのoriginだけを許可する。
+- **未送信の操作はスマホに残す。** 2xxが返るまで保持し、同じ`id`で再送する。一覧には先に反映して見せる。
+- **Service Workerはページと読んだ記事をキャッシュする。** HTTPSでしか動かないので、LANのAでは使えない。
+- **記事は信頼しない。** 本文はテキストとして描画し、リンクはhttp(s)だけにする。CSPは`default-src 'self'; img-src 'self' data:`を基本に、`connect-src`にAのoriginを足す。
+- **UIの文言は`src/i18n`を共有する。** 表示言語は`ui_language`に従う。
+
+### 実装の順序
+
+| 段階 | 内容 | 確かめること |
+|---|---|---|
+| M1 | Aの読み取り(サーバー、トークン、QR、一覧、原文・混在・訳文) | 実機のスマホで読める。混在の文がPCと同じ。トークンなしは401 |
+| M2 | Aの操作(`mobile_ops_applied`を足す) | 同じ`id`の再送で変わらない。単語がPCの単語帳に出る |
+| M3 | Bの読み取り(差分公開、Worker、Terraform) | PCを止めて読める。1周の時間を測る |
+| M4 | inbox、未送信の操作、Service Worker、自動切り替え | 機内モードで操作してPCに届く。A・Bを行き来しても二重に適用されない |
+
+### 確かめていないこと
+
+- Tailscaleの`100.x`へのfetchをChromeのLocal Network Accessが制限するか(M4で実機で試す)。制限されるなら、許可の確認を通すか、ページをTailscale側から開く。
+- iOSのSafariがlocalStorageを消す条件。ホーム画面に追加すれば残ると理解しているが、未確認。消えるならQRコードを読み直す。
+- 公開の1周の重さ。全記事のJSONを作るので、重ければjobの`on_change`で対象の記事を絞る。
+- R2のリクエスト数と料金。inboxの一覧は5分ごとで書き込み扱いになるので、M3で確かめて間隔を決める。
+
+### 採らなかったもの
+
+- **Tursoへの移行。** 今の`Store`は手元の1接続をロックして使う前提で、jobのclaimのたびにネットワークを挟むことになる。複数のPCで動かすにはjobの取り合いの対策も要る。スマホで読むだけなら得るものより変更が大きい。複数のPCで使うことになったら、操作ログの交換と比べて決める。機能と料金は調べ直す。
+- **クラウドに置くサーバー。** Claude・CodexのCLIはPCのログインを使い、`renderer.rs`はwebviewで動くので、処理の担当はPCに残る。LLMをAPIキーに切り替えれば可能で、そのときは`lattice-server`をそのまま使える。
+- **スナップショットの暗号化。** R2のバックアップはgzipだけで暗号化していないので、Cloudflareを信頼する範囲は今と変わらない。信頼を外したくなったら、QRコードのfragmentで鍵を渡す形で足せる。
+- **アプリの中のTLS。** 上記のとおりトンネルに任せる。
+- **ネイティブアプリ。** 読むだけならPWAで足りる。
+
+### 未実装(意図的)
+
+- 画像。Readerは`data:` URLで受けるが、JSONに入れると重い。アプリと同じくリモートのURLも読まない(`images.rs`)ので、まずはリンクだけ出す。後で`/api/images/{hash}`を足す。
+- スマホからの翻訳の依頼。操作を1種類足せば済むので、M4の後に足す。
+- 全文検索・意味検索(クライアントの一覧の絞り込みだけ)。対話、quiz、単語の復習。
+- 複数のPCからの公開。bucketの公開元は1台とする。
+- 既読の競合の解決。`articles`に既読の時刻がないので、後から適用した操作が勝つ。
