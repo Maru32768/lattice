@@ -189,6 +189,7 @@ export function App() {
         generatedAt={load.index.generated_at}
         refreshFailed={refreshFailed}
         onDisconnect={() => {
+          latest.current++; // a late answer must not bring the list back
           void disconnect().then(() => setLoad({ state: "no-token" }));
         }}
         onOpen={(a) => {

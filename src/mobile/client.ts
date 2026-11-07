@@ -140,7 +140,8 @@ async function request(path: string): Promise<{ response: Response; fromLive: bo
 
 async function keep(path: string, doc: unknown) {
   const cache = await docs();
-  if (cache) {
+  // Not after `disconnect`, which an answer may arrive after.
+  if (cache && hasToken()) {
     await cache.put(path, Response.json(doc));
     const keys = await cache.keys();
     await Promise.all(keys.slice(0, Math.max(0, keys.length - KEEP_DOCS)).map((k) => cache.delete(k)));
