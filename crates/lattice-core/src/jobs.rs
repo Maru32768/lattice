@@ -187,6 +187,11 @@ pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
     Ok(ran)
 }
 
+/// Asked for again while running, these run once more when they finish, as what they read may have
+/// changed: a run with nothing left to do costs nothing. The paid jobs (a summary, a classification, a
+/// quiz) are not here: several events can ask for one, and a second run would pay again.
+pub(crate) const RUN_AGAIN_IF_ASKED: &[&str] = &[translate::JOB_TYPE, ingest::JOB_TYPE, images::JOB_TYPE, embed::JOB_TYPE];
+
 /// How many articles a batched job (classify, relevance) takes on its `attempt`th try, out of `full`.
 /// One call rates them all, so one article the provider refuses fails the rest. Halving on each try
 /// sets the others free early, and by the last try every article has a call of its own.

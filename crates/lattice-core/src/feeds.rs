@@ -722,6 +722,25 @@ mod tests {
     }
 
     #[test]
+    fn a_retry_asked_for_while_the_failing_fetch_still_runs_is_not_lost() {
+        let s = Store::open_in_memory().unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
+        import(&s, feed, &parse(blocked_feed(false).as_bytes(), "https://blog.dev/feed").unwrap().entries).unwrap();
+        let job = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap().unwrap();
+        let id = job.article_id.unwrap();
+        // The fetch fails with no entry text to fall back on, and the poll adds the text before the job is marked finished.
+        ingest::store_fetch_result(&s, id, Err("HTTP 403 Forbidden".into())).unwrap();
+        assert_eq!(import(&s, feed, &parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries).unwrap(), 1);
+        s.finish_job(job.id, None).unwrap();
+
+        // A feed that answers 304 from here on never comes back to this: the retry has to happen now.
+        let again = s.claim_next_job(&[ingest::JOB_TYPE]).unwrap().unwrap();
+        assert_eq!(again.id, job.id);
+        ingest::store_fetch_result(&s, id, Err("HTTP 403 Forbidden".into())).unwrap();
+        assert_eq!(s.article_row(id).unwrap().unwrap().extraction_status, "ok", "the entry's text is in");
+    }
+
+    #[test]
     fn names_and_icons_override_the_feeds_own() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = add(&s, "https://blog.dev/feed", None).unwrap();

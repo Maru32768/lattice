@@ -53,6 +53,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00032_relevance_manual.sql"),
     include_str!("../db/migrations/00033_translate_manual.sql"),
     include_str!("../db/migrations/00034_job_ids_stay_unique.sql"),
+    include_str!("../db/migrations/00035_job_requeue.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
@@ -1072,13 +1073,18 @@ impl Store {
         tx.commit()
     }
 
-    /// Idempotent: an existing job with the same key is reset to pending (unless running).
+    /// Idempotent: an existing job with the same key is reset to pending. A running one is left to
+    /// finish, and runs again after that if its type is in `RUN_AGAIN_IF_ASKED`.
     pub fn enqueue_job(&self, job_type: &str, article_id: i64, params: &str, dedup_key: &str) -> Result<()> {
         self.conn().execute(
             "INSERT INTO processing_jobs (type, article_id, params, dedup_key) VALUES (?1, ?2, ?3, ?4)
-             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
-             WHERE status != 'running'",
-            params![job_type, article_id, params, dedup_key],
+             ON CONFLICT(dedup_key) DO UPDATE SET
+                 requeue = status = 'running' AND type IN (SELECT value FROM json_each(?5)),
+                 attempt_count = CASE WHEN status = 'running' THEN attempt_count ELSE 0 END,
+                 last_error = CASE WHEN status = 'running' THEN last_error END,
+                 next_run_at = CASE WHEN status = 'running' THEN next_run_at END,
+                 status = CASE WHEN status = 'running' THEN 'running' ELSE 'pending' END",
+            params![job_type, article_id, params, dedup_key, json(&crate::jobs::RUN_AGAIN_IF_ASKED)],
         )?;
         Ok(())
     }
@@ -1147,7 +1153,7 @@ impl Store {
             .query_row(
                 &format!(
                     "UPDATE processing_jobs
-                     SET status = 'running', attempt_count = attempt_count + 1,
+                     SET status = 'running', attempt_count = attempt_count + 1, requeue = 0,
                          started_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), heartbeat_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
                      WHERE id = (SELECT j.id FROM processing_jobs j
                                  WHERE j.status = 'pending'
@@ -1185,6 +1191,11 @@ impl Store {
             )?,
             Some(e) => c.execute(&format!("UPDATE processing_jobs SET {AFTER_FAILURE} WHERE id = ?1"), params![id, e, MAX_ATTEMPTS])?,
         };
+        // Asked for again while it ran: as `enqueue_job` would have done had it come a moment later.
+        c.execute(
+            "UPDATE processing_jobs SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL, requeue = 0 WHERE id = ?1 AND requeue",
+            [id],
+        )?;
         Ok(())
     }
 
@@ -2010,6 +2021,26 @@ mod tests {
         assert!(cli.set_setting("k", Some("v")).is_ok());
         drop((app, cli));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_job_asked_for_while_it_runs_runs_again_only_if_that_costs_nothing() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://a.dev/1", "https://a.dev/1", "a.dev").unwrap();
+        for (job_type, again) in [(crate::images::JOB_TYPE, true), (crate::summarize::JOB_TYPE, false)] {
+            let key = format!("{job_type}:{id}");
+            s.enqueue_job(job_type, id, "{}", &key).unwrap();
+            let job = s.claim_next_job(&[job_type]).unwrap().unwrap();
+            s.enqueue_job(job_type, id, "{}", &key).unwrap();
+            assert!(s.claim_next_job(&[job_type]).unwrap().is_none(), "{job_type} is not run twice at once");
+            s.finish_job(job.id, Some("failed this time")).unwrap();
+            let next = s.claim_next_job(&[job_type]).unwrap();
+            assert_eq!(next.as_ref().map(|j| (j.id, j.attempt_count, j.last_error.is_none())), again.then_some((job.id, 1, true)), "{job_type}");
+            if let Some(next) = next {
+                s.finish_job(next.id, None).unwrap();
+                assert!(s.claim_next_job(&[job_type]).unwrap().is_none(), "once");
+            }
+        }
     }
 
     #[test]

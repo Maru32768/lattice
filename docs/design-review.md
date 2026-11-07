@@ -22,7 +22,7 @@
 | HTTP | `reqwest` + native-tls | 決定 | WindowsではSChannelを使う。rustls/aws-lcはWindowsでビルド依存が増えるため避けた。bodyは20MBを上限にする。 |
 | DBアクセス | `rusqlite`(ORMなし) | 決定 | `PRAGMA user_version`によるappend-only migration。 |
 | LLM連携 | `claude -p --output-format json --json-schema`をsubprocessで起動する | 決定 | ユーザーの既存のCLIログインを使う。記事本文はuntrustedなので、`--tools ""`、`--strict-mcp-config`、`--setting-sources ""`でtool・MCP・設定をすべて無効にし、空の一時ディレクトリで実行する。`LLMProvider` traitは`llm.rs`(テスト用fakeと合わせて実装が2つある)。 |
-| Job runner | SQLiteの`processing_jobs`を、アプリ内のtokio taskが直列に処理する。LLM系(translate)とローカル系(embed)でrunnerを分ける | 決定 | `running`のjobは、取ったプロセスが15秒ごとに`heartbeat_at`を更新する。heartbeatが1分途絶えた`running`は、どのプロセスも`pending`に戻す(アプリの起動中にCLIもjobを実行するので、起動時に一律には戻さない)。戻すときは失敗の1回として数え、backoffと回数の上限を効かせる(プロセスごと落とすjobは`finish_job`に届かないので、数えないと起動のたびに無制限に再実行される)。アプリを普通に閉じるときは、自分のjobを試行回数を戻して`pending`にするので、失敗に数えず次の起動ですぐ再開する。失敗時は指数backoff(2, 4, 8… 分)、5回で`failed`。手動の再実行でbackoffを解除する。 |
+| Job runner | SQLiteの`processing_jobs`を、アプリ内のtokio taskが直列に処理する。LLM系(translate)とローカル系(embed)でrunnerを分ける | 決定 | `running`のjobは、取ったプロセスが15秒ごとに`heartbeat_at`を更新する。heartbeatが1分途絶えた`running`は、どのプロセスも`pending`に戻す(アプリの起動中にCLIもjobを実行するので、起動時に一律には戻さない)。戻すときは失敗の1回として数え、backoffと回数の上限を効かせる(プロセスごと落とすjobは`finish_job`に届かないので、数えないと起動のたびに無制限に再実行される)。アプリを普通に閉じるときは、自分のjobを試行回数を戻して`pending`にするので、失敗に数えず次の起動ですぐ再開する。実行中に同じjobを頼まれると、再実行に費用のかからない種類(翻訳・取得・画像・埋め込み)は終わったあとにもう一度走る(`requeue`)。要約・分類・クイズは複数の出来事から頼まれるので、二重に課金しないよう捨てる。失敗時は指数backoff(2, 4, 8… 分)、5回で`failed`。手動の再実行でbackoffを解除する。 |
 | Vector search | `embeddings`テーブル(f32 BLOB)をRustで総当たりしてcosineを計算する | 暫定 | 10^5〜10^6 block程度まではこれで足りる。それを超えたらsqlite-vecかANNに移す(`Store::scan_embeddings`の1箇所を差し替えればよい。`shortcut:`で記録済み)。 |
 | Embedding model | multilingual-e5-small(fastembed／ONNX Runtime、384次元) | 決定 | ローカルで動き、日本語のqueryと英語の本文をまたいで検索できる。モデル(約470MB)は初回利用時に`app_data_dir/models`へダウンロードする。`EmbeddingProvider` traitの裏にあり、vectorはmodel IDごとに保存するので、モデルを替えても古いindexと混ざらない。**ビルドにはMSVC 14.4x(VS 2022 17.10以降)が必要**(ONNX Runtimeの配布バイナリの要件)。 |
 | Hybrid ranking | Reciprocal Rank Fusion(k=60) | 決定 | bm25とcosineはスケールが違うので、weighted scoreにすると調整が必要になる。RRFは順位だけで統合できる。 |
@@ -127,7 +127,7 @@ CREATE VIRTUAL TABLE blocks_fts USING fts5(text, content='blocks', content_rowid
 - **翻訳対象。** 訳先の言語ですでに書かれているproseは送らない(日本語の訳なら日本語が優勢なblock、英語の訳ならそれ以外)。code / pre / nav / header / footer、`translate="no"`は対象外(asideは記事中の囲み記事が本文なので訳す)。訳先の言語は §16を参照。
 - **訳し直す(G29)。** Readerの ⋯ と、全部訳し終えたときの翻訳状況の横に「訳し直す」を置く。`translate::retranslate`が、記事のprose blockのhashと今の訳先のkeyに一致する`segment_translations`の行を消し(FTSの行はtriggerで消える)、translate jobを積み直す。jobは全blockを未翻訳として見るのでcacheを通らない。providerはchainのまま(この実行だけ別のproviderを選ぶことはしない)。訳文が50 blockを超えるときだけ確認ダイアログを出す。
   - cacheは本文1つにつき1つなので、同じ段落を持つほかの記事とページ表示も新しい訳になる(記事ごとに訳を持たせると、ページ表示や検索と共有する今の設計が崩れる)。別の訳先(英訳、専門用語モード、追加の指示)の行は消さない。
-  - 訳し直しの途中で失敗すると、その記事は訳のないblockが残る(古い訳には戻らない)。jobは従来どおりbackoffして再試行し、「続きを翻訳」も使える。翻訳jobの実行中は「訳し直す」を押せない(実行中のjobは積み直せず、消した分が訳されないまま終わるため)。
+  - 訳し直しの途中で失敗すると、その記事は訳のないblockが残る(古い訳には戻らない)。jobは従来どおりbackoffして再試行し、「続きを翻訳」も使える。翻訳jobの実行中は「訳し直す」を押せない(UIの制限。CLIなど別の経路から頼まれても、jobは終わったあとにもう一度走るので、消した分が訳されないまま終わることはない)。
 
 ## 4. 検索slice(実装済み)
 
@@ -566,7 +566,7 @@ feed単位の取り込み件数・間隔の設定、表示モードと並び順�
 
 ### 未実装(意図的)
 
-pollとingest jobの競合: entryの本文はjobを積んだ後に保存するので、その間にjobが走ると(数ms)本文なしで失敗する。pollのたびに「本文があるのにフィード本文を使わずに失敗した記事」を積み直すので、次のpollで回復する。
+pollとingest jobの競合: entryの本文はjobを積んだ後に保存するので、その間にjobが走ると(数ms)本文なしで失敗する。pollのたびに「本文があるのにフィード本文を使わずに失敗した記事」を積み直すので、次のpollで回復する。そのときjobがまだ実行中でも、終わったあとにもう一度走る(`jobs::RUN_AGAIN_IF_ASKED`)。これがないと積み直しが捨てられ、フィードが304を返し続ける間は`import`を通らないので、記事は失敗のまま残る。
 
 ## 18. 品質(静的解析・テスト・CI。G39・G40・G42)
 
