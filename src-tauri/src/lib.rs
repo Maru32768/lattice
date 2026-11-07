@@ -1269,7 +1269,10 @@ fn r2_clear_secret(app: State<'_, App>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn r2_backup_now(app: State<'_, App>) -> Result<String, String> {
+async fn r2_backup_now(app: State<'_, App>, loc: State<'_, Location>) -> Result<String, String> {
+    if loc.warning.is_some() {
+        return Err(msg!("r2.fellBack"));
+    }
     r2::backup_now(&app.store, &r2::client(), app.db_path.as_ref(), &backup_dir(&app)).await
 }
 
@@ -1393,7 +1396,7 @@ pub fn run() {
             }
             main.build()?;
 
-            let dir = loc.dir.clone();
+            let (dir, fell_back) = (loc.dir.clone(), loc.warning.is_some());
             app.manage(loc);
             let path = dir.join(location::DB_FILE);
             let store = Arc::new(Store::open(&path)?);
@@ -1474,7 +1477,11 @@ pub fn run() {
             let embed_model = providers.embedder.model_id().to_string();
             tauri::async_runtime::spawn(renderer::run(app.handle().clone(), store.clone(), embed_model, wake_render.clone(), on_render));
 
-            tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+            // Not from a fallback folder: its database is an old copy when the library has moved, and R2 keeps
+            // a set number of generations per device, so its uploads would push out the real library's backups.
+            if !fell_back {
+                tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+            }
 
             let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
             tauri::async_runtime::spawn(feeds::poll_forever(store.clone(), providers.http.clone(), move |queued| {

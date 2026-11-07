@@ -1115,6 +1115,7 @@ export const en = {
   "be.r2.interval": "The interval is 1–720 hours",
   "be.r2.incomplete": "To turn it on, set the Account ID, bucket, Access Key ID and Secret Access Key",
   "be.r2.running": "A backup to R2 is already running",
+  "be.r2.fellBack": "Not backing up: Lattice is running from the default location because its data folder cannot be used. Uploading this data would push out the backups of your library",
   "be.r2.pruneStopped": "{error} ({done}/{total} deleted)",
   "be.render.failed": "Could not render the page: {error}",
   "be.render.noText": "No text could be extracted from the rendered page either: {error}",

@@ -1099,7 +1099,7 @@ A menu that overlaps a web page appears after the page is replaced by a still im
 
 ### Lattice opened an empty library
 
-If the chosen data folder is missing or unusable, Lattice starts with the default location. **Settings › Logs & storage** shows why. Fix the folder, or choose another one with **Change…**.
+If the chosen data folder is missing or unusable, Lattice starts with the default location. **Settings › Logs & storage** shows why. Fix the folder, or choose another one with **Change…**. Backups to R2 stop until then, so that the data in the default location does not push out your library's backups.
 
 ### Updates cannot be checked
 

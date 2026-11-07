@@ -1101,6 +1101,7 @@ export const ja = {
   "be.r2.interval": "間隔は1〜720時間です",
   "be.r2.incomplete": "有効にするにはAccount ID・bucket・Access Key ID・Secret Access Keyをすべて設定してください",
   "be.r2.running": "R2へのバックアップを実行中です",
+  "be.r2.fellBack": "データフォルダを使えず既定の場所で起動しているため、バックアップしません。ここにあるデータを上げると、本来のライブラリのバックアップが押し出されます",
   "be.r2.pruneStopped": "{error}({done}/{total}件削除済み)",
   "be.render.failed": "ページの描画に失敗しました: {error}",
   "be.render.noText": "描画後のページからも本文を抽出できませんでした: {error}",

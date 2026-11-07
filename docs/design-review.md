@@ -230,6 +230,7 @@ URL 入力 → normalize（tracking param 除去）→ dedup → fetch（上限�
 - **object key。** `lattice/<端末名>/lattice-<UTC 時刻>.db.gz`。端末名は`COMPUTERNAME` / `HOSTNAME`から英数字だけを取る。複数台から同じbucketに置ける。時刻は固定幅の`YYYYMMDDTHHMMSSZ`なので、keyを文字列で並べると時系列順になる。
 - **設定。** `settings`テーブルの`r2.*`(有効・Account ID・bucket・Access Key ID・間隔・残す世代数・最終成功時刻・最終エラー・最終の世代削除エラー)と`secret.r2_secret_access_key`。Account ID・bucket・Access Key ID・Secret・間隔・世代数はすべて設定画面から変更できる。UIにはSecretの値を返さず`has_secret`だけを返す。Secretは「削除」で消せ、消すと自動バックアップも無効にする(Secretなしでは動かないため)。Account ID(32桁hex)とbucket名はURLに入るので保存時に検証する。
 - **スケジュール。** 起動時にspawnしたタスクが15分ごとに確認し、最終成功から間隔(既定24時間)が過ぎていれば実行する。時刻はDBに保存するので再起動をまたいでも続く。失敗したら1時間は再試行しない。同時に2本は走らない(手動実行と重なったらエラーを返す)。
+- **フォールバック中は止める。** 選んだデータフォルダが使えず既定の場所で起動した(`Location.warning`がある)ときは、スケジューラを起動せず、手動の実行も断る。移動元に残る古いDBはR2の設定も残しており、そのまま動くと端末ごとの世代を古いデータで置き換えていく。ドライブが壊れたときは、R2が最後のコピーになる。
 - **保持は世代数。** 日数で消すと、しばらくアプリを動かさなかっただけで全部消えうる(ECRのlifecycle policyの「イメージ数」と同じ考え方を採った)。R2のlifecycle ruleは経過日数でしか消せないので、アプリが消す。アップロードに成功したあと、ListObjectsV2(SigV4、`continuation-token`でページを辿る)で`lattice/<端末名>/`を一覧し、`object_key`と同じ形のkeyだけを残して文字列の降順に並べ、今回のkeyを1世代目として数えたうえで「残す世代数」(`r2.keep_generations`、既定30、最小1)を超えた分をDeleteObjectで1件ずつ消す(DeleteObjectsはContent-MD5が要るので使わない)。今回のkeyは時計がずれていても消さない。他の端末のprefixや別の名前のオブジェクトには触れない。一覧・削除に失敗してもバックアップは成功のままで、`r2.last_prune_error`に記録して設定画面に警告を出し、次回成功時に消える。XMLは要素の切り出しを手で行い、文字参照の解決だけ既存の依存(feed-rs経由で入っている`quick-xml`)の`unescape`を使う。lifecycle ruleは止まったmultipart uploadの破棄(7日)だけを残す。
 - **APIキー。** アプリ用のR2アクセスキーはdashboardで作る(SecretをTerraformのstateに残さないため)。手順は`infra/r2/README.md`。
 
