@@ -311,17 +311,17 @@ fn parse_item(it: &Value) -> Option<Judgment> {
     Some(Judgment { score: num("score")?, fit: num("fit")?, value: num("value")?, reason: clean_reason(it["reason"].as_str()?)? })
 }
 
-pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64) -> Result<(), String> {
+pub async fn run<P: LlmProvider>(store: &Store, provider: &P, article_id: i64, attempt: i64) -> Result<(), String> {
     // Claimed jobs must be finished here; a storage error just ends the batch early.
     let mut extra = Vec::new();
-    while extra.len() + 1 < BATCH {
+    while extra.len() + 1 < crate::jobs::batch_size(BATCH, attempt) {
         match store.claim_next_job(&[JOB_TYPE]) {
             Ok(Some(j)) => extra.push(j),
             _ => break,
         }
     }
     let ids: Vec<i64> = std::iter::once(article_id).chain(extra.iter().filter_map(|j| j.article_id)).collect();
-    let outcome = rate(store, provider, &ids).await;
+    let outcome = crate::jobs::catch_panic(rate(store, provider, &ids)).await;
     let result_for = |id: i64| match &outcome {
         Err(e) => Err(e.clone()),
         Ok(m) => m.get(&id).cloned().unwrap_or_else(|| Err(msg!("relevance.noResult"))),
@@ -444,7 +444,7 @@ mod tests {
 
     async fn drain(s: &Store, fake: &Fake) {
         while let Some(job) = s.claim_next_job(&[JOB_TYPE]).unwrap() {
-            let r = run(s, fake, job.article_id.unwrap()).await;
+            let r = run(s, fake, job.article_id.unwrap(), job.attempt_count).await;
             s.finish_job(job.id, r.err().as_deref()).unwrap();
         }
     }
@@ -710,7 +710,7 @@ mod tests {
         assert_eq!(rescore(&s, None).unwrap(), 2);
         let job = s.claim_next_job(&[JOB_TYPE]).unwrap().unwrap();
         let mid = EditsMidCall { store: s.clone(), new_profile: "Go", newer_score: Some((ids[1], 1)), inner: Fake::new() };
-        assert_eq!(run(&s, &mid, job.article_id.unwrap()).await.unwrap_err(), PROFILE_CHANGED);
+        assert_eq!(run(&s, &mid, job.article_id.unwrap(), job.attempt_count).await.unwrap_err(), PROFILE_CHANGED);
         s.finish_job(job.id, Some(PROFILE_CHANGED)).unwrap();
 
         assert_eq!(get(&s, ids[0]).unwrap(), None, "the judgment against the old profile is dropped");
@@ -758,7 +758,7 @@ mod tests {
         assert_eq!(threshold(&s).unwrap(), 5);
         assert!(set_threshold(&s, 0).is_err());
 
-        assert!(run(&s, &Fake { fail: true, ..Fake::new() }, id).await.is_err());
+        assert!(run(&s, &Fake { fail: true, ..Fake::new() }, id, 1).await.is_err());
         assert_eq!(get(&s, id).unwrap(), None);
     }
 
@@ -835,7 +835,7 @@ mod tests {
             profile(&s, text.as_str().unwrap());
             rescore(&s, Some(&articles.iter().map(|(id, _)| *id).collect::<Vec<_>>())).unwrap();
             while let Some(job) = s.claim_next_job(&[JOB_TYPE]).unwrap() {
-                let r = run(&s, provider, job.article_id.unwrap()).await;
+                let r = run(&s, provider, job.article_id.unwrap(), job.attempt_count).await;
                 s.finish_job(job.id, r.err().as_deref()).unwrap();
             }
             println!(

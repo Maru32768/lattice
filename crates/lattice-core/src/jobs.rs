@@ -187,6 +187,13 @@ pub async fn run_article<L: LlmProvider, E: EmbeddingProvider>(
     Ok(ran)
 }
 
+/// How many articles a batched job (classify, relevance) takes on its `attempt`th try, out of `full`.
+/// One call rates them all, so one article the provider refuses fails the rest. Halving on each try
+/// sets the others free early, and by the last try every article has a call of its own.
+pub(crate) fn batch_size(full: usize, attempt: i64) -> usize {
+    (full >> (attempt - 1).clamp(0, 31)).max(1)
+}
+
 /// `work`'s result, with a panic (release unwinds on purpose) as its error: a job must still reach
 /// `finish_job`, or it stays `running` while its process lives, and a runner must not die with it.
 pub async fn catch_panic<T>(work: impl Future<Output = Result<T, String>>) -> Result<T, String> {
@@ -279,9 +286,9 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             }
         }
         summarize::JOB_TYPE => summarize::run(store, &p.llm, article_id).await,
-        classify::JOB_TYPE => classify::run(store, &p.llm, article_id).await,
+        classify::JOB_TYPE => classify::run(store, &p.llm, article_id, job.attempt_count).await,
         quiz::JOB_TYPE => quiz::run(store, &p.llm, article_id).await,
-        relevance::JOB_TYPE => relevance::run(store, &p.llm, article_id).await,
+        relevance::JOB_TYPE => relevance::run(store, &p.llm, article_id, job.attempt_count).await,
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
         ingest::JOB_TYPE => {
             // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.

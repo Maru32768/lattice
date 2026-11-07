@@ -34,6 +34,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - When one batch of a translation failed completely, the translations already returned for later batches were thrown away and paid for again on each retry, and a paragraph that always failed kept the rest of the article from being saved. Returned translations are now always saved, and the rest of the article goes on.
 - When your AI provider was down or at its limit, each translation batch made up to 13 calls at once, beyond the parallel translations setting. A batch now stops after the first failed calls.
 - When the app and `lattice-cli` or its MCP server opened the library at the same moment after an update, one of them could fail on the database upgrade. Writes from them at the same moment could also fail at once instead of waiting their turn.
+- One article that the AI provider refused failed the classification or importance rating of up to 20 articles with it, on all five tries. Each retry now takes half as many articles, so the others get through.
 
 ## [0.3.0] - 2026-11-06
 

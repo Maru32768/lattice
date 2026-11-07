@@ -333,6 +333,7 @@ feed 登録 / 30 分ごと / 起動時 / 「すべて更新」→ 未見の entr
 - **ジャンルは記事に1つ。** 既定はDatabase / Distributed Systems / Linux / Networking / Programming Languages / Security / Web / AI/ML / DevOps / Hardware / Career / Other。promptに既存のジャンル一覧を渡し、合うものがなければ新しいジャンルを作らせる。名前は大文字小文字を区別せずに照合するので、「database」はDatabaseに統合される。
 - **手動の選択は上書きしない。** Readerで選ぶと`genre_source = 'manual'`になり、自動分類はジャンルを変えない(タグの追加だけ行う)。Readerの「自動分類」を押すと固定を外して分類し直す。空にすると未分類に戻る。
 - **タグは追加だけ。** 分類が提案したタグ(最大3つ)を付け、ユーザーのタグは消さない。
+- **batchと再試行。** 1回の呼び出しの失敗はbatchの全員に返るので、providerが拒否する記事が1つあると全員が巻き込まれ、同じbackoffでまた同じbatchになる。そこで試行のたびにbatchを半分にする(20→10→5→2→1、`jobs::batch_size`。重要度も同じ)。問題の記事と別れた記事は先に済み、最後の試行ではどの記事も1件ずつになる。
 - **batch。** jobは記事単位のまま(状態・再試行・backoffは従来どおり)だが、1回の実行で待機中のclassify jobを最大20件claimして1回のCLI呼び出しで分類し、それぞれのjobを個別に完了させる。数千件のbulk importでもCLIの起動は1/20になる。入力は記事ごとにタイトル・ドメイン・要約(なければ冒頭の本文1200字)。
 - **派生データとして記録する。** 結果は毎回`classifications`にprovider / model / prompt_version付きで残す。
 - **自動分類の設定**(`settings.auto_classify`、既定ON)と「未分類をすべて分類」は設定画面にある。
