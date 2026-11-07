@@ -32,6 +32,9 @@ const AUTH_KEY: &str = "auth.json";
 const INDEX_KEY: &str = "index.json";
 const INBOX_PREFIX: &str = "inbox/";
 
+/// What the bucket holds once the snapshot is turned off: the Worker answers every token with 401.
+const NO_TOKEN: &[u8] = br#"{"token_hash":null,"live_origin":null}"#;
+
 /// What the phone did reaches the PC within this.
 const INBOX_EVERY: Duration = Duration::from_secs(5 * 60);
 /// What the PC did reaches the phone within this. Each pass reads every article to see whether it changed.
@@ -141,13 +144,14 @@ pub fn forget_published(store: &Store) -> Result<(), String> {
     store.conn().execute("DELETE FROM mobile_published", []).map(drop).map_err(err)
 }
 
-fn creds(store: &Store) -> Result<Option<Creds>, String> {
-    let (Some(_), Some(account_id), Some(bucket), Some(access_key_id), Some(secret)) =
-        (get(store, ENABLED)?, get(store, ACCOUNT_ID)?, get(store, BUCKET)?, get(store, ACCESS_KEY_ID)?, get(store, SECRET_KEY)?)
+/// The bucket's credentials if they are all there, and whether publishing is on.
+fn creds(store: &Store) -> Result<Option<(Creds, bool)>, String> {
+    let (Some(account_id), Some(bucket), Some(access_key_id), Some(secret)) =
+        (get(store, ACCOUNT_ID)?, get(store, BUCKET)?, get(store, ACCESS_KEY_ID)?, get(store, SECRET_KEY)?)
     else {
         return Ok(None);
     };
-    Ok(Some(Creds { account_id, bucket, access_key_id, secret }))
+    Ok(Some((Creds { account_id, bucket, access_key_id, secret }, get(store, ENABLED)?.is_some())))
 }
 
 // ---- the bucket -----------------------------------------------------------------------------
@@ -309,6 +313,24 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     Ok(())
 }
 
+/// Takes the token out of a bucket that has one, so that turning the snapshot off also stops its readers.
+async fn withdraw_token<B: Bucket>(store: &Arc<Store>, bucket: &B) -> Result<(), String> {
+    let s = store.clone();
+    let hash = sha256_hex(NO_TOKEN);
+    let check = hash.clone();
+    let needed = blocking(move || {
+        let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [AUTH_KEY], |r| r.get(0)).optional().map_err(err)?;
+        Ok(known.is_some_and(|k| k != check))
+    })
+    .await?;
+    if !needed {
+        return Ok(());
+    }
+    bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
+    let s = store.clone();
+    blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, AUTH_KEY]).map(drop).map_err(err)).await
+}
+
 async fn note(store: &Arc<Store>, key: &'static str, value: Option<String>) {
     let s = store.clone();
     if let Err(e) = blocking(move || set(&s, key, value.as_deref())).await {
@@ -326,12 +348,19 @@ async fn run_pass<B: Bucket>(
     RUNNING.store(true, Ordering::SeqCst);
     let _running = Running;
     let s = store.clone();
-    let creds = match blocking(move || creds(&s)).await {
-        Ok(Some(c)) => c,
+    let (creds_now, enabled) = match blocking(move || creds(&s)).await {
+        Ok(Some(found)) => found,
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
     };
-    let bucket = bucket_for(creds);
+    let bucket = bucket_for(creds_now);
+    if !enabled {
+        if let Err(e) = withdraw_token(store, &bucket).await {
+            log::warn!("mobile snapshot: withdrawing the token: {e}");
+            note(store, LAST_ERROR, Some(e)).await;
+        }
+        return;
+    }
     if inbox_only {
         match take_inbox(store, &bucket, on_applied).await {
             // What just applied should show on the phone without waiting for the next full pass.
@@ -401,6 +430,9 @@ mod tests {
             let mut text = String::new();
             flate2::read::GzDecoder::new(&objects[key][..]).read_to_string(&mut text).unwrap();
             serde_json::from_str(&text).unwrap()
+        }
+        fn auth(&self) -> serde_json::Value {
+            serde_json::from_slice(&self.objects.lock().unwrap()[AUTH_KEY]).unwrap()
         }
         fn take_puts(&self) -> Vec<String> {
             std::mem::take(&mut self.puts.lock().unwrap())
@@ -478,8 +510,7 @@ mod tests {
         bucket.take_puts();
         pass(&store, &bucket).await;
         assert!(bucket.take_puts().contains(&"auth.json".to_string()));
-        let auth: serde_json::Value = serde_json::from_slice(&bucket.objects.lock().unwrap()["auth.json"]).unwrap();
-        assert_eq!(auth["token_hash"], sha256_hex(new));
+        assert_eq!(bucket.auth()["token_hash"], sha256_hex(new));
     }
 
     #[tokio::test]
@@ -603,6 +634,34 @@ mod tests {
         assert_eq!(bucket.json("index.json")["applied_ops"][0], "a");
     }
 
+    #[tokio::test]
+    async fn turning_it_off_stops_the_worker_accepting_any_token() {
+        let (store, bucket, _) = setup();
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &bucket, false).await;
+        let old = mobile::token(&store).unwrap();
+        assert_eq!(bucket.auth()["token_hash"], sha256_hex(&old));
+        save(&store, &settings(false, "lattice-mobile", WORKER)).unwrap();
+        mobile::regenerate_token(&store).unwrap();
+        bucket.take_puts();
+        run(&store, &bucket, true).await;
+        assert_eq!(bucket.auth()["token_hash"], serde_json::Value::Null);
+        assert_eq!(bucket.take_puts(), ["auth.json"]);
+        run(&store, &bucket, true).await;
+        assert!(bucket.take_puts().is_empty(), "once");
+        save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &bucket, false).await;
+        assert_eq!(bucket.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "and back on");
+    }
+
+    #[tokio::test]
+    async fn a_bucket_never_published_to_is_left_alone_when_off() {
+        let (store, bucket, _) = setup();
+        save(&store, &settings(false, "lattice-mobile", WORKER)).unwrap();
+        run(&store, &bucket, true).await;
+        assert!(bucket.keys().is_empty());
+    }
+
     #[test]
     fn turning_it_on_needs_everything_and_a_new_bucket_starts_over() {
         let s = Store::open_in_memory().unwrap();
@@ -611,7 +670,7 @@ mod tests {
         let got = status(&s).unwrap();
         assert!(got.enabled && got.has_secret);
         assert_eq!(got.worker_url, WORKER);
-        assert!(creds(&s).unwrap().is_some());
+        assert!(creds(&s).unwrap().is_some_and(|(_, on)| on));
         s.conn().execute("INSERT INTO mobile_published (key, hash) VALUES ('x', 'y')", []).unwrap();
         set(&s, LAST_PUBLISH, Some("1")).unwrap();
         save(&s, &settings(true, "lattice-mobile", WORKER)).unwrap();
@@ -622,7 +681,7 @@ mod tests {
         assert_eq!(count(&s), 0);
         assert_eq!(status(&s).unwrap().last_publish, None);
         save(&s, &settings(false, "another-bucket", WORKER)).unwrap();
-        assert!(creds(&s).unwrap().is_none(), "off means no pass runs");
+        assert!(creds(&s).unwrap().is_some_and(|(_, on)| !on));
     }
 
     #[test]
