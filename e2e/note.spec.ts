@@ -127,6 +127,20 @@ test("メモ: a failed save never comes back over newer text queued behind it", 
   expect(saves.map((s) => (s as { body: string }).body)).toEqual(["the disk is full", "written after it"]);
 });
 
+test("メモ: text typed again while an earlier save of it is on its way is still saved last", async ({ app }) => {
+  await open(app, SNAPSHOT_ID);
+  await app.getByRole("button", { name: "メモ", exact: true }).click();
+  const note = app.getByRole("complementary", { name: "メモ" }).getByRole("textbox", { name: "メモ" });
+  await holdNotes(app);
+  await note.fill("first");
+  await note.blur();
+  await note.fill("first and more");
+  await note.blur();
+  await note.fill("first");
+  await app.evaluate(() => (window as unknown as { __letNotesGo: () => void }).__letNotesGo());
+  await expect.poll(async () => (await callsOf(app, "set_article_note")).map((s) => (s as { body: string }).body).at(-1)).toBe("first");
+});
+
 test("ジャンル: a genre added ahead of any article is listed for classification", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "ジャンルを管理" }).click();
   const name = app.getByRole("textbox", { name: "追加するジャンルの名前" });

@@ -65,10 +65,6 @@ export function NotePanel({ view, onClose }: { view: ArticleView; onClose: () =>
     setError(message);
     if (message === null) {
       setStatus("saved");
-      // A panel that came up over the failure holds this text to try again.
-      if (pending.current === body) {
-        pending.current = null;
-      }
       return;
     }
     // The next way out (a blur, `:w`, closing) tries again. Only the newest text: an older one would overwrite what is queued or saved after it.
