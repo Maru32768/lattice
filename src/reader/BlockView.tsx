@@ -12,7 +12,7 @@ export const OpenLink = createContext<(href: string, newTab: boolean) => void>((
 /** Saved words to underline (G56), or null when marking is off or the book is empty. */
 export const WordMarksContext = createContext<WordMarks | null>(null);
 
-export function Link({ href, children }: { href: string; children: React.ReactNode }) {
+function Link({ href, children }: { href: string; children: React.ReactNode }) {
   const openLink = useContext(OpenLink);
   const go = (e: React.MouseEvent, newTab: boolean) => {
     e.preventDefault();
@@ -46,7 +46,7 @@ const Txt = memo(function Txt({ v, ts }: { v: string; ts?: string[] }) {
 });
 
 /** The block's inlines between two offsets of its text (a sentence, or the text between sentences). */
-export function sliceInlines(block: Block, start: number, end: number): Inline[] {
+function sliceInlines(block: Block, start: number, end: number): Inline[] {
   if (!block.inlines) {
     return [{ t: "text", v: block.text.slice(start, end) }];
   }
@@ -62,7 +62,7 @@ export function sliceInlines(block: Block, start: number, end: number): Inline[]
   return out;
 }
 
-export function Translation({ text, ts }: { text: string; ts?: string[] }) {
+function Translation({ text, ts }: { text: string; ts?: string[] }) {
   return <>{splitBackticks(shownTranslation(text)).map((s, n) => (s.code ? <code key={n}>{s.v}</code> : <Txt key={n} v={s.v} ts={ts} />))}</>;
 }
 
@@ -72,7 +72,7 @@ export const translationText = (tr: string) =>
     .map((s) => s.v)
     .join("");
 
-export function Inlines({ inlines, ts }: { inlines: Inline[]; ts?: string[] }) {
+function Inlines({ inlines, ts }: { inlines: Inline[]; ts?: string[] }) {
   return (
     <>
       {inlines.map((i: Inline, n) =>
