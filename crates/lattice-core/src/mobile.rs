@@ -188,11 +188,18 @@ pub fn apply(store: &Store, op: &MobileOp) -> Result<Outcome, String> {
             Effects { article: saved.ids.first().copied(), fetch: true, ..Effects::default() }
         }
     };
+    record(store, &op.id)?;
+    Ok(Outcome::Applied(effects))
+}
+
+/// Remembers an operation as done with. Also one that can never apply, when it came by the inbox: the phone was told only
+/// that it was queued, and keeps sending what follows the same way until a list names it.
+pub(crate) fn record(store: &Store, id: &str) -> Result<(), String> {
     let now = unix_now();
     let conn = store.conn();
-    conn.execute("INSERT INTO mobile_ops_applied (id, applied_at) VALUES (?1, ?2)", params![op.id, now]).map_err(err)?;
+    conn.execute("INSERT OR IGNORE INTO mobile_ops_applied (id, applied_at) VALUES (?1, ?2)", params![id, now]).map_err(err)?;
     conn.execute("DELETE FROM mobile_ops_applied WHERE applied_at < ?1", [now - KEEP_APPLIED_SECS]).map_err(err)?;
-    Ok(Outcome::Applied(effects))
+    Ok(())
 }
 
 /// The phone's word for where a capture came from, kept only as far as it still holds: the

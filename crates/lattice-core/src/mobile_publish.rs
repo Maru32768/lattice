@@ -217,6 +217,13 @@ pub(crate) async fn take_inbox<B: Bucket>(store: &Arc<Store>, bucket: &B, on_app
             };
             if let Outcome::Rejected(message) = &outcome {
                 set(&store, LAST_REJECTED, Some(message))?;
+                if let Some(id) = serde_json::from_slice::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|v| v["id"].as_str().map(str::to_owned))
+                    .filter(|id| mobile::valid_op_id(id))
+                {
+                    mobile::record(&store, &id)?;
+                }
             }
             Ok(outcome)
         })
@@ -760,6 +767,14 @@ mod tests {
         save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
         run(&store, &bucket, false).await;
         assert_eq!(bucket.auth()["token_hash"], sha256_hex(mobile::token(&store).unwrap()), "and back on");
+    }
+
+    #[tokio::test]
+    async fn an_operation_refused_from_the_inbox_is_named_by_the_next_list() {
+        let (store, bucket, _) = setup();
+        bucket.with("inbox/1-bad.json", r#"{"id":"bad","op":{"kind":"save_url","url":"javascript:x"}}"#);
+        pass(&store, &bucket).await;
+        assert_eq!(bucket.json("index.json")["applied_ops"][0], "bad", "or the phone sends what follows by the inbox for 60 days");
     }
 
     #[tokio::test]
