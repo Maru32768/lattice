@@ -63,7 +63,7 @@ export async function loadIndex(): Promise<MobileIndex> {
     throw new Error(`HTTP ${response.status}`);
   }
   const index = (await response.json()) as MobileIndex;
-  setOps(settled(ops, index.applied_ops, Date.now()));
+  updateOps((local) => settled(local, index.applied_ops, Date.now()));
   return index;
 }
 
@@ -87,30 +87,43 @@ export interface LocalOp extends MobileOp {
   sent: boolean;
 }
 
-function readOps(): LocalOp[] {
+function parseOps(text: string | null): LocalOp[] {
   try {
-    const v = JSON.parse(read(OPS) ?? "[]") as unknown;
+    const v = JSON.parse(text ?? "[]") as unknown;
     return Array.isArray(v) ? (v as LocalOp[]) : [];
   } catch {
     return [];
   }
 }
 
-let ops = readOps();
+let ops = parseOps(read(OPS));
 const listeners = new Set<() => void>();
 
-function setOps(next: LocalOp[]) {
-  if (next.length !== ops.length || next.some((op, i) => op !== ops[i])) {
-    ops = next;
-    write(OPS, JSON.stringify(ops));
+/** Starts from what storage holds, not from this tab's copy: another tab may have added to it. */
+function updateOps(change: (local: LocalOp[]) => LocalOp[]) {
+  const stored = read(OPS);
+  ops = change(stored == null ? ops : parseOps(stored));
+  write(OPS, JSON.stringify(ops));
+  listeners.forEach((l) => l());
+}
+
+function otherTabChanged(e: StorageEvent) {
+  if (e.key === OPS || e.key === null) {
+    ops = parseOps(e.newValue);
     listeners.forEach((l) => l());
   }
 }
 
 export const subscribeOps = (changed: () => void) => {
+  if (listeners.size === 0) {
+    addEventListener("storage", otherTabChanged);
+  }
   listeners.add(changed);
   return () => {
     listeners.delete(changed);
+    if (listeners.size === 0) {
+      removeEventListener("storage", otherTabChanged);
+    }
   };
 };
 export const localOps = () => ops;
@@ -174,6 +187,7 @@ export const whenRejected = (f: (error: string) => void) => {
 /** Sends what has not been sent, in order, stopping at the first that cannot get through for now. */
 export function flushOps(): Promise<void> {
   flushing ??= (async () => {
+    updateOps((local) => local);
     for (let next = ops.find((o) => !o.sent); next; next = ops.find((o) => !o.sent)) {
       const id = next.id;
       const result = await sendOp(next);
@@ -181,10 +195,10 @@ export function flushOps(): Promise<void> {
         break;
       }
       if (result.status === "rejected") {
-        setOps(ops.filter((o) => o.id !== id));
+        updateOps((local) => local.filter((o) => o.id !== id));
         onRejected(result.error);
       } else {
-        setOps(ops.map((o) => (o.id === id ? { ...o, sent: true } : o)));
+        updateOps((local) => local.map((o) => (o.id === id ? { ...o, sent: true } : o)));
       }
     }
   })().finally(() => {
@@ -195,7 +209,7 @@ export function flushOps(): Promise<void> {
 
 /** Records the operation on this phone first, so it survives a closed page or a sleeping PC, then tries to send it. */
 export function submit(op: MobileOpKind) {
-  setOps([...ops, { id: newOpId(), op, at: Date.now(), sent: false }]);
+  updateOps((local) => [...local, { id: newOpId(), op, at: Date.now(), sent: false }]);
   void flushOps();
 }
 

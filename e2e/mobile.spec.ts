@@ -418,6 +418,26 @@ test("an operation the server refuses is dropped, and the reader is told why", a
   await expect(page.getByText("未送信")).toHaveCount(0);
 });
 
+test("two tabs share what waits: one does not erase the other's", async ({ page, context }) => {
+  await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.abort());
+  const other = await context.newPage();
+  await start(other, { token: false });
+  await other.route("**/api/ops", (route) => route.abort());
+  await other.getByText("First article").waitFor();
+  await other.getByLabel("URLを保存").fill("https://example.com/other");
+  await other.getByRole("button", { name: "URLを保存" }).click();
+  await expect(other.getByText("未送信1件")).toBeVisible();
+  await expect(page.getByText("未送信1件"), "the first tab sees it too").toBeVisible();
+  await other.close();
+  await page.getByLabel("URLを保存").fill("https://example.com/first");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByText("未送信2件")).toBeVisible();
+  await page.reload();
+  await expect(page.getByText("未送信2件")).toBeVisible();
+});
+
 test("a URL can be saved from the list", async ({ page }) => {
   const seen = await start(page);
   await page.getByText("First article").waitFor();
