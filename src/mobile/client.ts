@@ -227,7 +227,8 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
     await askLive();
     if (liveAnswers) {
       const fromPc = await document("api/index").catch(() => null);
-      found = fromPc?.doc ? fromPc : found;
+      // A saved copy here is the snapshot's list just read, and nothing newer.
+      found = fromPc?.doc && !fromPc.saved ? fromPc : found;
     }
   }
   const index = found.doc as MobileIndex;
