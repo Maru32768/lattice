@@ -170,13 +170,13 @@ const twoReaders = {
 /** One article's note open in two panes, with the keyboard in neither's text yet. */
 const twoPanels = async (page: Page) => {
   const [left, right] = twoReaders.root.children;
-  const sameArticle = { ...twoReaders, root: { ...twoReaders.root, children: [left, { ...right, tabs: [{ ...right!.tabs[0], articleId: SNAPSHOT_ID }] }] } };
+  const sameArticle = { ...twoReaders, root: { ...twoReaders.root, children: [left, { ...right, tabs: [{ ...right.tabs[0], articleId: SNAPSHOT_ID }] }] } };
   await page.addInitScript((layout) => localStorage.setItem("lattice.layout", layout), JSON.stringify(sameArticle));
   await page.goto("/");
   await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   const toggles = [0, 1].map((i) => page.locator(".dpane").nth(i).getByRole("button", { name: "メモ", exact: true }));
-  await toggles[0]!.click();
-  await toggles[1]!.click();
+  await toggles[0].click();
+  await toggles[1].click();
   const panels = [0, 1].map((i) => page.locator(".dpane").nth(i).getByRole("complementary", { name: "メモ" }));
   return { toggles, panels, notes: panels.map((panel) => panel.getByRole("textbox", { name: "メモ" })) };
 };
@@ -184,33 +184,33 @@ const savedBodies = async (page: Page) => (await callsOf(page, "set_article_note
 
 test("メモ: the text another panel holds to retry never overwrites newer text saved since", async ({ shell }) => {
   const { toggles, panels, notes } = await twoPanels(shell);
-  await notes[0]!.fill("the disk is full");
-  await notes[0]!.blur();
-  await expect(panels[1]!.getByRole("alert")).toBeVisible();
-  await notes[0]!.fill("written after it");
-  await notes[0]!.blur();
-  await expect(panels[1]!.getByRole("alert")).toHaveCount(0);
-  await notes[1]!.focus();
-  await notes[1]!.blur();
-  await toggles[1]!.click();
-  await expect(panels[1]!).toHaveCount(0);
+  await notes[0].fill("the disk is full");
+  await notes[0].blur();
+  await expect(panels[1].getByRole("alert")).toBeVisible();
+  await notes[0].fill("written after it");
+  await notes[0].blur();
+  await expect(panels[1].getByRole("alert")).toHaveCount(0);
+  await notes[1].focus();
+  await notes[1].blur();
+  await toggles[1].click();
+  await expect(panels[1]).toHaveCount(0);
   expect(await savedBodies(shell)).toEqual(["the disk is full", "written after it"]);
 });
 
 test("メモ: a panel holding an older retry takes on the newest text when that fails too", async ({ shell }) => {
   const { toggles, panels, notes } = await twoPanels(shell);
-  await notes[0]!.fill("the disk is full");
-  await notes[0]!.blur();
-  await expect(panels[1]!.getByRole("alert")).toBeVisible();
-  await notes[0]!.fill("the disk is full still");
-  await toggles[0]!.click();
-  await expect(panels[0]!).toHaveCount(0);
+  await notes[0].fill("the disk is full");
+  await notes[0].blur();
+  await expect(panels[1].getByRole("alert")).toBeVisible();
+  await notes[0].fill("the disk is full still");
+  await toggles[0].click();
+  await expect(panels[0]).toHaveCount(0);
   await expect.poll(async () => (await savedBodies(shell)).at(-1)).toBe("the disk is full still");
-  await expect(panels[1]!.getByRole("alert")).toBeVisible();
+  await expect(panels[1].getByRole("alert")).toBeVisible();
   await shell.evaluate(() => void ((window as unknown as { __diskFreed: boolean }).__diskFreed = true));
-  await notes[1]!.focus();
-  await notes[1]!.blur();
-  await expect(panels[1]!.getByRole("status")).toHaveText("保存しました");
+  await notes[1].focus();
+  await notes[1].blur();
+  await expect(panels[1].getByRole("status")).toHaveText("保存しました");
   expect((await savedBodies(shell)).at(-1)).toBe("the disk is full still");
 });
 
