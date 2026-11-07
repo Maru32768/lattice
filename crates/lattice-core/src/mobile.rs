@@ -101,11 +101,17 @@ pub fn settings(store: &Store) -> Result<MobileSettings, String> {
     Ok(MobileSettings { mode, port, public_url: store.setting(PUBLIC_URL).map_err(err)?.unwrap_or_default() })
 }
 
+/// Well inside what a QR code holds together with the token.
+const MAX_PUBLIC_URL: usize = 256;
+
 /// The address as the phone uses it: `https://host` or `http://host:port`, without path or trailing slash.
 fn clean_public_url(url: &str) -> Result<String, String> {
     let url = url.trim().trim_end_matches('/');
     if url.is_empty() {
         return Ok(String::new());
+    }
+    if url.len() > MAX_PUBLIC_URL {
+        return Err(msg!("mobile.publicUrl"));
     }
     let parsed = url::Url::parse(url).map_err(|_| msg!("mobile.publicUrl"))?;
     let plain = parsed.path() == "/" && parsed.query().is_none() && parsed.fragment().is_none() && parsed.username().is_empty() && parsed.password().is_none();
@@ -235,6 +241,15 @@ mod tests {
         assert_eq!(base_of(Ipv4Addr::UNSPECIFIED.into(), 8787), None);
         assert_eq!(base_of(Ipv4Addr::new(192, 168, 0, 2).into(), 8787).as_deref(), Some("http://192.168.0.2:8787"));
         assert_eq!(phone_url("http://192.168.0.2:8787", "abc"), "http://192.168.0.2:8787/#t=abc");
+    }
+
+    #[test]
+    fn the_longest_address_allowed_still_fits_a_qr_code_with_the_token() {
+        // A QR code holds at most 2953 bytes.
+        assert!(phone_url(&"x".repeat(MAX_PUBLIC_URL), &"f".repeat(64)).len() < 2953);
+        let s = store();
+        let long = format!("https://{}.example", "x".repeat(MAX_PUBLIC_URL));
+        assert!(save_settings(&s, &MobileSettings { mode: ServerMode::Lan, port: 8787, public_url: long }).is_err());
     }
 
     #[test]

@@ -104,7 +104,8 @@ async fn status(mobile_server: &MobileServer, app: &App, loc: &Location) -> Resu
         (Some(_), Some(base)) => Some(mobile::phone_url(&base, &mobile::token(&app.store)?)),
         _ => None,
     };
-    let qr = url.as_deref().map(qr_of).transpose()?;
+    // Without the code the address still shows, and the settings stay open to correct it.
+    let qr = url.as_deref().and_then(|u| qr_of(u).inspect_err(|e| log::warn!("mobile QR code: {e}")).ok());
     Ok(MobileStatus { settings, running: running.server.is_some(), error: running.error.clone(), url, qr, fell_back: loc.warning.is_some() })
 }
 
