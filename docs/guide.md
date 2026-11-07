@@ -864,6 +864,18 @@ A tunnel gives the phone an encrypted way to reach the PC from anywhere. Lattice
 2. Run `tailscale serve --bg 8787` on the PC. It prints an address that ends in `.ts.net`.
 3. Enter that address in **Address the phone opens**, press **Save**, and scan the QR code.
 
+### Read while the PC is off
+
+Lattice can also keep your articles in a Cloudflare R2 bucket, so that the phone can read them while the PC is off. What you do on the phone waits there, and Lattice applies it the next time the PC is on. Word meanings and translations are still made on the PC.
+
+1. Create the bucket and the Worker with the Terraform in [`infra/mobile`](../infra/mobile/README.md). It also explains how to create the access key. Use a different bucket from your backups.
+2. In **Settings › Read on a phone**, under **Read while the PC is off**, enter the Account ID, bucket, Access Key ID, Secret Access Key and **Worker address**.
+3. Turn on **Publish a snapshot** and press **Save**. The first upload takes a while. When it finishes, a QR code appears. Scan it.
+
+While the app runs, it publishes changes every 15 minutes and picks up the phone's operations every 5 minutes. The list on the phone shows how old it is. **Publish now** does it at once, and **Upload everything again** is for a bucket that was emptied.
+
+The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
+
 `lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write`.
 
 ## CLI and MCP

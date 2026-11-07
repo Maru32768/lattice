@@ -163,6 +163,8 @@
     "allow-mobile-status",
     "allow-mobile-save",
     "allow-mobile-regenerate-token",
+    "allow-mobile-snapshot-save",
+    "allow-mobile-publish-now",
     "allow-job-overview",
     "allow-retry-job",
     "allow-retry-failed-jobs",

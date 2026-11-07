@@ -55,6 +55,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00034_job_ids_stay_unique.sql"),
     include_str!("../db/migrations/00035_job_requeue.sql"),
     include_str!("../db/migrations/00036_mobile_ops.sql"),
+    include_str!("../db/migrations/00037_mobile_published.sql"),
 ];
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),

@@ -5,7 +5,7 @@ export default defineConfig({
   categories: { correctness: "error", suspicious: "error" },
   options: { typeAware: true },
   plugins: ["typescript", "react", "promise", "unicorn", "import"],
-  ignorePatterns: ["dist/**", "src-tauri/**", "test-results/**", "playwright-report/**"],
+  ignorePatterns: ["dist/**", "src-tauri/**", "test-results/**", "playwright-report/**", "infra/mobile/worker.js"],
   rules: {
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",

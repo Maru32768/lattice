@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-publish-now"
+description = "Enables the mobile_publish_now command without any pre-configured scope."
+commands.allow = ["mobile_publish_now"]
+
+[[permission]]
+identifier = "deny-mobile-publish-now"
+description = "Denies the mobile_publish_now command without any pre-configured scope."
+commands.deny = ["mobile_publish_now"]

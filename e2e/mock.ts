@@ -27,6 +27,7 @@ import type {
   MobileSettings,
   MobileStatus,
   R2Settings,
+  SnapshotSettings,
   R2Status,
   RelevanceStatus,
   ReviewItem,
@@ -149,7 +150,28 @@ const store = {
     anthropic_key: "stored",
   } as LlmSettings,
   review: { new_per_day: 20, reviews_per_day: 200, min_interval_minutes: 1440, max_interval_days: 365 },
-  mobile: { settings: { mode: "off", port: 8787, public_url: "" }, running: false, error: null, url: null, qr: null, fell_back: false } as MobileStatus,
+  mobile: {
+    settings: { mode: "off", port: 8787, public_url: "" },
+    running: false,
+    error: null,
+    url: null,
+    qr: null,
+    snapshot: {
+      enabled: false,
+      account_id: "",
+      bucket: "",
+      access_key_id: "",
+      worker_url: "",
+      has_secret: false,
+      running: false,
+      last_publish: null,
+      last_error: null,
+      last_rejected: null,
+    },
+    snapshot_url: null,
+    snapshot_qr: null,
+    fell_back: false,
+  } as MobileStatus,
   mobileToken: "token",
   r2: {
     enabled: false,
@@ -924,6 +946,21 @@ export const handlers = {
     store.mobile = { ...store.mobile, settings, running: on, url, qr: on ? { width: 21, path: "M0 0h1v1h-1z" } : null };
     return store.mobile;
   },
+  mobile_snapshot_save: ({ settings }: { settings: SnapshotSettings }): MobileStatus => {
+    const { secret_access_key: secret, ...rest } = settings;
+    const has_secret = store.mobile.snapshot.has_secret || !!secret;
+    if (settings.enabled && !(settings.account_id && settings.bucket && settings.access_key_id && has_secret && settings.worker_url)) {
+      throw '{"code":"mobile.snapshotIncomplete","params":{}}';
+    }
+    store.mobile = {
+      ...store.mobile,
+      snapshot: { ...store.mobile.snapshot, ...rest, has_secret, last_publish: settings.enabled ? 1_790_000_000 : null },
+      snapshot_url: settings.enabled ? `${settings.worker_url}/#t=${store.mobileToken}` : null,
+      snapshot_qr: settings.enabled ? { width: 21, path: "M0 0h1v1h-1z" } : null,
+    };
+    return store.mobile;
+  },
+  mobile_publish_now: (): MobileStatus => store.mobile,
   mobile_regenerate_token: (): MobileStatus => {
     store.mobileToken = `${store.mobileToken}x`;
     const url = store.mobile.url && `http://192.168.0.2:${store.mobile.settings.port}/#t=${store.mobileToken}`;

@@ -1367,4 +1367,18 @@ export const en = {
   "mobile.pending": "{n} not sent",
   "mobile.sent": "Sent",
   "mobile.rejected": "Could not send: {error}",
+  "mobileSettings.snapshot": "Read while the PC is off",
+  "mobileSettings.snapshotDesc":
+    "Keeps articles in Cloudflare R2, read through a Worker. What you do on the phone waits in R2 until the PC is on. The Terraform in {code} creates the bucket and the Worker.",
+  "mobileSettings.snapshotEnabled": "Publish a snapshot",
+  "mobileSettings.workerUrl": "Worker address",
+  "mobileSettings.publishNow": "Publish now",
+  "mobileSettings.publishAgain": "Upload everything again",
+  "mobileSettings.publishing": "Publishing…",
+  "mobileSettings.lastPublish": "Last published: {time}",
+  "mobileSettings.neverPublished": "Not published yet",
+  "mobileSettings.publishFailed": "The last publish failed: {error}",
+  "mobileSettings.opRejected": "An operation from the phone could not apply: {error}",
+  "mobileSettings.snapshotQr": "QR code to open the snapshot on a phone",
+  "be.mobile.snapshotIncomplete": "To publish, set the Account ID, bucket, Access Key ID, Secret Access Key and Worker address",
 } satisfies Messages;

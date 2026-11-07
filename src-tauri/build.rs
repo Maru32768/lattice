@@ -139,6 +139,8 @@ const COMMANDS: &[&str] = &[
     "mobile_status",
     "mobile_save",
     "mobile_regenerate_token",
+    "mobile_snapshot_save",
+    "mobile_publish_now",
     "job_overview",
     "retry_job",
     "retry_failed_jobs",

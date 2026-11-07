@@ -232,7 +232,7 @@ pub fn settings(store: &Store) -> Result<MobileSettings, String> {
 pub const MAX_PUBLIC_URL: usize = 256;
 
 /// The address as the phone uses it: `https://host` or `http://host:port`, without path or trailing slash.
-fn clean_public_url(url: &str) -> Result<String, String> {
+pub(crate) fn clean_public_url(url: &str) -> Result<String, String> {
     let url = url.trim().trim_end_matches('/');
     if url.is_empty() {
         return Ok(String::new());
@@ -290,6 +290,11 @@ pub fn regenerate_token(store: &Store) -> Result<String, String> {
 /// server on this library at once, a `lattice-cli serve` too. Comparing hashes gives a timing attack nothing to measure.
 pub fn token_accepted(store: &Store, presented: &str) -> Result<bool, String> {
     Ok(store.setting(TOKEN).map_err(err)?.is_some_and(|t| sha256_hex(&t) == sha256_hex(presented)))
+}
+
+/// What the Worker checks tokens against. Only the hash leaves this PC.
+pub(crate) fn auth_document(store: &Store) -> Result<Vec<u8>, String> {
+    serde_json::to_vec(&serde_json::json!({ "token_hash": sha256_hex(token(store)?) })).map_err(err)
 }
 
 // ---- addresses ------------------------------------------------------------------------------

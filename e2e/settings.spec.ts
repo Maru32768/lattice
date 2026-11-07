@@ -197,7 +197,7 @@ test("serving to a phone shows the QR code, warns about the open network, and a 
   await expect(app.getByRole("img", { name: "スマホで開くQRコード" })).toHaveCount(0);
   await app.getByLabel("このPCから配信").selectOption("lan");
   await expect(app.getByText("暗号化されません")).toBeVisible();
-  await app.getByRole("button", { name: "保存", exact: true }).click();
+  await app.getByRole("button", { name: "保存", exact: true }).first().click();
   await expect(app.getByRole("img", { name: "スマホで開くQRコード" })).toBeVisible();
   await expect(app.getByText("http://192.168.0.2:8787/", { exact: true })).toBeVisible();
   await expect(app.getByText("#t=")).toHaveCount(0);
@@ -207,5 +207,27 @@ test("serving to a phone shows the QR code, warns about the open network, and a 
   await expect(app.getByLabel("スマホが開くアドレス"), "what is typed but not saved stays").toHaveValue("https://typed.example");
   await app.getByLabel("ポート").fill("70000");
   await expect(app.getByText("ポートは1024〜65535にしてください")).toBeVisible();
-  await expect(app.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
+  await expect(app.getByRole("button", { name: "保存", exact: true }).first()).toBeDisabled();
+});
+
+test("the snapshot asks for everything before it turns on, then shows its QR code", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();
+  await expect(app.getByRole("button", { name: "今すぐ公開" })).toBeDisabled();
+  await app.getByLabel("スナップショットを公開").check();
+  const saves = app.getByRole("button", { name: "保存", exact: true });
+  await saves.nth(1).click();
+  await expect(app.getByRole("alert")).toContainText("すべて設定してください");
+  await app.getByLabel("Account ID").fill("0123456789abcdef0123456789abcdef");
+  await app.getByLabel("Bucket").fill("lattice-mobile");
+  await app.getByLabel("Access Key ID").fill("AKID");
+  await app.getByLabel("Secret Access Key").fill("s3cret");
+  await app.getByLabel("Workerのアドレス").fill("https://lattice-mobile.example.workers.dev");
+  await saves.nth(1).click();
+  await expect(app.getByRole("img", { name: "スナップショットをスマホで開くQRコード" })).toBeVisible();
+  await expect(app.getByText("https://lattice-mobile.example.workers.dev/", { exact: true })).toBeVisible();
+  await expect(app.getByLabel("Secret Access Key"), "the secret does not come back").toHaveValue("");
+  await expect(app.getByRole("button", { name: "今すぐ公開" })).toBeEnabled();
+  await app.getByRole("button", { name: "すべて上げ直す" }).click();
+  await expect.poll(() => callsOf(app, "mobile_publish_now")).toEqual([{ again: true }]);
 });

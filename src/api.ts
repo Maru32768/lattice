@@ -39,6 +39,7 @@ import type {
   MobileSettings,
   MobileStatus,
   R2Status,
+  SnapshotSettings,
   Reevaluated,
   RejectedEntry,
   RelevanceStatus,
@@ -323,6 +324,8 @@ export const mobile = {
   status: () => invoke<MobileStatus>("mobile_status"),
   save: (settings: MobileSettings) => invoke<MobileStatus>("mobile_save", { settings }),
   regenerateToken: () => invoke<MobileStatus>("mobile_regenerate_token"),
+  saveSnapshot: (settings: SnapshotSettings) => invoke<MobileStatus>("mobile_snapshot_save", { settings }),
+  publishNow: (again: boolean) => invoke<MobileStatus>("mobile_publish_now", { again }),
 };
 
 /** In-place updates from the GitHub releases. */

@@ -1,16 +1,37 @@
 import { useEffect, useState } from "react";
-import { mobile, type MobileServerMode, type MobileSettings as Settings, type MobileStatus } from "../api";
-import { SetRow } from "../ui/SetRow";
-import { useT } from "../i18n";
+import { mobile, type MobileServerMode, type MobileSettings as Settings, type MobileStatus, type SnapshotSettings } from "../api";
+import { SetRow, Switch } from "../ui/SetRow";
+import { locale, useT } from "../i18n";
 
 const MIN_PORT = 1024;
 const MAX_PORT = 65535;
+
+const time = (secs: number) => new Date(secs * 1000).toLocaleString(locale());
+const snapshotForm = (s: MobileStatus): SnapshotSettings => ({
+  enabled: s.snapshot.enabled,
+  account_id: s.snapshot.account_id,
+  bucket: s.snapshot.bucket,
+  access_key_id: s.snapshot.access_key_id,
+  secret_access_key: "",
+  worker_url: s.snapshot.worker_url,
+});
+
+/** A QR code on white, with the 4-module margin the standard asks for. */
+function Qr({ qr, label }: { qr: NonNullable<MobileStatus["qr"]>; label: string }) {
+  return (
+    <svg viewBox={`-4 -4 ${qr.width + 8} ${qr.width + 8}`} role="img" aria-label={label} width={240} height={240}>
+      <rect x={-4} y={-4} width={qr.width + 8} height={qr.width + 8} fill="#fff" />
+      <path d={qr.path} fill="#000" />
+    </svg>
+  );
+}
 
 /** Settings section for reading on a phone (G47). */
 export function MobileSettings() {
   const t = useT();
   const [status, setStatus] = useState<MobileStatus | null>(null);
   const [form, setForm] = useState<Settings | null>(null);
+  const [snapshot, setSnapshot] = useState<SnapshotSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,9 +40,47 @@ export function MobileSettings() {
       .then((s) => {
         setStatus(s);
         setForm(s.settings);
+        setSnapshot(snapshotForm(s));
       })
       .catch((e: unknown) => setError(String(e)));
   }, []);
+
+  // A pass can take minutes: follow it until it ends.
+  const publishing = status?.snapshot.running;
+  useEffect(() => {
+    if (!publishing) {
+      return;
+    }
+    const timer = setInterval(
+      () =>
+        mobile
+          .status()
+          .then(setStatus)
+          .catch(() => {}),
+      3000,
+    );
+    return () => clearInterval(timer);
+  }, [publishing]);
+
+  async function saveSnapshot() {
+    setError(null);
+    try {
+      const s = await mobile.saveSnapshot(snapshot!);
+      setStatus(s);
+      setSnapshot(snapshotForm(s));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function publish(again: boolean) {
+    setError(null);
+    try {
+      setStatus(await mobile.publishNow(again));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   async function save() {
     setError(null);
@@ -49,9 +108,20 @@ export function MobileSettings() {
       {t.msg(error)}
     </p>
   );
-  if (!form || !status) {
+  if (!form || !status || !snapshot) {
     return failure;
   }
+  const editSnapshot = (patch: Partial<SnapshotSettings>) => setSnapshot({ ...snapshot, ...patch });
+  const snapshotText = (id: string, key: "account_id" | "bucket" | "access_key_id" | "worker_url", placeholder?: string) => (
+    <input
+      id={id}
+      className="input sm mono"
+      value={snapshot[key]}
+      onChange={(e) => editSnapshot({ [key]: e.target.value })}
+      placeholder={placeholder}
+      spellCheck={false}
+    />
+  );
   const edit = (patch: Partial<Settings>) => setForm({ ...form, ...patch });
   // The backend's type holds no more than this, and a value it cannot hold never reaches its own check.
   const portOk = Number.isInteger(form.port) && form.port >= MIN_PORT && form.port <= MAX_PORT;
@@ -104,10 +174,7 @@ export function MobileSettings() {
         <div className="mobile-qr">
           {status.qr ? (
             <>
-              <svg viewBox={`-4 -4 ${status.qr.width + 8} ${status.qr.width + 8}`} role="img" aria-label={t("mobileSettings.qr")} width={240} height={240}>
-                <rect x={-4} y={-4} width={status.qr.width + 8} height={status.qr.width + 8} fill="#fff" />
-                <path d={status.qr.path} fill="#000" />
-              </svg>
+              <Qr qr={status.qr} label={t("mobileSettings.qr")} />
               <p className="sec-d">{t("mobileSettings.scan")}</p>
               <p className="sec-d">
                 <code>{status.url.split("#")[0]}</code>
@@ -118,6 +185,65 @@ export function MobileSettings() {
               <code>{status.url}</code>
             </p>
           )}
+        </div>
+      )}
+      <h2>{t("mobileSettings.snapshot")}</h2>
+      <p className="sec-d">{t.rich("mobileSettings.snapshotDesc", { code: <code>infra/mobile</code> })}</p>
+      <div className="grp">
+        <SetRow title={t("mobileSettings.snapshotEnabled")} htmlFor="snapshot-enabled">
+          <Switch id="snapshot-enabled" checked={snapshot.enabled} onChange={(on) => editSnapshot({ enabled: on })} />
+        </SetRow>
+        <SetRow title="Account ID" htmlFor="snapshot-account">
+          {snapshotText("snapshot-account", "account_id")}
+        </SetRow>
+        <SetRow title="Bucket" htmlFor="snapshot-bucket">
+          {snapshotText("snapshot-bucket", "bucket", "lattice-mobile")}
+        </SetRow>
+        <SetRow title="Access Key ID" htmlFor="snapshot-key">
+          {snapshotText("snapshot-key", "access_key_id")}
+        </SetRow>
+        <SetRow title="Secret Access Key" htmlFor="snapshot-secret">
+          <input
+            id="snapshot-secret"
+            className="input sm"
+            type="password"
+            value={snapshot.secret_access_key ?? ""}
+            onChange={(e) => editSnapshot({ secret_access_key: e.target.value })}
+            placeholder={status.snapshot.has_secret ? t("r2BackupSection.secretSet") : t("common.notSet")}
+            autoComplete="off"
+          />
+        </SetRow>
+        <SetRow title={t("mobileSettings.workerUrl")} htmlFor="snapshot-worker">
+          {snapshotText("snapshot-worker", "worker_url", "https://lattice-mobile.example.workers.dev")}
+        </SetRow>
+      </div>
+      <div className="btn-row">
+        <button className="btn pri" onClick={() => void saveSnapshot()} disabled={status.fell_back}>
+          {t("common.save")}
+        </button>
+        <button className="btn" onClick={() => void publish(false)} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
+          {t("mobileSettings.publishNow")}
+        </button>
+        <button className="btn" onClick={() => void publish(true)} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
+          {t("mobileSettings.publishAgain")}
+        </button>
+      </div>
+      <p className="sec-d">
+        {status.snapshot.running
+          ? t("mobileSettings.publishing")
+          : status.snapshot.last_publish
+            ? t("mobileSettings.lastPublish", { time: time(status.snapshot.last_publish) })
+            : t("mobileSettings.neverPublished")}
+      </p>
+      {status.snapshot.last_error && <p className="note err">{t("mobileSettings.publishFailed", { error: t.msg(status.snapshot.last_error) })}</p>}
+      {status.snapshot.last_rejected && <p className="note warn">{t("mobileSettings.opRejected", { error: t.msg(status.snapshot.last_rejected) })}</p>}
+      {status.snapshot_url && status.snapshot_qr && (
+        <div className="mobile-qr">
+          <Qr qr={status.snapshot_qr} label={t("mobileSettings.snapshotQr")} />
+          <p className="sec-d">{t("mobileSettings.scan")}</p>
+          <p className="sec-d">
+            <code>{status.snapshot_url.split("#")[0]}</code>
+          </p>
         </div>
       )}
       {failure}

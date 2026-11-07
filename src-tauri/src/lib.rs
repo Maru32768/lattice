@@ -1485,6 +1485,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     });
     // Not from a fallback folder either: a phone would read and write the old copy.
     if !fell_back {
+        mobile::start_publisher(app.handle());
         let handle = app.handle().clone();
         tauri::async_runtime::spawn(async move {
             if let Err(e) = mobile::apply(&handle).await {
@@ -1670,6 +1671,8 @@ pub fn run() {
             mobile::mobile_status,
             mobile::mobile_save,
             mobile::mobile_regenerate_token,
+            mobile::mobile_snapshot_save,
+            mobile::mobile_publish_now,
             job_overview,
             retry_job,
             retry_failed_jobs,

@@ -80,11 +80,11 @@ pub struct R2Settings {
     pub secret_access_key: Option<String>,
 }
 
-struct Creds {
-    account_id: String,
-    bucket: String,
-    access_key_id: String,
-    secret: String,
+pub(crate) struct Creds {
+    pub(crate) account_id: String,
+    pub(crate) bucket: String,
+    pub(crate) access_key_id: String,
+    pub(crate) secret: String,
 }
 
 fn get(store: &Store, key: &str) -> Result<Option<String>, String> {
@@ -128,9 +128,8 @@ fn valid_key_id(s: &str) -> bool {
     !s.is_empty() && s.len() <= 128 && s.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
-    let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
-    let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
+/// Empty fields pass: they are only needed once automatic uploads are turned on.
+pub(crate) fn check_credentials(account_id: &str, bucket: &str, key_id: &str, secret: Option<&str>) -> Result<(), String> {
     if !account_id.is_empty() && !valid_account_id(account_id) {
         return Err(msg!("r2.accountId"));
     }
@@ -143,6 +142,13 @@ pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
     if secret.is_some_and(|v| v.chars().any(|c| !c.is_ascii_graphic())) {
         return Err(msg!("r2.secret"));
     }
+    Ok(())
+}
+
+pub fn save(store: &Store, s: R2Settings) -> Result<(), String> {
+    let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
+    let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
+    check_credentials(account_id, bucket, key_id, secret)?;
     if !(1..=24 * 30).contains(&s.interval_hours) {
         return Err(msg!("r2.interval"));
     }
@@ -327,6 +333,17 @@ fn is_backup_key(key: &str, prefix: &str) -> bool {
 
 /// Deletes this device's backups beyond the newest `keep`, never `current`. Returns how many.
 async fn prune(http: &reqwest::Client, c: &Creds, prefix: &str, keep: u64, current: &str) -> Result<usize, String> {
+    let mut keys = list_keys(http, c, prefix).await?;
+    keys.retain(|k| is_backup_key(k, prefix));
+    let old = backup::stale(keys, keep, &current.to_string());
+    for (i, key) in old.iter().enumerate() {
+        send(http, c, "DELETE", key, &[], Vec::new()).await.map_err(|e| msg!("r2.pruneStopped", error = e, done = i, total = old.len()))?;
+    }
+    Ok(old.len())
+}
+
+/// Every key under `prefix`, however many pages the listing takes.
+pub(crate) async fn list_keys(http: &reqwest::Client, c: &Creds, prefix: &str) -> Result<Vec<String>, String> {
     let mut keys = Vec::new();
     let mut token: Option<String> = None;
     loop {
@@ -339,15 +356,9 @@ async fn prune(http: &reqwest::Client, c: &Creds, prefix: &str, keep: u64, curre
         keys.extend(page.keys);
         match page.next {
             Some(t) => token = Some(t),
-            None => break,
+            None => return Ok(keys),
         }
     }
-    keys.retain(|k| is_backup_key(k, prefix));
-    let old = backup::stale(keys, keep, &current.to_string());
-    for (i, key) in old.iter().enumerate() {
-        send(http, c, "DELETE", key, &[], Vec::new()).await.map_err(|e| msg!("r2.pruneStopped", error = e, done = i, total = old.len()))?;
-    }
-    Ok(old.len())
 }
 
 #[derive(Debug, PartialEq)]
@@ -459,7 +470,14 @@ fn truncate(s: &str) -> &str {
     &s[..s.floor_char_boundary(500)]
 }
 
-async fn send(http: &reqwest::Client, c: &Creds, method: &str, key: &str, query: &[(&str, &str)], body: Vec<u8>) -> Result<reqwest::Response, String> {
+pub(crate) async fn send(
+    http: &reqwest::Client,
+    c: &Creds,
+    method: &str,
+    key: &str,
+    query: &[(&str, &str)],
+    body: Vec<u8>,
+) -> Result<reqwest::Response, String> {
     let req = build(c, method, key, query, &sha256_hex(&body), unix_now());
     let method = reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| e.to_string())?;
     let mut rb = http.request(method, &req.url).body(body);

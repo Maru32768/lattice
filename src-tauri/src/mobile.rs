@@ -4,19 +4,24 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use lattice_core::mobile::{self, Effects, MobileSettings, ServerMode};
+use lattice_core::mobile_publish::{self, SnapshotSettings, SnapshotStatus};
 use lattice_core::msg;
 use lattice_server::Server;
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use ts_rs::TS;
 
 use crate::App;
 use crate::location::Location;
 
 #[derive(Default)]
-pub struct MobileServer(Mutex<Running>);
+pub struct MobileServer {
+    running: Mutex<Running>,
+    /// Starts a snapshot pass now: there is a new token, new settings, or the button was pressed.
+    publish_now: Arc<Notify>,
+}
 
 #[derive(Default)]
 struct Running {
@@ -34,6 +39,10 @@ pub struct MobileStatus {
     /// What the phone opens, with the token. None while nothing can be offered yet.
     url: Option<String>,
     qr: Option<MobileQr>,
+    snapshot: SnapshotStatus,
+    /// What the phone opens for the snapshot, with the token, once there is one to read.
+    snapshot_url: Option<String>,
+    snapshot_qr: Option<MobileQr>,
     /// Running on a stand-in library because the real one could not be opened: nothing is served.
     fell_back: bool,
 }
@@ -69,7 +78,7 @@ fn base_url(s: &MobileSettings) -> Option<String> {
 }
 
 /// The app sees what the phone did as it sees what a job did.
-fn on_applied(handle: &AppHandle, effects: &Effects) {
+pub(crate) fn on_applied(handle: &AppHandle, effects: &Effects) {
     let app = handle.state::<App>();
     if let Some(id) = effects.article {
         let _ = handle.emit("article-changed", id);
@@ -88,7 +97,7 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
     let mobile_server = handle.state::<MobileServer>();
     let app = handle.state::<App>();
     let store = &app.store;
-    let mut running = mobile_server.0.lock().await;
+    let mut running = mobile_server.running.lock().await;
     if let Some(server) = running.server.take() {
         server.stop().await;
     }
@@ -118,14 +127,31 @@ pub async fn apply(handle: &AppHandle) -> Result<(), String> {
 
 async fn status(mobile_server: &MobileServer, app: &App, loc: &Location) -> Result<MobileStatus, String> {
     let settings = mobile::settings(&app.store)?;
-    let running = mobile_server.0.lock().await;
+    let running = mobile_server.running.lock().await;
     let url = match (&running.server, base_url(&settings)) {
         (Some(_), Some(base)) => Some(mobile::phone_url(&base, &mobile::token(&app.store)?)),
         _ => None,
     };
     // A failure must not lock the settings screen: the address shows in place of the code.
     let qr = url.as_deref().and_then(|u| qr_of(u).inspect_err(|e| log::warn!("mobile QR code: {e}")).ok());
-    Ok(MobileStatus { settings, running: running.server.is_some(), error: running.error.clone(), url, qr, fell_back: loc.warning.is_some() })
+    let snapshot = mobile_publish::status(&app.store)?;
+    let snapshot_url = if snapshot.enabled && snapshot.last_publish.is_some() {
+        Some(mobile::phone_url(&snapshot.worker_url, &mobile::token(&app.store)?))
+    } else {
+        None
+    };
+    let snapshot_qr = snapshot_url.as_deref().and_then(|u| qr_of(u).inspect_err(|e| log::warn!("mobile QR code: {e}")).ok());
+    Ok(MobileStatus {
+        settings,
+        running: running.server.is_some(),
+        error: running.error.clone(),
+        url,
+        qr,
+        snapshot,
+        snapshot_url,
+        snapshot_qr,
+        fell_back: loc.warning.is_some(),
+    })
 }
 
 #[tauri::command]
@@ -155,7 +181,54 @@ pub async fn mobile_regenerate_token(mobile_server: State<'_, MobileServer>, app
         return Err(msg!("mobile.fellBack"));
     }
     mobile::regenerate_token(&app.store)?;
+    mobile_server.publish_now.notify_one();
     status(&mobile_server, &app, &loc).await
+}
+
+#[tauri::command]
+pub async fn mobile_snapshot_save(
+    settings: SnapshotSettings,
+    mobile_server: State<'_, MobileServer>,
+    app: State<'_, App>,
+    loc: State<'_, Location>,
+) -> Result<MobileStatus, String> {
+    if loc.warning.is_some() {
+        return Err(msg!("mobile.fellBack"));
+    }
+    mobile_publish::save(&app.store, &settings)?;
+    mobile_server.publish_now.notify_one();
+    status(&mobile_server, &app, &loc).await
+}
+
+/// `again`: uploads everything, for a bucket emptied or restored behind this library's back.
+#[tauri::command]
+pub async fn mobile_publish_now(
+    again: bool,
+    mobile_server: State<'_, MobileServer>,
+    app: State<'_, App>,
+    loc: State<'_, Location>,
+) -> Result<MobileStatus, String> {
+    if loc.warning.is_some() {
+        return Err(msg!("mobile.fellBack"));
+    }
+    if again {
+        mobile_publish::forget_published(&app.store)?;
+    }
+    mobile_server.publish_now.notify_one();
+    status(&mobile_server, &app, &loc).await
+}
+
+/// Runs the snapshot's schedule for this app's library.
+pub fn start_publisher(handle: &AppHandle) {
+    let publish_now = handle.state::<MobileServer>().publish_now.clone();
+    let store = handle.state::<App>().store.clone();
+    let tell = handle.clone();
+    tauri::async_runtime::spawn(mobile_publish::run_scheduler(
+        store,
+        lattice_server::page_files(),
+        Box::new(move |effects| on_applied(&tell, effects)),
+        publish_now,
+    ));
 }
 
 #[cfg(test)]

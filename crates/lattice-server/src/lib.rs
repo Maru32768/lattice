@@ -43,6 +43,11 @@ pub const ASSETS: &[Asset] = &[
     asset!("icon-512.png", "image/png"),
 ];
 
+/// The page's files as the snapshot publishes them.
+pub fn page_files() -> Vec<(&'static str, &'static [u8])> {
+    ASSETS.iter().map(|a| (a.path, a.bytes)).collect()
+}
+
 /// Articles are untrusted. The page renders them as text; this keeps a mistake there from running or loading anything.
 /// React sets `style` through the CSSOM, which this allows; e2e/mobile-built.spec.ts runs the built page under it.
 const CSP: &str = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";

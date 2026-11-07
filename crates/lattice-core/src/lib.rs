@@ -25,6 +25,7 @@ pub mod llm;
 pub mod location;
 pub mod markdown;
 pub mod mobile;
+pub mod mobile_publish;
 pub mod msg;
 pub mod network;
 pub mod openai;

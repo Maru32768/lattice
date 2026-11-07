@@ -1349,4 +1349,18 @@ export const ja = {
   "mobile.pending": "未送信{n}件",
   "mobile.sent": "送信しました",
   "mobile.rejected": "送れませんでした: {error}",
+  "mobileSettings.snapshot": "PCが止まっていても読む",
+  "mobileSettings.snapshotDesc":
+    "記事をCloudflare R2に置き、Workerを通してスマホで読みます。操作はR2に残り、PCを起動したときに反映します。{code}のTerraformでbucketとWorkerを作ります。",
+  "mobileSettings.snapshotEnabled": "スナップショットを公開",
+  "mobileSettings.workerUrl": "Workerのアドレス",
+  "mobileSettings.publishNow": "今すぐ公開",
+  "mobileSettings.publishAgain": "すべて上げ直す",
+  "mobileSettings.publishing": "公開中です…",
+  "mobileSettings.lastPublish": "前回の公開: {time}",
+  "mobileSettings.neverPublished": "まだ公開していません",
+  "mobileSettings.publishFailed": "前回の公開に失敗しました: {error}",
+  "mobileSettings.opRejected": "スマホの操作を反映できませんでした: {error}",
+  "mobileSettings.snapshotQr": "スナップショットをスマホで開くQRコード",
+  "be.mobile.snapshotIncomplete": "公開するにはAccount ID・bucket・Access Key ID・Secret Access Key・Workerのアドレスをすべて設定してください",
 } as const satisfies Record<string, string>;
