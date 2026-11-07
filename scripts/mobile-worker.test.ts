@@ -102,6 +102,7 @@ test("what is not an operation stays out of the bucket", async () => {
     [op(1), 400],
     [op("x".repeat(65)), 400],
     [JSON.stringify({ id: "a", pad: "x".repeat(17 * 1024) }), 413],
+    [JSON.stringify({ id: "a", pad: "あ".repeat(6 * 1024) }), 413],
   ];
   for (const [body, status] of cases) {
     assert.equal((await call(b, "/api/ops", { method: "POST", body })).status, status, body.slice(0, 30));

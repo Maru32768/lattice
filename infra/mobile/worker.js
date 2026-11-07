@@ -59,7 +59,7 @@ async function takeOp(request, bucket, now) {
     return json(413, { error: "too large" });
   }
   const text = await request.text();
-  if (text.length > MAX_OP_BYTES) {
+  if (new TextEncoder().encode(text).length > MAX_OP_BYTES) {
     return json(413, { error: "too large" });
   }
   let id;
