@@ -36,6 +36,8 @@ import type {
   Progress,
   Quiz,
   R2Settings,
+  MobileSettings,
+  MobileStatus,
   R2Status,
   Reevaluated,
   RejectedEntry,
@@ -314,6 +316,13 @@ export const r2 = {
   save: (settings: R2Settings) => invoke<void>("r2_save", { settings }),
   clearSecret: () => invoke<void>("r2_clear_secret"),
   backupNow: () => invoke<string>("r2_backup_now"),
+};
+
+/** Reading on a phone (G47). */
+export const mobile = {
+  status: () => invoke<MobileStatus>("mobile_status"),
+  save: (settings: MobileSettings) => invoke<MobileStatus>("mobile_save", { settings }),
+  regenerateToken: () => invoke<MobileStatus>("mobile_regenerate_token"),
 };
 
 /** In-place updates from the GitHub releases. */

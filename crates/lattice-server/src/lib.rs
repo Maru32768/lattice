@@ -1,0 +1,280 @@
+//! The PC's server for the phone (G47, design-review §32): the page and the library's documents.
+//! It speaks plain HTTP. On the local network that is what there is; beyond it a tunnel in front
+//! (Tailscale Serve, cloudflared) provides TLS, so this crate never handles a certificate.
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::Router;
+use axum::body::{Body, Bytes};
+use axum::extract::{Path, Request, State};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
+use lattice_core::mobile;
+use lattice_core::store::Store;
+use serde_json::json;
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use tokio::task::JoinHandle;
+
+/// A built file of the page (`src/mobile`, built by `npm run build:overlay`).
+pub struct Asset {
+    pub path: &'static str,
+    pub content_type: &'static str,
+    pub bytes: &'static [u8],
+}
+
+macro_rules! asset {
+    ($path:literal, $type:literal) => {
+        Asset { path: $path, content_type: $type, bytes: include_bytes!(concat!("../mobile-dist/", $path)) }
+    };
+}
+
+pub const ASSETS: &[Asset] = &[
+    asset!("index.html", "text/html; charset=utf-8"),
+    asset!("mobile.js", "text/javascript; charset=utf-8"),
+    asset!("mobile.css", "text/css; charset=utf-8"),
+    asset!("manifest.webmanifest", "application/manifest+json"),
+    asset!("icon-256.png", "image/png"),
+    asset!("icon-512.png", "image/png"),
+];
+
+/// Articles are untrusted. The page renders them as text; this keeps a mistake there from running
+/// or loading anything. `'unsafe-inline'` styles: React's `style` attribute (a list item's depth).
+pub const CSP: &str = "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+#[derive(Clone)]
+struct Ctx {
+    store: Arc<Store>,
+    token_hash: Arc<str>,
+}
+
+pub fn router(store: Arc<Store>, token: &str) -> Router {
+    let ctx = Ctx { store, token_hash: mobile::token_hash(token).into() };
+    Router::new()
+        .route("/api/ping", get(|headers: HeaderMap| async move { json_response(&headers, b"{}".to_vec()) }))
+        .route("/api/index", get(index))
+        .route("/api/articles/{id}", get(article))
+        .route_layer(middleware::from_fn_with_state(ctx.clone(), require_token))
+        .fallback(page)
+        .with_state(ctx)
+}
+
+async fn require_token(State(ctx): State<Ctx>, request: Request, next: Next) -> Response {
+    let token = request.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()).and_then(|v| v.strip_prefix("Bearer "));
+    if token.is_some_and(|t| mobile::token_hash(t) == *ctx.token_hash) {
+        next.run(request).await
+    } else {
+        error(StatusCode::UNAUTHORIZED, "unauthorized")
+    }
+}
+
+fn error(status: StatusCode, message: &str) -> Response {
+    (status, [(header::CONTENT_TYPE, "application/json")], json!({ "error": message }).to_string()).into_response()
+}
+
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(|e| e.trim().starts_with("gzip")))
+}
+
+/// A document of the library: never kept by a cache along the way, as the token guards it.
+fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
+    let mut response = encoded(request, "application/json", body);
+    response.headers_mut().insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn encoded(request: &HeaderMap, content_type: &'static str, body: Vec<u8>) -> Response {
+    let gz = if accepts_gzip(request) {
+        mobile::gzip(&body).ok()
+    } else {
+        None
+    };
+    let mut response = match gz {
+        Some(gz) => {
+            let mut r = Response::new(Body::from(Bytes::from(gz)));
+            r.headers_mut().insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+            r
+        }
+        None => Response::new(Body::from(Bytes::from(body))),
+    };
+    response.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    response.headers_mut().insert(header::VARY, HeaderValue::from_static("accept-encoding"));
+    response
+}
+
+/// Runs a store call off the async workers: the store's lock may be held by a job.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
+}
+
+/// The details stay in the log: a phone can do nothing with them.
+fn internal_error(e: &str) -> Response {
+    log::warn!("mobile server: {e}");
+    error(StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+}
+
+async fn index(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    match blocking(move || serde_json::to_vec(&mobile::index(&ctx.store)?).map_err(|e| e.to_string())).await {
+        Ok(body) => json_response(&headers, body),
+        Err(e) => internal_error(&e),
+    }
+}
+
+async fn article(State(ctx): State<Ctx>, Path(id): Path<i64>, headers: HeaderMap) -> Response {
+    match blocking(move || mobile::article(&ctx.store, id)?.map(|doc| serde_json::to_vec(&doc).map_err(|e| e.to_string())).transpose()).await {
+        Ok(Some(body)) => json_response(&headers, body),
+        Ok(None) => error(StatusCode::NOT_FOUND, "no such article"),
+        Err(e) => internal_error(&e),
+    }
+}
+
+async fn page(method: Method, headers: HeaderMap, request: Request) -> Response {
+    if method != Method::GET && method != Method::HEAD {
+        return StatusCode::METHOD_NOT_ALLOWED.into_response();
+    }
+    let path = request.uri().path().trim_start_matches('/');
+    let path = if path.is_empty() {
+        "index.html"
+    } else {
+        path
+    };
+    let Some(asset) = ASSETS.iter().find(|a| a.path == path) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let mut response = encoded(&headers, asset.content_type, asset.bytes.to_vec());
+    let h = response.headers_mut();
+    h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+    h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+    // The page's address is private: a link to an article must not hand it to that site.
+    h.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    response
+}
+
+/// A running server. Dropping it leaves it running; `stop` ends it.
+pub struct Server {
+    pub addr: SocketAddr,
+    stop: oneshot::Sender<()>,
+    task: JoinHandle<()>,
+}
+
+/// Binds `addr` and serves `router` in a task of the current Tokio runtime.
+pub async fn start(addr: SocketAddr, router: Router) -> std::io::Result<Server> {
+    let listener = TcpListener::bind(addr).await?;
+    let addr = listener.local_addr()?;
+    let (stop, stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let shutdown = async move {
+            let _ = stopped.await;
+        };
+        if let Err(e) = axum::serve(listener, router).with_graceful_shutdown(shutdown).await {
+            log::warn!("mobile server: {e}");
+        }
+    });
+    Ok(Server { addr, stop, task })
+}
+
+impl Server {
+    /// Stops accepting at once. A phone in the middle of a long download gets a moment to finish, then is cut off.
+    pub async fn stop(self) {
+        let _ = self.stop.send(());
+        let abort = self.task.abort_handle();
+        if tokio::time::timeout(Duration::from_secs(2), self.task).await.is_err() {
+            abort.abort();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Request as HttpRequest;
+    use tower::ServiceExt;
+
+    const TOKEN: &str = "test-token";
+
+    fn app() -> (Router, Arc<Store>) {
+        let store = Arc::new(Store::open_in_memory().unwrap());
+        (router(store.clone(), TOKEN), store)
+    }
+
+    async fn get_with(app: &Router, path: &str, token: Option<&str>) -> Response {
+        let mut request = HttpRequest::get(path);
+        if let Some(t) = token {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {t}"));
+        }
+        app.clone().oneshot(request.body(Body::empty()).unwrap()).await.unwrap()
+    }
+
+    async fn body(r: Response) -> Vec<u8> {
+        axum::body::to_bytes(r.into_body(), usize::MAX).await.unwrap().to_vec()
+    }
+
+    #[tokio::test]
+    async fn the_api_needs_the_token() {
+        let (app, _) = app();
+        for path in ["/api/ping", "/api/index", "/api/articles/1"] {
+            assert_eq!(get_with(&app, path, None).await.status(), StatusCode::UNAUTHORIZED, "{path}");
+            assert_eq!(get_with(&app, path, Some("wrong")).await.status(), StatusCode::UNAUTHORIZED, "{path}");
+        }
+        assert_eq!(get_with(&app, "/api/ping", Some(TOKEN)).await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn serves_the_index_and_articles_as_json() {
+        let (app, store) = app();
+        let (id, _) = store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let index = get_with(&app, "/api/index", Some(TOKEN)).await;
+        assert_eq!(index.headers()[header::CACHE_CONTROL], "no-store");
+        let index: serde_json::Value = serde_json::from_slice(&body(index).await).unwrap();
+        assert_eq!(index["articles"][0]["id"], id);
+        let doc: serde_json::Value = serde_json::from_slice(&body(get_with(&app, &format!("/api/articles/{id}"), Some(TOKEN)).await).await).unwrap();
+        assert_eq!(doc["article"]["original_url"], "https://example.com/a");
+        assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(TOKEN)).await.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn compresses_for_a_client_that_accepts_it() {
+        let (app, _) = app();
+        let request = HttpRequest::get("/api/index").header(header::AUTHORIZATION, format!("Bearer {TOKEN}")).header(header::ACCEPT_ENCODING, "br, gzip");
+        let response = app.oneshot(request.body(Body::empty()).unwrap()).await.unwrap();
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "gzip");
+        assert_eq!(body(response).await[..2], [0x1f, 0x8b]);
+    }
+
+    #[tokio::test]
+    async fn serves_the_page_without_the_token_and_guarded() {
+        let (app, _) = app();
+        let page = get_with(&app, "/", None).await;
+        assert_eq!(page.status(), StatusCode::OK);
+        assert!(page.headers()[header::CONTENT_SECURITY_POLICY].to_str().unwrap().contains("default-src 'self'"));
+        assert_eq!(page.headers()[header::REFERRER_POLICY], "no-referrer");
+        assert!(String::from_utf8(body(page).await).unwrap().contains("mobile.js"));
+        for path in ["/../Cargo.toml", "/secret", "/api/nothing"] {
+            assert_eq!(get_with(&app, path, None).await.status(), StatusCode::NOT_FOUND, "{path}");
+        }
+    }
+
+    #[test]
+    fn every_built_file_is_served() {
+        let dist = concat!(env!("CARGO_MANIFEST_DIR"), "/mobile-dist");
+        for file in std::fs::read_dir(dist).unwrap() {
+            let name = file.unwrap().file_name().into_string().unwrap();
+            assert!(ASSETS.iter().any(|a| a.path == name), "add {name} to ASSETS");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stopped_server_frees_its_port_for_the_next() {
+        let (app, _) = app();
+        let first = start("127.0.0.1:0".parse().unwrap(), app.clone()).await.unwrap();
+        let addr = first.addr;
+        first.stop().await;
+        let second = start(addr, app).await.unwrap();
+        assert_eq!(second.addr, addr);
+        second.stop().await;
+    }
+}

@@ -1,21 +1,9 @@
-import { Fragment, createContext, memo, useContext, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type Inline, type JobRow, type VocabCapture } from "../api";
+import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type VocabCapture } from "../api";
 import { translatedShare } from "../overlay/logic";
-import {
-  type LanguageMode,
-  type Piece,
-  TRANSLATABLE,
-  blockPieces,
-  dropsGap,
-  nothingToTranslate,
-  shownTranslation,
-  splitBackticks,
-  translatedSentences,
-  translationProgress,
-} from "./mixed";
+import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, dropsGap, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
-import { highlight } from "../search/search";
 import { Menu, type MenuItem } from "../ui/Popover";
 import { ActionKey, Dif, Icon, Kbd, useKeyTitle } from "../ui/Icon";
 import { Favicon } from "../ui/Favicon";
@@ -24,31 +12,13 @@ import { QuizPanel, useSidePanel, type SidePanel } from "../quiz/QuizPanel";
 import { NotePanel, hasNote } from "./NotePanel";
 import { useReadingPlace } from "./useReadingPlace";
 import { GroupChips } from "../library/GroupPicker";
-import { onMiddle } from "../lib/middle";
 import { useLatest } from "../lib/useLatest";
-import { captureIn, isWord, markWords, type WordMarks } from "../vocab/vocab";
+import { captureIn, isWord } from "../vocab/vocab";
 import { locale, useT } from "../i18n";
 import "../vocab/vocab.css";
+import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, translationText } from "./BlockView";
 
-// Article content is untrusted: it is rendered only as React text nodes, never as HTML,
-// and links open in the in-app browser instead of navigating this (app) WebView.
-const OpenLink = createContext<(href: string, newTab: boolean) => void>(() => {});
-/** Saved words to underline (G56), or null when marking is off or the book is empty. */
-export const WordMarksContext = createContext<WordMarks | null>(null);
-
-function Link({ href, children }: { href: string; children: React.ReactNode }) {
-  const openLink = useContext(OpenLink);
-  const go = (e: React.MouseEvent, newTab: boolean) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openLink(href, newTab);
-  };
-  return (
-    <a href={href} title={href} onClick={(e) => go(e, e.ctrlKey || e.metaKey)} {...onMiddle(() => openLink(href, true))}>
-      {children}
-    </a>
-  );
-}
+export { WordMarksContext } from "./BlockView";
 
 /** A block to scroll to and mark: a search hit or a chat citation. `seq` re-triggers the scroll. */
 export interface Focus {
@@ -61,74 +31,9 @@ export interface Focus {
 
 const busy = (j?: JobRow) => j?.status === "running" || (j?.status === "pending" && !j.last_error);
 
-/** Plain text with search terms and saved words marked. Memoized: hovering a block re-renders the Reader. */
-const Txt = memo(function Txt({ v, ts }: { v: string; ts?: string[] }) {
-  const marks = useContext(WordMarksContext);
-  const words = (s: string) =>
-    markWords(s, marks).map((p, i) =>
-      p.meaning != null ? (
-        <span key={i} className="vw" title={p.meaning}>
-          {p.v}
-        </span>
-      ) : (
-        p.v
-      ),
-    );
-  if (!ts?.length) {
-    return <>{words(v)}</>;
-  }
-  return <>{highlight(v, ts).map((s, i) => (s.mark ? <mark key={i}>{words(s.v)}</mark> : <Fragment key={i}>{words(s.v)}</Fragment>))}</>;
-});
-
-/** The block's inlines between two offsets of its text (a sentence, or the text between sentences). */
-function sliceInlines(block: Block, start: number, end: number): Inline[] {
-  if (!block.inlines) {
-    return [{ t: "text", v: block.text.slice(start, end) }];
-  }
-  const out: Inline[] = [];
-  let at = 0;
-  for (const i of block.inlines) {
-    const [from, to] = [Math.max(start, at), Math.min(end, at + i.v.length)];
-    if (from < to) {
-      out.push({ ...i, v: i.v.slice(from - at, to - at) });
-    }
-    at += i.v.length;
-  }
-  return out;
-}
-
-function Translation({ text, ts }: { text: string; ts?: string[] }) {
-  return <>{splitBackticks(shownTranslation(text)).map((s, n) => (s.code ? <code key={n}>{s.v}</code> : <Txt key={n} v={s.v} ts={ts} />))}</>;
-}
-
-/** The text of a translated sentence as rendered (backticks become <code>). */
-const translationText = (tr: string) =>
-  splitBackticks(shownTranslation(tr))
-    .map((s) => s.v)
-    .join("");
-
-function Inlines({ inlines, ts }: { inlines: Inline[]; ts?: string[] }) {
-  return (
-    <>
-      {inlines.map((i: Inline, n) =>
-        i.t === "code" ? (
-          <code key={n}>{i.v}</code>
-        ) : i.t === "link" ? (
-          <Link key={n} href={i.href}>
-            {i.v}
-          </Link>
-        ) : (
-          <Txt key={n} v={i.v} ts={ts} />
-        ),
-      )}
-    </>
-  );
-}
-
 /** Stored copy only (as a data: URL, loaded when scrolled near); the app never loads remote images.
  * `imagesJob` changes when the download job progresses, so a block still showing the link retries. */
 function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) {
-  const t = useT();
   const ref = useRef<HTMLElement>(null);
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -150,52 +55,10 @@ function ImageBlock({ block, imagesJob }: { block: Block; imagesJob?: string }) 
     return () => io.disconnect();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- a new imagesJob is the retry trigger
   }, [block.id, imagesJob, url]);
-  const src = block.attrs.src;
   return (
     <figure className="image" ref={ref}>
-      {url ? (
-        <img src={url} alt={block.text} title={block.text || undefined} />
-      ) : src && /^https?:/i.test(src) ? (
-        <Link href={src}>{t("reader.image", { name: block.text || src })}</Link>
-      ) : (
-        // Imported Markdown: an image that could not be read from the file's folder.
-        <span className="muted">{t("reader.image", { name: block.text || src || "" })}</span>
-      )}
+      {url ? <img src={url} alt={block.text} title={block.text || undefined} /> : <ImageFallback block={block} />}
     </figure>
-  );
-}
-
-/**
- * A prose block sentence by sentence, each in the language `shown` picks; hovering a translated
- * sentence (`onHover`) offers the other language.
- */
-function Sentences({
-  block,
-  pieces,
-  shown,
-  ts,
-  onHover,
-  onLeave,
-}: {
-  block: Block;
-  pieces: Piece[];
-  shown: (i: number) => boolean;
-  ts?: string[];
-  onHover: (i: number) => void;
-  onLeave: () => void;
-}) {
-  return (
-    <>
-      {pieces.map((p, i) =>
-        dropsGap(block.text, pieces, i, shown) ? null : p.translation == null ? (
-          <Inlines key={i} inlines={sliceInlines(block, p.start, p.end)} ts={ts} />
-        ) : (
-          <span key={i} className={`sent${shown(i) ? " tr" : ""}`} onMouseEnter={() => onHover(i)} onMouseLeave={onLeave}>
-            {shown(i) ? <Translation text={p.translation} ts={ts} /> : <Inlines inlines={sliceInlines(block, p.start, p.end)} ts={ts} />}
-          </span>
-        ),
-      )}
-    </>
   );
 }
 
@@ -270,8 +133,16 @@ const ReaderBlock = memo(function ReaderBlock({
       <BlockView
         block={b}
         marker={marker}
-        imagesJob={imagesJob}
-        body={<Sentences block={b} pieces={ps} shown={shown} ts={focused?.terms} onHover={(j) => onHover(b.id, j)} onLeave={onLeave} />}
+        image={<ImageBlock block={b} imagesJob={imagesJob} />}
+        body={
+          <Sentences
+            block={b}
+            pieces={ps}
+            shown={shown}
+            ts={focused?.terms}
+            sentence={(j) => ({ onMouseEnter: () => onHover(b.id, j), onMouseLeave: onLeave })}
+          />
+        }
       />
       {popped?.translation != null && (
         <div className="pop" role="tooltip" onClick={() => onFlip(b, popPiece!)} onMouseEnter={onKeepPop} onMouseLeave={onLeave}>
@@ -285,68 +156,6 @@ const ReaderBlock = memo(function ReaderBlock({
     </div>
   );
 });
-
-function BlockView({ block, marker, body, imagesJob }: { block: Block; marker?: string; body: React.ReactNode; imagesJob?: string }) {
-  const a = block.attrs;
-  switch (block.kind) {
-    case "heading": {
-      const H = `h${Math.min(Math.max(a.level ?? 2, 2), 6)}` as "h2";
-      return <H>{body}</H>;
-    }
-    case "list_item":
-      return (
-        <div className="li" style={{ marginLeft: `${(a.depth ?? 0) * 1.5}em` }}>
-          <span className="marker">{marker}</span>
-          <span>{body}</span>
-        </div>
-      );
-    case "blockquote":
-      return <blockquote>{body}</blockquote>;
-    case "code":
-      return (
-        <pre className="code" data-lang={a.lang}>
-          <code>{block.text}</code>
-        </pre>
-      );
-    case "table":
-      return (
-        <div className="table-wrap">
-          <table>
-            <tbody>
-              {a.rows?.map((r, i) => (
-                <tr key={i}>
-                  {r.map((c, j) => (
-                    <td key={j}>{c}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    case "image":
-      return <ImageBlock block={block} imagesJob={imagesJob} />;
-    case "caption":
-      return <p className="caption">{body}</p>;
-    default:
-      return <p>{body}</p>;
-  }
-}
-
-/** Ordered-list numbering, derived from consecutive list_item blocks. */
-function listMarkers(blocks: Block[]): (string | undefined)[] {
-  let counters: number[] = [];
-  return blocks.map((b) => {
-    if (b.kind !== "list_item") {
-      counters = [];
-      return undefined;
-    }
-    const d = b.attrs.depth ?? 0;
-    counters = counters.slice(0, d + 1);
-    counters[d] = (counters[d] ?? 0) + 1;
-    return b.attrs.ordered ? `${counters[d]}.` : "•";
-  });
-}
 
 /** Reader | Page, shared by both toolbars. */
 export function ViewSeg({

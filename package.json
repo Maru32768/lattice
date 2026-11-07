@@ -12,7 +12,7 @@
     "test": "node --test src/**/*.test.ts scripts/*.test.ts e2e/*.test.ts",
     "bump": "node scripts/version.ts",
     "e2e": "tsc -p e2e && playwright test",
-    "build:overlay": "vite build -c vite.overlay.config.ts && vite build -c vite.pdfview.config.ts",
+    "build:overlay": "vite build -c vite.overlay.config.ts && vite build -c vite.pdfview.config.ts && vite build -c vite.mobile.config.ts",
     "lint": "oxlint --deny-warnings && prettier --check . && node scripts/react-compiler.ts && node scripts/doc-pairs.ts",
     "format": "prettier --write .",
     "doctor": "npx react-doctor@0.9.18"

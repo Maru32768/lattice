@@ -24,6 +24,8 @@ import type {
   LlmSettings,
   ProviderHealth,
   Quiz,
+  MobileSettings,
+  MobileStatus,
   R2Settings,
   R2Status,
   RelevanceStatus,
@@ -147,6 +149,8 @@ const store = {
     anthropic_key: "stored",
   } as LlmSettings,
   review: { new_per_day: 20, reviews_per_day: 200, min_interval_minutes: 1440, max_interval_days: 365 },
+  mobile: { settings: { mode: "off", port: 8787, public_url: "" }, running: false, error: null, url: null, qr: null, fell_back: false } as MobileStatus,
+  mobileToken: "token",
   r2: {
     enabled: false,
     account_id: "",
@@ -913,6 +917,19 @@ export const handlers = {
   },
   r2_clear_secret: () => void (store.r2 = { ...store.r2, has_secret: false }),
   r2_backup_now: (): string => "lattice/2026-10-20T03-00-00Z.db.gz",
+  mobile_status: (): MobileStatus => store.mobile,
+  mobile_save: ({ settings }: { settings: MobileSettings }): MobileStatus => {
+    const on = settings.mode !== "off";
+    const url = on ? `http://192.168.0.2:${settings.port}/#t=${store.mobileToken}` : null;
+    store.mobile = { ...store.mobile, settings, running: on, url, qr: on ? { width: 21, path: "M0 0h1v1h-1z" } : null };
+    return store.mobile;
+  },
+  mobile_regenerate_token: (): MobileStatus => {
+    store.mobileToken = `${store.mobileToken}x`;
+    const url = store.mobile.url && `http://192.168.0.2:${store.mobile.settings.port}/#t=${store.mobileToken}`;
+    store.mobile = { ...store.mobile, url };
+    return store.mobile;
+  },
   pick_data_dir: () => null,
   open_data_dir: none,
   open_log_dir: none,

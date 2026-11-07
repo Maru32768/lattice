@@ -7,7 +7,7 @@ use crate::llm::LlmProvider;
 use crate::msg;
 use crate::pdf;
 use crate::segments::{self, PROMPT_VERSION, Target, Unit, snippet_from_inlines};
-use crate::store::{PendingBlock, SegmentRow, Store};
+use crate::store::{ArticleView, PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
 use rusqlite::{OptionalExtension, params};
 use serde::Serialize;
@@ -230,6 +230,20 @@ pub fn target(store: &Store) -> Result<Target, String> {
 /// The current settings' target for one article: English if the article is Japanese.
 pub fn article_target(store: &Store, article_id: i64) -> Result<Target, String> {
     Ok(target(store)?.for_source(store.article_is_japanese(article_id).map_err(|e| e.to_string())?))
+}
+
+/// The article as a reader sees it: translations in its target language, and a summary marked stale
+/// when the instructions have changed since.
+pub fn article_view(store: &Store, article_id: i64) -> Result<Option<ArticleView>, String> {
+    // Before the target: it reads the article, and takes a missing one for an error.
+    if store.article_row(article_id).map_err(|e| e.to_string())?.is_none() {
+        return Ok(None);
+    }
+    let mut view = store.get_article(article_id, &article_target(store, article_id)?.key()).map_err(|e| e.to_string())?;
+    if let Some(v) = view.as_mut() {
+        crate::summarize::mark_stale(store, v)?;
+    }
+    Ok(view)
 }
 
 /// The job keeps the target it was queued with, so changing settings meanwhile does not mix modes.

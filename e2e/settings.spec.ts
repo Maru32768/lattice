@@ -17,6 +17,7 @@ const SECTIONS = [
   "起動・タスクバー",
   "アップデート",
   "バックアップ",
+  "スマホで読む",
   "クラウドバックアップ(R2)",
   "エクスポート",
   "ログ・保存場所",
@@ -188,4 +189,18 @@ test("the palette opens a settings section by name", async ({ app }) => {
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option").first()).toHaveText(/^設定: 翻訳/);
   await app.keyboard.press("Enter");
   await expect(app.locator(".stg main h1")).toHaveText("翻訳");
+});
+
+test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();
+  await expect(app.getByRole("img", { name: "スマホで開くQRコード" })).toHaveCount(0);
+  await app.getByLabel("このPCから配信").selectOption("lan");
+  await expect(app.getByText("暗号化されません")).toBeVisible();
+  await app.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(app.getByRole("img", { name: "スマホで開くQRコード" })).toBeVisible();
+  await expect(app.getByText("http://192.168.0.2:8787/", { exact: true })).toBeVisible();
+  await expect(app.getByText("#t=")).toHaveCount(0);
+  await app.getByRole("button", { name: "トークンを作り直す" }).click();
+  await expect.poll(() => callsOf(app, "mobile_regenerate_token").then((c) => c.length)).toBe(1);
 });

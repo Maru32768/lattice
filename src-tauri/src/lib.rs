@@ -1,6 +1,7 @@
 mod badge;
 mod browser;
 mod location;
+mod mobile;
 mod popout;
 mod renderer;
 mod tabdrag;
@@ -702,11 +703,7 @@ fn remove_tag(app: State<'_, App>, id: i64, name: String) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn get_article(app: State<'_, App>, id: i64) -> Result<Option<ArticleView>, String> {
-    let mut view = app.store.get_article(id, &translate::article_target(&app.store, id)?.key()).map_err(err)?;
-    if let Some(v) = view.as_mut() {
-        summarize::mark_stale(&app.store, v)?;
-    }
-    Ok(view)
+    translate::article_view(&app.store, id)
 }
 
 /// Removes the article and everything derived from it (`Store::delete_article`).
@@ -1460,6 +1457,13 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // a set number of generations per device, so its uploads would push out the real library's backups.
     if !fell_back {
         tauri::async_runtime::spawn(r2::run_scheduler(store.clone(), path.clone(), dir.join("backups")));
+        // Nor from there: a phone would read and write the old copy.
+        let (handle, server_store) = (app.handle().clone(), store.clone());
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = mobile::apply(&handle.state::<mobile::MobileServer>(), &server_store).await {
+                log::warn!("starting the mobile server: {e}");
+            }
+        });
     }
 
     let (handle, fetchers) = (app.handle().clone(), wake_net.clone());
@@ -1511,6 +1515,7 @@ pub fn run() {
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
+        .manage(mobile::MobileServer::default())
         .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
             let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
@@ -1660,6 +1665,9 @@ pub fn run() {
             r2_save,
             r2_clear_secret,
             r2_backup_now,
+            mobile::mobile_status,
+            mobile::mobile_save,
+            mobile::mobile_regenerate_token,
             job_overview,
             retry_job,
             retry_failed_jobs,

@@ -1,0 +1,46 @@
+/* The phone page: one column, 16px gutters, large enough to tap. Colors come from theme.css. */
+html, body { margin: 0; background: var(--doc); color: var(--ink); -webkit-text-size-adjust: 100%; overflow-wrap: anywhere; }
+button, a.btn { min-height: 40px; }
+a.btn { display: inline-flex; align-items: center; text-decoration: none; color: inherit; }
+
+.m-bar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.m-bar .seg button { min-height: 40px; padding: 0 12px; }
+.m-share { display: flex; align-items: center; gap: 6px; }
+
+.m-empty { padding: 48px 16px; text-align: center; color: var(--ink2); }
+.m-none, .m-note { color: var(--ink3); font-size: 14px; }
+
+.m-list { padding: 12px 16px 48px; }
+.m-list .input { box-sizing: border-box; width: 100%; min-height: 40px; font-size: 16px; }
+.m-list ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.m-list li { border-bottom: 1px solid var(--line3); }
+.m-list li a { display: block; padding: 12px 0; color: inherit; text-decoration: none; }
+.m-title { display: block; font-size: 16px; line-height: 1.5; color: var(--ink3); }
+.m-list a.unread .m-title { color: var(--ink); font-weight: 600; }
+.m-meta { display: block; margin-top: 2px; font-size: 13px; color: var(--ink3); }
+.m-meta a { color: inherit; }
+.m-more { width: 100%; margin-top: 12px; }
+
+.m-article { padding: 12px 16px 64px; font-size: 17px; line-height: 1.8; color: var(--prose-ink); }
+.m-article h1 { margin: 8px 0 4px; font-size: 22px; line-height: 1.4; }
+.m-summary { margin: 12px 0; padding: 8px 12px; background: var(--panel); border-radius: 6px; font-size: 15px; }
+.m-summary p { margin: 8px 0 0; white-space: pre-wrap; }
+
+.blk { margin: 0 0 14px; }
+.blk p, .blk blockquote, .blk h2, .blk h3, .blk h4, .blk h5, .blk h6, .blk figure { margin: 0; }
+.blk h2 { font-size: 20px; line-height: 1.4; margin-top: 20px; }
+.blk h3 { font-size: 18px; line-height: 1.45; margin-top: 12px; }
+.blk h4, .blk h5, .blk h6 { font-size: 17px; }
+.blk a { color: var(--acc); }
+.blk code { font-family: var(--mono); font-size: .85em; background: var(--code-bg); padding: .1em .3em; border-radius: 4px; }
+.blk .code { margin: 0; padding: 12px; border-radius: 6px; background: var(--code-bg); color: var(--code-ink); font: 13px/1.6 var(--mono); white-space: pre; overflow-x: auto; overflow-wrap: normal; }
+.blk .code code { background: none; padding: 0; font-size: inherit; }
+.blk blockquote { padding-left: 1em; border-left: 3px solid var(--line2); color: var(--prose-dim); }
+.blk .li { display: flex; gap: .5em; }
+.blk .marker { min-width: 1.2em; text-align: right; color: var(--ink3); }
+.blk .table-wrap { overflow-x: auto; }
+.blk table { border-collapse: collapse; font-size: 13px; line-height: 1.5; }
+.blk td { padding: 4px 8px; border: 1px solid var(--line2); vertical-align: top; overflow-wrap: normal; }
+.blk .caption { font-size: 14px; color: var(--ink3); text-align: center; }
+.blk .image { font-size: 14px; }
+.sent.tr { text-decoration: underline dotted var(--tr-dot); text-underline-offset: 4px; }

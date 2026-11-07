@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-regenerate-token"
+description = "Enables the mobile_regenerate_token command without any pre-configured scope."
+commands.allow = ["mobile_regenerate_token"]
+
+[[permission]]
+identifier = "deny-mobile-regenerate-token"
+description = "Denies the mobile_regenerate_token command without any pre-configured scope."
+commands.deny = ["mobile_regenerate_token"]

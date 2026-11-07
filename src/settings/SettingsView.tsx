@@ -12,6 +12,7 @@ import { RenderSettings } from "./RenderSettings";
 import { ImageSettings } from "./ImageSettings";
 import { QuizSettings } from "./QuizSettings";
 import { BackupSection } from "./BackupSection";
+import { MobileSettings } from "./MobileSettings";
 import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
@@ -78,6 +79,8 @@ function Body({ id, onChanged, onOpenUrl, onFeeds }: { id: SettingsSection; onCh
       return <TaskbarSettings />;
     case "backup":
       return <BackupSection />;
+    case "mobile":
+      return <MobileSettings />;
     case "r2":
       return <R2BackupSection />;
     case "export":

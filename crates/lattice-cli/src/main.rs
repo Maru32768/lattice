@@ -48,6 +48,14 @@ enum Cmd {
     Op(Op),
     /// Serve the library to agents as an MCP server over stdio
     Mcp,
+    /// Serve the library to a phone's browser, as the app's 設定 › スマホで読む does
+    Serve {
+        /// Listen on every network interface, not just this PC's own
+        #[arg(long)]
+        lan: bool,
+        #[arg(long, default_value_t = lattice_core::mobile::DEFAULT_PORT)]
+        port: u16,
+    },
 }
 
 fn open(cli: &Cli) -> Result<Ctx, String> {
@@ -106,6 +114,20 @@ fn fail(format: Format, e: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// Runs until the process is stopped. Jobs that the served requests queue wait for the app's runners (design-review §23).
+async fn serve(store: Store, lan: bool, port: u16) -> Result<(), String> {
+    let store = std::sync::Arc::new(store);
+    let token = lattice_core::mobile::token(&store)?;
+    let ip = if lan {
+        std::net::Ipv4Addr::UNSPECIFIED
+    } else {
+        std::net::Ipv4Addr::LOCALHOST
+    };
+    let server = lattice_server::start((ip, port).into(), lattice_server::router(store, &token)).await.map_err(|e| e.to_string())?;
+    println!("http://{}/#t={token}", server.addr);
+    std::future::pending().await
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime");
@@ -117,6 +139,10 @@ fn main() -> ExitCode {
         Cmd::Mcp => match mcp::serve(&ctx, &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e.to_string()),
+        },
+        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, lan, port)) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => fail(cli.format, &e),
         },
         Cmd::Op(op) => match rt.block_on(ops::run(&ctx, op)) {
             Ok(out) => {

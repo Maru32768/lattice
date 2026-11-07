@@ -21,6 +21,7 @@ export type SettingsSection =
   | "update"
   | "backup"
   | "r2"
+  | "mobile"
   | "export"
   | "storage";
 
@@ -54,6 +55,7 @@ export const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lea
   { id: "taskbar", group: "app", title: "settingsView.taskbar" },
   { id: "update", group: "app", title: "settingsView.update", lead: "settingsView.updateLead" },
   { id: "backup", group: "data", title: "settingsView.backup", lead: "settingsView.backupLead" },
+  { id: "mobile", group: "data", title: "settingsView.mobile", lead: (t) => t("settingsView.mobileLead") },
   { id: "r2", group: "data", title: "settingsView.r2", lead: (t) => t.rich("settingsView.r2Lead", { code: <code>infra/r2</code> }) },
   { id: "export", group: "data", title: "settingsView.export" },
   { id: "storage", group: "data", title: "settingsView.storage" },
