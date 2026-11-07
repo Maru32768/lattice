@@ -872,7 +872,7 @@ Lattice can also keep your articles in a Cloudflare R2 bucket, so that the phone
 2. In **Settings › Read on a phone**, under **Read while the PC is off**, enter the Account ID, bucket, Access Key ID, Secret Access Key and **Worker address**.
 3. Turn on **Publish a snapshot** and press **Save**. The first upload takes a while. When it finishes, a QR code appears. Scan it.
 
-While the app runs, it publishes changes every 15 minutes and picks up the phone's operations every 5 minutes. The list on the phone shows how old it is. **Publish now** does it at once. Turning off **Publish a snapshot** makes the Worker refuse every token, and the articles stay in the bucket until you empty it.
+While the app runs, it publishes changes every 15 minutes and picks up the phone's operations every 5 minutes. The list on the phone shows how old it is. **Publish now** does it at once. Turning off **Publish a snapshot** makes the Worker refuse every token, and the articles stay in the bucket until you empty it. If the app can no longer reach the bucket, saving is refused, and **Save, giving up the old bucket** saves anyway: that Worker then keeps accepting the token until you remove it.
 
 Opened from the Worker's address, the page opens without a connection too, with the last list and the articles you read before. With a tunnel set up as well, it reads from the PC whenever it can reach it, and from the snapshot otherwise. **Disconnect this phone**, at the bottom of the list, removes the token and everything saved from the phone.
 

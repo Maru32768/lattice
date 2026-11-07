@@ -448,8 +448,8 @@ async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, scope: &str, on_applie
     recorded(sha256_hex(NO_TOKEN)).await
 }
 
-/// One pass at a time, and saving settings waits for a pass to end: a pass still at work on a bucket could put the token
-/// back there after a save has taken it out. `LEAVING` names the libraries (by address) whose running pass should stop at its next article.
+/// One pass at a time, and a save that leaves a bucket waits for a pass to end: a pass still at work on that bucket could
+/// put the token back there after the save has taken it out. A save that keeps the bucket does not wait. `LEAVING` names the libraries (by address) whose running pass should stop at its next article.
 static PASS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static LEAVING: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
 
