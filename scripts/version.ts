@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const WORKSPACE_VERSION = /(\[workspace\.package\][^[]*?\nversion = ")([^"]+)(")/;
-const LOCK_VERSION = /(\nname = "(?:lattice|lattice-core|lattice-cli)"\r?\nversion = ")([^"]+)(")/g;
+const LOCK_VERSION = /(\nname = "(?:lattice|lattice-core|lattice-server|lattice-cli)"\r?\nversion = ")([^"]+)(")/g;
 
 interface Doc {
   [key: string]: Doc | string | undefined;
@@ -44,7 +44,7 @@ const SOURCES: Source[] = [
     file: "Cargo.lock",
     read: (t) => {
       const found = [...t.matchAll(LOCK_VERSION)].map((m) => m[2]);
-      return found.length === 3 ? found : [undefined];
+      return found.length === 4 ? found : [undefined];
     },
     write: (t, v) => t.replace(LOCK_VERSION, `$1${v}$3`),
   },

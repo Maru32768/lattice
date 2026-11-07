@@ -10,8 +10,8 @@ One version number covers the app. It is kept in four files, and `scripts/versio
 |---|---|
 | `package.json` | `version` |
 | `package-lock.json` | `version` and `packages[""].version` |
-| `Cargo.toml` | `[workspace.package] version`, inherited by `src-tauri` and `crates/lattice-core` |
-| `Cargo.lock` | the `lattice` and `lattice-core` entries |
+| `Cargo.toml` | `[workspace.package] version`, inherited by `src-tauri` and the crates under `crates/` |
+| `Cargo.lock` | the `lattice`, `lattice-core`, `lattice-server` and `lattice-cli` entries |
 
 `src-tauri/tauri.conf.json` has no `version`, so Tauri uses the one in `Cargo.toml`.
 
