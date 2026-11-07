@@ -136,10 +136,10 @@ async function request(path: string): Promise<Response> {
   return response;
 }
 
-async function keep(path: string, response: Response) {
+async function keep(path: string, doc: unknown) {
   const cache = await docs();
   if (cache) {
-    await cache.put(path, response);
+    await cache.put(path, Response.json(doc));
     const keys = await cache.keys();
     await Promise.all(keys.slice(0, Math.max(0, keys.length - KEEP_DOCS)).map((k) => cache.delete(k)));
   }
@@ -159,8 +159,8 @@ async function savedDoc(path: string): Promise<Doc | null> {
 }
 
 /**
- * A document from the network, kept for later. Null when the server says it is gone. An error page, such as a tunnel's
- * with the PC off, throws: it must not hide the saved copy.
+ * A document from the network, kept for later. Null when the server says it is gone. An answer that is not a document of
+ * ours, such as a tunnel's page with the PC off or a login page, throws: it must neither show nor replace the saved copy.
  */
 async function fetched(path: string): Promise<Doc | null> {
   const response = await request(path);
@@ -170,11 +170,14 @@ async function fetched(path: string): Promise<Doc | null> {
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  await keep(path, response.clone()).catch(() => {});
-  const doc = (await response.json()) as Doc;
+  const doc = (await response.json()) as Doc | null;
+  if (typeof doc !== "object" || doc === null || typeof doc.format !== "number") {
+    throw new Error("not a document");
+  }
   if (doc.format !== FORMAT) {
     throw new FormatMismatch();
   }
+  await keep(path, doc).catch(() => {});
   return doc;
 }
 

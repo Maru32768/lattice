@@ -663,3 +663,12 @@ test("something the page cannot draw asks for a reload instead of going blank", 
   await start(page, { index: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], articles: "not a list" } });
   await expect(page.getByRole("alert")).toContainText("読み込み直してください");
 });
+
+test("a login page answered in place of the list is not taken for it", async ({ page }) => {
+  await start(page, { token: true });
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/index", (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<h1>Sign in</h1>" }));
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByText("First article")).toBeVisible();
+});
