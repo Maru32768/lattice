@@ -80,6 +80,8 @@ test("only Lattice's own answer settles an operation", () => {
   assert.deepEqual(resultOf(422, { error: coded }), { status: "rejected", error: coded });
   assert.deepEqual(resultOf(400, { error: coded }), { status: "rejected", error: coded });
   const waits: [number, unknown, string][] = [
+    [200, null, "a captive portal's page"],
+    [200, { status: "other" }, "not ours"],
     [403, { error: '{"code":"mobile.readOnly","params":{}}' }, "may be restarted with writes on"],
     [403, null, "a proxy's refusal"],
     [401, { error: "unauthorized" }, "the token may be replaced"],

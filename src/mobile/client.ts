@@ -167,12 +167,12 @@ function isCoded(error: unknown): error is string {
 }
 
 /**
- * What an answer to an operation means. Only Lattice's own word turns it down: a proxy's 403 refuses nothing.
- * A read-only server may yet be restarted with writes on, so that waits too.
+ * What an answer to an operation means. Only Lattice's own word settles it: a captive portal's 200 page
+ * took nothing, and a proxy's 403 refuses nothing. A read-only server may yet be restarted with writes on, so that waits too.
  */
 export function resultOf(status: number, body: unknown): SendResult {
-  const { error } = (body ?? {}) as { error?: unknown };
-  if (status >= 200 && status < 300) {
+  const { status: said, error } = (body ?? {}) as { status?: unknown; error?: unknown };
+  if (status >= 200 && status < 300 && (said === "applied" || said === "queued")) {
     return { status: "done" };
   }
   return (status === 400 || status === 422) && isCoded(error) ? { status: "rejected", error } : { status: "wait" };

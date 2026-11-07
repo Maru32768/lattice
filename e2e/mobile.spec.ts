@@ -420,6 +420,7 @@ test("an operation the server refuses is dropped, and the reader is told why", a
 
 for (const [name, answer] of [
   ["a proxy's 403 page", { status: 403, contentType: "text/html", body: "<h1>Forbidden</h1>" }],
+  ["a captive portal's 200 page", { status: 200, contentType: "text/html", body: "<h1>Sign in to this Wi-Fi</h1>" }],
   ["a read-only server", { status: 403, json: { error: '{"code":"mobile.readOnly","params":{}}' } }],
   ["a tunnel with the PC off", { status: 502, contentType: "text/html", body: "Bad gateway" }],
 ] as const) {
