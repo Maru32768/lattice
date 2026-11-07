@@ -143,7 +143,7 @@ test("a failed refresh leaves the list on screen", async ({ page }) => {
   await expect(page.getByText("First article")).toBeVisible();
 });
 
-test("the list filters by state and title, and keeps its place after reading", async ({ page }) => {
+test("the list filters by state and title", async ({ page }) => {
   await start(page);
   await expect(page.getByRole("link")).toHaveCount(1);
   await page.getByRole("button", { name: "すべて" }).click();
@@ -155,11 +155,35 @@ test("the list filters by state and title, and keeps its place after reading", a
   await page.getByRole("searchbox").fill("read");
   await expect(page.getByRole("link")).toHaveCount(1);
   await page.getByRole("link", { name: /Read article/ }).waitFor();
-  await page.getByRole("searchbox").fill("");
+});
+
+const LONG = {
+  generated_at: 1,
+  ui_language: "ja",
+  articles: Array.from({ length: 150 }, (_, i) => (i === 60 ? row(1, "First article") : row(i + 100, `Article ${i}`))),
+};
+
+test("going back from an article returns to the same place", async ({ page }) => {
+  await start(page, { index: LONG });
+  await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
+  const place = await page.evaluate(() => scrollY);
+  expect(place).toBeGreaterThan(500);
   await page.getByRole("link", { name: /First article/ }).click();
   await expect(page.getByRole("heading", { name: "First article" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   await page.getByRole("link", { name: "一覧" }).click();
-  await expect(page.getByRole("link")).toHaveCount(3);
+  await expect(page.getByRole("link", { name: /First article/ })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(place);
+});
+
+test("the phone's back button also returns to the same place", async ({ page }) => {
+  await start(page, { index: LONG });
+  await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
+  const place = await page.evaluate(() => scrollY);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await expect(page.getByRole("heading", { name: "First article" })).toBeVisible();
+  await page.goBack();
+  await expect.poll(() => page.evaluate(() => scrollY)).toBe(place);
 });
 
 test("the answer to the latest request wins, whatever order they come back in", async ({ page }) => {
