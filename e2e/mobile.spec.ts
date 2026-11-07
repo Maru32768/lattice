@@ -478,6 +478,19 @@ test("two tabs share what waits: one does not erase the other's", async ({ page,
   await expect(page.getByText("未送信2件")).toBeVisible();
 });
 
+test("what waits goes when the reader comes back to the page", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.abort());
+  await page.getByLabel("URLを保存").fill("https://example.com/later");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  await page.unroute("**/api/ops");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByText("未送信1件")).toHaveCount(0);
+  expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "save_url", url: "https://example.com/later" });
+});
+
 test("another library's QR code clears what waits; a new token of this one keeps it", async ({ page }) => {
   const seen = await start(page, { token: false });
   await page.goto("/mobile.html#t=secret&l=first");

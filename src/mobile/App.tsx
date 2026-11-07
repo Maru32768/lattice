@@ -76,12 +76,21 @@ export function App() {
     return () => removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // What waits on this phone goes as soon as there is a way.
+  // What waits on this phone goes as soon as there may be a way: nothing tells the page when the PC wakes.
   useEffect(() => {
     const send = () => void flushOps();
+    const sendIfShown = () => {
+      if (document.visibilityState === "visible") {
+        send();
+      }
+    };
     whenRejected((op, error) => setRejected((old) => [...old, { what: whatOf(op) || op.op.kind, error }]));
     addEventListener("online", send);
-    return () => removeEventListener("online", send);
+    document.addEventListener("visibilitychange", sendIfShown);
+    return () => {
+      removeEventListener("online", send);
+      document.removeEventListener("visibilitychange", sendIfShown);
+    };
   }, []);
 
   // Back from an article lands where the reader left the list.
