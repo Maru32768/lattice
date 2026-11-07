@@ -305,6 +305,25 @@ test("an error page in place of the list or the page itself does not hide the sa
   await worker.close();
 });
 
+test("on a poor connection the saved copy shows without waiting out the timeout", async ({ browser }) => {
+  const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), null));
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await showAll(page);
+  await expect(page.getByRole("link", { name: /Snapshot one/ })).toBeVisible();
+  await page.route("**/api/index", () => {
+    // Never answers.
+  });
+  const started = Date.now();
+  await page.reload();
+  await showAll(page);
+  await expect(page.getByRole("link", { name: /Snapshot one/ })).toBeVisible();
+  expect(Date.now() - started).toBeLessThan(10_000);
+  await ctx.close();
+  await worker.close();
+});
+
 test("the PC's error does not blank the page: the snapshot takes over", async ({ browser }) => {
   let workerOrigin = "";
   const pc = livePc(() => workerOrigin, []);

@@ -18,6 +18,8 @@ const PROBE_MS = 2500;
 const LIVE_ANSWER_MS = 30_000;
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
+/** On a poor connection the saved copy shows after this. */
+const SAVED_AFTER_MS = 3000;
 /**
  * An operation no list has shown after this is given up on, sent or not. Well under the 90 days the PC
  * remembers what it applied (`KEEP_APPLIED_SECS`): sent any later, one could undo what changed since.
@@ -181,17 +183,31 @@ async function fetched(path: string): Promise<Doc | null> {
   return doc;
 }
 
-/** A document, and whether it is the saved copy because the network failed. */
-async function document(path: string): Promise<{ doc: Doc | null; saved: boolean }> {
-  try {
-    return { doc: await fetched(path), saved: false };
-  } catch (e) {
-    const saved = e instanceof Unauthorized || e instanceof FormatMismatch ? null : await savedDoc(path);
-    if (!saved) {
-      throw e;
-    }
-    return { doc: saved, saved: true };
+/** What `document` found: `saved` says it is the copy on this phone, because the network failed or was too slow. */
+interface Found {
+  doc: Doc | null;
+  saved: boolean;
+}
+
+async function document(path: string): Promise<Found> {
+  const network = fetched(path).then((doc): Found => ({ doc, saved: false }));
+  const saved = await savedDoc(path);
+  if (!saved) {
+    return network;
   }
+  const fallback: Found = { doc: saved, saved: true };
+  // The answer still arrives later, and replaces the copy for next time.
+  const late = new Promise<Found>((resolve) => setTimeout(() => resolve(fallback), SAVED_AFTER_MS));
+  const answered = network.then(
+    (f) => f,
+    (e: unknown) => {
+      if (e instanceof Unauthorized || e instanceof FormatMismatch) {
+        throw e;
+      }
+      return fallback;
+    },
+  );
+  return Promise.race([answered, late]);
 }
 
 /** The list, and whether it is the saved copy. */
