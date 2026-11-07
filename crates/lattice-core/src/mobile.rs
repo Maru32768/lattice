@@ -56,11 +56,14 @@ pub struct ArticleDoc {
 }
 
 pub fn index(store: &Store) -> Result<MobileIndex, String> {
+    // Before the articles: an operation applied in between then just stays on the phone for one more
+    // list. The other way round, the list would claim one it does not show, and the phone would drop it.
+    let applied_ops = applied_ops(store)?;
     Ok(MobileIndex {
         generated_at: unix_now(),
         ui_language: store.setting(translate::UI_LANGUAGE_SETTING).map_err(err)?,
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
-        applied_ops: applied_ops(store)?,
+        applied_ops,
     })
 }
 
