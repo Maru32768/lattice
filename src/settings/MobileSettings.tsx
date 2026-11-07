@@ -32,6 +32,8 @@ export function MobileSettings() {
   const [status, setStatus] = useState<MobileStatus | null>(null);
   const [form, setForm] = useState<Settings | null>(null);
   const [snapshot, setSnapshot] = useState<SnapshotSettings | null>(null);
+  /** Leaving a bucket waits for a running pass, and reaches across the network. */
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export function MobileSettings() {
   /** `abandon`: the reader has read why the old bucket cannot be left, and saves anyway. */
   async function saveSnapshot(abandon: boolean) {
     setError(null);
+    setSaving(true);
     try {
       const s = await mobile.saveSnapshot(snapshot!, abandon);
       setStatus(s);
@@ -72,6 +75,7 @@ export function MobileSettings() {
     } catch (e) {
       setError(String(e));
     }
+    setSaving(false);
   }
 
   async function publish() {
@@ -219,7 +223,7 @@ export function MobileSettings() {
         </SetRow>
       </div>
       <div className="btn-row">
-        <button className="btn pri" onClick={() => void saveSnapshot(false)} disabled={status.fell_back}>
+        <button className="btn pri" onClick={() => void saveSnapshot(false)} disabled={status.fell_back || saving}>
           {t("common.save")}
         </button>
         <button className="btn" onClick={() => void publish()} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
@@ -238,7 +242,7 @@ export function MobileSettings() {
       {error?.includes("mobile.leaveFailed") && (
         <div className="note warn">
           <p>{t("mobileSettings.abandonDesc")}</p>
-          <button className="btn" onClick={() => void saveSnapshot(true)}>
+          <button className="btn" onClick={() => void saveSnapshot(true)} disabled={saving}>
             {t("mobileSettings.abandon")}
           </button>
         </div>

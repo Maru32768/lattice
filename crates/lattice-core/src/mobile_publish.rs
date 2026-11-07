@@ -484,7 +484,12 @@ fn leaves(c: &Creds, s: &SnapshotSettings) -> bool {
 /// `abandon` saves without leaving: for a bucket nothing can reach any more, such as one in an account the reader lost. The
 /// token may stay good there until its Worker is removed, which the settings screen says before offering it.
 pub async fn change(store: &Arc<Store>, settings: SnapshotSettings, abandon: bool, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
-    change_with(store, settings, abandon, |creds| R2Bucket { http: r2::client(), creds }, on_applied).await
+    change_with(store, settings, abandon, |creds| R2Bucket { http: client(), creds }, on_applied).await
+}
+
+/// The snapshot's objects are small: a request that takes longer has stalled, and would hold up the save waiting behind it.
+fn client() -> reqwest::Client {
+    reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).timeout(Duration::from_secs(120)).build().expect("static client config")
 }
 
 async fn change_with<B: Bucket>(
@@ -494,9 +499,6 @@ async fn change_with<B: Bucket>(
     bucket_for: impl FnOnce(Creds) -> B,
     on_applied: &(dyn Fn(&Effects) + Send + Sync),
 ) -> Result<(), String> {
-    let stopping = Leaving::new(store);
-    let _pass = PASS.lock().await;
-    drop(stopping);
     let s = store.clone();
     let (current, settings) = blocking(move || {
         // Refused settings must not cut the phone off: they change nothing.
@@ -505,9 +507,18 @@ async fn change_with<B: Bucket>(
         Ok((creds(&s)?, settings))
     })
     .await?;
+    let leaving_bucket = current.as_ref().is_some_and(|(c, _)| leaves(c, &settings)) && !abandon;
+    // Only a save that leaves the bucket waits for a running pass: one that keeps it has nothing to take back from it.
+    let _pass = if leaving_bucket {
+        let stopping = Leaving::new(store);
+        let pass = PASS.lock().await;
+        drop(stopping);
+        Some(pass)
+    } else {
+        None
+    };
     if let Some((mut current, _)) = current
-        && leaves(&current, &settings)
-        && !abandon
+        && leaving_bucket
     {
         // A key typed in the same form for the same bucket is the one that reaches it: the stored one may be revoked.
         if settings.account_id.trim() == current.account_id && settings.bucket.trim() == current.bucket {
@@ -587,7 +598,7 @@ async fn run_pass<B: Bucket>(
 
 /// Publishes on a schedule, and at once when `wake` is notified (a new token, new settings, the button).
 pub async fn run_scheduler(store: Arc<Store>, page: Vec<PageFile>, on_applied: Box<dyn Fn(&Effects) + Send + Sync>, wake: Arc<Notify>) {
-    let http = r2::client();
+    let http = client();
     let mut woken = tokio::select! {
         _ = tokio::time::sleep(FIRST_CHECK) => false,
         _ = wake.notified() => true,
