@@ -20,6 +20,8 @@ const TOKEN: &str = "secret.mobile_token";
 /// Which library a QR code belongs to: article ids mean something else in another.
 const LIBRARY_ID: &str = "mobile.library_id";
 const MODE: &str = "mobile.mode";
+/// `MobileIndex::snapshot_at`, written by `mobile_publish`.
+pub(crate) const SNAPSHOT_AT: &str = "mobile.snapshot.index_at";
 const PORT: &str = "mobile.port";
 const PUBLIC_URL: &str = "mobile.public_url";
 pub const DEFAULT_PORT: u16 = 8787;
@@ -52,6 +54,9 @@ pub struct MobileIndex {
     pub read_only: bool,
     /// The PC's own address. A page reading the snapshot goes there whenever it can reach it.
     pub live_url: Option<String>,
+    /// When the list in the snapshot was made, in Unix seconds. A page reading the PC's list keeps showing its own
+    /// operations until then: if the PC goes off, the snapshot is what it reads next.
+    pub snapshot_at: Option<i64>,
 }
 
 /// An article for reading: `ArticleView` without the job list and the memo, which the page does not show.
@@ -78,6 +83,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
         applied_ops,
         read_only: false,
         live_url: live_url(store)?,
+        snapshot_at: store.setting(SNAPSHOT_AT).map_err(err)?.and_then(|v| v.parse().ok()),
     })
 }
 

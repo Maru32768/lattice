@@ -21,4 +21,9 @@ read_only: boolean,
 /**
  * The PC's own address. A page reading the snapshot goes there whenever it can reach it.
  */
-live_url: string | null, };
+live_url: string | null, 
+/**
+ * When the list in the snapshot was made, in Unix seconds. A page reading the PC's list keeps showing its own
+ * operations until then: if the PC goes off, the snapshot is what it reads next.
+ */
+snapshot_at: number | null, };

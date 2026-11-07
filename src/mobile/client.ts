@@ -233,9 +233,11 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
   }
   const index = found.doc as MobileIndex;
   appliedInList = new Set(index.applied_ops);
-  // The PC's list settles nothing: if the PC goes off, the older snapshot takes over, and the phone must go on showing what it did.
-  // Nor does a saved copy: it may be the PC's list.
-  if (!found.fromLive && !found.saved) {
+  // The PC's list settles only what the snapshot has too: if the PC goes off, the snapshot takes over, and the phone must go on
+  // showing what it did. A saved copy settles nothing: it may be the PC's list, and settled what it could when it arrived.
+  if (found.fromLive) {
+    updateOps((local) => settledByPc(local, index.applied_ops, index.snapshot_at));
+  } else if (!found.saved) {
     updateOps((local) => settled(local, index.applied_ops, Date.now()));
   }
   return { index, saved: found.saved };
@@ -325,6 +327,15 @@ export function newOpId(): string {
 export function settled(local: LocalOp[], applied: string[], now: number): LocalOp[] {
   const done = new Set(applied);
   return local.filter((op) => !done.has(op.id) && now - op.at <= KEEP_OPS_MS);
+}
+
+/** How far the phone's clock and the PC's may differ. */
+const SKEW_MS = 5 * 60 * 1000;
+
+/** What the PC's list leaves: what it shows and the snapshot, made since, shows too. */
+export function settledByPc(local: LocalOp[], applied: string[], snapshotAt: number | null): LocalOp[] {
+  const done = new Set(applied);
+  return snapshotAt == null ? local : local.filter((op) => !(done.has(op.id) && snapshotAt * 1000 > op.at + SKEW_MS));
 }
 
 /** A row as the operations not yet shown by a list will leave it. */

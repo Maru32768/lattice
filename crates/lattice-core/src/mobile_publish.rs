@@ -381,6 +381,8 @@ pub(crate) async fn publish<B: Bucket>(
 
     // Always, unchanged or not: `generated_at` tells the phone how old the snapshot is.
     bucket.put(INDEX_KEY, gz).await?;
+    let (s, at) = (store.clone(), index.generated_at.to_string());
+    blocking(move || set(&s, mobile::SNAPSHOT_AT, Some(&at))).await?;
     uploads.remove_the_rest().await?;
     Ok(published)
 }
@@ -775,6 +777,14 @@ mod tests {
         bucket.with("inbox/1-bad.json", r#"{"id":"bad","op":{"kind":"save_url","url":"javascript:x"}}"#);
         pass(&store, &bucket).await;
         assert_eq!(bucket.json("index.json")["applied_ops"][0], "bad", "or the phone sends what follows by the inbox for 60 days");
+    }
+
+    #[tokio::test]
+    async fn the_pcs_list_says_when_the_snapshot_was_made() {
+        let (store, bucket, _) = setup();
+        assert_eq!(mobile::index(&store).unwrap().snapshot_at, None);
+        pass(&store, &bucket).await;
+        assert_eq!(mobile::index(&store).unwrap().snapshot_at, bucket.json("index.json")["generated_at"].as_i64());
     }
 
     #[tokio::test]

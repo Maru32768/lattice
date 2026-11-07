@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
-import { type LocalOp, fragmentOf, inboxWaits, newOpId, resultOf, settled, withOps } from "./client.ts";
+import { type LocalOp, fragmentOf, inboxWaits, newOpId, resultOf, settled, settledByPc, withOps } from "./client.ts";
 import { savableUrl } from "./urls.ts";
 import { isOldList, visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
@@ -133,4 +133,16 @@ test("the page and the server agree on the documents' format", () => {
   const core = readFileSync(new URL("../../crates/lattice-core/src/mobile.rs", import.meta.url), "utf8");
   const client = readFileSync(new URL("./client.ts", import.meta.url), "utf8");
   assert.equal(/pub const FORMAT: u32 = (\d+);/.exec(core)?.[1], /const FORMAT = (\d+);/.exec(client)?.[1]);
+});
+
+test("the PC's list settles only what the snapshot, made since, shows too", () => {
+  const read = { kind: "set_read", article_id: 1, read: true } as const;
+  const minute = 60 * 1000;
+  const at = 1_000 * minute;
+  const local = [op("shown", read, at), op("not shown", read, at)];
+  const ids = (snapshotAt: number | null) => settledByPc(local, ["shown"], snapshotAt).map((o) => o.id);
+  assert.deepEqual(ids(null), ["shown", "not shown"], "no snapshot at all");
+  assert.deepEqual(ids((at - minute) / 1000), ["shown", "not shown"], "made before the operation");
+  assert.deepEqual(ids((at + 3 * minute) / 1000), ["shown", "not shown"], "within the clocks' difference");
+  assert.deepEqual(ids((at + 10 * minute) / 1000), ["not shown"]);
 });
