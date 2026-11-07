@@ -112,6 +112,14 @@ test("a token the server no longer takes sends the reader back to the QR code", 
   await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
 });
 
+test("a new QR code opened in the same tab is taken without a reload", async ({ page }) => {
+  await start(page, { token: false });
+  await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
+  await page.evaluate(() => (location.hash = "#t=secret"));
+  await expect(page.getByText("First article")).toBeVisible();
+  expect(page.url()).not.toContain("secret");
+});
+
 test("the list filters by state and title, and keeps its place after reading", async ({ page }) => {
   await start(page);
   await expect(page.getByRole("link")).toHaveCount(1);

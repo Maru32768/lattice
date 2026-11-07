@@ -5,7 +5,7 @@ import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
 import type { ListView } from "./list";
 import { articleInHash } from "./route";
-import { Unauthorized, hasToken, loadIndex } from "./client";
+import { Unauthorized, adoptToken, hasToken, loadIndex } from "./client";
 
 const subscribeHash = (changed: () => void) => {
   addEventListener("hashchange", changed);
@@ -40,6 +40,18 @@ export function App() {
   });
   // oxlint-disable-next-line react/set-state-in-effect -- fetching what the server has is why the effect exists
   useEffect(() => firstLoad(), []);
+
+  // A new QR code opened in this tab changes only the fragment: no page load runs main.tsx.
+  const onHashChange = useEffectEvent(() => {
+    if (adoptToken()) {
+      setLoad({ state: "loading" });
+      void refresh();
+    }
+  });
+  useEffect(() => {
+    addEventListener("hashchange", onHashChange);
+    return () => removeEventListener("hashchange", onHashChange);
+  }, []);
 
   // Back from an article lands where the reader left the list.
   const reading = articleId != null;

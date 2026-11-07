@@ -31,13 +31,14 @@ export function tokenInFragment(fragment: string): string | null {
   return new URLSearchParams(fragment.replace(/^#/, "")).get("t") || null;
 }
 
-/** Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots. */
-export function adoptToken() {
+/** Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots. True if there was one. */
+export function adoptToken(): boolean {
   const token = tokenInFragment(location.hash);
   if (token) {
     write(TOKEN, token);
     history.replaceState(null, "", location.pathname + location.search);
   }
+  return token != null;
 }
 
 export const hasToken = () => read(TOKEN) != null;
