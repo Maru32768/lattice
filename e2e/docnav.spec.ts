@@ -584,6 +584,24 @@ test("a match past the edge of a long line in a code block comes into the block"
     .toBe(true);
 });
 
+test("a match in view at the end of a line in a scrolled code block leaves it where it is, though it runs on to the next line", async ({ reader }) => {
+  const left = await reader.locator("#p0").evaluate((p) => {
+    p.insertAdjacentHTML(
+      "beforebegin",
+      `<pre id="wide" style="overflow-x:auto;width:200px;white-space:pre;font:16px monospace"><code>${"a".repeat(40)} zymurgy
+zythum</code></pre>`,
+    );
+    const pre = p.parentElement!.querySelector("#wide")!;
+    pre.scrollLeft = pre.scrollWidth;
+    return pre.scrollLeft;
+  });
+  expect(left).toBeGreaterThan(0);
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("zymurgy zythum");
+  await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
+  expect(await reader.locator("#wide").evaluate((el) => el.scrollLeft)).toBe(left);
+});
+
 test("a match past an ellipsis leaves the line as it was: a reader could not scroll it back", async ({ reader }) => {
   await reader.locator("#p0").evaluate((p) => {
     p.insertAdjacentHTML(
@@ -622,7 +640,7 @@ test("a match off to the side of a narrow pane stops inside it, not past its oth
     view.style.overflowX = "auto";
     p.insertAdjacentHTML(
       "beforebegin",
-      `<pre id="long" style="overflow:visible;white-space:pre;font:16px monospace;width:max-content">${"a".repeat(100)} zymurgy ${"a".repeat(100)}</pre>`,
+      `<pre id="long" style="overflow:visible;white-space:pre;font:16px monospace;width:max-content">${"a".repeat(40)} zymurgy ${"a".repeat(100)}</pre>`,
     );
     view.scrollTop += p.getBoundingClientRect().top - view.getBoundingClientRect().top - 200;
   });
@@ -631,8 +649,8 @@ test("a match off to the side of a narrow pane stops inside it, not past its oth
   await expect.poll(async () => (await drawn(reader)).text).toContain("1/1");
   const inView = await reader.locator("#long").evaluate((pre) => {
     const r = document.createRange();
-    r.setStart(pre.firstChild!, 101);
-    r.setEnd(pre.firstChild!, 108);
+    r.setStart(pre.firstChild!, 41);
+    r.setEnd(pre.firstChild!, 48);
     const match = r.getBoundingClientRect();
     const view = pre.closest(".doc-scroll")!.getBoundingClientRect();
     return match.left >= view.left && match.right <= view.right;

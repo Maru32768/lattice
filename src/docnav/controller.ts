@@ -240,10 +240,16 @@ export function createDocNav(host: () => DocHost) {
     }
   }
 
-  /** Brings a match past the edge of a box a reader can scroll (a code block) into it. `scrollIntoView` leaves an element that already fills its box, as a long line's does, and a box that cuts its text off (an ellipsis) has no way back. */
+  /**
+   * Brings a match's first line past the edge of a box a reader can scroll (a code block) into it. `scrollIntoView` leaves an element that already fills its box, as a long line's does, and a box that cuts its text off (an ellipsis) has no way back.
+   * shortcut: a box also moves for a fixed child, which it cannot bring any nearer, upgrade if a page's nav turns out to live in one.
+   */
   function revealInBoxes(r: Range, scroller: Element | null) {
     for (let el = r.startContainer.parentElement; el && el !== scroller; el = el.parentElement) {
-      const rect = r.getBoundingClientRect();
+      const rect = r.getClientRects()[0];
+      if (!rect) {
+        return;
+      }
       const box = el.getBoundingClientRect();
       const outX = rect.left < box.left - 1 || rect.right > box.right + 1;
       const outY = rect.top < box.top - 1 || rect.bottom > box.bottom + 1;
@@ -268,7 +274,8 @@ export function createDocNav(host: () => DocHost) {
       return rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
     };
     const over = onTop();
-    if (over && r.intersectsNode(over)) {
+    // Not what holds the scroller, which shows beside a box that does not fill the window: a match that lands on it is cut off.
+    if (over && r.intersectsNode(over) && (over === scroller || !over.contains(scroller))) {
       return;
     }
     r.startContainer.parentElement?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
