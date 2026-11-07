@@ -72,7 +72,7 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 | G44 | アプリ全体をVim風に操作 | 済 | ChromeのVimiumのように、リンクのヒント表示などで操作する。Reader・Page・PDFで同じ`src/docnav`を使う。design-review §31。 |
 | G45 | モデルごとのeffort設定 | 済 | chainの各段に任意のeffort(`low`〜`max`、Geminiは`low`〜`high`)。Claude CLI `--effort`、Codex CLI `model_reasoning_effort`(既定は従来どおりlow)、OpenAI `reasoning.effort`、Anthropic `output_config.effort`、Gemini `thinkingConfig.thinkingLevel`。未指定はproviderの既定で、保存済みのchainはそのまま読める。 |
 | G46 | タスクバーに未読数バッジ | 済 | 未読数を描いた画像をWindowsのoverlay iconにする(99+ まで、0で消す)。UIの未読数の変化を500 msまとめてbackendに渡す。設定「タスクバー」でオフにできる(design-review §16)。 |
-| G47 | スマホから使える簡易版 | 進行中 | 設計はdesign-review §32。PC内蔵のHTTPサーバー(ライブ)とR2のスナップショット + inbox(PCが止まっていても読める)を同じAPIで出し、1つのページで使う。M1〜M4の順に作る。 |
+| G47 | スマホから使える簡易版 | 進行中 | design-review §32。M1〜M4を実装した: PC内蔵のHTTPサーバー(ライブ、LANかトンネル越し)と、Cloudflare R2のスナップショットとinbox(PCが止まっていても読める)を同じAPIで出し、1つのページで使う。電波がなくても読んだ記事は開ける。残りはCloudflareへのデプロイと実機のスマホでの確認。 |
 | G48 | Markdownの取り込みと表示 | 済 | インポート画面の「Markdown」タブで、ファイルか貼り付けたテキストを1つの記事にする(pulldown-cmarkでIRに変換、HTMLタグは捨てる)。URLの代わりに`local:md/<sha256>`を持ち、同じ本文は重複しない。Page・再試行・描画はなし。URLの画像は保存し、相対パスの画像は選んだファイルのフォルダからだけ読む(design-review §5)。 |
 | G49 | 対話・要約のカスタム指示 | 済 | 設定 › 要約・対話 に全体共通の「自分について」(2000文字まで)と、要約・対話それぞれの追加の指示。system promptの組み込みの規則の後、untrusted inputの注意の前に入れる。指示を変えると作成済みの要約をstaleとして表示する。 |
 | G50 | Page表示でページにフォーカスがあるとショートカットが効かない | 済 | アプリが転送するキーの一覧(`pageKeys`)をbackend経由でoverlayに渡し(起動時・ページ読み込み時・変更時)、overlayがページのkeydown(capture)で拾って`overlay_key`で送る。`Ctrl+K`・`Ctrl+B`とその次のキーはページの入力欄からも送り、ページには渡さない。j / k・s・m・v・[ ] などはページの入力欄の外でだけ、ページが`preventDefault`しなかったときに送る。Enter・Esc・矢印・Spaceはページのもの。パレット・検索・Readerへの切り替え・ペイン移動はフォーカスをアプリに戻す。 |
