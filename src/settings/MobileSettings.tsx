@@ -100,16 +100,24 @@ export function MobileSettings() {
       {status.fell_back && <p className="note warn">{t("be.mobile.fellBack")}</p>}
       {status.error && <p className="note err">{t.msg(status.error)}</p>}
       {status.running && !status.url && <p className="sec-d">{t("mobileSettings.needsUrl")}</p>}
-      {status.url && status.qr && (
+      {status.url && (
         <div className="mobile-qr">
-          <svg viewBox={`-2 -2 ${status.qr.width + 4} ${status.qr.width + 4}`} role="img" aria-label={t("mobileSettings.qr")} width={220} height={220}>
-            <rect x={-2} y={-2} width={status.qr.width + 4} height={status.qr.width + 4} fill="#fff" />
-            <path d={status.qr.path} fill="#000" />
-          </svg>
-          <p className="sec-d">{t("mobileSettings.scan")}</p>
-          <p className="sec-d">
-            <code>{status.url.split("#")[0]}</code>
-          </p>
+          {status.qr ? (
+            <>
+              <svg viewBox={`-2 -2 ${status.qr.width + 4} ${status.qr.width + 4}`} role="img" aria-label={t("mobileSettings.qr")} width={220} height={220}>
+                <rect x={-2} y={-2} width={status.qr.width + 4} height={status.qr.width + 4} fill="#fff" />
+                <path d={status.qr.path} fill="#000" />
+              </svg>
+              <p className="sec-d">{t("mobileSettings.scan")}</p>
+              <p className="sec-d">
+                <code>{status.url.split("#")[0]}</code>
+              </p>
+            </>
+          ) : (
+            <p className="sec-d">
+              <code>{status.url}</code>
+            </p>
+          )}
         </div>
       )}
       {failure}
