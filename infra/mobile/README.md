@@ -24,8 +24,8 @@ stateと`*.tfvars`はgitに入れない(`.gitignore`済み)。stateには秘密�
 
    ```sh
    cd infra/mobile
-   cp terraform.tfvars.example terraform.tfvars   # account_id を書き換える
-   export CLOUDFLARE_API_TOKEN=<1 のトークン>
+   cp terraform.tfvars.example terraform.tfvars   # account_idを書き換える
+   export CLOUDFLARE_API_TOKEN=<1のトークン>
    terraform init
    terraform plan
    terraform apply

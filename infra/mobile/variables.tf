@@ -1,5 +1,5 @@
 variable "account_id" {
-  description = "Cloudflare account ID (dashboardの右側に表示される32桁の16進数)"
+  description = "Cloudflare account ID(dashboardの右側に表示される32桁の16進数)"
   type        = string
 }
 
@@ -10,7 +10,7 @@ variable "bucket_name" {
 }
 
 variable "location" {
-  description = "R2のlocation hint (apac / eeur / enam / weur / wnam / oc)"
+  description = "R2のlocation hint(apac / eeur / enam / weur / wnam / oc)"
   type        = string
   default     = "apac"
 }
