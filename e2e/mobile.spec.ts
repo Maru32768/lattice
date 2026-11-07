@@ -161,7 +161,10 @@ test("tapping a sentence shows its other language, and a selection leaves it alo
   await page.getByText("一文目。").click();
   await expect(page.getByText("First sentence.")).toBeVisible();
   await expect(page.getByText("二文目。")).toBeVisible();
-  await page.getByText("First sentence.").click();
+  await page.getByRole("button", { name: "原文" }).click();
+  await expect(page.getByText("一文目。")).toHaveCount(0);
+  await expect(page.getByText("First sentence.")).toBeVisible();
+  await page.getByRole("button", { name: "訳文" }).click();
   await expect(page.getByText("一文目。")).toBeVisible();
   await page.evaluate(() => {
     const el = [...document.querySelectorAll(".sent")].find((e) => e.textContent === "一文目。")!;

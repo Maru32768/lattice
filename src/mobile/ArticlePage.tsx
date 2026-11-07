@@ -79,6 +79,7 @@ export function ArticlePage({ id }: { id: number }) {
 
   const choose = (m: LanguageMode, p: number) => {
     setLanguage({ mode: m, percent: p });
+    setFlipped(new Set());
     saveLanguage({ mode: m, percent: p });
   };
   const toolbar = (
