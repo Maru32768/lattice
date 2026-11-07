@@ -163,17 +163,21 @@ const LONG = {
   articles: Array.from({ length: 150 }, (_, i) => (i === 60 ? row(1, "First article") : row(i + 100, `Article ${i}`))),
 };
 
-test("going back from an article returns to the same place", async ({ page }) => {
+test("going back from an article returns to the same place, and adds nothing to history", async ({ page }) => {
   await start(page, { index: LONG });
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
   const place = await page.evaluate(() => scrollY);
   expect(place).toBeGreaterThan(500);
+  const before = await page.evaluate(() => history.length);
   await page.getByRole("link", { name: /First article/ }).click();
   await expect(page.getByRole("heading", { name: "First article" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   await page.getByRole("link", { name: "一覧" }).click();
   await expect(page.getByRole("link", { name: /First article/ })).toBeVisible();
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(place);
+  expect(await page.evaluate(() => history.length), "the article is the only new entry").toBe(before + 1);
+  await page.goBack();
+  await expect(page.getByRole("link", { name: /First article/ })).toHaveCount(0);
 });
 
 test("the phone's back button also returns to the same place", async ({ page }) => {

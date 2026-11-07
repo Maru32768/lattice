@@ -58,7 +58,7 @@ function flipUnlessSelecting(flip: () => void) {
   }
 }
 
-export function ArticlePage({ id }: { id: number }) {
+export function ArticlePage({ id, onBack }: { id: number; onBack: (e: React.MouseEvent) => void }) {
   const t = useT();
   const [doc, setDoc] = useState<ArticleDoc | null | "loading" | "failed" | "no-token">("loading");
   const [{ mode, percent }, setLanguage] = useState(savedLanguage);
@@ -84,7 +84,7 @@ export function ArticlePage({ id }: { id: number }) {
   };
   const toolbar = (
     <header className="m-bar">
-      <a className="btn" href="#/">
+      <a className="btn" href="#/" onClick={onBack}>
         {t("mobile.back")}
       </a>
       <div className="seg" role="group" aria-label={t("reader.language")}>

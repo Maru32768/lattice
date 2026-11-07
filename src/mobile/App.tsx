@@ -21,6 +21,8 @@ export function App() {
   const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
   const [refreshFailed, setRefreshFailed] = useState(false);
   const listScroll = useRef(0);
+  /** Set when the article on screen was opened from the list, so going back to the list is going back in history. */
+  const fromList = useRef(false);
   /** Only the latest request may change the screen: an older one can answer last. */
   const latest = useRef(0);
 
@@ -82,7 +84,20 @@ export function App() {
     );
   }
   if (articleId != null) {
-    return <ArticlePage key={articleId} id={articleId} />;
+    return (
+      <ArticlePage
+        key={articleId}
+        id={articleId}
+        onBack={(e) => {
+          // Back and forth must not pile up in history, so the phone's back button leaves the list as it should.
+          if (fromList.current) {
+            e.preventDefault();
+            fromList.current = false;
+            history.back();
+          }
+        }}
+      />
+    );
   }
   if (load.state === "loading") {
     return <p className="m-empty">{t("mobile.loading")}</p>;
@@ -109,7 +124,10 @@ export function App() {
       view={view}
       onView={setView}
       refreshFailed={refreshFailed}
-      onOpen={() => (listScroll.current = window.scrollY)}
+      onOpen={() => {
+        listScroll.current = window.scrollY;
+        fromList.current = true;
+      }}
       onRefresh={refresh}
     />
   );
