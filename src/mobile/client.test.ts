@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
-import { type LocalOp, fragmentOf, newOpId, resultOf, settled, withOps } from "./client.ts";
+import { type LocalOp, fragmentOf, inboxWaits, newOpId, resultOf, settled, withOps } from "./client.ts";
 import { savableUrl } from "./urls.ts";
 import { isOldList, visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
@@ -80,8 +80,8 @@ test("the phone gives up on an operation before the PC forgets it applied it", (
 
 test("only Lattice's own answer settles an operation", () => {
   const coded = '{"code":"mobile.badUrl","params":{}}';
-  assert.deepEqual(resultOf(200, { status: "applied" }), { status: "done" });
-  assert.deepEqual(resultOf(202, { status: "queued" }), { status: "done" });
+  assert.deepEqual(resultOf(200, { status: "applied" }), { status: "done", queued: false });
+  assert.deepEqual(resultOf(202, { status: "queued" }), { status: "done", queued: true });
   assert.deepEqual(resultOf(422, { error: coded }), { status: "rejected", error: coded });
   assert.deepEqual(resultOf(400, { error: coded }), { status: "rejected", error: coded });
   const waits: [number, unknown, string][] = [
@@ -118,6 +118,15 @@ test("an operation's id is what the server takes, without a secure context", () 
 test("a list says how old it is only when that matters", () => {
   assert.equal(isOldList(1000, 1_100_000), false);
   assert.equal(isOldList(1000, 1_121_000), true);
+});
+
+test("while one waits in the inbox, the next must follow it there", () => {
+  const read = { kind: "set_read", article_id: 1, read: true } as const;
+  const direct = op("direct", read);
+  const queued = { ...op("queued", read), queued: true };
+  assert.equal(inboxWaits([direct], new Set()), false);
+  assert.equal(inboxWaits([direct, queued], new Set()), true);
+  assert.equal(inboxWaits([direct, queued], new Set(["queued"])), false, "the PC has it: nothing to overtake");
 });
 
 test("the page and the server agree on the documents' format", () => {

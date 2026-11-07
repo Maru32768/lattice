@@ -324,6 +324,37 @@ test("on a poor connection the saved copy shows without waiting out the timeout"
   await worker.close();
 });
 
+test("while an operation waits in the inbox, a later one follows it there and cannot be overtaken", async ({ browser }) => {
+  const ops: unknown[] = [];
+  let workerOrigin = "";
+  let pcUp = false;
+  const pc = livePc(() => workerOrigin, ops);
+  const live = await serve((request) => (pcUp ? pc(request) : new Response(null, { status: 503 })));
+  const bucket = snapshotBucket(Math.floor(Date.now() / 1000), live.origin);
+  const worker = await workerServer(bucket);
+  workerOrigin = worker.origin;
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await showAll(page);
+  await page.getByRole("link", { name: /Snapshot one/ }).click();
+  await page.getByRole("button", { name: "お気に入りに追加" }).click();
+  await page.getByRole("button", { name: "お気に入りから外す" }).waitFor();
+  const inbox = () => [...bucket.store.keys()].filter((k) => k.startsWith("inbox/")).length;
+  await expect.poll(inbox, "the PC is off").toBe(1);
+  pcUp = true;
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("link", { name: /Live one/ })).toBeVisible();
+  await page.getByRole("link", { name: /Live one/ }).click();
+  await page.getByRole("button", { name: "お気に入りから外す" }).click();
+  await expect.poll(inbox, "the next one follows it, though the PC answers").toBe(2);
+  expect(ops).toEqual([]);
+  await ctx.close();
+  await worker.close();
+  await live.close();
+});
+
 test("what the PC's list has shown stays on the phone when the PC goes off and an older snapshot returns", async ({ browser }) => {
   const ops: { id: string }[] = [];
   let workerOrigin = "";

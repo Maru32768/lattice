@@ -230,6 +230,7 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
     }
   }
   const index = found.doc as MobileIndex;
+  appliedInList = new Set(index.applied_ops);
   // The PC's list settles nothing: if the PC goes off, the older snapshot takes over, and the phone must go on showing what it did.
   if (!found.fromLive) {
     updateOps((local) => settled(local, index.applied_ops, Date.now()));
@@ -259,10 +260,14 @@ export async function disconnect() {
 
 // ---- operations ---------------------------------------------------------------------------------
 
-/** An operation done on this phone, until a list shows it. `sent`: the server has it. `at` is this phone's clock. */
+/**
+ * An operation done on this phone, until a list shows it. `sent`: a server has it. `queued`: that server was the
+ * Worker, so it waits in the inbox for the PC. `at` is this phone's clock.
+ */
 export interface LocalOp extends MobileOp {
   at: number;
   sent: boolean;
+  queued?: boolean;
 }
 
 function parseOps(text: string | null): LocalOp[] {
@@ -275,6 +280,8 @@ function parseOps(text: string | null): LocalOp[] {
 }
 
 let ops = parseOps(read(OPS));
+/** The operations the last list reflects. */
+let appliedInList = new Set<string>();
 const listeners = new Set<() => void>();
 
 /** Starts from what storage holds, not from this tab's copy: another tab may have added to it. */
@@ -330,7 +337,7 @@ export function withOps(row: ArticleRow, local: LocalOp[]): ArticleRow {
   }, row);
 }
 
-export type SendResult = { status: "done" } | { status: "wait" } | { status: "rejected"; error: string };
+export type SendResult = { status: "done"; queued: boolean } | { status: "wait" } | { status: "rejected"; error: string };
 
 /** A message in the catalog's form (`msg!`): only Lattice itself answers with one. */
 function isCoded(error: unknown): error is string {
@@ -351,7 +358,7 @@ function isCoded(error: unknown): error is string {
 export function resultOf(status: number, body: unknown): SendResult {
   const { status: said, error } = (body ?? {}) as { status?: unknown; error?: unknown };
   if (status >= 200 && status < 300 && (said === "applied" || said === "queued")) {
-    return { status: "done" };
+    return { status: "done", queued: said === "queued" };
   }
   return (status === 400 || status === 422) && isCoded(error) ? { status: "rejected", error } : { status: "wait" };
 }
@@ -370,9 +377,12 @@ async function sendTo(base: string, op: MobileOp): Promise<SendResult> {
   }
 }
 
+/** Whether what was sent earlier still waits in the inbox. The PC applies that later, so anything sent straight to it now would be overtaken. */
+export const inboxWaits = (local: LocalOp[], applied: ReadonlySet<string>) => local.some((o) => o.queued && !applied.has(o.id));
+
 /** To the PC if it answers, else to wherever this page came from. Both ways are safe together: the operation's id applies it once. */
 async function sendOp(op: MobileOp): Promise<SendResult> {
-  if (await liveNow()) {
+  if (!inboxWaits(ops, appliedInList) && (await liveNow())) {
     const result = await sendTo(`${live}/`, op);
     if (result.status !== "wait") {
       return result;
@@ -403,7 +413,7 @@ export function flushOps(): Promise<void> {
         updateOps((local) => local.filter((o) => o.id !== sending.id));
         onRejected(sending, result.error);
       } else {
-        updateOps((local) => local.map((o) => (o.id === sending.id ? { ...o, sent: true } : o)));
+        updateOps((local) => local.map((o) => (o.id === sending.id ? { ...o, sent: true, queued: result.queued } : o)));
       }
     }
   })().finally(() => {
