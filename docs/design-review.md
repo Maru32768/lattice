@@ -919,7 +919,7 @@ M1(Aの読み取り)まで実装した。M2以降はまだ設計だけ。スマ�
 - **同じAPIを2か所で出す。** パスは`GET /api/index`、`GET /api/articles/{id}`、`POST /api/ops`で、AとBで応答の形も同じにする。ページの違いはbase URLと、操作の応答が200か202かだけになる。以前の案にあった`Source`の抽象は要らない。
 - **文書の型。** `MobileIndex { generated_at, ui_language, articles: Vec<ArticleRow> }`と`ArticleDoc { article, target_language, blocks: Vec<StoredBlock>, summary }`。既存の型をそのまま使うので、ts-rsの型定義も増えない。`ArticleView`の`jobs`と`note`は閲覧に使わないので含めない。Tauriの`get_article`(`article_target`・`Store::get_article`・`mark_stale`)は`mobile::article`と共通の関数にまとめる。
 - **サービス層は作らない。** `src-tauri/src/lib.rs`のcommandの多くはすでに`lattice-core`を1行か2行で呼ぶだけで、141個を移す必要はなかった。スマホが使う数個の入口だけを`mobile.rs`に置く。
-- **混在は`src/reader/mixed.ts`を共有する。** `blockPieces`と`translatedSentences`は純粋な関数で、選ぶ文は記事のアドレスと本文で決まるので、PCと同じ文が訳文になる。`Reader.tsx`はIPCに依存するので、blockの描画はスマホ用に別に書く。
+- **混在は`src/reader/mixed.ts`を共有する。** `blockPieces`と`translatedSentences`は純粋な関数で、選ぶ文は記事のアドレスと本文で決まるので、PCと同じ文が訳文になる。blockの描画は`Reader.tsx`から`src/reader/BlockView.tsx`に移して共有する(IPCに依存する画像だけ呼び出し側が渡す)。スマホの画面は`Reader.tsx`のものを使わない。
 - **操作は1つの型で、適用は1か所。** `MobileOp { id, at, kind }`で、`id`はスマホが作るUUID、`kind`は`vocab.add`・`article.setRead`・`article.setFavorite`・`url.save`の4種類。A・B・再送のどの経路でも`mobile::apply`を通る。
 - **二重適用は`id`で防ぐ。** `mobile_ops_applied(id, applied_at)`に適用済みの`id`を残し(90日で消す)、同じ`id`は何もせず成功を返す。順序は「適用、記録、inboxから削除」。記録の前に落ちると再適用になるが、同じ文の単語登録は増えず(§22)、既読とお気に入りは同じ値の上書きで、`enqueue_urls`も重複を積まないので結果は変わらない。記録が要るのは、応答を失って後から再送された操作が、その間にPCで変えた状態を戻さないようにするため。
 - **入力は信頼しない。** 単語は`vocab::capture`の検証を通し、URLはbulk importと同じ`enqueue_urls`に渡す。消えた記事を指す操作は、単語ならURLだけを残し、既読とお気に入りなら何もしない。`apply`はjobを積むだけで、runnerは30秒以内に拾う(`IDLE_POLL`、§23)。`src-tauri`は`apply`の戻り値を見てrunnerを起こし、`article-changed`と`vocab-changed`を出す。
