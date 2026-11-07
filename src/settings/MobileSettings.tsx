@@ -3,6 +3,9 @@ import { mobile, type MobileServerMode, type MobileSettings as Settings, type Mo
 import { SetRow } from "../ui/SetRow";
 import { useT } from "../i18n";
 
+const MIN_PORT = 1024;
+const MAX_PORT = 65535;
+
 /** Settings section for reading on a phone (G47). */
 export function MobileSettings() {
   const t = useT();
@@ -40,6 +43,8 @@ export function MobileSettings() {
     return failure;
   }
   const edit = (patch: Partial<Settings>) => setForm({ ...form, ...patch });
+  // The backend's type holds no more than this, and a value it cannot hold never reaches its own check.
+  const portOk = Number.isInteger(form.port) && form.port >= MIN_PORT && form.port <= MAX_PORT;
   return (
     <>
       <div className="grp">
@@ -55,8 +60,8 @@ export function MobileSettings() {
             id="mobile-port"
             className="input sm num"
             type="number"
-            min={1024}
-            max={65535}
+            min={MIN_PORT}
+            max={MAX_PORT}
             value={form.port}
             onChange={(e) => edit({ port: Number(e.target.value) })}
           />
@@ -73,13 +78,14 @@ export function MobileSettings() {
         </SetRow>
       </div>
       <div className="btn-row">
-        <button className="btn pri" onClick={() => void run(() => mobile.save(form))} disabled={status.fell_back}>
+        <button className="btn pri" onClick={() => void run(() => mobile.save(form))} disabled={status.fell_back || !portOk}>
           {t("common.save")}
         </button>
         <button className="btn" onClick={() => void run(mobile.regenerateToken)} disabled={status.fell_back}>
           {t("mobileSettings.regenerate")}
         </button>
       </div>
+      {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
       {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
       {status.fell_back && <p className="note warn">{t("be.mobile.fellBack")}</p>}
       {status.error && <p className="note err">{t.msg(status.error)}</p>}

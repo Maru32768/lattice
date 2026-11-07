@@ -203,4 +203,7 @@ test("serving to a phone shows the QR code, warns about the open network, and a 
   await expect(app.getByText("#t=")).toHaveCount(0);
   await app.getByRole("button", { name: "トークンを作り直す" }).click();
   await expect.poll(() => callsOf(app, "mobile_regenerate_token").then((c) => c.length)).toBe(1);
+  await app.getByLabel("ポート").fill("70000");
+  await expect(app.getByText("ポートは1024〜65535にしてください")).toBeVisible();
+  await expect(app.getByRole("button", { name: "保存", exact: true })).toBeDisabled();
 });

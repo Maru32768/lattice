@@ -1352,7 +1352,7 @@ export const en = {
   "mobile.notTranslated": "This article has not been translated yet.",
   "mobile.noText": "There is no text.",
   "be.mobile.publicUrl": "The address must start with http:// or https:// and have no path",
-  "be.mobile.port": "The port must be {min} or higher",
+  "be.mobile.port": "The port must be from {min} to {max}",
   "be.mobile.bind": "Could not start serving on port {port}: {error}",
   "be.mobile.fellBack": "The original library could not be opened, so serving to a phone is off",
 } satisfies Messages;

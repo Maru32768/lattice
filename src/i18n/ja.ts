@@ -1334,7 +1334,7 @@ export const ja = {
   "mobile.notTranslated": "この記事はまだ翻訳されていません。",
   "mobile.noText": "本文がありません。",
   "be.mobile.publicUrl": "アドレスはhttp://かhttps://で始まり、パスを含まない形で入れてください",
-  "be.mobile.port": "ポートは{min}以上にしてください",
+  "be.mobile.port": "ポートは{min}〜{max}にしてください",
   "be.mobile.bind": "ポート{port}で配信を始められませんでした: {error}",
   "be.mobile.fellBack": "元のライブラリを開けなかったので、スマホへの配信は止めています",
 } as const satisfies Record<string, string>;

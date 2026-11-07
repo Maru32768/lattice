@@ -123,7 +123,8 @@ fn clean_public_url(url: &str) -> Result<String, String> {
 
 pub fn save_settings(store: &Store, s: &MobileSettings) -> Result<(), String> {
     if s.port < MIN_PORT {
-        return Err(msg!("mobile.port", min = MIN_PORT));
+        // As text: the catalog would write a number as 1,024.
+        return Err(msg!("mobile.port", min = MIN_PORT.to_string(), max = u16::MAX.to_string()));
     }
     let public_url = clean_public_url(&s.public_url)?;
     let mode = match s.mode {
