@@ -22,6 +22,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - The Reader went back to the top when its pane split, closed or swapped, and when you came back to its tab. It now keeps the paragraph you were reading.
+- Saving several articles from a site that names one page (often its home page) as canonical on every page kept only the first. Articles now merge only when their text matches. When they do merge, the tags, star, note and collections you gave the merged article move to the one that stays.
 
 ## [0.3.0] - 2026-11-06
 

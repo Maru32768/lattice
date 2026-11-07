@@ -38,7 +38,7 @@ fn data_dir(name: &str) -> Dir {
     Dir(dir)
 }
 
-const PROSE: &str = "<p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.</p>";
+const PROSE: &str = "<p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. A transaction reads from a snapshot taken when it starts and writes its changes at commit, so two transactions can each read what the other is about to change, and each still commits without seeing a conflict at all.</p>";
 
 fn page(url: &str, head: &str) -> Fetched {
     Fetched { final_url: url.into(), status: 200, content_type: None, html: format!("<html><head>{head}</head><body><article>{PROSE}</article></body></html>") }
@@ -151,11 +151,10 @@ async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     assert!(job_status::retry(&s, job_id).unwrap().is_some(), "the Jobs view's retry runs it again");
 }
 
-/// F1. A fetch whose canonical URL names an article already saved drops the new row in favour of
-/// it (`save_snapshot`). The row can be one whose earlier fetch failed and that the user has since
-/// tagged, starred, noted and put in a group: all of that goes with it, and none reaches the kept article.
+/// A fetch whose canonical URL names an article already saved, with the same text, drops the new row
+/// in favour of it (`save_snapshot`). The row can be one whose earlier fetch failed and that the user
+/// has since tagged, starred, noted and put in a group: all of that moves to the kept article.
 #[test]
-#[ignore = "reliability audit F1: fails until fixed"]
 fn merging_a_refetched_article_into_an_existing_one_keeps_the_users_data() {
     let s = Store::open_in_memory().unwrap();
     let kept = saved(&s, "https://example.com/post");
@@ -283,18 +282,17 @@ fn article_page(url: &str, canonical: &str, text: &str) -> Fetched {
     }
 }
 
-/// F1. The merge believes any canonical URL. A site that declares its home page canonical on
-/// every page (a common misconfiguration, and the default of many single-page-app templates)
-/// collapses: each article saved after the first is deleted and resolves to the first.
+/// The merge must not believe any canonical URL. On a site that declares its home page canonical on
+/// every page (a common misconfiguration, and the default of many single-page-app templates), each
+/// article saved after the first would be deleted and resolve to the first.
 #[test]
-#[ignore = "reliability audit F1: fails until fixed"]
 fn articles_that_share_a_bogus_canonical_url_are_not_merged() {
     use lattice_core::store::ArticleFilter;
     let s = Store::open_in_memory().unwrap();
     for (n, topic) in [(1, "write skew under snapshot isolation"), (2, "how a B-tree page splits when it fills up")] {
         let url = format!("https://blog.example.com/posts/{n}");
         let (id, _) = s.upsert_pending(&url, &url, "blog.example.com").unwrap();
-        let text = format!("This post explains {topic} with a worked example and a short benchmark.");
+        let text = format!("This post explains {topic} with a worked example and a short benchmark. ").repeat(6);
         store_fetched(&s, id, &article_page(&url, "https://blog.example.com/", &text)).unwrap();
     }
     let titles: Vec<String> = s.list_articles(&ArticleFilter::All).unwrap().into_iter().map(|a| a.original_url).collect();

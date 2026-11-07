@@ -624,7 +624,12 @@ impl Store {
     /// The saved article for a normalized URL (matching either its own or its canonical URL).
     pub fn find_article_by_url(&self, normalized_url: &str) -> Result<Option<i64>> {
         self.conn()
-            .query_row("SELECT id FROM articles WHERE normalized_url = ?1 OR canonical_url = ?1 ORDER BY id LIMIT 1", [normalized_url], |r| r.get(0))
+            // Its own URL first: another article's canonical can name this one's URL without being a copy of it.
+            .query_row(
+                "SELECT id FROM articles WHERE normalized_url = ?1 OR canonical_url = ?1 ORDER BY normalized_url = ?1 DESC, id LIMIT 1",
+                [normalized_url],
+                |r| r.get(0),
+            )
             .optional()
     }
 
@@ -678,17 +683,41 @@ impl Store {
         let tx = c.transaction()?;
         // Only a not-yet-extracted row merges: re-extraction and re-saves (rendered or refetched)
         // must not delete an article the user already has, with its tags, favorite and summaries.
-        if let (Some(canon), Some(_)) = (canonical_normalized, snapshot) {
+        // And only into the same text: a site can name its home page as canonical on every page, and
+        // short pages (a paywall, a JS app's stub) read alike on every URL. Those are kept apart.
+        if let (Some(canon), Some(_), Ok(ir)) = (canonical_normalized, snapshot, &extracted)
+            && let chars = ir.blocks.iter().map(|b| (sha256_hex(&b.text), b.text.chars().count())).collect::<HashMap<_, _>>()
+            && let total = chars.values().sum::<usize>() as i64
+            && total >= THIN_TEXT_CHARS
+        {
             let existing: Option<i64> = tx
                 .query_row(
                     "SELECT id FROM articles WHERE id != ?1 AND extraction_status = 'ok'
                      AND (canonical_url = ?2 OR normalized_url = ?2)
-                     AND (SELECT extraction_status FROM articles WHERE id = ?1) IS NOT 'ok' LIMIT 1",
-                    params![id, canon],
+                     AND (SELECT extraction_status FROM articles WHERE id = ?1) IS NOT 'ok'
+                     AND (SELECT coalesce(sum(value), 0) FROM json_each(?3)
+                          WHERE key IN (SELECT text_hash FROM blocks WHERE article_id = articles.id)) * 2 >= ?4
+                     ORDER BY id LIMIT 1",
+                    params![id, canon, json(&chars), total],
                     |r| r.get(0),
                 )
                 .optional()?;
             if let Some(existing) = existing {
+                // What the user gave the row goes with it: a failed fetch can be tagged, starred, noted and grouped before the retry that merges it.
+                tx.execute(
+                    "INSERT OR IGNORE INTO article_tags (article_id, tag_id) SELECT ?2, tag_id FROM article_tags WHERE article_id = ?1",
+                    [id, existing],
+                )?;
+                tx.execute(
+                    "INSERT OR IGNORE INTO group_articles (group_id, article_id, added_at) SELECT group_id, ?2, added_at FROM group_articles WHERE article_id = ?1",
+                    [id, existing],
+                )?;
+                tx.execute(
+                    "INSERT INTO article_notes (article_id, body) SELECT ?2, body FROM article_notes WHERE article_id = ?1
+                     ON CONFLICT(article_id) DO UPDATE SET body = body || char(10, 10) || excluded.body",
+                    [id, existing],
+                )?;
+                tx.execute("UPDATE articles SET favorite = 1 WHERE id = ?2 AND (SELECT favorite FROM articles WHERE id = ?1)", [id, existing])?;
                 tx.execute("DELETE FROM articles WHERE id = ?1", [id])?;
                 tx.commit()?;
                 return Ok(existing);

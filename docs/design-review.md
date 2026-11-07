@@ -52,7 +52,7 @@
 7. **`parent_heading` → `heading_id`(直前のheading blockへのFK)。** 検索結果の「Section」表示とblock jumpにそのまま使える。
 8. **block IDの安定性。** `id INTEGER PRIMARY KEY`(VACUUMで変わらない)と`text_hash`を持たせる。再抽出のときは`text_hash`が一致するblockのidを再利用し、それ以外は新規にする。`translations`も`source_hash`を持つので、原文が変わったことを検出できる。ID再利用は §6で実装した(`store::replace_blocks`)。
    - 同期を入れるときは端末間でIDが衝突するため、`uid TEXT`(UUIDv7)列を追加する。今は入れない。
-9. **重複判定で`content_hash`を一意キーにしない。** paywallページや「記事が見つかりません」ページは同じhashになり、別々の記事が誤って統合される。→ `normalized_url`をUNIQUEにし、取得後に`canonical_url`で統合する。`content_hash`はindexを張るだけで、参考情報として使う。
+9. **重複判定で`content_hash`を一意キーにしない。** paywallページや「記事が見つかりません」ページは同じhashになり、別々の記事が誤って統合される。→ `normalized_url`をUNIQUEにし、取得後に`canonical_url`で統合する。`content_hash`はindexを張るだけで、参考情報として使う。統合は、canonicalが指す記事と本文の文字数の半分以上が一致し、本文が短くない(`THIN_TEXT_CHARS`以上)ときだけ行う。すべてのページがトップページをcanonicalに指定するサイトや、どのURLでも同じ文面のスタブを返すJSアプリの記事が1件に潰れるため。残る行は重複になりうるが、重複は消せても消えた記事は戻らない。統合される行に利用者が付けたタグ・お気に入り・メモ・グループは残る記事へ移す(取得に失敗した行にも付けられる)。
 10. **ProcessingJobに足りないもの。** 次スライスで以下を追加する。
     - `params` JSON(target_language、prompt_version)
     - `dedup_key UNIQUE`(enqueueを冪等にするため)

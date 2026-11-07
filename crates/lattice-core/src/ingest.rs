@@ -275,10 +275,33 @@ mod tests {
         // Same URL again: already extracted, nothing to do.
         assert_eq!(s.upsert_pending("https://example.com/post#x", "https://example.com/post", "example.com").unwrap(), (id, false));
 
-        // Different URL whose canonical points at the first article collapses into it.
-        let (id2, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
-        assert_eq!(store_fetched(&s, id2, &page(BODY)).unwrap(), id);
+        // A short page reads alike on every URL (a paywall, a JS app's stub): its canonical does not merge it.
+        let (stub, _) = s.upsert_pending("https://example.com/stub", "https://example.com/stub", "example.com").unwrap();
+        assert_eq!(store_fetched(&s, stub, &page(BODY)).unwrap(), stub);
+    }
+
+    #[test]
+    fn a_different_url_with_the_same_text_collapses_into_the_article_its_canonical_names() {
+        let s = Store::open_in_memory().unwrap();
+        let long: String = (0..5)
+            .map(|n| format!("<p>Paragraph {n} says snapshot isolation prevents dirty reads but still permits write skew, which is why SSI exists.</p>"))
+            .collect();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        assert_eq!(store_fetched(&s, id, &page(&long)).unwrap(), id);
+
+        let (other, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
+        assert_eq!(store_fetched(&s, other, &page(&format!("{long}<p>A related post sits at the end of this copy.</p>"))).unwrap(), id);
         assert_eq!(s.list_articles(&crate::store::ArticleFilter::All).unwrap().len(), 1);
+        assert_eq!(s.find_article_by_url("https://example.com/p?id=1").unwrap(), None, "the row is gone");
+
+        // The same canonical on a page of other text is a site's mistake, not a copy.
+        let (third, _) = s.upsert_pending("https://example.com/third", "https://example.com/third", "example.com").unwrap();
+        let different: String = (0..5)
+            .map(|n| format!("<p>Section {n} of another post is about how a B-tree page splits when it fills up, with a worked example and numbers.</p>"))
+            .collect();
+        assert_eq!(store_fetched(&s, third, &page(&different)).unwrap(), third);
+        assert_eq!(s.find_article_by_url("https://example.com/third").unwrap(), Some(third));
+        assert_eq!(s.find_article_by_url("https://example.com/post").unwrap(), Some(id), "the URL's own article, not the other that names it");
     }
 
     #[test]
