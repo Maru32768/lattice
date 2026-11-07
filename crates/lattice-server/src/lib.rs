@@ -80,9 +80,8 @@ fn internal_error(e: &str) -> Response {
 
 fn accepts_gzip(headers: &HeaderMap) -> bool {
     let offers_gzip = |value: &str| {
-        let mut parts = value.split(';').map(str::trim);
-        parts.next().is_some_and(|name| name.eq_ignore_ascii_case("gzip"))
-            && !parts.any(|p| p.replace(' ', "").starts_with("q=0") && p.trim_start_matches(['q', '=', '0', '.', ' ']).is_empty())
+        let mut parts = value.split(';').map(|p| p.trim().to_ascii_lowercase().replace(' ', ""));
+        parts.next().is_some_and(|name| name == "gzip") && !parts.any(|p| p.strip_prefix("q=").and_then(|q| q.parse::<f32>().ok()) == Some(0.0))
     };
     headers.get(header::ACCEPT_ENCODING).and_then(|v| v.to_str().ok()).is_some_and(|v| v.split(',').any(offers_gzip))
 }
@@ -240,7 +239,7 @@ mod tests {
         for yes in ["gzip", "GZIP", "br, gzip", "gzip;q=0.5", "gzip; q=1", "deflate , gzip ; q=0.1"] {
             assert!(accepts(yes), "{yes}");
         }
-        for no in ["identity", "br", "gzip;q=0", "gzip; q=0.0", "x-gzip"] {
+        for no in ["identity", "br", "gzip;q=0", "gzip; q=0.0", "gzip;Q=0", "gzip;Q=0.000", "x-gzip"] {
             assert!(!accepts(no), "{no}");
         }
         assert!(!accepts_gzip(&HeaderMap::new()));
