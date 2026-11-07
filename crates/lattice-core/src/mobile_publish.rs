@@ -234,29 +234,44 @@ pub(crate) async fn take_inbox<B: Bucket>(store: &Arc<Store>, bucket: &B, on_app
     Ok(applied)
 }
 
-/// Uploads `raw` under `key` unless the bucket already has these bytes. Compressed when `gzip`, which the Worker assumes by the key.
-async fn put_if_changed<B: Bucket>(store: &Arc<Store>, bucket: &B, key: String, raw: Vec<u8>, gzip: bool) -> Result<(), String> {
-    let (s, k) = (store.clone(), key.clone());
-    let prepared = blocking(move || {
-        let hash = sha256_hex(&raw);
+/// Uploads `raw` under `key` unless the bucket has what `hash` stands for. Compressed when `gzip`, which the Worker assumes by the key.
+async fn put_if_changed<B: Bucket>(store: &Arc<Store>, bucket: &B, key: String, hash: String, raw: Vec<u8>, gzip: bool) -> Result<(), String> {
+    let (s, k, h) = (store.clone(), key.clone(), hash.clone());
+    let body = blocking(move || {
         let known: Option<String> = s.conn().query_row("SELECT hash FROM mobile_published WHERE key = ?1", [&k], |r| r.get(0)).optional().map_err(err)?;
-        if known.as_deref() == Some(&hash) {
+        if known.as_deref() == Some(&h) {
             return Ok(None);
         }
-        let body = if gzip {
+        Ok(Some(if gzip {
             mobile::gzip(&raw).map_err(err)?
         } else {
             raw
-        };
-        Ok(Some((hash, body)))
+        }))
     })
     .await?;
-    let Some((hash, body)) = prepared else {
+    let Some(body) = body else {
         return Ok(());
     };
     bucket.put(&key, body).await?;
     let s = store.clone();
     blocking(move || s.conn().execute("INSERT OR REPLACE INTO mobile_published (key, hash) VALUES (?1, ?2)", params![key, hash]).map(drop).map_err(err)).await
+}
+
+/// An article's part of its upload. The row is left out: read state, tags and scores change often, and the list carries them.
+fn article_upload(store: &Store, id: i64) -> Result<Option<(String, Vec<u8>)>, String> {
+    let Some(doc) = mobile::article(store, id)? else {
+        return Ok(None);
+    };
+    let body = serde_json::json!({
+        "format": doc.format,
+        "title": doc.article.title,
+        "url": doc.article.original_url,
+        "target": doc.target_language,
+        "blocks": doc.blocks,
+        "summary": doc.summary,
+    });
+    let hash = sha256_hex(serde_json::to_vec(&body).map_err(err)?);
+    Ok(Some((hash, serde_json::to_vec(&doc).map_err(err)?)))
 }
 
 /// One complete pass. Articles go up before the list, and what is gone comes down after it, so a phone never
@@ -268,12 +283,12 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     let s = store.clone();
     let auth = blocking(move || mobile::auth_document(&s)).await?;
     live.insert(AUTH_KEY.to_string());
-    put_if_changed(store, bucket, AUTH_KEY.to_string(), auth, false).await?;
+    put_if_changed(store, bucket, AUTH_KEY.to_string(), sha256_hex(&auth), auth, false).await?;
 
     for (name, bytes) in page {
         let key = format!("page/{name}");
         live.insert(key.clone());
-        put_if_changed(store, bucket, key, bytes.to_vec(), !name.ends_with(".png")).await?;
+        put_if_changed(store, bucket, key, sha256_hex(bytes), bytes.to_vec(), !name.ends_with(".png")).await?;
     }
 
     let s = store.clone();
@@ -285,13 +300,12 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     .await?;
     for id in index.articles.iter().map(|a| a.id) {
         let s = store.clone();
-        let doc = blocking(move || mobile::article(&s, id)?.map(|d| serde_json::to_vec(&d).map_err(err)).transpose()).await?;
-        let Some(doc) = doc else {
+        let Some((hash, doc)) = blocking(move || article_upload(&s, id)).await? else {
             continue; // deleted since the list was read
         };
         let key = format!("articles/{id}.json");
         live.insert(key.clone());
-        put_if_changed(store, bucket, key, doc, true).await?;
+        put_if_changed(store, bucket, key, hash, doc, true).await?;
     }
 
     // Always, unchanged or not: `generated_at` tells the phone how old the snapshot is.
@@ -491,15 +505,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unchanged_library_uploads_only_the_list() {
+    async fn only_what_changed_goes_up_and_read_state_is_the_lists_business() {
         let (store, bucket, id) = setup();
         pass(&store, &bucket).await;
         bucket.take_puts();
         pass(&store, &bucket).await;
         assert_eq!(bucket.take_puts(), ["index.json"]);
         store.set_read_status(id, true).unwrap();
+        store.set_favorite(id, true).unwrap();
         pass(&store, &bucket).await;
-        assert_eq!(bucket.take_puts(), [format!("articles/{id}.json"), "index.json".to_string()]);
+        assert_eq!(bucket.take_puts(), ["index.json"], "the list carries it; thousands of bodies need not go up again");
+        assert_eq!(bucket.json("index.json")["articles"][0]["read_status"], "read");
     }
 
     #[tokio::test]
