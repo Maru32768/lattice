@@ -295,6 +295,26 @@ test("an error page in place of the list or the page itself does not hide the sa
   await worker.close();
 });
 
+test("the PC's error does not blank the page: the snapshot takes over", async ({ browser }) => {
+  let workerOrigin = "";
+  const pc = livePc(() => workerOrigin, []);
+  const live = await serve((request) =>
+    new URL(request.url).pathname === "/api/index"
+      ? Response.json({ error: "internal error" }, { status: 500, headers: { "access-control-allow-origin": workerOrigin } })
+      : pc(request),
+  );
+  const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), live.origin));
+  workerOrigin = worker.origin;
+  const ctx = await context(browser);
+  const page = await ctx.newPage();
+  await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await showAll(page);
+  await expect(page.getByRole("link", { name: /Snapshot one/ })).toBeVisible();
+  await ctx.close();
+  await worker.close();
+  await live.close();
+});
+
 test("another library's QR code leaves nothing of the first on the phone", async ({ browser }) => {
   const worker = await workerServer(snapshotBucket(Math.floor(Date.now() / 1000), null));
   const ctx = await context(browser);

@@ -116,7 +116,7 @@ async function request(path: string): Promise<Response> {
   if (await liveNow()) {
     try {
       const response = await fetch(`${live}/${path}`, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (response.status !== 401) {
+      if (response.status !== 401 && response.status < 500) {
         return response;
       }
     } catch {
@@ -195,7 +195,8 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
     write(LIVE, named);
     await askLive();
     if (liveAnswers) {
-      found = await document("api/index");
+      const fromPc = await document("api/index").catch(() => null);
+      found = fromPc?.doc ? fromPc : found;
     }
   }
   const index = found.doc as MobileIndex;
