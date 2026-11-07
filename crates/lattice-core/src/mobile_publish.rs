@@ -265,7 +265,12 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     }
 
     let s = store.clone();
-    let index = blocking(move || mobile::index(&s)).await?;
+    let (index, gz) = blocking(move || {
+        let index = mobile::index(&s)?;
+        let gz = mobile::gzip(&serde_json::to_vec(&index).map_err(err)?).map_err(err)?;
+        Ok((index, gz))
+    })
+    .await?;
     for id in index.articles.iter().map(|a| a.id) {
         let s = store.clone();
         let doc = blocking(move || mobile::article(&s, id)?.map(|d| serde_json::to_vec(&d).map_err(err)).transpose()).await?;
@@ -278,7 +283,7 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     }
 
     // Always, unchanged or not: `generated_at` tells the phone how old the snapshot is.
-    bucket.put(INDEX_KEY, mobile::gzip(&serde_json::to_vec(&index).map_err(err)?).map_err(err)?).await?;
+    bucket.put(INDEX_KEY, gz).await?;
 
     let s = store.clone();
     let known: Vec<String> = blocking(move || {
@@ -296,8 +301,16 @@ pub(crate) async fn publish<B: Bucket>(store: &Arc<Store>, bucket: &B, page: &[P
     Ok(())
 }
 
+async fn note(store: &Arc<Store>, key: &'static str, value: Option<String>) {
+    let s = store.clone();
+    if let Err(e) = blocking(move || set(&s, key, value.as_deref())).await {
+        log::warn!("mobile snapshot: {e}");
+    }
+}
+
 async fn run_pass(store: &Arc<Store>, http: &reqwest::Client, page: &[PageFile], on_applied: &(dyn Fn(&Effects) + Send + Sync), inbox_only: bool) {
-    let creds = match creds(store) {
+    let s = store.clone();
+    let creds = match blocking(move || creds(&s)).await {
         Ok(Some(c)) => c,
         Ok(None) => return,
         Err(e) => return log::warn!("mobile snapshot: {e}"),
@@ -314,19 +327,18 @@ async fn run_pass(store: &Arc<Store>, http: &reqwest::Client, page: &[PageFile],
             Ok(_) => return,
             Err(e) => {
                 log::warn!("mobile inbox: {e}");
-                let _ = set(store, LAST_ERROR, Some(&e));
-                return;
+                return note(store, LAST_ERROR, Some(e)).await;
             }
         }
     }
     match publish(store, &bucket, page, on_applied).await {
         Ok(()) => {
-            let _ = set(store, LAST_PUBLISH, Some(&unix_now().to_string()));
-            let _ = set(store, LAST_ERROR, None);
+            note(store, LAST_PUBLISH, Some(unix_now().to_string())).await;
+            note(store, LAST_ERROR, None).await;
         }
         Err(e) => {
             log::warn!("mobile snapshot: {e}");
-            let _ = set(store, LAST_ERROR, Some(&e));
+            note(store, LAST_ERROR, Some(e)).await;
         }
     }
 }
@@ -339,7 +351,8 @@ pub async fn run_scheduler(store: Arc<Store>, page: Vec<PageFile>, on_applied: B
         _ = wake.notified() => true,
     };
     loop {
-        let last = get(&store, LAST_PUBLISH).ok().flatten().and_then(|v| v.parse::<u64>().ok());
+        let s = store.clone();
+        let last = blocking(move || get(&s, LAST_PUBLISH)).await.ok().flatten().and_then(|v| v.parse::<u64>().ok());
         let due = woken || last.is_none_or(|t| unix_now() >= t.saturating_add(PUBLISH_EVERY_SECS));
         run_pass(&store, &http, &page, on_applied.as_ref(), !due).await;
         woken = tokio::select! {
