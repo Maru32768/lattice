@@ -49,6 +49,13 @@ pub(crate) fn stale<T: Ord>(mut items: Vec<T>, keep: u64, current: &T) -> Vec<T>
 /// store stays free for the copy), then deletes older local backups beyond `keep`.
 pub fn backup_local(db: &Path, dir: &Path, now: u64, keep: u64) -> Result<LocalBackup, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    // What a killed run left of its copy can still hold the API keys.
+    for e in std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
+        let name = e.file_name();
+        if name.to_string_lossy().starts_with("lattice-") && name.to_string_lossy().contains(".db.part") {
+            let _ = std::fs::remove_file(e.path());
+        }
+    }
     let name = format!("lattice-{now}.db");
     let path = dir.join(&name);
     Store::open(db).and_then(|s| s.backup_to(&path)).map_err(|e| e.to_string())?;
@@ -125,7 +132,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("lattice-5.db")).unwrap(); // a directory, not a backup
         // Different digit counts: must sort numerically, not by name.
-        for name in ["lattice-9.db", "lattice-10.db", "lattice-11.db", "r2-upload-1.db", "r2-upload-1.db.gz", "notes.txt", "lattice-1.db-journal"] {
+        for name in [
+            "lattice-9.db",
+            "lattice-10.db",
+            "lattice-11.db",
+            "r2-upload-1.db",
+            "r2-upload-1.db.gz",
+            "notes.txt",
+            "lattice-1.db-journal",
+            "lattice-8.db.part",
+            "lattice-8.db.part-journal",
+        ] {
             std::fs::write(dir.join(name), b"x").unwrap();
         }
         let s = Store::open_in_memory().unwrap();

@@ -606,16 +606,34 @@ impl Store {
     /// Consistent single-file copy of the whole database, secrets included (safe while the app
     /// is running). For moving the data folder; backups use `backup_to`.
     pub fn copy_to(&self, path: &Path) -> Result<()> {
-        self.conn().execute("VACUUM INTO ?1", [path.to_string_lossy()])?;
-        Ok(())
+        self.write_copy(path, |_| Ok(()))
     }
 
     /// `copy_to` with the settings under `SECRET_PREFIX` (API keys) removed from the copy.
     pub fn backup_to(&self, path: &Path) -> Result<()> {
-        self.copy_to(path)?;
-        let copy = Connection::open(path)?;
-        copy.execute("DELETE FROM settings WHERE key LIKE ?1 || '%'", [SECRET_PREFIX])?;
-        copy.execute_batch("VACUUM")
+        self.write_copy(path, |part| {
+            let copy = Connection::open(part)?;
+            copy.execute("DELETE FROM settings WHERE key LIKE ?1 || '%'", [SECRET_PREFIX])?;
+            copy.execute_batch("VACUUM")
+        })
+    }
+
+    /// Writes the copy as `<path>.part`, and names it `path` once `finish` has run on it and it is on
+    /// disk. A folder's `lattice.db` says it holds Lattice data and a backup's name makes it a generation
+    /// free of API keys, so neither may name a copy cut short (a full disk, the app closed).
+    fn write_copy(&self, path: &Path, finish: impl FnOnce(&Path) -> Result<()>) -> Result<()> {
+        let part = path.with_added_extension("part");
+        let _ = std::fs::remove_file(&part); // VACUUM INTO refuses a file that is there
+        let copied = self.conn().execute("VACUUM INTO ?1", [part.to_string_lossy()]).map(drop);
+        let written = copied.and_then(|()| finish(&part)).and_then(|()| {
+            let synced = std::fs::File::options().write(true).open(&part).and_then(|f| f.sync_all());
+            synced.and_then(|()| std::fs::rename(&part, path)).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
+        });
+        if written.is_err() {
+            let _ = std::fs::remove_file(&part);
+            let _ = std::fs::remove_file(format!("{}-journal", part.display()));
+        }
+        written
     }
 
     pub fn article_row(&self, id: i64) -> Result<Option<ArticleRow>> {

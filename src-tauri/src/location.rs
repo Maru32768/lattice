@@ -43,9 +43,8 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 /// Copies the data folders and the database (a consistent copy, API keys included) into `to`.
-/// Nothing in `from` is changed or deleted. The database reads through a connection of its own, so
-/// the app stays free meanwhile, and comes last under another name: `lattice.db` in a folder says it
-/// holds Lattice data, so a copy cut short (a full disk, the app closed) must not leave one there.
+/// Nothing in `from` is changed or deleted. The database comes last and reads through a connection
+/// of its own, so the app stays free meanwhile.
 pub fn copy_data(from: &Path, to: &Path) -> Result<(), String> {
     std::fs::create_dir_all(to).map_err(|e| e.to_string())?;
     for d in DATA_DIRS {
@@ -53,16 +52,7 @@ pub fn copy_data(from: &Path, to: &Path) -> Result<(), String> {
             copy_dir(&from.join(d), &to.join(d)).map_err(|e| msg!("location.copyFailed", name = d, error = e.to_string()))?;
         }
     }
-    let partial = to.join(format!("{DB_FILE}.partial"));
-    let _ = std::fs::remove_file(&partial); // VACUUM INTO refuses a file that is there
-    let copied = Store::open(&from.join(DB_FILE)).and_then(|s| s.copy_to(&partial)).map_err(|e| e.to_string()).and_then(|()| {
-        let synced = std::fs::File::options().write(true).open(&partial).and_then(|f| f.sync_all());
-        synced.and_then(|()| std::fs::rename(&partial, to.join(DB_FILE))).map_err(|e| e.to_string())
-    });
-    if copied.is_err() {
-        let _ = std::fs::remove_file(&partial);
-    }
-    copied.map_err(|e| msg!("location.copyDbFailed", error = e))
+    Store::open(&from.join(DB_FILE)).and_then(|s| s.copy_to(&to.join(DB_FILE))).map_err(|e| msg!("location.copyDbFailed", error = e.to_string()))
 }
 
 #[cfg(test)]
@@ -142,7 +132,7 @@ mod tests {
 
         // The next try finds no leftover in its way.
         std::fs::remove_file(to.join("models")).unwrap();
-        std::fs::write(to.join(format!("{DB_FILE}.partial")), "the end of a killed run").unwrap();
+        std::fs::write(to.join(format!("{DB_FILE}.part")), "the end of a killed run").unwrap();
         copy_data(&from, &to).unwrap();
         assert!(Store::open(&to.join(DB_FILE)).is_ok());
     }
@@ -156,7 +146,7 @@ mod tests {
         std::fs::write(from.join("models").join("e5").join("model.onnx"), "weights").unwrap();
         std::fs::write(from.join("unrelated.txt"), "x").unwrap();
         copy_data(&from, &to).unwrap();
-        assert!(!to.join(format!("{DB_FILE}.partial")).exists());
+        assert!(!to.join(format!("{DB_FILE}.part")).exists());
         assert_eq!(Store::open(&to.join(DB_FILE)).unwrap().setting("secret.openai_api_key").unwrap().as_deref(), Some("sk-test"));
         assert_eq!(std::fs::read_to_string(to.join("models").join("e5").join("model.onnx")).unwrap(), "weights");
         assert!(!to.join("unrelated.txt").exists() && !to.join("backups").exists());

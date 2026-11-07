@@ -319,12 +319,10 @@ async fn a_queued_fetch_does_not_undo_a_newer_save() {
     assert_eq!((a.fetch_status.as_str(), a.extraction_status.as_str()), ("ok", "ok"), "last error: {:?}", a.last_error);
 }
 
-/// F5. `backup_local` writes the copy under its final name, API keys included, and strips them in a
-/// second step. If that step fails (here a trigger makes the DELETE fail; a full disk during the
-/// scrubbing VACUUM, or the app quitting in between, do the same), the copy stays: with the keys,
-/// and counted as one of the generations to keep.
+/// `backup_local` copies the database, API keys included, and strips them in a second step. If that
+/// step fails (here a trigger makes the DELETE fail; a full disk during the scrubbing VACUUM does the
+/// same), no copy may stay: it would hold the keys, and count as one of the generations to keep.
 #[test]
-#[ignore = "reliability audit F5: fails until fixed"]
 fn a_failed_backup_leaves_no_copy_with_api_keys() {
     use lattice_core::backup;
     let dir = data_dir("backup");
@@ -339,9 +337,8 @@ fn a_failed_backup_leaves_no_copy_with_api_keys() {
 
     let backups = dir.join("backups");
     assert!(backup::backup_local(&db, &backups, 12, 30).is_err(), "the backup reports failure");
-    let copy = backups.join("lattice-12.db");
-    let leaked = copy.exists() && Store::open(&copy).unwrap().setting("secret.openai_api_key").unwrap().is_some();
-    assert!(!leaked, "{} is left behind with the API key", copy.display());
+    let left: Vec<_> = std::fs::read_dir(&backups).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert!(left.is_empty(), "{left:?} left behind");
 }
 
 /// F10. When the batch call fails, `translate_snippets` retries every snippet of the batch alone, all

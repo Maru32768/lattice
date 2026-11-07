@@ -28,6 +28,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Interrupting a move of the data folder left a partial database in the new folder, which Lattice then offered to switch to. The database is now written last, and only once complete. Lattice also stays responsive during the copy.
 - A job whose run ended the app, or stopped it some other way, ran again without limit at every start. It now counts as a failed try and waits like one, up to the usual five. Closing the app normally doesn't count, and its jobs resume at once at the next start.
 - An internal error while rendering a page stopped page rendering until the next start, and one in a feed stopped feed updates. Each now fails only that job or that feed.
+- A local backup that failed partway, for example on a full disk, stayed in the backups folder with your API keys in it and counted as one of the backups to keep. A backup now gets its name only once it is complete and free of keys, and what a failed one leaves is removed.
 
 ## [0.3.0] - 2026-11-06
 
