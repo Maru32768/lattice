@@ -172,6 +172,8 @@ pub async fn mobile_save(
     }
     mobile::save_settings(&app.store, &settings)?;
     apply(&handle).await?;
+    // The snapshot names the PC's address, and its page may connect to no other.
+    mobile_server.publish_now.notify_one();
     status(&mobile_server, &app, &loc).await
 }
 
