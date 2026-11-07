@@ -397,11 +397,13 @@ async fn token_out(store: &Arc<Store>) -> Result<bool, String> {
     .await
 }
 
-/// Leaves a bucket: takes the token out, so that turning the snapshot off or moving to another bucket also stops this one's readers.
-async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B) -> Result<(), String> {
+/// Leaves a bucket: applies what the phone left in its inbox, as it was told it would be, then takes the token
+/// out, so that turning the snapshot off or moving to another bucket also stops this one's readers.
+async fn leave<B: Bucket>(store: &Arc<Store>, bucket: &B, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
     if !token_out(store).await? {
         return Ok(());
     }
+    take_inbox(store, bucket, on_applied).await?;
     bucket.put(AUTH_KEY, NO_TOKEN.to_vec()).await?;
     let (s, hash) = (store.clone(), sha256_hex(NO_TOKEN));
     blocking(move || s.conn().execute("UPDATE mobile_published SET hash = ?1 WHERE key = ?2", params![hash, AUTH_KEY]).map(drop).map_err(err)).await
@@ -414,16 +416,21 @@ fn leaves(c: &Creds, s: &SnapshotSettings) -> bool {
 
 /// Saves new settings. Those that leave a bucket the token is out in first leave it with the settings that reach
 /// it, which a save that clears or changes them would lose. If that fails nothing is saved: a lost phone's token would stay good there.
-pub async fn change(store: &Arc<Store>, settings: SnapshotSettings) -> Result<(), String> {
-    change_with(store, settings, |creds| R2Bucket { http: r2::client(), creds }).await
+pub async fn change(store: &Arc<Store>, settings: SnapshotSettings, on_applied: &(dyn Fn(&Effects) + Send + Sync)) -> Result<(), String> {
+    change_with(store, settings, |creds| R2Bucket { http: r2::client(), creds }, on_applied).await
 }
 
-async fn change_with<B: Bucket>(store: &Arc<Store>, settings: SnapshotSettings, bucket_for: impl FnOnce(Creds) -> B) -> Result<(), String> {
+async fn change_with<B: Bucket>(
+    store: &Arc<Store>,
+    settings: SnapshotSettings,
+    bucket_for: impl FnOnce(Creds) -> B,
+    on_applied: &(dyn Fn(&Effects) + Send + Sync),
+) -> Result<(), String> {
     let s = store.clone();
     if let Some((current, _)) = blocking(move || creds(&s)).await?
         && leaves(&current, &settings)
     {
-        leave(store, &bucket_for(current)).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
+        leave(store, &bucket_for(current), on_applied).await.map_err(|e| msg!("mobile.leaveFailed", error = e))?;
     }
     let s = store.clone();
     blocking(move || save(&s, &settings)).await
@@ -455,7 +462,7 @@ async fn run_pass<B: Bucket>(
     let bucket = bucket_for(creds_now);
     if !enabled {
         // Turned off by a save that could not reach the bucket, or the leaving failed: try again.
-        if let Err(e) = leave(store, &bucket).await {
+        if let Err(e) = leave(store, &bucket, on_applied).await {
             log::warn!("mobile snapshot: withdrawing the token: {e}");
             note(store, LAST_ERROR, Some(e)).await;
         }
@@ -797,7 +804,7 @@ mod tests {
     }
 
     async fn change_to(store: &Arc<Store>, settings: SnapshotSettings, bucket: &Memory) -> Result<(), String> {
-        change_with(store, settings, |_| bucket).await
+        change_with(store, settings, |_| bucket, &|_| {}).await
     }
 
     #[tokio::test]
@@ -812,11 +819,13 @@ mod tests {
             ("moved to another bucket", settings(true, "another-bucket", WORKER)),
             ("turned off", settings(false, "lattice-mobile", WORKER)),
         ] {
-            let (store, a, _) = setup();
+            let (store, a, id) = setup();
             save(&store, &settings(true, "lattice-mobile", WORKER)).unwrap();
             run(&store, &a, false).await;
+            a.with("inbox/1-x.json", &format!(r#"{{"id":"x","op":{{"kind":"set_favorite","article_id":{id},"favorite":true}}}}"#));
             change_to(&store, next, &a).await.unwrap();
             assert_eq!(a.auth()["token_hash"], serde_json::Value::Null, "{why}");
+            assert!(store.article_row(id).unwrap().unwrap().favorite, "{why}: what waited in its inbox applied first");
         }
     }
 

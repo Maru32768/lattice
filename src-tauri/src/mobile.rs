@@ -190,6 +190,7 @@ pub async fn mobile_regenerate_token(mobile_server: State<'_, MobileServer>, app
 #[tauri::command]
 pub async fn mobile_snapshot_save(
     settings: SnapshotSettings,
+    handle: AppHandle,
     mobile_server: State<'_, MobileServer>,
     app: State<'_, App>,
     loc: State<'_, Location>,
@@ -197,7 +198,8 @@ pub async fn mobile_snapshot_save(
     if loc.warning.is_some() {
         return Err(msg!("mobile.fellBack"));
     }
-    mobile_publish::change(&app.store, settings).await?;
+    let tell = handle.clone();
+    mobile_publish::change(&app.store, settings, &move |effects| on_applied(&tell, effects)).await?;
     mobile_server.publish_now.notify_one();
     status(&mobile_server, &app, &loc).await
 }
