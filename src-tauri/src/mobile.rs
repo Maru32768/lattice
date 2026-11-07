@@ -91,7 +91,7 @@ pub async fn apply(mobile_server: &MobileServer, store: &Arc<Store>) -> Result<(
         }
         Err(e) => {
             log::warn!("mobile server on port {}: {e}", s.port);
-            running.error = Some(msg!("mobile.bind", port = s.port, error = e.to_string()));
+            running.error = Some(msg!("mobile.bind", port = s.port.to_string(), error = e.to_string()));
         }
     }
     Ok(())
