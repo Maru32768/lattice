@@ -6,6 +6,7 @@
 mod mcp;
 mod ops;
 
+use std::net::Ipv4Addr;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -15,6 +16,7 @@ use lattice_core::embed::LocalE5;
 use lattice_core::fetch::HttpClient;
 use lattice_core::jobs::Providers;
 use lattice_core::location::{self, DB_FILE};
+use lattice_core::mobile;
 use lattice_core::network;
 use lattice_core::store::Store;
 use serde_json::{Value, json};
@@ -117,14 +119,22 @@ fn fail(format: Format, e: &str) -> ExitCode {
 /// Runs until the process is stopped. Jobs that the served requests queue wait for the app's runners (design-review §23).
 async fn serve(store: Store, lan: bool, port: u16) -> Result<(), String> {
     let store = std::sync::Arc::new(store);
-    let token = lattice_core::mobile::token(&store)?;
+    let token = mobile::token(&store)?;
     let ip = if lan {
-        std::net::Ipv4Addr::UNSPECIFIED
+        Ipv4Addr::UNSPECIFIED
     } else {
-        std::net::Ipv4Addr::LOCALHOST
+        Ipv4Addr::LOCALHOST
     };
     let server = lattice_server::start((ip, port).into(), lattice_server::router(store, &token)).await.map_err(|e| e.to_string())?;
-    println!("http://{}/#t={token}", server.addr);
+    let reachable = if lan {
+        mobile::lan_ip()
+    } else {
+        Some(server.addr.ip())
+    };
+    match reachable.and_then(|ip| mobile::base_of(ip, server.addr.port())) {
+        Some(base) => println!("{}", mobile::phone_url(&base, &token)),
+        None => println!("listening on {}; open it at this PC's address, adding /#t={token}", server.addr),
+    }
     std::future::pending().await
 }
 

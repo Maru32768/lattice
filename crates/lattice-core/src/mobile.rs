@@ -1,6 +1,8 @@
 //! What the phone reads (G47, design-review §32). The same documents come from the PC's server
 //! (`lattice-server`) and from the snapshot in R2, so the page does not care which it reads.
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -155,6 +157,26 @@ pub fn token_hash(token: &str) -> String {
     sha256_hex(token)
 }
 
+// ---- addresses ------------------------------------------------------------------------------
+
+/// The address other devices reach this PC at: the one the route to the Internet leaves from.
+/// Connecting a UDP socket sends nothing.
+pub fn lan_ip() -> Option<IpAddr> {
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    socket.connect((Ipv4Addr::new(8, 8, 8, 8), 53)).ok()?;
+    socket.local_addr().ok().map(|a| a.ip())
+}
+
+/// What the phone opens, token included. `base` has no trailing slash.
+pub fn phone_url(base: &str, token: &str) -> String {
+    format!("{base}/#t={token}")
+}
+
+/// `http://<ip>:<port>`, or nothing when `ip` is no address a phone can connect to.
+pub fn base_of(ip: IpAddr, port: u16) -> Option<String> {
+    (!ip.is_unspecified()).then(|| format!("http://{}", SocketAddr::new(ip, port)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +219,13 @@ mod tests {
         assert_eq!(token(&s).unwrap(), second);
         assert_ne!(token_hash(&first), token_hash(&second));
         assert!(TOKEN.starts_with(crate::store::SECRET_PREFIX));
+    }
+
+    #[test]
+    fn a_wildcard_address_is_never_offered_to_a_phone() {
+        assert_eq!(base_of(Ipv4Addr::UNSPECIFIED.into(), 8787), None);
+        assert_eq!(base_of(Ipv4Addr::new(192, 168, 0, 2).into(), 8787).as_deref(), Some("http://192.168.0.2:8787"));
+        assert_eq!(phone_url("http://192.168.0.2:8787", "abc"), "http://192.168.0.2:8787/#t=abc");
     }
 
     #[test]

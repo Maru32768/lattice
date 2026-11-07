@@ -1,7 +1,7 @@
 //! Starts and stops the phone's server (`lattice-server`) as its settings change, and tells the
 //! settings screen what the phone should open (G47, design-review §32).
 
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddr};
 
 use lattice_core::mobile::{self, MobileSettings, ServerMode};
 use lattice_core::msg;
@@ -59,20 +59,12 @@ fn qr_of(url: &str) -> Result<MobileQr, String> {
     Ok(MobileQr { width: width as u32, path })
 }
 
-/// The address other devices reach this PC at: the one the route to the Internet leaves from.
-/// Connecting a UDP socket sends nothing.
-fn lan_ip() -> Option<IpAddr> {
-    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
-    socket.connect((Ipv4Addr::new(8, 8, 8, 8), 53)).ok()?;
-    socket.local_addr().ok().map(|a| a.ip())
-}
-
 fn base_url(s: &MobileSettings) -> Option<String> {
     if !s.public_url.is_empty() {
         return Some(s.public_url.clone());
     }
     match s.mode {
-        ServerMode::Lan => lan_ip().map(|ip| format!("http://{}", SocketAddr::new(ip, s.port))),
+        ServerMode::Lan => mobile::lan_ip().and_then(|ip| mobile::base_of(ip, s.port)),
         ServerMode::Off | ServerMode::Local => None,
     }
 }
@@ -108,7 +100,7 @@ async fn status(mobile_server: &MobileServer, app: &App, loc: &Location) -> Resu
     let settings = mobile::settings(&app.store)?;
     let running = mobile_server.0.lock().await;
     let url = match (&running.server, base_url(&settings)) {
-        (Some(_), Some(base)) => Some(format!("{base}/#t={}", mobile::token(&app.store)?)),
+        (Some(_), Some(base)) => Some(mobile::phone_url(&base, &mobile::token(&app.store)?)),
         _ => None,
     };
     let qr = url.as_deref().map(qr_of).transpose()?;
