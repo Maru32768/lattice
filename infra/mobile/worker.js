@@ -6,6 +6,8 @@ const CSP = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-act
 const OP_ID = /^[0-9A-Za-z-]{1,64}$/;
 const MAX_OP_BYTES = 16 * 1024;
 const AUTH_TTL_MS = 60_000;
+/** The page drops an operation only on a message in Lattice's coded form. */
+const BAD_OP = JSON.stringify({ code: "mobile.badOp", params: {} });
 const TYPES = {
   html: "text/html; charset=utf-8",
   js: "text/javascript; charset=utf-8",
@@ -63,10 +65,10 @@ async function takeOp(request, bucket, now) {
   try {
     id = JSON.parse(text).id;
   } catch {
-    return json(400, { error: "not JSON" });
+    return json(400, { error: BAD_OP });
   }
   if (typeof id !== "string" || !OP_ID.test(id)) {
-    return json(400, { error: "bad id" });
+    return json(400, { error: BAD_OP });
   }
   // Named by arrival, so the PC applies them in the order the phone sent them.
   await bucket.put(`inbox/${String(now).padStart(15, "0")}-${id}.json`, text);

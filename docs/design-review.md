@@ -951,7 +951,7 @@ M3(Aの読み取りと操作、Bの公開・inbox)まで実装した。M4(Servic
 
 - **自動切り替え。** Aのbase URLがHTTPSなら1.5秒でつなぎ(`GET /api/ping`)、失敗したらBを読む。画面には「ライブ」か「◯分前の内容」かを出す。
 - **切り替えはHTTPSのAに限る。** HTTPSのページからHTTPのLANへのfetchはmixed contentで止まる。Chromeは許可を得た場合だけこれを除外する([Local Network Access](https://developer.chrome.com/blog/local-network-access))が、ブラウザごとに違うものには頼らない。LANのAを使うときは、ページ自体をPCから開く。Aは`Access-Control-Allow-Origin`でWorkerのoriginだけを許可する。
-- **操作はスマホに先に残す。** localStorageに書いてから送るので、ページを閉じても、PCが止まっていても消えない。2xxが返るまで同じ`id`で再送する。一覧と記事には先に反映して見せる。
+- **操作はスマホに先に残す。** localStorageに書いてから送るので、ページを閉じても、PCが止まっていても消えない。Lattice自身の答え(2xxか、コード化された`error`)が返るまで同じ`id`で再送する。プロキシの403では何も確定しない。読み取り専用のサーバーの403も、あとで書き込みを許して起動し直せるので待つ。届かない操作のために破棄のボタンを置く。一覧と記事には先に反映して見せる。
 - **いつまで見せるかは時刻で決めない。** `/api/index`の`applied_ops`が、その一覧に反映済みの操作の`id`を返す。そこに入った操作はスマホから消え、以後は一覧の値を信じる。時計のずれにも、Bの反映の遅れにも左右されない。サーバーが受けたのに一覧に現れない操作は30日で諦める。
 - **Service Workerはページと読んだ記事をキャッシュする。** HTTPSでしか動かないので、LANのAでは使えない。
 - **記事は信頼しない。** 本文はテキストとして描画し、リンクはhttp(s)だけにする。CSPは`default-src 'self'; img-src 'self' data:`を基本に、`connect-src`にAのoriginを足す。

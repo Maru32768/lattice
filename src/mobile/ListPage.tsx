@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ArticleRow } from "../bindings";
 import { useT, type PlainKey } from "../i18n";
 import { relTime } from "../lib/time";
-import { submit } from "./client";
+import { discardUnsent, submit } from "./client";
 import { PAGE, type ListFilter, type ListView, visibleArticles } from "./list";
 
 const FILTERS: { id: ListFilter; label: PlainKey }[] = [
@@ -95,7 +95,21 @@ export function ListPage({
             {t("mobile.saveUrl")}
           </button>
         </div>
-        {unsent > 0 && <p className="m-note">{t("mobile.pending", { n: unsent })}</p>}
+        {unsent > 0 && (
+          <p className="m-note">
+            {t("mobile.pending", { n: unsent })}{" "}
+            <button
+              className="btn"
+              onClick={() => {
+                if (window.confirm(t("mobile.discardConfirm"))) {
+                  discardUnsent();
+                }
+              }}
+            >
+              {t("mobile.discard")}
+            </button>
+          </p>
+        )}
         {rows.length === 0 && <p className="m-none">{t("mobile.noArticles")}</p>}
         <ul>
           {rows.slice(0, view.shown).map((a) => (

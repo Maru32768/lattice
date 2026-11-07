@@ -418,6 +418,41 @@ test("an operation the server refuses is dropped, and the reader is told why", a
   await expect(page.getByText("未送信")).toHaveCount(0);
 });
 
+for (const [name, answer] of [
+  ["a proxy's 403 page", { status: 403, contentType: "text/html", body: "<h1>Forbidden</h1>" }],
+  ["a read-only server", { status: 403, json: { error: '{"code":"mobile.readOnly","params":{}}' } }],
+  ["a tunnel with the PC off", { status: 502, contentType: "text/html", body: "Bad gateway" }],
+] as const) {
+  test(`an operation answered by ${name} is kept and goes later`, async ({ page }) => {
+    const seen = await start(page);
+    await page.getByText("First article").waitFor();
+    await page.route("**/api/ops", (route) => route.fulfill(answer));
+    await page.getByLabel("URLを保存").fill("https://example.com/kept");
+    await page.getByRole("button", { name: "URLを保存" }).click();
+    await expect(page.getByText("未送信1件")).toBeVisible();
+    await page.unroute("**/api/ops");
+    await page.reload();
+    await expect(page.getByText("未送信1件")).toHaveCount(0);
+    expect(sentOps(seen).at(-1)?.op).toEqual({ kind: "save_url", url: "https://example.com/kept" });
+  });
+}
+
+test("what can never get through can be discarded", async ({ page }) => {
+  const seen = await start(page);
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.abort());
+  await page.getByLabel("URLを保存").fill("https://example.com/stuck");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  page.on("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: "破棄" }).click();
+  await expect(page.getByText("未送信")).toHaveCount(0);
+  await page.unroute("**/api/ops");
+  await page.reload();
+  await page.getByText("First article").waitFor();
+  expect(sentOps(seen)).toEqual([]);
+});
+
 test("two tabs share what waits: one does not erase the other's", async ({ page, context }) => {
   await start(page);
   await page.getByText("First article").waitFor();

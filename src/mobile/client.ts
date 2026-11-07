@@ -152,29 +152,44 @@ export function withOps(row: ArticleRow, local: LocalOp[]): ArticleRow {
   }, row);
 }
 
-type SendResult = { status: "stopped" } | { status: "done" } | { status: "rejected"; error: string };
+export type SendResult = { status: "done" } | { status: "wait" } | { status: "rejected"; error: string };
 
-/** What came of sending one operation. `stopped`: try again later, as it may yet apply. */
-async function sendOp(op: MobileOp): Promise<SendResult> {
-  let response: Response;
+/** A message in the catalog's form (`msg!`): only Lattice itself answers with one. */
+function isCoded(error: unknown): error is string {
+  if (typeof error !== "string") {
+    return false;
+  }
   try {
-    response = await fetch("api/ops", {
+    return typeof (JSON.parse(error) as { code?: unknown }).code === "string";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What an answer to an operation means. Only Lattice's own word turns it down: a proxy's 403 refuses nothing.
+ * A read-only server may yet be restarted with writes on, so that waits too.
+ */
+export function resultOf(status: number, body: unknown): SendResult {
+  const { error } = (body ?? {}) as { error?: unknown };
+  if (status >= 200 && status < 300) {
+    return { status: "done" };
+  }
+  return (status === 400 || status === 422) && isCoded(error) ? { status: "rejected", error } : { status: "wait" };
+}
+
+async function sendOp(op: MobileOp): Promise<SendResult> {
+  try {
+    const response = await fetch("api/ops", {
       method: "POST",
       headers: { ...authorization(), "Content-Type": "application/json" },
       body: JSON.stringify({ id: op.id, op: op.op }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    return resultOf(response.status, await response.json().catch(() => null));
   } catch {
-    return { status: "stopped" };
+    return { status: "wait" };
   }
-  if (response.ok) {
-    return { status: "done" };
-  }
-  if (response.status === 400 || response.status === 403 || response.status === 413 || response.status === 422) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    return { status: "rejected", error: body.error ?? `HTTP ${response.status}` };
-  }
-  return { status: "stopped" };
 }
 
 let flushing: Promise<void> | null = null;
@@ -191,7 +206,7 @@ export function flushOps(): Promise<void> {
     for (let next = ops.find((o) => !o.sent); next; next = ops.find((o) => !o.sent)) {
       const id = next.id;
       const result = await sendOp(next);
-      if (result.status === "stopped") {
+      if (result.status === "wait") {
         break;
       }
       if (result.status === "rejected") {
@@ -211,6 +226,11 @@ export function flushOps(): Promise<void> {
 export function submit(op: MobileOpKind) {
   updateOps((local) => [...local, { id: newOpId(), op, at: Date.now(), sent: false }]);
   void flushOps();
+}
+
+/** For what can never get through, such as an operation a proxy always refuses. */
+export function discardUnsent() {
+  updateOps((local) => local.filter((o) => o.sent));
 }
 
 // ---- language -----------------------------------------------------------------------------------

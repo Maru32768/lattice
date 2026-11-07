@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
-import { type LocalOp, newOpId, settled, tokenInFragment, withOps } from "./client.ts";
+import { type LocalOp, newOpId, resultOf, settled, tokenInFragment, withOps } from "./client.ts";
 import { visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
 
@@ -71,6 +71,27 @@ test("an operation leaves the phone once a list shows it, or long after the serv
     ["unsent"],
     "what was never sent stays: nobody else has it",
   );
+});
+
+test("only Lattice's own answer settles an operation", () => {
+  const coded = '{"code":"mobile.badUrl","params":{}}';
+  assert.deepEqual(resultOf(200, { status: "applied" }), { status: "done" });
+  assert.deepEqual(resultOf(202, { status: "queued" }), { status: "done" });
+  assert.deepEqual(resultOf(422, { error: coded }), { status: "rejected", error: coded });
+  assert.deepEqual(resultOf(400, { error: coded }), { status: "rejected", error: coded });
+  const waits: [number, unknown, string][] = [
+    [403, { error: '{"code":"mobile.readOnly","params":{}}' }, "may be restarted with writes on"],
+    [403, null, "a proxy's refusal"],
+    [401, { error: "unauthorized" }, "the token may be replaced"],
+    [413, null, "a proxy's limit"],
+    [400, null, "a proxy's error page"],
+    [422, { error: "plain text" }, "not in Lattice's form"],
+    [500, { error: "internal error" }, "may pass"],
+    [502, null, "the tunnel's PC is off"],
+  ];
+  for (const [status, body, why] of waits) {
+    assert.deepEqual(resultOf(status, body), { status: "wait" }, why);
+  }
 });
 
 test("an operation's id is what the server takes, without a secure context", () => {
