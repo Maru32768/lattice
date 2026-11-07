@@ -519,7 +519,8 @@ async function open(doc: PDFDocumentProxy, regions: Region[]) {
     entries.forEach((e) => {
       // Whatever the canvas does: it stays at `MAX_DRAWN_WIDTH` and is gone from a far page, while a find measures every kept text layer.
       const host = e.target as HTMLElement;
-      host.querySelector<HTMLElement>(".textLayer")!.style.setProperty("--total-scale-factor", String(host.clientWidth / pageWidths.get(host)!));
+      // The observer's width, not `clientWidth`: reading that after the last page's write forces a layout per page on each frame of a drag.
+      host.querySelector<HTMLElement>(".textLayer")!.style.setProperty("--total-scale-factor", String(e.contentRect.width / pageWidths.get(host)!));
       if (host.dataset.drawn) {
         drawOn.get(host)?.();
       }

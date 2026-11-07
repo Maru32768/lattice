@@ -322,6 +322,7 @@ export function useShortcuts({
       return keySeq.track(IDLE);
     }
     // A page on screen can call this by itself: while the user is in the app it would run shortcuts under their hands.
+    // shortcut: a side page still can while the keyboard is in another page, which this document cannot tell apart; upgrade by having the backend track WebView2's focus.
     if (document.hasFocus()) {
       return;
     }
