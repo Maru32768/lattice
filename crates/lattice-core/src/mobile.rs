@@ -17,6 +17,8 @@ use crate::vocab::{self, Capture};
 
 /// The one credential of both paths. `secret.`, so it stays out of backups.
 const TOKEN: &str = "secret.mobile_token";
+/// Which library a QR code belongs to: article ids mean something else in another.
+const LIBRARY_ID: &str = "mobile.library_id";
 const MODE: &str = "mobile.mode";
 const PORT: &str = "mobile.port";
 const PUBLIC_URL: &str = "mobile.public_url";
@@ -312,9 +314,19 @@ pub fn lan_ip() -> Option<IpAddr> {
     socket.local_addr().ok().map(|a| a.ip())
 }
 
-/// What the phone opens, token included. `base` has no trailing slash.
-pub fn phone_url(base: &str, token: &str) -> String {
-    format!("{base}/#t={token}")
+/// What the phone opens, with the token and the library's id. `base` has no trailing slash.
+pub fn phone_url(store: &Store, base: &str) -> Result<String, String> {
+    let library = match store.setting(LIBRARY_ID).map_err(err)? {
+        Some(id) => id,
+        None => {
+            let mut bytes = [0u8; 8];
+            getrandom::fill(&mut bytes).map_err(err)?;
+            let id = hex(&bytes);
+            store.set_setting(LIBRARY_ID, Some(&id)).map_err(err)?;
+            id
+        }
+    };
+    Ok(format!("{base}/#t={}&l={library}", token(store)?))
 }
 
 /// `http://<ip>:<port>`, or nothing when `ip` is no address a phone can connect to.
@@ -376,7 +388,19 @@ mod tests {
     fn a_wildcard_address_is_never_offered_to_a_phone() {
         assert_eq!(base_of(Ipv4Addr::UNSPECIFIED.into(), 8787), None);
         assert_eq!(base_of(Ipv4Addr::new(192, 168, 0, 2).into(), 8787).as_deref(), Some("http://192.168.0.2:8787"));
-        assert_eq!(phone_url("http://192.168.0.2:8787", "abc"), "http://192.168.0.2:8787/#t=abc");
+    }
+
+    #[test]
+    fn a_library_keeps_its_id_through_a_new_token() {
+        let s = store();
+        let library = |url: &str| url.split("&l=").nth(1).unwrap().to_string();
+        let first = phone_url(&s, "http://pc").unwrap();
+        assert!(first.starts_with(&format!("http://pc/#t={}&l=", token(&s).unwrap())));
+        regenerate_token(&s).unwrap();
+        let second = phone_url(&s, "http://pc").unwrap();
+        assert_ne!(first, second);
+        assert_eq!(library(&first), library(&second));
+        assert_ne!(library(&first), library(&phone_url(&store(), "http://pc").unwrap()));
     }
 
     #[test]

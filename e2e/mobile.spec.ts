@@ -478,6 +478,24 @@ test("two tabs share what waits: one does not erase the other's", async ({ page,
   await expect(page.getByText("未送信2件")).toBeVisible();
 });
 
+test("another library's QR code clears what waits; a new token of this one keeps it", async ({ page }) => {
+  const seen = await start(page, { token: false });
+  await page.goto("/mobile.html#t=secret&l=first");
+  await page.getByText("First article").waitFor();
+  await page.route("**/api/ops", (route) => route.abort());
+  await page.getByLabel("URLを保存").fill("https://example.com/waiting");
+  await page.getByRole("button", { name: "URLを保存" }).click();
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  await page.evaluate(() => (location.hash = "#t=secret&l=first"));
+  await expect(page.getByText("未送信1件")).toBeVisible();
+  await page.evaluate(() => (location.hash = "#t=secret&l=another"));
+  await expect(page.getByText("未送信")).toHaveCount(0);
+  await page.unroute("**/api/ops");
+  await page.reload();
+  await page.getByText("First article").waitFor();
+  expect(sentOps(seen)).toEqual([]);
+});
+
 test("a URL can be saved from the list", async ({ page }) => {
   const seen = await start(page);
   await page.getByText("First article").waitFor();

@@ -3,6 +3,7 @@ import type { ArticleDoc, ArticleRow, MobileIndex, MobileOp, MobileOpKind } from
 import type { LanguageMode } from "../reader/mixed.ts";
 
 const TOKEN = "lattice.mobile.token";
+const LIBRARY = "lattice.mobile.library";
 const LANGUAGE = "lattice.mobile.language";
 const OPS = "lattice.mobile.ops";
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
@@ -30,19 +31,26 @@ function write(key: string, value: string) {
   }
 }
 
-/** The `t=` of an address fragment such as `#t=abc`. */
-export function tokenInFragment(fragment: string): string | null {
-  return new URLSearchParams(fragment.replace(/^#/, "")).get("t") || null;
+/** The `t=` and `l=` (the library's id) of an address fragment such as `#t=abc&l=def`. */
+export function fragmentOf(fragment: string): { token: string; library: string | null } | null {
+  const params = new URLSearchParams(fragment.replace(/^#/, ""));
+  const token = params.get("t");
+  return token ? { token, library: params.get("l") } : null;
 }
 
 /** Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots. True if there was one. */
 export function adoptToken(): boolean {
-  const token = tokenInFragment(location.hash);
-  if (token) {
-    write(TOKEN, token);
+  const found = fragmentOf(location.hash);
+  if (found) {
+    write(TOKEN, found.token);
+    // Article ids mean something else in another library, so what waits here must not go there. A new token of the same library keeps it.
+    if (found.library !== read(LIBRARY)) {
+      updateOps(() => []);
+      write(LIBRARY, found.library ?? "");
+    }
     history.replaceState(null, "", location.pathname + location.search);
   }
-  return token != null;
+  return found != null;
 }
 
 export const hasToken = () => read(TOKEN) != null;

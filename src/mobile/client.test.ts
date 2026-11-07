@@ -2,15 +2,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
-import { type LocalOp, newOpId, resultOf, settled, tokenInFragment, withOps } from "./client.ts";
+import { type LocalOp, fragmentOf, newOpId, resultOf, settled, withOps } from "./client.ts";
 import { visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
 
-test("the token comes from the QR code's fragment only", () => {
-  assert.equal(tokenInFragment("#t=abc"), "abc");
-  assert.equal(tokenInFragment("#t="), null);
-  assert.equal(tokenInFragment(""), null);
-  assert.equal(tokenInFragment("#/a/12"), null);
+test("the token and the library come from the QR code's fragment only", () => {
+  assert.deepEqual(fragmentOf("#t=abc&l=lib"), { token: "abc", library: "lib" });
+  assert.deepEqual(fragmentOf("#t=abc"), { token: "abc", library: null });
+  assert.equal(fragmentOf("#t="), null);
+  assert.equal(fragmentOf(""), null);
+  assert.equal(fragmentOf("#/a/12"), null);
 });
 
 test("an article's address is the article's id and nothing else", () => {

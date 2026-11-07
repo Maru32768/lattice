@@ -128,7 +128,7 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, allow_write: bool, l
     // The server's errors go to its log, and nothing else shows them here.
     let _ = log::set_logger(&StderrLogger).map(|()| log::set_max_level(log::LevelFilter::Warn));
     let store = std::sync::Arc::new(store);
-    let token = mobile::token(&store)?;
+    let url_store = store.clone();
     let ip = if lan {
         Ipv4Addr::UNSPECIFIED
     } else {
@@ -142,10 +142,8 @@ async fn serve(store: Store, detected_dir: Option<PathBuf>, allow_write: bool, l
     } else {
         Some(server.addr.ip())
     };
-    match reachable.and_then(|ip| mobile::base_of(ip, server.addr.port())) {
-        Some(base) => println!("{}", mobile::phone_url(&base, &token)),
-        None => println!("listening on {}; open it at this PC's address, adding /#t={token}", server.addr),
-    }
+    let shown = reachable.and_then(|ip| mobile::base_of(ip, server.addr.port())).unwrap_or_else(|| "http://<this PC's address>".to_string());
+    println!("{}", mobile::phone_url(&url_store, &shown)?);
     // The server outlives a move of the library, as the MCP server does (mcp.rs): the old copy would keep answering.
     loop {
         tokio::time::sleep(MOVE_CHECK).await;

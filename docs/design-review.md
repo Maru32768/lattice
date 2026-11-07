@@ -953,6 +953,7 @@ M3(Aの読み取りと操作、Bの公開・inbox)まで実装した。M4(Servic
 - **切り替えはHTTPSのAに限る。** HTTPSのページからHTTPのLANへのfetchはmixed contentで止まる。Chromeは許可を得た場合だけこれを除外する([Local Network Access](https://developer.chrome.com/blog/local-network-access))が、ブラウザごとに違うものには頼らない。LANのAを使うときは、ページ自体をPCから開く。Aは`Access-Control-Allow-Origin`でWorkerのoriginだけを許可する。
 - **操作はスマホに先に残す。** localStorageに書いてから送るので、ページを閉じても、PCが止まっていても消えない。Lattice自身の答え(`{status}`か、コード化された`error`)が返るまで同じ`id`で再送する。captive portalの200やプロキシの403では何も確定しない。読み取り専用のサーバーの403も、あとで書き込みを許して起動し直せるので待つ。届かない操作のために破棄のボタンを置く。一覧と記事には先に反映して見せる。
 - **いつまで見せるかは時刻で決めない。** `/api/index`の`applied_ops`が、その一覧に反映済みの操作の`id`を返す。そこに入った操作はスマホから消え、以後は一覧の値を信じる。時計のずれにも、Bの反映の遅れにも左右されない。スマホは送信済みかどうかによらず60日で諦める。PCが適用済みの記録を消す90日より短いので、古い操作が今の状態を戻すことはない。
+- **QRコードはライブラリも示す。** `#t=<トークン>&l=<ライブラリのID>`で、別のライブラリのQRコードを読むとスマホの操作を消す。記事のIDはライブラリごとの値で、別のライブラリに送ると違う記事を変えてしまう。トークンを作り直しただけならIDは同じなので消えない。
 - **Service Workerはページと読んだ記事をキャッシュする。** HTTPSでしか動かないので、LANのAでは使えない。
 - **記事は信頼しない。** 本文はテキストとして描画し、リンクはhttp(s)だけにする。CSPは`default-src 'self'; img-src 'self' data:`を基本に、`connect-src`にAのoriginを足す。
 - **UIの文言は`src/i18n`を共有する。** 表示言語は`ui_language`に従う。

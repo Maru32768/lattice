@@ -129,14 +129,14 @@ async fn status(mobile_server: &MobileServer, app: &App, loc: &Location) -> Resu
     let settings = mobile::settings(&app.store)?;
     let running = mobile_server.running.lock().await;
     let url = match (&running.server, base_url(&settings)) {
-        (Some(_), Some(base)) => Some(mobile::phone_url(&base, &mobile::token(&app.store)?)),
+        (Some(_), Some(base)) => Some(mobile::phone_url(&app.store, &base)?),
         _ => None,
     };
     // A failure must not lock the settings screen: the address shows in place of the code.
     let qr = url.as_deref().and_then(|u| qr_of(u).inspect_err(|e| log::warn!("mobile QR code: {e}")).ok());
     let snapshot = mobile_publish::status(&app.store)?;
     let snapshot_url = if snapshot.enabled && snapshot.last_publish.is_some() {
-        Some(mobile::phone_url(&snapshot.worker_url, &mobile::token(&app.store)?))
+        Some(mobile::phone_url(&app.store, &snapshot.worker_url)?)
     } else {
         None
     };
@@ -245,7 +245,8 @@ mod tests {
 
     #[test]
     fn the_longest_address_allowed_fits_a_qr_code_with_the_token() {
-        assert!(qr_of(&mobile::phone_url(&"x".repeat(mobile::MAX_PUBLIC_URL), &"f".repeat(64))).is_ok());
+        let longest = format!("{}/#t={}&l={}", "x".repeat(mobile::MAX_PUBLIC_URL), "f".repeat(64), "f".repeat(16));
+        assert!(qr_of(&longest).is_ok());
     }
 
     #[test]
