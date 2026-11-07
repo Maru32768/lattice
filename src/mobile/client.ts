@@ -11,7 +11,7 @@ const DOCS = "lattice-docs";
 /** Articles kept for reading without a connection, newest first. */
 const KEEP_DOCS = 200;
 /** A PC that is off must not hold up the snapshot: this long, then the snapshot. */
-const PROBE_MS = 1500;
+const PROBE_MS = 2500;
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
 /**

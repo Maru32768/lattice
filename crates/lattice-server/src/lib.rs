@@ -114,6 +114,8 @@ async fn allow_worker_page(State(store): State<Arc<Store>>, request: Request, ne
         h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
         h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("authorization, content-type"));
         h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST"));
+        // Or the browser asks again for almost every request, and a slow tunnel looks like a PC that is off.
+        h.insert(header::ACCESS_CONTROL_MAX_AGE, HeaderValue::from_static("7200"));
     }
     response
 }
@@ -436,6 +438,7 @@ mod tests {
         assert_eq!(ask.status(), StatusCode::NO_CONTENT, "the browser's question carries no token");
         assert_eq!(ask.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], worker);
         assert!(ask.headers()[header::ACCESS_CONTROL_ALLOW_HEADERS].to_str().unwrap().contains("authorization"));
+        assert!(ask.headers().contains_key(header::ACCESS_CONTROL_MAX_AGE));
         let read = app.clone().oneshot(with_origin(Method::GET, "/api/index", worker, Some(&token))).await.unwrap();
         assert_eq!(read.status(), StatusCode::OK);
         assert_eq!(read.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], worker);
