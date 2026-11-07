@@ -20,3 +20,7 @@ export function visibleArticles(articles: ArticleRow[], { filter, query }: Pick<
       (!q || (a.title ?? a.original_url).toLowerCase().includes(q) || a.domain.includes(q)),
   );
 }
+
+/** The list from the PC is fresh; one older than this is a snapshot or a saved copy, and worth saying so. */
+const OLD_AFTER_SECS = 120;
+export const isOldList = (generatedAt: number, now = Date.now()) => now / 1000 - generatedAt > OLD_AFTER_SECS;

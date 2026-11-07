@@ -17,4 +17,8 @@ applied_ops: Array<string>,
 /**
  * The server turns operations away (`lattice-cli serve` without `--allow-write`): the page offers none.
  */
-read_only: boolean, };
+read_only: boolean, 
+/**
+ * The PC's own address. A page reading the snapshot goes there whenever it can reach it.
+ */
+live_url: string | null, };

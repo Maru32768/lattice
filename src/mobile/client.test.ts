@@ -4,7 +4,7 @@ import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
 import { type LocalOp, fragmentOf, newOpId, resultOf, settled, withOps } from "./client.ts";
 import { savableUrl } from "./urls.ts";
-import { visibleArticles } from "./list.ts";
+import { isOldList, visibleArticles } from "./list.ts";
 import { articleInHash } from "./route.ts";
 
 test("the token and the library come from the QR code's fragment only", () => {
@@ -113,4 +113,9 @@ test("an address must be one the PC can fetch, before it leaves the box", () => 
 test("an operation's id is what the server takes, without a secure context", () => {
   assert.match(newOpId(), /^[0-9a-f]{32}$/);
   assert.notEqual(newOpId(), newOpId());
+});
+
+test("a list says how old it is only when that matters", () => {
+  assert.equal(isOldList(1000, 1_100_000), false);
+  assert.equal(isOldList(1000, 1_121_000), true);
 });

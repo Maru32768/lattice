@@ -14,6 +14,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use lattice_core::mobile::{self, Effects, MobileOp, Outcome};
+use lattice_core::mobile_publish;
 use lattice_core::msg;
 use lattice_core::store::Store;
 use serde_json::json;
@@ -41,6 +42,7 @@ pub const ASSETS: &[Asset] = &[
     asset!("manifest.webmanifest", "application/manifest+json"),
     asset!("icon-256.png", "image/png"),
     asset!("icon-512.png", "image/png"),
+    asset!("sw.js", "text/javascript; charset=utf-8"),
 ];
 
 /// The page's files as the snapshot publishes them.
@@ -79,7 +81,41 @@ pub fn router(store: Arc<Store>, on_applied: Option<OnApplied>) -> Router {
         .route("/api/ops", post(submit).layer(DefaultBodyLimit::max(MAX_OP_BYTES)))
         .route_layer(middleware::from_fn_with_state(ctx.store.clone(), require_token))
         .fallback(page)
+        .layer(middleware::from_fn_with_state(ctx.store.clone(), allow_worker_page))
         .with_state(ctx)
+}
+
+/// The Worker's page reads from this server when it can reach it. Only that origin may: the token
+/// is what guards the data, and this keeps other sites from even trying it. Outside `require_token`,
+/// because a browser asks with OPTIONS first, and that request carries no token.
+async fn allow_worker_page(State(store): State<Arc<Store>>, request: Request, next: Next) -> Response {
+    let origin = request.headers().get(header::ORIGIN).cloned();
+    let is_api = request.uri().path().starts_with("/api/");
+    let allowed = match origin {
+        Some(origin) if is_api => {
+            let worker = blocking(move || mobile_publish::worker_origin(&store)).await.ok().flatten();
+            worker.is_some_and(|w| origin.as_bytes() == w.as_bytes()).then_some(origin)
+        }
+        _ => None,
+    };
+    let mut response = if request.method() == Method::OPTIONS && is_api {
+        let status = if allowed.is_some() {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::FORBIDDEN
+        };
+        status.into_response()
+    } else {
+        next.run(request).await
+    };
+    let h = response.headers_mut();
+    h.append(header::VARY, HeaderValue::from_static("origin"));
+    if let Some(origin) = allowed {
+        h.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        h.insert(header::ACCESS_CONTROL_ALLOW_HEADERS, HeaderValue::from_static("authorization, content-type"));
+        h.insert(header::ACCESS_CONTROL_ALLOW_METHODS, HeaderValue::from_static("GET, POST"));
+    }
+    response
 }
 
 /// A rejection names why in a coded message the page can show.
@@ -375,6 +411,51 @@ mod tests {
         assert!(reason["error"].as_str().unwrap().contains("mobile.badUrl"));
         let huge = format!(r#"{{"id":"a","op":{{"kind":"save_url","url":"{}"}}}}"#, "x".repeat(MAX_OP_BYTES));
         assert_eq!(post_op(&app, Some(&token), huge).await.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    fn with_origin(method: Method, path: &str, origin: &str, token: Option<&str>) -> HttpRequest<Body> {
+        let mut request = HttpRequest::builder().method(method).uri(path).header(header::ORIGIN, origin);
+        if let Some(t) = token {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {t}"));
+        }
+        request.body(Body::empty()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn only_the_workers_page_may_call_from_another_origin() {
+        let (app, store, token) = app();
+        let worker = "https://m.example.workers.dev";
+        mobile_publish::save(
+            &store,
+            &mobile_publish::SnapshotSettings {
+                enabled: false,
+                account_id: String::new(),
+                bucket: String::new(),
+                access_key_id: String::new(),
+                secret_access_key: None,
+                worker_url: worker.into(),
+            },
+        )
+        .unwrap();
+        let ask = app.clone().oneshot(with_origin(Method::OPTIONS, "/api/index", worker, None)).await.unwrap();
+        assert_eq!(ask.status(), StatusCode::NO_CONTENT, "the browser's question carries no token");
+        assert_eq!(ask.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], worker);
+        assert!(ask.headers()[header::ACCESS_CONTROL_ALLOW_HEADERS].to_str().unwrap().contains("authorization"));
+        let read = app.clone().oneshot(with_origin(Method::GET, "/api/index", worker, Some(&token))).await.unwrap();
+        assert_eq!(read.status(), StatusCode::OK);
+        assert_eq!(read.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN], worker);
+        assert!(read.headers().get_all(header::VARY).iter().any(|v| v == "origin"));
+        let no_token = app.clone().oneshot(with_origin(Method::GET, "/api/index", worker, None)).await.unwrap();
+        assert_eq!(no_token.status(), StatusCode::UNAUTHORIZED, "the origin is no credential");
+
+        let other = "https://evil.example";
+        let ask = app.clone().oneshot(with_origin(Method::OPTIONS, "/api/index", other, None)).await.unwrap();
+        assert_eq!(ask.status(), StatusCode::FORBIDDEN);
+        assert!(ask.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+        let read = app.clone().oneshot(with_origin(Method::GET, "/api/index", other, Some(&token))).await.unwrap();
+        assert!(read.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none());
+        let page = app.oneshot(with_origin(Method::GET, "/", worker, None)).await.unwrap();
+        assert!(page.headers().get(header::ACCESS_CONTROL_ALLOW_ORIGIN).is_none(), "only the API");
     }
 
     #[tokio::test]

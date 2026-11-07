@@ -124,3 +124,12 @@ test("only the page's files are served: never the token's hash, the inbox or the
   }
   assert.equal((await call(b, "/", { token: null, method: "POST", body: "x" })).status, 405);
 });
+
+test("the page may connect to the PC's address, when there is one, and to nothing else", async () => {
+  const b = bucket({ "page/index.html": gzipSync("<html>") });
+  const csp = async () => (await call(b, "/", { token: null })).headers.get("content-security-policy")!;
+  assert.doesNotMatch(await csp(), /connect-src/);
+  b.store.set("auth.json", JSON.stringify({ token_hash: hash(TOKEN), live_origin: "https://pc.example.ts.net" }));
+  assert.match(await csp(), /connect-src 'self' https:\/\/pc\.example\.ts\.net;/);
+  assert.match(await csp(), /default-src 'self'/);
+});

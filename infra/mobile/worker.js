@@ -19,14 +19,15 @@ const TYPES = {
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
 /** The PC keeps `auth.json` current, so a new token needs no deployment. Read at most once a minute per instance. */
-let auth = { hash: null, at: -Infinity };
+let auth = { hash: null, live: null, at: -Infinity };
 
-async function tokenHash(bucket, now) {
+async function currentAuth(bucket, now) {
   if (now - auth.at >= AUTH_TTL_MS) {
     const object = await bucket.get("auth.json");
-    auth = { hash: object ? (await object.json()).token_hash : null, at: now };
+    const doc = object ? await object.json() : {};
+    auth = { hash: doc.token_hash ?? null, live: doc.live_origin ?? null, at: now };
   }
-  return auth.hash;
+  return auth;
 }
 
 async function sha256(text) {
@@ -39,8 +40,8 @@ async function authorized(request, bucket, now) {
   if (!header.startsWith("Bearer ")) {
     return false;
   }
-  const expected = await tokenHash(bucket, now);
-  return expected != null && (await sha256(header.slice("Bearer ".length))) === expected;
+  const { hash } = await currentAuth(bucket, now);
+  return hash != null && (await sha256(header.slice("Bearer ".length))) === hash;
 }
 
 /** Stored compressed: passed on as it is. */
@@ -75,7 +76,10 @@ async function takeOp(request, bucket, now) {
   return json(202, { status: "queued" });
 }
 
-async function pageFile(bucket, path) {
+/** The page reads from the PC when it can reach it, and from nowhere else. */
+const cspWith = (live) => (live ? CSP.replace("default-src 'self';", `default-src 'self'; connect-src 'self' ${live};`) : CSP);
+
+async function pageFile(bucket, path, now) {
   const name = path === "/" ? "index.html" : path.slice(1);
   if (!/^[0-9A-Za-z.-]+$/.test(name) || name.startsWith(".")) {
     return new Response("not found", { status: 404 });
@@ -88,7 +92,7 @@ async function pageFile(bucket, path) {
   const headers = {
     "content-type": type,
     "cache-control": "no-cache",
-    "content-security-policy": CSP,
+    "content-security-policy": cspWith((await currentAuth(bucket, now)).live),
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
   };
@@ -116,7 +120,7 @@ export async function handle(request, bucket, now = Date.now()) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("method not allowed", { status: 405 });
   }
-  return pageFile(bucket, pathname);
+  return pageFile(bucket, pathname, now);
 }
 
 export default { fetch: (request, env) => handle(request, env.BUCKET) };

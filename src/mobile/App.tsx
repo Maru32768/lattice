@@ -5,7 +5,7 @@ import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
 import { PAGE, type ListView } from "./list";
 import { articleInHash } from "./route";
-import { Unauthorized, adoptToken, flushOps, hasToken, loadIndex, localOps, submit, subscribeOps, whenRejected, withOps } from "./client";
+import { Unauthorized, adoptToken, disconnect, flushOps, hasToken, loadIndex, localOps, submit, subscribeOps, whenRejected, withOps } from "./client";
 
 const subscribeHash = (changed: () => void) => {
   addEventListener("hashchange", changed);
@@ -36,7 +36,7 @@ export function App() {
     // Not awaited: a sleeping PC would hold up the list by a second timeout, and the list shows what is pending anyway.
     void flushOps();
     try {
-      const index = await loadIndex();
+      const { index, saved } = await loadIndex();
       if (request !== latest.current) {
         return;
       }
@@ -44,7 +44,7 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
-      setRefreshFailed(false);
+      setRefreshFailed(saved);
     } catch (e) {
       if (request !== latest.current) {
         return;
@@ -167,7 +167,11 @@ export function App() {
         writable={!load.index.read_only}
         view={view}
         onView={setView}
+        generatedAt={load.index.generated_at}
         refreshFailed={refreshFailed}
+        onDisconnect={() => {
+          void disconnect().then(() => setLoad({ state: "no-token" }));
+        }}
         onOpen={(a) => {
           listScroll.current = window.scrollY;
           fromList.current = true;

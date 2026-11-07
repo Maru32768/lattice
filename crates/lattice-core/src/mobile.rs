@@ -46,6 +46,8 @@ pub struct MobileIndex {
     pub applied_ops: Vec<String>,
     /// The server turns operations away (`lattice-cli serve` without `--allow-write`): the page offers none.
     pub read_only: bool,
+    /// The PC's own address. A page reading the snapshot goes there whenever it can reach it.
+    pub live_url: Option<String>,
 }
 
 /// An article for reading: `ArticleView` without the job list and the memo, which the page does not show.
@@ -69,6 +71,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
         applied_ops,
         read_only: false,
+        live_url: live_url(store)?,
     })
 }
 
@@ -300,9 +303,18 @@ pub fn token_accepted(store: &Store, presented: &str) -> Result<bool, String> {
     Ok(store.setting(TOKEN).map_err(err)?.is_some_and(|t| sha256_hex(&t) == sha256_hex(presented)))
 }
 
-/// What the Worker checks tokens against. Only the hash leaves this PC.
+/// What the Worker checks against: only the token's hash leaves this PC. The Worker's page may
+/// connect to `live_origin`, the one other place it reads from.
 pub(crate) fn auth_document(store: &Store) -> Result<Vec<u8>, String> {
-    serde_json::to_vec(&serde_json::json!({ "token_hash": sha256_hex(token(store)?) })).map_err(err)
+    let live_origin = live_url(store)?.and_then(|u| url::Url::parse(&u).ok()).map(|u| u.origin().ascii_serialization());
+    serde_json::to_vec(&serde_json::json!({ "token_hash": sha256_hex(token(store)?), "live_origin": live_origin })).map_err(err)
+}
+
+/// The address a tunnel gives the PC's server, while it serves. A bare network address is left out:
+/// it would change with the network, and a page on HTTPS could not reach plain HTTP anyway.
+fn live_url(store: &Store) -> Result<Option<String>, String> {
+    let s = settings(store)?;
+    Ok((s.mode != ServerMode::Off && !s.public_url.is_empty()).then_some(s.public_url))
 }
 
 // ---- addresses ------------------------------------------------------------------------------
@@ -537,6 +549,30 @@ mod tests {
         let word: MobileOp = serde_json::from_str(r#"{"id":"a","op":{"kind":"vocab_add","capture":{"surface":"w","sentence":"w"}}}"#).unwrap();
         assert!(matches!(word.op, OpKind::VocabAdd { .. }));
         assert!(serde_json::from_str::<MobileOp>(r#"{"id":"a","op":{"kind":"delete_everything"}}"#).is_err());
+    }
+
+    #[test]
+    fn the_page_learns_the_pcs_address_only_while_a_tunnel_serves_it() {
+        let s = store();
+        let live = |mode, public_url: &str| {
+            save_settings(&s, &MobileSettings { mode, port: 8787, public_url: public_url.into() }).unwrap();
+            (index(&s).unwrap().live_url, serde_json::from_slice::<serde_json::Value>(&auth_document(&s).unwrap()).unwrap()["live_origin"].clone())
+        };
+        assert_eq!(
+            live(ServerMode::Local, "https://pc.example.ts.net"),
+            (Some("https://pc.example.ts.net".into()), serde_json::json!("https://pc.example.ts.net"))
+        );
+        assert_eq!(live(ServerMode::Off, "https://pc.example.ts.net"), (None, serde_json::Value::Null));
+        assert_eq!(live(ServerMode::Lan, ""), (None, serde_json::Value::Null));
+    }
+
+    #[test]
+    fn only_the_tokens_hash_leaves_this_pc() {
+        let s = store();
+        let t = token(&s).unwrap();
+        let auth = String::from_utf8(auth_document(&s).unwrap()).unwrap();
+        assert!(!auth.contains(&t));
+        assert!(auth.contains(&sha256_hex(&t)));
     }
 
     #[test]

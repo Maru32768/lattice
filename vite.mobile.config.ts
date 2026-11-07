@@ -32,6 +32,7 @@ export default defineConfig({
           icons: ICONS.map(({ file, sizes }) => ({ src: file, sizes, type: "image/png" })),
         };
         this.emitFile({ type: "asset", fileName: "manifest.webmanifest", source: JSON.stringify(manifest) });
+        this.emitFile({ type: "asset", fileName: "sw.js", source: readFileSync("src/mobile/sw.js") });
       },
     },
   ],

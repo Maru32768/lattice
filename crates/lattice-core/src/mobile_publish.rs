@@ -106,6 +106,11 @@ pub fn status(store: &Store) -> Result<SnapshotStatus, String> {
     })
 }
 
+/// The origin of the Worker's page, which alone may call the PC's server from another origin.
+pub fn worker_origin(store: &Store) -> Result<Option<String>, String> {
+    Ok(get(store, WORKER_URL)?.and_then(|u| url::Url::parse(&u).ok()).map(|u| u.origin().ascii_serialization()))
+}
+
 pub fn save(store: &Store, s: &SnapshotSettings) -> Result<(), String> {
     let (account_id, bucket, key_id) = (s.account_id.trim(), s.bucket.trim(), s.access_key_id.trim());
     let secret = s.secret_access_key.as_deref().map(str::trim).filter(|v| !v.is_empty());
@@ -564,6 +569,14 @@ mod tests {
         assert_eq!(count(&s), 0);
         save(&s, &settings(false, "another-bucket", "https://m.example.workers.dev")).unwrap();
         assert!(creds(&s).unwrap().is_none(), "off means no pass runs");
+    }
+
+    #[test]
+    fn only_the_workers_origin_counts() {
+        let s = Store::open_in_memory().unwrap();
+        assert_eq!(worker_origin(&s).unwrap(), None);
+        save(&s, &settings(false, "lattice-mobile", "https://M.example.workers.dev/")).unwrap();
+        assert_eq!(worker_origin(&s).unwrap().as_deref(), Some("https://m.example.workers.dev"));
     }
 
     #[test]

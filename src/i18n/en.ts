@@ -1384,4 +1384,7 @@ export const en = {
   "mobile.urlTaken": "URL taken. The PC fetches the text",
   "mobile.discard": "Discard",
   "mobile.discardConfirm": "Discard the operations not sent yet?",
+  "mobile.asOf": "As of {time}",
+  "mobile.disconnect": "Disconnect this phone",
+  "mobile.disconnectConfirm": "Remove the token, saved articles and unsent operations from this phone?",
 } satisfies Messages;

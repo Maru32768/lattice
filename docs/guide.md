@@ -874,6 +874,8 @@ Lattice can also keep your articles in a Cloudflare R2 bucket, so that the phone
 
 While the app runs, it publishes changes every 15 minutes and picks up the phone's operations every 5 minutes. The list on the phone shows how old it is. **Publish now** does it at once, and **Upload everything again** is for a bucket that was emptied.
 
+Opened from the Worker's address, the page opens without a connection too, with the last list and the articles you read before. With a tunnel set up as well, it reads from the PC whenever it can reach it, and from the snapshot otherwise. **Disconnect this phone**, at the bottom of the list, removes the token and everything saved from the phone.
+
 The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
 
 `lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write`.

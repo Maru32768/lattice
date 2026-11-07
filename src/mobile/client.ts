@@ -6,6 +6,12 @@ const TOKEN = "lattice.mobile.token";
 const LIBRARY = "lattice.mobile.library";
 const LANGUAGE = "lattice.mobile.language";
 const OPS = "lattice.mobile.ops";
+const LIVE = "lattice.mobile.live";
+const DOCS = "lattice-docs";
+/** Articles kept for reading without a connection, newest first. */
+const KEEP_DOCS = 200;
+/** A PC that is off must not hold up the snapshot: this long, then the snapshot. */
+const PROBE_MS = 1500;
 /** A PC that went to sleep never answers; a long list on a slow connection still gets through. */
 const TIMEOUT_MS = 30_000;
 /**
@@ -60,7 +66,36 @@ export class Unauthorized extends Error {}
 
 const authorization = () => ({ Authorization: `Bearer ${read(TOKEN) ?? ""}` });
 
+/**
+ * The PC's own address, as the list last said, and whether it answered the last time it was asked. A page
+ * on the Worker then reads from the PC, which is up to date, and falls back on the snapshot whenever it does not answer.
+ */
+let live: string | null = read(LIVE);
+let liveAnswers = false;
+
+async function askLive() {
+  liveAnswers =
+    live != null &&
+    new URL(live).origin !== location.origin &&
+    (await fetch(`${live}/api/ping`, { headers: authorization(), signal: AbortSignal.timeout(PROBE_MS) }).then(
+      (r) => r.ok,
+      () => false,
+    ));
+}
+
+/** The API by way of the PC if it answers, then of wherever this page came from. */
 async function request(path: string): Promise<Response> {
+  if (liveAnswers) {
+    try {
+      const response = await fetch(`${live}/${path}`, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
+      if (response.status !== 401) {
+        return response;
+      }
+    } catch {
+      // Gone since it was last asked.
+    }
+    liveAnswers = false;
+  }
   const response = await fetch(path, { headers: authorization(), signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (response.status === 401) {
     throw new Unauthorized();
@@ -68,19 +103,60 @@ async function request(path: string): Promise<Response> {
   return response;
 }
 
-export async function loadIndex(): Promise<MobileIndex> {
-  const response = await request("api/index");
+/** Only in a secure context: the local network's plain HTTP page has no caches, and does without. */
+const docs = () => (typeof caches !== "undefined" ? caches.open(DOCS) : null);
+
+async function keep(path: string, response: Response) {
+  const cache = await docs();
+  if (cache) {
+    await cache.put(path, response);
+    const keys = await cache.keys();
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - KEEP_DOCS)).map((k) => cache.delete(k)));
+  }
+}
+
+/** A document, and whether it is the saved copy because the network failed. */
+async function document(path: string): Promise<{ response: Response; saved: boolean }> {
+  try {
+    const response = await request(path);
+    if (response.ok) {
+      await keep(path, response.clone()).catch(() => {});
+    }
+    return { response, saved: false };
+  } catch (e) {
+    const saved = e instanceof Unauthorized ? undefined : await (await docs())?.match(path);
+    if (!saved) {
+      throw e;
+    }
+    return { response: saved, saved: true };
+  }
+}
+
+/** The list, and whether it is the saved copy. */
+export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean }> {
+  await askLive();
+  let { response, saved } = await document("api/index");
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  const index = (await response.json()) as MobileIndex;
+  let index = (await response.json()) as MobileIndex;
+  // The snapshot says where the PC is. It may be there right now.
+  if (!saved && !liveAnswers && index.live_url && index.live_url !== live) {
+    live = index.live_url;
+    write(LIVE, live);
+    await askLive();
+    if (liveAnswers) {
+      ({ response, saved } = await document("api/index"));
+      index = (await response.json()) as MobileIndex;
+    }
+  }
   updateOps((local) => settled(local, index.applied_ops, Date.now()));
-  return index;
+  return { index, saved };
 }
 
 /** Null when the article is gone. */
 export async function loadArticle(id: number): Promise<ArticleDoc | null> {
-  const response = await request(`api/articles/${id}`);
+  const { response } = await document(`api/articles/${id}`);
   if (response.status === 404) {
     return null;
   }
@@ -88,6 +164,22 @@ export async function loadArticle(id: number): Promise<ArticleDoc | null> {
     throw new Error(`HTTP ${response.status}`);
   }
   return (await response.json()) as ArticleDoc;
+}
+
+/** Leaves nothing of the library on this phone. Other tabs follow through `storage`. */
+export async function disconnect() {
+  try {
+    localStorage.clear();
+  } catch {
+    // Nothing was stored, then.
+  }
+  ops = [];
+  live = null;
+  liveAnswers = false;
+  listeners.forEach((l) => l());
+  if (typeof caches !== "undefined") {
+    await caches.delete(DOCS);
+  }
 }
 
 // ---- operations ---------------------------------------------------------------------------------
@@ -189,9 +281,9 @@ export function resultOf(status: number, body: unknown): SendResult {
   return (status === 400 || status === 422) && isCoded(error) ? { status: "rejected", error } : { status: "wait" };
 }
 
-async function sendOp(op: MobileOp): Promise<SendResult> {
+async function sendTo(base: string, op: MobileOp): Promise<SendResult> {
   try {
-    const response = await fetch("api/ops", {
+    const response = await fetch(`${base}api/ops`, {
       method: "POST",
       headers: { ...authorization(), "Content-Type": "application/json" },
       body: JSON.stringify({ id: op.id, op: op.op }),
@@ -201,6 +293,18 @@ async function sendOp(op: MobileOp): Promise<SendResult> {
   } catch {
     return { status: "wait" };
   }
+}
+
+/** To the PC if it answers, else to wherever this page came from. Both ways are safe together: the operation's id applies it once. */
+async function sendOp(op: MobileOp): Promise<SendResult> {
+  if (liveAnswers) {
+    const result = await sendTo(`${live}/`, op);
+    if (result.status !== "wait") {
+      return result;
+    }
+    liveAnswers = false;
+  }
+  return sendTo("", op);
 }
 
 let flushing: Promise<void> | null = null;

@@ -1366,4 +1366,7 @@ export const ja = {
   "mobile.urlTaken": "URLを受け付けました。本文の取得はPCで行います",
   "mobile.discard": "破棄",
   "mobile.discardConfirm": "まだ送っていない操作を破棄します。よろしいですか?",
+  "mobile.asOf": "{time}の内容",
+  "mobile.disconnect": "このスマホの接続を解除",
+  "mobile.disconnectConfirm": "トークン、読んだ記事の控え、まだ送っていない操作をこのスマホから消します。よろしいですか?",
 } as const satisfies Record<string, string>;

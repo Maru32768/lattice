@@ -4,7 +4,7 @@ import { useT, type PlainKey } from "../i18n";
 import { relTime } from "../lib/time";
 import { discardUnsent, submit } from "./client";
 import { savableUrl } from "./urls";
-import { PAGE, type ListFilter, type ListView, visibleArticles } from "./list";
+import { PAGE, type ListFilter, type ListView, isOldList, visibleArticles } from "./list";
 
 const FILTERS: { id: ListFilter; label: PlainKey }[] = [
   { id: "unread", label: "mobile.unread" },
@@ -17,7 +17,9 @@ export function ListPage({
   unsent,
   writable,
   view,
+  generatedAt,
   refreshFailed,
+  onDisconnect,
   onView,
   onOpen,
   onRefresh,
@@ -27,7 +29,10 @@ export function ListPage({
   unsent: number;
   writable: boolean;
   view: ListView;
+  /** When the list was made, in Unix seconds. */
+  generatedAt: number;
   refreshFailed: boolean;
+  onDisconnect: () => void;
   onView: (v: ListView) => void;
   onOpen: (a: ArticleRow) => void;
   onRefresh: () => Promise<void>;
@@ -78,6 +83,7 @@ export function ListPage({
             {t("mobile.loadFailed")}
           </p>
         )}
+        {isOldList(generatedAt) && <p className="m-bar-age">{t("mobile.asOf", { time: relTime(new Date(generatedAt * 1000).toISOString(), t) })}</p>}
       </header>
       <main className="m-list">
         <input
@@ -150,6 +156,16 @@ export function ListPage({
             {t("mobile.more", { n: rows.length - view.shown })}
           </button>
         )}
+        <button
+          className="btn m-more"
+          onClick={() => {
+            if (window.confirm(t("mobile.disconnectConfirm"))) {
+              onDisconnect();
+            }
+          }}
+        >
+          {t("mobile.disconnect")}
+        </button>
       </main>
     </>
   );
