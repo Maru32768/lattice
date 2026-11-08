@@ -18,8 +18,16 @@ guardDrops();
 
 // WebView2's console goes with the window: an error nothing caught (React reports its own render
 // errors here too) is kept in the app log instead.
+// The same message again within a second is dropped, or an error thrown every frame floods the log.
+let last = { message: "", at: 0 };
 const logUiError = (e: unknown) => {
-  api.logUiError(e instanceof Error ? (e.stack ?? String(e)) : String(e)).catch(() => {});
+  const message = e instanceof Error ? (e.stack ?? String(e)) : String(e);
+  const at = performance.now();
+  if (message === last.message && at - last.at < 1000) {
+    return;
+  }
+  last = { message, at };
+  api.logUiError(message).catch(() => {});
 };
 window.addEventListener("error", (e) => logUiError(e.error ?? e.message));
 window.addEventListener("unhandledrejection", (e) => logUiError(e.reason));
