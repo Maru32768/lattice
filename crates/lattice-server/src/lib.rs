@@ -45,7 +45,6 @@ pub const ASSETS: &[Asset] = &[
     asset!("sw.js", "text/javascript; charset=utf-8"),
 ];
 
-/// The page's files as the snapshot publishes them.
 /// A debug build serves the page as it is on disk, which `npm run dev` rebuilds on every change: a reload on the phone
 /// shows it, where the copy built in would wait for the app to be rebuilt. A release serves its own copy.
 fn page_bytes(asset: &Asset) -> Bytes {
@@ -57,6 +56,7 @@ fn page_bytes(asset: &Asset) -> Bytes {
     Bytes::from_static(asset.bytes)
 }
 
+/// The page's files as the snapshot publishes them.
 pub fn page_files() -> Vec<(&'static str, &'static [u8])> {
     ASSETS.iter().map(|a| (a.path, a.bytes)).collect()
 }
