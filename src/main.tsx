@@ -19,11 +19,11 @@ guardDrops();
 
 // WebView2's console goes with the window: an error nothing caught (React reports its own render
 // errors here too) is kept in the app log instead.
-const shouldLog = errorFilter();
+const filter = errorFilter();
 const logUiError = (e: unknown) => {
-  const message = e instanceof Error ? (e.stack ?? String(e)) : String(e);
-  if (shouldLog(message)) {
-    api.logUiError(message).catch(() => {});
+  const record = filter(e instanceof Error ? (e.stack ?? String(e)) : String(e), performance.now());
+  if (record !== null) {
+    api.logUiError(record).catch(() => {});
   }
 };
 window.addEventListener("error", (e) => logUiError(e.error ?? e.message));
