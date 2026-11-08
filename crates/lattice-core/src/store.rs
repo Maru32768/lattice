@@ -450,6 +450,18 @@ fn content_hash(blocks: &[Block]) -> String {
     sha256_hex(blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect::<Vec<_>>().join("\n"))
 }
 
+/// What `Store::save_reextraction` did.
+#[derive(Debug, PartialEq)]
+pub enum Reextracted {
+    /// Saved.
+    Saved,
+    /// Left as it was: a newer save has read it meanwhile, or the page now reads shorter.
+    Kept,
+}
+
+/// A re-extraction that keeps less of the text than this, in percent, keeps the article as it was.
+const SHORTER_KEEPS_PERCENT: usize = 95;
+
 /// Writes an article's blocks, reusing the id of each old block whose text is unchanged so
 /// embeddings and search hits keep pointing at it. Duplicate texts are matched in order.
 // shortcut: a reused block whose section heading changed keeps its old embedding (the heading is
@@ -817,19 +829,34 @@ impl Store {
     /// A re-extraction of a page already stored (`ingest::REEXTRACT_JOB`), in one transaction: the blocks, the version and
     /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. When
     /// the text is what it was, the summaries and quizzes made of it stay current: they move to the hash as it is now
-    /// computed (the hash once took image blocks in).
-    pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<()> {
+    /// computed (the hash once took image blocks in). What the article holds is read here, under the same lock: a
+    /// refetch saved since the page was read has the say.
+    pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<Reextracted> {
         let mut c = self.conn();
         let tx = c.transaction()?;
+        let version: Option<i64> =
+            tx.query_row("SELECT extraction_version FROM articles WHERE id = ?1 AND extraction_status = 'ok'", [id], |r| r.get(0)).optional()?.flatten();
+        if version.is_none_or(|v| v >= EXTRACTION_VERSION) {
+            return Ok(Reextracted::Kept);
+        }
         let old_hash: Option<String> = tx.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten();
-        let old_text: Vec<String> = {
+        let held: Vec<String> = {
             let mut st = tx.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
             st.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?
         };
-        let same_text = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).eq(old_text.iter().map(String::as_str));
+        let chars = |t: &str| t.chars().count();
+        let text: usize = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| chars(&b.text)).sum();
+        // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
+        // citations with them: what the article has stays.
+        if text * 100 < held.iter().map(|t| chars(t)).sum::<usize>() * SHORTER_KEEPS_PERCENT {
+            tx.execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION])?;
+            tx.commit()?;
+            return Ok(Reextracted::Kept);
+        }
+        let same_text = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).eq(held.iter().map(String::as_str));
         replace_blocks(&tx, id, &ir.blocks)?;
         let hash = content_hash(&ir.blocks);
-        let text_length: usize = ir.blocks.iter().map(|b| b.text.chars().count()).sum();
+        let text_length: usize = ir.blocks.iter().map(|b| chars(&b.text)).sum();
         tx.execute(
             "UPDATE articles SET content_hash = ?2, extraction_version = ?3, text_length = ?4 WHERE id = ?1",
             params![id, hash, EXTRACTION_VERSION, text_length as i64],
@@ -839,7 +866,8 @@ impl Store {
                 tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
             }
         }
-        tx.commit()
+        tx.commit()?;
+        Ok(Reextracted::Saved)
     }
 
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {

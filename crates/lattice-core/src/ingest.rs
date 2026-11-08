@@ -3,8 +3,7 @@
 
 use crate::extract::{EXTRACTION_VERSION, extract};
 use crate::fetch::{Fetched, HttpClient, Resource, fetch_resource};
-use crate::ir::BlockKind;
-use crate::store::{Store, THIN_TEXT_CHARS};
+use crate::store::{Reextracted, Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use quick_xml::escape::escape;
 use rusqlite::{OptionalExtension, params};
@@ -214,8 +213,6 @@ pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
 /// Re-extracts an article that an older extractor read, from its stored page: what a newer one keeps (images inside
 /// paragraphs, since version 3) reaches the articles saved before it. A local job: no network, and no paid work.
 pub const REEXTRACT_JOB: &str = "reextract";
-/// A re-extraction that keeps less of the text than this, in percent, keeps the article as it was.
-const SHORTER_KEEPS_PERCENT: usize = 95;
 
 /// At startup: every web page extracted by an older `EXTRACTION_VERSION`. Returns the number of jobs queued.
 pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
@@ -248,18 +245,9 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         return keep_as_is();
     };
-    let text: usize = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.chars().count()).sum();
-    let held: i64 = store
-        .conn()
-        .query_row("SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = ?1 AND kind != 'image'", [id], |r| r.get(0))
-        .map_err(err)?;
-    // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
-    // citations with them: what the article has stays.
-    if text * 100 < held as usize * SHORTER_KEEPS_PERCENT {
-        return keep_as_is();
+    if let Reextracted::Saved = store.save_reextraction(id, &ir).map_err(err)? {
+        crate::images::enqueue(store, id)?;
     }
-    store.save_reextraction(id, &ir).map_err(err)?;
-    crate::images::enqueue(store, id)?;
     Ok(())
 }
 
@@ -517,6 +505,20 @@ mod tests {
         let before = hash(&s);
         reextract_outdated(&s, id).unwrap();
         assert_ne!(hash(&s), before);
+    }
+
+    #[test]
+    fn a_page_saved_since_it_was_read_is_not_overwritten_by_the_re_extraction() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        store_fetched(&s, id, &page(BODY)).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        let read = extract(&page(BODY).html, "https://example.com/post").unwrap();
+        // A refetch lands between the read and the save.
+        store_fetched(&s, id, &page(&BODY.repeat(2))).unwrap();
+        let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks.len();
+        assert_eq!(s.save_reextraction(id, &read).unwrap(), Reextracted::Kept);
+        assert_eq!(s.get_article(id, "ja").unwrap().unwrap().blocks.len(), blocks);
     }
 
     #[test]
