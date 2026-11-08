@@ -386,6 +386,20 @@ test("an image the PC stored shows in the text, fetched with the token; one it h
   await expect(page.getByRole("link", { name: "画像: A figure" }), "an image that does not render").toBeVisible();
 });
 
+test("a new token of the same library keeps the view; another library's starts over", async ({ page }) => {
+  await start(page);
+  await page.evaluate(() => (location.hash = "#t=secret&l=lib"));
+  await page.getByText("First article").waitFor();
+  await showScope(page, "すべての記事");
+  await expect(page.getByRole("link")).toHaveCount(3);
+  // A fragment that differs, of the same library: a regenerated token.
+  await page.evaluate(() => (location.hash = "#t=secret&l=lib&again=1"));
+  await expect(page.getByText("すべての記事 · 3件")).toBeVisible();
+  await expect(page.getByRole("link")).toHaveCount(3);
+  await page.evaluate(() => (location.hash = "#t=secret&l=other"));
+  await expect(page.getByText("未読 · 1件"), "another library starts from 未読").toBeVisible();
+});
+
 const LONG = {
   format: 1,
   generated_at: 1,

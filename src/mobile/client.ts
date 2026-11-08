@@ -73,14 +73,15 @@ function hashOf(text: string): string {
 
 /**
  * Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots, or
- * from a link pasted in. True if there was one.
+ * from a link pasted in. Says whether there was one, and whether it is of another library than before.
  */
-export function adoptToken(pasted?: string): boolean {
+export function adoptToken(pasted?: string): "same library" | "other library" | null {
   const found = fragmentOf(pasted === undefined ? location.hash : hashOf(pasted));
+  const other = found != null && found.library !== read(LIBRARY);
   if (found) {
     write(TOKEN, found.token);
     // Article ids mean something else in another library, so nothing kept from one may reach the other. A new token of the same library keeps it all.
-    if (found.library !== read(LIBRARY)) {
+    if (other) {
       updateOps(() => []);
       void dropDocs();
       forget(LIVE);
@@ -92,7 +93,7 @@ export function adoptToken(pasted?: string): boolean {
       history.replaceState(null, "", location.pathname + location.search);
     }
   }
-  return found != null;
+  return found ? (other ? "other library" : "same library") : null;
 }
 
 export const hasToken = () => read(TOKEN) != null;

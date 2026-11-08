@@ -33,14 +33,15 @@ const subscribeHash = (changed: () => void) => {
 const whatOf = ({ op }: MobileOp) => (op.kind === "vocab_add" ? op.capture.surface : op.kind === "save_url" ? op.url : "");
 
 /** Where the QR code cannot open the page (on iOS, the home screen's page has storage of its own): scan it here, or paste its link. */
-function Connect({ onAdopted }: { onAdopted: () => void }) {
+function Connect({ onAdopted }: { onAdopted: (adopted: "same library" | "other library") => void }) {
   const t = useT();
   const [link, setLink] = useState("");
   const [bad, setBad] = useState(false);
   const [scanning, setScanning] = useState(false);
   const take = (text: string) => {
-    if (adoptToken(text)) {
-      onAdopted();
+    const adopted = adoptToken(text);
+    if (adopted) {
+      onAdopted(adopted);
       return true;
     }
     setBad(true);
@@ -151,10 +152,13 @@ export function App() {
 
   // A new QR code opened in this tab changes only the fragment: no page load runs main.tsx.
   const onHashChange = useEffectEvent(() => {
-    if (adoptToken()) {
-      iconsAsked.current = false;
-      // Article ids mean something else in another library: nothing kept in the view may carry over.
-      setView(FIRST_VIEW);
+    const adopted = adoptToken();
+    if (adopted) {
+      if (adopted === "other library") {
+        iconsAsked.current = false;
+        // Article ids mean something else in another library: nothing kept in the view may carry over.
+        setView(FIRST_VIEW);
+      }
       setLoad({ state: "loading" });
       void refresh();
     }
@@ -203,9 +207,11 @@ export function App() {
         <h1>Lattice</h1>
         <p>{t("mobile.noToken")}</p>
         <Connect
-          onAdopted={() => {
-            iconsAsked.current = false;
-            setView(FIRST_VIEW);
+          onAdopted={(adopted) => {
+            if (adopted === "other library") {
+              iconsAsked.current = false;
+              setView(FIRST_VIEW);
+            }
             setLoad({ state: "loading" });
             void refresh();
           }}
