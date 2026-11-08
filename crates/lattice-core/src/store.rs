@@ -455,18 +455,18 @@ fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
 /// The same, as stored, in order.
 const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal";
 
-/// What says a summary or quiz is out of date: the text, not the images in it (finding one more image changes nothing a
-/// summary says).
+/// What says a summary or quiz is out of date: the words of the text. Not the images in it, nor where its paragraphs
+/// break, which a newer extractor may place otherwise around an image.
 fn text_hash<'a>(texts: impl Iterator<Item = &'a str>) -> String {
-    sha256_hex(texts.collect::<Vec<_>>().join("\n"))
+    sha256_hex(texts.flat_map(str::split_whitespace).collect::<Vec<_>>().join(" "))
 }
 
 fn content_hash(blocks: &[Block]) -> String {
     text_hash(prose(blocks))
 }
 
-/// `content_hash` was once of every block, image blocks included (`REHASH_AT`): recomputed from the stored blocks. The
-/// summaries and quizzes that recorded the old hash move with it, as their text is the same.
+/// `content_hash` was once of every block, image blocks and paragraph breaks included (`REHASH_AT`): recomputed from the
+/// stored blocks. The summaries and quizzes that recorded the old hash move with it, as their text is the same.
 fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     let articles: Vec<(i64, Option<String>)> = tx
         .prepare("SELECT id, content_hash FROM articles WHERE extraction_status = 'ok'")?
@@ -492,8 +492,8 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
 /// What `Store::save_reextraction` did.
 #[derive(Debug, PartialEq)]
 pub enum Reextracted {
-    /// Saved.
-    Saved,
+    /// Saved; `text_changed` when a paragraph is not what it was (a split around an image): its translation is to make.
+    Saved { text_changed: bool },
     /// Left as it was: a newer save has read it meanwhile, or the page now reads shorter.
     Kept,
 }
@@ -888,6 +888,7 @@ impl Store {
             tx.commit()?;
             return Ok(Reextracted::Kept);
         }
+        let text_changed = !prose(&ir.blocks).eq(held.iter().map(String::as_str));
         replace_blocks(&tx, id, &ir.blocks)?;
         let text_length: usize = ir.blocks.iter().map(|b| chars(&b.text)).sum();
         tx.execute(
@@ -895,7 +896,7 @@ impl Store {
             params![id, content_hash(&ir.blocks), EXTRACTION_VERSION, text_length as i64],
         )?;
         tx.commit()?;
-        Ok(Reextracted::Saved)
+        Ok(Reextracted::Saved { text_changed })
     }
 
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
@@ -1779,7 +1780,7 @@ mod tests {
             .collect();
         assert_eq!(rows, [("Current then.".into(), true), ("Stale then.".into(), false)]);
         let hash: String = c.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
-        assert_eq!(hash, text_hash(["Snapshot isolation still permits write skew, which is why SSI exists in the database."].into_iter()));
+        assert_eq!(hash, text_hash(["Snapshot isolation still permits write skew,", "which is why SSI exists in the database."].into_iter()));
     }
 
     #[test]

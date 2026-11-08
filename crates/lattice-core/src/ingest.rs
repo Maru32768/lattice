@@ -245,8 +245,12 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         return keep_as_is();
     };
-    if let Reextracted::Saved = store.save_reextraction(id, &ir).map_err(err)? {
+    if let Reextracted::Saved { text_changed } = store.save_reextraction(id, &ir).map_err(err)? {
         crate::images::enqueue(store, id)?;
+        // A paragraph split around an image is new text: its translation is made as for any new article.
+        if text_changed {
+            crate::translate::enqueue_if_auto(store, id)?;
+        }
     }
     Ok(())
 }
@@ -506,6 +510,19 @@ mod tests {
         assert_ne!(hash(&s), before);
     }
 
+    /// The same two sentences as one paragraph or as two: where an extractor breaks the text.
+    fn breaks(two: bool) -> String {
+        let (first, second) = (
+            "Snapshot isolation prevents dirty reads but still permits write skew, which is why SSI exists in the database.",
+            "This second sentence pads the paragraph, so that readability keeps it as the article's content.",
+        );
+        if two {
+            format!("<h2>Section</h2><p>{first}</p><p>{second}</p>")
+        } else {
+            format!("<h2>Section</h2><p>{first} {second}</p>")
+        }
+    }
+
     #[test]
     fn a_page_saved_since_it_was_read_is_not_overwritten_by_the_re_extraction() {
         let s = Store::open_in_memory().unwrap();
@@ -518,6 +535,23 @@ mod tests {
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks.len();
         assert_eq!(s.save_reextraction(id, &read).unwrap(), Reextracted::Kept);
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().blocks.len(), blocks);
+    }
+
+    #[test]
+    fn paragraphs_the_re_extraction_breaks_otherwise_are_translated_when_translation_is_automatic() {
+        let s = Store::open_in_memory().unwrap();
+        crate::translate::set_auto(&s, true).unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        store_fetched(&s, id, &page(&breaks(true))).unwrap();
+        // As an older version read it: the two sentences in one paragraph.
+        let whole = extract(&page(&breaks(false)).html, "https://example.com/post").unwrap();
+        s.save_fetched(id, None, Ok(whole), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
+        reextract_outdated(&s, id).unwrap();
+        let queued: Vec<String> =
+            s.conn().prepare("SELECT type FROM processing_jobs ORDER BY type").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(queued, [crate::translate::JOB_TYPE], "the two paragraphs are new text; no image to fetch");
     }
 
     #[test]

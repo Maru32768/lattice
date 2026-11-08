@@ -1425,6 +1425,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             if job.job_type == ingest::REEXTRACT_JOB {
                 fetchers.iter().for_each(|w| w.notify_one()); // a re-extracted article has queued its images job
                 embedder_wake.notify_one(); // ... and its embed job
+                llm_wake.iter().for_each(|w| w.notify_one()); // ... and, if its paragraphs break otherwise now, their translation
             }
             if types == NET_JOBS {
                 embedder_wake.notify_one(); // a fetched article has just queued its embed job
