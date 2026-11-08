@@ -40,10 +40,14 @@ fn subscribe(dir: &Path, filter: EnvFilter) -> Result<(), Box<dyn std::error::Er
 }
 
 /// A UI error as one record: every line break a viewer shows (`\r` alone too) becomes an indented
-/// continuation, so a message quoting page text cannot pass for a line of its own.
+/// continuation, so a message quoting page text cannot pass for a line of its own. Longer messages
+/// are cut at 4000 characters, before the indenting, and end with "…".
 pub fn ui_record(message: &str) -> String {
-    let message: String = message.chars().take(4000).collect();
-    message.replace("\r\n", "\n").replace(['\r', '\u{85}', '\u{2028}', '\u{2029}'], "\n").replace('\n', "\n    ")
+    let mut cut: String = message.chars().take(4000).collect();
+    if cut.len() < message.len() {
+        cut.push('…');
+    }
+    cut.replace("\r\n", "\n").replace(['\r', '\u{85}', '\u{2028}', '\u{2029}'], "\n").replace('\n', "\n    ")
 }
 
 #[cfg(test)]
@@ -70,5 +74,7 @@ mod tests {
         for forged in ["a\rERROR job", "a\r\nERROR job", "a\u{2028}ERROR job", "a\u{85}ERROR job"] {
             assert_eq!(ui_record(forged), "a\n    ERROR job", "{forged:?}");
         }
+        assert_eq!(ui_record(&"x".repeat(4001)), format!("{}…", "x".repeat(4000)));
+        assert_eq!(ui_record(&"x".repeat(4000)), "x".repeat(4000));
     }
 }
