@@ -113,13 +113,14 @@ fn link_in(output: &str) -> Option<&str> {
     output[start..].split_whitespace().next()
 }
 
-/// Forwards this PC's `.ts.net` address to `port`, or stops forwarding port 443.
+/// Forwards the root of this PC's `.ts.net` address to `port`, or stops that. Only the root, which `serves` checks: other
+/// paths the reader serves on 443 are theirs.
 pub async fn serve(port: u16, on: bool) -> Result<(), String> {
     let port = port.to_string();
     let args: &[&str] = if on {
         &["serve", "--bg", &port]
     } else {
-        &["serve", "--https=443", "off"]
+        &["serve", "--https=443", "--set-path=/", "off"]
     };
     let ran = run(args).await.map_err(|e| msg!("tailscale.notFound", error = e))?;
     if ran.ok {
