@@ -26,7 +26,10 @@ pub const LLM_JOBS: &[&str] =
 /// on the general LLM runner without waiting behind it.
 pub const TRANSLATE_JOBS: &[&str] = &[translate::JOB_TYPE];
 pub const OTHER_LLM_JOBS: &[&str] = &[summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, vocab::JOB_TYPE, relevance::JOB_TYPE, feed_filter::JOB_TYPE];
-pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE, ingest::REEXTRACT_JOB];
+pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
+/// Re-extracting a whole library after an extractor change takes a while: a runner of its own, so that the embeddings of
+/// articles saved meanwhile do not wait behind it. It finds its work on its poll (`IDLE_POLL`); nothing wakes it.
+pub const BULK_JOBS: &[&str] = &[ingest::REEXTRACT_JOB];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.

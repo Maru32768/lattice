@@ -20,7 +20,7 @@ use lattice_core::groups::{self, GroupRow};
 use lattice_core::ingest::{self, ImportSummary};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::job_status::{self, JobOverview};
-use lattice_core::jobs::{self, LLM_JOBS, LOCAL_JOBS, NET_JOBS, OTHER_LLM_JOBS, Providers};
+use lattice_core::jobs::{self, BULK_JOBS, LLM_JOBS, LOCAL_JOBS, NET_JOBS, OTHER_LLM_JOBS, Providers};
 use lattice_core::network;
 use lattice_core::search::{self, SearchResult};
 use lattice_core::segments::{self, Unit};
@@ -1396,7 +1396,9 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Also puts back the jobs left running by a process that is gone (this app's last run, a stopped CLI).
     let keeper = store.clone();
     tauri::async_runtime::spawn(async move { jobs::keep_alive(&keeper).await });
-    let runners = [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone())].into_iter().chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
+    let runners = [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone()), (BULK_JOBS, Arc::new(Notify::new()))]
+        .into_iter()
+        .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
     for (types, wake) in runners {
         let (handle, embedder_wake, llm_wake, render_wake) = (app.handle().clone(), wake_local.clone(), wake_llm.clone(), wake_render.clone());
         let fetchers = wake_net.clone();
@@ -1417,6 +1419,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             };
             if job.job_type == ingest::REEXTRACT_JOB {
                 fetchers.iter().for_each(|w| w.notify_one()); // a re-extracted article has queued its images job
+                embedder_wake.notify_one(); // ... and its embed job
             }
             if types == NET_JOBS {
                 embedder_wake.notify_one(); // a fetched article has just queued its embed job
