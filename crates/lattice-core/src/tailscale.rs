@@ -25,6 +25,9 @@ pub struct TailscaleStatus {
     pub serves_port: bool,
 }
 
+/// The installer puts it on PATH; an older install may not have, nor a process started before it was installed.
+const EXES: [&str; 2] = ["tailscale", r"C:\Program Files\Tailscale\tailscale.exe"];
+
 /// The output of a finished run, or of one stopped at `TIMEOUT`.
 struct Ran {
     ok: bool,
@@ -34,8 +37,7 @@ struct Ran {
 
 async fn run(args: &[&str]) -> Result<Ran, String> {
     let mut last = String::new();
-    // The installer puts it on PATH; an older install may not have.
-    for exe in ["tailscale", r"C:\Program Files\Tailscale	ailscale.exe"] {
+    for exe in EXES {
         let mut cmd = Command::new(exe);
         cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         #[cfg(windows)]
@@ -134,6 +136,11 @@ pub async fn serve(port: u16, on: bool) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn the_fallback_is_the_installers_path() {
+        assert!(EXES[1].ends_with(r"\Tailscale\tailscale.exe") && !EXES[1].contains('\t'), "{:?}", EXES[1]);
+    }
 
     #[test]
     fn the_address_is_this_pcs_name_while_tailscale_runs() {
