@@ -1,4 +1,5 @@
-//! The app's log: one file a day in the log folder, the last `KEEP_DAYS` kept, in local time.
+//! The app's log: one file a day in the log folder, the last `KEEP_DAYS` kept. Lines carry local
+//! time, but tracing-appender rolls and names the files by the UTC date (it has no local option).
 //! `log::` calls (ours and our dependencies') reach it through tracing-log, so a line written while
 //! a job runs carries that job's span (`job{id=… kind=… article=…}`).
 

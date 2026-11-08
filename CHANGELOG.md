@@ -19,7 +19,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - The Vim key bindings setting moved from **Settings › Summaries & chat** to **Settings › Shortcuts**. Your setting stays as it was.
 - `Esc` in a web page's text field leaves the field, unless the page uses it itself.
 - Windows 10 is no longer a supported platform, and releases are no longer tested on it. The app is not blocked from running there.
-- **The log keeps two weeks.** It used to keep only the last 40 KB. It is now one file a day (`lattice.YYYY-MM-DD.log`) in local time, and it also records errors the UI did not catch, crashes outside a job, and which job and article each line came from.
+- **The log keeps two weeks.** It used to keep only the last 40 KB. It is now one file a day (`lattice.YYYY-MM-DD.log`, named by the UTC date; the lines carry local time), and it also records errors the UI did not catch, crashes outside a job, and which job and article each line came from.
 
 ### Fixed
 
