@@ -40,6 +40,7 @@ pub mod segments;
 pub mod srs;
 pub mod store;
 pub mod summarize;
+pub mod tailscale;
 pub mod translate;
 pub mod url_norm;
 pub mod vocab;

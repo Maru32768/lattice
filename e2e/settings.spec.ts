@@ -253,3 +253,22 @@ test("a bucket nothing reaches any more can be given up, after the screen says w
   await expect.poll(() => callsOf(app, "mobile_snapshot_save").then((c) => (c.at(-1) as { abandon: boolean }).abandon)).toBe(true);
   await expect(giveUp).toHaveCount(0);
 });
+
+test("Tailscale Serve is turned on from the screen, and its address becomes the one the phone opens", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();
+  await expect(app.getByText("このPCのアドレスはhttps://desktop.example.ts.net/です。まだこのポートに中継していません。")).toBeVisible();
+  await app.getByLabel("スマホが開くアドレス").fill("https://desktop.example.ts.net/");
+  await app.getByRole("button", { name: "保存", exact: true }).first().click();
+  await expect(app.getByText("Tailscale Serveがこのポートに中継していないので")).toBeVisible();
+  await app.getByRole("button", { name: "Tailscale Serveで公開" }).click();
+  await expect(app.getByText("https://desktop.example.ts.net/をこのポートに中継しています。")).toBeVisible();
+  await expect(app.getByText("Tailscale Serveがこのポートに中継していないので")).toHaveCount(0);
+  await expect
+    .poll(() => callsOf(app, "mobile_save").then((c) => c.at(-1)))
+    .toEqual({
+      settings: { mode: "local", port: 8787, public_url: "https://desktop.example.ts.net/" },
+    });
+  await app.getByRole("button", { name: "公開をやめる" }).click();
+  await expect(app.getByRole("button", { name: "Tailscale Serveで公開" })).toBeVisible();
+});

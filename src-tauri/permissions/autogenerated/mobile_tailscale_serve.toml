@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mobile-tailscale-serve"
+description = "Enables the mobile_tailscale_serve command without any pre-configured scope."
+commands.allow = ["mobile_tailscale_serve"]
+
+[[permission]]
+identifier = "deny-mobile-tailscale-serve"
+description = "Denies the mobile_tailscale_serve command without any pre-configured scope."
+commands.deny = ["mobile_tailscale_serve"]

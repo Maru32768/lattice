@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { mobile, type MobileServerMode, type MobileSettings as Settings, type MobileStatus, type SnapshotSettings } from "../api";
+import { mobile, type MobileServerMode, type MobileSettings as Settings, type MobileStatus, type SnapshotSettings, type TailscaleStatus } from "../api";
 import { SetRow, Switch } from "../ui/SetRow";
 import { locale, useT } from "../i18n";
 
@@ -35,8 +35,15 @@ export function MobileSettings() {
   /** Leaving a bucket waits for a running pass, and reaches across the network. */
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Null until Tailscale has answered: it takes a moment, and the rest of the screen does not wait for it. */
+  const [tailscale, setTailscale] = useState<TailscaleStatus | null>(null);
+  const [serving, setServing] = useState(false);
 
   useEffect(() => {
+    mobile
+      .tailscale()
+      .then(setTailscale)
+      .catch(() => {});
     mobile
       .status()
       .then((s) => {
@@ -87,14 +94,33 @@ export function MobileSettings() {
     }
   }
 
-  async function save() {
+  async function save(next = form!) {
     setError(null);
     try {
-      const s = await mobile.save(form!);
+      const s = await mobile.save(next);
       setStatus(s);
       setForm(s.settings);
+      // The port may have changed, and Serve forwards to one port.
+      setTailscale(await mobile.tailscale());
     } catch (e) {
       setError(String(e));
+    }
+  }
+
+  /** Turning Serve on also makes its address the one the phone opens, and serves for the tunnel if nothing is served yet. */
+  async function serve(on: boolean) {
+    setError(null);
+    setServing(true);
+    const ts = await mobile.tailscaleServe(on).catch((e: unknown) => {
+      setError(String(e));
+      return null;
+    });
+    setServing(false);
+    if (ts) {
+      setTailscale(ts);
+    }
+    if (on && ts?.serves_port && ts.address) {
+      await save({ ...form!, public_url: ts.address, mode: form!.mode === "off" ? "local" : form!.mode });
     }
   }
 
@@ -163,6 +189,22 @@ export function MobileSettings() {
               spellCheck={false}
             />
           </SetRow>
+          {tailscale && (
+            <SetRow
+              title={t("mobileSettings.tailscale")}
+              desc={
+                !tailscale.address
+                  ? t("mobileSettings.tailscaleMissing")
+                  : t(tailscale.serves_port ? "mobileSettings.tailscaleOn" : "mobileSettings.tailscaleOff", { address: tailscale.address })
+              }
+            >
+              {tailscale.address && (
+                <button className="btn" onClick={() => void serve(!tailscale.serves_port)} disabled={serving}>
+                  {t(tailscale.serves_port ? "mobileSettings.tailscaleStop" : "mobileSettings.tailscaleStart")}
+                </button>
+              )}
+            </SetRow>
+          )}
         </div>
         <div className="btn-row">
           <button className="btn pri" onClick={() => void save()} disabled={status.fell_back || !portOk}>
@@ -174,6 +216,9 @@ export function MobileSettings() {
         </div>
         {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
         {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
+        {tailscale && !tailscale.serves_port && URL.parse(status.settings.public_url)?.hostname.endsWith(".ts.net") && (
+          <p className="note warn">{t("mobileSettings.tailscaleNotServing")}</p>
+        )}
         {status.fell_back && <p className="note warn">{t("be.mobile.fellBack")}</p>}
         {status.error && <p className="note err">{t.msg(status.error)}</p>}
         {status.running && !status.url && <p className="sec-d">{t("mobileSettings.needsUrl")}</p>}

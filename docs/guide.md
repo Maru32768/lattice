@@ -861,8 +861,8 @@ Opening an article from the list marks it read, as on the PC. On the phone you c
 A tunnel gives the phone an encrypted way to reach the PC from anywhere. Lattice does not set one up for you. With [Tailscale](https://tailscale.com/docs/features/tailscale-serve) on both the PC and the phone:
 
 1. Set **Serve from this PC** to **Inside this PC only (for a tunnel)**.
-2. Run `tailscale serve --bg 8787` on the PC. It prints an address that ends in `.ts.net`.
-3. Enter that address in **Address the phone opens**, press **Save**, and scan the QR code.
+2. Press **Publish with Tailscale Serve**. It does what `tailscale serve --bg 8787` does on the PC. The first time, it may show a link where you allow HTTPS for your tailnet: allow it there and press the button again.
+3. The address that ends in `.ts.net` goes into **Address the phone opens** and is saved. Scan the QR code.
 
 ### Read while the PC is off
 

@@ -1674,6 +1674,8 @@ pub fn run() {
             mobile::mobile_regenerate_token,
             mobile::mobile_snapshot_save,
             mobile::mobile_publish_now,
+            mobile::mobile_tailscale,
+            mobile::mobile_tailscale_serve,
             job_overview,
             retry_job,
             retry_failed_jobs,

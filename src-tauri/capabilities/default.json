@@ -166,6 +166,8 @@
     "allow-mobile-regenerate-token",
     "allow-mobile-snapshot-save",
     "allow-mobile-publish-now",
+    "allow-mobile-tailscale",
+    "allow-mobile-tailscale-serve",
     "allow-job-overview",
     "allow-retry-job",
     "allow-retry-failed-jobs",

@@ -75,6 +75,7 @@ export type * from "./SnapshotSettings";
 export type * from "./SnapshotStatus";
 export type * from "./SummaryView";
 export type * from "./TagCount";
+export type * from "./TailscaleStatus";
 export type * from "./Unit";
 export type * from "./UpdateInfo";
 export type * from "./VocabAdded";

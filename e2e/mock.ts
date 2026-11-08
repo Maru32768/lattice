@@ -26,6 +26,7 @@ import type {
   Quiz,
   MobileSettings,
   MobileStatus,
+  TailscaleStatus,
   R2Settings,
   SnapshotSettings,
   R2Status,
@@ -173,6 +174,7 @@ const store = {
     fell_back: false,
   } as MobileStatus,
   mobileToken: "token",
+  tailscale: { address: "https://desktop.example.ts.net/", serves_port: false } as TailscaleStatus,
   r2: {
     enabled: false,
     account_id: "",
@@ -940,6 +942,8 @@ export const handlers = {
   },
   r2_clear_secret: () => void (store.r2 = { ...store.r2, has_secret: false }),
   r2_backup_now: (): string => "lattice/2026-10-20T03-00-00Z.db.gz",
+  mobile_tailscale: (): TailscaleStatus => store.tailscale,
+  mobile_tailscale_serve: ({ on }: { on: boolean }): TailscaleStatus => (store.tailscale = { ...store.tailscale, serves_port: on }),
   mobile_status: (): MobileStatus => {
     // The backend's pass starts after the command returns and ends later: only a later status shows it.
     if (store.mobile.snapshot.enabled && store.mobile.snapshot.last_publish == null) {

@@ -38,6 +38,7 @@ import type {
   R2Settings,
   MobileSettings,
   MobileStatus,
+  TailscaleStatus,
   R2Status,
   SnapshotSettings,
   Reevaluated,
@@ -327,6 +328,8 @@ export const mobile = {
   regenerateToken: () => invoke<MobileStatus>("mobile_regenerate_token"),
   saveSnapshot: (settings: SnapshotSettings, abandon = false) => invoke<MobileStatus>("mobile_snapshot_save", { settings, abandon }),
   publishNow: () => invoke<MobileStatus>("mobile_publish_now"),
+  tailscale: () => invoke<TailscaleStatus>("mobile_tailscale"),
+  tailscaleServe: (on: boolean) => invoke<TailscaleStatus>("mobile_tailscale_serve", { on }),
 };
 
 /** In-place updates from the GitHub releases. */

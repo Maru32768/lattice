@@ -6,6 +6,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use lattice_core::mobile::{self, Effects, MobileSettings, ServerMode};
 use lattice_core::mobile_publish::{self, SnapshotSettings, SnapshotStatus};
 use lattice_core::msg;
+use lattice_core::tailscale::{self, TailscaleStatus};
 use lattice_server::Server;
 use serde::Serialize;
 use std::sync::Arc;
@@ -255,4 +256,18 @@ mod tests {
         assert_eq!(with(ServerMode::Lan, "https://pc.example.ts.net").as_deref(), Some("https://pc.example.ts.net"));
         assert_eq!(with(ServerMode::Local, ""), None);
     }
+}
+
+/// Whether Tailscale Serve forwards this PC's `.ts.net` address to the server's port.
+#[tauri::command]
+pub async fn mobile_tailscale(app: State<'_, App>) -> Result<TailscaleStatus, String> {
+    Ok(tailscale::status(mobile::settings(&app.store)?.port).await)
+}
+
+/// Turns that forwarding on or off. Only on the reader's press: it changes Tailscale's own settings, which outlive the app.
+#[tauri::command]
+pub async fn mobile_tailscale_serve(on: bool, app: State<'_, App>) -> Result<TailscaleStatus, String> {
+    let port = mobile::settings(&app.store)?.port;
+    tailscale::serve(port, on).await?;
+    Ok(tailscale::status(port).await)
 }
