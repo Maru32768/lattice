@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ArticleRow, GroupRow } from "../bindings";
 import { useT } from "../i18n";
 import { NO_KEPT, activeDims, facetLabel, scopeLabel } from "../library/library";
@@ -48,6 +48,30 @@ export function ListPage({
   const [filtering, setFiltering] = useState(false);
   /** Only where popovers are not supported (iOS before 17): the menu then opens by this, and stays hidden otherwise. */
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuToggle = useRef<HTMLButtonElement>(null);
+  // What a popover does by itself: a tap outside the menu or Esc closes it.
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+    const outside = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!document.getElementById("m-menu")?.contains(target) && !menuToggle.current?.contains(target)) {
+        setMenuOpen(false);
+      }
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menuOpen]);
   const dims = activeDims(view.facets);
   const badgeOf = (a: ArticleRow) => {
     const b = badge(a, null, t);
@@ -106,6 +130,7 @@ export function ListPage({
             )}
           </button>
           <button
+            ref={menuToggle}
             className="m-icon"
             popoverTarget="m-menu"
             onClick={popovers ? undefined : () => setMenuOpen(!menuOpen)}
