@@ -214,6 +214,8 @@ pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
 /// Re-extracts an article that an older extractor read, from its stored page: what a newer one keeps (images inside
 /// paragraphs, since version 3) reaches the articles saved before it. A local job: no network, and no paid work.
 pub const REEXTRACT_JOB: &str = "reextract";
+/// A re-extraction that keeps less of the text than this, in percent, keeps the article as it was.
+const SHORTER_KEEPS_PERCENT: usize = 95;
 
 /// At startup: every web page extracted by an older `EXTRACTION_VERSION`. Returns the number of jobs queued.
 pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
@@ -234,6 +236,8 @@ pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
 /// which this version says nothing about.
 pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let err = |e: rusqlite::Error| e.to_string();
+    let keep_as_is =
+        || store.conn().execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION]).map(drop).map_err(err);
     let snap = match store.latest_snapshot(id) {
         Ok(snap) => snap,
         // A page that cannot be decoded will not decode next time. Anything else (the CLI holding the database) is tried again.
@@ -243,8 +247,7 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let snap = snap.filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url));
     let from_feed = snap.as_ref().is_some_and(|s| s.content_type.as_deref() == Some(FEED_CONTENT_TYPE));
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
-        store.conn().execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION]).map_err(|e| e.to_string())?;
-        return Ok(());
+        return keep_as_is();
     };
     let (prose_before, hash_before, error_before) = {
         let c = store.conn();
@@ -255,6 +258,12 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
         (prose, hash, error)
     };
     let prose_after: Vec<&str> = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect();
+    // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
+    // citations with them: what the article has stays.
+    let chars = |texts: &mut dyn Iterator<Item = &str>| texts.map(|t| t.chars().count()).sum::<usize>();
+    if chars(&mut prose_after.iter().copied()) * 100 < chars(&mut prose_before.iter().map(String::as_str)) * SHORTER_KEEPS_PERCENT {
+        return keep_as_is();
+    }
     let prose_same = prose_after.iter().copied().eq(prose_before.iter().map(String::as_str));
     let canonical = ir.meta.canonical_url.as_deref().and_then(|c| normalize(c).ok()).map(String::from);
     store.save_fetched(id, None, Ok(ir), canonical.as_deref()).map_err(|e| e.to_string())?;
@@ -447,6 +456,13 @@ mod tests {
         // As version 2 stored it: no image block.
         s.conn().execute("DELETE FROM blocks WHERE article_id = ?1 AND kind = 'image'", [id]).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        let (shorter, _) = s.upsert_pending("https://example.com/shorter", "https://example.com/shorter", "example.com").unwrap();
+        // Its stored page reads as a third of what the article holds.
+        store_fetched(&s, shorter, &page(BODY)).unwrap();
+        let held = extract(&page(&BODY.repeat(3)).html, "https://example.com/shorter").unwrap();
+        s.save_fetched(shorter, None, Ok(held), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [shorter]).unwrap();
+        let long = s.get_article(shorter, "ja").unwrap().unwrap().blocks.len();
         let (gone, _) = s.upsert_pending("https://example.com/gone", "https://example.com/gone", "example.com").unwrap();
         store_fetched(&s, gone, &page(BODY)).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [gone]).unwrap();
@@ -457,18 +473,20 @@ mod tests {
         let hash = "hash of the text alone";
         s.conn().execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash]).unwrap();
 
-        assert_eq!(enqueue_outdated(&s).unwrap(), 2);
+        assert_eq!(enqueue_outdated(&s).unwrap(), 3);
         assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
         reextract_outdated(&s, id).unwrap();
         let after: String = s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(after, hash, "the text is unchanged: a summary of it (by this hash) is not out of date for the image found in it");
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
         assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
+        reextract_outdated(&s, shorter).unwrap();
+        assert_eq!(s.get_article(shorter, "ja").unwrap().unwrap().blocks.len(), long, "a page read shorter keeps what the article has");
         reextract_outdated(&s, gone).unwrap();
         assert_eq!(s.get_article(gone, "ja").unwrap().unwrap().blocks.len(), kept, "a page that no longer reads keeps the article as it was");
         let versions: Vec<i64> =
             s.conn().prepare("SELECT extraction_version FROM articles").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-        assert_eq!(versions, [EXTRACTION_VERSION, EXTRACTION_VERSION]);
+        assert_eq!(versions, [EXTRACTION_VERSION; 3]);
     }
 
     #[test]
