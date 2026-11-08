@@ -60,9 +60,12 @@ mod tests {
         let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!("lattice-log-{}-{nanos}", std::process::id()));
         subscribe(&dir, EnvFilter::new("info")).unwrap();
+        // Dated before and after the write, in case UTC midnight falls between them.
+        let before = chrono::Utc::now().format("%Y-%m-%d").to_string();
         tracing::info_span!("job", id = 7, kind = %"translate").in_scope(|| log::warn!("provider failed"));
-        let utc_date = chrono::Utc::now().format("%Y-%m-%d");
-        let text = std::fs::read_to_string(dir.join(format!("lattice.{utc_date}.log")));
+        let after = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let read = |date: &str| std::fs::read_to_string(dir.join(format!("lattice.{date}.log")));
+        let text = read(&before).or_else(|_| read(&after));
         std::fs::remove_dir_all(&dir).unwrap();
         let text = text.unwrap();
         assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
