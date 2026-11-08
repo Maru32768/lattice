@@ -505,6 +505,21 @@ mod tests {
     }
 
     #[test]
+    fn an_article_whose_text_changed_gets_a_new_hash_when_read_again() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        // Its stored page reads longer than what it holds: a summary of the shorter text is out of date.
+        store_fetched(&s, id, &page(&BODY.repeat(2))).unwrap();
+        let held = extract(&page(BODY).html, "https://example.com/post").unwrap();
+        s.save_fetched(id, None, Ok(held), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        let hash = |s: &Store| -> String { s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap() };
+        let before = hash(&s);
+        reextract_outdated(&s, id).unwrap();
+        assert_ne!(hash(&s), before);
+    }
+
+    #[test]
     fn resaving_an_extracted_article_never_merges_it_away() {
         let s = Store::open_in_memory().unwrap();
         let (a, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
