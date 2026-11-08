@@ -57,6 +57,8 @@ dialog.m-sheet::backdrop { background: rgb(0 0 0 / .4); }
 .m-menu button { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 15px; text-align: left; }
 .m-menu button:active { background: var(--hover); }
 .m-menu button.danger { color: var(--err); }
+/* Without popovers the browser's own rule that hides a closed one is not there either. */
+@supports not selector(:popover-open) { .m-menu:not(.open) { display: none; } }
 .m-none, .m-note { color: var(--ink3); font-size: 14px; }
 .m-word { pointer-events: none; }
 .m-word > * { pointer-events: auto; }

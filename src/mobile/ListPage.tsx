@@ -10,6 +10,8 @@ import { FilterSheet } from "./FilterSheet";
 import { savableUrl } from "./urls";
 import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
 
+const popovers = typeof HTMLElement !== "undefined" && "showPopover" in HTMLElement.prototype;
+
 export function ListPage({
   articles,
   groups,
@@ -44,6 +46,8 @@ export function ListPage({
   const [refreshing, setRefreshing] = useState(false);
   const { base, rows } = visibleArticles(articles, view);
   const [filtering, setFiltering] = useState(false);
+  /** Only where popovers are not supported (iOS before 17): the menu then opens by this, and stays hidden otherwise. */
+  const [menuOpen, setMenuOpen] = useState(false);
   const dims = activeDims(view.facets);
   const badgeOf = (a: ArticleRow) => {
     const b = badge(a, null, t);
@@ -101,7 +105,13 @@ export function ListPage({
               </span>
             )}
           </button>
-          <button className="m-icon" popoverTarget="m-menu" aria-label={t("mobile.menu")} aria-haspopup="menu">
+          <button
+            className="m-icon"
+            popoverTarget="m-menu"
+            onClick={popovers ? undefined : () => setMenuOpen(!menuOpen)}
+            aria-label={t("mobile.menu")}
+            aria-haspopup="menu"
+          >
             <Icon name="more" />
           </button>
         </div>
@@ -133,13 +143,14 @@ export function ListPage({
         count={rows.length}
       />
       {/* A popover: a tap outside or Esc closes it, as a menu should. */}
-      <div id="m-menu" className="m-menu" popover="auto" role="menu" aria-label={t("mobile.menu")}>
+      <div id="m-menu" className={menuOpen ? "m-menu open" : "m-menu"} popover="auto" role="menu" aria-label={t("mobile.menu")}>
         <button
           role="menuitem"
           className="danger"
           popoverTarget="m-menu"
           popoverTargetAction="hide"
           onClick={() => {
+            setMenuOpen(false);
             if (window.confirm(t("mobile.disconnectConfirm"))) {
               onDisconnect();
             }
