@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { build, defineConfig } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import process from "node:process";
@@ -15,6 +15,19 @@ export default defineConfig(() => ({
       enforce: "pre" as const,
       transform: (code: string, id: string) => (/@fontsource.*\.css$/.test(id) ? code.replace(/,\s*url\([^)]+\.woff\) format\('woff'\)/g, "") : undefined),
     },
+    // Under `tauri dev`, the phone's page is rebuilt on every change: a debug build of the PC's server reads it from
+    // disk (lattice-server `page_bytes`). Not for the e2e server, whose specs read those files while they run.
+    ...(process.env.TAURI_ENV_PLATFORM
+      ? [
+          {
+            name: "phone-page-watch",
+            apply: "serve" as const,
+            configureServer() {
+              void build({ configFile: "vite.mobile.config.ts", build: { watch: {} }, logLevel: "warn" });
+            },
+          },
+        ]
+      : []),
   ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

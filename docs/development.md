@@ -131,7 +131,7 @@ mise exec -- node scripts/icons.ts
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser, pop-out windows. |
 | `src` | The React frontend, one folder per feature (`library`, `reader`, `browser`, `chat`, `search`, `feeds`, `import`, `quiz`, `vocab`, `jobs`, `settings`), the app shell (`app`) and pane layout (`layout`), with shared UI parts in `ui` and helpers in `lib`. `api.ts` (the IPC client) and `main.tsx` stay at the top. |
 | `src/i18n` | The UI text catalogs and the translation functions. |
-| `src/mobile` | The phone page, built into `crates/lattice-server/mobile-dist` by `npm run build:overlay`. |
+| `src/mobile` | The phone page, built into `crates/lattice-server/mobile-dist` by `npm run build:overlay`. Under `mise run dev` it is rebuilt on every change, and a debug build serves it from disk: reload the phone to see a change. |
 | `src/overlay` | The script injected into pages in the in-app browser (translation overlay, page snapshots, shortcut forwarding). |
 | `src/lib/keymap.ts` | The key table and the one key state machine, shared by the app and the overlay. |
 | `src/docnav` | Keyboard reading of a document (labels, caret, find), shared by the Reader and the overlay. |

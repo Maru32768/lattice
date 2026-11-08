@@ -46,6 +46,17 @@ pub const ASSETS: &[Asset] = &[
 ];
 
 /// The page's files as the snapshot publishes them.
+/// A debug build serves the page as it is on disk, which `npm run dev` rebuilds on every change: a reload on the phone
+/// shows it, where the copy built in would wait for the app to be rebuilt. A release serves its own copy.
+fn page_bytes(asset: &Asset) -> Bytes {
+    if cfg!(debug_assertions)
+        && let Ok(bytes) = std::fs::read(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("mobile-dist").join(asset.path))
+    {
+        return Bytes::from(bytes);
+    }
+    Bytes::from_static(asset.bytes)
+}
+
 pub fn page_files() -> Vec<(&'static str, &'static [u8])> {
     ASSETS.iter().map(|a| (a.path, a.bytes)).collect()
 }
@@ -240,7 +251,7 @@ async fn page(method: Method, headers: HeaderMap, request: Request) -> Response 
     let Some(asset) = ASSETS.iter().find(|a| a.path == path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let mut response = encoded(&headers, asset.content_type, Bytes::from_static(asset.bytes), !asset.content_type.starts_with("image/")).await;
+    let mut response = encoded(&headers, asset.content_type, page_bytes(asset), !asset.content_type.starts_with("image/")).await;
     let h = response.headers_mut();
     h.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
     h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
