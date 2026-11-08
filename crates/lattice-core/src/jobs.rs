@@ -1,7 +1,8 @@
 //! In-process job runners. The queue lives in SQLite, so jobs survive crashes and restarts.
 //! Each runner drains a subset of job types serially: LLM jobs (rate-limited CLIs), local jobs
-//! (embeddings) and network jobs (bulk-import fetches, several runners) run separately so a long
-//! translation queue never delays indexing or importing. A reserved slot (`run_foreground`) runs
+//! (embeddings), bulk jobs (re-extracting a library) and network jobs (bulk-import fetches, several runners) run
+//! separately so a long translation queue never delays indexing or importing. A job type that may come by the thousand
+//! gets a list of its own here, and a runner, rather than joining one whose jobs a reader waits for. A reserved slot (`run_foreground`) runs
 //! only the jobs of the articles on screen, so the one being read never waits behind the queue.
 
 use std::convert::Infallible;
