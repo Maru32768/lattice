@@ -1,0 +1,2 @@
+-- articles.content_hash is now of the text alone: no image blocks.
+-- store::rehash_content recomputes it after this migration; nothing changes in the schema.

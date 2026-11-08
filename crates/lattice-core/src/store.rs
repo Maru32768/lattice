@@ -56,7 +56,10 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00035_job_requeue.sql"),
     include_str!("../db/migrations/00036_mobile_ops.sql"),
     include_str!("../db/migrations/00037_mobile_published.sql"),
+    include_str!("../db/migrations/00038_content_hash_of_the_text.sql"),
 ];
+/// After this migration every article's `content_hash` is recomputed (`rehash_content`).
+const REHASH_AT: usize = 38;
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
 /// then folding http into https (28; a feed linking http:// showed its saved page as unsaved).
@@ -454,8 +457,36 @@ const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND ki
 
 /// What says a summary or quiz is out of date: the text, not the images in it (finding one more image changes nothing a
 /// summary says).
+fn text_hash<'a>(texts: impl Iterator<Item = &'a str>) -> String {
+    sha256_hex(texts.collect::<Vec<_>>().join("\n"))
+}
+
 fn content_hash(blocks: &[Block]) -> String {
-    sha256_hex(prose(blocks).collect::<Vec<_>>().join("\n"))
+    text_hash(prose(blocks))
+}
+
+/// `content_hash` was once of every block, image blocks included (`REHASH_AT`): recomputed from the stored blocks. The
+/// summaries and quizzes that recorded the old hash move with it, as their text is the same.
+fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
+    let articles: Vec<(i64, Option<String>)> = tx
+        .prepare("SELECT id, content_hash FROM articles WHERE extraction_status = 'ok'")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_>>()?;
+    let mut text = tx.prepare(STORED_PROSE)?;
+    for (id, old) in articles {
+        let texts: Vec<String> = text.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
+        let hash = text_hash(texts.iter().map(String::as_str));
+        if old.as_deref() == Some(hash.as_str()) {
+            continue;
+        }
+        tx.execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash])?;
+        if let Some(old) = old {
+            for table in ["summaries", "quizzes"] {
+                tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// What `Store::save_reextraction` did.
@@ -582,6 +613,9 @@ impl Store {
             tx.execute_batch(sql)?;
             if RENORMALIZE_AT.contains(&(i + 1)) {
                 renormalize_urls(&tx)?;
+            }
+            if i + 1 == REHASH_AT {
+                rehash_content(&tx)?;
             }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
@@ -835,10 +869,8 @@ impl Store {
     }
 
     /// A re-extraction of a page already stored (`ingest::REEXTRACT_JOB`), in one transaction: the blocks, the version and
-    /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. When
-    /// the text is what it was, the summaries and quizzes made of it stay current: they move to the hash as it is now
-    /// computed (the hash once took image blocks in). What the article holds is read here, under the same lock: a
-    /// refetch saved since the page was read has the say.
+    /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. What
+    /// the article holds is read here, under the same lock: a refetch saved since the page was read has the say.
     pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<Reextracted> {
         let mut c = self.conn();
         let tx = c.transaction()?;
@@ -847,7 +879,6 @@ impl Store {
         if version.is_none_or(|v| v >= EXTRACTION_VERSION) {
             return Ok(Reextracted::Kept);
         }
-        let old_hash: Option<String> = tx.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten();
         let held: Vec<String> = tx.prepare(STORED_PROSE)?.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
         let chars = |t: &str| t.chars().count();
         // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
@@ -857,19 +888,12 @@ impl Store {
             tx.commit()?;
             return Ok(Reextracted::Kept);
         }
-        let same_text = prose(&ir.blocks).eq(held.iter().map(String::as_str));
         replace_blocks(&tx, id, &ir.blocks)?;
-        let hash = content_hash(&ir.blocks);
         let text_length: usize = ir.blocks.iter().map(|b| chars(&b.text)).sum();
         tx.execute(
             "UPDATE articles SET content_hash = ?2, extraction_version = ?3, text_length = ?4 WHERE id = ?1",
-            params![id, hash, EXTRACTION_VERSION, text_length as i64],
+            params![id, content_hash(&ir.blocks), EXTRACTION_VERSION, text_length as i64],
         )?;
-        if same_text && let Some(old) = old_hash {
-            for table in ["summaries", "quizzes"] {
-                tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
-            }
-        }
         tx.commit()?;
         Ok(Reextracted::Saved)
     }
@@ -1725,6 +1749,37 @@ mod tests {
         let feeds = crate::feeds::list(&s).unwrap();
         assert_eq!((feeds[0].rejected, feeds[0].filtered, feeds[0].filter_note.as_deref()), (0, false, None));
         assert_eq!(crate::feeds::import(&s, 1, &[crate::feeds::Entry { url: "https://a.dev/1".into(), ..Default::default() }]).unwrap(), 0, "seen before");
+    }
+
+    #[test]
+    fn the_content_hash_is_recomputed_once_and_summaries_of_the_same_text_move_with_it() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let ir = crate::extract::extract(
+            "<html><body><article><p>Snapshot isolation still permits write skew, which is why SSI exists in the database.</p><p><img src=\"/f.png\" alt=\"Fig\"></p></article></body></html>",
+            "https://example.com/a",
+        )
+        .unwrap();
+        s.save_fetched(id, None, Ok(ir), None).unwrap();
+        s.exec_for_test(&format!(
+            "UPDATE articles SET content_hash = 'of every block' WHERE id = {id};
+             INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
+               ({id}, 'summary', 'Current then.', 'of every block', 't', 'v'), ({id}, 'summary', 'Stale then.', 'older', 't', 'v');"
+        ));
+        let mut c = s.conn();
+        let tx = c.transaction().unwrap();
+        rehash_content(&tx).unwrap();
+        tx.commit().unwrap();
+        let rows: Vec<(String, bool)> = c
+            .prepare("SELECT s.text, s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id ORDER BY s.id")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(rows, [("Current then.".into(), true), ("Stale then.".into(), false)]);
+        let hash: String = c.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(hash, text_hash(["Snapshot isolation still permits write skew, which is why SSI exists in the database."].into_iter()));
     }
 
     #[test]

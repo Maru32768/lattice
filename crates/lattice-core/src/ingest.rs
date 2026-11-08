@@ -439,13 +439,12 @@ mod tests {
         s.conn().execute("UPDATE snapshots SET body = x'' WHERE article_id = ?1", [gone]).unwrap();
         let kept = s.get_article(gone, "ja").unwrap().unwrap().blocks.len();
 
-        // As it stood then: a hash computed another way, a summary that records it, a feed's title and date.
-        s.conn()
-            .execute("UPDATE articles SET content_hash = 'the hash of then', title = 'The feed title', published_at = '2026-01-02' WHERE id = ?1", [id])
-            .unwrap();
+        // A summary of its text, and a feed's title and date.
+        s.conn().execute("UPDATE articles SET title = 'The feed title', published_at = '2026-01-02' WHERE id = ?1", [id]).unwrap();
         s.conn()
             .execute(
-                "INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES (?1, 'summary', 'A summary.', 'the hash of then', 'test', 'v')",
+                "INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version)
+                 SELECT id, 'summary', 'A summary.', content_hash, 'test', 'v' FROM articles WHERE id = ?1",
                 [id],
             )
             .unwrap();
