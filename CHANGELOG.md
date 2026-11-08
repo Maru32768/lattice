@@ -23,6 +23,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Fixed
 
+- Images placed inside paragraphs or links were left out of the text and never showed in the Reader (the figures of many tech blogs). They are kept now, and saved articles are read again from their stored pages. This uses no network and no LLM, and translations stay.
 - The Reader went back to the top when its pane split, closed or swapped, and when you came back to its tab. It now keeps the paragraph you were reading.
 - Saving several articles from a site that names one page (often its home page) as canonical on every page kept only the first. Articles now merge only when their text matches. When they do merge, the tags, star, note and collections you gave the merged article move to the one that stays.
 - While your data folder was unusable and Lattice ran from the default location, backups to R2 kept running, and uploads of the old data there replaced your library's backups one by one. Backups to R2 now stop until the folder is back.

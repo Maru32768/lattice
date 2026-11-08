@@ -26,7 +26,7 @@ pub const LLM_JOBS: &[&str] =
 /// on the general LLM runner without waiting behind it.
 pub const TRANSLATE_JOBS: &[&str] = &[translate::JOB_TYPE];
 pub const OTHER_LLM_JOBS: &[&str] = &[summarize::JOB_TYPE, classify::JOB_TYPE, quiz::JOB_TYPE, vocab::JOB_TYPE, relevance::JOB_TYPE, feed_filter::JOB_TYPE];
-pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE];
+pub const LOCAL_JOBS: &[&str] = &[embed::JOB_TYPE, ingest::REEXTRACT_JOB];
 pub const NET_JOBS: &[&str] = &[ingest::JOB_TYPE, images::JOB_TYPE, favicons::JOB_TYPE];
 
 /// Upper bound on how long a backed-off job waits past its `next_run_at`.
@@ -308,6 +308,11 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
             embed::enqueue(store, id, p.embedder.model_id())
         }
         images::JOB_TYPE => images::run(store, &p.http, article_id).await,
+        // Unchanged blocks keep their ids, and with them their embeddings: only new ones are embedded.
+        ingest::REEXTRACT_JOB => {
+            ingest::reextract_outdated(store, article_id)?;
+            embed::enqueue(store, article_id, p.embedder.model_id())
+        }
         other => Err(format!("unknown job type: {other}")),
     }
 }

@@ -7,8 +7,9 @@ use url::Url;
 
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 
-/// Bump when segmentation output changes, so stored articles can be re-extracted.
-pub const EXTRACTION_VERSION: i64 = 2;
+/// Bump when segmentation output changes: the articles an older version read are re-extracted from their
+/// stored pages (`ingest::REEXTRACT_JOB`). 3: images inside paragraphs and links.
+pub const EXTRACTION_VERSION: i64 = 3;
 
 /// Asides inside the article body: boxed sidebars and footnotes that belong to the text.
 const BODY_ASIDES: &str = "article aside, main aside, [role=main] aside, [itemprop=articleBody] aside";

@@ -1384,6 +1384,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.state::<Browser>().set_skip_sites(app.handle(), translate::page_skip_sites(&store)?)?;
     store.enqueue_missing_embeddings(embed::JOB_TYPE, providers.embedder.model_id(), PROSE_KINDS)?;
     images::enqueue_missing(&store)?;
+    ingest::enqueue_outdated(&store)?;
     classify::enqueue_missing(&store)?;
     vocab::enqueue_missing(&store)?;
     feed_filter::enqueue_pending(&store)?;
@@ -1414,6 +1415,9 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     _ => Ok(()),
                 },
             };
+            if job.job_type == ingest::REEXTRACT_JOB {
+                fetchers.iter().for_each(|w| w.notify_one()); // a re-extracted article has queued its images job
+            }
             if types == NET_JOBS {
                 embedder_wake.notify_one(); // a fetched article has just queued its embed job
                 llm_wake.iter().for_each(|w| w.notify_one()); // ... and maybe its classify (and translate) job

@@ -1,12 +1,12 @@
 //! URL -> fetch -> extract -> store. Failures are recorded on the article, not raised:
 //! a failed article stays visible and saving the same URL again retries it.
 
-use crate::extract::extract;
+use crate::extract::{EXTRACTION_VERSION, extract};
 use crate::fetch::{Fetched, HttpClient, Resource, fetch_resource};
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use quick_xml::escape::escape;
-use rusqlite::OptionalExtension;
+use rusqlite::{OptionalExtension, params};
 use ts_rs::TS;
 
 pub const JOB_TYPE: &str = "ingest";
@@ -210,6 +210,42 @@ pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
     extract_into(store, id, &snap.html(), &snap.final_url, None)
 }
 
+/// Re-extracts an article that an older extractor read, from its stored page: what a newer one keeps (images inside
+/// paragraphs, since version 3) reaches the articles saved before it. A local job: no network, and no paid work.
+pub const REEXTRACT_JOB: &str = "reextract";
+
+/// At startup: every web page extracted by an older `EXTRACTION_VERSION`. Returns the number of jobs queued.
+pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
+    store
+        .conn()
+        .execute(
+            "INSERT INTO processing_jobs (type, article_id, params, dedup_key)
+             SELECT ?1, id, '{}', ?1 || ':' || id FROM articles WHERE extraction_status = 'ok' AND extraction_version < ?2
+             ON CONFLICT(dedup_key) DO UPDATE SET status = 'pending', attempt_count = 0, last_error = NULL, next_run_at = NULL
+             WHERE status IN ('succeeded', 'failed')",
+            params![REEXTRACT_JOB, EXTRACTION_VERSION],
+        )
+        .map_err(|e| e.to_string())
+}
+
+/// The job. A page that does not read now (gone, damaged, or no longer extracting) keeps the article as it is: what it
+/// has is better than nothing, and trying again would not change that. PDFs and Markdown have extractors of their own,
+/// which this version says nothing about.
+pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
+    let snap = store.latest_snapshot(id).ok().flatten();
+    let ir = snap
+        .filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url))
+        .and_then(|s| extract(&s.html(), &s.final_url).ok());
+    let Some(ir) = ir else {
+        store.conn().execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION]).map_err(|e| e.to_string())?;
+        return Ok(());
+    };
+    let canonical = ir.meta.canonical_url.as_deref().and_then(|c| normalize(c).ok()).map(String::from);
+    store.save_fetched(id, None, Ok(ir), canonical.as_deref()).map_err(|e| e.to_string())?;
+    crate::images::enqueue(store, id)?;
+    Ok(())
+}
+
 fn extract_into(store: &Store, id: i64, html: &str, url: &str, snapshot: Option<&Fetched>) -> Result<i64, String> {
     let extracted = extract(html, url).map_err(|e| e.to_string());
     let canonical = extracted.as_ref().ok().and_then(|ir| ir.meta.canonical_url.as_deref()).and_then(|c| normalize(c).ok()).map(String::from);
@@ -374,6 +410,33 @@ mod tests {
         assert_eq!(reextract(&s, id).unwrap(), id);
         let again: Vec<i64> = s.get_article(id, "ja").unwrap().unwrap().blocks.iter().map(|b| b.id).collect();
         assert_eq!(again, ids, "unchanged blocks keep their ids");
+    }
+
+    #[test]
+    fn an_article_an_older_extractor_read_is_read_again_from_its_page() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        let with_image = format!("{BODY}<p><img src=\"/fig.png\" alt=\"A figure\"></p>");
+        store_fetched(&s, id, &page(&with_image)).unwrap();
+        // As version 2 stored it: no image block.
+        s.conn().execute("DELETE FROM blocks WHERE article_id = ?1 AND kind = 'image'", [id]).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        let (gone, _) = s.upsert_pending("https://example.com/gone", "https://example.com/gone", "example.com").unwrap();
+        store_fetched(&s, gone, &page(BODY)).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [gone]).unwrap();
+        s.conn().execute("UPDATE snapshots SET body = x'' WHERE article_id = ?1", [gone]).unwrap();
+        let kept = s.get_article(gone, "ja").unwrap().unwrap().blocks.len();
+
+        assert_eq!(enqueue_outdated(&s).unwrap(), 2);
+        assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
+        reextract_outdated(&s, id).unwrap();
+        let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
+        assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
+        reextract_outdated(&s, gone).unwrap();
+        assert_eq!(s.get_article(gone, "ja").unwrap().unwrap().blocks.len(), kept, "a page that no longer reads keeps the article as it was");
+        let versions: Vec<i64> =
+            s.conn().prepare("SELECT extraction_version FROM articles").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(versions, [EXTRACTION_VERSION, EXTRACTION_VERSION]);
     }
 
     #[test]

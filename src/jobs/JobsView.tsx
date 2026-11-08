@@ -13,6 +13,7 @@ const TYPES: { type: string; label: PlainKey; about: PlainKey; hint?: PlainKey }
   { type: "feed_filter", label: "jobsView.feedFilter", about: "jobsView.feedFilterAbout", hint: "jobsView.feedFilterHint" },
   { type: "ingest", label: "jobsView.ingest", about: "jobsView.ingestAbout" },
   { type: "render", label: "jobsView.render", about: "jobsView.renderAbout", hint: "jobsView.renderHint" },
+  { type: "reextract", label: "jobsView.reextract", about: "jobsView.reextractAbout" },
   { type: "images", label: "jobsView.images", about: "jobsView.imagesAbout" },
   { type: "favicon", label: "jobsView.favicon", about: "jobsView.faviconAbout" },
   { type: "embed", label: "jobsView.embed", about: "jobsView.embedAbout" },
