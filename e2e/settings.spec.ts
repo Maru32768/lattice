@@ -269,8 +269,8 @@ test("Tailscale Serve is turned on from the screen, and its address becomes the 
     .toEqual({
       settings: { mode: "local", port: 8787, public_url: "https://desktop.example.ts.net/" },
     });
-  await app.getByRole("button", { name: "公開をやめる" }).click();
-  await expect(app.getByRole("button", { name: "Tailscale Serveで公開" })).toBeVisible();
   await app.getByLabel("ポート").fill("9000");
+  await expect(app.getByRole("button", { name: "公開をやめる" }), "stopping does not depend on the port").toBeEnabled();
+  await app.getByRole("button", { name: "公開をやめる" }).click();
   await expect(app.getByRole("button", { name: "Tailscale Serveで公開" }), "Serve forwards to the saved port").toBeDisabled();
 });
