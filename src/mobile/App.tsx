@@ -99,6 +99,15 @@ export function App() {
   const [icons, setIcons] = useState<Record<string, string>>({});
   /** The icons are asked for once per page and library. */
   const iconsAsked = useRef(false);
+  /** Counts the libraries this page has shown: an answer for one is not kept for the next. */
+  const library = useRef(0);
+  /** Another library: nothing of the last one carries over, as article ids mean something else there. */
+  const forgetLibrary = () => {
+    library.current++;
+    iconsAsked.current = false;
+    setIcons({});
+    setView(FIRST_VIEW);
+  };
   const ops = useSyncExternalStore(subscribeOps, localOps);
   const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
   const listScroll = useRef(0);
@@ -124,11 +133,16 @@ export function App() {
       // change, and a refresh need not fetch them again on mobile data.
       if (!iconsAsked.current) {
         iconsAsked.current = true;
-        // Not kept when another request has taken over, or when it failed: the next refresh asks again.
-        const ask = () => {
-          iconsAsked.current = false;
-        };
-        void loadIcons().then((got) => (request === latest.current ? setIcons(got) : ask()), ask);
+        // Kept whichever refresh asked, as icons go by site; not for another library. One that failed is asked again.
+        const asked = library.current;
+        void loadIcons().then(
+          (got) => asked === library.current && setIcons(got),
+          () => {
+            if (asked === library.current) {
+              iconsAsked.current = false;
+            }
+          },
+        );
       }
       setRefreshFailed(saved);
     } catch (e) {
@@ -155,9 +169,7 @@ export function App() {
     const adopted = adoptToken();
     if (adopted) {
       if (adopted === "other library") {
-        iconsAsked.current = false;
-        // Article ids mean something else in another library: nothing kept in the view may carry over.
-        setView(FIRST_VIEW);
+        forgetLibrary();
       }
       setLoad({ state: "loading" });
       void refresh();
@@ -209,8 +221,7 @@ export function App() {
         <Connect
           onAdopted={(adopted) => {
             if (adopted === "other library") {
-              iconsAsked.current = false;
-              setView(FIRST_VIEW);
+              forgetLibrary();
             }
             setLoad({ state: "loading" });
             void refresh();
@@ -294,9 +305,7 @@ export function App() {
         onDisconnect={() => {
           latest.current++; // a late answer must not bring the list back
           void disconnect().then(() => {
-            iconsAsked.current = false;
-            setIcons({});
-            setView(FIRST_VIEW);
+            forgetLibrary();
             setLoad({ state: "no-token" });
           });
         }}

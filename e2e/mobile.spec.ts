@@ -386,6 +386,27 @@ test("an image the PC stored shows in the text, fetched with the token; one it h
   await expect(page.getByRole("link", { name: "画像: A figure" }), "an image that does not render").toBeVisible();
 });
 
+test("the icons are fetched once a page, and a refresh while they come keeps them", async ({ page }) => {
+  const dot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  let asked = 0;
+  // The first page's own ask is answered first: only the reloaded page's are counted.
+  const first = page.waitForResponse("**/api/icons");
+  await start(page);
+  await first;
+  await page.route("**/api/icons", async (route) => {
+    asked++;
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.fulfill({ json: { format: 1, icons: { "example.com": dot } } });
+  });
+  await page.reload();
+  await page.getByText("First article").waitFor();
+  await page.getByRole("button", { name: "更新" }).click();
+  await expect(page.getByRole("link", { name: /First article/ }).locator("img")).toHaveAttribute("src", dot);
+  await page.getByRole("button", { name: "更新" }).click();
+  await page.waitForTimeout(500);
+  expect(asked).toBe(1);
+});
+
 test("a new token of the same library keeps the view; another library's starts over", async ({ page }) => {
   await start(page);
   await page.evaluate(() => (location.hash = "#t=secret&l=lib"));
