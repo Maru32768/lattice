@@ -376,6 +376,10 @@ test("an image the PC stored shows in the text, fetched with the token; one it h
   await page.route("**/api/images/12", (route) => route.fulfill({ status: 200, body: "<html>login</html>", headers: { "content-type": "text/html" } }));
   await page.reload();
   await expect(page.getByRole("link", { name: "画像: A figure" }), "a tunnel's page in place of the image").toBeVisible();
+  await page.unroute("**/api/images/12");
+  await page.route("**/api/images/12", (route) => route.fulfill({ body: "not an image", headers: { "content-type": "image/png" } }));
+  await page.reload();
+  await expect(page.getByRole("link", { name: "画像: A figure" }), "an image that does not render").toBeVisible();
 });
 
 const LONG = {

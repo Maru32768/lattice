@@ -92,7 +92,8 @@ function StoredImage({ block }: { block: StoredBlock }) {
   }, [block.id]);
   return (
     <figure className="image" ref={ref}>
-      {url ? <img src={url} alt={block.text} /> : <ImageFallback block={block} />}
+      {/* One that does not render (a Worker deployed before blob: was in its CSP) goes back to the link. */}
+      {url ? <img src={url} alt={block.text} onError={() => setUrl(null)} /> : <ImageFallback block={block} />}
     </figure>
   );
 }
