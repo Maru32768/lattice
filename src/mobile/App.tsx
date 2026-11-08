@@ -15,6 +15,7 @@ import {
   disconnect,
   flushOps,
   hasToken,
+  loadIcons,
   loadIndex,
   localOps,
   submit,
@@ -89,6 +90,7 @@ export function App() {
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
   const [view, setView] = useState<ListView>(FIRST_VIEW);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [icons, setIcons] = useState<Record<string, string>>({});
   const ops = useSyncExternalStore(subscribeOps, localOps);
   const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
   const listScroll = useRef(0);
@@ -110,6 +112,11 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
+      // After the list, which says where the PC is: the icons come from the same place.
+      void loadIcons().then(
+        (got) => request === latest.current && setIcons(got),
+        () => {},
+      );
       setRefreshFailed(saved);
     } catch (e) {
       if (request !== latest.current) {
@@ -254,6 +261,7 @@ export function App() {
       <ListPage
         articles={load.index.articles.map((a) => withOps(a, shownOps))}
         groups={load.index.groups ?? []}
+        icons={icons}
         unsent={unsent}
         writable={!load.index.read_only}
         view={view}
@@ -262,7 +270,10 @@ export function App() {
         refreshFailed={refreshFailed}
         onDisconnect={() => {
           latest.current++; // a late answer must not bring the list back
-          void disconnect().then(() => setLoad({ state: "no-token" }));
+          void disconnect().then(() => {
+            setIcons({});
+            setLoad({ state: "no-token" });
+          });
         }}
         onOpen={(a) => {
           listScroll.current = window.scrollY;

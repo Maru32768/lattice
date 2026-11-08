@@ -30,6 +30,7 @@ const LAST_REJECTED: &str = "mobile.snapshot.last_rejected";
 
 const AUTH_KEY: &str = "auth.json";
 const INDEX_KEY: &str = "index.json";
+const ICONS_KEY: &str = "icons.json";
 const INBOX_PREFIX: &str = "inbox/";
 const PAGE_PREFIX: &str = "page/";
 const ARTICLE_PREFIX: &str = "articles/";
@@ -363,6 +364,10 @@ pub(crate) async fn publish<B: Bucket>(
     for (name, bytes) in page {
         uploads.put_if_changed(format!("{PAGE_PREFIX}{name}"), sha256_hex(bytes), bytes.to_vec(), !name.ends_with(".png")).await?;
     }
+
+    let s = store.clone();
+    let icons = blocking(move || serde_json::to_vec(&mobile::icons(&s)?).map_err(err)).await?;
+    uploads.put_if_changed(ICONS_KEY.to_string(), sha256_hex(&icons), icons, true).await?;
 
     let s = store.clone();
     let (index, gz) = blocking(move || {

@@ -86,6 +86,7 @@ function snapshotBucket(generatedAt: number, liveOrigin: string | null) {
         }),
       ),
     ],
+    ["icons.json", gzipSync(JSON.stringify({ format: 1, icons: {} }))],
     ["articles/1.json", gzipSync(JSON.stringify(article(1, "Snapshot one", "the snapshot's text")))],
     ["articles/2.json", gzipSync(JSON.stringify(article(2, "Snapshot two", "the second text")))],
   ]);

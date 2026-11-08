@@ -75,12 +75,13 @@ test("a new token from the PC takes over within a minute, without a deployment",
 });
 
 test("documents come as the PC stored them, marked as compressed", async () => {
-  const b = bucket({ "index.json": gzipSync('{"articles":[]}'), "articles/12.json": gzipSync('{"id":12}') });
+  const b = bucket({ "index.json": gzipSync('{"articles":[]}'), "articles/12.json": gzipSync('{"id":12}'), "icons.json": gzipSync('{"icons":{}}') });
   const index = await call(b, "/api/index");
   assert.equal(index.headers.get("content-encoding"), "gzip");
   assert.equal(index.headers.get("cache-control"), "no-store");
   assert.equal(gunzipSync(Buffer.from(await index.arrayBuffer())).toString(), '{"articles":[]}');
   assert.equal((await call(b, "/api/articles/12")).status, 200);
+  assert.equal((await call(b, "/api/icons")).status, 200);
   assert.equal((await call(b, "/api/articles/13")).status, 404);
   for (const path of ["/api/articles/12.json", "/api/articles/..%2Fauth", "/api/articles/1/2", "/api/auth", "/api/inbox"]) {
     assert.equal((await call(b, path)).status, 404, path);

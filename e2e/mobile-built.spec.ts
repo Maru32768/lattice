@@ -43,6 +43,9 @@ test("the built page runs under the server's CSP", async ({ page }) => {
     if (path === "api/index") {
       return route.fulfill({ json: { format: 1, generated_at: 1, ui_language: "ja", applied_ops: [], articles: [ARTICLE.article] } });
     }
+    if (path === "api/icons") {
+      return route.fulfill({ json: { format: 1, icons: {} } });
+    }
     if (path === "api/ops") {
       return route.fulfill({ json: { status: "applied" } });
     }

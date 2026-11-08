@@ -1,5 +1,5 @@
 // The phone page's side of the API (design-review §32) and what it remembers on the device.
-import type { ArticleDoc, ArticleRow, MobileIndex, MobileOp, MobileOpKind } from "../bindings";
+import type { ArticleDoc, ArticleRow, MobileIcons, MobileIndex, MobileOp, MobileOpKind } from "../bindings";
 import type { LanguageMode } from "../reader/mixed.ts";
 
 /** The documents this page can read. `mobile::FORMAT`: a page and its documents can differ for a while, across an update. */
@@ -163,7 +163,7 @@ async function keep(path: string, doc: unknown) {
 }
 
 /** A document as it crosses the network: its `format` says whether this page can read the rest. */
-type Doc = MobileIndex | ArticleDoc;
+type Doc = MobileIndex | ArticleDoc | MobileIcons;
 
 async function savedDoc(path: string): Promise<Doc | null> {
   try {
@@ -255,6 +255,12 @@ export async function loadIndex(): Promise<{ index: MobileIndex; saved: boolean 
     updateOps((local) => settled(local, index.applied_ops, Date.now()));
   }
   return { index, saved: found.saved };
+}
+
+/** The sites' icons by domain. None from a server that has no such document yet (an older app or Worker). */
+export async function loadIcons(): Promise<Record<string, string>> {
+  const { doc } = await document("api/icons");
+  return (doc as MobileIcons | null)?.icons ?? {};
 }
 
 /** Null when the article is gone, and whether it is the saved copy. */

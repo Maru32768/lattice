@@ -88,6 +88,7 @@ pub fn router(store: Arc<Store>, on_applied: Option<OnApplied>) -> Router {
     Router::new()
         .route("/api/ping", get(|| async { json_headers(Response::new(Body::from("{}"))) }))
         .route("/api/index", get(index))
+        .route("/api/icons", get(icons))
         .route("/api/articles/{id}", get(article))
         .route("/api/ops", post(submit).layer(DefaultBodyLimit::max(MAX_OP_BYTES)))
         .route_layer(middleware::from_fn_with_state(ctx.store.clone(), require_token))
@@ -217,6 +218,14 @@ async fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
     json_headers(encoded(request, "application/json", body.into(), true).await)
 }
 
+async fn icons(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
+    let store = ctx.store;
+    match blocking(move || serde_json::to_vec(&mobile::icons(&store)?).map_err(|e| e.to_string())).await {
+        Ok(body) => json_response(&headers, body).await,
+        Err(e) => internal_error(&e),
+    }
+}
+
 async fn index(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     let read_only = ctx.on_applied.is_none();
     let store = ctx.store;
@@ -318,7 +327,7 @@ mod tests {
     #[tokio::test]
     async fn the_api_needs_the_token() {
         let (app, _, token) = app();
-        for path in ["/api/ping", "/api/index", "/api/articles/1"] {
+        for path in ["/api/ping", "/api/index", "/api/icons", "/api/articles/1"] {
             assert_eq!(get_with(&app, path, None).await.status(), StatusCode::UNAUTHORIZED, "{path}");
             assert_eq!(get_with(&app, path, Some("wrong")).await.status(), StatusCode::UNAUTHORIZED, "{path}");
         }
@@ -357,6 +366,8 @@ mod tests {
         let doc: serde_json::Value = serde_json::from_slice(&body_of(get_with(&app, &format!("/api/articles/{id}"), Some(&token)).await).await).unwrap();
         assert_eq!(doc["article"]["original_url"], "https://example.com/a");
         assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(&token)).await.status(), StatusCode::NOT_FOUND);
+        let icons: serde_json::Value = serde_json::from_slice(&body_of(get_with(&app, "/api/icons", Some(&token)).await).await).unwrap();
+        assert_eq!(icons, serde_json::json!({ "format": mobile::FORMAT, "icons": {} }));
     }
 
     #[tokio::test]

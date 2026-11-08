@@ -53,6 +53,7 @@ Latticeの「設定 › スマホで読む」の「PCが止まっていても読
 |---|---|
 | `auth.json` | トークンのSHA-256 |
 | `index.json` | 記事一覧(gzip) |
+| `icons.json` | サイトのアイコン(gzip) |
 | `articles/<id>.json` | 記事ごとの本文と訳文(gzip) |
 | `page/*` | スマホのページ(画像以外はgzip) |
 | `inbox/<到着時刻>-<id>.json` | スマホの操作。PCが適用したら消す |

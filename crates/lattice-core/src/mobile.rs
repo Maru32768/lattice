@@ -1,6 +1,7 @@
 //! What the phone reads (G47, design-review §32). The same documents come from the PC's server
 //! (`lattice-server`) and from the snapshot in R2, so the page does not care which it reads.
 
+use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::Mutex;
 
@@ -8,6 +9,7 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::favicons;
 use crate::groups::{self, GroupRow};
 use crate::ingest;
 use crate::msg;
@@ -61,6 +63,18 @@ pub struct MobileIndex {
     /// When the list in the snapshot was made, in Unix seconds. A page reading the PC's list keeps showing its own
     /// operations until then: if the PC goes off, the snapshot is what it reads next.
     pub snapshot_at: Option<i64>,
+}
+
+/// The sites' icons for the list, as `data:` URLs by domain: one document, as the page cannot send its token for an image.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct MobileIcons {
+    pub format: u32,
+    pub icons: BTreeMap<String, String>,
+}
+
+pub fn icons(store: &Store) -> Result<MobileIcons, String> {
+    Ok(MobileIcons { format: FORMAT, icons: favicons::stored(store)? })
 }
 
 /// An article for reading: `ArticleView` without the job list and the memo, which the page does not show.

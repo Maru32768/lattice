@@ -2,6 +2,8 @@
 //! loads no remote images, §14) and stored per domain: a row holds the icon or why there is
 //! none, and either is refetched when asked for after a week.
 
+use std::collections::BTreeMap;
+
 use rusqlite::{OptionalExtension, params};
 use url::Url;
 
@@ -13,6 +15,8 @@ pub const JOB_TYPE: &str = "favicon";
 /// Icons are tiny; this only bounds a hostile server.
 const MAX_BYTES: usize = 1024 * 1024;
 const REFETCH_AFTER: &str = "-7 days";
+/// The phone gets every icon in one document: a site whose icon is larger shows none there.
+const MAX_SHARED_BYTES: i64 = 32 * 1024;
 
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -46,6 +50,20 @@ pub fn get(store: &Store, domain: &str) -> Result<(Option<String>, bool), String
     };
     let icon = row.and_then(|(mime, bytes, _)| Some(format!("data:{};base64,{}", mime?, base64(&bytes?))));
     Ok((icon, queued))
+}
+
+/// The icons already stored for the sites the library has articles from, as `data:` URLs by domain, for the phone's
+/// list. Nothing is fetched for it: the PC's list does that.
+pub fn stored(store: &Store) -> Result<BTreeMap<String, String>, String> {
+    let conn = store.conn();
+    let mut st = conn
+        .prepare(
+            "SELECT domain, mime, bytes FROM favicons
+             WHERE mime IS NOT NULL AND length(bytes) <= ?1 AND domain IN (SELECT domain FROM articles)",
+        )
+        .map_err(err)?;
+    let rows = st.query_map([MAX_SHARED_BYTES], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Vec<u8>>(2)?))).map_err(err)?;
+    rows.map(|r| r.map(|(domain, mime, bytes)| (domain, format!("data:{mime};base64,{}", base64(&bytes)))).map_err(err)).collect()
 }
 
 /// One job per domain (no article). A finished one (done or given up) is reset; a queued or
@@ -162,6 +180,22 @@ mod tests {
             <link rel="icon" sizes="32x32" href="https://cdn.example.net/i32.png">
             <link rel="stylesheet" href="/a.css"></head>"#;
         assert_eq!(icon_links(html, "https://blog.example.com/posts/1"), ["https://blog.example.com/static/fav.PNG?v=2", "https://cdn.example.net/i32.png"]);
+    }
+
+    #[test]
+    fn the_phone_gets_the_stored_icons_of_the_librarys_sites_only() {
+        let s = Store::open_in_memory().unwrap();
+        s.upsert_pending("https://a.example/1", "https://a.example/1", "a.example").unwrap();
+        s.upsert_pending("https://big.example/1", "https://big.example/1", "big.example").unwrap();
+        s.upsert_pending("https://none.example/1", "https://none.example/1", "none.example").unwrap();
+        s.exec_for_test(&format!(
+            "INSERT INTO favicons (domain, mime, bytes, error) VALUES
+             ('a.example', 'image/png', x'0102', NULL), ('elsewhere.example', 'image/png', x'03', NULL),
+             ('big.example', 'image/png', zeroblob({}), NULL), ('none.example', NULL, NULL, 'no icon')",
+            MAX_SHARED_BYTES + 1
+        ));
+        let icons = stored(&s).unwrap();
+        assert_eq!(icons.into_iter().collect::<Vec<_>>(), [("a.example".to_string(), "data:image/png;base64,AQI=".to_string())]);
     }
 
     #[test]

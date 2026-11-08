@@ -65,7 +65,7 @@ interface Op {
 /** The operations the page sent. */
 const sentOps = (seen: { path: string; body?: Op }[]) => seen.filter((r) => r.path.endsWith("/api/ops")).map((r) => r.body!);
 
-async function start(page: Page, opts: { token?: boolean; index?: unknown } = {}) {
+async function start(page: Page, opts: { token?: boolean; index?: unknown; icons?: Record<string, string> } = {}) {
   const seen: { path: string; auth: string | null; body?: Op }[] = [];
   await page.route("**/api/**", (route) => {
     const url = new URL(route.request().url());
@@ -90,6 +90,9 @@ async function start(page: Page, opts: { token?: boolean; index?: unknown } = {}
           ],
         },
       });
+    }
+    if (url.pathname.endsWith("/api/icons")) {
+      return route.fulfill({ json: { format: 1, icons: opts.icons ?? {} } });
     }
     if (url.pathname.endsWith("/api/articles/1")) {
       return route.fulfill({ json: ARTICLE });
@@ -302,6 +305,14 @@ test("a link pasted where the QR code is asked for connects, and one without a t
   await field.fill(" https://lattice.example.ts.net/#t=secret&l=lib ");
   await page.getByRole("button", { name: "接続" }).click();
   await expect(page.getByText("First article")).toBeVisible();
+});
+
+test("a row shows its site's icon, from one document of them all", async ({ page }) => {
+  const dot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  await start(page, { icons: { "example.com": dot } });
+  const icon = page.getByRole("link", { name: /First article/ }).locator("img");
+  await expect(icon).toHaveAttribute("src", dot);
+  await expect.poll(() => icon.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
 });
 
 const LONG = {

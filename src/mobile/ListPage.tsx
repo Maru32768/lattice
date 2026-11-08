@@ -12,6 +12,7 @@ import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
 export function ListPage({
   articles,
   groups,
+  icons,
   unsent,
   writable,
   view,
@@ -25,6 +26,8 @@ export function ListPage({
   /** The list as this phone's operations will leave it. */
   articles: ArticleRow[];
   groups: GroupRow[];
+  /** The sites' icons by domain, as `data:` URLs. */
+  icons: Record<string, string>;
   unsent: number;
   writable: boolean;
   view: ListView;
@@ -189,6 +192,7 @@ export function ListPage({
               <a href={`#/a/${a.id}`} onClick={() => onOpen(a)} className={a.read_status === "unread" ? "unread" : ""}>
                 <span className="m-title">{a.title ?? a.original_url}</span>
                 <span className="m-meta">
+                  {icons[a.domain] && <img className="m-fav" src={icons[a.domain]} alt="" />}
                   {a.favorite && <span aria-label={t("mobile.favorites")}>★ </span>}
                   {[a.feed_title || a.site_name || a.domain, relTime(a.saved_at, t)].filter(Boolean).join(" · ")}
                 </span>

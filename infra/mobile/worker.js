@@ -116,6 +116,9 @@ export async function handle(request, bucket, now = Date.now()) {
     if (request.method === "GET" && pathname === "/api/index") {
       return document(bucket, "index.json");
     }
+    if (request.method === "GET" && pathname === "/api/icons") {
+      return document(bucket, "icons.json");
+    }
     const article = /^\/api\/articles\/(\d+)$/.exec(pathname);
     if (request.method === "GET" && article) {
       return document(bucket, `articles/${article[1]}.json`);
