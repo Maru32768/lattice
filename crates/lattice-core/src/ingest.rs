@@ -3,6 +3,7 @@
 
 use crate::extract::{EXTRACTION_VERSION, extract};
 use crate::fetch::{Fetched, HttpClient, Resource, fetch_resource};
+use crate::ir::BlockKind;
 use crate::store::{Store, THIN_TEXT_CHARS};
 use crate::url_norm::normalize;
 use quick_xml::escape::escape;
@@ -232,6 +233,7 @@ pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
 /// has is better than nothing, and trying again would not change that. PDFs and Markdown have extractors of their own,
 /// which this version says nothing about.
 pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
+    let err = |e: rusqlite::Error| e.to_string();
     let snap = match store.latest_snapshot(id) {
         Ok(snap) => snap,
         // A page that cannot be decoded will not decode next time. Anything else (the CLI holding the database) is tried again.
@@ -245,8 +247,27 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
         store.conn().execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION]).map_err(|e| e.to_string())?;
         return Ok(());
     };
+    let (prose_before, hash_before) = {
+        let c = store.conn();
+        let mut st = c.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal").map_err(err)?;
+        let prose = st.query_map([id], |r| r.get::<_, String>(0)).map_err(err)?.collect::<Result<Vec<_>, _>>().map_err(err)?;
+        let hash: String = c.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).map_err(err)?;
+        (prose, hash)
+    };
+    let prose_after: Vec<&str> = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect();
+    let prose_same = prose_after.iter().copied().eq(prose_before.iter().map(String::as_str));
     let canonical = ir.meta.canonical_url.as_deref().and_then(|c| normalize(c).ok()).map(String::from);
     store.save_fetched(id, None, Ok(ir), canonical.as_deref()).map_err(|e| e.to_string())?;
+    // Saving hashes the new blocks as a new fetch should. Here the text is what it was: a summary or quiz of it is not
+    // out of date for the images found in it.
+    store
+        .conn()
+        .execute(
+            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN ?3 ELSE content_hash END
+             WHERE id = ?1",
+            params![id, prose_same, hash_before],
+        )
+        .map_err(err)?;
     crate::images::enqueue(store, id)?;
     Ok(())
 }
@@ -432,9 +453,15 @@ mod tests {
         s.conn().execute("UPDATE snapshots SET body = x'' WHERE article_id = ?1", [gone]).unwrap();
         let kept = s.get_article(gone, "ja").unwrap().unwrap().blocks.len();
 
+        // Its hash then was of the text alone, and a summary made since records it.
+        let hash = "hash of the text alone";
+        s.conn().execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash]).unwrap();
+
         assert_eq!(enqueue_outdated(&s).unwrap(), 2);
         assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
         reextract_outdated(&s, id).unwrap();
+        let after: String = s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(after, hash, "the text is unchanged: a summary of it (by this hash) is not out of date for the image found in it");
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
         assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
         reextract_outdated(&s, gone).unwrap();
