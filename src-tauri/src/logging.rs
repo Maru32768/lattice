@@ -52,13 +52,15 @@ mod tests {
 
     // The only test that installs the global subscriber: a second one in this process would fail.
     #[test]
-    fn log_calls_reach_the_file_with_the_job_span() {
-        let dir = std::env::temp_dir().join(format!("lattice-log-{}", std::process::id()));
+    fn log_calls_reach_the_file_named_for_the_utc_date_with_the_job_span() {
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("lattice-log-{}-{nanos}", std::process::id()));
         subscribe(&dir, EnvFilter::new("info")).unwrap();
         tracing::info_span!("job", id = 7, kind = %"translate").in_scope(|| log::warn!("provider failed"));
-        let file = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
-        let text = std::fs::read_to_string(file).unwrap();
+        let utc_date = chrono::Utc::now().format("%Y-%m-%d");
+        let text = std::fs::read_to_string(dir.join(format!("lattice.{utc_date}.log")));
         std::fs::remove_dir_all(&dir).unwrap();
+        let text = text.unwrap();
         assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
     }
 
