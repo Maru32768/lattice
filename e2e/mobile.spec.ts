@@ -358,6 +358,26 @@ test("a dimension with many values can be searched in the sheet, prefix matches 
   await expect(region.getByRole("button", { name: /^postgres/ }), "the chosen one stays in view").toHaveAttribute("aria-pressed", "true");
 });
 
+test("an image the PC stored shows in the text, fetched with the token; one it has not stays a link", async ({ page }) => {
+  const asked: (string | undefined)[] = [];
+  await start(page);
+  await page.route("**/api/images/12", (route) => {
+    asked.push(route.request().headers()["authorization"]);
+    return route.fulfill({
+      body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
+      headers: { "content-type": "image/png" },
+    });
+  });
+  await page.getByRole("link", { name: /First article/ }).click();
+  const img = page.getByRole("img", { name: "A figure" });
+  await expect(img).toHaveAttribute("src", /^blob:/);
+  expect(asked).toEqual(["Bearer secret"]);
+  await page.unroute("**/api/images/12");
+  await page.route("**/api/images/12", (route) => route.fulfill({ status: 200, body: "<html>login</html>", headers: { "content-type": "text/html" } }));
+  await page.reload();
+  await expect(page.getByRole("link", { name: "画像: A figure" }), "a tunnel's page in place of the image").toBeVisible();
+});
+
 const LONG = {
   format: 1,
   generated_at: 1,

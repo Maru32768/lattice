@@ -2,7 +2,7 @@
 // documents the PC has published to anyone with the token, and takes operations into the inbox for the
 // PC to apply. It holds the only binding to this bucket and can reach nothing else.
 
-const CSP = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 const OP_ID = /^[0-9A-Za-z-]{1,64}$/;
 const MAX_OP_BYTES = 16 * 1024;
 const AUTH_TTL_MS = 60_000;

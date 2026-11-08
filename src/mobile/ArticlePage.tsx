@@ -6,7 +6,7 @@ import { BlockView, ImageFallback, OpenLink, Sentences, listMarkers, shownText }
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences } from "../reader/mixed";
 import { captureIn, isWord } from "../vocab/vocab";
 import { Crashed } from "./ErrorBoundary";
-import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, savedLanguage, saveLanguage, submit, withOps } from "./client";
+import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, loadImage, savedLanguage, saveLanguage, submit, withOps } from "./client";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
@@ -39,11 +39,7 @@ const MobileBlock = memo(function MobileBlock({
       <BlockView
         block={block}
         marker={marker}
-        image={
-          <figure className="image">
-            <ImageFallback block={block} />
-          </figure>
-        }
+        image={<StoredImage block={block} />}
         body={
           <Sentences
             block={block}
@@ -56,6 +52,50 @@ const MobileBlock = memo(function MobileBlock({
     </div>
   );
 });
+
+/** The stored copy from the PC, fetched when scrolled near as the PC's Reader does; the link while there is none. */
+function StoredImage({ block }: { block: StoredBlock }) {
+  const ref = useRef<HTMLElement>(null);
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    let mounted = true;
+    let made: string | null = null;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) {
+          return;
+        }
+        io.disconnect();
+        void loadImage(block.id).then((u) => {
+          if (mounted) {
+            made = u;
+            setUrl(u);
+          } else if (u) {
+            URL.revokeObjectURL(u);
+          }
+        });
+      },
+      { rootMargin: "600px" },
+    );
+    io.observe(el);
+    return () => {
+      mounted = false;
+      io.disconnect();
+      if (made) {
+        URL.revokeObjectURL(made);
+      }
+    };
+  }, [block.id]);
+  return (
+    <figure className="image" ref={ref}>
+      {url ? <img src={url} alt={block.text} /> : <ImageFallback block={block} />}
+    </figure>
+  );
+}
 
 /** Long-pressing to select text ends in a click: that must leave the sentence as it is. */
 function flipUnlessSelecting(flip: () => void) {

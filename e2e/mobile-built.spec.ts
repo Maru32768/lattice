@@ -26,6 +26,7 @@ const ARTICLE = {
   blocks: [
     { id: 10, ordinal: 0, kind: "list_item", text: "An indented item.", attrs: { depth: 2 }, translation: "字下げした項目。" },
     { id: 11, ordinal: 1, kind: "code", text: "<script>alert(1)</script>", attrs: {}, translation: null },
+    { id: 12, ordinal: 2, kind: "image", text: "A figure", attrs: { src: "https://example.com/figure.png" }, translation: null },
   ],
 };
 
@@ -53,6 +54,12 @@ test("the built page runs under the server's CSP", async ({ page }) => {
     if (path === "api/articles/1") {
       return route.fulfill({ json: ARTICLE });
     }
+    if (path === "api/images/12") {
+      return route.fulfill({
+        body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
+        headers: { "content-type": "image/png" },
+      });
+    }
     return route.fulfill({
       body: readFileSync(new URL(path, DIST)),
       headers: { "content-type": TYPES[path.split(".").pop()!], "content-security-policy": CSP },
@@ -63,5 +70,7 @@ test("the built page runs under the server's CSP", async ({ page }) => {
   await expect(page.getByText("字下げした項目。")).toBeVisible();
   await expect(page.locator(".li")).toHaveCSS("margin-left", /^[1-9]/);
   await expect(page.getByText("<script>alert(1)</script>")).toBeVisible();
+  // The stored image comes as a blob: URL, which the CSP must let through.
+  await expect.poll(() => page.getByRole("img", { name: "A figure" }).evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
   expect(violations).toEqual([]);
 });

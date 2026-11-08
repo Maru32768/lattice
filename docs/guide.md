@@ -849,7 +849,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
 3. To open the page again quickly, add it to the phone's home screen. On an iPhone the page added there keeps its data apart from the browser's: open it from the icon and tap **Scan the QR code**, or paste the link from the QR code.
 
-The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles), genre, tag, collection, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
+The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles), genre, tag, collection, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images the PC has stored show in the text while the phone reads from the PC. Read from the snapshot, they appear as links, and the phone does not load them.
 
 Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 

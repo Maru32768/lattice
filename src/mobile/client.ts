@@ -263,6 +263,23 @@ export async function loadIcons(): Promise<Record<string, string>> {
   return (doc as MobileIcons | null)?.icons ?? {};
 }
 
+/**
+ * An image block's stored image as a `blob:` URL (the caller revokes it), or null: the snapshot has none, nor has an
+ * image the PC could not store. An `<img>` cannot send the token, so the page fetches it.
+ */
+export async function loadImage(blockId: number): Promise<string | null> {
+  try {
+    const { response } = await request(`api/images/${blockId}`);
+    // A tunnel's page in place of the PC is no image.
+    if (!response.ok || !response.headers.get("content-type")?.startsWith("image/")) {
+      return null;
+    }
+    return URL.createObjectURL(await response.blob());
+  } catch {
+    return null;
+  }
+}
+
 /** Null when the article is gone, and whether it is the saved copy. */
 export async function loadArticle(id: number): Promise<{ doc: ArticleDoc | null; saved: boolean }> {
   const { doc, saved } = await document(`api/articles/${id}`);

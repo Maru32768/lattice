@@ -268,7 +268,12 @@ pub(crate) fn sniff(b: &[u8]) -> Option<&'static str> {
 /// The stored image of an image block as a `data:` URL (the main webview's CSP allows
 /// `data:` and nothing remote); `None` while not downloaded or when it was not stored.
 pub fn data_url(store: &Store, block_id: i64) -> Result<Option<String>, String> {
-    let row: Option<(String, Vec<u8>)> = store
+    Ok(stored(store, block_id)?.map(|(mime, bytes)| format!("data:{mime};base64,{}", base64(&bytes))))
+}
+
+/// The stored copy of an image block's image, with its type: `None` when there is none.
+pub fn stored(store: &Store, block_id: i64) -> Result<Option<(String, Vec<u8>)>, String> {
+    store
         .conn()
         .query_row(
             "SELECT i.mime, i.bytes FROM blocks b
@@ -279,8 +284,7 @@ pub fn data_url(store: &Store, block_id: i64) -> Result<Option<String>, String> 
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
-        .map_err(err)?;
-    Ok(row.map(|(mime, bytes)| format!("data:{mime};base64,{}", base64(&bytes))))
+        .map_err(err)
 }
 
 pub fn base64(b: &[u8]) -> String {

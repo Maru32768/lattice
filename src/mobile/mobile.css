@@ -107,4 +107,5 @@ dialog.m-sheet::backdrop { background: rgb(0 0 0 / .4); }
 .blk td { padding: 4px 8px; border: 1px solid var(--line2); vertical-align: top; overflow-wrap: normal; }
 .blk .caption { font-size: 14px; color: var(--ink3); text-align: center; }
 .blk .image { font-size: 14px; }
+.blk .image img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 4px; }
 .sent.tr { text-decoration: underline dotted var(--tr-dot); text-underline-offset: 4px; }

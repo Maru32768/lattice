@@ -63,7 +63,7 @@ pub fn page_files() -> Vec<(&'static str, &'static [u8])> {
 
 /// Articles are untrusted. The page renders them as text; this keeps a mistake there from running or loading anything.
 /// React sets `style` through the CSSOM, which this allows; e2e/mobile-built.spec.ts runs the built page under it.
-const CSP: &str = "default-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+const CSP: &str = "default-src 'self'; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
 /// What runs after the phone's operation has applied. Without one the server only reads, and turns operations away.
 pub type OnApplied = Arc<dyn Fn(&Effects) + Send + Sync>;
@@ -89,6 +89,7 @@ pub fn router(store: Arc<Store>, on_applied: Option<OnApplied>) -> Router {
         .route("/api/ping", get(|| async { json_headers(Response::new(Body::from("{}"))) }))
         .route("/api/index", get(index))
         .route("/api/icons", get(icons))
+        .route("/api/images/{block}", get(image))
         .route("/api/articles/{id}", get(article))
         .route("/api/ops", post(submit).layer(DefaultBodyLimit::max(MAX_OP_BYTES)))
         .route_layer(middleware::from_fn_with_state(ctx.store.clone(), require_token))
@@ -218,6 +219,24 @@ async fn json_response(request: &HeaderMap, body: Vec<u8>) -> Response {
     json_headers(encoded(request, "application/json", body.into(), true).await)
 }
 
+/// An image block's stored image. The page fetches it with its token and shows it as a `blob:` URL: an `<img>` cannot
+/// send the token.
+async fn image(State(store): State<Arc<Store>>, Path(block): Path<i64>) -> Response {
+    match blocking(move || lattice_core::images::stored(&store, block)).await {
+        Ok(Some((mime, bytes))) => {
+            let mut response = Response::new(Body::from(bytes));
+            let h = response.headers_mut();
+            // Sniffed from the bytes when stored (images.rs `sniff`): a raster type, never one a browser would run.
+            h.insert(header::CONTENT_TYPE, HeaderValue::from_str(&mime).unwrap_or(HeaderValue::from_static("application/octet-stream")));
+            h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+            h.insert(header::X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
+            response
+        }
+        Ok(None) => error(StatusCode::NOT_FOUND, "no stored image"),
+        Err(e) => internal_error(&e),
+    }
+}
+
 async fn icons(State(ctx): State<Ctx>, headers: HeaderMap) -> Response {
     let store = ctx.store;
     match blocking(move || serde_json::to_vec(&mobile::icons(&store)?).map_err(|e| e.to_string())).await {
@@ -327,7 +346,7 @@ mod tests {
     #[tokio::test]
     async fn the_api_needs_the_token() {
         let (app, _, token) = app();
-        for path in ["/api/ping", "/api/index", "/api/icons", "/api/articles/1"] {
+        for path in ["/api/ping", "/api/index", "/api/icons", "/api/images/1", "/api/articles/1"] {
             assert_eq!(get_with(&app, path, None).await.status(), StatusCode::UNAUTHORIZED, "{path}");
             assert_eq!(get_with(&app, path, Some("wrong")).await.status(), StatusCode::UNAUTHORIZED, "{path}");
         }
@@ -368,6 +387,7 @@ mod tests {
         assert_eq!(get_with(&app, &format!("/api/articles/{}", id + 1), Some(&token)).await.status(), StatusCode::NOT_FOUND);
         let icons: serde_json::Value = serde_json::from_slice(&body_of(get_with(&app, "/api/icons", Some(&token)).await).await).unwrap();
         assert_eq!(icons, serde_json::json!({ "format": mobile::FORMAT, "icons": {} }));
+        assert_eq!(get_with(&app, "/api/images/1", Some(&token)).await.status(), StatusCode::NOT_FOUND, "no stored image: the page shows the link");
     }
 
     #[tokio::test]
