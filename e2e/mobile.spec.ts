@@ -356,6 +356,10 @@ test("a dimension with many values can be searched in the sheet, prefix matches 
   await region.getByRole("button", { name: /^postgres/ }).click();
   await region.getByRole("searchbox", { name: "タグで絞り込む" }).fill("tag1");
   await expect(region.getByRole("button", { name: /^postgres/ }), "the chosen one stays in view").toHaveAttribute("aria-pressed", "true");
+  await region.getByRole("searchbox", { name: "タグで絞り込む" }).fill("mypostgres");
+  await region.getByRole("button", { name: /^mypostgres/ }).click();
+  await region.getByRole("searchbox", { name: "タグで絞り込む" }).fill("");
+  await expect(region.getByRole("button", { name: /^mypostgres/ }), "chosen beyond the first values, it stays in view").toHaveAttribute("aria-pressed", "true");
 });
 
 test("an image the PC stored shows in the text, fetched with the token; one it has not stays a link", async ({ page }) => {

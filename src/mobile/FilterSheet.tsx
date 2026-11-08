@@ -70,16 +70,18 @@ export function FilterSheet({
         }
         const many = opts.length > FIRST_VALUES;
         const q = (queries[dim] ?? "").trim().toLowerCase();
+        // The chosen ones stay in view, whatever is typed or however far down the counts put them.
+        const chosen = facets[dim] as unknown[];
         // As the PC's popover orders them: those that start with what is typed, then those that contain it. Chosen ones stay.
         const found = q
           ? opts
               .map((o) => ({ o, at: valueLabel(dim, o.v, all, groups, t).toLowerCase().indexOf(q) }))
-              .filter(({ o, at }) => at >= 0 || (facets[dim] as unknown[]).includes(o.v))
+              .filter(({ o, at }) => at >= 0 || chosen.includes(o.v))
               .sort((x, y) => Number(x.at !== 0) - Number(y.at !== 0))
               .map(({ o }) => o)
           : opts;
         const showAll = q !== "" || expanded.includes(dim);
-        const shown = showAll ? found : found.slice(0, FIRST_VALUES);
+        const shown = showAll ? found : found.filter((o, i) => i < FIRST_VALUES || chosen.includes(o.v));
         return (
           <section key={dim} aria-labelledby={`m-dim-${dim}`}>
             <h3 id={`m-dim-${dim}`}>{t(DIM_LABELS[dim])}</h3>
