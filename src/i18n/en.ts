@@ -1392,6 +1392,7 @@ export const en = {
   "mobileSettings.tailscaleOn": "Serve forwards {address} to this port.",
   "mobileSettings.tailscaleStart": "Publish with Tailscale Serve",
   "mobileSettings.tailscaleStop": "Stop publishing",
+  "mobileSettings.tailscaleSaveFirst": "Tailscale Serve forwards to the saved port. Save the port, then publish.",
   "mobileSettings.tailscaleNotServing": "The phone opens a .ts.net address, but Tailscale Serve does not forward it to this port, so the phone cannot connect.",
   "mobileSettings.snapshot": "Read while the PC is off",
   "mobileSettings.snapshotDesc":

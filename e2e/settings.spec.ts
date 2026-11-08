@@ -273,4 +273,5 @@ test("Tailscale Serve is turned on from the screen, and its address becomes the 
   await expect(app.getByRole("button", { name: "公開をやめる" }), "stopping does not depend on the port").toBeEnabled();
   await app.getByRole("button", { name: "公開をやめる" }).click();
   await expect(app.getByRole("button", { name: "Tailscale Serveで公開" }), "Serve forwards to the saved port").toBeDisabled();
+  await expect(app.getByText("ポートを保存してから公開してください。")).toBeVisible();
 });

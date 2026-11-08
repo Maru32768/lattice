@@ -221,6 +221,7 @@ export function MobileSettings() {
         </div>
         {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
         {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
+        {tailscale?.address && !tailscale.serves_port && form.port !== status.settings.port && <p className="note">{t("mobileSettings.tailscaleSaveFirst")}</p>}
         {tailscale && !tailscale.serves_port && URL.parse(status.settings.public_url)?.hostname.endsWith(".ts.net") && (
           <p className="note warn">{t("mobileSettings.tailscaleNotServing")}</p>
         )}

@@ -1374,6 +1374,7 @@ export const ja = {
   "mobileSettings.tailscaleOn": "{address}をこのポートに中継しています。",
   "mobileSettings.tailscaleStart": "Tailscale Serveで公開",
   "mobileSettings.tailscaleStop": "公開をやめる",
+  "mobileSettings.tailscaleSaveFirst": "Tailscale Serveは保存したポートに中継します。ポートを保存してから公開してください。",
   "mobileSettings.tailscaleNotServing": "スマホが開くアドレスは.ts.netですが、Tailscale Serveがこのポートに中継していないので、スマホはつながりません。",
   "mobileSettings.snapshot": "PCが止まっていても読む",
   "mobileSettings.snapshotDesc":
