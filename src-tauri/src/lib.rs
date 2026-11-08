@@ -105,7 +105,8 @@ fn get_auto_render(app: State<'_, App>) -> Result<bool, String> {
 /// with the window, so it is written to the app log instead.
 #[tauri::command]
 fn log_ui_error(message: String) {
-    log::error!(target: "ui", "{}", message.chars().take(4000).collect::<String>());
+    // Indented continuation lines: a message quoting page text must not pass for a line of its own.
+    log::error!(target: "ui", "{}", message.chars().take(4000).collect::<String>().replace('\n', "\n    "));
 }
 
 #[tauri::command(async)]
