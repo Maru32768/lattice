@@ -444,10 +444,18 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     })
 }
 
-/// What summaries and quizzes are made of, and so what says they are out of date: the text, not the images in it (an
-/// image block's text is its alt text, and finding one more image changes nothing a summary says).
+/// The text summaries and quizzes are made of: the blocks without images (an image block's text is its alt text).
+fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
+    blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str())
+}
+
+/// The same, as stored, in order.
+const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal";
+
+/// What says a summary or quiz is out of date: the text, not the images in it (finding one more image changes nothing a
+/// summary says).
 fn content_hash(blocks: &[Block]) -> String {
-    sha256_hex(blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect::<Vec<_>>().join("\n"))
+    sha256_hex(prose(blocks).collect::<Vec<_>>().join("\n"))
 }
 
 /// What `Store::save_reextraction` did.
@@ -840,20 +848,16 @@ impl Store {
             return Ok(Reextracted::Kept);
         }
         let old_hash: Option<String> = tx.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten();
-        let held: Vec<String> = {
-            let mut st = tx.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
-            st.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?
-        };
+        let held: Vec<String> = tx.prepare(STORED_PROSE)?.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
         let chars = |t: &str| t.chars().count();
-        let text: usize = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| chars(&b.text)).sum();
         // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
         // citations with them: what the article has stays.
-        if text * 100 < held.iter().map(|t| chars(t)).sum::<usize>() * SHORTER_KEEPS_PERCENT {
+        if prose(&ir.blocks).map(chars).sum::<usize>() * 100 < held.iter().map(|t| chars(t)).sum::<usize>() * SHORTER_KEEPS_PERCENT {
             tx.execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION])?;
             tx.commit()?;
             return Ok(Reextracted::Kept);
         }
-        let same_text = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).eq(held.iter().map(String::as_str));
+        let same_text = prose(&ir.blocks).eq(held.iter().map(String::as_str));
         replace_blocks(&tx, id, &ir.blocks)?;
         let hash = content_hash(&ir.blocks);
         let text_length: usize = ir.blocks.iter().map(|b| chars(&b.text)).sum();
