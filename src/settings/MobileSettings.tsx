@@ -199,7 +199,8 @@ export function MobileSettings() {
               }
             >
               {tailscale.address && (
-                <button className="btn" onClick={() => void serve(!tailscale.serves_port)} disabled={serving}>
+                // Serve forwards to the saved port: a port typed and not saved yet would go one way and the server the other.
+                <button className="btn" onClick={() => void serve(!tailscale.serves_port)} disabled={serving || form.port !== status.settings.port}>
                   {t(tailscale.serves_port ? "mobileSettings.tailscaleStop" : "mobileSettings.tailscaleStart")}
                 </button>
               )}
