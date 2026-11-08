@@ -1339,6 +1339,9 @@ export const en = {
   "mobile.loading": "Loading…",
   "mobile.loadFailed": "Could not load.",
   "mobile.retry": "Try again",
+  "mobile.pasteLink": "Connection link",
+  "mobile.connect": "Connect",
+  "mobile.noTokenInLink": "This link has no token to connect with.",
   "mobile.refresh": "Refresh",
   "mobile.filter": "Filter",
   "mobile.favorites": "Favorites",
@@ -1346,7 +1349,7 @@ export const en = {
   "mobile.clearSearch": "Clear the search",
   "mobile.addHome": "Add to Home Screen",
   "mobile.addHomeHow":
-    "The address now carries this phone's token. Tap Share, then Add to Home Screen, and the icon opens this list too. Do not send this address to anyone.",
+    "The address now carries this phone's token, and the link is copied. Tap Share, then Add to Home Screen. If the icon opens to ask for the QR code, paste the copied link there. Do not send this link to anyone.",
   "mobile.scope": "Show",
   "mobile.clearFilters": "Clear filters",
   "mobile.showN": "Show {n}",

@@ -188,7 +188,11 @@ export function ListPage({
           <button
             className="btn m-more"
             onClick={() => {
-              showTokenInAddress();
+              const link = showTokenInAddress();
+              // Without a secure context (the local network's plain HTTP) there is no clipboard: the address bar has it.
+              if (link) {
+                void navigator.clipboard?.writeText(link).catch(() => {});
+              }
               setAddingHome(true);
             }}
           >

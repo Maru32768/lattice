@@ -234,6 +234,7 @@ test("the home screen's page, which on iOS has storage of its own, gets the toke
   await expect(page.getByRole("status")).toContainText("共有メニュー");
   const saved = page.url();
   expect(saved).toContain("#t=secret");
+  await expect(page.locator('link[rel="manifest"]'), "iOS would add the manifest's start_url, without the token").toHaveCount(0);
   const home = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "ja-JP" });
   await home.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: true }));
   await start(home, { token: false });
@@ -242,6 +243,17 @@ test("the home screen's page, which on iOS has storage of its own, gets the toke
   expect(home.url()).not.toContain("secret");
   await expect(home.getByRole("button", { name: "ホーム画面に追加" }), "not in the home screen's page itself").toHaveCount(0);
   await home.close();
+});
+
+test("a link pasted where the QR code is asked for connects, and one without a token says so", async ({ page }) => {
+  await start(page, { token: false });
+  const field = page.getByRole("textbox", { name: "接続用のリンク" });
+  await field.fill("https://example.com/");
+  await page.getByRole("button", { name: "接続" }).click();
+  await expect(page.getByRole("alert")).toHaveText("このリンクには接続用のトークンがありません。");
+  await field.fill(" https://lattice.example.ts.net/#t=secret&l=lib ");
+  await page.getByRole("button", { name: "接続" }).click();
+  await expect(page.getByText("First article")).toBeVisible();
 });
 
 const LONG = {

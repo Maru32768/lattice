@@ -43,6 +43,9 @@ dialog.m-sheet::backdrop { background: rgb(0 0 0 / .4); }
 .m-share { display: flex; align-items: center; gap: 6px; }
 
 .m-empty { padding: 48px 16px; text-align: center; color: var(--ink2); }
+.m-paste { display: flex; flex-wrap: wrap; gap: 8px; max-width: 480px; margin: 24px auto 0; }
+.m-paste .input { flex: 1; min-width: 0; min-height: 40px; box-sizing: border-box; font-size: 16px; }
+.m-paste p { flex-basis: 100%; margin: 0; color: var(--err); font-size: 14px; }
 .m-none, .m-note { color: var(--ink3); font-size: 14px; }
 .m-word { pointer-events: none; }
 .m-word > * { pointer-events: auto; }

@@ -62,9 +62,21 @@ export function fragmentOf(fragment: string): { token: string; library: string |
   return token ? { token, library: params.get("l") } : null;
 }
 
-/** Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots. True if there was one. */
-export function adoptToken(): boolean {
-  const found = fragmentOf(location.hash);
+/** The fragment of a pasted link, or of a bare `#t=…`. */
+function hashOf(text: string): string {
+  try {
+    return new URL(text.trim(), location.href).hash;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Takes the token from the address the QR code opened and removes it, so it stays out of history and screenshots, or
+ * from a link pasted in. True if there was one.
+ */
+export function adoptToken(pasted?: string): boolean {
+  const found = fragmentOf(pasted === undefined ? location.hash : hashOf(pasted));
   if (found) {
     write(TOKEN, found.token);
     // Article ids mean something else in another library, so nothing kept from one may reach the other. A new token of the same library keeps it all.
@@ -76,7 +88,9 @@ export function adoptToken(): boolean {
       liveAnswers = false;
       write(LIBRARY, found.library ?? "");
     }
-    history.replaceState(null, "", location.pathname + location.search);
+    if (pasted === undefined) {
+      history.replaceState(null, "", location.pathname + location.search);
+    }
   }
   return found != null;
 }
@@ -89,13 +103,20 @@ export const hasToken = () => read(TOKEN) != null;
  */
 export const inBrowser = () => !(navigator as { standalone?: boolean }).standalone && !matchMedia("(display-mode: standalone)").matches;
 
-/** Puts the token back into the address, for the home screen to keep: the page there takes it from the address as from a QR code. */
-export function showTokenInAddress() {
+/**
+ * Puts the token back into the address, for the home screen to keep: the page there takes it from the address as from a
+ * QR code. Returns that address, which can also be pasted there.
+ */
+export function showTokenInAddress(): string | null {
   const token = read(TOKEN);
-  if (token) {
-    const params = new URLSearchParams({ t: token, l: read(LIBRARY) ?? "" });
-    history.replaceState(null, "", `${location.pathname}${location.search}#${params}`);
+  if (!token) {
+    return null;
   }
+  const params = new URLSearchParams({ t: token, l: read(LIBRARY) ?? "" });
+  history.replaceState(null, "", `${location.pathname}${location.search}#${params}`);
+  // iOS adds a page that has a manifest at the manifest's start_url, which has no token; without one it keeps the address.
+  window.document.querySelector('link[rel="manifest"]')?.remove();
+  return location.href;
 }
 
 /** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */

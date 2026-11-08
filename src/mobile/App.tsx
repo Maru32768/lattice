@@ -30,6 +30,41 @@ const subscribeHash = (changed: () => void) => {
 /** What a refusal should name, so that the reader knows what to do again. */
 const whatOf = ({ op }: MobileOp) => (op.kind === "vocab_add" ? op.capture.surface : op.kind === "save_url" ? op.url : "");
 
+function PasteLink({ onAdopted }: { onAdopted: () => void }) {
+  const t = useT();
+  const [link, setLink] = useState("");
+  const [bad, setBad] = useState(false);
+  return (
+    <form
+      className="m-paste"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (adoptToken(link)) {
+          onAdopted();
+        } else {
+          setBad(true);
+        }
+      }}
+    >
+      <input
+        className="input"
+        type="url"
+        value={link}
+        onChange={(e) => {
+          setLink(e.target.value);
+          setBad(false);
+        }}
+        placeholder="https://…#t=…"
+        aria-label={t("mobile.pasteLink")}
+      />
+      <button className="btn" type="submit" disabled={!link.trim()}>
+        {t("mobile.connect")}
+      </button>
+      {bad && <p role="alert">{t("mobile.noTokenInLink")}</p>}
+    </form>
+  );
+}
+
 type Load = { state: "loading" } | { state: "failed" } | { state: "no-token" } | { state: "format" } | { state: "ready"; index: MobileIndex };
 
 export function App() {
@@ -129,6 +164,13 @@ export function App() {
       <main className="m-empty">
         <h1>Lattice</h1>
         <p>{t("mobile.noToken")}</p>
+        {/* The home screen's page on iOS has storage of its own and no camera for the code: the link copied in the browser does. */}
+        <PasteLink
+          onAdopted={() => {
+            setLoad({ state: "loading" });
+            void refresh();
+          }}
+        />
         {/* A token just regenerated reaches the Worker a little later, and this may be another server on the port. */}
         {hasToken() && (
           <button

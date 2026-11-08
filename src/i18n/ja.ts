@@ -1321,6 +1321,9 @@ export const ja = {
   "mobile.loading": "読み込み中…",
   "mobile.loadFailed": "読み込めませんでした。",
   "mobile.retry": "もう一度",
+  "mobile.pasteLink": "接続用のリンク",
+  "mobile.connect": "接続",
+  "mobile.noTokenInLink": "このリンクには接続用のトークンがありません。",
   "mobile.refresh": "更新",
   "mobile.filter": "絞り込み",
   "mobile.favorites": "お気に入り",
@@ -1328,7 +1331,7 @@ export const ja = {
   "mobile.clearSearch": "検索語を消す",
   "mobile.addHome": "ホーム画面に追加",
   "mobile.addHomeHow":
-    "アドレスに接続用のトークンを入れました。共有メニューの「ホーム画面に追加」を押すと、追加したアイコンからもこの一覧を開けます。このアドレスはほかの人に送らないでください。",
+    "アドレスに接続用のトークンを入れ、そのリンクをコピーしました。共有メニューの「ホーム画面に追加」を押してください。追加したアイコンから開いてQRコードを求められたら、コピーしたリンクを貼り付けます。このリンクはほかの人に送らないでください。",
   "mobile.scope": "表示",
   "mobile.clearFilters": "絞り込みを解除",
   "mobile.showN": "{n}件を表示",
