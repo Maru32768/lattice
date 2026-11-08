@@ -56,6 +56,10 @@ test("a view lists by scope and by title or site, without regard to case", () =>
   assert.deepEqual(ids("all", "other.org"), [4]);
   assert.deepEqual(ids("all", "example.com/3"), [], "a titled article is not found by its address");
   assert.deepEqual(ids("all", "example.com/4"), [4], "an untitled one shows its address, so it is");
+  const named = [row(5, "Post", { feed_title: "Rust Blog" }), row(6, "Post", { site_name: "はてなブログ" })];
+  const find = (q: string) => visibleArticles(named, { ...FIRST_VIEW, scope: { kind: "all" }, query: q }).rows.map((a) => a.id);
+  assert.deepEqual(find("rust blog"), [5], "the site as the row names it");
+  assert.deepEqual(find("はてな"), [6]);
 });
 
 test("the filter narrows as the PC's does, and counts what each choice would leave", () => {

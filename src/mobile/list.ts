@@ -22,7 +22,10 @@ export const FIRST_VIEW: ListView = { scope: { kind: "unread" }, facets: NO_FACE
 /** `base`: scope ∧ search, what the filter counts against. `rows`: what the list shows, in the order they came. */
 export function visibleArticles(articles: ArticleRow[], view: ListView, now = Date.now()): { base: ArticleRow[]; rows: ArticleRow[] } {
   const q = view.query.trim().toLowerCase();
-  const found = q ? articles.filter((a) => (a.title ?? a.original_url).toLowerCase().includes(q) || a.domain.includes(q)) : articles;
+  // The site as the row names it (its feed, its site name) or its domain.
+  const found = q
+    ? articles.filter((a) => [a.title ?? a.original_url, a.feed_title, a.site_name, a.domain].some((s) => s?.toLowerCase().includes(q)))
+    : articles;
   const { scoped, shown } = listed(found, view.scope, view.facets, now, view.kept);
   return { base: scoped, rows: shown };
 }
