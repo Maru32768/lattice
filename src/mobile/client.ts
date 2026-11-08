@@ -84,10 +84,10 @@ export function adoptToken(): boolean {
 export const hasToken = () => read(TOKEN) != null;
 
 /**
- * Safari on iOS, where a page added to the home screen gets storage of its own and so starts without the token.
- * (`navigator.standalone` is true in that page, and missing everywhere else.)
+ * Not the page opened from the home screen. On iOS that page gets storage of its own, whichever browser added it, and
+ * starts without the token. Which browsers do the same is not worth guessing: the button is offered in all of them.
  */
-export const homeScreenApart = () => (navigator as { standalone?: boolean }).standalone === false;
+export const inBrowser = () => !(navigator as { standalone?: boolean }).standalone && !matchMedia("(display-mode: standalone)").matches;
 
 /** Puts the token back into the address, for the home screen to keep: the page there takes it from the address as from a QR code. */
 export function showTokenInAddress() {

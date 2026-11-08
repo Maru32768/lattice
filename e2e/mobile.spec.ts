@@ -226,8 +226,7 @@ test("an article read from 未読 stays in the list until the view changes", asy
   await expect(page.getByRole("link", { name: /First article/ })).toHaveCount(0);
 });
 
-test("on iOS, the home screen's page, which has storage of its own, gets the token from the address", async ({ page, browser }) => {
-  await page.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: false }));
+test("the home screen's page, which on iOS has storage of its own, gets the token from the address", async ({ page, browser }) => {
   await start(page);
   await page.getByText("First article").waitFor();
   expect(page.url()).not.toContain("secret");
@@ -236,11 +235,12 @@ test("on iOS, the home screen's page, which has storage of its own, gets the tok
   const saved = page.url();
   expect(saved).toContain("#t=secret");
   const home = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "ja-JP" });
+  await home.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: true }));
   await start(home, { token: false });
   await home.goto(saved);
   await expect(home.getByText("First article")).toBeVisible();
   expect(home.url()).not.toContain("secret");
-  await expect(home.getByRole("button", { name: "ホーム画面に追加" }), "nowhere but in Safari").toHaveCount(0);
+  await expect(home.getByRole("button", { name: "ホーム画面に追加" }), "not in the home screen's page itself").toHaveCount(0);
   await home.close();
 });
 

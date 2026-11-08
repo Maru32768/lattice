@@ -847,7 +847,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 1. In **Settings › Read on a phone**, set **Serve from this PC** to **To this network**, then press **Save**.
 2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
-3. To open the page again quickly, add it to the phone's home screen. On an iPhone, first tap **Add to Home Screen** at the end of the list, then **Add to Home Screen** in the Share menu: the page added there keeps its data apart from Safari's, and takes the token from the address.
+3. To open the page again quickly, add it to the phone's home screen. On an iPhone, first tap **Add to Home Screen** at the end of the list, then **Add to Home Screen** in the Share menu: the page added there keeps its data apart from the browser's, and takes the token from the address.
 
 The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles), genre, tag, collection, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
 

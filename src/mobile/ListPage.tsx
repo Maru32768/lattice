@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 import { NO_KEPT, activeDims, facetLabel, scopeLabel } from "../library/library";
 import { relTime } from "../lib/time";
 import { Icon } from "../ui/Icon";
-import { discardUnsent, homeScreenApart, showTokenInAddress, submit } from "./client";
+import { discardUnsent, inBrowser, showTokenInAddress, submit } from "./client";
 import { FilterSheet } from "./FilterSheet";
 import { savableUrl } from "./urls";
 import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
@@ -184,7 +184,7 @@ export function ListPage({
             {t("mobile.more", { n: rows.length - view.shown })}
           </button>
         )}
-        {homeScreenApart() && (
+        {inBrowser() && (
           <button
             className="btn m-more"
             onClick={() => {
