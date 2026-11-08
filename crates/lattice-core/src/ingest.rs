@@ -232,7 +232,12 @@ pub fn enqueue_outdated(store: &Store) -> Result<usize, String> {
 /// has is better than nothing, and trying again would not change that. PDFs and Markdown have extractors of their own,
 /// which this version says nothing about.
 pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
-    let snap = store.latest_snapshot(id).ok().flatten();
+    let snap = match store.latest_snapshot(id) {
+        Ok(snap) => snap,
+        // A page that cannot be decoded will not decode next time. Anything else (the CLI holding the database) is tried again.
+        Err(rusqlite::Error::FromSqlConversionFailure(..)) => None,
+        Err(e) => return Err(e.to_string()),
+    };
     let ir = snap
         .filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url))
         .and_then(|s| extract(&s.html(), &s.final_url).ok());
