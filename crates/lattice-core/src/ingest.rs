@@ -451,20 +451,29 @@ mod tests {
         s.conn().execute("UPDATE snapshots SET body = x'' WHERE article_id = ?1", [gone]).unwrap();
         let kept = s.get_article(gone, "ja").unwrap().unwrap().blocks.len();
 
-        // Its hash then was of the text alone, and a summary made since records it; a feed's title and date.
-        let hash = "hash of the text alone";
+        // As it stood then: a hash computed another way, a summary that records it, a feed's title and date.
         s.conn()
-            .execute("UPDATE articles SET content_hash = ?2, title = 'The feed title', published_at = '2026-01-02' WHERE id = ?1", params![id, hash])
+            .execute("UPDATE articles SET content_hash = 'the hash of then', title = 'The feed title', published_at = '2026-01-02' WHERE id = ?1", [id])
             .unwrap();
+        s.conn()
+            .execute(
+                "INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES (?1, 'summary', 'A summary.', 'the hash of then', 'test', 'v')",
+                [id],
+            )
+            .unwrap();
+        let current = |s: &Store| -> bool {
+            s.conn().query_row("SELECT s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id", [], |r| r.get(0)).unwrap()
+        };
 
         assert_eq!(enqueue_outdated(&s).unwrap(), 3);
         assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
         reextract_outdated(&s, id).unwrap();
-        let after: String = s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
-        assert_eq!(after, hash, "the text is unchanged: a summary of it (by this hash) is not out of date for the image found in it");
+        assert!(current(&s), "the text is unchanged: its summary is not out of date for the image found in it");
         let meta: (String, String) =
             s.conn().query_row("SELECT title, published_at FROM articles WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         assert_eq!(meta, ("The feed title".into(), "2026-01-02".into()), "the extractor's change is to the text, not the title or date");
+        reextract(&s, id).unwrap();
+        assert!(current(&s), "nor does re-reading the same page by hand make it so later");
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
         assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
         reextract_outdated(&s, shorter).unwrap();

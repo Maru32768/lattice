@@ -448,6 +448,12 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
 /// embeddings and search hits keep pointing at it. Duplicate texts are matched in order.
 // shortcut: a reused block whose section heading changed keeps its old embedding (the heading is
 // part of the passage); key embeddings on heading + text if that shows up in search quality.
+/// What summaries and quizzes are made of, and so what says they are out of date: the text, not the images in it (an
+/// image block's text is its alt text, and finding one more image changes nothing a summary says).
+fn content_hash(blocks: &[Block]) -> String {
+    sha256_hex(blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect::<Vec<_>>().join("\n"))
+}
+
 fn replace_blocks(tx: &rusqlite::Transaction, article_id: i64, blocks: &[Block]) -> Result<()> {
     let mut old: HashMap<String, std::collections::VecDeque<i64>> = HashMap::new();
     {
@@ -777,7 +783,6 @@ impl Store {
             }
             Ok(ir) => {
                 replace_blocks(&tx, id, &ir.blocks)?;
-                let content: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
                 let text_length: usize = ir.blocks.iter().map(|b| b.text.chars().count()).sum();
                 let m = &ir.meta;
                 tx.execute(
@@ -798,7 +803,7 @@ impl Store {
                         m.site_name,
                         m.published_at,
                         m.language,
-                        sha256_hex(content.join("\n")),
+                        content_hash(&ir.blocks),
                         EXTRACTION_VERSION,
                         text_length as i64
                     ],
@@ -811,22 +816,29 @@ impl Store {
 
     /// A re-extraction of a page already stored (`ingest::REEXTRACT_JOB`), in one transaction: the blocks, the version and
     /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. When
-    /// the text is what it was, so is the hash: a summary or quiz of it is not out of date for the images found in it.
+    /// the text is what it was, the summaries and quizzes made of it stay current: they move to the hash as it is now
+    /// computed (the hash once took image blocks in).
     pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;
+        let old_hash: Option<String> = tx.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten();
         let old_text: Vec<String> = {
             let mut st = tx.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
             st.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?
         };
         let same_text = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).eq(old_text.iter().map(String::as_str));
         replace_blocks(&tx, id, &ir.blocks)?;
-        let content: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+        let hash = content_hash(&ir.blocks);
         let text_length: usize = ir.blocks.iter().map(|b| b.text.chars().count()).sum();
         tx.execute(
-            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN content_hash ELSE ?3 END, extraction_version = ?4, text_length = ?5 WHERE id = ?1",
-            params![id, same_text, sha256_hex(content.join("\n")), EXTRACTION_VERSION, text_length as i64],
+            "UPDATE articles SET content_hash = ?2, extraction_version = ?3, text_length = ?4 WHERE id = ?1",
+            params![id, hash, EXTRACTION_VERSION, text_length as i64],
         )?;
+        if same_text && let Some(old) = old_hash {
+            for table in ["summaries", "quizzes"] {
+                tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
+            }
+        }
         tx.commit()
     }
 
