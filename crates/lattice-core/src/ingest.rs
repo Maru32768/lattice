@@ -240,32 +240,32 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
         Err(rusqlite::Error::FromSqlConversionFailure(..)) => None,
         Err(e) => return Err(e.to_string()),
     };
-    let ir = snap
-        .filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url))
-        .and_then(|s| extract(&s.html(), &s.final_url).ok());
-    let Some(ir) = ir else {
+    let snap = snap.filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url));
+    let from_feed = snap.as_ref().is_some_and(|s| s.content_type.as_deref() == Some(FEED_CONTENT_TYPE));
+    let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         store.conn().execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION]).map_err(|e| e.to_string())?;
         return Ok(());
     };
-    let (prose_before, hash_before) = {
+    let (prose_before, hash_before, error_before) = {
         let c = store.conn();
         let mut st = c.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal").map_err(err)?;
         let prose = st.query_map([id], |r| r.get::<_, String>(0)).map_err(err)?.collect::<Result<Vec<_>, _>>().map_err(err)?;
-        let hash: String = c.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).map_err(err)?;
-        (prose, hash)
+        let (hash, error): (String, Option<String>) =
+            c.query_row("SELECT content_hash, last_error FROM articles WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+        (prose, hash, error)
     };
     let prose_after: Vec<&str> = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect();
     let prose_same = prose_after.iter().copied().eq(prose_before.iter().map(String::as_str));
     let canonical = ir.meta.canonical_url.as_deref().and_then(|c| normalize(c).ok()).map(String::from);
     store.save_fetched(id, None, Ok(ir), canonical.as_deref()).map_err(|e| e.to_string())?;
-    // Saving hashes the new blocks as a new fetch should. Here the text is what it was: a summary or quiz of it is not
-    // out of date for the images found in it.
+    // Saving clears these as a new fetch should. Here the text is what it was: a summary or quiz of it is not out of
+    // date for the images found in it, and an article read from its feed still could not fetch its page.
     store
         .conn()
         .execute(
-            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN ?3 ELSE content_hash END
+            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN ?3 ELSE content_hash END, last_error = CASE WHEN ?4 THEN ?5 ELSE last_error END
              WHERE id = ?1",
-            params![id, prose_same, hash_before],
+            params![id, prose_same, hash_before, from_feed, error_before],
         )
         .map_err(err)?;
     crate::images::enqueue(store, id)?;
@@ -469,6 +469,18 @@ mod tests {
         let versions: Vec<i64> =
             s.conn().prepare("SELECT extraction_version FROM articles").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(versions, [EXTRACTION_VERSION, EXTRACTION_VERSION]);
+    }
+
+    #[test]
+    fn an_article_read_from_its_feed_keeps_its_page_error_when_read_again() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        let feed = Fetched { content_type: Some(FEED_CONTENT_TYPE.into()), ..page(BODY) };
+        store_fetched(&s, id, &feed).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2, last_error = 'HTTP 403' WHERE id = ?1", [id]).unwrap();
+        reextract_outdated(&s, id).unwrap();
+        let error: Option<String> = s.conn().query_row("SELECT last_error FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(error.as_deref(), Some("HTTP 403"));
     }
 
     #[test]
