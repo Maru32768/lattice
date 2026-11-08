@@ -77,7 +77,8 @@ function hashOf(text: string): string {
  */
 export function adoptToken(pasted?: string): "same library" | "other library" | null {
   const found = fragmentOf(pasted === undefined ? location.hash : hashOf(pasted));
-  const other = found != null && found.library !== read(LIBRARY);
+  // A link without l= (an older QR code) stores "": the same link again is of the same library.
+  const other = found != null && (found.library ?? "") !== (read(LIBRARY) ?? "");
   if (found) {
     write(TOKEN, found.token);
     // Article ids mean something else in another library, so nothing kept from one may reach the other. A new token of the same library keeps it all.
