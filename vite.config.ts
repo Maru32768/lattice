@@ -1,4 +1,4 @@
-import { build, defineConfig } from "vite";
+import { build, defineConfig, type ViteDevServer } from "vite";
 import react, { reactCompilerPreset } from "@vitejs/plugin-react";
 import babel from "@rolldown/plugin-babel";
 import process from "node:process";
@@ -22,8 +22,10 @@ export default defineConfig(() => ({
           {
             name: "phone-page-watch",
             apply: "serve" as const,
-            configureServer() {
-              void build({ configFile: "vite.mobile.config.ts", build: { watch: {} }, logLevel: "warn" });
+            // Vite calls this again on each restart (a change to this file): the old server's watcher closes with it.
+            configureServer(server: ViteDevServer) {
+              const watching = build({ configFile: "vite.mobile.config.ts", build: { watch: {}, emptyOutDir: false }, logLevel: "warn" });
+              server.httpServer?.once("close", () => void watching.then((w) => ("close" in w ? w.close() : undefined)));
             },
           },
         ]
