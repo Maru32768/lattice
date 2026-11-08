@@ -14,17 +14,7 @@ const KEEP_DAYS: usize = 14;
 
 /// `RUST_LOG` overrides the level (`RUST_LOG=lattice_core=debug,info`) for a one-off investigation.
 pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // Written synchronously, not through tracing-appender's background thread: the lines just before a
-    // crash are the ones worth having.
-    let file =
-        RollingFileAppender::builder().rotation(Rotation::DAILY).filename_prefix("lattice").filename_suffix("log").max_log_files(KEEP_DAYS).build(dir)?;
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let time = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string());
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(fmt::layer().with_writer(file).with_ansi(false).with_timer(time.clone()))
-        .with(fmt::layer().with_timer(time))
-        .try_init()?;
+    subscribe(dir, EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))?;
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // A release build has no console, so a panic outside a job (which records it as its error)
@@ -32,6 +22,20 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
         log::error!("{info}\n{}", std::backtrace::Backtrace::force_capture());
         default_hook(info);
     }));
+    Ok(())
+}
+
+fn subscribe(dir: &Path, filter: EnvFilter) -> Result<(), Box<dyn std::error::Error>> {
+    // Written synchronously, not through tracing-appender's background thread: the lines just before a
+    // crash are the ones worth having.
+    let file =
+        RollingFileAppender::builder().rotation(Rotation::DAILY).filename_prefix("lattice").filename_suffix("log").max_log_files(KEEP_DAYS).build(dir)?;
+    let time = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string());
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(fmt::layer().with_writer(file).with_ansi(false).with_timer(time.clone()))
+        .with(fmt::layer().with_timer(time))
+        .try_init()?;
     Ok(())
 }
 
@@ -46,11 +50,11 @@ pub fn ui_record(message: &str) -> String {
 mod tests {
     use super::*;
 
-    // The only test that installs the global subscriber: a second `init` in this process would fail.
+    // The only test that installs the global subscriber: a second one in this process would fail.
     #[test]
     fn log_calls_reach_the_file_with_the_job_span() {
         let dir = std::env::temp_dir().join(format!("lattice-log-{}", std::process::id()));
-        init(&dir).unwrap();
+        subscribe(&dir, EnvFilter::new("info")).unwrap();
         tracing::info_span!("job", id = 7, kind = %"translate").in_scope(|| log::warn!("provider failed"));
         let file = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
         let text = std::fs::read_to_string(file).unwrap();
