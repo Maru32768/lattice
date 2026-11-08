@@ -7,6 +7,7 @@ const COMMANDS: &[&str] = &[
     "render_article",
     "get_auto_render",
     "set_auto_render",
+    "log_ui_error",
     "import_urls",
     "import_markdown",
     "import_markdown_file",

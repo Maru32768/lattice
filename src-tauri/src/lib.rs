@@ -1,6 +1,7 @@
 mod badge;
 mod browser;
 mod location;
+mod logging;
 mod mobile;
 mod popout;
 mod renderer;
@@ -98,6 +99,13 @@ fn render_article(app: State<'_, App>, id: i64) -> Result<(), String> {
 #[tauri::command(async)]
 fn get_auto_render(app: State<'_, App>) -> Result<bool, String> {
     render::auto_enabled(&app.store)
+}
+
+/// An error the UI did not catch (`window.onerror`, an unhandled rejection): WebView2's console goes
+/// with the window, so it is written to the app log instead.
+#[tauri::command]
+fn log_ui_error(message: String) {
+    log::error!(target: "ui", "{}", message.chars().take(4000).collect::<String>());
 }
 
 #[tauri::command(async)]
@@ -1349,15 +1357,7 @@ fn translation_changed(handle: &tauri::AppHandle, job: &JobRow) {
 fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let loc = location::detect()?;
     let log_dir = location::log_dir(&loc, || app.path().local_data_dir())?;
-    let log_file = tauri_plugin_log::TargetKind::Folder { path: log_dir.clone(), file_name: Some("lattice".to_string()) };
-    app.handle().plugin(
-        tauri_plugin_log::Builder::new()
-            .clear_targets()
-            .level(log::LevelFilter::Info)
-            .target(tauri_plugin_log::Target::new(log_file))
-            .target(tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout))
-            .build(),
-    )?;
+    logging::init(&log_dir)?;
     // Created here rather than from the config so a portable install can give it its own
     // WebView2 profile folder (tauri.conf.json has `create: false`).
     let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
@@ -1543,6 +1543,7 @@ pub fn run() {
             get_ui_language,
             set_ui_language,
             set_auto_render,
+            log_ui_error,
             import_urls,
             import_markdown,
             import_markdown_file,

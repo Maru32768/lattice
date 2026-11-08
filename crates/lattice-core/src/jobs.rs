@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use futures::FutureExt;
 use tokio::sync::Notify;
+use tracing::Instrument;
 
 use crate::embed::{self, EmbeddingProvider};
 use crate::fetch::HttpClient;
@@ -229,16 +230,17 @@ async fn run_claimed<L: LlmProvider, E: EmbeddingProvider>(
     gate: Option<&translate::Gate>,
 ) -> Result<bool, String> {
     on_change(&job);
+    // Every line logged while it runs names the job: translations run side by side, and a provider's
+    // failure line did not say which job it was for.
+    let span = tracing::info_span!("job", id = job.id, kind = %job.job_type, article = job.article_id);
     let started = std::time::Instant::now();
-    let result = catch_panic(run_job(store, providers, &job, gate, &|| on_change(&job))).await;
-    match &result {
-        Err(e) => log::warn!("job {} ({}) article {:?} attempt {} failed: {e}", job.id, job.job_type, job.article_id, job.attempt_count),
+    let result = catch_panic(run_job(store, providers, &job, gate, &|| on_change(&job))).instrument(span.clone()).await;
+    span.in_scope(|| match &result {
+        Err(e) => log::warn!("attempt {} failed: {e}", job.attempt_count),
         // LLM jobs take minutes with the CLIs: their durations are what a "stuck" report needs.
-        Ok(()) if LLM_JOBS.contains(&job.job_type.as_str()) => {
-            log::info!("job {} ({}) article {:?} done in {:.0?}", job.id, job.job_type, job.article_id, started.elapsed())
-        }
+        Ok(()) if LLM_JOBS.contains(&job.job_type.as_str()) => log::info!("done in {:.0?}", started.elapsed()),
         Ok(()) => {}
-    }
+    });
     let ok = result.is_ok();
     let error = result.err();
     finish(store, job.id, error.as_deref()).await?;

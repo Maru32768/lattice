@@ -394,6 +394,7 @@ export const handlers = {
   render_article: none,
   get_auto_render: (): boolean => store.autoRender,
   set_auto_render: ({ on }: { on: boolean }) => void (store.autoRender = on),
+  log_ui_error: () => {},
   article_image: none,
   favicon: none,
   get_image_settings: (): ImageSettings => store.images,

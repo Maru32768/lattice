@@ -82,6 +82,7 @@ export const api = {
   renderArticle: (id: number) => invoke<void>("render_article", { id }),
   autoRender: () => invoke<boolean>("get_auto_render"),
   setAutoRender: (on: boolean) => invoke<void>("set_auto_render", { on }),
+  logUiError: (message: string) => invoke<void>("log_ui_error", { message }),
   /** The stored image of an image block as a data: URL; null while not downloaded or not stored. */
   articleImage: (blockId: number) => invoke<string | null>("article_image", { blockId }),
   /** A site's icon as a data: URL; null while not fetched (a fetch is queued; `favicon-changed` follows) or when it has none. */

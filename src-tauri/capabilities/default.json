@@ -28,6 +28,7 @@
     "allow-reextract-article",
     "allow-render-article",
     "allow-get-auto-render",
+    "allow-log-ui-error",
     "allow-set-auto-render",
     "allow-import-urls",
     "allow-import-markdown",
