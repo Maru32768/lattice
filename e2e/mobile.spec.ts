@@ -302,9 +302,9 @@ test("a link pasted where the QR code is asked for connects, and one without a t
   await field.fill("https://example.com/");
   await page.getByRole("button", { name: "接続" }).click();
   await expect(page.getByRole("alert")).toHaveText("このリンクには接続用のトークンがありません。");
-  await field.fill(" https://lattice.example.ts.net/#t=secret&l=lib ");
+  await field.fill("#t=secret&l=lib");
   await page.getByRole("button", { name: "接続" }).click();
-  await expect(page.getByText("First article")).toBeVisible();
+  await expect(page.getByText("First article"), "a bare fragment is no URL, and is taken too").toBeVisible();
 });
 
 test("a row shows its site's icon, from one document of them all", async ({ page }) => {

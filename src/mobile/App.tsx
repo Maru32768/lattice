@@ -65,7 +65,12 @@ function Connect({ onAdopted }: { onAdopted: () => void }) {
       )}
       <input
         className="input"
-        type="url"
+        // Not type="url": the form would refuse a bare #t=… before it reached adoptToken.
+        type="text"
+        inputMode="url"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         value={link}
         onChange={(e) => {
           setLink(e.target.value);
