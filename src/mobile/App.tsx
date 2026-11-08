@@ -148,6 +148,8 @@ export function App() {
   const onHashChange = useEffectEvent(() => {
     if (adoptToken()) {
       iconsAsked.current = false;
+      // Article ids mean something else in another library: nothing kept in the view may carry over.
+      setView(FIRST_VIEW);
       setLoad({ state: "loading" });
       void refresh();
     }
@@ -198,6 +200,7 @@ export function App() {
         <Connect
           onAdopted={() => {
             iconsAsked.current = false;
+            setView(FIRST_VIEW);
             setLoad({ state: "loading" });
             void refresh();
           }}
@@ -282,6 +285,7 @@ export function App() {
           void disconnect().then(() => {
             iconsAsked.current = false;
             setIcons({});
+            setView(FIRST_VIEW);
             setLoad({ state: "no-token" });
           });
         }}
