@@ -245,38 +245,20 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
         Err(e) => return Err(e.to_string()),
     };
     let snap = snap.filter(|s| s.content_type.as_deref() != Some(crate::pdf::CONTENT_TYPE) && !crate::markdown::is_local(&s.final_url));
-    let from_feed = snap.as_ref().is_some_and(|s| s.content_type.as_deref() == Some(FEED_CONTENT_TYPE));
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         return keep_as_is();
     };
-    let (prose_before, hash_before, error_before) = {
-        let c = store.conn();
-        let mut st = c.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal").map_err(err)?;
-        let prose = st.query_map([id], |r| r.get::<_, String>(0)).map_err(err)?.collect::<Result<Vec<_>, _>>().map_err(err)?;
-        let (hash, error): (String, Option<String>) =
-            c.query_row("SELECT content_hash, last_error FROM articles WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
-        (prose, hash, error)
-    };
-    let prose_after: Vec<&str> = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect();
+    let text: usize = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.chars().count()).sum();
+    let held: i64 = store
+        .conn()
+        .query_row("SELECT coalesce(sum(length(text)), 0) FROM blocks WHERE article_id = ?1 AND kind != 'image'", [id], |r| r.get(0))
+        .map_err(err)?;
     // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
     // citations with them: what the article has stays.
-    let chars = |texts: &mut dyn Iterator<Item = &str>| texts.map(|t| t.chars().count()).sum::<usize>();
-    if chars(&mut prose_after.iter().copied()) * 100 < chars(&mut prose_before.iter().map(String::as_str)) * SHORTER_KEEPS_PERCENT {
+    if text * 100 < held as usize * SHORTER_KEEPS_PERCENT {
         return keep_as_is();
     }
-    let prose_same = prose_after.iter().copied().eq(prose_before.iter().map(String::as_str));
-    let canonical = ir.meta.canonical_url.as_deref().and_then(|c| normalize(c).ok()).map(String::from);
-    store.save_fetched(id, None, Ok(ir), canonical.as_deref()).map_err(|e| e.to_string())?;
-    // Saving clears these as a new fetch should. Here the text is what it was: a summary or quiz of it is not out of
-    // date for the images found in it, and an article read from its feed still could not fetch its page.
-    store
-        .conn()
-        .execute(
-            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN ?3 ELSE content_hash END, last_error = CASE WHEN ?4 THEN ?5 ELSE last_error END
-             WHERE id = ?1",
-            params![id, prose_same, hash_before, from_feed, error_before],
-        )
-        .map_err(err)?;
+    store.save_reextraction(id, &ir).map_err(err)?;
     crate::images::enqueue(store, id)?;
     Ok(())
 }
@@ -469,15 +451,20 @@ mod tests {
         s.conn().execute("UPDATE snapshots SET body = x'' WHERE article_id = ?1", [gone]).unwrap();
         let kept = s.get_article(gone, "ja").unwrap().unwrap().blocks.len();
 
-        // Its hash then was of the text alone, and a summary made since records it.
+        // Its hash then was of the text alone, and a summary made since records it; a feed's title and date.
         let hash = "hash of the text alone";
-        s.conn().execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash]).unwrap();
+        s.conn()
+            .execute("UPDATE articles SET content_hash = ?2, title = 'The feed title', published_at = '2026-01-02' WHERE id = ?1", params![id, hash])
+            .unwrap();
 
         assert_eq!(enqueue_outdated(&s).unwrap(), 3);
         assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
         reextract_outdated(&s, id).unwrap();
         let after: String = s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(after, hash, "the text is unchanged: a summary of it (by this hash) is not out of date for the image found in it");
+        let meta: (String, String) =
+            s.conn().query_row("SELECT title, published_at FROM articles WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(meta, ("The feed title".into(), "2026-01-02".into()), "the extractor's change is to the text, not the title or date");
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
         assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
         reextract_outdated(&s, shorter).unwrap();
@@ -496,9 +483,16 @@ mod tests {
         let feed = Fetched { content_type: Some(FEED_CONTENT_TYPE.into()), ..page(BODY) };
         store_fetched(&s, id, &feed).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2, last_error = 'HTTP 403' WHERE id = ?1", [id]).unwrap();
-        reextract_outdated(&s, id).unwrap();
-        let error: Option<String> = s.conn().query_row("SELECT last_error FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
-        assert_eq!(error.as_deref(), Some("HTTP 403"));
+        // A web page whose re-fetch failed, or whose render gained nothing, keeps its reason too.
+        let (web, _) = s.upsert_pending("https://example.com/web", "https://example.com/web", "example.com").unwrap();
+        store_fetched(&s, web, &page(BODY)).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2, last_error = 'render.noGain' WHERE id = ?1", [web]).unwrap();
+        for a in [id, web] {
+            reextract_outdated(&s, a).unwrap();
+        }
+        let errors: Vec<Option<String>> =
+            s.conn().prepare("SELECT last_error FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(errors, [Some("HTTP 403".to_string()), Some("render.noGain".to_string())]);
     }
 
     #[test]

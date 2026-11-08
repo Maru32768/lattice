@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ingest::FEED_CONTENT_TYPE;
-use crate::ir::{ArticleIr, Block, Inline};
+use crate::ir::{ArticleIr, Block, BlockKind, Inline};
 use crate::jobs::ABANDONED_AFTER;
 use crate::segments::{Target, Unit, plain_text};
 use ts_rs::TS;
@@ -807,6 +807,27 @@ impl Store {
         }
         tx.commit()?;
         Ok(id)
+    }
+
+    /// A re-extraction of a page already stored (`ingest::REEXTRACT_JOB`), in one transaction: the blocks, the version and
+    /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. When
+    /// the text is what it was, so is the hash: a summary or quiz of it is not out of date for the images found in it.
+    pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<()> {
+        let mut c = self.conn();
+        let tx = c.transaction()?;
+        let old_text: Vec<String> = {
+            let mut st = tx.prepare("SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
+            st.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?
+        };
+        let same_text = ir.blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).eq(old_text.iter().map(String::as_str));
+        replace_blocks(&tx, id, &ir.blocks)?;
+        let content: Vec<&str> = ir.blocks.iter().map(|b| b.text.as_str()).collect();
+        let text_length: usize = ir.blocks.iter().map(|b| b.text.chars().count()).sum();
+        tx.execute(
+            "UPDATE articles SET content_hash = CASE WHEN ?2 THEN content_hash ELSE ?3 END, extraction_version = ?4, text_length = ?5 WHERE id = ?1",
+            params![id, same_text, sha256_hex(content.join("\n")), EXTRACTION_VERSION, text_length as i64],
+        )?;
+        tx.commit()
     }
 
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
