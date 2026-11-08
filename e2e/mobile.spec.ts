@@ -402,8 +402,11 @@ test("the icons are fetched once a page, and a refresh while they come keeps the
   await page.getByText("First article").waitFor();
   await page.getByRole("button", { name: "更新" }).click();
   await expect(page.getByRole("link", { name: /First article/ }).locator("img")).toHaveAttribute("src", dot);
+  // The icons would be asked for after the list: once it has come, an ask would have gone out.
+  const list = page.waitForResponse("**/api/index");
   await page.getByRole("button", { name: "更新" }).click();
-  await page.waitForTimeout(500);
+  await list;
+  await expect(page.getByRole("button", { name: "更新" })).toBeEnabled();
   expect(asked).toBe(1);
 });
 
