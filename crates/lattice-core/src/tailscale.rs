@@ -28,11 +28,13 @@ pub struct TailscaleStatus {
 /// The installer puts it on PATH; an older install may not have, nor a process started before it was installed.
 const EXES: [&str; 2] = ["tailscale", r"C:\Program Files\Tailscale\tailscale.exe"];
 
-/// The output of a finished run, or of one stopped at `TIMEOUT`.
+/// The output of a finished run, or of one stopped at `TIMEOUT`. Apart: a warning on stderr (a client and daemon of
+/// different versions) must not spoil the JSON on stdout.
 struct Ran {
     ok: bool,
     timed_out: bool,
-    output: String,
+    stdout: String,
+    stderr: String,
 }
 
 async fn run(args: &[&str]) -> Result<Ran, String> {
@@ -56,7 +58,7 @@ async fn run(args: &[&str]) -> Result<Ran, String> {
         let reading = tokio::spawn(async move {
             let (mut out, mut err) = (String::new(), String::new());
             let _ = tokio::join!(stdout.read_to_string(&mut out), stderr.read_to_string(&mut err));
-            out + &err
+            (out, err)
         });
         let (ok, timed_out) = match tokio::time::timeout(TIMEOUT, child.wait()).await {
             Ok(Ok(exit)) => (exit.success(), false),
@@ -66,7 +68,8 @@ async fn run(args: &[&str]) -> Result<Ran, String> {
                 (false, true)
             }
         };
-        return Ok(Ran { ok, timed_out, output: reading.await.unwrap_or_default() });
+        let (stdout, stderr) = reading.await.unwrap_or_default();
+        return Ok(Ran { ok, timed_out, stdout, stderr });
     }
     Err(last)
 }
@@ -96,7 +99,7 @@ fn serves(serve: &Value, port: u16) -> bool {
 
 async fn json(args: &[&str]) -> Option<Value> {
     let ran = run(args).await.ok()?;
-    ran.ok.then(|| serde_json::from_str(&ran.output).ok()).flatten()
+    ran.ok.then(|| serde_json::from_str(&ran.stdout).ok()).flatten()
 }
 
 pub async fn status(port: u16) -> TailscaleStatus {
@@ -126,10 +129,10 @@ pub async fn serve(port: u16, on: bool) -> Result<(), String> {
     if ran.ok {
         return Ok(());
     }
-    Err(match (link_in(&ran.output), ran.timed_out) {
+    Err(match (link_in(&format!("{}{}", ran.stdout, ran.stderr)), ran.timed_out) {
         (Some(link), _) => msg!("tailscale.allowHttps", link = link),
         (None, true) => msg!("tailscale.timedOut"),
-        (None, false) => msg!("tailscale.failed", error = ran.output.trim()),
+        (None, false) => msg!("tailscale.failed", error = format!("{}{}", ran.stdout, ran.stderr).trim()),
     })
 }
 
