@@ -91,6 +91,8 @@ export function App() {
   const [view, setView] = useState<ListView>(FIRST_VIEW);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [icons, setIcons] = useState<Record<string, string>>({});
+  /** The icons are asked for once per page and library. */
+  const iconsAsked = useRef(false);
   const ops = useSyncExternalStore(subscribeOps, localOps);
   const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
   const listScroll = useRef(0);
@@ -112,11 +114,16 @@ export function App() {
         setDisplayLang(index.ui_language);
       }
       setLoad({ state: "ready", index });
-      // After the list, which says where the PC is: the icons come from the same place.
-      void loadIcons().then(
-        (got) => request === latest.current && setIcons(got),
-        () => {},
-      );
+      // After the list, which says where the PC is: the icons come from the same place. Once per page: they rarely
+      // change, and a refresh need not fetch them again on mobile data.
+      if (!iconsAsked.current) {
+        iconsAsked.current = true;
+        // Not kept when another request has taken over, or when it failed: the next refresh asks again.
+        const ask = () => {
+          iconsAsked.current = false;
+        };
+        void loadIcons().then((got) => (request === latest.current ? setIcons(got) : ask()), ask);
+      }
       setRefreshFailed(saved);
     } catch (e) {
       if (request !== latest.current) {
@@ -140,6 +147,7 @@ export function App() {
   // A new QR code opened in this tab changes only the fragment: no page load runs main.tsx.
   const onHashChange = useEffectEvent(() => {
     if (adoptToken()) {
+      iconsAsked.current = false;
       setLoad({ state: "loading" });
       void refresh();
     }
@@ -189,6 +197,7 @@ export function App() {
         <p>{t("mobile.noToken")}</p>
         <Connect
           onAdopted={() => {
+            iconsAsked.current = false;
             setLoad({ state: "loading" });
             void refresh();
           }}
@@ -271,6 +280,7 @@ export function App() {
         onDisconnect={() => {
           latest.current++; // a late answer must not bring the list back
           void disconnect().then(() => {
+            iconsAsked.current = false;
             setIcons({});
             setLoad({ state: "no-token" });
           });

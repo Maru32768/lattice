@@ -17,6 +17,8 @@ const MAX_BYTES: usize = 1024 * 1024;
 const REFETCH_AFTER: &str = "-7 days";
 /// The phone gets every icon in one document: a site whose icon is larger shows none there.
 const MAX_SHARED_BYTES: i64 = 32 * 1024;
+/// And the document stays small on mobile data: past this, the sites with the fewest articles show none.
+const MAX_SHARED_TOTAL: usize = 512 * 1024;
 
 fn err(e: impl ToString) -> String {
     e.to_string()
@@ -58,12 +60,23 @@ pub fn stored(store: &Store) -> Result<BTreeMap<String, String>, String> {
     let conn = store.conn();
     let mut st = conn
         .prepare(
-            "SELECT domain, mime, bytes FROM favicons
-             WHERE mime IS NOT NULL AND length(bytes) <= ?1 AND domain IN (SELECT domain FROM articles)",
+            "SELECT f.domain, f.mime, f.bytes FROM favicons f JOIN (SELECT domain, count(*) AS n FROM articles GROUP BY domain) a USING (domain)
+             WHERE f.mime IS NOT NULL AND length(f.bytes) <= ?1 ORDER BY a.n DESC, f.domain",
         )
         .map_err(err)?;
     let rows = st.query_map([MAX_SHARED_BYTES], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Vec<u8>>(2)?))).map_err(err)?;
-    rows.map(|r| r.map(|(domain, mime, bytes)| (domain, format!("data:{mime};base64,{}", base64(&bytes)))).map_err(err)).collect()
+    let mut icons = BTreeMap::new();
+    let mut total = 0;
+    for row in rows {
+        let (domain, mime, bytes) = row.map_err(err)?;
+        let url = format!("data:{mime};base64,{}", base64(&bytes));
+        total += url.len();
+        if total > MAX_SHARED_TOTAL {
+            break;
+        }
+        icons.insert(domain, url);
+    }
+    Ok(icons)
 }
 
 /// One job per domain (no article). A finished one (done or given up) is reset; a queued or
@@ -196,6 +209,23 @@ mod tests {
         ));
         let icons = stored(&s).unwrap();
         assert_eq!(icons.into_iter().collect::<Vec<_>>(), [("a.example".to_string(), "data:image/png;base64,AQI=".to_string())]);
+    }
+
+    #[test]
+    fn the_phones_icons_stop_at_a_total_and_the_sites_read_most_come_first() {
+        let s = Store::open_in_memory().unwrap();
+        let sites = MAX_SHARED_TOTAL / (MAX_SHARED_BYTES as usize) + 4;
+        for i in 0..sites {
+            let domain = format!("s{i}.example");
+            // Site 0 has the most articles, the last one the fewest.
+            for n in 0..(sites - i) {
+                s.upsert_pending(&format!("https://{domain}/{n}"), &format!("https://{domain}/{n}"), &domain).unwrap();
+            }
+            s.exec_for_test(&format!("INSERT INTO favicons (domain, mime, bytes) VALUES ('{domain}', 'image/png', zeroblob({}))", MAX_SHARED_BYTES * 3 / 4));
+        }
+        let icons = stored(&s).unwrap();
+        assert!(icons.values().map(String::len).sum::<usize>() <= MAX_SHARED_TOTAL);
+        assert!(icons.contains_key("s0.example") && !icons.contains_key(&format!("s{}.example", sites - 1)));
     }
 
     #[test]
