@@ -5,6 +5,7 @@ import type { AddressInfo } from "node:net";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import { showScope } from "./phone.ts";
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 // @ts-expect-error -- plain JavaScript: Terraform uploads this very file.
 import { handle } from "../infra/mobile/worker.js";
@@ -20,6 +21,8 @@ const row = (id: number, title: string) => ({
   domain: "example.com",
   site_name: "Example",
   feed_title: null,
+  tags: [],
+  groups: [],
   saved_at: "2026-11-01T00:00:00Z",
   read_status: "read",
   favorite: false,
@@ -164,7 +167,7 @@ async function underServiceWorker(page: Page) {
 test.use({ viewport: { width: 390, height: 844 }, locale: "ja-JP" });
 
 const showAll = async (page: Page) => {
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
 };
 
 async function context(browser: { newContext: (o: object) => Promise<BrowserContext> }) {

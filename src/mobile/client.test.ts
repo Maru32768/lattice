@@ -4,7 +4,8 @@ import { test } from "node:test";
 import type { ArticleRow } from "../bindings";
 import { type LocalOp, fragmentOf, inboxWaits, newOpId, resultOf, settled, settledByPc, withOps } from "./client.ts";
 import { savableUrl } from "./urls.ts";
-import { isOldList, visibleArticles } from "./list.ts";
+import { FIRST_VIEW, type ListScope, type ListView, isOldList, options, visibleArticles } from "./list.ts";
+import { NO_FACETS, NO_KEPT, keep, viewKey, type Facets } from "../library/library.ts";
 import { articleInHash } from "./route.ts";
 
 test("the token and the library come from the QR code's fragment only", () => {
@@ -23,16 +24,31 @@ test("an article's address is the article's id and nothing else", () => {
 });
 
 const row = (id: number, title: string | null, more: Partial<ArticleRow> = {}) =>
-  ({ id, title, original_url: `https://example.com/${id}`, domain: "example.com", read_status: "unread", favorite: false, ...more }) as ArticleRow;
+  ({
+    id,
+    title,
+    original_url: `https://example.com/${id}`,
+    domain: "example.com",
+    read_status: "unread",
+    favorite: false,
+    tags: [],
+    groups: [],
+    genre: null,
+    feed_id: null,
+    difficulty: null,
+    relevance: null,
+    saved_at: "2026-11-01T00:00:00Z",
+    ...more,
+  }) as ArticleRow;
 
-test("a view lists by state and by title or site, without regard to case", () => {
+test("a view lists by scope and by title or site, without regard to case", () => {
   const articles = [
     row(1, "Rust Notes"),
     row(2, "Go Notes", { read_status: "read" }),
     row(3, "Zig", { read_status: "read", favorite: true }),
     row(4, null, { domain: "other.org" }),
   ];
-  const ids = (filter: "unread" | "all" | "favorites", query = "") => visibleArticles(articles, { filter, query }).map((a) => a.id);
+  const ids = (kind: ListScope["kind"], query = "") => visibleArticles(articles, { ...FIRST_VIEW, scope: { kind }, query }).rows.map((a) => a.id);
   assert.deepEqual(ids("unread"), [1, 4]);
   assert.deepEqual(ids("all"), [1, 2, 3, 4]);
   assert.deepEqual(ids("favorites"), [3]);
@@ -40,6 +56,36 @@ test("a view lists by state and by title or site, without regard to case", () =>
   assert.deepEqual(ids("all", "other.org"), [4]);
   assert.deepEqual(ids("all", "example.com/3"), [], "a titled article is not found by its address");
   assert.deepEqual(ids("all", "example.com/4"), [4], "an untitled one shows its address, so it is");
+});
+
+test("the filter narrows as the PC's does, and counts what each choice would leave", () => {
+  const articles = [
+    row(1, "A", { genre: "DB", tags: ["sql", "mvcc"] }),
+    row(2, "B", { genre: "DB", tags: ["sql"], read_status: "read" }),
+    row(3, "C", { genre: "Web", tags: ["css"], difficulty: 2 }),
+  ];
+  const view = (facets: Partial<Facets>, kept = NO_KEPT): ListView => ({ ...FIRST_VIEW, scope: { kind: "all" }, facets: { ...NO_FACETS, ...facets }, kept });
+  const ids = (v: ListView) => visibleArticles(articles, v).rows.map((a) => a.id);
+  assert.deepEqual(ids(view({ genres: ["DB"] })), [1, 2]);
+  assert.deepEqual(ids(view({ genres: ["DB"], tags: ["sql", "mvcc"] })), [1], "tags: all of them");
+  assert.deepEqual(ids(view({ tags: ["mvcc", "css"], tagMode: "any" })), [1, 3]);
+  assert.deepEqual(ids(view({ difficulty: [null] })), [1, 2], "未判定 is a value of its own");
+  const genres = options("genres", visibleArticles(articles, view({ genres: ["Web"] })).base, articles, view({ genres: ["Web"] }).facets);
+  assert.deepEqual(
+    genres,
+    [
+      { v: "DB", count: 2 },
+      { v: "Web", count: 1 },
+    ],
+    "a dimension's own choice does not narrow its counts",
+  );
+  const opened = { ...FIRST_VIEW, kept: keep(NO_KEPT, viewKey(FIRST_VIEW.scope, FIRST_VIEW.facets), 1) };
+  const read = articles.map((a) => (a.id === 1 ? { ...a, read_status: "read" as const } : a));
+  assert.deepEqual(
+    visibleArticles(read, opened).rows.map((a) => a.id),
+    [1, 3],
+    "an article read from 未読 stays in it",
+  );
 });
 
 const op = (id: string, kind: LocalOp["op"], at = 0, sent = true): LocalOp => ({ id, op: kind, at, sent });

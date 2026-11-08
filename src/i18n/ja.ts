@@ -1309,7 +1309,8 @@ export const ja = {
   "mobileSettings.local": "このPCの中だけ(トンネル用)",
   "mobileSettings.port": "ポート",
   "mobileSettings.publicUrl": "スマホが開くアドレス",
-  "mobileSettings.publicUrlDesc": "Tailscale Serveなどのトンネルを使うときに、そのアドレスを入れます。空ならこのPCのアドレスを使います。",
+  "mobileSettings.publicUrlDesc":
+    "Tailscale Serveなどのトンネルを使うときに、そのアドレスを入れます。Tailscaleなら、PCで「tailscale serve --bg {port}」を実行すると出る.ts.netのアドレスです。空ならこのPCのアドレスを使います。",
   "mobileSettings.regenerate": "トークンを作り直す",
   "mobileSettings.lanWarning":
     "同じネットワークへの配信は暗号化されません。同じWi-Fiの人に本文とトークンを読み取られ、トークンで記事の状態を変えられる可能性があります。信頼できるネットワークで使ってください。",
@@ -1322,10 +1323,17 @@ export const ja = {
   "mobile.retry": "もう一度",
   "mobile.refresh": "更新",
   "mobile.filter": "絞り込み",
-  "mobile.unread": "未読",
-  "mobile.all": "すべて",
   "mobile.favorites": "お気に入り",
-  "mobile.searchTitles": "タイトルで絞り込む",
+  "mobile.searchTitles": "タイトルかサイトで探す",
+  "mobile.clearSearch": "検索語を消す",
+  "mobile.addHome": "ホーム画面に追加",
+  "mobile.addHomeHow":
+    "アドレスに接続用のトークンを入れました。共有メニューの「ホーム画面に追加」を押すと、追加したアイコンからもこの一覧を開けます。このアドレスはほかの人に送らないでください。",
+  "mobile.scope": "表示",
+  "mobile.clearFilters": "絞り込みを解除",
+  "mobile.showN": "{n}件を表示",
+  "mobile.moreValues": "ほか{n}件",
+  "mobile.count": "{n}件",
   "mobile.noArticles": "記事がありません。",
   "mobile.more": "もっと見る(残り{n}件)",
   "mobile.back": "一覧",
@@ -1348,6 +1356,7 @@ export const ja = {
   "mobile.markRead": "既読にする",
   "mobile.pending": "未送信{n}件",
   "mobile.rejected": "反映できませんでした({what}): {error}",
+  "mobileSettings.live": "PCから直接読む",
   "mobileSettings.snapshot": "PCが止まっていても読む",
   "mobileSettings.snapshotDesc":
     "記事をCloudflare R2に置き、Workerを通してスマホで読みます。操作はR2に残り、PCを起動したときに反映します。{code}のTerraformでbucketとWorkerを作ります。",

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ArticleRow, GroupRow } from "../api";
-import { DIM_LABELS, DIFFICULTY_LABELS, RELEVANCE_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type Facets } from "./library";
+import { DIM_LABELS, countBy, toggle, universe, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "../ui/Popover";
 import { ActionKey, Icon, Kbd } from "../ui/Icon";
 import { listStep } from "../lib/keys";
@@ -8,22 +8,6 @@ import { useT } from "../i18n";
 import { withStarts } from "../lib/runs";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
-
-const STATE_ORDER = ["unread", "read", "favorite", "issue"] as const;
-
-/** Every value a dimension can take in the library (tags/genres/feeds from the articles themselves). */
-function universe(dim: Dim, all: ArticleRow[]): DimValue<Dim>[] {
-  if (dim === "state") {
-    return [...STATE_ORDER];
-  }
-  if (dim === "difficulty") {
-    return [...DIFFICULTY_LABELS.map((_, i) => i + 1), null];
-  }
-  if (dim === "relevance") {
-    return [...RELEVANCE_LABELS.map((_, i) => 5 - i), null];
-  }
-  return [...countBy(all, dim).keys()];
-}
 
 function Marked({ text, q }: { text: string; q: string }) {
   const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;

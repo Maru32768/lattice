@@ -3,7 +3,8 @@ import type { MobileIndex, MobileOp } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
-import { PAGE, type ListView } from "./list";
+import { FIRST_VIEW, type ListView } from "./list";
+import { keep, viewKey } from "../library/library";
 import { articleInHash } from "./route";
 import { Crashed } from "./ErrorBoundary";
 import {
@@ -35,7 +36,7 @@ export function App() {
   const t = useT();
   const articleId = useSyncExternalStore(subscribeHash, () => articleInHash(location.hash));
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
-  const [view, setView] = useState<ListView>({ filter: "unread", query: "", shown: PAGE });
+  const [view, setView] = useState<ListView>(FIRST_VIEW);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const ops = useSyncExternalStore(subscribeOps, localOps);
   const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
@@ -195,6 +196,7 @@ export function App() {
       {notice}
       <ListPage
         articles={load.index.articles.map((a) => withOps(a, shownOps))}
+        groups={load.index.groups ?? []}
         unsent={unsent}
         writable={!load.index.read_only}
         view={view}
@@ -208,6 +210,7 @@ export function App() {
         onOpen={(a) => {
           listScroll.current = window.scrollY;
           fromList.current = true;
+          setView((v) => ({ ...v, kept: keep(v.kept, viewKey(v.scope, v.facets), a.id) }));
           // Opening an article reads it, as on the PC. Only this: reloading the page must not undo 未読に戻す.
           if (a.read_status === "unread" && !load.index.read_only) {
             submit({ kind: "set_read", article_id: a.id, read: true });

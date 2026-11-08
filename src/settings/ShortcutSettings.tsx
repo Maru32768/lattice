@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
 import { ACTIONS, ACTION_GROUPS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
 import { useT } from "../i18n";
@@ -49,8 +49,8 @@ function VimSettings() {
   }
 
   return (
-    <>
-      <h2>{t("shortcutSettings.vimGroup")}</h2>
+    <section aria-labelledby="vim-group">
+      <h2 id="vim-group">{t("shortcutSettings.vimGroup")}</h2>
       <div className="grp">
         <SetRow title={t("shortcutSettings.vim")} htmlFor="vim-on" desc={t("shortcutSettings.vimDesc")}>
           <Switch id="vim-on" checked={on} onChange={setVimEnabled} />
@@ -104,7 +104,7 @@ function VimSettings() {
           )}
         </div>
       </div>
-    </>
+    </section>
   );
 }
 
@@ -148,9 +148,9 @@ export function ShortcutSettings() {
         </button>
         <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
-      {ACTION_GROUPS.map((g) => (
-        <Fragment key={g.title}>
-          <h2>{t(g.title)}</h2>
+      {ACTION_GROUPS.map((g, i) => (
+        <section key={g.title} aria-labelledby={`keys-${i}`}>
+          <h2 id={`keys-${i}`}>{t(g.title)}</h2>
           <div className="grp">
             {g.actions.map((a) => {
               const keys = bindings[a.id];
@@ -212,7 +212,7 @@ export function ShortcutSettings() {
               );
             })}
           </div>
-        </Fragment>
+        </section>
       ))}
     </>
   );

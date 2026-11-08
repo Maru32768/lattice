@@ -8,6 +8,7 @@ use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::groups::{self, GroupRow};
 use crate::ingest;
 use crate::msg;
 use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, sha256_hex};
@@ -48,6 +49,9 @@ pub struct MobileIndex {
     /// The PC's display language; the page follows it.
     pub ui_language: Option<String>,
     pub articles: Vec<ArticleRow>,
+    /// The names behind `ArticleRow::groups`, for the filter. Absent from a list made before 2026-11.
+    #[ts(optional)]
+    pub groups: Option<Vec<GroupRow>>,
     /// The operations this list already reflects: the page stops showing them as its own.
     pub applied_ops: Vec<String>,
     /// The server turns operations away (`lattice-cli serve` without `--allow-write`): the page offers none.
@@ -80,6 +84,7 @@ pub fn index(store: &Store) -> Result<MobileIndex, String> {
         generated_at: unix_now(),
         ui_language: store.setting(translate::UI_LANGUAGE_SETTING).map_err(err)?,
         articles: store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).map_err(err)?,
+        groups: Some(groups::list(store)?),
         applied_ops,
         read_only: false,
         live_url: live_url(store)?,
@@ -453,8 +458,10 @@ mod tests {
     fn documents_read_what_the_reader_reads() {
         let s = store();
         let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let group = groups::create(&s, "Later").unwrap();
         let index = index(&s).unwrap();
         assert_eq!(index.articles.iter().map(|a| a.id).collect::<Vec<_>>(), [id]);
+        assert_eq!(index.groups.unwrap().iter().map(|g| (g.id, g.name.as_str())).collect::<Vec<_>>(), [(group, "Later")], "the filter names collections");
         assert!(index.generated_at > 0);
         let doc = article(&s, id).unwrap().unwrap();
         assert_eq!(doc.article.original_url, "https://example.com/a");

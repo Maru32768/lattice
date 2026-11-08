@@ -10,7 +10,16 @@ const TYPES: Record<string, string> = { html: "text/html", js: "text/javascript"
 
 const ARTICLE = {
   format: 1,
-  article: { id: 1, title: "First article", original_url: "https://example.com/1", domain: "example.com", read_status: "unread", favorite: false },
+  article: {
+    id: 1,
+    title: "First article",
+    original_url: "https://example.com/1",
+    domain: "example.com",
+    read_status: "unread",
+    favorite: false,
+    tags: [],
+    groups: [],
+  },
   target_language: "ja",
   summary: null,
   blocks: [

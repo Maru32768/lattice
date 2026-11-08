@@ -132,130 +132,135 @@ export function MobileSettings() {
   const portOk = Number.isInteger(form.port) && form.port >= MIN_PORT && form.port <= MAX_PORT;
   return (
     <>
-      <div className="grp">
-        <SetRow title={t("mobileSettings.mode")} desc={t("mobileSettings.modeDesc")} htmlFor="mobile-mode">
-          <select id="mobile-mode" className="input sm" value={form.mode} onChange={(e) => edit({ mode: e.target.value as MobileServerMode })}>
-            <option value="off">{t("mobileSettings.off")}</option>
-            <option value="lan">{t("mobileSettings.lan")}</option>
-            <option value="local">{t("mobileSettings.local")}</option>
-          </select>
-        </SetRow>
-        <SetRow title={t("mobileSettings.port")} htmlFor="mobile-port">
-          <input
-            id="mobile-port"
-            className="input sm num"
-            type="number"
-            min={MIN_PORT}
-            max={MAX_PORT}
-            value={form.port}
-            onChange={(e) => edit({ port: Number(e.target.value) })}
-          />
-        </SetRow>
-        <SetRow title={t("mobileSettings.publicUrl")} desc={t("mobileSettings.publicUrlDesc")} htmlFor="mobile-url">
-          <input
-            id="mobile-url"
-            className="input sm mono"
-            value={form.public_url}
-            onChange={(e) => edit({ public_url: e.target.value })}
-            placeholder="https://pc.example.ts.net"
-            spellCheck={false}
-          />
-        </SetRow>
-      </div>
-      <div className="btn-row">
-        <button className="btn pri" onClick={() => void save()} disabled={status.fell_back || !portOk}>
-          {t("common.save")}
-        </button>
-        <button className="btn" onClick={() => void regenerate()} disabled={status.fell_back}>
-          {t("mobileSettings.regenerate")}
-        </button>
-      </div>
-      {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
-      {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
-      {status.fell_back && <p className="note warn">{t("be.mobile.fellBack")}</p>}
-      {status.error && <p className="note err">{t.msg(status.error)}</p>}
-      {status.running && !status.url && <p className="sec-d">{t("mobileSettings.needsUrl")}</p>}
-      {status.url && (
-        <div className="mobile-qr">
-          {status.qr ? (
-            <>
-              <Qr qr={status.qr} label={t("mobileSettings.qr")} />
-              <p className="sec-d">{t("mobileSettings.scan")}</p>
-              <p className="sec-d">
-                <code>{status.url.split("#")[0]}</code>
-              </p>
-            </>
-          ) : (
-            <p className="sec-d">
-              <code>{status.url}</code>
-            </p>
-          )}
+      <section aria-labelledby="mobile-live">
+        <h2 id="mobile-live">{t("mobileSettings.live")}</h2>
+        <div className="grp">
+          <SetRow title={t("mobileSettings.mode")} desc={t("mobileSettings.modeDesc")} htmlFor="mobile-mode">
+            <select id="mobile-mode" className="input sm" value={form.mode} onChange={(e) => edit({ mode: e.target.value as MobileServerMode })}>
+              <option value="off">{t("mobileSettings.off")}</option>
+              <option value="lan">{t("mobileSettings.lan")}</option>
+              <option value="local">{t("mobileSettings.local")}</option>
+            </select>
+          </SetRow>
+          <SetRow title={t("mobileSettings.port")} htmlFor="mobile-port">
+            <input
+              id="mobile-port"
+              className="input sm num"
+              type="number"
+              min={MIN_PORT}
+              max={MAX_PORT}
+              value={form.port}
+              onChange={(e) => edit({ port: Number(e.target.value) })}
+            />
+          </SetRow>
+          <SetRow title={t("mobileSettings.publicUrl")} desc={t("mobileSettings.publicUrlDesc", { port: String(form.port) })} htmlFor="mobile-url">
+            <input
+              id="mobile-url"
+              className="input sm mono"
+              value={form.public_url}
+              onChange={(e) => edit({ public_url: e.target.value })}
+              placeholder="https://pc.example.ts.net"
+              spellCheck={false}
+            />
+          </SetRow>
         </div>
-      )}
-      <h2>{t("mobileSettings.snapshot")}</h2>
-      <p className="sec-d">{t.rich("mobileSettings.snapshotDesc", { code: <code>infra/mobile</code> })}</p>
-      <div className="grp">
-        <SetRow title={t("mobileSettings.snapshotEnabled")} htmlFor="snapshot-enabled">
-          <Switch id="snapshot-enabled" checked={snapshot.enabled} onChange={(on) => editSnapshot({ enabled: on })} />
-        </SetRow>
-        <SetRow title="Account ID" htmlFor="snapshot-account">
-          {snapshotText("snapshot-account", "account_id")}
-        </SetRow>
-        <SetRow title="Bucket" htmlFor="snapshot-bucket">
-          {snapshotText("snapshot-bucket", "bucket", "lattice-mobile")}
-        </SetRow>
-        <SetRow title="Access Key ID" htmlFor="snapshot-key">
-          {snapshotText("snapshot-key", "access_key_id")}
-        </SetRow>
-        <SetRow title="Secret Access Key" htmlFor="snapshot-secret">
-          <input
-            id="snapshot-secret"
-            className="input sm"
-            type="password"
-            value={snapshot.secret_access_key ?? ""}
-            onChange={(e) => editSnapshot({ secret_access_key: e.target.value })}
-            placeholder={status.snapshot.has_secret ? t("r2BackupSection.secretSet") : t("common.notSet")}
-            autoComplete="off"
-          />
-        </SetRow>
-        <SetRow title={t("mobileSettings.workerUrl")} htmlFor="snapshot-worker">
-          {snapshotText("snapshot-worker", "worker_url", "https://lattice-mobile.example.workers.dev")}
-        </SetRow>
-      </div>
-      <div className="btn-row">
-        <button className="btn pri" onClick={() => void saveSnapshot(false)} disabled={status.fell_back || saving}>
-          {t("common.save")}
-        </button>
-        <button className="btn" onClick={() => void publish()} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
-          {t("mobileSettings.publishNow")}
-        </button>
-      </div>
-      <p className="sec-d">
-        {status.snapshot.running
-          ? t("mobileSettings.publishing")
-          : status.snapshot.last_publish
-            ? t("mobileSettings.lastPublish", { time: time(status.snapshot.last_publish) })
-            : t("mobileSettings.neverPublished")}
-      </p>
-      {status.snapshot.last_error && <p className="note err">{t("mobileSettings.publishFailed", { error: t.msg(status.snapshot.last_error) })}</p>}
-      {status.snapshot.last_rejected && <p className="note warn">{t("mobileSettings.opRejected", { error: t.msg(status.snapshot.last_rejected) })}</p>}
-      {error?.includes("mobile.leaveFailed") && (
-        <div className="note warn">
-          <p id="snapshot-abandon-desc">{t("mobileSettings.abandonDesc")}</p>
-          <button className="btn" onClick={() => void saveSnapshot(true)} disabled={saving} aria-describedby="snapshot-abandon-desc">
-            {t("mobileSettings.abandon")}
+        <div className="btn-row">
+          <button className="btn pri" onClick={() => void save()} disabled={status.fell_back || !portOk}>
+            {t("common.save")}
+          </button>
+          <button className="btn" onClick={() => void regenerate()} disabled={status.fell_back}>
+            {t("mobileSettings.regenerate")}
           </button>
         </div>
-      )}
-      {status.snapshot_url && status.snapshot_qr && (
-        <div className="mobile-qr">
-          <Qr qr={status.snapshot_qr} label={t("mobileSettings.snapshotQr")} />
-          <p className="sec-d">{t("mobileSettings.scan")}</p>
-          <p className="sec-d">
-            <code>{status.snapshot_url.split("#")[0]}</code>
-          </p>
+        {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
+        {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
+        {status.fell_back && <p className="note warn">{t("be.mobile.fellBack")}</p>}
+        {status.error && <p className="note err">{t.msg(status.error)}</p>}
+        {status.running && !status.url && <p className="sec-d">{t("mobileSettings.needsUrl")}</p>}
+        {status.url && (
+          <div className="mobile-qr">
+            {status.qr ? (
+              <>
+                <Qr qr={status.qr} label={t("mobileSettings.qr")} />
+                <p className="sec-d">{t("mobileSettings.scan")}</p>
+                <p className="sec-d">
+                  <code>{status.url.split("#")[0]}</code>
+                </p>
+              </>
+            ) : (
+              <p className="sec-d">
+                <code>{status.url}</code>
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+      <section aria-labelledby="mobile-snapshot">
+        <h2 id="mobile-snapshot">{t("mobileSettings.snapshot")}</h2>
+        <p className="sec-d">{t.rich("mobileSettings.snapshotDesc", { code: <code>infra/mobile</code> })}</p>
+        <div className="grp">
+          <SetRow title={t("mobileSettings.snapshotEnabled")} htmlFor="snapshot-enabled">
+            <Switch id="snapshot-enabled" checked={snapshot.enabled} onChange={(on) => editSnapshot({ enabled: on })} />
+          </SetRow>
+          <SetRow title="Account ID" htmlFor="snapshot-account">
+            {snapshotText("snapshot-account", "account_id")}
+          </SetRow>
+          <SetRow title="Bucket" htmlFor="snapshot-bucket">
+            {snapshotText("snapshot-bucket", "bucket", "lattice-mobile")}
+          </SetRow>
+          <SetRow title="Access Key ID" htmlFor="snapshot-key">
+            {snapshotText("snapshot-key", "access_key_id")}
+          </SetRow>
+          <SetRow title="Secret Access Key" htmlFor="snapshot-secret">
+            <input
+              id="snapshot-secret"
+              className="input sm"
+              type="password"
+              value={snapshot.secret_access_key ?? ""}
+              onChange={(e) => editSnapshot({ secret_access_key: e.target.value })}
+              placeholder={status.snapshot.has_secret ? t("r2BackupSection.secretSet") : t("common.notSet")}
+              autoComplete="off"
+            />
+          </SetRow>
+          <SetRow title={t("mobileSettings.workerUrl")} htmlFor="snapshot-worker">
+            {snapshotText("snapshot-worker", "worker_url", "https://lattice-mobile.example.workers.dev")}
+          </SetRow>
         </div>
-      )}
+        <div className="btn-row">
+          <button className="btn pri" onClick={() => void saveSnapshot(false)} disabled={status.fell_back || saving}>
+            {t("common.save")}
+          </button>
+          <button className="btn" onClick={() => void publish()} disabled={status.fell_back || !status.snapshot.enabled || status.snapshot.running}>
+            {t("mobileSettings.publishNow")}
+          </button>
+        </div>
+        <p className="sec-d">
+          {status.snapshot.running
+            ? t("mobileSettings.publishing")
+            : status.snapshot.last_publish
+              ? t("mobileSettings.lastPublish", { time: time(status.snapshot.last_publish) })
+              : t("mobileSettings.neverPublished")}
+        </p>
+        {status.snapshot.last_error && <p className="note err">{t("mobileSettings.publishFailed", { error: t.msg(status.snapshot.last_error) })}</p>}
+        {status.snapshot.last_rejected && <p className="note warn">{t("mobileSettings.opRejected", { error: t.msg(status.snapshot.last_rejected) })}</p>}
+        {error?.includes("mobile.leaveFailed") && (
+          <div className="note warn">
+            <p id="snapshot-abandon-desc">{t("mobileSettings.abandonDesc")}</p>
+            <button className="btn" onClick={() => void saveSnapshot(true)} disabled={saving} aria-describedby="snapshot-abandon-desc">
+              {t("mobileSettings.abandon")}
+            </button>
+          </div>
+        )}
+        {status.snapshot_url && status.snapshot_qr && (
+          <div className="mobile-qr">
+            <Qr qr={status.snapshot_qr} label={t("mobileSettings.snapshotQr")} />
+            <p className="sec-d">{t("mobileSettings.scan")}</p>
+            <p className="sec-d">
+              <code>{status.snapshot_url.split("#")[0]}</code>
+            </p>
+          </div>
+        )}
+      </section>
       {failure}
     </>
   );

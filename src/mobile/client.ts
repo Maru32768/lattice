@@ -83,6 +83,21 @@ export function adoptToken(): boolean {
 
 export const hasToken = () => read(TOKEN) != null;
 
+/**
+ * Safari on iOS, where a page added to the home screen gets storage of its own and so starts without the token.
+ * (`navigator.standalone` is true in that page, and missing everywhere else.)
+ */
+export const homeScreenApart = () => (navigator as { standalone?: boolean }).standalone === false;
+
+/** Puts the token back into the address, for the home screen to keep: the page there takes it from the address as from a QR code. */
+export function showTokenInAddress() {
+  const token = read(TOKEN);
+  if (token) {
+    const params = new URLSearchParams({ t: token, l: read(LIBRARY) ?? "" });
+    history.replaceState(null, "", `${location.pathname}${location.search}#${params}`);
+  }
+}
+
 /** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */
 export class Unauthorized extends Error {}
 

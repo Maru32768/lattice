@@ -1327,7 +1327,8 @@ export const en = {
   "mobileSettings.local": "Inside this PC only (for a tunnel)",
   "mobileSettings.port": "Port",
   "mobileSettings.publicUrl": "Address the phone opens",
-  "mobileSettings.publicUrlDesc": "With a tunnel such as Tailscale Serve, enter its address. Empty uses this PC's address.",
+  "mobileSettings.publicUrlDesc":
+    'With a tunnel such as Tailscale Serve, enter its address. For Tailscale, it is the .ts.net address that "tailscale serve --bg {port}" prints on this PC. Empty uses this PC\'s address.',
   "mobileSettings.regenerate": "Regenerate the token",
   "mobileSettings.lanWarning":
     "Serving to the network is not encrypted. Anyone on the same Wi-Fi may be able to read the text and the token, and change articles with the token. Use it on a network you trust.",
@@ -1340,10 +1341,17 @@ export const en = {
   "mobile.retry": "Try again",
   "mobile.refresh": "Refresh",
   "mobile.filter": "Filter",
-  "mobile.unread": "Unread",
-  "mobile.all": "All",
   "mobile.favorites": "Favorites",
-  "mobile.searchTitles": "Filter by title",
+  "mobile.searchTitles": "Search titles and sites",
+  "mobile.clearSearch": "Clear the search",
+  "mobile.addHome": "Add to Home Screen",
+  "mobile.addHomeHow":
+    "The address now carries this phone's token. Tap Share, then Add to Home Screen, and the icon opens this list too. Do not send this address to anyone.",
+  "mobile.scope": "Show",
+  "mobile.clearFilters": "Clear filters",
+  "mobile.showN": "Show {n}",
+  "mobile.moreValues": "{n} more",
+  "mobile.count": "{n} articles",
   "mobile.noArticles": "No articles.",
   "mobile.more": "Show more ({n} left)",
   "mobile.back": "List",
@@ -1366,6 +1374,7 @@ export const en = {
   "mobile.markRead": "Mark as read",
   "mobile.pending": "{n} not sent",
   "mobile.rejected": "Could not apply ({what}): {error}",
+  "mobileSettings.live": "Read straight from the PC",
   "mobileSettings.snapshot": "Read while the PC is off",
   "mobileSettings.snapshotDesc":
     "Keeps articles in Cloudflare R2, read through a Worker. What you do on the phone waits in R2 until the PC is on. The Terraform in {code} creates the bucket and the Worker.",

@@ -170,6 +170,22 @@ export function countBy<D extends Dim>(rows: ArticleRow[], dim: D): Map<DimValue
   return m;
 }
 
+const STATE_ORDER = ["unread", "read", "favorite", "issue"] as const;
+
+/** Every value a dimension can take in the library (tags/genres/feeds from the articles themselves). */
+export function universe(dim: Dim, all: ArticleRow[]): DimValue<Dim>[] {
+  if (dim === "state") {
+    return [...STATE_ORDER];
+  }
+  if (dim === "difficulty") {
+    return [...DIFFICULTY_LABELS.map((_, i) => i + 1), null];
+  }
+  if (dim === "relevance") {
+    return [...RELEVANCE_LABELS.map((_, i) => 5 - i), null];
+  }
+  return [...countBy(all, dim).keys()];
+}
+
 /**
  * The rows a dimension's popover counts against ("件数は現在の集合内"): the set with that
  * dimension's own filter removed, so OR choices still show their counts. Tags in "all" mode

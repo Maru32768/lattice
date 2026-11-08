@@ -1,4 +1,5 @@
 // The phone page against a stand-in for its API (the server has its own tests in crates/lattice-server).
+import { showScope } from "./phone.ts";
 import { expect, test, type Page } from "@playwright/test";
 
 const row = (id: number, title: string, more: Record<string, unknown> = {}) => ({
@@ -8,6 +9,8 @@ const row = (id: number, title: string, more: Record<string, unknown> = {}) => (
   domain: "example.com",
   site_name: "Example",
   feed_title: null,
+  tags: [],
+  groups: [],
   saved_at: "2026-11-01T00:00:00Z",
   read_status: "unread",
   favorite: false,
@@ -159,15 +162,86 @@ test("a failed refresh leaves the list on screen", async ({ page }) => {
 test("the list filters by state and title", async ({ page }) => {
   await start(page);
   await expect(page.getByRole("link")).toHaveCount(1);
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await expect(page.getByRole("link")).toHaveCount(3);
-  await page.getByRole("button", { name: "お気に入り" }).click();
+  await showScope(page, "お気に入り");
   await expect(page.getByRole("link", { name: /Liked article/ })).toBeVisible();
   await expect(page.getByRole("link")).toHaveCount(1);
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("searchbox").fill("read");
   await expect(page.getByRole("link")).toHaveCount(1);
   await page.getByRole("link", { name: /Read article/ }).waitFor();
+});
+
+test("the filter sheet narrows the list as the PC's filters do, and the bar says what is on", async ({ page }) => {
+  await start(page, {
+    index: {
+      format: 1,
+      generated_at: 1,
+      ui_language: "ja",
+      applied_ops: [],
+      groups: [{ id: 7, name: "あとで読む", created_at: "2026-11-01T00:00:00Z", count: 1 }],
+      articles: [
+        row(1, "Postgres MVCC", { genre: "データベース", tags: ["postgres", "mvcc"], groups: [7] }),
+        row(2, "SQLite WAL", { genre: "データベース", tags: ["sqlite"] }),
+        row(3, "CSS grid", { genre: "フロントエンド", tags: ["css"], read_status: "read" }),
+      ],
+    },
+  });
+  await expect(page.getByRole("link")).toHaveCount(2);
+  await page.getByRole("button", { name: "絞り込み", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "絞り込み" });
+  await sheet.getByRole("region", { name: "表示" }).getByRole("button", { name: "すべての記事", exact: true }).click();
+  await sheet
+    .getByRole("region", { name: "ジャンル" })
+    .getByRole("button", { name: /データベース/ })
+    .click();
+  await expect(sheet.getByRole("button", { name: "2件を表示" })).toBeVisible();
+  await expect(
+    sheet.getByRole("region", { name: "ジャンル" }).getByRole("button", { name: /フロントエンド/ }),
+    "its own choice does not hide the others",
+  ).toContainText("1");
+  await sheet
+    .getByRole("region", { name: "グループ" })
+    .getByRole("button", { name: /あとで読む/ })
+    .click();
+  await sheet.getByRole("button", { name: "1件を表示" }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page.getByRole("link")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: /Postgres MVCC/ })).toBeVisible();
+  await expect(page.getByRole("banner")).toContainText("すべての記事 · データベース · あとで読む · 1件");
+  await page.getByRole("button", { name: "絞り込み", exact: true }).click();
+  await sheet.getByRole("button", { name: "絞り込みを解除" }).click();
+  await sheet.getByRole("button", { name: "閉じる" }).click();
+  await expect(page.getByRole("link")).toHaveCount(3);
+});
+
+test("an article read from 未読 stays in the list until the view changes", async ({ page }) => {
+  await start(page);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByRole("link", { name: "一覧" }).click();
+  await expect(page.getByRole("link", { name: /First article/ })).toBeVisible();
+  await showScope(page, "すべての記事");
+  await showScope(page, "未読");
+  await expect(page.getByRole("link", { name: /First article/ })).toHaveCount(0);
+});
+
+test("on iOS, the home screen's page, which has storage of its own, gets the token from the address", async ({ page, browser }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: false }));
+  await start(page);
+  await page.getByText("First article").waitFor();
+  expect(page.url()).not.toContain("secret");
+  await page.getByRole("button", { name: "ホーム画面に追加" }).click();
+  await expect(page.getByRole("status")).toContainText("共有メニュー");
+  const saved = page.url();
+  expect(saved).toContain("#t=secret");
+  const home = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "ja-JP" });
+  await start(home, { token: false });
+  await home.goto(saved);
+  await expect(home.getByText("First article")).toBeVisible();
+  expect(home.url()).not.toContain("secret");
+  await expect(home.getByRole("button", { name: "ホーム画面に追加" }), "nowhere but in Safari").toHaveCount(0);
+  await home.close();
 });
 
 const LONG = {
@@ -180,7 +254,7 @@ const LONG = {
 
 test("going back from an article returns to the same place, and adds nothing to history", async ({ page }) => {
   await start(page, { index: LONG });
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
   const place = await page.evaluate(() => scrollY);
   expect(place).toBeGreaterThan(500);
@@ -198,7 +272,7 @@ test("going back from an article returns to the same place, and adds nothing to 
 
 test("the phone's back button also returns to the same place", async ({ page }) => {
   await start(page, { index: LONG });
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
   const place = await page.evaluate(() => scrollY);
   await page.getByRole("link", { name: /First article/ }).click();
@@ -210,7 +284,7 @@ test("the phone's back button also returns to the same place", async ({ page }) 
 test("a different list starts at its top", async ({ page }) => {
   await start(page, { index: LONG });
   await page.getByRole("link", { name: /First article/ }).scrollIntoViewIfNeeded();
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
 });
 
@@ -328,11 +402,14 @@ test("every button can be tapped over its whole height", async ({ page }) => {
   await page.getByText("First article").waitFor();
   const small = async () =>
     page.evaluate(() =>
-      [...document.querySelectorAll("button")].flatMap((b) => {
-        const r = b.getBoundingClientRect();
-        const hit = (y: number) => document.elementFromPoint(r.left + r.width / 2, y) === b;
-        return r.height >= 40 && hit(r.top + 1) && hit(r.bottom - 1) ? [] : [b.textContent];
-      }),
+      // Not those in the closed filter sheet.
+      [...document.querySelectorAll("button")]
+        .filter((b) => b.checkVisibility())
+        .flatMap((b) => {
+          const r = b.getBoundingClientRect();
+          const hit = (y: number) => document.elementFromPoint(r.left + r.width / 2, y) === b;
+          return r.height >= 40 && hit(r.top + 1) && hit(r.bottom - 1) ? [] : [b.textContent];
+        }),
     );
   expect(await small()).toEqual([]);
   await page.getByRole("link", { name: /First article/ }).click();
@@ -346,13 +423,13 @@ test("opening an article marks it read, here at once and on the PC by an operati
   await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
   await expect.poll(() => sentOps(seen).map((o) => o.op)).toEqual([{ kind: "set_read", article_id: 1, read: true }]);
   await page.getByRole("link", { name: "一覧" }).click();
-  await expect(page.getByRole("link", { name: /First article/ }), "the unread list no longer has it").toHaveCount(0);
+  await expect(page.getByRole("link", { name: /First article/ }), "kept where it was read, as on the PC").toBeVisible();
 });
 
 test("an article already read is not marked again", async ({ page }) => {
   const seen = await start(page);
   await page.route("**/api/articles/2", (route) => route.fulfill({ json: { ...ARTICLE, article: row(2, "Read article", { read_status: "read" }) } }));
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /Read article/ }).click();
   await expect(page.getByRole("button", { name: "未読に戻す" })).toBeVisible();
   expect(sentOps(seen)).toEqual([]);
@@ -395,7 +472,7 @@ test("what cannot be sent waits on the phone, across a reload, and goes when it 
 test("an operation the list reflects stops being kept, and sending it never happens twice", async ({ page }) => {
   const seen = await start(page);
   await page.getByText("First article").waitFor();
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "未読に戻す" }).waitFor();
   await expect.poll(() => sentOps(seen).length).toBe(1);
@@ -529,7 +606,7 @@ test("reloading on an article does not undo marking it unread", async ({ page })
 
 test("the open article follows the list once the list has settled what was done", async ({ page }) => {
   const seen = await start(page);
-  await page.getByRole("button", { name: "すべて" }).click();
+  await showScope(page, "すべての記事");
   await page.getByRole("link", { name: /First article/ }).click();
   await page.getByRole("button", { name: "未読に戻す" }).waitFor();
   await expect.poll(() => sentOps(seen).length).toBe(1);
