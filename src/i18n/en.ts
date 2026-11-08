@@ -1352,6 +1352,7 @@ export const en = {
   "mobile.searchTitles": "Search titles and sites",
   "mobile.clearSearch": "Clear the search",
   "mobile.scope": "Show",
+  "mobile.findIn": "Find a {label}",
   "mobile.clearFilters": "Clear filters",
   "mobile.showN": "Show {n}",
   "mobile.moreValues": "{n} more",

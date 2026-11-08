@@ -315,6 +315,49 @@ test("a row shows its site's icon, from one document of them all", async ({ page
   await expect.poll(() => icon.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1);
 });
 
+test("a row shows what the PC's row shows", async ({ page }) => {
+  await start(page, {
+    index: {
+      format: 1,
+      generated_at: Math.floor(Date.now() / 1000),
+      ui_language: "ja",
+      applied_ops: [],
+      articles: [
+        row(1, "First article", { feed_title: "Rust Blog", difficulty: 3, relevance: 5, favorite: true, tags: ["rust", "async"], fetch_status: "failed" }),
+      ],
+    },
+  });
+  const link = page.getByRole("link", { name: /First article/ });
+  await expect(link).toContainText("Rust Blog");
+  await expect(link).toContainText("11/01");
+  await expect(link.getByRole("img", { name: /難易度/ })).toBeVisible();
+  await expect(link).toContainText("重要5");
+  await expect(link).toContainText("★");
+  await expect(link).toContainText("取得失敗");
+  await expect(link).toContainText("rust · async");
+});
+
+test("a dimension with many values can be searched in the sheet, prefix matches first", async ({ page }) => {
+  const tags = Array.from({ length: 40 }, (_, i) => `tag${i}`).concat(["postgres", "mypostgres"]);
+  await start(page, {
+    index: {
+      format: 1,
+      generated_at: 1,
+      ui_language: "ja",
+      applied_ops: [],
+      articles: [row(1, "First article", { tags }), row(2, "Second", { tags: ["postgres"] })],
+    },
+  });
+  await page.getByRole("button", { name: "絞り込み", exact: true }).click();
+  const region = page.getByRole("dialog").getByRole("region", { name: "タグ" });
+  await expect(region.getByRole("button", { name: /^tag\d+/ })).not.toHaveCount(40);
+  await region.getByRole("searchbox", { name: "タグで絞り込む" }).fill("postgres");
+  await expect(region.locator(".m-chip")).toHaveText([/^postgres/, /^mypostgres/]);
+  await region.getByRole("button", { name: /^postgres/ }).click();
+  await region.getByRole("searchbox", { name: "タグで絞り込む" }).fill("tag1");
+  await expect(region.getByRole("button", { name: /^postgres/ }), "the chosen one stays in view").toHaveAttribute("aria-pressed", "true");
+});
+
 const LONG = {
   format: 1,
   generated_at: 1,

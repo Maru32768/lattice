@@ -34,6 +34,8 @@ export function FilterSheet({
 }) {
   const t = useT();
   const [expanded, setExpanded] = useState<Dim[]>([]);
+  /** What is typed in a dimension's search field: tags run to hundreds. */
+  const [queries, setQueries] = useState<Partial<Record<Dim, string>>>({});
   const { facets } = view;
   return (
     <Sheet
@@ -66,11 +68,31 @@ export function FilterSheet({
         if (opts.length === 0) {
           return null;
         }
-        const showAll = expanded.includes(dim);
-        const shown = showAll ? opts : opts.slice(0, FIRST_VALUES);
+        const many = opts.length > FIRST_VALUES;
+        const q = (queries[dim] ?? "").trim().toLowerCase();
+        // As the PC's popover orders them: those that start with what is typed, then those that contain it. Chosen ones stay.
+        const found = q
+          ? opts
+              .map((o) => ({ o, at: valueLabel(dim, o.v, all, groups, t).toLowerCase().indexOf(q) }))
+              .filter(({ o, at }) => at >= 0 || (facets[dim] as unknown[]).includes(o.v))
+              .sort((x, y) => Number(x.at !== 0) - Number(y.at !== 0))
+              .map(({ o }) => o)
+          : opts;
+        const showAll = q !== "" || expanded.includes(dim);
+        const shown = showAll ? found : found.slice(0, FIRST_VALUES);
         return (
           <section key={dim} aria-labelledby={`m-dim-${dim}`}>
             <h3 id={`m-dim-${dim}`}>{t(DIM_LABELS[dim])}</h3>
+            {many && (
+              <input
+                className="input m-sheet-find"
+                type="search"
+                value={queries[dim] ?? ""}
+                onChange={(e) => setQueries({ ...queries, [dim]: e.target.value })}
+                placeholder={t("mobile.findIn", { label: t(DIM_LABELS[dim]) })}
+                aria-label={t("facetPopover.filterBy", { label: t(DIM_LABELS[dim]) })}
+              />
+            )}
             {dim === "tags" && (
               <div className="seg" role="group" aria-label={t("facetPopover.tagMode")}>
                 {(["all", "any"] as const).map((mode) => (
@@ -97,9 +119,9 @@ export function FilterSheet({
                   <span className="n">{n}</span>
                 </button>
               ))}
-              {!showAll && opts.length > shown.length && (
+              {!showAll && found.length > shown.length && (
                 <button className="m-chip more" onClick={() => setExpanded([...expanded, dim])}>
-                  {t("mobile.moreValues", { n: opts.length - shown.length })}
+                  {t("mobile.moreValues", { n: found.length - shown.length })}
                 </button>
               )}
             </div>

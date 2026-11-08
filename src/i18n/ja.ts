@@ -1334,6 +1334,7 @@ export const ja = {
   "mobile.searchTitles": "タイトルかサイトで探す",
   "mobile.clearSearch": "検索語を消す",
   "mobile.scope": "表示",
+  "mobile.findIn": "{label}を探す",
   "mobile.clearFilters": "絞り込みを解除",
   "mobile.showN": "{n}件を表示",
   "mobile.moreValues": "ほか{n}件",

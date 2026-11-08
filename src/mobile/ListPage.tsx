@@ -3,7 +3,8 @@ import type { ArticleRow, GroupRow } from "../bindings";
 import { useT } from "../i18n";
 import { NO_KEPT, activeDims, facetLabel, scopeLabel } from "../library/library";
 import { relTime } from "../lib/time";
-import { Icon } from "../ui/Icon";
+import { Dif, Icon } from "../ui/Icon";
+import { Importance, badge, mmdd } from "../library/rowMeta";
 import { discardUnsent, submit } from "./client";
 import { FilterSheet } from "./FilterSheet";
 import { savableUrl } from "./urls";
@@ -44,6 +45,10 @@ export function ListPage({
   const { base, rows } = visibleArticles(articles, view);
   const [filtering, setFiltering] = useState(false);
   const dims = activeDims(view.facets);
+  const badgeOf = (a: ArticleRow) => {
+    const b = badge(a, null, t);
+    return b && <span className={`bd ${b[0]}`}>{b[1]}</span>;
+  };
   const summary = [scopeLabel(view.scope, articles, groups, t), ...dims.map((d) => facetLabel(view.facets, d, articles, groups, t))].join(" · ");
   const [url, setUrl] = useState("");
   const [saved, setSaved] = useState(false);
@@ -104,6 +109,8 @@ export function ListPage({
           <p className="m-view-what">
             {summary} · {t("mobile.count", { n: rows.length })}
           </p>
+          {/* On the same line: the bar takes no more of the screen than it must. */}
+          {isOldList(generatedAt) && <span className="m-bar-age">{t("mobile.asOf", { time: relTime(new Date(generatedAt * 1000).toISOString(), t) })}</span>}
           <button className="btn" onClick={() => void refresh()} disabled={refreshing}>
             {t("mobile.refresh")}
           </button>
@@ -113,7 +120,6 @@ export function ListPage({
             {t("mobile.savedCopy")}
           </p>
         )}
-        {isOldList(generatedAt) && <p className="m-bar-age">{t("mobile.asOf", { time: relTime(new Date(generatedAt * 1000).toISOString(), t) })}</p>}
       </header>
       <FilterSheet
         open={filtering}
@@ -130,6 +136,7 @@ export function ListPage({
       <div id="m-menu" className="m-menu" popover="auto" role="menu" aria-label={t("mobile.menu")}>
         <button
           role="menuitem"
+          className="danger"
           popoverTarget="m-menu"
           popoverTargetAction="hide"
           onClick={() => {
@@ -191,11 +198,19 @@ export function ListPage({
             <li key={a.id}>
               <a href={`#/a/${a.id}`} onClick={() => onOpen(a)} className={a.read_status === "unread" ? "unread" : ""}>
                 <span className="m-title">{a.title ?? a.original_url}</span>
+                {/* As the PC's row has it (ListPane): site, date, difficulty, importance, favorite, a badge, then the tags. */}
                 <span className="m-meta">
-                  {icons[a.domain] && <img className="m-fav" src={icons[a.domain]} alt="" />}
-                  {a.favorite && <span aria-label={t("mobile.favorites")}>★ </span>}
-                  {[a.feed_title || a.site_name || a.domain, relTime(a.saved_at, t)].filter(Boolean).join(" · ")}
+                  <span className="m-site">
+                    {icons[a.domain] && <img className="m-fav" src={icons[a.domain]} alt="" />}
+                    {a.feed_title ?? a.site_name ?? (a.domain || t("common.local"))}
+                  </span>
+                  <span>{mmdd(a.saved_at)}</span>
+                  {a.difficulty != null && <Dif d={a.difficulty} />}
+                  <Importance a={a} />
+                  {a.favorite && <span aria-label={t("mobile.favorites")}>★</span>}
+                  {badgeOf(a)}
                 </span>
+                {a.tags.length > 0 && <span className="m-tags">{a.tags.join(" · ")}</span>}
               </a>
             </li>
           ))}

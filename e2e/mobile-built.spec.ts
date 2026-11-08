@@ -19,6 +19,7 @@ const ARTICLE = {
     favorite: false,
     tags: [],
     groups: [],
+    saved_at: "2026-11-01T00:00:00Z",
   },
   target_language: "ja",
   summary: null,
