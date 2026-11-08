@@ -34,3 +34,20 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     }));
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The only test that installs the global subscriber: a second `init` in this process would fail.
+    #[test]
+    fn log_calls_reach_the_file_with_the_job_span() {
+        let dir = std::env::temp_dir().join(format!("lattice-log-{}", std::process::id()));
+        init(&dir).unwrap();
+        tracing::info_span!("job", id = 7, kind = %"translate").in_scope(|| log::warn!("provider failed"));
+        let file = std::fs::read_dir(&dir).unwrap().next().unwrap().unwrap().path();
+        let text = std::fs::read_to_string(file).unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
+    }
+}
