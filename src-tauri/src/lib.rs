@@ -56,6 +56,7 @@ struct App {
     /// The general LLM runner first, then the translation pool's runners (`jobs::run_translate_worker`).
     wake_llm: Vec<Arc<Notify>>,
     wake_local: Arc<Notify>,
+    wake_bulk: Arc<Notify>,
     wake_net: Vec<Arc<Notify>>,
     wake_render: Arc<Notify>,
     /// The articles each window shows (by window label), for the reserved job slot (`jobs::run_foreground`).
@@ -1224,6 +1225,9 @@ fn wake(app: &App, job_type: Option<&str>) {
     if is(LOCAL_JOBS) {
         app.wake_local.notify_one();
     }
+    if is(BULK_JOBS) {
+        app.wake_bulk.notify_one();
+    }
     if is(NET_JOBS) {
         app.wake_net.iter().for_each(|w| w.notify_one());
     }
@@ -1391,12 +1395,13 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let wake_llm: Vec<Arc<Notify>> = (0..=translate::MAX_PARALLEL).map(|_| Arc::new(Notify::new())).collect();
     let wake_local = Arc::new(Notify::new());
+    let wake_bulk = Arc::new(Notify::new());
     let wake_net: Vec<Arc<Notify>> = (0..NET_WORKERS).map(|_| Arc::new(Notify::new())).collect();
     let wake_render = Arc::new(Notify::new());
     // Also puts back the jobs left running by a process that is gone (this app's last run, a stopped CLI).
     let keeper = store.clone();
     tauri::async_runtime::spawn(async move { jobs::keep_alive(&keeper).await });
-    let runners = [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone()), (BULK_JOBS, Arc::new(Notify::new()))]
+    let runners = [(OTHER_LLM_JOBS, wake_llm[0].clone()), (LOCAL_JOBS, wake_local.clone()), (BULK_JOBS, wake_bulk.clone())]
         .into_iter()
         .chain(wake_net.iter().map(|w| (NET_JOBS, w.clone())));
     for (types, wake) in runners {
@@ -1479,6 +1484,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         providers,
         wake_llm,
         wake_local,
+        wake_bulk,
         wake_net,
         wake_render,
         on_screen,
