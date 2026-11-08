@@ -50,7 +50,10 @@ dialog.m-sheet::backdrop { background: rgb(0 0 0 / .4); }
 .m-scan { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
 .m-scan video { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: #000; }
 .m-scan .btn { justify-content: center; }
-.m-sheet.m-menu { height: auto; }
+/* Under the search bar's ⋯, which stays at the top of the screen. */
+.m-menu { position: fixed; inset: auto; top: 58px; right: 12px; min-width: 220px; margin: 0; padding: 4px; border: 1px solid var(--line2); border-radius: 10px; background: var(--raise); color: var(--ink); box-shadow: 0 6px 24px rgb(0 0 0 / .18); }
+.m-menu button { display: block; width: 100%; min-height: 44px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: inherit; font-size: 15px; text-align: left; }
+.m-menu button:active { background: var(--hover); }
 .m-none, .m-note { color: var(--ink3); font-size: 14px; }
 .m-word { pointer-events: none; }
 .m-word > * { pointer-events: auto; }

@@ -6,7 +6,6 @@ import { relTime } from "../lib/time";
 import { Icon } from "../ui/Icon";
 import { discardUnsent, submit } from "./client";
 import { FilterSheet } from "./FilterSheet";
-import { Sheet } from "./Sheet";
 import { savableUrl } from "./urls";
 import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
 
@@ -45,7 +44,6 @@ export function ListPage({
   const summary = [scopeLabel(view.scope, articles, groups, t), ...dims.map((d) => facetLabel(view.facets, d, articles, groups, t))].join(" · ");
   const [url, setUrl] = useState("");
   const [saved, setSaved] = useState(false);
-  const [menu, setMenu] = useState(false);
   const typed = url.trim();
   const save = () => {
     if (savableUrl(typed)) {
@@ -95,7 +93,7 @@ export function ListPage({
               </span>
             )}
           </button>
-          <button className="m-icon" onClick={() => setMenu(true)} aria-label={t("mobile.menu")} aria-haspopup="dialog">
+          <button className="m-icon" popoverTarget="m-menu" aria-label={t("mobile.menu")} aria-haspopup="menu">
             <Icon name="more" />
           </button>
         </div>
@@ -125,9 +123,12 @@ export function ListPage({
         groups={groups}
         count={rows.length}
       />
-      <Sheet open={menu} onClose={() => setMenu(false)} title={t("mobile.menu")} className="m-menu">
+      {/* A popover: a tap outside or Esc closes it, as a menu should. */}
+      <div id="m-menu" className="m-menu" popover="auto" role="menu" aria-label={t("mobile.menu")}>
         <button
-          className="btn m-more"
+          role="menuitem"
+          popoverTarget="m-menu"
+          popoverTargetAction="hide"
           onClick={() => {
             if (window.confirm(t("mobile.disconnectConfirm"))) {
               onDisconnect();
@@ -136,7 +137,7 @@ export function ListPage({
         >
           {t("mobile.disconnect")}
         </button>
-      </Sheet>
+      </div>
       <main className="m-list">
         {writable && (
           <div className="m-save">

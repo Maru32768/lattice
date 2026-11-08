@@ -441,7 +441,7 @@ test("disconnecting this phone leaves nothing of the library on it", async ({ br
   await page.getByRole("link", { name: "一覧" }).click();
   page.on("dialog", (d) => void d.accept());
   await page.getByRole("button", { name: "メニュー" }).click();
-  await page.getByRole("button", { name: "このスマホの接続を解除" }).click();
+  await page.getByRole("menuitem", { name: "このスマホの接続を解除" }).click();
   await expect(page.getByText("QRコードを読み取ってください")).toBeVisible();
   const left = await page.evaluate(async () => {
     const docs = await caches.open("lattice-docs");
