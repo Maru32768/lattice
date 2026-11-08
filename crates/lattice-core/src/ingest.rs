@@ -504,10 +504,21 @@ mod tests {
         let held = extract(&page(BODY).html, "https://example.com/post").unwrap();
         s.save_fetched(id, None, Ok(held), None).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
-        let hash = |s: &Store| -> String { s.conn().query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap() };
-        let before = hash(&s);
+        s.conn()
+            .execute(
+                "INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version)
+                 SELECT id, 'summary', 'Of the shorter text.', content_hash, 'test', 'v' FROM articles WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
         reextract_outdated(&s, id).unwrap();
-        assert_ne!(hash(&s), before);
+        assert!(!summary_current(&s, id), "a summary of the shorter text is out of date");
+    }
+
+    fn summary_current(s: &Store, id: i64) -> bool {
+        s.conn()
+            .query_row("SELECT s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id WHERE a.id = ?1", [id], |r| r.get(0))
+            .unwrap()
     }
 
     /// The same two sentences as one paragraph or as two: where an extractor breaks the text.
@@ -521,6 +532,32 @@ mod tests {
         } else {
             format!("<h2>Section</h2><p>{first} {second}</p>")
         }
+    }
+
+    #[test]
+    fn the_same_words_keep_their_summary_current_whatever_images_or_breaks_come_with_them() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        store_fetched(&s, id, &page(BODY)).unwrap();
+        s.conn()
+            .execute(
+                "INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version)
+                 SELECT id, 'summary', 'A summary.', content_hash, 'test', 'v' FROM articles WHERE id = ?1",
+                [id],
+            )
+            .unwrap();
+        // A refetch that finds an image in the same text, then one that breaks its paragraph around the image.
+        store_fetched(&s, id, &page(&format!("{BODY}<p><img src=\"/fig.png\" alt=\"A figure\"></p>"))).unwrap();
+        assert!(summary_current(&s, id), "an image found");
+        let texts = |s: &Store| -> usize { s.get_article(id, "ja").unwrap().unwrap().blocks.len() };
+        store_fetched(&s, id, &page(&breaks(false))).unwrap();
+        s.conn().execute("UPDATE summaries SET source_hash = (SELECT content_hash FROM articles WHERE id = ?1)", [id]).unwrap();
+        let whole = texts(&s);
+        store_fetched(&s, id, &page(&breaks(true))).unwrap();
+        assert_eq!(texts(&s), whole + 1);
+        assert!(summary_current(&s, id), "a paragraph broken in two");
+        store_fetched(&s, id, &page(&BODY.replace("dirty reads", "dirty writes"))).unwrap();
+        assert!(!summary_current(&s, id), "other words");
     }
 
     #[test]
