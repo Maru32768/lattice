@@ -444,16 +444,16 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     })
 }
 
-/// Writes an article's blocks, reusing the id of each old block whose text is unchanged so
-/// embeddings and search hits keep pointing at it. Duplicate texts are matched in order.
-// shortcut: a reused block whose section heading changed keeps its old embedding (the heading is
-// part of the passage); key embeddings on heading + text if that shows up in search quality.
 /// What summaries and quizzes are made of, and so what says they are out of date: the text, not the images in it (an
 /// image block's text is its alt text, and finding one more image changes nothing a summary says).
 fn content_hash(blocks: &[Block]) -> String {
     sha256_hex(blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str()).collect::<Vec<_>>().join("\n"))
 }
 
+/// Writes an article's blocks, reusing the id of each old block whose text is unchanged so
+/// embeddings and search hits keep pointing at it. Duplicate texts are matched in order.
+// shortcut: a reused block whose section heading changed keeps its old embedding (the heading is
+// part of the passage); key embeddings on heading + text if that shows up in search quality.
 fn replace_blocks(tx: &rusqlite::Transaction, article_id: i64, blocks: &[Block]) -> Result<()> {
     let mut old: HashMap<String, std::collections::VecDeque<i64>> = HashMap::new();
     {
