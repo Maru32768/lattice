@@ -172,10 +172,6 @@ impl log::Log for StderrLogger {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Off unless asked for: stderr carries the `warning`/`error` lines a caller may parse, and stdout the MCP protocol.
-    if std::env::var_os("RUST_LOG").is_some() {
-        let _ = tracing_subscriber::fmt().with_writer(std::io::stderr).with_env_filter(tracing_subscriber::EnvFilter::from_default_env()).try_init();
-    }
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime");
     let ctx = match open(&cli) {
         Ok(ctx) => ctx,

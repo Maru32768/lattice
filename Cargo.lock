@@ -2787,7 +2787,6 @@ dependencies = [
  "serde_json",
  "tauri-winres",
  "tokio",
- "tracing-subscriber",
 ]
 
 [[package]]
