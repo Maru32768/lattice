@@ -35,6 +35,13 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// A UI error as one record: every line break a viewer shows (`\r` alone too) becomes an indented
+/// continuation, so a message quoting page text cannot pass for a line of its own.
+pub fn ui_record(message: &str) -> String {
+    let message: String = message.chars().take(4000).collect();
+    message.replace("\r\n", "\n").replace(['\r', '\u{85}', '\u{2028}', '\u{2029}'], "\n").replace('\n', "\n    ")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,5 +56,13 @@ mod tests {
         let text = std::fs::read_to_string(file).unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
         assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
+    }
+
+    #[test]
+    fn a_ui_error_stays_one_record() {
+        assert_eq!(ui_record("Error: x\n    at f"), "Error: x\n        at f");
+        for forged in ["a\rERROR job", "a\r\nERROR job", "a\u{2028}ERROR job", "a\u{85}ERROR job"] {
+            assert_eq!(ui_record(forged), "a\n    ERROR job", "{forged:?}");
+        }
     }
 }
