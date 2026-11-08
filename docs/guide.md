@@ -847,7 +847,7 @@ While the PC is on, Lattice can serve your library to a phone's browser. The pho
 
 1. In **Settings › Read on a phone**, set **Serve from this PC** to **To this network**, then press **Save**.
 2. Scan the QR code with the phone's camera. The phone must be on the same network as the PC. Windows may ask whether to let Lattice through the firewall. Allow it on private networks.
-3. To open the page again quickly, add it to the phone's home screen. On an iPhone, first tap **Add to Home Screen** at the end of the list, then **Add to Home Screen** in the Share menu: the page added there keeps its data apart from the browser's, and takes the token from the address. If it still asks for the QR code, paste the link that the button copied.
+3. To open the page again quickly, add it to the phone's home screen. On an iPhone the page added there keeps its data apart from the browser's: open it from the icon and tap **Scan the QR code**, or paste the link from the QR code.
 
 The search field at the top finds articles by title or site. Its filter button opens the same filters as the PC's list: what to show (Unread, Recently added, Favorites, All articles), genre, tag, collection, source, difficulty, importance and status. Tap a translated sentence to see it in the other language. Images appear as links, and the phone does not load them.
 
@@ -874,7 +874,7 @@ Lattice can also keep your articles in a Cloudflare R2 bucket, so that the phone
 
 While the app runs, it publishes changes every 15 minutes and picks up the phone's operations every 5 minutes. The list on the phone shows how old it is. **Publish now** does it at once. Turning off **Publish a snapshot** makes the Worker refuse every token, and the articles stay in the bucket until you empty it. If the app can no longer reach the bucket, saving is refused, and **Save, giving up the old bucket** saves anyway: that Worker then keeps accepting the token until you remove it.
 
-Opened from the Worker's address, the page opens without a connection too, with the last list and the articles you read before. With a tunnel set up as well, it reads from the PC whenever it can reach it, and from the snapshot otherwise. **Disconnect this phone**, at the bottom of the list, removes the token and everything saved from the phone.
+Opened from the Worker's address, the page opens without a connection too, with the last list and the articles you read before. With a tunnel set up as well, it reads from the PC whenever it can reach it, and from the snapshot otherwise. **Disconnect this phone**, in the list's **Menu** (⋯), removes the token and everything saved from the phone.
 
 The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
 

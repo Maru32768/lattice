@@ -4,8 +4,9 @@ import { useT } from "../i18n";
 import { NO_KEPT, activeDims, facetLabel, scopeLabel } from "../library/library";
 import { relTime } from "../lib/time";
 import { Icon } from "../ui/Icon";
-import { discardUnsent, inBrowser, showTokenInAddress, submit } from "./client";
+import { discardUnsent, submit } from "./client";
 import { FilterSheet } from "./FilterSheet";
+import { Sheet } from "./Sheet";
 import { savableUrl } from "./urls";
 import { PAGE, type ListView, isOldList, visibleArticles } from "./list";
 
@@ -44,7 +45,7 @@ export function ListPage({
   const summary = [scopeLabel(view.scope, articles, groups, t), ...dims.map((d) => facetLabel(view.facets, d, articles, groups, t))].join(" · ");
   const [url, setUrl] = useState("");
   const [saved, setSaved] = useState(false);
-  const [addingHome, setAddingHome] = useState(false);
+  const [menu, setMenu] = useState(false);
   const typed = url.trim();
   const save = () => {
     if (savableUrl(typed)) {
@@ -94,11 +95,14 @@ export function ListPage({
               </span>
             )}
           </button>
+          <button className="m-icon" onClick={() => setMenu(true)} aria-label={t("mobile.menu")} aria-haspopup="dialog">
+            <Icon name="more" />
+          </button>
         </div>
         <div className="m-view">
-          <button className="m-view-what" onClick={() => setFiltering(true)}>
+          <p className="m-view-what">
             {summary} · {t("mobile.count", { n: rows.length })}
-          </button>
+          </p>
           <button className="btn" onClick={() => void refresh()} disabled={refreshing}>
             {t("mobile.refresh")}
           </button>
@@ -121,6 +125,18 @@ export function ListPage({
         groups={groups}
         count={rows.length}
       />
+      <Sheet open={menu} onClose={() => setMenu(false)} title={t("mobile.menu")} className="m-menu">
+        <button
+          className="btn m-more"
+          onClick={() => {
+            if (window.confirm(t("mobile.disconnectConfirm"))) {
+              onDisconnect();
+            }
+          }}
+        >
+          {t("mobile.disconnect")}
+        </button>
+      </Sheet>
       <main className="m-list">
         {writable && (
           <div className="m-save">
@@ -184,36 +200,6 @@ export function ListPage({
             {t("mobile.more", { n: rows.length - view.shown })}
           </button>
         )}
-        {inBrowser() && (
-          <button
-            className="btn m-more"
-            onClick={() => {
-              const link = showTokenInAddress();
-              // Without a secure context (the local network's plain HTTP) there is no clipboard: the address bar has it.
-              if (link) {
-                void navigator.clipboard?.writeText(link).catch(() => {});
-              }
-              setAddingHome(true);
-            }}
-          >
-            {t("mobile.addHome")}
-          </button>
-        )}
-        {addingHome && (
-          <p role="status" className="m-note">
-            {t("mobile.addHomeHow")}
-          </p>
-        )}
-        <button
-          className="btn m-more"
-          onClick={() => {
-            if (window.confirm(t("mobile.disconnectConfirm"))) {
-              onDisconnect();
-            }
-          }}
-        >
-          {t("mobile.disconnect")}
-        </button>
       </main>
     </>
   );

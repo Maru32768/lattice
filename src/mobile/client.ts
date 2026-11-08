@@ -97,28 +97,6 @@ export function adoptToken(pasted?: string): boolean {
 
 export const hasToken = () => read(TOKEN) != null;
 
-/**
- * Not the page opened from the home screen. On iOS that page gets storage of its own, whichever browser added it, and
- * starts without the token. Which browsers do the same is not worth guessing: the button is offered in all of them.
- */
-export const inBrowser = () => !(navigator as { standalone?: boolean }).standalone && !matchMedia("(display-mode: standalone)").matches;
-
-/**
- * Puts the token back into the address, for the home screen to keep: the page there takes it from the address as from a
- * QR code. Returns that address, which can also be pasted there.
- */
-export function showTokenInAddress(): string | null {
-  const token = read(TOKEN);
-  if (!token) {
-    return null;
-  }
-  const params = new URLSearchParams({ t: token, l: read(LIBRARY) ?? "" });
-  history.replaceState(null, "", `${location.pathname}${location.search}#${params}`);
-  // iOS adds a page that has a manifest at the manifest's start_url, which has no token; without one it keeps the address.
-  window.document.querySelector('link[rel="manifest"]')?.remove();
-  return location.href;
-}
-
 /** The server turned the token down. It stays stored: this may be another server on the port, or a tunnel's own login. A new QR code replaces it. */
 export class Unauthorized extends Error {}
 

@@ -31,6 +31,7 @@
     "@fontsource/shippori-mincho": "^5.3.0",
     "@replit/codemirror-vim": "^6.4.0",
     "@tauri-apps/api": "^2",
+    "jsqr": "^1.4.0",
     "pdfjs-dist": "^6.5.438",
     "radix-ui": "^1.7.0",
     "react": "^19.1.0",

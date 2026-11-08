@@ -7,6 +7,7 @@ import { FIRST_VIEW, type ListView } from "./list";
 import { keep, viewKey } from "../library/library";
 import { articleInHash } from "./route";
 import { Crashed } from "./ErrorBoundary";
+import { QrScan, canScan } from "./QrScan";
 import {
   FormatMismatch,
   Unauthorized,
@@ -30,22 +31,37 @@ const subscribeHash = (changed: () => void) => {
 /** What a refusal should name, so that the reader knows what to do again. */
 const whatOf = ({ op }: MobileOp) => (op.kind === "vocab_add" ? op.capture.surface : op.kind === "save_url" ? op.url : "");
 
-function PasteLink({ onAdopted }: { onAdopted: () => void }) {
+/** Where the QR code cannot open the page (on iOS, the home screen's page has storage of its own): scan it here, or paste its link. */
+function Connect({ onAdopted }: { onAdopted: () => void }) {
   const t = useT();
   const [link, setLink] = useState("");
   const [bad, setBad] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const take = (text: string) => {
+    if (adoptToken(text)) {
+      onAdopted();
+      return true;
+    }
+    setBad(true);
+    return false;
+  };
   return (
     <form
       className="m-paste"
       onSubmit={(e) => {
         e.preventDefault();
-        if (adoptToken(link)) {
-          onAdopted();
-        } else {
-          setBad(true);
-        }
+        take(link);
       }}
     >
+      {scanning ? (
+        <QrScan onCode={take} onStop={() => setScanning(false)} />
+      ) : (
+        canScan() && (
+          <button type="button" className="btn pri m-scan-start" onClick={() => setScanning(true)}>
+            {t("mobile.scanQr")}
+          </button>
+        )
+      )}
       <input
         className="input"
         type="url"
@@ -164,8 +180,7 @@ export function App() {
       <main className="m-empty">
         <h1>Lattice</h1>
         <p>{t("mobile.noToken")}</p>
-        {/* The home screen's page on iOS has storage of its own and no camera for the code: the link copied in the browser does. */}
-        <PasteLink
+        <Connect
           onAdopted={() => {
             setLoad({ state: "loading" });
             void refresh();

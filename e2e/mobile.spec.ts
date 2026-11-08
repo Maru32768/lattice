@@ -226,23 +226,71 @@ test("an article read from 未読 stays in the list until the view changes", asy
   await expect(page.getByRole("link", { name: /First article/ })).toHaveCount(0);
 });
 
-test("the home screen's page, which on iOS has storage of its own, gets the token from the address", async ({ page, browser }) => {
-  await start(page);
-  await page.getByText("First article").waitFor();
+/** The QR code of https://lattice.example.ts.net/#t=secret&l=lib, as the settings screen draws it (the qrcode crate). */
+const QR = [
+  "111111100000111011111001001111111",
+  "100000100000111111000100001000001",
+  "101110101101110111100110101011101",
+  "101110101001001110001011101011101",
+  "101110101101000101100101001011101",
+  "100000101011001110001000101000001",
+  "111111101010101010101010101111111",
+  "000000001111000100100110000000000",
+  "101111100110110101001011101111100",
+  "001000001100100010111101001101111",
+  "110000100110100100101000110010100",
+  "110000010100001010001100010011100",
+  "100100101011100000110100110111010",
+  "011110011010011110001101011001011",
+  "001010110011011000010110011111110",
+  "110101010010010010011110011101100",
+  "100101110010101001110001010111001",
+  "010100000011001011111001001101111",
+  "011001110000011101001010110110110",
+  "110011011101111011100000000111111",
+  "111100110001010010001110000011000",
+  "111100001100110101100001101000101",
+  "100000101001000111001010111011010",
+  "100000010011010100100100000101101",
+  "100110110110110101000011111110011",
+  "000000001001010000011101100010101",
+  "111111100110111110100101101010100",
+  "100000101111101000000111100011111",
+  "101110101011111100110100111111011",
+  "101110101001000110001111110011101",
+  "101110101011011000010110101101100",
+  "100000100110000010111110010011100",
+  "111111101010010011011011101100010",
+];
+
+test("the page that asks for the QR code reads it with the camera: on iOS the home screen's page cannot be opened by it", async ({ page }) => {
+  await page.addInitScript((rows: string[]) => {
+    const canvas = document.createElement("canvas");
+    const size = 8;
+    canvas.width = canvas.height = (rows.length + 8) * size;
+    const ctx = canvas.getContext("2d")!;
+    const draw = () => {
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#000";
+      rows.forEach((row, y) => [...row].forEach((c, x) => c === "1" && ctx.fillRect((x + 4) * size, (y + 4) * size, size, size)));
+    };
+    draw();
+    // A canvas stream sends a frame only when the canvas is drawn.
+    setInterval(draw, 100);
+    Object.defineProperty(navigator, "mediaDevices", { value: { getUserMedia: () => Promise.resolve(canvas.captureStream(10)) } });
+  }, QR);
+  await start(page, { token: false });
+  await page.getByRole("button", { name: "QRコードを読み取る" }).click();
+  await expect(page.getByText("First article")).toBeVisible();
   expect(page.url()).not.toContain("secret");
-  await page.getByRole("button", { name: "ホーム画面に追加" }).click();
-  await expect(page.getByRole("status")).toContainText("共有メニュー");
-  const saved = page.url();
-  expect(saved).toContain("#t=secret");
-  await expect(page.locator('link[rel="manifest"]'), "iOS would add the manifest's start_url, without the token").toHaveCount(0);
-  const home = await browser.newPage({ viewport: { width: 390, height: 844 }, locale: "ja-JP" });
-  await home.addInitScript(() => Object.defineProperty(navigator, "standalone", { value: true }));
-  await start(home, { token: false });
-  await home.goto(saved);
-  await expect(home.getByText("First article")).toBeVisible();
-  expect(home.url()).not.toContain("secret");
-  await expect(home.getByRole("button", { name: "ホーム画面に追加" }), "not in the home screen's page itself").toHaveCount(0);
-  await home.close();
+});
+
+test("without a camera the page that asks for the QR code offers the pasted link alone", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "mediaDevices", { value: undefined }));
+  await start(page, { token: false });
+  await expect(page.getByRole("textbox", { name: "接続用のリンク" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "QRコードを読み取る" })).toHaveCount(0);
 });
 
 test("a link pasted where the QR code is asked for connects, and one without a token says so", async ({ page }) => {
