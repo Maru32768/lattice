@@ -247,6 +247,9 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         return keep_as_is();
     };
+    // shortcut: these follow the save, outside its transaction. One that fails (the database held past its timeout) fails
+    // the job, and its retry finds the article saved: the images are queued again at the next start (enqueue_missing),
+    // the translation when the article is next translated. Queue them in the save's transaction if that shows up.
     if let Reextracted::Saved { retranslate } = store.save_reextraction(id, &ir).map_err(err)? {
         crate::images::enqueue(store, id)?;
         if retranslate {
