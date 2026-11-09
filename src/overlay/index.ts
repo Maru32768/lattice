@@ -1082,7 +1082,9 @@ function placeHere(): { text: string; at: number } | null {
   if (found) {
     return found;
   }
-  for (let y = line + 32; y < line + innerHeight / 2; y += 16) {
+  // Not past a passed-through paragraph just below the line for a translated one further down.
+  const below = Math.min(line + innerHeight / 2, lookThrough()?.top ?? Infinity);
+  for (let y = line + 32; y < below; y += 16) {
     const place = probe(y);
     if (place) {
       return place;

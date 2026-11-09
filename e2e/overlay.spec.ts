@@ -318,3 +318,24 @@ test("a short place starts a block only as a whole word: a table cell's No is no
   expect(await page.evaluate(() => window.__lattice!.scrollToText("No", 0))).toBe(false);
   expect(await page.evaluate(() => scrollY)).toBe(0);
 });
+
+test("under the text layer, the gap just above an untranslated paragraph names it, not a translated one further down", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const ps = document.querySelectorAll("p");
+    ps.forEach((p, i) => Object.assign(p.style, { margin: "0 0 12px", pointerEvents: i === 15 ? "auto" : "none" }));
+    Object.assign(ps[15].style, { position: "relative", zIndex: "3" });
+    const layer = Object.assign(document.createElement("div"), { translate: false });
+    Object.assign(layer.style, { position: "fixed", inset: "0", zIndex: "2", color: "transparent" });
+    for (let y = 0; y < innerHeight; y += 10) {
+      const line = Object.assign(document.createElement("span"), { textContent: `text layer line ${y}` });
+      Object.assign(line.style, { position: "absolute", left: "0", right: "0", top: `${y}px`, height: "10px" });
+      layer.append(line);
+    }
+    document.body.append(layer);
+    // The line 4 px above paragraph 13, in the gap; paragraph 15, translated, further down.
+    scrollBy(0, ps[13].getBoundingClientRect().top - 4 - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 13\./);
+});
