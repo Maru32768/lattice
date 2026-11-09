@@ -56,9 +56,9 @@ export function useDocuments(fail: (e: unknown) => void) {
       })
       .catch(fail);
   };
-  /** Whether the page a tab shows is in the Index. */
   /** Each Page tab's last lookup: until the lookup for a new page answers, the tab's `saved` names the last one. */
   const savedFor = useRef(new Map<Id, { url: string; saved: number | null }>());
+  /** Whether the page a tab shows is in the Index. */
   const refreshSaved = (tab: Id, url: string) =>
     api
       .articleForUrl(url)
