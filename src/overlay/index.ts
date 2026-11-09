@@ -967,7 +967,9 @@ function holdPlace(el: Element, at: number) {
   };
   const timer = setTimeout(stop, 3000);
   align();
-  [el, document.documentElement, scroller.firstElementChild].forEach((box) => box && sizes.observe(box));
+  // What grows as the page lays itself out: the block, the page, or the box that scrolls it.
+  const page = scroller === document.scrollingElement;
+  [el, document.documentElement, document.body, page ? null : scroller.firstElementChild].forEach((box) => box && sizes.observe(box));
 }
 
 /**
