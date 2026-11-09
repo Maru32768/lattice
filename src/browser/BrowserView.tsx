@@ -244,7 +244,7 @@ export function BrowserView({
     // A saved article's page opens where it was last read, in the Reader or here.
     const place = tab.saved == null ? undefined : readingPlaces.get(String(tab.saved));
     return browser
-      .open(id, tab.url, b, focus, place && { text: place.text, at: place.at })
+      .open(id, tab.url, b, focus, place && (place.page ?? { text: place.text, at: place.at }))
       .then(
         () => true,
         (e: unknown) => {

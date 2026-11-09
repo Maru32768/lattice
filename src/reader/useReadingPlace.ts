@@ -63,11 +63,11 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
           shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
         );
       // The block at the top, whatever it is: a code block keeps its height at another width, which a paragraph below it
-      // does not. For the article, prose just below it instead, as the Page view has the same paragraphs but seldom a
-      // table's cells or a figure's labels (a PDF's); not one far below, which another width would move.
+      // does not. The Page view also gets the first prose block from the top when that block is not prose: a page has
+      // the same paragraphs, but no code block it can find (pre is not translated) and seldom a table's cells.
       const place = placeAt(false);
       const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? placeAt(true) : null;
-      readingPlaces.set(String(article), prose && prose.at >= -1 ? prose : place);
+      readingPlaces.set(String(article), place && prose ? { ...place, page: { text: prose.text, at: prose.at } } : place);
       return place;
     };
     const stop = keepOnRest(view, keep);

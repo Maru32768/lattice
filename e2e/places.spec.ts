@@ -239,7 +239,7 @@ test("a Page view place the Reader does not have leaves the tab's own", async ({
   await expect.poll(() => readerTop(doc), "the tab's own place").toBe(para(20));
 });
 
-test("in a listing, the Reader keeps its place there", async ({ shell }) => {
+test("in a listing, the Reader keeps its place there and gives the Page view the paragraph after it", async ({ shell }) => {
   await start(shell);
   const article = ARTICLES[4].title!;
   await (await listRow(shell, article)).click();
@@ -249,9 +249,11 @@ test("in a listing, the Reader keeps its place there", async ({ shell }) => {
     const code = el.closest("[id^='b-']")!;
     scroller.scrollTop += code.getBoundingClientRect().top - scroller.getBoundingClientRect().top + code.getBoundingClientRect().height * 0.6;
   });
-  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain("listing line 0");
+  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain("The paragraph after the listing.");
   await shell.getByRole("button", { name: "Page", exact: true }).click();
-  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBeGreaterThan(0);
+  await expect
+    .poll(async () => ((await callsOf(shell, "browser_open")).at(-1) as { place: { text: string } | null }).place?.text)
+    .toBe("The paragraph after the listing.");
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc), "inside the listing again").toContain("listing line 0");
 });

@@ -50,6 +50,11 @@ export interface ReadingPlace {
   at: number;
   /** When it was taken (ms): of two places, the newer one wins. */
   t: number;
+  /**
+   * For the Page view, when the block is not prose (a code block, a table): the first prose block from the top, which a
+   * page has as a paragraph. The Reader keeps to `block`, which puts it back exactly.
+   */
+  page?: { text: string; at: number };
 }
 
 /** No half of a character: a lone surrogate fails the IPC's JSON (an older version cut text so). */
@@ -62,8 +67,15 @@ const wellFormed = (s: string) => {
   }
 };
 
+const isText = (v: unknown): v is string => typeof v === "string" && v !== "" && wellFormed(v);
+
 export const isReadingPlace = (v: unknown): v is ReadingPlace =>
-  isObj(v) && typeof v.text === "string" && v.text !== "" && wellFormed(v.text) && isNum(v.at) && isNum(v.t) && (v.block === undefined || isNum(v.block));
+  isObj(v) &&
+  isText(v.text) &&
+  isNum(v.at) &&
+  isNum(v.t) &&
+  (v.block === undefined || isNum(v.block)) &&
+  (v.page === undefined || (isObj(v.page) && isText(v.page.text) && isNum(v.page.at)));
 
 /** Text with its runs of white space made one space: how the Reader, the Page view and a place compare text. */
 export const normalizeText = (s: string) => s.replace(/\s+/gu, " ").trim();
