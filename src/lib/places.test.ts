@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import { blockOf, needle, placeIn, placeStore, type ReadingPlace } from "./places.ts";
+import { blockOf, isReadingPlace, needle, placeIn, placeStore, type ReadingPlace } from "./places.ts";
 
 const stored = new Map<string, string>();
 Object.assign(globalThis, {
@@ -62,6 +62,15 @@ test("a place finds its block by id while it has the same text, else by the text
   assert.equal(blockOf(blocks, place({ text: "paragraph again" }))?.id, 3, "a page's block may be part of one");
   assert.equal(blockOf(blocks, place({ text: "nowhere" })), undefined);
   assert.equal(needle("x".repeat(100)).length, 80);
+});
+
+test("a block's start keeps whole characters, and a place with half of one is not used", () => {
+  const rocket = String.fromCodePoint(0x1f680);
+  const cut = needle(`${"x".repeat(79)}${rocket} and more`);
+  assert.equal(cut, `${"x".repeat(79)}${rocket}`, "80 characters, the emoji whole");
+  // What a cut by UTF-16 units left: a lone surrogate, which the IPC's JSON refuses.
+  assert.equal(isReadingPlace({ text: `${"x".repeat(79)}${rocket.slice(0, 1)}`, at: 0, t: 0 }), false);
+  assert.equal(isReadingPlace({ text: cut, at: 0, t: 0, block: 3 }), true);
 });
 
 /** A block element whose box spans `top` to `bottom` on screen. */

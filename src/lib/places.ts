@@ -52,11 +52,21 @@ export interface ReadingPlace {
   t: number;
 }
 
-export const isReadingPlace = (v: unknown): v is ReadingPlace =>
-  isObj(v) && typeof v.text === "string" && v.text !== "" && isNum(v.at) && isNum(v.t) && (v.block === undefined || isNum(v.block));
+/** No half of a character: a lone surrogate fails the IPC's JSON (an older version cut text so). */
+const wellFormed = (s: string) => {
+  try {
+    encodeURIComponent(s);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
-/** The start of a block's text, spaces collapsed: what a place knows the block by. */
-export const needle = (s: string) => s.replace(/\s+/gu, " ").trim().slice(0, 80);
+export const isReadingPlace = (v: unknown): v is ReadingPlace =>
+  isObj(v) && typeof v.text === "string" && v.text !== "" && wellFormed(v.text) && isNum(v.at) && isNum(v.t) && (v.block === undefined || isNum(v.block));
+
+/** The start of a block's text, spaces collapsed: what a place knows the block by. 80 characters, not UTF-16 units, so as not to split one. */
+export const needle = (s: string) => Array.from(s.replace(/\s+/gu, " ").trim()).slice(0, 80).join("");
 
 /** The block a place names: the same id and text, else the first with that start, else the first that contains it. */
 export function blockOf<B extends { id: number; text: string }>(blocks: B[], place: ReadingPlace): B | undefined {
