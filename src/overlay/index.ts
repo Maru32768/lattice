@@ -922,13 +922,16 @@ function pageBlocks(): HTMLElement[] {
     .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 }
 
+const READER_MOVED = "lattice-reader-moved";
+
 /** Whether the reader moves the page (wheel, keys, pointer, touch) from now until `stop`; the page's own scrolling is not them. */
 function watchReader() {
   let moved = false;
   const mark = () => {
     moved = true;
   };
-  const events = ["wheel", "keydown", "pointerdown", "touchstart"];
+  // READER_MOVED: the app's own keys, which scroll the page with no event of the page's (runDoc).
+  const events = ["wheel", "keydown", "pointerdown", "touchstart", READER_MOVED];
   events.forEach((e) => addEventListener(e, mark, { capture: true, passive: true }));
   return { moved: () => moved, stop: () => events.forEach((e) => removeEventListener(e, mark, true)) };
 }
@@ -1075,7 +1078,10 @@ if (window.top === window && !window.__lattice) {
     showSavedIdle,
     scrollToUnfoundText: () => unfound != null && scrollToText(unfound.text, unfound.at),
     snapshot,
-    runDoc: (action, count) => docNav.run(action, count),
+    runDoc: (action, count) => {
+      dispatchEvent(new Event(READER_MOVED));
+      docNav.run(action, count);
+    },
     repeatKeys: (first) => {
       keySeq = { ...IDLE, repeat: { first, until: Date.now() + REPEAT_MS } };
     },
