@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { siteOf, type ArticleRow, type ArticleSort, type GroupRow } from "../api";
 import { DIMS, DIM_LABELS, NO_FACETS, activeDims, facetBase, facetLabel, without, type Dim, type Facets, type Relaxation } from "./library";
@@ -15,6 +15,7 @@ import { onMiddle } from "../lib/middle";
 import { paneOf } from "../layout/panes";
 import { useT, type PlainKey } from "../i18n";
 import { Importance, badge, mmdd } from "./rowMeta";
+import { placeStore } from "../lib/places";
 
 export type Grouping = "none" | "feed" | "genre";
 
@@ -245,8 +246,117 @@ export function SortMenu({
   );
 }
 
+/** Where a list was left: the line at its top, its index then, and how far past its top the list was scrolled (px). */
+interface ListPlace {
+  item: string;
+  index: number;
+  offset: number;
+}
+const isListPlace = (v: unknown): v is ListPlace => {
+  const p = v as ListPlace | null;
+  return typeof p?.item === "string" && Number.isInteger(p.index) && p.index >= 0 && Number.isFinite(p.offset);
+};
+/** Each list's place on this device, by scope, filters and grouping: kept across the settings, the closed list and restarts. */
+const listPlaces = placeStore<ListPlace>("lattice.listPlaces", 100, isListPlace);
+
+const itemKey = (it: Item) => (it.kind === "head" ? it.key : String(it.a.id));
+
+/** The place of the list in `scroller`; null at its top. */
+function placeOf(scroller: HTMLElement, items: Item[]): ListPlace | null {
+  if (scroller.scrollTop === 0) {
+    return null;
+  }
+  const top = scroller.getBoundingClientRect().top;
+  const line = [...scroller.querySelectorAll<HTMLElement>("[data-index]")].find((el) => el.getBoundingClientRect().bottom > top);
+  const index = Number(line?.dataset.index);
+  const it = items[index];
+  return line && it ? { item: itemKey(it), index, offset: top - line.getBoundingClientRect().top } : null;
+}
+
+function keepPlace(place: string, scroller: HTMLElement | Window | null, items: Item[]) {
+  // Hidden (a zoomed document covers the list): nothing to measure, and the place kept stays right.
+  if (scroller instanceof HTMLElement && scroller.clientHeight > 0) {
+    listPlaces.set(place, placeOf(scroller, items));
+  }
+}
+
+/**
+ * One list's lines (`place`: its key in `listPlaces`), drawn from where the list was left; the place is kept whenever the
+ * list stops scrolling, which is all that moves it. Keyed by the list, so another list or grouping is a new one.
+ */
+function Rows({
+  place,
+  items,
+  cursorId,
+  renderItem,
+}: {
+  place: string;
+  items: Item[];
+  cursorId: number | null;
+  renderItem: (i: number, it: Item) => ReactNode;
+}) {
+  const virtuoso = useRef<VirtuosoHandle>(null);
+  const body = useRef<HTMLElement | Window | null>(null);
+  const [start] = useState(() => {
+    const p = listPlaces.get(place);
+    const i = p ? items.findIndex((it) => itemKey(it) === p.item) : -1;
+    // The top line has gone since (read and out of 未読, deleted): about as far down instead.
+    return p ? { index: i >= 0 ? i : Math.min(p.index, items.length - 1), align: "start" as const, offset: i >= 0 ? p.offset : 0 } : 0;
+  });
+  // The cursor's row may be out of view and so not mounted: scroll to it, then focus it as the shell's revealCursor would.
+  const revealCursor = useEffectEvent(() => {
+    const index = items.findIndex((it) => it.kind === "row" && it.a.id === cursorId);
+    // A click focused the row (onFocus moved the cursor): it is in view. Virtuoso, not yet caught up with the scroll that
+    // brought it there, would scroll again and move another row under the mouse before mouseup, losing the click.
+    const focused = document.activeElement;
+    if (index < 0 || (focused instanceof HTMLElement && focused.matches(".row") && focused.dataset.id === String(cursorId))) {
+      return;
+    }
+    virtuoso.current?.scrollIntoView({
+      index,
+      done: () =>
+        requestAnimationFrame(() => {
+          const el = body.current instanceof HTMLElement ? body.current.querySelector<HTMLElement>(".row.cur") : null;
+          if (el && paneOf(document.activeElement)?.dataset.pane === "list" && document.activeElement !== el) {
+            el.focus({ preventScroll: true });
+          }
+        }),
+    });
+  });
+  // Once per cursor move, not per list reload; nor when the list comes back, which shows its own place (the open
+  // article's row may be far from it, as when the app starts again).
+  const revealed = useRef(cursorId);
+  useEffect(() => {
+    if (revealed.current !== cursorId) {
+      revealed.current = cursorId;
+      revealCursor();
+    }
+  }, [cursorId]);
+  return (
+    <Virtuoso
+      ref={virtuoso}
+      scrollerRef={(el) => {
+        body.current = el;
+      }}
+      className="list-body"
+      data={items}
+      computeItemKey={(_, it) => itemKey(it)}
+      itemContent={renderItem}
+      heightEstimates={items.map((it) => (it.kind === "head" ? HEAD_H : ROW_H))}
+      increaseViewportBy={400}
+      initialTopMostItemIndex={start}
+      isScrolling={(scrolling) => {
+        if (!scrolling) {
+          keepPlace(place, body.current, items);
+        }
+      }}
+    />
+  );
+}
+
 export function ListPane({
   title,
+  listKey,
   count,
   total,
   facets,
@@ -275,6 +385,8 @@ export function ListPane({
   noProfile,
 }: {
   title: string;
+  /** Names the list (its scope and filters), for keeping its place. */
+  listKey: string;
   count: number;
   total: number;
   facets: Facets;
@@ -371,30 +483,6 @@ export function ListPane({
     );
   // Libraries run to thousands of articles: only the rows in view are mounted, so j / k re-renders a screenful.
   const items = itemsOf(groups);
-  const virtuoso = useRef<VirtuosoHandle>(null);
-  const body = useRef<HTMLElement | Window | null>(null);
-  // The cursor's row may be out of view and so not mounted: scroll to it, then focus it as the shell's revealCursor would.
-  const revealCursor = useEffectEvent(() => {
-    const index = items.findIndex((it) => it.kind === "row" && it.a.id === cursorId);
-    // A click focused the row (onFocus moved the cursor): it is in view. Virtuoso, not yet caught up with the scroll that
-    // brought it there, would scroll again and move another row under the mouse before mouseup, losing the click.
-    const focused = document.activeElement;
-    if (index < 0 || (focused instanceof HTMLElement && focused.matches(".row") && focused.dataset.id === String(cursorId))) {
-      return;
-    }
-    virtuoso.current?.scrollIntoView({
-      index,
-      done: () =>
-        requestAnimationFrame(() => {
-          const el = body.current instanceof HTMLElement ? body.current.querySelector<HTMLElement>(".row.cur") : null;
-          if (el && paneOf(document.activeElement)?.dataset.pane === "list" && document.activeElement !== el) {
-            el.focus({ preventScroll: true });
-          }
-        }),
-    });
-  });
-  // oxlint-disable-next-line react/exhaustive-effect-dependencies -- once per cursor move, not per list reload
-  useEffect(() => revealCursor(), [cursorId]);
   const renderItem = (_: number, it: Item) =>
     it.kind === "head" ? (
       <div className={`grp-h d${it.depth}`}>
@@ -511,20 +599,8 @@ export function ListPane({
         )}
       </header>
       {count > 0 ? (
-        <Virtuoso
-          // The estimates apply only to a new list: another list or grouping starts afresh rather than keep headings' heights by index.
-          key={`${title}|${group}`}
-          ref={virtuoso}
-          scrollerRef={(el) => {
-            body.current = el;
-          }}
-          className="list-body"
-          data={items}
-          computeItemKey={(_, it) => (it.kind === "head" ? it.key : it.a.id)}
-          itemContent={renderItem}
-          heightEstimates={items.map((it) => (it.kind === "head" ? HEAD_H : ROW_H))}
-          increaseViewportBy={400}
-        />
+        // The estimates apply only to a new list: another list or grouping starts afresh rather than keep headings' heights by index.
+        <Rows key={`${listKey}|${group}`} place={`${listKey}|${group}`} items={items} cursorId={cursorId} renderItem={renderItem} />
       ) : (
         <div className="list-body">
           {total > 0 || relax.length > 0 ? (

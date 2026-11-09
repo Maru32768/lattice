@@ -231,7 +231,7 @@ export function ListPage({
         {rows.length === 0 && <p className="m-none">{t("mobile.noArticles")}</p>}
         <ul>
           {rows.slice(0, view.shown).map((a) => (
-            <li key={a.id}>
+            <li key={a.id} data-id={a.id}>
               <a href={`#/a/${a.id}`} onClick={() => onOpen(a)} className={a.read_status === "unread" ? "unread" : ""}>
                 <span className="m-title">{a.title ?? a.original_url}</span>
                 {/* As the PC's row has it (ListPane): site, date, difficulty, importance, favorite, a badge, then the tags. */}

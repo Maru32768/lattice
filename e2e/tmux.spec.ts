@@ -594,17 +594,18 @@ test("a tab shown again keeps its place", async ({ shell }) => {
   await expectPlace(shell, place);
 });
 
-test("the next article and back again start at the top", async ({ app }) => {
+test("the next article starts at its top, and going back returns to where the article was read", async ({ app }) => {
   await (await listRow(app, label(2))).click();
   await expect(focusedTitle(app)).toHaveText(label(2));
   await tallBlocks(app);
-  await readOn(app);
+  const place = await readOn(app);
 
   await press(app, "Control+l", "Shift+J");
   await expect(focusedTitle(app)).toHaveText(label(3));
+  await expect.poll(() => app.locator(".doc-scroll").evaluate((el) => el.scrollTop)).toBe(0);
   await press(app, "Shift+K");
   await expect(focusedTitle(app)).toHaveText(label(2));
-  await expect.poll(() => app.locator(".doc-scroll").evaluate((el) => el.scrollTop)).toBe(0);
+  await expectPlace(app, place);
 });
 
 test("a Reader opened at a search hit stays where it was scrolled to when its pane splits", async ({ app }) => {

@@ -1374,6 +1374,7 @@ export default function App() {
               (listOpen ? (
                 <ListPane
                   title={title}
+                  listKey={listView}
                   count={shown.length}
                   total={scoped.length}
                   facets={facets}

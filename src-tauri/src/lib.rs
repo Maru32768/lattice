@@ -1717,6 +1717,7 @@ pub fn run() {
             browser::overlay_snapshot,
             browser::overlay_history,
             browser::overlay_progress,
+            browser::overlay_place,
             browser::browser_set_keys,
             browser::browser_run_doc,
             browser::browser_repeat_keys,

@@ -443,7 +443,9 @@ function strip(n: Node): unknown {
     id: n.id,
     active: n.active,
     tabs: n.tabs.map((t) =>
-      t.kind === "reader" ? { kind: "reader", id: t.id, articleId: t.articleId } : { kind: "page", id: t.id, key: t.key, url: t.url, title: t.title },
+      t.kind === "reader"
+        ? { kind: "reader", id: t.id, articleId: t.articleId }
+        : { kind: "page", id: t.id, key: t.key, url: t.url, title: t.title, saved: t.saved },
     ),
   };
 }
@@ -500,7 +502,8 @@ function parseNode(v: unknown, ids: number[]): Node | null {
         title: isStr(t.title) ? t.title : "",
         seq: 0,
         loading: false,
-        saved: null,
+        // Known before the page loads, so that it opens where its article was left; the load checks it again.
+        saved: isNum(t.saved) ? t.saved : null,
       });
     } else {
       return null;

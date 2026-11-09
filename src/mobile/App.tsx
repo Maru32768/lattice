@@ -3,7 +3,9 @@ import type { MobileIndex, MobileOp } from "../bindings";
 import { isLang, setDisplayLang, useT } from "../i18n";
 import { ArticlePage } from "./ArticlePage";
 import { ListPage } from "./ListPage";
-import { FIRST_VIEW, type ListView } from "./list";
+import { FIRST_VIEW, forgetListPlace, keepListPlace, showListPlace, storeView, storedView, type ListView } from "./list";
+import { keepOnRest } from "../lib/places";
+import { readingPlaces } from "../reader/useReadingPlace";
 import { keep, viewKey } from "../library/library";
 import { articleInHash } from "./route";
 import { Crashed } from "./ErrorBoundary";
@@ -94,7 +96,8 @@ export function App() {
   const t = useT();
   const articleId = useSyncExternalStore(subscribeHash, () => articleInHash(location.hash));
   const [load, setLoad] = useState<Load>(() => (hasToken() ? { state: "loading" } : { state: "no-token" }));
-  const [view, setView] = useState<ListView>(FIRST_VIEW);
+  const [view, setView] = useState<ListView>(storedView);
+  useEffect(() => storeView(view), [view]);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [icons, setIcons] = useState<Record<string, string>>({});
   /** The icons are asked for once per page and library. */
@@ -107,10 +110,11 @@ export function App() {
     iconsAsked.current = false;
     setIcons({});
     setView(FIRST_VIEW);
+    forgetListPlace();
+    readingPlaces.clear();
   };
   const ops = useSyncExternalStore(subscribeOps, localOps);
   const [rejected, setRejected] = useState<{ what: string; error: string }[]>([]);
-  const listScroll = useRef(0);
   /** Set when the article on screen was opened from the list, so going back to the list is going back in history. */
   const fromList = useRef(false);
   /** Only the latest request may change the screen: an older one can answer last. */
@@ -197,11 +201,18 @@ export function App() {
     };
   }, []);
 
-  // Back from an article lands where the reader left the list.
+  // Back from an article, or the page loaded again, lands where the reader left the list. An article starts at its top
+  // until it has loaded, which knows its own place.
   const reading = articleId != null;
+  const listShown = !reading && load.state === "ready";
   useLayoutEffect(() => {
-    window.scrollTo(0, reading ? 0 : listScroll.current);
-  }, [reading]);
+    if (reading) {
+      window.scrollTo(0, 0);
+    } else if (listShown) {
+      showListPlace();
+    }
+  }, [reading, listShown]);
+  useEffect(() => (listShown ? keepOnRest(window, keepListPlace) : undefined), [listShown]);
 
   const notice = rejected.length > 0 && (
     <div role="alert" className="m-toast" onClick={() => setRejected([])}>
@@ -310,7 +321,7 @@ export function App() {
           });
         }}
         onOpen={(a) => {
-          listScroll.current = window.scrollY;
+          keepListPlace();
           fromList.current = true;
           setView((v) => ({ ...v, kept: keep(v.kept, viewKey(v.scope, v.facets), a.id) }));
           // Opening an article reads it, as on the PC. Only this: reloading the page must not undo 未読に戻す.

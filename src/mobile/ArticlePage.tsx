@@ -1,4 +1,4 @@
-import { memo, useEffect, useEffectEvent, useRef, useState } from "react";
+import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ArticleDoc, ArticleRow, VocabCapture } from "../bindings";
 import { useT } from "../i18n";
 import { translatedShare } from "../overlay/logic";
@@ -7,6 +7,8 @@ import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTran
 import { captureIn, isWord } from "../vocab/vocab";
 import { Crashed } from "./ErrorBoundary";
 import { FormatMismatch, type LocalOp, Unauthorized, loadArticle, loadImage, savedLanguage, saveLanguage, submit, withOps } from "./client";
+import { blockOf, keepOnRest, placeIn, scrollFor } from "../lib/places";
+import { readingPlaces } from "../reader/useReadingPlace";
 
 type StoredBlock = ArticleDoc["blocks"][number];
 
@@ -241,6 +243,36 @@ export function ArticlePage({
       clearTimeout(running.taken);
     };
   }, []);
+
+  // The article opens where it was left on this phone, and keeps its place as it is read and when it goes away.
+  const shownBlocks = typeof doc === "object" && doc != null ? doc.blocks : null;
+  useLayoutEffect(() => {
+    const blocks = shownBlocks;
+    if (!blocks) {
+      return;
+    }
+    const place = readingPlaces.get(String(id));
+    const b = place && blockOf(blocks, place);
+    const el = b && document.querySelector(`[data-block='${b.id}']`);
+    if (place && el) {
+      window.scrollBy(0, scrollFor(el, place, 0));
+    }
+    const keep = () => {
+      const els = [...document.querySelectorAll<HTMLElement>("[data-block]")];
+      // No text on screen to measure (not drawn, or gone already): the place kept stays.
+      if (els.length > 0) {
+        readingPlaces.set(
+          String(id),
+          placeIn(els, 0, (el) => blocks.find((b) => String(b.id) === el.dataset.block)),
+        );
+      }
+    };
+    const stop = keepOnRest(window, keep);
+    return () => {
+      stop();
+      keep();
+    };
+  }, [id, shownBlocks]);
 
   if (doc === "format") {
     return <Crashed />;

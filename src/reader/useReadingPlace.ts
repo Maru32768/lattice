@@ -1,43 +1,71 @@
 import { useLayoutEffect, useRef } from "react";
+import { blockOf, isReadingPlace, keepOnRest, placeIn, placeStore, scrollFor, type ReadingPlace } from "../lib/places";
+import { useLatest } from "../lib/useLatest";
+
+/** Each article's place on this device, for the Reader and the Page view: an article opens where it was left, also after a restart. */
+export const readingPlaces = placeStore<ReadingPlace>("lattice.readingPlaces", 500, isReadingPlace);
 
 /**
  * Where each tab's Reader was when it went away. A pane that moves in the layout tree (split, close) and a tab shown again
  * (a tab switch, a swap) build their Reader anew, often in another width, which moves the text: so the place is a block and
- * how far into it the view starts. `block` is null above the first block, in the article's header, where `at` is a scrollTop.
+ * how far into it the view starts. `place` is null above the first block, in the article's header, where `top` is a scrollTop.
+ * Kept apart from `readingPlaces` as the same article may be open in two tabs at two places.
  * shortcut: a Reader hidden under the zoom has no place to read and comes back at its top, upgrade if closing a zoomed pane proves common.
  */
-const places = new Map<number, { article: number; seq: number | undefined; block: string | null; at: number }>();
+const places = new Map<number, { article: number; seq: number | undefined; place: ReadingPlace | null; top: number; t: number }>();
 
 /**
- * Keeps tab `tab`'s place in `article` across a remount, for the scroller given the ref it returns.
- * A new jump request (`seq`) is where the reader asked to go, so it replaces the place.
+ * Keeps tab `tab`'s place in `article` across a remount, and the article's place across opening it again, for the scroller
+ * given the ref it returns. A new jump request (`seq`) is where the reader asked to go, so it replaces the place.
  */
-export function useReadingPlace(tab: number, article: number, seq: number | undefined) {
+export function useReadingPlace(tab: number, article: number, seq: number | undefined, blocks: { id: number; text: string }[]) {
   const scroller = useRef<HTMLDivElement>(null);
+  const shown = useLatest(blocks);
   useLayoutEffect(() => {
     const view = scroller.current;
     if (!view) {
       return;
     }
-    const place = places.get(tab);
-    places.delete(tab);
-    if (place?.article === article && place.seq === seq) {
-      const r = place.block && view.querySelector(`#${place.block}`)?.getBoundingClientRect();
-      if (r) {
-        view.scrollTop += r.top + place.at * r.height - view.getBoundingClientRect().top;
-      } else if (!place.block) {
-        view.scrollTop = place.at;
+    const goTo = (place: ReadingPlace) => {
+      const b = blockOf(shown.current, place);
+      const el = b && view.querySelector(`#b-${b.id}`);
+      if (el) {
+        view.scrollTop += scrollFor(el, place, view.getBoundingClientRect().top);
       }
-    }
-    return () => {
-      const top = view.getBoundingClientRect().top;
-      const block = [...view.querySelectorAll("[id^='b-']")].find((b) => b.getBoundingClientRect().bottom > top);
-      const r = block?.getBoundingClientRect();
-      places.set(
-        tab,
-        block && r && r.top <= top ? { article, seq, block: block.id, at: (top - r.top) / r.height } : { article, seq, block: null, at: view.scrollTop },
-      );
     };
-  }, [tab, article, seq]);
+    const kept = places.get(tab);
+    places.delete(tab);
+    const mine = kept?.article === article && kept.seq === seq ? kept : undefined;
+    // The article's own place, newer when the reader moved on in another tab or the Page view since this tab went away.
+    // A tie is the place this tab kept for the article as it went: the same one.
+    const stored = seq === undefined ? readingPlaces.get(String(article)) : undefined;
+    if (stored && !(mine && mine.t > stored.t)) {
+      goTo(stored);
+    } else if (mine?.place) {
+      goTo(mine.place);
+    } else if (mine) {
+      view.scrollTop = mine.top;
+    }
+
+    /** The place on screen, kept for the article; undefined while the Reader is hidden and has none to read. */
+    const keep = () => {
+      if (view.clientHeight === 0) {
+        return undefined;
+      }
+      const place = placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
+        shown.current.find((b) => el.id === `b-${b.id}`),
+      );
+      readingPlaces.set(String(article), place);
+      return place;
+    };
+    const stop = keepOnRest(view, keep);
+    return () => {
+      stop();
+      const place = keep();
+      if (place !== undefined) {
+        places.set(tab, { article, seq, place, top: view.scrollTop, t: Date.now() });
+      }
+    };
+  }, [tab, article, seq, shown]);
   return scroller;
 }

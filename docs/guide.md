@@ -221,6 +221,8 @@ A saved article can be read in two views. Switch with **Reader** and **Page** at
 - The **Reader** shows the text extracted from the page, with headings, lists, code, tables and saved images. It never loads anything from the web to show it.
 - The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader.
 
+An article opens where you last read it, in either view, also after Lattice starts again. Switching between the Reader and the Page view keeps the paragraph you were reading. A search result or a chat citation still opens at its passage. The Page view finds the place by the paragraph's text, so it works on a page that has the same paragraph as the Reader.
+
 Imported Markdown has no original web page, so it has no Page view. The Page view of a PDF shows the saved original. This works offline, for a PDF imported from a file and for one saved from a URL. Check figures and equations here. **Mixed** and **Translated** draw the translation over the original's paragraphs. Formulas are not sent to the AI provider: they go into the translation as the paper sets them. Zoom with `Ctrl`+wheel. `Ctrl`+`+` zooms in and `Ctrl`+`0` zooms back. The ☰ at the top left opens the contents. When a PDF has no bookmarks, Lattice builds them from its headings. Clicking a link inside the PDF goes to its place, and the back button returns. With **Mixed** or **Translated** on, **Translate this page** at the top right of a page translates only that page, including a paragraph that runs on to another page. When the page is done, pointing at it shows **Translate this page again**. If that fails, the old translation stays saved, and the same button shows it again.
 
 **The toolbar.** Both views have the same buttons at the right end of the toolbar: **Favorite**, **Mark as read**, **Ask**, **Quiz**, **Note**, focus mode and the ⋯ menu. The ⋯ menu has:
@@ -478,6 +480,8 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 `Esc` clears the filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
 **Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
+
+**Where you left off.** Each list opens where you left it, for each set of filters and grouping. This holds when you come back from another list or the settings, open the closed list again, or start Lattice again.
 
 **Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor, `gg` and `G` go to the first and last article, and `d` and `u` move half a screen. A number in front, as in `5j`, moves that many. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view.
 
@@ -853,6 +857,8 @@ The search field at the top finds articles by title or site. Its filter button o
 
 Opening an article from the list marks it read, as on the PC. On the phone you can also add favorites, mark articles unread, save a URL, and select an English word to send it to the word book with its sentence. If the PC cannot be reached, these wait on the phone and go the next time it can, and they are given up on after 60 days.
 
+The phone keeps your place. When it loads the page again, as phones do with pages left in the background, the list comes back with the same filters, where you left it. Each article opens where you left it on that phone.
+
 - The QR code contains a token. Anyone with the token and the address can read your library, change what is read and favorite, save URLs and add words, which spends your AI provider's usage. Don't show the code to others. **Regenerate the token** makes the old token stop working at once on the PC, and within a few minutes on a snapshot's Worker while the app is running. Then scan the new code. Articles already saved on the old phone stay readable there.
 - Serving to the network is not encrypted, so anyone on the same Wi-Fi may be able to read what is sent, the token included. Use it on a network you trust.
 
@@ -990,7 +996,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, and the window layout.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout.
 
 ### Move the data folder
 

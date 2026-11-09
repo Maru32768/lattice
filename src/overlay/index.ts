@@ -14,6 +14,7 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
+import { needle } from "../lib/places.ts";
 import {
   type Target,
   assignTranslated,
@@ -63,7 +64,8 @@ declare global {
     __lattice?: {
       configure(c: Partial<Config>): void;
       setKeys(k: PageKeys | null): void;
-      scrollToText(text: string): boolean;
+      /** Without `at`, a search result's: centred and flashed. With it, a reading place's: that far down the block, on the reading line. */
+      scrollToText(text: string, at?: number): boolean;
       translateBlocks(els: HTMLElement[], fresh: boolean): void;
       showSavedIdle(): void;
       scrollToUnfoundText(): void;
@@ -92,6 +94,8 @@ const HOVER_MS = 300;
 const BATCH_PARTS = 12;
 const BATCH_CHARS = 6000;
 const MAX_INFLIGHT = 3;
+/** How long a page must rest before its reading place goes to the app. */
+const PLACE_MS = 250;
 
 const state = {
   config: {
@@ -866,25 +870,102 @@ function configure(c: Partial<Config>) {
 }
 
 /** What `scrollToText` could not find yet: the PDF viewer's paragraphs arrive after the page has loaded. */
-let unfoundText: string | null = null;
+let unfound: { text: string; at?: number } | null = null;
 
-function scrollToText(text: string): boolean {
-  unfoundText = null;
-  const needle = normalizeText(text).slice(0, 80);
-  if (!needle) {
+/** A block's text in the page's own language: a sentence that shows its translation keeps its original aside. */
+function originalText(n: Node): string {
+  if (n instanceof HTMLElement && n.classList.contains(SENTENCE) && n.dataset.shown === "t") {
+    return (n as SentenceSpan).latticeOriginal?.textContent ?? "";
+  }
+  return n.nodeType === Node.TEXT_NODE ? (n.nodeValue ?? "") : Array.from(n.childNodes, originalText).join("");
+}
+
+function scrollToText(text: string, at?: number, again = true): boolean {
+  unfound = null;
+  const want = needle(text);
+  if (!want) {
     return false;
   }
-  const el = findLeafBlocks(document.body)
-    .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
-    .find((b) => normalizeText(b.textContent ?? "").includes(needle));
+  const blocks = findLeafBlocks(document.body).concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")));
+  const texts = blocks.map((b) => normalizeText(originalText(b)));
+  // A place names its block by the block's start; a search result's passage may lie anywhere in it.
+  const i = at === undefined ? -1 : texts.findIndex((t) => t.startsWith(want));
+  const el = blocks[i >= 0 ? i : texts.findIndex((t) => t.includes(want))];
   if (!el) {
-    unfoundText = text;
+    unfound = { text, at };
+    // A page that draws its text after it has loaded: once more when it settles, unless the reader has moved by then.
+    if (at !== undefined && again) {
+      const from = scrollY;
+      void settle(document.documentElement, 400, 5000).then(() => {
+        if (unfound?.text === text && scrollY === from) {
+          scrollToText(text, at, false);
+        }
+      });
+    }
     return false;
   }
-  el.scrollIntoView({ block: "center" });
-  el.classList.add("lattice-flash");
-  setTimeout(() => el.classList.remove("lattice-flash"), 2000);
+  if (at === undefined) {
+    el.scrollIntoView({ block: "center" });
+    el.classList.add("lattice-flash");
+    setTimeout(() => el.classList.remove("lattice-flash"), 2000);
+  } else {
+    const r = el.getBoundingClientRect();
+    scrollerOf(el).scrollBy(0, r.top + at * r.height - readingLine());
+  }
   return true;
+}
+
+/**
+ * Where a place is read in a page: a little below the top, clear of the fixed header many sites have. The Reader reads
+ * at its top edge; the same block comes up at either.
+ */
+const readingLine = () => innerHeight * 0.15;
+
+/** What scrolls `el`: the nearest scrolling box around it (the PDF viewer's), else the page. */
+function scrollerOf(el: Element): Element {
+  for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+    if (p.scrollHeight > p.clientHeight && /auto|scroll/u.test(getComputedStyle(p).overflowY)) {
+      return p;
+    }
+  }
+  return document.scrollingElement ?? document.documentElement;
+}
+
+/** The leaf block `el` is in: a paragraph the translation would take, or one it has. */
+function blockAround(el: Element): HTMLElement | null {
+  for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
+    if (e.matches(SKIP)) {
+      return null;
+    }
+    if (e instanceof HTMLElement && (e.dataset.latticeBlock || (isBlock(e) && !Array.from(e.children).some(isBlock)))) {
+      return e;
+    }
+  }
+  return null;
+}
+
+/** The block on the reading line, or the first below it, and how far down it the line is: the page's reading place. */
+function placeHere(): { text: string; at: number } | null {
+  const line = readingLine();
+  for (let y = line; y < line + innerHeight / 2; y += 16) {
+    for (const x of [0.5, 0.35, 0.65]) {
+      const hit = document.elementFromPoint(innerWidth * x, y);
+      const block = hit && blockAround(hit);
+      const text = block && needle(originalText(block));
+      if (block && text) {
+        const r = block.getBoundingClientRect();
+        return { text, at: r.height > 0 ? (line - r.top) / r.height : 0 };
+      }
+    }
+  }
+  return null;
+}
+
+/** The app keeps a saved article's place as the page comes to rest, so that the Reader, or the page opened again, starts there. */
+let placeTimer = 0;
+function placeChanged() {
+  clearTimeout(placeTimer);
+  placeTimer = window.setTimeout(() => void invoke("overlay_place", { place: placeHere() }).catch(() => {}), PLACE_MS);
 }
 
 /**
@@ -913,7 +994,7 @@ if (window.top === window && !window.__lattice) {
     scrollToText,
     translateBlocks,
     showSavedIdle,
-    scrollToUnfoundText: () => unfoundText != null && scrollToText(unfoundText),
+    scrollToUnfoundText: () => unfound != null && scrollToText(unfound.text, unfound.at),
     snapshot,
     runDoc: (action, count) => docNav.run(action, count),
     repeatKeys: (first) => {
@@ -932,6 +1013,8 @@ if (window.top === window && !window.__lattice) {
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keydown", printUnclaimed);
   window.addEventListener("pointerdown", onPagePress, true);
+  // Capture: a box that scrolls (the PDF viewer's) sends its scroll events to no one else.
+  window.addEventListener("scroll", placeChanged, { capture: true, passive: true });
   // Quietly: the app takes the keyboard to read a second key once its hint covers the page.
   window.addEventListener("blur", () => {
     keySeq = IDLE;

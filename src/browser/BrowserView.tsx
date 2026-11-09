@@ -10,6 +10,7 @@ import { Menu, pageDrawn, useCovered } from "../ui/Popover";
 import { Icon } from "../ui/Icon";
 import { getEngine, homeOf, toNavigation } from "./engines";
 import { useT, type T } from "../i18n";
+import { readingPlaces } from "../reader/useReadingPlace";
 
 /** The `seq` each tab's webview (by key) was last told to open: a tab shown again is not reloaded. */
 const opened = new Map<string, number>();
@@ -237,8 +238,10 @@ export function BrowserView({
   const open = useEffectEvent((b: Bounds, focus?: string) => {
     opening.current = true;
     opened.set(id, tab.seq);
+    // A saved article's page opens where it was last read, in the Reader or here.
+    const place = tab.saved == null ? undefined : readingPlaces.get(String(tab.saved));
     return browser
-      .open(id, tab.url, b, focus)
+      .open(id, tab.url, b, focus, place && { text: place.text, at: place.at })
       .catch((e: unknown) => onError(String(e)))
       .finally(() => {
         opening.current = false;

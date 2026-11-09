@@ -1,5 +1,19 @@
 import type { ArticleRow } from "../bindings/index.ts";
-import { NO_FACETS, NO_KEPT, countBy, facetBase, listed, universe, type Dim, type DimValue, type Facets, type Kept, type Scope } from "../library/library.ts";
+import {
+  DIMS,
+  NO_FACETS,
+  NO_KEPT,
+  countBy,
+  facetBase,
+  listed,
+  universe,
+  type Dim,
+  type DimValue,
+  type Facets,
+  type Kept,
+  type Scope,
+} from "../library/library.ts";
+import { placeStore } from "../lib/places.ts";
 
 /** How many rows are added at a time. */
 export const PAGE = 100;
@@ -18,6 +32,83 @@ export interface ListView {
   kept: Kept;
 }
 export const FIRST_VIEW: ListView = { scope: { kind: "unread" }, facets: NO_FACETS, query: "", shown: PAGE, kept: NO_KEPT };
+
+const VIEW_KEY = "lattice.mobile.view";
+/** What a reload keeps. Not the articles kept in the view after reading them: as on the PC, they last until the page goes. */
+type Stored = Omit<ListView, "kept">;
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+function isStored(v: unknown): v is Stored {
+  if (!isObj(v) || !isObj(v.scope) || !isObj(v.facets)) {
+    return false;
+  }
+  const { scope, facets } = v;
+  return (
+    SCOPES.some((s) => s.kind === scope.kind) &&
+    DIMS.every((d) => Array.isArray(facets[d])) &&
+    (facets.tagMode === "all" || facets.tagMode === "any") &&
+    typeof v.query === "string" &&
+    Number.isInteger(v.shown)
+  );
+}
+
+/** The list last shown on this phone, which a phone that dropped the page in the background shows again; else the first. */
+export function storedView(): ListView {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "null");
+    if (isStored(v)) {
+      const scope = SCOPES.find((s) => s.kind === v.scope.kind)!;
+      return { scope, facets: v.facets, query: v.query, shown: Math.max(PAGE, v.shown), kept: NO_KEPT };
+    }
+  } catch {
+    // Blocked storage, or a view an older version wrote.
+  }
+  return FIRST_VIEW;
+}
+
+export function storeView(v: ListView) {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ scope: v.scope, facets: v.facets, query: v.query, shown: v.shown } satisfies Stored));
+  } catch {
+    // The view lasts until the page is loaded again.
+  }
+}
+
+/**
+ * Where the list was left: the article at the top of the screen and how far down the screen its row's top was, else how
+ * far down the page was (that row gone since).
+ */
+interface ListPlace {
+  id: number;
+  top: number;
+  y: number;
+}
+const isListPlace = (v: unknown): v is ListPlace => isObj(v) && Number.isInteger(v.id) && Number.isFinite(v.top) && Number.isFinite(v.y);
+const listPlaces = placeStore<ListPlace>("lattice.mobile.listPlace", 1, isListPlace);
+
+/** Keeps where the list on screen is; at its top it keeps nothing. */
+export function keepListPlace() {
+  const row = [...document.querySelectorAll<HTMLElement>("li[data-id]")].find((r) => r.getBoundingClientRect().bottom > 0);
+  listPlaces.set("list", scrollY > 0 && row ? { id: Number(row.dataset.id), top: row.getBoundingClientRect().top, y: scrollY } : null);
+}
+
+export function showListPlace() {
+  const p = listPlaces.get("list");
+  const row = p && document.querySelector(`li[data-id='${p.id}']`);
+  if (row) {
+    window.scrollBy(0, row.getBoundingClientRect().top - p.top);
+  } else {
+    window.scrollTo(0, p?.y ?? 0);
+  }
+}
+
+export const forgetListPlace = () => {
+  listPlaces.clear();
+  try {
+    localStorage.removeItem(VIEW_KEY);
+  } catch {
+    // Blocked storage holds nothing.
+  }
+};
 
 /** `base`: scope ∧ search, what the filter counts against. `rows`: what the list shows, in the order they came. */
 export function visibleArticles(articles: ArticleRow[], view: ListView, now = Date.now()): { base: ArticleRow[]; rows: ArticleRow[] } {

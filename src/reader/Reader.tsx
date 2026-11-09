@@ -814,7 +814,7 @@ export function Reader({
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- scroll once per focus request (seq), and again when the blocks arrive
   }, [focusBlock, focus?.seq, blocks.length]);
   // After the effect above: a kept place wins over a request the reader has moved on from.
-  const scrollEl = useReadingPlace(tabId, a.id, focus?.seq);
+  const scrollEl = useReadingPlace(tabId, a.id, focus?.seq, blocks);
 
   const shows = (id: number, i: number) => selected.has(`${id}:${i}`) !== flipped.has(`${id}:${i}`);
   /** Whether any sentence of the block shows its translation (its marker, and what flipping the block does). */

@@ -116,8 +116,8 @@ pub struct Browser {
 struct TabState {
     /// `browser_hide` came while there was no webview yet, so `browser_open` must not show the one it is creating.
     hidden_while_opening: bool,
-    /// Text to scroll to once the next page finishes loading (search-result jumps).
-    focus: Option<String>,
+    /// Where to scroll once the next page finishes loading.
+    jump: Option<Jump>,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
     history: (bool, bool),
@@ -137,7 +137,7 @@ impl Default for TabState {
     fn default() -> Self {
         Self {
             hidden_while_opening: false,
-            focus: None,
+            jump: None,
             visibility: Visibility::default(),
             history: (true, true),
             parked: None,
@@ -551,6 +551,7 @@ async fn close_page(app: &AppHandle, wv: Webview) -> Result<(), String> {
 // where creating or navigating a WebView2 deadlocks. browser_hide/set_bounds stay sync so
 // hide-then-show sequences from the UI apply in order.
 #[tauri::command]
+#[allow(clippy::too_many_arguments, reason = "Tauri's injected state, then the call's own arguments")]
 pub async fn browser_open(
     app: AppHandle,
     browser: State<'_, Browser>,
@@ -559,6 +560,7 @@ pub async fn browser_open(
     url: String,
     bounds: Bounds,
     focus_text: Option<String>,
+    place: Option<Place>,
 ) -> Result<(), String> {
     let url = http_url(&url)?;
     let label = label(&tab)?;
@@ -568,6 +570,9 @@ pub async fn browser_open(
         browser.with_tab(&label, |t| t.pdfs.insert(id));
     }
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
+    // A search result is worth loading the page again for; a place only matters to a page that loads anyway.
+    let searching = focus_text.is_some();
+    let jump = focus_text.map(Jump::Text).or_else(|| place.and_then(Place::checked).map(Jump::Place));
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
     let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
         Some(wv) => {
@@ -580,17 +585,17 @@ pub async fn browser_open(
         // Already showing this page, or the tab's own page come from another window (its URL may have
         // moved on in the page since the tab last saw it): no reload, its history and scroll stay.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
-        if focus_text.is_none() && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
+        if !searching && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
         }
-        browser.with_tab(&label, |t| t.focus = focus_text);
+        browser.with_tab(&label, |t| t.jump = jump);
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
     browser.with_tab(&label, |t| {
-        t.focus = focus_text;
+        t.jump = jump;
         t.hidden_while_opening = false;
     });
     browser.evict(&app);
@@ -626,9 +631,13 @@ pub async fn browser_open(
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
-            if !loading && let Some(text) = browser.with_tab(wv.label(), |t| t.focus.take()) {
-                let arg = serde_json::to_string(&text).expect("string serializes");
-                let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({arg})"));
+            if !loading && let Some(jump) = browser.with_tab(wv.label(), |t| t.jump.take()) {
+                let args = match jump {
+                    Jump::Text(text) => serde_json::to_string(&text),
+                    Jump::Place(p) => serde_json::to_string(&p.text).map(|text| format!("{text},{}", p.at)),
+                }
+                .expect("string serializes");
+                let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({args})"));
             }
         })
         .on_document_title_changed(|wv, title| {
@@ -815,6 +824,46 @@ pub fn overlay_history(browser: State<'_, Browser>, webview: Webview, can_go_bac
     }
     browser.with_tab(webview.label(), |t| t.history = (can_go_back, can_go_forward));
     emit_page(&webview, &browser, webview.url().map_err(|e| e.to_string())?.to_string());
+    Ok(())
+}
+
+/// Where a saved article was being read in its page: the block on the overlay's reading line, by the start of its text,
+/// and how far down that block the line was.
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Place {
+    text: String,
+    at: f64,
+}
+
+impl Place {
+    /// Pages send these, so a page's own value is taken only within reason. `at` reaches the page as script source.
+    fn checked(self) -> Option<Self> {
+        let ok = !self.text.trim().is_empty() && self.text.chars().count() <= 80 && self.at.is_finite();
+        ok.then(|| Self { at: self.at.clamp(-10.0, 10.0), ..self })
+    }
+}
+
+/// Where to scroll once a page has loaded.
+enum Jump {
+    /// A search result's or citation's passage: centred and flashed.
+    Text(String),
+    /// Where the reader left the article.
+    Place(Place),
+}
+
+#[derive(Clone, Serialize)]
+struct PlaceReport {
+    place: Option<Place>,
+}
+
+/// Called by the overlay as the page comes to rest: the place being read, which the UI keeps for the tab's saved
+/// article. Exposed to remote pages; a page can only move where its own article opens.
+#[tauri::command]
+pub fn overlay_place(webview: Webview, place: Option<Place>) -> Result<(), String> {
+    if !is_browser(webview.label()) {
+        return Err("not a browser webview".into());
+    }
+    emit_tab(&webview, "browser-place", PlaceReport { place: place.and_then(Place::checked) });
     Ok(())
 }
 
@@ -1062,6 +1111,18 @@ pub fn ensure_translation_allowed(webview: &Webview, browser: &Browser) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_page_reports_a_place_only_within_reason() {
+        let place = |text: &str, at: f64| Place { text: text.into(), at }.checked().map(|p| (p.text, p.at));
+        assert_eq!(place("A paragraph", 0.25), Some(("A paragraph".into(), 0.25)));
+        assert_eq!(place("A paragraph", -40.0), Some(("A paragraph".into(), -10.0)), "far below the line: about there");
+        for (text, at) in [("A paragraph", f64::NAN), ("A paragraph", f64::INFINITY), ("  ", 0.5)] {
+            assert_eq!(place(text, at), None, "{text:?} at {at} would not reach the page as a number");
+        }
+        assert_eq!(place(&"あ".repeat(81), 0.0), None, "longer than any block's start");
+        assert!(place(&"あ".repeat(80), 0.0).is_some());
+    }
 
     #[test]
     fn labels_name_their_tab_and_nothing_else_passes() {

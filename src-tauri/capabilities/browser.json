@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/remote-schema.json",
   "identifier": "browser-overlay",
-  "description": "Remote pages in the in-app browser tabs (browser-<tab>) and the hidden renderer: only the overlay commands (config, translate, snapshot, history, progress, key, vocab, ask, print)",
+  "description": "Remote pages in the in-app browser tabs (browser-<tab>) and the hidden renderer: only the overlay commands (config, translate, snapshot, history, progress, place, key, vocab, ask, print)",
   "webviews": ["browser-*", "renderer"],
   "remote": { "urls": ["https://*", "http://*"] },
-  "permissions": ["allow-overlay-config", "allow-overlay-translate", "allow-overlay-snapshot", "allow-overlay-history", "allow-overlay-progress", "allow-overlay-key", "allow-overlay-vocab", "allow-overlay-ask", "allow-overlay-print"]
+  "permissions": ["allow-overlay-config", "allow-overlay-translate", "allow-overlay-snapshot", "allow-overlay-history", "allow-overlay-progress", "allow-overlay-place", "allow-overlay-key", "allow-overlay-vocab", "allow-overlay-ask", "allow-overlay-print"]
 }

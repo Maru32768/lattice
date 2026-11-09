@@ -11,6 +11,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **tmux pane actions.** After `Ctrl+B`, `;` goes to the previous pane, `q` to a numbered pane, `Shift+H` and its neighbors resize (within 500 ms the second key alone repeats), `{` and `}` swap, `Shift+E` evens, `1` to `9` and `0` go to a numbered tab, and `w` lists the tabs.
 - **Vim editing and the vimrc.** Vim key bindings now work in both the chat box and notes, with the rest of Vim's editing. `:w`, `:q`, `:wincmd`, `:split` and others work too. Paste or load the text of a `.vimrc` in **Settings › Shortcuts**: mappings and some `set` options take effect, and each line left out is listed with its reason.
 - `?` opens the key list. `:` or `;` opens the palette with `>` already typed. In the palette, `t:` searches the open tabs.
+- **Lists and articles keep their place.** Each list, for each set of filters, opens where you left it, also after the settings and a restart. An article opens where you last read it, and switching between the Reader and the Page view keeps the paragraph you were reading. On a phone, the list keeps its filters and place when the page loads again, and articles open where you left them.
 
 ### Changed
 

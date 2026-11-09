@@ -348,7 +348,7 @@ test("serialize round-trips the tree, drops runtime page state, and rejects othe
   assert.equal(back.focused, l.focused);
   assert.equal(back.next, l.next);
   const p = tabById(back, 3)!.tab;
-  assert.deepEqual(p.kind === "page" && [p.title, p.seq, p.loading, p.saved, p.canGoBack], ["A", 0, false, null, undefined]);
+  assert.deepEqual(p.kind === "page" && [p.title, p.seq, p.loading, p.saved, p.canGoBack], ["A", 0, false, 7, undefined], "its article, for its reading place");
   const before = tabById(l, 3)!.tab;
   assert.equal(p.kind === "page" && before.kind === "page" && p.key, before.kind === "page" && before.key, "the webview key survives a restart");
   const legacy = parse(

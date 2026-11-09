@@ -19,6 +19,7 @@ import {
   type Tab,
 } from "../layout/layout";
 import { useLatest } from "../lib/useLatest";
+import { readingPlaces } from "../reader/useReadingPlace";
 import { HOST, STORAGE } from "./host";
 
 /** The documents: the pane tree with its tabs, the article views its Reader and saved Page tabs show, and the pages' webviews. */
@@ -93,6 +94,13 @@ export function useDocuments(fail: (e: unknown) => void) {
       void refreshSaved(t.id, url);
     }
   });
+  /** Where a saved article's page is being read, for the Reader and the page opened again. Not while it loads: the page may be another by then. */
+  const onBrowserPlace = useEffectEvent((p: { tab: string; place: { text: string; at: number } | null }) => {
+    const t = pageByKey(layout, p.tab);
+    if (t?.saved != null && !t.loading) {
+      readingPlaces.set(String(t.saved), p.place && { ...p.place, t: Date.now() });
+    }
+  });
   /** A link the page asked to open in a new window: a Page tab behind its own, which stays in front. */
   const onNewTab = useEffectEvent((p: { tab: string; url: string }) => onPage(p.tab, (l, t) => openBehind(l, { kind: "page", url: p.url }, t.id)));
   useEffect(() => {
@@ -106,6 +114,7 @@ export function useDocuments(fail: (e: unknown) => void) {
         }),
       ),
       listen<{ tab: string; url: string }>("browser-new-tab", (e) => onNewTab(e.payload)),
+      listen<{ tab: string; place: { text: string; at: number } | null }>("browser-place", (e) => onBrowserPlace(e.payload)),
       listen<{ tab: string; title: string }>("browser-title", (e) =>
         setLayout((l) => {
           const t = pageByKey(l, e.payload.tab);

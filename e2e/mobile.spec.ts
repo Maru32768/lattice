@@ -476,6 +476,47 @@ test("a different list starts at its top", async ({ page }) => {
   await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
 });
 
+/** How far down the screen the row of `name` is. */
+const rowTop = (page: Page, name: RegExp) => page.getByRole("link", { name }).evaluate((el) => Math.round(el.getBoundingClientRect().top));
+
+test("the page loaded again (the phone dropped it in the background) shows the same list where it was left", async ({ page }) => {
+  await start(page, { index: LONG });
+  await showScope(page, "すべての記事");
+  await page.getByRole("link", { name: /First article/ }).evaluate((el) => {
+    el.scrollIntoView({ block: "start" });
+    scrollBy(0, -123);
+  });
+  const left = await rowTop(page, /First article/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("lattice.mobile.listPlace") ?? "")).toContain('"id":1');
+  await page.reload();
+  await expect(page.getByRole("button", { name: "絞り込み", exact: true })).toBeVisible();
+  await expect.poll(() => rowTop(page, /First article/)).toBe(left);
+  await expect(page.getByText("すべての記事 · 150件"), "the list it showed, not 未読").toBeVisible();
+});
+
+test("an article opens where it was left on this phone, after going back and after a reload", async ({ page }) => {
+  await start(page);
+  const blocks = Array.from({ length: 60 }, (_, i) => ({
+    id: 100 + i,
+    ordinal: i,
+    kind: "paragraph",
+    text: `Phone paragraph ${i}.`,
+    attrs: {},
+    translation: null,
+  }));
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks } }));
+  const blockTop = () =>
+    page.evaluate(() => [...document.querySelectorAll<HTMLElement>("[data-block]")].find((b) => b.getBoundingClientRect().bottom > 0)?.textContent);
+  await page.getByRole("link", { name: /First article/ }).click();
+  await page.getByText("Phone paragraph 30.").evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("lattice.readingPlaces") ?? "")).toContain("Phone paragraph 30.");
+  await page.getByRole("link", { name: "一覧" }).click();
+  await page.getByRole("link", { name: /First article/ }).click();
+  await expect.poll(blockTop).toBe("Phone paragraph 30.");
+  await page.reload();
+  await expect.poll(blockTop).toBe("Phone paragraph 30.");
+});
+
 test("the answer to the latest request wins, whatever order they come back in", async ({ page }) => {
   await start(page);
   await page.getByText("First article").waitFor();
