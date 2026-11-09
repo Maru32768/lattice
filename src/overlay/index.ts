@@ -944,10 +944,11 @@ function holdPlace(el: Element, at: number) {
   const scroller = scrollerOf(el);
   const reader = watchReader();
   const align = () => {
-    if (reader.moved()) {
+    const r = el.getBoundingClientRect();
+    // Gone or hidden (the page drew its text again): an empty box would pull the page up by the line each time.
+    if (reader.moved() || !el.isConnected || r.height === 0) {
       return stop();
     }
-    const r = el.getBoundingClientRect();
     const off = r.top + at * r.height - readingLine();
     if (Math.abs(off) >= 1) {
       scroller.scrollBy(0, off);

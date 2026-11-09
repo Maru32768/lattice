@@ -88,6 +88,21 @@ test("the place stays on the reading line while the page above it still grows", 
   await expect.poll(() => lineIn(page, 30), "the reader's own scroll is left alone").not.toBeCloseTo(0.5, 1);
 });
 
+test("a place whose paragraph the page draws again is let go, not chased", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  const y = await page.evaluate(() => {
+    // The page drawing its text again: new nodes, the same text.
+    const main = document.getElementById("main")!;
+    main.replaceChildren(...[...main.children].map((c) => c.cloneNode(true)));
+    return scrollY;
+  });
+  await page.evaluate(() => document.getElementById("main")!.append(Object.assign(document.createElement("div"), { style: "height: 300px" })));
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => scrollY), "the page was not pulled up by the line").toBe(y);
+});
+
 test("paragraphs the pointer passes through (the PDF viewer's, under its text layer) are found by where they are", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
