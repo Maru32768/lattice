@@ -287,3 +287,26 @@ test("a place is put back when the page shows its text a while after loading", a
   await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.hidden = false), 1200));
   await expect.poll(() => lineIn(page, 30), { timeout: 5000 }).toBeCloseTo(0.5, 1);
 });
+
+test("under the PDF viewer's text layer, the paragraph on the line beats one translated just below it", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const ps = document.querySelectorAll("p");
+    ps.forEach((p, i) => Object.assign(p.style, { margin: "0", pointerEvents: i === 13 ? "auto" : "none" }));
+    // Translated, it takes the pointer above the text layer, as the viewer's regions do.
+    Object.assign(ps[13].style, { position: "relative", zIndex: "3" });
+    const layer = Object.assign(document.createElement("div"), { translate: false });
+    Object.assign(layer.style, { position: "fixed", inset: "0", zIndex: "2", color: "transparent" });
+    for (let y = 0; y < innerHeight; y += 10) {
+      const line = Object.assign(document.createElement("span"), { textContent: `text layer line ${y}` });
+      Object.assign(line.style, { position: "absolute", left: "0", right: "0", top: `${y}px`, height: "10px" });
+      layer.append(line);
+    }
+    document.body.append(layer);
+    // Paragraph 12's last lines on the line; paragraph 13 starts a few pixels below.
+    const r = ps[12].getBoundingClientRect();
+    scrollBy(0, r.bottom - 6 - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
+});

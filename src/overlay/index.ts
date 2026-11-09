@@ -1005,15 +1005,21 @@ function scrollerOf(el: Element): Element {
   return document.scrollingElement ?? document.documentElement;
 }
 
-/** The leaf block `el` is in: a paragraph the translation would take, or one it has. */
-function blockAround(el: Element): HTMLElement | null {
-  // Anything inside what the translation leaves alone: a line of the PDF viewer's text layer (its spans lay out as
-  // blocks), a site's header. Below the body, as the translation looks: a page may say translate="no" on html.
+/**
+ * Whether `el` is inside what the translation leaves alone (a line of the PDF viewer's text layer, whose spans lay out as
+ * blocks; a site's header). Below the body, as the translation looks: a page may say translate="no" on html.
+ */
+function skipped(el: Element) {
   for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
     if (e.matches(SKIP)) {
-      return null;
+      return true;
     }
   }
+  return false;
+}
+
+/** The leaf block `el` is in: a paragraph the translation would take, or one it has. */
+function blockAround(el: Element): HTMLElement | null {
   for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
     if (e instanceof HTMLElement && (e.dataset.latticeBlock || (isBlock(e) && !Array.from(e.children).some(isBlock)))) {
       return e;
@@ -1031,9 +1037,15 @@ function placeHere(): { text: string; at: number } | null {
     // A block below the line is put about there, not as many of its heights down: the Reader measures by its own.
     return text && r ? { text, at: r.height > 0 ? Math.max(-1, (line - r.top) / r.height) : 0 } : null;
   };
+  /** Set when a probe met what the translation skips: the PDF viewer's text layer, over its paragraphs. */
+  let layered = false;
   const probe = (y: number) => {
     for (const x of [0.5, 0.35, 0.65]) {
       const hit = document.elementFromPoint(innerWidth * x, y);
+      if (hit && skipped(hit)) {
+        layered = true;
+        continue;
+      }
       const place = hit && placeOf(blockAround(hit));
       if (place) {
         return place;
@@ -1055,15 +1067,16 @@ function placeHere(): { text: string; at: number } | null {
     const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
     return block && { block, top: block.getBoundingClientRect().top };
   };
-  // The line, and just below it: the line often falls in the margin between two paragraphs.
-  const onLine = probe(line) ?? probe(line + 16);
-  if (onLine) {
-    return onLine;
-  }
-  // One on the line beats one a probe finds lower down (a PDF page translated below one that is not).
-  const through = passedThrough();
-  if (through && through.top <= line) {
-    return placeOf(through.block);
+  let through: ReturnType<typeof passedThrough> | null = null;
+  const onLineThrough = () => {
+    through ??= passedThrough();
+    return through && through.top <= line ? placeOf(through.block) : null;
+  };
+  // On the line; then, under a text layer, the paragraph it covers there (one translated just below must not win: a PDF
+  // page translated below one that is not); then just below, as the line often falls between two paragraphs.
+  const found = probe(line) ?? (layered ? onLineThrough() : null) ?? probe(line + 16) ?? onLineThrough();
+  if (found) {
+    return found;
   }
   for (let y = line + 32; y < line + innerHeight / 2; y += 16) {
     const place = probe(y);
@@ -1071,6 +1084,7 @@ function placeHere(): { text: string; at: number } | null {
       return place;
     }
   }
+  through ??= passedThrough();
   return through ? placeOf(through.block) : null;
 }
 
