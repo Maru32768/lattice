@@ -102,9 +102,9 @@ export function useDocuments(fail: (e: unknown) => void) {
   /** Where a saved article's page is being read (null: at its top), for the Reader and the page opened again. Only once `saved` is known to name this page. */
   const onBrowserPlace = useEffectEvent((p: { tab: string; place: { text: string; at: number } | null }) => {
     const t = pageByKey(layout, p.tab);
-    // The lookup's own answer, not `t.saved`, which the layout takes a render later.
+    // The lookup's answer, and the layout's too: they differ for a render after a lookup, and after the article is deleted.
     const found = t && !t.loading ? savedFor.current.get(t.id) : undefined;
-    if (t && found?.url === t.url && found.saved != null) {
+    if (t && found?.url === t.url && found.saved != null && found.saved === t.saved) {
       readingPlaces.set(String(found.saved), p.place && { ...p.place, t: Date.now() });
       if (!p.place) {
         // The page read back to its top: the tab's Reader, when it comes back, too (it keeps its own place otherwise).
