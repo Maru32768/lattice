@@ -870,7 +870,16 @@ function configure(c: Partial<Config>) {
 }
 
 /** What `scrollToText` could not find yet: the PDF viewer's paragraphs arrive after the page has loaded. */
-let unfound: { text: string; at?: number } | null = null;
+let unfound: { text: string; at?: number; reader?: ReturnType<typeof watchReader> } | null = null;
+
+/** Tries what was not found again (the PDF viewer, once it has drawn its pages); a place only while the reader has not moved. */
+function scrollToUnfound() {
+  if (unfound?.reader?.moved()) {
+    unfound.reader.stop();
+    unfound = null;
+  }
+  return unfound != null && scrollToText(unfound.text, unfound.at);
+}
 
 /** A block's text in the page's own language: a sentence that shows its translation keeps its original aside. */
 function originalText(n: Node): string {
@@ -881,6 +890,7 @@ function originalText(n: Node): string {
 }
 
 function scrollToText(text: string, at?: number, again = true): boolean {
+  unfound?.reader?.stop();
   unfound = null;
   const want = needle(text);
   if (!want) {
@@ -894,16 +904,11 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   // A block not shown yet (the page reveals its text by script) is not found yet either: the retry below waits for it.
   const el = found && (at === undefined || found.getClientRects().length > 0) ? found : undefined;
   if (!el) {
-    unfound = { text, at };
-    // A page that draws its text after it has loaded: once more when it settles, unless the reader has moved by then.
+    // A place waits only until the reader moves the page: from then on, where they are is the place.
+    unfound = { text, at, reader: at === undefined ? undefined : watchReader() };
+    // A page that draws its text after it has loaded: once more when it settles.
     if (at !== undefined && again) {
-      const reader = watchReader();
-      void settle(document.documentElement, 400, 5000).then(() => {
-        reader.stop();
-        if (unfound?.text === text && !reader.moved()) {
-          scrollToText(text, at, false);
-        }
-      });
+      void settle(document.documentElement, 400, 5000).then(() => unfound?.text === text && scrollToUnfound());
     }
     return false;
   }
@@ -1083,7 +1088,7 @@ if (window.top === window && !window.__lattice) {
     scrollToText,
     translateBlocks,
     showSavedIdle,
-    scrollToUnfoundText: () => unfound != null && scrollToText(unfound.text, unfound.at),
+    scrollToUnfoundText: scrollToUnfound,
     snapshot,
     runDoc: (action, count) => {
       dispatchEvent(new Event(READER_MOVED));

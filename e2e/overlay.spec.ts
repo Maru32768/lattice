@@ -154,6 +154,27 @@ test("the page at its top is no place, and a place just put back is not reported
   expect(await page.evaluate((n) => window.__pageCalls.slice(n).filter((c) => c.cmd === "overlay_place"), before)).toEqual([]);
 });
 
+test("the PDF viewer's late try leaves the place alone once the reader has scrolled", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  const drawn = await page.evaluate(() => {
+    const main = document.getElementById("main")!;
+    const html = main.innerHTML;
+    main.replaceChildren(Object.assign(document.createElement("div"), { style: "height: 3000px" }));
+    return html;
+  });
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40.", 0))).toBe(false);
+  await page.mouse.wheel(0, 400);
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+  const y = await page.evaluate(() => scrollY);
+  await page.evaluate((html) => {
+    document.getElementById("main")!.innerHTML = html;
+    window.__lattice!.scrollToUnfoundText();
+  }, drawn);
+  await page.waitForTimeout(700);
+  expect(await page.evaluate(() => scrollY), "where the reader scrolled to").toBe(y);
+});
+
 test("of two columns on the line, the left one, read first, is the place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
