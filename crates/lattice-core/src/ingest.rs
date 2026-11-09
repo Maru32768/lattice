@@ -211,7 +211,9 @@ pub fn reextract(store: &Store, id: i64) -> Result<i64, String> {
 }
 
 /// Re-extracts an article that an older extractor read, from its stored page: what a newer one keeps (images inside
-/// paragraphs, since version 3) reaches the articles saved before it. A local job: no network, and no paid work.
+/// paragraphs, since version 3) reaches the articles saved before it. A local job without network or LLM, which may queue
+/// paid work in one case: an article translated before, whose paragraphs now break otherwise, gets them translated if
+/// translation is automatic.
 pub const REEXTRACT_JOB: &str = "reextract";
 
 /// At startup: every web page extracted by an older `EXTRACTION_VERSION`. Returns the number of jobs queued.
@@ -245,10 +247,9 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     let Some(ir) = snap.and_then(|s| extract(&s.html(), &s.final_url).ok()) else {
         return keep_as_is();
     };
-    if let Reextracted::Saved { text_changed } = store.save_reextraction(id, &ir).map_err(err)? {
+    if let Reextracted::Saved { retranslate } = store.save_reextraction(id, &ir).map_err(err)? {
         crate::images::enqueue(store, id)?;
-        // A paragraph split around an image is new text: its translation is made as for any new article.
-        if text_changed {
+        if retranslate {
             crate::translate::enqueue_if_auto(store, id)?;
         }
     }
@@ -585,10 +586,27 @@ mod tests {
         s.save_fetched(id, None, Ok(whole), None).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
         s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
+        let queued = |s: &Store| -> i64 { s.conn().query_row("SELECT count(*) FROM processing_jobs", [], |r| r.get(0)).unwrap() };
+        // Never translated: re-reading it translates nothing.
+        let (untranslated, _) = s.upsert_pending("https://example.com/other", "https://example.com/other", "example.com").unwrap();
+        store_fetched(&s, untranslated, &page(&breaks(true))).unwrap();
+        s.save_fetched(untranslated, None, Ok(extract(&page(&breaks(false)).html, "https://example.com/other").unwrap()), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [untranslated]).unwrap();
+        s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
+        reextract_outdated(&s, untranslated).unwrap();
+        assert_eq!(queued(&s), 0, "an article never translated is not translated for this");
+        // Translated: its heading has a translation.
+        s.conn()
+            .execute(
+                "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, prompt_version)
+                 SELECT text_hash, 'ja', '[]', '見出し', 'test', 'v' FROM blocks WHERE article_id = ?1 AND kind = 'heading'",
+                [id],
+            )
+            .unwrap();
         reextract_outdated(&s, id).unwrap();
-        let queued: Vec<String> =
+        let kinds: Vec<String> =
             s.conn().prepare("SELECT type FROM processing_jobs ORDER BY type").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-        assert_eq!(queued, [crate::translate::JOB_TYPE], "the two paragraphs are new text; no image to fetch");
+        assert_eq!(kinds, [crate::translate::JOB_TYPE], "the two paragraphs are new text; no image to fetch");
     }
 
     #[test]

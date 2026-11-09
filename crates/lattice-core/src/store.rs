@@ -492,8 +492,9 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
 /// What `Store::save_reextraction` did.
 #[derive(Debug, PartialEq)]
 pub enum Reextracted {
-    /// Saved; `text_changed` when a paragraph is not what it was (a split around an image): its translation is to make.
-    Saved { text_changed: bool },
+    /// Saved; `retranslate` when a paragraph is not what it was (broken otherwise) in an article that was translated: the
+    /// new paragraphs' translation is to make. One never translated is not translated for this.
+    Saved { retranslate: bool },
     /// Left as it was: a newer save has read it meanwhile, or the page now reads shorter.
     Kept,
 }
@@ -888,7 +889,12 @@ impl Store {
             tx.commit()?;
             return Ok(Reextracted::Kept);
         }
-        let text_changed = !prose(&ir.blocks).eq(held.iter().map(String::as_str));
+        let retranslate = !prose(&ir.blocks).eq(held.iter().map(String::as_str))
+            && tx.query_row(
+                "SELECT EXISTS (SELECT 1 FROM blocks b JOIN segment_translations t ON t.source_hash = b.text_hash WHERE b.article_id = ?1)",
+                [id],
+                |r| r.get::<_, bool>(0),
+            )?;
         replace_blocks(&tx, id, &ir.blocks)?;
         let text_length: usize = ir.blocks.iter().map(|b| chars(&b.text)).sum();
         tx.execute(
@@ -896,7 +902,7 @@ impl Store {
             params![id, content_hash(&ir.blocks), EXTRACTION_VERSION, text_length as i64],
         )?;
         tx.commit()?;
-        Ok(Reextracted::Saved { text_changed })
+        Ok(Reextracted::Saved { retranslate })
     }
 
     pub fn latest_snapshot(&self, article_id: i64) -> Result<Option<Snapshot>> {
