@@ -250,7 +250,8 @@ pub fn reextract_outdated(store: &Store, id: i64) -> Result<(), String> {
     // shortcut: these follow the save, outside its transaction. One that fails (the database held past its timeout) fails
     // the job, and its retry finds the article saved: the images are queued again at the next start (enqueue_missing),
     // the translation when the article is next translated. Queue them in the save's transaction if that shows up.
-    if let Reextracted::Saved { retranslate } = store.save_reextraction(id, &ir).map_err(err)? {
+    let key = crate::translate::article_target(store, id)?.key();
+    if let Reextracted::Saved { retranslate } = store.save_reextraction(id, &ir, &key).map_err(err)? {
         crate::images::enqueue(store, id)?;
         if retranslate {
             crate::translate::enqueue_if_auto(store, id)?;
@@ -576,7 +577,7 @@ mod tests {
         // A refetch of as much text lands between the read and the save: only the version says it is newer.
         store_fetched(&s, id, &page(&BODY.replace("dirty reads", "dirty write"))).unwrap();
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks.len();
-        assert_eq!(s.save_reextraction(id, &read).unwrap(), Reextracted::Kept);
+        assert_eq!(s.save_reextraction(id, &read, "ja").unwrap(), Reextracted::Kept);
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().blocks.len(), blocks);
         assert!(s.get_article(id, "ja").unwrap().unwrap().blocks.iter().any(|b| b.block.text.contains("dirty write")), "the refetch's text stays");
     }
@@ -593,22 +594,33 @@ mod tests {
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
         s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
         let queued = |s: &Store| -> i64 { s.conn().query_row("SELECT count(*) FROM processing_jobs", [], |r| r.get(0)).unwrap() };
-        // Never translated: re-reading it translates nothing.
+        // This one was translated: all its text, into its target. Into another target is not translated for this.
+        let key = crate::translate::article_target(&s, id).unwrap().key();
+        let translate = |s: &Store, key: &str| {
+            s.conn()
+                .execute(
+                    "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, prompt_version)
+                     SELECT text_hash, ?2, '[]', '訳', 'test', 'v' FROM blocks WHERE article_id = ?1",
+                    params![id, key],
+                )
+                .unwrap();
+        };
+        translate(&s, "a target since left");
+        // Another never was, though its heading ("Section") has a translation, from the first.
+        let other = |two: bool| page(&breaks(two).replace("Snapshot isolation", "Serializable isolation"));
         let (untranslated, _) = s.upsert_pending("https://example.com/other", "https://example.com/other", "example.com").unwrap();
-        store_fetched(&s, untranslated, &page(&breaks(true))).unwrap();
-        s.save_fetched(untranslated, None, Ok(extract(&page(&breaks(false)).html, "https://example.com/other").unwrap()), None).unwrap();
+        store_fetched(&s, untranslated, &other(true)).unwrap();
+        s.save_fetched(untranslated, None, Ok(extract(&other(false).html, "https://example.com/other").unwrap()), None).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [untranslated]).unwrap();
         s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
         reextract_outdated(&s, untranslated).unwrap();
-        assert_eq!(queued(&s), 0, "an article never translated is not translated for this");
-        // Translated: its heading has a translation.
-        s.conn()
-            .execute(
-                "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, prompt_version)
-                 SELECT text_hash, 'ja', '[]', '見出し', 'test', 'v' FROM blocks WHERE article_id = ?1 AND kind = 'heading'",
-                [id],
-            )
-            .unwrap();
+        assert_eq!(queued(&s), 0, "an article never translated is not translated for this, whatever text it shares");
+        reextract_outdated(&s, id).unwrap();
+        assert_eq!(queued(&s), 0, "translated only into a target since left");
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        s.save_fetched(id, None, Ok(extract(&page(&breaks(false)).html, "https://example.com/post").unwrap()), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        translate(&s, &key);
         reextract_outdated(&s, id).unwrap();
         let kinds: Vec<String> =
             s.conn().prepare("SELECT type FROM processing_jobs ORDER BY type").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();

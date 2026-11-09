@@ -883,7 +883,8 @@ impl Store {
     /// A re-extraction of a page already stored (`ingest::REEXTRACT_JOB`), in one transaction: the blocks, the version and
     /// the length change; the title, dates, error and canonical URL stay, as the extractor's change is to the text. What
     /// the article holds is read here, under the same lock: a refetch saved since the page was read has the say.
-    pub fn save_reextraction(&self, id: i64, ir: &ArticleIr) -> Result<Reextracted> {
+    /// `translation_key` is the article's current translation target (`segments::Target::key`): what says it was translated.
+    pub fn save_reextraction(&self, id: i64, ir: &ArticleIr, translation_key: &str) -> Result<Reextracted> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         let version: Option<i64> =
@@ -902,9 +903,14 @@ impl Store {
         }
         let held_prose: Vec<String> = tx.prepare(STORED_PROSE)?.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
         let retranslate = !prose(&ir.blocks).eq(held_prose.iter().map(String::as_str))
+            // Translated: most of its own text has a translation into its current target. Translations are shared by text
+            // across articles, so one heading another article had translated ("Introduction") does not make it so, nor
+            // does a translation into a target since left.
             && tx.query_row(
-                "SELECT EXISTS (SELECT 1 FROM blocks b JOIN segment_translations t ON t.source_hash = b.text_hash WHERE b.article_id = ?1)",
-                [id],
+                "SELECT count(*) > 0 AND 2 * sum(EXISTS (SELECT 1 FROM segment_translations t WHERE t.source_hash = b.text_hash AND t.target_language = ?3))
+                        > count(*)
+                 FROM blocks b WHERE b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?2))",
+                params![id, json(&PROSE_KINDS), translation_key],
                 |r| r.get::<_, bool>(0),
             )?;
         replace_blocks(&tx, id, &ir.blocks)?;
