@@ -901,7 +901,10 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   // A place names its block by the block's start; a search result's passage may lie anywhere in it.
   // A block not shown (yet: the page may reveal its text by script) is not a place, nor a hidden copy before the shown one.
   const shown = (k: number) => at === undefined || blocks[k]!.getClientRects().length > 0;
-  const i = at === undefined ? -1 : texts.findIndex((t, k) => t.startsWith(want) && shown(k));
+  // As the Reader's blockOf: the block that is that start, before one that only begins with it (a heading "Usage", a
+  // paragraph "Usage of the API…"). shortcut: two blocks of the same text (a table of contents) go to the first.
+  const exactly = at === undefined ? -1 : texts.findIndex((t, k) => needle(t) === want && shown(k));
+  const i = exactly >= 0 ? exactly : at === undefined ? -1 : texts.findIndex((t, k) => t.startsWith(want) && shown(k));
   const el = blocks[i >= 0 ? i : texts.findIndex((t, k) => t.includes(want) && shown(k))];
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
