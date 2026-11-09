@@ -910,8 +910,7 @@ function scrollToText(text: string, at?: number, again = true): boolean {
     el.classList.add("lattice-flash");
     setTimeout(() => el.classList.remove("lattice-flash"), 2000);
   } else {
-    const r = el.getBoundingClientRect();
-    scrollerOf(el).scrollBy(0, r.top + at * r.height - readingLine());
+    holdPlace(el, at);
   }
   return true;
 }
@@ -932,6 +931,34 @@ function watchReader() {
   const events = ["wheel", "keydown", "pointerdown", "touchstart"];
   events.forEach((e) => addEventListener(e, mark, { capture: true, passive: true }));
   return { moved: () => moved, stop: () => events.forEach((e) => removeEventListener(e, mark, true)) };
+}
+
+/**
+ * Puts `at` of `el` on the reading line, and keeps it there while the page still lays itself out (pictures arriving, the
+ * PDF viewer sizing its pages, which moved a place there by half a screen), until the reader moves the page or a moment passes.
+ */
+function holdPlace(el: Element, at: number) {
+  const scroller = scrollerOf(el);
+  const reader = watchReader();
+  const align = () => {
+    if (reader.moved()) {
+      return stop();
+    }
+    const r = el.getBoundingClientRect();
+    const off = r.top + at * r.height - readingLine();
+    if (Math.abs(off) >= 1) {
+      scroller.scrollBy(0, off);
+    }
+  };
+  const sizes = new ResizeObserver(align);
+  const stop = () => {
+    sizes.disconnect();
+    clearTimeout(timer);
+    reader.stop();
+  };
+  const timer = setTimeout(stop, 3000);
+  align();
+  [el, document.documentElement, scroller.firstElementChild].forEach((box) => box && sizes.observe(box));
 }
 
 /**

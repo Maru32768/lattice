@@ -74,6 +74,20 @@ test("a page that draws its text after loading is scrolled to the place once it 
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0, 1);
 });
 
+test("the place stays on the reading line while the page above it still grows", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  // A picture that arrives late, above the place: the PDF viewer sizing its pages did the same.
+  await page.evaluate(() => {
+    const late = Object.assign(document.createElement("div"), { style: "height: 900px" });
+    document.getElementById("main")!.prepend(late);
+  });
+  await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0.5, 1);
+  await page.mouse.wheel(0, 300);
+  await expect.poll(() => lineIn(page, 30), "the reader's own scroll is left alone").not.toBeCloseTo(0.5, 1);
+});
+
 test("paragraphs the pointer passes through (the PDF viewer's, under its text layer) are found by where they are", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
