@@ -1826,7 +1826,9 @@ mod tests {
                  (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
                  (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
-                 (2, 'summary', 'Current then.', 'of then 2', 't', 'v');",
+                 (2, 'summary', 'Current then.', 'of then 2', 't', 'v');
+             INSERT INTO quizzes (article_id, source_hash, provider, prompt_version) VALUES
+                 (1, 'of then 1', 't', 'v'), (1, 'older', 't', 'v');",
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
@@ -1846,6 +1848,15 @@ mod tests {
             .map(Result::unwrap)
             .collect();
         assert_eq!(current, [true, false, true]);
+        let quizzes: Vec<bool> = s
+            .conn()
+            .prepare("SELECT z.source_hash = a.content_hash FROM quizzes z JOIN articles a ON a.id = z.article_id ORDER BY z.id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(quizzes, [true, false], "quizzes move as summaries do");
     }
 
     #[test]
