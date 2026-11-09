@@ -169,3 +169,31 @@ test("the same article in two tabs keeps a place in each", async ({ shell }) => 
   await tabs.nth(1).click();
   await expect.poll(() => readerTop(doc)).toBe(para(50));
 });
+
+test("a page whose article was deleted keeps no place for it", async ({ shell }) => {
+  await start(shell);
+  await (await listRow(shell, LONG)).click();
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBeGreaterThan(0);
+  const tab = ((await callsOf(shell, "browser_open")).at(-1) as { tab: string }).tab;
+  const place = (text: string) => shell.evaluate(([t, x]) => window.__e2e.emit("browser-place", { tab: t, place: { text: x, at: 0 } }), [tab, text]);
+  await shell.evaluate(
+    ([t, u]) => window.__e2e.emit("browser-page", { tab: t, url: u, loading: false, can_go_back: false, can_go_forward: false }),
+    [tab, ARTICLES[1].original_url],
+  );
+  await expect
+    .poll(async () => {
+      await place("Paragraph 5 of the long");
+      return stored(shell, "lattice.readingPlaces");
+    })
+    .toContain("Paragraph 5 of the long");
+
+  await shell.getByRole("button", { name: /^その他/ }).click();
+  await shell.getByRole("menuitem", { name: "ライブラリから削除…" }).click();
+  await shell.getByRole("alertdialog").getByRole("button", { name: "削除", exact: true }).click();
+  await expect.poll(() => callsOf(shell, "delete_article")).toEqual([{ id: ARTICLES[1].id }]);
+  // Its id may come back for the next article saved: the page, no longer saved, writes nothing under it.
+  await place("Paragraph 9 of the long");
+  await shell.waitForTimeout(300);
+  expect(await stored(shell, "lattice.readingPlaces")).not.toContain("Paragraph 9 of the long");
+});
