@@ -19,7 +19,7 @@ import {
   type Tab,
 } from "../layout/layout";
 import { useLatest } from "../lib/useLatest";
-import { readingPlaces } from "../reader/useReadingPlace";
+import { forgetTabPlace, readingPlaces } from "../reader/useReadingPlace";
 import { HOST, STORAGE } from "./host";
 
 /** The documents: the pane tree with its tabs, the article views its Reader and saved Page tabs show, and the pages' webviews. */
@@ -106,6 +106,10 @@ export function useDocuments(fail: (e: unknown) => void) {
     const found = t && !t.loading ? savedFor.current.get(t.id) : undefined;
     if (t && found?.url === t.url && found.saved != null) {
       readingPlaces.set(String(found.saved), p.place && { ...p.place, t: Date.now() });
+      if (!p.place) {
+        // The page read back to its top: the tab's Reader, when it comes back, too (it keeps its own place otherwise).
+        forgetTabPlace(t.id);
+      }
     }
   });
   /** A link the page asked to open in a new window: a Page tab behind its own, which stays in front. */
