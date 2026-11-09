@@ -1793,6 +1793,40 @@ mod tests {
     }
 
     #[test]
+    fn upgrading_recomputes_every_stored_content_hash_once_and_moves_its_summaries() {
+        let conn = Connection::open_in_memory().unwrap();
+        let before = MIGRATIONS.iter().position(|m| m.contains("joined with nothing between them")).unwrap();
+        assert_eq!(before + 1, REHASH_AT, "the recompute runs after the migration that says so");
+        for sql in &MIGRATIONS[..before] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", before as i64).unwrap();
+        // An article extracted: it keeps blocks, a hash of then and a summary of it.
+        conn.execute_batch(
+            "INSERT INTO articles (id, original_url, normalized_url, domain, extraction_status, content_hash) VALUES
+                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1');
+             INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
+                 (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3');
+             INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
+                 (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v');",
+        )
+        .unwrap();
+        let s = Store::init(conn).unwrap();
+        let hashes: Vec<String> =
+            s.conn().prepare("SELECT content_hash FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
+        assert_eq!(hashes, [text_hash(["説明文続き"].into_iter())], "a Japanese paragraph broken at the image hashes as one");
+        let current: Vec<bool> = s
+            .conn()
+            .prepare("SELECT s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id ORDER BY s.id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(current, [true, false]);
+    }
+
+    #[test]
     fn medium_feed_links_are_normalized_again() {
         let conn = Connection::open_in_memory().unwrap();
         for sql in &MIGRATIONS[..RENORMALIZE_AT[0] - 1] {
