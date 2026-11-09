@@ -73,3 +73,13 @@ test("a page that draws its text after loading is scrolled to the place once it 
   await expect(page.locator("p")).toHaveCount(60);
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0, 1);
 });
+
+test("the page at its top is no place", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => scrollTo(0, 400));
+  await expect.poll(async () => (await reported(page))?.text).toBeTruthy();
+  await page.evaluate(() => scrollTo(0, 0));
+  const last = () => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_place").at(-1)?.args);
+  await expect.poll(last).toEqual({ place: null });
+});

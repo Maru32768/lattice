@@ -966,21 +966,27 @@ function placeHere(): { text: string; at: number } | null {
       const text = block && needle(originalText(block));
       if (block && text) {
         const r = block.getBoundingClientRect();
-        return { text, at: r.height > 0 ? (line - r.top) / r.height : 0 };
+        // A block below the line is put about there, not as many of its heights down: the Reader measures by its own.
+        return { text, at: r.height > 0 ? Math.max(-1, (line - r.top) / r.height) : 0 };
       }
     }
   }
   return null;
 }
 
-/** The app keeps a saved article's place as the page comes to rest, so that the Reader, or the page opened again, starts there. */
+/**
+ * The app keeps a saved article's place as the page comes to rest, so that the Reader, or the page opened again, starts
+ * there. The page at its top is no place (null): the article opens at its top.
+ */
 let placeTimer = 0;
-function placeChanged() {
+function placeChanged(e: Event) {
   clearTimeout(placeTimer);
+  const page = e.target === document;
   placeTimer = window.setTimeout(() => {
-    const place = placeHere();
-    // Nothing found (a code block or a figure over the line) is no place to forget: the place the app keeps stays.
-    if (place) {
+    const top = page && (document.scrollingElement?.scrollTop ?? 0) === 0;
+    // Nothing found is not the top: the place the app keeps stays.
+    const place = top ? null : placeHere();
+    if (top || place) {
       invoke("overlay_place", { place }).catch(() => {});
     }
   }, PLACE_MS);

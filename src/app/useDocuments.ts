@@ -99,7 +99,7 @@ export function useDocuments(fail: (e: unknown) => void) {
       void refreshSaved(t.id, url);
     }
   });
-  /** Where a saved article's page is being read, for the Reader and the page opened again. Only once `saved` is known to name this page. */
+  /** Where a saved article's page is being read (null: at its top), for the Reader and the page opened again. Only once `saved` is known to name this page. */
   const onBrowserPlace = useEffectEvent((p: { tab: string; place: { text: string; at: number } | null }) => {
     const t = pageByKey(layout, p.tab);
     if (t?.saved != null && !t.loading && savedFor.current.get(t.id) === t.url) {

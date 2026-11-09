@@ -857,13 +857,17 @@ struct PlaceReport {
 }
 
 /// Called by the overlay as the page comes to rest: the place being read, which the UI keeps for the tab's saved
-/// article. Exposed to remote pages; a page can only move where its own article opens.
+/// article, or none at the page's top. Exposed to remote pages; a page can only move where its own article opens.
 #[tauri::command]
 pub fn overlay_place(webview: Webview, place: Option<Place>) -> Result<(), String> {
     if !is_browser(webview.label()) {
         return Err("not a browser webview".into());
     }
-    emit_tab(&webview, "browser-place", PlaceReport { place: place.and_then(Place::checked) });
+    // A place out of reason is dropped, not taken for the top.
+    let Ok(place) = place.map(|p| p.checked().ok_or(())).transpose() else {
+        return Ok(());
+    };
+    emit_tab(&webview, "browser-place", PlaceReport { place });
     Ok(())
 }
 
