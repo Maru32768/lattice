@@ -898,19 +898,20 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   }
   const blocks = pageBlocks();
   const texts = blocks.map((b) => normalizeText(originalText(b)));
+  const place = at !== undefined;
   // A place names its block by the block's start; a search result's passage may lie anywhere in it.
   // A block not shown (yet: the page may reveal its text by script) is not a place, nor a hidden copy before the shown one.
-  const shown = (k: number) => at === undefined || blocks[k]!.getClientRects().length > 0;
+  const shown = (k: number) => !place || blocks[k]!.getClientRects().length > 0;
   // As the Reader's blockOf: the block that is that start, before one that only begins with it (a heading "Usage", a
   // paragraph "Usage of the API…"). shortcut: two blocks of the same text (a table of contents) go to the first.
-  const exactly = at === undefined ? -1 : texts.findIndex((t, k) => needle(t) === want && shown(k));
-  const i = exactly >= 0 ? exactly : at === undefined ? -1 : texts.findIndex((t, k) => t.startsWith(want) && shown(k));
+  const exactly = place ? texts.findIndex((t, k) => needle(t) === want && shown(k)) : -1;
+  const i = exactly >= 0 ? exactly : place ? texts.findIndex((t, k) => t.startsWith(want) && shown(k)) : -1;
   const el = blocks[i >= 0 ? i : texts.findIndex((t, k) => t.includes(want) && shown(k))];
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
-    unfound = { text, at, reader: at === undefined ? undefined : watchReader() };
+    unfound = { text, at, reader: place ? watchReader() : undefined };
     // A page that draws its text after it has loaded: once more when it settles.
-    if (at !== undefined && again) {
+    if (place && again) {
       void settle(document.documentElement, 400, 5000).then(() => unfound?.text === text && scrollToUnfound(false));
     }
     return false;
