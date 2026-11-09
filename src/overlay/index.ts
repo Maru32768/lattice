@@ -1007,10 +1007,10 @@ function scrollerOf(el: Element): Element {
 
 /**
  * Whether `el` is inside what the translation leaves alone (a line of the PDF viewer's text layer, whose spans lay out as
- * blocks; a site's header). Below the body, as the translation looks: a page may say translate="no" on html.
+ * blocks; a site's header), as findLeafBlocks looks: from the body down, so a page may say translate="no" on html.
  */
 function skipped(el: Element) {
-  for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
+  for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) {
     if (e.matches(SKIP)) {
       return true;
     }
