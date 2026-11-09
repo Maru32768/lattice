@@ -916,9 +916,11 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };
-    // A page that draws or shows its text after it has loaded: again each time it settles, for a few seconds.
+    // A page that draws or shows its text after it has loaded: again each time it settles, for a few seconds. Only the
+    // newest try goes on (the PDF viewer tries again itself once it has drawn).
+    const mine = unfound;
     if (place && Date.now() < until) {
-      void settle(document.documentElement, 400, until - Date.now()).then(() => unfound?.text === text && scrollToUnfound(until));
+      void settle(document.documentElement, 400, until - Date.now()).then(() => unfound === mine && scrollToUnfound(until));
     }
     return false;
   }
