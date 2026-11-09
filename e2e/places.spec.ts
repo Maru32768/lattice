@@ -131,6 +131,25 @@ test("the Page view opens where the Reader was, and the Reader where the Page vi
     .toContain("Paragraph 60 of the long");
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc)).toBe(para(60));
+
+  // The page read back to its top: the article, and this tab's Reader too, start at the top.
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await opened())?.text).toBe(para(60));
+  const again = ((await callsOf(shell, "browser_open")).at(-1) as { tab: string }).tab;
+  await shell.evaluate(
+    ([t, u]) => window.__e2e.emit("browser-page", { tab: t, url: u, loading: false, can_go_back: false, can_go_forward: false }),
+    [again, url],
+  );
+  await expect
+    .poll(async () => {
+      await shell.evaluate((t) => window.__e2e.emit("browser-place", { tab: t, place: null }), again);
+      return stored(shell, "lattice.readingPlaces");
+    })
+    .not.toContain("Paragraph 60");
+  await shell.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect(doc.getByText(para(79))).toBeAttached();
+  await shell.waitForTimeout(300);
+  expect(await doc.evaluate((el) => el.scrollTop)).toBe(0);
 });
 
 test("the same article in two tabs keeps a place in each", async ({ shell }) => {
