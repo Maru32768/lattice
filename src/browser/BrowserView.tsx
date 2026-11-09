@@ -302,17 +302,14 @@ export function BrowserView({
       return;
     }
     void open(boundsOf(host.current)!, tab.focus).then(async (ok) => {
-      if (!ok) {
-        return;
-      }
-      // The new webview takes the keyboard when it is created: take it back for the URL bar.
+      // The new webview takes the keyboard when it is created: take it back for the URL bar (which also edits on a failure).
       if (tab.edit) {
         await getCurrentWebview()
           .setFocus()
           .catch(() => {});
         setEditAt((n) => n + 1);
       }
-      return sync();
+      return ok ? sync() : undefined;
     });
   }, [id, tab.seq, tab.focus, tab.edit]);
 
