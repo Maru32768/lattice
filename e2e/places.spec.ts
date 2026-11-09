@@ -15,6 +15,8 @@ async function start(shell: Page) {
     const more = [
       "ARTICLES.push(...Array.from({ length: 150 }, (_, i) => ({ ...ARTICLES[2], id: 5000 + i, title: `Extra ${i}` })));",
       "genericBlocks = ((plain) => (a) => (a.id === 2 ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', `Paragraph ${i} of the long article.`, null])] : plain(a)))(genericBlocks);",
+      // An article that ends in a long listing.
+      "genericBlocks = ((plain) => (a) => (a.id === 4 ? [...plain(a), ['code', Array.from({ length: 150 }, (_, i) => `code line ${i}`).join('\\n'), null]] : plain(a)))(genericBlocks);",
     ].join("\n");
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
   });
@@ -196,4 +198,19 @@ test("a page whose article was deleted keeps no place for it", async ({ shell })
   await place("Paragraph 9 of the long");
   await shell.waitForTimeout(300);
   expect(await stored(shell, "lattice.readingPlaces")).not.toContain("Paragraph 9 of the long");
+});
+
+test("an article read into the long listing at its end opens there again", async ({ shell }) => {
+  await start(shell);
+  const listing = ARTICLES[3].title!;
+  await (await listRow(shell, listing)).click();
+  const doc = shell.locator(".doc-scroll");
+  await expect(doc.getByText("code line 149")).toBeAttached();
+  await doc.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+  const end = await doc.evaluate((el) => el.scrollTop);
+  expect(end).toBeGreaterThan(0);
+  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain("code line 0");
+  await (await listRow(shell, ARTICLES[2].title!)).click();
+  await (await listRow(shell, listing)).click();
+  await expect.poll(() => doc.evaluate((el) => el.scrollTop)).toBeGreaterThan(end - 50);
 });

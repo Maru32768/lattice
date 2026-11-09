@@ -56,11 +56,16 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       if (view.clientHeight === 0) {
         return undefined;
       }
-      // Prose only: the Page view has the same paragraphs, but a table's cells or a figure's labels (a PDF's) seldom.
-      const place = placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
-        shown.current.find((b) => el.id === `b-${b.id}` && TRANSLATABLE.has(b.kind)),
-      );
-      readingPlaces.set(String(article), place);
+      const placeAt = (prose: boolean) =>
+        placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
+          shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
+        );
+      // The block at the top, whatever it is: a code block keeps its height at another width, which a paragraph below it
+      // does not. For the article, prose just below it instead, as the Page view has the same paragraphs but seldom a
+      // table's cells or a figure's labels (a PDF's); not one far below, which another width would move.
+      const place = placeAt(false);
+      const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? placeAt(true) : null;
+      readingPlaces.set(String(article), prose && prose.at >= -1 ? prose : place);
       return place;
     };
     const stop = keepOnRest(view, keep);
