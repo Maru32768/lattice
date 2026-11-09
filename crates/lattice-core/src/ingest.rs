@@ -442,6 +442,12 @@ mod tests {
         s.save_fetched(shorter, None, Ok(held), None).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [shorter]).unwrap();
         let long = s.get_article(shorter, "ja").unwrap().unwrap().blocks.len();
+        // One whose page now reads without its long code block: losing code is losing text.
+        let (coded, _) = s.upsert_pending("https://example.com/coded", "https://example.com/coded", "example.com").unwrap();
+        store_fetched(&s, coded, &page(BODY)).unwrap();
+        let code = format!("{BODY}<pre><code>{}</code></pre>", "let snapshot = isolation();\n".repeat(40));
+        s.save_fetched(coded, None, Ok(extract(&page(&code).html, "https://example.com/coded").unwrap()), None).unwrap();
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [coded]).unwrap();
         let (gone, _) = s.upsert_pending("https://example.com/gone", "https://example.com/gone", "example.com").unwrap();
         store_fetched(&s, gone, &page(BODY)).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [gone]).unwrap();
@@ -461,7 +467,7 @@ mod tests {
             s.conn().query_row("SELECT s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id", [], |r| r.get(0)).unwrap()
         };
 
-        assert_eq!(enqueue_outdated(&s).unwrap(), 3);
+        assert_eq!(enqueue_outdated(&s).unwrap(), 4);
         assert_eq!(enqueue_outdated(&s).unwrap(), 0, "once");
         reextract_outdated(&s, id).unwrap();
         assert!(current(&s), "the text is unchanged: its summary is not out of date for the image found in it");
@@ -474,11 +480,13 @@ mod tests {
         assert!(blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Image && b.block.text == "A figure"), "{blocks:?}");
         reextract_outdated(&s, shorter).unwrap();
         assert_eq!(s.get_article(shorter, "ja").unwrap().unwrap().blocks.len(), long, "a page read shorter keeps what the article has");
+        reextract_outdated(&s, coded).unwrap();
+        assert!(s.get_article(coded, "ja").unwrap().unwrap().blocks.iter().any(|b| b.block.kind == crate::ir::BlockKind::Code), "the code stays");
         reextract_outdated(&s, gone).unwrap();
         assert_eq!(s.get_article(gone, "ja").unwrap().unwrap().blocks.len(), kept, "a page that no longer reads keeps the article as it was");
         let versions: Vec<i64> =
             s.conn().prepare("SELECT extraction_version FROM articles").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-        assert_eq!(versions, [EXTRACTION_VERSION; 3]);
+        assert_eq!(versions, [EXTRACTION_VERSION; 4]);
     }
 
     #[test]
