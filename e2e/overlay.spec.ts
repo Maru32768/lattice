@@ -103,6 +103,21 @@ test("a place whose paragraph the page draws again is let go, not chased", async
   expect(await page.evaluate(() => scrollY), "the page was not pulled up by the line").toBe(y);
 });
 
+test("a block missed on the line is not looked for elsewhere on screen, as a cookie bar", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const code = Object.assign(document.createElement("pre"), { textContent: "let x = 1;\n".repeat(200) });
+    document.querySelectorAll("p")[20].after(code);
+    const bar = Object.assign(document.createElement("p"), { textContent: "We use cookies." });
+    Object.assign(bar.style, { position: "fixed", bottom: "0", left: "0", right: "0", margin: "0", background: "#fff" });
+    document.body.append(bar);
+    scrollBy(0, code.getBoundingClientRect().top + 200);
+  });
+  await page.waitForTimeout(600);
+  expect(await reported(page), "nothing, so the place kept stays").toBeUndefined();
+});
+
 test("paragraphs the pointer passes through (the PDF viewer's, under its text layer) are found by where they are", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);

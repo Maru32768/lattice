@@ -1013,10 +1013,11 @@ function placeHere(): { text: string; at: number } | null {
       }
     }
   }
-  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are.
+  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are. Only those:
+  // any other block missed above is not where the reader is (a cookie bar, a sidebar).
   for (const block of pageBlocks()) {
     const r = block.getBoundingClientRect();
-    const place = r.bottom > line && r.top < innerHeight ? placeOf(block) : null;
+    const place = r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none" ? placeOf(block) : null;
     if (place) {
       return place;
     }
