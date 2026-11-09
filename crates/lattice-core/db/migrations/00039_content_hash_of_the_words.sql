@@ -1,0 +1,3 @@
+-- articles.content_hash is the words of the text joined with nothing between them, so that a paragraph broken where
+-- there is no space (Japanese) keeps its hash. 38 joined them with spaces, and a development library may have run it.
+-- store::rehash_content recomputes it after this migration; nothing changes in the schema.

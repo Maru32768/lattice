@@ -57,9 +57,11 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00036_mobile_ops.sql"),
     include_str!("../db/migrations/00037_mobile_published.sql"),
     include_str!("../db/migrations/00038_content_hash_of_the_text.sql"),
+    include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
 ];
-/// After this migration every article's `content_hash` is recomputed (`rehash_content`).
-const REHASH_AT: usize = 38;
+/// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
+/// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again.
+const REHASH_AT: usize = 39;
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
 /// then folding http into https (28; a feed linking http:// showed its saved page as unsaved).
@@ -456,9 +458,10 @@ fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
 const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal";
 
 /// What says a summary or quiz is out of date: the words of the text. Not the images in it, nor where its paragraphs
-/// break, which a newer extractor may place otherwise around an image.
+/// break, which a newer extractor may place otherwise around an image: joined with nothing between them, as Japanese
+/// breaks where there is no space.
 fn text_hash<'a>(texts: impl Iterator<Item = &'a str>) -> String {
-    sha256_hex(texts.flat_map(str::split_whitespace).collect::<Vec<_>>().join(" "))
+    sha256_hex(texts.flat_map(str::split_whitespace).collect::<String>())
 }
 
 fn content_hash(blocks: &[Block]) -> String {
