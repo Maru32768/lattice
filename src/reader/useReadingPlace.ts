@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { blockOf, isReadingPlace, keepOnRest, placeIn, placeStore, scrollFor, type ReadingPlace } from "../lib/places";
 import { useLatest } from "../lib/useLatest";
+import { TRANSLATABLE } from "./mixed";
 
 /** Each article's place on this device, for the Reader and the Page view: an article opens where it was left, also after a restart. */
 export const readingPlaces = placeStore<ReadingPlace>("lattice.readingPlaces", 500, isReadingPlace);
@@ -21,7 +22,7 @@ export const forgetTabPlace = (tab: number, article: number) => places.get(tab)?
  * Keeps tab `tab`'s place in `article` across a remount, and the article's place across opening it again, for the scroller
  * given the ref it returns. A new jump request (`seq`) is where the reader asked to go, so it replaces the place.
  */
-export function useReadingPlace(tab: number, article: number, seq: number | undefined, blocks: { id: number; text: string }[]) {
+export function useReadingPlace(tab: number, article: number, seq: number | undefined, blocks: { id: number; text: string; kind: string }[]) {
   const scroller = useRef<HTMLDivElement>(null);
   const shown = useLatest(blocks);
   useLayoutEffect(() => {
@@ -55,8 +56,9 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       if (view.clientHeight === 0) {
         return undefined;
       }
+      // Prose only: the Page view has the same paragraphs, but a table's cells or a figure's labels (a PDF's) seldom.
       const place = placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
-        shown.current.find((b) => el.id === `b-${b.id}`),
+        shown.current.find((b) => el.id === `b-${b.id}` && TRANSLATABLE.has(b.kind)),
       );
       readingPlaces.set(String(article), place);
       return place;
