@@ -52,6 +52,10 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     } else if (!wentToStored && mine) {
       view.scrollTop = mine.top;
     }
+    // A place this Reader could not show (the Page view's, from a part of the page it lacks; or an article without
+    // text) is still the article's until the reader moves: leaving at once must not put this Reader's top over it.
+    const unshown = !!stored && !wentToStored;
+    const shownAt = view.scrollTop;
 
     /** The place on screen, kept for the article; undefined while the Reader is hidden and has none to read. */
     const keep = () => {
@@ -67,7 +71,9 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       // the same paragraphs, but no code block it can find (pre is not translated) and seldom a table's cells.
       const place = placeAt(false);
       const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? placeAt(true) : null;
-      readingPlaces.set(String(article), place && prose ? { ...place, page: { text: prose.text, at: prose.at } } : place);
+      if (!unshown || Math.abs(view.scrollTop - shownAt) >= 2) {
+        readingPlaces.set(String(article), place && prose ? { ...place, page: { text: prose.text, at: prose.at } } : place);
+      }
       return place;
     };
     const stop = keepOnRest(view, keep);

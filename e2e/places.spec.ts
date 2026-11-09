@@ -216,7 +216,7 @@ test("an article read into the long listing at its end opens there again", async
   await expect.poll(() => doc.evaluate((el) => el.scrollTop)).toBeGreaterThan(end - 50);
 });
 
-test("a Page view place the Reader does not have leaves the tab's own", async ({ shell }) => {
+test("a Page view place the Reader does not have leaves the tab's own, and stays for the page", async ({ shell }) => {
   await start(shell);
   await (await listRow(shell, LONG)).click();
   const doc = shell.locator(".doc-scroll");
@@ -237,6 +237,10 @@ test("a Page view place the Reader does not have leaves the tab's own", async ({
     .toContain(comments);
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc), "the tab's own place").toBe(para(20));
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect
+    .poll(async () => ((await callsOf(shell, "browser_open")).at(-1) as { place: { text: string } | null }).place?.text, "not this Reader's top over it")
+    .toBe(comments);
 });
 
 test("in a listing, the Reader keeps its place there and gives the Page view the paragraph after it", async ({ shell }) => {
