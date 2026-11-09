@@ -14,8 +14,8 @@ export const readingPlaces = placeStore<ReadingPlace>("lattice.readingPlaces", 5
  */
 const places = new Map<number, { article: number; seq: number | undefined; place: ReadingPlace | null; top: number; t: number }>();
 
-/** The tab's Page view read its article back to the top: its Reader starts there too. */
-export const forgetTabPlace = (tab: number) => places.delete(tab);
+/** The tab's Page view read `article` back to the top: the tab's Reader of it starts there too. */
+export const forgetTabPlace = (tab: number, article: number) => places.get(tab)?.article === article && places.delete(tab);
 
 /**
  * Keeps tab `tab`'s place in `article` across a remount, and the article's place across opening it again, for the scroller

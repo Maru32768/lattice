@@ -107,8 +107,8 @@ export function useDocuments(fail: (e: unknown) => void) {
     if (t && found?.url === t.url && found.saved != null && found.saved === t.saved) {
       readingPlaces.set(String(found.saved), p.place && { ...p.place, t: Date.now() });
       if (!p.place) {
-        // The page read back to its top: the tab's Reader, when it comes back, too (it keeps its own place otherwise).
-        forgetTabPlace(t.id);
+        // The page read back to its top: the tab's Reader of this article, when it comes back, too (it keeps its own place otherwise).
+        forgetTabPlace(t.id, found.saved);
       }
     }
   });
