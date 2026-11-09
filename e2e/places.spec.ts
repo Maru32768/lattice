@@ -122,8 +122,13 @@ test("the Page view opens where the Reader was, and the Reader where the Page vi
     ([t, u]) => window.__e2e.emit("browser-page", { tab: t, url: u, loading: false, can_go_back: false, can_go_forward: false }),
     [tab, url],
   );
-  await shell.evaluate((t) => window.__e2e.emit("browser-place", { tab: t, place: { text: "Paragraph 60 of the long", at: 0 } }), tab);
-  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain("Paragraph 60 of the long");
+  // Taken once the page's article is looked up for its address: until then the tab's article may be the last page's.
+  await expect
+    .poll(async () => {
+      await shell.evaluate((t) => window.__e2e.emit("browser-place", { tab: t, place: { text: "Paragraph 60 of the long", at: 0 } }), tab);
+      return stored(shell, "lattice.readingPlaces");
+    })
+    .toContain("Paragraph 60 of the long");
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc)).toBe(para(60));
 });

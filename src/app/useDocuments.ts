@@ -57,10 +57,15 @@ export function useDocuments(fail: (e: unknown) => void) {
       .catch(fail);
   };
   /** Whether the page a tab shows is in the Index. */
+  /** The URL each Page tab's `saved` was last looked up for: until the lookup for a new page answers, `saved` names the last one. */
+  const savedFor = useRef(new Map<Id, string>());
   const refreshSaved = (tab: Id, url: string) =>
     api
       .articleForUrl(url)
-      .then((a) => setLayout((l) => update(l, tab, { saved: a?.id ?? null })))
+      .then((a) => {
+        savedFor.current.set(tab, url);
+        setLayout((l) => update(l, tab, { saved: a?.id ?? null }));
+      })
       .catch(() => {});
   /** A page event names its tab by webview key; the layout op takes the tab id. */
   const onPage = (key: string, f: (l: Workspace, tab: PageTab) => Workspace) =>
@@ -94,10 +99,10 @@ export function useDocuments(fail: (e: unknown) => void) {
       void refreshSaved(t.id, url);
     }
   });
-  /** Where a saved article's page is being read, for the Reader and the page opened again. Not while it loads: the page may be another by then. */
+  /** Where a saved article's page is being read, for the Reader and the page opened again. Only once `saved` is known to name this page. */
   const onBrowserPlace = useEffectEvent((p: { tab: string; place: { text: string; at: number } | null }) => {
     const t = pageByKey(layout, p.tab);
-    if (t?.saved != null && !t.loading) {
+    if (t?.saved != null && !t.loading && savedFor.current.get(t.id) === t.url) {
       readingPlaces.set(String(t.saved), p.place && { ...p.place, t: Date.now() });
     }
   });
