@@ -156,6 +156,8 @@ export function MobileSettings() {
   const edit = (patch: Partial<Settings>) => setForm({ ...form, ...patch });
   // The backend's type holds no more than this, and a value it cannot hold never reaches its own check.
   const portOk = Number.isInteger(form.port) && form.port >= MIN_PORT && form.port <= MAX_PORT;
+  // Serve forwards to the saved port: a port typed and not saved yet would go one way and the server the other.
+  const publishWaits = !!tailscale?.address && !tailscale.serves_port && form.port !== status.settings.port;
   return (
     <>
       <section aria-labelledby="mobile-live">
@@ -199,11 +201,11 @@ export function MobileSettings() {
               }
             >
               {tailscale.address && (
-                // Serve forwards to the saved port: a port typed and not saved yet would go one way and the server the other.
                 <button
                   className="btn"
                   onClick={() => void serve(!tailscale.serves_port)}
-                  disabled={serving || (!tailscale.serves_port && form.port !== status.settings.port)}
+                  disabled={serving || publishWaits}
+                  aria-describedby={publishWaits ? "tailscale-save-first" : undefined}
                 >
                   {t(tailscale.serves_port ? "mobileSettings.tailscaleStop" : "mobileSettings.tailscaleStart")}
                 </button>
@@ -221,7 +223,11 @@ export function MobileSettings() {
         </div>
         {!portOk && <p className="note err">{t("be.mobile.port", { min: String(MIN_PORT), max: String(MAX_PORT) })}</p>}
         {form.mode === "lan" && <p className="note warn">{t("mobileSettings.lanWarning")}</p>}
-        {tailscale?.address && !tailscale.serves_port && form.port !== status.settings.port && <p className="note">{t("mobileSettings.tailscaleSaveFirst")}</p>}
+        {publishWaits && (
+          <p id="tailscale-save-first" className="note">
+            {t("mobileSettings.tailscaleSaveFirst")}
+          </p>
+        )}
         {tailscale && !tailscale.serves_port && URL.parse(status.settings.public_url)?.hostname.endsWith(".ts.net") && (
           <p className="note warn">{t("mobileSettings.tailscaleNotServing")}</p>
         )}
