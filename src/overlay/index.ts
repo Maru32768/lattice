@@ -873,13 +873,16 @@ function configure(c: Partial<Config>) {
 let unfound: { text: string; at?: number; reader?: ReturnType<typeof watchReader> } | null = null;
 
 /** Tries what was not found again (the PDF viewer, once it has drawn its pages); a place only while the reader has not moved. */
-function scrollToUnfound(again = true) {
+function scrollToUnfound(until?: number) {
   if (unfound?.reader?.moved()) {
     unfound.reader.stop();
     unfound = null;
   }
-  return unfound != null && scrollToText(unfound.text, unfound.at, again);
+  return unfound != null && scrollToText(unfound.text, unfound.at, until);
 }
+
+/** How long a place not found is looked for again, each time the page settles: a page may fetch its text, or show it late. */
+const LOOK_MS = 5000;
 
 /** A block's text in the page's own language: a sentence that shows its translation keeps its original aside. */
 function originalText(n: Node): string {
@@ -889,7 +892,7 @@ function originalText(n: Node): string {
   return n.nodeType === Node.TEXT_NODE ? (n.nodeValue ?? "") : Array.from(n.childNodes, originalText).join("");
 }
 
-function scrollToText(text: string, at?: number, again = true): boolean {
+function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): boolean {
   unfound?.reader?.stop();
   unfound = null;
   const want = needle(text);
@@ -912,9 +915,9 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };
-    // A page that draws its text after it has loaded: once more when it settles.
-    if (place && again) {
-      void settle(document.documentElement, 400, 5000).then(() => unfound?.text === text && scrollToUnfound(false));
+    // A page that draws or shows its text after it has loaded: again each time it settles, for a few seconds.
+    if (place && Date.now() < until) {
+      void settle(document.documentElement, 400, until - Date.now()).then(() => unfound?.text === text && scrollToUnfound(until));
     }
     return false;
   }

@@ -235,16 +235,16 @@ test("a place whose paragraph the page shows only later is put back once it show
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0.5, 1);
 });
 
-test("a place never found is tried again once, not without end", async ({ page }) => {
+test("a place never found is looked for again for a few seconds, not without end", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
     const style = window.getComputedStyle.bind(window);
     Object.assign(window, { __styles: 0, getComputedStyle: (el: Element) => ((window as unknown as { __styles: number }).__styles++, style(el)) });
   });
-  // A quiet page settles at once: each try that failed used to wait 400 ms and try again.
+  // A quiet page settles at once: a try every 400 ms, for 5 s; it once went on for as long as the page was open.
   expect(await page.evaluate(() => window.__lattice!.scrollToText("A paragraph this page does not have.", 0))).toBe(false);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(6000);
   const styles = () => page.evaluate(() => (window as unknown as { __styles: number }).__styles);
   const after = await styles();
   await page.waitForTimeout(1500);
@@ -276,4 +276,14 @@ test("a place goes to the shown block that is its start, not a hidden copy or on
   await expect.poll(() => lineIn(page, 41), "the shown paragraph 40, after the hidden copy").toBeCloseTo(0, 1);
   expect(await page.evaluate(() => window.__lattice!.scrollToText("Usage", 0))).toBe(true);
   await expect.poll(() => lineIn(page, 46), "the heading, not paragraph 5").toBeCloseTo(0, 1);
+});
+
+test("a place is put back when the page shows its text a while after loading", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  // As a page that fetches its article first: quiet for longer than one settling, then shown by an attribute.
+  await page.evaluate(() => (document.getElementById("main")!.hidden = true));
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.hidden = false), 1200));
+  await expect.poll(() => lineIn(page, 30), { timeout: 5000 }).toBeCloseTo(0.5, 1);
 });
