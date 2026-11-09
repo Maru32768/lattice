@@ -480,7 +480,7 @@ fn content_hash(blocks: &[Block]) -> String {
 /// stored blocks of every article that has one, an extraction that failed since included (it keeps its blocks). The
 /// summaries and quizzes that recorded the old hash move with it, as their text is the same.
 fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
-    let articles: Vec<(i64, Option<String>)> = tx
+    let articles: Vec<(i64, String)> = tx
         .prepare("SELECT id, content_hash FROM articles WHERE content_hash IS NOT NULL")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_>>()?;
@@ -488,14 +488,9 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     for (id, old) in articles {
         let texts: Vec<String> = text.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
         let hash = text_hash(texts.iter().map(String::as_str));
-        if old.as_deref() == Some(hash.as_str()) {
-            continue;
-        }
         tx.execute("UPDATE articles SET content_hash = ?2 WHERE id = ?1", params![id, hash])?;
-        if let Some(old) = old {
-            for table in ["summaries", "quizzes"] {
-                tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
-            }
+        for table in ["summaries", "quizzes"] {
+            tx.execute(&format!("UPDATE {table} SET source_hash = ?2 WHERE article_id = ?1 AND source_hash = ?3"), params![id, hash, old])?;
         }
     }
     Ok(())
