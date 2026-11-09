@@ -15,7 +15,8 @@ async function start(shell: Page) {
     const more = [
       "ARTICLES.push(...Array.from({ length: 150 }, (_, i) => ({ ...ARTICLES[2], id: 5000 + i, title: `Extra ${i}` })));",
       "genericBlocks = ((plain) => (a) => (a.id === 2 ? [...plain(a), ...Array.from({ length: 80 }, (_, i) => ['paragraph', `Paragraph ${i} of the long article.`, null])] : plain(a)))(genericBlocks);",
-      // An article that ends in a long listing.
+      // An article that ends in a long listing, and one with a listing and a paragraph just after it.
+      "genericBlocks = ((plain) => (a) => (a.id === 5 ? [...plain(a), ['code', Array.from({ length: 60 }, (_, i) => `listing line ${i}`).join('\\n'), null], ['paragraph', 'The paragraph after the listing.', null], ...Array.from({ length: 40 }, (_, i) => ['paragraph', `More text ${i}.`, null])] : plain(a)))(genericBlocks);",
       "genericBlocks = ((plain) => (a) => (a.id === 4 ? [...plain(a), ['code', Array.from({ length: 150 }, (_, i) => `code line ${i}`).join('\\n'), null]] : plain(a)))(genericBlocks);",
     ].join("\n");
     await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
@@ -213,4 +214,44 @@ test("an article read into the long listing at its end opens there again", async
   await (await listRow(shell, ARTICLES[2].title!)).click();
   await (await listRow(shell, listing)).click();
   await expect.poll(() => doc.evaluate((el) => el.scrollTop)).toBeGreaterThan(end - 50);
+});
+
+test("a Page view place the Reader does not have leaves the tab's own", async ({ shell }) => {
+  await start(shell);
+  await (await listRow(shell, LONG)).click();
+  const doc = shell.locator(".doc-scroll");
+  await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBeGreaterThan(0);
+  const tab = ((await callsOf(shell, "browser_open")).at(-1) as { tab: string }).tab;
+  await shell.evaluate(
+    ([t, u]) => window.__e2e.emit("browser-page", { tab: t, url: u, loading: false, can_go_back: false, can_go_forward: false }),
+    [tab, ARTICLES[1].original_url],
+  );
+  const comments = "A comment under the article, which the Reader does not have.";
+  await expect
+    .poll(async () => {
+      await shell.evaluate(([t, x]) => window.__e2e.emit("browser-place", { tab: t, place: { text: x, at: 0 } }), [tab, comments]);
+      return stored(shell, "lattice.readingPlaces");
+    })
+    .toContain(comments);
+  await shell.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect.poll(() => readerTop(doc), "the tab's own place").toBe(para(20));
+});
+
+test("in a listing, the Reader keeps its place there", async ({ shell }) => {
+  await start(shell);
+  const article = ARTICLES[4].title!;
+  await (await listRow(shell, article)).click();
+  const doc = shell.locator(".doc-scroll");
+  await doc.getByText("listing line 0").evaluate((el) => {
+    const scroller = el.closest(".doc-scroll")!;
+    const code = el.closest("[id^='b-']")!;
+    scroller.scrollTop += code.getBoundingClientRect().top - scroller.getBoundingClientRect().top + code.getBoundingClientRect().height * 0.6;
+  });
+  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain("listing line 0");
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBeGreaterThan(0);
+  await shell.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect.poll(() => readerTop(doc), "inside the listing again").toContain("listing line 0");
 });
