@@ -115,6 +115,7 @@ test.describe("with reduced motion", () => {
     await shell.goto("/");
     const body = list(shell).locator(".list-body");
     await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+    await expect(listCount(shell), "the extra rows came").toContainText(String(ARTICLES.length + 150));
     await body.evaluate((el) => void (el.scrollTop = el.scrollHeight - el.clientHeight - 1200));
     const box = (await body.boundingBox())!;
     await shell.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
