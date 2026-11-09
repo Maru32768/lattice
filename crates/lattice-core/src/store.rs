@@ -469,10 +469,11 @@ fn content_hash(blocks: &[Block]) -> String {
 }
 
 /// `content_hash` was once of every block, image blocks and paragraph breaks included (`REHASH_AT`): recomputed from the
-/// stored blocks. The summaries and quizzes that recorded the old hash move with it, as their text is the same.
+/// stored blocks of every article that has one, an extraction that failed since included (it keeps its blocks). The
+/// summaries and quizzes that recorded the old hash move with it, as their text is the same.
 fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     let articles: Vec<(i64, Option<String>)> = tx
-        .prepare("SELECT id, content_hash FROM articles WHERE extraction_status = 'ok'")?
+        .prepare("SELECT id, content_hash FROM articles WHERE content_hash IS NOT NULL")?
         .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
         .collect::<Result<_>>()?;
     let mut text = tx.prepare(STORED_PROSE)?;
@@ -1801,20 +1802,27 @@ mod tests {
             conn.execute_batch(sql).unwrap();
         }
         conn.pragma_update(None, "user_version", before as i64).unwrap();
-        // An article extracted: it keeps blocks, a hash of then and a summary of it.
+        // One article extracted, one whose later extraction failed: both keep blocks, a hash of then and a summary of it.
         conn.execute_batch(
             "INSERT INTO articles (id, original_url, normalized_url, domain, extraction_status, content_hash) VALUES
-                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1');
+                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1'),
+                 (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then 2');
              INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
-                 (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3');
+                 (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'),
+                 (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
-                 (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v');",
+                 (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
+                 (2, 'summary', 'Current then.', 'of then 2', 't', 'v');",
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
         let hashes: Vec<String> =
             s.conn().prepare("SELECT content_hash FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
-        assert_eq!(hashes, [text_hash(["説明文続き"].into_iter())], "a Japanese paragraph broken at the image hashes as one");
+        assert_eq!(
+            hashes,
+            [text_hash(["説明文続き"].into_iter()), text_hash(["Some", "words"].into_iter())],
+            "a Japanese paragraph broken at the image hashes as one"
+        );
         let current: Vec<bool> = s
             .conn()
             .prepare("SELECT s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id ORDER BY s.id")
@@ -1823,7 +1831,7 @@ mod tests {
             .unwrap()
             .map(Result::unwrap)
             .collect();
-        assert_eq!(current, [true, false]);
+        assert_eq!(current, [true, false, true]);
     }
 
     #[test]
