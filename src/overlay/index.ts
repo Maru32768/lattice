@@ -934,8 +934,7 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   return true;
 }
 
-/** The page's leaf blocks, those the translation has taken too, in the page's order. */
-/** `keep` picks before they are put in order, which costs most on a page of thousands. */
+/** The page's leaf blocks, those the translation has taken too, in the page's order; `keep` picks before the sort, which costs most on a page of thousands. */
 function pageBlocks(keep: (block: HTMLElement) => boolean = () => true): HTMLElement[] {
   return findLeafBlocks(document.body)
     .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
