@@ -966,10 +966,11 @@ function holdPlace(el: Element, at: number) {
     reader.stop();
   };
   const timer = setTimeout(stop, 3000);
-  align();
-  // What grows as the page lays itself out: the block, the page, or the box that scrolls it.
+  // What grows as the page lays itself out: the block, the page, or the box that scrolls it. Watched before the first
+  // align, so that a hold which stops at once also stops watching.
   const page = scroller === document.scrollingElement;
   [el, document.documentElement, document.body, page ? null : scroller.firstElementChild].forEach((box) => box && sizes.observe(box));
+  align();
 }
 
 /**
