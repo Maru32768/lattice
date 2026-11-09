@@ -933,6 +933,9 @@ function watchReader() {
   return { moved: () => moved, stop: () => events.forEach((e) => removeEventListener(e, mark, true)) };
 }
 
+/** Where the last place was put, until the page moves from it: a report from there would only name it again, perhaps by another block. */
+let placed: { scroller: Element; top: number } | null = null;
+
 /**
  * Puts `at` of `el` on the reading line, and keeps it there while the page still lays itself out (pictures arriving, the
  * PDF viewer sizing its pages, which moved a place there by half a screen), until the reader moves the page or a moment passes.
@@ -949,6 +952,7 @@ function holdPlace(el: Element, at: number) {
     if (Math.abs(off) >= 1) {
       scroller.scrollBy(0, off);
     }
+    placed = { scroller, top: scroller.scrollTop };
   };
   const sizes = new ResizeObserver(align);
   const stop = () => {
@@ -1028,6 +1032,10 @@ function placeChanged(e: Event) {
   clearTimeout(placeTimer);
   const page = e.target === document;
   placeTimer = window.setTimeout(() => {
+    if (placed && Math.abs(placed.scroller.scrollTop - placed.top) < 2) {
+      return;
+    }
+    placed = null;
     const top = page && (document.scrollingElement?.scrollTop ?? 0) === 0;
     // Nothing found is not the top: the place the app keeps stays.
     const place = top ? null : placeHere();

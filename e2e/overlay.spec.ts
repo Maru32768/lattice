@@ -102,7 +102,7 @@ test("paragraphs the pointer passes through (the PDF viewer's, under its text la
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
 });
 
-test("the page at its top is no place", async ({ page }) => {
+test("the page at its top is no place, and a place just put back is not reported again", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => scrollTo(0, 400));
@@ -110,4 +110,8 @@ test("the page at its top is no place", async ({ page }) => {
   await page.evaluate(() => scrollTo(0, 0));
   const last = () => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_place").at(-1)?.args);
   await expect.poll(last).toEqual({ place: null });
+  const before = await page.evaluate(() => window.__pageCalls.length);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  await page.waitForTimeout(600);
+  expect(await page.evaluate((n) => window.__pageCalls.slice(n).filter((c) => c.cmd === "overlay_place"), before)).toEqual([]);
 });
