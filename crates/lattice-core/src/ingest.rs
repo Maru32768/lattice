@@ -557,6 +557,8 @@ mod tests {
         store_fetched(&s, id, &page(&breaks(true))).unwrap();
         assert_eq!(texts(&s), whole + 1);
         assert!(summary_current(&s, id), "a paragraph broken in two");
+        store_fetched(&s, id, &page(&format!("{}<pre><code>let x = 2;</code></pre>", breaks(true)))).unwrap();
+        assert!(summary_current(&s, id), "code, which a summary does not read");
         store_fetched(&s, id, &page(&BODY.replace("dirty reads", "dirty writes"))).unwrap();
         assert!(!summary_current(&s, id), "other words");
     }

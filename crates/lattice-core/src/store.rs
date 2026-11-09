@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 use crate::extract::EXTRACTION_VERSION;
 use crate::fetch::Fetched;
 use crate::ingest::FEED_CONTENT_TYPE;
-use crate::ir::{ArticleIr, Block, BlockKind, Inline};
+use crate::ir::{ArticleIr, Block, BlockKind, Inline, PROSE_KINDS};
 use crate::jobs::ABANDONED_AFTER;
 use crate::segments::{Target, Unit, plain_text};
 use ts_rs::TS;
@@ -449,13 +449,21 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
     })
 }
 
-/// The text summaries and quizzes are made of: the blocks without images (an image block's text is its alt text).
+/// The text summaries, quizzes and translations read (`PROSE_KINDS`): no images, code or tables.
 fn prose(blocks: &[Block]) -> impl Iterator<Item = &str> {
+    blocks.iter().filter(|b| PROSE_KINDS.contains(&b.kind.as_str())).map(|b| b.text.as_str())
+}
+
+/// The same, as stored, in order; `?2` is `json(PROSE_KINDS)`.
+const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal";
+
+/// All of an article's text, code and tables included: what a re-extraction must not lose.
+fn all_text(blocks: &[Block]) -> impl Iterator<Item = &str> {
     blocks.iter().filter(|b| b.kind != BlockKind::Image).map(|b| b.text.as_str())
 }
 
-/// The same, as stored, in order.
-const STORED_PROSE: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal";
+/// The same, as stored.
+const STORED_TEXT: &str = "SELECT text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal";
 
 /// What says a summary or quiz is out of date: the words of the text. Not the images in it, nor where its paragraphs
 /// break, which a newer extractor may place otherwise around an image: joined with nothing between them, as Japanese
@@ -478,7 +486,7 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
         .collect::<Result<_>>()?;
     let mut text = tx.prepare(STORED_PROSE)?;
     for (id, old) in articles {
-        let texts: Vec<String> = text.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
+        let texts: Vec<String> = text.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
         let hash = text_hash(texts.iter().map(String::as_str));
         if old.as_deref() == Some(hash.as_str()) {
             continue;
@@ -884,16 +892,17 @@ impl Store {
         if version.is_none_or(|v| v >= EXTRACTION_VERSION) {
             return Ok(Reextracted::Kept);
         }
-        let held: Vec<String> = tx.prepare(STORED_PROSE)?.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
+        let held: Vec<String> = tx.prepare(STORED_TEXT)?.query_map([id], |r| r.get(0))?.collect::<Result<_>>()?;
         let chars = |t: &str| t.chars().count();
         // A newer extractor that reads this page shorter would take paragraphs away, and their translations, notes and
         // citations with them: what the article has stays.
-        if prose(&ir.blocks).map(chars).sum::<usize>() * 100 < held.iter().map(|t| chars(t)).sum::<usize>() * SHORTER_KEEPS_PERCENT {
+        if all_text(&ir.blocks).map(chars).sum::<usize>() * 100 < held.iter().map(|t| chars(t)).sum::<usize>() * SHORTER_KEEPS_PERCENT {
             tx.execute("UPDATE articles SET extraction_version = ?2 WHERE id = ?1", params![id, EXTRACTION_VERSION])?;
             tx.commit()?;
             return Ok(Reextracted::Kept);
         }
-        let retranslate = !prose(&ir.blocks).eq(held.iter().map(String::as_str))
+        let held_prose: Vec<String> = tx.prepare(STORED_PROSE)?.query_map(params![id, json(&PROSE_KINDS)], |r| r.get(0))?.collect::<Result<_>>()?;
+        let retranslate = !prose(&ir.blocks).eq(held_prose.iter().map(String::as_str))
             && tx.query_row(
                 "SELECT EXISTS (SELECT 1 FROM blocks b JOIN segment_translations t ON t.source_hash = b.text_hash WHERE b.article_id = ?1)",
                 [id],
@@ -1808,7 +1817,7 @@ mod tests {
                  (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1'),
                  (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then 2');
              INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
-                 (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'),
+                 (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'), (1, 3, 'code', 'let x = 1;', 'h5'),
                  (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
                  (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
@@ -1821,7 +1830,7 @@ mod tests {
         assert_eq!(
             hashes,
             [text_hash(["説明文続き"].into_iter()), text_hash(["Some", "words"].into_iter())],
-            "a Japanese paragraph broken at the image hashes as one"
+            "a Japanese paragraph broken at the image hashes as one, and the code is not what a summary reads"
         );
         let current: Vec<bool> = s
             .conn()
