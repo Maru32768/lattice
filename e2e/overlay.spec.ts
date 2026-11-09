@@ -250,3 +250,14 @@ test("a place never found is tried again once, not without end", async ({ page }
   await page.waitForTimeout(1500);
   expect(await styles(), "no more walks of the page").toBe(after);
 });
+
+test("a page that says translate=no on html still reports its place", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.translate = false;
+    const r = document.querySelectorAll("p")[15].getBoundingClientRect();
+    scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 15\./);
+});
