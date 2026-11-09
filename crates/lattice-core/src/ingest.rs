@@ -568,11 +568,12 @@ mod tests {
         store_fetched(&s, id, &page(BODY)).unwrap();
         s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
         let read = extract(&page(BODY).html, "https://example.com/post").unwrap();
-        // A refetch lands between the read and the save.
-        store_fetched(&s, id, &page(&BODY.repeat(2))).unwrap();
+        // A refetch of as much text lands between the read and the save: only the version says it is newer.
+        store_fetched(&s, id, &page(&BODY.replace("dirty reads", "dirty write"))).unwrap();
         let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks.len();
         assert_eq!(s.save_reextraction(id, &read).unwrap(), Reextracted::Kept);
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().blocks.len(), blocks);
+        assert!(s.get_article(id, "ja").unwrap().unwrap().blocks.iter().any(|b| b.block.text.contains("dirty write")), "the refetch's text stays");
     }
 
     #[test]
@@ -607,6 +608,11 @@ mod tests {
         let kinds: Vec<String> =
             s.conn().prepare("SELECT type FROM processing_jobs ORDER BY type").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(kinds, [crate::translate::JOB_TYPE], "the two paragraphs are new text; no image to fetch");
+        // The same paragraphs read again: nothing to translate.
+        s.conn().execute("UPDATE articles SET extraction_version = 2 WHERE id = ?1", [id]).unwrap();
+        s.conn().execute("DELETE FROM processing_jobs", []).unwrap();
+        reextract_outdated(&s, id).unwrap();
+        assert_eq!(queued(&s), 0, "unchanged paragraphs");
     }
 
     #[test]
