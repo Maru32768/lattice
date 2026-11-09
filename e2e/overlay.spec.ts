@@ -339,3 +339,19 @@ test("under the text layer, the gap just above an untranslated paragraph names i
   });
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 13\./);
 });
+
+test("while a place is still waited for, a box scrolling by itself reports nothing", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    // Over the reading line, with text of its own.
+    const box = Object.assign(document.createElement("div"), { id: "carousel", style: "height: 200px; margin-top: 60px; overflow: auto" });
+    box.append(Object.assign(document.createElement("p"), { textContent: "A carousel of related posts.", style: "height: 600px; margin: 0" }));
+    document.body.prepend(box);
+    document.getElementById("main")!.hidden = true;
+  });
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  await page.evaluate(() => document.getElementById("carousel")!.scrollTo(0, 100));
+  await page.waitForTimeout(600);
+  expect(await reported(page)).toBeUndefined();
+});

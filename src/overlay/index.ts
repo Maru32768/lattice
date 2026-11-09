@@ -1107,7 +1107,9 @@ function placeChanged(e: Event) {
   clearTimeout(placeTimer);
   const page = e.target === document;
   placeTimer = window.setTimeout(() => {
-    if (placed && Math.abs(placed.scroller.scrollTop - placed.top) < 2) {
+    // A place put back, until the page moves from it; one still waited for, until the reader moves (a carousel scrolling
+    // by itself is not reading).
+    if ((placed && Math.abs(placed.scroller.scrollTop - placed.top) < 2) || (unfound?.reader && !unfound.reader.moved())) {
       return;
     }
     placed = null;
