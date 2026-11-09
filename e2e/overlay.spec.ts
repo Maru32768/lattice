@@ -310,3 +310,11 @@ test("under the PDF viewer's text layer, the paragraph on the line beats one tra
   });
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
 });
+
+test("a short place starts a block only as a whole word: a table cell's No is not Note", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => (document.querySelectorAll("p")[40].textContent = "Note that this paragraph is not the cell."));
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("No", 0))).toBe(false);
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+});
