@@ -74,6 +74,20 @@ test("a page that draws its text after loading is scrolled to the place once it 
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0, 1);
 });
 
+test("paragraphs the pointer passes through (the PDF viewer's, under its text layer) are found by where they are", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    document.querySelectorAll("p").forEach((p) => (p.style.pointerEvents = "none"));
+    const cover = Object.assign(document.createElement("div"), { translate: false, textContent: "the text layer" });
+    Object.assign(cover.style, { position: "fixed", inset: "0", color: "transparent" });
+    document.body.append(cover);
+    const r = document.querySelectorAll("p")[12].getBoundingClientRect();
+    scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
+});
+
 test("the page at its top is no place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);

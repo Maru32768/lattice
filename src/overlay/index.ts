@@ -886,7 +886,7 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   if (!want) {
     return false;
   }
-  const blocks = findLeafBlocks(document.body).concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")));
+  const blocks = pageBlocks();
   const texts = blocks.map((b) => normalizeText(originalText(b)));
   // A place names its block by the block's start; a search result's passage may lie anywhere in it.
   const i = at === undefined ? -1 : texts.findIndex((t) => t.startsWith(want));
@@ -914,6 +914,13 @@ function scrollToText(text: string, at?: number, again = true): boolean {
     scrollerOf(el).scrollBy(0, r.top + at * r.height - readingLine());
   }
   return true;
+}
+
+/** The page's leaf blocks, those the translation has taken too, in the page's order. */
+function pageBlocks(): HTMLElement[] {
+  return findLeafBlocks(document.body)
+    .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
+    .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 }
 
 /** Whether the reader moves the page (wheel, keys, pointer, touch) from now until `stop`; the page's own scrolling is not them. */
@@ -959,16 +966,27 @@ function blockAround(el: Element): HTMLElement | null {
 /** The block on the reading line, or the first below it, and how far down it the line is: the page's reading place. */
 function placeHere(): { text: string; at: number } | null {
   const line = readingLine();
+  const placeOf = (block: HTMLElement | null) => {
+    const text = block && needle(originalText(block));
+    const r = block?.getBoundingClientRect();
+    // A block below the line is put about there, not as many of its heights down: the Reader measures by its own.
+    return text && r ? { text, at: r.height > 0 ? Math.max(-1, (line - r.top) / r.height) : 0 } : null;
+  };
   for (let y = line; y < line + innerHeight / 2; y += 16) {
     for (const x of [0.5, 0.35, 0.65]) {
       const hit = document.elementFromPoint(innerWidth * x, y);
-      const block = hit && blockAround(hit);
-      const text = block && needle(originalText(block));
-      if (block && text) {
-        const r = block.getBoundingClientRect();
-        // A block below the line is put about there, not as many of its heights down: the Reader measures by its own.
-        return { text, at: r.height > 0 ? Math.max(-1, (line - r.top) / r.height) : 0 };
+      const place = hit && placeOf(blockAround(hit));
+      if (place) {
+        return place;
       }
+    }
+  }
+  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are.
+  for (const block of pageBlocks()) {
+    const r = block.getBoundingClientRect();
+    const place = r.bottom > line && r.top < innerHeight ? placeOf(block) : null;
+    if (place) {
+      return place;
     }
   }
   return null;
