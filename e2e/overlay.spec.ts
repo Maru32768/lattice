@@ -234,3 +234,19 @@ test("a place whose paragraph the page shows only later is put back once it show
   await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.style.display = ""), 200));
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0.5, 1);
 });
+
+test("a place never found is tried again once, not without end", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const style = window.getComputedStyle.bind(window);
+    Object.assign(window, { __styles: 0, getComputedStyle: (el: Element) => ((window as unknown as { __styles: number }).__styles++, style(el)) });
+  });
+  // A quiet page settles at once: each try that failed used to wait 400 ms and try again.
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("A paragraph this page does not have.", 0))).toBe(false);
+  await page.waitForTimeout(1500);
+  const styles = () => page.evaluate(() => (window as unknown as { __styles: number }).__styles);
+  const after = await styles();
+  await page.waitForTimeout(1500);
+  expect(await styles(), "no more walks of the page").toBe(after);
+});

@@ -873,12 +873,12 @@ function configure(c: Partial<Config>) {
 let unfound: { text: string; at?: number; reader?: ReturnType<typeof watchReader> } | null = null;
 
 /** Tries what was not found again (the PDF viewer, once it has drawn its pages); a place only while the reader has not moved. */
-function scrollToUnfound() {
+function scrollToUnfound(again = true) {
   if (unfound?.reader?.moved()) {
     unfound.reader.stop();
     unfound = null;
   }
-  return unfound != null && scrollToText(unfound.text, unfound.at);
+  return unfound != null && scrollToText(unfound.text, unfound.at, again);
 }
 
 /** A block's text in the page's own language: a sentence that shows its translation keeps its original aside. */
@@ -908,7 +908,7 @@ function scrollToText(text: string, at?: number, again = true): boolean {
     unfound = { text, at, reader: at === undefined ? undefined : watchReader() };
     // A page that draws its text after it has loaded: once more when it settles.
     if (at !== undefined && again) {
-      void settle(document.documentElement, 400, 5000).then(() => unfound?.text === text && scrollToUnfound());
+      void settle(document.documentElement, 400, 5000).then(() => unfound?.text === text && scrollToUnfound(false));
     }
     return false;
   }
