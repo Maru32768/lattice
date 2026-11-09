@@ -14,7 +14,7 @@
  * honours its translate calls while the user has translation switched on.
  */
 import { type SentenceSpan, locate, normalizeText, renderOriginal, renderVariant, settle, tokenize, wrapRange } from "./dom.ts";
-import { needle } from "../lib/places.ts";
+import { FINDS_INSIDE, needle } from "../lib/places.ts";
 import {
   type Target,
   assignTranslated,
@@ -903,10 +903,12 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   // A block not shown (yet: the page may reveal its text by script) is not a place, nor a hidden copy before the shown one.
   const shown = (k: number) => !place || blocks[k]!.getClientRects().length > 0;
   // As the Reader's blockOf: the block that is that start, before one that only begins with it (a heading "Usage", a
-  // paragraph "Usage of the API…"). shortcut: two blocks of the same text (a table of contents) go to the first.
+  // paragraph "Usage of the API…"), and one that holds it only when it is long enough to tell. shortcut: two blocks of the
+  // same text (a table of contents) go to the first.
   const exactly = place ? texts.findIndex((t, k) => needle(t) === want && shown(k)) : -1;
   const i = exactly >= 0 ? exactly : place ? texts.findIndex((t, k) => t.startsWith(want) && shown(k)) : -1;
-  const el = blocks[i >= 0 ? i : texts.findIndex((t, k) => t.includes(want) && shown(k))];
+  const inside = !place || want.length >= FINDS_INSIDE;
+  const el = blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1];
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };

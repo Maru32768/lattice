@@ -30,12 +30,14 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     if (!view) {
       return;
     }
+    /** False when the place's block is not in this article (any more). */
     const goTo = (place: ReadingPlace) => {
       const b = blockOf(shown.current, place);
       const el = b && view.querySelector(`#b-${b.id}`);
       if (el) {
         view.scrollTop += scrollFor(el, place, view.getBoundingClientRect().top);
       }
+      return !!el;
     };
     const kept = places.get(tab);
     places.delete(tab);
@@ -43,11 +45,11 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     // The article's own place: for a tab that had none, and after the Page view read on (a place with no block id). Another
     // Reader tab's place does not move this one. A tie is no older (the e2e clock stands still).
     const stored = seq === undefined ? readingPlaces.get(String(article)) : undefined;
-    if (stored && (!mine || (stored.block === undefined && stored.t >= mine.t))) {
-      goTo(stored);
-    } else if (mine?.place) {
+    // A place the article does not have (a Page view's from a part of the page the Reader lacks) leaves the tab's own.
+    const wentToStored = !!stored && (!mine || (stored.block === undefined && stored.t >= mine.t)) && goTo(stored);
+    if (!wentToStored && mine?.place) {
       goTo(mine.place);
-    } else if (mine) {
+    } else if (!wentToStored && mine) {
       view.scrollTop = mine.top;
     }
 

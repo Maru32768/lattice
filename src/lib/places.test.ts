@@ -59,8 +59,9 @@ test("a place finds its block by id while it has the same text, else by the text
   assert.equal(blockOf(blocks, place({ block: 2, text: "Second paragraph" }))?.id, 2);
   assert.equal(blockOf(blocks, place({ block: 7, text: "Second paragraph" }))?.id, 2, "imported again: other ids");
   assert.equal(blockOf(blocks, place({ block: 1, text: "Second paragraph" }))?.id, 2, "an id of another article's block");
-  assert.equal(blockOf(blocks, place({ text: "paragraph again" }))?.id, 3, "a page's block may be part of one");
+  assert.equal(blockOf(blocks, place({ text: "second paragraph again" }))?.id, 3, "a page's block may be part of one");
   assert.equal(blockOf(blocks, place({ text: "nowhere" })), undefined);
+  assert.equal(blockOf(blocks, place({ text: "Second" })), undefined, "too short to tell which block holds it (a table cell's text)");
   assert.equal(needle("x".repeat(100)).length, 80);
 });
 

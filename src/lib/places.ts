@@ -71,12 +71,18 @@ export const normalizeText = (s: string) => s.replace(/\s+/gu, " ").trim();
 /** The start of a block's text: what a place knows the block by. 80 characters, not UTF-16 units, so as not to split one. */
 export const needle = (s: string) => Array.from(normalizeText(s)).slice(0, 80).join("");
 
-/** The block a place names: the same id and text, else the first with that start, else the first that contains it. */
+/** Shorter than this, a place's text is no sign of the block that holds it (a table cell's "No" is in many). */
+export const FINDS_INSIDE = 20;
+
+/**
+ * The block a place names: the same id and text, else the first with that start, else the first that contains it (a
+ * paragraph the Page view draws in parts), when the text is long enough to tell.
+ */
 export function blockOf<B extends { id: number; text: string }>(blocks: B[], place: ReadingPlace): B | undefined {
   return (
     blocks.find((b) => b.id === place.block && needle(b.text) === place.text) ??
     blocks.find((b) => needle(b.text) === place.text) ??
-    blocks.find((b) => normalizeText(b.text).includes(place.text))
+    (place.text.length >= FINDS_INSIDE ? blocks.find((b) => normalizeText(b.text).includes(place.text)) : undefined)
   );
 }
 
