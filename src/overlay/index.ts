@@ -1017,16 +1017,16 @@ function placeHere(): { text: string; at: number } | null {
       }
     }
   }
-  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are. Only those:
-  // any other block missed above is not where the reader is (a cookie bar, a sidebar).
-  for (const block of pageBlocks()) {
+  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are, the highest
+  // that reaches the line. Only those: any other block missed above is not where the reader is (a cookie bar, a sidebar).
+  let best: { block: HTMLElement; top: number } | null = null;
+  for (const block of [...findLeafBlocks(document.body), ...document.querySelectorAll<HTMLElement>("[data-lattice-block]")]) {
     const r = block.getBoundingClientRect();
-    const place = r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none" ? placeOf(block) : null;
-    if (place) {
-      return place;
+    if (r.bottom > line && r.top < innerHeight && (!best || r.top < best.top) && getComputedStyle(block).pointerEvents === "none") {
+      best = { block, top: r.top };
     }
   }
-  return null;
+  return best && placeOf(best.block);
 }
 
 /**
