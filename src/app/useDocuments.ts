@@ -57,13 +57,13 @@ export function useDocuments(fail: (e: unknown) => void) {
       .catch(fail);
   };
   /** Whether the page a tab shows is in the Index. */
-  /** The URL each Page tab's `saved` was last looked up for: until the lookup for a new page answers, `saved` names the last one. */
-  const savedFor = useRef(new Map<Id, string>());
+  /** Each Page tab's last lookup: until the lookup for a new page answers, the tab's `saved` names the last one. */
+  const savedFor = useRef(new Map<Id, { url: string; saved: number | null }>());
   const refreshSaved = (tab: Id, url: string) =>
     api
       .articleForUrl(url)
       .then((a) => {
-        savedFor.current.set(tab, url);
+        savedFor.current.set(tab, { url, saved: a?.id ?? null });
         setLayout((l) => update(l, tab, { saved: a?.id ?? null }));
       })
       .catch(() => {});
@@ -102,8 +102,10 @@ export function useDocuments(fail: (e: unknown) => void) {
   /** Where a saved article's page is being read (null: at its top), for the Reader and the page opened again. Only once `saved` is known to name this page. */
   const onBrowserPlace = useEffectEvent((p: { tab: string; place: { text: string; at: number } | null }) => {
     const t = pageByKey(layout, p.tab);
-    if (t?.saved != null && !t.loading && savedFor.current.get(t.id) === t.url) {
-      readingPlaces.set(String(t.saved), p.place && { ...p.place, t: Date.now() });
+    // The lookup's own answer, not `t.saved`, which the layout takes a render later.
+    const found = t && !t.loading ? savedFor.current.get(t.id) : undefined;
+    if (t && found?.url === t.url && found.saved != null) {
+      readingPlaces.set(String(found.saved), p.place && { ...p.place, t: Date.now() });
     }
   });
   /** A link the page asked to open in a new window: a Page tab behind its own, which stays in front. */
