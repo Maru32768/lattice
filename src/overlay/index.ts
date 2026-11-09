@@ -932,9 +932,11 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
 }
 
 /** The page's leaf blocks, those the translation has taken too, in the page's order. */
-function pageBlocks(): HTMLElement[] {
+/** `keep` picks before they are put in order, which costs most on a page of thousands. */
+function pageBlocks(keep: (block: HTMLElement) => boolean = () => true): HTMLElement[] {
   return findLeafBlocks(document.body)
     .concat(Array.from(document.querySelectorAll<HTMLElement>("[data-lattice-block]")))
+    .filter(keep)
     .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
 }
 
@@ -1058,12 +1060,10 @@ function placeHere(): { text: string; at: number } | null {
   // spans the line, else the first below it. Only those: another block that the probes miss is not where the reader is
   // (a cookie bar, a sidebar). Those on screen are put in order, not the page's thousands.
   const passedThrough = () => {
-    const shown = [...findLeafBlocks(document.body), ...document.querySelectorAll<HTMLElement>("[data-lattice-block]")]
-      .filter((block) => {
-        const r = block.getBoundingClientRect();
-        return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
-      })
-      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    const shown = pageBlocks((block) => {
+      const r = block.getBoundingClientRect();
+      return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
+    });
     const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
     return block && { block, top: block.getBoundingClientRect().top };
   };
