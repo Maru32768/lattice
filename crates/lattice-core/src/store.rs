@@ -1778,37 +1778,6 @@ mod tests {
     }
 
     #[test]
-    fn the_content_hash_is_recomputed_once_and_summaries_of_the_same_text_move_with_it() {
-        let s = Store::open_in_memory().unwrap();
-        let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
-        let ir = crate::extract::extract(
-            "<html><body><article><p>Snapshot isolation still permits write skew, which is why SSI exists in the database.</p><p><img src=\"/f.png\" alt=\"Fig\"></p></article></body></html>",
-            "https://example.com/a",
-        )
-        .unwrap();
-        s.save_fetched(id, None, Ok(ir), None).unwrap();
-        s.exec_for_test(&format!(
-            "UPDATE articles SET content_hash = 'of every block' WHERE id = {id};
-             INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
-               ({id}, 'summary', 'Current then.', 'of every block', 't', 'v'), ({id}, 'summary', 'Stale then.', 'older', 't', 'v');"
-        ));
-        let mut c = s.conn();
-        let tx = c.transaction().unwrap();
-        rehash_content(&tx).unwrap();
-        tx.commit().unwrap();
-        let rows: Vec<(String, bool)> = c
-            .prepare("SELECT s.text, s.source_hash = a.content_hash FROM summaries s JOIN articles a ON a.id = s.article_id ORDER BY s.id")
-            .unwrap()
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .unwrap()
-            .map(Result::unwrap)
-            .collect();
-        assert_eq!(rows, [("Current then.".into(), true), ("Stale then.".into(), false)]);
-        let hash: String = c.query_row("SELECT content_hash FROM articles WHERE id = ?1", [id], |r| r.get(0)).unwrap();
-        assert_eq!(hash, text_hash(["Snapshot isolation still permits write skew,", "which is why SSI exists in the database."].into_iter()));
-    }
-
-    #[test]
     fn upgrading_recomputes_every_stored_content_hash_once_and_moves_its_summaries() {
         let conn = Connection::open_in_memory().unwrap();
         let before = MIGRATIONS.iter().position(|m| m.contains("joined with nothing between them")).unwrap();
