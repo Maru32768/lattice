@@ -1033,10 +1033,9 @@ function placeHere(): { text: string; at: number } | null {
     return null;
   };
   // Paragraphs the pointer passes through (the PDF viewer's, under its text layer, until the translation takes them):
-  // found by where they are, the highest that reaches the line. Only those: another block that the probes miss is not
-  // where the reader is (a cookie bar, a sidebar).
-  // In reading order: of two columns on the line, the left one is read first. Those on screen are put in order, not the
-  // page's thousands.
+  // found by where they are, in reading order (of two columns on the line, the left one is read first): the first that
+  // spans the line, else the first below it. Only those: another block that the probes miss is not where the reader is
+  // (a cookie bar, a sidebar). Those on screen are put in order, not the page's thousands.
   const passedThrough = () => {
     const shown = [...findLeafBlocks(document.body), ...document.querySelectorAll<HTMLElement>("[data-lattice-block]")]
       .filter((block) => {
