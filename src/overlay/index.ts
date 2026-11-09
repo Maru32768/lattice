@@ -933,7 +933,7 @@ function watchReader() {
  */
 const readingLine = () => innerHeight * 0.15;
 
-/** What scrolls `el`: the nearest scrolling box around it (the PDF viewer's), else the page. */
+/** What scrolls `el`: the nearest scrolling box around it (an app that scrolls a box of its own), else the page. */
 function scrollerOf(el: Element): Element {
   for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
     if (p.scrollHeight > p.clientHeight && /auto|scroll/u.test(getComputedStyle(p).overflowY)) {
@@ -1037,7 +1037,7 @@ if (window.top === window && !window.__lattice) {
   window.addEventListener("keydown", onKey, true);
   window.addEventListener("keydown", printUnclaimed);
   window.addEventListener("pointerdown", onPagePress, true);
-  // Capture: a box that scrolls (the PDF viewer's) sends its scroll events to no one else.
+  // Capture: a box that scrolls by itself sends its scroll events to no one else.
   window.addEventListener("scroll", placeChanged, { capture: true, passive: true });
   // Quietly: the app takes the keyboard to read a second key once its hint covers the page.
   window.addEventListener("blur", () => {

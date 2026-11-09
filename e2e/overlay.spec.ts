@@ -36,7 +36,7 @@ test("the overlay reports the paragraph on its reading line, and scrolls a place
   await expect(page.locator("p").nth(40)).toHaveClass(/lattice-flash/);
 });
 
-test("a box that scrolls (the PDF viewer's) is followed, and a translated sentence counts by its original", async ({ page }) => {
+test("a page that scrolls a box of its own is followed, and a translated sentence counts by its original", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
