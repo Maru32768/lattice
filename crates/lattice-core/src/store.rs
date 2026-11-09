@@ -614,6 +614,9 @@ impl Store {
         conn.set_transaction_behavior(rusqlite::TransactionBehavior::Immediate);
         let user_version = |c: &Connection| c.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0));
         let version = user_version(&conn)?;
+        // A migration can hold the lock for seconds (rehash_content: 0.2 s release, 5 s debug for 3000 articles), and the
+        // app and the MCP server start together: the one that waits must outwait it rather than fail to open the library.
+        conn.busy_timeout(std::time::Duration::from_secs(120))?;
         if version as usize > MIGRATIONS.len() {
             return Err(rusqlite::Error::ToSqlConversionFailure(format!("database version {version} is newer than this build ({})", MIGRATIONS.len()).into()));
         }
@@ -633,6 +636,7 @@ impl Store {
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
         }
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         Ok(Self { conn: Mutex::new(conn), running: Mutex::default() })
     }
 
