@@ -60,7 +60,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
-/// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again.
+/// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
+/// 38 still says it recomputes; migrations are append-only, so this is where that is corrected.
 const REHASH_AT: usize = 39;
 /// Stored URLs are normalized again after these many migrations, so feed entries and pages keep
 /// matching the articles and items saved before: `url_norm` started dropping `source=rss…` (18),
