@@ -1035,16 +1035,20 @@ function placeHere(): { text: string; at: number } | null {
   // Paragraphs the pointer passes through (the PDF viewer's, under its text layer, until the translation takes them):
   // found by where they are, the highest that reaches the line. Only those: another block that the probes miss is not
   // where the reader is (a cookie bar, a sidebar).
-  // In reading order: of two columns on the line, the left one is read first.
+  // In reading order: of two columns on the line, the left one is read first. Those on screen are put in order, not the
+  // page's thousands.
   const passedThrough = () => {
-    const shown = pageBlocks().filter((block) => {
-      const r = block.getBoundingClientRect();
-      return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
-    });
+    const shown = [...findLeafBlocks(document.body), ...document.querySelectorAll<HTMLElement>("[data-lattice-block]")]
+      .filter((block) => {
+        const r = block.getBoundingClientRect();
+        return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
+      })
+      .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
     const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
     return block && { block, top: block.getBoundingClientRect().top };
   };
-  const onLine = probe(line);
+  // The line, and just below it: the line often falls in the margin between two paragraphs.
+  const onLine = probe(line) ?? probe(line + 16);
   if (onLine) {
     return onLine;
   }
@@ -1053,7 +1057,7 @@ function placeHere(): { text: string; at: number } | null {
   if (through && through.top <= line) {
     return placeOf(through.block);
   }
-  for (let y = line + 16; y < line + innerHeight / 2; y += 16) {
+  for (let y = line + 32; y < line + innerHeight / 2; y += 16) {
     const place = probe(y);
     if (place) {
       return place;
