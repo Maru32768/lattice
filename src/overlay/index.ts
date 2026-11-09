@@ -1020,7 +1020,7 @@ function placeHere(): { text: string; at: number } | null {
     // A block below the line is put about there, not as many of its heights down: the Reader measures by its own.
     return text && r ? { text, at: r.height > 0 ? Math.max(-1, (line - r.top) / r.height) : 0 } : null;
   };
-  for (let y = line; y < line + innerHeight / 2; y += 16) {
+  const probe = (y: number) => {
     for (const x of [0.5, 0.35, 0.65]) {
       const hit = document.elementFromPoint(innerWidth * x, y);
       const place = hit && placeOf(blockAround(hit));
@@ -1028,16 +1028,36 @@ function placeHere(): { text: string; at: number } | null {
         return place;
       }
     }
-  }
-  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are, the highest
-  // that reaches the line. Only those: any other block missed above is not where the reader is (a cookie bar, a sidebar).
+    return null;
+  };
+  // Paragraphs the pointer passes through (the PDF viewer's, under its text layer, until the translation takes them):
+  // found by where they are, the highest that reaches the line. Only those: another block that the probes miss is not
+  // where the reader is (a cookie bar, a sidebar).
   // In reading order: of two columns on the line, the left one is read first.
-  const shown = pageBlocks().filter((block) => {
-    const r = block.getBoundingClientRect();
-    return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
-  });
-  const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
-  return block ? placeOf(block) : null;
+  const passedThrough = () => {
+    const shown = pageBlocks().filter((block) => {
+      const r = block.getBoundingClientRect();
+      return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
+    });
+    const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
+    return block && { block, top: block.getBoundingClientRect().top };
+  };
+  const onLine = probe(line);
+  if (onLine) {
+    return onLine;
+  }
+  // One on the line beats one a probe finds lower down (a PDF page translated below one that is not).
+  const through = passedThrough();
+  if (through && through.top <= line) {
+    return placeOf(through.block);
+  }
+  for (let y = line + 16; y < line + innerHeight / 2; y += 16) {
+    const place = probe(y);
+    if (place) {
+      return place;
+    }
+  }
+  return through ? placeOf(through.block) : null;
 }
 
 /**

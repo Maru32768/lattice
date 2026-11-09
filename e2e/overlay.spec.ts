@@ -194,6 +194,19 @@ test("the same place is not reported twice, as a box of the page's own keeps scr
   expect(await count()).toBe(before);
 });
 
+test("in a PDF translated only lower down, the paragraph on the line is the place", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const ps = document.querySelectorAll("p");
+    // As the PDF viewer's: regions take the pointer once translated, and only paragraph 14 below the line is.
+    ps.forEach((p, i) => (p.style.pointerEvents = i === 14 ? "auto" : "none"));
+    const r = ps[12].getBoundingClientRect();
+    scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
+});
+
 test("of two columns on the line, the left one, read first, is the place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
