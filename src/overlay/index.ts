@@ -1023,14 +1023,13 @@ function placeHere(): { text: string; at: number } | null {
   }
   // Paragraphs the pointer passes through (the PDF viewer's, under its text layer): found by where they are, the highest
   // that reaches the line. Only those: any other block missed above is not where the reader is (a cookie bar, a sidebar).
-  let best: { block: HTMLElement; top: number } | null = null;
-  for (const block of [...findLeafBlocks(document.body), ...document.querySelectorAll<HTMLElement>("[data-lattice-block]")]) {
+  // In reading order: of two columns on the line, the left one is read first.
+  const shown = pageBlocks().filter((block) => {
     const r = block.getBoundingClientRect();
-    if (r.bottom > line && r.top < innerHeight && (!best || r.top < best.top) && getComputedStyle(block).pointerEvents === "none") {
-      best = { block, top: r.top };
-    }
-  }
-  return best && placeOf(best.block);
+    return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
+  });
+  const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
+  return block ? placeOf(block) : null;
 }
 
 /**

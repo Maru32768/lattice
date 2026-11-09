@@ -153,3 +153,22 @@ test("the page at its top is no place, and a place just put back is not reported
   await page.waitForTimeout(600);
   expect(await page.evaluate((n) => window.__pageCalls.slice(n).filter((c) => c.cmd === "overlay_place"), before)).toEqual([]);
 });
+
+test("of two columns on the line, the left one, read first, is the place", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const column = (text: string, left: string, top: number) => {
+      const p = Object.assign(document.createElement("p"), { textContent: text });
+      Object.assign(p.style, { position: "fixed", left, width: "40%", top: `${top}px`, height: "300px", margin: "0", pointerEvents: "none" });
+      return p;
+    };
+    // Higher on screen, the right column's paragraph started earlier: still, the left one is read first.
+    const room = Object.assign(document.createElement("div"), { style: "height: 3000px" });
+    document
+      .getElementById("main")!
+      .replaceChildren(column("The left column's paragraph.", "5%", 60), column("The right column's paragraph.", "55%", 20), room);
+    scrollTo(0, 500);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toBe("The left column's paragraph.");
+});
