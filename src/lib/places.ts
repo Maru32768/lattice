@@ -65,15 +65,18 @@ const wellFormed = (s: string) => {
 export const isReadingPlace = (v: unknown): v is ReadingPlace =>
   isObj(v) && typeof v.text === "string" && v.text !== "" && wellFormed(v.text) && isNum(v.at) && isNum(v.t) && (v.block === undefined || isNum(v.block));
 
-/** The start of a block's text, spaces collapsed: what a place knows the block by. 80 characters, not UTF-16 units, so as not to split one. */
-export const needle = (s: string) => Array.from(s.replace(/\s+/gu, " ").trim()).slice(0, 80).join("");
+/** Text with its runs of white space made one space: how the Reader, the Page view and a place compare text. */
+export const normalizeText = (s: string) => s.replace(/\s+/gu, " ").trim();
+
+/** The start of a block's text: what a place knows the block by. 80 characters, not UTF-16 units, so as not to split one. */
+export const needle = (s: string) => Array.from(normalizeText(s)).slice(0, 80).join("");
 
 /** The block a place names: the same id and text, else the first with that start, else the first that contains it. */
 export function blockOf<B extends { id: number; text: string }>(blocks: B[], place: ReadingPlace): B | undefined {
   return (
     blocks.find((b) => b.id === place.block && needle(b.text) === place.text) ??
     blocks.find((b) => needle(b.text) === place.text) ??
-    blocks.find((b) => b.text.replace(/\s+/gu, " ").includes(place.text))
+    blocks.find((b) => normalizeText(b.text).includes(place.text))
   );
 }
 

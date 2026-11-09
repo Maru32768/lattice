@@ -5,6 +5,7 @@
  *
  * Adapted from Mazelingo's dom-overlay (MIT License, Copyright (c) 2026 Yeq6X).
  */
+import { normalizeText } from "../lib/places.ts";
 
 /** Elements that carry no translatable text and are moved, never re-created. */
 export const ATOM_TAGS = new Set(["svg", "img", "video", "canvas", "input", "select", "textarea", "iframe", "math"]);
@@ -146,7 +147,8 @@ function normalizeStream(tokens: Token[]): { text: string; chars: Char[] } {
   return { text: chars.map((c) => c.value).join(""), chars };
 }
 
-export const normalizeText = (s: string) => s.replace(/\s+/gu, " ").trim();
+// One rule for the overlay, the Reader and reading places, which find each other's text by it.
+export { normalizeText };
 
 /** Resolves once `root` has had no DOM mutations for `quietMs`, or after `maxMs` regardless (JS pages still rendering). */
 export function settle(root: Node, quietMs: number, maxMs: number): Promise<void> {
