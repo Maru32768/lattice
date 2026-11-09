@@ -424,6 +424,14 @@ test("a new token of the same library keeps the view; another library's starts o
   await expect(page.getByText("未読 · 1件"), "another library starts from 未読").toBeVisible();
 });
 
+test("a link without l= opened again is of the same library", async ({ page }) => {
+  await start(page);
+  await showScope(page, "すべての記事");
+  await page.evaluate(() => (location.hash = "#t=secret&again=1"));
+  await expect(page.getByText("すべての記事 · 3件")).toBeVisible();
+  await expect(page.getByRole("link")).toHaveCount(3);
+});
+
 const LONG = {
   format: 1,
   generated_at: 1,
