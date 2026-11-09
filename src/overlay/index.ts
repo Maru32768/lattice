@@ -965,7 +965,13 @@ function placeHere(): { text: string; at: number } | null {
 let placeTimer = 0;
 function placeChanged() {
   clearTimeout(placeTimer);
-  placeTimer = window.setTimeout(() => void invoke("overlay_place", { place: placeHere() }).catch(() => {}), PLACE_MS);
+  placeTimer = window.setTimeout(() => {
+    const place = placeHere();
+    // Nothing found (a code block or a figure over the line) is no place to forget: the place the app keeps stays.
+    if (place) {
+      invoke("overlay_place", { place }).catch(() => {});
+    }
+  }, PLACE_MS);
 }
 
 /**
