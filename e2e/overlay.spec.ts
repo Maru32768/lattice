@@ -172,3 +172,12 @@ test("of two columns on the line, the left one, read first, is the place", async
   });
   await expect.poll(async () => (await reported(page))?.text).toBe("The left column's paragraph.");
 });
+
+test("a place whose paragraph the page shows only later is put back once it shows", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => (document.getElementById("main")!.style.display = "none"));
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.style.display = ""), 200));
+  await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0.5, 1);
+});

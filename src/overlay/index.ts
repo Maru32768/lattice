@@ -890,7 +890,9 @@ function scrollToText(text: string, at?: number, again = true): boolean {
   const texts = blocks.map((b) => normalizeText(originalText(b)));
   // A place names its block by the block's start; a search result's passage may lie anywhere in it.
   const i = at === undefined ? -1 : texts.findIndex((t) => t.startsWith(want));
-  const el = blocks[i >= 0 ? i : texts.findIndex((t) => t.includes(want))];
+  const found = blocks[i >= 0 ? i : texts.findIndex((t) => t.includes(want))];
+  // A block not shown yet (the page reveals its text by script) is not found yet either: the retry below waits for it.
+  const el = found && (at === undefined || found.getClientRects().length > 0) ? found : undefined;
   if (!el) {
     unfound = { text, at };
     // A page that draws its text after it has loaded: once more when it settles, unless the reader has moved by then.
