@@ -77,8 +77,10 @@ test("a page that draws its text after loading is scrolled to the place once it 
 test("the place stays on the reading line while the page above it still grows", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  // Chromium's scroll anchoring would keep it there alone; the PDF viewer's pages defeat it.
+  await page.evaluate(() => (document.documentElement.style.overflowAnchor = "none"));
   expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
-  // A picture that arrives late, above the place: the PDF viewer sizing its pages did the same.
+  // A picture that arrives late, above the place.
   await page.evaluate(() => {
     const late = Object.assign(document.createElement("div"), { style: "height: 900px" });
     document.getElementById("main")!.prepend(late);
