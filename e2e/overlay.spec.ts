@@ -125,8 +125,14 @@ test("paragraphs the pointer passes through (the PDF viewer's, under its text la
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
     document.querySelectorAll("p").forEach((p) => (p.style.pointerEvents = "none"));
-    const cover = Object.assign(document.createElement("div"), { translate: false, textContent: "the text layer" });
+    // As pdf.js draws it: one absolutely placed span per line, which lays out as a block.
+    const cover = Object.assign(document.createElement("div"), { translate: false });
     Object.assign(cover.style, { position: "fixed", inset: "0", color: "transparent" });
+    for (let y = 0; y < innerHeight; y += 20) {
+      const line = Object.assign(document.createElement("span"), { textContent: `a line of the text layer at ${y}` });
+      Object.assign(line.style, { position: "absolute", left: "0", right: "0", top: `${y}px`, height: "20px" });
+      cover.append(line);
+    }
     document.body.append(cover);
     const r = document.querySelectorAll("p")[12].getBoundingClientRect();
     scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);

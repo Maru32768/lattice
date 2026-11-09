@@ -990,10 +990,12 @@ function scrollerOf(el: Element): Element {
 
 /** The leaf block `el` is in: a paragraph the translation would take, or one it has. */
 function blockAround(el: Element): HTMLElement | null {
+  // Anything inside what the translation leaves alone: a line of the PDF viewer's text layer (its spans lay out as
+  // blocks), a site's header.
+  if (el.closest(SKIP)) {
+    return null;
+  }
   for (let e: Element | null = el; e && e !== document.body; e = e.parentElement) {
-    if (e.matches(SKIP)) {
-      return null;
-    }
     if (e instanceof HTMLElement && (e.dataset.latticeBlock || (isBlock(e) && !Array.from(e.children).some(isBlock)))) {
       return e;
     }
