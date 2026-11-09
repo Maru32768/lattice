@@ -954,7 +954,8 @@ function holdPlace(el: Element, at: number) {
     }
     const off = r.top + at * r.height - readingLine();
     if (Math.abs(off) >= 1) {
-      scroller.scrollBy(0, off);
+      // Not smooth, whatever the page's CSS says: where it lands is what `placed` keeps.
+      scroller.scrollBy({ top: off, behavior: "instant" });
     }
     placed = { scroller, top: scroller.scrollTop };
   };
