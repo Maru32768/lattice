@@ -895,9 +895,10 @@ function scrollToText(text: string, at?: number, again = true): boolean {
     unfound = { text, at };
     // A page that draws its text after it has loaded: once more when it settles, unless the reader has moved by then.
     if (at !== undefined && again) {
-      const from = scrollY;
+      const reader = watchReader();
       void settle(document.documentElement, 400, 5000).then(() => {
-        if (unfound?.text === text && scrollY === from) {
+        reader.stop();
+        if (unfound?.text === text && !reader.moved()) {
           scrollToText(text, at, false);
         }
       });
@@ -913,6 +914,17 @@ function scrollToText(text: string, at?: number, again = true): boolean {
     scrollerOf(el).scrollBy(0, r.top + at * r.height - readingLine());
   }
   return true;
+}
+
+/** Whether the reader moves the page (wheel, keys, pointer, touch) from now until `stop`; the page's own scrolling is not them. */
+function watchReader() {
+  let moved = false;
+  const mark = () => {
+    moved = true;
+  };
+  const events = ["wheel", "keydown", "pointerdown", "touchstart"];
+  events.forEach((e) => addEventListener(e, mark, { capture: true, passive: true }));
+  return { moved: () => moved, stop: () => events.forEach((e) => removeEventListener(e, mark, true)) };
 }
 
 /**
