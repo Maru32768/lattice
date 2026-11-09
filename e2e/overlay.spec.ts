@@ -261,3 +261,15 @@ test("a page that says translate=no on html still reports its place", async ({ p
   });
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 15\./);
 });
+
+test("a place goes to the shown block, not a hidden copy before it", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const ps = document.querySelectorAll("p");
+    const hidden = Object.assign(ps[40].cloneNode(true) as HTMLElement, { hidden: true });
+    ps[2].before(hidden);
+  });
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40.", 0))).toBe(true);
+  await expect.poll(() => lineIn(page, 41), "the shown paragraph 40, after the hidden copy").toBeCloseTo(0, 1);
+});
