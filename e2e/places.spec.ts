@@ -127,3 +127,21 @@ test("the Page view opens where the Reader was, and the Reader where the Page vi
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc)).toBe(para(60));
 });
+
+test("the same article in two tabs keeps a place in each", async ({ shell }) => {
+  await start(shell);
+  await (await listRow(shell, LONG)).click();
+  const doc = shell.locator(".doc-scroll");
+  await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await (await listRow(shell, LONG)).click({ modifiers: ["Control"] });
+  const tabs = shell.getByRole("tab");
+  await expect(tabs).toHaveCount(2);
+  await tabs.nth(1).click();
+  await expect.poll(() => readerTop(doc), "a new tab opens where the article was left").toBe(para(20));
+  await doc.getByText(para(50)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain(para(50));
+  await tabs.nth(0).click();
+  await expect.poll(() => readerTop(doc)).toBe(para(20));
+  await tabs.nth(1).click();
+  await expect.poll(() => readerTop(doc)).toBe(para(50));
+});

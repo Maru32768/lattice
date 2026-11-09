@@ -36,10 +36,10 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     const kept = places.get(tab);
     places.delete(tab);
     const mine = kept?.article === article && kept.seq === seq ? kept : undefined;
-    // The article's own place, newer when the reader moved on in another tab or the Page view since this tab went away.
-    // A tie is the place this tab kept for the article as it went: the same one.
+    // The article's own place: for a tab that had none, and after the Page view read on (a place with no block id). Another
+    // Reader tab's place does not move this one. A tie is no older (the e2e clock stands still).
     const stored = seq === undefined ? readingPlaces.get(String(article)) : undefined;
-    if (stored && !(mine && mine.t > stored.t)) {
+    if (stored && (!mine || (stored.block === undefined && stored.t >= mine.t))) {
       goTo(stored);
     } else if (mine?.place) {
       goTo(mine.place);
