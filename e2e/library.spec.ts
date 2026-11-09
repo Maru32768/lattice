@@ -106,7 +106,8 @@ test.describe("with reduced motion", () => {
   test("the wheel reaches the end of a long list", async ({ shell }) => {
     // A transition on every property (the old reduced-motion rule) delayed the virtual list's padding by a frame:
     // near the end the list came out a row short each time it swapped rows, and the scroll was pulled back a row.
-    await shell.route(/\/e2e\/fixtures\.ts/, async (route) => {
+    // The dev server serves from e2e/: the module is /fixtures.ts (a pattern with e2e/ in it never matched).
+    await shell.route(/\/fixtures\.ts(\?|$)/, async (route) => {
       const res = await route.fetch();
       const more = "ARTICLES.push(...Array.from({ length: 150 }, (_, i) => ({ ...ARTICLES[0], id: 5000 + i, title: `Extra ${i}` })));";
       await route.fulfill({ response: res, body: `${await res.text()}\n${more}\n` });
