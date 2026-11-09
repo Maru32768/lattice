@@ -175,6 +175,25 @@ test("the PDF viewer's late try leaves the place alone once the reader has scrol
   expect(await page.evaluate(() => scrollY), "where the reader scrolled to").toBe(y);
 });
 
+test("the same place is not reported twice, as a box of the page's own keeps scrolling", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const box = Object.assign(document.createElement("div"), { id: "carousel", style: "height: 40px; overflow: auto" });
+    box.append(Object.assign(document.createElement("div"), { style: "height: 400px" }));
+    document.body.append(box);
+    scrollTo(0, 800);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toBeTruthy();
+  const count = () => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_place").length);
+  const before = await count();
+  for (const top of [100, 200]) {
+    await page.evaluate((t) => document.getElementById("carousel")!.scrollTo(0, t), top);
+    await page.waitForTimeout(400);
+  }
+  expect(await count()).toBe(before);
+});
+
 test("of two columns on the line, the left one, read first, is the place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);

@@ -1045,6 +1045,8 @@ function placeHere(): { text: string; at: number } | null {
  * there. The page at its top is no place (null): the article opens at its top.
  */
 let placeTimer = 0;
+/** The last report: the same again would only make an old place look new (a carousel scrolling a box of its own). */
+let reported = "";
 function placeChanged(e: Event) {
   clearTimeout(placeTimer);
   const page = e.target === document;
@@ -1056,7 +1058,9 @@ function placeChanged(e: Event) {
     const top = page && (document.scrollingElement?.scrollTop ?? 0) === 0;
     // Nothing found is not the top: the place the app keeps stays.
     const place = top ? null : placeHere();
-    if (top || place) {
+    const report = JSON.stringify(place);
+    if ((top || place) && report !== reported) {
+      reported = report;
       invoke("overlay_place", { place }).catch(() => {});
     }
   }, PLACE_MS);
