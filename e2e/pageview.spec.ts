@@ -68,3 +68,28 @@ test("saving a page while a group's list is open puts it in that group too", asy
   await expect.poll(async () => (await callsOf(shell, "group_add")).at(-1)).toMatchObject({ id: group.id });
   await expect(list(shell).locator(".row", { hasText: "Saved page" })).toBeVisible();
 });
+
+test("a page that fails to open is not opened again and again", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
+  await shell.goto("/");
+  await expect(shell.getByRole("tab", { name: "P" })).toBeVisible({ timeout: 30_000 });
+  // From now on no webview can be made (as with os error 1455), and none is there.
+  await shell.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    internals.invoke = (cmd, args, options) => {
+      if (cmd === "browser_open") {
+        window.__e2e.calls.push({ cmd, args });
+        return Promise.reject(new Error("os error 1455"));
+      }
+      return cmd === "browser_set_bounds" ? Promise.resolve(false) : invoke(cmd, args, options);
+    };
+  });
+  const before = (await callsOf(shell, "browser_open")).length;
+  await shell.evaluate(() => window.__e2e.emit("browser-new-tab", { tab: "k1", url: "https://example.com/q" }));
+  await shell.getByRole("tab").nth(1).click();
+  await expect(shell.getByRole("alert")).toContainText("1455");
+  await shell.waitForTimeout(1500);
+  expect((await callsOf(shell, "browser_open")).length - before, "not a loop of opens").toBeLessThan(4);
+});

@@ -234,7 +234,10 @@ export function BrowserView({
   // While an open is in flight, setBounds would re-show the previous page before the backend
   // knows a new one is loading; the open places the webview itself.
   const opening = useRef(false);
-  /** Opens the tab's URL at `b`; the caller places the webview again once it is done. */
+  /**
+   * Opens the tab's URL at `b`; the caller places the webview again once it is done. False when it failed: there is still
+   * no webview, and opening again at once would fail the same way, over and over.
+   */
   const open = useEffectEvent((b: Bounds, focus?: string) => {
     opening.current = true;
     opened.set(id, tab.seq);
@@ -242,7 +245,13 @@ export function BrowserView({
     const place = tab.saved == null ? undefined : readingPlaces.get(String(tab.saved));
     return browser
       .open(id, tab.url, b, focus, place && { text: place.text, at: place.at })
-      .catch((e: unknown) => onError(String(e)))
+      .then(
+        () => true,
+        (e: unknown) => {
+          onError(String(e));
+          return false;
+        },
+      )
       .finally(() => {
         opening.current = false;
       });
@@ -259,10 +268,9 @@ export function BrowserView({
       sent.current = JSON.stringify(b);
       const exists = await browser.setBounds(id, b).catch(() => true); // also re-shows it
       // Evicted while hidden, or restored from the saved layout: the tab reopens its URL.
-      if (exists || opening.current) {
+      if (exists || opening.current || !(await open(b))) {
         return;
       }
-      await open(b);
     }
   });
   /** The placeholder can move without resizing (a pane appearing beside it), which no ResizeObserver reports. */
@@ -293,7 +301,10 @@ export function BrowserView({
     if ((opened.get(id) ?? -1) >= tab.seq) {
       return;
     }
-    void open(boundsOf(host.current)!, tab.focus).then(async () => {
+    void open(boundsOf(host.current)!, tab.focus).then(async (ok) => {
+      if (!ok) {
+        return;
+      }
       // The new webview takes the keyboard when it is created: take it back for the URL bar.
       if (tab.edit) {
         await getCurrentWebview()
