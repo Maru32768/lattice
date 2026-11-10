@@ -6,8 +6,10 @@ import { ACTIONS, DEFAULT_BINDINGS, keyOf, merge, type ActionId, type Bindings }
 // ---- persisted store ----------------------------------------------------------------------------
 const STORAGE_KEY = "lattice.shortcuts";
 const STORAGE_VERSION = 2;
+const FILE_FORMAT = "lattice.shortcuts";
 
-const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k) => typeof k === "string") ? v : undefined);
+// It reads imported files too: a key listed twice would repeat a React key in the row.
+const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => typeof k === "string") ? [...new Set(v.filter(Boolean))] : undefined);
 
 /**
  * The overrides in a stored value. Version 1 had a `pane` action, whose keys led fixed second keys
@@ -77,13 +79,31 @@ export function setKeys(id: ActionId, keys: string[]) {
   commit(same ? rest : { ...rest, [id]: keys });
 }
 
-/** One action back to its default keys, or every action when `id` is omitted. */
-export function resetKeys(id?: ActionId) {
-  if (!id) {
-    return commit({});
-  }
+/** One action back to its default keys. */
+export function resetKeys(id: ActionId) {
   const { [id]: _, ...rest } = overrides;
   commit(rest);
+}
+
+/** Makes `next` the whole set of overrides (`{}`: every action at its defaults) and returns the set it replaced. */
+export function replaceKeys(next: Partial<Bindings>): Partial<Bindings> {
+  const prev = overrides;
+  commit(next);
+  return prev;
+}
+
+/** The overrides as a file: the stored value, marked so that reading another JSON file does not reset every key. */
+export const shortcutsFile = () => JSON.stringify({ format: FILE_FORMAT, version: STORAGE_VERSION, ...overrides }, null, 2);
+
+/** The overrides in a file `shortcutsFile` wrote, or null for any other text. */
+export function parseShortcutsFile(text: string): Partial<Bindings> | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  return (raw as { format?: unknown } | null)?.format === FILE_FORMAT ? fromStored(raw as Record<string, unknown>) : null;
 }
 
 export function useBindings(): Bindings {

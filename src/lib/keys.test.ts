@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_BINDINGS } from "./keymap.ts";
-import { fromStored, getBindings, isCustom, resetKeys, setKeys } from "./keys.ts";
+import { fromStored, getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile } from "./keys.ts";
 
 test("fromStored: version 1's pane keys and fixed second keys become two-key bindings; version 2 stays as saved", () => {
   assert.deepEqual(fromStored({ splitDown: ["Ctrl+Shift+D"], favorite: ["X"], next: "J" }), {
@@ -28,6 +28,39 @@ test("custom keys: setting an action's defaults back clears its override; reset 
   setKeys("favorite", ["X"]);
   resetKeys("prev");
   assert.deepEqual([getBindings().prev, isCustom("favorite")], [DEFAULT_BINDINGS.prev, true]);
-  resetKeys();
+  replaceKeys({});
   assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
+});
+
+test("replaceKeys returns the keys it replaced, and passing them back restores the bindings", () => {
+  setKeys("next", ["N"]);
+  setKeys("favorite", []);
+  const before = getBindings();
+  const prev = replaceKeys({});
+  assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
+  replaceKeys(prev);
+  assert.deepEqual(getBindings(), before);
+  replaceKeys({});
+});
+
+test("a shortcuts file holds only the changed keys, marked, and reads back as them", () => {
+  setKeys("next", ["N"]);
+  setKeys("favorite", []);
+  const file = shortcutsFile();
+  assert.deepEqual(JSON.parse(file), { format: "lattice.shortcuts", version: 2, next: ["N"], favorite: [] });
+  replaceKeys({});
+  assert.deepEqual(parseShortcutsFile(file), { next: ["N"], favorite: [] });
+});
+
+test("a file without the marker, or not JSON, reads as nothing rather than as no changed keys", () => {
+  assert.equal(parseShortcutsFile(JSON.stringify({ next: ["N"], version: 2 })), null, "the stored value alone");
+  assert.equal(parseShortcutsFile(JSON.stringify({})), null);
+  for (const text of ["not json", "", "null", "[]", '"lattice.shortcuts"']) {
+    assert.equal(parseShortcutsFile(text), null, text);
+  }
+});
+
+test("a file's repeated and empty keys are dropped, and an action with a key that is not text is left out", () => {
+  const file = JSON.stringify({ format: "lattice.shortcuts", version: 2, next: ["N", "N", "", "M"], prev: ["K", 3], favorite: "X" });
+  assert.deepEqual(parseShortcutsFile(file), { next: ["N", "M"] });
 });

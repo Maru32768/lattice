@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
+import { isCustom, replaceKeys, resetKeys, setKeys, useBindings } from "../lib/keys";
 import {
   ACTIONS,
   ACTION_GROUPS,
@@ -195,7 +195,7 @@ export function ShortcutSettings() {
   return (
     <>
       <div className="btn-row">
-        <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>
+        <button className="btn" onClick={() => replaceKeys({})} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>
           {t("shortcutSettings.resetAll")}
         </button>
         <span className="muted">{t("shortcutSettings.hint")}</span>
