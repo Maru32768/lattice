@@ -615,7 +615,7 @@ mod tests {
         let hash = crate::segments::source_hash(&piece.text);
         let units = [crate::segments::Unit { source: piece.text, translation: "古い訳".into() }];
         let saved = |s: &Store| s.cached_segments(std::slice::from_ref(&hash), "ja").unwrap().len();
-        let save = |s: &Store| s.insert_segments("ja", crate::segments::PROMPT_VERSION, &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
+        let save = |s: &Store| s.insert_segments("ja", crate::segments::PROMPT_VERSION, None, &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
 
         save(&s);
         assert_eq!(translate::retranslate(&s, id, &Target::default()).unwrap(), 1, "the piece's own row counts");

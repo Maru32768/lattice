@@ -264,7 +264,7 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 
 **Shared translations.** Translations are stored per paragraph text. A paragraph translated in the Page view is translated in the Reader too, and the other way around. Other articles and pages that contain the same paragraph use that translation as well. So **Translate again** also renews the translation in other articles and pages that share the paragraph.
 
-**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider. While it works, the page's tab shows **Translating** and how many paragraphs are done (for example, **Translating 3/10**), also for a tab in the background.
+**Translating in the Page view.** Choosing **Mixed** or **Translated** in the Page view translates the page as you read it. Paragraphs already written in the target language are not sent to the AI provider. While it works, the page's tab shows **Translating** and how many paragraphs are done (for example, **Translating 3/10**), also for a tab in the background. Translations of pages not in your library are stored too, so delete the [unused translations](#unused-translations) when you no longer need them.
 
 **Translation settings.** **Settings › Translation** has these options. Each applies to translation in both the Reader and the Page view.
 
@@ -503,7 +503,7 @@ The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit ta
 
 Choose **Remove from library…** in the ⋯ menu or the right-click menu, and confirm. This cannot be undone.
 
-- Removed: the saved HTML, text, summary, tags, images, search data, and translations no other article uses
+- Removed: the saved HTML, text, summary, tags, images, search data, and translations no other article uses (those made in the Page view too)
 - Kept: citations in chat answers
 
 An article that came from a feed is not imported again from that feed.
@@ -999,6 +999,14 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
 **Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout.
+
+### Unused translations
+
+The **Unused translations** row in **Settings › Logs & storage** shows how many translations no article's text or Page view uses. They are what you translated in the Page view on pages not in your library, and the old paragraphs of articles whose text was extracted again. The row's button deletes them, which cannot be undone.
+
+- Kept: the translations of articles' text, and those made in a saved article's Page view
+- Of what saved web pages' Page views translated in 0.3.0 or earlier, the text outside the article's paragraphs (menus and the like) is deleted too. Saved PDFs keep their translations.
+- Opening a page whose translations were deleted translates it with AI again.
 
 ### Move the data folder
 

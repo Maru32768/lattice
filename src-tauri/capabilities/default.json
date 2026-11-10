@@ -176,6 +176,8 @@
     "allow-pick-data-dir",
     "allow-open-data-dir",
     "allow-open-log-dir",
+    "allow-unused-translations",
+    "allow-delete-unused-translations",
     "allow-set-data-dir",
     "allow-restart-app",
     "allow-browser-open",

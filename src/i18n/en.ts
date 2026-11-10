@@ -335,6 +335,13 @@ export const en = {
   "storageSection.copyAndChange": "Copy and switch",
   "storageSection.copyDesc": "Copies the database, backups, exports and the search model to {code}, and uses that folder after a restart.",
   "storageSection.copyWarning": "Anything added or changed after the copy stays behind, so restart as soon as it finishes. The current data is not deleted.",
+  "storageSection.unused": "Unused translations",
+  "storageSection.unusedDesc": "Translations no article's text or Page view uses, such as those of pages not in your library.",
+  "storageSection.deleteUnused": (p) => `Delete ${plural(p.count, "translation", "translations")}…`,
+  "storageSection.confirmUnused": "Delete unused translations?",
+  "storageSection.unusedWarning": (p) =>
+    `Deletes ${plural(p.count, "translation", "translations")}. The translations of articles' text, and those made in a saved article's Page view, stay. Opening such a page again translates it with AI again. This cannot be undone.`,
+  "storageSection.unusedDeleted": (p) => `Deleted ${plural(p.count, "translation", "translations")}`,
   "update.install": "Update and restart",
   "update.downloading": "Downloading {percent}%",
   "update.installing": "Installing…",

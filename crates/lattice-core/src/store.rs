@@ -58,7 +58,10 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00037_mobile_published.sql"),
     include_str!("../db/migrations/00038_content_hash_of_the_text.sql"),
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
+    include_str!("../db/migrations/00040_translation_page_article.sql"),
 ];
+/// After this migration the translations a saved PDF's Page view made before it are given that PDF (`own_pdf_regions`).
+const PDF_REGIONS_AT: usize = 40;
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
 /// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
 /// 38 still says it recomputes; migrations are append-only, so this is where that is corrected.
@@ -344,6 +347,9 @@ pub struct SummarySource {
 /// (source_hash, units, provider, model) of one cached translation.
 pub type SegmentRow<'a> = (&'a str, &'a [Unit], &'a str, Option<&'a str>);
 
+/// A `segment_translations` row no saved article uses. By text alone, whatever target: the cache is shared by text.
+const UNUSED_TRANSLATION: &str = "article_id IS NULL AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash)";
+
 /// A block awaiting translation, as handed to the LLM.
 #[derive(Debug, Clone)]
 pub struct PendingBlock {
@@ -497,6 +503,29 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     Ok(())
 }
 
+/// A saved PDF's Page view keeps the translations of its regions under hashes none of its blocks has: unowned, they
+/// would count as unused. A PDF that cannot be read leaves its rows so, as retranslating it does.
+fn own_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
+    let pdfs: Vec<i64> = tx
+        .prepare("SELECT article_id FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)")?
+        .query_map([crate::pdf::CONTENT_TYPE], |r| r.get(0))?
+        .collect::<Result<_>>()?;
+    for id in pdfs {
+        let (enc, body): (String, Vec<u8>) =
+            tx.query_row("SELECT encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        match inflate_bytes(&enc, &body).map_err(|e| e.to_string()).and_then(|b| crate::translate::region_hashes(&b)) {
+            Ok(hashes) => {
+                tx.execute(
+                    "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL AND source_hash IN (SELECT value FROM json_each(?2))",
+                    params![id, json(&hashes)],
+                )?;
+            }
+            Err(e) => log::warn!("reading the regions of article {id} to keep their translations: {e}"),
+        }
+    }
+    Ok(())
+}
+
 /// What `Store::save_reextraction` did.
 #[derive(Debug, PartialEq)]
 pub enum Reextracted {
@@ -628,6 +657,9 @@ impl Store {
             }
             if i + 1 == REHASH_AT {
                 rehash_content(&tx)?;
+            }
+            if i + 1 == PDF_REGIONS_AT {
+                own_pdf_regions(&tx)?;
             }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
@@ -973,14 +1005,16 @@ impl Store {
 
     /// Deletes an article and everything hanging off it. Snapshots, blocks (with their FTS rows
     /// and embeddings), jobs, tag links, summaries, classifications and image mappings cascade;
-    /// image bytes go by trigger; translations no other block uses and tags no other article
-    /// uses are deleted here. Feed items stay, so the feed does not import the article again,
-    /// and chat answers keep their copied citations. Returns whether the article existed.
+    /// image bytes go by trigger; translations of its blocks and of its Page view that no other
+    /// article's block or Page view uses, and tags no other article uses, are deleted here. Feed
+    /// items stay, so the feed does not import the article again, and chat answers keep their
+    /// copied citations. Returns whether the article existed.
     pub fn delete_article(&self, id: i64) -> Result<bool> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         tx.execute(
-            "DELETE FROM segment_translations WHERE source_hash IN (SELECT text_hash FROM blocks WHERE article_id = ?1)
+            "DELETE FROM segment_translations
+             WHERE (article_id = ?1 OR (article_id IS NULL AND source_hash IN (SELECT text_hash FROM blocks WHERE article_id = ?1)))
              AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash AND b.article_id != ?1)",
             [id],
         )?;
@@ -1176,20 +1210,34 @@ impl Store {
         st.query_map(params![article_id, target_language], |r| Ok((r.get(0)?, opt_json_col::<Vec<Unit>>(r, 1)?)))?.collect()
     }
 
-    pub fn insert_segments(&self, target_language: &str, prompt_version: &str, items: &[SegmentRow]) -> Result<()> {
+    /// `page_article`: the saved article whose Page view asks for them, which keeps them while it is saved even when
+    /// none of its blocks has the text. None for the translate job's and for a page not in the library. One deleted
+    /// while its page was being translated leaves them as a page not in the library's.
+    pub fn insert_segments(&self, target_language: &str, prompt_version: &str, page_article: Option<i64>, items: &[SegmentRow]) -> Result<()> {
         let mut c = self.conn();
         let tx = c.transaction()?;
         {
             let mut ins = tx.prepare(
-                "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, model, prompt_version, article_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, (SELECT id FROM articles WHERE id = ?8))",
             )?;
             for (hash, units, provider, model) in items {
                 let text = plain_text(&crate::segments::joined_translation(units));
-                ins.execute(params![hash, target_language, json(units), text, provider, model, prompt_version])?;
+                ins.execute(params![hash, target_language, json(units), text, provider, model, prompt_version, page_article])?;
             }
         }
         tx.commit()
+    }
+
+    /// How many saved translations no saved article uses: none of its blocks has the text, and its Page view did not make it.
+    /// They are those of pages not in the library, and of paragraphs an article no longer has since it was extracted again.
+    pub fn unused_translations(&self) -> Result<usize> {
+        self.conn().query_row(&format!("SELECT count(*) FROM segment_translations WHERE {UNUSED_TRANSLATION}"), [], |r| r.get::<_, i64>(0)).map(|n| n as usize)
+    }
+
+    /// Deletes the translations `unused_translations` counts. Returns how many.
+    pub fn delete_unused_translations(&self) -> Result<usize> {
+        self.conn().execute(&format!("DELETE FROM segment_translations WHERE {UNUSED_TRANSLATION}"), [])
     }
 
     /// Idempotent: an existing job with the same key is reset to pending. A running one is left to
@@ -1980,7 +2028,7 @@ mod tests {
         let unit = |t: &str| vec![Unit { source: t.into(), translation: format!("訳: {t}") }];
         let (shared, only) = (unit("shared paragraph"), unit("only in the deleted article"));
         let (hs, ho) = (sha256_hex("shared paragraph"), sha256_hex("only in the deleted article"));
-        s.insert_segments("ja", "v", &[(hs.as_str(), &shared[..], "p", None), (ho.as_str(), &only[..], "p", None)]).unwrap();
+        s.insert_segments("ja", "v", None, &[(hs.as_str(), &shared[..], "p", None), (ho.as_str(), &only[..], "p", None)]).unwrap();
         let blocks = s.get_article(a, "ja").unwrap().unwrap().blocks;
         let srcs: Vec<EmbedSource> =
             blocks.iter().map(|b| EmbedSource { block_id: b.id, text_hash: sha256_hex(&b.block.text), text: b.block.text.clone(), heading: None }).collect();
@@ -2015,6 +2063,114 @@ mod tests {
         assert_eq!(count("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH '\"shared paragraph\"'"), 1);
         assert_eq!(s.lexical_search("shared", None, 10).unwrap().len(), 1);
         assert_eq!(count("SELECT count(*) FROM feed_items"), 1, "the feed does not import it again");
+    }
+
+    fn save_paragraphs(s: &Store, url: &str, texts: &[&str]) -> i64 {
+        let (id, _) = s.upsert_pending(url, url, "a.dev").unwrap();
+        let blocks = texts.iter().map(|t| Block { kind: BlockKind::Paragraph, text: t.to_string(), inlines: vec![], attrs: Default::default() }).collect();
+        let f = Fetched { final_url: url.into(), status: 200, content_type: None, html: "<p>x</p>".into() };
+        s.save_fetched(id, Some(&f), Ok(ArticleIr { meta: Default::default(), blocks }), None).unwrap();
+        id
+    }
+
+    /// Saves a translation of `text` as a Page view on `page` would, or the translate job with None.
+    fn save_translation(s: &Store, text: &str, page: Option<i64>) {
+        let units = [Unit { source: text.into(), translation: format!("訳: {text}") }];
+        s.insert_segments("ja", "v", page, &[(sha256_hex(text).as_str(), &units[..], "p", None)]).unwrap();
+    }
+
+    fn translations(s: &Store) -> Vec<(String, Option<i64>)> {
+        let c = s.conn();
+        let mut st = c.prepare("SELECT text, article_id FROM segment_translations ORDER BY id").unwrap();
+        st.query_map([], |r| Ok((r.get::<_, String>(0)?.trim_start_matches("訳: ").to_string(), r.get(1)?))).unwrap().map(Result::unwrap).collect()
+    }
+
+    #[test]
+    fn only_translations_of_pages_not_in_the_library_are_unused() {
+        let s = Store::open_in_memory().unwrap();
+        let a = save_paragraphs(&s, "https://a.dev/1", &["shared paragraph", "own paragraph"]);
+        save_paragraphs(&s, "https://a.dev/2", &["shared paragraph", "read on its page before it was saved"]);
+        save_translation(&s, "shared paragraph", None);
+        save_translation(&s, "own paragraph", None);
+        save_translation(&s, "the sidebar of a's page", Some(a));
+        save_translation(&s, "read on its page before it was saved", None);
+        save_translation(&s, "a page not in the library", None);
+        save_translation(&s, "another page not in the library", None);
+
+        assert_eq!(s.unused_translations().unwrap(), 2);
+        assert_eq!(s.delete_unused_translations().unwrap(), 2);
+        assert_eq!(s.unused_translations().unwrap(), 0);
+        let left: Vec<String> = translations(&s).into_iter().map(|(text, _)| text).collect();
+        assert_eq!(left, ["shared paragraph", "own paragraph", "the sidebar of a's page", "read on its page before it was saved"]);
+        let fts: i64 = s.conn().query_row("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH 'library'", [], |r| r.get(0)).unwrap();
+        assert_eq!(fts, 0, "nor found by search");
+    }
+
+    #[test]
+    fn deleting_an_article_takes_its_page_views_translations_but_not_what_another_uses() {
+        let s = Store::open_in_memory().unwrap();
+        let a = save_paragraphs(&s, "https://a.dev/1", &["shared paragraph", "only in a"]);
+        let b = save_paragraphs(&s, "https://a.dev/2", &["shared paragraph"]);
+        save_translation(&s, "shared paragraph", Some(a));
+        save_translation(&s, "only in a", None);
+        save_translation(&s, "the sidebar of a's page", Some(a));
+        save_translation(&s, "only in a", Some(b));
+        save_translation(&s, "the sidebar of b's page", Some(b));
+        save_translation(&s, "a page not in the library", None);
+
+        assert!(s.delete_article(a).unwrap());
+        assert_eq!(
+            translations(&s),
+            [
+                ("shared paragraph".to_string(), None),
+                ("only in a".to_string(), Some(b)),
+                ("the sidebar of b's page".to_string(), Some(b)),
+                ("a page not in the library".to_string(), None),
+            ],
+            "b's block and b's Page view keep theirs; a page not in the library waits for the button"
+        );
+        assert_eq!(s.unused_translations().unwrap(), 1);
+        save_translation(&s, "finished after a was deleted", Some(a));
+        assert_eq!(translations(&s).pop(), Some(("finished after a was deleted".to_string(), None)), "saved, as a page not in the library's");
+    }
+
+    #[test]
+    fn upgrading_gives_a_saved_pdf_the_translations_its_page_view_made() {
+        let conn = Connection::open_in_memory().unwrap();
+        let before = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN article_id")).unwrap();
+        assert_eq!(before + 1, PDF_REGIONS_AT, "the rows are given their PDF after the migration that adds the column");
+        for sql in &MIGRATIONS[..before] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.pragma_update(None, "user_version", before as i64).unwrap();
+        let bytes = crate::pdf::tests::paper();
+        let region = crate::translate::region_hashes(&bytes).unwrap().swap_remove(0);
+        conn.execute_batch(
+            "INSERT INTO articles (id, original_url, normalized_url, domain) VALUES
+                 (1, 'lattice-pdf:1', 'lattice-pdf:1', ''), (2, 'lattice-pdf:2', 'lattice-pdf:2', ''), (3, 'https://a.dev/3', 'https://a.dev/3', 'a.dev');
+             INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body) VALUES
+                 (2, 'lattice-pdf:2', 200, 'application/pdf', 'identity', x'00'), (3, 'https://a.dev/3', 200, 'text/html', 'identity', x'00');",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO snapshots (article_id, final_url, http_status, content_type, encoding, body) VALUES (1, 'lattice-pdf:1', 200, 'application/pdf', 'deflate', ?1)",
+            [deflate(&bytes)],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO segment_translations (source_hash, target_language, units, text, provider, prompt_version) VALUES
+                 (?1, 'ja', '[]', 'a region', 'p', 'v'), ('elsewhere', 'ja', '[]', 'a page not in the library', 'p', 'v')",
+            [&region],
+        )
+        .unwrap();
+
+        let s = Store::init(conn).unwrap();
+        assert_eq!(
+            translations(&s),
+            [("a region".to_string(), Some(1)), ("a page not in the library".to_string(), None)],
+            "an unreadable PDF leaves the upgrade to go on"
+        );
+        assert_eq!(s.unused_translations().unwrap(), 1);
     }
 
     #[test]

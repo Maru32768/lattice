@@ -161,6 +161,8 @@ export const api = {
   pickDataDir: () => invoke<PickedDir | null>("pick_data_dir"),
   openDataDir: () => invoke<void>("open_data_dir"),
   openLogDir: () => invoke<void>("open_log_dir"),
+  unusedTranslations: () => invoke<number>("unused_translations"),
+  deleteUnusedTranslations: () => invoke<number>("delete_unused_translations"),
   /** Uses the picked folder from the next start, copying the current data there or switching to the data in it. */
   setDataDir: (copy: boolean) => invoke<string>("set_data_dir", { copy }),
   restart: () => invoke<void>("restart_app"),

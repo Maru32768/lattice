@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-unused-translations"
+description = "Enables the unused_translations command without any pre-configured scope."
+commands.allow = ["unused_translations"]
+
+[[permission]]
+identifier = "deny-unused-translations"
+description = "Denies the unused_translations command without any pre-configured scope."
+commands.deny = ["unused_translations"]

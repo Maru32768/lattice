@@ -13,13 +13,31 @@ export function StorageSection() {
   const [picked, setPicked] = useState<{ path: string; has_data: boolean } | null>(null);
   const [moving, setMoving] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
+  const [unused, setUnused] = useState<number | null>(null);
+  const [confirmUnused, setConfirmUnused] = useState(false);
+  const [deleted, setDeleted] = useState<number | null>(null);
 
   useEffect(() => {
     api
       .settings()
       .then(setSettings)
       .catch((e: unknown) => setError(String(e)));
+    api
+      .unusedTranslations()
+      .then(setUnused)
+      .catch((e: unknown) => setError(String(e)));
   }, []);
+
+  async function deleteUnused() {
+    setConfirmUnused(false);
+    setError(null);
+    try {
+      setDeleted(await api.deleteUnusedTranslations());
+      setUnused(await api.unusedTranslations());
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   async function pick() {
     setError(null);
@@ -76,6 +94,13 @@ export function StorageSection() {
           )}
         </SetRow>
         <SetRow title={t("storageSection.database")} desc={<code>{settings?.db_path}</code>} />
+        <SetRow title={t("storageSection.unused")} desc={t("storageSection.unusedDesc")}>
+          {unused !== null && (
+            <button className="btn" onClick={() => setConfirmUnused(true)} disabled={unused === 0}>
+              {t("storageSection.deleteUnused", { count: unused })}
+            </button>
+          )}
+        </SetRow>
         <SetRow title={t("storageSection.logs")} desc={t.rich("storageSection.logsDesc", { path: <code>{settings?.log_dir}</code> })}>
           <button className="btn" onClick={() => open(api.openLogDir)} disabled={!settings} aria-label={t("storageSection.openLogFolder")}>
             {t("storageSection.openFolder")}
@@ -95,10 +120,20 @@ export function StorageSection() {
           </button>
         </div>
       )}
+      {deleted !== null && (
+        <p role="status" className="msg">
+          {t("storageSection.unusedDeleted", { count: deleted })}
+        </p>
+      )}
       {error && (
         <p role="alert" className="msg error-text">
           {t.msg(error)}
         </p>
+      )}
+      {confirmUnused && (
+        <ConfirmDialog title={t("storageSection.confirmUnused")} confirm={t("common.delete")} onConfirm={deleteUnused} onCancel={() => setConfirmUnused(false)}>
+          <p>{t("storageSection.unusedWarning", { count: unused ?? 0 })}</p>
+        </ConfirmDialog>
       )}
       {picked &&
         (picked.has_data ? (

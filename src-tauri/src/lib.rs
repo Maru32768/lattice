@@ -779,6 +779,7 @@ async fn overlay_translate(
         if browser.document(webview.label()) != document {
             return Err("page left".into());
         }
+        let owner = browser::page_article(&webview);
         cached = saved()?;
         let mut misses: Vec<usize> = Vec::new();
         for (i, h) in hashes.iter().enumerate() {
@@ -795,7 +796,8 @@ async fn overlay_translate(
                 .zip(&t.results)
                 .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
                 .collect();
-            app.store.insert_segments(target, segments::PROMPT_VERSION, &rows).map_err(err)?;
+            // Unowned, a page's own text (none of its article's blocks) would count as unused.
+            app.store.insert_segments(target, segments::PROMPT_VERSION, owner, &rows).map_err(err)?;
             // A paragraph that is a whole block is the Reader's translation too, and the article's ⋯ offers 訳し直す by what it has.
             if let Some(id) = article.filter(|_| !rows.is_empty()) {
                 let _ = webview.app_handle().emit("article-changed", id);
@@ -1078,6 +1080,17 @@ fn open_data_dir(app: State<'_, App>) -> Result<(), String> {
 #[tauri::command(async)]
 fn open_log_dir(app: State<'_, App>) -> Result<(), String> {
     open_in_explorer(&app.log_dir)
+}
+
+/// Translations no saved article uses (`Store::unused_translations`): mostly pages not in the library.
+#[tauri::command(async)]
+fn unused_translations(app: State<'_, App>) -> Result<usize, String> {
+    app.store.unused_translations().map_err(err)
+}
+
+#[tauri::command(async)]
+fn delete_unused_translations(app: State<'_, App>) -> Result<usize, String> {
+    app.store.delete_unused_translations().map_err(err)
 }
 
 /// Picks the new data folder with a native dialog (the webview never passes a path).
@@ -1698,6 +1711,8 @@ pub fn run() {
             pick_data_dir,
             open_data_dir,
             open_log_dir,
+            unused_translations,
+            delete_unused_translations,
             set_data_dir,
             restart_app,
             get_autostart,

@@ -122,6 +122,7 @@ const vocabItem = (id: number, c: { entry_id: number }): Extract<ReviewItem, { t
 };
 const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry_id).suspended);
 let network: NetworkSettings = { mode: "public", allow: [], deny: [] };
+let unusedTranslations = 12;
 const store = {
   autoRender: true,
   autoClassify: true,
@@ -992,6 +993,12 @@ export const handlers = {
   pick_data_dir: () => null,
   open_data_dir: none,
   open_log_dir: none,
+  unused_translations: (): number => unusedTranslations,
+  delete_unused_translations: (): number => {
+    const n = unusedTranslations;
+    unusedTranslations = 0;
+    return n;
+  },
   set_data_dir: (): string => "C:\\Users\\e2e\\LatticeData",
   restart_app: none,
   update_info: (): UpdateInfo => ({ current: "0.1.0", configured: false, portable: false }),

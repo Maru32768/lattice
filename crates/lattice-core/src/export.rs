@@ -213,8 +213,8 @@ mod tests {
         let units = [Unit { source: "Intro".into(), translation: "旧訳".into() }];
         let newer = [Unit { source: "Intro".into(), translation: "はじめに".into() }];
         let hash = source_hash("Intro");
-        s.insert_segments("ja", "v1", &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
-        s.insert_segments("ja", "v1", &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
+        s.insert_segments("ja", "v1", None, &[(hash.as_str(), &units[..], "fake", None)]).unwrap();
+        s.insert_segments("ja", "v1", None, &[(hash.as_str(), &newer[..], "fake", Some("m"))]).unwrap();
         s.insert_summary(id, "normal", "要約", "old-hash", "fake", None, "s1").unwrap();
         s.set_note(id, "SSI と比べる").unwrap();
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("SSI と比べる"));

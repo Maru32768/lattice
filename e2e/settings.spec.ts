@@ -99,6 +99,23 @@ test("the log folder opens through the backend, apart from the data folder", asy
   await expect(app.locator(".stg main")).toContainText("AppData\\Local\\Lattice\\logs");
   await app.getByRole("button", { name: "ログのフォルダを開く", exact: true }).click();
   await expect.poll(() => callsOf(app, "open_log_dir")).toEqual([{}]);
+});
+
+test("unused translations are deleted only after a confirmation", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("ログ・保存場所", { exact: true }) })
+    .click();
+  await app.getByRole("button", { name: "12件を削除…" }).click();
+  const dialog = app.getByRole("alertdialog", { name: "使われていない訳を削除しますか？" });
+  await expect(dialog).toContainText("12件の訳を削除します");
+  expect(await callsOf(app, "delete_unused_translations")).toEqual([]);
+  await dialog.getByRole("button", { name: "削除" }).click();
+  await expect(app.getByRole("status")).toHaveText("12件の訳を削除しました");
+  await expect(app.getByRole("button", { name: "0件を削除…" })).toBeDisabled();
+  expect(await callsOf(app, "delete_unused_translations")).toEqual([{}]);
   expect(await callsOf(app, "open_data_dir")).toEqual([]);
 });
 

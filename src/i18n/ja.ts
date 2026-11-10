@@ -327,6 +327,13 @@ export const ja = {
   "storageSection.copyAndChange": "コピーして変更",
   "storageSection.copyDesc": "データベース・バックアップ・エクスポート・検索モデルを{code}にコピーし、再起動後はそこを使います。",
   "storageSection.copyWarning": "コピーの後に追加・変更したものは新しい場所に入らないので、終わったらすぐ再起動してください。今のデータは削除しません。",
+  "storageSection.unused": "使われていない訳",
+  "storageSection.unusedDesc": "ライブラリに保存していないページの訳など、どの記事の本文にもPage表示にも使われていない訳です。",
+  "storageSection.deleteUnused": "{count}件を削除…",
+  "storageSection.confirmUnused": "使われていない訳を削除しますか？",
+  "storageSection.unusedWarning":
+    "{count}件の訳を削除します。記事の本文の訳と、保存した記事のPage表示で作った訳は残ります。削除した訳のページをまた開くと、AIでもう一度訳します。元に戻せません。",
+  "storageSection.unusedDeleted": "{count}件の訳を削除しました",
   "update.install": "更新して再起動",
   "update.downloading": "ダウンロード中{percent}%",
   "update.installing": "インストール中…",

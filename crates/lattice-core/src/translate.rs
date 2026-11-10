@@ -323,18 +323,20 @@ pub fn retranslate(store: &Store, article_id: i64, target: &Target) -> Result<us
 /// would keep showing the old translation there. Whatever keeps them from being read must not stop the
 /// retranslation, which only leaves those few rows.
 fn pdf_piece_hashes(store: &Store, article_id: i64) -> Vec<String> {
-    let regions = match store.latest_snapshot(article_id) {
-        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => pdf::regions(&s.body),
+    let hashes = match store.latest_snapshot(article_id) {
+        Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => region_hashes(&s.body),
         Ok(_) => return Vec::new(),
         Err(e) => Err(e.to_string()),
     };
-    match regions {
-        Ok(regions) => regions.iter().map(|r| segments::source_hash(&snippet_from_inlines(&r.translated_text(), &[]))).collect(),
-        Err(e) => {
-            log::warn!("reading the regions of article {article_id} to retranslate it: {e}");
-            Vec::new()
-        }
-    }
+    hashes.unwrap_or_else(|e| {
+        log::warn!("reading the regions of article {article_id} to retranslate it: {e}");
+        Vec::new()
+    })
+}
+
+/// What the Page view saves the regions of the PDF `bytes` under.
+pub(crate) fn region_hashes(bytes: &[u8]) -> Result<Vec<String>, String> {
+    Ok(pdf::regions(bytes)?.iter().map(|r| segments::source_hash(&snippet_from_inlines(&r.translated_text(), &[]))).collect())
 }
 
 /// An article with a translate job queued or running, for the article list's label. Finished
@@ -500,7 +502,7 @@ pub async fn run<P: LlmProvider>(
             }
             (true, None) => {}
         }
-        store.insert_segments(&key, PROMPT_VERSION, &rows).map_err(|e| e.to_string())?;
+        store.insert_segments(&key, PROMPT_VERSION, None, &rows).map_err(|e| e.to_string())?;
         on_progress();
     }
     if let Some(e) = failed {
@@ -657,7 +659,7 @@ mod tests {
         );
         let scripted = "One sen<sup>tence</sup> here. Two sentences here. Three sentences here.";
         let units = [Unit { source: scripted.to_string(), translation: "x".to_string() }];
-        s.insert_segments(&key, PROMPT_VERSION, &[(segments::source_hash(scripted).as_str(), &units[..], "fake", None)]).unwrap();
+        s.insert_segments(&key, PROMPT_VERSION, None, &[(segments::source_hash(scripted).as_str(), &units[..], "fake", None)]).unwrap();
         assert_eq!(sources(scripted, Some(id), &key).unwrap().len(), 1, "a translation made with the scripts is kept");
     }
 

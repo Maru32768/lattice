@@ -152,6 +152,8 @@ const COMMANDS: &[&str] = &[
     "pick_data_dir",
     "open_data_dir",
     "open_log_dir",
+    "unused_translations",
+    "delete_unused_translations",
     "set_data_dir",
     "restart_app",
     "get_autostart",
