@@ -93,3 +93,19 @@ test("a page that fails to open is not opened again and again", async ({ shell }
   await shell.waitForTimeout(1500);
   expect((await callsOf(shell, "browser_open")).length - before, "not a loop of opens").toBeLessThan(4);
 });
+
+test("a window that reloads with a layout that lost a Page tab asks the backend to close that tab's webview", async ({ app }) => {
+  const kept = async () => ((await callsOf(app, "browser_retain")) as { keep: string[] }[]).map((c) => c.keep);
+  await app.evaluate((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(LAYOUT));
+  await app.reload();
+  await expect(app.getByRole("tab", { name: "P" })).toBeVisible({ timeout: 30_000 });
+  await expect.poll(kept).toContainEqual(["k1"]);
+
+  // The stored layout is replaced while k1's webview is open, as a script or another build of the app can.
+  const other = { root: { kind: "pane", id: 1, tabs: [{ kind: "page", id: 4, key: "k2", url: "https://example.com/q", title: "Q" }], active: 4 }, focused: 1 };
+  await app.evaluate((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(other));
+  await app.reload();
+  await expect(app.getByRole("tab", { name: "Q" })).toBeVisible({ timeout: 30_000 });
+  await expect.poll(kept).toContainEqual(["k2"]);
+  expect((await kept()).flat(), "k1 is no tab of this window now").not.toContain("k1");
+});

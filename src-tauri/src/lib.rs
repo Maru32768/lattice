@@ -1710,6 +1710,7 @@ pub fn run() {
             browser::browser_set_bounds,
             browser::browser_hide,
             browser::browser_close,
+            browser::browser_retain,
             browser::browser_capture,
             browser::browser_go,
             browser::browser_set_translation,

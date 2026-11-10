@@ -160,6 +160,7 @@ const COMMANDS: &[&str] = &[
     "browser_set_bounds",
     "browser_hide",
     "browser_close",
+    "browser_retain",
     "browser_capture",
     "browser_go",
     "browser_set_translation",

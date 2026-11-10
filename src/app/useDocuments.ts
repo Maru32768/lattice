@@ -190,6 +190,9 @@ export function useDocuments(fail: (e: unknown) => void) {
     }
     prevPages.current = ids;
   }, [pageKey]);
+  // The UI has just started: after a reload whose layout lost a tab, that tab's webview is still in this window, on screen with no tab.
+  const retainPages = useEffectEvent(() => void browser.retain(pageKey ? pageKey.split(",") : []).catch(() => {}));
+  useEffect(() => retainPages(), []);
 
   /** The tab leaves this window with its webview, which is not closed: the next window attaches it. */
   function forgetPage(t: Tab) {

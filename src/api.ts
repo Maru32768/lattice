@@ -278,6 +278,8 @@ export const browser = {
   setBounds: (tab: string, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
   hide: (tab: string) => invoke<void>("browser_hide", { tab }),
   close: (tab: string) => invoke<void>("browser_close", { tab }),
+  /** The calling window's UI has started with these Page tabs: its webviews of any other tab close. */
+  retain: (keep: string[]) => invoke<void>("browser_retain", { keep }),
   /** PNG data URL of the page as drawn (Windows); null elsewhere. */
   capture: (tab: string) => invoke<string | null>("browser_capture", { tab }),
   go: (tab: string, action: "back" | "forward" | "reload") => invoke<void>("browser_go", { tab, action }),

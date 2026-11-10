@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-retain"
+description = "Enables the browser_retain command without any pre-configured scope."
+commands.allow = ["browser_retain"]
+
+[[permission]]
+identifier = "deny-browser-retain"
+description = "Denies the browser_retain command without any pre-configured scope."
+commands.deny = ["browser_retain"]

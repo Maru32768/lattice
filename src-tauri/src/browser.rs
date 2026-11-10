@@ -706,6 +706,28 @@ pub async fn browser_close(app: AppHandle, browser: State<'_, Browser>, tab: Str
     }
 }
 
+/// Whether webview `label` is a page whose tab is not one of `keep`.
+fn is_stray(label: &str, keep: &[String]) -> bool {
+    tab_of(label).is_some_and(|tab| !keep.iter().any(|k| k == tab))
+}
+
+/// The calling window's UI has started with the page tabs `keep`. Another page webview in this window
+/// is left from before a reload whose layout no longer has its tab, and would stay drawn over the
+/// documents with no tab to close it. A tab coming here from another window is not affected: its
+/// webview stays in the window it left until this one opens it (`attach`).
+#[tauri::command]
+pub async fn browser_retain(browser: State<'_, Browser>, webview: Webview, keep: Vec<String>) -> Result<(), String> {
+    let _opening = browser.opening.lock().await;
+    for wv in webview.window().webviews().into_iter().filter(|wv| is_stray(wv.label(), &keep)) {
+        log::info!("closing {}: its window's tabs no longer include it", wv.label());
+        lock(&browser.tabs).remove(wv.label());
+        if let Err(e) = wv.close() {
+            log::warn!("closing {}: {e}", wv.label());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 const CAPTURE_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -1288,5 +1310,18 @@ mod tests {
         });
         assert_eq!(closed, vec!["browser-3", "browser-4"]);
         assert_eq!(lock(&browser.tabs).len(), 3);
+    }
+
+    #[test]
+    fn a_starting_window_drops_only_the_pages_of_tabs_it_does_not_have() {
+        let keep = ["k1".to_string(), "k2".to_string()];
+        assert!(is_stray("browser-k3", &keep));
+        assert!(!is_stray("browser-k1", &keep));
+        assert!(is_stray("browser-k1", &[]), "a window with no Page tabs keeps no page");
+        assert!(!is_stray("browser-k10", &["k10".into()]));
+        assert!(is_stray("browser-k1", &["k10".into()]), "keys match whole, not by prefix");
+        for ui in ["main", "doc-1", "chat", RENDER_LABEL] {
+            assert!(!is_stray(ui, &[]), "{ui} is not a page webview");
+        }
     }
 }
