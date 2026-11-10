@@ -346,7 +346,8 @@ mod tests {
     /// Codex adds tools between releases, and its model catalog turns some on whatever the flags say
     /// (code mode, subagents), model by model: this reads what the installed CLI would show each model
     /// Settings offers, without a model call. It cannot see tools from the extensions only `codex exec` loads
-    /// (memories, goals and others, off under these flags in 0.164), nor deferred tools, which exec's description leaves out.
+    /// (memories, goals and others, off under these flags in 0.164), nor deferred tools, which exec's description leaves out,
+    /// nor tools Codex offers only with a login, since the home it renders in has none.
     #[test]
     fn the_installed_codex_shows_the_model_only_harmless_tools() {
         // shortcut: a model ID typed into Settings is not checked, loop over the catalog's models if people use those.
