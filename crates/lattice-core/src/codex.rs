@@ -321,8 +321,10 @@ mod tests {
                     lists.push((format!("{name}."), &t["tools"]));
                     continue;
                 }
+                // Each nested tool has a "### `name`" heading and a declaration; either one names it.
                 let description = t["description"].as_str().unwrap_or("");
                 nested.extend(description.split("declare const tools: { ").skip(1).map(|d| d.split('(').next().unwrap_or("").to_string()));
+                nested.extend(description.lines().filter_map(|l| l.strip_prefix("### `")?.strip_suffix('`')).map(String::from));
                 offered.push(name);
             }
         }
