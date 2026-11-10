@@ -255,6 +255,25 @@ test("a key two list actions share is no conflict for the document's action with
   await expect(row(page, "次の項目へ").locator(".kbd.key.clash")).toHaveText(["j×"]);
 });
 
+test("a note names the action that runs instead only when the key runs it, as the keyboard reads keys", async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "lattice.shortcuts",
+      JSON.stringify({ favorite: ["S", "G"], read: ["M", "G"], search: ["/", "J"], prev: ["K", "ArrowUp", "J"], version: 2 }),
+    ),
+  );
+  await page.goto("/");
+  await openShortcuts(page);
+  await tab(page, "記事").click();
+  await expect(row(page, "既読 / 未読").getByRole("note"), "g waits for a second key, so neither runs").toHaveText(
+    "gは「お気に入り」にも割り当てられています。gは「次のタブ」の2段階キーの1打目なので、単独では働きません",
+  );
+  await tab(page, "一覧").click();
+  await expect(row(page, "前の項目へ").getByRole("note"), "of three on j only the first runs").toHaveText(
+    "jは「検索」にも割り当てられていて、そちらが働きます。jは「次の項目へ」にも割り当てられています",
+  );
+});
+
 test("the Reader's buttons name the key as it is bound now", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ less: ["["], favorite: [], version: 2 })));
   await page.goto("/");

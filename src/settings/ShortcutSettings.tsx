@@ -4,6 +4,7 @@ import {
   ACTIONS,
   ACTION_GROUPS,
   KEY_GROUPS,
+  actionFor,
   actionLabel,
   chordFrom,
   conflicts,
@@ -52,13 +53,14 @@ export function ShortcutSettings() {
 
   /** What the row says of its key `k`: another action that runs at the same place has it too, or it starts a two-key binding and so does nothing alone. */
   function notesOf(a: ActionDef, k: string) {
-    // In registry order, as `actionFor` picks: one earlier runs where both would.
-    const on = clash.get(k) ?? [];
-    const shared = on
+    const shared = (clash.get(k) ?? [])
       .filter((o) => o !== a && scopesOverlap(o, a))
-      .map((o) =>
-        t(on.indexOf(o) < on.indexOf(a) ? "shortcutSettings.clashLoses" : "shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) }),
-      );
+      .map((o) => {
+        // Asked as `stepKeys` reads a key where both run: a two-key binding it starts waits for its second key, and then no action runs alone.
+        const at = a.scope ?? o.scope;
+        const loses = !chordFrom(bindings, k, at) && actionFor(bindings, k, at) === o;
+        return t(loses ? "shortcutSettings.clashLoses" : "shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) });
+      });
     const by = chordFrom(bindings, k, a.scope);
     return by ? [...shared, t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : shared;
   }
