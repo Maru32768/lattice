@@ -28,6 +28,18 @@ export function StorageSection() {
       .catch((e: unknown) => setError(String(e)));
   }, []);
 
+  /** Counts again: the Page view may have translated more since the section opened. */
+  async function askUnused() {
+    setError(null);
+    try {
+      const n = await api.unusedTranslations();
+      setUnused(n);
+      setConfirmUnused(n > 0);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function deleteUnused() {
     setConfirmUnused(false);
     setError(null);
@@ -96,7 +108,7 @@ export function StorageSection() {
         <SetRow title={t("storageSection.database")} desc={<code>{settings?.db_path}</code>} />
         <SetRow title={t("storageSection.unused")} desc={t("storageSection.unusedDesc")}>
           {unused !== null && (
-            <button className="btn" onClick={() => setConfirmUnused(true)} disabled={unused === 0}>
+            <button className="btn" onClick={askUnused} disabled={unused === 0}>
               {t("storageSection.deleteUnused", { count: unused })}
             </button>
           )}
