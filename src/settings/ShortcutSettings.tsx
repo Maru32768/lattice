@@ -18,10 +18,10 @@ import { useT } from "../i18n";
 
 /**
  * A key pressed in for a binding, `first` being the key pressed so far: the binding's first key, the whole of it (the next key,
- * or Enter to keep `first` alone), or Esc. Null: none of these, and Tab moves the focus on.
+ * or Enter to keep `first` alone), or Esc. Null: none of these, and Tab or Shift+Tab moves the focus on; Ctrl+Tab is a key like any other.
  */
 function pressed(first: string | undefined, e: React.KeyboardEvent): { first: string } | { key: string } | "cancel" | null {
-  if (e.key === "Tab") {
+  if (e.key === "Tab" && !e.ctrlKey && !e.altKey && !e.metaKey) {
     return null;
   }
   e.preventDefault();
