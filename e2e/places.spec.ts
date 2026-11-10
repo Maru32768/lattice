@@ -219,6 +219,10 @@ test("an article read into the long listing at its end opens there again", async
   await (await listRow(shell, ARTICLES[2].title!)).click();
   await (await listRow(shell, listing)).click();
   await expect.poll(() => doc.evaluate((el) => el.scrollTop)).toBeGreaterThan(end - 50);
+  // The Page view cannot find a listing (pre is not translated): it gets the last prose above it.
+  const lastProse = ARTICLES[3].language === "ja" ? "実運用で得た知見をまとめた。" : "Measure before you optimize.";
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => ((await callsOf(shell, "browser_open")).at(-1) as { place: { text: string } | null }).place?.text).toBe(lastProse);
 });
 
 test("a Page view place the Reader does not have leaves the tab's own, and stays for the page", async ({ shell }) => {

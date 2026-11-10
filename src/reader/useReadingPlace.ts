@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { blockOf, isReadingPlace, keepOnRest, placeIn, placeStore, scrollFor, type ReadingPlace } from "../lib/places";
+import { blockOf, isReadingPlace, keepOnRest, needle, placeIn, placeStore, scrollFor, type ReadingPlace } from "../lib/places";
 import { useLatest } from "../lib/useLatest";
 import { TRANSLATABLE } from "./mixed";
 
@@ -73,7 +73,24 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
       // does not. The Page view also gets the first prose block from the top when that block is not prose: a page has
       // the same paragraphs, but no code block it can find (pre is not translated) and seldom a table's cells.
       const place = placeAt(false);
-      const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? placeAt(true) : null;
+      // No prose below (an article that ends in a listing): the last prose above, which the line has gone past.
+      const proseAbove = () => {
+        const top = view.getBoundingClientRect().top;
+        let last: { text: string; at: number } | null = null;
+        for (const el of view.querySelectorAll<HTMLElement>("[id^='b-']")) {
+          const r = el.getBoundingClientRect();
+          if (r.bottom > top) {
+            break;
+          }
+          const b = shown.current.find((x) => el.id === `b-${x.id}` && TRANSLATABLE.has(x.kind));
+          const text = b && needle(b.text);
+          if (text && r.height > 0) {
+            last = { text, at: (top - r.top) / r.height };
+          }
+        }
+        return last;
+      };
+      const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? (placeAt(true) ?? proseAbove()) : null;
       if (place?.block !== shownBlock) {
         unshown = false;
       }
