@@ -190,9 +190,10 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await app.keyboard.press("Enter");
   await expect(names).toHaveText(["次のタブ"]);
   await app.keyboard.press("Control+p");
-  await app.keyboard.press("Enter");
-  await expect(names).toHaveText(["コマンドパレット"]);
   await expect(app.getByRole("dialog", { name: "コマンドパレット" }), "the key is looked up, not run").toHaveCount(0);
+  await app.keyboard.press("Enter");
+  await expect(field, "the field kept the keyboard for both keys").toHaveValue("Ctrl P");
+  await expect(names).toHaveText(["コマンドパレット"]);
 
   await app.keyboard.press("Control+b");
   await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "本文", "タブ", "ペイン"]);
