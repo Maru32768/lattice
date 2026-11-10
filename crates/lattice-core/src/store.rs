@@ -60,9 +60,6 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
     include_str!("../db/migrations/00040_translation_page_article.sql"),
 ];
-/// After this migration the translations a saved PDF's Page view made before it are to be given that PDF
-/// (`mark_pdf_regions`, `Store::own_pdf_regions`).
-const PDF_REGIONS_AT: usize = 40;
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
 /// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
 /// 38 still says it recomputes; migrations are append-only, so this is where that is corrected.
@@ -510,15 +507,6 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
 /// Left by migration 40 in a library with saved PDFs and translations, until `Store::own_pdf_regions` has run.
 const PDF_REGIONS_PENDING: &str = "translations.pdf_regions_pending";
 
-fn mark_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
-    tx.execute(
-        "INSERT OR IGNORE INTO settings (key, value) SELECT ?1, '1'
-         WHERE EXISTS (SELECT 1 FROM snapshots WHERE content_type = ?2) AND EXISTS (SELECT 1 FROM segment_translations)",
-        params![PDF_REGIONS_PENDING, crate::pdf::CONTENT_TYPE],
-    )?;
-    Ok(())
-}
-
 /// What `Store::save_reextraction` did.
 #[derive(Debug, PartialEq)]
 pub enum Reextracted {
@@ -650,9 +638,6 @@ impl Store {
             }
             if i + 1 == REHASH_AT {
                 rehash_content(&tx)?;
-            }
-            if i + 1 == PDF_REGIONS_AT {
-                mark_pdf_regions(&tx)?;
             }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
@@ -2187,7 +2172,7 @@ mod tests {
     fn upgrading_gives_a_saved_pdf_the_translations_its_page_view_made() {
         let conn = Connection::open_in_memory().unwrap();
         let before = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN article_id")).unwrap();
-        assert_eq!(before + 1, PDF_REGIONS_AT, "the rows are given their PDF after the migration that adds the column");
+        assert!(MIGRATIONS[before].contains(PDF_REGIONS_PENDING) && MIGRATIONS[before].contains(crate::pdf::CONTENT_TYPE));
         for sql in &MIGRATIONS[..before] {
             conn.execute_batch(sql).unwrap();
         }
