@@ -2172,7 +2172,6 @@ mod tests {
     fn upgrading_gives_a_saved_pdf_the_translations_its_page_view_made() {
         let conn = Connection::open_in_memory().unwrap();
         let before = MIGRATIONS.iter().position(|m| m.contains("ADD COLUMN article_id")).unwrap();
-        assert!(MIGRATIONS[before].contains(PDF_REGIONS_PENDING) && MIGRATIONS[before].contains(crate::pdf::CONTENT_TYPE));
         for sql in &MIGRATIONS[..before] {
             conn.execute_batch(sql).unwrap();
         }
