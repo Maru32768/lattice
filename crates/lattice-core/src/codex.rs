@@ -26,7 +26,6 @@ const DISABLED_FEATURES: &[&str] = &[
     "unified_exec",
     "apps",
     "plugins",
-    "multi_agent",
     "image_generation",
     "hooks",
     "browser_use",
@@ -39,8 +38,8 @@ const DISABLED_FEATURES: &[&str] = &[
 
 /// The flags that take the agent's tools away. `codex debug prompt-input` takes them too, which the tests use.
 fn lockdown_args() -> Vec<String> {
-    // Subagents also come with the model's catalog entry, which `--disable multi_agent` does not reach.
-    // An unknown `-c` key is ignored without a word, so the feature stays off too.
+    // Subagents come with the model's catalog entry, which `--disable multi_agent` does not reach; `agents.enabled`
+    // does, from 0.150 on. Codex reads any other `agents.<name>` as an agent role, so a renamed key fails the call.
     // `--disable` fails on a feature the CLI does not know, which a renamed tool feature should do; the sleep
     // tool is new in 0.155 and can only stall a call, so it goes through `-c` and older releases still run.
     let mut args: Vec<String> = ["-c", "web_search=disabled", "-c", "agents.enabled=false", "-c", "features.sleep_tool=false"].map(String::from).into();
