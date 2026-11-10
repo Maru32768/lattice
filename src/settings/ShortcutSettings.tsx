@@ -203,6 +203,8 @@ export function ShortcutSettings() {
             placeholder={t(byKey ? "shortcutSettings.byKeyPrompt" : "shortcutSettings.find")}
             aria-label={t(byKey ? "shortcutSettings.byKey" : "shortcutSettings.find")}
             onChange={(e) => setText(e.target.value)}
+            // As recording does: a first key left waiting would join whatever is pressed on coming back.
+            onBlur={() => setByKey((b) => (b?.first ? {} : b))}
             onKeyDown={
               byKey
                 ? findKey

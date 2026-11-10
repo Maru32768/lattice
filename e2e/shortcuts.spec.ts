@@ -205,6 +205,12 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await app.keyboard.press("Enter");
   await expect(app.getByRole("status")).toHaveText("qを割り当てた操作はありません");
 
+  await app.keyboard.press("g");
+  await app.keyboard.press("Tab");
+  await field.focus();
+  await app.keyboard.press("j");
+  await expect(field, "a first key left waiting when the field was left is dropped").toHaveValue("j › 次のキー(Enterで確定 / Escで取消)");
+
   await app.keyboard.press("Escape");
   await expect(field).toHaveValue("");
   await expect(app.getByRole("tablist")).toBeVisible();
