@@ -1,10 +1,11 @@
-// Regenerates src-tauri/icons and the title bar logo from the SVG sources in src-tauri/icons.
+// Regenerates src-tauri/icons and the title bar logo from the SVG sources in src-tauri/icons, and the
+// debug build's blue copies of icon.ico and the logo (icons/dev/icon.ico, src/app/logo-dev.svg).
 //   node scripts/icons.ts
 // `tauri icon` scales one source to every size, which blurs the 1px gaps of the weave below 64px,
 // so the small sizes come from their own pixel-grid sources (icon-16/24/32/48.svg) and are packed
 // into icon.ico here. icon.svg is drawn on a 32px grid, so 64/128/256/512 stay sharp too.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,10 +24,15 @@ const ICO: [size: number, svg: string][] = [
   [256, "icon.svg"],
 ];
 
+// A debug build keeps its data apart from the release build (src-tauri/src/location.rs), so its icon
+// swaps the amber bars for blue to tell the two apart (src-tauri/build.rs).
+const AMBER = "#EF9F27";
+const DEV_BLUE = "#378ADD";
+
 const run = (...args: string[]) => execFileSync(process.execPath, [tauri, "icon", ...args], { cwd: root, stdio: "ignore" });
 
 function render(svg: string, size: number, dir: string): Buffer {
-  run(join(icons, svg), "-o", dir, "-p", String(size));
+  run(svg, "-o", dir, "-p", String(size));
   return readFileSync(join(dir, `${size}x${size}.png`));
 }
 
@@ -49,6 +55,13 @@ function ico(images: [size: number, png: Buffer][]): Buffer {
   return Buffer.concat([header, ...images.map(([, png]) => png)]);
 }
 
+/** Packs the ICO sources in `src` into `out`, and returns the 32px PNG. */
+function packIco(src: string, out: string, tmp: string): Buffer {
+  const images = ICO.map(([size, svg]): [number, Buffer] => [size, render(join(src, svg), size, tmp)]);
+  writeFileSync(out, ico(images));
+  return images.find(([size]) => size === 32)![1];
+}
+
 run(join(icons, "icon.svg"));
 // Windows-only app: drop what `tauri icon` makes for mobile.
 for (const extra of ["android", "ios", "64x64.png"]) {
@@ -56,9 +69,15 @@ for (const extra of ["android", "ios", "64x64.png"]) {
 }
 const tmp = mkdtempSync(join(tmpdir(), "lattice-icons-"));
 try {
-  const images = ICO.map(([size, svg]): [number, Buffer] => [size, render(svg, size, tmp)]);
-  writeFileSync(join(icons, "icon.ico"), ico(images));
-  writeFileSync(join(icons, "32x32.png"), images.find(([size]) => size === 32)![1]);
+  writeFileSync(join(icons, "32x32.png"), packIco(icons, join(icons, "icon.ico"), tmp));
+  const dev = join(tmp, "dev");
+  mkdirSync(dev);
+  for (const svg of new Set(ICO.map(([, svg]) => svg))) {
+    writeFileSync(join(dev, svg), readFileSync(join(icons, svg), "utf8").replaceAll(AMBER, DEV_BLUE));
+  }
+  mkdirSync(join(icons, "dev"), { recursive: true });
+  packIco(dev, join(icons, "dev", "icon.ico"), tmp);
+  copyFileSync(join(dev, "icon-16.svg"), join(root, "src", "app", "logo-dev.svg"));
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

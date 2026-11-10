@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import logo from "./logo.svg";
+import releaseLogo from "./logo.svg";
+import devLogo from "./logo-dev.svg";
 import { useT } from "../i18n";
 import { ActionKey, Icon, useKeyTitle } from "../ui/Icon";
+
+// A debug build has the blue taskbar icon (src-tauri/build.rs). The Tauri CLI sets TAURI_ENV_DEBUG for `tauri dev` and `tauri build --debug`.
+const logo = import.meta.env.TAURI_ENV_DEBUG === "true" ? devLogo : releaseLogo;
 
 // Windows 11 caption glyphs, 10×10.
 const GLYPHS = {

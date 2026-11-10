@@ -194,5 +194,12 @@ const COMMANDS: &[&str] = &[
 
 fn main() {
     println!("cargo:rerun-if-changed=overlay-dist/overlay.js");
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))).expect("failed to run tauri-build");
+    // A debug build keeps its data in Lattice Dev (src/location.rs), so it gets the blue icon to stand apart from the release build. On Windows the
+    // window and taskbar icons are read from this exe resource too.
+    let mut windows = tauri_build::WindowsAttributes::new();
+    if std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some() {
+        windows = windows.window_icon_path("icons/dev/icon.ico");
+    }
+    let attributes = tauri_build::Attributes::new().windows_attributes(windows);
+    tauri_build::try_build(attributes.app_manifest(tauri_build::AppManifest::new().commands(COMMANDS))).expect("failed to run tauri-build");
 }

@@ -31,6 +31,8 @@ export default defineConfig(() => ({
         ]
       : []),
   ],
+  // The title bar reads TAURI_ENV_DEBUG to show the debug build's icon.
+  envPrefix: ["VITE_", "TAURI_ENV_"],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

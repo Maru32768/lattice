@@ -35,6 +35,7 @@ mise run dev
 Debug builds use `%APPDATA%\Lattice Dev`; release builds and installed copies use `%APPDATA%\Lattice`.
 Release and development data and settings are separate. Identifier-based folders from older builds are not migrated automatically.
 Each build has its own saved data-folder selection, WebView2 profile, cache, and logs.
+To tell them apart, a debug build's icon has blue bars instead of amber ones, in the taskbar and in the title bar.
 Logs use `%LOCALAPPDATA%\Lattice Dev\logs` in debug builds and `%LOCALAPPDATA%\Lattice\logs` in release builds, including when the library is in a custom folder. Historical logs remain in the old identifier folders. Tauri uses `dev.marulabs.lattice` for release and `dev.marulabs.lattice.debug` for debug. Browser profiles are separate, so sessions from older identifiers are not carried over.
 A debug CLI uses the development folder; a release CLI uses the installed app's folder.
 Portable mode still uses `<exe dir>/data`, with logs in `data/logs`, and the CLI's `--data-dir` still overrides the default.
@@ -115,7 +116,7 @@ The CLI can be installed from source:
 mise exec -- cargo install --path crates/lattice-cli
 ```
 
-The app icon is drawn in `src-tauri/icons/icon*.svg`: `icon.svg` for 64px and up, and its own pixel-grid source for each of 16, 24, 32 and 48px so the weave stays sharp. After editing them, regenerate the PNG / ICO / ICNS set and the title bar logo (`src/app/logo.svg`):
+The app icon is drawn in `src-tauri/icons/icon*.svg`: `icon.svg` for 64px and up, and its own pixel-grid source for each of 16, 24, 32 and 48px so the weave stays sharp. After editing them, regenerate the PNG / ICO / ICNS set and the title bar logo (`src/app/logo.svg`). The script also writes the debug build's blue copies (`src-tauri/icons/dev/icon.ico`, `src/app/logo-dev.svg`):
 
 ```bash
 mise exec -- node scripts/icons.ts
