@@ -235,6 +235,18 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
   await expect(app.getByRole("tab").locator(".mark")).toHaveCount(0);
 });
 
+test("a key two list actions share is no conflict for the document's action with the same key", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ search: ["/", "J"], version: 2 })));
+  await page.goto("/");
+  await openShortcuts(page);
+  await expect(tab(page, "一覧")).toHaveAccessibleName("一覧 11 変更あり 重なりあり");
+  await expect(tab(page, "本文")).toHaveAccessibleName("本文 20");
+  await tab(page, "本文").click();
+  await expect(row(page, "下へスクロール").locator(".kbd.key.clash")).toHaveCount(0);
+  await tab(page, "一覧").click();
+  await expect(row(page, "次の項目へ").locator(".kbd.key.clash")).toHaveText(["j×"]);
+});
+
 test("the Reader's buttons name the key as it is bound now", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ less: ["["], favorite: [], version: 2 })));
   await page.goto("/");

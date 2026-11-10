@@ -50,19 +50,13 @@ export function ShortcutSettings() {
   const field = useRef<HTMLInputElement>(null);
   const clash = conflicts(bindings);
 
-  /** A key the action shares with another that runs at the same place, or that starts a two-key binding and so does nothing alone. */
-  function notesOf(a: ActionDef) {
-    const keys = bindings[a.id];
-    const shared = keys.flatMap((k) =>
-      (clash.get(k) ?? [])
-        .filter((o) => o !== a && scopesOverlap(o, a))
-        .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
-    );
-    const shadowed = keys.flatMap((k) => {
-      const by = chordFrom(bindings, k, a.scope);
-      return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
-    });
-    return [...shared, ...shadowed];
+  /** What the row says of its key `k`: another action that runs at the same place has it too, or it starts a two-key binding and so does nothing alone. */
+  function notesOf(a: ActionDef, k: string) {
+    const shared = (clash.get(k) ?? [])
+      .filter((o) => o !== a && scopesOverlap(o, a))
+      .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) }));
+    const by = chordFrom(bindings, k, a.scope);
+    return by ? [...shared, t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : shared;
   }
 
   function record({ id, first }: { id: ActionId; first?: string }, e: React.KeyboardEvent) {
@@ -120,7 +114,7 @@ export function ShortcutSettings() {
   const row = (a: ActionDef) => {
     const keys = bindings[a.id];
     const mine = recording?.id === a.id ? recording : null;
-    const notes = notesOf(a);
+    const notes = keys.flatMap((k) => notesOf(a, k));
     return (
       <div className="set" key={a.id}>
         <span className="h">
@@ -135,7 +129,7 @@ export function ShortcutSettings() {
         <span className="ctl keys-ctl">
           {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
           {keys.map((k) => (
-            <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
+            <span key={k} className={`kbd key${notesOf(a, k).length ? " clash" : ""}`}>
               {keyLabel(k)}
               <button
                 className="x"
@@ -246,7 +240,7 @@ export function ShortcutSettings() {
                       <span className="vh"> {t("shortcutSettings.tabChanged")}</span>
                     </span>
                   )}
-                  {g.actions.some((a) => notesOf(a).length > 0) && (
+                  {g.actions.some((a) => bindings[a.id].some((k) => notesOf(a, k).length > 0)) && (
                     <span className="mark warn" title={t("shortcutSettings.tabClash")}>
                       <span aria-hidden="true">!</span>
                       <span className="vh"> {t("shortcutSettings.tabClash")}</span>
