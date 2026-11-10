@@ -280,7 +280,7 @@ export const en = {
   "r2BackupSection.pruneFailed": "Warning: the backup succeeded, but deleting old generations failed: {last_prune_error}",
   "shortcutSettings.resetAll": "Reset all to defaults",
   "shortcutSettings.hint":
-    "An action can have several keys. When two actions that work in the same place share a key, you get a warning and only one of them runs. Press two keys in turn to make a two-step key, as in tmux.",
+    "An action can have several keys. When actions that work in the same place share a key, you get a warning, and at most one of them runs. Press two keys in turn to make a two-step key, as in tmux.",
   "shortcutSettings.clash": "{keyLabel} is also assigned to “{labelOf}”",
   "shortcutSettings.clashLoses": "{keyLabel} is also assigned to “{labelOf}”, which runs instead",
   "shortcutSettings.clashSeparator": ". ",
