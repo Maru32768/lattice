@@ -127,6 +127,10 @@ export function ShortcutSettings() {
           </span>
         )}
         <span className="ctl keys-ctl">
+          {/* First, so that showing it once a key changes does not move the add button from under the pointer. */}
+          <button className="btn sm ghost reset" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
+            {t("shortcutSettings.reset")}
+          </button>
           {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
           {keys.map((k) => (
             <span key={k} className={`kbd key${notesOf(a, k).length ? " clash" : ""}`}>
@@ -157,9 +161,6 @@ export function ShortcutSettings() {
               : mine
                 ? t("shortcutSettings.pressKey")
                 : t("shortcutSettings.addKey")}
-          </button>
-          <button className="btn sm ghost reset" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
-            {t("shortcutSettings.reset")}
           </button>
         </span>
       </div>

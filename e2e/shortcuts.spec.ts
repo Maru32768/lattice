@@ -221,11 +221,14 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
   await expect(fav.getByRole("button", { name: "+ キーを追加" })).toBeVisible();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
 
-  await fav.getByRole("button", { name: "+ キーを追加" }).click();
+  const add = fav.getByRole("button", { name: "+ キーを追加" });
+  const before = await add.boundingBox();
+  await add.click();
   await app.keyboard.press("j");
   await app.keyboard.press("Enter");
   await expect(fav.getByRole("note")).toHaveText("jは「次の項目へ」にも割り当てられています。jは「下へスクロール」にも割り当てられています");
   await expect(fav.getByRole("button", { name: "既定に戻す" })).toBeVisible();
+  expect((await add.boundingBox())?.x, "the reset that shows up does not move the add button").toBe(before?.x);
   await expect(tab(app, "記事")).toHaveAccessibleName("記事 12 変更あり 重なりあり");
   await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 11 重なりあり");
   await expect(tab(app, "本文")).toHaveAccessibleName("本文 20 重なりあり");
