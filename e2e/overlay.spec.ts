@@ -379,13 +379,13 @@ test("while a place is still waited for, a box scrolling by itself reports nothi
   expect(await reported(page)).toBeUndefined();
 });
 
-test("with no text layer on the line, nothing is looked for by position, as a hidden drawer's paragraph", async ({ page }) => {
+test("with no text layer on the line (a code block is no layer), nothing is looked for by position", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
-    // A closed drawer: invisible, taking no pointer, its paragraph across the reading line.
+    // A side note that takes no pointer, its paragraph across the reading line: only a text layer makes it a place.
     const drawer = Object.assign(document.createElement("p"), { textContent: "Search the documentation" });
-    Object.assign(drawer.style, { position: "fixed", top: "0", left: "0", width: "40%", height: "100%", margin: "0", opacity: "0", pointerEvents: "none" });
+    Object.assign(drawer.style, { position: "fixed", top: "0", left: "0", width: "20%", height: "100%", margin: "0", pointerEvents: "none" });
     document.body.prepend(drawer);
     const code = Object.assign(document.createElement("pre"), { textContent: "let x = 1;\n".repeat(200) });
     document.querySelectorAll("p")[20].after(code);
@@ -408,4 +408,35 @@ test("under a text layer, an invisible drawer's paragraph is not the place", asy
     scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
   });
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
+});
+
+test("trying a place again goes on in one chain, not one more for each try", async ({ page }) => {
+  // Each try that fails waits for the page to settle with a MutationObserver of its own: count them.
+  const tries = async (calls: number) => {
+    await page.goto("/page.html");
+    await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+    await page.evaluate(() => {
+      const Observer = window.MutationObserver;
+      Object.assign(window, {
+        __observers: 0,
+        MutationObserver: class extends Observer {
+          constructor(cb: MutationCallback) {
+            super(cb);
+            (window as unknown as { __observers: number }).__observers++;
+          }
+        },
+      });
+    });
+    await page.evaluate((n) => {
+      window.__lattice!.scrollToText("A paragraph this page does not have at all.", 0);
+      // As the PDF viewer does once it has drawn its pages.
+      for (let i = 1; i < n; i++) {
+        window.__lattice!.scrollToUnfoundText();
+      }
+    }, calls);
+    await page.waitForTimeout(2000);
+    return page.evaluate(() => (window as unknown as { __observers: number }).__observers);
+  };
+  const one = await tries(1);
+  expect(await tries(3), "not three chains").toBeLessThanOrEqual(one + 2);
 });
