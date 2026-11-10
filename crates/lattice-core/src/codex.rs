@@ -26,6 +26,8 @@ const DISABLED_FEATURES: &[&str] = &[
     "unified_exec",
     "apps",
     "plugins",
+    // Turns subagents on over `agents.enabled`; off by default in 0.164, but another config layer can set it.
+    "multi_agent_v2",
     "image_generation",
     "hooks",
     "browser_use",
