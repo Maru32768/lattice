@@ -205,11 +205,7 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await app.keyboard.press("Enter");
   await expect(app.getByRole("status")).toHaveText("qを割り当てた操作はありません");
 
-  await app.keyboard.press("g");
-  await app.keyboard.press("Tab");
-  await field.focus();
   await app.keyboard.press("j");
-  await expect(field, "a first key left waiting when the field was left is dropped").toHaveValue("j › 次のキー(Enterで確定 / Escで取消)");
   await row(app, "次の項目へ").getByRole("button", { name: "+ キーを追加" }).click();
   await expect(
     row(app, "次の項目へ").getByRole("button", { name: /キーを押してください/ }),
@@ -217,6 +213,11 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   ).toBeVisible();
   await app.keyboard.press("Escape");
   await field.focus();
+  await expect(field, "coming back drops the first key left waiting, so the field shows what the next key does").toHaveValue("");
+  await app.keyboard.press("g");
+  await app.keyboard.press("t");
+  await expect(field).toHaveValue("g › t");
+  await expect(names).toHaveText(["次のタブ"]);
 
   await app.keyboard.press("Escape");
   await expect(field).toHaveValue("");
