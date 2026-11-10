@@ -1,8 +1,9 @@
 //! Codex CLI adapter (`codex exec`). Uses the user's existing Codex login; no API key needed.
 //!
 //! Same stance as `claude.rs`: article text is untrusted, so the agent runs with user config,
-//! rules, web search and every tool feature disabled, read-only, from an empty directory, and
-//! without saving the session.
+//! rules, web search, subagents and every tool feature disabled, read-only, from an empty directory,
+//! and without saving the session. No flag removes what the model catalog adds (code mode's `exec`,
+//! `apply_patch`); the tests keep the installed CLI to tools checked harmless.
 //!
 //! When the service rate limits the account, `codex exec` waits it out by itself, until the next minute
 //! and often the one after: a call the model answers in seconds took minutes, and a chain saw no failure to
@@ -25,7 +26,7 @@ const DISABLED_FEATURES: &[&str] = &[
     "unified_exec",
     "apps",
     "plugins",
-    "multi_agent",
+    "sleep_tool",
     "image_generation",
     "hooks",
     "browser_use",
@@ -38,7 +39,8 @@ const DISABLED_FEATURES: &[&str] = &[
 
 /// The flags that take the agent's tools away. `codex debug prompt-input` takes them too, which the tests use.
 fn lockdown_args() -> Vec<String> {
-    let mut args: Vec<String> = ["-c", "web_search=disabled"].map(String::from).into();
+    // Subagents come with the model's catalog entry, which `--disable multi_agent` does not reach.
+    let mut args: Vec<String> = ["-c", "web_search=disabled", "-c", "agents.enabled=false"].map(String::from).into();
     for f in DISABLED_FEATURES {
         args.extend(["--disable".into(), (*f).into()]);
     }

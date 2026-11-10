@@ -50,6 +50,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Sessions shorter than 15 minutes never made a backup to R2. The first check now comes after a minute.
 - A translation that the AI returned under the wrong paragraph's number was saved, and the same wrong text then showed wherever that paragraph appeared. Such answers, and empty ones, are now asked again.
 - Switching tabs while a web page was first opening could leave that page drawn over the tab you switched to.
+- With Codex CLI 0.164, the AI could still see a tool that starts other agents and a tool that waits, although Lattice turns Codex's tools off. Both are off now, and Lattice's tests check which tools the installed Codex shows the AI.
 
 ## [0.3.0] - 2026-11-06
 
