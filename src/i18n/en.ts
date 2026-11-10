@@ -279,6 +279,12 @@ export const en = {
   "r2BackupSection.lastFailure": "Last failure: {last_error}",
   "r2BackupSection.pruneFailed": "Warning: the backup succeeded, but deleting old generations failed: {last_prune_error}",
   "shortcutSettings.resetAll": "Reset all to defaults",
+  "shortcutSettings.undo": "Undo",
+  "shortcutSettings.export": "Export",
+  "shortcutSettings.load": "Load from file",
+  "shortcutSettings.done.reset": "All reset to defaults",
+  "shortcutSettings.done.import": "Shortcuts loaded",
+  "shortcutSettings.exported": "Exported: {path}",
   "shortcutSettings.hint":
     "An action can have several keys. When actions that work in the same place share a key, you get a warning, and at most one of them runs. Press two keys in turn to make a two-step key, as in tmux.",
   "shortcutSettings.clash": "{keyLabel} is also assigned to “{labelOf}”",

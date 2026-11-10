@@ -272,6 +272,12 @@ export const ja = {
   "r2BackupSection.lastFailure": "前回の失敗: {last_error}",
   "r2BackupSection.pruneFailed": "警告: バックアップは成功しましたが、古い世代の削除に失敗しました: {last_prune_error}",
   "shortcutSettings.resetAll": "すべて既定に戻す",
+  "shortcutSettings.undo": "元に戻す",
+  "shortcutSettings.export": "書き出す",
+  "shortcutSettings.load": "ファイルから読み込む",
+  "shortcutSettings.done.reset": "すべて既定に戻しました",
+  "shortcutSettings.done.import": "読み込みました",
+  "shortcutSettings.exported": "書き出しました: {path}",
   "shortcutSettings.hint":
     "1つの操作に複数のキーを割り当てられます。同じ場所で働く操作どうしに同じキーがあると、警告が出て、働くのは多くても1つになります。キーを2つ続けて押すと、tmuxのような2段階のキーになります。",
   "shortcutSettings.clash": "{keyLabel}は「{labelOf}」にも割り当てられています",

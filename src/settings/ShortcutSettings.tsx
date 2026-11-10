@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import { isCustom, replaceKeys, resetKeys, setKeys, useBindings } from "../lib/keys";
+import { api } from "../api";
+import { readUtf8 } from "../lib/files";
+import { getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile, useBindings } from "../lib/keys";
 import {
   ACTIONS,
   ACTION_GROUPS,
@@ -13,9 +15,12 @@ import {
   scopesOverlap,
   type ActionDef,
   type ActionId,
+  type Bindings,
   type KeyGroup,
 } from "../lib/keymap";
 import { useT } from "../i18n";
+
+const FILE_MAX_MB = 1;
 
 /**
  * A key pressed in for a binding, `first` being the key pressed so far: the binding's first key, the whole of it (the next key,
@@ -49,7 +54,51 @@ export function ShortcutSettings() {
   /** Finding by the key pressed: null while finding by text. `first` may still get a second key; `key` is whole. */
   const [byKey, setByKey] = useState<{ first?: string; key?: string } | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  /**
+   * The last reset of every key or file loaded, undoable while the bindings are the ones it made: any later change, here or in
+   * another window, makes new bindings, so undoing never throws away a change made after it.
+   */
+  const [undo, setUndo] = useState<{ prev: Partial<Bindings>; after: Bindings; done: "reset" | "import" } | null>(null);
+  const [note, setNote] = useState<{ exported: string } | { error: string } | null>(null);
+  const undoable = undo?.after === bindings ? undo : null;
+  const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
+  const custom = ACTIONS.some((a) => isCustom(a.id, bindings));
   const clash = conflicts(bindings);
+
+  function replace(next: Partial<Bindings>, done: "reset" | "import") {
+    setUndo({ prev: replaceKeys(next), after: getBindings(), done });
+    setNote(null);
+  }
+
+  function undoReplace(prev: Partial<Bindings>) {
+    replaceKeys(prev);
+    setUndo(null);
+    setNote(null);
+    // Back to no changed keys, this button turns into a disabled reset: the keyboard goes on to the load button.
+    if (!Object.keys(prev).length) {
+      fileInput.current?.focus();
+    }
+  }
+
+  async function load(file: File) {
+    if (file.size > FILE_MAX_MB * 1024 * 1024) {
+      return setNote({ error: t("be.file.tooLarge", { max: FILE_MAX_MB }) });
+    }
+    const content = await readUtf8(file);
+    const next = content === null ? null : parseShortcutsFile(content);
+    if (next) {
+      replace(next, "import");
+    } else {
+      setNote({ error: t(content === null ? "be.file.notUtf8" : "common.wrongFile") });
+    }
+  }
+
+  const exportFile = () =>
+    api.exportShortcuts(shortcutsFile()).then(
+      (path) => setNote({ exported: path }),
+      (e: unknown) => setNote({ error: String(e) }),
+    );
 
   /** What the row says of its key `k`: another action that runs at the same place has it too, or it starts a two-key binding and so does nothing alone. */
   function notesOf(a: ActionDef, k: string) {
@@ -195,11 +244,42 @@ export function ShortcutSettings() {
   return (
     <>
       <div className="btn-row">
-        <button className="btn" onClick={() => replaceKeys({})} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>
-          {t("shortcutSettings.resetAll")}
+        {/* One button for both, so that the keyboard and the pointer are on the undo the moment it shows. */}
+        <button className="btn swap" onClick={undoable ? () => undoReplace(undoable.prev) : () => replace({}, "reset")} disabled={!undoable && !custom}>
+          <span className={undoable ? "off" : undefined}>{t("shortcutSettings.resetAll")}</span>
+          <span className={undoable ? undefined : "off"}>{t("shortcutSettings.undo")}</span>
         </button>
+        <button className="btn" onClick={exportFile} disabled={!custom}>
+          {t("shortcutSettings.export")}
+        </button>
+        <label className="btn">
+          {t("shortcutSettings.load")}
+          <input
+            ref={fileInput}
+            type="file"
+            className="vh"
+            accept=".json,application/json"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) {
+                load(file).catch((err: unknown) => setNote({ error: String(err) }));
+              }
+            }}
+          />
+        </label>
         <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
+      {status && (
+        <p role="status" className="msg">
+          {status}
+        </p>
+      )}
+      {note && "error" in note && (
+        <p role="alert" className="msg error-text">
+          {t.msg(note.error)}
+        </p>
+      )}
       <div className="keys">
         <div className="keys-find">
           <input

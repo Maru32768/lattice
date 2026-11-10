@@ -1,4 +1,4 @@
-import { test, expect, list } from "./harness.ts";
+import { test, expect, callsOf, list } from "./harness.ts";
 
 async function openShortcuts(page: import("@playwright/test").Page) {
   await page.locator(".nav").getByRole("button", { name: "設定" }).click();
@@ -333,4 +333,99 @@ test("the Reader's buttons name the key as it is bound now", async ({ page }) =>
   await list(page).locator(".row").first().click();
   await expect(page.getByRole("button", { name: "日本語の割合を下げる([)" })).toHaveAttribute("title", "日本語の割合を下げる([)");
   await expect(page.getByRole("button", { name: "お気に入り", exact: true }), "with no key it names none").toBeVisible();
+});
+
+async function addKey(page: import("@playwright/test").Page, label: string, key: string) {
+  await row(page, label).getByRole("button", { name: "+ キーを追加" }).click();
+  await page.keyboard.press(key);
+  await page.keyboard.press("Enter");
+}
+
+const loadFile = (page: import("@playwright/test").Page, value: unknown) =>
+  page
+    .getByLabel("ファイルから読み込む")
+    .setInputFiles({ name: "lattice-shortcuts.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(value)) });
+
+test("resetting every key can be undone from the same button, until a key changes", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  const fav = row(app, "お気に入り");
+  await addKey(app, "お気に入り", "x");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "x×"]);
+
+  const reset = app.getByRole("button", { name: "すべて既定に戻す" });
+  const undo = app.getByRole("button", { name: "元に戻す", exact: true });
+  const box = await reset.boundingBox();
+  await reset.focus();
+  await app.keyboard.press("Enter");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
+  await expect(app.getByRole("status")).toHaveText("すべて既定に戻しました");
+  await expect(undo, "the keyboard is on the undo").toBeFocused();
+  expect(await undo.boundingBox(), "and so is the pointer").toEqual(box);
+  await app.keyboard.press("Enter");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "x×"]);
+  await expect(reset).toBeFocused();
+  await expect(app.getByRole("status")).toBeHidden();
+
+  await reset.click();
+  await expect(undo).toBeVisible();
+  await addKey(app, "お気に入り", "y");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "y×"]);
+  await expect(undo, "undoing would throw away the key just added").toBeHidden();
+  await expect(reset).toBeEnabled();
+});
+
+test("loading a file replaces the keys, and undo brings back the earlier ones", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  const [fav, read] = [row(app, "お気に入り"), row(app, "既読 / 未読")];
+  await addKey(app, "お気に入り", "x");
+  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q", "Q", ""] });
+  await expect(app.getByRole("status")).toHaveText("読み込みました");
+  await expect(fav.locator(".kbd.key"), "what the file leaves out is at its default").toHaveText(["s×"]);
+  await expect(read.locator(".kbd.key")).toHaveText(["q×"]);
+  const undo = app.getByRole("button", { name: "元に戻す", exact: true });
+  await undo.click();
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "x×"]);
+  await expect(read.locator(".kbd.key")).toHaveText(["m×"]);
+
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q"] });
+  await undo.focus();
+  await app.keyboard.press("Enter");
+  await expect(read.locator(".kbd.key")).toHaveText(["m×"]);
+  await expect(app.getByRole("button", { name: "すべて既定に戻す" })).toBeDisabled();
+  await expect(app.getByLabel("ファイルから読み込む"), "with nothing left to reset, the keyboard goes on to the load button").toBeFocused();
+});
+
+test("a JSON file that is not a shortcuts file is refused and changes nothing", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  await addKey(app, "お気に入り", "x");
+  await loadFile(app, { read: ["Q"], version: 2 });
+  await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
+  await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
+  await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["m×"]);
+  await expect(app.getByRole("button", { name: "元に戻す", exact: true })).toBeHidden();
+});
+
+test("export writes the changed keys, shows where, and the file loads them back", async ({ app }) => {
+  await openShortcuts(app);
+  const exportButton = app.getByRole("button", { name: "書き出す", exact: true });
+  await expect(exportButton, "nothing changed to export").toBeDisabled();
+  await tab(app, "記事").click();
+  await addKey(app, "お気に入り", "x");
+  await exportButton.click();
+  await expect(app.getByRole("status")).toHaveText(
+    "書き出しました: C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-shortcuts-20261020T030000Z.json",
+  );
+  const calls = (await callsOf(app, "export_shortcuts")) as { json: string }[];
+  expect(calls.map((c) => JSON.parse(c.json) as unknown)).toEqual([{ format: "lattice.shortcuts", version: 2, favorite: ["S", "X"] }]);
+
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×"]);
+  await app
+    .getByLabel("ファイルから読み込む")
+    .setInputFiles({ name: "lattice-shortcuts.json", mimeType: "application/json", buffer: Buffer.from(calls[0].json) });
+  await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
 });

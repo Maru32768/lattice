@@ -180,6 +180,10 @@
 .stg .kbd.clash { border-color: var(--tr-line); color: var(--tr-ink); }
 .stg .warn-text { color: var(--tr-ink); }
 .stg .btn.rec { border-color: var(--acc-line); background: var(--acc-soft); color: var(--acc-ink); }
+/* Both labels share one cell, so the button keeps its width as it turns into undo and stays under the pointer. */
+.stg .btn.swap { display: inline-grid; place-items: center; }
+.stg .btn.swap > span { grid-area: 1 / 1; }
+.stg .btn.swap > .off { visibility: hidden; }
 .stg .keys { display: flex; flex-direction: column; gap: 12px; }
 .stg .keys section + section { margin-top: 12px; }
 .stg .keys-find { display: flex; gap: 8px; align-items: center; }
