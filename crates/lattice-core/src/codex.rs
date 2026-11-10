@@ -329,10 +329,21 @@ mod tests {
         (offered, nested)
     }
 
+    /// The Codex models Settings offers, "" being the CLI's default.
+    fn settings_models() -> Vec<String> {
+        let presets = include_str!("../../../src/settings/ModelSettings.tsx");
+        let codex = presets.split("codex_cli: [").nth(1).and_then(|s| s.split(']').next()).unwrap_or("");
+        codex.split("value: \"").skip(1).filter_map(|s| s.split('"').next()).map(String::from).collect()
+    }
+
     /// Codex adds tools between releases, and its model catalog turns some on whatever the flags say
-    /// (code mode, subagents): this reads what the installed CLI would show the model, without a model call.
+    /// (code mode, subagents), model by model: this reads what the installed CLI would show each model
+    /// Settings offers, without a model call.
     #[test]
     fn the_installed_codex_shows_the_model_only_harmless_tools() {
+        // shortcut: a model ID typed into Settings is not checked, loop over the catalog's models if people use those.
+        let models = settings_models();
+        assert!(models.len() > 1 && models.contains(&String::new()), "Codex models not found in ModelSettings.tsx: {models:?}");
         let dir = std::env::temp_dir().join(format!("lattice-codex-tools-{}", std::process::id()));
         let (home, cwd) = (dir.join("home"), dir.join("cwd"));
         std::fs::create_dir_all(&home).unwrap();
@@ -342,29 +353,36 @@ mod tests {
         if let Some(catalog) = codex_home.map(|h| h.join("models_cache.json")).filter(|p| p.exists()) {
             std::fs::copy(catalog, home.join("models_cache.json")).unwrap();
         }
-        let out = std::process::Command::new("codex")
-            .args(["debug", "prompt-input"])
-            .args(lockdown_args())
-            .arg("x")
-            .env("CODEX_HOME", &home)
-            .current_dir(&cwd)
-            .output();
+        let outputs: Vec<_> = models
+            .iter()
+            .map(|model| {
+                let mut cmd = std::process::Command::new("codex");
+                cmd.args(["debug", "prompt-input"]).args(lockdown_args());
+                if !model.is_empty() {
+                    cmd.args(["-c".to_string(), format!("model={}", Value::from(model.as_str()))]);
+                }
+                (model, cmd.arg("x").env("CODEX_HOME", &home).current_dir(&cwd).output())
+            })
+            .collect();
         let _ = std::fs::remove_dir_all(&dir);
-        let out = match out {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                eprintln!("skipped: no codex on PATH");
-                return;
-            }
-            out => out.unwrap(),
-        };
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-        let items: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap();
-        assert!(items.iter().any(|i| i["type"] == "additional_tools"), "no tool list: has the prompt-input format changed?");
-        let (offered, nested) = tools_in(&items);
-        assert!(!offered.iter().any(|t| t == "functions.exec") || !nested.is_empty(), "exec reaches no tool: has its description changed?");
-        let unchecked: Vec<&String> =
-            offered.iter().filter(|t| !OFFERED.contains(&t.as_str())).chain(nested.iter().filter(|t| !NESTED.contains(&t.as_str()))).collect();
-        assert!(unchecked.is_empty(), "codex shows the model {unchecked:?}: turn them off in lockdown_args, or check them harmless and list them here");
+        let mut unchecked = Vec::new();
+        for (model, out) in outputs {
+            let out = match out {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    eprintln!("skipped: no codex on PATH");
+                    return;
+                }
+                out => out.unwrap(),
+            };
+            assert!(out.status.success(), "{model:?}: {}", String::from_utf8_lossy(&out.stderr));
+            let items: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap();
+            assert!(items.iter().any(|i| i["type"] == "additional_tools"), "{model:?}: no tool list: has the prompt-input format changed?");
+            let (offered, nested) = tools_in(&items);
+            assert!(!offered.iter().any(|t| t == "functions.exec") || !nested.is_empty(), "{model:?}: exec reaches no tool: has its description changed?");
+            let offered = offered.into_iter().filter(|t| !OFFERED.contains(&t.as_str()));
+            unchecked.extend(offered.chain(nested.into_iter().filter(|t| !NESTED.contains(&t.as_str()))).map(|t| format!("{model:?} {t}")));
+        }
+        assert!(unchecked.is_empty(), "codex shows models {unchecked:?}: turn them off in lockdown_args, or check them harmless and list them here");
     }
 
     /// Real paid call: `cargo test -p lattice-core codex -- --ignored`.
