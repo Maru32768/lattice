@@ -917,6 +917,7 @@ export const handlers = {
   retry_failed_jobs: (): number => jobs.issues.filter((j) => j.status === "failed").length,
   cancel_job: (): boolean => true,
   export_json: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-20261020.jsonl.gz",
+  export_shortcuts: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-shortcuts-20261020T030000Z.json",
   browser_open: none,
   browser_set_bounds: (): boolean => true,
   browser_hide: none,

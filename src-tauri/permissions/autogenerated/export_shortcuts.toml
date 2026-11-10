@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-shortcuts"
+description = "Enables the export_shortcuts command without any pre-configured scope."
+commands.allow = ["export_shortcuts"]
+
+[[permission]]
+identifier = "deny-export-shortcuts"
+description = "Denies the export_shortcuts command without any pre-configured scope."
+commands.deny = ["export_shortcuts"]

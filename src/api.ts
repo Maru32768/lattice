@@ -266,6 +266,8 @@ export const api = {
   /** Writes a JSON-lines export and returns its path. */
   /** `group`: only that group's articles. */
   exportJson: (group: number | null = null) => invoke<string>("export_json", { group }),
+  /** Writes the shortcuts file the UI made and returns its path. */
+  exportShortcuts: (json: string) => invoke<string>("export_shortcuts", { json }),
 };
 
 /**

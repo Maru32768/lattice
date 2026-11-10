@@ -149,6 +149,7 @@ const COMMANDS: &[&str] = &[
     "retry_failed_jobs",
     "cancel_job",
     "export_json",
+    "export_shortcuts",
     "pick_data_dir",
     "open_data_dir",
     "open_log_dir",

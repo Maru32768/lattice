@@ -194,6 +194,15 @@ pub fn export_file(store: &Store, dir: &Path, group: Option<i64>) -> Result<Path
     }
 }
 
+/// Writes `json` (the keyboard shortcuts, which the UI keeps) to `lattice-shortcuts-<UTC>.json` in `dir` and returns its path.
+pub fn export_shortcuts(store: &Store, dir: &Path, json: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(dir).map_err(err)?;
+    let stamp: String = store.conn().query_row("SELECT strftime('%Y%m%dT%H%M%SZ','now')", [], |r| r.get(0)).map_err(err)?;
+    let path = dir.join(format!("lattice-shortcuts-{stamp}.json"));
+    std::fs::write(&path, json).map_err(err)?;
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +313,20 @@ mod tests {
         let lines: Vec<Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!((lines[1]["type"].as_str(), lines[1]["name"].as_str()), (Some("feed_folder"), Some("TechFeed")));
         assert_eq!((lines[2]["id"].as_i64(), lines[2]["folder_id"].as_i64()), (Some(feed), Some(folder)));
+    }
+
+    #[test]
+    fn shortcuts_are_written_as_given_to_a_stamped_file_in_a_new_folder() {
+        let s = Store::open_in_memory().unwrap();
+        let dir = std::env::temp_dir().join(format!("lattice-shortcuts-test-{}", std::process::id())).join("exports");
+        let json = "{\n  \"format\": \"lattice.shortcuts\",\n  \"next\": [\n    \"N\"\n  ]\n}";
+        let path = export_shortcuts(&s, &dir, json).unwrap();
+        let written = std::fs::read_to_string(&path);
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
+        assert_eq!(written.unwrap(), json);
+        assert_eq!(path.parent(), Some(dir.as_path()));
+        let name = path.file_name().unwrap().to_str().unwrap();
+        let stamp = name.strip_prefix("lattice-shortcuts-").and_then(|n| n.strip_suffix(".json")).unwrap();
+        assert!(stamp.len() == 16 && stamp.as_bytes()[8] == b'T' && stamp.ends_with('Z'), "{name}");
     }
 }

@@ -1311,6 +1311,12 @@ fn export_json(app: State<'_, App>, group: Option<i64>) -> Result<String, String
     Ok(export::export_file(&app.store, &app.data_dir.join("exports"), group)?.display().to_string())
 }
 
+/// Writes `json` to <data>/exports/lattice-shortcuts-<UTC>.json and returns its path.
+#[tauri::command(async)]
+fn export_shortcuts(app: State<'_, App>, json: String) -> Result<String, String> {
+    Ok(export::export_shortcuts(&app.store, &app.data_dir.join("exports"), &json)?.display().to_string())
+}
+
 #[tauri::command(async)]
 fn r2_status(app: State<'_, App>) -> Result<r2::R2Status, String> {
     r2::status(&app.store)
@@ -1741,6 +1747,7 @@ pub fn run() {
             retry_failed_jobs,
             cancel_job,
             export_json,
+            export_shortcuts,
             pick_data_dir,
             open_data_dir,
             open_log_dir,

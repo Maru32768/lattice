@@ -173,6 +173,7 @@
     "allow-retry-failed-jobs",
     "allow-cancel-job",
     "allow-export-json",
+    "allow-export-shortcuts",
     "allow-pick-data-dir",
     "allow-open-data-dir",
     "allow-open-log-dir",
