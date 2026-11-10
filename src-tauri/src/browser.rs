@@ -133,8 +133,10 @@ struct TabState {
     pdfs: HashSet<i64>,
     /// How many documents have begun loading, which `pushState` and in-page links do not count as.
     documents: u64,
-    /// The text hashes the page asked to translate while it was in no article, for the one it is saved as (`save_page`).
+    /// The text hashes the page at `unowned_page` asked to translate while it was in no article, for the one it is
+    /// saved as (`save_page`). By URL: a page that changes its own (`pushState`) is another page, in the same document.
     unowned: HashSet<String>,
+    unowned_page: String,
 }
 
 impl Default for TabState {
@@ -150,6 +152,7 @@ impl Default for TabState {
             pdfs: HashSet::new(),
             documents: 0,
             unowned: HashSet::new(),
+            unowned_page: String::new(),
         }
     }
 }
@@ -229,17 +232,28 @@ impl Browser {
         self.with_tab(label, |t| t.documents)
     }
 
-    /// Notes what a page in no article asked to translate. Bounded: the page decides how often it asks.
-    pub fn note_unowned(&self, label: &str, hashes: &[String]) {
+    /// Notes what the page at `page` (`page_key`), in no article, asked to translate. Bounded: the page decides how
+    /// often it asks.
+    pub fn note_unowned(&self, label: &str, page: &str, hashes: &[String]) {
         self.with_tab(label, |t| {
+            if t.unowned_page != page {
+                t.unowned.clear();
+                t.unowned_page = page.to_string();
+            }
             let room = MAX_UNOWNED.saturating_sub(t.unowned.len());
             t.unowned.extend(hashes.iter().take(room).cloned());
         });
     }
 
-    /// What the page in `label` noted with `note_unowned` since it loaded, once.
-    pub fn take_unowned(&self, label: &str) -> Vec<String> {
-        self.with_tab(label, |t| t.unowned.drain().collect())
+    /// What the page at `page` noted with `note_unowned`, once; nothing if the tab has gone on to another.
+    pub fn take_unowned(&self, label: &str, page: &str) -> Vec<String> {
+        self.with_tab(label, |t| {
+            if t.unowned_page == page {
+                t.unowned.drain().collect()
+            } else {
+                Vec::new()
+            }
+        })
     }
 
     /// Every page webview, by label.
@@ -452,6 +466,13 @@ pub(crate) fn is_http(u: &Url) -> bool {
 }
 
 /// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
+/// The page in `wv`, for `note_unowned`: its URL without the fragment, which in-page links change.
+pub fn page_key(wv: &Webview) -> Option<String> {
+    let mut url = wv.url().ok()?;
+    url.set_fragment(None);
+    Some(url.into())
+}
+
 pub fn pdf_article(u: &Url) -> Option<i64> {
     (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
 }
@@ -1205,14 +1226,19 @@ mod tests {
     fn a_page_hands_what_it_translated_to_its_save_once_and_within_bounds() {
         let browser = Browser::default();
         let hashes: Vec<String> = (0..MAX_UNOWNED + 5).map(|i| i.to_string()).collect();
-        browser.note_unowned("browser-a", &hashes[..2]);
-        browser.note_unowned("browser-a", &hashes[..3]);
-        let mut taken = browser.take_unowned("browser-a");
+        let (page, route) = ("https://docs.dev/a", "https://docs.dev/b");
+        browser.note_unowned("browser-a", page, &hashes[..2]);
+        browser.note_unowned("browser-a", page, &hashes[..3]);
+        assert!(browser.take_unowned("browser-a", route).is_empty(), "the tab has gone on to another page");
+        let mut taken = browser.take_unowned("browser-a", page);
         taken.sort();
         assert_eq!(taken, ["0", "1", "2"]);
-        assert!(browser.take_unowned("browser-a").is_empty(), "once");
-        browser.note_unowned("browser-b", &hashes);
-        assert_eq!(browser.take_unowned("browser-b").len(), MAX_UNOWNED);
+        assert!(browser.take_unowned("browser-a", page).is_empty(), "once");
+        browser.note_unowned("browser-a", page, &hashes[..1]);
+        browser.note_unowned("browser-a", route, &hashes[1..2]);
+        assert_eq!(browser.take_unowned("browser-a", route), ["1"], "a route pushState opened is another page");
+        browser.note_unowned("browser-b", page, &hashes);
+        assert_eq!(browser.take_unowned("browser-b", page).len(), MAX_UNOWNED);
     }
 
     #[test]

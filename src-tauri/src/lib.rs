@@ -177,7 +177,10 @@ async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tau
         }
     };
     // What the page translated before it was saved is the article's Page view's now.
-    if let Err(e) = app.store.claim_segments(id, &browser.take_unowned(&browser::label(&tab)?)) {
+    let label = browser::label(&tab)?;
+    if let Some(page) = handle.get_webview(&label).as_ref().and_then(browser::page_key)
+        && let Err(e) = app.store.claim_segments(id, &browser.take_unowned(&label, &page))
+    {
         log::warn!("saving a page: keeping the translations it showed: {e}");
     }
     indexed(&app, id)
@@ -785,7 +788,11 @@ async fn overlay_translate(
                 log::warn!("overlay translate: keeping the translations of article {id}'s page: {e}");
             }
         }
-        None => browser.note_unowned(webview.label(), &hashes),
+        None => {
+            if let Some(page) = browser::page_key(&webview) {
+                browser.note_unowned(webview.label(), &page, &hashes);
+            }
+        }
     }
     if !cached_only && hashes.iter().any(|h| !cached.contains_key(h)) {
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
