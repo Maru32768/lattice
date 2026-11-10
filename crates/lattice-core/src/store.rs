@@ -1010,9 +1010,11 @@ impl Store {
     /// Deletes an article and everything hanging off it. Snapshots, blocks (with their FTS rows
     /// and embeddings), jobs, tag links, summaries, classifications and image mappings cascade;
     /// image bytes go by trigger; translations of its blocks and of its Page view that no other
-    /// article's block or Page view uses, and tags no other article uses, are deleted here. Feed
-    /// items stay, so the feed does not import the article again, and chat answers keep their
-    /// copied citations. Returns whether the article existed.
+    /// article's block has and no other article's Page view owns, and tags no other article uses,
+    /// are deleted here. Feed items stay, so the feed does not import the article again, and chat
+    /// answers keep their copied citations. Returns whether the article existed.
+    // shortcut: a translation has one owner, so another saved page showing the same text (a site's footer) loses it with
+    // this one and translates it again; record every page that shows a translation if that cost shows up.
     pub fn delete_article(&self, id: i64) -> Result<bool> {
         let mut c = self.conn();
         let tx = c.transaction()?;
