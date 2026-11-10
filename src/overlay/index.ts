@@ -1063,9 +1063,17 @@ function placeHere(): { text: string; at: number } | null {
   // spans the line, else the first below it. Only those: another block that the probes miss is not where the reader is
   // (a cookie bar, a sidebar). Those on screen are put in order, not the page's thousands.
   const passedThrough = () => {
+    // Seen, too: an invisible drawer or a box moved aside keeps its place and its text.
     const shown = pageBlocks((block) => {
       const r = block.getBoundingClientRect();
-      return r.bottom > line && r.top < innerHeight && getComputedStyle(block).pointerEvents === "none";
+      return (
+        r.bottom > line &&
+        r.top < innerHeight &&
+        r.right > 0 &&
+        r.left < innerWidth &&
+        getComputedStyle(block).pointerEvents === "none" &&
+        block.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+      );
     });
     const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
     return block && { block, top: block.getBoundingClientRect().top };

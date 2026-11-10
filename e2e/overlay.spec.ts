@@ -386,3 +386,18 @@ test("with no text layer on the line, nothing is looked for by position, as a hi
   await page.waitForTimeout(600);
   expect(await reported(page)).toBeUndefined();
 });
+
+test("under a text layer, an invisible drawer's paragraph is not the place", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(textLayer);
+  await page.evaluate(() => {
+    document.querySelectorAll("p").forEach((p) => (p.style.pointerEvents = "none"));
+    const drawer = Object.assign(document.createElement("p"), { textContent: "Search the documentation" });
+    Object.assign(drawer.style, { position: "fixed", top: "0", left: "0", width: "40%", height: "100%", margin: "0", opacity: "0", pointerEvents: "none" });
+    document.getElementById("main")!.prepend(drawer);
+    const r = document.querySelectorAll("p")[13].getBoundingClientRect();
+    scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
+  });
+  await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
+});
