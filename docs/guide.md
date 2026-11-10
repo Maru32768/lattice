@@ -723,7 +723,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
 - Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` clears the key found; pressing it again stops and turns the box back to finding by name.
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
-- When two actions that work in the same place share a key, a warning appears and only one of them runs.
+- When two actions that work in the same place share a key, a warning appears and only one of them runs. The warning on the one that does not run names the one that does.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 
 Shortcuts are stored on this computer only.

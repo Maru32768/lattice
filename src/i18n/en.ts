@@ -282,6 +282,7 @@ export const en = {
   "shortcutSettings.hint":
     "An action can have several keys. When two actions that work in the same place share a key, you get a warning and only one of them runs. Press two keys in turn to make a two-step key, as in tmux.",
   "shortcutSettings.clash": "{keyLabel} is also assigned to “{labelOf}”",
+  "shortcutSettings.clashLoses": "{keyLabel} is also assigned to “{labelOf}”, which runs instead",
   "shortcutSettings.clashSeparator": ". ",
   "shortcutSettings.removeKey": "Remove {keyLabel} from {label}",
   "shortcutSettings.pressKey": "Press a key (Esc cancels)",

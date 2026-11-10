@@ -229,6 +229,11 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
   await expect(fav.getByRole("note")).toHaveText("jは「次の項目へ」にも割り当てられています。jは「下へスクロール」にも割り当てられています");
   await expect(fav.getByRole("button", { name: "既定に戻す" })).toBeVisible();
   expect((await add.boundingBox())?.x, "the reset that shows up does not move the add button").toBe(before?.x);
+  await tab(app, "一覧").click();
+  await expect(row(app, "次の項目へ").getByRole("note"), "the row that loses the key says which action runs").toHaveText(
+    "jは「お気に入り」にも割り当てられていて、そちらが働きます",
+  );
+  await tab(app, "記事").click();
   await expect(tab(app, "記事")).toHaveAccessibleName("記事 12 変更あり 重なりあり");
   await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 11 重なりあり");
   await expect(tab(app, "本文")).toHaveAccessibleName("本文 20 重なりあり");

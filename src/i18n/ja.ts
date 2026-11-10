@@ -275,6 +275,7 @@ export const ja = {
   "shortcutSettings.hint":
     "1つの操作に複数のキーを割り当てられます。同じ場所で働く操作どうしに同じキーがあると、警告が出て、片方だけが働きます。キーを2つ続けて押すと、tmuxのような2段階のキーになります。",
   "shortcutSettings.clash": "{keyLabel}は「{labelOf}」にも割り当てられています",
+  "shortcutSettings.clashLoses": "{keyLabel}は「{labelOf}」にも割り当てられていて、そちらが働きます",
   "shortcutSettings.clashSeparator": "。",
   "shortcutSettings.removeKey": "{label}から{keyLabel}を外す",
   "shortcutSettings.pressKey": "キーを押してください(Escで取消)",
