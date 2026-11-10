@@ -155,6 +155,8 @@ pub struct Store {
     /// Jobs claimed through this Store and not finished: the ones `heartbeat` keeps alive. Never
     /// locked while waiting for `conn`.
     running: Mutex<HashSet<i64>>,
+    /// Held through `own_pdf_regions`, which can take minutes; never locked while holding `conn`.
+    pdf_regions: Mutex<()>,
 }
 
 #[derive(Debug, Serialize, TS)]
@@ -656,7 +658,7 @@ impl Store {
             tx.commit()?;
         }
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        Ok(Self { conn: Mutex::new(conn), running: Mutex::default() })
+        Ok(Self { conn: Mutex::new(conn), running: Mutex::default(), pdf_regions: Mutex::default() })
     }
 
     pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -1241,6 +1243,8 @@ impl Store {
     /// debug build), and the store is not locked meanwhile. A PDF that cannot be read keeps its rows unowned, as
     /// retranslating it leaves them.
     fn own_pdf_regions(&self) -> Result<()> {
+        // A second count meanwhile (Settings opened again, or in another window) waits for this one, then finds it done.
+        let _pass = self.pdf_regions.lock().unwrap_or_else(|e| e.into_inner());
         if self.setting(PDF_REGIONS_PENDING)?.is_none() {
             return Ok(());
         }
