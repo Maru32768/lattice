@@ -350,32 +350,38 @@ mod tests {
         let (home, cwd) = (dir.join("home"), dir.join("cwd"));
         std::fs::create_dir_all(&home).unwrap();
         std::fs::create_dir_all(&cwd).unwrap();
-        // The catalog decides most of the tools. A home without config.toml stands for `--ignore-user-config`.
-        let codex_home = std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(|| dirs::home_dir().map(|h| h.join(".codex")));
-        if let Some(catalog) = codex_home.map(|h| h.join("models_cache.json")).filter(|p| p.exists()) {
-            std::fs::copy(catalog, home.join("models_cache.json")).unwrap();
+        // The catalog decides most of the tools, and `codex exec` gets it from the server with the user's login.
+        // The empty home below has no login, so it would fall back to the catalog built into the CLI.
+        let catalog_path = dir.join("catalog.json");
+        let catalog = std::process::Command::new("codex").args(["debug", "models"]).current_dir(&cwd).output();
+        if let Some(c) = catalog.as_ref().ok().filter(|c| c.status.success()) {
+            std::fs::write(&catalog_path, &c.stdout).unwrap();
         }
         let outputs: Vec<_> = models
             .iter()
             .map(|model| {
                 let mut cmd = std::process::Command::new("codex");
                 cmd.args(["debug", "prompt-input"]).args(lockdown_args());
+                cmd.args(["-c".to_string(), format!("model_catalog_json={}", Value::from(catalog_path.to_string_lossy()))]);
                 if !model.is_empty() {
                     cmd.args(["-c".to_string(), format!("model={}", Value::from(model.as_str()))]);
                 }
+                // A home without config.toml stands for `--ignore-user-config`.
                 (model, cmd.arg("x").env("CODEX_HOME", &home).current_dir(&cwd).output())
             })
             .collect();
         let _ = std::fs::remove_dir_all(&dir);
+        let catalog = match catalog {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipped: no codex on PATH");
+                return;
+            }
+            catalog => catalog.unwrap(),
+        };
+        assert!(catalog.status.success(), "codex debug models: {}", String::from_utf8_lossy(&catalog.stderr));
         let mut unchecked = Vec::new();
         for (model, out) in outputs {
-            let out = match out {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    eprintln!("skipped: no codex on PATH");
-                    return;
-                }
-                out => out.unwrap(),
-            };
+            let out = out.unwrap();
             assert!(out.status.success(), "{model:?}: {}", String::from_utf8_lossy(&out.stderr));
             let items: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap();
             assert!(items.iter().any(|i| i["type"] == "additional_tools"), "{model:?}: no tool list: has the prompt-input format changed?");
