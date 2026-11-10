@@ -99,6 +99,7 @@ test("the log folder opens through the backend, apart from the data folder", asy
   await expect(app.locator(".stg main")).toContainText("AppData\\Local\\Lattice\\logs");
   await app.getByRole("button", { name: "ログのフォルダを開く", exact: true }).click();
   await expect.poll(() => callsOf(app, "open_log_dir")).toEqual([{}]);
+  expect(await callsOf(app, "open_data_dir")).toEqual([]);
 });
 
 test("unused translations are deleted only after a confirmation", async ({ app }) => {
@@ -116,7 +117,6 @@ test("unused translations are deleted only after a confirmation", async ({ app }
   await expect(app.getByRole("status")).toHaveText("12件の訳を削除しました");
   await expect(app.getByRole("button", { name: "0件を削除…" })).toBeDisabled();
   expect(await callsOf(app, "delete_unused_translations")).toEqual([{}]);
-  expect(await callsOf(app, "open_data_dir")).toEqual([]);
 });
 
 test("portable storage can be opened even though its location cannot be changed", async ({ app }) => {
