@@ -863,6 +863,8 @@ impl Store {
                     [id, existing],
                 )?;
                 tx.execute("UPDATE articles SET favorite = 1 WHERE id = ?2 AND (SELECT favorite FROM articles WHERE id = ?1)", [id, existing])?;
+                // Its Page view's translations too, or they would count as unused.
+                tx.execute("UPDATE segment_translations SET article_id = ?2 WHERE article_id = ?1", [id, existing])?;
                 tx.execute("DELETE FROM articles WHERE id = ?1", [id])?;
                 tx.commit()?;
                 return Ok(existing);

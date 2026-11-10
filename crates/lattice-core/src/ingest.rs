@@ -357,7 +357,11 @@ mod tests {
         assert_eq!(store_fetched(&s, id, &page(&long)).unwrap(), id);
 
         let (other, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
+        // Its Page view translated the page while it was still being fetched.
+        let units = [crate::segments::Unit { source: "A sidebar".into(), translation: "サイドバー".into() }];
+        s.insert_segments("ja", "v", Some(other), &[(crate::store::sha256_hex("A sidebar").as_str(), &units[..], "p", None)]).unwrap();
         assert_eq!(store_fetched(&s, other, &page(&format!("{long}<p>A related post sits at the end of this copy.</p>"))).unwrap(), id);
+        assert_eq!(s.unused_translations().unwrap(), 0, "its Page view's translations go with it");
         assert_eq!(s.list_articles(&crate::store::ArticleFilter::All).unwrap().len(), 1);
         assert_eq!(s.find_article_by_url("https://example.com/p?id=1").unwrap(), None, "the row is gone");
 
