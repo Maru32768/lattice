@@ -80,7 +80,7 @@ test("a page that draws its text after loading is scrolled to the place once it 
     main.replaceChildren();
     return html;
   });
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0))).toBe(false);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0))).toBe(false);
   await page.evaluate((html) => setTimeout(() => (document.getElementById("main")!.innerHTML = html), 200), drawn);
   await expect(page.locator("p")).toHaveCount(60);
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0, 1);
@@ -91,7 +91,7 @@ test("the place stays on the reading line while the page above it still grows", 
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   // Chromium's scroll anchoring would keep it there alone; the PDF viewer's pages defeat it.
   await page.evaluate(() => (document.documentElement.style.overflowAnchor = "none"));
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(true);
   // A picture that arrives late, above the place.
   await page.evaluate(() => {
     const late = Object.assign(document.createElement("div"), { style: "height: 900px" });
@@ -105,7 +105,7 @@ test("the place stays on the reading line while the page above it still grows", 
 test("a place whose paragraph the page draws again is let go, not chased", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(true);
   const y = await page.evaluate(() => {
     // The page drawing its text again: new nodes, the same text.
     const main = document.getElementById("main")!;
@@ -161,7 +161,7 @@ test("the page at its top is no place, and a place just put back is not reported
   const last = () => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_place").at(-1)?.args);
   await expect.poll(last).toEqual({ place: null });
   const before = await page.evaluate(() => window.__pageCalls.length);
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(true);
   await page.waitForTimeout(600);
   expect(await page.evaluate((n) => window.__pageCalls.slice(n).filter((c) => c.cmd === "overlay_place"), before)).toEqual([]);
 });
@@ -175,7 +175,7 @@ test("the PDF viewer's late try leaves the place alone once the reader has scrol
     main.replaceChildren(Object.assign(document.createElement("div"), { style: "height: 3000px" }));
     return html;
   });
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40.", 0))).toBe(false);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40. Some words", 0))).toBe(false);
   await page.mouse.wheel(0, 400);
   await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
   const y = await page.evaluate(() => scrollY);
@@ -245,7 +245,7 @@ test("a place whose paragraph the page shows only later is put back once it show
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => (document.getElementById("main")!.style.display = "none"));
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(false);
   await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.style.display = ""), 200));
   await expect.poll(() => lineIn(page, 30)).toBeCloseTo(0.5, 1);
 });
@@ -287,7 +287,7 @@ test("a place goes to the shown block that is its start, not a hidden copy or on
     ps[5].textContent = "Usage of the API is metered by the minute.";
     ps[45].textContent = "Usage";
   });
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40.", 0))).toBe(true);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 40. Some words", 0))).toBe(true);
   await expect.poll(() => lineIn(page, 41), "the shown paragraph 40, after the hidden copy").toBeCloseTo(0, 1);
   expect(await page.evaluate(() => window.__lattice!.scrollToText("Usage", 0))).toBe(true);
   await expect.poll(() => lineIn(page, 46), "the heading, not paragraph 5").toBeCloseTo(0, 1);
@@ -298,7 +298,7 @@ test("a place is put back when the page shows its text a while after loading", a
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   // As a page that fetches its article first: quiet for longer than one settling, then shown by an attribute.
   await page.evaluate(() => (document.getElementById("main")!.hidden = true));
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(false);
   await page.evaluate(() => setTimeout(() => (document.getElementById("main")!.hidden = false), 1200));
   await expect.poll(() => lineIn(page, 30), { timeout: 5000 }).toBeCloseTo(0.5, 1);
 });
@@ -326,12 +326,20 @@ test("under the PDF viewer's text layer, the paragraph on the line beats one tra
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
 });
 
-test("a short place starts a block only as a whole word: a table cell's No is not Note", async ({ page }) => {
+test("a short place begins a block only when no word follows: a cell's No is not Note nor No such", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
-  await page.evaluate(() => (document.querySelectorAll("p")[40].textContent = "Note that this paragraph is not the cell."));
+  await page.evaluate(() => {
+    const ps = document.querySelectorAll("p");
+    ps[20].textContent = "Note that this paragraph is not the cell.";
+    ps[25].textContent = "No such file or directory, the shell said.";
+    ps[30].textContent = "Installation is quick: one command.";
+    ps[45].textContent = "Installation¶";
+  });
   expect(await page.evaluate(() => window.__lattice!.scrollToText("No", 0))).toBe(false);
   expect(await page.evaluate(() => scrollY)).toBe(0);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Installation", 0))).toBe(true);
+  await expect.poll(() => lineIn(page, 45), "the heading drawn with its mark, not the paragraph").toBeCloseTo(0, 1);
 });
 
 test("under the text layer, the gap just above an untranslated paragraph names it, not a translated one further down", async ({ page }) => {
@@ -365,7 +373,7 @@ test("while a place is still waited for, a box scrolling by itself reports nothi
     document.body.prepend(box);
     document.getElementById("main")!.hidden = true;
   });
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
+  expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30. Some words", 0.5))).toBe(false);
   await page.evaluate(() => document.getElementById("carousel")!.scrollTo(0, 100));
   await page.waitForTimeout(600);
   expect(await reported(page)).toBeUndefined();

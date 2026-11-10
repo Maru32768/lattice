@@ -906,10 +906,11 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   // A block not shown (yet: the page may reveal its text by script) is not a place, nor a hidden copy before the shown one.
   const shown = (k: number) => !place || blocks[k]!.getClientRects().length > 0;
   // The block that is that start, before one that only begins with it (a heading "Usage", a paragraph "Usage of the
-  // API…"), and one that holds it only when it is long enough to tell. A short start begins a block only as a whole word:
-  // a table cell's "No" is not "Note that…". shortcut: two blocks of the same text (a table of contents) go to the first.
+  // API…"), and one that holds it only when it is long enough to tell. A short start begins a block only when no word
+  // follows it (a heading drawn as "Installation¶"): a table cell's "No" is not "No such file…" nor "Note that…".
+  // shortcut: two blocks of the same text (a table of contents) go to the first.
   const inside = !place || want.length >= FINDS_INSIDE;
-  const begins = (t: string) => t.startsWith(want) && (inside || !/[\p{L}\p{N}]/u.test(t.charAt(want.length)));
+  const begins = (t: string) => t.startsWith(want) && (inside || !/[\p{L}\p{N}]/u.test(t.slice(want.length)));
   const exactly = place ? texts.findIndex((t, k) => t.startsWith(want) && needle(t) === want && shown(k)) : -1;
   const i = exactly >= 0 ? exactly : place ? texts.findIndex((t, k) => begins(t) && shown(k)) : -1;
   const el = blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1];
