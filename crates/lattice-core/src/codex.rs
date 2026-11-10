@@ -26,6 +26,7 @@ const DISABLED_FEATURES: &[&str] = &[
     "unified_exec",
     "apps",
     "plugins",
+    "multi_agent",
     "sleep_tool",
     "image_generation",
     "hooks",
@@ -39,7 +40,8 @@ const DISABLED_FEATURES: &[&str] = &[
 
 /// The flags that take the agent's tools away. `codex debug prompt-input` takes them too, which the tests use.
 fn lockdown_args() -> Vec<String> {
-    // Subagents come with the model's catalog entry, which `--disable multi_agent` does not reach.
+    // Subagents also come with the model's catalog entry, which `--disable multi_agent` does not reach.
+    // An unknown `-c` key is ignored without a word, so the feature stays off too.
     let mut args: Vec<String> = ["-c", "web_search=disabled", "-c", "agents.enabled=false"].map(String::from).into();
     for f in DISABLED_FEATURES {
         args.extend(["--disable".into(), (*f).into()]);
