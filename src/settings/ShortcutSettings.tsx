@@ -89,6 +89,16 @@ export function ShortcutSettings() {
     }
   }
 
+  /**
+   * Changes a row's keys from a button the change may take away (a key's ×, a reset that hides once used, a row the search
+   * no longer finds), and leaves the keyboard on the row's add button or, with the row gone, in the search field.
+   */
+  function keepFocus(from: HTMLElement, change: () => void) {
+    const add = from.closest(".keys-ctl")?.querySelector<HTMLElement>(".add");
+    change();
+    requestAnimationFrame(() => (add?.isConnected ? add : field.current)?.focus());
+  }
+
   function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
     const i = KEY_GROUPS.indexOf(tab);
     const to = ({ ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: KEY_GROUPS.length - 1 } as Partial<Record<string, number>>)[keyOf(e.nativeEvent) ?? ""];
@@ -134,7 +144,7 @@ export function ShortcutSettings() {
         )}
         <span className="ctl keys-ctl">
           {/* First, so that showing it once a key changes does not move the add button from under the pointer. */}
-          <button className="btn sm ghost reset" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
+          <button className="btn sm ghost reset" onClick={(e) => keepFocus(e.currentTarget, () => resetKeys(a.id))} disabled={!isCustom(a.id, bindings)}>
             {t("shortcutSettings.reset")}
           </button>
           {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
@@ -143,10 +153,12 @@ export function ShortcutSettings() {
               {keyLabel(k)}
               <button
                 className="x"
-                onClick={() =>
-                  setKeys(
-                    a.id,
-                    keys.filter((x) => x !== k),
+                onClick={(e) =>
+                  keepFocus(e.currentTarget, () =>
+                    setKeys(
+                      a.id,
+                      keys.filter((x) => x !== k),
+                    ),
                   )
                 }
                 aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}
@@ -156,7 +168,7 @@ export function ShortcutSettings() {
             </span>
           ))}
           <button
-            className={`btn sm ghost${mine ? " rec" : ""}`}
+            className={`btn sm ghost add${mine ? " rec" : ""}`}
             aria-pressed={!!mine}
             onClick={() => setRecording(mine ? null : { id: a.id })}
             onKeyDown={mine ? (e) => record(mine, e) : undefined}

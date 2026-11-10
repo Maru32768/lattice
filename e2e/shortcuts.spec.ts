@@ -256,6 +256,37 @@ test("a key two list actions share is no conflict for the document's action with
   await expect(row(page, "次の項目へ").locator(".kbd.key.clash")).toHaveText(["j×"]);
 });
 
+test("the keyboard stays in the row when the × or reset it pressed goes away, and in the search field when the row goes", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  const fav = row(app, "お気に入り");
+  const add = fav.getByRole("button", { name: "+ キーを追加" });
+  const recordJ = async () => {
+    await add.click();
+    await app.keyboard.press("j");
+    await app.keyboard.press("Enter");
+    await expect(fav.locator(".kbd.key")).toHaveText(["s×", "j×"]);
+  };
+  await recordJ();
+  await fav.getByRole("button", { name: "お気に入りからjを外す" }).focus();
+  await app.keyboard.press("Enter");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
+  await expect(add).toBeFocused();
+  await recordJ();
+  await fav.getByRole("button", { name: "既定に戻す" }).focus();
+  await app.keyboard.press("Enter");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
+  await expect(add).toBeFocused();
+
+  await app.getByRole("button", { name: "キーを押して探す" }).click();
+  await app.keyboard.press("s");
+  await app.keyboard.press("Enter");
+  await fav.getByRole("button", { name: "お気に入りからsを外す" }).focus();
+  await app.keyboard.press("Enter");
+  await expect(app.getByRole("status")).toHaveText("sを割り当てた操作はありません");
+  await expect(app.getByRole("textbox", { name: "キーを押して探す" })).toBeFocused();
+});
+
 test("a note names the action that runs instead only when the key runs it, as the keyboard reads keys", async ({ page }) => {
   await page.addInitScript(() =>
     localStorage.setItem(
