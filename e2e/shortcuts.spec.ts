@@ -298,7 +298,14 @@ test("the keyboard stays in the row when the × or reset it pressed goes away, a
   await fav.getByRole("button", { name: "お気に入りからsを外す" }).focus();
   await app.keyboard.press("Enter");
   await expect(app.getByRole("status")).toHaveText("sを割り当てた操作はありません");
-  await expect(app.getByRole("textbox", { name: "キーを押して探す" })).toBeFocused();
+  const field = app.getByRole("textbox", { name: "キーを押して探す" });
+  await expect(field).toBeFocused();
+
+  await app.keyboard.press("g");
+  await app.getByRole("button", { name: "要約を開く / 閉じるからg › yを外す" }).click();
+  await expect(field).toBeFocused();
+  await expect(field, "the app moving the keyboard back keeps the first key waiting").toHaveValue("g › 次のキー(Enterで確定 / Escで取消)");
+  await expect(row(app, "次のタブ"), "and what it found").toBeVisible();
 });
 
 test("a note names the action that runs instead only when the key runs it, as the keyboard reads keys", async ({ page }) => {

@@ -96,7 +96,14 @@ export function ShortcutSettings() {
   function keepFocus(from: HTMLElement, change: () => void) {
     const add = from.closest(".keys-ctl")?.querySelector<HTMLElement>(".add");
     change();
-    requestAnimationFrame(() => (add?.isConnected ? add : field.current)?.focus());
+    requestAnimationFrame(() => {
+      if (add?.isConnected) {
+        return add.focus();
+      }
+      field.current?.focus();
+      // The app moving the keyboard there is no coming back to the field: keep the first key its onFocus just dropped.
+      setByKey(byKey);
+    });
   }
 
   function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
