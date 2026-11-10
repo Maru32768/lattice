@@ -465,14 +465,13 @@ pub(crate) fn is_http(u: &Url) -> bool {
     matches!(u.scheme(), "http" | "https")
 }
 
-/// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
-/// The page in `wv`, for `note_unowned`: its URL without the fragment, which in-page links change.
+/// The page in `wv`, for `note_unowned`: its URL as the library keys it, since in-page links change the fragment and
+/// a page may drop its own tracking parameters (`replaceState`).
 pub fn page_key(wv: &Webview) -> Option<String> {
-    let mut url = wv.url().ok()?;
-    url.set_fragment(None);
-    Some(url.into())
+    normalize(wv.url().ok()?.as_str()).ok().map(String::from)
 }
 
+/// The article a saved PDF's URL names: `http://lattice-pdf.localhost/<id>`, as WebView2 addresses the scheme.
 pub fn pdf_article(u: &Url) -> Option<i64> {
     (u.scheme() == "http" && u.host_str() == Some(PDF_HOST)).then(|| pdf_path(u.path()))?
 }
