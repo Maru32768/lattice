@@ -167,18 +167,20 @@ fn imported(app: &App, id: i64, manual: bool) -> Result<i64, String> {
 /// content in their server HTML), or fetches it from the server if the page does not answer.
 #[tauri::command]
 async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tauri::AppHandle, tab: String) -> Result<i64, String> {
+    let label = browser::label(&tab)?;
+    // Before the waits below, during which the tab can go on to another page.
+    let page = handle.get_webview(&label).as_ref().and_then(browser::page_key);
     let id = match browser::snapshot(&handle, &browser, &tab).await {
         // The overlay answers with nothing for a PDF the webview shows: the server sends the file.
         Some((url, html)) if !html.is_empty() => ingest::save_rendered(&app.store, &url, html)?,
         _ => {
-            let wv = handle.get_webview(&browser::label(&tab)?).ok_or("the browser is not open")?;
+            let wv = handle.get_webview(&label).ok_or("the browser is not open")?;
             log::info!("no DOM snapshot from the page; fetching from the server");
             ingest::save_url(&app.store, &app.providers.http, wv.url().map_err(err)?.as_str()).await?
         }
     };
     // What the page translated before it was saved is the article's Page view's now.
-    let label = browser::label(&tab)?;
-    if let Some(page) = handle.get_webview(&label).as_ref().and_then(browser::page_key)
+    if let Some(page) = page
         && let Err(e) = app.store.claim_segments(id, &browser.take_unowned(&label, &page))
     {
         log::warn!("saving a page: keeping the translations it showed: {e}");
