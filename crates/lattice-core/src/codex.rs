@@ -2,8 +2,8 @@
 //!
 //! Same stance as `claude.rs`: article text is untrusted, so the agent runs with user config,
 //! rules, web search, subagents and every tool feature disabled, read-only, from an empty directory,
-//! and without saving the session. No flag removes what the model catalog adds (code mode's `exec`,
-//! `apply_patch`); the tests keep the installed CLI to tools checked harmless.
+//! and without saving the session. The feature flags do not remove what the model catalog adds (code mode's
+//! `exec`, `apply_patch`); the tests keep the installed CLI to tools checked harmless.
 //!
 //! When the service rate limits the account, `codex exec` waits it out by itself, until the next minute
 //! and often the one after: a call the model answers in seconds took minutes, and a chain saw no failure to

@@ -1095,7 +1095,7 @@ Saved pages are written by other people. Lattice treats their content as data, n
 
 - Article text is shown as text. An article's HTML or scripts never run inside Lattice's own window.
 - Web pages are shown in a browser kept apart from Lattice itself. That browser can open only http and https addresses and can call only a few Lattice functions.
-- AI providers cannot read or change your files or run commands. The Claude CLI and Codex CLI run with tools, MCP servers and user settings turned off, in an empty temporary folder. Codex adds a file-editing tool that no setting removes, so it also runs in Codex's read-only sandbox, which rejects that tool's changes. Every prompt tells the AI not to follow instructions in the article.
+- AI providers cannot read or change your files or run commands. The Claude CLI and Codex CLI run with tools, MCP servers and user settings turned off, in an empty temporary folder. Codex still gives its AI a file-editing tool, so it also runs in Codex's read-only sandbox, which rejects that tool's changes. Every prompt tells the AI not to follow instructions in the article.
 - Translations put back into a page in the Page view have scripts and unsafe links removed first.
 
 ### Article download restrictions

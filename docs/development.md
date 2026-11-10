@@ -99,7 +99,7 @@ CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on W
 - **UI text** lives in `src/i18n/ja.ts` (the key source) and `src/i18n/en.ts` (must match it). A Japanese literal in UI code fails `src/i18n/literals.test.ts`.
 - **Japanese text** in the UI, docs, comments and prompts uses half-width alphanumerics and parentheses with no space between them and Japanese: `AIで最大100件の記事を要約する(後で読む)`. Spaces inside English names, code spans, URLs and Markdown syntax stay; the full rule and its exceptions are in `CLAUDE.md`.
 - **Backend messages** that reach the UI are codes: `msg!("code", name = value)` in Rust, with a `be.<code>` entry in both catalogs (checked by `src/i18n/backend.test.ts`).
-- **Untrusted content.** Article text, pages and feed data are untrusted: the UI renders them as text only, and LLM providers never get tools.
+- **Untrusted content.** Article text, pages and feed data are untrusted: the UI renders them as text only, and LLM providers get no tool that reaches files, commands or the network. Codex keeps a few tools of its own that its feature flags cannot remove; why they are harmless, and the test that holds Codex to them, are in `crates/lattice-core/src/codex.rs`.
 - **Migrations** are append-only numbered files in `crates/lattice-core/db/migrations/`, each listed in `MIGRATIONS` (`crates/lattice-core/src/store.rs`). `crates/lattice-core/db/master.sql` is the schema they build, kept current by a test (regenerate with `UPDATE_MASTER_SQL=1 cargo test -p lattice-core master_sql`); a migration test should find its migration by content, not by index.
 
 ## Building
