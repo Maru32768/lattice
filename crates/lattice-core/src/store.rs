@@ -506,13 +506,12 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
 /// A saved PDF's Page view keeps the translations of its regions under hashes none of its blocks has: unowned, they
 /// would count as unused. A PDF that cannot be read leaves its rows so, as retranslating it does.
 fn own_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
-    let pdfs: Vec<i64> = tx
-        .prepare("SELECT article_id FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)")?
-        .query_map([crate::pdf::CONTENT_TYPE], |r| r.get(0))?
-        .collect::<Result<_>>()?;
-    for id in pdfs {
-        let (enc, body): (String, Vec<u8>) =
-            tx.query_row("SELECT encoding, body FROM snapshots WHERE article_id = ?1 ORDER BY id DESC LIMIT 1", [id], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let mut pdfs = tx.prepare(
+        "SELECT article_id, encoding, body FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)",
+    )?;
+    let mut rows = pdfs.query([crate::pdf::CONTENT_TYPE])?;
+    while let Some(row) = rows.next()? {
+        let (id, enc, body): (i64, String, Vec<u8>) = (row.get(0)?, row.get(1)?, row.get(2)?);
         match inflate_bytes(&enc, &body).map_err(|e| e.to_string()).and_then(|b| crate::translate::region_hashes(&b)) {
             Ok(hashes) => {
                 tx.execute(
