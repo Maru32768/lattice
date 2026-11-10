@@ -41,12 +41,12 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
       <div className="pal key-help" role="dialog" aria-modal="true" aria-label={t("keys.keyHelp")} tabIndex={-1} onKeyDown={keys}>
         <h2>{t("keys.keyHelp")}</h2>
         <div className="pal-list" ref={body} tabIndex={-1}>
-          {ACTION_GROUPS.map((g) => (
-            <section key={g.id}>
-              <h3 className="gh">{t(g.title)}</h3>
-              {g.actions
-                .filter((a) => bindings[a.id].length > 0)
-                .map((a) => (
+          {ACTION_GROUPS.map((g) => ({ ...g, actions: g.actions.filter((a) => bindings[a.id].length > 0) }))
+            .filter((g) => g.actions.length > 0)
+            .map((g) => (
+              <section key={g.id}>
+                <h3 className="gh">{t(g.title)}</h3>
+                {g.actions.map((a) => (
                   <div className="it" key={a.id}>
                     <span className="it-l">{actionLabel(t, a.id)}</span>
                     {a.scope && <span className="s">{t(`keys.scope.${a.scope}`)}</span>}
@@ -57,8 +57,8 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
                     </span>
                   </div>
                 ))}
-            </section>
-          ))}
+              </section>
+            ))}
         </div>
       </div>
     </div>

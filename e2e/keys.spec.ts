@@ -150,6 +150,15 @@ test("Ctrl+B ? and ? list every binding by what it is for, as Settings does, wit
   await expect(help, "a click on its heading leaves the keys with it").toBeHidden();
 });
 
+test("the key list leaves out a group none of whose actions has a key", async ({ page }) => {
+  const none = Object.fromEntries(["newTab", "closeTab", "nextTab", "prevTab", "tabByNumber", "tabList", "popOut"].map((id) => [id, []]));
+  await page.addInitScript((b) => localStorage.setItem("lattice.shortcuts", JSON.stringify({ ...b, version: 2 })), none);
+  await page.goto("/");
+  await expect(list(page).locator(".row").first()).toBeVisible();
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "キー一覧" }).locator("h3")).toHaveText(["全般", "一覧", "記事", "本文", "ペイン"]);
+});
+
 test("the hint shows only after a moment, lists what follows, and Esc ends the sequence without acting", async ({ app }) => {
   // In the page itself: a `press` from here could take longer than the delay.
   const shownAtOnce = await app.evaluate(async () => {
