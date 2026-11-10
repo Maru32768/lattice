@@ -1112,15 +1112,18 @@ fn open_log_dir(app: State<'_, App>) -> Result<(), String> {
     open_in_explorer(&app.log_dir)
 }
 
-/// Translations no saved article uses (`Store::unused_translations`): mostly pages not in the library.
-#[tauri::command(async)]
-fn unused_translations(app: State<'_, App>) -> Result<usize, String> {
-    app.store.unused_translations().map_err(err)
+/// Translations no saved article uses (`Store::unused_translations`): mostly pages not in the library. The first
+/// count after migration 40 lays out every saved PDF, which can take minutes, so it runs off the async workers.
+#[tauri::command]
+async fn unused_translations(app: State<'_, App>) -> Result<usize, String> {
+    let store = app.store.clone();
+    tokio::task::spawn_blocking(move || store.unused_translations()).await.map_err(err)?.map_err(err)
 }
 
-#[tauri::command(async)]
-fn delete_unused_translations(app: State<'_, App>) -> Result<usize, String> {
-    app.store.delete_unused_translations().map_err(err)
+#[tauri::command]
+async fn delete_unused_translations(app: State<'_, App>) -> Result<usize, String> {
+    let store = app.store.clone();
+    tokio::task::spawn_blocking(move || store.delete_unused_translations()).await.map_err(err)?.map_err(err)
 }
 
 /// Picks the new data folder with a native dialog (the webview never passes a path).
