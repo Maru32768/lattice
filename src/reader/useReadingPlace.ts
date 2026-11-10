@@ -52,26 +52,31 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     } else if (!wentToStored && mine) {
       view.scrollTop = mine.top;
     }
+    const placeAt = (prose: boolean) =>
+      placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
+        shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
+      );
     // A place this Reader could not show (the Page view's, from a part of the page it lacks; or an article without
-    // text) is still the article's until the reader moves: leaving at once must not put this Reader's top over it.
-    const unshown = !!stored && !wentToStored;
-    const shownAt = view.scrollTop;
+    // text) is still the article's until the reader moves to another block: leaving at once must not put this Reader's
+    // top over it. By the block, not the scrollTop, which moves by itself as blocks above grow (a translation arriving);
+    // once moved, back at that block is a place of the reader's too.
+    let unshown = !!stored && !wentToStored;
+    const shownBlock = unshown ? placeAt(false)?.block : undefined;
 
     /** The place on screen, kept for the article; undefined while the Reader is hidden and has none to read. */
     const keep = () => {
       if (view.clientHeight === 0) {
         return undefined;
       }
-      const placeAt = (prose: boolean) =>
-        placeIn([...view.querySelectorAll<HTMLElement>("[id^='b-']")], view.getBoundingClientRect().top, (el) =>
-          shown.current.find((b) => el.id === `b-${b.id}` && (!prose || TRANSLATABLE.has(b.kind))),
-        );
       // The block at the top, whatever it is: a code block keeps its height at another width, which a paragraph below it
       // does not. The Page view also gets the first prose block from the top when that block is not prose: a page has
       // the same paragraphs, but no code block it can find (pre is not translated) and seldom a table's cells.
       const place = placeAt(false);
       const prose = place && !TRANSLATABLE.has(shown.current.find((b) => b.id === place.block)?.kind ?? "") ? placeAt(true) : null;
-      if (!unshown || Math.abs(view.scrollTop - shownAt) >= 2) {
+      if (place?.block !== shownBlock) {
+        unshown = false;
+      }
+      if (!unshown) {
         readingPlaces.set(String(article), place && prose ? { ...place, page: { text: prose.text, at: prose.at } } : place);
       }
       return place;

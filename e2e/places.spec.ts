@@ -237,6 +237,9 @@ test("a Page view place the Reader does not have leaves the tab's own, and stays
     .toContain(comments);
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc), "the tab's own place").toBe(para(20));
+  // A block above growing (a translation arriving) moves the scrollTop by itself, through scroll anchoring.
+  await doc.getByText(para(5)).evaluate((el) => (el.style.paddingBottom = "300px"));
+  await shell.waitForTimeout(500);
   await shell.getByRole("button", { name: "Page", exact: true }).click();
   await expect
     .poll(async () => ((await callsOf(shell, "browser_open")).at(-1) as { place: { text: string } | null }).place?.text, "not this Reader's top over it")
@@ -260,4 +263,31 @@ test("in a listing, the Reader keeps its place there and gives the Page view the
     .toBe("The paragraph after the listing.");
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
   await expect.poll(() => readerTop(doc), "inside the listing again").toContain("listing line 0");
+});
+
+test("a Page view place the Reader lacks gives way once the reader moves, also back to where the Reader opened", async ({ shell }) => {
+  await start(shell);
+  await (await listRow(shell, LONG)).click();
+  const doc = shell.locator(".doc-scroll");
+  await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBeGreaterThan(0);
+  const tab = ((await callsOf(shell, "browser_open")).at(-1) as { tab: string }).tab;
+  await shell.evaluate(
+    ([t, u]) => window.__e2e.emit("browser-page", { tab: t, url: u, loading: false, can_go_back: false, can_go_forward: false }),
+    [tab, ARTICLES[1].original_url],
+  );
+  const comments = "A comment under the article, which the Reader does not have.";
+  await expect
+    .poll(async () => {
+      await shell.evaluate(([t, x]) => window.__e2e.emit("browser-place", { tab: t, place: { text: x, at: 0 } }), [tab, comments]);
+      return stored(shell, "lattice.readingPlaces");
+    })
+    .toContain(comments);
+  await shell.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect.poll(() => readerTop(doc)).toBe(para(20));
+  await doc.getByText(para(30)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => stored(shell, "lattice.readingPlaces")).toContain(para(30));
+  await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
+  await expect.poll(() => stored(shell, "lattice.readingPlaces"), "back where it opened is the reader's place too").toContain(para(20));
 });
