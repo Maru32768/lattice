@@ -770,6 +770,8 @@ async fn overlay_translate(
     let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
     let target = &to.key();
     let document = browser.document(webview.label());
+    // The page within it: a route that pushState opens is another page in the same document.
+    let page = browser::page_key(&webview);
     let article = webview.url().ok().as_ref().and_then(browser::pdf_article);
     let fresh = fresh == Some(true) && article.is_some();
     let saved = || {
@@ -791,8 +793,8 @@ async fn overlay_translate(
             }
         }
         None => {
-            if let Some(page) = browser::page_key(&webview) {
-                browser.note_unowned(webview.label(), &page, &hashes);
+            if let Some(page) = &page {
+                browser.note_unowned(webview.label(), page, &hashes);
             }
         }
     }
@@ -820,7 +822,7 @@ async fn overlay_translate(
                 .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
                 .collect();
             // Saved during the wait or the call, the page's rows go to its article; one the tab has left keeps what it had.
-            let owner = if browser.document(webview.label()) == document {
+            let owner = if browser.document(webview.label()) == document && browser::page_key(&webview) == page {
                 browser::page_article(&webview)
             } else {
                 owner
