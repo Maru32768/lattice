@@ -43,7 +43,7 @@ fn lockdown_args() -> Vec<String> {
     // Subagents come with the model's catalog entry, which `--disable multi_agent` does not reach; `agents.enabled`
     // does, from 0.150 on. Codex reads any other `agents.<name>` as an agent role, so a renamed key fails the call.
     // `--disable` fails on a feature the CLI does not know, which a renamed tool feature should do; the sleep
-    // tool is new in 0.155 and can only stall a call, so it goes through `-c` and older releases still run.
+    // tool is new in 0.152 and can only stall a call, so it goes through `-c` and older releases still run.
     let mut args: Vec<String> = ["-c", "web_search=disabled", "-c", "agents.enabled=false", "-c", "features.sleep_tool=false"].map(String::from).into();
     for f in DISABLED_FEATURES {
         args.extend(["--disable".into(), (*f).into()]);
