@@ -60,7 +60,8 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
     include_str!("../db/migrations/00040_translation_page_article.sql"),
 ];
-/// After this migration the translations a saved PDF's Page view made before it are given that PDF (`own_pdf_regions`).
+/// After this migration the translations a saved PDF's Page view made before it are to be given that PDF
+/// (`mark_pdf_regions`, `Store::own_pdf_regions`).
 const PDF_REGIONS_AT: usize = 40;
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
 /// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
@@ -504,25 +505,15 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
     Ok(())
 }
 
-/// A saved PDF's Page view keeps the translations of its regions under hashes none of its blocks has: unowned, they
-/// would count as unused. A PDF that cannot be read leaves its rows so, as retranslating it does.
-fn own_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
-    let mut pdfs = tx.prepare(
-        "SELECT article_id, encoding, body FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)",
+/// Left by migration 40 in a library with saved PDFs and translations, until `Store::own_pdf_regions` has run.
+const PDF_REGIONS_PENDING: &str = "translations.pdf_regions_pending";
+
+fn mark_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
+    tx.execute(
+        "INSERT OR IGNORE INTO settings (key, value) SELECT ?1, '1'
+         WHERE EXISTS (SELECT 1 FROM snapshots WHERE content_type = ?2) AND EXISTS (SELECT 1 FROM segment_translations)",
+        params![PDF_REGIONS_PENDING, crate::pdf::CONTENT_TYPE],
     )?;
-    let mut rows = pdfs.query([crate::pdf::CONTENT_TYPE])?;
-    while let Some(row) = rows.next()? {
-        let (id, enc, body): (i64, String, Vec<u8>) = (row.get(0)?, row.get(1)?, row.get(2)?);
-        match inflate_bytes(&enc, &body).map_err(|e| e.to_string()).and_then(|b| crate::translate::region_hashes(&b)) {
-            Ok(hashes) => {
-                tx.execute(
-                    "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL AND source_hash IN (SELECT value FROM json_each(?2))",
-                    params![id, json(&hashes)],
-                )?;
-            }
-            Err(e) => log::warn!("reading the regions of article {id} to keep their translations: {e}"),
-        }
-    }
     Ok(())
 }
 
@@ -659,7 +650,7 @@ impl Store {
                 rehash_content(&tx)?;
             }
             if i + 1 == PDF_REGIONS_AT {
-                own_pdf_regions(&tx)?;
+                mark_pdf_regions(&tx)?;
             }
             tx.pragma_update(None, "user_version", i as i64 + 1)?;
             tx.commit()?;
@@ -1244,14 +1235,37 @@ impl Store {
         )
     }
 
+    /// A saved PDF's Page view keeps the translations of its regions under hashes none of its blocks has. Those made
+    /// before migration 40 have no article: each PDF is given its own, once, before anything counts as unused. Not in
+    /// the migration, which holds up the start: laying out a large paper takes seconds (a 6 MB one, 2.5 minutes in a
+    /// debug build), and the store is not locked meanwhile. A PDF that cannot be read keeps its rows unowned, as
+    /// retranslating it leaves them.
+    fn own_pdf_regions(&self) -> Result<()> {
+        if self.setting(PDF_REGIONS_PENDING)?.is_none() {
+            return Ok(());
+        }
+        let pdfs: Vec<i64> = self
+            .conn()
+            .prepare("SELECT DISTINCT article_id FROM snapshots WHERE content_type = ?1")?
+            .query_map([crate::pdf::CONTENT_TYPE], |r| r.get(0))?
+            .collect::<Result<_>>()?;
+        for id in pdfs {
+            let hashes = crate::translate::pdf_piece_hashes(self, id);
+            self.claim_segments(id, &hashes)?;
+        }
+        self.set_setting(PDF_REGIONS_PENDING, None)
+    }
+
     /// How many saved translations no saved article uses: none of its blocks has the text, and its Page view did not make it.
     /// They are those of pages not in the library, and of paragraphs an article no longer has since it was extracted again.
     pub fn unused_translations(&self) -> Result<usize> {
+        self.own_pdf_regions()?;
         self.conn().query_row(&format!("SELECT count(*) FROM segment_translations WHERE {UNUSED_TRANSLATION}"), [], |r| r.get::<_, i64>(0)).map(|n| n as usize)
     }
 
     /// Deletes the translations `unused_translations` counts. Returns how many.
     pub fn delete_unused_translations(&self) -> Result<usize> {
+        self.own_pdf_regions()?;
         self.conn().execute(&format!("DELETE FROM segment_translations WHERE {UNUSED_TRANSLATION}"), [])
     }
 
@@ -2196,12 +2210,11 @@ mod tests {
         .unwrap();
 
         let s = Store::init(conn).unwrap();
-        assert_eq!(
-            translations(&s),
-            [("a region".to_string(), Some(1)), ("a page not in the library".to_string(), None)],
-            "an unreadable PDF leaves the upgrade to go on"
-        );
-        assert_eq!(s.unused_translations().unwrap(), 1);
+        assert_eq!(translations(&s)[0], ("a region".to_string(), None), "nothing is laid out while the library opens");
+        assert_eq!(s.unused_translations().unwrap(), 1, "an unreadable PDF leaves the count to go on");
+        assert_eq!(translations(&s), [("a region".to_string(), Some(1)), ("a page not in the library".to_string(), None)]);
+        assert_eq!(s.setting(PDF_REGIONS_PENDING).unwrap(), None, "once");
+        assert_eq!(Store::open_in_memory().unwrap().setting(PDF_REGIONS_PENDING).unwrap(), None, "a new library has nothing to give");
     }
 
     #[test]

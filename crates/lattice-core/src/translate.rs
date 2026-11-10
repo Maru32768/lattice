@@ -321,15 +321,15 @@ pub fn retranslate(store: &Store, article_id: i64, target: &Target) -> Result<us
 
 /// What the Page view saves a PDF's regions under, unknown to `drop_translations`: left in place, they
 /// would keep showing the old translation there. Whatever keeps them from being read must not stop the
-/// retranslation, which only leaves those few rows.
-fn pdf_piece_hashes(store: &Store, article_id: i64) -> Vec<String> {
+/// retranslation, which only leaves those few rows. Empty for an article that is no PDF.
+pub(crate) fn pdf_piece_hashes(store: &Store, article_id: i64) -> Vec<String> {
     let hashes = match store.latest_snapshot(article_id) {
         Ok(Some(s)) if s.content_type.as_deref() == Some(pdf::CONTENT_TYPE) => region_hashes(&s.body),
         Ok(_) => return Vec::new(),
         Err(e) => Err(e.to_string()),
     };
     hashes.unwrap_or_else(|e| {
-        log::warn!("reading the regions of article {article_id} to retranslate it: {e}");
+        log::warn!("reading the regions of article {article_id}: {e}");
         Vec::new()
     })
 }
