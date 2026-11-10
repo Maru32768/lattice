@@ -803,6 +803,12 @@ async fn overlay_translate(
                 .zip(&t.results)
                 .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
                 .collect();
+            // Saved during the wait or the call, the page's rows go to its article; one the tab has left keeps what it had.
+            let owner = if browser.document(webview.label()) == document {
+                browser::page_article(&webview)
+            } else {
+                owner
+            };
             app.store.insert_segments(target, segments::PROMPT_VERSION, owner, &rows).map_err(err)?;
             // A paragraph that is a whole block is the Reader's translation too, and the article's ⋯ offers 訳し直す by what it has.
             if let Some(id) = article.filter(|_| !rows.is_empty()) {
