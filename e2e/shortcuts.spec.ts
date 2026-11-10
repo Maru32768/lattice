@@ -210,6 +210,13 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await field.focus();
   await app.keyboard.press("j");
   await expect(field, "a first key left waiting when the field was left is dropped").toHaveValue("j › 次のキー(Enterで確定 / Escで取消)");
+  await row(app, "次の項目へ").getByRole("button", { name: "+ キーを追加" }).click();
+  await expect(
+    row(app, "次の項目へ").getByRole("button", { name: /キーを押してください/ }),
+    "what a waiting first key found stays to be clicked",
+  ).toBeVisible();
+  await app.keyboard.press("Escape");
+  await field.focus();
 
   await app.keyboard.press("Escape");
   await expect(field).toHaveValue("");

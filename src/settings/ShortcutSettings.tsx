@@ -49,6 +49,8 @@ export function ShortcutSettings() {
   /** Finding by the key pressed: null while finding by text. `first` may still get a second key; `key` is whole. */
   const [byKey, setByKey] = useState<{ first?: string; key?: string } | null>(null);
   const field = useRef<HTMLInputElement>(null);
+  /** The field was left since its last key: a first key still waiting is dropped at the next key, not on leaving, so the actions it found stay there to be clicked. */
+  const left = useRef(false);
   const clash = conflicts(bindings);
 
   /** What the row says of its key `k`: another action that runs at the same place has it too, or it starts a two-key binding and so does nothing alone. */
@@ -81,7 +83,10 @@ export function ShortcutSettings() {
 
   /** Esc clears the key found, and with none it goes back to finding by text. */
   function findKey(e: React.KeyboardEvent) {
-    const p = pressed(byKey?.first, e);
+    const p = pressed(left.current ? undefined : byKey?.first, e);
+    if (p) {
+      left.current = false;
+    }
     if (p === "cancel") {
       setByKey(byKey?.first || byKey?.key ? {} : null);
     } else if (p) {
@@ -203,8 +208,9 @@ export function ShortcutSettings() {
             placeholder={t(byKey ? "shortcutSettings.byKeyPrompt" : "shortcutSettings.find")}
             aria-label={t(byKey ? "shortcutSettings.byKey" : "shortcutSettings.find")}
             onChange={(e) => setText(e.target.value)}
-            // As recording does: a first key left waiting would join whatever is pressed on coming back.
-            onBlur={() => setByKey((b) => (b?.first ? {} : b))}
+            onBlur={() => {
+              left.current = true;
+            }}
             onKeyDown={
               byKey
                 ? findKey
