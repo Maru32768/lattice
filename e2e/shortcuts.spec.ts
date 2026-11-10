@@ -189,9 +189,12 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await expect(field, "Ctrl+Tab is a key to find, not a move to the next tab").toHaveValue("Ctrl Tab › 次のキー(Enterで確定 / Escで取消)");
   await app.keyboard.press("Enter");
   await expect(names).toHaveText(["次のタブ"]);
+  await app.keyboard.press("Control+p");
+  await app.keyboard.press("Enter");
+  await expect(names).toHaveText(["コマンドパレット"]);
+  await expect(app.getByRole("dialog", { name: "コマンドパレット" }), "the key is looked up, not run").toHaveCount(0);
 
   await app.keyboard.press("Control+b");
-  await expect(app.locator(".prefix-hint"), "the key is looked up, not run").toBeHidden();
   await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "本文", "タブ", "ペイン"]);
   await app.keyboard.press("z");
   await expect(field).toHaveValue("Ctrl B › z");
