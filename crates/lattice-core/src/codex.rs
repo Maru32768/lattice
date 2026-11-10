@@ -36,6 +36,15 @@ const DISABLED_FEATURES: &[&str] = &[
     "tool_suggest",
 ];
 
+/// The flags that take the agent's tools away. `codex debug prompt-input` takes them too, which the tests use.
+fn lockdown_args() -> Vec<String> {
+    let mut args: Vec<String> = ["-c", "web_search=disabled"].map(String::from).into();
+    for f in DISABLED_FEATURES {
+        args.extend(["--disable".into(), (*f).into()]);
+    }
+    args
+}
+
 /// Replaces the CLI's own instructions, written for a coding agent with tools: they are a third of the
 /// input of every call (3440 of 9842 tokens), which spends usage on what none of these calls needs.
 const BASE_INSTRUCTIONS: &str = "Do what the prompt asks with the text you are given, and reply only with JSON matching the requested schema. \
@@ -101,7 +110,8 @@ impl CodexCli {
 
         let mut cmd = Command::new(&self.program);
         cmd.args(["exec", "--json", "--ephemeral", "--skip-git-repo-check", "--ignore-user-config", "--ignore-rules"])
-            .args(["--sandbox", "read-only", "--color", "never", "-c", "web_search=disabled"])
+            .args(["--sandbox", "read-only", "--color", "never"])
+            .args(lockdown_args())
             .args(self.model_args())
             // A JSON string is a TOML one, with a Windows path's backslashes escaped.
             .args(["-c".to_string(), format!("model_instructions_file={}", Value::from(instructions_path.to_string_lossy()))])
@@ -109,9 +119,6 @@ impl CodexCli {
             .arg(&cwd)
             .arg("--output-schema")
             .arg(&schema_path);
-        for f in DISABLED_FEATURES {
-            cmd.args(["--disable", f]);
-        }
         // Instructions as the prompt; the untrusted text arrives on stdin as a <stdin> block.
         cmd.arg("--")
             .arg(system)
@@ -289,6 +296,70 @@ mod tests {
         std::fs::write(&a, "x").unwrap();
         drop(TempFiles([a.clone(), b]));
         assert!(!a.exists());
+    }
+
+    /// Tools `codex exec` may still show the model, each harmless here. Code mode's `exec` runs JavaScript
+    /// with no file system or network and reaches only `NESTED`. Nobody answers `request_user_input` in `codex exec`.
+    const OFFERED: &[&str] = &["functions.exec", "functions.wait", "functions.request_user_input", "functions.request_user_input_async"];
+    /// Tools `exec` reaches. The read-only sandbox rejected `apply_patch` (tried with 0.164.0), and the MCP ones
+    /// find no server, since the user config is ignored.
+    const NESTED: &[&str] = &["apply_patch", "clock__curr_time", "list_mcp_resource_templates", "list_mcp_resources", "read_mcp_resource"];
+
+    /// The tools in `codex debug prompt-input` output, and the ones code mode's `exec` reaches.
+    fn tools_in(items: &[Value]) -> (Vec<String>, Vec<String>) {
+        let (mut offered, mut nested) = (Vec::new(), Vec::new());
+        let mut lists: Vec<(String, &Value)> = items.iter().filter(|i| i["type"] == "additional_tools").map(|i| (String::new(), &i["tools"])).collect();
+        while let Some((prefix, tools)) = lists.pop() {
+            for t in tools.as_array().into_iter().flatten() {
+                let name = format!("{prefix}{}", t["name"].as_str().unwrap_or("?"));
+                if t["type"] == "namespace" {
+                    lists.push((format!("{name}."), &t["tools"]));
+                    continue;
+                }
+                let description = t["description"].as_str().unwrap_or("");
+                nested.extend(description.split("declare const tools: { ").skip(1).map(|d| d.split('(').next().unwrap_or("").to_string()));
+                offered.push(name);
+            }
+        }
+        (offered, nested)
+    }
+
+    /// Codex adds tools between releases, and its model catalog turns some on whatever the flags say
+    /// (code mode, subagents): this reads what the installed CLI would show the model, without a model call.
+    #[test]
+    fn the_installed_codex_shows_the_model_only_harmless_tools() {
+        let dir = std::env::temp_dir().join(format!("lattice-codex-tools-{}", std::process::id()));
+        let (home, cwd) = (dir.join("home"), dir.join("cwd"));
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&cwd).unwrap();
+        // The catalog decides most of the tools. A home without config.toml stands for `--ignore-user-config`.
+        let codex_home = std::env::var_os("CODEX_HOME").map(PathBuf::from).or_else(|| dirs::home_dir().map(|h| h.join(".codex")));
+        if let Some(catalog) = codex_home.map(|h| h.join("models_cache.json")).filter(|p| p.exists()) {
+            std::fs::copy(catalog, home.join("models_cache.json")).unwrap();
+        }
+        let out = std::process::Command::new("codex")
+            .args(["debug", "prompt-input"])
+            .args(lockdown_args())
+            .arg("x")
+            .env("CODEX_HOME", &home)
+            .current_dir(&cwd)
+            .output();
+        let _ = std::fs::remove_dir_all(&dir);
+        let out = match out {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("skipped: no codex on PATH");
+                return;
+            }
+            out => out.unwrap(),
+        };
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        let items: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap();
+        assert!(items.iter().any(|i| i["type"] == "additional_tools"), "no tool list: has the prompt-input format changed?");
+        let (offered, nested) = tools_in(&items);
+        assert!(!offered.iter().any(|t| t == "functions.exec") || !nested.is_empty(), "exec reaches no tool: has its description changed?");
+        let unchecked: Vec<&String> =
+            offered.iter().filter(|t| !OFFERED.contains(&t.as_str())).chain(nested.iter().filter(|t| !NESTED.contains(&t.as_str()))).collect();
+        assert!(unchecked.is_empty(), "codex shows the model {unchecked:?}: turn them off in lockdown_args, or check them harmless and list them here");
     }
 
     /// Real paid call: `cargo test -p lattice-core codex -- --ignored`.
