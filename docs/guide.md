@@ -721,7 +721,7 @@ Choose Japanese or English for menus, buttons and messages. At first, Lattice fo
 Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articles**, **Documents**, **Tabs** and **Panes**. The number next to a tab's name is how many actions it holds. A dot marks a tab with an action whose keys you changed, and **!** a tab with an action whose key overlaps another's. Actions that work only in lists or in documents say **In lists** or **In documents**.
 
 - Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
-- Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` stops.
+- Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` clears the key found; pressing it again stops and turns the box back to finding by name.
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
 - When two actions that work in the same place share a key, a warning appears and only one of them runs.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
