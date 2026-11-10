@@ -348,7 +348,8 @@ pub struct SummarySource {
 pub type SegmentRow<'a> = (&'a str, &'a [Unit], &'a str, Option<&'a str>);
 
 /// A `segment_translations` row no saved article uses. By text alone, whatever target: the cache is shared by text.
-const UNUSED_TRANSLATION: &str = "article_id IS NULL AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash)";
+const UNUSED_TRANSLATION: &str =
+    "segment_translations.article_id IS NULL AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = segment_translations.source_hash)";
 
 /// A block awaiting translation, as handed to the LLM.
 #[derive(Debug, Clone)]
@@ -1018,7 +1019,7 @@ impl Store {
         tx.execute(
             "DELETE FROM segment_translations
              WHERE (article_id = ?1 OR (article_id IS NULL AND source_hash IN (SELECT text_hash FROM blocks WHERE article_id = ?1)))
-             AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = source_hash AND b.article_id != ?1)",
+             AND NOT EXISTS (SELECT 1 FROM blocks b WHERE b.text_hash = segment_translations.source_hash AND b.article_id != ?1)",
             [id],
         )?;
         let n = tx.execute("DELETE FROM articles WHERE id = ?1", [id])?;
