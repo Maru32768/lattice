@@ -16,6 +16,18 @@ const lineIn = (page: Page, i: number) =>
 
 test.use({ viewport: { width: 800, height: 600 } });
 
+/** As the PDF viewer's: a layer marked not to translate over the page, one absolutely placed span per line of text. */
+const textLayer = () => {
+  const layer = Object.assign(document.createElement("div"), { translate: false });
+  Object.assign(layer.style, { position: "fixed", inset: "0", zIndex: "2", color: "transparent" });
+  for (let y = 0; y < innerHeight; y += 10) {
+    const line = Object.assign(document.createElement("span"), { textContent: `text layer line ${y}` });
+    Object.assign(line.style, { position: "absolute", left: "0", right: "0", top: `${y}px`, height: "10px" });
+    layer.append(line);
+  }
+  document.body.append(layer);
+};
+
 test("the overlay reports the paragraph on its reading line, and scrolls a place back to that line", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
@@ -197,10 +209,12 @@ test("the same place is not reported twice, as a box of the page's own keeps scr
 test("in a PDF translated only lower down, the paragraph on the line is the place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(textLayer);
   await page.evaluate(() => {
     const ps = document.querySelectorAll("p");
-    // As the PDF viewer's: regions take the pointer once translated, and only paragraph 14 below the line is.
+    // As the PDF viewer's: regions take the pointer, above the text layer, once translated; only paragraph 14 below the line is.
     ps.forEach((p, i) => (p.style.pointerEvents = i === 14 ? "auto" : "none"));
+    Object.assign(ps[14].style, { position: "relative", zIndex: "3" });
     const r = ps[12].getBoundingClientRect();
     scrollBy(0, r.top + 0.5 * r.height - innerHeight * 0.15);
   });
@@ -210,6 +224,7 @@ test("in a PDF translated only lower down, the paragraph on the line is the plac
 test("of two columns on the line, the left one, read first, is the place", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(textLayer);
   await page.evaluate(() => {
     const column = (text: string, left: string, top: number) => {
       const p = Object.assign(document.createElement("p"), { textContent: text });
@@ -352,6 +367,22 @@ test("while a place is still waited for, a box scrolling by itself reports nothi
   });
   expect(await page.evaluate(() => window.__lattice!.scrollToText("Page paragraph 30.", 0.5))).toBe(false);
   await page.evaluate(() => document.getElementById("carousel")!.scrollTo(0, 100));
+  await page.waitForTimeout(600);
+  expect(await reported(page)).toBeUndefined();
+});
+
+test("with no text layer on the line, nothing is looked for by position, as a hidden drawer's paragraph", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    // A closed drawer: invisible, taking no pointer, its paragraph across the reading line.
+    const drawer = Object.assign(document.createElement("p"), { textContent: "Search the documentation" });
+    Object.assign(drawer.style, { position: "fixed", top: "0", left: "0", width: "40%", height: "100%", margin: "0", opacity: "0", pointerEvents: "none" });
+    document.body.prepend(drawer);
+    const code = Object.assign(document.createElement("pre"), { textContent: "let x = 1;\n".repeat(200) });
+    document.querySelectorAll("p")[20].after(code);
+    scrollBy(0, code.getBoundingClientRect().top + 200);
+  });
   await page.waitForTimeout(600);
   expect(await reported(page)).toBeUndefined();
 });

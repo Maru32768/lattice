@@ -1070,22 +1070,28 @@ function placeHere(): { text: string; at: number } | null {
     const block = shown.find((b) => b.getBoundingClientRect().top <= line) ?? shown[0];
     return block && { block, top: block.getBoundingClientRect().top };
   };
-  /** Looked for once: undefined until then, null when there is none. */
+  /**
+   * Looked for once, and only once a probe has met a text layer: on an ordinary page a block the probes miss (under a
+   * code block, a picture) is not a paragraph passed through, and the look walks the whole page.
+   */
   let through: { block: HTMLElement; top: number } | null | undefined;
-  const lookThrough = () => (through === undefined ? (through = passedThrough() ?? null) : through);
+  const lookThrough = () => (!layered ? null : through === undefined ? (through = passedThrough() ?? null) : through);
   const onLineThrough = () => {
     const t = lookThrough();
     return t && t.top <= line ? placeOf(t.block) : null;
   };
   // On the line; then, under a text layer, the paragraph it covers there (one translated just below must not win: a PDF
   // page translated below one that is not); then just below, as the line often falls between two paragraphs.
-  const found = probe(line) ?? (layered ? onLineThrough() : null) ?? probe(line + 16) ?? onLineThrough();
+  const found = probe(line) ?? onLineThrough() ?? probe(line + 16) ?? onLineThrough();
   if (found) {
     return found;
   }
-  // Not past a passed-through paragraph just below the line for a translated one further down.
-  const below = Math.min(line + innerHeight / 2, lookThrough()?.top ?? Infinity);
-  for (let y = line + 32; y < below; y += 16) {
+  for (let y = line + 32; y < line + innerHeight / 2; y += 16) {
+    // Not past a passed-through paragraph for a translated one further down.
+    const t = lookThrough();
+    if (t && t.top <= y) {
+      return placeOf(t.block);
+    }
     const place = probe(y);
     if (place) {
       return place;
