@@ -153,8 +153,13 @@ fn text_runs(marked: &str) -> Vec<TextRun> {
 }
 
 /// The blocks of `to_ir` with their places. A block that runs on across a column, a page or a figure
-/// becomes one region per piece, each translated on its own (`piece_texts`).
+/// becomes one region per piece, each translated on its own (`piece_texts`). Panics are caught as in `read`, which
+/// covers only the parse: one in the layout would otherwise also stop the upgrade that gives a PDF its translations.
 pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
+    std::panic::catch_unwind(|| laid_out_regions(bytes)).unwrap_or_else(|_| Err(msg!("pdf.parseFailed")))
+}
+
+fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
     let doc = read(bytes)?;
     let (lines, body, _) = lay_out(&doc);
     let vocab = vocabulary(&lines);

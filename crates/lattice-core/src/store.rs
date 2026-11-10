@@ -505,17 +505,15 @@ fn rehash_content(tx: &rusqlite::Transaction) -> Result<()> {
 }
 
 /// A saved PDF's Page view keeps the translations of its regions under hashes none of its blocks has: unowned, they
-/// would count as unused. A PDF that cannot be read leaves its rows so, as retranslating it does. Panics are caught here
-/// too (only `pdf::read` catches its own): one PDF that panics while laid out would otherwise stop every start.
+/// would count as unused. A PDF that cannot be read leaves its rows so, as retranslating it does.
 fn own_pdf_regions(tx: &rusqlite::Transaction) -> Result<()> {
-    let regions = |b: &[u8]| std::panic::catch_unwind(|| crate::translate::region_hashes(b)).unwrap_or_else(|_| Err("the PDF reader panicked".into()));
     let mut pdfs = tx.prepare(
         "SELECT article_id, encoding, body FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)",
     )?;
     let mut rows = pdfs.query([crate::pdf::CONTENT_TYPE])?;
     while let Some(row) = rows.next()? {
         let (id, enc, body): (i64, String, Vec<u8>) = (row.get(0)?, row.get(1)?, row.get(2)?);
-        match inflate_bytes(&enc, &body).map_err(|e| e.to_string()).and_then(|b| regions(&b)) {
+        match inflate_bytes(&enc, &body).map_err(|e| e.to_string()).and_then(|b| crate::translate::region_hashes(&b)) {
             Ok(hashes) => {
                 tx.execute(
                     "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL AND source_hash IN (SELECT value FROM json_each(?2))",
