@@ -112,25 +112,7 @@ test("unused translations are deleted only after a confirmation", async ({ app }
   const button = app.getByRole("button", { name: "12件を削除…" });
   await expect(button).toBeVisible();
   // A Page view translates 3 more while the section is open.
-  await app.evaluate(() => {
-    const internals: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
-    if (!internals || typeof internals !== "object" || !("invoke" in internals) || typeof internals.invoke !== "function") {
-      throw new Error("Tauri invoke is unavailable");
-    }
-    const invoke = internals.invoke;
-    let more = 3;
-    internals.invoke = async (cmd: string, args?: unknown, options?: unknown): Promise<unknown> => {
-      const result: unknown = await Reflect.apply(invoke, internals, [cmd, args, options]);
-      if ((cmd === "unused_translations" || cmd === "delete_unused_translations") && typeof result === "number") {
-        const n = result + more;
-        if (cmd === "delete_unused_translations") {
-          more = 0;
-        }
-        return n;
-      }
-      return result;
-    };
-  });
+  await app.evaluate(() => void ((window as unknown as { __moreUnused: number }).__moreUnused = 3));
   await button.click();
   const dialog = app.getByRole("alertdialog", { name: "使われていない訳を削除しますか？" });
   await expect(dialog).toContainText("15件の訳を削除します");

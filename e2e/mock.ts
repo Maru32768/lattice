@@ -123,6 +123,8 @@ const vocabItem = (id: number, c: { entry_id: number }): Extract<ReviewItem, { t
 const dueVocab = () => [...vocabCards].filter(([, c]) => c.due && !entry(c.entry_id).suspended);
 let network: NetworkSettings = { mode: "public", allow: [], deny: [] };
 let unusedTranslations = 12;
+/** What a Page view translated since: a test sets `window.__moreUnused`. */
+const moreUnused = () => (window as unknown as { __moreUnused?: number }).__moreUnused ?? 0;
 const store = {
   autoRender: true,
   autoClassify: true,
@@ -993,10 +995,11 @@ export const handlers = {
   pick_data_dir: () => null,
   open_data_dir: none,
   open_log_dir: none,
-  unused_translations: (): number => unusedTranslations,
+  unused_translations: (): number => unusedTranslations + moreUnused(),
   delete_unused_translations: (): number => {
-    const n = unusedTranslations;
+    const n = unusedTranslations + moreUnused();
     unusedTranslations = 0;
+    (window as unknown as { __moreUnused?: number }).__moreUnused = 0;
     return n;
   },
   set_data_dir: (): string => "C:\\Users\\e2e\\LatticeData",
