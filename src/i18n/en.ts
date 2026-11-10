@@ -340,7 +340,7 @@ export const en = {
   "storageSection.deleteUnused": (p) => `Delete ${plural(p.count, "translation", "translations")}…`,
   "storageSection.confirmUnused": "Delete unused translations?",
   "storageSection.unusedWarning": (p) =>
-    `Deletes ${plural(p.count, "translation", "translations")}. The translations of articles' text, and those made in a saved article's Page view, stay. Opening such a page again translates it with AI again. This cannot be undone.`,
+    `Deletes ${plural(p.count, "translation", "translations")}. The translations of articles' text, and those shown in a saved article's Page view, stay. Opening such a page again translates it with AI again. This cannot be undone.`,
   "storageSection.unusedDeleted": (p) => `Deleted ${plural(p.count, "translation", "translations")}`,
   "update.install": "Update and restart",
   "update.downloading": "Downloading {percent}%",

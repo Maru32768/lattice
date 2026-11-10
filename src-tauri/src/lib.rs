@@ -772,6 +772,14 @@ async fn overlay_translate(
     };
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut cached = saved()?;
+    // Unowned, a saved page's own text (none of its article's blocks) would count as unused: also what it translated
+    // before it was saved.
+    let owner = browser::page_article(&webview);
+    if let Some(id) = owner
+        && let Err(e) = app.store.claim_segments(id, &hashes, target)
+    {
+        log::warn!("overlay translate: keeping the translations of article {id}'s page: {e}");
+    }
     if !cached_only && hashes.iter().any(|h| !cached.contains_key(h)) {
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
         // This wait can take minutes behind other calls: the page may be gone, and whatever was
@@ -779,7 +787,6 @@ async fn overlay_translate(
         if browser.document(webview.label()) != document {
             return Err("page left".into());
         }
-        let owner = browser::page_article(&webview);
         cached = saved()?;
         let mut misses: Vec<usize> = Vec::new();
         for (i, h) in hashes.iter().enumerate() {
@@ -796,7 +803,6 @@ async fn overlay_translate(
                 .zip(&t.results)
                 .filter_map(|(&i, r)| r.as_ref().map(|(u, o)| (hashes[i].as_str(), &u[..], o.provider.as_str(), o.model.as_deref())))
                 .collect();
-            // Unowned, a page's own text (none of its article's blocks) would count as unused.
             app.store.insert_segments(target, segments::PROMPT_VERSION, owner, &rows).map_err(err)?;
             // A paragraph that is a whole block is the Reader's translation too, and the article's ⋯ offers 訳し直す by what it has.
             if let Some(id) = article.filter(|_| !rows.is_empty()) {

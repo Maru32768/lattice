@@ -332,7 +332,7 @@ export const ja = {
   "storageSection.deleteUnused": "{count}件を削除…",
   "storageSection.confirmUnused": "使われていない訳を削除しますか？",
   "storageSection.unusedWarning":
-    "{count}件の訳を削除します。記事の本文の訳と、保存した記事のPage表示で作った訳は残ります。削除した訳のページをまた開くと、AIでもう一度訳します。元に戻せません。",
+    "{count}件の訳を削除します。記事の本文の訳と、保存した記事のPage表示に出た訳は残ります。削除した訳のページをまた開くと、AIでもう一度訳します。元に戻せません。",
   "storageSection.unusedDeleted": "{count}件の訳を削除しました",
   "update.install": "更新して再起動",
   "update.downloading": "ダウンロード中{percent}%",

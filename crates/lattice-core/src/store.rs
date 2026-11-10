@@ -1229,6 +1229,16 @@ impl Store {
         tx.commit()
     }
 
+    /// Gives the saved article `page_article` the translations under `hashes` that no article has: its Page view shows
+    /// them, though they were made before it was saved (or before translations recorded their page).
+    pub fn claim_segments(&self, page_article: i64, hashes: &[String], target_language: &str) -> Result<usize> {
+        self.conn().execute(
+            "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL AND target_language = ?3
+             AND source_hash IN (SELECT value FROM json_each(?2)) AND EXISTS (SELECT 1 FROM articles WHERE id = ?1)",
+            params![page_article, json(&hashes), target_language],
+        )
+    }
+
     /// How many saved translations no saved article uses: none of its blocks has the text, and its Page view did not make it.
     /// They are those of pages not in the library, and of paragraphs an article no longer has since it was extracted again.
     pub fn unused_translations(&self) -> Result<usize> {
@@ -2104,6 +2114,23 @@ mod tests {
         assert_eq!(left, ["shared paragraph", "own paragraph", "the sidebar of a's page", "read on its page before it was saved"]);
         let fts: i64 = s.conn().query_row("SELECT count(*) FROM translations_fts WHERE translations_fts MATCH 'library'", [], |r| r.get(0)).unwrap();
         assert_eq!(fts, 0, "nor found by search");
+    }
+
+    #[test]
+    fn a_saved_articles_page_view_claims_what_it_shows_from_before_it_was_saved() {
+        let s = Store::open_in_memory().unwrap();
+        save_translation(&s, "the sidebar", None);
+        let a = save_paragraphs(&s, "https://a.dev/1", &["body"]);
+        let gone = save_paragraphs(&s, "https://a.dev/2", &["other"]);
+        assert!(s.delete_article(gone).unwrap());
+        let hashes = [sha256_hex("the sidebar"), sha256_hex("not translated yet")];
+        assert_eq!(s.claim_segments(gone, &hashes, "ja").unwrap(), 0, "a deleted article claims nothing");
+        assert_eq!(s.claim_segments(a, &hashes, "en").unwrap(), 0, "nor one into another target");
+        assert_eq!(s.unused_translations().unwrap(), 1);
+
+        assert_eq!(s.claim_segments(a, &hashes, "ja").unwrap(), 1);
+        assert_eq!(s.unused_translations().unwrap(), 0);
+        assert_eq!(translations(&s), [("the sidebar".to_string(), Some(a))]);
     }
 
     #[test]

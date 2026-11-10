@@ -1004,8 +1004,8 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 
 The **Unused translations** row in **Settings › Logs & storage** shows how many translations no article's text or Page view uses. They are what you translated in the Page view on pages not in your library, and the old paragraphs of articles whose text was extracted again. The row's button deletes them, which cannot be undone.
 
-- Kept: the translations of articles' text, and those made in a saved article's Page view
-- Of what saved web pages' Page views translated in 0.3.0 or earlier, the text outside the article's paragraphs (menus and the like) is deleted too. Saved PDFs keep their translations.
+- Kept: the translations of articles' text, and those shown in a saved article's Page view (also those made before it was saved)
+- Of what saved web pages' Page views translated in 0.3.0 or earlier, the text outside the article's paragraphs (menus and the like) is deleted too, until you open the page again. Saved PDFs keep their translations.
 - Opening a page whose translations were deleted translates it with AI again.
 
 ### Move the data folder
