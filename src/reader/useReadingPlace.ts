@@ -46,7 +46,8 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     // Reader tab's place does not move this one. A tie is no older (the e2e clock stands still).
     const stored = seq === undefined ? readingPlaces.get(String(article)) : undefined;
     // A place the article does not have (a Page view's from a part of the page the Reader lacks) leaves the tab's own.
-    const wentToStored = !!stored && (!mine || (stored.block === undefined && stored.t >= mine.t)) && goTo(stored);
+    const preferred = !!stored && (!mine || (stored.block === undefined && stored.t >= mine.t));
+    const wentToStored = preferred && goTo(stored);
     if (!wentToStored && mine?.place) {
       goTo(mine.place);
     } else if (!wentToStored && mine) {
@@ -60,7 +61,7 @@ export function useReadingPlace(tab: number, article: number, seq: number | unde
     // text) is still the article's until the reader moves to another block: leaving at once must not put this Reader's
     // top over it. By the block, not the scrollTop, which moves by itself as blocks above grow (a translation arriving);
     // once moved, back at that block is a place of the reader's too.
-    let unshown = !!stored && !wentToStored;
+    let unshown = preferred && !wentToStored;
     const shownBlock = unshown ? placeAt(false)?.block : undefined;
 
     /** The place on screen, kept for the article; undefined while the Reader is hidden and has none to read. */

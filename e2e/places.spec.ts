@@ -171,6 +171,11 @@ test("the same article in two tabs keeps a place in each", async ({ shell }) => 
   await expect.poll(() => readerTop(doc)).toBe(para(20));
   await tabs.nth(1).click();
   await expect.poll(() => readerTop(doc)).toBe(para(50));
+  // Shown again at its own place, a tab's Page view opens there, not at the other tab's.
+  await tabs.nth(0).click();
+  await expect.poll(() => readerTop(doc)).toBe(para(20));
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => ((await callsOf(shell, "browser_open")).at(-1) as { place: { text: string } | null }).place?.text).toBe(para(20));
 });
 
 test("a page whose article was deleted keeps no place for it", async ({ shell }) => {
