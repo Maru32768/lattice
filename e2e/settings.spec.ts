@@ -109,12 +109,34 @@ test("unused translations are deleted only after a confirmation", async ({ app }
     .locator(".ni")
     .filter({ has: app.locator(".label").getByText("ログ・保存場所", { exact: true }) })
     .click();
-  await app.getByRole("button", { name: "12件を削除…" }).click();
+  const button = app.getByRole("button", { name: "12件を削除…" });
+  await expect(button).toBeVisible();
+  // A Page view translates 3 more while the section is open.
+  await app.evaluate(() => {
+    const internals: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+    if (!internals || typeof internals !== "object" || !("invoke" in internals) || typeof internals.invoke !== "function") {
+      throw new Error("Tauri invoke is unavailable");
+    }
+    const invoke = internals.invoke;
+    let more = 3;
+    internals.invoke = async (cmd: string, args?: unknown, options?: unknown): Promise<unknown> => {
+      const result: unknown = await Reflect.apply(invoke, internals, [cmd, args, options]);
+      if ((cmd === "unused_translations" || cmd === "delete_unused_translations") && typeof result === "number") {
+        const n = result + more;
+        if (cmd === "delete_unused_translations") {
+          more = 0;
+        }
+        return n;
+      }
+      return result;
+    };
+  });
+  await button.click();
   const dialog = app.getByRole("alertdialog", { name: "使われていない訳を削除しますか？" });
-  await expect(dialog).toContainText("12件の訳を削除します");
+  await expect(dialog).toContainText("15件の訳を削除します");
   expect(await callsOf(app, "delete_unused_translations")).toEqual([]);
   await dialog.getByRole("button", { name: "削除" }).click();
-  await expect(app.getByRole("status")).toHaveText("12件の訳を削除しました");
+  await expect(app.getByRole("status")).toHaveText("15件の訳を削除しました");
   await expect(app.getByRole("button", { name: "0件を削除…" })).toBeDisabled();
   expect(await callsOf(app, "delete_unused_translations")).toEqual([{}]);
 });
