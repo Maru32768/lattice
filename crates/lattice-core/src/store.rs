@@ -1236,12 +1236,13 @@ impl Store {
     }
 
     /// Gives the saved article `page_article` the translations under `hashes` that no article has: its Page view shows
-    /// them, though they were made before it was saved (or before translations recorded their page).
-    pub fn claim_segments(&self, page_article: i64, hashes: &[String], target_language: &str) -> Result<usize> {
+    /// them, though they were made before it was saved (or before translations recorded their page). Into any target,
+    /// as the page has the text.
+    pub fn claim_segments(&self, page_article: i64, hashes: &[String]) -> Result<usize> {
         self.conn().execute(
-            "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL AND target_language = ?3
+            "UPDATE segment_translations SET article_id = ?1 WHERE article_id IS NULL
              AND source_hash IN (SELECT value FROM json_each(?2)) AND EXISTS (SELECT 1 FROM articles WHERE id = ?1)",
-            params![page_article, json(&hashes), target_language],
+            params![page_article, json(&hashes)],
         )
     }
 
@@ -2130,11 +2131,10 @@ mod tests {
         let gone = save_paragraphs(&s, "https://a.dev/2", &["other"]);
         assert!(s.delete_article(gone).unwrap());
         let hashes = [sha256_hex("the sidebar"), sha256_hex("not translated yet")];
-        assert_eq!(s.claim_segments(gone, &hashes, "ja").unwrap(), 0, "a deleted article claims nothing");
-        assert_eq!(s.claim_segments(a, &hashes, "en").unwrap(), 0, "nor one into another target");
+        assert_eq!(s.claim_segments(gone, &hashes).unwrap(), 0, "a deleted article claims nothing");
         assert_eq!(s.unused_translations().unwrap(), 1);
 
-        assert_eq!(s.claim_segments(a, &hashes, "ja").unwrap(), 1);
+        assert_eq!(s.claim_segments(a, &hashes).unwrap(), 1);
         assert_eq!(s.unused_translations().unwrap(), 0);
         assert_eq!(translations(&s), [("the sidebar".to_string(), Some(a))]);
     }

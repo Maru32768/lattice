@@ -35,6 +35,8 @@ const MAX_KEY: usize = 32;
 /// Hidden tabs keep their webview (instant switching, history and scroll kept) up to this many;
 /// creating one more closes the one hidden longest, and the UI reopens it when shown again.
 const MAX_PARKED: usize = 3;
+/// Of a page not in the library, how many translated texts its save can give the article it becomes.
+const MAX_UNOWNED: usize = 20_000;
 
 /// The webview label of tab `key`; an error for a key the UI could not have made.
 pub fn label(key: &str) -> Result<String, String> {
@@ -131,6 +133,8 @@ struct TabState {
     pdfs: HashSet<i64>,
     /// How many documents have begun loading, which `pushState` and in-page links do not count as.
     documents: u64,
+    /// The text hashes the page asked to translate while it was in no article, for the one it is saved as (`save_page`).
+    unowned: HashSet<String>,
 }
 
 impl Default for TabState {
@@ -145,6 +149,7 @@ impl Default for TabState {
             asked: None,
             pdfs: HashSet::new(),
             documents: 0,
+            unowned: HashSet::new(),
         }
     }
 }
@@ -222,6 +227,19 @@ impl Browser {
     /// Changes when the webview's page is replaced, unlike its URL, which a page can change itself.
     pub fn document(&self, label: &str) -> u64 {
         self.with_tab(label, |t| t.documents)
+    }
+
+    /// Notes what a page in no article asked to translate. Bounded: the page decides how often it asks.
+    pub fn note_unowned(&self, label: &str, hashes: &[String]) {
+        self.with_tab(label, |t| {
+            let room = MAX_UNOWNED.saturating_sub(t.unowned.len());
+            t.unowned.extend(hashes.iter().take(room).cloned());
+        });
+    }
+
+    /// What the page in `label` noted with `note_unowned` since it loaded, once.
+    pub fn take_unowned(&self, label: &str) -> Vec<String> {
+        self.with_tab(label, |t| t.unowned.drain().collect())
     }
 
     /// Every page webview, by label.
@@ -626,6 +644,7 @@ pub async fn browser_open(
                 browser.with_tab(wv.label(), |t| {
                     t.history = (true, true); // until the new page's overlay reports
                     t.documents += 1;
+                    t.unowned.clear();
                 });
             }
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
@@ -1180,6 +1199,20 @@ mod tests {
         assert!(browser.pdf_allowed(&tab, 5), "Back to the earlier one still works");
         assert!(!browser.pdf_allowed(&label("k2").unwrap(), 5), "another tab");
         assert!(!browser.pdf_allowed("main", 5), "only page webviews");
+    }
+
+    #[test]
+    fn a_page_hands_what_it_translated_to_its_save_once_and_within_bounds() {
+        let browser = Browser::default();
+        let hashes: Vec<String> = (0..MAX_UNOWNED + 5).map(|i| i.to_string()).collect();
+        browser.note_unowned("browser-a", &hashes[..2]);
+        browser.note_unowned("browser-a", &hashes[..3]);
+        let mut taken = browser.take_unowned("browser-a");
+        taken.sort();
+        assert_eq!(taken, ["0", "1", "2"]);
+        assert!(browser.take_unowned("browser-a").is_empty(), "once");
+        browser.note_unowned("browser-b", &hashes);
+        assert_eq!(browser.take_unowned("browser-b").len(), MAX_UNOWNED);
     }
 
     #[test]

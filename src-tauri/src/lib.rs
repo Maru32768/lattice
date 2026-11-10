@@ -176,6 +176,10 @@ async fn save_page(app: State<'_, App>, browser: State<'_, Browser>, handle: tau
             ingest::save_url(&app.store, &app.providers.http, wv.url().map_err(err)?.as_str()).await?
         }
     };
+    // What the page translated before it was saved is the article's Page view's now.
+    if let Err(e) = app.store.claim_segments(id, &browser.take_unowned(&browser::label(&tab)?)) {
+        log::warn!("saving a page: keeping the translations it showed: {e}");
+    }
     indexed(&app, id)
 }
 
@@ -773,12 +777,15 @@ async fn overlay_translate(
     let hashes: Vec<String> = snippets.iter().map(|s| segments::source_hash(s)).collect();
     let mut cached = saved()?;
     // Unowned, a saved page's own text (none of its article's blocks) would count as unused: also what it translated
-    // before it was saved.
+    // before it was saved, which a page not saved yet notes for its save.
     let owner = browser::page_article(&webview);
-    if let Some(id) = owner
-        && let Err(e) = app.store.claim_segments(id, &hashes, target)
-    {
-        log::warn!("overlay translate: keeping the translations of article {id}'s page: {e}");
+    match owner {
+        Some(id) => {
+            if let Err(e) = app.store.claim_segments(id, &hashes) {
+                log::warn!("overlay translate: keeping the translations of article {id}'s page: {e}");
+            }
+        }
+        None => browser.note_unowned(webview.label(), &hashes),
     }
     if !cached_only && hashes.iter().any(|h| !cached.contains_key(h)) {
         let _permit = app.overlay_llm.acquire().await.map_err(err)?;
