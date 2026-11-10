@@ -1250,7 +1250,7 @@ impl Store {
         }
         let pdfs: Vec<i64> = self
             .conn()
-            .prepare("SELECT DISTINCT article_id FROM snapshots WHERE content_type = ?1")?
+            .prepare("SELECT article_id FROM snapshots s WHERE content_type = ?1 AND id = (SELECT max(id) FROM snapshots WHERE article_id = s.article_id)")?
             .query_map([crate::pdf::CONTENT_TYPE], |r| r.get(0))?
             .collect::<Result<_>>()?;
         for id in pdfs {
