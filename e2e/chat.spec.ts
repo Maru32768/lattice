@@ -30,7 +30,7 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
   await expect(app.locator(".vim-mode")).toHaveCount(0);
 
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await section(app, "ショートカット").click();
+  await section(app, "Vim").click();
   await app.getByLabel("対話の入力欄とメモでVimキーバインドを使う").check();
   await app.keyboard.press("Escape");
 

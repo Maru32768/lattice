@@ -178,6 +178,19 @@
 .stg .kbd.clash { border-color: var(--tr-line); color: var(--tr-ink); }
 .stg .warn-text { color: var(--tr-ink); }
 .stg .btn.rec { border-color: var(--acc-line); background: var(--acc-soft); color: var(--acc-ink); }
+.stg .keys { display: flex; flex-direction: column; gap: 12px; }
+.stg .keys section + section { margin-top: 12px; }
+.stg .keys-find { display: flex; gap: 8px; align-items: center; }
+.stg .keys-find .input { flex: 1; max-width: 360px; }
+.stg .keys-tabs { align-self: flex-start; }
+.stg .keys-tabs .n { font: 11px var(--mono); opacity: .7; }
+.stg .keys-tabs .mark { width: 6px; height: 6px; border-radius: 50%; background: var(--acc); }
+.stg .keys-tabs .mark.warn { width: auto; height: auto; background: none; color: var(--tr-ink); font-weight: 700; }
+.stg .keys-tabs .on .mark.warn { color: inherit; }
+/* Seventy rows: tighter than the other settings, and a reset only where there is something to reset. */
+.stg .keys .set { padding: 8px 0; }
+.stg .keys .btn.reset:disabled { display: none; }
+.stg .set .scope { margin-left: 8px; font-size: 11.5px; font-weight: 400; color: var(--ink3); }
 .manage .import-groups { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 12.5px; }
 
 /* Import filters (FeedFilterEditor.tsx): in a feed's edit row and in Settings › 取り込みフィルタ. */

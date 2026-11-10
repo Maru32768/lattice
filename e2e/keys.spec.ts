@@ -123,18 +123,17 @@ test("Ctrl+B 2 selects the second tab of the focused pane, and Ctrl+B 1 the firs
   await expect(hint(app)).toBeHidden();
 });
 
-test("Ctrl+B ? and ? list every binding by where it runs; Esc and ? close the list", async ({ app }) => {
+test("Ctrl+B ? and ? list every binding by what it is for, as Settings does, with where it runs; Esc and ? close the list", async ({ app }) => {
   const help = app.getByRole("dialog", { name: "キー一覧" });
   await press(app, "Control+b", "?");
   await expect(help).toBeVisible();
-  await expect(help.locator("h3")).toHaveText(["どこでも", "一覧", "本文"]);
-  const keysOf = (label: string) =>
-    help
-      .locator(".it")
-      .filter({ has: app.locator(".it-l").getByText(label, { exact: true }) })
-      .locator(".kbd");
+  await expect(help.locator("h3")).toHaveText(["全般", "一覧", "記事", "本文", "タブ", "ペイン"]);
+  const item = (label: string) => help.locator(".it").filter({ has: app.locator(".it-l").getByText(label, { exact: true }) });
+  const keysOf = (label: string) => item(label).locator(".kbd");
   await expect(keysOf("下へスクロール")).toHaveText(["j"]);
   await expect(keysOf("次の項目へ")).toHaveText(["j", "↓"]);
+  await expect(item("次の記事を開く").locator(".s")).toHaveText("本文で");
+  await expect(item("お気に入り").locator(".s")).toHaveCount(0);
   await app.keyboard.press("j");
   await expect(list(app).locator(".row.cur"), "the list owns no keys under it").toHaveCount(0);
   await app.keyboard.press("Escape");

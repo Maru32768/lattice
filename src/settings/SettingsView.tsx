@@ -17,6 +17,7 @@ import { R2BackupSection } from "./R2BackupSection";
 import { ExportSection } from "./ExportSection";
 import { StorageSection } from "./StorageSection";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { VimSettings } from "./VimSettings";
 import { LanguageSettings } from "./LanguageSettings";
 import { BrowserSettings } from "./BrowserSettings";
 import { TaskbarSettings } from "./TaskbarSettings";
@@ -73,6 +74,8 @@ function Body({ id, onChanged, onOpenUrl, onFeeds }: { id: SettingsSection; onCh
       return <LanguageSettings />;
     case "shortcuts":
       return <ShortcutSettings />;
+    case "vim":
+      return <VimSettings />;
     case "browser":
       return <BrowserSettings />;
     case "taskbar":

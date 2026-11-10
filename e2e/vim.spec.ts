@@ -41,7 +41,7 @@ test("the engine stays unloaded while Vim is off, even with the vimrc diagnostic
   await nav(app, "対話").click();
   await expect(app.getByLabel("質問", { exact: true })).toHaveJSProperty("tagName", "TEXTAREA");
   await nav(app, "設定").click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "Vim" }).click();
   const rc = app.getByLabel("vimrc", { exact: true });
   await rc.fill("nnoremap x y\nset number");
   await expect(app.getByText("適用: 1件")).toBeVisible();
@@ -305,7 +305,7 @@ test("changing the vimrc applies to the open editor, and an old mapping goes", a
   await expect(chatInput(page)).toHaveText("ab");
 
   await nav(page, "設定").click();
-  await page.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await page.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "Vim" }).click();
   await page.getByLabel("vimrc", { exact: true }).fill('let mapleader=","\nnnoremap Z x');
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
@@ -342,7 +342,7 @@ test("without clipboard in the vimrc a yank stays in the editor", async ({ page,
 test("Settings: a half-typed line of the vimrc reaches the editors only when the field is left", async ({ app }) => {
   const stored = () => app.evaluate(() => localStorage.getItem("lattice.vimrc"));
   await nav(app, "設定").click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "Vim" }).click();
   const rc = app.getByLabel("vimrc", { exact: true });
   await rc.fill("unmap <");
   await expect(app.getByText("適用: 1件"), "what it would do shows as it is typed").toBeVisible();
@@ -355,7 +355,7 @@ test("Settings: the toggle, a monospaced vimrc, reading a file in, and the lines
   await nav(app, "設定").click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "要約・対話" }).click();
   await expect(app.getByLabel("対話の入力欄とメモでVimキーバインドを使う"), "the toggle moved out of chat settings").toHaveCount(0);
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "Vim" }).click();
 
   const rc = app.getByLabel("vimrc", { exact: true });
   await expect(rc).toHaveCSS("font-family", /JetBrains Mono/);
@@ -381,7 +381,7 @@ test("Settings: the toggle, a monospaced vimrc, reading a file in, and the lines
   await app.reload();
   await expect(list(app).locator(".row").first()).toBeVisible({ timeout: 30_000 });
   await nav(app, "設定").click();
-  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "ショートカット" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni", { hasText: "Vim" }).click();
   await expect(app.getByLabel("vimrc", { exact: true }), "it is kept").toHaveValue(/^nnoremap j gj\n/);
 });
 

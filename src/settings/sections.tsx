@@ -17,6 +17,7 @@ export type SettingsSection =
   | "review"
   | "language"
   | "shortcuts"
+  | "vim"
   | "taskbar"
   | "update"
   | "backup"
@@ -52,6 +53,7 @@ export const SECTIONS: { id: SettingsSection; group: Group; title: PlainKey; lea
   { id: "review", group: "learn", title: "settingsView.review", lead: "settingsView.reviewLead" },
   { id: "language", group: "app", title: "language.title" },
   { id: "shortcuts", group: "app", title: "settingsView.shortcuts", lead: "settingsView.shortcutsLead" },
+  { id: "vim", group: "app", title: "settingsView.vim" },
   { id: "taskbar", group: "app", title: "settingsView.taskbar" },
   { id: "update", group: "app", title: "settingsView.update", lead: "settingsView.updateLead" },
   { id: "backup", group: "data", title: "settingsView.backup", lead: "settingsView.backupLead" },

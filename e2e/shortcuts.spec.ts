@@ -9,8 +9,11 @@ async function openShortcuts(page: import("@playwright/test").Page) {
 const row = (page: import("@playwright/test").Page, label: string) =>
   page.locator(".stg .set").filter({ has: page.locator(".h").getByText(label, { exact: true }) });
 
+const tab = (page: import("@playwright/test").Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name} \\d+`) });
+
 test("a recorded key runs the action, survives a reload, and can be removed", async ({ app }) => {
   await openShortcuts(app);
+  await tab(app, "一覧").click();
   const next = row(app, "次の項目へ");
   await next.getByRole("button", { name: "+ キーを追加" }).click();
   await expect(next.getByRole("button", { name: /キーを押してください/ })).toBeVisible();
@@ -30,13 +33,15 @@ test("a recorded key runs the action, survives a reload, and can be removed", as
   await expect(list(app).locator(".row.cur")).toHaveCount(1);
 
   await openShortcuts(app);
+  await tab(app, "一覧").click();
   await row(app, "次の項目へ").getByRole("button", { name: "次の項目へからnを外す" }).click();
   await expect(row(app, "次の項目へ").locator(".kbd.key")).toHaveText(["j×", "↓×"]);
-  await expect(row(app, "次の項目へ").getByRole("button", { name: "既定に戻す" })).toBeDisabled();
+  await expect(row(app, "次の項目へ").getByRole("button", { name: "既定に戻す" }), "nothing left to reset").toBeHidden();
 });
 
 test("a two-key binding starts from any key and runs only after both", async ({ app }) => {
   await openShortcuts(app);
+  await tab(app, "一覧").click();
   const next = row(app, "次の項目へ");
   await next.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("g");
@@ -70,11 +75,13 @@ test("keys forwarded from a focused page start and complete a two-key binding", 
 
 test("the default keys after Ctrl+B can be removed, and a single key under a first key is flagged", async ({ app }) => {
   await openShortcuts(app);
+  await tab(app, "ペイン").click();
   const down = row(app, "ペインを下に分割");
   await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl B › "×']);
   await down.getByRole("button", { name: 'ペインを下に分割からCtrl B › "を外す' }).click();
   await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×"]);
 
+  await tab(app, "記事").click();
   const fav = row(app, "お気に入り");
   await fav.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("Control+b");
@@ -90,21 +97,116 @@ test("the default keys after Ctrl+B can be removed, and a single key under a fir
   await expect(app.locator(".prefix-hint")).toContainText("ペインを右に分割");
 });
 
-test("actions are grouped by where they run, and the same key in two groups is no conflict", async ({ app }) => {
+test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
   await openShortcuts(app);
-  await expect(app.locator(".stg main h2")).toHaveText(["Vim", "どこでも", "一覧", "本文"]);
-  const group = (i: number) => app.locator(".stg main .grp").nth(i + 1);
-  await expect(group(0).locator(".set .h").getByText("コマンドパレット", { exact: true })).toBeVisible();
-  await expect(group(1).locator(".set .h").getByText("次の項目へ", { exact: true })).toBeVisible();
-  await expect(group(2).locator(".set .h").getByText("下へスクロール", { exact: true })).toBeVisible();
+  await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 11", "記事 12", "本文 20", "タブ 7", "ペイン 18"]);
+  await expect(tab(app, "全般")).toHaveAttribute("aria-selected", "true");
+  const panel = app.getByRole("tabpanel");
+  await expect(panel).toHaveAccessibleName("全般 6");
+  await expect(panel.locator(".set .h > span:first-child")).toHaveText([
+    "コマンドパレット",
+    "コマンドを実行",
+    "キー一覧",
+    "戻る・絞り込みを解除",
+    "戻る(アプリ内の履歴)",
+    "進む(アプリ内の履歴)",
+  ]);
+  await expect(app.locator(".stg main h2"), "Vim has its own section").toHaveCount(0);
+
+  await tab(app, "一覧").click();
+  await expect(tab(app, "一覧")).toHaveAttribute("aria-selected", "true");
+  await expect(row(app, "次の項目へ").locator(".scope")).toHaveText("一覧で");
+  await expect(row(app, "フィードやフォルダを上へ移動(サイドバー)").locator(".scope"), "it runs everywhere").toHaveCount(0);
   await expect(row(app, "次の項目へ").locator(".kbd.key").first()).toHaveText("j×");
+  await tab(app, "記事").click();
+  await expect(row(app, "次の記事を開く").locator(".scope")).toHaveText("本文で");
+  await tab(app, "本文").click();
   await expect(row(app, "下へスクロール").locator(".kbd.key").first()).toHaveText("j×");
   await expect(row(app, "下へスクロール").getByRole("note")).toHaveCount(0);
   await expect(app.locator(".stg main .kbd.key.clash")).toHaveCount(0);
+  await expect(app.getByRole("tab").locator(".mark"), "nothing changed, nothing overlaps").toHaveCount(0);
+  await expect(row(app, "下へスクロール").getByRole("button", { name: "既定に戻す" }), "nothing to reset").toBeHidden();
 });
 
-test("a key bound to two actions is flagged, and Esc cancels recording", async ({ app }) => {
+test("the arrow keys, Home and End move between the tabs, and Tab goes on into the one shown", async ({ app }) => {
   await openShortcuts(app);
+  await tab(app, "全般").focus();
+  await app.keyboard.press("ArrowRight");
+  await expect(tab(app, "一覧")).toBeFocused();
+  await expect(tab(app, "一覧")).toHaveAttribute("aria-selected", "true");
+  await expect(row(app, "次の項目へ")).toBeVisible();
+  await app.keyboard.press("ArrowLeft");
+  await app.keyboard.press("ArrowLeft");
+  await expect(tab(app, "ペイン"), "from the first it wraps to the last").toBeFocused();
+  await expect(row(app, "ペインを下に分割")).toBeVisible();
+  await app.keyboard.press("Home");
+  await expect(tab(app, "全般")).toBeFocused();
+  await app.keyboard.press("End");
+  await expect(tab(app, "ペイン")).toBeFocused();
+  await expect(app.getByRole("tab").and(app.locator('[tabindex="0"]')), "one tab in the Tab order").toHaveCount(1);
+  await app.keyboard.press("Tab");
+  await expect.poll(() => app.evaluate(() => !!document.activeElement?.closest("[role='tabpanel']"))).toBe(true);
+});
+
+test("the search finds actions in every tab by name or key, under their tab's name, and Esc empties it", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "ペイン").click();
+  const find = app.getByRole("textbox", { name: "操作の名前かキーで探す" });
+  const names = app.locator(".stg main .set .h > span:first-child");
+  await find.fill("先頭");
+  await expect(app.getByRole("tablist"), "whatever the tab").toHaveCount(0);
+  await expect(app.locator(".stg main h2")).toHaveText(["一覧", "本文"]);
+  await expect(names).toHaveText(["一覧の先頭へ", "本文の先頭へ"]);
+  await find.fill("shift g");
+  await expect(names).toHaveText(["一覧の末尾へ", "本文の末尾へ"]);
+  await find.fill("Ctrl+Shift+");
+  await expect(names, "the key as it is stored also matches").toHaveText(["印刷", "前のタブ", "タブを別ウィンドウで開く / メインウィンドウに戻す"]);
+  await find.fill("みつからない");
+  await expect(app.getByRole("status")).toHaveText("一致する操作はありません");
+
+  await find.press("Escape");
+  await expect(find).toHaveValue("");
+  await expect(find).toBeFocused();
+  await expect(tab(app, "ペイン")).toHaveAttribute("aria-selected", "true");
+});
+
+test("pressing a key finds the actions it runs; its keys do not run them", async ({ app }) => {
+  await openShortcuts(app);
+  await app.getByRole("button", { name: "キーを押して探す" }).click();
+  const field = app.getByRole("textbox", { name: "キーを押して探す" });
+  const names = app.locator(".stg main .set .h > span:first-child");
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute("placeholder", "探すキーを押してください(Escで終了)");
+
+  await app.keyboard.press("j");
+  await expect(field, "a second key may follow").toHaveValue("j › 次のキー(Enterで確定 / Escで取消)");
+  await expect(names).toHaveText(["次の項目へ", "下へスクロール"]);
+  await app.keyboard.press("Enter");
+  await expect(field).toHaveValue("j");
+  await expect(names).toHaveText(["次の項目へ", "下へスクロール"]);
+
+  await app.keyboard.press("Control+b");
+  await expect(app.locator(".prefix-hint"), "the key is looked up, not run").toBeHidden();
+  await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "本文", "タブ", "ペイン"]);
+  await app.keyboard.press("z");
+  await expect(field).toHaveValue("Ctrl B › z");
+  await expect(names).toHaveText(["フォーカスモード"]);
+
+  await app.keyboard.press("q");
+  await app.keyboard.press("Enter");
+  await expect(app.getByRole("status")).toHaveText("qを割り当てた操作はありません");
+
+  await app.keyboard.press("Escape");
+  await expect(field).toHaveValue("");
+  await expect(app.getByRole("tablist")).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(app.getByRole("textbox", { name: "操作の名前かキーで探す" }), "back to finding by name").toBeFocused();
+  await expect(app.getByRole("button", { name: "キーを押して探す" })).toHaveAttribute("aria-pressed", "false");
+});
+
+test("a key bound to two actions is flagged on the rows and their tabs, and Esc cancels recording", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
   const fav = row(app, "お気に入り");
   await fav.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("Escape");
@@ -115,8 +217,14 @@ test("a key bound to two actions is flagged, and Esc cancels recording", async (
   await app.keyboard.press("j");
   await app.keyboard.press("Enter");
   await expect(fav.getByRole("note")).toHaveText("jは「次の項目へ」にも割り当てられています。jは「下へスクロール」にも割り当てられています");
+  await expect(fav.getByRole("button", { name: "既定に戻す" })).toBeVisible();
+  await expect(tab(app, "記事")).toHaveAccessibleName("記事 12 変更あり 重なりあり");
+  await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 11 重なりあり");
+  await expect(tab(app, "本文")).toHaveAccessibleName("本文 20 重なりあり");
+  await expect(tab(app, "全般")).toHaveAccessibleName("全般 6");
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
+  await expect(app.getByRole("tab").locator(".mark")).toHaveCount(0);
 });
 
 test("the Reader's buttons name the key as it is bound now", async ({ page }) => {

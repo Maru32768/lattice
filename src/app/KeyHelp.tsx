@@ -5,7 +5,7 @@ import { useT } from "../i18n";
 import { useBindings } from "../lib/keys";
 import { ACTION_GROUPS, actionLabel, keyLabel, keyOf } from "../lib/keymap";
 
-/** Every binding, by where it runs. */
+/** Every binding, by what it is for, as Settings › Shortcuts has them. */
 export function KeyHelp({ onClose }: { onClose: () => void }) {
   const t = useT();
   const bindings = useBindings();
@@ -42,13 +42,14 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
         <h2>{t("keys.keyHelp")}</h2>
         <div className="pal-list" ref={body} tabIndex={-1}>
           {ACTION_GROUPS.map((g) => (
-            <section key={g.title}>
+            <section key={g.id}>
               <h3 className="gh">{t(g.title)}</h3>
               {g.actions
                 .filter((a) => bindings[a.id].length > 0)
                 .map((a) => (
                   <div className="it" key={a.id}>
                     <span className="it-l">{actionLabel(t, a.id)}</span>
+                    {a.scope && <span className="s">{t(`keys.scope.${a.scope}`)}</span>}
                     <span className="r">
                       {bindings[a.id].map((k) => (
                         <Kbd key={k}>{keyLabel(k)}</Kbd>

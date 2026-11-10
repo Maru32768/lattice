@@ -696,6 +696,7 @@ Open **Settings** at the bottom of the navigation. Settings are grouped into **A
 | Learn | **Review** | [Today's review](#todays-review) |
 | App | **Display language** | [Display language](#display-language) |
 | | **Shortcuts** | [Keyboard shortcuts](#keyboard-shortcuts) |
+| | **Vim** | [Vim key bindings](#vim-key-bindings) |
 | | **Startup & taskbar** | [Startup and taskbar](#startup-and-taskbar) |
 | | **Updates** | [Updates](#updates) |
 | Data | **Backup**, **Cloud backup (R2)**, **Export**, **Logs & storage** | [Data and backups](#data-and-backups) |
@@ -717,12 +718,13 @@ Choose Japanese or English for menus, buttons and messages. At first, Lattice fo
 
 ### Shortcuts
 
-Lists every shortcut, grouped by where it works: **Everywhere**, **Lists** and **Documents**.
+Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articles**, **Documents**, **Tabs** and **Panes**. The number next to a tab's name is how many actions it holds. A dot marks a tab with an action whose keys you changed, and **!** a tab with an action whose key overlaps another's. Actions that work only in lists or in documents say **In lists** or **In documents**.
 
+- Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
+- Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` stops.
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
-- When a key is assigned to two actions, the one higher in the list wins, and a warning appears.
-- **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys.
-- **Vim** sets up [Vim key bindings](#vim-key-bindings) and the vimrc.
+- When two actions that work in the same place share a key, a warning appears and only one of them runs.
+- **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 
 Shortcuts are stored on this computer only.
 
@@ -829,7 +831,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 
 ### Vim key bindings
 
-Turn on **Vim key bindings in the chat input and notes** in **Settings › Shortcuts** to use Vim keys in the chat box and in notes. It is off by default and stored on this computer only. Modes, counts, `.`, text objects, search, macros and the rest of Vim's editing work as in Vim.
+Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim** to use Vim keys in the chat box and in notes. It is off by default and stored on this computer only. Modes, counts, `.`, text objects, search, macros and the rest of Vim's editing work as in Vim.
 
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.

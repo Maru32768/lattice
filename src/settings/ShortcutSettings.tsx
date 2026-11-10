@@ -1,219 +1,266 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useRef, useState } from "react";
 import { isCustom, resetKeys, setKeys, useBindings } from "../lib/keys";
-import { ACTIONS, ACTION_GROUPS, actionLabel, chordFrom, conflicts, keyLabel, keyOf, scopesOverlap, type ActionId } from "../lib/keymap";
+import {
+  ACTIONS,
+  ACTION_GROUPS,
+  KEY_GROUPS,
+  actionLabel,
+  chordFrom,
+  conflicts,
+  keyLabel,
+  keyOf,
+  scopesOverlap,
+  type ActionDef,
+  type ActionId,
+  type KeyGroup,
+} from "../lib/keymap";
 import { useT } from "../i18n";
-import { SetRow, Switch } from "../ui/SetRow";
-import { readUtf8 } from "../lib/files";
-import { setVimEnabled, setVimrc, useVimEnabled, useVimrc } from "../vim/vim";
-import { KNOWN, parseVimrc } from "../vim/vimrc";
 
-const VIMRC_MAX_MB = 1;
-
-/** Vim in the text fields: on or off, and the vimrc with what it could not use. */
-function VimSettings() {
-  const t = useT();
-  const on = useVimEnabled();
-  const vimrc = useVimrc();
-  // Half-typed lines stay here while it is typed in: `unmap <leader>x` passes through `unmap <`, and what an editor gives up stays gone until the app restarts.
-  // Leaving the field applies it, also by leaving the window: losing the text would be worse than a key gone until a restart.
-  // shortcut: a window closed by a key while this field has the keyboard loses what it holds, upgrade if vimrcs get edited here at length.
-  const [draft, setDraft] = useState(vimrc);
-  const [stored, setStored] = useState(vimrc);
-  if (stored !== vimrc) {
-    setStored(vimrc);
-    setDraft(vimrc);
+/**
+ * A key pressed in for a binding, `first` being the key pressed so far: the binding's first key, the whole of it (the next key,
+ * or Enter to keep `first` alone), or Esc. Null: none of these, and Tab moves the focus on.
+ */
+function pressed(first: string | undefined, e: React.KeyboardEvent): { first: string } | { key: string } | "cancel" | null {
+  if (e.key === "Tab") {
+    return null;
   }
-  const apply = () => {
-    if (draft !== vimrc) {
-      setVimrc(draft);
-    }
-  };
-  const applyOnLeave = useEffectEvent(apply);
-  useEffect(() => () => applyOnLeave(), []);
-  const [error, setError] = useState<string | null>(null);
-  const entries = parseVimrc(draft, KNOWN);
-  const skipped = entries.flatMap((e) => (e.kind === "skip" ? [e] : []));
-
-  async function load(file: File | undefined) {
-    if (!file) {
-      return;
-    }
-    if (file.size > VIMRC_MAX_MB * 1024 * 1024) {
-      return setError(t("be.file.tooLarge", { max: VIMRC_MAX_MB }));
-    }
-    const text = await readUtf8(file);
-    setError(text === null ? t("be.file.notUtf8") : null);
-    if (text !== null) {
-      setVimrc(text);
-    }
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape") {
+    return "cancel";
   }
-
-  return (
-    <section aria-labelledby="vim-group">
-      <h2 id="vim-group">{t("shortcutSettings.vimGroup")}</h2>
-      <div className="grp">
-        <SetRow title={t("shortcutSettings.vim")} htmlFor="vim-on" desc={t("shortcutSettings.vimDesc")}>
-          <Switch id="vim-on" checked={on} onChange={setVimEnabled} />
-        </SetRow>
-        <div className="set wide">
-          <label className="h" htmlFor="vim-rc">
-            {t("shortcutSettings.vimrc")}
-          </label>
-          <div className="d">{t("shortcutSettings.vimrcDesc")}</div>
-          <textarea
-            id="vim-rc"
-            className="mono"
-            value={draft}
-            rows={8}
-            spellCheck={false}
-            wrap="off"
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={apply}
-          />
-          <div className="acts">
-            <label className="btn sm">
-              {t("shortcutSettings.vimrcLoad")}
-              <input
-                type="file"
-                className="vh"
-                onChange={(e) => {
-                  load(e.target.files?.[0]).catch((err: unknown) => setError(String(err)));
-                  e.target.value = "";
-                }}
-              />
-            </label>
-            {draft.trim() && <span className="muted">{t("shortcutSettings.vimrcApplied", { n: entries.length - skipped.length })}</span>}
-            {error && (
-              <span className="error-text" role="alert">
-                {error}
-              </span>
-            )}
-          </div>
-          {skipped.length > 0 && (
-            <details open>
-              <summary>{t("shortcutSettings.vimrcSkipped", { n: skipped.length })}</summary>
-              <ul className="vimrc-skips">
-                {skipped.map((e, i) => (
-                  <li key={i}>
-                    <span className="muted">{t("shortcutSettings.vimrcLine", { line: e.line })}</span> <code>{e.text}</code>{" "}
-                    <span className="muted">{t(`shortcutSettings.vimrcReason.${e.reason}`)}</span>
-                  </li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      </div>
-    </section>
-  );
+  const k = keyOf(e.nativeEvent);
+  if (!k) {
+    // A modifier alone: wait for the key it modifies.
+    return null;
+  }
+  return first ? { key: k === "Enter" ? first : `${first} ${k}` } : { first: k };
 }
 
-/** Settings › ショートカット: every shell action with its keys; add (record), remove, reset. */
+/** Settings › ショートカット: the actions by what they are for, a tab each, with their keys (add by recording, remove, reset), and a search across the tabs by name or by the key itself. */
 export function ShortcutSettings() {
   const t = useT();
   const bindings = useBindings();
   /** `first`: the key pressed so far. The next key makes it a two-key binding; Enter keeps it alone. */
   const [recording, setRecording] = useState<{ id: ActionId; first?: string } | null>(null);
+  const [tab, setTab] = useState<KeyGroup>("app");
+  const [text, setText] = useState("");
+  /** Finding by the key pressed: null while finding by text. `first` may still get a second key; `key` is whole. */
+  const [byKey, setByKey] = useState<{ first?: string; key?: string } | null>(null);
+  const field = useRef<HTMLInputElement>(null);
   const clash = conflicts(bindings);
 
-  function record({ id, first }: { id: ActionId; first?: string }, e: React.KeyboardEvent) {
-    if (e.key === "Tab") {
-      return;
-    } // leaves the button, which cancels
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      return setRecording(null);
-    }
-    const k = keyOf(e.nativeEvent);
-    if (!k) {
-      return;
-    } // a modifier alone: wait for the key it modifies
-    if (!first) {
-      return setRecording({ id, first: k });
-    }
-    const key = k === "Enter" ? first : `${first} ${k}`;
-    if (!bindings[id].includes(key)) {
-      setKeys(id, [...bindings[id], key]);
-    }
-    setRecording(null);
+  /** A key the action shares with another that runs at the same place, or that starts a two-key binding and so does nothing alone. */
+  function notesOf(a: ActionDef) {
+    const keys = bindings[a.id];
+    const shared = keys.flatMap((k) =>
+      (clash.get(k) ?? [])
+        .filter((o) => o !== a && scopesOverlap(o, a))
+        .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
+    );
+    const shadowed = keys.flatMap((k) => {
+      const by = chordFrom(bindings, k, a.scope);
+      return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
+    });
+    return [...shared, ...shadowed];
   }
+
+  function record({ id, first }: { id: ActionId; first?: string }, e: React.KeyboardEvent) {
+    const p = pressed(first, e);
+    if (p === "cancel") {
+      setRecording(null);
+    } else if (p && "first" in p) {
+      setRecording({ id, first: p.first });
+    } else if (p) {
+      if (!bindings[id].includes(p.key)) {
+        setKeys(id, [...bindings[id], p.key]);
+      }
+      setRecording(null);
+    }
+  }
+
+  /** Esc clears the key found, and with none it goes back to finding by text. */
+  function findKey(e: React.KeyboardEvent) {
+    const p = pressed(byKey?.first, e);
+    if (p === "cancel") {
+      setByKey(byKey?.first || byKey?.key ? {} : null);
+    } else if (p) {
+      setByKey(p);
+    }
+  }
+
+  function onTabKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    const i = KEY_GROUPS.indexOf(tab);
+    const to = ({ ArrowLeft: i - 1, ArrowRight: i + 1, Home: 0, End: KEY_GROUPS.length - 1 } as Partial<Record<string, number>>)[keyOf(e.nativeEvent) ?? ""];
+    if (to === undefined) {
+      return;
+    }
+    e.preventDefault();
+    const n = (to + KEY_GROUPS.length) % KEY_GROUPS.length;
+    setTab(KEY_GROUPS[n]!);
+    (e.currentTarget.children[n] as HTMLElement).focus();
+  }
+
+  const query = text.trim().toLowerCase();
+  const [keyFirst, keyWhole] = [byKey?.first, byKey?.key];
+  const matches = (a: ActionDef) => {
+    const keys = bindings[a.id];
+    if (keyWhole) {
+      return keys.includes(keyWhole);
+    }
+    if (keyFirst) {
+      return keys.some((k) => k === keyFirst || k.startsWith(`${keyFirst} `));
+    }
+    return [actionLabel(t, a.id), ...keys, ...keys.map(keyLabel)].some((s) => s.toLowerCase().includes(query));
+  };
+  const found = (byKey ? keyFirst || keyWhole : query)
+    ? ACTION_GROUPS.map((g) => ({ ...g, actions: g.actions.filter(matches) })).filter((g) => g.actions.length)
+    : null;
+
+  const row = (a: ActionDef) => {
+    const keys = bindings[a.id];
+    const mine = recording?.id === a.id ? recording : null;
+    const notes = notesOf(a);
+    return (
+      <div className="set" key={a.id}>
+        <span className="h">
+          <span>{actionLabel(t, a.id)}</span>
+          {a.scope && <span className="scope">{t(`keys.scope.${a.scope}`)}</span>}
+        </span>
+        {notes.length > 0 && (
+          <span className="d warn-text" role="note">
+            {notes.join(t("shortcutSettings.clashSeparator"))}
+          </span>
+        )}
+        <span className="ctl keys-ctl">
+          {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
+          {keys.map((k) => (
+            <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
+              {keyLabel(k)}
+              <button
+                className="x"
+                onClick={() =>
+                  setKeys(
+                    a.id,
+                    keys.filter((x) => x !== k),
+                  )
+                }
+                aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+          <button
+            className={`btn sm ghost${mine ? " rec" : ""}`}
+            aria-pressed={!!mine}
+            onClick={() => setRecording(mine ? null : { id: a.id })}
+            onKeyDown={mine ? (e) => record(mine, e) : undefined}
+            onBlur={() => setRecording((r) => (r?.id === a.id ? null : r))}
+          >
+            {mine?.first
+              ? t("shortcutSettings.pressNextKey", { first: keyLabel(mine.first) })
+              : mine
+                ? t("shortcutSettings.pressKey")
+                : t("shortcutSettings.addKey")}
+          </button>
+          <button className="btn sm ghost reset" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
+            {t("shortcutSettings.reset")}
+          </button>
+        </span>
+      </div>
+    );
+  };
 
   return (
     <>
-      <VimSettings />
       <div className="btn-row">
         <button className="btn" onClick={() => resetKeys()} disabled={!ACTIONS.some((a) => isCustom(a.id, bindings))}>
           {t("shortcutSettings.resetAll")}
         </button>
         <span className="muted">{t("shortcutSettings.hint")}</span>
       </div>
-      {ACTION_GROUPS.map((g, i) => (
-        <section key={g.title} aria-labelledby={`keys-${i}`}>
-          <h2 id={`keys-${i}`}>{t(g.title)}</h2>
-          <div className="grp">
-            {g.actions.map((a) => {
-              const keys = bindings[a.id];
-              const mine = recording?.id === a.id ? recording : null;
-              const shared = keys.flatMap((k) =>
-                (clash.get(k) ?? [])
-                  .filter((o) => o !== a && scopesOverlap(o, a))
-                  .map((o) => t("shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) })),
-              );
-              const shadowed = keys.flatMap((k) => {
-                const by = chordFrom(bindings, k, a.scope);
-                return by ? [t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : [];
-              });
-              return (
-                <div className="set" key={a.id}>
-                  <span className="h">{actionLabel(t, a.id)}</span>
-                  {shared.length + shadowed.length > 0 && (
-                    <span className="d warn-text" role="note">
-                      {[...shared, ...shadowed].join(t("shortcutSettings.clashSeparator"))}
+      <div className="keys">
+        <div className="keys-find">
+          <input
+            ref={field}
+            className="input"
+            value={byKey ? (keyFirst ? t("shortcutSettings.pressNextKey", { first: keyLabel(keyFirst) }) : keyWhole ? keyLabel(keyWhole) : "") : text}
+            readOnly={!!byKey}
+            placeholder={t(byKey ? "shortcutSettings.byKeyPrompt" : "shortcutSettings.find")}
+            aria-label={t(byKey ? "shortcutSettings.byKey" : "shortcutSettings.find")}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={
+              byKey
+                ? findKey
+                : (e) => {
+                    // The first Esc empties the field, the next leaves it.
+                    if (e.key === "Escape" && text) {
+                      e.preventDefault();
+                      setText("");
+                    }
+                  }
+            }
+          />
+          <button
+            className={`btn sm${byKey ? " rec" : ""}`}
+            aria-pressed={!!byKey}
+            onClick={() => {
+              setByKey(byKey ? null : {});
+              field.current?.focus();
+            }}
+          >
+            {t("shortcutSettings.byKey")}
+          </button>
+        </div>
+        {found ? (
+          found.length ? (
+            found.map((g) => (
+              <section key={g.id} aria-labelledby={`keys-found-${g.id}`}>
+                <h2 id={`keys-found-${g.id}`}>{t(g.title)}</h2>
+                <div className="grp">{g.actions.map(row)}</div>
+              </section>
+            ))
+          ) : (
+            <p className="muted" role="status">
+              {byKey ? t("shortcutSettings.noKeyMatch", { keyLabel: keyLabel(keyWhole ?? keyFirst ?? "") }) : t("shortcutSettings.noMatch")}
+            </p>
+          )
+        ) : (
+          <>
+            <div className="seg keys-tabs" role="tablist" aria-label={t("shortcutSettings.groups")} onKeyDown={onTabKey}>
+              {ACTION_GROUPS.map((g) => (
+                <button
+                  key={g.id}
+                  id={`keys-tab-${g.id}`}
+                  role="tab"
+                  className={g.id === tab ? "on" : ""}
+                  aria-selected={g.id === tab}
+                  aria-controls={g.id === tab ? "keys-panel" : undefined}
+                  tabIndex={g.id === tab ? 0 : -1}
+                  onClick={() => setTab(g.id)}
+                >
+                  {t(g.title)} <span className="n">{g.actions.length}</span>
+                  {g.actions.some((a) => isCustom(a.id, bindings)) && (
+                    <span className="mark" title={t("shortcutSettings.tabChanged")}>
+                      <span className="vh"> {t("shortcutSettings.tabChanged")}</span>
                     </span>
                   )}
-                  <span className="ctl keys-ctl">
-                    {keys.length === 0 && <span className="muted">{t("common.none")}</span>}
-                    {keys.map((k) => (
-                      <span key={k} className={`kbd key${clash.has(k) || chordFrom(bindings, k, a.scope) ? " clash" : ""}`}>
-                        {keyLabel(k)}
-                        <button
-                          className="x"
-                          onClick={() =>
-                            setKeys(
-                              a.id,
-                              keys.filter((x) => x !== k),
-                            )
-                          }
-                          aria-label={t("shortcutSettings.removeKey", { label: actionLabel(t, a.id), keyLabel: keyLabel(k) })}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
-                    <button
-                      className={`btn sm ghost${mine ? " rec" : ""}`}
-                      aria-pressed={!!mine}
-                      onClick={() => setRecording(mine ? null : { id: a.id })}
-                      onKeyDown={mine ? (e) => record(mine, e) : undefined}
-                      onBlur={() => setRecording((r) => (r?.id === a.id ? null : r))}
-                    >
-                      {mine?.first
-                        ? t("shortcutSettings.pressNextKey", { first: keyLabel(mine.first) })
-                        : mine
-                          ? t("shortcutSettings.pressKey")
-                          : t("shortcutSettings.addKey")}
-                    </button>
-                    <button className="btn sm ghost" onClick={() => resetKeys(a.id)} disabled={!isCustom(a.id, bindings)}>
-                      {t("shortcutSettings.reset")}
-                    </button>
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+                  {g.actions.some((a) => notesOf(a).length > 0) && (
+                    <span className="mark warn" title={t("shortcutSettings.tabClash")}>
+                      <span aria-hidden="true">!</span>
+                      <span className="vh"> {t("shortcutSettings.tabClash")}</span>
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <div className="grp" role="tabpanel" id="keys-panel" aria-labelledby={`keys-tab-${tab}`}>
+              {ACTION_GROUPS.find((g) => g.id === tab)?.actions.map(row)}
+            </div>
+          </>
+        )}
+      </div>
     </>
   );
 }
