@@ -725,8 +725,10 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
+- After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place, which brings back the keys you had before. Once you change a key after that, it can no longer be undone.
+- **Export** writes the keys you changed to the `exports` folder. Choose an exported file with **Load from file** to replace your keys with the ones in it; actions the file leaves out go back to their default keys. Any other file shows **This file can't be used here** and changes nothing.
 
-Shortcuts are stored on this computer only.
+Shortcuts are stored on this computer only. To use them on another computer, export them and load the file there.
 
 ### Browser
 
@@ -998,7 +1000,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout. Shortcuts can move to another computer: export them in **Settings › Shortcuts** and load the file there.
 
 ### Unused translations
 

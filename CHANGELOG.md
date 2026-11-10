@@ -13,6 +13,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - `?` opens the key list. `:` or `;` opens the palette with `>` already typed. In the palette, `t:` searches the open tabs.
 - **Lists and articles keep their place.** Each list, for each set of filters, opens where you left it, also after the settings and a restart. An article opens where you last read it, and switching between the Reader and the Page view keeps the paragraph you were reading. On a phone, the list keeps its filters and place when the page loads again, and articles open where you left them.
 - **Delete unused translations.** **Settings › Logs & storage** shows how many translations no article uses, such as what you translated in the Page view on pages not in your library, and deletes them. Removing an article now also deletes the translations of its Page view.
+- **Undo, export and load shortcuts.** After **Reset all to defaults** or loading a file in **Settings › Shortcuts**, **Undo** brings back the keys you had before. **Export** saves the keys you changed to a file, and **Load from file** takes them to another computer.
 
 ### Changed
 
