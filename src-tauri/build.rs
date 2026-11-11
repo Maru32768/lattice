@@ -18,6 +18,8 @@ const COMMANDS: &[&str] = &[
     "set_taskbar_badge",
     "get_ui_language",
     "set_ui_language",
+    "get_ui_prefs",
+    "set_ui_prefs",
     "article_image",
     "favicon",
     "get_image_settings",

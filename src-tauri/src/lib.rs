@@ -8,6 +8,7 @@ mod renderer;
 mod tabdrag;
 mod update;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -130,6 +131,38 @@ fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
         return Err(format!("unknown language {lang:?}"));
     }
     app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)
+}
+
+/// The settings row of a UI preference (`src/lib/prefs.ts`): `ui.` and its localStorage key. Only `lattice.` keys of
+/// letters, digits and dots, so these commands cannot reach any other setting, the `secret.` ones least of all.
+fn ui_pref_setting(key: &str) -> Result<String, String> {
+    if key.starts_with("lattice.") && key.len() <= 64 && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.') {
+        Ok(format!("ui.{key}"))
+    } else {
+        Err(format!("not a UI preference {key:?}"))
+    }
+}
+
+/// The stored ones among `keys`: a key with no row is missing.
+#[tauri::command(async)]
+fn get_ui_prefs(app: State<'_, App>, keys: Vec<String>) -> Result<HashMap<String, String>, String> {
+    let mut out = HashMap::new();
+    for key in keys {
+        if let Some(value) = app.store.setting(&ui_pref_setting(&key)?).map_err(err)? {
+            out.insert(key, value);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command(async)]
+fn set_ui_prefs(app: State<'_, App>, prefs: HashMap<String, String>) -> Result<(), String> {
+    // Every key is checked before the first is written.
+    let rows = prefs.iter().map(|(key, value)| Ok((ui_pref_setting(key)?, value))).collect::<Result<Vec<_>, String>>()?;
+    for (setting, value) in rows {
+        app.store.set_setting(&setting, Some(value)).map_err(err)?;
+    }
+    Ok(())
 }
 
 /// A native dialog's title in the display language.
@@ -1608,6 +1641,8 @@ pub fn run() {
             get_auto_render,
             get_ui_language,
             set_ui_language,
+            get_ui_prefs,
+            set_ui_prefs,
             set_auto_render,
             log_ui_error,
             import_urls,
@@ -1796,4 +1831,20 @@ pub fn run() {
         ])
         .run(context)
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ui_prefs_reach_only_their_own_rows() {
+        assert_eq!(ui_pref_setting("lattice.shortcuts").unwrap(), "ui.lattice.shortcuts");
+        assert_eq!(ui_pref_setting("lattice.vocabMarks").unwrap(), "ui.lattice.vocabMarks");
+        let long = format!("lattice.{}", "a".repeat(57));
+        for key in ["secret.openai_api_key", "ui_language", "ui.lattice.shortcuts", "lattice.a b", "lattice.a_b", "lattice.é", "", long.as_str()] {
+            assert!(ui_pref_setting(key).is_err(), "{key:?} is refused");
+        }
+        assert!(ui_pref_setting(&long[..64]).is_ok(), "64 bytes is the limit");
+    }
 }

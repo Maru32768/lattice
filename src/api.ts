@@ -187,6 +187,9 @@ export const api = {
   /** The display language; null until the UI first stores the one it detected. */
   uiLanguage: () => invoke<Lang | null>("get_ui_language"),
   setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),
+  /** The library's copies of the UI preferences in `src/lib/prefs.ts`: a key with no row is missing. */
+  uiPrefs: (keys: readonly string[]) => invoke<Record<string, string>>("get_ui_prefs", { keys }),
+  setUiPrefs: (prefs: Record<string, string>) => invoke<void>("set_ui_prefs", { prefs }),
   articleForUrl: (url: string) => invoke<ArticleRow | null>("article_for_url", { url }),
   listGenres: () => invoke<TagCount[]>("list_genres"),
   setGenre: (id: number, name: string) => invoke<void>("set_genre", { id, name }),

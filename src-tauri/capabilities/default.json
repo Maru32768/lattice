@@ -42,6 +42,8 @@
     "allow-set-autostart",
     "allow-get-ui-language",
     "allow-set-ui-language",
+    "allow-get-ui-prefs",
+    "allow-set-ui-prefs",
     "allow-article-image",
     "allow-favicon",
     "allow-rename-feed",

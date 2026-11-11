@@ -133,6 +133,8 @@ const store = {
   taskbarBadge: true,
   autostart: false,
   uiLanguage: null as string | null,
+  /** The library's UI preferences by key; a spec puts rows here before the app starts with `window.__uiPrefs`. */
+  uiPrefs: { ...(globalThis as { __uiPrefs?: Record<string, string> }).__uiPrefs } as Record<string, string>,
   keepTerms: true,
   autoTranslate: false,
   translateParallel: 3,
@@ -669,6 +671,9 @@ export const handlers = {
   set_autostart: ({ on }: { on: boolean }) => void (store.autostart = on),
   get_ui_language: (): string | null => store.uiLanguage,
   set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
+  get_ui_prefs: ({ keys }: { keys: string[] }): Record<string, string> =>
+    Object.fromEntries(keys.filter((k) => k in store.uiPrefs).map((k) => [k, store.uiPrefs[k]])),
+  set_ui_prefs: ({ prefs }: { prefs: Record<string, string> }) => void Object.assign(store.uiPrefs, prefs),
   article_for_url: ({ url }: { url: string }): ArticleRow | null => {
     const pdf = /^http:\/\/lattice-pdf\.localhost\/(\d+)$/.exec(url);
     return articles.find((a) => (pdf ? a.id === Number(pdf[1]) : a.original_url === url)) ?? null;
