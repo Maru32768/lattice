@@ -45,6 +45,7 @@ test("the library's settings win over the ones cached on this PC", async ({ shel
       "lattice.vocabMarks": "off",
       "lattice.searchEngine": JSON.stringify({ id: "google", custom: "" }),
       "lattice.vocabAutoplay": "off",
+      "lattice.chatSendKey": "enter",
     },
   );
   await navItem(shell, "単語帳").click();
@@ -59,11 +60,14 @@ test("the library's settings win over the ones cached on this PC", async ({ shel
   await expect(shell.getByLabel("検索エンジン"), "the URL bar searches with the library's engine").toHaveValue("google");
   await section(shell, "復習");
   await expect(shell.getByRole("switch", { name: "単語カードの発音を自動で再生" })).not.toBeChecked();
+  await section(shell, "要約・対話");
+  await expect(shell.getByLabel("送信キー")).toHaveValue("enter");
 
   await shell.keyboard.press("Escape");
   await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
   await expect(shell.getByLabel("質問", { exact: true }), "an empty row turns Vim off").toHaveJSProperty("tagName", "TEXTAREA");
   expect(await shell.evaluate(() => localStorage.getItem("lattice.chatVim")), "pop-outs see it off too").toBeNull();
+  await expect(shell.locator(".chat-f-row .kbd"), "the chat box sends on the library's key").toHaveText(["Enter"]);
 });
 
 test("the first start copies the settings cached on this PC into the library", async ({ shell }) => {
