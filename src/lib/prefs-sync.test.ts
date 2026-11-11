@@ -78,3 +78,27 @@ test("a setting changed while the start-up sync waits for the rows keeps its cha
   assert.equal(cache.get("lattice.vimrc"), "library", "a key left alone takes the row");
   assert.deepEqual(sent, [{ prefs: { "lattice.shortcuts": "new" } }, { prefs: { "lattice.vocabMarks": "on" } }], "nothing but the changes went to the library");
 });
+
+test("a change made after the start-up sync's plan waits for the copy it sends", async () => {
+  cache.clear();
+  cache.set("lattice.vimrc", "cached");
+  const sent: unknown[] = [];
+  const pending: (() => void)[] = [];
+  handler = (cmd, args) => {
+    if (cmd === "get_ui_prefs") {
+      return Promise.resolve({});
+    }
+    sent.push(args);
+    return new Promise<void>((r) => pending.push(r));
+  };
+  const sync = syncPrefs();
+  await tick();
+  savePref("lattice.vimrc", "new");
+  await tick();
+  assert.deepEqual(sent, [{ prefs: { "lattice.vimrc": "cached" } }], "the change waits for the copy");
+  pending.shift()!();
+  await sync;
+  await tick();
+  assert.deepEqual(sent.at(-1), { prefs: { "lattice.vimrc": "new" } }, "and lands after it");
+  pending.shift()!();
+});
