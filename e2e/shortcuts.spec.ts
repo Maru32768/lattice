@@ -437,6 +437,10 @@ test("a JSON file that is not a shortcuts file is refused and changes nothing", 
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
   await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["m×"]);
   await expect(app.getByRole("button", { name: "元に戻す", exact: true })).toBeHidden();
+
+  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q"] });
+  await expect(app.getByRole("status")).toHaveText("読み込みました");
+  await expect(app.getByRole("alert"), "a load that worked clears the last one's error").toBeHidden();
 });
 
 test("export writes the changed keys, shows where, and the file loads them back", async ({ app }) => {
