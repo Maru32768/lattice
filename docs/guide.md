@@ -317,6 +317,7 @@ The Reader and the Page view (web pages and PDFs) share these keys. They act on 
 |---|---|
 | `j` `k` `h` `l` | Scroll |
 | `d` `u` or `Ctrl+D` `Ctrl+U` | Scroll half a screen |
+| `Ctrl+F` `Ctrl+B Ctrl+B` | Scroll a screen. Within 500 ms of `Ctrl+B Ctrl+B`, `Ctrl+B` alone goes up another screen |
 | `gg` `G` | Top and bottom of the document |
 | `Shift+J` `Shift+K` | Open the next or previous article in the focused pane |
 | `f` | Put labels on the links, buttons and fields on screen. Type a label to press that one |
@@ -764,6 +765,8 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Last in the list | `G` |
 | Half a screen down the list | `d`, `Ctrl+D` |
 | Half a screen up the list | `u`, `Ctrl+U` |
+| A screen down the list | `Ctrl+F` |
+| A screen up the list | `Ctrl+B Ctrl+B` |
 | Open the article under the cursor | `Enter` |
 | Open the article under the cursor in Page | `Shift+Enter` |
 | Back / clear filters | `Esc` |

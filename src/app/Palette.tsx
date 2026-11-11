@@ -95,6 +95,8 @@ const NOT_COMMANDS = new Set<ActionId>([
   "scrollRight",
   "halfDown",
   "halfUp",
+  "pageDown",
+  "pageUp",
 ]);
 
 const URLISH = /^(https?:\/\/\S+|[\w-]+(\.[\w-]+)+(\/\S*)?)$/i;

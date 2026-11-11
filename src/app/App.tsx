@@ -389,11 +389,11 @@ export default function App() {
     revealCursor();
   }
 
-  /** How many rows half the list's height holds, for `d` and `u`. */
-  function halfList() {
+  /** How many rows `share` of the list's height holds: half for `d` and `u`, all of it for Ctrl+F and Ctrl+B Ctrl+B. */
+  function listRows(share: number) {
     const row = document.querySelector<HTMLElement>(".row, .hit");
     const pane = paneOf(row);
-    return row && pane ? Math.max(1, Math.floor(pane.clientHeight / row.offsetHeight / 2)) : 1;
+    return row && pane ? Math.max(1, Math.floor((pane.clientHeight / row.offsetHeight) * share)) : 1;
   }
 
   function openCursor(asPage: boolean) {
@@ -897,8 +897,10 @@ export default function App() {
     prev: (n) => step(-n),
     listFirst: () => step(-Infinity),
     listLast: () => step(Infinity),
-    listHalfDown: (n) => step(n * halfList()),
-    listHalfUp: (n) => step(-n * halfList()),
+    listHalfDown: (n) => step(n * listRows(1 / 2)),
+    listHalfUp: (n) => step(-n * listRows(1 / 2)),
+    listPageDown: (n) => step(n * listRows(1)),
+    listPageUp: (n) => step(-n * listRows(1)),
     open: () => openCursor(false),
     openPage: () => openCursor(true),
     scrollDown: docAction("scrollDown"),
@@ -907,6 +909,8 @@ export default function App() {
     scrollRight: docAction("scrollRight"),
     halfDown: docAction("halfDown"),
     halfUp: docAction("halfUp"),
+    pageDown: docAction("pageDown"),
+    pageUp: docAction("pageUp"),
     docTop: docAction("docTop"),
     docBottom: docAction("docBottom"),
     nextArticle: (n) => stepArticle(n),

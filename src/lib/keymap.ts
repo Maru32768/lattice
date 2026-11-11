@@ -62,6 +62,8 @@ export type ActionId =
   | "listLast"
   | "listHalfDown"
   | "listHalfUp"
+  | "listPageDown"
+  | "listPageUp"
   | "open"
   | "openPage"
   | "scrollDown"
@@ -70,6 +72,8 @@ export type ActionId =
   | "scrollRight"
   | "halfDown"
   | "halfUp"
+  | "pageDown"
+  | "pageUp"
   | "docTop"
   | "docBottom"
   | "nextArticle"
@@ -164,6 +168,9 @@ export const ACTIONS: ActionDef[] = [
   { id: "listLast", group: "list", keys: ["Shift+G"], scope: "list" },
   { id: "listHalfDown", group: "list", keys: ["D", "Ctrl+D"], scope: "list", counted: true },
   { id: "listHalfUp", group: "list", keys: ["U", "Ctrl+U"], scope: "list", counted: true },
+  { id: "listPageDown", group: "list", keys: ["Ctrl+F"], scope: "list", counted: true },
+  // Page up is the prefix pressed twice, as tmux's send-prefix passes Ctrl+B on; while it repeats, Ctrl+B alone pages on.
+  { id: "listPageUp", group: "list", keys: ["Ctrl+B Ctrl+B"], scope: "list", counted: true, repeat: true },
   { id: "open", group: "list", keys: ["Enter"], scope: "list" },
   { id: "openPage", group: "list", keys: ["Shift+Enter"], scope: "list" },
   // A focused feed or folder in the sidebar moves; the row handles these keys itself. Unscoped, but listed after the list's keys in their tab.
@@ -176,6 +183,8 @@ export const ACTIONS: ActionDef[] = [
   { id: "scrollRight", group: "doc", keys: ["L"], scope: "doc", counted: true, local: true },
   { id: "halfDown", group: "doc", keys: ["D", "Ctrl+D"], scope: "doc", counted: true, local: true },
   { id: "halfUp", group: "doc", keys: ["U", "Ctrl+U"], scope: "doc", counted: true, local: true },
+  { id: "pageDown", group: "doc", keys: ["Ctrl+F"], scope: "doc", counted: true, local: true },
+  { id: "pageUp", group: "doc", keys: ["Ctrl+B Ctrl+B"], scope: "doc", counted: true, local: true, repeat: true },
   { id: "docTop", group: "doc", keys: ["G G"], scope: "doc", local: true },
   { id: "docBottom", group: "doc", keys: ["Shift+G"], scope: "doc", local: true },
   { id: "nextArticle", group: "article", keys: ["Shift+J"], scope: "doc", counted: true },
@@ -306,11 +315,15 @@ export function conflicts(b: Bindings): Map<string, ActionDef[]> {
 
 // ---- the key state machine ----------------------------------------------------------------------
 
-/** A key sequence under way: a chord's first key, a count, and the repeat window after a `repeat` action. */
+/**
+ * A key sequence under way: a chord's first key, a count, and the repeat window after a `repeat` action.
+ * In the window the first key itself repeats only when it was also the second (`again`, Ctrl+B Ctrl+B);
+ * otherwise it starts a new chord, as tmux's prefix does.
+ */
 export interface KeySeq {
   first: string | null;
   count: number;
-  repeat: { first: string; until: number } | null;
+  repeat: { first: string; until: number; again: boolean } | null;
 }
 export const IDLE: KeySeq = { first: null, count: 0, repeat: null };
 
@@ -332,7 +345,7 @@ export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length =
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
 
 function running(action: ActionDef, sequence: string, first: string | null, count: number, now: number): KeyStep {
-  const repeat = action.repeat && first ? { first, until: now + REPEAT_MS } : null;
+  const repeat = action.repeat && first ? { first, until: now + REPEAT_MS, again: sequence === `${first} ${first}` } : null;
   return { kind: "run", action, sequence, count: action.counted ? Math.max(1, count) : 1, seq: { ...IDLE, repeat } };
 }
 
@@ -355,7 +368,7 @@ export function stepKeys(b: Bindings, seq: KeySeq, key: string, ctx: { scope: Ke
   if (seq.repeat && now < seq.repeat.until) {
     const sequence = `${seq.repeat.first} ${key}`;
     const a = actionFor(b, sequence, scope);
-    if (a?.repeat && allowed(a)) {
+    if (a?.repeat && allowed(a) && (key !== seq.repeat.first || seq.repeat.again)) {
       return running(a, sequence, seq.repeat.first, 1, now);
     }
   }

@@ -99,7 +99,7 @@ test("the default keys after Ctrl+B can be removed, and a single key under a fir
 
 test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
   await openShortcuts(app);
-  await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 11", "記事 12", "本文 20", "タブ 7", "ペイン 18"]);
+  await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 13", "記事 12", "本文 22", "タブ 7", "ペイン 18"]);
   await expect(tab(app, "全般")).toHaveAttribute("aria-selected", "true");
   const panel = app.getByRole("tabpanel");
   await expect(panel).toHaveAccessibleName("全般 6");
@@ -196,7 +196,7 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await expect(names).toHaveText(["コマンドパレット"]);
 
   await app.keyboard.press("Control+b");
-  await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "本文", "タブ", "ペイン"]);
+  await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "一覧", "本文", "タブ", "ペイン"]);
   await app.keyboard.press("z");
   await expect(field).toHaveValue("Ctrl B › z");
   await expect(names).toHaveText(["フォーカスモード"]);
@@ -250,8 +250,8 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
   );
   await tab(app, "記事").click();
   await expect(tab(app, "記事")).toHaveAccessibleName("記事 12 変更あり 重なりあり");
-  await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 11 重なりあり");
-  await expect(tab(app, "本文")).toHaveAccessibleName("本文 20 重なりあり");
+  await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 13 重なりあり");
+  await expect(tab(app, "本文")).toHaveAccessibleName("本文 22 重なりあり");
   await expect(tab(app, "全般")).toHaveAccessibleName("全般 6");
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
@@ -262,8 +262,8 @@ test("a key two list actions share is no conflict for the document's action with
   await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ search: ["/", "J"], version: 2 })));
   await page.goto("/");
   await openShortcuts(page);
-  await expect(tab(page, "一覧")).toHaveAccessibleName("一覧 11 変更あり 重なりあり");
-  await expect(tab(page, "本文")).toHaveAccessibleName("本文 20");
+  await expect(tab(page, "一覧")).toHaveAccessibleName("一覧 13 変更あり 重なりあり");
+  await expect(tab(page, "本文")).toHaveAccessibleName("本文 22");
   await tab(page, "本文").click();
   await expect(row(page, "下へスクロール").locator(".kbd.key.clash")).toHaveCount(0);
   await tab(page, "一覧").click();

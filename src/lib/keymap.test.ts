@@ -193,7 +193,7 @@ test("stepKeys: a digit bound where the keyboard is, is no count", () => {
 test("stepKeys: the second key alone repeats a repeat action within the window, which each repeat extends", () => {
   const s = press(["Ctrl+B", "Shift+H"], { scope: "list" });
   assert.deepEqual(ran(s), ["paneGrowLeft", 1, "Ctrl+B Shift+H"]);
-  assert.deepEqual(s.seq.repeat, { first: "Ctrl+B", until: NOW + REPEAT_MS });
+  assert.deepEqual(s.seq.repeat, { first: "Ctrl+B", until: NOW + REPEAT_MS, again: false });
 
   const late = NOW + REPEAT_MS - 1;
   const again = step("Shift+H", s.seq, { now: late });
@@ -209,6 +209,23 @@ test("stepKeys: past the window, or on another key, the key is read fresh", () =
   assert.deepEqual(ran(other), ["scrollDown", 1, "J"], "Ctrl+B J exists but does not repeat");
   assert.equal(other.seq.repeat, null);
   assert.equal(press(["Ctrl+B", "X"]).seq.repeat, null, "an action that does not repeat opens no window");
+});
+
+test("stepKeys: Ctrl+F and Ctrl+B Ctrl+B move a screen in each scope; in the window a lone Ctrl+B repeats only a page up", () => {
+  assert.deepEqual(ran(step("Ctrl+F", IDLE, { scope: "doc" })), ["pageDown", 1, "Ctrl+F"]);
+  assert.deepEqual(ran(step("Ctrl+F", IDLE, { scope: "list" })), ["listPageDown", 1, "Ctrl+F"]);
+  assert.deepEqual(ran(press(["3", "Ctrl+F"], { scope: "doc" })), ["pageDown", 3, "Ctrl+F"]);
+  assert.deepEqual(ran(press(["Ctrl+B", "Ctrl+B"], { scope: "list" })), ["listPageUp", 1, "Ctrl+B Ctrl+B"]);
+  const up = press(["Ctrl+B", "Ctrl+B"], { scope: "doc" });
+  assert.deepEqual(ran(up), ["pageUp", 1, "Ctrl+B Ctrl+B"]);
+  assert.deepEqual(ran(step("Ctrl+B", up.seq, { scope: "doc", now: NOW + 1 })), ["pageUp", 1, "Ctrl+B Ctrl+B"]);
+  assert.equal(step("Ctrl+B", up.seq, { scope: "doc", now: NOW + REPEAT_MS }).kind, "wait", "past the window it is the prefix again");
+  const grown = press(["Ctrl+B", "Shift+H"], { scope: "doc" });
+  const prefix = step("Ctrl+B", grown.seq, { scope: "doc", now: NOW + 1 });
+  assert.equal(prefix.kind, "wait", "after another repeat action, Ctrl+B starts a chord, as tmux's prefix does");
+  assert.deepEqual(ran(step("Shift+E", prefix.seq, { scope: "doc", now: NOW + 2 })), ["paneEven", 1, "Ctrl+B Shift+E"]);
+  const inPage = pageKeys(DEFAULT_BINDINGS).bindings;
+  assert.deepEqual(ran(stepKeys(inPage, IDLE, "Ctrl+F", { scope: "doc", inField: false, now: NOW })), ["pageDown", 1, "Ctrl+F"], "in a page too");
 });
 
 test("stepKeys: a plain key in a field never runs or starts a chord, even on an inFields action", () => {

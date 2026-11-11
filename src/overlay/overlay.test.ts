@@ -254,7 +254,7 @@ test("takesBeforePage: a second key, a repeat and a Ctrl / Alt key go ahead of t
   assert.equal(taken(IDLE, "Ctrl+P", true), true, "even from a page field");
   assert.equal(taken({ ...IDLE, first: "G" }, "T"), true, "the page never sees half a sequence");
   assert.equal(taken({ ...IDLE, first: "G" }, "Escape"), true);
-  assert.equal(taken({ ...IDLE, repeat: { first: "Ctrl+B", until: 1 } }, "Shift+H"), true, "a repeat is a second key");
+  assert.equal(taken({ ...IDLE, repeat: { first: "Ctrl+B", until: 1, again: false } }, "Shift+H"), true, "a repeat is a second key");
   assert.equal(taken(IDLE, "J"), false, "sites with their own j keep it");
   assert.equal(taken(IDLE, "G"), false);
   assert.equal(taken(IDLE, "5"), false);

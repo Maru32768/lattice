@@ -1171,7 +1171,8 @@ if (window.top === window && !window.__lattice) {
       docNav.run(action, count);
     },
     repeatKeys: (first) => {
-      keySeq = { ...IDLE, repeat: { first, until: Date.now() + REPEAT_MS } };
+      // shortcut: the app sends only the first key, so after a Ctrl+B Ctrl+B it read, a lone Ctrl+B here starts a chord; upgrade by sending `again` through browser_repeat_keys.
+      keySeq = { ...IDLE, repeat: { first, until: Date.now() + REPEAT_MS, again: false } };
     },
   };
   // WebView2's print preview opened behind the page in this child webview: the app shows the system dialog instead.

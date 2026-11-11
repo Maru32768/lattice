@@ -62,6 +62,16 @@ test("gg, G and half a screen in the Reader", async ({ app }) => {
   await expect.poll(() => scrollTop(app)).toBe(0);
 });
 
+test("Ctrl+F and Ctrl+B Ctrl+B move a screen in the Reader, and a lone Ctrl+B right after goes up another", async ({ app }) => {
+  await intoReader(app);
+  const screen = await app.locator(".doc-scroll").evaluate((el) => (el.clientHeight * 7) / 8);
+  const screensDown = async () => (await scrollTop(app)) / screen;
+  await press(app, "Control+f", "Control+f", "Control+f");
+  await expect.poll(screensDown).toBeCloseTo(3, 2);
+  await press(app, "Control+b", "Control+b", "Control+b");
+  await expect.poll(screensDown).toBeCloseTo(1, 2);
+});
+
 test("J and K open the next and previous article in the focused pane, which keeps the keyboard", async ({ app }) => {
   await intoReader(app);
   await app.keyboard.press("Shift+J");
@@ -88,6 +98,10 @@ test("in the list j moves the cursor, gg and G go to its ends, and a count multi
   await expect(list(app).locator(".row.cur")).toHaveCount(1);
   await expect(cur).not.toHaveText(label(0));
   await app.keyboard.press("u");
+  await expect(cur).toHaveText(label(0));
+  await app.keyboard.press("Control+f");
+  await expect(cur).not.toHaveText(label(0));
+  await press(app, "Control+b", "Control+b");
   await expect(cur).toHaveText(label(0));
 });
 
