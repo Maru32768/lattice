@@ -382,7 +382,7 @@ test("a change from another window hides the undo too", async ({ app }) => {
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   const undo = app.getByRole("button", { name: "元に戻す", exact: true });
   await expect(undo).toBeVisible();
-  // What a pop-out window changing the shortcuts looks like to this one.
+  // A change another window made, as the storage event brings it here. Only the main window edits shortcuts today.
   await app.evaluate(() => {
     localStorage.setItem("lattice.shortcuts", JSON.stringify({ read: ["Q"], version: 2 }));
     window.dispatchEvent(new StorageEvent("storage", { key: "lattice.shortcuts" }));
