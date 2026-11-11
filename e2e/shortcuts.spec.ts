@@ -375,6 +375,23 @@ test("resetting every key can be undone from the same button, until a key change
   await expect(reset).toBeEnabled();
 });
 
+test("a change from another window hides the undo too", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  await addKey(app, "お気に入り", "x");
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  const undo = app.getByRole("button", { name: "元に戻す", exact: true });
+  await expect(undo).toBeVisible();
+  // What a pop-out window changing the shortcuts looks like to this one.
+  await app.evaluate(() => {
+    localStorage.setItem("lattice.shortcuts", JSON.stringify({ read: ["Q"], version: 2 }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "lattice.shortcuts" }));
+  });
+  await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["q×"]);
+  await expect(undo, "undoing would throw away the other window's change").toBeHidden();
+  await expect(app.getByRole("status")).toBeHidden();
+});
+
 test("loading a file replaces the keys, and undo brings back the earlier ones", async ({ app }) => {
   await openShortcuts(app);
   await tab(app, "記事").click();
