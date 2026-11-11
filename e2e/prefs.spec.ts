@@ -79,6 +79,43 @@ test("a change in Settings goes to the library, and Vim off goes as an empty val
   await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.searchEngine": JSON.stringify({ id: "google", custom: "" }) } });
 });
 
+test("each of the other settings goes to the library when it changes", async ({ app }) => {
+  await openSettings(app);
+  await section(app, "翻訳");
+  await app.getByRole("switch", { name: "表示を切り替えたら自動で翻訳" }).uncheck();
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.translateOnSwitch": "off" } });
+
+  await section(app, "復習");
+  await app.getByRole("switch", { name: "単語カードの発音を自動で再生" }).uncheck();
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.vocabAutoplay": "off" } });
+
+  await section(app, "Vim");
+  const vimrc = app.getByLabel("vimrc", { exact: true });
+  await vimrc.fill("nnoremap j gj");
+  await vimrc.blur();
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.vimrc": "nnoremap j gj" } });
+
+  await section(app, "ショートカット");
+  await app.getByRole("tab", { name: /^記事 \d+/ }).click();
+  await app
+    .locator(".stg .set")
+    .filter({ has: app.locator(".h").getByText("お気に入り", { exact: true }) })
+    .getByRole("button", { name: "+ キーを追加" })
+    .click();
+  await app.keyboard.press("x");
+  await app.keyboard.press("Enter");
+  const shortcuts = async () => {
+    const saved = (await lastSaved(app)) as { prefs: Record<string, string> } | undefined;
+    return JSON.parse(saved?.prefs["lattice.shortcuts"] ?? "null") as unknown;
+  };
+  await expect.poll(shortcuts).toEqual({ favorite: ["S", "X"], version: 2 });
+
+  await app.keyboard.press("Escape");
+  await navItem(app, "単語帳").click();
+  await app.getByRole("switch", { name: "記事中の登録語に下線を引く" }).uncheck();
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.vocabMarks": "off" } });
+});
+
 test("an open Settings screen follows a change the start-up sync or another window makes", async ({ app }) => {
   await openSettings(app);
   await section(app, "翻訳");
