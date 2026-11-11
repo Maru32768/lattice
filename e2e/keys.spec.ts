@@ -113,13 +113,19 @@ test("in the list j moves the cursor, gg and G go to its ends, and a count multi
   await expect(cur).toHaveText(label(order.length - 1));
   await press(app, "g", "g");
   await expect(cur).toHaveText(label(0));
+  // How many rows the list's pane holds, as the app counts them for d and Ctrl+F.
+  const perScreen = await list(app)
+    .locator(".row")
+    .first()
+    .evaluate((row: HTMLElement) => row.closest<HTMLElement>("[data-pane]")!.clientHeight / row.offsetHeight);
+  const at = (share: number) => Math.min(order.length - 1, Math.max(1, Math.floor(perScreen * share)));
+  expect(at(1), "the fixture has more rows than half a screen, so a screen and half a screen land apart").toBeGreaterThan(at(1 / 2));
   await app.keyboard.press("d");
-  await expect(list(app).locator(".row.cur")).toHaveCount(1);
-  await expect(cur).not.toHaveText(label(0));
+  await expect(cur).toHaveText(label(at(1 / 2)));
   await app.keyboard.press("u");
   await expect(cur).toHaveText(label(0));
   await app.keyboard.press("Control+f");
-  await expect(cur).not.toHaveText(label(0));
+  await expect(cur).toHaveText(label(at(1)));
   await app.keyboard.press("Control+b");
   await expect(cur).toHaveText(label(0));
 });
