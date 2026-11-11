@@ -423,7 +423,7 @@ test("loading a file replaces the keys, and undo brings back the earlier ones", 
   await expect(app.getByLabel("ファイルから読み込む"), "with nothing left to reset, the keyboard goes on to the load button").toBeFocused();
 });
 
-test("a JSON file that is not a shortcuts file is refused and changes nothing", async ({ app }) => {
+test("a file that is not a shortcuts file, not text or too large is refused and changes nothing", async ({ app }) => {
   await openShortcuts(app);
   await tab(app, "記事").click();
   await addKey(app, "お気に入り", "x");
