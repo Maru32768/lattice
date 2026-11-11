@@ -375,7 +375,7 @@ test("resetting every key can be undone from the same button, until a key change
   await expect(reset).toBeEnabled();
 });
 
-test("a change from another window hides the undo too", async ({ app }) => {
+test("a change from another window hides the undo, and a later undo keeps that change", async ({ app }) => {
   await openShortcuts(app);
   await tab(app, "記事").click();
   await addKey(app, "お気に入り", "x");
@@ -390,6 +390,9 @@ test("a change from another window hides the undo too", async ({ app }) => {
   await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["q×"]);
   await expect(undo, "undoing would throw away the other window's change").toBeHidden();
   await expect(app.getByRole("status")).toBeHidden();
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  await undo.click();
+  await expect(row(app, "既読 / 未読").locator(".kbd.key"), "the undo brings back the other window's keys").toHaveText(["q×"]);
 });
 
 test("loading a file replaces the keys, and undo brings back the earlier ones", async ({ app }) => {
