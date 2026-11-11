@@ -551,7 +551,7 @@ Besides switching lists, the commands include:
 
 ### Chat with your articles
 
-Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
+Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send instead. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
 **Scope.** **Scope** chooses which articles the answer is based on.
 
@@ -576,6 +576,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
 | **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
+| **Send key** | The key that sends a question from the chat box: **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Ctrl+Enter` or `:w` sends. |
 
 ## Learn from what you read
 
@@ -816,7 +817,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 |---|---|---|
 | `Enter` | A focused paragraph in the Reader | Switch between original and translation |
 | `1`–`4` | Quiz and review cards | Rate |
-| `Ctrl+Enter` | The chat box | Send the question |
+| `Ctrl+Enter` | The chat box | Send the question. **Send key** in **Settings › Summaries & chat** can make `Enter` send too |
 | `Tab` | The palette | Add the selected item to the filters |
 | `Ctrl+Enter` | The palette | Search for what you typed, or save a pasted URL |
 | Menu key, `Shift+F10` | A list row, a tab, a feed folder in the navigation | Open the right-click menu |

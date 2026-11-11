@@ -96,6 +96,12 @@ test("each of the other settings goes to the library when it changes", async ({ 
   await app.getByRole("switch", { name: "単語カードの発音を自動で再生" }).uncheck();
   await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.vocabAutoplay": "off" } });
 
+  await section(app, "要約・対話");
+  await app.getByLabel("送信キー").selectOption("enter");
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.chatSendKey": "enter" } });
+  await app.getByLabel("送信キー").selectOption("ctrlEnter");
+  await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.chatSendKey": "" } });
+
   await section(app, "Vim");
   const vimrc = app.getByLabel("vimrc", { exact: true });
   await vimrc.fill("nnoremap j gj");

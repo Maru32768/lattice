@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { SetRow } from "../ui/SetRow";
 import { api, type ChatBudget } from "../api";
+import { SEND_KEYS, setSendKey, useSendKey, type SendKey } from "../chat/sendKey";
 import { useT, type PlainKey } from "../i18n";
 
 // Sizes mirror `chat::Budget::limits` (context characters per question).
@@ -10,8 +11,15 @@ const BUDGETS: { id: ChatBudget; label: PlainKey }[] = [
   { id: "large", label: "chatSettings.large" },
 ];
 
+const SEND_LABELS: Record<SendKey, PlainKey> = {
+  ctrlEnter: "chatSettings.sendCtrlEnter",
+  enter: "chatSettings.sendEnter",
+  enterOneLine: "chatSettings.sendEnterOneLine",
+};
+
 export function ChatSettings() {
   const t = useT();
+  const sendKey = useSendKey();
   const [budget, setBudget] = useState<ChatBudget>("standard");
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +47,15 @@ export function ChatSettings() {
           {BUDGETS.map((b) => (
             <option key={b.id} value={b.id}>
               {t(b.label)}
+            </option>
+          ))}
+        </select>
+      </SetRow>
+      <SetRow title={t("chatSettings.sendKey")} htmlFor="chat-send-key" desc={t("chatSettings.sendKeyDesc")}>
+        <select id="chat-send-key" className="select" value={sendKey} onChange={(e) => setSendKey(e.target.value as SendKey)}>
+          {SEND_KEYS.map((k) => (
+            <option key={k} value={k}>
+              {t(SEND_LABELS[k])}
             </option>
           ))}
         </select>

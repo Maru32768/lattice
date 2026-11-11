@@ -21,6 +21,35 @@ test("the chat budget sends the setting and keeps it when the section is reopene
   await expect(app.getByLabel("対話で使う範囲")).toHaveValue("large");
 });
 
+test("with 1行ならEnter, Enter sends a one-line question; once it has two lines Enter is a newline and Ctrl+Enter sends", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await section(app, "要約・対話").click();
+  const sendKey = app.getByLabel("送信キー");
+  await expect(sendKey).toHaveValue("ctrlEnter");
+  await sendKey.selectOption({ label: "1行ならEnter、2行以上ならCtrl+Enterで送信" });
+  await app.keyboard.press("Escape");
+
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = app.getByLabel("質問", { exact: true });
+  const hint = app.locator(".chat-f-row .kbd");
+  const asked = async () => (await callsOf(app, "chat_ask")).map((a) => (a as { question: string }).question);
+  await q.fill("one line");
+  await expect(hint).toHaveText(["Enter"]);
+  await q.press("Enter");
+  await expect.poll(asked).toEqual(["one line"]);
+  await expect(q).toHaveValue("");
+
+  await q.pressSequentially("first");
+  await q.press("Shift+Enter");
+  await q.pressSequentially("second");
+  await expect(hint).toHaveText(["Ctrl", "Enter"]);
+  await q.press("Enter");
+  await expect(q).toHaveValue("first\nsecond\n");
+  expect(await asked()).toEqual(["one line"]);
+  await q.press("Control+Enter");
+  await expect.poll(asked).toEqual(["one line", "first\nsecond"]);
+});
+
 test("Vim keys in the chat input: off by default, modes, motions, edits, undo, Ctrl+Enter sends", async ({ app }) => {
   const chatButton = app.locator(".nav").getByRole("button", { name: "対話" });
   await chatButton.click();

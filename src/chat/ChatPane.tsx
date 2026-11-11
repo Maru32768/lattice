@@ -6,6 +6,7 @@ import { FilterOptgroups } from "../library/FilterOptgroups";
 import { Menu } from "../ui/Popover";
 import { Icon, Kbd } from "../ui/Icon";
 import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
+import { plainEnterSends, sendsOn, useSendKey } from "./sendKey";
 import { onMiddle } from "../lib/middle";
 import { useLatest } from "../lib/useLatest";
 import { useT, type PlainKey } from "../i18n";
@@ -107,6 +108,7 @@ export function ChatPane({
   const [unsent, setUnsent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const vimOn = useVimEnabled();
+  const sendKey = useSendKey();
   const [vimMode, setVimMode] = useState("INSERT");
   /** `seq` grows when the question is set from here: the Vim editor starts over on the new text, in insert mode. `focus`: it takes the keyboard. */
   const [editor, setEditor] = useState({ seq: 0, focus: request != null });
@@ -370,7 +372,7 @@ export function ChatPane({
               rows={3}
               placeholder={askHint}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                if (sendsOn(sendKey, question, e.nativeEvent)) {
                   e.preventDefault();
                   void ask(question);
                 }
@@ -380,7 +382,7 @@ export function ChatPane({
           <div className="chat-f-row">
             {vimOn && <VimMode mode={vimMode} />}
             <span className="push">
-              <Kbd>Ctrl</Kbd>
+              {(vimOn || !plainEnterSends(sendKey, question)) && <Kbd>Ctrl</Kbd>}
               <Kbd>Enter</Kbd>
               {t("chatPane.hintSend")}
             </span>

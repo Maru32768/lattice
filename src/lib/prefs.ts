@@ -8,6 +8,7 @@ export const SYNCED = [
   "lattice.shortcuts",
   "lattice.chatVim",
   "lattice.vimrc",
+  "lattice.chatSendKey",
   "lattice.searchEngine",
   "lattice.translateOnSwitch",
   "lattice.vocabAutoplay",
