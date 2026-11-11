@@ -107,6 +107,8 @@ export function useSynced<T>(key: SyncedKey, load: () => T) {
       }
     };
     window.addEventListener("storage", follow);
+    // oxlint-disable-next-line react/set-state-in-effect -- a sync that landed between the first render and this subscription sent its event to no one
+    setValue(load());
     return () => window.removeEventListener("storage", follow);
   }, [key, load]);
   return [value, setValue] as const;
