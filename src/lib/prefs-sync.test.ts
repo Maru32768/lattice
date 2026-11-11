@@ -17,7 +17,7 @@ Object.assign(globalThis, {
   StorageEvent: class extends Event {},
   __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => handler(cmd, args) },
 });
-const { savePref } = await import("./prefs.ts");
+const { savePref, syncPrefs } = await import("./prefs.ts");
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
@@ -51,4 +51,30 @@ test("a write that fails does not stop the ones after it", async () => {
   await tick();
   await tick();
   assert.deepEqual(sent, [{ prefs: { "lattice.vocabAutoplay": "off" } }, { prefs: { "lattice.vocabAutoplay": "on" } }]);
+});
+
+test("a setting changed while the start-up sync waits for the rows keeps its change, in the cache and the library", async () => {
+  cache.clear();
+  cache.set("lattice.shortcuts", "old");
+  cache.set("lattice.vocabMarks", "off");
+  cache.set("lattice.vimrc", "cached");
+  const sent: unknown[] = [];
+  let release: (rows: Record<string, string>) => void = () => {};
+  handler = (cmd, args) => {
+    if (cmd === "get_ui_prefs") {
+      return new Promise((r) => (release = r));
+    }
+    sent.push(args);
+    return Promise.resolve(null);
+  };
+  const sync = syncPrefs();
+  savePref("lattice.shortcuts", "new");
+  savePref("lattice.vocabMarks", "on");
+  release({ "lattice.shortcuts": "row", "lattice.vimrc": "library" });
+  await sync;
+  await tick();
+  assert.equal(cache.get("lattice.shortcuts"), "new", "the row does not undo the change made meanwhile");
+  assert.equal(cache.get("lattice.vocabMarks"), "on");
+  assert.equal(cache.get("lattice.vimrc"), "library", "a key left alone takes the row");
+  assert.deepEqual(sent, [{ prefs: { "lattice.shortcuts": "new" } }, { prefs: { "lattice.vocabMarks": "on" } }], "nothing but the changes went to the library");
 });
