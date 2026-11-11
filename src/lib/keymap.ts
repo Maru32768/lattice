@@ -343,6 +343,13 @@ export const REPEAT_MS = 500;
 export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 /** A shortcut whatever has the focus, and a browser's own key to keep from it. */
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
+/** A browser pages with these. Lattice pages with Ctrl+F and Ctrl+B Ctrl+B instead, which leaves Space free to bind (a Vim leader). */
+export const isSpace = (key: string) => key === "Space" || key === "Shift+Space";
+/** What Space presses rather than pages, so it keeps the key there. A field types it, which each caller checks itself. */
+export const PRESSED_BY_SPACE =
+  "button, summary, select, video, audio, [role='button'], [role='checkbox'], [role='radio'], [role='switch'], [role='tab'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option'], [role='treeitem']";
+/** Whether an unbound Space on `target` would page, the browser default that the app and the page overlay suppress. */
+export const spacePages = (key: string, target: Element, inField: boolean) => isSpace(key) && !inField && !target.closest(PRESSED_BY_SPACE);
 
 function running(action: ActionDef, sequence: string, first: string | null, count: number, now: number): KeyStep {
   const repeat = action.repeat && first ? { first, until: now + REPEAT_MS, again: sequence === `${first} ${first}` } : null;
@@ -372,8 +379,8 @@ export function stepKeys(b: Bindings, seq: KeySeq, key: string, ctx: { scope: Ke
       return running(a, sequence, seq.repeat.first, 1, now);
     }
   }
-  // Even on an `inFields` action: a `g t` that runs in fields must not eat a typed g.
-  if (inField && isPrintable(key)) {
+  // Even on an `inFields` action: a `g t` that runs in fields must not eat a typed g, nor a Space binding a typed space.
+  if (inField && (isPrintable(key) || isSpace(key))) {
     return none;
   }
   if (seq.count && key === "Escape") {
@@ -412,8 +419,11 @@ export function pageKeys(b: Bindings): PageKeys {
   for (const a of ACTIONS) {
     // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
     const applicable = a.scope === "list" || PAGE_OWN.has(a.id) ? [] : b[a.id];
-    // Enter, Escape, the arrows, Space stay the page's own: it navigates and scrolls with them.
-    bindings[a.id] = applicable.filter((k) => isModified(k) || isPrintable(k.split(" ")[0]!));
+    // Enter, Escape and the arrows stay the page's own: it navigates and scrolls with them. Space is free, as in the app.
+    bindings[a.id] = applicable.filter((k) => {
+      const first = k.split(" ")[0]!;
+      return isModified(k) || isPrintable(first) || isSpace(first);
+    });
     for (const k of bindings[a.id]) {
       if (!a.local) {
         sequences.add(k);

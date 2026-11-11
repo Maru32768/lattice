@@ -29,7 +29,7 @@ const {
   translatedShare,
   unitsByBlock,
 } = await import("./logic.ts");
-const { DEFAULT_BINDINGS, IDLE, pageKeys, stepKeys } = await import("../lib/keymap.ts");
+const { DEFAULT_BINDINGS, IDLE, merge, pageKeys, stepKeys } = await import("../lib/keymap.ts");
 
 test("settle waits for a full quiet period after the last DOM mutation", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
@@ -244,7 +244,7 @@ test("a plain-text fallback leaves no empty inline code box, and keeps elements 
   assert.equal(p.querySelector("code")!.textContent, "rustup");
 });
 
-test("takesBeforePage: a second key, a repeat and a Ctrl / Alt key go ahead of the page; a plain key after it", () => {
+test("takesBeforePage: a second key, a repeat, a Ctrl / Alt key and a bound Space go ahead of the page; a plain key after it", () => {
   const { bindings } = pageKeys(DEFAULT_BINDINGS);
   const taken = (seq: typeof IDLE, key: string, inField = false) => {
     const step = stepKeys(bindings, seq, key, { scope: "doc", inField, now: 0 });
@@ -259,4 +259,9 @@ test("takesBeforePage: a second key, a repeat and a Ctrl / Alt key go ahead of t
   assert.equal(taken(IDLE, "G"), false);
   assert.equal(taken(IDLE, "5"), false);
   assert.equal(taken({ ...IDLE, count: 5 }, "J"), false);
+
+  const spaced = pageKeys(merge({ view: ["Space"], summary: ["Shift+Space Y"] })).bindings;
+  const takenSpace = (key: string) => takesBeforePage(IDLE, key, stepKeys(spaced, IDLE, key, { scope: "doc", inField: false, now: 0 }));
+  assert.equal(takenSpace("Space"), true, "a bound Space, whose default pages");
+  assert.equal(takenSpace("Shift+Space"), true, "and the first key of a Space chord");
 });

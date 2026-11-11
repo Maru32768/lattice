@@ -4,7 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
-import { isModified, type KeySeq, type KeyStep } from "../lib/keymap.ts";
+import { isModified, isSpace, type KeySeq, type KeyStep } from "../lib/keymap.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;
@@ -225,8 +225,8 @@ export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "C
 
 /**
  * Whether the overlay takes a key before the page sees it: a second key, a repeat of one, or a Ctrl /
- * Alt key, which may have a browser default to suppress (Ctrl+S). Any other key of ours goes once the
- * page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
+ * Alt key or Space, which have a browser default to suppress (Ctrl+S, paging). Any other key of ours
+ * goes once the page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
  */
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
-  seq.first != null || isModified(key) || (step.kind === "run" && !!step.action.repeat);
+  seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat);

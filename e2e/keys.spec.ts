@@ -72,6 +72,25 @@ test("Ctrl+F and Ctrl+B Ctrl+B move a screen in the Reader, and a lone Ctrl+B ri
   await expect.poll(screensDown).toBeCloseTo(1, 2);
 });
 
+test("Space and Shift+Space leave the Reader where it is, and Ctrl+F still pages it", async ({ app }) => {
+  await intoReader(app);
+  const screen = await app.locator(".doc-scroll").evaluate((el) => (el.clientHeight * 7) / 8);
+  const screensDown = async () => (await scrollTop(app)) / screen;
+  await press(app, "Space", "Space", "Control+f");
+  await expect.poll(screensDown).toBeCloseTo(1, 2);
+  await app.keyboard.press("Shift+Space");
+  // A browser's own smooth scroll would still be under way.
+  await app.waitForTimeout(300);
+  expect(await screensDown()).toBeCloseTo(1, 2);
+});
+
+test("Space on a focused list row still presses it", async ({ app }) => {
+  const row = await listRow(app, label(1));
+  await row.focus();
+  await app.keyboard.press("Space");
+  await expect(app.locator(".art-title")).toHaveText(label(1));
+});
+
 test("J and K open the next and previous article in the focused pane, which keeps the keyboard", async ({ app }) => {
   await intoReader(app);
   await app.keyboard.press("Shift+J");

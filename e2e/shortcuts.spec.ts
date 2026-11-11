@@ -61,6 +61,31 @@ test("a two-key binding starts from any key and runs only after both", async ({ 
   await expect(cursor).toHaveCount(1);
 });
 
+test("Space records as a first key, and its binding runs outside fields while a field still types the space", async ({ app }) => {
+  await openShortcuts(app);
+  const help = row(app, "キー一覧");
+  await help.getByRole("button", { name: "+ キーを追加" }).click();
+  await app.keyboard.press("Space");
+  await app.keyboard.press("h");
+  await expect(help.locator(".kbd.key")).toHaveText(["?×", "Ctrl B › ?×", "Space › h×"]);
+
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  await app.keyboard.press("Space");
+  await app.keyboard.press("h");
+  const keyList = app.getByRole("dialog", { name: "キー一覧" });
+  await expect(keyList).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(keyList).toBeHidden();
+
+  await app.keyboard.press("/");
+  const input = app.getByRole("region", { name: "検索結果" }).getByRole("textbox", { name: "検索語" });
+  await expect(input).toBeFocused();
+  await app.keyboard.type("a h");
+  await expect(input).toHaveValue("a h");
+  await expect(keyList).toHaveCount(0);
+});
+
 test("keys forwarded from a focused page start and complete a two-key binding", async ({ app }) => {
   const fromPage = (key: string) => app.evaluate((k) => window.__e2e.fromPage("browser-key", { tab: "none", key: k, count: 1 }), key);
   await expect(list(app)).toBeVisible();

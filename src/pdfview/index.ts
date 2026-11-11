@@ -59,7 +59,7 @@ const OUTLINE_KEY = "lattice.pdfOutline";
 
 const percent = (v: number, of: number) => `${(v / of) * 100}%`;
 
-/** The app's shortcuts include Enter and Space: pressing a button here is not one. */
+/** The app's shortcuts include Enter and Space: pressing a button here is not one, unless Space is bound, which the overlay reads before the page. */
 function pressButtons(e: KeyboardEvent) {
   if ((e.key === "Enter" || e.key === " ") && e.target instanceof HTMLButtonElement) {
     e.preventDefault();

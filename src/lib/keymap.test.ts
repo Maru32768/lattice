@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JSDOM } from "jsdom";
 import {
   ACTIONS,
   DEFAULT_BINDINGS,
@@ -15,6 +16,7 @@ import {
   merge,
   pageKeys,
   scopeOf,
+  spacePages,
   stepKeys,
   type Bindings,
   type KeyScope,
@@ -238,6 +240,28 @@ test("stepKeys: a plain key in a field never runs or starts a chord, even on an 
   assert.equal(step("J", IDLE, inField).kind, "none");
 });
 
+test("stepKeys: Space in a field types a space, even bound to an inFields action or as a chord's first key", () => {
+  const single = merge({ keyHelp: ["?", "Space"] });
+  assert.equal(step("Space", IDLE, { b: single, inField: true }).kind, "none");
+  assert.deepEqual(ran(step("Space", IDLE, { b: single })), ["keyHelp", 1, "Space"], "outside a field it runs");
+  const chord = merge({ palette: ["Ctrl+P", "Space P"] });
+  assert.equal(step("Space", IDLE, { b: chord, inField: true }).kind, "none");
+  assert.deepEqual(ran(press(["Space", "P"], { b: chord })), ["palette", 1, "Space P"]);
+  assert.equal(step("Shift+Space", IDLE, { b: merge({ keyHelp: ["Shift+Space"] }), inField: true }).kind, "none");
+});
+
+test("spacePages: Space and Shift+Space page outside fields and what they press", () => {
+  const { document } = new JSDOM(`<p>text <a href="#x">link</a></p><button><b>bold</b></button><div role="tab">tab</div><summary>more</summary>`).window;
+  const [p, a, bold, tab, summary] = ["p", "a", "b", "[role='tab']", "summary"].map((s) => document.querySelector(s)!);
+  assert.equal(spacePages("Space", p, false), true);
+  assert.equal(spacePages("Shift+Space", a, false), true, "a link scrolls on Space, it does not open");
+  assert.equal(spacePages("Space", bold, false), false, "inside a button, Space presses it");
+  assert.equal(spacePages("Space", tab, false), false);
+  assert.equal(spacePages("Space", summary, false), false);
+  assert.equal(spacePages("Space", p, true), false, "a field types it");
+  assert.equal(spacePages("J", p, false), false);
+});
+
 test("stepKeys: Esc and modified keys in a field follow inFields", () => {
   const inField = { inField: true };
   assert.deepEqual(ran(step("Ctrl+P", IDLE, inField)), ["palette", 1, "Ctrl+P"]);
@@ -284,9 +308,11 @@ test("pageKeys: sequences are the app's actions, first the chords' first keys", 
   assert.ok(!k.sequences.includes("Enter") && !k.sequences.includes("Alt+ArrowLeft"));
   assert.deepEqual(k.first.sort(), ["Ctrl+B", "G", "Y", "[", "]"]);
 
-  const custom = pageKeys(merge({ favorite: ["G Q", "Ctrl+G S"], read: ["Enter X"], view: ["Space"] }));
+  const custom = pageKeys(merge({ favorite: ["G Q", "Ctrl+G S"], read: ["Enter X"], view: ["Space"], summary: ["Shift+Space Y"] }));
   assert.ok(custom.first.includes("Ctrl+G"));
   assert.ok(!custom.first.includes("Enter"), "Enter stays the page's, also as a first key");
-  assert.deepEqual(custom.bindings.view, [], "as does Space");
   assert.deepEqual(custom.bindings.read, []);
+  assert.deepEqual(custom.bindings.view, ["Space"], "Space is free in a page, as in the app");
+  assert.deepEqual(custom.bindings.summary, ["Shift+Space Y"]);
+  assert.ok(custom.first.includes("Shift+Space"), "a Space chord's first key brings the hint");
 });
