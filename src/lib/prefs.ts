@@ -63,11 +63,11 @@ export function planSync(before: Cached, rows: Rows, now: Cached): { cache: Part
   const cache: Partial<Cached> = {};
   const db: Rows = {};
   for (const key of SYNCED) {
-    const local = before[key] || null;
-    const row = rows[key];
     if (now[key] !== before[key]) {
       continue;
     }
+    const local = before[key] || null;
+    const row = rows[key];
     if (row === undefined) {
       if (local !== null) {
         db[key] = local;
