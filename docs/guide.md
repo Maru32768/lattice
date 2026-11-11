@@ -726,7 +726,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place, which brings back the keys you had before. Once you change a key after that or leave this page, it can no longer be undone.
-- **Export** writes the keys you changed to the `exports` folder. Choose an exported file with **Load from file** to replace your keys with the ones in it; actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says why it can't be loaded.
+- **Export** writes the keys you changed to the `exports` folder. Choose an exported file with **Load from file** to replace your keys with the ones in it; actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
 
 Shortcuts are stored on this computer only. To use them on another computer, export them and load the file there.
 
