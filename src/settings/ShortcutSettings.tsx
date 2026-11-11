@@ -87,12 +87,14 @@ export function ShortcutSettings() {
       return setNote({ error: t("be.file.tooLarge", { max: FILE_MAX_MB }) });
     }
     const content = await readUtf8(file);
-    const next = content === null ? null : parseShortcutsFile(content);
-    if (next) {
-      replace(next, "import");
-    } else {
-      setNote({ error: t(content === null ? "be.file.notUtf8" : "common.wrongFile") });
+    if (content === null) {
+      return setNote({ error: t("be.file.notUtf8") });
     }
+    const next = parseShortcutsFile(content);
+    if (!next) {
+      return setNote({ error: t("common.wrongFile") });
+    }
+    replace(next, "import");
   }
 
   const exportFile = () =>
