@@ -67,7 +67,8 @@ export function ShortcutSettings() {
   const clash = conflicts(bindings);
 
   function replace(next: Partial<Bindings>, done: "reset" | "import") {
-    setUndo({ prev: replaceKeys(next), after: getBindings(), done });
+    const prev = replaceKeys(next);
+    setUndo({ prev, after: getBindings(), done });
     setNote(null);
   }
 
