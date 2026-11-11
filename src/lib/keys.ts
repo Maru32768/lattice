@@ -103,7 +103,9 @@ export function parseShortcutsFile(text: string): Partial<Bindings> | null {
   } catch {
     return null;
   }
-  return (raw as { format?: unknown } | null)?.format === FILE_FORMAT ? fromStored(raw as Record<string, unknown>) : null;
+  // Only the version this app writes: fromStored reads any other as version 1 and would add the old pane keys again.
+  const file = raw as { format?: unknown; version?: unknown } | null;
+  return file?.format === FILE_FORMAT && file.version === STORAGE_VERSION ? fromStored(raw as Record<string, unknown>) : null;
 }
 
 export function useBindings(): Bindings {

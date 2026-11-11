@@ -55,6 +55,9 @@ test("a shortcuts file holds only the changed keys, marked, and reads back as th
 test("a file without the marker, or not JSON, reads as nothing rather than as no changed keys", () => {
   assert.equal(parseShortcutsFile(JSON.stringify({ next: ["N"], version: 2 })), null, "the stored value alone");
   assert.equal(parseShortcutsFile(JSON.stringify({})), null);
+  for (const version of [undefined, 1, 3, "2"]) {
+    assert.equal(parseShortcutsFile(JSON.stringify({ format: "lattice.shortcuts", version, splitDown: ["Ctrl+-"] })), null, `version ${version}`);
+  }
   for (const text of ["not json", "", "null", "[]", '"lattice.shortcuts"']) {
     assert.equal(parseShortcutsFile(text), null, text);
   }
