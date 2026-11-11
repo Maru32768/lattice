@@ -464,3 +464,20 @@ test("export writes the changed keys, shows where, and the file loads them back"
     .setInputFiles({ name: "lattice-shortcuts.json", mimeType: "application/json", buffer: Buffer.from(calls[0].json) });
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
 });
+
+test("an export that fails says why and does not claim a file", async ({ app }) => {
+  await openShortcuts(app);
+  await tab(app, "記事").click();
+  await addKey(app, "お気に入り", "x");
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "export_shortcuts" ? Promise.reject("Access is denied. (os error 5)") : invoke(cmd, args, options);
+  });
+  await app.getByRole("button", { name: "書き出す", exact: true }).click();
+  await expect(app.getByRole("alert")).toHaveText("Access is denied. (os error 5)");
+  await expect(app.getByRole("status")).toBeHidden();
+  await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
+});
