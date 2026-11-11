@@ -97,15 +97,13 @@ export const shortcutsFile = () => JSON.stringify({ format: FILE_FORMAT, version
 
 /** The overrides in a file `shortcutsFile` wrote, or null for any other text. */
 export function parseShortcutsFile(text: string): Partial<Bindings> | null {
-  let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    const raw = JSON.parse(text) as Record<string, unknown> | null;
+    // Only the version this app writes: fromStored reads any other as version 1 and would add the old pane keys again.
+    return raw?.format === FILE_FORMAT && raw.version === STORAGE_VERSION ? fromStored(raw) : null;
   } catch {
     return null;
   }
-  // Only the version this app writes: fromStored reads any other as version 1 and would add the old pane keys again.
-  const file = raw as { format?: unknown; version?: unknown } | null;
-  return file?.format === FILE_FORMAT && file.version === STORAGE_VERSION ? fromStored(raw as Record<string, unknown>) : null;
 }
 
 export function useBindings(): Bindings {
