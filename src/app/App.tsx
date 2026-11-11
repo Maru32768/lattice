@@ -892,6 +892,7 @@ export default function App() {
     palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
     command: () => setPalette((p) => p ?? { initial: ">", newTab: false }),
     keyHelp: () => setKeyHelp(true),
+    selectAll: docAction("selectAll"),
     search: enterSearch,
     next: (n) => step(n),
     prev: (n) => step(-n),

@@ -398,6 +398,7 @@ export const ja = {
   "keys.scope.doc": "本文で",
   "keys.command": "コマンドを実行",
   "keys.keyHelp": "キー一覧",
+  "keys.selectAll": "全選択",
   "keys.paneLast": "直前のペインへ移動",
   "keys.paneNumbers": "ペインの番号を表示",
   "keys.paneGrowLeft": "ペインを左へ広げる",

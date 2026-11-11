@@ -883,6 +883,18 @@ base("the second key of a chord that reached the app runs in the page, and the p
   await expect(shell.locator(".prefix-hint")).toBeHidden();
 });
 
+base("Ctrl+A Ctrl+A read by the app for a page selects all in the page", async ({ shell }) => {
+  await shell.addInitScript((l) => localStorage.setItem("lattice.layout", l), JSON.stringify(PAGE_LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+A", count: 1 }));
+  await expect(shell.locator(".prefix-hint")).toBeVisible();
+  await shell.keyboard.press("Control+a");
+  await expect.poll(() => callsOf(shell, "browser_run_doc")).toEqual([{ key: "k1", action: "selectAll", count: 1 }]);
+  await expect(shell.locator(".prefix-hint")).toBeHidden();
+  expect(await shell.evaluate(() => getSelection()?.toString()), "the app's own document stays unselected").toBe("");
+});
+
 base("a page's keys scroll its viewport only if a reader could, else its largest scrolling box", async ({ shell }) => {
   await shell.goto("/");
   const module = `/@fs/${process.cwd().replaceAll("\\", "/")}/src/docnav/scroll.ts`;

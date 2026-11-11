@@ -69,9 +69,9 @@ test("Vim keys in the chat input: off by default, modes, motions, edits, undo, C
   await q.focus();
   const mode = app.locator(".chat-f-row .vim-mode");
   await expect(mode).toHaveText("INSERT");
-  for (let i = 0; i < "plain".length; i++) {
-    await app.keyboard.press("Backspace");
-  }
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press("Backspace");
   await app.keyboard.type("hello big world");
   await expect(q).toHaveText("hello big world");
   await app.keyboard.press("Escape");

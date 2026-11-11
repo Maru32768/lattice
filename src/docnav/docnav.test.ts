@@ -8,10 +8,15 @@ Object.assign(globalThis, {
   getComputedStyle: window.getComputedStyle.bind(window),
   Node: window.Node,
   NodeFilter: window.NodeFilter,
+  window,
+  HTMLElement: window.HTMLElement,
+  HTMLInputElement: window.HTMLInputElement,
+  HTMLTextAreaElement: window.HTMLTextAreaElement,
 });
 
 const { docText, indexOfPoint, matchesIn, pickMatch, rangeAt, textNodes } = await import("./text.ts");
 const { hintLabels, spread } = await import("./hints.ts");
+const { createDocNav } = await import("./controller.ts");
 
 test("hint labels are all different, none the start of another, and short while few", () => {
   const labels = hintLabels(100);
@@ -97,4 +102,16 @@ test("a point in the document maps to its place in the text, whitespace left out
   assert.equal(indexOfPoint(doc, doc.nodes[0], 1), 1, "the space belongs to no character: the next one stands for it");
   assert.equal(indexOfPoint(doc, doc.nodes[1], 1), 3);
   assert.equal(indexOfPoint(doc, document.body, 0), null);
+});
+
+test("selectAll does what Ctrl+A does: in the focused field, else the whole document", () => {
+  document.body.innerHTML = `<article id="doc"><p>one</p><p>two</p><input value="typed"></article><p>outside</p>`;
+  const root = document.getElementById("doc")!;
+  const nav = createDocNav(() => ({ root: () => root }) as unknown as import("./controller.ts").DocHost);
+  nav.run("selectAll", 1);
+  assert.equal(window.getSelection()!.toString(), root.textContent);
+  const field = root.querySelector("input")!;
+  field.focus();
+  nav.run("selectAll", 1);
+  assert.deepEqual([field.selectionStart, field.selectionEnd], [0, "typed".length]);
 });

@@ -227,6 +227,7 @@ export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "C
  * Whether the overlay takes a key before the page sees it: a second key, a repeat of one, or a Ctrl /
  * Alt key or Space, which have a browser default to suppress (Ctrl+S, paging). Any other key of ours
  * goes once the page has had it, if the page did not preventDefault (sites with their own "/" or "j" keep them).
+ * A sequence that passes its last key on leaves that key to the page.
  */
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
-  seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat);
+  !(step.kind === "run" && step.action.passThrough) && (seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat));

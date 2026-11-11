@@ -231,6 +231,22 @@ test("stepKeys: Ctrl+F and Ctrl+B move a screen in each scope, and Ctrl+B is no 
   assert.deepEqual(ran(stepKeys(inPage, IDLE, "Ctrl+B", { scope: "doc", inField: false, now: NOW })), ["pageUp", 1, "Ctrl+B"]);
 });
 
+test("stepKeys: the prefix twice selects all wherever the keyboard is, a field too, and passes its key on", () => {
+  for (const o of [{ scope: "list" as const }, { scope: "doc" as const }, { inField: true }]) {
+    const s = press(["Ctrl+A", "Ctrl+A"], o);
+    assert.deepEqual(ran(s), ["selectAll", 1, "Ctrl+A Ctrl+A"]);
+    assert.equal(s.kind === "run" && s.action.passThrough, true);
+    assert.deepEqual(s.seq, IDLE, "the sequence is over");
+  }
+  const inPage = pageKeys(DEFAULT_BINDINGS).bindings;
+  const first = stepKeys(inPage, IDLE, "Ctrl+A", { scope: "doc", inField: true, now: NOW });
+  assert.deepEqual(
+    ran(stepKeys(inPage, first.seq, "Ctrl+A", { scope: "doc", inField: true, now: NOW })),
+    ["selectAll", 1, "Ctrl+A Ctrl+A"],
+    "in a page's field",
+  );
+});
+
 test("stepKeys: a plain key in a field never runs or starts a chord, even on an inFields action", () => {
   const inField = { inField: true };
   assert.equal(step("G", IDLE, inField).kind, "none", "g t runs in fields, a typed g stays typed");

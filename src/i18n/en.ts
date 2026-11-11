@@ -407,6 +407,7 @@ export const en = {
   "keys.scope.doc": "In documents",
   "keys.command": "Run a command",
   "keys.keyHelp": "Key list",
+  "keys.selectAll": "Select all",
   "keys.paneLast": "Move to the previous pane",
   "keys.paneNumbers": "Show pane numbers",
   "keys.paneGrowLeft": "Grow the pane to the left",

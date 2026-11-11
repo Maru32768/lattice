@@ -277,6 +277,31 @@ test("the chat log scrolls with the document's keys once the keyboard is in it, 
   await expect(hint(app)).toBeHidden();
 });
 
+test("Ctrl+A Ctrl+A selects all in a field, as tmux's send-prefix passes the key on, and Ctrl+A still leads the app's keys there", async ({ app }) => {
+  await app.getByRole("button", { name: "対話" }).click();
+  const input = app.locator("#chat-q");
+  await input.click();
+  await app.keyboard.type("draft");
+  await press(app, "Control+a", "Control+a");
+  await app.keyboard.type("x");
+  await expect(input).toHaveValue("x");
+  await expect(hint(app)).toBeHidden();
+
+  await app.keyboard.type("yz");
+  await app.keyboard.press("Control+a");
+  await expect(hint(app), "after the hint shows too").toBeVisible();
+  await app.keyboard.press("Control+a");
+  await expect(hint(app)).toBeHidden();
+  await app.keyboard.type("w");
+  await expect(input).toHaveValue("w");
+
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(1);
+  await press(app, "Control+a", "%");
+  await expect(panes).toHaveCount(2);
+  await expect(input, "the second key was not typed").toHaveValue("w");
+});
+
 test("after a split the keys start from the new pane, not the one that had DOM focus", async ({ app }) => {
   await intoReader(app);
   await app.keyboard.press("Control+\\");

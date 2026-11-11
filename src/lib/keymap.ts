@@ -23,6 +23,7 @@ export type ActionId =
   | "command"
   | "keyHelp"
   | "escape"
+  | "selectAll"
   | "paneLast"
   | "paneNumbers"
   | "paneGrowLeft"
@@ -113,6 +114,12 @@ export interface ActionDef {
   repeat?: boolean;
   /** Runs inside the document itself, not in the app. */
   local?: boolean;
+  /**
+   * As tmux's send-prefix: the sequence's last key goes on to what has the focus, which does with it what it does
+   * without Lattice (a field or a page selects all, Vim increments). The action runs only where the key cannot go on: in a page
+   * whose keyboard the app's hint took.
+   */
+  passThrough?: boolean;
 }
 
 /**
@@ -124,6 +131,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "command", group: "app", keys: [":", ";", "Ctrl+A :"], inFields: true },
   { id: "keyHelp", group: "app", keys: ["?", "Ctrl+A ?"], inFields: true },
   { id: "escape", group: "app", keys: ["Escape"], inFields: true },
+  { id: "selectAll", group: "app", keys: ["Ctrl+A Ctrl+A"], inFields: true, passThrough: true },
   { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "Ctrl+A ArrowLeft", "Ctrl+A H"], inFields: true },
   { id: "paneDown", group: "panes", keys: ["Ctrl+J", "Ctrl+A ArrowDown", "Ctrl+A J"], inFields: true },
   { id: "paneUp", group: "panes", keys: ["Ctrl+K", "Ctrl+A ArrowUp", "Ctrl+A K"], inFields: true },

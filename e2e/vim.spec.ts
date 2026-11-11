@@ -287,6 +287,17 @@ test("a key the vimrc maps goes to the engine only in that mode", async ({ page 
   await expect(chatInput(page), "in normal mode it moves panes").not.toBeFocused();
 });
 
+test("Ctrl+A Ctrl+A gives the engine its Ctrl+A: in normal mode it increments", async ({ page }) => {
+  await chat(page);
+  await page.keyboard.type("5");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+a");
+  await expect(page.locator(".prefix-hint")).toBeVisible();
+  await page.keyboard.press("Control+a");
+  await expect(chatInput(page)).toHaveText("6");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+});
+
 test("a mapped key still ends a chord the app is reading", async ({ page }) => {
   await chat(page, "inoremap <c-h> <left>\nnnoremap x :wincmd h<cr>");
   await page.keyboard.press("Control+a");

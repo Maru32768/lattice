@@ -390,6 +390,7 @@ For the rest, as in tmux, press `Ctrl+A` and then one of these keys. If you paus
 | `z` | [Focus mode](#focus-mode) |
 | `:` | Run a command |
 | `?` | Key list |
+| `Ctrl+A` | Select all. As tmux's send-prefix does, the key goes on to the field or page that has the focus |
 
 You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
 
@@ -759,6 +760,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Command palette | `Ctrl+P` |
 | Run a command | `:`, `;` |
 | Key list | `?` |
+| Select all | `Ctrl+A Ctrl+A` |
 | Search | `/` |
 | Next item | `j`, `↓` |
 | Previous item | `k`, `↑` |
@@ -832,6 +834,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
 - `Enter` and the arrow keys belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts. `Space` does not scroll the page. A shortcut bound to `Space` works outside text fields, and an unbound `Space` still presses the page's buttons.
 - `Esc` leaves the page's text field, unless the page uses it itself.
+- `Ctrl+A Ctrl+A` selects all in the page or in its text field. As tmux's send-prefix does, Lattice passes the second `Ctrl+A` on to the page.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
 - `w` and `r` do not work on a page. Save words with the button that appears above the page.
 
@@ -843,6 +846,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - `Esc` switches to normal mode. It does not leave the box.
 - To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+A`, or `:q`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note.
+- `Ctrl+A` is the first of Lattice's two-step keys. For Vim's own `Ctrl+A`, press it twice.
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.
 

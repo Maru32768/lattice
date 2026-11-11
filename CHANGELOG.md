@@ -20,7 +20,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Changed
 
 - **The default keys are now Vim first.** The command palette is `Ctrl+P` (it was `Ctrl+K`), panes move with `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, and printing is `Ctrl+Shift+P`. On a document `j` and `k` scroll, and the next and previous article are `Shift+J` and `Shift+K`. `v` moved to `g v`, `y` to `g y`, `[` and `]` to `-` and `=`, and `f` to `Ctrl+A z`. Keys you changed in **Settings › Shortcuts** stay as they are.
-- **The tmux prefix is now `Ctrl+A`.** Version 0.3.0 used `Ctrl+B`, which now moves a screen up, as in Vim. Keys you changed in **Settings › Shortcuts** that started with `Ctrl+B` now start with `Ctrl+A`.
+- **The tmux prefix is now `Ctrl+A`.** Version 0.3.0 used `Ctrl+B`, which now moves a screen up, as in Vim. Keys you changed in **Settings › Shortcuts** that started with `Ctrl+B` now start with `Ctrl+A`. `Ctrl+A Ctrl+A` selects all, as tmux's send-prefix passes the key on to the field or page with the focus.
 - `Space` and `Shift+Space` no longer scroll documents, lists or web pages. Move a screen with `Ctrl+F` and `Ctrl+B` instead. `Space` can be bound in **Settings › Shortcuts**, also as the first of two keys, and it now works in web pages too. On a button, an unbound `Space` still presses it.
 - **Focus mode shows only the focused pane.** The navigation, the article list, the chat and the other panes hide. Press it again to bring them back.
 - The Vim key bindings setting moved from **Settings › Summaries & chat** to the new **Settings › Vim**. Your setting stays as it was.

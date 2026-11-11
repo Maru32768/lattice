@@ -831,6 +831,9 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     e.stopImmediatePropagation();
     applyStep(step, hinted);
+  } else if (step.kind === "run" && step.action.passThrough) {
+    // The page has the key; the app only drops the hint it would show, which takes the keyboard.
+    tellApp("");
   } else {
     setTimeout(() => {
       if (!e.defaultPrevented) {

@@ -255,6 +255,8 @@ test("takesBeforePage: a second key, a repeat, a Ctrl / Alt key and a bound Spac
   assert.equal(taken({ ...IDLE, first: "G" }, "T"), true, "the page never sees half a sequence");
   assert.equal(taken({ ...IDLE, first: "G" }, "Escape"), true);
   assert.equal(taken({ ...IDLE, repeat: { first: "Ctrl+A", until: 1 } }, "Shift+H"), true, "a repeat is a second key");
+  assert.equal(taken({ ...IDLE, first: "Ctrl+A" }, "Ctrl+A"), false, "the prefix twice passes its key on to the page");
+  assert.equal(taken({ ...IDLE, first: "Ctrl+A" }, "Ctrl+B", true), true, "an unbound second key is still taken");
   assert.equal(taken(IDLE, "J"), false, "sites with their own j keep it");
   assert.equal(taken(IDLE, "G"), false);
   assert.equal(taken(IDLE, "5"), false);

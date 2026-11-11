@@ -646,6 +646,18 @@ export function createDocNav(host: () => DocHost) {
     docBack: () => host().history(-1),
     docForward: () => host().history(1),
     print: () => host().print(),
+    // What Ctrl+A does by itself, for a page that did not get the key: in its focused field, else the whole document.
+    selectAll: () => {
+      const field = document.activeElement;
+      if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+        field.select();
+        return;
+      }
+      const root = field instanceof HTMLElement && field.isContentEditable ? field : host().root();
+      if (root) {
+        selection().selectAllChildren(root);
+      }
+    },
   };
 
   function linkTargetsIn() {

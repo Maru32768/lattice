@@ -216,6 +216,8 @@ export function useShortcuts({
   docKeys: (key: string) => boolean;
 }) {
   const bindings = useBindings();
+  /** The event `onKey` read last: the capture listener can read one before the bubbling one gets it. */
+  const read = useRef<KeyboardEvent | null>(null);
   useEffect(() => {
     browser.setKeys(pageKeys(bindings)).catch(() => {});
   }, [bindings]);
@@ -242,9 +244,10 @@ export function useShortcuts({
   }
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.isComposing) {
+    if (e.defaultPrevented || e.isComposing || e === read.current) {
       return;
     }
+    read.current = e;
     const key = keyOf(e);
     if (!key) {
       return;
@@ -298,6 +301,10 @@ export function useShortcuts({
       return;
     }
     const { id } = step.action;
+    // The key goes on to what has the focus, as tmux's send-prefix passes it. The page the hint took the keyboard from cannot get it: the action runs it there.
+    if (step.action.passThrough && !backTo) {
+      return;
+    }
     // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first. A Vim editor keeps it for its modes.
     if (inField && id === "escape") {
       return t.closest(EDITOR) ? undefined : t.blur();
