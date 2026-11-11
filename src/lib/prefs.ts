@@ -13,14 +13,13 @@ export const SYNCED = [
   "lattice.vocabAutoplay",
   "lattice.vocabMarks",
 ] as const;
-export type SyncedKey = (typeof SYNCED)[number];
+type SyncedKey = (typeof SYNCED)[number];
 
-/** The cached value per key, null for none. */
 export type Cached = Record<SyncedKey, string | null>;
 /** The library's rows: a key with no row is missing. "" is a value the module cleared (Vim off, no vimrc). */
 type Rows = Partial<Record<SyncedKey, string>>;
 
-function read(key: SyncedKey): string | null {
+export function readPref(key: SyncedKey): string | null {
   try {
     return localStorage.getItem(key);
   } catch {
@@ -80,7 +79,7 @@ export function planSync(before: Cached, rows: Rows, now: Cached): { cache: Part
   return { cache, db };
 }
 
-const cached = () => Object.fromEntries(SYNCED.map((k) => [k, read(k)])) as Cached;
+const cached = () => Object.fromEntries(SYNCED.map((k) => [k, readPref(k)])) as Cached;
 
 /** The main window's start: the library's values win over the cache, and the first start copies the cache in. */
 export async function syncPrefs() {

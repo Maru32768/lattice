@@ -3,21 +3,13 @@
 import { lazy, useSyncExternalStore } from "react";
 import { useT } from "../i18n";
 import type { ActionId } from "../lib/keymap";
-import { savePref } from "../lib/prefs";
+import { readPref, savePref } from "../lib/prefs";
 
 const ON_KEY = "lattice.chatVim";
 const VIMRC_KEY = "lattice.vimrc";
 
-function stored(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-let on = stored(ON_KEY) === "on";
-let vimrc = stored(VIMRC_KEY) ?? "";
+let on = readPref(ON_KEY) === "on";
+let vimrc = readPref(VIMRC_KEY) ?? "";
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((f) => f());
 const subscribe = (f: () => void) => {
@@ -28,8 +20,8 @@ const subscribe = (f: () => void) => {
 // Another window changed them, or the start-up sync took the library's: follow it.
 window.addEventListener("storage", (e) => {
   if (e.key === ON_KEY || e.key === VIMRC_KEY) {
-    on = stored(ON_KEY) === "on";
-    vimrc = stored(VIMRC_KEY) ?? "";
+    on = readPref(ON_KEY) === "on";
+    vimrc = readPref(VIMRC_KEY) ?? "";
     changed();
   }
 });

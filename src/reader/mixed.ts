@@ -1,5 +1,5 @@
 import { assignTranslated, endsSpaced, isWrittenIn, type Target } from "../overlay/logic.ts";
-import { savePref } from "../lib/prefs.ts";
+import { readPref, savePref } from "../lib/prefs.ts";
 
 export type LanguageMode = "original" | "translated" | "mixed";
 
@@ -41,15 +41,9 @@ export function autoTranslates(mode: LanguageMode, blocks: { kind: string; trans
   return !job || job.status === "failed";
 }
 
-const ON_SWITCH_KEY = "lattice.translateOnSwitch";
+export const ON_SWITCH_KEY = "lattice.translateOnSwitch";
 /** 表示を切り替えたら自動で翻訳 (default on), kept in the library like the word marks. Read on each call: it only decides when the UI asks. */
-export function translateOnSwitch(): boolean {
-  try {
-    return localStorage.getItem(ON_SWITCH_KEY) !== "off";
-  } catch {
-    return true;
-  }
-}
+export const translateOnSwitch = () => readPref(ON_SWITCH_KEY) !== "off";
 export const setTranslateOnSwitch = (on: boolean) => savePref(ON_SWITCH_KEY, on ? "on" : "off");
 
 /** A stretch of a block's text: a translated sentence, or the text between sentences (`translation` null). */

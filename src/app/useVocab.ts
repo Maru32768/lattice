@@ -2,17 +2,11 @@ import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type VocabEntry } from "../api";
 import { wordMarks } from "../vocab/vocab";
-import { savePref, useSynced } from "../lib/prefs";
+import { readPref, savePref, useSynced } from "../lib/prefs";
 
 const MARKS_KEY = "lattice.vocabMarks";
 /** Whether saved words are underlined in the Reader (default on). */
-function loadMarks(): boolean {
-  try {
-    return localStorage.getItem(MARKS_KEY) !== "off";
-  } catch {
-    return true;
-  }
-}
+const loadMarks = () => readPref(MARKS_KEY) !== "off";
 
 /** Vocabulary (G56): the book, its marks in the Reader, and the 単語を登録 shortcut. `onChanged`: the book changed, so may the due reviews. */
 export function useVocab(onChanged: () => void) {
