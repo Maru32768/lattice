@@ -319,7 +319,7 @@ mod tests {
     fn shortcuts_are_written_as_given_to_a_stamped_file_in_a_new_folder() {
         let s = Store::open_in_memory().unwrap();
         let dir = std::env::temp_dir().join(format!("lattice-shortcuts-test-{}", std::process::id())).join("exports");
-        let json = "{\n  \"format\": \"lattice.shortcuts\",\n  \"next\": [\n    \"N\"\n  ]\n}";
+        let json = "{\n  \"format\": \"lattice.shortcuts\",\n  \"version\": 2,\n  \"next\": [\n    \"N\"\n  ]\n}";
         let path = export_shortcuts(&s, &dir, json).unwrap();
         let written = std::fs::read_to_string(&path);
         let _ = std::fs::remove_dir_all(dir.parent().unwrap());
