@@ -441,6 +441,7 @@ test("export writes the changed keys, shows where, and the file loads them back"
 
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×"]);
+  await expect(app.getByRole("status"), "the reset replaces the export's message").toHaveText("すべて既定に戻しました");
   await app
     .getByLabel("ファイルから読み込む")
     .setInputFiles({ name: "lattice-shortcuts.json", mimeType: "application/json", buffer: Buffer.from(calls[0].json) });
