@@ -728,7 +728,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
 - **Export** writes the keys you changed to the `exports` folder. **Load from file** replaces your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
 
-Shortcuts are saved in the database, so they are in backups and move with the data folder. Export and load keep a set of keys you can go back to later.
+Shortcuts are saved in the database, so they are in backups and move with the data folder. Export and load let you keep a set of keys and go back to it later.
 
 ### Browser
 
@@ -1000,7 +1000,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, shortcuts and Vim included, are saved in the database.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, including shortcuts and Vim, are saved in the database.
 
 ### Unused translations
 
