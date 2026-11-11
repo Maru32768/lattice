@@ -30,11 +30,8 @@ const section = (page: Page, title: string) =>
     .filter({ has: page.locator(".label").getByText(title, { exact: true }) })
     .click();
 
-const keysOf = (page: Page, label: string) =>
-  page
-    .locator(".stg .set")
-    .filter({ has: page.locator(".h").getByText(label, { exact: true }) })
-    .locator(".kbd.key");
+const row = (page: Page, label: string) => page.locator(".stg .set").filter({ has: page.locator(".h").getByText(label, { exact: true }) });
+const keysOf = (page: Page, label: string) => row(page, label).locator(".kbd.key");
 
 const lastSaved = async (page: Page) => (await callsOf(page, "set_ui_prefs")).at(-1);
 
@@ -107,11 +104,7 @@ test("each of the other settings goes to the library when it changes", async ({ 
 
   await section(app, "ショートカット");
   await app.getByRole("tab", { name: /^記事 \d+/ }).click();
-  await app
-    .locator(".stg .set")
-    .filter({ has: app.locator(".h").getByText("お気に入り", { exact: true }) })
-    .getByRole("button", { name: "+ キーを追加" })
-    .click();
+  await row(app, "お気に入り").getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("x");
   await app.keyboard.press("Enter");
   const shortcuts = async () => {
