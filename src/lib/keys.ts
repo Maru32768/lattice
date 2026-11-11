@@ -2,6 +2,7 @@
 // as overrides here; the shell reads the merged bindings. What the keys mean is in keymap.ts.
 import { useSyncExternalStore } from "react";
 import { ACTIONS, DEFAULT_BINDINGS, keyOf, merge, type ActionId, type Bindings } from "./keymap.ts";
+import { savePref } from "./prefs.ts";
 
 // ---- persisted store ----------------------------------------------------------------------------
 const STORAGE_KEY = "lattice.shortcuts";
@@ -49,15 +50,12 @@ const listeners = new Set<() => void>();
 function commit(next: Partial<Bindings>) {
   overrides = next;
   bindings = merge(next);
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, version: STORAGE_VERSION }));
-  } catch {
-    // Blocked storage: the change lasts for this session only.
-  }
+  savePref(STORAGE_KEY, JSON.stringify({ ...next, version: STORAGE_VERSION }));
   listeners.forEach((f) => f());
 }
 
-// Another window changed the shortcuts: follow it. Only the main window edits them, so this is how a pop-out (G52) keeps up.
+// Another window changed the shortcuts, or the start-up sync took the library's: follow it. Only the main window edits
+// them, so this is how a pop-out (G52) keeps up.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
     if (e.key !== STORAGE_KEY) {

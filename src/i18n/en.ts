@@ -306,10 +306,10 @@ export const en = {
   "shortcutSettings.tabClash": "overlapping keys",
   "shortcutSettings.vim": "Vim key bindings in the chat input and notes",
   "shortcutSettings.vimDesc":
-    "Starts in insert mode; Esc switches to normal mode. Ctrl+Enter or :w sends in chat and saves in notes. :q leaves the chat input and closes notes. Move between panes with Ctrl+H / J / K / L. Stored on this computer only.",
+    "Starts in insert mode; Esc switches to normal mode. Ctrl+Enter or :w sends in chat and saves in notes. :q leaves the chat input and closes notes. Move between panes with Ctrl+H / J / K / L.",
   "shortcutSettings.vimrc": "vimrc",
   "shortcutSettings.vimrcDesc":
-    "Mappings such as nnoremap and some set options take effect. Scripts and plugins are left out. Loading a file copies its text here, with no link to the file. Stored on this computer only.",
+    "Mappings such as nnoremap and some set options take effect. Scripts and plugins are left out. Loading a file copies its text here, with no link to the file.",
   "shortcutSettings.vimrcLoad": "Load from file",
   "shortcutSettings.vimrcApplied": "Applied: {n}",
   "shortcutSettings.vimrcSkipped": "Lines not applied: {n}",

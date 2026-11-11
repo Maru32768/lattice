@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, type VocabEntry } from "../api";
 import { wordMarks } from "../vocab/vocab";
+import { savePref, useSynced } from "../lib/prefs";
 
 const MARKS_KEY = "lattice.vocabMarks";
 /** Whether saved words are underlined in the Reader (default on). */
@@ -16,7 +17,7 @@ function loadMarks(): boolean {
 /** Vocabulary (G56): the book, its marks in the Reader, and the 単語を登録 shortcut. `onChanged`: the book changed, so may the due reviews. */
 export function useVocab(onChanged: () => void) {
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
-  const [marksOn, setMarksOn] = useState(loadMarks);
+  const [marksOn, setMarksOn] = useSynced(MARKS_KEY, loadMarks);
   const [saveWordSeq, setSaveWordSeq] = useState(0);
   const marks = useMemo(() => (marksOn ? wordMarks(vocab) : null), [vocab, marksOn]);
   const loadVocab = () => {
@@ -28,12 +29,7 @@ export function useVocab(onChanged: () => void) {
   };
   const setMarks = (on: boolean) => {
     setMarksOn(on);
-    const stored = on ? "on" : "off";
-    try {
-      localStorage.setItem(MARKS_KEY, stored);
-    } catch {
-      // Blocked storage: the choice lasts for this session only.
-    }
+    savePref(MARKS_KEY, on ? "on" : "off");
   };
   const onVocabChanged = useEffectEvent(loadVocab);
   useEffect(() => {

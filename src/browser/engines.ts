@@ -1,5 +1,6 @@
 // The Page toolbar's URL bar: what a typed input opens, and the search engine for inputs that
-// are not URLs (Settings › ブラウザ). The choice persists in the app's storage, like the shortcuts.
+// are not URLs (Settings › ブラウザ). The choice is kept in the library, like the shortcuts.
+import { savePref } from "../lib/prefs.ts";
 
 export type EngineId = "google" | "duckduckgo" | "bing" | "brave" | "kagi" | "custom";
 
@@ -83,9 +84,14 @@ export const getEngine = () => current;
 
 export function setEngine(e: SearchEngine) {
   current = e;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(e));
-  } catch {
-    // Blocked storage: the choice lasts for this session only.
-  }
+  savePref(STORAGE_KEY, JSON.stringify(e));
+}
+
+// Another window changed it, or the start-up sync took the library's choice.
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY) {
+      current = load();
+    }
+  });
 }

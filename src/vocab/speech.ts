@@ -2,6 +2,7 @@
 // system's voices (Microsoft David / Zira / Mark…), which speak offline. Only those (localService)
 // are used: a cloud voice would send the words out. No English voice: no audio buttons.
 import { useSyncExternalStore } from "react";
+import { savePref } from "../lib/prefs.ts";
 
 type Voice = Pick<SpeechSynthesisVoice, "lang" | "localService">;
 
@@ -47,7 +48,7 @@ export function speak(text: string, v: SpeechSynthesisVoice) {
 }
 
 const AUTO_KEY = "lattice.vocabAutoplay";
-/** Whether a card says its word when it appears (default on; per device, like the word marks). */
+/** Whether a card says its word when it appears (default on; kept in the library, like the word marks). */
 export function autoplay(): boolean {
   try {
     return localStorage.getItem(AUTO_KEY) !== "off";
@@ -55,13 +56,7 @@ export function autoplay(): boolean {
     return true;
   }
 }
-export function setAutoplay(on: boolean) {
-  try {
-    localStorage.setItem(AUTO_KEY, on ? "on" : "off");
-  } catch {
-    // Blocked storage: the default stays.
-  }
-}
+export const setAutoplay = (on: boolean) => savePref(AUTO_KEY, on ? "on" : "off");
 
 let replay: (() => void) | null = null;
 /** The card on screen says its word again on the `speak` shortcut; returns the unregister. */

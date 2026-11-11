@@ -76,6 +76,7 @@ import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest 
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
 import type { ActionId } from "../lib/keymap";
+import { syncPrefs } from "../lib/prefs";
 
 // Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
 const chunkImport = () => import("../import/ImportView");
@@ -134,6 +135,10 @@ export default function App() {
       .uiLanguage()
       .then((l) => (isLang(l) ? setDisplayLang(l) : api.setUiLanguage(displayLang())))
       .catch(() => {});
+    // Pop-outs follow the main window's localStorage.
+    if (IS_MAIN) {
+      syncPrefs().catch(() => {});
+    }
   }, []);
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(String(e));

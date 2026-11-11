@@ -3,6 +3,7 @@ import { SetRow, Switch } from "../ui/SetRow";
 import { autoplay, setAutoplay } from "../vocab/speech";
 import { api, type ReviewSettings } from "../api";
 import { useT } from "../i18n";
+import { useSynced } from "../lib/prefs";
 
 const UNITS = [
   ["quizSettings.days", 24 * 60],
@@ -21,7 +22,7 @@ export function QuizSettings() {
   const t = useT();
   const [value, setValue] = useState<ReviewSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [auto, setAuto] = useState(autoplay);
+  const [auto, setAuto] = useSynced("lattice.vocabAutoplay", autoplay);
 
   useEffect(() => {
     api

@@ -1,11 +1,11 @@
-import { useState } from "react";
 import { SetRow } from "../ui/SetRow";
 import { ENGINES, getEngine, setEngine, validTemplate, type EngineId, type SearchEngine } from "../browser/engines";
 import { useT } from "../i18n";
+import { useSynced } from "../lib/prefs";
 
 export function BrowserSettings() {
   const t = useT();
-  const [engine, setState] = useState(getEngine);
+  const [engine, setState] = useSynced("lattice.searchEngine", getEngine);
   const save = (e: SearchEngine) => {
     setState(e);
     setEngine(e);

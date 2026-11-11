@@ -299,10 +299,10 @@ export const ja = {
   "shortcutSettings.tabClash": "重なりあり",
   "shortcutSettings.vim": "対話の入力欄とメモでVimキーバインドを使う",
   "shortcutSettings.vimDesc":
-    "挿入モードで始まり、Escでノーマルモードになります。Ctrl+Enterか:wで、対話は送信、メモは保存します。:qで、対話は入力欄を離れ、メモは閉じます。ペインの移動はCtrl+H / J / K / Lです。このPCだけの設定です。",
+    "挿入モードで始まり、Escでノーマルモードになります。Ctrl+Enterか:wで、対話は送信、メモは保存します。:qで、対話は入力欄を離れ、メモは閉じます。ペインの移動はCtrl+H / J / K / Lです。",
   "shortcutSettings.vimrc": "vimrc",
   "shortcutSettings.vimrcDesc":
-    "nnoremapなどのマッピングと一部のsetが効きます。スクリプトとプラグインは読み飛ばします。ファイルから読み込むと内容をここにコピーし、元のファイルとは連動しません。このPCだけの設定です。",
+    "nnoremapなどのマッピングと一部のsetが効きます。スクリプトとプラグインは読み飛ばします。ファイルから読み込むと内容をここにコピーし、元のファイルとは連動しません。",
   "shortcutSettings.vimrcLoad": "ファイルから読み込む",
   "shortcutSettings.vimrcApplied": "適用: {n}件",
   "shortcutSettings.vimrcSkipped": "適用しなかった行: {n}件",

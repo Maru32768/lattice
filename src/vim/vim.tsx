@@ -1,8 +1,9 @@
-// Vim in the text fields: whether it is on and the vimrc text, both per device like the shortcuts, and the way to the
-// editor. This file is in the main chunk, so CodeMirror stays out of it: the editor loads only when Vim is on.
+// Vim in the text fields: whether it is on and the vimrc text, both kept in the library like the shortcuts, and the way
+// to the editor. This file is in the main chunk, so CodeMirror stays out of it: the editor loads only when Vim is on.
 import { lazy, useSyncExternalStore } from "react";
 import { useT } from "../i18n";
 import type { ActionId } from "../lib/keymap";
+import { savePref } from "../lib/prefs";
 
 const ON_KEY = "lattice.chatVim";
 const VIMRC_KEY = "lattice.vimrc";
@@ -15,18 +16,6 @@ function stored(key: string): string | null {
   }
 }
 
-function store(key: string, value: string | null) {
-  try {
-    if (value === null) {
-      localStorage.removeItem(key);
-    } else {
-      localStorage.setItem(key, value);
-    }
-  } catch {
-    // Blocked storage: the change lasts for this session only.
-  }
-}
-
 let on = stored(ON_KEY) === "on";
 let vimrc = stored(VIMRC_KEY) ?? "";
 const listeners = new Set<() => void>();
@@ -36,7 +25,7 @@ const subscribe = (f: () => void) => {
   return () => void listeners.delete(f);
 };
 
-// Another window changed them: follow it.
+// Another window changed them, or the start-up sync took the library's: follow it.
 window.addEventListener("storage", (e) => {
   if (e.key === ON_KEY || e.key === VIMRC_KEY) {
     on = stored(ON_KEY) === "on";
@@ -49,7 +38,7 @@ export const vimEnabled = () => on;
 
 export function setVimEnabled(value: boolean) {
   on = value;
-  store(ON_KEY, value ? "on" : null);
+  savePref(ON_KEY, value ? "on" : null);
   changed();
 }
 
@@ -57,7 +46,7 @@ export const getVimrc = () => vimrc;
 
 export function setVimrc(text: string) {
   vimrc = text;
-  store(VIMRC_KEY, text || null);
+  savePref(VIMRC_KEY, text || null);
   changed();
 }
 
