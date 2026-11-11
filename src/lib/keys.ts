@@ -57,7 +57,7 @@ function commit(next: Partial<Bindings>) {
   listeners.forEach((f) => f());
 }
 
-// Another window (a pop-out, G52) changed the shortcuts: follow it.
+// Another window changed the shortcuts: follow it. Only the main window edits them, so this is how a pop-out (G52) keeps up.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
     if (e.key !== STORAGE_KEY) {
