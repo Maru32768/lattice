@@ -270,7 +270,7 @@ The Reader's toolbar shows how far translation has gone (for example, **Translat
 
 | Setting | What it does |
 |---|---|
-| **Translate when I switch the view** | Starts translating when you switch to **Mixed** or **Translated**. On by default. Stored on this computer only. |
+| **Translate when I switch the view** | Starts translating when you switch to **Mixed** or **Translated**. On by default. |
 | **Translate saved articles automatically** | Starts translating each article as soon as it is saved. Off by default, because it uses the AI provider for every saved article. Articles written in the display language are skipped (with English as the display language, English and other non-Japanese articles), and so are articles with **Turn automatic translation off** chosen. |
 | **Also translate articles in the display language** | With **Translate saved articles automatically** on, articles written in the display language are translated into the other language too (with English as the display language, English articles into Japanese). Off by default. |
 | **Parallel requests** | How many translation requests to the AI provider run at the same time (1–8, default 3). Long articles are translated in batches (up to 12 paragraphs each) in parallel, and short articles several at a time, so **Jobs** shows up to this many running. The article on screen is translated right away, outside this number. A higher number finishes sooner but reaches usage and API rate limits sooner. With Claude CLI and Codex CLI, it also runs more processes at once. |
@@ -617,7 +617,7 @@ You can save up to 64 characters that contain a Latin letter and do not span a l
 
 - **Search words and meanings** narrows the list. Sort by **Recently added** or **Due soonest**.
 - Each word's ⋯ menu has **Edit meaning**, **Go to source**, **Regenerate meaning and example**, **Suspend** (**Resume** when suspended) and **Delete**. A word whose lookup failed shows **Look up again**.
-- **Underline saved words in articles** turns the underlines in the text on or off. Stored on this computer only.
+- **Underline saved words in articles** turns the underlines in the text on or off.
 - **Export CSV** writes a CSV that Anki can import (front, back and tags) to the `exports` folder.
 
 ### Today's review
@@ -643,7 +643,7 @@ Words are read aloud with the English voices installed in Windows, so it works o
 | **Reviews per day** | 200 |
 | **Shortest interval** | 1 day. Below 1 day, a card comes back again the same day (like Anki's learning steps). |
 | **Longest interval** | 365 days |
-| **Say word cards aloud** | On. Stored on this computer only. |
+| **Say word cards aloud** | On. |
 
 The daily limits count quiz cards and word cards together.
 
@@ -728,11 +728,11 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
 - **Export** writes the keys you changed to the `exports` folder. **Load from file** replaces your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
 
-Shortcuts are stored on this computer only. To use them on another computer, export them and load the file there.
+Shortcuts are saved in the database, so they are in backups and move with the data folder. Export and load keep a set of keys you can go back to later.
 
 ### Browser
 
-**Search engine** is used when you type something other than a URL in the Page view's URL field, and for the home button. Choose DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For **Custom**, enter a **Search URL** with `%s` where the search terms go. Stored on this computer only.
+**Search engine** is used when you type something other than a URL in the Page view's URL field, and for the home button. Choose DuckDuckGo (the default), Google, Bing, Brave Search, Kagi or **Custom**. For **Custom**, enter a **Search URL** with `%s` where the search terms go.
 
 ### Startup and taskbar
 
@@ -833,7 +833,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 
 ### Vim key bindings
 
-Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim** to use Vim keys in the chat box and in notes. It is off by default and stored on this computer only. Modes, counts, `.`, text objects, search, macros and the rest of Vim's editing work as in Vim.
+Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim** to use Vim keys in the chat box and in notes. It is off by default. Modes, counts, `.`, text objects, search, macros and the rest of Vim's editing work as in Vim.
 
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
@@ -842,7 +842,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.
 
-**vimrc.** Write the text of your `.vimrc` under **vimrc** in the same place, or read it with **Load from file**. Mappings such as `nnoremap` and some `set` options take effect. Scripts and plugins are left out. The text is copied here, with no link to the file, and stored on this computer only.
+**vimrc.** Write the text of your `.vimrc` under **vimrc** in the same place, or read it with **Load from file**. Mappings such as `nnoremap` and some `set` options take effect. Scripts and plugins are left out. The text is copied here, with no link to the file.
 
 - Below it, you see how many lines applied, and each line left out with its reason.
 - A key the vimrc maps in the current mode goes to the editor before the app. If you map `Ctrl+H` in insert mode, for example, that key no longer moves between panes in insert mode.
@@ -1000,7 +1000,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout. You can still move shortcuts to another computer by exporting them in **Settings › Shortcuts** and loading the file on the other computer.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout. All other settings, shortcuts and Vim included, are saved in the database.
 
 ### Unused translations
 
