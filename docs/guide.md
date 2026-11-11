@@ -297,7 +297,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Focus mode
 
-`Ctrl+B z` or the focus mode button shows only the focused pane. The navigation, the article list, the chat and the other panes hide. Press it again to bring them back; a navigation or list you had collapsed stays collapsed. Moving to another pane, splitting, closing, swapping or resizing panes, filtering, searching and opening the chat also end focus mode. With the article list hidden, `Shift+J` and `Shift+K` still move to the next and previous article.
+`Ctrl+A z` or the focus mode button shows only the focused pane. The navigation, the article list, the chat and the other panes hide. Press it again to bring them back; a navigation or list you had collapsed stays collapsed. Moving to another pane, splitting, closing, swapping or resizing panes, filtering, searching and opening the chat also end focus mode. With the article list hidden, `Shift+J` and `Shift+K` still move to the next and previous article.
 
 ### Back and forward
 
@@ -311,13 +311,13 @@ Press `Ctrl+Shift+P` in the Page view to open the Windows print dialog. In the R
 
 ### Read with the keyboard
 
-The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` do not scroll. To move a screen, use `Ctrl+F` and `Ctrl+B Ctrl+B`. You can bind `Space` to an action in **Settings › Shortcuts**.
+The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` do not scroll. To move a screen, use `Ctrl+F` and `Ctrl+B`. You can bind `Space` to an action in **Settings › Shortcuts**.
 
 | Key | Action |
 |---|---|
 | `j` `k` `h` `l` | Scroll |
 | `d` `u` or `Ctrl+D` `Ctrl+U` | Scroll half a screen |
-| `Ctrl+F` `Ctrl+B Ctrl+B` | Scroll a screen. Within 500 ms of `Ctrl+B Ctrl+B`, `Ctrl+B` alone goes up another screen |
+| `Ctrl+F` `Ctrl+B` | Scroll a screen |
 | `gg` `G` | Top and bottom of the document |
 | `Shift+J` `Shift+K` | Open the next or previous article in the focused pane |
 | `f` | Put labels on the links, buttons and fields on screen. Type a label to press that one |
@@ -368,9 +368,9 @@ The focused pane has a frame. Clicking inside a pane focuses it, and the next do
 
 `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L` move to the pane in that direction. The same keys reach the navigation, the article list and the chat.
 
-For the rest, as in tmux, press `Ctrl+B` and then one of these keys. If you pause after `Ctrl+B`, the screen shows a guide to the keys.
+For the rest, as in tmux, press `Ctrl+A` and then one of these keys. If you pause after `Ctrl+A`, the screen shows a guide to the keys.
 
-| Key after `Ctrl+B` | Action |
+| Key after `Ctrl+A` | Action |
 |---|---|
 | `←` `→` `↑` `↓` or `h` `j` `k` `l` | Move to the pane in that direction |
 | `o` | Move to the next pane |
@@ -391,7 +391,7 @@ For the rest, as in tmux, press `Ctrl+B` and then one of these keys. If you paus
 | `:` | Run a command |
 | `?` | Key list |
 
-You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+B`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
+You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
 
 ### Open a tab in its own window
 
@@ -767,7 +767,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Half a screen down the list | `d`, `Ctrl+D` |
 | Half a screen up the list | `u`, `Ctrl+U` |
 | A screen down the list | `Ctrl+F` |
-| A screen up the list | `Ctrl+B Ctrl+B` |
+| A screen up the list | `Ctrl+B` |
 | Open the article under the cursor | `Enter` |
 | Open the article under the cursor in Page | `Shift+Enter` |
 | Back / clear filters | `Esc` |
@@ -786,7 +786,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | More English text | `=` |
 | Favorite | `s` |
 | Read / unread | `m` |
-| Focus mode | `Ctrl+B z` |
+| Focus mode | `Ctrl+A z` |
 | Save the selected English word to Vocabulary | `w` |
 | Hear the word card again | `r` |
 
@@ -807,7 +807,7 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Split pane right | `Ctrl+\` |
 | Split pane down | `Ctrl+-` |
 | Open the tab in a new window / move it back to the main window | `Ctrl+Shift+N` |
-| Pane actions ([keys that follow `Ctrl+B`](#control-panes-with-the-keyboard)) | `Ctrl+B`, then the next key |
+| Pane actions ([keys that follow `Ctrl+A`](#control-panes-with-the-keyboard)) | `Ctrl+A`, then the next key |
 
 ### Fixed keys
 
@@ -828,7 +828,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 When you click a web page in the Page view, the keyboard goes to that page. Lattice's shortcuts still work under these conditions:
 
-- Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+B`, work even inside the page's text fields.
+- Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+A`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
 - `Enter` and the arrow keys belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts. `Space` does not scroll the page. A shortcut bound to `Space` works outside text fields, and an unbound `Space` still presses the page's buttons.
 - `Esc` leaves the page's text field, unless the page uses it itself.
@@ -841,7 +841,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
-- To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+B`, or `:q`.
+- To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+A`, or `:q`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note.
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.

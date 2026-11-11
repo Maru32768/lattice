@@ -117,7 +117,7 @@ test("each of the other settings goes to the library when it changes", async ({ 
     const saved = (await lastSaved(app)) as { prefs: Record<string, string> } | undefined;
     return JSON.parse(saved?.prefs["lattice.shortcuts"] ?? "null") as unknown;
   };
-  await expect.poll(shortcuts).toEqual({ favorite: ["S", "X"], version: 2 });
+  await expect.poll(shortcuts).toEqual({ favorite: ["S", "X"], version: 3 });
 
   await app.keyboard.press("Escape");
   await navItem(app, "単語帳").click();

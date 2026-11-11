@@ -242,7 +242,7 @@ for (const vim of [false, true]) {
     await shell.keyboard.type("kept");
     await expect.poll(() => lastSaved(shell), "saved once").toBe("kept");
     await shell.keyboard.type(" and new");
-    await shell.keyboard.press("Control+b");
+    await shell.keyboard.press("Control+a");
     await shell.keyboard.press("}");
     await expect(shell.locator(".dpane").nth(1).locator(".note-panel"), "the Reader went to the other pane").toBeVisible();
     await hasText(note, "kept and new");
@@ -259,7 +259,7 @@ for (const vim of [false, true]) {
     await shell.keyboard.type("kept and new");
     // Into the other pane, whose close merges the split and remounts this Reader.
     await shell.keyboard.press("Control+l");
-    await shell.keyboard.press("Control+b");
+    await shell.keyboard.press("Control+a");
     await shell.keyboard.press("x");
     await expect(shell.locator(".dpane")).toHaveCount(1);
     await hasText(note, "kept and new");

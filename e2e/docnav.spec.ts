@@ -804,7 +804,7 @@ test("an app key from the find bar ends the find, and the keyboard stays where t
   await expect(reader.locator(".doc-scroll")).toBeFocused();
 
   await find();
-  await press(reader, "Control+b", "w");
+  await press(reader, "Control+a", "w");
   await expect(palette(reader)).toBeVisible();
   await expect.poll(async () => (await drawn(reader)).open).toBe(false);
   await reader.keyboard.type("x");
@@ -814,9 +814,9 @@ test("an app key from the find bar ends the find, and the keyboard stays where t
 test("a Ctrl key that is no app key stays in the find bar", async ({ reader }) => {
   await reader.keyboard.press("/");
   await reader.keyboard.type("needle");
-  await reader.keyboard.press("Control+a");
+  await reader.keyboard.press("Control+Backspace");
   await reader.keyboard.type("Three");
-  await expect.poll(async () => (await drawn(reader)).query, "Ctrl+A selected what was typed").toBe("Three");
+  await expect.poll(async () => (await drawn(reader)).query, "Ctrl+Backspace deleted what was typed").toBe("Three");
   await reader.keyboard.press("Escape");
 });
 

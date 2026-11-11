@@ -160,9 +160,9 @@ test("Ex names from the alias table run the app's actions, and :wincmd moves pan
 
 test("the app's keys work from the editor, in both modes; typed keys stay the editor's", async ({ page }) => {
   await chat(page);
-  // Ctrl+B is the engine's page up in normal mode: here it must lead the app's chord.
+  // Ctrl+A is the engine's increment in normal mode: here it must lead the app's chord.
   await page.keyboard.press("Escape");
-  await page.keyboard.press("Control+b");
+  await page.keyboard.press("Control+a");
   await expect(page.locator(".prefix-hint")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator(".prefix-hint")).toHaveCount(0);
@@ -289,7 +289,7 @@ test("a key the vimrc maps goes to the engine only in that mode", async ({ page 
 
 test("a mapped key still ends a chord the app is reading", async ({ page }) => {
   await chat(page, "inoremap <c-h> <left>\nnnoremap x :wincmd h<cr>");
-  await page.keyboard.press("Control+b");
+  await page.keyboard.press("Control+a");
   await expect(page.locator(".prefix-hint")).toBeVisible();
   await page.keyboard.press("Control+h");
   await expect(page.locator(".prefix-hint")).toHaveCount(0);

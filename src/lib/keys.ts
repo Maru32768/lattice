@@ -6,30 +6,46 @@ import { savePref } from "./prefs.ts";
 
 // ---- persisted store ----------------------------------------------------------------------------
 const STORAGE_KEY = "lattice.shortcuts";
-const STORAGE_VERSION = 2;
+const STORAGE_VERSION = 3;
 const FILE_FORMAT = "lattice.shortcuts";
+/** The default chords' first key, as tmux's prefix. Before version 3 it was Ctrl+B, which now pages up. */
+const PREFIX = "Ctrl+A ";
+const OLD_PREFIX = "Ctrl+B ";
 
 // It reads imported files too: a key listed twice would repeat a React key in the row.
 const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => typeof k === "string") ? [...new Set(v.filter(Boolean))] : undefined);
 
 /**
- * The overrides in a stored value. Version 1 had a `pane` action, whose keys led fixed second keys
- * that no override could touch: those now become two-key bindings under the keys it had.
+ * Version 1's overrides as version 2's. Version 1 had a `pane` action, whose keys led fixed second
+ * keys that no override could touch: those become two-key bindings under the keys it had.
  */
-export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
+function fromVersion1(raw: Record<string, unknown>): Partial<Bindings> {
   const out: Partial<Bindings> = {};
-  const current = raw.version === STORAGE_VERSION;
   const pane = keysIn(raw.pane) ?? ["Ctrl+B"];
-  const paneMoved = !current && (pane.length !== 1 || pane[0] !== "Ctrl+B");
+  const paneMoved = pane.length !== 1 || pane[0] !== "Ctrl+B";
   for (const a of ACTIONS) {
     const v = keysIn(raw[a.id]);
-    const seconds = a.keys.filter((k) => k.startsWith("Ctrl+B ")).map((k) => k.slice("Ctrl+B ".length));
-    if (current) {
-      if (v) {
-        out[a.id] = v;
-      }
-    } else if (v || (paneMoved && seconds.length)) {
-      out[a.id] = [...(v ?? a.keys.filter((k) => !k.startsWith("Ctrl+B "))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
+    const seconds = a.keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length));
+    if (v || (paneMoved && seconds.length)) {
+      out[a.id] = [...(v ?? a.keys.filter((k) => !k.startsWith(PREFIX))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
+    }
+  }
+  return out;
+}
+
+/** A version 2 key as version 3's: a key after Ctrl+B goes after Ctrl+A, and page up, Ctrl+B Ctrl+B there, is Ctrl+B. */
+const fromVersion2 = (id: ActionId, k: string) =>
+  (id === "pageUp" || id === "listPageUp") && k === "Ctrl+B Ctrl+B" ? "Ctrl+B" : k.startsWith(OLD_PREFIX) ? PREFIX + k.slice(OLD_PREFIX.length) : k;
+
+/** The overrides in a stored value of any version. */
+export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
+  const current = raw.version === STORAGE_VERSION;
+  const stored: Record<string, unknown> = current || raw.version === 2 ? raw : fromVersion1(raw);
+  const out: Partial<Bindings> = {};
+  for (const a of ACTIONS) {
+    const v = keysIn(stored[a.id]);
+    if (v) {
+      out[a.id] = current ? v : [...new Set(v.map((k) => fromVersion2(a.id, k)))];
     }
   }
   return out;
@@ -97,8 +113,8 @@ export const shortcutsFile = () => JSON.stringify({ format: FILE_FORMAT, version
 export function parseShortcutsFile(text: string): Partial<Bindings> | null {
   try {
     const raw = JSON.parse(text) as Record<string, unknown> | null;
-    // Only the version this app writes: fromStored reads any other as version 1 and would add the old pane keys again.
-    return raw?.format === FILE_FORMAT && raw.version === STORAGE_VERSION ? fromStored(raw) : null;
+    // Only the versions that wrote files: fromStored reads any other as version 1 and would add the old pane keys again.
+    return raw?.format === FILE_FORMAT && (raw.version === 2 || raw.version === STORAGE_VERSION) ? fromStored(raw) : null;
   } catch {
     return null;
   }

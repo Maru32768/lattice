@@ -116,40 +116,40 @@ export interface ActionDef {
 }
 
 /**
- * A binding is one key or, as in tmux, two pressed in turn: `Ctrl+B "`. No single key contains a
+ * A binding is one key or, as in tmux, two pressed in turn: `Ctrl+A "`. No single key contains a
  * space (the space bar is "Space"), so a space always separates the two.
  */
 export const ACTIONS: ActionDef[] = [
   { id: "palette", group: "app", keys: ["Ctrl+P"], inFields: true },
-  { id: "command", group: "app", keys: [":", ";", "Ctrl+B :"], inFields: true },
-  { id: "keyHelp", group: "app", keys: ["?", "Ctrl+B ?"], inFields: true },
+  { id: "command", group: "app", keys: [":", ";", "Ctrl+A :"], inFields: true },
+  { id: "keyHelp", group: "app", keys: ["?", "Ctrl+A ?"], inFields: true },
   { id: "escape", group: "app", keys: ["Escape"], inFields: true },
-  { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "Ctrl+B ArrowLeft", "Ctrl+B H"], inFields: true },
-  { id: "paneDown", group: "panes", keys: ["Ctrl+J", "Ctrl+B ArrowDown", "Ctrl+B J"], inFields: true },
-  { id: "paneUp", group: "panes", keys: ["Ctrl+K", "Ctrl+B ArrowUp", "Ctrl+B K"], inFields: true },
-  { id: "paneRight", group: "panes", keys: ["Ctrl+L", "Ctrl+B ArrowRight", "Ctrl+B L"], inFields: true },
-  { id: "paneNext", group: "panes", keys: ["Ctrl+B O"], inFields: true },
-  { id: "paneLast", group: "panes", keys: ["Ctrl+B ;"], inFields: true },
-  { id: "paneNumbers", group: "panes", keys: ["Ctrl+B Q"], inFields: true },
-  { id: "paneGrowLeft", group: "panes", keys: ["Ctrl+B Shift+H", "Ctrl+B Ctrl+ArrowLeft"], inFields: true, repeat: true },
-  { id: "paneGrowRight", group: "panes", keys: ["Ctrl+B Shift+L", "Ctrl+B Ctrl+ArrowRight"], inFields: true, repeat: true },
-  { id: "paneGrowUp", group: "panes", keys: ["Ctrl+B Shift+K", "Ctrl+B Ctrl+ArrowUp"], inFields: true, repeat: true },
-  { id: "paneGrowDown", group: "panes", keys: ["Ctrl+B Shift+J", "Ctrl+B Ctrl+ArrowDown"], inFields: true, repeat: true },
-  { id: "paneSwapPrev", group: "panes", keys: ["Ctrl+B {"], inFields: true },
-  { id: "paneSwapNext", group: "panes", keys: ["Ctrl+B }"], inFields: true },
-  { id: "paneEven", group: "panes", keys: ["Ctrl+B Shift+E"], inFields: true },
-  { id: "closePane", group: "panes", keys: ["Ctrl+B X"], inFields: true },
-  { id: "splitRight", group: "panes", keys: ["Ctrl+\\", "Ctrl+B %"], inFields: true },
-  { id: "splitDown", group: "panes", keys: ["Ctrl+-", 'Ctrl+B "'], inFields: true },
-  { id: "focus", group: "panes", keys: ["Ctrl+B Z"], inFields: true },
-  { id: "newTab", group: "tabs", keys: ["Ctrl+T", "Ctrl+B C"], inFields: true },
-  { id: "closeTab", group: "tabs", keys: ["Ctrl+W", "Ctrl+B &"], inFields: true },
-  { id: "nextTab", group: "tabs", keys: ["Ctrl+Tab", "Ctrl+B N", "G T"], inFields: true },
-  { id: "prevTab", group: "tabs", keys: ["Ctrl+Shift+Tab", "Ctrl+B P", "G Shift+T"], inFields: true },
+  { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "Ctrl+A ArrowLeft", "Ctrl+A H"], inFields: true },
+  { id: "paneDown", group: "panes", keys: ["Ctrl+J", "Ctrl+A ArrowDown", "Ctrl+A J"], inFields: true },
+  { id: "paneUp", group: "panes", keys: ["Ctrl+K", "Ctrl+A ArrowUp", "Ctrl+A K"], inFields: true },
+  { id: "paneRight", group: "panes", keys: ["Ctrl+L", "Ctrl+A ArrowRight", "Ctrl+A L"], inFields: true },
+  { id: "paneNext", group: "panes", keys: ["Ctrl+A O"], inFields: true },
+  { id: "paneLast", group: "panes", keys: ["Ctrl+A ;"], inFields: true },
+  { id: "paneNumbers", group: "panes", keys: ["Ctrl+A Q"], inFields: true },
+  { id: "paneGrowLeft", group: "panes", keys: ["Ctrl+A Shift+H", "Ctrl+A Ctrl+ArrowLeft"], inFields: true, repeat: true },
+  { id: "paneGrowRight", group: "panes", keys: ["Ctrl+A Shift+L", "Ctrl+A Ctrl+ArrowRight"], inFields: true, repeat: true },
+  { id: "paneGrowUp", group: "panes", keys: ["Ctrl+A Shift+K", "Ctrl+A Ctrl+ArrowUp"], inFields: true, repeat: true },
+  { id: "paneGrowDown", group: "panes", keys: ["Ctrl+A Shift+J", "Ctrl+A Ctrl+ArrowDown"], inFields: true, repeat: true },
+  { id: "paneSwapPrev", group: "panes", keys: ["Ctrl+A {"], inFields: true },
+  { id: "paneSwapNext", group: "panes", keys: ["Ctrl+A }"], inFields: true },
+  { id: "paneEven", group: "panes", keys: ["Ctrl+A Shift+E"], inFields: true },
+  { id: "closePane", group: "panes", keys: ["Ctrl+A X"], inFields: true },
+  { id: "splitRight", group: "panes", keys: ["Ctrl+\\", "Ctrl+A %"], inFields: true },
+  { id: "splitDown", group: "panes", keys: ["Ctrl+-", 'Ctrl+A "'], inFields: true },
+  { id: "focus", group: "panes", keys: ["Ctrl+A Z"], inFields: true },
+  { id: "newTab", group: "tabs", keys: ["Ctrl+T", "Ctrl+A C"], inFields: true },
+  { id: "closeTab", group: "tabs", keys: ["Ctrl+W", "Ctrl+A &"], inFields: true },
+  { id: "nextTab", group: "tabs", keys: ["Ctrl+Tab", "Ctrl+A N", "G T"], inFields: true },
+  { id: "prevTab", group: "tabs", keys: ["Ctrl+Shift+Tab", "Ctrl+A P", "G Shift+T"], inFields: true },
   // One action for all ten: the handler reads the number off the sequence, 0 being the tenth.
-  { id: "tabByNumber", group: "tabs", keys: [..."1234567890"].map((d) => `Ctrl+B ${d}`), inFields: true },
-  { id: "tabList", group: "tabs", keys: ["Ctrl+B W"], inFields: true },
-  { id: "popOut", group: "tabs", keys: ["Ctrl+Shift+N", "Ctrl+B !"], inFields: true },
+  { id: "tabByNumber", group: "tabs", keys: [..."1234567890"].map((d) => `Ctrl+A ${d}`), inFields: true },
+  { id: "tabList", group: "tabs", keys: ["Ctrl+A W"], inFields: true },
+  { id: "popOut", group: "tabs", keys: ["Ctrl+Shift+N", "Ctrl+A !"], inFields: true },
   { id: "favorite", group: "article", keys: ["S"] },
   { id: "read", group: "article", keys: ["M"] },
   { id: "view", group: "article", keys: ["G V"] },
@@ -169,8 +169,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "listHalfDown", group: "list", keys: ["D", "Ctrl+D"], scope: "list", counted: true },
   { id: "listHalfUp", group: "list", keys: ["U", "Ctrl+U"], scope: "list", counted: true },
   { id: "listPageDown", group: "list", keys: ["Ctrl+F"], scope: "list", counted: true },
-  // Page up is the prefix pressed twice, as tmux's send-prefix passes Ctrl+B on; while it repeats, Ctrl+B alone pages on.
-  { id: "listPageUp", group: "list", keys: ["Ctrl+B Ctrl+B"], scope: "list", counted: true, repeat: true },
+  { id: "listPageUp", group: "list", keys: ["Ctrl+B"], scope: "list", counted: true },
   { id: "open", group: "list", keys: ["Enter"], scope: "list" },
   { id: "openPage", group: "list", keys: ["Shift+Enter"], scope: "list" },
   // A focused feed or folder in the sidebar moves; the row handles these keys itself. Unscoped, but listed after the list's keys in their tab.
@@ -184,7 +183,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "halfDown", group: "doc", keys: ["D", "Ctrl+D"], scope: "doc", counted: true, local: true },
   { id: "halfUp", group: "doc", keys: ["U", "Ctrl+U"], scope: "doc", counted: true, local: true },
   { id: "pageDown", group: "doc", keys: ["Ctrl+F"], scope: "doc", counted: true, local: true },
-  { id: "pageUp", group: "doc", keys: ["Ctrl+B Ctrl+B"], scope: "doc", counted: true, local: true, repeat: true },
+  { id: "pageUp", group: "doc", keys: ["Ctrl+B"], scope: "doc", counted: true, local: true },
   { id: "docTop", group: "doc", keys: ["G G"], scope: "doc", local: true },
   { id: "docBottom", group: "doc", keys: ["Shift+G"], scope: "doc", local: true },
   { id: "nextArticle", group: "article", keys: ["Shift+J"], scope: "doc", counted: true },
@@ -195,7 +194,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "hints", group: "doc", keys: ["F"], scope: "doc", local: true },
   { id: "hintsNew", group: "doc", keys: ["Shift+F"], scope: "doc", local: true },
   { id: "wordHints", group: "doc", keys: ["G W"], scope: "doc", local: true },
-  { id: "visual", group: "doc", keys: ["V", "Ctrl+B ["], scope: "doc", local: true },
+  { id: "visual", group: "doc", keys: ["V", "Ctrl+A ["], scope: "doc", local: true },
   { id: "nextHeading", group: "doc", keys: ["] ]"], scope: "doc", local: true },
   { id: "prevHeading", group: "doc", keys: ["[ ["], scope: "doc", local: true },
   { id: "focusInput", group: "doc", keys: ["G I"], scope: "doc", local: true },
@@ -244,7 +243,7 @@ export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_B
 
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };
 
-/** Display form: "Ctrl+K" → "Ctrl K", "J" → "j", "ArrowDown" → "↓", `Ctrl+B "` → `Ctrl B › "`. */
+/** Display form: "Ctrl+K" → "Ctrl K", "J" → "j", "ArrowDown" → "↓", `Ctrl+A "` → `Ctrl A › "`. */
 export function keyLabel(k: string): string {
   const [first, second] = k.split(" ");
   if (second) {
@@ -315,15 +314,11 @@ export function conflicts(b: Bindings): Map<string, ActionDef[]> {
 
 // ---- the key state machine ----------------------------------------------------------------------
 
-/**
- * A key sequence under way: a chord's first key, a count, and the repeat window after a `repeat` action.
- * In the window the first key itself repeats only when it was also the second (`again`, Ctrl+B Ctrl+B);
- * otherwise it starts a new chord, as tmux's prefix does.
- */
+/** A key sequence under way: a chord's first key, a count, and the repeat window after a `repeat` action. */
 export interface KeySeq {
   first: string | null;
   count: number;
-  repeat: { first: string; until: number; again: boolean } | null;
+  repeat: { first: string; until: number } | null;
 }
 export const IDLE: KeySeq = { first: null, count: 0, repeat: null };
 
@@ -343,7 +338,7 @@ export const REPEAT_MS = 500;
 export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 /** A shortcut whatever has the focus, and a browser's own key to keep from it. */
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
-/** A browser pages with these. Lattice pages with Ctrl+F and Ctrl+B Ctrl+B instead, which leaves Space free to bind (a Vim leader). */
+/** A browser pages with these. Lattice pages with Ctrl+F and Ctrl+B instead, which leaves Space free to bind (a Vim leader). */
 export const isSpace = (key: string) => key === "Space" || key === "Shift+Space";
 /** What Space presses rather than pages, so it keeps the key there. A field types it, which each caller checks itself. */
 export const PRESSED_BY_SPACE =
@@ -352,7 +347,7 @@ export const PRESSED_BY_SPACE =
 export const spacePages = (key: string, target: Element, inField: boolean) => isSpace(key) && !inField && !target.closest(PRESSED_BY_SPACE);
 
 function running(action: ActionDef, sequence: string, first: string | null, count: number, now: number): KeyStep {
-  const repeat = action.repeat && first ? { first, until: now + REPEAT_MS, again: sequence === `${first} ${first}` } : null;
+  const repeat = action.repeat && first ? { first, until: now + REPEAT_MS } : null;
   return { kind: "run", action, sequence, count: action.counted ? Math.max(1, count) : 1, seq: { ...IDLE, repeat } };
 }
 
@@ -375,7 +370,7 @@ export function stepKeys(b: Bindings, seq: KeySeq, key: string, ctx: { scope: Ke
   if (seq.repeat && now < seq.repeat.until) {
     const sequence = `${seq.repeat.first} ${key}`;
     const a = actionFor(b, sequence, scope);
-    if (a?.repeat && allowed(a) && (key !== seq.repeat.first || seq.repeat.again)) {
+    if (a?.repeat && allowed(a)) {
       return running(a, sequence, seq.repeat.first, 1, now);
     }
   }

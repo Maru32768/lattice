@@ -67,7 +67,7 @@ test("Space records as a first key, and its binding runs outside fields while a 
   await help.getByRole("button", { name: "+ キーを追加" }).click();
   await app.keyboard.press("Space");
   await app.keyboard.press("h");
-  await expect(help.locator(".kbd.key")).toHaveText(["?×", "Ctrl B › ?×", "Space › h×"]);
+  await expect(help.locator(".kbd.key")).toHaveText(["?×", "Ctrl A › ?×", "Space › h×"]);
 
   await app.keyboard.press("Escape");
   await expect(list(app)).toBeVisible();
@@ -91,32 +91,32 @@ test("keys forwarded from a focused page start and complete a two-key binding", 
   await expect(list(app)).toBeVisible();
   const panes = app.locator("[data-pane-id]");
   await expect(panes).toHaveCount(1);
-  await fromPage("Ctrl+B");
+  await fromPage("Ctrl+A");
   await expect(app.locator(".prefix-hint")).toBeVisible();
-  await fromPage('Ctrl+B "');
+  await fromPage('Ctrl+A "');
   await expect(app.locator(".prefix-hint")).toBeHidden();
   await expect(panes).toHaveCount(2);
 });
 
-test("the default keys after Ctrl+B can be removed, and a single key under a first key is flagged", async ({ app }) => {
+test("the default keys after Ctrl+A can be removed, and a single key under a first key is flagged", async ({ app }) => {
   await openShortcuts(app);
   await tab(app, "ペイン").click();
   const down = row(app, "ペインを下に分割");
-  await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl B › "×']);
-  await down.getByRole("button", { name: 'ペインを下に分割からCtrl B › "を外す' }).click();
+  await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl A › "×']);
+  await down.getByRole("button", { name: 'ペインを下に分割からCtrl A › "を外す' }).click();
   await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×"]);
 
   await tab(app, "記事").click();
   const fav = row(app, "お気に入り");
   await fav.getByRole("button", { name: "+ キーを追加" }).click();
-  await app.keyboard.press("Control+b");
+  await app.keyboard.press("Control+a");
   await app.keyboard.press("Enter");
-  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "Ctrl B×"]);
-  await expect(fav.getByRole("note")).toHaveText("Ctrl Bは「コマンドを実行」の2段階キーの1打目なので、単独では働きません");
+  await expect(fav.locator(".kbd.key")).toHaveText(["s×", "Ctrl A×"]);
+  await expect(fav.getByRole("note")).toHaveText("Ctrl Aは「コマンドを実行」の2段階キーの1打目なので、単独では働きません");
 
   await app.keyboard.press("Escape");
   await expect(list(app)).toBeVisible();
-  await app.keyboard.press("Control+b");
+  await app.keyboard.press("Control+a");
   await expect(app.locator(".prefix-hint")).toBeVisible();
   await expect(app.locator(".prefix-hint")).not.toContainText("ペインを下に分割");
   await expect(app.locator(".prefix-hint")).toContainText("ペインを右に分割");
@@ -220,10 +220,10 @@ test("pressing a key finds the actions it runs; its keys do not run them", async
   await expect(field, "the field kept the keyboard for both keys").toHaveValue("Ctrl P");
   await expect(names).toHaveText(["コマンドパレット"]);
 
-  await app.keyboard.press("Control+b");
-  await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "一覧", "本文", "タブ", "ペイン"]);
+  await app.keyboard.press("Control+a");
+  await expect(app.locator(".stg main h2"), "what starts with it").toHaveText(["全般", "本文", "タブ", "ペイン"]);
   await app.keyboard.press("z");
-  await expect(field).toHaveValue("Ctrl B › z");
+  await expect(field).toHaveValue("Ctrl A › z");
   await expect(names).toHaveText(["フォーカスモード"]);
 
   await app.keyboard.press("q");
@@ -479,7 +479,7 @@ test("export writes the changed keys, shows where, and the file loads them back"
     "書き出しました: C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-shortcuts-20261020T030000Z.json",
   );
   const calls = (await callsOf(app, "export_shortcuts")) as { json: string }[];
-  expect(calls.map((c) => JSON.parse(c.json) as unknown)).toEqual([{ format: "lattice.shortcuts", version: 2, favorite: ["S", "X"] }]);
+  expect(calls.map((c) => JSON.parse(c.json) as unknown)).toEqual([{ format: "lattice.shortcuts", version: 3, favorite: ["S", "X"] }]);
 
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×"]);

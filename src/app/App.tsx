@@ -389,7 +389,7 @@ export default function App() {
     revealCursor();
   }
 
-  /** How many rows `share` of the list's height holds: half for `d` and `u`, all of it for Ctrl+F and Ctrl+B Ctrl+B. */
+  /** How many rows `share` of the list's height holds: half for `d` and `u`, all of it for Ctrl+F and Ctrl+B. */
   function listRows(share: number) {
     const row = document.querySelector<HTMLElement>(".row, .hit");
     const pane = paneOf(row);

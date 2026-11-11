@@ -62,13 +62,13 @@ test("gg, G and half a screen in the Reader", async ({ app }) => {
   await expect.poll(() => scrollTop(app)).toBe(0);
 });
 
-test("Ctrl+F and Ctrl+B Ctrl+B move a screen in the Reader, and a lone Ctrl+B right after goes up another", async ({ app }) => {
+test("Ctrl+F and Ctrl+B move a screen in the Reader", async ({ app }) => {
   await intoReader(app);
   const screen = await app.locator(".doc-scroll").evaluate((el) => (el.clientHeight * 7) / 8);
   const screensDown = async () => (await scrollTop(app)) / screen;
   await press(app, "Control+f", "Control+f", "Control+f");
   await expect.poll(screensDown).toBeCloseTo(3, 2);
-  await press(app, "Control+b", "Control+b", "Control+b");
+  await press(app, "Control+b", "Control+b");
   await expect.poll(screensDown).toBeCloseTo(1, 2);
 });
 
@@ -120,7 +120,7 @@ test("in the list j moves the cursor, gg and G go to its ends, and a count multi
   await expect(cur).toHaveText(label(0));
   await app.keyboard.press("Control+f");
   await expect(cur).not.toHaveText(label(0));
-  await press(app, "Control+b", "Control+b");
+  await app.keyboard.press("Control+b");
   await expect(cur).toHaveText(label(0));
 });
 
@@ -143,22 +143,22 @@ test("Ctrl+P opens the palette; : and ; open it on its commands, and a plain : i
   await expect(palette(app)).toBeHidden();
 });
 
-test("Ctrl+B 2 selects the second tab of the focused pane, and Ctrl+B 1 the first", async ({ app }) => {
+test("Ctrl+A 2 selects the second tab of the focused pane, and Ctrl+A 1 the first", async ({ app }) => {
   await (await listRow(app, label(0))).click();
   await (await listRow(app, label(1))).click({ modifiers: ["Control"] });
   await expect(app.locator(".art-title")).toHaveText(label(0));
-  await press(app, "Control+b", "2");
+  await press(app, "Control+a", "2");
   await expect(app.locator(".art-title")).toHaveText(label(1));
-  await press(app, "Control+b", "1");
+  await press(app, "Control+a", "1");
   await expect(app.locator(".art-title")).toHaveText(label(0));
-  await press(app, "Control+b", "9");
+  await press(app, "Control+a", "9");
   await expect(app.locator(".art-title"), "no such tab: nothing happens").toHaveText(label(0));
   await expect(hint(app)).toBeHidden();
 });
 
-test("Ctrl+B ? and ? list every binding by what it is for, as Settings does, with where it runs; Esc and ? close the list", async ({ app }) => {
+test("Ctrl+A ? and ? list every binding by what it is for, as Settings does, with where it runs; Esc and ? close the list", async ({ app }) => {
   const help = app.getByRole("dialog", { name: "キー一覧" });
-  await press(app, "Control+b", "?");
+  await press(app, "Control+a", "?");
   await expect(help).toBeVisible();
   await expect(help.locator("h3")).toHaveText(["全般", "一覧", "記事", "本文", "タブ", "ペイン"]);
   const item = (label: string) => help.locator(".it").filter({ has: app.locator(".it-l").getByText(label, { exact: true }) });
@@ -240,7 +240,7 @@ test("what a page sends runs by its whole sequence, with its count", async ({ ap
   await fromPage("Shift+J", 3);
   await expect(app.locator(".art-title")).toHaveText(label(3));
 
-  await fromPage("Ctrl+B");
+  await fromPage("Ctrl+A");
   await expect(hint(app)).toBeVisible();
   await expect(hint(app), "a page's keys are the document's").toContainText("ビジュアルモード");
   await fromPage("");
@@ -288,7 +288,7 @@ test("after a split the keys start from the new pane, not the one that had DOM f
   await expect(app.locator(".doc-scroll")).toBeFocused();
   await app.keyboard.press("Control+l");
   await expect(panes.nth(1)).toHaveClass(/focused/);
-  await press(app, "Control+b", "x");
+  await press(app, "Control+a", "x");
   await expect(panes).toHaveCount(1);
   await expect(app.locator(".doc-scroll"), "closing it hands the keyboard to the pane left").toBeFocused();
 });
@@ -313,7 +313,7 @@ test("the keyboard follows the focused pane to a page, and back from one", async
   await shell.keyboard.press("Control+l");
   await expect(shell.locator(".doc-scroll")).toBeFocused();
 
-  await press(shell, "Control+b", "2");
+  await press(shell, "Control+a", "2");
   await expect(shell.locator(".page-host")).toBeVisible();
   await expect.poll(() => callsOf(shell, "browser_focus")).toEqual([{ tab: "k1" }]);
 
@@ -323,7 +323,7 @@ test("the keyboard follows the focused pane to a page, and back from one", async
   await expect(palette(shell)).toBeHidden();
   await expect.poll(() => callsOf(shell, "browser_focus"), "the palette closing returns it").toHaveLength(2);
 
-  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B 1", count: 1 }));
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+A 1", count: 1 }));
   await expect(shell.locator(".art-title")).toHaveText(label(0));
   await expect(shell.locator(".doc-scroll")).toBeFocused();
 });

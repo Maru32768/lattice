@@ -243,7 +243,7 @@ test("the Reader and the Page toolbars carry the same article actions in the sam
     "質問",
     "理解度チェック",
     "メモ",
-    "フォーカスモード(Ctrl B › z)",
+    "フォーカスモード(Ctrl A › z)",
     expect.stringMatching(/^その他/),
   ]);
   // Page adds its summary strip's toggle before フォーカス.
