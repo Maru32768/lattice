@@ -182,7 +182,7 @@ export default function App() {
     setWidths(next);
     saveWidths(next);
   };
-  /** The open palette's initial query, and whether it was opened for a new tab (Ctrl+T): its pick opens in one. */
+  /** The open palette's initial query. */
   const [palette, setPalette] = useState<{ initial: string } | null>(null);
   const openPalette = () => setPalette({ initial: "" });
   const [keyHelp, setKeyHelp] = useState(false);
