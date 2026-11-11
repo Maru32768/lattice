@@ -126,7 +126,7 @@ test("each of the other settings goes to the library when it changes", async ({ 
   await expect.poll(() => lastSaved(app)).toEqual({ prefs: { "lattice.vocabMarks": "off" } });
 });
 
-test("an open Settings screen follows a change the start-up sync or another window makes", async ({ app }) => {
+test("an open Settings screen follows a storage event for its setting, as the start-up sync and other windows send", async ({ app }) => {
   await openSettings(app);
   await section(app, "翻訳");
   const onSwitch = app.getByRole("switch", { name: "表示を切り替えたら自動で翻訳" });
