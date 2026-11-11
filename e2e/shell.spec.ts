@@ -195,6 +195,15 @@ test("the tab strip's ＋ opens the search engine's start page in a new tab (H12
   await expect.poll(() => bar.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd])).toEqual([0, "https://duckduckgo.com/".length]);
 });
 
+test("Ctrl+T opens the search engine's start page in a new tab, as the tab strip's ＋ does", async ({ app }) => {
+  await list(app).locator(".row").first().click();
+  await app.keyboard.press("Control+t");
+  await expect(app.locator(".dpane").getByRole("tab")).toHaveCount(2);
+  await expect(palette(app)).toBeHidden();
+  await expect.poll(async () => ((await callsOf(app, "browser_open")).at(-1) as { url: string } | undefined)?.url).toBe("https://duckduckgo.com/");
+  await expect(app.locator("input.url-pill")).toBeFocused();
+});
+
 test("a saved article's summary shows in a strip above its page; it can be generated there (H13)", async ({ app }) => {
   await openPage(app, snapshot.title!);
   const toggle = app.locator(".docbar").getByRole("button", { name: "要約", exact: true });

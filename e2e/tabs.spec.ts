@@ -111,9 +111,7 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   await expect(titles(app)).toHaveText(["The page's own title"]);
 
   await app.keyboard.press("Control+t");
-  await app.keyboard.insertText("https://example.org/other");
-  await app.keyboard.press("Enter");
-  await expect(titles(app)).toHaveText(["The page's own title", "example.org"]);
+  await expect(titles(app)).toHaveText(["The page's own title", "duckduckgo.com"]);
   const keys = ((await callsOf(app, "browser_open")) as { tab: string }[]).map((o) => o.tab);
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(first);

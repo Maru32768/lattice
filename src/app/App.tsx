@@ -183,8 +183,8 @@ export default function App() {
     saveWidths(next);
   };
   /** The open palette's initial query, and whether it was opened for a new tab (Ctrl+T): its pick opens in one. */
-  const [palette, setPalette] = useState<{ initial: string; newTab: boolean } | null>(null);
-  const openPalette = () => setPalette({ initial: "", newTab: false });
+  const [palette, setPalette] = useState<{ initial: string } | null>(null);
+  const openPalette = () => setPalette({ initial: "" });
   const [keyHelp, setKeyHelp] = useState(false);
   const [paneNumbers, setPaneNumbers] = useState(false);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("provider");
@@ -724,7 +724,7 @@ export default function App() {
     return () => void sub.then((f) => f());
   }, []);
 
-  const whereFromPalette = (newTab?: boolean): Where => (newTab || palette?.newTab ? "new" : "active");
+  const whereFromPalette = (newTab?: boolean): Where => (newTab ? "new" : "active");
   const paletteActions: PaletteActions = {
     scope: setScope,
     facets: (f) => {
@@ -889,8 +889,8 @@ export default function App() {
   const none = () => {};
 
   const actions: ActionHandlers = {
-    palette: () => setPalette((p) => (p == null ? { initial: "", newTab: false } : null)),
-    command: () => setPalette((p) => p ?? { initial: ">", newTab: false }),
+    palette: () => setPalette((p) => (p == null ? { initial: "" } : null)),
+    command: () => setPalette((p) => p ?? { initial: ">" }),
     keyHelp: () => setKeyHelp(true),
     selectAll: docAction("selectAll"),
     search: enterSearch,
@@ -941,8 +941,8 @@ export default function App() {
         setFacets((f) => (activeDims(f).length ? NO_FACETS : f));
       }
     },
-    // The palette for a new tab (Ctrl+T): what it opens goes into a new tab in the focused pane.
-    newTab: () => setPalette({ initial: "", newTab: true }),
+    // As the tab strip's ＋, in the focused pane.
+    newTab: () => openPage(homeOf(getEngine()), undefined, undefined, "new", undefined, true),
     closeTab: () =>
       setLayout((l) => {
         const t = activeTab(focusedPane(l));
@@ -955,7 +955,7 @@ export default function App() {
         const t = focusedPane(l).tabs[(Number(sequence.slice(-1)) + 9) % 10];
         return t ? activate(l, t.id) : l;
       }),
-    tabList: () => setPalette({ initial: "t:", newTab: false }),
+    tabList: () => setPalette({ initial: "t:" }),
     splitRight: () => {
       setScreen("library");
       setLayout((l) => split(l, l.focused, "row"));
