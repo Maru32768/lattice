@@ -410,6 +410,7 @@ test("loading a file replaces the keys, and undo brings back the earlier ones", 
 
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q"] });
+  await expect(app.getByRole("status"), "the undo is now the load's, not the reset's").toHaveText("読み込みました");
   await undo.focus();
   await app.keyboard.press("Enter");
   await expect(read.locator(".kbd.key")).toHaveText(["m×"]);
