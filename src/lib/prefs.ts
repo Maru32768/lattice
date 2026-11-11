@@ -36,7 +36,7 @@ function write(key: SyncedKey, value: string | null) {
       localStorage.setItem(key, value);
     }
   } catch {
-    // Blocked storage: the database still keeps it.
+    // Blocked storage: savePref still sends it to the library, but the modules read only the cache and see the default.
   }
 }
 
