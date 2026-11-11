@@ -64,11 +64,11 @@ export function toNavigation(input: string, e: SearchEngine): string | null {
   return fill(resolve(e).search, encodeURIComponent(s));
 }
 
-export const STORAGE_KEY = "lattice.searchEngine";
+export const ENGINE_KEY = "lattice.searchEngine";
 
 function load(): SearchEngine {
   try {
-    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Partial<SearchEngine> | null;
+    const v = JSON.parse(localStorage.getItem(ENGINE_KEY) ?? "null") as Partial<SearchEngine> | null;
     const known = v?.id === "custom" || ENGINES.some((x) => x.id === v?.id);
     if (v && known && typeof v.custom === "string") {
       return { id: v.id!, custom: v.custom };
@@ -84,13 +84,13 @@ export const getEngine = () => current;
 
 export function setEngine(e: SearchEngine) {
   current = e;
-  savePref(STORAGE_KEY, JSON.stringify(e));
+  savePref(ENGINE_KEY, JSON.stringify(e));
 }
 
 // Another window changed it, or the start-up sync took the library's choice.
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (e) => {
-    if (e.key === STORAGE_KEY) {
+    if (e.key === ENGINE_KEY) {
       current = load();
     }
   });
