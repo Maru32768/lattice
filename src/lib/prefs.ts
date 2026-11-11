@@ -88,7 +88,7 @@ export async function syncPrefs() {
   for (const [key, value] of Object.entries(plan.cache) as [SyncedKey, string | null][]) {
     write(key, value);
     // Each module reads it again as if another window had changed it.
-    window.dispatchEvent(new StorageEvent("storage", { key, newValue: value, storageArea: localStorage }));
+    window.dispatchEvent(new StorageEvent("storage", { key }));
   }
   if (Object.keys(plan.db).length > 0) {
     // Queued before any change made after the plan, so such a change lands after the copy.
