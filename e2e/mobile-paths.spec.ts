@@ -396,6 +396,7 @@ test("what the PC's list has shown stays on the phone when the PC goes off and a
   const ctx = await context(browser);
   const page = await ctx.newPage();
   await page.goto(`${worker.origin}/#t=${TOKEN}`);
+  await underServiceWorker(page);
   await showAll(page);
   await page.getByRole("link", { name: /Live one/ }).click();
   await page.getByRole("button", { name: "お気に入りに追加" }).click();
