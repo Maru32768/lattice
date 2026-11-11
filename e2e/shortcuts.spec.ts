@@ -401,6 +401,8 @@ test("loading a file replaces the keys, and undo brings back the earlier ones", 
   await expect(app.getByRole("status")).toHaveText("読み込みました");
   await expect(fav.locator(".kbd.key"), "what the file leaves out is at its default").toHaveText(["s×"]);
   await expect(read.locator(".kbd.key")).toHaveText(["q×"]);
+  await app.getByRole("button", { name: "書き出す", exact: true }).click();
+  await expect(app.getByRole("status"), "an export while undo shows still says where").toContainText("書き出しました");
   const undo = app.getByRole("button", { name: "元に戻す", exact: true });
   await undo.click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×", "x×"]);
