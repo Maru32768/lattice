@@ -42,7 +42,13 @@ test("the library's settings win over the ones cached on this PC", async ({ shel
   await start(
     shell,
     { "lattice.shortcuts": JSON.stringify({ read: ["Q"], version: 2 }), "lattice.chatVim": "on" },
-    { "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 2 }), "lattice.chatVim": "", "lattice.vocabMarks": "off" },
+    {
+      "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 2 }),
+      "lattice.chatVim": "",
+      "lattice.vocabMarks": "off",
+      "lattice.searchEngine": JSON.stringify({ id: "google", custom: "" }),
+      "lattice.vocabAutoplay": "off",
+    },
   );
   await navItem(shell, "単語帳").click();
   await expect(shell.getByRole("switch", { name: "記事中の登録語に下線を引く" })).not.toBeChecked();
@@ -52,6 +58,10 @@ test("the library's settings win over the ones cached on this PC", async ({ shel
   await shell.getByRole("tab", { name: /^記事 \d+/ }).click();
   await expect(keysOf(shell, "お気に入り")).toHaveText(["x×"]);
   await expect(keysOf(shell, "既読 / 未読"), "the cached change gives way to the library's set").toHaveText(["m×"]);
+  await section(shell, "ブラウザ");
+  await expect(shell.getByLabel("検索エンジン"), "the URL bar searches with the library's engine").toHaveValue("google");
+  await section(shell, "復習");
+  await expect(shell.getByRole("switch", { name: "単語カードの発音を自動で再生" })).not.toBeChecked();
 
   await shell.keyboard.press("Escape");
   await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
