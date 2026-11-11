@@ -1,6 +1,6 @@
 // The whole phone path with the real Worker code and the built page: a real service worker needs real
 // servers. Here the "PC" (its server's API, without the Rust behind it) comes and goes as the test says.
-import { createServer, type Server } from "node:http";
+import { createServer, type RequestListener, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
@@ -35,9 +35,15 @@ const article = (id: number, title: string, text: string) => ({
   blocks: [{ id: id * 10, ordinal: 0, kind: "code", text, attrs: {}, translation: null }],
 });
 
+/**
+ * The Fetch standard's bad ports from 1024 up, which Chromium will not open (net::ERR_UNSAFE_PORT).
+ * Windows may hand out any port from 1024 to a server listening on port 0, and no port below that.
+ */
+const UNSAFE_PORTS = new Set([1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080]);
+
 /** Serves a function of (method, path, headers, body) over HTTP. */
 async function serve(handler: (request: Request) => Promise<Response> | Response): Promise<{ origin: string; close: () => Promise<void> }> {
-  const server: Server = createServer((req, res) => {
+  const listener: RequestListener = (req, res) => {
     void (async () => {
       const chunks: Buffer[] = [];
       for await (const chunk of req) {
@@ -56,10 +62,25 @@ async function serve(handler: (request: Request) => Promise<Response> | Response
       res.writeHead(response.status, Object.fromEntries(response.headers));
       res.end(Buffer.from(await response.arrayBuffer()));
     })();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  };
+  const listening = async () => {
+    const server = createServer(listener);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    return server;
+  };
+  const port = (server: Server) => (server.address() as AddressInfo).port;
+  // A refused port stays bound until a usable one comes, so the next try gets another.
+  const refused: Server[] = [];
+  let server = await listening();
+  while (UNSAFE_PORTS.has(port(server))) {
+    refused.push(server);
+    server = await listening();
+  }
+  for (const r of refused) {
+    r.close();
+  }
   return {
-    origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    origin: `http://127.0.0.1:${port(server)}`,
     close: () =>
       new Promise((resolve) => {
         server.closeAllConnections();
