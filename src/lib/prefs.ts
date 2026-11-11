@@ -40,10 +40,18 @@ function write(key: SyncedKey, value: string | null) {
   }
 }
 
+// One write at a time, in the order made: each command waits for the store's lock on a task of its own, so two in
+// flight can land the other way round and leave the library older than the cache, which then loses at the next start.
+let sending: Promise<void> = Promise.resolve();
+function send(prefs: Rows) {
+  sending = sending.then(() => api.setUiPrefs(prefs)).catch(() => {});
+  return sending;
+}
+
 /** Sets the cached value (null: none) and the library's copy, where "" stands for none. */
 export function savePref(key: SyncedKey, value: string | null) {
   write(key, value);
-  api.setUiPrefs({ [key]: value ?? "" }).catch(() => {});
+  void send({ [key]: value ?? "" });
 }
 
 /**
@@ -84,9 +92,8 @@ export async function syncPrefs() {
     window.dispatchEvent(new StorageEvent("storage", { key, newValue: value, storageArea: localStorage }));
   }
   if (Object.keys(plan.db).length > 0) {
-    // shortcut: a change to one of these keys in the moment this is on its way may land first and be overwritten,
-    // upgrade if settings ever change on their own at start.
-    await api.setUiPrefs(plan.db);
+    // Queued before any change made after the plan, so such a change lands after the copy.
+    await send(plan.db);
   }
 }
 
