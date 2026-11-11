@@ -474,6 +474,7 @@ test("an export that fails says why and does not claim a file", async ({ app }) 
     const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } };
     const invoke = w.__TAURI_INTERNALS__.invoke;
     w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Tauri's invoke rejects with the error string, as the mock does
       cmd === "export_shortcuts" ? Promise.reject("Access is denied. (os error 5)") : invoke(cmd, args, options);
   });
   await app.getByRole("button", { name: "書き出す", exact: true }).click();
