@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "../ui/SetRow";
-import { autoplay, setAutoplay } from "../vocab/speech";
+import { AUTO_KEY, autoplay, setAutoplay } from "../vocab/speech";
 import { api, type ReviewSettings } from "../api";
 import { useT } from "../i18n";
 import { useSynced } from "../lib/prefs";
@@ -22,7 +22,7 @@ export function QuizSettings() {
   const t = useT();
   const [value, setValue] = useState<ReviewSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [auto, setAuto] = useSynced("lattice.vocabAutoplay", autoplay);
+  const [auto, setAuto] = useSynced(AUTO_KEY, autoplay);
 
   useEffect(() => {
     api

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "../ui/SetRow";
 import { api } from "../api";
-import { setTranslateOnSwitch, translateOnSwitch } from "../reader/mixed";
+import { ON_SWITCH_KEY, setTranslateOnSwitch, translateOnSwitch } from "../reader/mixed";
 import { useT } from "../i18n";
 import { useSynced } from "../lib/prefs";
 
@@ -12,7 +12,7 @@ const MAX_PARALLEL = 8;
 export function TranslationSettings() {
   const t = useT();
   const [on, setOn] = useState(true);
-  const [onSwitch, setOnSwitch] = useSynced("lattice.translateOnSwitch", translateOnSwitch);
+  const [onSwitch, setOnSwitch] = useSynced(ON_SWITCH_KEY, translateOnSwitch);
   const [onSave, setOnSave] = useState(false);
   const [parallel, setParallel] = useState(3);
   const [ownLanguage, setOwnLanguage] = useState(false);

@@ -64,7 +64,7 @@ export function toNavigation(input: string, e: SearchEngine): string | null {
   return fill(resolve(e).search, encodeURIComponent(s));
 }
 
-const STORAGE_KEY = "lattice.searchEngine";
+export const STORAGE_KEY = "lattice.searchEngine";
 
 function load(): SearchEngine {
   try {
