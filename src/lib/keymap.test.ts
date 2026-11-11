@@ -268,13 +268,19 @@ test("stepKeys: Space in a field types a space, even bound to an inFields action
 });
 
 test("spacePages: Space and Shift+Space page outside fields and what they press", () => {
-  const { document } = new JSDOM(`<p>text <a href="#x">link</a></p><button><b>bold</b></button><div role="tab">tab</div><summary>more</summary>`).window;
-  const [p, a, bold, tab, summary] = ["p", "a", "b", "[role='tab']", "summary"].map((s) => document.querySelector(s)!);
+  const { document } = new JSDOM(
+    `<p>text <a href="#x">link</a></p><button><b>bold</b></button><div role="tab">tab</div><summary>more</summary><ul><li role="menuitem">item</li><li role="option">option</li></ul>`,
+  ).window;
+  const [p, a, bold, tab, summary, item, option] = ["p", "a", "b", "[role='tab']", "summary", "[role='menuitem']", "[role='option']"].map((s) =>
+    document.querySelector(s)!,
+  );
   assert.equal(spacePages("Space", p, false), true);
   assert.equal(spacePages("Shift+Space", a, false), true, "a link scrolls on Space, it does not open");
   assert.equal(spacePages("Space", bold, false), false, "inside a button, Space presses it");
   assert.equal(spacePages("Space", tab, false), false);
   assert.equal(spacePages("Space", summary, false), false);
+  assert.equal(spacePages("Space", item, false), false, "a page's own menu item, which the app's open-menu check never sees");
+  assert.equal(spacePages("Space", option, false), false);
   assert.equal(spacePages("Space", p, true), false, "a field types it");
   assert.equal(spacePages("J", p, false), false);
 });
