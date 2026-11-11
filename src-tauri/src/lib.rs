@@ -143,7 +143,6 @@ fn ui_pref_setting(key: &str) -> Result<String, String> {
     }
 }
 
-/// The stored ones among `keys`: a key with no row is missing.
 #[tauri::command(async)]
 fn get_ui_prefs(app: State<'_, App>, keys: Vec<String>) -> Result<HashMap<String, String>, String> {
     let mut out = HashMap::new();
@@ -157,7 +156,7 @@ fn get_ui_prefs(app: State<'_, App>, keys: Vec<String>) -> Result<HashMap<String
 
 #[tauri::command(async)]
 fn set_ui_prefs(app: State<'_, App>, prefs: HashMap<String, String>) -> Result<(), String> {
-    // Every key is checked before the first is written.
+    // Checked first: a bad key must not leave the keys before it written.
     let rows = prefs.iter().map(|(key, value)| Ok((ui_pref_setting(key)?, value))).collect::<Result<Vec<_>, String>>()?;
     for (setting, value) in rows {
         app.store.set_setting(&setting, Some(value)).map_err(err)?;
