@@ -725,8 +725,8 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
-- After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place, which brings back the keys you had before. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
-- **Export** writes the keys you changed to the `exports` folder. Choose an exported file with **Load from file** to replace your keys with the ones in it; actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
+- After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
+- **Export** writes the keys you changed to the `exports` folder. **Load from file** replaces your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
 
 Shortcuts are stored on this computer only. To use them on another computer, export them and load the file there.
 
@@ -1000,7 +1000,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout. Shortcuts can move to another computer: export them in **Settings › Shortcuts** and load the file there.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: shortcuts, the search engine, **Translate when I switch the view**, Vim key bindings, the vimrc, reading words aloud, underlines for saved words, recent searches, the Page view's summary button, which folders are expanded, where you left each list and article, and the window layout. You can still move shortcuts to another computer by exporting them in **Settings › Shortcuts** and loading the file on the other computer.
 
 ### Unused translations
 
