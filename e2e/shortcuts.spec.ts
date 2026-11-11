@@ -423,6 +423,8 @@ test("a JSON file that is not a shortcuts file is refused and changes nothing", 
   await addKey(app, "お気に入り", "x");
   await loadFile(app, { read: ["Q"], version: 2 });
   await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
+  await app.getByLabel("ファイルから読み込む").setInputFiles({ name: "binary", mimeType: "", buffer: Buffer.from([0xff, 0xfe, 0x00]) });
+  await expect(app.getByRole("alert")).toHaveText("UTF-8のテキストファイルではありません");
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
   await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["m×"]);
   await expect(app.getByRole("button", { name: "元に戻す", exact: true })).toBeHidden();
