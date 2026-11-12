@@ -37,6 +37,8 @@ pub mod render;
 pub mod review;
 pub mod search;
 pub mod segments;
+#[cfg_attr(not(test), expect(dead_code, reason = "the local translation engine is its first caller"))]
+mod sentences;
 pub mod srs;
 pub mod store;
 pub mod summarize;
