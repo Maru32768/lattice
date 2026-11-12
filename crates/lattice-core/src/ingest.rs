@@ -428,6 +428,29 @@ mod tests {
         assert_eq!(s.find_article_by_url("https://example.com/post").unwrap(), Some(id), "the URL's own article, not the other that names it");
     }
 
+    #[test]
+    fn merging_keeps_the_survivors_name_and_an_unnamed_row_renames_nothing() {
+        let s = Store::open_in_memory().unwrap();
+        let long: String = (0..5)
+            .map(|n| format!("<p>Paragraph {n} says snapshot isolation prevents dirty reads but still permits write skew, which is why SSI exists.</p>"))
+            .collect();
+        let copy = page(&format!("{long}<p>A related post sits at the end of this copy.</p>"));
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        assert_eq!(store_fetched(&s, id, &page(&long)).unwrap(), id);
+        let titles = || {
+            let a = s.article_row(id).unwrap().unwrap();
+            (a.title, a.auto_title)
+        };
+        let (row, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
+        assert_eq!(store_fetched(&s, row, &copy).unwrap(), id);
+        assert_eq!(titles(), (Some("T".into()), None), "a row never renamed changes no title");
+        s.set_title(id, "Mine").unwrap();
+        let (row, _) = s.upsert_pending("https://example.com/p?id=2", "https://example.com/p?id=2", "example.com").unwrap();
+        s.set_title(row, "Row name").unwrap();
+        assert_eq!(store_fetched(&s, row, &copy).unwrap(), id);
+        assert_eq!(titles(), (Some("Mine".into()), Some("T".into())), "the article keeps a name of its own");
+    }
+
     #[tokio::test]
     async fn saving_a_url_leaves_a_job_that_outlives_the_app() {
         let s = Store::open_in_memory().unwrap();
