@@ -28,7 +28,7 @@ test("keyboard actions are commands with their key on the right, and an Ex name 
   await expect(panes).toHaveCount(1);
 
   await app.keyboard.press(":");
-  for (const absent of ["下へスクロール", "次の項目へ", "番号のタブへ移動", "コマンドパレット"]) {
+  for (const absent of ["下へスクロール", "次の項目へ", "番号のタブへ移動", "コマンドパレット", "プレフィックスを送る(Ctrl+Aなら全選択)"]) {
     await expect(palette(app).getByRole("option", { name: absent })).toHaveCount(0);
   }
   await expect(palette(app).getByRole("option", { name: "キー一覧" })).toHaveCount(1);
