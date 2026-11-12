@@ -304,7 +304,8 @@ export function useShortcuts({
       const own = inField ? undefined : actionFor(getBindings(), key, scope);
       if (own) {
         e.preventDefault();
-        run(own.id, 1, key);
+        // Send-prefix takes no count, so the one typed before the prefix is still the sequence's.
+        run(own.id, own.counted ? Math.max(1, seq.count) : 1, key);
       }
       return;
     }

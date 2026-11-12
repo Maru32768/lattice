@@ -413,4 +413,7 @@ test("with the prefix Ctrl+B, Ctrl+B twice in the Reader pages up, as tmux sends
   // Past the hint's delay, so that a chord left waiting would show it.
   await page.waitForTimeout(600);
   await expect(hint(page)).toHaveCount(0);
+  // A count before the prefix counts the action, as 2 Ctrl+B does without the prefix.
+  await press(page, "Control+f", "Control+f", "2", "Control+b", "Control+b");
+  await expect.poll(screensDown).toBeCloseTo(1, 2);
 });
