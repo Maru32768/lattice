@@ -62,6 +62,21 @@ test("a key recorded under the prefix is stored with <prefix> and follows the pr
   assert.deepEqual(stored(), { version: 4, prefix: "Alt+A", favorite: ["S", "<prefix> Q", "Ctrl+G Q", "G Ctrl+B"] });
 });
 
+test("the prefix recorded as a key alone stays that key when the prefix changes", () => {
+  setPrefix("Ctrl+B");
+  setKeys("favorite", ["S", "Ctrl+B"]);
+  setPrefix("Alt+A");
+  assert.deepEqual(getBindings().favorite, ["S", "Ctrl+B"]);
+  assert.deepEqual(stored(), { version: 4, prefix: "Alt+A", favorite: ["S", "Ctrl+B"] });
+});
+
+test("a key whose name begins with the prefix's, as Ctrl+ArrowLeft does Ctrl+A's, is not under the prefix", () => {
+  setKeys("favorite", ["Ctrl+ArrowLeft", "Ctrl+Alt+S"]);
+  setPrefix("Ctrl+B");
+  assert.deepEqual(getBindings().favorite, ["Ctrl+ArrowLeft", "Ctrl+Alt+S"]);
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B", favorite: ["Ctrl+ArrowLeft", "Ctrl+Alt+S"] });
+});
+
 test("a default key that moved with the prefix is no change, and recording it back clears the override", () => {
   setPrefix("Ctrl+B");
   assert.deepEqual(getBindings().splitDown, ["Ctrl+-", 'Ctrl+B "']);
