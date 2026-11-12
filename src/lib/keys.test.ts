@@ -211,3 +211,12 @@ test("editing a row keeps every stored key the row shows as one, and a literal k
   setPrefix("Ctrl+A");
   assert.deepEqual(getBindings().paneNumbers, ["Ctrl+B Q"]);
 });
+
+test("a stored key with <prefix> as its second key or alone keeps that form when its row changes", () => {
+  replaceKeys({ prefix: "Ctrl+A", overrides: { favorite: ["G <prefix>", "<prefix>", "S"] } });
+  setKeys(
+    "favorite",
+    getBindings().favorite.filter((k) => k !== "S"),
+  );
+  assert.deepEqual(stored(), { version: 4, favorite: ["G <prefix>", "<prefix>"] });
+});
