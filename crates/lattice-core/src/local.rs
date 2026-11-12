@@ -400,10 +400,9 @@ pub(crate) mod tests {
         })
         .await;
         let t = Server::new(&url).unwrap().translate(&snippets(&["First <em>one</em>. Second &amp; last."]), "en").await;
-        assert_eq!(
-            t.results[0].clone().unwrap().0,
-            [unit("First <em>one</em>. ", "訳:First <em>one</em>."), unit("Second &amp; last.", "訳:Second &amp; last.")]
-        );
+        let (units, origin) = t.results[0].clone().unwrap();
+        assert_eq!(units, [unit("First <em>one</em>. ", "訳:First <em>one</em>."), unit("Second &amp; last.", "訳:Second &amp; last.")]);
+        assert_eq!(origin.model.as_deref(), Some("plamo-3-translate-q4"), "the model the retries' answers name");
         let seen = seen.lock().unwrap();
         let retries: Vec<&str> = seen[2..].iter().map(|(_, b)| system(b)).collect();
         assert_eq!(retries, ["[plamo-translate]\ntarget_lang=en\n---\nFirst one. Second & last."; 2], "the block's text, after ---");
