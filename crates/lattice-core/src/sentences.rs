@@ -119,7 +119,8 @@ fn visible(html: &str) -> (String, Vec<Mark>) {
     (text, marks)
 }
 
-/// The length of the tag `rest` starts with, quoted attribute values included.
+/// The length of the tag `rest` starts with, quoted attribute values included. One never closed runs to
+/// the end, as an HTML parser drops it; read as text, each later `<` would scan to the end again.
 fn tag_len(rest: &str) -> Option<usize> {
     let mut chars = rest.char_indices();
     let (_, '<') = chars.next()? else {
@@ -137,13 +138,13 @@ fn tag_len(rest: &str) -> Option<usize> {
             _ => {}
         }
     }
-    None
+    Some(rest.len())
 }
 
 /// The length of the character reference `rest` starts with, and the char it stands for: one of
 /// what the snippets escape, else a letter, which reads like the word most references are.
 fn entity(rest: &str) -> Option<(usize, char)> {
-    let end = rest.find(';').filter(|&end| end < 12)?;
+    let end = rest.bytes().take(12).position(|b| b == b';')?;
     let name = rest.strip_prefix('&')?.get(..end - 1)?;
     let shown = match name {
         "amp" => '&',
@@ -211,7 +212,8 @@ mod tests {
         ("Broken <b>bold. Never closed.", &["Broken <b>bold. Never closed."]),
         ("Stray </b>close. Then more.", &["Stray </b>close. ", "Then more."]),
         ("A <b title=\"x>y. Z\">quoted. </b>Tag.", &["A <b title=\"x>y. Z\">quoted. </b>", "Tag."]),
-        ("Unclosed <a href=\"x. Y", &["Unclosed <a href=\"x. ", "Y"]),
+        ("Unclosed <a href=\"x. Y", &["Unclosed <a href=\"x. Y"]),
+        ("Unquoted <a. Then <b. More.", &["Unquoted <a. Then <b. More."]),
         ("Lone & sign. Then.", &["Lone & sign. ", "Then."]),
     ];
 
