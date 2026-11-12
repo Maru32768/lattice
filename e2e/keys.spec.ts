@@ -417,3 +417,23 @@ test("with the prefix Ctrl+B, Ctrl+B twice in the Reader pages up, as tmux sends
   await press(page, "Control+f", "Control+f", "2", "Control+b", "Control+b");
   await expect.poll(screensDown).toBeCloseTo(1, 2);
 });
+
+test("with the prefix Ctrl+B, Ctrl+B twice in the list moves it a screen up, and keeps the key from the browser", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+B" }));
+    // Read after every listener has run: whether the app kept the key from the browser (WebView2 has its own Ctrl keys).
+    const w = window as unknown as { __kept: boolean[] };
+    w.__kept = [];
+    window.addEventListener("keydown", (e) => setTimeout(() => w.__kept.push(e.defaultPrevented)), true);
+  });
+  await page.goto("/");
+  await expect(list(page).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  const cur = list(page).locator(".row.cur .t");
+  await page.keyboard.press("j");
+  await expect(cur).toHaveText(label(0));
+  await page.keyboard.press("Control+f");
+  await expect(cur).not.toHaveText(label(0));
+  await press(page, "Control+b", "Control+b");
+  await expect(cur, "the list's own page up").toHaveText(label(0));
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __kept: boolean[] }).__kept.at(-1)), "the second Ctrl+B").toBe(true);
+});
