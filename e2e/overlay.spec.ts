@@ -1,5 +1,6 @@
 // The page overlay in a real page (no app around it): the reading place it reports, and scrolling back to one.
 import { expect, test, type Page } from "@playwright/test";
+import { DEFAULT_BINDINGS, merge, pageKeys } from "../src/lib/keymap.ts";
 
 const para = (i: number) => `Page paragraph ${i}.`;
 /** The place in the overlay's last report. */
@@ -27,6 +28,27 @@ const textLayer = () => {
   }
   document.body.append(layer);
 };
+
+test("an unbound Space pages the page as a browser does, and a bound one runs its action without scrolling", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  const scrollY = () => page.evaluate(() => window.scrollY);
+  await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(DEFAULT_BINDINGS));
+  await page.keyboard.press("Space");
+  await expect.poll(scrollY).toBeGreaterThanOrEqual(300);
+  // A browser's own smooth scroll would still be under way.
+  await page.waitForTimeout(300);
+  expect(await scrollY(), "a screen, not more").toBeLessThanOrEqual(600);
+
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(merge({ view: ["Space"] })));
+  await page.keyboard.press("Space");
+  await expect
+    .poll(() => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_key").map((c) => c.args)))
+    .toEqual([{ key: "Space", count: 1 }]);
+  await page.waitForTimeout(300);
+  expect(await scrollY()).toBe(0);
+});
 
 test("the overlay reports the paragraph on its reading line, and scrolls a place back to that line", async ({ page }) => {
   await page.goto("/page.html");
