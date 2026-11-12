@@ -199,7 +199,7 @@ export const ja = {
   "translationSettings.onSwitchDesc": "Readerで混在・訳文に切り替えたとき、まだ訳していない記事なら翻訳を始めます。",
   "translationSettings.onSave": "保存した記事を自動で翻訳",
   "translationSettings.onSaveDesc":
-    "記事を保存して本文を取り出したら、すぐに翻訳します。記事ごとにLLMの使用量がかかります。表示言語で書かれた記事は訳しません。",
+    "記事を保存して本文を取り出したら、すぐに翻訳します。「AIプロバイダ」で訳すときは、記事ごとにAIの使用量がかかります。表示言語で書かれた記事は訳しません。",
   "translationSettings.onSaveOwn": "表示言語の記事も自動翻訳する",
   "translationSettings.onSaveOwnDesc":
     "「保存した記事を自動で翻訳」がオンのとき、表示言語で書かれた記事ももう一方の言語に訳します(表示言語が日本語なら、日本語の記事を英語に)。既定はオフ。",
