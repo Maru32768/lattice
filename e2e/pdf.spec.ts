@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
-import { test, expect, callsOf } from "./harness.ts";
+import { test, expect, callsOf, navItem } from "./harness.ts";
+import { GROUPS } from "./fixtures.ts";
 
 const pdf = (name: string, body = "%PDF-1.7") => ({ name, mimeType: "application/pdf", buffer: Buffer.from(body) });
 /** The PDF tab's hidden file input, which 「PDFファイルを選択…」 opens. */
@@ -97,4 +98,20 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
   await expect(app.getByRole("button", { name: /^取り込み中…/ }), "the run is still on, so no second one can start beside it").toBeDisabled();
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
+});
+
+test("one PDF whose group could not be added to stays on the import screen with the error", async ({ app }) => {
+  const [group] = GROUPS;
+  await navItem(app, group.name).click();
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    internals.invoke = (cmd, args, options) =>
+      cmd === "group_add" ? Promise.reject(new Error('{"code":"groups.notFound","params":{}}')) : invoke(cmd, args, options);
+  });
+  await openPdfTab(app);
+  await picker(app).setInputFiles(pdf("paper.pdf"));
+  await expect(app.getByRole("alert")).toHaveText("グループがありません(削除された可能性があります)");
+  await expect(app.locator("h1.art-title")).toHaveCount(0);
 });

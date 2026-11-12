@@ -373,18 +373,22 @@ async function importPdfs(
     }
   }
   let error: string | null = null;
-  try {
-    await fileInto(ids);
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+  // With nothing imported there is nothing to file, and a group deleted meanwhile would report an error of its own.
+  if (ids.length > 0) {
+    try {
+      await fileInto(ids);
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
   }
   setPdfRun({ progress: null });
   const [id] = ids;
   if (files.length === 1) {
-    if (id !== undefined) {
+    // As before the screen took several files: an article left out of its group stays here to say so.
+    if (id !== undefined && error === null) {
       onOpen(id);
     } else {
-      setPdfRun({ error: failed[0]?.error ?? null });
+      setPdfRun({ error: error ?? failed[0]?.error ?? null });
     }
     return;
   }
