@@ -22,6 +22,7 @@ pub mod ir;
 pub mod job_status;
 pub mod jobs;
 pub mod llm;
+pub mod local;
 pub mod location;
 pub mod markdown;
 pub mod mobile;
@@ -37,7 +38,6 @@ pub mod render;
 pub mod review;
 pub mod search;
 pub mod segments;
-#[cfg_attr(not(test), expect(dead_code, reason = "the local translation engine is its first caller"))]
 mod sentences;
 pub mod srs;
 pub mod store;

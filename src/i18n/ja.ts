@@ -1151,6 +1151,8 @@ export const ja = {
   "be.translate.instructionsTooLong": "追加の指示は{max}文字までです",
   "be.translate.parallelRange": "並列実行数は1から{max}までです",
   "be.translate.missingBlocks": "{missing}段落の翻訳がプロバイダから返ってきませんでした",
+  "be.translate.localUnavailable": "{url}の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください({detail})",
+  "be.translate.localUrlInvalid": "翻訳サーバーのURLは、http://かhttps://で始めてください",
   "be.file.tooLarge": "ファイルが大きすぎます({max} MBまで)",
   "be.file.notUtf8": "UTF-8のテキストファイルではありません",
   "be.location.portable": "ポータブル版はデータをexeの隣のdataフォルダに保存します",
