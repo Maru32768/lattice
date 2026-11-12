@@ -490,7 +490,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 Right-click an article in the list, or a Reader or Page tab, to open a menu of actions for that article. With the keyboard, press the menu key or `Shift+F10`.
 
-The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit tags…**, **Importance**, **Difficulty**, **Genre**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. **Importance**, **Difficulty** and **Genre** open a list of values with the current one marked. For the tab of a page you have not saved, only the items that apply to it appear.
+The menu has **Favorite**, **Mark as read**, **Add to collection…**, **Edit tags…**, **Rename…**, **Importance**, **Difficulty**, **Genre**, **Open in a new tab**, **Open in a new window**, **Open in Page**, **Copy URL** and **Remove from library…**. **Importance**, **Difficulty** and **Genre** open a list of values with the current one marked. For the tab of a page you have not saved, only the items that apply to it appear. A title you give with **Rename…** stays when the article is imported again. Save it empty or press **Reset** to go back to the title Lattice gave it.
 
 ### Act on several articles
 
