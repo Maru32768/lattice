@@ -1520,6 +1520,7 @@ export default function App() {
             )}
             {titleEdit && (
               <TitleEditor
+                key={titleEdit.article.id}
                 article={titleEdit.article}
                 anchor={titleEdit.el}
                 onClose={() => setTitleEdit(null)}
