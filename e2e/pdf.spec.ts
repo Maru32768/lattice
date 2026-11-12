@@ -173,13 +173,17 @@ test("a group picker left open when PDFs start going in closes, so the run's gro
   await expect(app.getByRole("dialog", { name: "グループ" })).toBeVisible();
   await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
     const dataTransfer = new DataTransfer();
-    dataTransfer.items.add(new File(["%PDF-1.7"], "1 a.pdf", { type: "application/pdf" }));
+    for (const name of ["1 a.pdf", "2 b.pdf"]) {
+      dataTransfer.items.add(new File(["%PDF-1.7"], name, { type: "application/pdf" }));
+    }
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
   });
   await expect(app.getByRole("dialog", { name: "グループ" })).toHaveCount(0);
   await releaseImports(app);
-  await expect(app.locator("h1.art-title")).toHaveText("Dropped Paper");
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  await expect(app.getByRole("dialog", { name: "グループ" }), "it stays closed when the run ends").toHaveCount(0);
+  await expect(app.locator(".import-groups").getByRole("button")).toHaveAttribute("aria-expanded", "false");
 });
 
 test("the import screen opened again mid-run shows the groups the run files into", async ({ app }) => {

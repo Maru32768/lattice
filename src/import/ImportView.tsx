@@ -86,7 +86,8 @@ export function ImportView({
           </div>
         </header>
         {/* A PDF run files into the groups chosen when it started: changing them meanwhile would show groups not in effect. */}
-        <GroupField groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} disabled={pdfBusy} />
+        {/* Made anew as the lock comes and goes: a picker left open closes, and does not come back by itself when the run ends. */}
+        <GroupField key={pdfBusy ? "locked" : "open"} groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} disabled={pdfBusy} />
         {tab === "urls" ? (
           <UrlImport onImported={onImported} fileInto={fileInto} />
         ) : tab === "markdown" ? (
@@ -133,8 +134,7 @@ function GroupField({
         {names.length ? names.join(" · ") : t("importView.noGroup")}
         <Icon name="down" size="sm" />
       </button>
-      {/* A picker left open when a run starts closes with the lock, or it would go on changing the groups. */}
-      {anchor && !disabled && (
+      {anchor && (
         <GroupPicker
           groups={groups}
           selected={into}
