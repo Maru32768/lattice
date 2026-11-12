@@ -9,7 +9,7 @@ export type VimrcEntry =
   /** A key that gives up the engine's own command in these modes, which comes before every mapping: a mapping written earlier stays. */
   | { kind: "free"; line: number; lhs: string; modes: FreedMode[] }
   | { kind: "skip"; line: number; text: string; reason: SkipReason };
-/** Insert mode has no command for a key to give up: there a key is text. */
+/** Insert mode gives up no command: a printable key there is text, and its few Ctrl commands (`ENGINE_INSERT_KEYS`) stay the engine's. */
 export type FreedMode = "normal" | "visual";
 const BOTH_MODES: FreedMode[] = ["normal", "visual"];
 export interface KnownNames {
