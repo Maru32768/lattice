@@ -148,3 +148,11 @@ test("several PDFs all go into the group chosen on the import screen", async ({ 
   expect(calls[0]?.id).toBe(group.id);
   expect(calls[0]?.articles, "the two that went in, not the one that failed").toHaveLength(2);
 });
+
+test("one PDF that cannot be imported shows why and opens nothing", async ({ app }) => {
+  await openPdfTab(app);
+  await picker(app).setInputFiles(pdf("scan.pdf", "%no-text"));
+  await expect(app.getByRole("alert")).toHaveText("PDFから本文を取り出せませんでした(文字のない画像だけのPDFには対応していません)");
+  await expect(app.getByRole("status")).toHaveCount(0);
+  await expect(app.locator("h1.art-title")).toHaveCount(0);
+});
