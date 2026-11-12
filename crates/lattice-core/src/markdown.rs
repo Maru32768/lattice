@@ -448,6 +448,18 @@ Hello <script>alert(1)</script>world <STYLE>p{}</style>end
     }
 
     #[test]
+    fn reextracting_a_renamed_note_keeps_the_file_name_as_the_found_title() {
+        let s = Store::open_in_memory().unwrap();
+        let id = import(&s, "Intro paragraph.\n\n## Part\n\nBody text.\n", Some("note"), None).unwrap();
+        s.set_title(id, "Part 2").unwrap();
+        crate::ingest::reextract(&s, id).unwrap();
+        let a = s.article_row(id).unwrap().unwrap();
+        assert_eq!((a.title.as_deref(), a.auto_title.as_deref()), (Some("Part 2"), Some("note")));
+        s.set_title(id, "").unwrap();
+        assert_eq!(s.article_row(id).unwrap().unwrap().title.as_deref(), Some("note"));
+    }
+
+    #[test]
     fn reads_relative_images_only_inside_the_picked_folder() {
         const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
         let root = std::env::temp_dir().join(format!("lattice-md-{}", std::process::id()));

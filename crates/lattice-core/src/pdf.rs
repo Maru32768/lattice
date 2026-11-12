@@ -1760,6 +1760,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn reextracting_a_renamed_pdf_keeps_the_file_name_as_the_found_title() {
+        let s = Store::open_in_memory().unwrap();
+        let body = vec![(L, 120., 10., "Plain text with no larger title line on the page.")];
+        let id = import(&s, &pdf(std::slice::from_ref(&body), None), Some("file")).unwrap();
+        assert_eq!(s.article_row(id).unwrap().unwrap().title.as_deref(), Some("file"));
+        s.set_title(id, "Part 2").unwrap();
+        crate::ingest::reextract(&s, id).unwrap();
+        let a = s.article_row(id).unwrap().unwrap();
+        assert_eq!((a.title.as_deref(), a.auto_title.as_deref()), (Some("Part 2"), Some("file")));
+    }
+
+    #[test]
     fn title_falls_back_to_metadata_then_name() {
         let body = vec![(L, 120., 10., "Plain text with no larger title line on the page.")];
         let ir = to_ir(&pdf(std::slice::from_ref(&body), Some("A Paper Title From Metadata")), Some("file")).unwrap();
