@@ -447,8 +447,9 @@ function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen:
       )}
       {done && done.failed.length > 0 && (
         <ul role="alert" className="msg error-text">
-          {done.failed.map((f) => (
-            <li key={f.name}>{t("importView.pdfFailed", { name: f.name, error: t.msg(f.error) })}</li>
+          {done.failed.map((f, i) => (
+            // Two dropped files can share a name (an Explorer search over several folders).
+            <li key={`${i}:${f.name}`}>{t("importView.pdfFailed", { name: f.name, error: t.msg(f.error) })}</li>
           ))}
         </ul>
       )}
