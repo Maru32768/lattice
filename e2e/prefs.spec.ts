@@ -38,9 +38,9 @@ const lastSaved = async (page: Page) => (await callsOf(page, "set_ui_prefs")).at
 test("the library's settings win over the ones cached on this PC", async ({ shell }) => {
   await start(
     shell,
-    { "lattice.shortcuts": JSON.stringify({ read: ["Q"], version: 2 }), "lattice.chatVim": "on" },
+    { "lattice.shortcuts": JSON.stringify({ read: ["Q"], version: 3 }), "lattice.chatVim": "on" },
     {
-      "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 2 }),
+      "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 3 }),
       "lattice.chatVim": "",
       "lattice.vocabMarks": "off",
       "lattice.searchEngine": JSON.stringify({ id: "google", custom: "" }),

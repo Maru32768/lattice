@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { SYNCED, planSync, type Cached } from "./prefs.ts";
 
 const cache = (values: Partial<Cached> = {}): Cached => ({ ...(Object.fromEntries(SYNCED.map((k) => [k, null])) as Cached), ...values });
-const SHORTCUTS = JSON.stringify({ read: ["Q"], version: 2 });
+const SHORTCUTS = JSON.stringify({ read: ["Q"], version: 3 });
 
 test("the library's row wins over a different cached value", () => {
   const local = cache({ "lattice.shortcuts": SHORTCUTS, "lattice.vocabMarks": "on" });
@@ -34,6 +34,6 @@ test("nothing is written when neither has a value or both agree", () => {
 
 test("a key changed while the rows were on their way keeps its change", () => {
   const before = cache({ "lattice.shortcuts": SHORTCUTS, "lattice.translateOnSwitch": "on" });
-  const now = cache({ "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 2 }), "lattice.translateOnSwitch": "off" });
+  const now = cache({ "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 3 }), "lattice.translateOnSwitch": "off" });
   assert.deepEqual(planSync(before, { "lattice.shortcuts": "{}" }, now), { cache: {}, db: {} }, "neither the row nor the old cached value is written");
 });

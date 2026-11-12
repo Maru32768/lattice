@@ -8,44 +8,20 @@ import { savePref } from "./prefs.ts";
 const STORAGE_KEY = "lattice.shortcuts";
 const STORAGE_VERSION = 3;
 const FILE_FORMAT = "lattice.shortcuts";
-/** The default chords' first key, as tmux's prefix. Before version 3 it was Ctrl+B, which now pages up. */
-const PREFIX = "Ctrl+A ";
-const OLD_PREFIX = "Ctrl+B ";
 
 // It reads imported files too: a key listed twice would repeat a React key in the row.
 const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => typeof k === "string") ? [...new Set(v.filter(Boolean))] : undefined);
 
-/**
- * Version 1's overrides as version 2's. Version 1 had a `pane` action, whose keys led fixed second
- * keys that no override could touch: those become two-key bindings under the keys it had.
- */
-function fromVersion1(raw: Record<string, unknown>): Partial<Bindings> {
+/** The overrides in a stored value. Another version's keys are dropped, not read: version 2's prefix was Ctrl+B, which now pages up. */
+export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
   const out: Partial<Bindings> = {};
-  const pane = keysIn(raw.pane) ?? ["Ctrl+B"];
-  const paneMoved = pane.length !== 1 || pane[0] !== "Ctrl+B";
+  if (raw.version !== STORAGE_VERSION) {
+    return out;
+  }
   for (const a of ACTIONS) {
     const v = keysIn(raw[a.id]);
-    const seconds = a.keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length));
-    if (v || (paneMoved && seconds.length)) {
-      out[a.id] = [...(v ?? a.keys.filter((k) => !k.startsWith(PREFIX))), ...pane.flatMap((p) => seconds.map((s) => `${p} ${s}`))];
-    }
-  }
-  return out;
-}
-
-/** A version 2 key as version 3's: a key after Ctrl+B goes after Ctrl+A, and page up, Ctrl+B Ctrl+B there, is Ctrl+B. */
-const fromVersion2 = (id: ActionId, k: string) =>
-  (id === "pageUp" || id === "listPageUp") && k === "Ctrl+B Ctrl+B" ? "Ctrl+B" : k.startsWith(OLD_PREFIX) ? PREFIX + k.slice(OLD_PREFIX.length) : k;
-
-/** The overrides in a stored value of any version. */
-export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
-  const current = raw.version === STORAGE_VERSION;
-  const stored: Record<string, unknown> = current || raw.version === 2 ? raw : fromVersion1(raw);
-  const out: Partial<Bindings> = {};
-  for (const a of ACTIONS) {
-    const v = keysIn(stored[a.id]);
     if (v) {
-      out[a.id] = current ? v : [...new Set(v.map((k) => fromVersion2(a.id, k)))];
+      out[a.id] = v;
     }
   }
   return out;
@@ -113,8 +89,8 @@ export const shortcutsFile = () => JSON.stringify({ format: FILE_FORMAT, version
 export function parseShortcutsFile(text: string): Partial<Bindings> | null {
   try {
     const raw = JSON.parse(text) as Record<string, unknown> | null;
-    // Only the versions that wrote files: fromStored reads any other as version 1 and would add the old pane keys again.
-    return raw?.format === FILE_FORMAT && (raw.version === 2 || raw.version === STORAGE_VERSION) ? fromStored(raw) : null;
+    // Another version's file reads as nothing, as fromStored would drop its keys and reset every action.
+    return raw?.format === FILE_FORMAT && raw.version === STORAGE_VERSION ? fromStored(raw) : null;
   } catch {
     return null;
   }

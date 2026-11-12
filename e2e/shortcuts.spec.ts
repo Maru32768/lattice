@@ -285,7 +285,7 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
 });
 
 test("a key two list actions share is no conflict for the document's action with the same key", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ search: ["/", "J"], version: 2 })));
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ search: ["/", "J"], version: 3 })));
   await page.goto("/");
   await openShortcuts(page);
   await expect(tab(page, "一覧")).toHaveAccessibleName("一覧 13 変更あり 重なりあり");
@@ -338,7 +338,7 @@ test("a note names the action that runs instead only when the key runs it, as th
   await page.addInitScript(() =>
     localStorage.setItem(
       "lattice.shortcuts",
-      JSON.stringify({ favorite: ["S", "G"], read: ["M", "G"], search: ["/", "J"], prev: ["K", "ArrowUp", "J"], version: 2 }),
+      JSON.stringify({ favorite: ["S", "G"], read: ["M", "G"], search: ["/", "J"], prev: ["K", "ArrowUp", "J"], version: 3 }),
     ),
   );
   await page.goto("/");
@@ -354,7 +354,7 @@ test("a note names the action that runs instead only when the key runs it, as th
 });
 
 test("the Reader's buttons name the key as it is bound now", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ less: ["["], favorite: [], version: 2 })));
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ less: ["["], favorite: [], version: 3 })));
   await page.goto("/");
   await list(page).locator(".row").first().click();
   await expect(page.getByRole("button", { name: "日本語の割合を下げる([)" })).toHaveAttribute("title", "日本語の割合を下げる([)");
@@ -410,7 +410,7 @@ test("a change from another window hides the undo, and a later undo keeps that c
   await expect(undo).toBeVisible();
   // A change another window made, as the storage event brings it here. Only the main window edits shortcuts today.
   await app.evaluate(() => {
-    localStorage.setItem("lattice.shortcuts", JSON.stringify({ read: ["Q"], version: 2 }));
+    localStorage.setItem("lattice.shortcuts", JSON.stringify({ read: ["Q"], version: 3 }));
     window.dispatchEvent(new StorageEvent("storage", { key: "lattice.shortcuts" }));
   });
   await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["q×"]);
@@ -426,7 +426,7 @@ test("loading a file replaces the keys, and undo brings back the earlier ones", 
   await tab(app, "記事").click();
   const [fav, read] = [row(app, "お気に入り"), row(app, "既読 / 未読")];
   await addKey(app, "お気に入り", "x");
-  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q", "Q", ""] });
+  await loadFile(app, { format: "lattice.shortcuts", version: 3, read: ["Q", "Q", ""] });
   await expect(app.getByRole("status")).toHaveText("読み込みました");
   await expect(fav.locator(".kbd.key"), "what the file leaves out is at its default").toHaveText(["s×"]);
   await expect(read.locator(".kbd.key")).toHaveText(["q×"]);
@@ -440,7 +440,7 @@ test("loading a file replaces the keys, and undo brings back the earlier ones", 
   await expect(read.locator(".kbd.key")).toHaveText(["m×"]);
 
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
-  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q"] });
+  await loadFile(app, { format: "lattice.shortcuts", version: 3, read: ["Q"] });
   await expect(app.getByRole("status"), "the undo is now the load's, not the reset's").toHaveText("読み込みました");
   await undo.focus();
   await app.keyboard.press("Enter");
@@ -453,18 +453,18 @@ test("a file that is not a shortcuts file, not text or too large is refused and 
   await openShortcuts(app);
   await tab(app, "記事").click();
   await addKey(app, "お気に入り", "x");
-  await loadFile(app, { read: ["Q"], version: 2 });
+  await loadFile(app, { read: ["Q"], version: 3 });
   await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
   await app.getByLabel("ファイルから読み込む").setInputFiles({ name: "binary", mimeType: "", buffer: Buffer.from([0xff, 0xfe, 0x00]) });
   await expect(app.getByRole("alert")).toHaveText("UTF-8のテキストファイルではありません");
-  const big = JSON.stringify({ format: "lattice.shortcuts", version: 2, read: ["Q"] }) + " ".repeat(1024 * 1024);
+  const big = JSON.stringify({ format: "lattice.shortcuts", version: 3, read: ["Q"] }) + " ".repeat(1024 * 1024);
   await app.getByLabel("ファイルから読み込む").setInputFiles({ name: "big.json", mimeType: "application/json", buffer: Buffer.from(big) });
   await expect(app.getByRole("alert"), "a shortcuts file over the limit").toHaveText("ファイルが大きすぎます(1 MBまで)");
   await expect(row(app, "お気に入り").locator(".kbd.key")).toHaveText(["s×", "x×"]);
   await expect(row(app, "既読 / 未読").locator(".kbd.key")).toHaveText(["m×"]);
   await expect(app.getByRole("button", { name: "元に戻す", exact: true })).toBeHidden();
 
-  await loadFile(app, { format: "lattice.shortcuts", version: 2, read: ["Q"] });
+  await loadFile(app, { format: "lattice.shortcuts", version: 3, read: ["Q"] });
   await expect(app.getByRole("status")).toHaveText("読み込みました");
   await expect(app.getByRole("alert"), "a load that worked clears the last one's error").toBeHidden();
 });
