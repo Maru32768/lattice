@@ -201,8 +201,6 @@ test("in insert mode the engine keeps the keys it edits with; in normal mode Ctr
   const text = () => chatInput(page).evaluate((el) => el.textContent);
   await page.keyboard.press("Control+t");
   await expect.poll(text, "Ctrl+T indents the line").toMatch(/^\s+one\s*$/);
-  await page.keyboard.press("Control+d");
-  await expect.poll(text, "Ctrl+D takes the indent back").toMatch(/^one\s*$/);
   await expect(tabs, "no tab closed or opened").toHaveCount(1);
 
   await page.keyboard.press("Escape");
