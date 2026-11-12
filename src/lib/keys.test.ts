@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
 
@@ -13,6 +13,9 @@ const { fromStored, getBindings, getPrefix, isCustom, parseShortcutsFile, replac
 const KEY = "lattice.shortcuts";
 const DEFAULTS = { prefix: "Ctrl+A", overrides: {} };
 const stored = () => JSON.parse(localStorage.getItem(KEY) ?? "null") as unknown;
+// Each test starts from the defaults, so that one that fails leaves the next its own start.
+beforeEach(() => void replaceKeys(DEFAULTS));
+
 /** What another window or the start-up sync does: the value changes and the store reads it again. */
 function storedElsewhere(value: unknown) {
   localStorage.setItem(KEY, JSON.stringify(value));
@@ -57,7 +60,6 @@ test("a key recorded under the prefix is stored with <prefix> and follows the pr
   assert.deepEqual(getBindings().splitDown, ["Ctrl+-", 'Alt+A "'], "the defaults move too");
   assert.deepEqual(getBindings().sendPrefix, ["Alt+A Alt+A"]);
   assert.deepEqual(stored(), { version: 4, prefix: "Alt+A", favorite: ["S", "<prefix> Q", "Ctrl+G Q", "G Ctrl+B"] });
-  replaceKeys(DEFAULTS);
 });
 
 test("a default key that moved with the prefix is no change, and recording it back clears the override", () => {
@@ -87,7 +89,6 @@ test("what is stored loads back as the same prefix and bindings; a value of vers
   storedElsewhere({ version: 3, read: ["Q"] });
   assert.equal(getPrefix(), "Ctrl+A");
   assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
-  replaceKeys(DEFAULTS);
 });
 
 test("replaceKeys returns the prefix and keys it replaced, and passing them back restores the bindings", () => {
@@ -100,7 +101,6 @@ test("replaceKeys returns the prefix and keys it replaced, and passing them back
   replaceKeys(prev);
   assert.equal(getPrefix(), "Ctrl+B");
   assert.deepEqual(getBindings(), before);
-  replaceKeys(DEFAULTS);
 });
 
 test("a shortcuts file holds the prefix and the changed keys, marked, and reads back as them", () => {
@@ -116,7 +116,6 @@ test("a shortcuts file holds the prefix and the changed keys, marked, and reads 
   replaceKeys(parseShortcutsFile(file)!);
   assert.equal(getPrefix(), "Ctrl+B");
   assert.deepEqual(getBindings(), before);
-  replaceKeys(DEFAULTS);
 });
 
 test("a file without the marker, of another version, or not JSON, reads as nothing rather than as no changed keys", () => {
@@ -141,5 +140,4 @@ test("a literal key under a new prefix is stored with <prefix> from then on, so 
   assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+G", favorite: ["<prefix> S"] });
   setPrefix("Alt+A");
   assert.deepEqual(getBindings().favorite, ["Alt+A S"]);
-  replaceKeys(DEFAULTS);
 });
