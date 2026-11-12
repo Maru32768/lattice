@@ -167,7 +167,7 @@ test("one PDF that cannot be imported shows why and opens nothing", async ({ app
   await expect(app.locator("h1.art-title")).toHaveCount(0);
 });
 
-test("a group picker left open when PDFs start going in closes, so the run's groups cannot change", async ({ app }) => {
+test("a group picker left open when PDFs start going in closes, and stays closed when the run ends", async ({ app }) => {
   await holdImports(app);
   await openPdfTab(app);
   await app.locator(".import-groups").getByRole("button").click();
