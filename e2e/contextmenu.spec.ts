@@ -95,6 +95,27 @@ test("タイトルを変更… gives an article a title of its own, and 元に�
   expect((await callsOf(app, "set_article_title")).at(-1)).toEqual({ id: a.id, title: "" });
 });
 
+test("an unchanged title saves nothing, Enter while composing does not save, and 保存 saves", async ({ app }) => {
+  const [a] = shown;
+  const open = async () => {
+    await row(app, a.title!).click({ button: "right" });
+    await menu(app).getByRole("menuitem", { name: "タイトルを変更…" }).click();
+    return app.getByRole("dialog", { name: "記事のタイトル" });
+  };
+  let box = await open();
+  await box.getByRole("textbox", { name: "記事のタイトル" }).press("Enter");
+  await expect(box).toBeHidden();
+  box = await open();
+  const input = box.getByRole("textbox", { name: "記事のタイトル" });
+  await input.fill("第2部");
+  await input.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await expect(box).toBeVisible();
+  expect(await callsOf(app, "set_article_title")).toEqual([]);
+  await box.getByRole("button", { name: "保存" }).click();
+  await expect(box).toBeHidden();
+  expect(await callsOf(app, "set_article_title")).toEqual([{ id: a.id, title: "第2部" }]);
+});
+
 test("the menu key and Shift+F10 open the cursor row's menu; Esc returns to the row", async ({ app }) => {
   await row(app, shown[0].title!).focus();
   await app.keyboard.press("j");
