@@ -140,3 +140,11 @@ test("an open Settings screen follows a storage event for its setting, as the st
   });
   await expect(onSwitch).not.toBeChecked();
 });
+
+test("自動で翻訳しない comes back from the library on a PC that has never cached it", async ({ page }) => {
+  await start(page, {}, { "lattice.importNoAutoTranslate": "on" });
+  await page.keyboard.press("Control+p");
+  await page.keyboard.type(">pdf");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("checkbox", { name: "自動で翻訳しない" })).toBeChecked();
+});
