@@ -123,7 +123,10 @@ test("selectAll reaches a field inside a page component's open shadow root", () 
   const root = document.getElementById("doc")!;
   const inner = document.createElement("input");
   inner.value = "typed";
-  document.getElementById("widget")!.attachShadow({ mode: "open" }).append(inner);
+  // A component inside a component: the field is two shadow roots down.
+  const outer = document.createElement("div");
+  document.getElementById("widget")!.attachShadow({ mode: "open" }).append(outer);
+  outer.attachShadow({ mode: "open" }).append(inner);
   inner.focus();
   const nav = createDocNav(() => ({ root: () => root }) as unknown as import("./controller.ts").DocHost);
   nav.run("selectAll", 1);
