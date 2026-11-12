@@ -317,7 +317,7 @@ test("pageKeys: sequences are the app's actions, first the chords' first keys", 
   assert.ok(custom.first.includes("Ctrl+G"));
   assert.ok(!custom.first.includes("Enter"), "Enter stays the page's, also as a first key");
   assert.deepEqual(custom.bindings.read, []);
-  assert.deepEqual(custom.bindings.view, ["Space"], "Space is free in a page, as in the app");
+  assert.deepEqual(custom.bindings.view, ["Space"], "a bound Space reaches a page, as it does the app");
   assert.deepEqual(custom.bindings.summary, ["Shift+Space Y"]);
   assert.ok(custom.first.includes("Shift+Space"), "a Space chord's first key brings the hint");
 });
