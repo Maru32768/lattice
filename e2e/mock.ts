@@ -351,6 +351,8 @@ function reviewOverview(): ReviewOverview {
 }
 
 let nextId = 1000;
+/** PDF content → its article: like pdf::import, the same bytes again give the article already made. */
+const pdfArticles = new Map<string, number>();
 function addArticle(url: string, title: string | null, extra: Partial<ArticleRow> = {}): number {
   const id = nextId++;
   articles.push({
@@ -662,12 +664,19 @@ export const handlers = {
     addArticle(`local:md/${text.length}`, /^#\s+(.+)$/m.exec(text)?.[1] ?? null, { domain: "", fetch_status: "ok", extraction_status: "ok" }),
   import_markdown_file: none,
   // Like the backend, a body that is not raw bytes fails; one starting with %no-text stands for a scan without text.
-  import_pdf_bytes: (body: unknown): number =>
-    !(body instanceof Uint8Array)
-      ? reject("pdf.parseFailed")
-      : new TextDecoder().decode(body).startsWith("%no-text")
-        ? reject("pdf.noText")
-        : addArticle("local:pdf/e2e-bytes", "Dropped Paper", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
+  import_pdf_bytes: (body: unknown): number => {
+    if (!(body instanceof Uint8Array)) {
+      return reject("pdf.parseFailed");
+    }
+    const text = new TextDecoder().decode(body);
+    if (text.startsWith("%no-text")) {
+      return reject("pdf.noText");
+    }
+    const id =
+      pdfArticles.get(text) ?? addArticle("local:pdf/e2e-bytes", "Dropped Paper", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true });
+    pdfArticles.set(text, id);
+    return id;
+  },
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),

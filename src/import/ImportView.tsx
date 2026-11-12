@@ -383,11 +383,13 @@ async function importPdfs(
       failed.push({ name: file.name, error: r.error });
     }
   }
+  // The backend keeps one article per PDF content: the same file twice, or one already saved, gives an id seen before.
+  const articles = [...new Set(ids)];
   let error: string | null = null;
   // With nothing imported there is nothing to file, and a group deleted meanwhile would report an error of its own.
-  if (ids.length > 0) {
+  if (articles.length > 0) {
     try {
-      await fileInto(ids);
+      await fileInto(articles);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     }
@@ -403,7 +405,7 @@ async function importPdfs(
     }
     return;
   }
-  setPdfRun({ done: { imported: ids.length, failed }, error });
+  setPdfRun({ done: { imported: articles.length, failed }, error });
   onImported();
 }
 

@@ -2,7 +2,8 @@ import type { Page } from "@playwright/test";
 import { test, expect, callsOf, navItem } from "./harness.ts";
 import { GROUPS } from "./fixtures.ts";
 
-const pdf = (name: string, body = "%PDF-1.7") => ({ name, mimeType: "application/pdf", buffer: Buffer.from(body) });
+/** A PDF whose bytes hold its name, so two files are two articles unless a spec gives them one body. */
+const pdf = (name: string, body = `%PDF-1.7 ${name}`) => ({ name, mimeType: "application/pdf", buffer: Buffer.from(body) });
 /** The PDF tab's hidden file input, which 「PDFファイルを選択…」 opens. */
 const picker = (app: Page) => app.getByRole("region", { name: "PDF" }).locator('input[type="file"]');
 
@@ -174,7 +175,7 @@ test("a group picker left open when PDFs start going in closes, so the run's gro
   await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
     const dataTransfer = new DataTransfer();
     for (const name of ["1 a.pdf", "2 b.pdf"]) {
-      dataTransfer.items.add(new File(["%PDF-1.7"], name, { type: "application/pdf" }));
+      dataTransfer.items.add(new File([`%PDF-1.7 ${name}`], name, { type: "application/pdf" }));
     }
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
     el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
@@ -224,4 +225,14 @@ test("a new import clears what the last one left: its count, and an error while 
   await expect(app.getByRole("alert"), "the last error goes as the new run starts").toHaveCount(0);
   await releaseImports(app);
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+});
+
+test("the same PDF twice in a batch counts and files as one article, as the backend keeps one per content", async ({ app }) => {
+  const [group] = GROUPS;
+  await navItem(app, group.name).click();
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf", "%PDF-1.7 same"), pdf("2 copy.pdf", "%PDF-1.7 same")]);
+  await expect(app.getByRole("status")).toHaveText("1件のPDFを取り込みました");
+  const calls = (await callsOf(app, "group_add")) as { articles: number[] }[];
+  expect(calls.map((c) => c.articles.length)).toEqual([1]);
 });

@@ -55,7 +55,7 @@ test("several PDFs dropped together all go in, and a file of another kind among 
   const taken = await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
     const dataTransfer = new DataTransfer();
     for (const name of ["1 a.pdf", "notes.txt", "2 b.pdf"]) {
-      dataTransfer.items.add(new File(["%PDF-1.7"], name, { type: name.endsWith(".pdf") ? "application/pdf" : "text/plain" }));
+      dataTransfer.items.add(new File([`%PDF-1.7 ${name}`], name, { type: name.endsWith(".pdf") ? "application/pdf" : "text/plain" }));
     }
     el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
     return !el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
