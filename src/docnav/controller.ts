@@ -58,6 +58,7 @@ type FindMode = {
   length: number;
   at: number;
   place: Place;
+  input: HTMLInputElement;
   count: HTMLElement;
 };
 
@@ -574,7 +575,7 @@ export function createDocNav(host: () => DocHost) {
     };
     const { input, count } = openUi().bar(host().findLabel(), view);
     const doc = walkOf(root);
-    enter({ kind: "find", query: "", doc, origin: firstVisibleText(doc.nodes, view), starts: [], length: 0, at: -1, place, count });
+    enter({ kind: "find", query: "", doc, origin: firstVisibleText(doc.nodes, view), starts: [], length: 0, at: -1, place, input, count });
     input.addEventListener("input", () => {
       if (mode.kind === "find") {
         search(mode, input.value);
@@ -648,7 +649,11 @@ export function createDocNav(host: () => DocHost) {
     print: () => host().print(),
     // What Ctrl+A does by itself, for a page that did not get the key: in its focused field, else the whole document.
     selectAll: () => {
-      const field = document.activeElement;
+      let field = document.activeElement;
+      // A page's own components keep their focused field inside an open shadow root.
+      while (field?.shadowRoot?.activeElement) {
+        field = field.shadowRoot.activeElement;
+      }
       if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
         field.select();
         return;
@@ -668,6 +673,11 @@ export function createDocNav(host: () => DocHost) {
   return {
     /** Runs one of the document's own actions; any other id does nothing, as a page may call this itself. */
     run(id: ActionId, count: number) {
+      // Ahead of NORMAL, which would close the find bar that Ctrl+A selects in.
+      if (id === "selectAll" && mode.kind === "find") {
+        mode.input.select();
+        return;
+      }
       enter(NORMAL);
       if (isDocScroll(id)) {
         const el = host().scroller();

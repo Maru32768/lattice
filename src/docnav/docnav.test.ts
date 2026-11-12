@@ -111,7 +111,22 @@ test("selectAll does what Ctrl+A does: in the focused field, else the whole docu
   nav.run("selectAll", 1);
   assert.equal(window.getSelection()!.toString(), root.textContent);
   const field = root.querySelector("input")!;
+  window.getSelection()!.removeAllRanges();
   field.focus();
   nav.run("selectAll", 1);
   assert.deepEqual([field.selectionStart, field.selectionEnd], [0, "typed".length]);
+  assert.equal(window.getSelection()!.toString(), "", "the field's text alone, not the document around it");
+});
+
+test("selectAll reaches a field inside a page component's open shadow root", () => {
+  document.body.innerHTML = `<article id="doc"><p>one</p><div id="widget"></div></article>`;
+  const root = document.getElementById("doc")!;
+  const inner = document.createElement("input");
+  inner.value = "typed";
+  document.getElementById("widget")!.attachShadow({ mode: "open" }).append(inner);
+  inner.focus();
+  const nav = createDocNav(() => ({ root: () => root }) as unknown as import("./controller.ts").DocHost);
+  nav.run("selectAll", 1);
+  assert.deepEqual([inner.selectionStart, inner.selectionEnd], [0, "typed".length]);
+  assert.equal(window.getSelection()!.toString(), "", "not the document around it");
 });
