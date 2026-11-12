@@ -109,6 +109,10 @@ vimBridge.owns = (e, editor) => {
 
 // ---- the editor --------------------------------------------------------------------------------
 
+/** No count, operator or keys of a longer command under way: what the engine leaves after Esc (<Esc>) counts as none. */
+const idle = (input: { keyBuffer: string[]; prefixRepeat: string[]; operator?: string | null }) =>
+  !input.operator && input.prefixRepeat.length === 0 && input.keyBuffer.every((k) => k === "<Esc>");
+
 const hint = new Compartment();
 
 /**
@@ -128,6 +132,7 @@ export default function VimEditor({
   onQuit,
   onMode,
   onBlur,
+  enterWrites,
 }: {
   /** Goes on the editable element, as a textarea's would. */
   id?: string;
@@ -143,6 +148,8 @@ export default function VimEditor({
   onQuit: () => void;
   onMode: (mode: string) => void;
   onBlur?: () => void;
+  /** Whether a plain Enter in normal mode writes `text`, as the chat's send key says. Omitted, Enter is Vim's own. */
+  enterWrites?: (text: string) => boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
@@ -153,6 +160,7 @@ export default function VimEditor({
   const quit = useEffectEvent(onQuit);
   const mode = useEffectEvent(onMode);
   const blurred = useEffectEvent(() => onBlur?.());
+  const writesOnEnter = useEffectEvent((text: string) => enterWrites?.(text) ?? false);
 
   const report = useEffectEvent((view: EditorView) => {
     const state = getCM(view)?.state.vim;
@@ -192,6 +200,15 @@ export default function VimEditor({
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
                   write(v.state.doc.toString());
                   return true;
+                }
+                // Insert mode keeps Enter for a new line. In normal mode a waiting count or operator, or a vimrc mapping of <CR>, keeps it Vim's.
+                const vim = getCM(v)?.state.vim;
+                const plain = e.key === "Enter" && !e.shiftKey && !e.altKey && !e.isComposing;
+                if (plain && vim && !vim.insertMode && !vim.visualMode && idle(vim.inputState)) {
+                  if (!mapped.normal.has("<CR>") && writesOnEnter(v.state.doc.toString())) {
+                    write(v.state.doc.toString());
+                    return true;
+                  }
                 }
                 // Vim gives up on a mapped <Esc><Esc> after a moment and reads the next key afresh. The engine has no
                 // such timeout and would swallow that key, and people mash Esc.

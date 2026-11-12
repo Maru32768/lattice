@@ -95,7 +95,8 @@ export const ja = {
   "chatSettings.budgetDesc":
     "1回の質問でLLMに渡す記事の量。質問の範囲にある記事が収まれば全文を渡します。収まらなければ検索で選んだ箇所を、まず1記事4箇所までにして多くの記事から集め、余裕があれば同じ記事から足します。多いほど網羅的に答えられますが、1回のコスト(APIの料金やCLIのusage)と待ち時間が増えます。次の質問から反映されます。",
   "chatSettings.sendKey": "送信キー",
-  "chatSettings.sendKeyDesc": "Vimキーバインドを使うときは、Ctrl+Enterか:wで送信します。",
+  "chatSettings.sendKeyDesc":
+    "Vimキーバインドを使うときは、挿入モードのEnterは改行で、ノーマルモードのEnterがこの設定に従います。Ctrl+Enterと:wはいつでも送信します。",
   "chatSettings.sendCtrlEnter": "Ctrl+Enterで送信",
   "chatSettings.sendEnter": "Enterで送信(Shift+Enterで改行)",
   "chatSettings.sendEnterOneLine": "1行ならEnter、2行以上ならCtrl+Enterで送信",

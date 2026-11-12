@@ -577,7 +577,7 @@ Choose the limit per question in **Context per question** in **Settings › Summ
 |---|---|
 | **Extra instructions for chat** | Instructions added only for chat answers. They apply from the next question. |
 | **Context per question** | The limit on how much is sent per question. See "How much is sent" above. |
-| **Send key** | The key that sends a question from the chat box: **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Ctrl+Enter` or `:w` sends. |
+| **Send key** | The key that sends a question from the chat box: **Ctrl+Enter sends** (the default), **Enter sends (Shift+Enter for a new line)** or **Enter for one line, Ctrl+Enter for two or more**. With Vim key bindings, `Enter` in insert mode is a new line, and `Enter` in normal mode follows this setting. `Ctrl+Enter` and `:w` always send. |
 
 ## Learn from what you read
 
@@ -845,7 +845,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
 - To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+A`, or `:q`.
-- `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note.
+- `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note. In the chat, `Enter` in normal mode sends too when **Send key** is set to an Enter option.
 - `Ctrl+A` is the first key of Lattice's two-step keys. For Vim's own `Ctrl+A`, press it twice.
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.

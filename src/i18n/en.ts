@@ -101,7 +101,8 @@ export const en = {
   "chatSettings.budgetDesc":
     "How much article text one question sends to the LLM. When the articles in the scope fit, it sends their full text; when they do not, it collects passages picked by search, first up to 4 per article from as many articles as fit, then more from the same articles when there is room. More text gives more thorough answers but costs more per question (API charges or CLI usage) and takes longer. Applies from the next question.",
   "chatSettings.sendKey": "Send key",
-  "chatSettings.sendKeyDesc": "With Vim key bindings, Ctrl+Enter or :w sends.",
+  "chatSettings.sendKeyDesc":
+    "With Vim key bindings, Enter in insert mode is a new line, and Enter in normal mode follows this setting. Ctrl+Enter and :w always send.",
   "chatSettings.sendCtrlEnter": "Ctrl+Enter sends",
   "chatSettings.sendEnter": "Enter sends (Shift+Enter for a new line)",
   "chatSettings.sendEnterOneLine": "Enter for one line, Ctrl+Enter for two or more",

@@ -362,6 +362,7 @@ export function ChatPane({
                 onWrite={(text) => void ask(text)}
                 onQuit={() => document.getElementById("chat-q")?.blur()}
                 onMode={setVimMode}
+                enterWrites={(text) => plainEnterSends(sendKey, text)}
               />
             </Suspense>
           ) : (
@@ -382,7 +383,7 @@ export function ChatPane({
           <div className="chat-f-row">
             {vimOn && <VimMode mode={vimMode} />}
             <span className="push">
-              {(vimOn || !plainEnterSends(sendKey, question)) && <Kbd>Ctrl</Kbd>}
+              {!(plainEnterSends(sendKey, question) && (!vimOn || vimMode.startsWith("NORMAL"))) && <Kbd>Ctrl</Kbd>}
               <Kbd>Enter</Kbd>
               {t("chatPane.hintSend")}
             </span>

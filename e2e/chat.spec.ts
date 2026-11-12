@@ -50,6 +50,33 @@ test("with 1行ならEnter, Enter sends a one-line question; once it has two lin
   await expect.poll(asked).toEqual(["one line", "first\nsecond"]);
 });
 
+test("Vim with Enter as the send key: insert-mode Enter is a new line, normal-mode Enter sends, a count keeps it Vim's", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    localStorage.setItem("lattice.chatVim", "on");
+    localStorage.setItem("lattice.chatSendKey", "enter");
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = shell.getByRole("textbox", { name: "質問", exact: true });
+  await q.click();
+  const asked = async () => (await callsOf(shell, "chat_ask")).map((a) => (a as { question: string }).question);
+  const hint = shell.locator(".chat-f-row .kbd");
+  await shell.keyboard.type("first");
+  await expect(hint, "insert mode sends on Ctrl+Enter only").toHaveText(["Ctrl", "Enter"]);
+  await shell.keyboard.press("Enter");
+  await shell.keyboard.type("second");
+  await expect(q).toHaveText("firstsecond");
+  expect(await asked()).toEqual([]);
+  await shell.keyboard.press("Escape");
+  await expect(hint).toHaveText(["Enter"]);
+  await shell.keyboard.press("2");
+  await shell.keyboard.press("Enter");
+  expect(await asked(), "a count makes Enter Vim's <CR>").toEqual([]);
+  await shell.keyboard.press("Enter");
+  await expect.poll(asked).toEqual(["first\nsecond"]);
+});
+
 test("Vim keys in the chat input: off by default, modes, motions, edits, undo, Ctrl+Enter sends", async ({ app }) => {
   const chatButton = app.locator(".nav").getByRole("button", { name: "対話" });
   await chatButton.click();
