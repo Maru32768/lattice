@@ -297,7 +297,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Focus mode
 
-`Ctrl+A z` or the focus mode button shows only the focused pane. The navigation, the article list, the chat and the other panes hide. Press it again to bring them back; a navigation or list you had collapsed stays collapsed. Moving to another pane, splitting, closing, swapping or resizing panes, filtering, searching and opening the chat also end focus mode. With the article list hidden, `Shift+J` and `Shift+K` still move to the next and previous article.
+`Ctrl+A z` or the focus mode button shows only the focused pane. The navigation, the article list, the chat and the other panes hide. Press it again to bring them back. A navigation or list you had collapsed stays collapsed. Moving to another pane, splitting, closing, swapping or resizing panes, filtering, searching and opening the chat also end focus mode. With the article list hidden, `Shift+J` and `Shift+K` still move to the next and previous article.
 
 ### Back and forward
 
@@ -311,7 +311,7 @@ Press `Ctrl+Shift+P` in the Page view to open the Windows print dialog. In the R
 
 ### Read with the keyboard
 
-The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` do not scroll. To move a screen, use `Ctrl+F` and `Ctrl+B`. You can bind `Space` to an action in **Settings › Shortcuts**.
+The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` do not scroll. To scroll a screen, use `Ctrl+F` and `Ctrl+B`. You can bind `Space` to an action in **Settings › Shortcuts**.
 
 | Key | Action |
 |---|---|
@@ -390,9 +390,9 @@ For the rest, as in tmux, press `Ctrl+A` and then one of these keys. If you paus
 | `z` | [Focus mode](#focus-mode) |
 | `:` | Run a command |
 | `?` | Key list |
-| `Ctrl+A` | Select all. As tmux's send-prefix does, the key goes on to the field or page that has the focus |
+| `Ctrl+A` | Select all. As tmux's send-prefix does, Lattice passes the key on to the field or page that has the focus |
 
-You can change these keys, except select all, in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
+You can change these keys, except select all, in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys one after the other to give it a two-step key. For a single key, press `Enter` after the first key.
 
 ### Open a tab in its own window
 
@@ -552,7 +552,7 @@ Besides switching lists, the commands include:
 
 ### Chat with your articles
 
-Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send instead. The AI answers only from your saved articles. The numbers in the answer are citations; click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
+Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send too. The AI answers only from your saved articles. The numbers in the answer are citations. Click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
 **Scope.** **Scope** chooses which articles the answer is based on.
 
@@ -725,7 +725,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 
 - Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
 - Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` clears the key found; pressing it again stops and turns the box back to finding by name.
-- **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys. Select all (`Ctrl+A Ctrl+A`) is not listed and cannot be changed, since it passes its second `Ctrl+A` on as it is.
+- **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys. Select all (`Ctrl+A Ctrl+A`) is not listed and cannot be changed, because it passes its second `Ctrl+A` on unchanged.
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
@@ -816,7 +816,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 | Key | Where | Action |
 |---|---|---|
-| `Ctrl+A Ctrl+A` | Anywhere | Select all. As tmux's send-prefix does, the second `Ctrl+A` goes on to the field or page that has the focus |
+| `Ctrl+A Ctrl+A` | Anywhere | Select all. As tmux's send-prefix does, Lattice passes the second `Ctrl+A` on to the field or page that has the focus |
 | `Enter` | A focused paragraph in the Reader | Switch between original and translation |
 | `1`–`4` | Quiz and review cards | Rate |
 | `Ctrl+Enter` | The chat box | Send the question. **Send key** in **Settings › Summaries & chat** can make `Enter` send too |
@@ -832,7 +832,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 
 - Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+A`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
-- `Enter` and the arrow keys belong to the page for scrolling and its own controls; they do not act as Lattice shortcuts. `Space` does not scroll the page. A shortcut bound to `Space` works outside text fields, and an unbound `Space` still presses the page's buttons.
+- `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. `Space` does not scroll the page. A shortcut bound to `Space` works outside text fields, and an unbound `Space` still presses the page's buttons.
 - `Esc` leaves the page's text field, unless the page uses it itself.
 - `Ctrl+A Ctrl+A` selects all in the page or in its text field. As tmux's send-prefix does, Lattice passes the second `Ctrl+A` on to the page.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
@@ -846,7 +846,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - `Esc` switches to normal mode. It does not leave the box.
 - To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+A`, or `:q`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note.
-- `Ctrl+A` is the first of Lattice's two-step keys. For Vim's own `Ctrl+A`, press it twice.
+- `Ctrl+A` is the first key of Lattice's two-step keys. For Vim's own `Ctrl+A`, press it twice.
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.
 
