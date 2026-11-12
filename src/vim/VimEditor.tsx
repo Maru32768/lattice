@@ -7,7 +7,7 @@ import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { Vim, getCM, vim as vimKeys } from "@replit/codemirror-vim";
 import { EX_ALIASES, type ActionId } from "../lib/keymap";
 import { getVimrc, useVimrc, vimBridge } from "./vim";
-import { KNOWN, mappedKeys, parseVimrc, type FreedMode } from "./vimrc";
+import { ENGINE_INSERT_KEYS, KNOWN, mappedKeys, parseVimrc, type FreedMode } from "./vimrc";
 
 /** The extension gave the view its engine state as the view was made. */
 const cmOf = (view: EditorView) => getCM(view) as Parameters<typeof Vim.handleEx>[0];
@@ -104,7 +104,10 @@ vimBridge.owns = (e, editor) => {
   const view = EditorView.findFromDOM(editor as HTMLElement);
   const state = view && getCM(view)?.state.vim;
   const key = state && Vim.vimKeyFromEvent(e, state);
-  return !!key && mapped[state.insertMode ? "insert" : state.visualMode ? "visual" : "normal"].has(key);
+  if (!key) {
+    return false;
+  }
+  return state.insertMode ? mapped.insert.has(key) || ENGINE_INSERT_KEYS.has(key) : mapped[state.visualMode ? "visual" : "normal"].has(key);
 };
 
 // ---- the editor --------------------------------------------------------------------------------

@@ -186,6 +186,29 @@ test("the app's keys work from the editor, in both modes; typed keys stay the ed
   await expect(chatInput(page)).not.toBeFocused();
 });
 
+test("in insert mode the engine keeps the keys it edits with; in normal mode Ctrl+W is the app's", async ({ page }) => {
+  await chat(page);
+  await (await listRow(page, title)).click();
+  await expect(page.locator(".art-title")).toHaveText(title);
+  const tabs = page.locator(".dpane").getByRole("tab");
+  await expect(tabs).toHaveCount(1);
+  await chatInput(page).click();
+  await expect(mode(page)).toHaveText("INSERT");
+
+  await page.keyboard.type("one two");
+  await page.keyboard.press("Control+w");
+  await expect(chatInput(page), "Ctrl+W deletes the word before the cursor").toHaveText("one");
+  await page.keyboard.type("three");
+  await page.keyboard.press("Control+u");
+  await isEmpty(page);
+  await expect(tabs, "no tab closed").toHaveCount(1);
+
+  await page.keyboard.press("Escape");
+  await expect(mode(page)).toHaveText("NORMAL");
+  await page.keyboard.press("Control+w");
+  await expect(tabs, "in normal mode Ctrl+W closes the document's tab").toHaveCount(0);
+});
+
 test("a vimrc applies, with the leader's key given up and a <nop> on it", async ({ page }) => {
   await chat(
     page,

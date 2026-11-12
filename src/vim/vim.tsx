@@ -49,7 +49,7 @@ export const useVimrc = () => useSyncExternalStore(subscribe, getVimrc);
 export const vimBridge = {
   /** Set by the app: runs one of its actions, for the editor's Ex commands. */
   run: (_id: ActionId) => {},
-  /** Set by the editor: whether the vimrc maps this key in the mode of `editor`, so the app should leave it alone. */
+  /** Set by the editor: whether the vimrc maps this key in the mode of `editor`, or the engine edits with it in insert mode, so the app should leave it alone. */
   owns: (_e: KeyboardEvent, _editor: Element) => false,
 };
 

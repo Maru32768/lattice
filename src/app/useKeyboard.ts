@@ -367,7 +367,8 @@ export function useShortcuts({
 
   // The engine in a Vim editor would use the app's keys and stop them (Ctrl+A is its increment), and the find bar stops what
   // is typed in it, so the app reads these first and keeps those it claims. A key the vimrc maps in this mode is the
-  // engine's. The second key of a chord under way is the app's wherever it lands.
+  // engine's, as in insert mode are the keys it edits with (Ctrl+W deletes a word there, not the tab). The second key of a
+  // chord under way is the app's wherever it lands.
   const onCaptureKey = useEffectEvent((e: KeyboardEvent) => {
     const editor = (e.target as Element).closest(EDITOR);
     if (keySeq.seq.current.first || (editor && !vimBridge.owns(e, editor))) {

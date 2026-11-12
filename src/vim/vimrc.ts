@@ -62,6 +62,11 @@ export const ENGINE_EX: [string, string?][] = [
   ["version", "ve"],
 ];
 export const ENGINE_OPTIONS = ["filetype", "ft", "textwidth", "tw", "langmap", "lmap", "pcre", "insertModeEscKeysTimeout"];
+/**
+ * The first keys of the engine's own insert-mode commands with a modifier, the keys it edits with there: in insert mode they are
+ * the engine's, not the app's (`Ctrl+W` deletes a word, not the tab). The engine does not export its keymap, so a test holds this to it.
+ */
+export const ENGINE_INSERT_KEYS = new Set(["<C-[>", "<C-c>", "<C-Esc>", "<C-u>", "<C-w>", "<C-r>", "<C-o>", "<C-t>", "<C-d>"]);
 
 /** What the editor understands: the engine's names, and the ones the editor defines on top of it. */
 export const KNOWN: KnownNames = {

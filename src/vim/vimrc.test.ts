@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Vim } from "@replit/codemirror-vim";
-import { ENGINE_EX, ENGINE_OPTIONS, KNOWN, mappedKeys, parseVimrc, type VimrcEntry } from "./vimrc.ts";
+import { ENGINE_EX, ENGINE_INSERT_KEYS, ENGINE_OPTIONS, KNOWN, mappedKeys, parseVimrc, type VimrcEntry } from "./vimrc.ts";
 
 const parse = (text: string) => parseVimrc(text, KNOWN);
 const exOf = (entries: VimrcEntry[]) => entries.flatMap((e) => (e.kind === "ex" ? [e.ex] : e.kind === "free" ? [`unmap ${e.lhs}`] : []));
@@ -304,4 +304,13 @@ test("the Ex and option tables match the engine", () => {
     assert.ok(!(Vim.getOption(name) instanceof Error), name);
   }
   assert.ok(Vim.getOption("nosuch") instanceof Error, "the engine does report an unknown option");
+});
+
+test("the keys the engine edits with in insert mode match its keymap", () => {
+  const source = readFileSync(new URL("../../node_modules/@replit/codemirror-vim-core/vim.js", import.meta.url), "utf8");
+  const first = source
+    .split("\n")
+    .filter((line) => line.includes("context: 'insert'"))
+    .flatMap((line) => /keys: '(<C-[^>]+>)/.exec(line)?.[1] ?? []);
+  assert.deepEqual(ENGINE_INSERT_KEYS, new Set(first));
 });
