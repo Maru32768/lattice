@@ -63,6 +63,10 @@ test("several PDFs dropped together all go in, and a file of another kind among 
   expect(taken).toBe(true);
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
+
+  await drop(app.getByRole("region", { name: "PDF" }), { name: "notes.txt", type: "text/plain" });
+  await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
+  await expect(app.getByRole("status"), "the count of the batch before goes").toHaveCount(0);
 });
 
 test("a PDF pasted with the focus nowhere in particular is imported too", async ({ app }) => {

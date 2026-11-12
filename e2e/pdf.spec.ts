@@ -205,3 +205,19 @@ test("several PDFs whose group could not be added to show the count and the erro
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   await expect(app.getByRole("alert")).toHaveText("グループがありません(削除された可能性があります)");
 });
+
+test("a new import clears what the last one left: its count, and an error while the new run goes on", async ({ app }) => {
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  await picker(app).setInputFiles(pdf("scan.pdf", "%no-text"));
+  await expect(app.getByRole("alert")).toHaveText("PDFから本文を取り出せませんでした(文字のない画像だけのPDFには対応していません)");
+  await expect(app.getByRole("status"), "the count of the batch before goes").toHaveCount(0);
+
+  await holdImports(app);
+  await picker(app).setInputFiles([pdf("3 c.pdf"), pdf("4 d.pdf")]);
+  await expect(app.getByRole("button", { name: /^取り込み中…/ })).toBeDisabled();
+  await expect(app.getByRole("alert"), "the last error goes as the new run starts").toHaveCount(0);
+  await releaseImports(app);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+});
