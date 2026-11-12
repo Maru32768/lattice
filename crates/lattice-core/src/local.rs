@@ -421,6 +421,18 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn a_translation_that_lost_its_placeholders_is_not_taken() {
+        let (url, _) = serve(|path, body| match path {
+            "/v1/models" => plamo(path, body),
+            _ => (200, completion(&text(body).replace("⟦1⟧", "").replace("⟦2⟧", "").lines().map(|l| format!("訳:{l}")).collect::<Vec<_>>().join("\n"))),
+        })
+        .await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["See ⟦1⟧ here.", "See ⟦1⟧ here. And ⟦2⟧ there."]), "ja").await;
+        assert!(t.results[0].is_none(), "a lone sentence");
+        assert!(t.results[1].is_none(), "a block, then each of its sentences");
+    }
+
+    #[tokio::test]
     async fn a_block_the_server_failed_is_taken_from_its_sentences() {
         let (url, _) = serve(|path, body| match path {
             "/v1/models" => plamo(path, body),
