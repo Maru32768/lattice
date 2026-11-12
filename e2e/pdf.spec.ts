@@ -6,6 +6,24 @@ const pdf = (name: string, body = "%PDF-1.7") => ({ name, mimeType: "application
 /** The PDF tab's hidden file input, which 「PDFファイルを選択…」 opens. */
 const picker = (app: Page) => app.getByRole("region", { name: "PDF" }).locator('input[type="file"]');
 
+/** Holds every PDF import until `releaseImports`, so a spec can look at the screen while a run is surely still on. */
+const holdImports = (app: Page) =>
+  app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    (window as unknown as { releaseImports: () => void }).releaseImports = () => release();
+    internals.invoke = async (cmd, args, options) => {
+      if (cmd === "import_pdf_bytes") {
+        await held;
+      }
+      return invoke(cmd, args, options);
+    };
+  });
+const releaseImports = (app: Page) => app.evaluate(() => (window as unknown as { releaseImports: () => void }).releaseImports());
+
 async function openPdfTab(app: Page) {
   await app.keyboard.press("Control+p");
   await app.keyboard.type(">pdf");
@@ -81,21 +99,7 @@ test("the PDF tab's 自動で翻訳しない goes with every file and is still c
 });
 
 test("leaving the PDF tab mid-import and coming back shows the import still running, then its result", async ({ app }) => {
-  await app.evaluate(() => {
-    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
-    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
-    const invoke = internals.invoke;
-    // The first file waits for the spec's go-ahead, so the run is surely still on when the tab comes back.
-    let release = () => {};
-    const held = new Promise<void>((r) => (release = r));
-    (window as unknown as { releaseImport: () => void }).releaseImport = () => release();
-    internals.invoke = async (cmd, args, options) => {
-      if (cmd === "import_pdf_bytes") {
-        await held;
-      }
-      return invoke(cmd, args, options);
-    };
-  });
+  await holdImports(app);
   await openPdfTab(app);
   await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
   const kinds = app.getByRole("group", { name: "インポートの種類" });
@@ -105,7 +109,7 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
   await expect(app.getByRole("button", { name: /^取り込み中…/ }), "the run is still on, so no second one can start beside it").toBeDisabled();
   await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" }), "the run keeps the value it started with").toBeDisabled();
   await expect(app.locator(".import-groups").getByRole("button")).toBeDisabled();
-  await app.evaluate(() => (window as unknown as { releaseImport: () => void }).releaseImport());
+  await releaseImports(app);
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
   await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" })).toBeEnabled();
@@ -156,4 +160,20 @@ test("one PDF that cannot be imported shows why and opens nothing", async ({ app
   await expect(app.getByRole("alert")).toHaveText("PDFから本文を取り出せませんでした(文字のない画像だけのPDFには対応していません)");
   await expect(app.getByRole("status")).toHaveCount(0);
   await expect(app.locator("h1.art-title")).toHaveCount(0);
+});
+
+test("a group picker left open when PDFs start going in closes, so the run's groups cannot change", async ({ app }) => {
+  await holdImports(app);
+  await openPdfTab(app);
+  await app.locator(".import-groups").getByRole("button").click();
+  await expect(app.getByRole("dialog", { name: "グループ" })).toBeVisible();
+  await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(["%PDF-1.7"], "1 a.pdf", { type: "application/pdf" }));
+    el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+  });
+  await expect(app.getByRole("dialog", { name: "グループ" })).toHaveCount(0);
+  await releaseImports(app);
+  await expect(app.locator("h1.art-title")).toHaveText("Dropped Paper");
 });

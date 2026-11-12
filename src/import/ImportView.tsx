@@ -132,7 +132,8 @@ function GroupField({
         {names.length ? names.join(" · ") : t("importView.noGroup")}
         <Icon name="down" size="sm" />
       </button>
-      {anchor && (
+      {/* A picker left open when a run starts closes with the lock, or it would go on changing the groups. */}
+      {anchor && !disabled && (
         <GroupPicker
           groups={groups}
           selected={into}
