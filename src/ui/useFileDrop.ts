@@ -5,27 +5,40 @@ const ZONE = "data-file-drop";
 
 const zoneOf = (target: EventTarget | null) => (target instanceof Element ? (target.closest(`[${ZONE}]`)?.getAttribute(ZONE) ?? null) : null);
 
+/** `onFile` takes the first file that fits, like a picker of one; `onFiles` every file that fits, like a picker of several. */
+type Take = { onFile: (file: File) => void } | { onFiles: (files: File[]) => void };
+
 /**
- * A second way to give a file picker its file: dropped on the element given `zone`, or pasted. Only
+ * A second way to give a file picker its files: dropped on the element given `zone`, or pasted. Only
  * the innermost zone under the pointer takes a drop, so one zone can sit inside another. A paste goes
  * to the zone holding the focus; with the focus in no zone or field, to whichever accepts the file.
- * One file at a time, like the pickers.
+ * Files of other kinds that come with fitting ones are left out; when none fits, `onReject`.
  */
-export function useFileDrop({
-  accept,
-  onFile,
-  onReject,
-  disabled,
-}: {
-  accept: string;
-  onFile: (file: File) => void;
-  /** A file came to this zone that `accept` does not cover. */
-  onReject: () => void;
-  disabled?: boolean;
-}) {
+export function useFileDrop(
+  options: {
+    accept: string;
+    /** A file came to this zone that `accept` does not cover. */
+    onReject: () => void;
+    disabled?: boolean;
+  } & Take,
+) {
+  const { accept, onReject, disabled } = options;
   const id = useId();
   const [dragging, setDragging] = useState(false);
-  const matching = (files: FileList) => Array.from(files).find((f) => acceptsFile(f, accept));
+  /** Hands over the files that fit; false when none does. */
+  const take = (list: FileList) => {
+    const files = Array.from(list).filter((f) => acceptsFile(f, accept));
+    const [first] = files;
+    if (!first) {
+      return false;
+    }
+    if ("onFiles" in options) {
+      options.onFiles(files);
+    } else {
+      options.onFile(first);
+    }
+    return true;
+  };
 
   const onPaste = useEffectEvent((e: ClipboardEvent) => {
     const data = e.clipboardData;
@@ -37,10 +50,8 @@ export function useFileDrop({
     if (zone ? zone !== id : isEditable(e.target)) {
       return;
     }
-    const file = matching(data.files);
-    if (file) {
+    if (take(data.files)) {
       e.preventDefault();
-      onFile(file);
     } else if (zone) {
       onReject();
     }
@@ -71,10 +82,7 @@ export function useFileDrop({
       setDragging(false);
       if (mine(e)) {
         e.preventDefault();
-        const file = matching(e.dataTransfer.files);
-        if (file) {
-          onFile(file);
-        } else {
+        if (!take(e.dataTransfer.files)) {
           onReject();
         }
       }
