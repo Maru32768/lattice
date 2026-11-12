@@ -10,6 +10,8 @@ use unicode_segmentation::UnicodeSegmentation;
 const VOID: &[&str] = &["area", "br", "col", "embed", "hr", "img", "input", "source", "track", "wbr"];
 /// Abbreviations a capitalized name follows without a sentence ending ("Dr. Smith").
 const TITLES: &[&str] = &["Mr.", "Mrs.", "Ms.", "Dr.", "Prof.", "St.", "vs.", "Fig.", "No."];
+/// Opening brackets, which UAX #29 counts as closing ones: it keeps the 「 of 「設定」 with the sentence before it.
+const OPENING: &[char] = &['「', '『', '（', '［', '【', '〈', '《', '〔', '〖', '〘', '｛', '“', '‘', '(', '[', '{'];
 
 /// A snippet cut into sentences. `ends` are byte offsets into `html`, strictly increasing, the last one
 /// `html.len()`: each source is a slice of the one string, so together they spell the snippet.
@@ -47,7 +49,7 @@ struct Mark {
 
 pub(crate) fn split(html: &str) -> Sentences<'_> {
     let (text, marks) = visible(html);
-    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| start);
+    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| text[..start].trim_end_matches(OPENING).len());
     let cuts = bounds.filter(|&start| !keeps_together(&text[..start], &text[start..])).filter_map(|start| {
         let mark = &marks[marks.binary_search_by_key(&start, |m| m.text_end).ok()?];
         mark.top.then_some((mark.text_end, mark.html_end))
@@ -195,6 +197,11 @@ mod tests {
         ("「それ『曳光弾』になってる？」と問いかけたり、考えたりする。次の文。", &["「それ『曳光弾』になってる？」と問いかけたり、考えたりする。", "次の文。"]),
         ("彼は「行く。」と言った。", &["彼は「行く。」と言った。"]),
         ("「終わり。」次の文。", &["「終わり。」", "次の文。"]),
+        ("メニューを開きます。「設定」を選びます。", &["メニューを開きます。", "「設定」を選びます。"]),
+        ("次に進みます。（詳しくは後述します。）最後です。", &["次に進みます。", "（詳しくは後述します。）", "最後です。"]),
+        ("「はい。」「いいえ。」", &["「はい。」", "「いいえ。」"]),
+        ("開きます。<b>『入門』</b>を読みます。", &["開きます。", "<b>『入門』</b>を読みます。"]),
+        ("Done.[1] Next one.", &["Done.", "[1] Next one."]),
         ("Use a cache, e.g. the page cache. Done.", &["Use a cache, e.g. the page cache. ", "Done."]),
         ("Ask Dr. Smith or (Prof. Jones). They know.", &["Ask Dr. Smith or (Prof. Jones). ", "They know."]),
         ("See Fig. 3 and No. Five. Then go.", &["See Fig. 3 and No. Five. ", "Then go."]),
