@@ -113,6 +113,49 @@ test("the local translation engine shows its server's model and turns off the se
   await expect(url).toHaveCount(0);
 });
 
+test("a connection check that answers after a later one leaves the later one's result", async ({ app }) => {
+  await app.evaluate(() => {
+    const internals: unknown = Reflect.get(window, "__TAURI_INTERNALS__");
+    if (!internals || typeof internals !== "object" || !("invoke" in internals) || typeof internals.invoke !== "function") {
+      throw new Error("Tauri invoke is unavailable");
+    }
+    const invoke = internals.invoke;
+    let held = false;
+    internals.invoke = (cmd: string, args?: unknown, options?: unknown): Promise<unknown> => {
+      const result: Promise<unknown> = Promise.resolve(Reflect.apply(invoke, internals, [cmd, args, options]));
+      if (cmd !== "check_translate_local" || held) {
+        return result;
+      }
+      held = true;
+      return new Promise((resolve, reject) => {
+        Object.assign(window, { releaseCheck: () => result.then(resolve, reject) });
+      });
+    };
+  });
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) })
+    .click();
+  await app.getByRole("combobox", { name: "翻訳エンジン" }).selectOption({ label: "ローカルの翻訳サーバー" });
+  const url = app.getByRole("textbox", { name: "翻訳サーバーのURL" });
+  await url.fill("http://127.0.0.1:9999");
+  await app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" }).click();
+  const refused = "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)";
+  const connection = app.getByRole("status");
+  await expect(connection).toHaveText(refused);
+  await app.evaluate(async () => {
+    const release: unknown = Reflect.get(window, "releaseCheck");
+    if (typeof release !== "function") {
+      throw new Error("The first check was not held");
+    }
+    await Reflect.apply(release, window, []);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  });
+  await expect(connection, "not the default URL's 接続済み").toHaveText(refused);
+});
+
 test("the data folder opens through the backend without a webview-supplied path", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });

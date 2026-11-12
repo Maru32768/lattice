@@ -12,11 +12,20 @@ const MAX_PARALLEL = 8;
 /** The model the translation server loaded, or why it cannot be reached (a backend message). */
 type Connection = { ok: boolean; text: string } | null;
 
+/** The last check started: an earlier one that answers after it (a LAN host timing out) shows nothing. */
+let checks = 0;
+
 function checkServer(url: string, show: (c: Connection) => void) {
+  const check = ++checks;
+  const answer = (c: Connection) => {
+    if (check === checks) {
+      show(c);
+    }
+  };
   show(null);
   api.checkTranslateLocal(url).then(
-    (model) => show({ ok: true, text: model }),
-    (e: unknown) => show({ ok: false, text: String(e) }),
+    (model) => answer({ ok: true, text: model }),
+    (e: unknown) => answer({ ok: false, text: String(e) }),
   );
 }
 
