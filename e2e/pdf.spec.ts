@@ -24,6 +24,16 @@ const holdImports = (app: Page) =>
   });
 const releaseImports = (app: Page) => app.evaluate(() => (window as unknown as { releaseImports: () => void }).releaseImports());
 
+/** Every group_add fails as when the group was deleted meanwhile. */
+const failGroupAdd = (app: Page) =>
+  app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    internals.invoke = (cmd, args, options) =>
+      cmd === "group_add" ? Promise.reject(new Error('{"code":"groups.notFound","params":{}}')) : invoke(cmd, args, options);
+  });
+
 async function openPdfTab(app: Page) {
   await app.keyboard.press("Control+p");
   await app.keyboard.type(">pdf");
@@ -118,13 +128,7 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
 test("one PDF whose group could not be added to stays on the import screen with the error", async ({ app }) => {
   const [group] = GROUPS;
   await navItem(app, group.name).click();
-  await app.evaluate(() => {
-    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
-    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
-    const invoke = internals.invoke;
-    internals.invoke = (cmd, args, options) =>
-      cmd === "group_add" ? Promise.reject(new Error('{"code":"groups.notFound","params":{}}')) : invoke(cmd, args, options);
-  });
+  await failGroupAdd(app);
   await openPdfTab(app);
   await picker(app).setInputFiles(pdf("paper.pdf"));
   await expect(app.getByRole("alert")).toHaveText("グループがありません(削除された可能性があります)");
@@ -190,4 +194,14 @@ test("the import screen opened again mid-run shows the groups the run files into
   await releaseImports(app);
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   expect(((await callsOf(app, "group_add")) as { id: number }[]).map((c) => c.id)).toEqual([first.id]);
+});
+
+test("several PDFs whose group could not be added to show the count and the error together", async ({ app }) => {
+  const [group] = GROUPS;
+  await navItem(app, group.name).click();
+  await failGroupAdd(app);
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  await expect(app.getByRole("alert")).toHaveText("グループがありません(削除された可能性があります)");
 });
