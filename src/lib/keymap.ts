@@ -378,6 +378,8 @@ export const REPEAT_MS = 500;
 export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 /** A shortcut whatever has the focus, and a browser's own key to keep from it. */
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
+/** One key with Ctrl or Alt: a key a field types would keep the pane keys from working there. */
+export const canPrefix = (key: string) => isModified(key) && !key.includes(" ");
 /** A browser pages with these. Bound, they are a shortcut like any key (a Vim leader), and the binding keeps them from paging. */
 export const isSpace = (key: string) => key === "Space" || key === "Shift+Space";
 

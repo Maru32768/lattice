@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { api } from "../api";
 import { readUtf8 } from "../lib/files";
-import { getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile, useBindings } from "../lib/keys";
+import { getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile, useBindings, usePrefix, type Shortcuts } from "../lib/keys";
 import {
   ACTIONS,
   ACTION_GROUPS,
+  DEFAULT_PREFIX,
   KEY_GROUPS,
   actionFor,
   actionLabel,
@@ -61,25 +62,26 @@ export function ShortcutSettings() {
    * The last reset of every key or file loaded, undoable while the bindings are the ones it made: any later change, here or in
    * another window, makes new bindings, so undoing never throws away a change made after it.
    */
-  const [undo, setUndo] = useState<{ prev: Partial<Bindings>; after: Bindings; done: "reset" | "import" } | null>(null);
+  const [undo, setUndo] = useState<{ prev: Shortcuts; after: Bindings; done: "reset" | "import" } | null>(null);
   const [note, setNote] = useState<{ exported: string } | { error: string } | null>(null);
+  const prefix = usePrefix();
   const undoable = undo?.after === bindings ? undo : null;
   const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
-  const custom = ACTIONS.some((a) => isCustom(a.id, bindings));
+  const custom = prefix !== DEFAULT_PREFIX || ACTIONS.some((a) => isCustom(a.id, bindings));
   const clash = conflicts(bindings);
 
-  function replace(next: Partial<Bindings>, done: "reset" | "import") {
+  function replace(next: Shortcuts, done: "reset" | "import") {
     const prev = replaceKeys(next);
     setUndo({ prev, after: getBindings(), done });
     setNote(null);
   }
 
-  function undoReplace(prev: Partial<Bindings>) {
+  function undoReplace(prev: Shortcuts) {
     replaceKeys(prev);
     setUndo(null);
     setNote(null);
-    // Back to no changed keys, this button turns into a disabled reset: the keyboard goes on to the load button.
-    if (!Object.keys(prev).length) {
+    // Back to no changes, this button turns into a disabled reset: the keyboard goes on to the load button.
+    if (prev.prefix === DEFAULT_PREFIX && !Object.keys(prev.overrides).length) {
       fileInput.current?.focus();
     }
   }
@@ -250,7 +252,11 @@ export function ShortcutSettings() {
     <>
       <div className="btn-row">
         {/* One button for both, so that the keyboard and the pointer are on the undo the moment it shows. */}
-        <button className="btn swap" onClick={undoable ? () => undoReplace(undoable.prev) : () => replace({}, "reset")} disabled={!undoable && !custom}>
+        <button
+          className="btn swap"
+          onClick={undoable ? () => undoReplace(undoable.prev) : () => replace({ prefix: DEFAULT_PREFIX, overrides: {} }, "reset")}
+          disabled={!undoable && !custom}
+        >
           <span className={undoable ? "off" : undefined}>{t("shortcutSettings.resetAll")}</span>
           <span className={undoable ? undefined : "off"}>{t("shortcutSettings.undo")}</span>
         </button>

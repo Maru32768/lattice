@@ -904,6 +904,22 @@ base("Ctrl+A Ctrl+A read by the app for a page selects all in the page", async (
   expect(await shell.evaluate(() => getSelection()?.toString()), "the app's own document stays unselected").toBe("");
 });
 
+base("another prefix twice read by the app for a page does nothing there, and the page gets the keyboard back", async ({ shell }) => {
+  await shell.addInitScript((l) => {
+    localStorage.setItem("lattice.layout", l);
+    localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+B" }));
+  }, JSON.stringify(PAGE_LAYOUT));
+  await shell.goto("/");
+  await expect(shell.locator(".page-host")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.fromPage("browser-key", { tab: "k1", key: "Ctrl+B", count: 1 }));
+  await expect(shell.locator(".prefix-hint")).toBeVisible();
+  const focused = (await callsOf(shell, "browser_focus")).length;
+  await shell.keyboard.press("Control+b");
+  await expect.poll(async () => (await callsOf(shell, "browser_focus")).length).toBeGreaterThan(focused);
+  await expect(shell.locator(".prefix-hint")).toBeHidden();
+  expect(await callsOf(shell, "browser_run_doc"), "only Ctrl+A's select all is a default the app can do for the page").toEqual([]);
+});
+
 base("a page's keys scroll its viewport only if a reader could, else its largest scrolling box", async ({ shell }) => {
   await shell.goto("/");
   const module = `/@fs/${process.cwd().replaceAll("\\", "/")}/src/docnav/scroll.ts`;

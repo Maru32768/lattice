@@ -189,7 +189,7 @@ test("Ctrl+A ? and ? list every binding by what it is for, as Settings does, wit
 
 test("the key list leaves out a group none of whose actions has a key", async ({ page }) => {
   const none = Object.fromEntries(["newTab", "closeTab", "nextTab", "prevTab", "tabByNumber", "tabList", "popOut"].map((id) => [id, []]));
-  await page.addInitScript((b) => localStorage.setItem("lattice.shortcuts", JSON.stringify({ ...b, version: 3 })), none);
+  await page.addInitScript((b) => localStorage.setItem("lattice.shortcuts", JSON.stringify({ ...b, version: 4 })), none);
   await page.goto("/");
   await expect(list(page).locator(".row").first()).toBeVisible();
   await page.keyboard.press("?");

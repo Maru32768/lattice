@@ -76,7 +76,8 @@ import type { TabLabel } from "../layout/TabStrip";
 import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
-import type { DocActionId } from "../lib/keymap";
+import { DEFAULT_PREFIX, type DocActionId } from "../lib/keymap";
+import { getPrefix } from "../lib/keys";
 import { syncPrefs } from "../lib/prefs";
 
 // Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
@@ -894,7 +895,13 @@ export default function App() {
     palette: () => setPalette((p) => (p == null ? { initial: "" } : null)),
     command: () => setPalette((p) => p ?? { initial: ">" }),
     keyHelp: () => setKeyHelp(true),
-    sendPrefix: docAction("selectAll"),
+    // The prefix twice reaches the app only from a page whose keyboard the hint took: the action does the key's default there.
+    // shortcut: only Ctrl+A's default (select all) is one the app can do for a page, so another prefix is dropped there; upgrade when the backend can send a key to a page.
+    sendPrefix: (n) => {
+      if (getPrefix() === DEFAULT_PREFIX) {
+        docAction("selectAll")(n);
+      }
+    },
     search: enterSearch,
     next: (n) => step(n),
     prev: (n) => step(-n),

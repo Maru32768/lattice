@@ -38,9 +38,9 @@ const lastSaved = async (page: Page) => (await callsOf(page, "set_ui_prefs")).at
 test("the library's settings win over the ones cached on this PC", async ({ shell }) => {
   await start(
     shell,
-    { "lattice.shortcuts": JSON.stringify({ read: ["Q"], version: 3 }), "lattice.chatVim": "on" },
+    { "lattice.shortcuts": JSON.stringify({ read: ["Q"], version: 4 }), "lattice.chatVim": "on" },
     {
-      "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 3 }),
+      "lattice.shortcuts": JSON.stringify({ favorite: ["X"], version: 4 }),
       "lattice.chatVim": "",
       "lattice.vocabMarks": "off",
       "lattice.searchEngine": JSON.stringify({ id: "google", custom: "" }),
@@ -121,7 +121,7 @@ test("each of the other settings goes to the library when it changes", async ({ 
     const saved = (await lastSaved(app)) as { prefs: Record<string, string> } | undefined;
     return JSON.parse(saved?.prefs["lattice.shortcuts"] ?? "null") as unknown;
   };
-  await expect.poll(shortcuts).toEqual({ favorite: ["S", "X"], version: 3 });
+  await expect.poll(shortcuts).toEqual({ favorite: ["S", "X"], version: 4 });
 
   await app.keyboard.press("Escape");
   await navItem(app, "単語帳").click();

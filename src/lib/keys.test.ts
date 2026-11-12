@@ -1,12 +1,34 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_BINDINGS } from "./keymap.ts";
-import { fromStored, getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile } from "./keys.ts";
+import { JSDOM } from "jsdom";
 
-test("fromStored: the keys of version 3 as saved; another version's are dropped, not read", () => {
-  assert.deepEqual(fromStored({ splitDown: ['Ctrl+A "'], favorite: ["S", "S", ""], version: 3 }), { splitDown: ['Ctrl+A "'], favorite: ["S"] });
-  for (const version of [undefined, 1, 2, "3"]) {
-    assert.deepEqual(fromStored({ splitDown: ['Ctrl+B "'], pageUp: ["Ctrl+B Ctrl+B"], version }), {}, `version ${version}`);
+// A window with storage, so the store saves where a test can read it and loads on a storage event as in the app.
+const { window } = new JSDOM("", { url: "http://localhost/" });
+Object.assign(globalThis, { window, localStorage: window.localStorage });
+
+const { DEFAULT_BINDINGS } = await import("./keymap.ts");
+const { fromStored, getBindings, getPrefix, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, setPrefix, shortcutsFile } =
+  await import("./keys.ts");
+
+const KEY = "lattice.shortcuts";
+const DEFAULTS = { prefix: "Ctrl+A", overrides: {} };
+const stored = () => JSON.parse(localStorage.getItem(KEY) ?? "null") as unknown;
+/** What another window or the start-up sync does: the value changes and the store reads it again. */
+function storedElsewhere(value: unknown) {
+  localStorage.setItem(KEY, JSON.stringify(value));
+  window.dispatchEvent(new window.StorageEvent("storage", { key: KEY }));
+}
+
+test("fromStored: the prefix and keys of version 4 as saved; another version reads as nothing, and a prefix that cannot be one as the default", () => {
+  assert.deepEqual(fromStored({ version: 4, prefix: "Ctrl+B", splitDown: ['<prefix> "'], favorite: ["S", "S", ""] }), {
+    prefix: "Ctrl+B",
+    overrides: { splitDown: ['<prefix> "'], favorite: ["S"] },
+  });
+  for (const version of [undefined, 1, 2, 3, "4"]) {
+    assert.deepEqual(fromStored({ splitDown: ['Ctrl+A "'], prefix: "Ctrl+B", version }), DEFAULTS, `version ${version}`);
+  }
+  for (const prefix of ["J", "Escape", "Shift+J", "Ctrl+B X", 3, null]) {
+    assert.equal(fromStored({ version: 4, prefix }).prefix, "Ctrl+A", String(prefix));
   }
 });
 
@@ -14,40 +36,93 @@ test("custom keys: setting an action's defaults back clears its override; reset 
   setKeys("next", ["N"]);
   assert.deepEqual(getBindings().next, ["N"]);
   assert.ok(isCustom("next"));
+  assert.deepEqual(stored(), { version: 4, next: ["N"] }, "the default prefix is not stored");
   setKeys("next", [...DEFAULT_BINDINGS.next]);
   assert.ok(!isCustom("next"), "a later change to the defaults reaches this action again");
   setKeys("prev", ["P"]);
   setKeys("favorite", ["X"]);
   resetKeys("prev");
   assert.deepEqual([getBindings().prev, isCustom("favorite")], [DEFAULT_BINDINGS.prev, true]);
-  replaceKeys({});
+  replaceKeys(DEFAULTS);
   assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
 });
 
-test("replaceKeys returns the keys it replaced, and passing them back restores the bindings", () => {
+test("a key recorded under the prefix is stored with <prefix> and follows the prefix; a key under another first key stays as it is", () => {
+  setPrefix("Ctrl+B");
+  setKeys("favorite", ["S", "Ctrl+B Q", "Ctrl+G Q", "G Ctrl+B"]);
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B", favorite: ["S", "<prefix> Q", "Ctrl+G Q", "G Ctrl+B"] });
+  setPrefix("Alt+A");
+  assert.equal(getPrefix(), "Alt+A");
+  assert.deepEqual(getBindings().favorite, ["S", "Alt+A Q", "Ctrl+G Q", "G Ctrl+B"]);
+  assert.deepEqual(getBindings().splitDown, ["Ctrl+-", 'Alt+A "'], "the defaults move too");
+  assert.deepEqual(getBindings().sendPrefix, ["Alt+A Alt+A"]);
+  assert.deepEqual(stored(), { version: 4, prefix: "Alt+A", favorite: ["S", "<prefix> Q", "Ctrl+G Q", "G Ctrl+B"] });
+  replaceKeys(DEFAULTS);
+});
+
+test("a default key that moved with the prefix is no change, and recording it back clears the override", () => {
+  setPrefix("Ctrl+B");
+  assert.deepEqual(getBindings().splitDown, ["Ctrl+-", 'Ctrl+B "']);
+  assert.ok(!isCustom("splitDown"));
+  setKeys("splitDown", ["Ctrl+-"]);
+  assert.ok(isCustom("splitDown"));
+  setKeys("splitDown", ["Ctrl+-", 'Ctrl+B "']);
+  assert.ok(!isCustom("splitDown"));
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B" });
+  replaceKeys(DEFAULTS);
+  assert.deepEqual(stored(), { version: 4 });
+});
+
+test("what is stored loads back as the same prefix and bindings; a value of version 3 loads as the defaults", () => {
+  setPrefix("Ctrl+Space");
+  setKeys("read", ["M", "Ctrl+Space M"]);
+  const saved = stored();
+  const before = getBindings();
+  replaceKeys(DEFAULTS);
+  storedElsewhere(saved);
+  assert.equal(getPrefix(), "Ctrl+Space");
+  assert.deepEqual(getBindings(), before);
+  assert.deepEqual(getBindings().read, ["M", "Ctrl+Space M"]);
+
+  storedElsewhere({ version: 3, read: ["Q"] });
+  assert.equal(getPrefix(), "Ctrl+A");
+  assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
+  replaceKeys(DEFAULTS);
+});
+
+test("replaceKeys returns the prefix and keys it replaced, and passing them back restores the bindings", () => {
+  setPrefix("Ctrl+B");
   setKeys("next", ["N"]);
   setKeys("favorite", []);
   const before = getBindings();
-  const prev = replaceKeys({});
-  assert.deepEqual(getBindings(), DEFAULT_BINDINGS);
+  const prev = replaceKeys(DEFAULTS);
+  assert.deepEqual([getPrefix(), getBindings()], ["Ctrl+A", DEFAULT_BINDINGS]);
   replaceKeys(prev);
+  assert.equal(getPrefix(), "Ctrl+B");
   assert.deepEqual(getBindings(), before);
-  replaceKeys({});
+  replaceKeys(DEFAULTS);
 });
 
-test("a shortcuts file holds only the changed keys, marked, and reads back as them", () => {
+test("a shortcuts file holds the prefix and the changed keys, marked, and reads back as them", () => {
   setKeys("next", ["N"]);
   setKeys("favorite", []);
+  assert.deepEqual(JSON.parse(shortcutsFile()), { format: "lattice.shortcuts", version: 4, next: ["N"], favorite: [] });
+  setPrefix("Ctrl+B");
+  setKeys("next", ["N", "Ctrl+B N"]);
   const file = shortcutsFile();
-  assert.deepEqual(JSON.parse(file), { format: "lattice.shortcuts", version: 3, next: ["N"], favorite: [] });
-  replaceKeys({});
-  assert.deepEqual(parseShortcutsFile(file), { next: ["N"], favorite: [] });
+  assert.deepEqual(JSON.parse(file), { format: "lattice.shortcuts", version: 4, prefix: "Ctrl+B", next: ["N", "<prefix> N"], favorite: [] });
+  const before = getBindings();
+  replaceKeys(DEFAULTS);
+  replaceKeys(parseShortcutsFile(file)!);
+  assert.equal(getPrefix(), "Ctrl+B");
+  assert.deepEqual(getBindings(), before);
+  replaceKeys(DEFAULTS);
 });
 
-test("a file without the marker, or not JSON, reads as nothing rather than as no changed keys", () => {
-  assert.equal(parseShortcutsFile(JSON.stringify({ next: ["N"], version: 3 })), null, "the stored value alone");
+test("a file without the marker, of another version, or not JSON, reads as nothing rather than as no changed keys", () => {
+  assert.equal(parseShortcutsFile(JSON.stringify({ next: ["N"], version: 4 })), null, "the stored value alone");
   assert.equal(parseShortcutsFile(JSON.stringify({})), null);
-  for (const version of [undefined, 1, 2, 4, "3"]) {
+  for (const version of [undefined, 1, 2, 3, 5, "4"]) {
     assert.equal(parseShortcutsFile(JSON.stringify({ format: "lattice.shortcuts", version, splitDown: ["Ctrl+-"] })), null, `version ${version}`);
   }
   for (const text of ["not json", "", "null", "[]", '"lattice.shortcuts"']) {
@@ -55,7 +130,16 @@ test("a file without the marker, or not JSON, reads as nothing rather than as no
   }
 });
 
-test("a file's repeated and empty keys are dropped, and an action with a key that is not text is left out", () => {
-  const file = JSON.stringify({ format: "lattice.shortcuts", version: 3, next: ["N", "N", "", "M"], prev: ["K", 3], favorite: "X" });
-  assert.deepEqual(parseShortcutsFile(file), { next: ["N", "M"] });
+test("a file's repeated and empty keys are dropped, an action with a key that is not text is left out, and a prefix that cannot be one is the default", () => {
+  const file = JSON.stringify({ format: "lattice.shortcuts", version: 4, prefix: "J", next: ["N", "N", "", "M"], prev: ["K", 3], favorite: "X" });
+  assert.deepEqual(parseShortcutsFile(file), { prefix: "Ctrl+A", overrides: { next: ["N", "M"] } });
+});
+
+test("a literal key under a new prefix is stored with <prefix> from then on, so it moves with the next one", () => {
+  replaceKeys({ prefix: "Ctrl+A", overrides: { favorite: ["Ctrl+G S"] } });
+  setPrefix("Ctrl+G");
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+G", favorite: ["<prefix> S"] });
+  setPrefix("Alt+A");
+  assert.deepEqual(getBindings().favorite, ["Alt+A S"]);
+  replaceKeys(DEFAULTS);
 });
