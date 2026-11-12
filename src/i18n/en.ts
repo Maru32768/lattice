@@ -1175,7 +1175,7 @@ export const en = {
   "be.render.noDom": "Could not get the DOM from the page",
   "be.translate.instructionsTooLong": "Extra instructions can be {max} characters at most",
   "be.translate.parallelRange": "Parallel requests must be between 1 and {max}",
-  "be.translate.missingBlocks": "The provider did not return translations for {missing} blocks",
+  "be.translate.missingBlocks": "No translation came back for {missing} blocks",
   "be.translate.localUnavailable": "Cannot connect to the translation server at {url}. Start the server, then try again ({detail})",
   "be.translate.localUrlInvalid": "The translation server URL must start with http:// or https://",
   "be.translate.localNoModel": "The translation server at {url} has no model loaded. Load a model, then try again",
