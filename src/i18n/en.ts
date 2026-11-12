@@ -1178,6 +1178,7 @@ export const en = {
   "be.translate.missingBlocks": "The provider did not return translations for {missing} blocks",
   "be.translate.localUnavailable": "Cannot connect to the translation server at {url}. Start the server, then try again ({detail})",
   "be.translate.localUrlInvalid": "The translation server URL must start with http:// or https://",
+  "be.translate.localNoModel": "The translation server at {url} has no model loaded. Load a model, then try again",
   "be.file.tooLarge": "The file is too large (up to {max} MB)",
   "be.file.notUtf8": "Not a UTF-8 text file",
   "be.location.portable": "The portable version keeps its data in the data folder next to the exe",

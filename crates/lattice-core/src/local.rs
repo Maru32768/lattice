@@ -83,7 +83,7 @@ impl Server {
         let list = self.send(CLIENT.get(format!("{}/v1/models", self.url))).await?;
         let ids: Vec<&str> = list["data"].as_array().into_iter().flatten().filter_map(|m| m["id"].as_str()).collect();
         let plamo = ids.iter().find(|id| id.to_ascii_lowercase().contains("plamo"));
-        plamo.or(ids.first()).map(|id| id.to_string()).ok_or_else(|| LlmError::Malformed("the server lists no model".into()))
+        plamo.or(ids.first()).map(|id| id.to_string()).ok_or_else(|| LlmError::Unavailable(msg!("translate.localNoModel", url = self.url.as_str())))
     }
 
     /// Like `segments::translate_snippets`: one entry per snippet, and never failing as a whole. A batch's
@@ -454,6 +454,13 @@ pub(crate) mod tests {
         let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
         assert_eq!(code(&t.error.unwrap()).0, "translate.localUnavailable", "a server still loading its model");
         assert_eq!(seen.lock().unwrap().len(), 1, "one request for the batch, not one per block");
+
+        let (url, seen) = serve(|_, _| (200, json!({"object": "list", "data": []}))).await;
+        let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        let e = t.error.unwrap();
+        assert!(matches!(e, LlmError::Unavailable(_)), "{e:?}");
+        assert_eq!(code(&e), ("translate.localNoModel".into(), json!({"url": url})), "a server with no model loaded");
+        assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
     #[test]
