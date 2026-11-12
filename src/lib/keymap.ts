@@ -424,7 +424,7 @@ export function pageKeys(b: Bindings): PageKeys {
   for (const a of ACTIONS) {
     // A selection in the page is saved with the overlay's own button; back / forward are the page's history; no card speaks.
     const applicable = a.scope === "list" || PAGE_OWN.has(a.id) ? [] : b[a.id];
-    // Enter, Escape and the arrows stay the page's own: it navigates and scrolls with them. Space is free, as in the app.
+    // Enter, Escape and the arrows stay the page's own: it navigates and scrolls with them. A bound Space is a key like any other, as in the app.
     bindings[a.id] = applicable.filter((k) => {
       const first = k.split(" ")[0]!;
       return isModified(k) || isPrintable(first) || isSpace(first);
