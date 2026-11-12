@@ -133,6 +133,9 @@
 :is(.stg, .organize) .set { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 24px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line3); }
 :is(.stg, .organize) .set .h { grid-column: 1; font-size: 13.5px; font-weight: 500; }
 :is(.stg, .organize) .set .d { grid-column: 1; font-size: 12.5px; color: var(--ink3); }
+/* A note that warns or refuses keeps its colour over the row's grey. */
+:is(.stg, .organize) .set .d.warn-text { color: var(--tr-ink); }
+:is(.stg, .organize) .set .d.error-text { color: var(--err); }
 :is(.stg, .organize) .set .ctl { grid-column: 2; grid-row: 1; display: flex; gap: 6px; align-items: center; }
 :is(.stg, .organize) .set:has(> .d) .ctl { grid-row: 1 / span 2; }
 :is(.stg, .organize) .set .input { width: 240px; }
