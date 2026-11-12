@@ -743,7 +743,7 @@ export const en = {
   "importView.choosePdf": "Choose a PDF file…",
   "importView.noAutoTranslate": "Don't translate automatically",
   "importView.importingOf": "Importing… ({at} of {of})",
-  "importView.pdfsImported": "Imported {n} PDFs",
+  "importView.pdfsImported": (p) => `Imported ${plural(p.n, "PDF", "PDFs")}`,
   "importView.pdfFailed": "Couldn't import {name}: {error}",
   "feedsView.iconTooLarge": "Icons can be 1 MB at most",
   "feedsView.editorTitle": "Name and icon of {feedName}",
