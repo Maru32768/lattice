@@ -16,7 +16,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **Delete unused translations.** **Settings › Logs & storage** shows how many translations no article uses, such as what you translated in the Page view on pages not in your library, and deletes them. Removing an article now also deletes the translations of its Page view.
 - **Undo, export and load shortcuts.** In **Settings › Shortcuts**, after you press **Reset all to defaults** or load a file, **Undo** brings back the keys you had before. **Export** saves your changed keys to a file, and **Load from file** takes them to another computer.
 - **Choose the chat's send key.** In **Settings › Summaries & chat**, **Send key** makes `Enter` send a question, with `Shift+Enter` for a new line, or makes `Enter` send while the question is one line. `Ctrl+Enter` always sends. With Vim key bindings, `Enter` in normal mode follows this setting, and `Enter` in insert mode stays a new line.
-- **Import several PDFs at once.** On the import screen's PDF tab, choose or drop several PDFs to import them together in file-name order, such as a book split into chapters. **Don't translate automatically** stays as you left it for the next import, and the Markdown and PDF tabs share it.
+- **Import several PDFs at once.** On the import screen's PDF tab, choose or drop several PDFs, such as the chapters of a book, to import them together in file-name order. The **Don't translate automatically** checkbox keeps its setting for the next import, and the Markdown and PDF tabs share it.
 
 ### Changed
 
