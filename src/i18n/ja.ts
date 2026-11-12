@@ -308,7 +308,7 @@ export const ja = {
   "shortcutSettings.reset": "既定に戻す",
   "shortcutSettings.prefix": "プレフィックス",
   "shortcutSettings.changePrefix": "変更",
-  "shortcutSettings.prefixRefused": "{keyLabel}はプレフィックスにできません。CtrlかAltと組み合わせたキーを押してください",
+  "shortcutSettings.prefixRefused": "{keyLabel}はプレフィックスにできません。Enter以外のキーを、CtrlかAltと組み合わせて押してください",
   "shortcutSettings.prefixShadows": "{keyLabel}はプレフィックスなので、単独では「{labelOf}」が働きません",
   "shortcutSettings.find": "操作の名前かキーで探す",
   "shortcutSettings.byKey": "キーを押して探す",
