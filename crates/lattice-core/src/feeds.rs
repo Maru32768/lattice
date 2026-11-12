@@ -634,6 +634,30 @@ mod tests {
     }
 
     #[test]
+    fn a_renamed_feed_article_keeps_its_name_and_the_entry_title_is_the_found_one() {
+        const ENTRY: &str = "Evolving the ads event pipeline for live — Part II";
+        let s = Store::open_in_memory().unwrap();
+        let (feed, _) = add(&s, "https://blog.dev/feed", None).unwrap();
+        import(&s, feed, &parse(blocked_feed(true).as_bytes(), "https://blog.dev/feed").unwrap().entries).unwrap();
+        let id = s.list_articles(&ArticleFilter::All).unwrap().into_iter().find(|a| a.title.as_deref() == Some(ENTRY)).unwrap().id;
+        let titles = || {
+            let a = s.article_row(id).unwrap().unwrap();
+            (a.title, a.auto_title)
+        };
+        s.set_title(id, "Mine").unwrap();
+        assert_eq!(titles(), (Some("Mine".into()), Some(ENTRY.into())), "renamed before the fetch: the entry's title is the found one");
+        ingest::store_fetch_result(&s, id, Err("HTTP 403 Forbidden".into())).unwrap();
+        assert!(s.article_row(id).unwrap().unwrap().from_feed);
+        assert_eq!(titles(), (Some("Mine".into()), Some(ENTRY.into())), "the feed copy keeps the name");
+        let html = "<html><head><title>Page title | Blog</title></head><body><article><p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time. This sentence pads the paragraph so readability keeps it.</p></article></body></html>";
+        let fetched = crate::fetch::Fetched { final_url: "https://blog.dev/full-1a2b".into(), status: 200, content_type: None, html: html.into() };
+        ingest::store_fetched(&s, id, &fetched).unwrap();
+        assert_eq!(titles(), (Some("Mine".into()), Some(ENTRY.into())), "the entry's title beats the page <title> here too");
+        s.set_title(id, "").unwrap();
+        assert_eq!(titles(), (Some(ENTRY.into()), None));
+    }
+
+    #[test]
     fn refused_pages_fall_back_to_the_feed_text_or_a_render() {
         use crate::render;
         let s = Store::open_in_memory().unwrap();
