@@ -230,4 +230,4 @@ export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "C
  * A sequence that passes its last key on leaves that key to the page.
  */
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
-  !passesOn(step, key) && (seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat));
+  !passesOn(step) && (seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat));

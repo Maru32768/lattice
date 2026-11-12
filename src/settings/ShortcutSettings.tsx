@@ -21,6 +21,8 @@ import {
 import { useT } from "../i18n";
 
 const FILE_MAX_MB = 1;
+/** The actions a key can be set for: select all's keys are fixed (`passThrough`). */
+const GROUPS = ACTION_GROUPS.map((g) => ({ ...g, actions: g.actions.filter((a) => !a.passThrough) }));
 
 /**
  * A key pressed in for a binding, `first` being the key pressed so far: the binding's first key, the whole of it (the next key,
@@ -183,7 +185,7 @@ export function ShortcutSettings() {
     return [actionLabel(t, a.id), ...keys, ...keys.map(keyLabel)].some((s) => s.toLowerCase().includes(query));
   };
   const found = (byKey ? keyFirst || keyWhole : query)
-    ? ACTION_GROUPS.map((g) => ({ ...g, actions: g.actions.filter(matches) })).filter((g) => g.actions.length)
+    ? GROUPS.map((g) => ({ ...g, actions: g.actions.filter(matches) })).filter((g) => g.actions.length)
     : null;
 
   const row = (a: ActionDef) => {
@@ -334,7 +336,7 @@ export function ShortcutSettings() {
         ) : (
           <>
             <div className="seg keys-tabs" role="tablist" aria-label={t("shortcutSettings.groups")} onKeyDown={onTabKey}>
-              {ACTION_GROUPS.map((g) => (
+              {GROUPS.map((g) => (
                 <button
                   key={g.id}
                   id={`keys-tab-${g.id}`}
@@ -361,7 +363,7 @@ export function ShortcutSettings() {
               ))}
             </div>
             <div className="grp" role="tabpanel" id="keys-panel" aria-labelledby={`keys-tab-${tab}`}>
-              {ACTION_GROUPS.find((g) => g.id === tab)?.actions.map(row)}
+              {GROUPS.find((g) => g.id === tab)?.actions.map(row)}
             </div>
           </>
         )}

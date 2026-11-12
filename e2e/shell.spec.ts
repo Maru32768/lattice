@@ -204,23 +204,6 @@ test("Ctrl+T opens the search engine's start page in a new tab, as the tab strip
   await expect(app.locator("input.url-pill")).toBeFocused();
 });
 
-test("select all bound to Ctrl+A A selects in the URL bar it is pressed in, not in the page under it", async ({ app }) => {
-  await list(app).locator(".row").first().click();
-  await app.evaluate(() => {
-    localStorage.setItem("lattice.shortcuts", JSON.stringify({ selectAll: ["Ctrl+A A"], version: 3 }));
-    window.dispatchEvent(new StorageEvent("storage", { key: "lattice.shortcuts" }));
-  });
-  await app.keyboard.press("Control+t");
-  const bar = app.locator("input.url-pill");
-  await expect(bar).toBeFocused();
-  await app.keyboard.type("example");
-  await app.keyboard.press("Control+a");
-  await app.keyboard.press("a");
-  await expect(bar, "the bar keeps the keyboard").toBeFocused();
-  await expect.poll(() => bar.evaluate((el: HTMLInputElement) => [el.value, el.selectionStart, el.selectionEnd])).toEqual(["example", 0, "example".length]);
-  expect(await callsOf(app, "browser_run_doc"), "nothing went to the page").toEqual([]);
-});
-
 test("a saved article's summary shows in a strip above its page; it can be generated there (H13)", async ({ app }) => {
   await openPage(app, snapshot.title!);
   const toggle = app.locator(".docbar").getByRole("button", { name: "要約", exact: true });

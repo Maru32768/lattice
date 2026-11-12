@@ -392,7 +392,7 @@ For the rest, as in tmux, press `Ctrl+A` and then one of these keys. If you paus
 | `?` | Key list |
 | `Ctrl+A` | Select all. As tmux's send-prefix does, the key goes on to the field or page that has the focus |
 
-You can change these keys in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
+You can change these keys, except select all, in **Settings › Shortcuts**. The first key does not have to be `Ctrl+A`. On any action, click **+ Add key** and press two keys in turn to give it a two-step key. For a single key, press `Enter` after the first key.
 
 ### Open a tab in its own window
 
@@ -725,7 +725,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 
 - Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
 - Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` clears the key found; pressing it again stops and turns the box back to finding by name.
-- **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys.
+- **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys. Select all (`Ctrl+A Ctrl+A`) is not listed and cannot be changed, since it passes its second `Ctrl+A` on as it is.
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.

@@ -115,11 +115,12 @@ export interface ActionDef {
   /** Runs inside the document itself, not in the app. */
   local?: boolean;
   /**
-   * As tmux's send-prefix: a sequence that ends in this key passes it on to what has the focus, which does with it what it
-   * does without Lattice (a field or a page selects all, Vim increments). The action runs where the key cannot go on: in a
-   * page whose keyboard the app's hint took, or when the sequence ends in another key, which has no such default.
+   * As tmux's send-prefix: the sequence's last key goes on to what has the focus, which does with it what it does without
+   * Lattice (a field or a page selects all, Vim increments). The action runs only where the key cannot go on: in a page whose
+   * keyboard the app's hint took. Its keys are fixed, since any other last key has no such default: Settings › Shortcuts
+   * leaves it out, and a stored override is ignored.
    */
-  passThrough?: string;
+  passThrough?: boolean;
 }
 
 /**
@@ -131,7 +132,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "command", group: "app", keys: [":", ";", "Ctrl+A :"], inFields: true },
   { id: "keyHelp", group: "app", keys: ["?", "Ctrl+A ?"], inFields: true },
   { id: "escape", group: "app", keys: ["Escape"], inFields: true },
-  { id: "selectAll", group: "app", keys: ["Ctrl+A Ctrl+A"], inFields: true, passThrough: "Ctrl+A" },
+  { id: "selectAll", group: "app", keys: ["Ctrl+A Ctrl+A"], inFields: true, passThrough: true },
   { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "Ctrl+A ArrowLeft", "Ctrl+A H"], inFields: true },
   { id: "paneDown", group: "panes", keys: ["Ctrl+J", "Ctrl+A ArrowDown", "Ctrl+A J"], inFields: true },
   { id: "paneUp", group: "panes", keys: ["Ctrl+K", "Ctrl+A ArrowUp", "Ctrl+A K"], inFields: true },
@@ -247,7 +248,10 @@ export const actionLabel = (t: T, id: ActionId) => t(`keys.${id}`);
 
 export const DEFAULT_BINDINGS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.keys])) as Bindings;
 
-export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_BINDINGS, ...overrides });
+/** The actions whose keys cannot change (`passThrough`), at their defaults. */
+const FIXED = Object.fromEntries(ACTIONS.filter((a) => a.passThrough).map((a) => [a.id, a.keys])) as Partial<Bindings>;
+
+export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_BINDINGS, ...overrides, ...FIXED });
 
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };
 
@@ -339,8 +343,8 @@ export type KeyStep =
   | { kind: "cancel"; seq: KeySeq }
   | { kind: "run"; action: ActionDef; sequence: string; count: number; seq: KeySeq };
 
-/** Whether a step leaves its last key, `key`, to what has the focus: see `passThrough`. */
-export const passesOn = (step: KeyStep, key: string) => step.kind === "run" && step.action.passThrough === key;
+/** Whether a step leaves its last key to what has the focus: see `passThrough`. */
+export const passesOn = (step: KeyStep) => step.kind === "run" && !!step.action.passThrough;
 
 /** As tmux's repeat-time. */
 export const REPEAT_MS = 500;

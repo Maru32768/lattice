@@ -124,16 +124,15 @@ test("the default keys after Ctrl+A can be removed, and a single key under a fir
 
 test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
   await openShortcuts(app);
-  await expect(app.getByRole("tab")).toHaveText(["全般 7", "一覧 13", "記事 12", "本文 22", "タブ 7", "ペイン 18"]);
+  await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 13", "記事 12", "本文 22", "タブ 7", "ペイン 18"]);
   await expect(tab(app, "全般")).toHaveAttribute("aria-selected", "true");
   const panel = app.getByRole("tabpanel");
-  await expect(panel).toHaveAccessibleName("全般 7");
+  await expect(panel).toHaveAccessibleName("全般 6");
   await expect(panel.locator(".set .h > span:first-child")).toHaveText([
     "コマンドパレット",
     "コマンドを実行",
     "キー一覧",
     "戻る・絞り込みを解除",
-    "全選択",
     "戻る(アプリ内の履歴)",
     "進む(アプリ内の履歴)",
   ]);
@@ -278,7 +277,7 @@ test("a key bound to two actions is flagged on the rows and their tabs, and Esc 
   await expect(tab(app, "記事")).toHaveAccessibleName("記事 12 変更あり 重なりあり");
   await expect(tab(app, "一覧")).toHaveAccessibleName("一覧 13 重なりあり");
   await expect(tab(app, "本文")).toHaveAccessibleName("本文 22 重なりあり");
-  await expect(tab(app, "全般")).toHaveAccessibleName("全般 7");
+  await expect(tab(app, "全般")).toHaveAccessibleName("全般 6");
   await app.getByRole("button", { name: "すべて既定に戻す" }).click();
   await expect(fav.locator(".kbd.key")).toHaveText(["s×"]);
   await expect(app.getByRole("tab").locator(".mark")).toHaveCount(0);

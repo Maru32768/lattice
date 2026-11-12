@@ -831,7 +831,7 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     e.stopImmediatePropagation();
     applyStep(step, hinted);
-  } else if (passesOn(step, key)) {
+  } else if (passesOn(step)) {
     // The page has the key; the app only drops the hint it would show, which takes the keyboard.
     tellApp("");
   } else {
