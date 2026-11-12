@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SetRow, Switch } from "../ui/SetRow";
-import { api } from "../api";
+import { api, type EngineKind } from "../api";
 import { ON_SWITCH_KEY, setTranslateOnSwitch, translateOnSwitch } from "../reader/mixed";
 import { useT } from "../i18n";
 import { useSynced } from "../lib/prefs";
@@ -9,8 +9,23 @@ const MAX_INSTRUCTIONS = 2000;
 /** `translate::MAX_PARALLEL`. */
 const MAX_PARALLEL = 8;
 
+/** The model the translation server loaded, or why it cannot be reached (a backend message). */
+type Connection = { ok: boolean; text: string } | null;
+
+function checkServer(url: string, show: (c: Connection) => void) {
+  show(null);
+  api.checkTranslateLocal(url).then(
+    (model) => show({ ok: true, text: model }),
+    (e: unknown) => show({ ok: false, text: String(e) }),
+  );
+}
+
 export function TranslationSettings() {
   const t = useT();
+  const [engine, setEngine] = useState<EngineKind>("llm");
+  const [url, setUrl] = useState("");
+  const [savedUrl, setSavedUrl] = useState("");
+  const [connection, setConnection] = useState<Connection>(null);
   const [on, setOn] = useState(true);
   const [onSwitch, setOnSwitch] = useSynced(ON_SWITCH_KEY, translateOnSwitch);
   const [onSave, setOnSave] = useState(false);
@@ -26,6 +41,17 @@ export function TranslationSettings() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    api
+      .translateEngine()
+      .then((s) => {
+        setEngine(s.engine);
+        setUrl(s.local_url);
+        setSavedUrl(s.local_url);
+        if (s.engine === "local") {
+          checkServer(s.local_url, setConnection);
+        }
+      })
+      .catch((e: unknown) => setError(String(e)));
     api
       .translateKeepTerms()
       .then(setOn)
@@ -61,6 +87,33 @@ export function TranslationSettings() {
       .then(setPrompt)
       .catch(() => {});
   }, []);
+
+  async function saveEngine(value: EngineKind) {
+    setEngine(value);
+    setError(null);
+    try {
+      await api.setTranslateEngine(value, savedUrl);
+      // The built-in prompt follows the term mode, which the local engine fixes.
+      setPrompt(await api.translationPrompt().catch(() => prompt));
+      if (value === "local") {
+        checkServer(savedUrl, setConnection);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function saveUrl() {
+    setError(null);
+    try {
+      const stored = await api.setTranslateEngine(engine, url);
+      setUrl(stored);
+      setSavedUrl(stored);
+      checkServer(stored, setConnection);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   async function toggle(value: boolean) {
     setOn(value);
@@ -129,8 +182,45 @@ export function TranslationSettings() {
     }
   }
 
+  const local = engine === "local";
+
   return (
     <div className="grp">
+      <SetRow title={t("translationSettings.engine")} htmlFor="tr-engine" desc={t("translationSettings.engineDesc")}>
+        <select id="tr-engine" className="select" value={engine} onChange={(e) => void saveEngine(e.target.value as EngineKind)}>
+          <option value="llm">{t("translationSettings.engineLlm")}</option>
+          <option value="local">{t("translationSettings.engineLocal")}</option>
+        </select>
+      </SetRow>
+      {local && (
+        <div className="set wide">
+          <label className="h" htmlFor="tr-local-url">
+            {t("translationSettings.localUrl")}
+          </label>
+          <div className="d">{t("translationSettings.localUrlDesc")}</div>
+          <input
+            id="tr-local-url"
+            className="input"
+            value={url}
+            spellCheck={false}
+            placeholder="http://127.0.0.1:8077"
+            onChange={(e) => setUrl(e.target.value)}
+          />
+          <div className="acts">
+            <button className="btn sm" onClick={saveUrl} disabled={url === savedUrl}>
+              {t("common.save")}
+            </button>
+            <button className="btn sm" onClick={() => checkServer(url, setConnection)}>
+              {t("translationSettings.localCheck")}
+            </button>
+            {connection && (
+              <span className={connection.ok ? "muted" : "error-text"} role="status">
+                {connection.ok ? t("translationSettings.localConnected", { model: connection.text }) : t.msg(connection.text)}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
       <SetRow title={t("translationSettings.onSwitch")} htmlFor="tr-on-switch" desc={t("translationSettings.onSwitchDesc")}>
         <Switch
           id="tr-on-switch"
@@ -156,35 +246,42 @@ export function TranslationSettings() {
           ))}
         </select>
       </SetRow>
-      <SetRow title={t("translationSettings.keepTerms")} htmlFor="keep-terms" desc={t("translationSettings.keepTermsDesc")}>
-        <Switch id="keep-terms" checked={on} onChange={toggle} />
+      <SetRow
+        title={t("translationSettings.keepTerms")}
+        htmlFor="keep-terms"
+        desc={local ? t("translationSettings.localIgnores") : t("translationSettings.keepTermsDesc")}
+      >
+        <Switch id="keep-terms" checked={on} disabled={local} onChange={toggle} />
       </SetRow>
       <div className="set wide">
         <label className="h" htmlFor="tr-instructions">
           {t("translationSettings.instructions")}
         </label>
-        <div className="d">{t("translationSettings.instructionsDesc")}</div>
+        <div className="d">{local ? t("translationSettings.localIgnores") : t("translationSettings.instructionsDesc")}</div>
         <textarea
           id="tr-instructions"
           value={instructions}
           rows={4}
           maxLength={MAX_INSTRUCTIONS}
           placeholder={t("common.none")}
+          disabled={local}
           onChange={(e) => {
             setInstructions(e.target.value);
             setStatus(null);
           }}
         />
         <div className="acts">
-          <button className="btn sm" onClick={saveInstructions} disabled={instructions.trim() === saved}>
+          <button className="btn sm" onClick={saveInstructions} disabled={local || instructions.trim() === saved}>
             {t("common.save")}
           </button>
           <span className="muted">{status ?? `${instructions.length} / ${MAX_INSTRUCTIONS}`}</span>
         </div>
-        <details>
-          <summary>{t("translationSettings.showPrompt")}</summary>
-          <pre aria-label={t("translationSettings.prompt")}>{prompt}</pre>
-        </details>
+        {!local && (
+          <details>
+            <summary>{t("translationSettings.showPrompt")}</summary>
+            <pre aria-label={t("translationSettings.prompt")}>{prompt}</pre>
+          </details>
+        )}
       </div>
       <div className="set wide">
         <label className="h" htmlFor="tr-skip-sites">

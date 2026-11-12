@@ -191,6 +191,17 @@ export const en = {
   "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps turns it off here too.",
   "taskbarSettings.badge": "Show the unread count on the taskbar",
   "taskbarSettings.badgeDesc": "Overlays the number of unread articles on the app's taskbar button (99+ from 100 on, nothing at 0).",
+  "translationSettings.engine": "Translation engine",
+  "translationSettings.engineDesc":
+    "With AI providers, the models in Settings › AI providers translate. With Local translation server, PLaMo 3 Translate translates on an OpenAI-compatible server you run yourself (such as llama-server), using no AI credits.",
+  "translationSettings.engineLlm": "AI providers",
+  "translationSettings.engineLocal": "Local translation server",
+  "translationSettings.localUrl": "Translation server URL",
+  "translationSettings.localUrlDesc": "The URL of its OpenAI-compatible API (default http://127.0.0.1:8077). A trailing /v1 may be written or left out.",
+  "translationSettings.localCheck": "Check connection",
+  "translationSettings.localConnected": "Connected: {model}",
+  "translationSettings.localIgnores":
+    "Not used with the local translation server: PLaMo 3 Translate translates technical terms too and takes no extra instructions. Switching back to AI providers uses this setting again.",
   "translationSettings.onSwitch": "Translate when I switch the view",
   "translationSettings.onSwitchDesc": "Switching the Reader to Mixed or Translated starts translating an article that has not been translated yet.",
   "translationSettings.onSave": "Translate saved articles automatically",
@@ -202,7 +213,7 @@ export const en = {
   "translationSettings.keepTerms": "Keep technical terms in English",
   "translationSettings.parallel": "Parallel requests",
   "translationSettings.parallelDesc":
-    "How many translation requests to the AI provider run at the same time (default 3), across the batches of a long article or several articles at once. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once.",
+    "How many translation requests to the AI provider run at the same time (default 3), across the batches of a long article or several articles at once. The article on screen is translated right away in a slot of its own, outside this number. More finishes sooner, but reaches usage and API rate limits sooner, and runs more Claude CLI or Codex CLI processes at once. The local translation server gets at most 3 requests at a time, whatever this number.",
   "translationSettings.keepTermsDesc":
     "MVCC, WAL, snapshot isolation, write skew and the like. When Japanese articles are translated into English, turning this on uses the established English terms and turning it off uses plain paraphrases. Translations are stored per setting, so articles need translating again after a switch (switching back shows the earlier translations).",
   "translationSettings.instructions": "Extra instructions",

@@ -77,6 +77,42 @@ test("翻訳しないサイト shows the stored patterns and saves the edited li
   await expect(save).toBeDisabled();
 });
 
+test("the local translation engine shows its server's model and turns off the settings it cannot follow", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) })
+    .click();
+  const engine = app.getByRole("combobox", { name: "翻訳エンジン" });
+  const keepTerms = app.getByRole("switch", { name: "専門用語を英語のまま残す" });
+  const instructions = app.getByRole("textbox", { name: "追加の指示" });
+  const url = app.getByRole("textbox", { name: "翻訳サーバーのURL" });
+  const connection = app.getByRole("status");
+  await expect(keepTerms).toBeEnabled();
+  await expect(url).toHaveCount(0);
+
+  await engine.selectOption({ label: "ローカルの翻訳サーバー" });
+  await expect(connection).toHaveText("接続済み: plamo-3-translate");
+  expect(await callsOf(app, "set_translate_engine")).toEqual([{ engine: "local", localUrl: "http://127.0.0.1:8077" }]);
+  await expect(keepTerms).toBeDisabled();
+  await expect(keepTerms, "the stored setting stays for the AI engine").toBeChecked();
+  await expect(instructions).toBeDisabled();
+  await expect(app.getByText("組み込みのprompt(英語→日本語)を見る")).toHaveCount(0);
+
+  await url.fill("http://127.0.0.1:9999/v1/");
+  await app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" }).click();
+  await expect(url, "as stored").toHaveValue("http://127.0.0.1:9999");
+  await expect(connection).toHaveText(
+    "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)",
+  );
+
+  await engine.selectOption({ label: "AIプロバイダ" });
+  await expect(keepTerms).toBeEnabled();
+  await expect(instructions).toBeEnabled();
+  await expect(url).toHaveCount(0);
+});
+
 test("the data folder opens through the backend without a webview-supplied path", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
