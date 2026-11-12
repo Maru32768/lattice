@@ -100,12 +100,21 @@ test("the local translation engine shows its server's model and turns off the se
   await expect(instructions).toBeDisabled();
   await expect(app.getByText("組み込みのprompt(英語→日本語)を見る")).toHaveCount(0);
 
+  const saveUrl = app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" });
+  const refused = "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)";
   await url.fill("http://127.0.0.1:9999/v1/");
-  await app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" }).click();
+  await saveUrl.click();
   await expect(url, "as stored").toHaveValue("http://127.0.0.1:9999");
-  await expect(connection).toHaveText(
-    "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)",
-  );
+  await expect(connection).toHaveText(refused);
+  await url.fill("127.0.0.1:8077");
+  await saveUrl.click();
+  await expect(app.getByRole("alert")).toHaveText("翻訳サーバーのURLは、http://かhttps://で始めてください");
+
+  const categories = app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni");
+  await categories.filter({ has: app.locator(".label").getByText("表示言語", { exact: true }) }).click();
+  await categories.filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) }).click();
+  await expect(url, "the stored URL").toHaveValue("http://127.0.0.1:9999");
+  await expect(connection, "checked when the page opens").toHaveText(refused);
 
   await engine.selectOption({ label: "AIプロバイダ" });
   await expect(keepTerms).toBeEnabled();
