@@ -878,7 +878,8 @@ impl Store {
                     "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
                      canonical_url = ?2, author = ?4, site_name = ?5,
                      -- The feed entry's title is clean; a page <title> often carries the site name. A renamed
-                     -- article keeps the user's name and the found title goes to auto_title.
+                     -- article keeps the user's name and the found title goes to auto_title, which keeps the last one
+                     -- found when this page has none.
                      title = iif(auto_title IS NULL, coalesce((SELECT title FROM feed_items
                                        WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), ?3), title),
                      auto_title = iif(auto_title IS NULL, NULL, coalesce((SELECT title FROM feed_items
