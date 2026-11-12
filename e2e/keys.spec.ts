@@ -173,8 +173,12 @@ test("Ctrl+A ? and ? list every binding by what it is for, as Settings does, wit
   await expect(keysOf("次の項目へ")).toHaveText(["j", "↓"]);
   await expect(item("次の記事を開く").locator(".s")).toHaveText("本文で");
   await expect(item("お気に入り").locator(".s")).toHaveCount(0);
+  const body = help.locator(".pal-list");
   await app.keyboard.press("j");
   await expect(list(app).locator(".row.cur"), "the list owns no keys under it").toHaveCount(0);
+  await expect.poll(() => body.evaluate((el) => el.scrollTop), "j scrolls the key list").toBeGreaterThan(0);
+  await app.keyboard.press("k");
+  await expect.poll(() => body.evaluate((el) => el.scrollTop), "k scrolls it back").toBe(0);
   await app.keyboard.press("Escape");
   await expect(help).toBeHidden();
 

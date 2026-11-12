@@ -4,6 +4,9 @@ import { coverStyle, useCover } from "../ui/Popover";
 import { useT } from "../i18n";
 import { useBindings } from "../lib/keys";
 import { ACTION_GROUPS, actionLabel, keyLabel, keyOf } from "../lib/keymap";
+import { scrollDoc, type DocScroll } from "../docnav/scroll";
+
+const SCROLLS: DocScroll[] = ["scrollDown", "scrollUp", "halfDown", "halfUp", "pageDown", "pageUp", "docTop", "docBottom"];
 
 /** Every binding, by what it is for, as Settings › Shortcuts has them. */
 export function KeyHelp({ onClose }: { onClose: () => void }) {
@@ -24,6 +27,14 @@ export function KeyHelp({ onClose }: { onClose: () => void }) {
       e.preventDefault();
       e.stopPropagation();
       onClose();
+      return;
+    }
+    // The document's scroll keys, one key each: a chord such as gg would need the key machine for one dialog.
+    const move = k ? SCROLLS.find((id) => bindings[id].includes(k)) : undefined;
+    if (move && body.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      scrollDoc(body.current, move, 1);
     }
   }
 
