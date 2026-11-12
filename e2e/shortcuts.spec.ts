@@ -143,6 +143,52 @@ test("the default keys after Ctrl+A can be removed, and a single key under a fir
   await expect(app.locator(".prefix-hint")).toContainText("ペインを右に分割");
 });
 
+test("the prefix is one key for every two-step key under it: a new one moves them, a plain key is refused, and Reset all brings back Ctrl+A", async ({
+  app,
+}) => {
+  await openShortcuts(app);
+  const prefix = row(app, "プレフィックス");
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl A");
+  await expect(prefix.getByRole("button", { name: "既定に戻す" })).toBeHidden();
+  await prefix.getByRole("button", { name: "変更" }).click();
+  await app.keyboard.press("j");
+  await expect(prefix.getByRole("alert")).toHaveText("jはプレフィックスにできません。CtrlかAltと組み合わせたキーを押してください");
+  await expect(prefix.locator(".kbd"), "a key a field types would keep the pane keys from working there").toHaveText("Ctrl A");
+  await app.keyboard.press("Control+b");
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl B");
+  await expect(prefix.getByRole("alert")).toHaveCount(0);
+  await expect(prefix.getByRole("note")).toHaveText(
+    "Ctrl Bはプレフィックスなので、単独では「一覧を1画面上へ」が働きません。Ctrl Bはプレフィックスなので、単独では「1画面上へスクロール」が働きません",
+  );
+  await expect(prefix.getByRole("button", { name: "既定に戻す" })).toBeVisible();
+  await expect(app.getByRole("button", { name: "書き出す", exact: true }), "a changed prefix is a change to export").toBeEnabled();
+  await tab(app, "本文").click();
+  await expect(row(app, "1画面上へスクロール").getByRole("note")).toHaveText("Ctrl Bは「コマンドを実行」の2段階キーの1打目なので、単独では働きません");
+  await tab(app, "ペイン").click();
+  const down = row(app, "ペインを下に分割");
+  await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl B › "×']);
+  await expect(down.getByRole("button", { name: "既定に戻す" }), "the key moved with the prefix, it was not changed").toBeHidden();
+
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(1);
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press('"');
+  await app.keyboard.press("Control+b");
+  await app.keyboard.press('"');
+  await expect(panes, "Ctrl+B splits, and Ctrl+A before it did not").toHaveCount(2);
+
+  await openShortcuts(app);
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  await expect(row(app, "プレフィックス").locator(".kbd")).toHaveText("Ctrl A");
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press('"');
+  await expect(panes).toHaveCount(3);
+});
+
 test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
   await openShortcuts(app);
   await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 13", "記事 12", "本文 22", "タブ 7", "ペイン 18"]);

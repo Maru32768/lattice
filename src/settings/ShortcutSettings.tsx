@@ -1,7 +1,19 @@
 import { useRef, useState } from "react";
 import { api } from "../api";
 import { readUtf8 } from "../lib/files";
-import { getBindings, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, shortcutsFile, useBindings, usePrefix, type Shortcuts } from "../lib/keys";
+import {
+  getBindings,
+  isCustom,
+  parseShortcutsFile,
+  replaceKeys,
+  resetKeys,
+  setKeys,
+  setPrefix,
+  shortcutsFile,
+  useBindings,
+  usePrefix,
+  type Shortcuts,
+} from "../lib/keys";
 import {
   ACTIONS,
   ACTION_GROUPS,
@@ -9,6 +21,7 @@ import {
   KEY_GROUPS,
   actionFor,
   actionLabel,
+  canPrefix,
   chordFrom,
   conflicts,
   keyLabel,
@@ -22,7 +35,7 @@ import {
 import { useT } from "../i18n";
 
 const FILE_MAX_MB = 1;
-/** The actions a key can be set for: select all's keys are fixed (`passThrough`). */
+/** The actions a key can be set for: send-prefix's keys are fixed (`passThrough`). */
 const GROUPS = ACTION_GROUPS.map((g) => ({ ...g, actions: g.actions.filter((a) => !a.passThrough) }));
 
 /**
@@ -65,6 +78,10 @@ export function ShortcutSettings() {
   const [undo, setUndo] = useState<{ prev: Shortcuts; after: Bindings; done: "reset" | "import" } | null>(null);
   const [note, setNote] = useState<{ exported: string } | { error: string } | null>(null);
   const prefix = usePrefix();
+  /** Recording a new prefix, with the key it refused last. */
+  const [prefixRec, setPrefixRec] = useState<{ refused?: string } | null>(null);
+  // Waiting for a second key, the prefix no longer runs an action it is bound to alone.
+  const shadowed = ACTIONS.filter((a) => bindings[a.id].includes(prefix) && chordFrom(bindings, prefix, a.scope));
   const undoable = undo?.after === bindings ? undo : null;
   const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
   const custom = prefix !== DEFAULT_PREFIX || ACTIONS.some((a) => isCustom(a.id, bindings));
@@ -132,6 +149,21 @@ export function ShortcutSettings() {
         setKeys(id, [...bindings[id], p.key]);
       }
       setRecording(null);
+    }
+  }
+
+  /** One key is the whole prefix; one a field types is refused, so the row says why and waits for another. */
+  function recordPrefix(e: React.KeyboardEvent) {
+    const p = pressed(undefined, e);
+    if (p === "cancel") {
+      setPrefixRec(null);
+    } else if (p && "first" in p) {
+      if (canPrefix(p.first)) {
+        setPrefix(p.first);
+        setPrefixRec(null);
+      } else {
+        setPrefixRec({ refused: p.first });
+      }
     }
   }
 
@@ -292,6 +324,40 @@ export function ShortcutSettings() {
         </p>
       )}
       <div className="keys">
+        <div className="set">
+          <span className="h">{t("shortcutSettings.prefix")}</span>
+          {shadowed.length > 0 && (
+            <span className="d warn-text" role="note">
+              {shadowed
+                .map((a) => t("shortcutSettings.prefixShadows", { keyLabel: keyLabel(prefix), labelOf: actionLabel(t, a.id) }))
+                .join(t("shortcutSettings.clashSeparator"))}
+            </span>
+          )}
+          {prefixRec?.refused && (
+            <span className="d error-text" role="alert">
+              {t("shortcutSettings.prefixRefused", { keyLabel: keyLabel(prefixRec.refused) })}
+            </span>
+          )}
+          <span className="ctl keys-ctl">
+            <button
+              className="btn sm ghost reset"
+              onClick={(e) => keepFocus(e.currentTarget, () => setPrefix(DEFAULT_PREFIX))}
+              disabled={prefix === DEFAULT_PREFIX}
+            >
+              {t("shortcutSettings.reset")}
+            </button>
+            <span className="kbd">{keyLabel(prefix)}</span>
+            <button
+              className={`btn sm ghost add${prefixRec ? " rec" : ""}`}
+              aria-pressed={!!prefixRec}
+              onClick={() => setPrefixRec(prefixRec ? null : {})}
+              onKeyDown={prefixRec ? recordPrefix : undefined}
+              onBlur={() => setPrefixRec(null)}
+            >
+              {prefixRec ? t("shortcutSettings.pressKey") : t("shortcutSettings.changePrefix")}
+            </button>
+          </span>
+        </div>
         <div className="keys-find">
           <input
             ref={field}
