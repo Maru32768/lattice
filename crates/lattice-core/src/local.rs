@@ -445,10 +445,10 @@ pub(crate) mod tests {
             _ => plamo(path, body),
         })
         .await;
-        let t = Server::new(&url).unwrap().translate(&snippets(&["Long one.", "Odd one.", "Odd two.", "Fine one."]), "ja").await;
-        assert!(t.results[..3].iter().all(Option::is_none));
-        assert_eq!(t.results[3].clone().unwrap().0, [unit("Fine one.", "訳:Fine one.")], "that block's text, not the server");
-        assert_eq!(seen.lock().unwrap().len(), 1 + 4, "a lone sentence is not sent again");
+        let t = Server::new(&url).unwrap().translate(&snippets(&["Long one.", "Long two.", "Odd one.", "Odd two.", "Fine one."]), "ja").await;
+        assert!(t.results[..4].iter().all(Option::is_none));
+        assert_eq!(t.results[4].clone().unwrap().0, [unit("Fine one.", "訳:Fine one.")], "those blocks' text, not the server");
+        assert_eq!(seen.lock().unwrap().len(), 1 + 5, "a lone sentence is not sent again");
     }
 
     #[tokio::test]
