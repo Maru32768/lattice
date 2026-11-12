@@ -741,7 +741,7 @@ Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articl
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
 - **Reset to default** resets one action, and **Reset all to defaults** resets every action and the prefix, to the default keys. **Reset to default** appears only on actions whose keys you changed.
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
-- **Export** writes the prefix and the keys you changed to the `exports` folder. **Load from file** replaces your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys. Any other file changes nothing, and a message says it can't be loaded.
+- **Export** writes the prefix and the keys you changed to the `exports` folder. **Load from file** replaces the prefix and your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys, and a file with no prefix sets `Ctrl+A`. Any other file changes nothing, and a message says it can't be loaded.
 
 Shortcuts are saved in the database, so they are in backups and move with the data folder. Export and load let you keep a set of keys and go back to it later.
 
