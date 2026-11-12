@@ -425,10 +425,10 @@ export const handlers = {
   set_article_title: ({ id, title }: { id: number; title: string }) => {
     const a = article(id);
     const name = title.trim();
-    if (name) {
+    if (name && name !== a.title && name !== a.auto_title) {
       a.auto_title ??= a.title ?? a.original_url;
       a.title = name;
-    } else if (a.auto_title != null) {
+    } else if (a.auto_title != null && (!name || name === a.auto_title)) {
       a.title = a.auto_title === a.original_url ? null : a.auto_title;
       a.auto_title = null;
     }

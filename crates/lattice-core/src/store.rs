@@ -1020,19 +1020,20 @@ impl Store {
         Ok(n > 0)
     }
 
-    /// The user's name for the article; a blank one goes back to the title the app found. The first rename keeps that
-    /// title in `auto_title` (the URL when there is none yet, so a renamed article always has one), and refetches update
-    /// it there.
+    /// The user's name for the article; a blank one, or the title the app found, goes back to that title so refetches
+    /// update it again. The first rename keeps that title in `auto_title` (the URL when there is none yet, so a renamed
+    /// article always has one), and refetches update it there.
     pub fn set_title(&self, id: i64, title: &str) -> Result<()> {
         let title = title.trim();
+        let c = self.conn();
+        let reset = "UPDATE articles SET title = nullif(auto_title, original_url), auto_title = NULL WHERE id = ?1 AND auto_title IS NOT NULL";
         if title.is_empty() {
-            self.conn()
-                .execute("UPDATE articles SET title = nullif(auto_title, original_url), auto_title = NULL WHERE id = ?1 AND auto_title IS NOT NULL", [id])?;
-        } else {
-            self.conn().execute(
+            c.execute(reset, [id])?;
+        } else if c.execute(&format!("{reset} AND auto_title = ?2"), params![id, title])? == 0 {
+            c.execute(
                 "UPDATE articles SET title = ?2, auto_title = coalesce(auto_title, title,
                    (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), original_url)
-                 WHERE id = ?1",
+                 WHERE id = ?1 AND title IS NOT ?2",
                 params![id, title],
             )?;
         }

@@ -344,6 +344,11 @@ mod tests {
         assert_eq!(titles(&s), (Some("Part 2".into()), Some("Revised".into())), "a refetch updates the found title, not the name");
         s.set_title(id, "Part two").unwrap();
         assert_eq!(titles(&s), (Some("Part two".into()), Some("Revised".into())), "renaming again keeps the found title");
+        s.set_title(id, "Revised").unwrap();
+        assert_eq!(titles(&s), (Some("Revised".into()), None), "naming it the found title is not a name of its own");
+        s.set_title(id, "Revised").unwrap();
+        assert_eq!(titles(&s), (Some("Revised".into()), None), "nor is naming it what it is already called");
+        s.set_title(id, "Part two").unwrap();
         s.set_title(id, "  ").unwrap();
         assert_eq!(titles(&s), (Some("Revised".into()), None));
         store_fetched(&s, id, &page(BODY)).unwrap();
