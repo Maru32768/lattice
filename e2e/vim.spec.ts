@@ -509,5 +509,7 @@ test("a two-step key of the user's that starts with one of Vim's insert-mode key
   await page.keyboard.type("one two");
   await page.keyboard.press("Control+w");
   await expect(chatInput(page), "Vim's Ctrl+W deleted the word").toHaveText("one");
+  // Past the hint's delay, so that a chord the app started as well would show.
+  await page.waitForTimeout(600);
   await expect(page.locator(".prefix-hint")).toHaveCount(0);
 });
