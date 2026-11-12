@@ -559,14 +559,18 @@ pub(crate) mod tests {
     async fn a_server_that_turns_requests_away_mid_batch_stops_it_with_the_code() {
         let blocks: Vec<String> = (0..12).map(|n| format!("Block {n} first. Block {n} second.")).collect();
         for status in [401, 403, 404, 503] {
+            // The first block is answered: the server goes away after that.
+            let chats = std::sync::atomic::AtomicUsize::new(0);
             let (url, seen) = serve(move |path, body| match path {
                 "/v1/models" => plamo(path, body),
+                _ if chats.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 0 => plamo(path, body),
                 _ => (status, json!({})),
             })
             .await;
             let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+            assert!(t.results[0].is_some(), "{status}");
             assert_eq!(code(&t.error.unwrap()).0, "translate.localUnavailable", "{status}");
-            assert_eq!(seen.lock().unwrap().len(), 2, "{status}: the model list and the first block, then nothing");
+            assert_eq!(seen.lock().unwrap().len(), 3, "{status}: the model list, the first two blocks, then nothing");
         }
     }
 
