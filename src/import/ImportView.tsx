@@ -150,7 +150,7 @@ function GroupField({
 
 type FileInto = (ids: number[]) => Promise<void>;
 
-function NoAutoTranslate({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
+function NoAutoTranslate({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled: boolean }) {
   const t = useT();
   return (
     <label className="ff-check">
@@ -423,11 +423,13 @@ function PdfImport({
   }, []);
   const importAll = (files: File[]) =>
     void importPdfs(files, { manual, tooLargeError: t("be.file.tooLarge", { max: PDF_MAX_MB }), fileInto, groups: into, onOpen, onImported });
+  // A refused file replaces the last batch's count: it is no longer the latest news.
+  const refuse = () => setPdfRun({ error: t("common.wrongFile"), done: null });
 
   const { dragging, zone } = useFileDrop({
     accept: PDF_FILES,
     onFiles: importAll,
-    onReject: () => setPdfRun({ error: t("common.wrongFile"), done: null }),
+    onReject: refuse,
     disabled: busy,
   });
 
@@ -453,7 +455,7 @@ function PdfImport({
           if (files.length > 0) {
             importAll(files);
           } else if (picked.length > 0) {
-            setPdfRun({ error: t("common.wrongFile"), done: null });
+            refuse();
           }
         }}
       />
