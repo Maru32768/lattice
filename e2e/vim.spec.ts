@@ -502,3 +502,12 @@ test("with another prefix, Ctrl+A is the engine's increment, and that prefix twi
   await expect(chatInput(page), "the engine's decrement").toHaveText("5");
   await expect(page.locator(".prefix-hint")).toHaveCount(0);
 });
+
+test("a two-step key of the user's that starts with one of Vim's insert-mode keys leaves that key to Vim in insert mode", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, paneLeft: ["Ctrl+H", "<prefix> H", "Ctrl+W H"] })));
+  await chat(page);
+  await page.keyboard.type("one two");
+  await page.keyboard.press("Control+w");
+  await expect(chatInput(page), "Vim's Ctrl+W deleted the word").toHaveText("one");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+});

@@ -5,8 +5,8 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder as placeholderText } from "@codemirror/view";
 import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { Vim, getCM, vim as vimKeys } from "@replit/codemirror-vim";
-import { EX_ALIASES, chordFrom, keyOf, type ActionId } from "../lib/keymap";
-import { getBindings } from "../lib/keys";
+import { EX_ALIASES, keyOf, type ActionId } from "../lib/keymap";
+import { getPrefix } from "../lib/keys";
 import { getVimrc, useVimrc, vimBridge } from "./vim";
 import { ENGINE_INSERT_KEYS, KNOWN, mappedKeys, parseVimrc, type FreedMode } from "./vimrc";
 
@@ -111,9 +111,9 @@ vimBridge.owns = (e, editor) => {
   if (!state.insertMode) {
     return mapped[state.visualMode ? "visual" : "normal"].has(key);
   }
-  // The engine's own key is the app's when it starts one of the app's two-key bindings in a field, as the prefix does.
-  const app = keyOf(e);
-  return mapped.insert.has(key) || (ENGINE_INSERT_KEYS.has(key) && !(app && chordFrom(getBindings(), app)?.inFields));
+  // The engine's own key stays the app's when it is the prefix, which leads the app's keys everywhere, as tmux's does. A user's
+  // other two-step key that starts with it is the app's in normal mode only, as Vim's Ctrl+W h is.
+  return mapped.insert.has(key) || (ENGINE_INSERT_KEYS.has(key) && keyOf(e) !== getPrefix());
 };
 
 // ---- the editor --------------------------------------------------------------------------------
