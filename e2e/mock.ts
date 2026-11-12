@@ -661,9 +661,11 @@ export const handlers = {
   import_markdown: ({ text }: { text: string }): number =>
     addArticle(`local:md/${text.length}`, /^#\s+(.+)$/m.exec(text)?.[1] ?? null, { domain: "", fetch_status: "ok", extraction_status: "ok" }),
   import_markdown_file: none,
-  import_pdf_file: (): number =>
-    addArticle("local:pdf/e2e", "Reading Order in Two Column Papers", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
-  import_pdf_bytes: (): number => addArticle("local:pdf/e2e-bytes", "Dropped Paper", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
+  // A body starting with %no-text stands for a scan without text, which the backend refuses.
+  import_pdf_bytes: (body: unknown): number =>
+    body instanceof Uint8Array && new TextDecoder().decode(body).startsWith("%no-text")
+      ? reject("pdf.noText")
+      : addArticle("local:pdf/e2e-bytes", "Dropped Paper", { domain: "", fetch_status: "ok", extraction_status: "ok", pdf: true }),
   set_unread_badge: none,
   get_taskbar_badge: (): boolean => store.taskbarBadge,
   set_taskbar_badge: ({ on }: { on: boolean }) => void (store.taskbarBadge = on),

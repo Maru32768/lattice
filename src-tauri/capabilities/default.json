@@ -33,7 +33,6 @@
     "allow-import-urls",
     "allow-import-markdown",
     "allow-import-markdown-file",
-    "allow-import-pdf-file",
     "allow-import-pdf-bytes",
     "allow-set-unread-badge",
     "allow-get-taskbar-badge",

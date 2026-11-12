@@ -13,6 +13,7 @@ export const SYNCED = [
   "lattice.translateOnSwitch",
   "lattice.vocabAutoplay",
   "lattice.vocabMarks",
+  "lattice.importNoAutoTranslate",
 ] as const;
 type SyncedKey = (typeof SYNCED)[number];
 

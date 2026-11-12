@@ -48,7 +48,21 @@ test("a PDF dropped on the PDF tab is sent as bytes and opens in the Reader", as
   expect(await drop(app.getByRole("region", { name: "PDF" }), PDF)).toBe(true);
   await expect(app.locator("h1.art-title")).toHaveText("Dropped Paper");
   expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(1);
-  expect(await callsOf(app, "import_pdf_file")).toHaveLength(0);
+});
+
+test("several PDFs dropped together all go in, and a file of another kind among them is left out", async ({ app }) => {
+  await openImport(app, "pdf");
+  const taken = await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
+    const dataTransfer = new DataTransfer();
+    for (const name of ["1 a.pdf", "notes.txt", "2 b.pdf"]) {
+      dataTransfer.items.add(new File(["%PDF-1.7"], name, { type: name.endsWith(".pdf") ? "application/pdf" : "text/plain" }));
+    }
+    el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    return !el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+  });
+  expect(taken).toBe(true);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
 });
 
 test("a PDF pasted with the focus nowhere in particular is imported too", async ({ app }) => {

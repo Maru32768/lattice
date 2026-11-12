@@ -172,9 +172,7 @@ export const api = {
   importMarkdown: (text: string, name?: string, manual = false) => invoke<number>("import_markdown", { text, name, manual }),
   /** Opens a file dialog (in the backend); null when cancelled. */
   importMarkdownFile: (manual = false) => invoke<number | null>("import_markdown_file", { manual }),
-  /** Opens a PDF file dialog (in the backend); null when cancelled. */
-  importPdfFile: (manual = false) => invoke<number | null>("import_pdf_file", { manual }),
-  /** A PDF dropped or pasted: the raw bytes as the body, the name in a header (headers are ASCII). */
+  /** A PDF picked, dropped or pasted: the raw bytes as the body, the name in a header (headers are ASCII). */
   importPdfBytes: (bytes: Uint8Array, name: string, manual = false) =>
     invoke<number>("import_pdf_bytes", bytes, { headers: { "x-file-name": encodeURIComponent(name), "x-translate-manual": String(manual) } }),
   /** The unread count for the taskbar badge (shown unless switched off). */

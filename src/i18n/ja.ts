@@ -732,6 +732,9 @@ export const ja = {
   "importView.importMarkdown": "取り込む",
   "importView.choosePdf": "PDFファイルを選択…",
   "importView.noAutoTranslate": "自動で翻訳しない",
+  "importView.importingOf": "取り込み中…({at}/{of})",
+  "importView.pdfsImported": "{n}件のPDFを取り込みました",
+  "importView.pdfFailed": "{name}を取り込めませんでした: {error}",
   "feedsView.iconTooLarge": "アイコンの画像は1 MBまでです",
   "feedsView.editorTitle": "{feedName}の名前とアイコン",
   "feedsView.displayName": "表示名",
@@ -806,7 +809,7 @@ export const ja = {
   "importView.urlsDesc":
     "URL一覧、ブラウザのブックマーク(HTML)、CSV、JSONなど、URLを含むテキストなら何でも読み込めます。取得はバックグラウンドで行い、失敗した記事があっても残りは続行します。",
   "importView.pdfDesc":
-    "論文などのPDFを1つの記事として取り込みます。本文の文字を読み取り、2段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します(文字のない画像だけのPDFは取り込めません)。arXivの …/pdf/… のようなPDFのURLは、普通のURLと同じように保存やフィードから取り込めます。元のPDFは保存しておき、再抽出に使います。",
+    "論文などのPDFを1つの記事として取り込みます。複数のPDFを選ぶかドロップすると、ファイル名の順にまとめて取り込みます。本文の文字を読み取り、2段組の読み順・見出し・図表のキャプション・参考文献を組み立て直します(文字のない画像だけのPDFは取り込めません)。arXivの …/pdf/… のようなPDFのURLは、普通のURLと同じように保存やフィードから取り込めます。元のPDFは保存しておき、再抽出に使います。",
   "importView.markdownDesc":
     "Markdownを1つの記事として取り込みます。タイトルは最初の見出し(# )、なければファイル名か最初の行です。画像は、URLのものは保存し、相対パスのものは「ファイルを選択…」で取り込んだときだけ同じフォルダから読み込みます(ドロップや貼り付けでは代替テキストを表示)。HTMLタグは取り込みません。",
   "feedsView.added": "{name}を登録しました。新しい記事をバックグラウンドで取得します。",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api, type GroupRow, type ImportSummary } from "../api";
 import { GroupPicker } from "../library/GroupPicker";
 import { Icon } from "../ui/Icon";
@@ -7,6 +7,7 @@ import { useT, type PlainKey } from "../i18n";
 import { skippedLines } from "../lib/urlLines";
 import { fileStem, readUtf8 } from "../lib/files";
 import { useFileDrop } from "../ui/useFileDrop";
+import { readPref, savePref, useSynced } from "../lib/prefs";
 
 export type ImportTab = "urls" | "markdown" | "pdf";
 
@@ -18,6 +19,10 @@ const MARKDOWN_MAX_MB = 10;
 const PDF_MAX_MB = 50;
 const tooLarge = (file: File, mb: number) => file.size > mb * 1024 * 1024;
 
+const NO_AUTO_KEY = "lattice.importNoAutoTranslate";
+/** 自動で翻訳しない, shared by the Markdown and PDF tabs and kept for the next import: a book comes in as many files. */
+const noAutoTranslate = () => readPref(NO_AUTO_KEY) === "on";
+
 const SUB: Record<ImportTab, PlainKey> = {
   urls: "importView.urlsDesc",
   pdf: "importView.pdfDesc",
@@ -25,7 +30,7 @@ const SUB: Record<ImportTab, PlainKey> = {
 };
 
 /** Bulk import of URLs (anything containing them: a list, bookmarks HTML, CSV, JSON), one
- *  Markdown document (from a file or pasted), or one PDF file. */
+ *  Markdown document (from a file or pasted), or PDF files. */
 export function ImportView({
   tab,
   onTab,
@@ -38,7 +43,7 @@ export function ImportView({
   tab: ImportTab;
   onTab: (t: ImportTab) => void;
   onImported: () => void;
-  /** After a Markdown or PDF import: the article it made (or already was). */
+  /** After a Markdown import or one PDF: the article it made (or already was). */
   onOpen: (id: number) => void;
   groups: GroupRow[];
   /** The groups imported articles go into at first (the list's group scope). */
@@ -47,6 +52,11 @@ export function ImportView({
 }) {
   const t = useT();
   const [into, setInto] = useState(initialGroups);
+  const [manual, setManualState] = useSynced(NO_AUTO_KEY, noAutoTranslate);
+  const setManual = (on: boolean) => {
+    setManualState(on);
+    savePref(NO_AUTO_KEY, on ? "on" : "off");
+  };
   /** Puts imported articles into the chosen groups (already-saved ones too). */
   const fileInto = async (ids: number[]) => {
     await Promise.all(into.map((g) => api.groupAdd(g, ids)));
@@ -77,9 +87,9 @@ export function ImportView({
         {tab === "urls" ? (
           <UrlImport onImported={onImported} fileInto={fileInto} />
         ) : tab === "markdown" ? (
-          <MarkdownImport onOpen={onOpen} fileInto={fileInto} />
+          <MarkdownImport onOpen={onOpen} fileInto={fileInto} manual={manual} onManual={setManual} />
         ) : (
-          <PdfImport onOpen={onOpen} fileInto={fileInto} />
+          <PdfImport onOpen={onOpen} onImported={onImported} fileInto={fileInto} manual={manual} onManual={setManual} />
         )}
       </div>
     </main>
@@ -219,10 +229,14 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
   );
 }
 
-function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
+interface Manual {
+  manual: boolean;
+  onManual: (on: boolean) => void;
+}
+
+function MarkdownImport({ onOpen, fileInto, manual, onManual }: { onOpen: (id: number) => void; fileInto: FileInto } & Manual) {
   const t = useT();
   const [text, setText] = useState("");
-  const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -280,7 +294,7 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
         <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text, undefined, manual))} disabled={busy || !text.trim()}>
           {busy ? t("importView.importing") : t("importView.importMarkdown")}
         </button>
-        <NoAutoTranslate checked={manual} onChange={setManual} />
+        <NoAutoTranslate checked={manual} onChange={onManual} />
         {error && (
           <span role="alert" className="msg error-text">
             {t.msg(error)}
@@ -291,47 +305,111 @@ function MarkdownImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fi
   );
 }
 
-function PdfImport({ onOpen, fileInto }: { onOpen: (id: number) => void; fileInto: FileInto }) {
-  const t = useT();
-  const [manual, setManual] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface Failed {
+  name: string;
+  error: string;
+}
 
-  async function run(load: () => Promise<number | null>) {
-    setBusy(true);
+/** One PDF's import: its article, or why it could not be imported (the rest still go in). */
+async function importPdf(file: File, manual: boolean, tooLargeError: string): Promise<{ id: number } | { error: string }> {
+  if (tooLarge(file, PDF_MAX_MB)) {
+    return { error: tooLargeError };
+  }
+  try {
+    return { id: await api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name), manual) };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** One PDF opens in the Reader, as before; several (a book split into chapters) stay here with what came of each. */
+function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen: (id: number) => void; onImported: () => void; fileInto: FileInto } & Manual) {
+  const t = useT();
+  const picker = useRef<HTMLInputElement>(null);
+  /** The file being imported (1-based) and how many there are; null when idle. */
+  const [progress, setProgress] = useState<{ at: number; of: number } | null>(null);
+  const [done, setDone] = useState<{ imported: number; failed: Failed[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const busy = progress !== null;
+
+  async function importAll(picked: File[]) {
+    // "01 …", "02 …" and "2 …", "10 …" both go in chapter order, so the library lists them as the book does.
+    const files = picked.toSorted((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
     setError(null);
-    try {
-      const id = await load();
-      if (id != null) {
-        await fileInto([id]);
-        onOpen(id);
+    setDone(null);
+    const ids: number[] = [];
+    const failed: Failed[] = [];
+    for (const [i, file] of files.entries()) {
+      setProgress({ at: i + 1, of: files.length });
+      const r = await importPdf(file, manual, t("be.file.tooLarge", { max: PDF_MAX_MB }));
+      if ("id" in r) {
+        ids.push(r.id);
+      } else {
+        failed.push({ name: file.name, error: r.error });
       }
+    }
+    try {
+      await fileInto(ids);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-    setBusy(false);
+    setProgress(null);
+    const [id] = ids;
+    if (files.length === 1) {
+      if (id !== undefined) {
+        onOpen(id);
+      } else {
+        setError(failed[0]?.error ?? null);
+      }
+      return;
+    }
+    setDone({ imported: ids.length, failed });
+    onImported();
   }
 
   const { dragging, zone } = useFileDrop({
     accept: PDF_FILES,
-    onFile: (file) =>
-      void run(async () => {
-        if (tooLarge(file, PDF_MAX_MB)) {
-          throw new Error(t("be.file.tooLarge", { max: PDF_MAX_MB }));
-        }
-        return api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name), manual);
-      }),
+    onFiles: (files) => void importAll(files),
     onReject: () => setError(t("common.wrongFile")),
     disabled: busy,
   });
 
   return (
     <section className={`card add drop-area${dragging ? " dropping" : ""}`} aria-label="PDF" {...zone}>
-      <button className="btn pri lg" onClick={() => run(() => api.importPdfFile(manual))} disabled={busy}>
-        {busy ? t("importView.importing") : t("importView.choosePdf")}
+      <button className="btn pri lg" onClick={() => picker.current?.click()} disabled={busy}>
+        {progress === null ? t("importView.choosePdf") : progress.of > 1 ? t("importView.importingOf", progress) : t("importView.importing")}
       </button>
+      <input
+        ref={picker}
+        type="file"
+        className="vh"
+        accept={PDF_FILES}
+        multiple
+        tabIndex={-1}
+        aria-hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          // Cleared so that picking the same files again still counts as a change.
+          e.target.value = "";
+          if (files.length > 0) {
+            void importAll(files);
+          }
+        }}
+      />
       <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
-      <NoAutoTranslate checked={manual} onChange={setManual} />
+      <NoAutoTranslate checked={manual} onChange={onManual} />
+      {done && (
+        <span role="status" className="msg">
+          {t("importView.pdfsImported", { n: done.imported })}
+        </span>
+      )}
+      {done && done.failed.length > 0 && (
+        <ul role="alert" className="msg error-text">
+          {done.failed.map((f) => (
+            <li key={f.name}>{t("importView.pdfFailed", { name: f.name, error: t.msg(f.error) })}</li>
+          ))}
+        </ul>
+      )}
       {error && (
         <span role="alert" className="msg error-text">
           {t.msg(error)}

@@ -273,31 +273,7 @@ async fn import_markdown_file(app: State<'_, App>, handle: tauri::AppHandle, man
     imported(&app, id, manual).map(Some)
 }
 
-/// A paper's PDF, picked here like `import_markdown_file`. `None` when the dialog is cancelled.
-#[tauri::command]
-async fn import_pdf_file(app: State<'_, App>, handle: tauri::AppHandle, manual: bool) -> Result<Option<i64>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    let mut dialog = handle.dialog().file().set_title(ui_text(&app, "PDFを取り込む", "Import a PDF")).add_filter("PDF", &["pdf"]);
-    if let Some(w) = handle.get_window("main") {
-        dialog = dialog.set_parent(&w);
-    }
-    dialog.pick_file(move |p| {
-        let _ = tx.send(p);
-    });
-    let Some(picked) = rx.await.map_err(err)? else {
-        return Ok(None);
-    };
-    let path = picked.into_path().map_err(err)?;
-    if std::fs::metadata(&path).map_err(err)?.len() > pdf::MAX_BYTES as u64 {
-        return Err(msg!("file.tooLarge", max = pdf::MAX_BYTES / 1024 / 1024));
-    }
-    let bytes = std::fs::read(&path).map_err(err)?;
-    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-    import_pdf(&app, bytes, name, manual).await.map(Some)
-}
-
-/// A PDF dropped or pasted on the import screen. Sent as the raw request body (a JSON array of 50 MB
+/// A PDF picked, dropped or pasted on the import screen, one call per file. Sent as the raw request body (a JSON array of 50 MB
 /// would be several times that), with its percent-encoded name and `manual` in headers.
 #[tauri::command]
 async fn import_pdf_bytes(app: State<'_, App>, request: tauri::ipc::Request<'_>) -> Result<i64, String> {
@@ -1647,7 +1623,6 @@ pub fn run() {
             import_urls,
             import_markdown,
             import_markdown_file,
-            import_pdf_file,
             import_pdf_bytes,
             article_image,
             favicon,

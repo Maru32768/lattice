@@ -742,6 +742,9 @@ export const en = {
   "importView.importMarkdown": "Import",
   "importView.choosePdf": "Choose a PDF file…",
   "importView.noAutoTranslate": "Don't translate automatically",
+  "importView.importingOf": "Importing… ({at} of {of})",
+  "importView.pdfsImported": "Imported {n} PDFs",
+  "importView.pdfFailed": "Couldn't import {name}: {error}",
   "feedsView.iconTooLarge": "Icons can be 1 MB at most",
   "feedsView.editorTitle": "Name and icon of {feedName}",
   "feedsView.displayName": "Display name",
@@ -817,7 +820,7 @@ export const en = {
   "importView.urlsDesc":
     "Reads any text that contains URLs: a plain list, browser bookmarks (HTML), CSV, JSON and so on. Fetching runs in the background, and an article that fails does not stop the rest.",
   "importView.pdfDesc":
-    "Imports a PDF, such as a paper, as one article. Its text is read and reassembled: two-column reading order, headings, figure and table captions, references (PDFs that are only images without text cannot be imported). A PDF URL such as arXiv's …/pdf/… can be saved or come from a feed like any other URL. The original PDF is kept for re-extraction.",
+    "Imports a PDF, such as a paper, as one article. Choose or drop several PDFs to import them together, in file-name order. Its text is read and reassembled: two-column reading order, headings, figure and table captions, references (PDFs that are only images without text cannot be imported). A PDF URL such as arXiv's …/pdf/… can be saved or come from a feed like any other URL. The original PDF is kept for re-extraction.",
   "importView.markdownDesc":
     'Imports Markdown as one article. The title is the first heading (# ), else the file name or the first line. Images with URLs are saved; images with relative paths are read from the file\'s folder, only with "Choose a file…" (dropped or pasted, they show their alt text). HTML tags are left out.',
   "feedsView.added": "Added {name}. New articles are fetched in the background.",
