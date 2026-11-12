@@ -513,3 +513,16 @@ test("a two-step key of the user's that starts with one of Vim's insert-mode key
   await page.waitForTimeout(600);
   await expect(page.locator(".prefix-hint")).toHaveCount(0);
 });
+
+test("a vimrc mapping of the prefix key goes to the editor in that mode, as any mapped key does", async ({ page }) => {
+  await chat(page, "inoremap <c-a> <left>\nnnoremap <c-a> 0");
+  await page.keyboard.type("ab");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.type("X");
+  await expect(chatInput(page), "insert mode: the vimrc's <left>").toHaveText("aXb");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+a");
+  await page.keyboard.press("x");
+  await expect(chatInput(page), "normal mode: the vimrc's 0, then x").toHaveText("Xb");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+});
