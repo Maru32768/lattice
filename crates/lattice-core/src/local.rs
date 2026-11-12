@@ -476,6 +476,21 @@ pub(crate) mod tests {
         assert_eq!(seen.lock().unwrap().len(), 1);
     }
 
+    #[tokio::test]
+    async fn a_server_that_turns_requests_away_mid_batch_stops_it_with_the_code() {
+        let blocks: Vec<String> = (0..12).map(|n| format!("Block {n} first. Block {n} second.")).collect();
+        for status in [401, 403, 404, 503] {
+            let (url, seen) = serve(move |path, body| match path {
+                "/v1/models" => plamo(path, body),
+                _ => (status, json!({})),
+            })
+            .await;
+            let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
+            assert_eq!(code(&t.error.unwrap()).0, "translate.localUnavailable", "{status}");
+            assert_eq!(seen.lock().unwrap().len(), 2, "{status}: the model list and the first block, then nothing");
+        }
+    }
+
     #[test]
     fn the_url_is_checked_and_taken_with_or_without_v1() {
         for (typed, url) in [
