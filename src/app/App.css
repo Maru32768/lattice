@@ -181,6 +181,8 @@
 .cb.on { background: var(--acc); border-color: var(--acc); }
 .pv-foot { flex: none; padding: 9px 14px; margin-top: auto; border-top: 1px solid var(--line); background: var(--foot); }
 .pv-foot .r { margin-left: auto; }
+.title-found { margin: 8px 2px 0; font-size: 12px; color: var(--ink3); overflow-wrap: anywhere; }
+.title-acts { display: flex; gap: 8px; }
 .menu .check { width: 12px; flex: none; color: var(--acc); font-size: 12px; }
 
 

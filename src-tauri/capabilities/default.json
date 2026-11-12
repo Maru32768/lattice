@@ -107,6 +107,7 @@
     "allow-remove-feed",
     "allow-refresh-feeds",
     "allow-set-favorite",
+    "allow-set-article-title",
     "allow-add-tag",
     "allow-list-groups",
     "allow-create-group",

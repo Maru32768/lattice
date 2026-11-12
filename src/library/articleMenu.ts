@@ -12,6 +12,8 @@ export interface ArticleActions {
   group: (ids: number[]) => void;
   /** Opens the tag picker for these articles. */
   tags: (ids: number[]) => void;
+  /** Opens the title editor for this article. */
+  rename: (a: ArticleRow) => void;
   /** `null` goes back to the AI rating. */
   relevance: (ids: number[], score: number | null) => void;
   /** `null` goes back to auto classification. */
@@ -71,6 +73,7 @@ export function articleMenu(rows: ArticleRow[], act: ArticleActions, t: T): (Men
     { label: read ? t("reader.markUnread") : t("reader.markRead"), onSelect: () => act.read(ids, !read) },
     { label: t("articleMenu.addToGroup"), onSelect: () => act.group(ids) },
     { label: t("articleMenu.editTags"), onSelect: () => act.tags(ids) },
+    ...(one ? [{ label: t("articleMenu.rename"), onSelect: () => act.rename(one) }] : []),
     "-",
     { label: t("common.relevance"), onSelect: () => {}, items: relevance },
     { label: t("common.difficulty"), onSelect: () => {}, items: difficulty },

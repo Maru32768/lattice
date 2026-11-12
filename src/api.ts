@@ -95,6 +95,8 @@ export const api = {
   listArticles: (filter: ArticleFilter, sort?: ArticleSort) => invoke<ArticleRow[]>("list_articles", { filter, sort: sort ?? null }),
   listTags: () => invoke<TagCount[]>("list_tags"),
   setFavorite: (id: number, favorite: boolean) => invoke<void>("set_favorite", { id, favorite }),
+  /** A blank title goes back to the one the app found. */
+  setArticleTitle: (id: number, title: string) => invoke<void>("set_article_title", { id, title }),
   addTag: (id: number, name: string) => invoke<void>("add_tag", { id, name }),
   removeTag: (id: number, name: string) => invoke<void>("remove_tag", { id, name }),
   listGroups: () => invoke<GroupRow[]>("list_groups"),

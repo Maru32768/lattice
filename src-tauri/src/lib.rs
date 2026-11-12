@@ -706,6 +706,12 @@ fn group_remove(app: State<'_, App>, id: i64, articles: Vec<i64>) -> Result<(), 
     groups::remove(&app.store, id, &articles)
 }
 
+/// The user's name for the article; blank goes back to the title the app found.
+#[tauri::command(async)]
+fn set_article_title(app: State<'_, App>, id: i64, title: String) -> Result<(), String> {
+    app.store.set_title(id, &title).map_err(err)
+}
+
 #[tauri::command(async)]
 fn set_favorite(app: State<'_, App>, id: i64, favorite: bool) -> Result<(), String> {
     app.store.set_favorite(id, favorite).map_err(err)
@@ -1687,6 +1693,7 @@ pub fn run() {
             import_opml,
             export_opml,
             set_favorite,
+            set_article_title,
             add_tag,
             list_groups,
             create_group,

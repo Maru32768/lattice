@@ -35,6 +35,7 @@ import { getEngine, homeOf } from "../browser/engines";
 import { ContextMenu, CoverContext, coverRect, type MenuItem } from "../ui/Popover";
 import { articleMenu, type ArticleActions } from "../library/articleMenu";
 import { GroupPicker, TagPicker } from "../library/GroupPicker";
+import { TitleEditor } from "../library/TitleEditor";
 import { UpdateNotice } from "./Update";
 import { placeFeeds, type FeedOrder } from "../feeds/feedFolders";
 import { paneOf, stepNav } from "../layout/panes";
@@ -200,6 +201,7 @@ export default function App() {
   /** グループに追加… from a context menu: the picker under the row or tab. */
   const [groupPick, setGroupPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
   const [tagPick, setTagPick] = useState<{ el: HTMLElement; ids: number[] } | null>(null);
+  const [titleEdit, setTitleEdit] = useState<{ el: HTMLElement; article: ArticleRow } | null>(null);
   /** The page tab being added to the Index. */
   const [saving, setSaving] = useState<Id | null>(null);
   // The Reader keeps its own mode; the mixed ratio is the Page's (`pageLang.percent`), one setting for both.
@@ -463,6 +465,7 @@ export default function App() {
     read: (ids, read) => void actOn(ids, (id) => api.setRead(id, read)),
     group: (ids) => setGroupPick({ el: from, ids }),
     tags: (ids) => setTagPick({ el: from, ids }),
+    rename: (a) => setTitleEdit({ el: from, article: a }),
     relevance: (ids, score) => void actOn(ids, (id) => api.setRelevance(id, score)),
     difficulty: (ids, level) => void actOn(ids, (id) => api.setDifficulty(id, level)),
     genre: (ids, name) => void actOn(ids, (id) => api.setGenre(id, name)),
@@ -1513,6 +1516,14 @@ export default function App() {
                 onClose={() => setTagPick(null)}
                 selected={tags.filter((g) => tagPick.ids.every((id) => articleById.get(id)?.tags.includes(g.name))).map((g) => g.name)}
                 onToggle={(name, on) => void actOn(tagPick.ids, (id) => (on ? api.addTag(id, name) : api.removeTag(id, name)))}
+              />
+            )}
+            {titleEdit && (
+              <TitleEditor
+                article={titleEdit.article}
+                anchor={titleEdit.el}
+                onClose={() => setTitleEdit(null)}
+                onSave={(title) => void act(() => api.setArticleTitle(titleEdit.article.id, title), titleEdit.article.id)}
               />
             )}
             {win.chatOpen && splitter("chat", "right")}

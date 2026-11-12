@@ -422,6 +422,17 @@ export const handlers = {
   },
   list_tags: (): TagCount[] => counts(articles.flatMap((a) => a.tags)),
   set_favorite: ({ id, favorite }: { id: number; favorite: boolean }) => void (article(id).favorite = favorite),
+  set_article_title: ({ id, title }: { id: number; title: string }) => {
+    const a = article(id);
+    const name = title.trim();
+    if (name) {
+      a.auto_title ??= a.title ?? a.original_url;
+      a.title = name;
+    } else if (a.auto_title != null) {
+      a.title = a.auto_title === a.original_url ? null : a.auto_title;
+      a.auto_title = null;
+    }
+  },
   add_tag: ({ id, name }: { id: number; name: string }) => {
     const a = article(id);
     if (!a.tags.includes(name)) {

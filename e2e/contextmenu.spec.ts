@@ -16,6 +16,7 @@ test("right-click on a row: favorite, read state, a new tab, and delete with con
     a.read_status === "read" ? "未読に戻す" : "既読にする",
     "グループに追加…",
     "タグを編集…",
+    "タイトルを変更…",
     "重要度",
     "難易度",
     "ジャンル",
@@ -69,6 +70,29 @@ test("right-click on a row sets the importance, difficulty and genre from submen
   await picker.getByPlaceholder("タグを検索・追加").fill("from-menu");
   await app.keyboard.press("Enter");
   await expect.poll(async () => (await callsOf(app, "add_tag")).at(-1)).toEqual({ id: a.id, name: "from-menu" });
+});
+
+test("タイトルを変更… gives an article a title of its own, and 元に戻す brings back the one Lattice gave it", async ({ app }) => {
+  const [a] = shown;
+  const open = async (title: string) => {
+    await row(app, title).click({ button: "right" });
+    await menu(app).getByRole("menuitem", { name: "タイトルを変更…" }).click();
+    return app.getByRole("dialog", { name: "記事のタイトル" });
+  };
+  let box = await open(a.title!);
+  const input = box.getByRole("textbox", { name: "記事のタイトル" });
+  await expect(input).toHaveValue(a.title!);
+  await expect(box.getByRole("button", { name: "元に戻す" })).toHaveCount(0);
+  await input.fill("第2部");
+  await input.press("Enter");
+  await expect(box).toBeHidden();
+  expect(await callsOf(app, "set_article_title")).toEqual([{ id: a.id, title: "第2部" }]);
+
+  box = await open("第2部");
+  await expect(box.getByText(`元のタイトル: ${a.title}`)).toBeVisible();
+  await box.getByRole("button", { name: "元に戻す" }).click();
+  await expect(row(app, a.title!)).toBeVisible();
+  expect((await callsOf(app, "set_article_title")).at(-1)).toEqual({ id: a.id, title: "" });
 });
 
 test("the menu key and Shift+F10 open the cursor row's menu; Esc returns to the row", async ({ app }) => {

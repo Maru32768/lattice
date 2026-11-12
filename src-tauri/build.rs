@@ -83,6 +83,7 @@ const COMMANDS: &[&str] = &[
     "import_opml",
     "export_opml",
     "set_favorite",
+    "set_article_title",
     "add_tag",
     "list_groups",
     "create_group",
