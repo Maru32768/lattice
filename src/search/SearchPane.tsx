@@ -4,7 +4,7 @@ import { DIM_LABELS, countBy, toggle, valueLabel, type Dim, type DimValue, type 
 import { excerpt, highlight, terms, type SearchMethod } from "./search";
 import { FacetBar } from "../library/ListPane";
 import { mmdd } from "../library/rowMeta";
-import { ActionKey, Icon, Kbd } from "../ui/Icon";
+import { Icon } from "../ui/Icon";
 import { onMiddle } from "../lib/middle";
 import { FilterOptgroups } from "../library/FilterOptgroups";
 import type { FilterGroup } from "../library/scopes";
@@ -311,26 +311,6 @@ export function SearchPane({
           );
         })}
       </div>
-      <footer className="list-f hints">
-        <span>
-          <ActionKey id="next" />
-          <ActionKey id="prev" />
-          {t("searchPane.hintMatches")}
-        </span>
-        <span>
-          <Kbd>Enter</Kbd>
-          {t("searchPane.hintReader")}
-        </span>
-        <span>
-          <Kbd>Shift</Kbd>
-          <Kbd>Enter</Kbd>
-          {t("searchPane.hintPage")}
-        </span>
-        <span className="r">
-          <Kbd>Esc</Kbd>
-          {t("searchPane.hintBack")}
-        </span>
-      </footer>
     </section>
   );
 }

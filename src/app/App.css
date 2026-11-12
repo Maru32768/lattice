@@ -120,7 +120,6 @@
 .list-tools .clear:disabled { opacity: .6; }
 .list-tools .clear:hover:not(:disabled) { color: var(--ink); }
 .list-body { flex: 1; min-height: 0; overflow-y: auto; }
-.list-f { flex: none; padding: 8px 16px; border-top: 1px solid var(--line); }
 /* Headings and rows have fixed heights (ROW_H / HEAD_H in ListPane.tsx): the virtualized list then knows every item's
    height before it draws it, so the scrollbar follows the mouse and scrolling up does not shift the rows. */
 .grp-h { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; height: 27px; padding: 0 16px 0 24px; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 11.5px; font-weight: 600; color: var(--ink2); }
@@ -288,7 +287,6 @@
 .mt.both { background: var(--ink); color: var(--on-ink); }
 .mt.lexical { border: 1px solid var(--zero); color: var(--ink2); }
 .mt.semantic { border: 1px dashed var(--zero); color: var(--ink2); }
-.list-f .r { margin-left: auto; }
 
 /* ---- document area: shared toolbar, Reader (Main / States boards) ------------------------- */
 .doc { flex: 1; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }

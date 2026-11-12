@@ -484,7 +484,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 
 **Where you left off.** Each list opens where you left it, for each set of filters and grouping. This holds when you come back from another list or the settings, open the closed list again, or start Lattice again.
 
-**Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor, `gg` and `G` go to the first and last article, and `d` and `u` move half a screen. A number in front, as in `5j`, moves that many. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view.
+**Keyboard.** `j` and `k` (or `↓` and `↑`) move the cursor, `gg` and `G` go to the first and last article, and `d` and `u` move half a screen. A number in front, as in `5j`, moves that many. `Enter` opens the article in the Reader, and `Shift+Enter` in the Page view. `s` adds or removes a favorite, and `m` switches between read and unread.
 
 ### The right-click menu
 

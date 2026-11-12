@@ -610,25 +610,6 @@ export function ListPane({
           )}
         </div>
       )}
-      <footer className="list-f hints">
-        <span>
-          <ActionKey id="next" />
-          <ActionKey id="prev" />
-          {t("common.hintMove")}
-        </span>
-        <span>
-          <ActionKey id="open" />
-          {t("common.hintOpen")}
-        </span>
-        <span>
-          <ActionKey id="favorite" />
-          {t("listPane.hintFavorite")}
-        </span>
-        <span>
-          <ActionKey id="read" />
-          {t("listPane.hintRead")}
-        </span>
-      </footer>
     </section>
   );
 }
