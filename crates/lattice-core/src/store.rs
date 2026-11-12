@@ -59,6 +59,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00038_content_hash_of_the_text.sql"),
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
     include_str!("../db/migrations/00040_translation_page_article.sql"),
+    include_str!("../db/migrations/00041_article_auto_title.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
 /// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of
@@ -206,6 +207,8 @@ pub struct ArticleRow {
     pub relevance_ai: Option<i64>,
     /// Automatic translation is off for this article (`translate::set_manual`).
     pub translate_manual: bool,
+    /// The title the app found, when `title` is the user's name for the article (`Store::set_title`).
+    pub auto_title: Option<String>,
 }
 
 /// Inbox views (§12). "Recently added" is `All`, which is already newest first.
@@ -410,7 +413,7 @@ const ARTICLE_COLS: &str = concat!(
     relevance_manual IS NULL AND coalesce((SELECT NOT ",
     crate::relevance::current_sql!(),
     " FROM relevance WHERE article_id = articles.id), 0),
-    (SELECT folder_id FROM feeds WHERE id = articles.feed_id), relevance_manual IS NOT NULL, (SELECT score FROM relevance WHERE article_id = articles.id), translate_manual"
+    (SELECT folder_id FROM feeds WHERE id = articles.feed_id), relevance_manual IS NOT NULL, (SELECT score FROM relevance WHERE article_id = articles.id), translate_manual, auto_title"
 );
 
 fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
@@ -454,6 +457,7 @@ fn article_row(r: &rusqlite::Row) -> Result<ArticleRow> {
         relevance_manual: r.get(29)?,
         relevance_ai: r.get(30)?,
         translate_manual: r.get(31)?,
+        auto_title: r.get(32)?,
     })
 }
 
@@ -867,9 +871,12 @@ impl Store {
                 tx.execute(
                     "UPDATE articles SET extraction_status = 'ok', last_error = NULL,
                      canonical_url = ?2, author = ?4, site_name = ?5,
-                     -- The feed entry's title is clean; a page <title> often carries the site name.
-                     title = coalesce((SELECT title FROM feed_items
-                                       WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), ?3),
+                     -- The feed entry's title is clean; a page <title> often carries the site name. A renamed
+                     -- article keeps the user's name and the found title goes to auto_title.
+                     title = iif(auto_title IS NULL, coalesce((SELECT title FROM feed_items
+                                       WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), ?3), title),
+                     auto_title = iif(auto_title IS NULL, NULL, coalesce((SELECT title FROM feed_items
+                                       WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), ?3, auto_title)),
                      published_at = coalesce(?6, (SELECT published_at FROM feed_items
                                                   WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)),
                      language = ?7, content_hash = ?8, extraction_version = ?9, text_length = ?10
@@ -1004,6 +1011,25 @@ impl Store {
         tx.execute("DELETE FROM tags WHERE id NOT IN (SELECT tag_id FROM article_tags)", [])?;
         tx.commit()?;
         Ok(n > 0)
+    }
+
+    /// The user's name for the article; a blank one goes back to the title the app found. The first rename keeps that
+    /// title in `auto_title` (the URL when there is none yet, so a renamed article always has one), and refetches update
+    /// it there.
+    pub fn set_title(&self, id: i64, title: &str) -> Result<()> {
+        let title = title.trim();
+        if title.is_empty() {
+            self.conn()
+                .execute("UPDATE articles SET title = nullif(auto_title, original_url), auto_title = NULL WHERE id = ?1 AND auto_title IS NOT NULL", [id])?;
+        } else {
+            self.conn().execute(
+                "UPDATE articles SET title = ?2, auto_title = coalesce(auto_title, title,
+                   (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), original_url)
+                 WHERE id = ?1",
+                params![id, title],
+            )?;
+        }
+        Ok(())
     }
 
     pub fn set_favorite(&self, id: i64, favorite: bool) -> Result<()> {

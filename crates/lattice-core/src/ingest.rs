@@ -106,7 +106,8 @@ fn from_feed(store: &Store, id: i64, page_error: Option<&str>) -> Result<bool, S
     store
         .conn()
         .execute(
-            "UPDATE articles SET title = coalesce(?2, title), last_error = coalesce(?3, last_error) WHERE id = ?1",
+            "UPDATE articles SET title = iif(auto_title IS NULL, coalesce(?2, title), title),
+             auto_title = iif(auto_title IS NULL, NULL, coalesce(?2, auto_title)), last_error = coalesce(?3, last_error) WHERE id = ?1",
             rusqlite::params![id, title, page_error],
         )
         .map_err(|e| e.to_string())?;
@@ -324,6 +325,40 @@ mod tests {
     }
 
     const BODY: &str = "<h2>Section</h2><p>Snapshot isolation prevents dirty reads but still permits write skew, which is why SSI exists. This sentence pads the paragraph so readability keeps it.</p>";
+
+    #[test]
+    fn a_renamed_article_keeps_its_name_through_refetches_and_a_blank_name_brings_back_the_found_one() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        let titles = |s: &Store| {
+            let a = s.article_row(id).unwrap().unwrap();
+            (a.title, a.auto_title)
+        };
+        s.set_title(id, " Part 2 ").unwrap();
+        assert_eq!(titles(&s), (Some("Part 2".into()), Some("https://example.com/post".into())), "named before it has a title of its own");
+        store_fetched(&s, id, &page(BODY)).unwrap();
+        assert_eq!(titles(&s), (Some("Part 2".into()), Some("T".into())));
+        let mut revised = page(BODY);
+        revised.html = revised.html.replace("<title>T</title>", "<title>Revised</title>");
+        store_fetched(&s, id, &revised).unwrap();
+        assert_eq!(titles(&s), (Some("Part 2".into()), Some("Revised".into())), "a refetch updates the found title, not the name");
+        s.set_title(id, "Part two").unwrap();
+        assert_eq!(titles(&s), (Some("Part two".into()), Some("Revised".into())), "renaming again keeps the found title");
+        s.set_title(id, "  ").unwrap();
+        assert_eq!(titles(&s), (Some("Revised".into()), None));
+        store_fetched(&s, id, &page(BODY)).unwrap();
+        assert_eq!(titles(&s), (Some("T".into()), None), "without a name a refetch titles it again");
+    }
+
+    #[test]
+    fn clearing_the_name_of_an_article_that_never_had_a_title_leaves_it_untitled() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        s.set_title(id, "Part 2").unwrap();
+        s.set_title(id, "").unwrap();
+        let a = s.article_row(id).unwrap().unwrap();
+        assert_eq!((a.title, a.auto_title), (None, None));
+    }
 
     #[test]
     fn stores_blocks_and_dedups() {

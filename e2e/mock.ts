@@ -389,6 +389,7 @@ function addArticle(url: string, title: string | null, extra: Partial<ArticleRow
     relevance_manual: false,
     relevance_ai: null,
     translate_manual: false,
+    auto_title: null,
     ...extra,
   });
   return id;

@@ -52,7 +52,7 @@ pub fn import(store: &Store, md: &str, name: Option<&str>, dir: Option<&Path>) -
 
 /// Converts the stored source again (no file access: local images were stored on import).
 pub fn reextract(store: &Store, id: i64, md: &str) -> Result<i64, String> {
-    let title = store.article_row(id).map_err(err)?.and_then(|a| a.title);
+    let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
     store.save_fetched(id, None, to_ir(md, title.as_deref()), None).map_err(err)?;
     images::enqueue(store, id)?;
     Ok(id)

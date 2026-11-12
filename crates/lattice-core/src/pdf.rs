@@ -50,9 +50,9 @@ pub fn store_fetched(store: &Store, id: i64, final_url: &str, bytes: &[u8]) -> R
     store.save_snapshot(id, Some(&snapshot(final_url, bytes)), to_ir(bytes, None), None).map_err(err)
 }
 
-/// Extracts the stored bytes again; the current title is the fallback, as on import.
+/// Extracts the stored bytes again; the title the app found (not the user's name) is the fallback, as on import.
 pub fn reextract(store: &Store, id: i64, bytes: &[u8]) -> Result<i64, String> {
-    let title = store.article_row(id).map_err(err)?.and_then(|a| a.title);
+    let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
     store.save_snapshot(id, None, to_ir(bytes, title.as_deref()), None).map_err(err)
 }
 

@@ -44,4 +44,8 @@ relevance_ai: number | null,
 /**
  * Automatic translation is off for this article (`translate::set_manual`).
  */
-translate_manual: boolean, };
+translate_manual: boolean, 
+/**
+ * The title the app found, when `title` is the user's name for the article (`Store::set_title`).
+ */
+auto_title: string | null, };
