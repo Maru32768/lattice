@@ -5,7 +5,8 @@ import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, drawSelection, keymap, placeholder as placeholderText } from "@codemirror/view";
 import { history, historyKeymap, standardKeymap } from "@codemirror/commands";
 import { Vim, getCM, vim as vimKeys } from "@replit/codemirror-vim";
-import { EX_ALIASES, type ActionId } from "../lib/keymap";
+import { EX_ALIASES, chordFrom, keyOf, type ActionId } from "../lib/keymap";
+import { getBindings } from "../lib/keys";
 import { getVimrc, useVimrc, vimBridge } from "./vim";
 import { ENGINE_INSERT_KEYS, KNOWN, mappedKeys, parseVimrc, type FreedMode } from "./vimrc";
 
@@ -107,7 +108,12 @@ vimBridge.owns = (e, editor) => {
   if (!key) {
     return false;
   }
-  return state.insertMode ? mapped.insert.has(key) || ENGINE_INSERT_KEYS.has(key) : mapped[state.visualMode ? "visual" : "normal"].has(key);
+  if (!state.insertMode) {
+    return mapped[state.visualMode ? "visual" : "normal"].has(key);
+  }
+  // The engine's own key is the app's when it starts one of the app's two-key bindings in a field, as the prefix does.
+  const app = keyOf(e);
+  return mapped.insert.has(key) || (ENGINE_INSERT_KEYS.has(key) && !(app && chordFrom(getBindings(), app)?.inFields));
 };
 
 // ---- the editor --------------------------------------------------------------------------------

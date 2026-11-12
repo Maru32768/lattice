@@ -475,3 +475,15 @@ test("a page's quote lands in the Vim editor after what was typed, and typing go
   await expect(chatInput(shell)).toContainText("why");
   expect(await questions(shell)).toEqual([]);
 });
+
+test("a prefix Vim edits with in insert mode still leads the app's keys there, and pressed twice goes to Vim", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+U" })));
+  await chat(page);
+  await page.keyboard.type("one two");
+  await page.keyboard.press("Control+u");
+  await expect(page.locator(".prefix-hint")).toBeVisible();
+  await expect(chatInput(page), "the engine did not get the prefix").toHaveText("one two");
+  await page.keyboard.press("Control+u");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+  await isEmpty(page);
+});
