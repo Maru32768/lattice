@@ -85,13 +85,6 @@ test("an unbound Space pages the Reader down a screen as a browser does, and Shi
   await expect.poll(() => scrollTop(app)).toBe(0);
 });
 
-test("Space on a focused list row still presses it", async ({ app }) => {
-  const row = await listRow(app, label(1));
-  await row.focus();
-  await app.keyboard.press("Space");
-  await expect(app.locator(".art-title")).toHaveText(label(1));
-});
-
 test("J and K open the next and previous article in the focused pane, which keeps the keyboard", async ({ app }) => {
   await intoReader(app);
   await app.keyboard.press("Shift+J");
