@@ -274,7 +274,8 @@ const FIXED = ACTIONS.filter((a) => a.passThrough).map((a) => a.id);
 /** The bindings in effect: the defaults with the user's `overrides`, PREFIX read as `prefix`. */
 export function merge(overrides: Partial<Bindings>, prefix = DEFAULT_PREFIX): Bindings {
   const d = defaultBindings(prefix);
-  const own = Object.fromEntries(Object.entries(overrides).map(([id, keys]) => [id, withPrefix(keys, prefix)]));
+  // `<prefix> S` and a literal `Ctrl+B S` are one key under Ctrl+B, which a row lists once.
+  const own = Object.fromEntries(Object.entries(overrides).map(([id, keys]) => [id, [...new Set(withPrefix(keys, prefix))]]));
   return { ...d, ...own, ...Object.fromEntries(FIXED.map((id) => [id, d[id]])) };
 }
 

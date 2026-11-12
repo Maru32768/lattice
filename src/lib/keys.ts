@@ -9,7 +9,7 @@ const STORAGE_KEY = "lattice.shortcuts";
 const STORAGE_VERSION = 4;
 const FILE_FORMAT = "lattice.shortcuts";
 
-/** What the user changed: the prefix, and the actions' keys with PREFIX for a first key that is the prefix, so that they move with it. */
+/** What the user changed: the prefix, and the actions' keys with PREFIX for a first key that was the prefix when they were recorded, so that they move with it. */
 export interface Shortcuts {
   prefix: string;
   overrides: Partial<Bindings>;
@@ -19,16 +19,10 @@ const NONE: Shortcuts = { prefix: DEFAULT_PREFIX, overrides: {} };
 // It reads imported files too: a key listed twice would repeat a React key in the row.
 const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => typeof k === "string") ? [...new Set(v.filter(Boolean))] : undefined);
 
-/** `overrides` as kept with `prefix`: a two-key binding under the prefix starts with PREFIX, so that it moves with the prefix. Only the first key: as a second key the prefix is send-prefix's. */
-function kept(prefix: string, overrides: Partial<Bindings>): Shortcuts {
-  const out: Partial<Bindings> = {};
-  for (const [id, keys] of Object.entries(overrides) as [ActionId, string[]][]) {
-    out[id] = [...new Set(keys.map((k) => (k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k)))];
-  }
-  return { prefix, overrides: out };
-}
-
-/** The prefix and keys in a stored value. Another version's are dropped, not read. */
+/**
+ * The prefix and keys in a stored value, as they were stored. Another version's are dropped, not read. A key that starts with
+ * the stored prefix itself, not PREFIX, was recorded under another one: reading it as PREFIX would move it with the next.
+ */
 export function fromStored(raw: Record<string, unknown>): Shortcuts {
   if (raw.version !== STORAGE_VERSION) {
     return NONE;
@@ -40,7 +34,7 @@ export function fromStored(raw: Record<string, unknown>): Shortcuts {
       overrides[a.id] = v;
     }
   }
-  return kept(typeof raw.prefix === "string" && canPrefix(raw.prefix) ? raw.prefix : DEFAULT_PREFIX, overrides);
+  return { prefix: typeof raw.prefix === "string" && canPrefix(raw.prefix) ? raw.prefix : DEFAULT_PREFIX, overrides };
 }
 
 const stored = ({ prefix, overrides }: Shortcuts) => ({ version: STORAGE_VERSION, ...(prefix === DEFAULT_PREFIX ? {} : { prefix }), ...overrides });
@@ -62,7 +56,7 @@ const subscribe = (f: () => void) => {
 };
 
 function commit(next: Shortcuts) {
-  state = kept(next.prefix, next.overrides);
+  state = next;
   bindings = merge(state.overrides, state.prefix);
   savePref(STORAGE_KEY, JSON.stringify(stored(state)));
   listeners.forEach((f) => f());
@@ -86,14 +80,20 @@ export const getPrefix = () => state.prefix;
 /** Pass the bindings a component rendered with, so a memoized render follows a change. A default that moved with the prefix is no change. */
 export const isCustom = (id: ActionId, b: Bindings = bindings) => b[id] !== defaultBindings(state.prefix)[id];
 
+/**
+ * `keys` as pressed now: a two-key binding whose first key is the prefix is kept as PREFIX and the rest, so that it moves with
+ * the prefix, and the others stay as pressed. Only the first key: as a second key the prefix is send-prefix's.
+ */
 export function setKeys(id: ActionId, keys: string[]) {
-  const d = defaultBindings(state.prefix)[id];
+  const { prefix } = state;
+  const d = defaultBindings(prefix)[id];
   const same = keys.length === d.length && keys.every((k, i) => k === d[i]);
+  const kept = keys.map((k) => (k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k));
   const { [id]: _, ...rest } = state.overrides;
-  commit({ ...state, overrides: same ? rest : { ...rest, [id]: keys } });
+  commit({ ...state, overrides: same ? rest : { ...rest, [id]: kept } });
 }
 
-/** Every key that starts with the prefix moves to `prefix`, the defaults and the user's own. */
+/** The defaults and the keys recorded under the prefix move to `prefix`; a key recorded under another first key stays as it is. */
 export const setPrefix = (prefix: string) => commit({ ...state, prefix });
 
 /** One action back to its default keys. */
