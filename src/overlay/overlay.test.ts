@@ -266,4 +266,8 @@ test("takesBeforePage: a second key, a repeat, a Ctrl / Alt key and a bound Spac
   const takenSpace = (key: string) => takesBeforePage(IDLE, key, stepKeys(spaced, IDLE, key, { scope: "doc", inField: false, now: 0 }));
   assert.equal(takenSpace("Space"), true, "a bound Space, whose default pages");
   assert.equal(takenSpace("Shift+Space"), true, "and the first key of a Space chord");
+
+  const rebound = pageKeys(merge({ selectAll: ["Ctrl+A A"] })).bindings;
+  const second = stepKeys(rebound, { ...IDLE, first: "Ctrl+A" }, "A", { scope: "doc", inField: true, now: 0 });
+  assert.equal(takesBeforePage({ ...IDLE, first: "Ctrl+A" }, "A", second), true, "select all ending in a, which has no select-all to pass on, is taken");
 });
