@@ -6,7 +6,7 @@ import { useBindings } from "../lib/keys";
 import { ACTION_GROUPS, actionLabel, keyLabel, keyOf } from "../lib/keymap";
 import { scrollDoc, type DocScroll } from "../docnav/scroll";
 
-const SCROLLS: DocScroll[] = ["scrollDown", "scrollUp", "halfDown", "halfUp", "pageDown", "pageUp", "docTop", "docBottom"];
+const SCROLLS: DocScroll[] = ["scrollDown", "scrollUp", "halfDown", "halfUp", "pageDown", "pageUp"];
 
 /** Every binding, by what it is for, as Settings › Shortcuts has them. */
 export function KeyHelp({ onClose }: { onClose: () => void }) {
