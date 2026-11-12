@@ -80,8 +80,9 @@ export function ShortcutSettings() {
   const prefix = usePrefix();
   /** Recording a new prefix, with the key it refused last. */
   const [prefixRec, setPrefixRec] = useState<{ refused?: string } | null>(null);
-  // Waiting for a second key, the prefix no longer runs an action it is bound to alone.
-  const shadowed = ACTIONS.filter((a) => bindings[a.id].includes(prefix) && chordFrom(bindings, prefix, a.scope));
+  // Waiting for a second key, the prefix no longer runs an action it is bound to alone. It always waits: send-prefix's keys
+  // are fixed at the prefix twice, in every scope.
+  const shadowed = ACTIONS.filter((a) => bindings[a.id].includes(prefix));
   const undoable = undo?.after === bindings ? undo : null;
   const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
   const custom = prefix !== DEFAULT_PREFIX || ACTIONS.some((a) => isCustom(a.id, bindings));
