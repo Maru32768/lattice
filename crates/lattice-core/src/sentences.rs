@@ -166,9 +166,11 @@ fn entity(rest: &str) -> Option<(usize, char)> {
 }
 
 /// A ⟦n⟧ placeholder (an image or a formula) as one char that is not a letter, so a cut never falls inside one.
+/// Digits only, as the snippets number them: a ⟦ in the text may have tags before its ⟧.
 fn token(rest: &str) -> Option<(usize, char)> {
-    let end = rest.strip_prefix('⟦')?.find('⟧')?;
-    Some(('⟦'.len_utf8() + end + '⟧'.len_utf8(), '\u{FFFC}'))
+    let digits = rest.strip_prefix('⟦')?.bytes().take_while(u8::is_ascii_digit).count();
+    let len = '⟦'.len_utf8() + digits;
+    (digits > 0 && rest[len..].starts_with('⟧')).then_some((len + '⟧'.len_utf8(), '\u{FFFC}'))
 }
 
 #[cfg(test)]
@@ -191,6 +193,7 @@ mod tests {
         ("Done.⟦12⟧ Next part.", &["Done.", "⟦12⟧ Next part."]),
         ("Done. ⟦2⟧", &["Done. ⟦2⟧"]),
         ("⟦3⟧ A caption.", &["⟦3⟧ A caption."]),
+        ("Let ⟦a <b>⟧ hold. Then</b> go.", &["Let ⟦a <b>⟧ hold. Then</b> go."]),
         ("H<sub>2</sub>O boils. It is water.", &["H<sub>2</sub>O boils. ", "It is water."]),
         ("Line one<br>Line two", &["Line one<br>", "Line two"]),
         ("Kept <img src=\"a.png\"> inline. Next.", &["Kept <img src=\"a.png\"> inline. ", "Next."]),

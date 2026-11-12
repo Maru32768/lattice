@@ -1137,7 +1137,7 @@ Bを採った。行の対応が保て、空行でblockを区切らずに済み�
 
 ### 確かめたこと
 
-- `sentences.rs`のテストで、37の断片の分け方(`<code>`・`<a href>`・入れ子の`<em>`、要素の中の境界、`&amp;`・`&lt;`・`&nbsp;`、⟦n⟧の位置、`<sub>`、`<br>`、`<img>`、日本語の。？」、文の終わりの後ろの開き括弧、`e.g. the`、`Dr. Smith`、`etc.`の後ろの文の終わり、閉じていないタグ)と、そのすべてで原文をつなぐと断片になること、文が空でないこと、タグの組を割らないこと、境界の空白が前の文に入ること。
+- `sentences.rs`のテストで、39の断片の分け方(`<code>`・`<a href>`・入れ子の`<em>`、要素の中の境界、`&amp;`・`&lt;`・`&nbsp;`、⟦n⟧の位置、`<sub>`、`<br>`、`<img>`、日本語の。？」、文の終わりの後ろの開き括弧、`e.g. the`、`Dr. Smith`、`etc.`の後ろの文の終わり、閉じていないタグ)と、そのすべてで原文をつなぐと断片になること、文が空でないこと、タグの組を割らないこと、境界の空白が前の文に入ること。
 - `local.rs`のテストで、ループバックのHTTPサーバーに対して、blockが行の対応で単位になること、要求の`model`・`temperature`・`stop`・systemの形、行の数が合わないときに1文ずつ文脈付きで送り直すこと、文が1つのblockを送り直さないこと、`length`の訳を受け取らないこと、HTTP 500のblockを文から作ること、すべて失敗するサーバーに2回しか送らないこと、閉じたポートと503が`translate.localUnavailable`になり12段落のbatchで1回しか送らないこと、URLの検査。
 - `translate.rs`のテストで、`local`のとき、「専門用語を英語のまま残す」がオンで「追加の指示」があっても、`target`のキーが`ja-x-translated-terms`になること、`ja-x-instr-…`で積んだjobが`ja-x-translated-terms`にだけ`provider`=`local`・`prompt_version`=`plamo-v1`で書き、chainを1回も呼ばないこと、進み具合がそのキーを数えること、閉じたポートではjobのエラーが`{"code":"translate.localUnavailable"`で始まり、何も保存せずchainも呼ばないこと、`llm`に戻すと設定どおりのキーに戻ること。
 - 実機のPLaMo(2B Q4_K_M、llama-serverを`-c 16384 -np 3 -kvu`で起動)で、`#[ignore]`のテスト`local::tests::live_plamo`。`/v1/models`のモデルは`plamo-3-translate`。川の文脈を付けた「The bank was muddy.」は「川岸はぬかるんでいた。」になった。`<code>`とリンクを含む3文の段落は3つの単位で返り、`<code>git status</code>`と`<a href="https://git-scm.com/docs">`は訳文に残った。
