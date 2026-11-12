@@ -198,10 +198,12 @@ test("in insert mode the engine keeps the keys it edits with; in normal mode Ctr
   await page.keyboard.type("one two");
   await page.keyboard.press("Control+w");
   await expect(chatInput(page), "Ctrl+W deletes the word before the cursor").toHaveText("one");
-  await page.keyboard.type("three");
-  await page.keyboard.press("Control+u");
-  await isEmpty(page);
-  await expect(tabs, "no tab closed").toHaveCount(1);
+  const text = () => chatInput(page).evaluate((el) => el.textContent);
+  await page.keyboard.press("Control+t");
+  await expect.poll(text, "Ctrl+T indents the line").toMatch(/^\s+one\s*$/);
+  await page.keyboard.press("Control+d");
+  await expect.poll(text, "Ctrl+D takes the indent back").toMatch(/^one\s*$/);
+  await expect(tabs, "no tab closed or opened").toHaveCount(1);
 
   await page.keyboard.press("Escape");
   await expect(mode(page)).toHaveText("NORMAL");
