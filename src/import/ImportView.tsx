@@ -318,18 +318,6 @@ interface Failed {
   error: string;
 }
 
-/** One PDF's import: its article, or why it could not be imported (the rest still go in). */
-async function importPdf(file: File, manual: boolean, tooLargeError: string): Promise<{ id: number } | { error: string }> {
-  if (tooLarge(file, PDF_MAX_MB)) {
-    return { error: tooLargeError };
-  }
-  try {
-    return { id: await api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name), manual) };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
 /**
  * The PDF tab's import, kept outside the component: switching tab or screen mid-import unmounts it, and on the way back
  * the run must still show, with the files that failed, and a second run must not start beside it and mix the books' order.
@@ -376,11 +364,15 @@ async function importPdfs(
   const failed: Failed[] = [];
   for (const [i, file] of files.entries()) {
     setPdfRun({ progress: { at: i + 1, of: files.length } });
-    const r = await importPdf(file, manual, tooLargeError);
-    if ("id" in r) {
-      ids.push(r.id);
-    } else {
-      failed.push({ name: file.name, error: r.error });
+    // A file that cannot go in is listed, and the rest still go in.
+    if (tooLarge(file, PDF_MAX_MB)) {
+      failed.push({ name: file.name, error: tooLargeError });
+      continue;
+    }
+    try {
+      ids.push(await api.importPdfBytes(new Uint8Array(await file.arrayBuffer()), fileStem(file.name), manual));
+    } catch (e) {
+      failed.push({ name: file.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
   // The backend keeps one article per PDF content: the same file twice, or one already saved, gives an id seen before.
