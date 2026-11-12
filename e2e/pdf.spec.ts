@@ -236,3 +236,18 @@ test("the same PDF twice in a batch counts and files as one article, as the back
   const calls = (await callsOf(app, "group_add")) as { articles: number[] }[];
   expect(calls.map((c) => c.articles.length)).toEqual([1]);
 });
+
+test("a refused file's message is gone when the PDF tab is opened again, while a batch's count stays", async ({ app }) => {
+  await openPdfTab(app);
+  await picker(app).setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
+  await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
+  await app.locator("nav").getByRole("button", { name: "ソースを管理" }).click();
+  await openPdfTab(app);
+  await expect(app.getByRole("alert")).toHaveCount(0);
+
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  await app.locator("nav").getByRole("button", { name: "ソースを管理" }).click();
+  await openPdfTab(app);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+});

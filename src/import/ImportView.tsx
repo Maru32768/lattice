@@ -1,4 +1,4 @@
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api, type GroupRow, type ImportSummary } from "../api";
 import { GroupPicker } from "../library/GroupPicker";
 import { Icon } from "../ui/Icon";
@@ -422,6 +422,13 @@ function PdfImport({
   const picker = useRef<HTMLInputElement>(null);
   const { progress, done, error } = usePdfRun();
   const busy = progress !== null;
+  // A refused file or one PDF's failure is news of that moment and goes when the tab is left, as before; a batch's
+  // count and the error that came with it stay, since that is what a book imported in the background leaves to see.
+  useEffect(() => {
+    if (!currentPdfRun().progress && !currentPdfRun().done) {
+      setPdfRun({ error: null });
+    }
+  }, []);
   const importAll = (files: File[]) =>
     void importPdfs(files, { manual, tooLargeError: t("be.file.tooLarge", { max: PDF_MAX_MB }), fileInto, groups: into, onOpen, onImported });
 
