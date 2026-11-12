@@ -53,6 +53,7 @@ export function ImportView({
   const t = useT();
   const [into, setInto] = useState(initialGroups);
   const [manual, setManualState] = useSynced(NO_AUTO_KEY, noAutoTranslate);
+  const pdfBusy = usePdfRun().progress !== null;
   const setManual = (on: boolean) => {
     setManualState(on);
     savePref(NO_AUTO_KEY, on ? "on" : "off");
@@ -83,7 +84,8 @@ export function ImportView({
             </div>
           </div>
         </header>
-        <GroupField groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} />
+        {/* A PDF run files into the groups chosen when it started: changing them meanwhile would show groups not in effect. */}
+        <GroupField groups={groups} into={into} onInto={setInto} onCreate={onCreateGroup} disabled={pdfBusy} />
         {tab === "urls" ? (
           <UrlImport onImported={onImported} fileInto={fileInto} />
         ) : tab === "markdown" ? (
@@ -102,11 +104,13 @@ function GroupField({
   into,
   onInto,
   onCreate,
+  disabled,
 }: {
   groups: GroupRow[];
   into: number[];
   onInto: (ids: number[]) => void;
   onCreate: (name: string) => Promise<number>;
+  disabled: boolean;
 }) {
   const t = useT();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
@@ -116,6 +120,7 @@ function GroupField({
       <span className="muted">{t("common.group")}</span>
       <button
         className={`chip${names.length ? " on" : " dashed"}`}
+        disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={!!anchor}
         onClick={(e) => {
@@ -143,11 +148,11 @@ function GroupField({
 
 type FileInto = (ids: number[]) => Promise<void>;
 
-function NoAutoTranslate({ checked, onChange }: { checked: boolean; onChange: (on: boolean) => void }) {
+function NoAutoTranslate({ checked, onChange, disabled }: { checked: boolean; onChange: (on: boolean) => void; disabled?: boolean }) {
   const t = useT();
   return (
     <label className="ff-check">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       {t("importView.noAutoTranslate")}
     </label>
   );
@@ -439,7 +444,8 @@ function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen:
         }}
       />
       <span className="muted drop-hint">{t("common.dropOrPaste")}</span>
-      <NoAutoTranslate checked={manual} onChange={onManual} />
+      {/* Like the groups: the run goes on with the value it started with. */}
+      <NoAutoTranslate checked={manual} onChange={onManual} disabled={busy} />
       {done && (
         <span role="status" className="msg">
           {t("importView.pdfsImported", { n: done.imported })}

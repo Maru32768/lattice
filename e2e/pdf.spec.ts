@@ -83,9 +83,13 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
     type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
     const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
     const invoke = internals.invoke;
+    // The first file waits for the spec's go-ahead, so the run is surely still on when the tab comes back.
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    (window as unknown as { releaseImport: () => void }).releaseImport = () => release();
     internals.invoke = async (cmd, args, options) => {
       if (cmd === "import_pdf_bytes") {
-        await new Promise((r) => setTimeout(r, 400));
+        await held;
       }
       return invoke(cmd, args, options);
     };
@@ -96,8 +100,12 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
   await kinds.getByRole("button", { name: "Markdown" }).click();
   await kinds.getByRole("button", { name: "PDF" }).click();
   await expect(app.getByRole("button", { name: /^取り込み中…/ }), "the run is still on, so no second one can start beside it").toBeDisabled();
+  await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" }), "the run keeps the value it started with").toBeDisabled();
+  await expect(app.locator(".import-groups").getByRole("button")).toBeDisabled();
+  await app.evaluate(() => (window as unknown as { releaseImport: () => void }).releaseImport());
   await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
   expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
+  await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" })).toBeEnabled();
 });
 
 test("one PDF whose group could not be added to stays on the import screen with the error", async ({ app }) => {
