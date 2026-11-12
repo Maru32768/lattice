@@ -294,7 +294,7 @@ mod tests {
 
     #[test]
     fn odd_input_is_one_sentence_at_worst() {
-        for html in ["", " ", "<", "<b>", "&", "&#xZZ;", "⟦", "⟦1⟧", "</p></p>", "<!-- c. D -->x. Y", "a\u{1F600}. B"] {
+        for html in ["", " ", "<", "<b>", "&", "&#xZZ;", "⟦", "⟦1⟧", "⟦1 日本。次", "</p></p>", "<!-- c. D -->x. Y", "a\u{1F600}. B"] {
             let parts = sources(html);
             assert_eq!(parts.concat(), html);
             assert!(!parts.is_empty(), "{html:?}");
