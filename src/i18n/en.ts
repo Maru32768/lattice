@@ -1177,7 +1177,7 @@ export const en = {
   "be.translate.parallelRange": "Parallel requests must be between 1 and {max}",
   "be.translate.missingBlocks": "No translation came back for {missing} blocks",
   "be.translate.localUnavailable": "Cannot connect to the translation server at {url}. Start the server, then try again ({detail})",
-  "be.translate.localUrlInvalid": "The translation server URL must start with http:// or https://",
+  "be.translate.localUrlInvalid": "The translation server URL is not valid (for example http://127.0.0.1:8077)",
   "be.translate.localNoModel": "The translation server at {url} has no model loaded. Load a model, then try again",
   "be.file.tooLarge": "The file is too large (up to {max} MB)",
   "be.file.notUtf8": "Not a UTF-8 text file",

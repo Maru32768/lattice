@@ -108,7 +108,7 @@ test("the local translation engine shows its server's model and turns off the se
   await expect(connection).toHaveText(refused);
   await url.fill("127.0.0.1:8077");
   await saveUrl.click();
-  await expect(app.getByRole("alert")).toHaveText("翻訳サーバーのURLは、http://かhttps://で始めてください");
+  await expect(app.getByRole("alert")).toHaveText("翻訳サーバーのURLが正しくありません(例: http://127.0.0.1:8077)");
 
   const categories = app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni");
   await categories.filter({ has: app.locator(".label").getByText("表示言語", { exact: true }) }).click();
