@@ -45,8 +45,7 @@ internals.invoke = (cmd, args, options) => {
   }
   if (cmd === "import_pdf_bytes") {
     // Real IPC puts these in fetch headers, which take bytes only: a name sent without percent-encoding throws there.
-    new Headers(options?.headers);
-    e2e.calls.push({ cmd: "import_pdf_bytes.headers", args: options?.headers });
+    e2e.calls.push({ cmd: "import_pdf_bytes.headers", args: Object.fromEntries(new Headers(options?.headers)) });
   }
   return invoke(cmd, args, options);
 };
