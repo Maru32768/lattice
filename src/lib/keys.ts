@@ -20,7 +20,7 @@ export function fromStored(raw: Record<string, unknown>): Partial<Bindings> {
   }
   for (const a of ACTIONS) {
     const v = keysIn(raw[a.id]);
-    if (v && !a.passThrough) {
+    if (v) {
       out[a.id] = v;
     }
   }

@@ -5,7 +5,6 @@ import { fromStored, getBindings, isCustom, parseShortcutsFile, replaceKeys, res
 
 test("fromStored: the keys of version 3 as saved; another version's are dropped, not read", () => {
   assert.deepEqual(fromStored({ splitDown: ['Ctrl+A "'], favorite: ["S", "S", ""], version: 3 }), { splitDown: ['Ctrl+A "'], favorite: ["S"] });
-  assert.deepEqual(fromStored({ selectAll: ["Ctrl+A A"], version: 3 }), {}, "select all's keys are fixed");
   for (const version of [undefined, 1, 2, "3"]) {
     assert.deepEqual(fromStored({ splitDown: ['Ctrl+B "'], pageUp: ["Ctrl+B Ctrl+B"], version }), {}, `version ${version}`);
   }
