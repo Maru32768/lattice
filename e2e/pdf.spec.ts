@@ -135,3 +135,16 @@ test("a file of another kind picked with the PDFs is left out, and one alone is 
   await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
   await expect(app.getByRole("status"), "the last batch's count goes with the new error").toHaveCount(0);
 });
+
+test("several PDFs all go into the group chosen on the import screen", async ({ app }) => {
+  const [group] = GROUPS;
+  await navItem(app, group.name).click();
+  await openPdfTab(app);
+  await expect(app.locator(".import-groups").getByRole("button")).toHaveText(group.name);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 scan.pdf", "%no-text"), pdf("3 c.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  const calls = (await callsOf(app, "group_add")) as { id: number; articles: number[] }[];
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.id).toBe(group.id);
+  expect(calls[0]?.articles, "the two that went in, not the one that failed").toHaveLength(2);
+});
