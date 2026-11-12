@@ -149,3 +149,17 @@ test("a file dropped where nothing takes it never navigates the app; text dragge
   });
   expect(textDrag, "text dragged into a field keeps the browser's behavior").toBe(false);
 });
+
+test("two dropped PDFs of one name that both fail are both listed", async ({ app }) => {
+  await openImport(app, "pdf");
+  await app.getByRole("region", { name: "PDF" }).evaluate((el) => {
+    const dataTransfer = new DataTransfer();
+    for (let i = 0; i < 2; i++) {
+      dataTransfer.items.add(new File(["%no-text"], "scan.pdf", { type: "application/pdf" }));
+    }
+    el.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer }));
+    el.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer }));
+  });
+  await expect(app.getByRole("status")).toHaveText("0件のPDFを取り込みました");
+  await expect(app.getByRole("alert").getByRole("listitem")).toHaveCount(2);
+});
