@@ -177,3 +177,17 @@ test("a group picker left open when PDFs start going in closes, so the run's gro
   await releaseImports(app);
   await expect(app.locator("h1.art-title")).toHaveText("Dropped Paper");
 });
+
+test("the import screen opened again mid-run shows the groups the run files into", async ({ app }) => {
+  const [first, second] = GROUPS;
+  await navItem(app, first.name).click();
+  await holdImports(app);
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
+  await navItem(app, second.name).click();
+  await openPdfTab(app);
+  await expect(app.locator(".import-groups").getByRole("button"), "not the scope it was opened from").toHaveText(first.name);
+  await releaseImports(app);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  expect(((await callsOf(app, "group_add")) as { id: number }[]).map((c) => c.id)).toEqual([first.id]);
+});

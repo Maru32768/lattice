@@ -51,7 +51,8 @@ export function ImportView({
   onCreateGroup: (name: string) => Promise<number>;
 }) {
   const t = useT();
-  const [into, setInto] = useState(initialGroups);
+  // Opened again mid-run, the screen shows the groups the run files into, not the list scope it was opened from.
+  const [into, setInto] = useState(() => (currentPdfRun().progress ? currentPdfRun().groups : initialGroups));
   const [manual, setManualState] = useSynced(NO_AUTO_KEY, noAutoTranslate);
   const pdfBusy = usePdfRun().progress !== null;
   const setManual = (on: boolean) => {
@@ -91,7 +92,7 @@ export function ImportView({
         ) : tab === "markdown" ? (
           <MarkdownImport onOpen={onOpen} fileInto={fileInto} manual={manual} onManual={setManual} pdfBusy={pdfBusy} />
         ) : (
-          <PdfImport onOpen={onOpen} onImported={onImported} fileInto={fileInto} manual={manual} onManual={setManual} />
+          <PdfImport onOpen={onOpen} onImported={onImported} fileInto={fileInto} into={into} manual={manual} onManual={setManual} />
         )}
       </div>
     </main>
@@ -336,10 +337,12 @@ async function importPdf(file: File, manual: boolean, tooLargeError: string): Pr
 interface PdfRun {
   /** The file being imported (1-based) and how many there are; null when idle. */
   progress: { at: number; of: number } | null;
+  /** The groups the run files into, chosen when it started. */
+  groups: number[];
   done: { imported: number; failed: Failed[] } | null;
   error: string | null;
 }
-let pdfRun: PdfRun = { progress: null, done: null, error: null };
+let pdfRun: PdfRun = { progress: null, groups: [], done: null, error: null };
 const pdfRunListeners = new Set<() => void>();
 function setPdfRun(next: Partial<PdfRun>) {
   pdfRun = { ...pdfRun, ...next };
@@ -358,16 +361,17 @@ async function importPdfs(
     manual,
     tooLargeError,
     fileInto,
+    groups,
     onOpen,
     onImported,
-  }: { manual: boolean; tooLargeError: string; fileInto: FileInto; onOpen: (id: number) => void; onImported: () => void },
+  }: { manual: boolean; tooLargeError: string; fileInto: FileInto; groups: number[]; onOpen: (id: number) => void; onImported: () => void },
 ) {
   if (pdfRun.progress) {
     return;
   }
   // "01 …", "02 …" and "2 …", "10 …" both go in chapter order, so the library lists them as the book does.
   const files = picked.toSorted((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  setPdfRun({ progress: { at: 1, of: files.length }, done: null, error: null });
+  setPdfRun({ progress: { at: 1, of: files.length }, groups, done: null, error: null });
   const ids: number[] = [];
   const failed: Failed[] = [];
   for (const [i, file] of files.entries()) {
@@ -404,13 +408,20 @@ async function importPdfs(
 }
 
 /** One PDF opens in the Reader, as before; several (a book split into chapters) stay here with what came of each. */
-function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen: (id: number) => void; onImported: () => void; fileInto: FileInto } & Manual) {
+function PdfImport({
+  onOpen,
+  onImported,
+  fileInto,
+  into,
+  manual,
+  onManual,
+}: { onOpen: (id: number) => void; onImported: () => void; fileInto: FileInto; into: number[] } & Manual) {
   const t = useT();
   const picker = useRef<HTMLInputElement>(null);
   const { progress, done, error } = usePdfRun();
   const busy = progress !== null;
   const importAll = (files: File[]) =>
-    void importPdfs(files, { manual, tooLargeError: t("be.file.tooLarge", { max: PDF_MAX_MB }), fileInto, onOpen, onImported });
+    void importPdfs(files, { manual, tooLargeError: t("be.file.tooLarge", { max: PDF_MAX_MB }), fileInto, groups: into, onOpen, onImported });
 
   const { dragging, zone } = useFileDrop({
     accept: PDF_FILES,
