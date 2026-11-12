@@ -189,6 +189,36 @@ test("the prefix is one key for every two-step key under it: a new one moves the
   await expect(panes).toHaveCount(3);
 });
 
+test("Esc stops recording a prefix and keeps it, Undo after Reset all brings it back, and the row's reset brings back Ctrl+A", async ({ app }) => {
+  await openShortcuts(app);
+  const prefix = row(app, "プレフィックス");
+  const change = prefix.getByRole("button", { name: "変更" });
+  await change.click();
+  await app.keyboard.press("Control+b");
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl B");
+
+  await change.click();
+  await expect(prefix.getByRole("button", { name: "キーを押してください(Escで取消)" })).toBeVisible();
+  await app.keyboard.press("Escape");
+  await expect(change, "no longer recording").toBeVisible();
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl B");
+
+  await app.getByRole("button", { name: "すべて既定に戻す" }).click();
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl A");
+  await app.getByRole("button", { name: "元に戻す", exact: true }).click();
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl B");
+
+  await prefix.getByRole("button", { name: "既定に戻す" }).click();
+  await expect(prefix.locator(".kbd")).toHaveText("Ctrl A");
+  await app.keyboard.press("Escape");
+  await expect(list(app)).toBeVisible();
+  const panes = app.locator(".dpane");
+  await expect(panes).toHaveCount(1);
+  await app.keyboard.press("Control+a");
+  await app.keyboard.press('"');
+  await expect(panes).toHaveCount(2);
+});
+
 test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
   await openShortcuts(app);
   await expect(app.getByRole("tab")).toHaveText(["全般 6", "一覧 13", "記事 12", "本文 22", "タブ 7", "ペイン 18"]);
