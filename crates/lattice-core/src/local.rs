@@ -588,6 +588,7 @@ pub(crate) mod tests {
         let spaced = "<code>git status</code> を実行します。\nコミットする前に <a href=\"https://x.dev/a b\">ドキュメント</a> を読みます。";
         let tight = "<code>git status</code> を実行します。\nコミットする前に<a href=\"https://x.dev/a b\">ドキュメント</a>を読みます。";
         assert_eq!((tighten(spaced).as_str(), reply(&completion(spaced)).unwrap().content.as_str()), (tight, tight));
+        assert_eq!(tighten("「設定」 <b>を</b>開く"), "「設定」<b>を</b>開く", "full-width punctuation is Japanese too");
         for kept in [
             "<kbd>Ctrl</kbd> + <kbd>P</kbd> を押す",
             "東京 大学",
@@ -595,6 +596,9 @@ pub(crate) mod tests {
             "前に ⟦1⟧ を",
             "前に <br> 次に",
             "<code>はい</code> <code>いいえ</code>",
+            "前に
+<b>次</b>",
+            "あ< い",
         ] {
             assert_eq!(tighten(kept), kept);
         }
