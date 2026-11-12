@@ -179,3 +179,14 @@ test("a stored key that starts with the stored prefix loads as it is, so a reloa
   assert.deepEqual(getBindings().read, ["Ctrl+A S", "Ctrl+B S"]);
   assert.deepEqual(stored(), { version: 4, read: ["<prefix> S", "Ctrl+B S"] });
 });
+
+test("editing a row keeps its other keys as stored, and reads only a key recorded now as under the prefix", () => {
+  setKeys("favorite", ["S", "Ctrl+B Q"]);
+  setPrefix("Ctrl+B");
+  // The row's × on S, then a key recorded under the prefix.
+  setKeys("favorite", ["Ctrl+B Q"]);
+  setKeys("favorite", ["Ctrl+B Q", "Ctrl+B W"]);
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B", favorite: ["Ctrl+B Q", "<prefix> W"] });
+  setPrefix("Ctrl+A");
+  assert.deepEqual(getBindings().favorite, ["Ctrl+B Q", "Ctrl+A W"]);
+});

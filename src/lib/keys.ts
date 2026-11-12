@@ -88,7 +88,9 @@ export function setKeys(id: ActionId, keys: string[]) {
   const { prefix } = state;
   const d = defaultBindings(prefix)[id];
   const same = keys.length === d.length && keys.every((k, i) => k === d[i]);
-  const kept = keys.map((k) => (k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k));
+  // A key the row already had keeps its stored form; only one recorded now is read against the prefix.
+  const had = state.overrides[id] ?? ACTIONS.find((a) => a.id === id)!.keys;
+  const kept = keys.map((k) => had.find((s) => s.replaceAll(PREFIX, prefix) === k) ?? (k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k));
   const { [id]: _, ...rest } = state.overrides;
   commit({ ...state, overrides: same ? rest : { ...rest, [id]: kept } });
 }
