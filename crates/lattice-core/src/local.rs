@@ -434,6 +434,19 @@ pub(crate) mod tests {
         assert_eq!(seen.lock().unwrap().len(), 1 + 2);
     }
 
+    #[tokio::test]
+    async fn no_request_is_sent_while_the_servers_three_slots_are_taken() {
+        let (url, seen) = serve(plamo).await;
+        // As three requests from jobs, the overlay and retries in flight together would hold them.
+        let slots = IN_FLIGHT.acquire_many(3).await.unwrap();
+        let (server, blocks) = (Server::new(&url).unwrap(), snippets(&["One."]));
+        let mut t = std::pin::pin!(server.translate(&blocks, "ja"));
+        assert!(tokio::time::timeout(Duration::from_millis(300), &mut t).await.is_err(), "a fourth request waits");
+        assert_eq!(seen.lock().unwrap().len(), 1, "only the model list, which takes no slot");
+        drop(slots);
+        assert!(t.await.results[0].is_some());
+    }
+
     fn code(e: &LlmError) -> (String, Value) {
         let v: Value = serde_json::from_str(&e.message()).unwrap();
         (v["code"].as_str().unwrap().to_string(), v["params"].clone())
