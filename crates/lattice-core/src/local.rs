@@ -406,6 +406,21 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn blocks_cut_off_or_declined_do_not_stop_the_batch_and_a_lone_sentence_is_sent_once() {
+        let (url, seen) = serve(|path, body| match path {
+            "/v1/models" => plamo(path, body),
+            _ if text(body).starts_with("Long") => (200, json!({"model": "m", "choices": [{"finish_reason": "length", "message": {"content": "途中"}}]})),
+            _ if text(body).starts_with("Odd") => (400, json!({"error": {"message": "the request exceeds the available context size"}})),
+            _ => plamo(path, body),
+        })
+        .await;
+        let t = Server::new(&url).unwrap().translate(&snippets(&["Long one.", "Odd one.", "Odd two.", "Fine one."]), "ja").await;
+        assert!(t.results[..3].iter().all(Option::is_none));
+        assert_eq!(t.results[3].clone().unwrap().0, [unit("Fine one.", "訳:Fine one.")], "that block's text, not the server");
+        assert_eq!(seen.lock().unwrap().len(), 1 + 4, "a lone sentence is not sent again");
+    }
+
+    #[tokio::test]
     async fn a_block_the_server_failed_is_taken_from_its_sentences() {
         let (url, _) = serve(|path, body| match path {
             "/v1/models" => plamo(path, body),
