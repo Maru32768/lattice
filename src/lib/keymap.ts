@@ -353,13 +353,8 @@ export const REPEAT_MS = 500;
 export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length === 1;
 /** A shortcut whatever has the focus, and a browser's own key to keep from it. */
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
-/** A browser pages with these. Lattice pages with Ctrl+F and Ctrl+B instead, which leaves Space free to bind (a Vim leader). */
+/** A browser pages with these. Bound, they are a shortcut like any key (a Vim leader), and the binding keeps them from paging. */
 export const isSpace = (key: string) => key === "Space" || key === "Shift+Space";
-/** What Space presses rather than pages, so it keeps the key there. A field types it, which each caller checks itself. */
-export const PRESSED_BY_SPACE =
-  "button, summary, select, video, audio, [role='button'], [role='checkbox'], [role='radio'], [role='switch'], [role='tab'], [role='menuitem'], [role='menuitemcheckbox'], [role='menuitemradio'], [role='option'], [role='treeitem']";
-/** Whether an unbound Space on `target` would page, the browser default that the app and the page overlay suppress. */
-export const spacePages = (key: string, target: Element, inField: boolean) => isSpace(key) && !inField && !target.closest(PRESSED_BY_SPACE);
 
 function running(action: ActionDef, sequence: string, first: string | null, count: number, now: number): KeyStep {
   const repeat = action.repeat && first ? { first, until: now + REPEAT_MS } : null;

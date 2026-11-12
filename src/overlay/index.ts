@@ -32,7 +32,7 @@ import {
   unitsByBlock,
   withAtoms,
 } from "./logic.ts";
-import { IDLE, REPEAT_MS, keyOf, passesOn, spacePages, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
+import { IDLE, REPEAT_MS, keyOf, passesOn, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
 import { createDocNav, type DocHost } from "../docnav/controller.ts";
 import { pageScroller } from "../docnav/scroll.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -774,24 +774,15 @@ function applyStep(step: KeyStep, hinted: boolean) {
 }
 
 /**
- * The browser defaults of a key that neither the overlay nor the page took. WebView2's own print preview opens behind the page in this
- * child webview, so a print key goes to the system dialog, as `window.print` does here. Space would page, which Lattice does with
- * Ctrl+F instead; on a button it still presses. After the page: with `print` unbound, Ctrl+Shift+P can be a web editor's command palette,
- * and a page may use Space itself.
+ * WebView2's own print preview opens behind the page in this child webview: a print key that neither the overlay nor the page took goes to
+ * the system dialog, as `window.print` does here. After the page: with `print` unbound, Ctrl+Shift+P can be a web editor's command palette.
  * shortcut: a page's own listener on window runs after this one, upgrade if a site needs it.
  */
-function defaultsUnclaimed(e: KeyboardEvent) {
+function printUnclaimed(e: KeyboardEvent) {
   const key = keyOf(e);
-  if (e.defaultPrevented || !key) {
-    return;
-  }
-  // composedPath: the field itself, not its shadow host.
-  const target = e.composedPath()[0];
-  if (opensBrowserPrint(key)) {
+  if (!e.defaultPrevented && key && opensBrowserPrint(key)) {
     e.preventDefault();
     window.print();
-  } else if (target instanceof Element && spacePages(key, target, inField(target))) {
-    e.preventDefault();
   }
 }
 
@@ -1196,7 +1187,7 @@ if (window.top === window && !window.__lattice) {
     );
   // Capture on window: ahead of the page's own handlers.
   window.addEventListener("keydown", onKey, true);
-  window.addEventListener("keydown", defaultsUnclaimed);
+  window.addEventListener("keydown", printUnclaimed);
   window.addEventListener("pointerdown", onPagePress, true);
   // Capture: a box that scrolls by itself sends its scroll events to no one else.
   window.addEventListener("scroll", placeChanged, { capture: true, passive: true });

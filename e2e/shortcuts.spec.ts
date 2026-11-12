@@ -61,16 +61,20 @@ test("a two-key binding starts from any key and runs only after both", async ({ 
   await expect(cursor).toHaveCount(1);
 });
 
-test("Space records as a first key, and its binding runs outside fields while a field still types the space", async ({ app }) => {
-  await openShortcuts(app);
-  const help = row(app, "キー一覧");
+/** `Space h` added to the key list's keys, back on the list. */
+async function bindSpaceH(page: import("@playwright/test").Page) {
+  await openShortcuts(page);
+  const help = row(page, "キー一覧");
   await help.getByRole("button", { name: "+ キーを追加" }).click();
-  await app.keyboard.press("Space");
-  await app.keyboard.press("h");
+  await page.keyboard.press("Space");
+  await page.keyboard.press("h");
   await expect(help.locator(".kbd.key")).toHaveText(["?×", "Ctrl A › ?×", "Space › h×"]);
+  await page.keyboard.press("Escape");
+  await expect(list(page)).toBeVisible();
+}
 
-  await app.keyboard.press("Escape");
-  await expect(list(app)).toBeVisible();
+test("Space records as a first key, and its binding runs outside fields while a field still types the space", async ({ app }) => {
+  await bindSpaceH(app);
   await app.keyboard.press("Space");
   await app.keyboard.press("h");
   const keyList = app.getByRole("dialog", { name: "キー一覧" });
@@ -84,6 +88,23 @@ test("Space records as a first key, and its binding runs outside fields while a 
   await app.keyboard.type("a h");
   await expect(input).toHaveValue("a h");
   await expect(keyList).toHaveCount(0);
+});
+
+test("a bound Space leaves the Reader where it is and waits for its second key", async ({ app }) => {
+  await bindSpaceH(app);
+  await list(app).locator(".row").first().click();
+  await expect(app.locator(".art-title")).toBeVisible();
+  await app.locator(".reader").evaluate((el) => void ((el as HTMLElement).style.minHeight = "6000px"));
+  await app.keyboard.press("Control+l");
+  const doc = app.locator(".doc-scroll");
+  await expect(doc).toBeFocused();
+  await app.keyboard.press("Space");
+  await expect(app.locator(".prefix-hint")).toBeVisible();
+  // A browser's own smooth scroll would still be under way.
+  await app.waitForTimeout(300);
+  expect(await doc.evaluate((el) => el.scrollTop)).toBe(0);
+  await app.keyboard.press("h");
+  await expect(app.getByRole("dialog", { name: "キー一覧" })).toBeVisible();
 });
 
 test("keys forwarded from a focused page start and complete a two-key binding", async ({ app }) => {

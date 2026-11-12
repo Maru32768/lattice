@@ -323,7 +323,7 @@ Press `Ctrl+Shift+P` in the Page view to open the Windows print dialog. In the R
 
 ### Read with the keyboard
 
-The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` do not scroll. To scroll a screen, use `Ctrl+F` and `Ctrl+B`. You can bind `Space` to an action in **Settings › Shortcuts**.
+The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` scroll a screen, as in a browser. If you bind `Space` to an action in **Settings › Shortcuts**, it runs that action outside text fields and the page does not scroll.
 
 | Key | Action |
 |---|---|
@@ -843,7 +843,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 
 - Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+A`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
-- `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. `Space` does not scroll the page. A shortcut bound to `Space` works outside text fields, and an unbound `Space` still presses the page's buttons.
+- `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. An unbound `Space` scrolls the page and presses its buttons, as in a browser. A shortcut bound to `Space` works outside text fields, and then the page does not scroll.
 - `Esc` leaves the page's text field, unless the page uses it itself.
 - `Ctrl+A Ctrl+A` selects all in the page or in its text field. As tmux's send-prefix does, Lattice passes the second `Ctrl+A` on to the page.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.

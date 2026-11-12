@@ -72,16 +72,16 @@ test("Ctrl+F and Ctrl+B move a screen in the Reader", async ({ app }) => {
   await expect.poll(screensDown).toBeCloseTo(1, 2);
 });
 
-test("Space and Shift+Space leave the Reader where it is, and Ctrl+F still pages it", async ({ app }) => {
+test("an unbound Space pages the Reader down a screen as a browser does, and Shift+Space back up", async ({ app }) => {
   await intoReader(app);
-  const screen = await app.locator(".doc-scroll").evaluate((el) => (el.clientHeight * 7) / 8);
-  const screensDown = async () => (await scrollTop(app)) / screen;
-  await press(app, "Space", "Space", "Control+f");
-  await expect.poll(screensDown).toBeCloseTo(1, 2);
-  await app.keyboard.press("Shift+Space");
-  // A browser's own smooth scroll would still be under way.
+  const height = await app.locator(".doc-scroll").evaluate((el) => el.clientHeight);
+  await app.keyboard.press("Space");
+  await expect.poll(() => scrollTop(app)).toBeGreaterThanOrEqual(height / 2);
+  // The browser's own scroll is smooth: let it end before reading how far it went.
   await app.waitForTimeout(300);
-  expect(await screensDown()).toBeCloseTo(1, 2);
+  expect(await scrollTop(app)).toBeLessThanOrEqual(height);
+  await app.keyboard.press("Shift+Space");
+  await expect.poll(() => scrollTop(app)).toBe(0);
 });
 
 test("Space on a focused list row still presses it", async ({ app }) => {

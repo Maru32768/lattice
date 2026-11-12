@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser } from "../api";
 import { getBindings, useBindings } from "../lib/keys";
-import { IDLE, actionFor, chordFrom, keyOf, pageKeys, passesOn, scopeOf, spacePages, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
+import { IDLE, actionFor, chordFrom, keyOf, pageKeys, passesOn, scopeOf, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
 import { focus as focusLayout, pageByKey, tabById, unzoom, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
@@ -286,9 +286,6 @@ export function useShortcuts({
     }
     keySeq.track(step.seq, scope);
     if (step.kind === "none") {
-      if (spacePages(key, t, inField)) {
-        e.preventDefault();
-      }
       return;
     }
     // The hint took the keyboard from this page to read the second key: it goes back, unless the action moves on.
