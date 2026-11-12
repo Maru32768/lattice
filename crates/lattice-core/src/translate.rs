@@ -824,6 +824,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_local_engine_translates_a_japanese_source_into_english_under_that_key() {
+        let s = Store::open_in_memory().unwrap();
+        let (url, seen) = crate::local::tests::serve(crate::local::tests::plamo).await;
+        set_engine(&s, EngineKind::Local, &url).unwrap();
+        let fake = Fake::new();
+        // What overlay_translate builds for a Japanese page.
+        let tr = translator(&s, &fake, target(&s).unwrap().for_source(true)).unwrap();
+        assert_eq!((tr.key().as_str(), tr.prompt_version()), ("en-x-translated-terms", "plamo-v1"));
+        assert!(tr.translate(&["スナップショット分離です。".to_string()]).await.results[0].is_some());
+        assert_eq!(seen.lock().unwrap()[1].1["messages"][0]["content"], "[plamo-translate]\ntarget_lang=en");
+        assert!(fake.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn a_local_server_that_is_not_running_fails_the_job_with_its_code_and_spends_no_ai_usage() {
         let s = Store::open_in_memory().unwrap();
         let id = two_paragraphs(&s);
