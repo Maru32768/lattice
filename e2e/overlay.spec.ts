@@ -1,4 +1,4 @@
-// The page overlay in a real page (no app around it): the reading place it reports, and scrolling back to one.
+// The page overlay in a real page (no app around it): the reading place it reports, scrolling back to one, and the keys it takes.
 import { expect, test, type Page } from "@playwright/test";
 import { DEFAULT_BINDINGS, merge, pageKeys } from "../src/lib/keymap.ts";
 
@@ -29,7 +29,7 @@ const textLayer = () => {
   document.body.append(layer);
 };
 
-test("an unbound Space pages the page as a browser does, and a bound one runs its action without scrolling", async ({ page }) => {
+test("an unbound Space pages the page as a browser does, and a bound one goes to the app without scrolling", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   const scrollY = () => page.evaluate(() => window.scrollY);
