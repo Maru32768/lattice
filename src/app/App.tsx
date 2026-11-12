@@ -893,8 +893,7 @@ export default function App() {
     command: () => setPalette((p) => p ?? { initial: ">" }),
     keyHelp: () => setKeyHelp(true),
     // A field of the app keeps the keys and selects in itself; a page gets it only when its keys came here (they blur the app first).
-    selectAll: (n) =>
-      document.activeElement?.closest("input, textarea, [contenteditable='true']") ? docNav.run("selectAll", n) : docAction("selectAll")(n),
+    selectAll: (n) => (document.activeElement?.closest("input, textarea, [contenteditable='true']") ? docNav.run("selectAll", n) : docAction("selectAll")(n)),
     search: enterSearch,
     next: (n) => step(n),
     prev: (n) => step(-n),
