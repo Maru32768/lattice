@@ -112,7 +112,7 @@ vimBridge.owns = (e, editor) => {
     return mapped[state.visualMode ? "visual" : "normal"].has(key);
   }
   // The engine's own key stays the app's when it is the prefix, which leads the app's keys everywhere, as tmux's does. A user's
-  // other two-step key that starts with it is the app's in normal mode only, as Vim's Ctrl+W h is.
+  // other two-step key that starts with it is the app's outside insert mode only, as Vim's Ctrl+W h is.
   return mapped.insert.has(key) || (ENGINE_INSERT_KEYS.has(key) && keyOf(e) !== getPrefix());
 };
 
