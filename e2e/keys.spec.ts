@@ -325,7 +325,7 @@ test("with the prefix Ctrl+B, Ctrl+A in a text field is the field's own select a
   await page.keyboard.press("Control+b");
   await expect(hint(page)).toBeHidden();
   await page.keyboard.type("y");
-  await expect(input, "the prefix twice passed Ctrl+B on, which a field does nothing with").toHaveValue("xy");
+  await expect(input, "the prefix twice ended the sequence, and the field types on with its text as it was").toHaveValue("xy");
 });
 
 test("after a split the keys start from the new pane, not the one that had DOM focus", async ({ app }) => {

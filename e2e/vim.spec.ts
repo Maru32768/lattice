@@ -487,3 +487,18 @@ test("a prefix Vim edits with in insert mode still leads the app's keys there, a
   await expect(page.locator(".prefix-hint")).toHaveCount(0);
   await isEmpty(page);
 });
+
+test("with another prefix, Ctrl+A is the engine's increment, and that prefix twice goes to the engine as its own key", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+X" })));
+  await chat(page);
+  await page.keyboard.type("5");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+a");
+  await expect(chatInput(page)).toHaveText("6");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+  await page.keyboard.press("Control+x");
+  await expect(page.locator(".prefix-hint")).toBeVisible();
+  await page.keyboard.press("Control+x");
+  await expect(chatInput(page), "the engine's decrement").toHaveText("5");
+  await expect(page.locator(".prefix-hint")).toHaveCount(0);
+});
