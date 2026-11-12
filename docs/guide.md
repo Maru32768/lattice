@@ -323,7 +323,7 @@ Press `Ctrl+Shift+P` in the Page view to open the Windows print dialog. In the R
 
 ### Read with the keyboard
 
-The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` scroll a screen, as in a browser. If you bind `Space` to an action in **Settings › Shortcuts**, it runs that action outside text fields and the page does not scroll.
+The Reader and the Page view (web pages and PDFs) share these keys. They act on the document in the focused pane. A number in front, as in `5j`, repeats the key. The palette (`>`) lists these actions by name too. `Space` and `Shift+Space` scroll a screen, as in a browser. If you bind `Space` to an action in **Settings › Shortcuts**, it runs that action outside text fields instead of scrolling.
 
 | Key | Action |
 |---|---|
@@ -843,7 +843,7 @@ When you click a web page in the Page view, the keyboard goes to that page. Latt
 
 - Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+A`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
-- `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. An unbound `Space` scrolls the page and presses its buttons, as in a browser. A shortcut bound to `Space` works outside text fields, and then the page does not scroll.
+- `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. An unbound `Space` scrolls the page and presses its buttons, as in a browser. Outside text fields, a shortcut bound to `Space` works and the page does not scroll.
 - `Esc` leaves the page's text field, unless the page uses it itself.
 - `Ctrl+A Ctrl+A` selects all in the page or in its text field. As tmux's send-prefix does, Lattice passes the second `Ctrl+A` on to the page.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
@@ -856,7 +856,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
 - To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow `Ctrl+A`, or `:q`.
-- In insert mode, the keys Vim edits with are Vim's. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes the line before the cursor, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
+- In insert mode, the following keys work as in Vim, not as Lattice shortcuts. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes back to the start of the line, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note. In the chat, `Enter` in normal mode sends too when **Send key** is set to an Enter option.
 - `Ctrl+A` is the first key of Lattice's two-step keys. For Vim's own `Ctrl+A`, press it twice.
 - `:q` only leaves the chat box, and closes the note.
