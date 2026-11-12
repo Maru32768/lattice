@@ -423,7 +423,7 @@ export const en = {
   "keys.scope.doc": "In documents",
   "keys.command": "Run a command",
   "keys.keyHelp": "Key list",
-  "keys.sendPrefix": "Send the prefix (Ctrl+A: select all)",
+  "keys.sendPrefix": "Send the prefix (with Ctrl+A, select all)",
   "keys.paneLast": "Move to the previous pane",
   "keys.paneNumbers": "Show pane numbers",
   "keys.paneGrowLeft": "Grow the pane to the left",
