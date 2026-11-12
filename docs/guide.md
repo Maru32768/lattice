@@ -857,7 +857,7 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
 - To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow the prefix, or `:q`.
-- In insert mode, the following keys work as in Vim, not as Lattice shortcuts. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes back to the start of the line, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
+- In insert mode, the following keys work as in Vim, not as Lattice shortcuts, unless one is the prefix. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes back to the start of the line, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note. In the chat, `Enter` in normal mode sends too when **Send key** is set to an Enter option.
 - The prefix (`Ctrl+A` by default) is the first key of Lattice's two-step keys. To give that key to Vim, press it twice. With `Ctrl+A`, that is Vim's increment.
 - `:q` only leaves the chat box, and closes the note.
