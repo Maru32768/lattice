@@ -1,21 +1,20 @@
 import { useMemo } from "react";
-import type { ArticleRow, FeedRow, FolderRow, GroupRow, RelevanceStatus } from "../api";
+import type { ArticleRow, FeedRow, FolderRow, RelevanceStatus } from "../api";
 import type { T } from "../i18n";
 import { feedGroups, folderTree } from "../feeds/feedFolders";
 import { flatten, groupArticles, type Group } from "../library/groups";
-import { countBy, inScope, listed, relaxations, type Facets, type Kept, type Scope } from "../library/library";
+import { countBy, inScope, listed, type Facets, type Kept, type Scope } from "../library/library";
 import type { NavCounts } from "../library/Nav";
 import type { Grouping } from "../library/ListPane";
 
 /** 重要 shows once there is a profile to judge against (or scores from an earlier one): its threshold, else null. */
 export const importantMinOf = (r: RelevanceStatus | null) => (r && (r.has_profile || r.scored > 0) ? r.threshold : null);
 
-/** What the list, the sidebar and the empty-list hints show of the library for the current scope and facets. */
+/** What the list and the sidebar show of the library for the current scope and facets. */
 export function useLibraryView({
   articles,
   feeds,
   folders,
-  groupRows,
   scope,
   facets,
   kept,
@@ -27,7 +26,6 @@ export function useLibraryView({
   articles: ArticleRow[];
   feeds: FeedRow[];
   folders: FolderRow[];
-  groupRows: GroupRow[];
   scope: Scope;
   facets: Facets;
   kept: Kept;
@@ -68,10 +66,6 @@ export function useLibraryView({
       feedUnread: countBy(unread, "feeds"),
     };
   }, [articles, now, importantMin]);
-  const relax = useMemo(
-    () => (shown.length === 0 && articles.length > 0 ? relaxations(articles, groupRows, scope, facets, now, t, folders, feeds) : []),
-    [shown.length, articles, groupRows, scope, facets, now, t, folders, feeds],
-  );
   const articleById = useMemo(() => new Map(articles.map((a) => [a.id, a])), [articles]);
-  return { scoped, shown, groups, order, counts, relax, articleById };
+  return { scoped, shown, groups, order, counts, articleById };
 }

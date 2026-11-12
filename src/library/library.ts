@@ -274,36 +274,6 @@ export function facetLabel(f: Facets, dim: Dim, all: ArticleRow[], groups: Group
   return (f[dim] as DimValue<Dim>[]).map((v) => valueLabel(dim, v, all, groups, t)).join(sep);
 }
 
-export interface Relaxation {
-  label: string;
-  count: number;
-  scope: Scope;
-  facets: Facets;
-}
-
-/** Empty-state suggestions: for each active facet (and the scope if not "all"), the count if it alone were removed. */
-export function relaxations(
-  all: ArticleRow[],
-  groups: GroupRow[],
-  s: Scope,
-  f: Facets,
-  now: number,
-  t: T,
-  folders: FolderRow[] = [],
-  feeds: FeedRow[] = [],
-): Relaxation[] {
-  const count = (scope: Scope, facets: Facets) => all.filter((a) => inScope(a, scope, now) && matches(a, facets)).length;
-  const out: Relaxation[] = activeDims(f).map((d) => {
-    const facets = without(f, d);
-    return { label: t("library.dropFacet", { dim: t(DIM_LABELS[d]), value: facetLabel(f, d, all, groups, t) }), count: count(s, facets), scope: s, facets };
-  });
-  if (s.kind !== "all") {
-    const scope: Scope = { kind: "all" };
-    out.push({ label: t("library.toAll", { scope: scopeLabel(s, all, groups, t, folders, feeds) }), count: count(scope, f), scope, facets: f });
-  }
-  return out;
-}
-
 /** Scope → ArticleFilter for the backend (search / chat scope). "recent" → { kind: "all" }. */
 export function toFilter(s: Scope): ArticleFilter {
   return s.kind === "recent" ? { kind: "all" } : s;

@@ -206,11 +206,10 @@ export default function App() {
   const [mode, setMode] = useState<LanguageMode>("mixed");
   const setPercent = (percent: number) => setPageLang({ ...pageLang, percent });
 
-  const { scoped, shown, groups, order, counts, relax, articleById } = useLibraryView({
+  const { scoped, shown, groups, order, counts, articleById } = useLibraryView({
     articles,
     feeds,
     folders,
-    groupRows,
     scope,
     facets,
     kept,
@@ -1401,11 +1400,6 @@ export default function App() {
                   cursorId={cursor}
                   onCursor={setCursor}
                   translating={translatingLabel}
-                  relax={relax}
-                  onRelax={(r) => {
-                    setScopeState(r.scope);
-                    setFacets(r.facets);
-                  }}
                   onOpen={(a, newTab) => openArticle(a, newTab ? "behind" : "active")}
                   onGroupMembers={groupMembers}
                   onCreateGroup={createGroup}

@@ -11,7 +11,6 @@ import {
   keep,
   listed,
   matches,
-  relaxations,
   scopeLabel,
   toFilter,
   toggle,
@@ -96,14 +95,6 @@ test("groups: a scope by id and a facet dimension (OR within, AND with the other
   assert.equal(scopeLabel({ kind: "group", id: 3 }, all, groups, en), "Empty", "an empty group still has its name");
   assert.equal(valueLabel("groups", 2, all, groups, en), "Paper");
   assert.deepEqual(toFilter({ kind: "group", id: 2 }), { kind: "group", id: 2 });
-  const r = relaxations(all, groups, { kind: "group", id: 1 }, f({ state: ["read"] }), NOW, ja);
-  assert.deepEqual(
-    r.map((x) => [x.label, x.count]),
-    [
-      ["状態 既読を外す", 1],
-      ["卒論 → すべての記事", 1],
-    ],
-  );
 });
 
 test("importance: 重要 keeps scores at or above its minimum, the facet has 未判定, and both reach the backend as is", () => {
@@ -146,24 +137,6 @@ test("popover counts: own dimension removed, except tags in all mode", () => {
   );
   const any = countBy(facetBase(all, f({ tags: ["postgres"], tagMode: "any" }), "tags"), "tags");
   assert.equal(any.get("ebpf"), 1);
-});
-
-test("relaxations: one per active facet, plus the scope unless all", () => {
-  const r = relaxations(all, groups, { kind: "unread" }, f({ genres: ["Database"], tags: ["ebpf"] }), NOW, ja);
-  assert.deepEqual(
-    r.map((x) => [x.label, x.count]),
-    [
-      ["ジャンル Databaseを外す", 1],
-      ["タグ ebpfを外す", 1],
-      ["未読 → すべての記事", 0],
-    ],
-  );
-  assert.deepEqual(
-    relaxations(all, groups, { kind: "unread" }, f({ genres: ["Database"] }), NOW, en).map((x) => x.label),
-    ["Remove Genre: Database", "Unread → All articles"],
-  );
-  assert.deepEqual(r[1].facets, f({ genres: ["Database"] }));
-  assert.deepEqual(r[2].scope, { kind: "all" });
 });
 
 test("labels and backend filters", () => {

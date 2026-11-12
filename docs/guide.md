@@ -477,7 +477,6 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - Choosing several values in one filter shows articles that match any of them (OR). Different filters show articles that match all of them (AND).
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
 - The counts next to the values are counts within the current list.
-- When nothing matches, the list shows which filter to remove to get how many articles.
 
 `Esc` clears the filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 

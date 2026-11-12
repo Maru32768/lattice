@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { siteOf, type ArticleRow, type ArticleSort, type GroupRow } from "../api";
-import { DIMS, DIM_LABELS, NO_FACETS, activeDims, facetBase, facetLabel, without, type Dim, type Facets, type Relaxation } from "./library";
+import { DIMS, DIM_LABELS, NO_FACETS, activeDims, facetBase, facetLabel, without, type Dim, type Facets } from "./library";
 import { flatten, type Group } from "./groups";
 import { pick } from "./selection";
 import { FacetPopover } from "./FacetPopover";
@@ -373,8 +373,6 @@ export function ListPane({
   cursorId,
   onCursor,
   translating,
-  relax,
-  onRelax,
   onOpen,
   onGroupMembers,
   onCreateGroup,
@@ -406,8 +404,6 @@ export function ListPane({
   onCursor: (id: number) => void;
   /** The label of an article being translated or waiting to be; none once it is done. */
   translating: (id: number) => string | undefined;
-  relax: Relaxation[];
-  onRelax: (r: Relaxation) => void;
   /** `newTab`: Ctrl / middle click. */
   onOpen: (a: ArticleRow, newTab: boolean) => void;
   onGroupMembers: (group: number, ids: number[], add: boolean) => void;
@@ -603,21 +599,9 @@ export function ListPane({
         <Rows key={`${listKey}|${group}`} place={`${listKey}|${group}`} items={items} cursorId={cursorId} renderItem={renderItem} />
       ) : (
         <div className="list-body">
-          {total > 0 || relax.length > 0 ? (
+          {total > 0 ? (
             <div className="empty">
               <div className="empty-h">{t("listPane.noMatch")}</div>
-              {relax.length > 0 && (
-                <>
-                  <div className="muted">{t("listPane.relaxHint")}</div>
-                  <div className="btn-row">
-                    {relax.map((r) => (
-                      <button key={r.label} className="btn" onClick={() => onRelax(r)}>
-                        {t("listPane.relaxation", { label: r.label, count: r.count })}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
             </div>
           ) : (
             <div className="empty">
