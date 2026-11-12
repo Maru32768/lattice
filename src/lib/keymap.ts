@@ -380,10 +380,10 @@ export const isPrintable = (key: string) => key.replace(/^Shift\+/, "").length =
 /** A shortcut whatever has the focus, and a browser's own key to keep from it. */
 export const isModified = (key: string) => /^(Ctrl|Alt)\+/.test(key);
 /**
- * One key with Ctrl or Alt: a key a field types would keep the pane keys from working there. Not Enter: with Ctrl it sends a
- * text field (the chat, a note), which reads it before the app could.
+ * One key with Ctrl or Alt: a key a field types would keep the pane keys from working there. Not Enter or Esc: with Ctrl, Enter
+ * sends a text field (the chat, a note) and Esc leaves one, which read them before the app could, and Windows takes Ctrl+Esc and Alt+Esc.
  */
-export const canPrefix = (key: string) => isModified(key) && !key.includes(" ") && !key.endsWith("+Enter");
+export const canPrefix = (key: string) => isModified(key) && !key.includes(" ") && !/\+(Enter|Escape)$/.test(key);
 /** A browser pages with these. Bound, they are a shortcut like any key (a Vim leader), and the binding keeps them from paging. */
 export const isSpace = (key: string) => key === "Space" || key === "Shift+Space";
 

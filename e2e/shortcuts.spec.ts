@@ -152,7 +152,7 @@ test("the prefix is one key for every two-step key under it: a new one moves the
   await expect(prefix.getByRole("button", { name: "既定に戻す" })).toBeHidden();
   await prefix.getByRole("button", { name: "変更" }).click();
   await app.keyboard.press("j");
-  await expect(prefix.getByRole("alert")).toHaveText("jはプレフィックスにできません。Enter以外のキーを、CtrlかAltと組み合わせて押してください");
+  await expect(prefix.getByRole("alert")).toHaveText("jはプレフィックスにできません。EnterとEsc以外のキーを、CtrlかAltと組み合わせて押してください");
   await expect(prefix.locator(".kbd"), "a key a field types would keep the pane keys from working there").toHaveText("Ctrl A");
   await app.keyboard.press("Control+Enter");
   await expect(prefix.getByRole("alert"), "Ctrl+Enter sends a field before the app reads it").toHaveText(/^Ctrl Enterはプレフィックスにできません/);

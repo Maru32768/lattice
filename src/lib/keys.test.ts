@@ -30,8 +30,8 @@ test("fromStored: the prefix and keys of version 4 as saved; another version rea
   for (const version of [undefined, 1, 2, 3, "4"]) {
     assert.deepEqual(fromStored({ splitDown: ['Ctrl+A "'], prefix: "Ctrl+B", version }), DEFAULTS, `version ${version}`);
   }
-  // Ctrl+Enter sends a text field (the chat, a note), which handles it before the app could read it as the prefix.
-  for (const prefix of ["J", "Escape", "Shift+J", "Ctrl+B X", "Ctrl+Enter", "Ctrl+Shift+Enter", "Alt+Enter", 3, null]) {
+  // Ctrl+Enter sends a text field (the chat, a note) and Esc leaves one, which read them before the app could; Windows takes Ctrl+Esc and Alt+Esc.
+  for (const prefix of ["J", "Escape", "Shift+J", "Ctrl+B X", "Ctrl+Enter", "Ctrl+Shift+Enter", "Alt+Enter", "Ctrl+Escape", "Alt+Escape", 3, null]) {
     assert.equal(fromStored({ version: 4, prefix }).prefix, "Ctrl+A", String(prefix));
   }
 });
