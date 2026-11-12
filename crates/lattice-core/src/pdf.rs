@@ -449,13 +449,13 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     if doc.is_encrypted() {
         doc.decrypt("").map_err(|e| fail(&e))?;
     }
-    if skip_forms {
-        for o in doc.objects.values_mut() {
-            if let Object::Stream(s) = o
-                && s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Form")
-            {
-                s.set_plain_content(Vec::new());
-            }
+    // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
+    // panics on some of them; an image holds no text.
+    for o in doc.objects.values_mut() {
+        if let Object::Stream(s) = o
+            && s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image" || (skip_forms && n == b"Form"))
+        {
+            s.set_plain_content(Vec::new());
         }
     }
     let faces = doc.get_pages().values().map(|&page| string_faces(&doc, page)).collect();
@@ -1768,6 +1768,36 @@ pub(crate) mod tests {
         assert_eq!(ir.meta.title.as_deref(), Some("file"));
         assert!(to_ir(&pdf(&[vec![]], None), None).is_err(), "no text, no article");
         assert!(to_ir(b"%PDF-1.5 not really", None).is_err(), "a broken file is an error, not a crash");
+    }
+
+    #[test]
+    fn image_data_is_not_read_as_content() {
+        // pdf-extract reads an image XObject's data as a content stream, and an image in
+        // Designing Data-Intensive Applications decodes to a `CS` with no operand, where it panicked.
+        let body = vec![(L, 120., 10., "A paragraph next to a figure drawn as an image.")];
+        let mut doc = Document::load_mem(&pdf(&[body], None)).unwrap();
+        let mut dict = Dictionary::new();
+        dict.set("Type", name("XObject"));
+        dict.set("Subtype", name("Image"));
+        dict.set("Width", Object::Integer(1));
+        dict.set("Height", Object::Integer(1));
+        dict.set("ColorSpace", name("DeviceGray"));
+        dict.set("BitsPerComponent", Object::Integer(8));
+        let image = doc.add_object(Stream::new(dict, b"CS".to_vec()));
+        let page = *doc.get_pages().values().next().unwrap();
+        let mut xobjects = Dictionary::new();
+        xobjects.set("Im0", Object::Reference(image));
+        let page_dict = doc.get_object_mut(page).and_then(Object::as_dict_mut).unwrap();
+        let content = page_dict.get(b"Contents").and_then(Object::as_reference).unwrap();
+        page_dict.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+        let mut ops = stream.content.clone();
+        ops.extend_from_slice(b"\nq /Im0 Do Q\n");
+        stream.set_plain_content(ops);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "A paragraph next to a figure drawn as an image.")]);
     }
 
     #[test]

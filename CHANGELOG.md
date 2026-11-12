@@ -63,6 +63,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - A translation that the AI returned under the wrong paragraph's number was saved, and the same wrong text then showed wherever that paragraph appeared. Such answers, and empty ones, are now asked again.
 - Switching tabs while a web page was first opening could leave that page drawn over the tab you switched to.
 - With Codex CLI 0.164, the AI could still see a tool that starts other agents and a tool that waits, although Lattice turns Codex's tools off. Both are off now, and Lattice's tests check which tools the installed Codex shows the AI.
+- Some PDFs with images, such as the chapters of a book, failed to import with an error that the PDF could not be read. Lattice read the data of some images as if it were page content. Images are now skipped when the text is read.
 
 ## [0.3.0] - 2026-11-06
 
