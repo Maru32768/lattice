@@ -161,7 +161,7 @@ test("the prefix is one key for every two-step key under it: a new one moves the
   await expect(prefix.locator(".kbd")).toHaveText("Ctrl B");
   await expect(prefix.getByRole("alert")).toHaveCount(0);
   await expect(prefix.getByRole("note")).toHaveText(
-    "Ctrl Bはプレフィックスなので、「一覧を1画面上へ」は入力欄の外で2回続けて押すと働きます。Ctrl Bはプレフィックスなので、「1画面上へスクロール」は入力欄の外で2回続けて押すと働きます",
+    "Ctrl Bはプレフィックスなので、「一覧を1画面上へ」は入力欄とWebページの外で2回続けて押すと働きます。Ctrl Bはプレフィックスなので、「1画面上へスクロール」は入力欄とWebページの外で2回続けて押すと働きます",
   );
   await expect(prefix.getByRole("button", { name: "既定に戻す" })).toBeVisible();
   await expect(app.getByRole("button", { name: "書き出す", exact: true }), "a changed prefix is a change to export").toBeEnabled();
