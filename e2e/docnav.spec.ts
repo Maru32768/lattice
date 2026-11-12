@@ -820,6 +820,15 @@ test("a Ctrl key that is no app key stays in the find bar", async ({ reader }) =
   await reader.keyboard.press("Escape");
 });
 
+test("Ctrl+A Ctrl+A selects what was typed in the find bar, as Ctrl+A does in a field", async ({ reader }) => {
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await press(reader, "Control+a", "Control+a");
+  await reader.keyboard.type("Three");
+  await expect.poll(async () => (await drawn(reader)).query, "the typed word replaced the selected query").toBe("Three");
+  await reader.keyboard.press("Escape");
+});
+
 test("a click into a frame ends the labels and the mode, which that window never hears of", async ({ reader }) => {
   await reader.locator("#extra").evaluate((el) => {
     const frame = document.createElement("iframe");
