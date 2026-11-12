@@ -230,21 +230,56 @@ test("stepKeys: Ctrl+F and Ctrl+B move a screen in each scope, and Ctrl+B is no 
   assert.deepEqual(ran(stepKeys(inPage, IDLE, "Ctrl+B", { scope: "doc", inField: false, now: NOW })), ["pageUp", 1, "Ctrl+B"]);
 });
 
-test("stepKeys: the prefix twice selects all wherever the keyboard is, a field too, and passes its key on", () => {
+test("stepKeys: the prefix twice sends the prefix wherever the keyboard is, a field too, passing its key on", () => {
   for (const o of [{ scope: "list" as const }, { scope: "doc" as const }, { inField: true }]) {
     const s = press(["Ctrl+A", "Ctrl+A"], o);
-    assert.deepEqual(ran(s), ["selectAll", 1, "Ctrl+A Ctrl+A"]);
+    assert.deepEqual(ran(s), ["sendPrefix", 1, "Ctrl+A Ctrl+A"]);
     assert.equal(passesOn(s), true);
     assert.deepEqual(s.seq, IDLE, "the sequence is over");
   }
-  assert.deepEqual(merge({ selectAll: ["Ctrl+A A"] }).selectAll, ["Ctrl+A Ctrl+A"], "its keys are fixed: another key would have no select-all to pass on");
+  assert.deepEqual(merge({ sendPrefix: ["<prefix> A"] }).sendPrefix, ["Ctrl+A Ctrl+A"], "its keys are fixed: another last key is no prefix to pass on");
   const inPage = pageKeys(DEFAULT_BINDINGS).bindings;
   const first = stepKeys(inPage, IDLE, "Ctrl+A", { scope: "doc", inField: true, now: NOW });
   assert.deepEqual(
     ran(stepKeys(inPage, first.seq, "Ctrl+A", { scope: "doc", inField: true, now: NOW })),
-    ["selectAll", 1, "Ctrl+A Ctrl+A"],
+    ["sendPrefix", 1, "Ctrl+A Ctrl+A"],
     "in a page's field",
   );
+});
+
+// ---- the prefix ---------------------------------------------------------------------------------
+
+test("merge reads <prefix> as the prefix it is given, in either key of a binding, Ctrl+A by default", () => {
+  const b = merge({ favorite: ["S", "<prefix> S"], read: ["Ctrl+G M"] }, "Ctrl+B");
+  assert.deepEqual(b.splitDown, ["Ctrl+-", 'Ctrl+B "']);
+  assert.deepEqual(b.tabByNumber.slice(0, 2), ["Ctrl+B 1", "Ctrl+B 2"]);
+  assert.deepEqual(b.favorite, ["S", "Ctrl+B S"], "the user's keys too");
+  assert.deepEqual(b.read, ["Ctrl+G M"], "a key without it stays as it is");
+  assert.deepEqual(b.sendPrefix, ["Ctrl+B Ctrl+B"], "the second key too");
+  assert.deepEqual(merge({}).sendPrefix, ["Ctrl+A Ctrl+A"]);
+});
+
+test("the default keys clash with no free prefix, and a prefix bound alone becomes a first key", () => {
+  for (const prefix of ["Ctrl+Space", "Alt+A", "Ctrl+B"]) {
+    assert.deepEqual([...conflicts(merge({}, prefix)).keys()], [], prefix);
+  }
+  assert.equal(chordFrom(DEFAULT_BINDINGS, "Ctrl+B", "doc"), undefined);
+  const b = merge({}, "Ctrl+B");
+  assert.ok(chordFrom(b, "Ctrl+B", "doc"), "Ctrl+B pages up no more: Settings says so on that row");
+  assert.equal(chordFrom(b, "Ctrl+A", "doc"), undefined);
+});
+
+test("stepKeys with the prefix Ctrl+B: its chords run, Ctrl+A is no first key, and Ctrl+B twice sends the prefix", () => {
+  const b = merge({}, "Ctrl+B");
+  assert.deepEqual(ran(press(["Ctrl+B", '"'], { b })), ["splitDown", 1, 'Ctrl+B "']);
+  assert.equal(step("Ctrl+A", IDLE, { b }).kind, "none");
+  assert.equal(step("Ctrl+A", IDLE, { b, inField: true }).kind, "none", "a field selects all by itself");
+  assert.equal(step("Ctrl+B", IDLE, { b, scope: "doc" }).kind, "wait", "no page up alone");
+  for (const o of [{ b }, { b, inField: true }]) {
+    const s = press(["Ctrl+B", "Ctrl+B"], o);
+    assert.deepEqual(ran(s), ["sendPrefix", 1, "Ctrl+B Ctrl+B"]);
+    assert.equal(passesOn(s), true);
+  }
 });
 
 test("stepKeys: a plain key in a field never runs or starts a chord, even on an inFields action", () => {

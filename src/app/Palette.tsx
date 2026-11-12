@@ -80,7 +80,7 @@ interface Command {
 /** Actions with no meaning here: they act on the list's cursor or the palette itself, need a key's number, or are small steps nobody picks from a list. */
 const NOT_COMMANDS = new Set<ActionId>([
   "escape",
-  "selectAll",
+  "sendPrefix",
   "next",
   "prev",
   "open",

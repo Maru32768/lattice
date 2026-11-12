@@ -76,7 +76,7 @@ import type { TabLabel } from "../layout/TabStrip";
 import { CHAT, MAIN_REQUEST, openWindows, storageKeys, toMain, type MainRequest } from "./windows";
 import { displayLang, isLang, setDisplayLang, useT } from "../i18n";
 import { placeDoc, type Place } from "./history";
-import type { ActionId } from "../lib/keymap";
+import type { DocActionId } from "../lib/keymap";
 import { syncPrefs } from "../lib/prefs";
 
 // Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
@@ -852,7 +852,7 @@ export default function App() {
 
   const pageOfKeys = () => (paneFocus.keyPane()?.dataset.pane !== "chat" && screen === "library" && cur?.kind === "page" ? cur : null);
   /** Runs in the document the keys are in. A page runs it itself; the key reached the app only because the app held the keyboard, which goes back. */
-  const docAction = (id: ActionId) => (count: number) => {
+  const docAction = (id: DocActionId) => (count: number) => {
     const page = pageOfKeys();
     if (page) {
       browser.runDoc(page.key, id, count).catch(fail);
@@ -894,7 +894,7 @@ export default function App() {
     palette: () => setPalette((p) => (p == null ? { initial: "" } : null)),
     command: () => setPalette((p) => p ?? { initial: ">" }),
     keyHelp: () => setKeyHelp(true),
-    selectAll: docAction("selectAll"),
+    sendPrefix: docAction("selectAll"),
     search: enterSearch,
     next: (n) => step(n),
     prev: (n) => step(-n),

@@ -6,7 +6,7 @@
  * The ideas come from Vimium's content scripts (MIT License, Copyright (c) 2010 Phil Crosby, Ilya Sukhar).
  */
 import { collapse, isWord } from "../vocab/vocab.ts";
-import { isModified, isPrintable, type ActionId } from "../lib/keymap.ts";
+import { isModified, isPrintable, type DocActionId } from "../lib/keymap.ts";
 import { firstField, hintLabels, linkTargets, visibleWords, type Target } from "./hints.ts";
 import { isDocScroll, scrollDoc } from "./scroll.ts";
 import { docText, firstVisibleOffset, indexOfPoint, matchIsLive, matchesIn, pickMatch, rangeAt, textNodes, type DocText } from "./text.ts";
@@ -630,7 +630,7 @@ export function createDocNav(host: () => DocHost) {
 
   // ---- what hosts call -------------------------------------------------------------------------
 
-  const RUNS: Partial<Record<ActionId, () => void>> = {
+  const RUNS: Partial<Record<DocActionId, () => void>> = {
     docFind: startFind,
     findNext: () => repeatFind(1),
     findPrev: () => repeatFind(-1),
@@ -672,7 +672,7 @@ export function createDocNav(host: () => DocHost) {
 
   return {
     /** Runs one of the document's own actions; any other id does nothing, as a page may call this itself. */
-    run(id: ActionId, count: number) {
+    run(id: DocActionId, count: number) {
       // Ahead of NORMAL, which would close the find bar that Ctrl+A selects in.
       if (id === "selectAll" && mode.kind === "find") {
         mode.input.select();

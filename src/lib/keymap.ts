@@ -23,7 +23,7 @@ export type ActionId =
   | "command"
   | "keyHelp"
   | "escape"
-  | "selectAll"
+  | "sendPrefix"
   | "paneLast"
   | "paneNumbers"
   | "paneGrowLeft"
@@ -94,6 +94,9 @@ export type ActionId =
   | "copyUrl"
   | "print";
 
+/** What a document runs (`createDocNav`, `browser_run_doc`): an action, or select all, which sending Ctrl+A does for a page that did not get the key. */
+export type DocActionId = ActionId | "selectAll";
+
 export type KeyScope = "list" | "doc";
 
 /** What the keys are for, in the order of the tabs in Settings › Shortcuts and the headings of the key help. */
@@ -115,50 +118,54 @@ export interface ActionDef {
   /** Runs inside the document itself, not in the app. */
   local?: boolean;
   /**
-   * As tmux's send-prefix: the sequence's last key goes on to what has the focus, which does with it what it does without
-   * Lattice (a field or a page selects all, Vim increments). The action runs only where the key cannot go on: in a page whose
-   * keyboard the app's hint took. Its keys are fixed, since any other last key has no such default: Settings › Shortcuts
-   * leaves it out, and a stored override is ignored.
+   * As tmux's send-prefix: the sequence's last key, the prefix, goes on to what has the focus, which does with it what it
+   * does without Lattice (with Ctrl+A, a field or a page selects all and Vim increments). The action runs only where the
+   * key cannot go on: in a page whose keyboard the app's hint took. Its keys are fixed, since only the prefix is a key to
+   * send: Settings › Shortcuts leaves it out, and a stored override is ignored.
    */
   passThrough?: boolean;
 }
 
+/** Stands for the prefix in a key, as tmux's `prefix` option: `<prefix> "`. `keyOf` never makes it, since a named key comes from `KeyboardEvent.key`. */
+export const PREFIX = "<prefix>";
+export const DEFAULT_PREFIX = "Ctrl+A";
+
 /**
- * A binding is one key or, as in tmux, two pressed in turn: `Ctrl+A "`. No single key contains a
+ * A binding is one key or, as in tmux, two pressed in turn: `<prefix> "`. No single key contains a
  * space (the space bar is "Space"), so a space always separates the two.
  */
 export const ACTIONS: ActionDef[] = [
   { id: "palette", group: "app", keys: ["Ctrl+P"], inFields: true },
-  { id: "command", group: "app", keys: [":", ";", "Ctrl+A :"], inFields: true },
-  { id: "keyHelp", group: "app", keys: ["?", "Ctrl+A ?"], inFields: true },
+  { id: "command", group: "app", keys: [":", ";", "<prefix> :"], inFields: true },
+  { id: "keyHelp", group: "app", keys: ["?", "<prefix> ?"], inFields: true },
   { id: "escape", group: "app", keys: ["Escape"], inFields: true },
-  { id: "selectAll", group: "app", keys: ["Ctrl+A Ctrl+A"], inFields: true, passThrough: true },
-  { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "Ctrl+A ArrowLeft", "Ctrl+A H"], inFields: true },
-  { id: "paneDown", group: "panes", keys: ["Ctrl+J", "Ctrl+A ArrowDown", "Ctrl+A J"], inFields: true },
-  { id: "paneUp", group: "panes", keys: ["Ctrl+K", "Ctrl+A ArrowUp", "Ctrl+A K"], inFields: true },
-  { id: "paneRight", group: "panes", keys: ["Ctrl+L", "Ctrl+A ArrowRight", "Ctrl+A L"], inFields: true },
-  { id: "paneNext", group: "panes", keys: ["Ctrl+A O"], inFields: true },
-  { id: "paneLast", group: "panes", keys: ["Ctrl+A ;"], inFields: true },
-  { id: "paneNumbers", group: "panes", keys: ["Ctrl+A Q"], inFields: true },
-  { id: "paneGrowLeft", group: "panes", keys: ["Ctrl+A Shift+H", "Ctrl+A Ctrl+ArrowLeft"], inFields: true, repeat: true },
-  { id: "paneGrowRight", group: "panes", keys: ["Ctrl+A Shift+L", "Ctrl+A Ctrl+ArrowRight"], inFields: true, repeat: true },
-  { id: "paneGrowUp", group: "panes", keys: ["Ctrl+A Shift+K", "Ctrl+A Ctrl+ArrowUp"], inFields: true, repeat: true },
-  { id: "paneGrowDown", group: "panes", keys: ["Ctrl+A Shift+J", "Ctrl+A Ctrl+ArrowDown"], inFields: true, repeat: true },
-  { id: "paneSwapPrev", group: "panes", keys: ["Ctrl+A {"], inFields: true },
-  { id: "paneSwapNext", group: "panes", keys: ["Ctrl+A }"], inFields: true },
-  { id: "paneEven", group: "panes", keys: ["Ctrl+A Shift+E"], inFields: true },
-  { id: "closePane", group: "panes", keys: ["Ctrl+A X"], inFields: true },
-  { id: "splitRight", group: "panes", keys: ["Ctrl+\\", "Ctrl+A %"], inFields: true },
-  { id: "splitDown", group: "panes", keys: ["Ctrl+-", 'Ctrl+A "'], inFields: true },
-  { id: "focus", group: "panes", keys: ["Ctrl+A Z"], inFields: true },
-  { id: "newTab", group: "tabs", keys: ["Ctrl+T", "Ctrl+A C"], inFields: true },
-  { id: "closeTab", group: "tabs", keys: ["Ctrl+W", "Ctrl+A &"], inFields: true },
-  { id: "nextTab", group: "tabs", keys: ["Ctrl+Tab", "Ctrl+A N", "G T"], inFields: true },
-  { id: "prevTab", group: "tabs", keys: ["Ctrl+Shift+Tab", "Ctrl+A P", "G Shift+T"], inFields: true },
+  { id: "sendPrefix", group: "app", keys: ["<prefix> <prefix>"], inFields: true, passThrough: true },
+  { id: "paneLeft", group: "panes", keys: ["Ctrl+H", "<prefix> ArrowLeft", "<prefix> H"], inFields: true },
+  { id: "paneDown", group: "panes", keys: ["Ctrl+J", "<prefix> ArrowDown", "<prefix> J"], inFields: true },
+  { id: "paneUp", group: "panes", keys: ["Ctrl+K", "<prefix> ArrowUp", "<prefix> K"], inFields: true },
+  { id: "paneRight", group: "panes", keys: ["Ctrl+L", "<prefix> ArrowRight", "<prefix> L"], inFields: true },
+  { id: "paneNext", group: "panes", keys: ["<prefix> O"], inFields: true },
+  { id: "paneLast", group: "panes", keys: ["<prefix> ;"], inFields: true },
+  { id: "paneNumbers", group: "panes", keys: ["<prefix> Q"], inFields: true },
+  { id: "paneGrowLeft", group: "panes", keys: ["<prefix> Shift+H", "<prefix> Ctrl+ArrowLeft"], inFields: true, repeat: true },
+  { id: "paneGrowRight", group: "panes", keys: ["<prefix> Shift+L", "<prefix> Ctrl+ArrowRight"], inFields: true, repeat: true },
+  { id: "paneGrowUp", group: "panes", keys: ["<prefix> Shift+K", "<prefix> Ctrl+ArrowUp"], inFields: true, repeat: true },
+  { id: "paneGrowDown", group: "panes", keys: ["<prefix> Shift+J", "<prefix> Ctrl+ArrowDown"], inFields: true, repeat: true },
+  { id: "paneSwapPrev", group: "panes", keys: ["<prefix> {"], inFields: true },
+  { id: "paneSwapNext", group: "panes", keys: ["<prefix> }"], inFields: true },
+  { id: "paneEven", group: "panes", keys: ["<prefix> Shift+E"], inFields: true },
+  { id: "closePane", group: "panes", keys: ["<prefix> X"], inFields: true },
+  { id: "splitRight", group: "panes", keys: ["Ctrl+\\", "<prefix> %"], inFields: true },
+  { id: "splitDown", group: "panes", keys: ["Ctrl+-", '<prefix> "'], inFields: true },
+  { id: "focus", group: "panes", keys: ["<prefix> Z"], inFields: true },
+  { id: "newTab", group: "tabs", keys: ["Ctrl+T", "<prefix> C"], inFields: true },
+  { id: "closeTab", group: "tabs", keys: ["Ctrl+W", "<prefix> &"], inFields: true },
+  { id: "nextTab", group: "tabs", keys: ["Ctrl+Tab", "<prefix> N", "G T"], inFields: true },
+  { id: "prevTab", group: "tabs", keys: ["Ctrl+Shift+Tab", "<prefix> P", "G Shift+T"], inFields: true },
   // One action for all ten: the handler reads the number off the sequence, 0 being the tenth.
-  { id: "tabByNumber", group: "tabs", keys: [..."1234567890"].map((d) => `Ctrl+A ${d}`), inFields: true },
-  { id: "tabList", group: "tabs", keys: ["Ctrl+A W"], inFields: true },
-  { id: "popOut", group: "tabs", keys: ["Ctrl+Shift+N", "Ctrl+A !"], inFields: true },
+  { id: "tabByNumber", group: "tabs", keys: [..."1234567890"].map((d) => `<prefix> ${d}`), inFields: true },
+  { id: "tabList", group: "tabs", keys: ["<prefix> W"], inFields: true },
+  { id: "popOut", group: "tabs", keys: ["Ctrl+Shift+N", "<prefix> !"], inFields: true },
   { id: "favorite", group: "article", keys: ["S"] },
   { id: "read", group: "article", keys: ["M"] },
   { id: "view", group: "article", keys: ["G V"] },
@@ -203,7 +210,7 @@ export const ACTIONS: ActionDef[] = [
   { id: "hints", group: "doc", keys: ["F"], scope: "doc", local: true },
   { id: "hintsNew", group: "doc", keys: ["Shift+F"], scope: "doc", local: true },
   { id: "wordHints", group: "doc", keys: ["G W"], scope: "doc", local: true },
-  { id: "visual", group: "doc", keys: ["V", "Ctrl+A ["], scope: "doc", local: true },
+  { id: "visual", group: "doc", keys: ["V", "<prefix> ["], scope: "doc", local: true },
   { id: "nextHeading", group: "doc", keys: ["] ]"], scope: "doc", local: true },
   { id: "prevHeading", group: "doc", keys: ["[ ["], scope: "doc", local: true },
   { id: "focusInput", group: "doc", keys: ["G I"], scope: "doc", local: true },
@@ -246,12 +253,30 @@ export type Bindings = Record<ActionId, string[]>;
 /** The action's name in Settings, the palette and the shortcut help (`keys.<id>` in the catalogs). */
 export const actionLabel = (t: T, id: ActionId) => t(`keys.${id}`);
 
-export const DEFAULT_BINDINGS = Object.fromEntries(ACTIONS.map((a) => [a.id, a.keys])) as Bindings;
+const withPrefix = (keys: string[], prefix: string) => keys.map((k) => k.replaceAll(PREFIX, prefix));
 
-/** The actions whose keys cannot change (`passThrough`), at their defaults. */
-const FIXED = Object.fromEntries(ACTIONS.filter((a) => a.passThrough).map((a) => [a.id, a.keys])) as Partial<Bindings>;
+const defaults = new Map<string, Bindings>();
+/** The registry's keys with `prefix`, the same arrays each time: `isCustom` tells a default by its identity. */
+export function defaultBindings(prefix: string): Bindings {
+  let d = defaults.get(prefix);
+  if (!d) {
+    d = Object.fromEntries(ACTIONS.map((a) => [a.id, withPrefix(a.keys, prefix)])) as Bindings;
+    defaults.set(prefix, d);
+  }
+  return d;
+}
 
-export const merge = (overrides: Partial<Bindings>): Bindings => ({ ...DEFAULT_BINDINGS, ...overrides, ...FIXED });
+export const DEFAULT_BINDINGS = defaultBindings(DEFAULT_PREFIX);
+
+/** The actions whose keys cannot change (`passThrough`). */
+const FIXED = ACTIONS.filter((a) => a.passThrough).map((a) => a.id);
+
+/** The bindings in effect: the defaults with the user's `overrides`, PREFIX read as `prefix`. */
+export function merge(overrides: Partial<Bindings>, prefix = DEFAULT_PREFIX): Bindings {
+  const d = defaultBindings(prefix);
+  const own = Object.fromEntries(Object.entries(overrides).map(([id, keys]) => [id, withPrefix(keys, prefix)]));
+  return { ...d, ...own, ...Object.fromEntries(FIXED.map((id) => [id, d[id]])) };
+}
 
 const NAMES: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "Esc", Backspace: "⌫" };
 
