@@ -1097,3 +1097,72 @@ UIがlocalStorageだけに置いていた7つの設定を、ライブラリのDB
 - **空の名前か元のタイトルで保存すると名前を外し、今の名前で保存すると何もしない。** 元のタイトルと同じ文字列で保存しても、名前が付いたままにならないようにした。
 - **統合では、まとめられて消える行の名前を残る記事に移す。** ただし残る記事にすでに名前があれば、そちらを残す。
 - **採らなかったもの。** `custom_title`列を足して読む側で`coalesce`する形。読む側を全部直す必要があり、今後タイトルを読む箇所を足すときに忘れやすい。
+
+## 36. ローカルの翻訳エンジン(M1、2026-11-12)
+
+翻訳だけに使うエンジンとして、利用者が起動するOpenAI互換のサーバー(llama-server、LM Studio、Ollama)で動くPLaMo 3 Translate(Preferred Networks)を選べるようにする。「設定 › 翻訳」の「翻訳エンジン」(`translate_engine`。既定の`llm`はAIプロバイダのfallback chain、`local`はローカルの翻訳サーバー)と、接続先(`translate_local_url`、既定`http://127.0.0.1:8077`)で選ぶ。PLaMoは訳文だけを返し、文の組もJSONも返さないので、Latticeが断片を文に分けて1行1文で送り、行の対応で`Unit`を作る。記事のjob、Page表示のoverlay、PDFは同じ`Translator`を通るので、3つとも切り替わる。
+
+| 対象 | ファイル |
+|---|---|
+| エンジンの選択とキーの規則(`EngineKind`・`Translator`・`translator`)、設定 | `crates/lattice-core/src/translate.rs` |
+| 文への分割(`sentences::split`) | `crates/lattice-core/src/sentences.rs` |
+| サーバーとの通信、行の対応、1文ずつの訳し直し、文脈の上限 | `crates/lattice-core/src/local.rs` |
+| コマンド(`get_translate_engine`・`set_translate_engine`・`check_translate_local`)とoverlay | `src-tauri/src/lib.rs` |
+| 設定画面 | `src/settings/TranslationSettings.tsx` |
+
+### 設計の判断
+
+- **エンジンとキーを1つの値に束ねる。** `Translator`は、エンジン(`Via::Llm`か`Via::Local`)と、そのエンジンが守れる`Target`を一緒に持つ。作れるのは`translator()`だけで、`run`とoverlayは訳文を`Translator::key()`に保存する。キャッシュは本文のhashで記事・Page表示・検索が共有する(§3)ので、PLaMoの訳を「専門用語を英語のまま残す」や「追加の指示」のキーに保存すると、その約束を破った訳がずっと残る。chainと`LlmProvider`は変えない(処理ごとのproviderはJ7)。
+- **キーの規則は`EngineKind::normalize`の1か所。** `local`のときは、設定にかかわらず「専門用語も訳す・追加の指示なし」のキー(`ja-x-translated-terms`、`en-x-translated-terms`)にする。PLaMoは用語も訳し、指示を受け付けないから。この規則を、キーを作る2か所(読む側の`translate::target`と、書く側の`translator`)で使う。Reader・検索・enqueue・CLIは`target`を通るので、変更なしで同じキーを読む。設定の「専門用語を英語のまま残す」と「追加の指示」の値は消さず、`llm`に戻すとまた効く。
+- **jobは実行するときのエンジンで訳す。** jobのparamsは積んだときのキーのままで、書き換えない。`run`は積んだ`Target`をそのときのエンジンで`normalize`するので、`ja`で積んだjobを`local`で実行すると`ja-x-translated-terms`に書く。Readerもそのキーを読むので、jobは画面に出す訳を埋める。逆に`local`で積んだjobを`llm`で実行すると、AIが「専門用語も訳す・指示なし」のpromptでそのキーを埋める。どちらもキーの約束を守る。処理状況の進み具合(`in_progress`)も同じ規則でキーを決める。積んだときにエンジンを固定すると、`local`を選んだあとも`llm`のjobがAIの使用量を使い続ける(「黙ってAPIやCLIを使わない」に反する)。
+- **文への分割はLatticeがする。** 断片のHTMLから見える文字(タグを除き、文字参照を戻し、⟦n⟧を1文字、`<br>`を改行、そのほかの空白を空白1文字にしたもの)を作り、`unicode-segmentation`(UAX #29。`dom_smoothie`を通して前からビルドに入っていた)で文の境界を求める。境界では、開いている要素がない位置でだけ切る。そのため、文のHTMLはタグの組を割らず、`<a>`や`<em>`の中にある文はその要素ごと1つの単位になる。境界の直後の閉じタグは前の文に、開きタグは次の文に入り、文の後ろの空白は前の文の原文に入る。原文は断片の切り出しなので、つなげると断片そのものになる。UAX #29が切る場所のうち2つは切らない。`」`や`』`の後ろにひらがなが続くとき(`…になってる？」と問いかけたり`。実測で行の数が合わなかった唯一のblock)と、`Mr.`・`Dr.`・`Prof.`・`Fig.`・`No.`などの後ろに大文字が続くときである。文字も数字もないかけら(⟦1⟧だけ、`)`だけ)は前の文に付ける。
+- **1つのblockを1回のリクエストで送る。** 1行1文で送り、返った行の数が文の数と同じなら、行ごとに`Unit`にする。文が1つのblockは、返った行をつないで1つの単位にし、送り直さない(temperatureが0なので同じ答えが返る)。行の数が合わないblock、`finish_reason`が`stop`でないblock、HTTPのエラー(接続できないときを除く)になったblockは、blockの本文を文脈(systemの`---`の後ろ)に付けて1文ずつ訳し直す。1文でも答えがなければ、そのblockは訳せなかったことにする(`translate.missingBlocks`)。⟦n⟧の検査は今と同じ(`segments::acceptable`)。Latticeのbatch(12段落、6,000字)は保存と`Gate`の単位のまま残し、batchの中のblockは1つずつ送る。
+- **1回のリクエストを文脈の枠に収める。** llama-serverは同時のリクエストで1つの文脈(`plamo-server`は16,384トークン、3スロット)を分け合い、合わせて超えるとすべて失敗する。そこで、1回のリクエストを16,384÷3の枠に収める。入力のトークンを文字数×5/4以下(実測で日本語は1字に約1トークン、英語は約0.25トークン)と見積もり、出力の上限(`max_tokens`)を文字数+64とする。収まらないときは文脈から落とし、それでも収まらないblockは1文ずつ送る。同時に送るリクエストは、プロセス全体のsemaphore(`local::IN_FLIGHT`、3)で数える。jobの`Gate`(並列実行数、最大8)とoverlayのsemaphore(3)は別々に数えるので、両方にかかる上限はここにしか置けない。並列実行数が3より大きいと、残りのbatchはここで待つ。
+- **接続の確認は`/v1/models`。** `Server::translate`は最初に`GET /v1/models`を1回呼び、名前に`plamo`を含むモデル(なければ最初のモデル)をリクエストの`model`にする。LM StudioとOllamaはこれが必須で、llama-serverは無視する。保存する`model`は応答の`model`で、なければこの名前。接続できなければ、どのblockも送らずにbatchを止める。設定画面の状態の表示(`check_translate_local`)も同じ呼び出しを使う。
+- **失敗はchainに回さない。** 接続できないとき、またはHTTP 401・403・404・503(モデルの読み込み中を含む)のときは、`LlmError::Unavailable(msg!("translate.localUnavailable", url, detail))`にする。batchは止まり、`run`はjobをこのコードで失敗させ、jobは今と同じようにbackoffする。`Via::Local`はproviderを持たないので、AIに回る道がない(「黙ってAPIやCLIを使わない」)。HTTP 500(文脈のあふれ)などは`Failed`で、そのblockは1文ずつ訳し直す。何も答えずに2回失敗したら、batchを止める(`segments::translate_snippets`と同じ規則)。`run`はjobのエラーを`e.to_string()`で作っていたので、前に`provider unavailable: `が付き、UIがコードとして読めなかった。`LlmError::message()`は、コードのメッセージをそのまま返す。
+- **文字参照は戻さない。** 実機(2B)で、`<code>&lt;div&gt;</code>`・`&lt;template&gt;`・`<code>a &lt; b</code>`は文字参照のまま返り、`&quot;`と`&amp;`は自然な日本語(「」、と)になった。訳文はこれまでどおり信頼せず、sanitizerを通す。
+- **`keep_scripts`は通さない。** 原文は断片の切り出しなので、`<sub>`と`<sup>`は原文に残る。
+- **トークン数をログに出す。** batchごとに、`local translate: …`のinfoログへ、リクエストの数、入力と出力のトークンの合計、1回のリクエストで使った最大を出す。文字数からの見積もりを、あとで実際の値と比べるため。
+
+### 実測(2B Q4_K_M、GTX 1080、3並列)
+
+ライブラリの記事で、送り方を2つ比べた。文は正規表現の分割(UAX #29に近いもの)で、本文はタグを除いたテキスト。英語のblock 493のうち234、日本語のblock 207のうち66が2文以上だった。
+
+| 送り方 | 英日で行の数が合わないblock | 英日の時間 | 日英で行の数が合わないblock | 日英の時間 | 1回のリクエストの最大トークン(入出力) |
+|---|---|---|---|---|---|
+| A: batch(12段落、6,000字)で1行1文、blockの間に空行 | 0/493 | 325秒 | 13/207(1つのbatchでblockの区切りが崩れた) | 47秒 | 5,552 |
+| B: blockごとに1回、1行1文 | 0/493 | 254秒 | 1/207 | 63秒 | 676 |
+
+Bを採った。行の対応が保て、空行でblockを区切らずに済み、悪いblockが1つで済み、1回のリクエストが枠よりずっと小さい(3×676は16,384よりずっと小さい)。英日では速かった。Bで合わなかった1つは、分割が文の途中で切ったもの(`…『曳光弾』になってる？」` + `と問いかけたり、…`)で、モデルは2行を1行にした。UAX #29もここで切るので、上の規則を足した。生成は約85〜94トークン/秒で、約6,900字を約25秒で訳す。文脈の指定も効き、「The bank was muddy.」に川の文脈を付けると「川岸はぬかるんでいた。」になった。
+
+### 確かめたこと
+
+- `sentences.rs`のテストで、32の断片の分け方(`<code>`・`<a href>`・入れ子の`<em>`、要素の中の境界、`&amp;`・`&lt;`・`&nbsp;`、⟦n⟧の位置、`<sub>`、`<br>`、`<img>`、日本語の。？」、`e.g. the`、`Dr. Smith`、`etc.`の後ろの文の終わり、閉じていないタグ)と、そのすべてで原文をつなぐと断片になること、文が空でないこと、タグの組を割らないこと、境界の空白が前の文に入ること。
+- `local.rs`のテストで、ループバックのHTTPサーバーに対して、blockが行の対応で単位になること、要求の`model`・`temperature`・`stop`・systemの形、行の数が合わないときに1文ずつ文脈付きで送り直すこと、文が1つのblockを送り直さないこと、`length`の訳を受け取らないこと、HTTP 500のblockを文から作ること、すべて失敗するサーバーに2回しか送らないこと、閉じたポートと503が`translate.localUnavailable`になり12段落のbatchで1回しか送らないこと、URLの検査。
+- `translate.rs`のテストで、`local`のとき、「専門用語を英語のまま残す」がオンで「追加の指示」があっても、`target`のキーが`ja-x-translated-terms`になること、`ja-x-instr-…`で積んだjobが`ja-x-translated-terms`にだけ`provider`=`local`・`prompt_version`=`plamo-v1`で書き、chainを1回も呼ばないこと、進み具合がそのキーを数えること、閉じたポートではjobのエラーが`{"code":"translate.localUnavailable"`で始まり、何も保存せずchainも呼ばないこと、`llm`に戻すと設定どおりのキーに戻ること。
+- 実機のPLaMo(2B Q4_K_M、llama-serverを`-c 16384 -np 3 -kvu`で起動)で、`#[ignore]`のテスト`local::tests::live_plamo`。`/v1/models`のモデルは`plamo-3-translate`。川の文脈を付けた「The bank was muddy.」は「川岸はぬかるんでいた。」になった。`<code>`とリンクを含む3文の段落は3つの単位で返り、`<code>git status</code>`と`<a href="https://git-scm.com/docs">`は訳文に残った。
+- e2e(`e2e/settings.spec.ts`)で、「ローカルの翻訳サーバー」を選ぶとmockのモデル名が出て、「専門用語を英語のまま残す」と「追加の指示」が無効になり、保存したURLが`/v1`を除いて保存され、接続できないURLではその理由が出ること。
+
+### 確かめていないこと
+
+- LM StudioとOllama。llama-serverでだけ確かめた。モデルを読み込んでいないときに、これらが404や503を返すのか、200でエラーを返すのかは測っていない。
+- アプリを通した翻訳。実機のサーバーでは`lattice-core`の経路(`Server::translate`)だけを動かした。
+
+### 分かっている制限
+
+- 文脈の枠は`plamo-server`の16,384トークン・3スロットを決め打ちしている(`shortcut:`)。小さい文脈で動かすと、HTTP 500になったblockが1文ずつになる。llama-serverなら`/props`で分かるが、LM StudioとOllamaにはない。
+- 分割がまちがって行の数が合わないと、1文ずつの訳し直しで節を単位として保存しうる(§3の「単位は文で、節に分けない」に反する)。実測で700 blockに1つで、その原因(`」と`)は分割の規則で除いた。
+- CLIは翻訳jobを実行しない(`save --run`が実行するのはNETとLOCALのjobだけ)ので、semaphoreはプロセスごとで足りる。
+- overlayは、chainのときと同じく、エラーをログに書くだけでページには出さない。接続できないことは、設定画面の状態と、処理状況のjobのエラーで分かる。
+- サーバーが止まっている間に失敗になったjobは、chainの障害のときと同じく、利用者が再実行する。
+- エンジンを切り替えても、開いているReaderは読み直さない。次に開いたときに新しいキーで表示する。
+- 文字数からのトークンの見積もりは、英語では4倍ほど多い。blockの大きさでは困らない(実測の最大は676トークン)。
+- 接続先を別のPCにすると、記事の本文はそのPCに送る。
+
+### 採らなかったもの
+
+- **`segments::translate_snippets`の中でエンジンを分ける(roadmapの書き方)。** 呼ぶ側が`Target`を渡して`target.key()`に自分で保存するので、キーの規則を`run`・overlay・今後の呼び出し側がそれぞれ守ることになる。
+- **PLaMoを`LlmProvider`として実装し、JSONの約束をまねる。** systemのpromptとschemaを無視する実装になり、chainが要約や理解度チェックにもPLaMoを使えてしまう。
+- **積んだときにエンジンを固定する。** `local`を選んだあとも、`llm`のjobがAIの使用量を使う。
+- **エンジンを変えたときに、積んであるjobのparamsを書き換える。** 実行中のjobと競合する書き込みが増え、キーの規則を知る場所が2つになる。
+- **Latticeのbatchで送り、blockの間を空行で区切る(実測のA)。** 日英で1つのbatchがblockの区切りを失い、そのbatchをまるごと失った。1回のリクエストも大きい(最大5,552トークン)。
