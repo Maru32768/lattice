@@ -240,7 +240,8 @@ fn align(s: &Sentences<'_>, content: &str) -> Option<Vec<Unit>> {
     Some(s.sources().zip(translations).map(|(source, translation)| Unit { source: source.to_string(), translation }).collect())
 }
 
-/// `html` without the spaces between Japanese text and a tag that has Japanese on its other side. PLaMo
+/// `html` without the spaces between Japanese text and a tag that has Japanese on its other side (not one
+/// between two tags, which may part two elements). PLaMo
 /// spaces every inline element of a reply once it spaces a `<code>` there (「前に <a>ドキュメント</a> を」);
 /// Japanese puts no space between Japanese words, and the one before `<code>git status</code>` stays.
 fn tighten(html: &str) -> String {
@@ -256,7 +257,7 @@ fn tighten(html: &str) -> String {
     let dropped = |i: usize| {
         let (before, after) = (&pieces[..i], &pieces[i + 1..]);
         pieces[i] == " "
-            && (before.last().is_some_and(tag) || after.first().is_some_and(tag))
+            && before.last().is_some_and(tag) != after.first().is_some_and(tag)
             && japanese(before.iter().rev().find(|p| !tag(p)))
             && japanese(after.iter().find(|p| !tag(p)))
     };
@@ -587,7 +588,14 @@ pub(crate) mod tests {
         let spaced = "<code>git status</code> を実行します。\nコミットする前に <a href=\"https://x.dev/a b\">ドキュメント</a> を読みます。";
         let tight = "<code>git status</code> を実行します。\nコミットする前に<a href=\"https://x.dev/a b\">ドキュメント</a>を読みます。";
         assert_eq!((tighten(spaced).as_str(), reply(&completion(spaced)).unwrap().content.as_str()), (tight, tight));
-        for kept in ["<kbd>Ctrl</kbd> + <kbd>P</kbd> を押す", "東京 大学", "<em>A</em> <em>B</em>", "前に ⟦1⟧ を", "前に <br> 次に"] {
+        for kept in [
+            "<kbd>Ctrl</kbd> + <kbd>P</kbd> を押す",
+            "東京 大学",
+            "<em>A</em> <em>B</em>",
+            "前に ⟦1⟧ を",
+            "前に <br> 次に",
+            "<code>はい</code> <code>いいえ</code>",
+        ] {
             assert_eq!(tighten(kept), kept);
         }
     }
