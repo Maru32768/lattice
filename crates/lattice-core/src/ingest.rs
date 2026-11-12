@@ -366,6 +366,16 @@ mod tests {
     }
 
     #[test]
+    fn clearing_the_title_of_an_article_never_renamed_keeps_its_title() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
+        store_fetched(&s, id, &page(BODY)).unwrap();
+        s.set_title(id, "").unwrap();
+        let a = s.article_row(id).unwrap().unwrap();
+        assert_eq!((a.title.as_deref(), a.auto_title), (Some("T"), None));
+    }
+
+    #[test]
     fn stores_blocks_and_dedups() {
         let s = Store::open_in_memory().unwrap();
         let (id, needs) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
