@@ -100,6 +100,7 @@ test("leaving the PDF tab mid-import and coming back shows the import still runn
   await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
   const kinds = app.getByRole("group", { name: "インポートの種類" });
   await kinds.getByRole("button", { name: "Markdown" }).click();
+  await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" }), "the Markdown tab shares the box the run started with").toBeDisabled();
   await kinds.getByRole("button", { name: "PDF" }).click();
   await expect(app.getByRole("button", { name: /^取り込み中…/ }), "the run is still on, so no second one can start beside it").toBeDisabled();
   await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" }), "the run keeps the value it started with").toBeDisabled();

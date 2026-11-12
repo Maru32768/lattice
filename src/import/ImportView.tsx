@@ -89,7 +89,7 @@ export function ImportView({
         {tab === "urls" ? (
           <UrlImport onImported={onImported} fileInto={fileInto} />
         ) : tab === "markdown" ? (
-          <MarkdownImport onOpen={onOpen} fileInto={fileInto} manual={manual} onManual={setManual} />
+          <MarkdownImport onOpen={onOpen} fileInto={fileInto} manual={manual} onManual={setManual} pdfBusy={pdfBusy} />
         ) : (
           <PdfImport onOpen={onOpen} onImported={onImported} fileInto={fileInto} manual={manual} onManual={setManual} />
         )}
@@ -239,7 +239,7 @@ interface Manual {
   onManual: (on: boolean) => void;
 }
 
-function MarkdownImport({ onOpen, fileInto, manual, onManual }: { onOpen: (id: number) => void; fileInto: FileInto } & Manual) {
+function MarkdownImport({ onOpen, fileInto, manual, onManual, pdfBusy }: { onOpen: (id: number) => void; fileInto: FileInto; pdfBusy: boolean } & Manual) {
   const t = useT();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -299,7 +299,8 @@ function MarkdownImport({ onOpen, fileInto, manual, onManual }: { onOpen: (id: n
         <button className="btn pri lg" onClick={() => run(() => api.importMarkdown(text, undefined, manual))} disabled={busy || !text.trim()}>
           {busy ? t("importView.importing") : t("importView.importMarkdown")}
         </button>
-        <NoAutoTranslate checked={manual} onChange={onManual} />
+        {/* The box is the PDF tab's too: changed here mid-run, it would show the run a value it did not get. */}
+        <NoAutoTranslate checked={manual} onChange={onManual} disabled={pdfBusy} />
         {error && (
           <span role="alert" className="msg error-text">
             {t.msg(error)}
