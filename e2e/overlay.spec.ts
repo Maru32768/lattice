@@ -29,7 +29,7 @@ const textLayer = () => {
   document.body.append(layer);
 };
 
-test("an unbound Space pages the page as a browser does, and a bound one, alone or as a first key, goes to the app without scrolling", async ({ page }) => {
+test("an unbound Space pages the page as a browser does, and a bound one goes to the app without scrolling", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   const scrollY = () => page.evaluate(() => window.scrollY);
@@ -42,22 +42,16 @@ test("an unbound Space pages the page as a browser does, and a bound one, alone 
   await page.waitForTimeout(300);
   expect(await scrollY(), "a screen, not more").toBeLessThanOrEqual(screen);
 
+  // Bound as the first of two keys: the app is told, for its hint, and the page stays where it is until the second.
+  // A one-key binding goes the same way (`takesBeforePage` in overlay.test.ts).
   await page.evaluate(() => scrollTo(0, 0));
-  await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(merge({ view: ["Space"] })));
+  await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(merge({ keyHelp: ["Space H"] })));
   await page.keyboard.press("Space");
   await expect.poll(sent).toEqual([{ key: "Space", count: 1 }]);
   await page.waitForTimeout(300);
   expect(await scrollY()).toBe(0);
-
-  // The first of two keys: the app is told, for its hint, and the page stays where it is until the second.
-  await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(merge({ keyHelp: ["Space H"] })));
-  await page.keyboard.press("Space");
-  await expect.poll(sent).toHaveLength(2);
-  await page.waitForTimeout(300);
-  expect(await scrollY()).toBe(0);
   await page.keyboard.press("h");
   await expect.poll(sent).toEqual([
-    { key: "Space", count: 1 },
     { key: "Space", count: 1 },
     { key: "Space H", count: 1 },
   ]);
