@@ -25,7 +25,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **The default keys are now Vim first.** The command palette is `Ctrl+P` (it was `Ctrl+K`), moving between panes is `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, and printing is `Ctrl+Shift+P`. On a document, `j` and `k` scroll, and the next and previous article are `Shift+J` and `Shift+K`. `v` moved to `g v`, `y` to `g y`, `[` and `]` to `-` and `=`, and `f` to `Ctrl+A z`.
 - **The tmux prefix is now `Ctrl+A`.** Version 0.3.0 used `Ctrl+B`, which now moves a screen up, as in Vim. `Ctrl+A Ctrl+A` selects all: like tmux's send-prefix, it passes the second key on to the focused field or page.
 - `Ctrl+T` opens the search engine's home page in a new tab, as **New tab** (+) in the tab row does. It used to open the palette.
-- You can bind `Space` in **Settings › Shortcuts**, including as the first of two keys, and a `Space` binding now works in web pages too. A bound `Space` no longer scrolls. Unbound, `Space` and `Shift+Space` scroll a screen as before.
+- A `Space` binding in **Settings › Shortcuts**, including as the first of two keys, now works in web pages too. In a text field, `Space` types a space even when it is bound.
 - **Focus mode shows only the focused pane.** The navigation, the article list, the chat and the other panes hide. Press it again to bring them back.
 - The Vim key bindings setting moved from **Settings › Summaries & chat** to the new **Settings › Vim**. Your setting stays as it was.
 - **Settings › Shortcuts** now puts the actions in six tabs by what they are for. The box above finds an action in every tab by its name or key, and **Press a key to find** finds the actions a key you press is assigned to. The key list on `?` is grouped the same way.
