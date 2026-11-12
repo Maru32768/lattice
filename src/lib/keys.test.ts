@@ -190,3 +190,24 @@ test("editing a row keeps its other keys as stored, and reads only a key recorde
   setPrefix("Ctrl+A");
   assert.deepEqual(getBindings().favorite, ["Ctrl+B Q", "Ctrl+A W"]);
 });
+
+test("editing a row keeps every stored key the row shows as one, and a literal key that looks like a default under this prefix stays a change", () => {
+  // Two stored keys that are one under Ctrl+B: adding a key keeps both.
+  setPrefix("Ctrl+B");
+  setKeys("paneNumbers", [...getBindings().paneNumbers, "Ctrl+A Q"]);
+  setPrefix("Ctrl+A");
+  setKeys("paneNumbers", [...getBindings().paneNumbers, "M"]);
+  assert.deepEqual(stored(), { version: 4, paneNumbers: ["<prefix> Q", "Ctrl+A Q", "M"] });
+  replaceKeys(DEFAULTS);
+  // A literal Ctrl+B Q, which is paneNumbers' default under Ctrl+B: adding and removing a key there leaves it a change.
+  setKeys("paneNumbers", ["Ctrl+B Q"]);
+  setPrefix("Ctrl+B");
+  setKeys("paneNumbers", [...getBindings().paneNumbers, "Ctrl+B W"]);
+  setKeys(
+    "paneNumbers",
+    getBindings().paneNumbers.filter((k) => k !== "Ctrl+B W"),
+  );
+  assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B", paneNumbers: ["Ctrl+B Q"] });
+  setPrefix("Ctrl+A");
+  assert.deepEqual(getBindings().paneNumbers, ["Ctrl+B Q"]);
+});
