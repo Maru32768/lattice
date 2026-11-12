@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
 import { api, type GroupRow, type ImportSummary } from "../api";
 import { GroupPicker } from "../library/GroupPicker";
 import { Icon } from "../ui/Icon";
@@ -322,55 +322,89 @@ async function importPdf(file: File, manual: boolean, tooLargeError: string): Pr
   }
 }
 
+/**
+ * The PDF tab's import, kept outside the component: switching tab or screen mid-import unmounts it, and on the way back
+ * the run must still show, with the files that failed, and a second run must not start beside it and mix the books' order.
+ */
+interface PdfRun {
+  /** The file being imported (1-based) and how many there are; null when idle. */
+  progress: { at: number; of: number } | null;
+  done: { imported: number; failed: Failed[] } | null;
+  error: string | null;
+}
+let pdfRun: PdfRun = { progress: null, done: null, error: null };
+const pdfRunListeners = new Set<() => void>();
+function setPdfRun(next: Partial<PdfRun>) {
+  pdfRun = { ...pdfRun, ...next };
+  pdfRunListeners.forEach((l) => l());
+}
+const subscribePdfRun = (l: () => void) => {
+  pdfRunListeners.add(l);
+  return () => void pdfRunListeners.delete(l);
+};
+const currentPdfRun = () => pdfRun;
+const usePdfRun = () => useSyncExternalStore(subscribePdfRun, currentPdfRun);
+
+async function importPdfs(
+  picked: File[],
+  {
+    manual,
+    tooLargeError,
+    fileInto,
+    onOpen,
+    onImported,
+  }: { manual: boolean; tooLargeError: string; fileInto: FileInto; onOpen: (id: number) => void; onImported: () => void },
+) {
+  if (pdfRun.progress) {
+    return;
+  }
+  // "01 …", "02 …" and "2 …", "10 …" both go in chapter order, so the library lists them as the book does.
+  const files = picked.toSorted((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  setPdfRun({ progress: { at: 1, of: files.length }, done: null, error: null });
+  const ids: number[] = [];
+  const failed: Failed[] = [];
+  for (const [i, file] of files.entries()) {
+    setPdfRun({ progress: { at: i + 1, of: files.length } });
+    const r = await importPdf(file, manual, tooLargeError);
+    if ("id" in r) {
+      ids.push(r.id);
+    } else {
+      failed.push({ name: file.name, error: r.error });
+    }
+  }
+  let error: string | null = null;
+  try {
+    await fileInto(ids);
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
+  }
+  setPdfRun({ progress: null });
+  const [id] = ids;
+  if (files.length === 1) {
+    if (id !== undefined) {
+      onOpen(id);
+    } else {
+      setPdfRun({ error: failed[0]?.error ?? null });
+    }
+    return;
+  }
+  setPdfRun({ done: { imported: ids.length, failed }, error });
+  onImported();
+}
+
 /** One PDF opens in the Reader, as before; several (a book split into chapters) stay here with what came of each. */
 function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen: (id: number) => void; onImported: () => void; fileInto: FileInto } & Manual) {
   const t = useT();
   const picker = useRef<HTMLInputElement>(null);
-  /** The file being imported (1-based) and how many there are; null when idle. */
-  const [progress, setProgress] = useState<{ at: number; of: number } | null>(null);
-  const [done, setDone] = useState<{ imported: number; failed: Failed[] } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { progress, done, error } = usePdfRun();
   const busy = progress !== null;
-
-  async function importAll(picked: File[]) {
-    // "01 …", "02 …" and "2 …", "10 …" both go in chapter order, so the library lists them as the book does.
-    const files = picked.toSorted((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-    setError(null);
-    setDone(null);
-    const ids: number[] = [];
-    const failed: Failed[] = [];
-    for (const [i, file] of files.entries()) {
-      setProgress({ at: i + 1, of: files.length });
-      const r = await importPdf(file, manual, t("be.file.tooLarge", { max: PDF_MAX_MB }));
-      if ("id" in r) {
-        ids.push(r.id);
-      } else {
-        failed.push({ name: file.name, error: r.error });
-      }
-    }
-    try {
-      await fileInto(ids);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-    setProgress(null);
-    const [id] = ids;
-    if (files.length === 1) {
-      if (id !== undefined) {
-        onOpen(id);
-      } else {
-        setError(failed[0]?.error ?? null);
-      }
-      return;
-    }
-    setDone({ imported: ids.length, failed });
-    onImported();
-  }
+  const importAll = (files: File[]) =>
+    void importPdfs(files, { manual, tooLargeError: t("be.file.tooLarge", { max: PDF_MAX_MB }), fileInto, onOpen, onImported });
 
   const { dragging, zone } = useFileDrop({
     accept: PDF_FILES,
-    onFiles: (files) => void importAll(files),
-    onReject: () => setError(t("common.wrongFile")),
+    onFiles: importAll,
+    onReject: () => setPdfRun({ error: t("common.wrongFile") }),
     disabled: busy,
   });
 
@@ -392,7 +426,7 @@ function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen:
           // Cleared so that picking the same files again still counts as a change.
           e.target.value = "";
           if (files.length > 0) {
-            void importAll(files);
+            importAll(files);
           }
         }}
       />

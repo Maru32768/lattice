@@ -76,3 +76,25 @@ test("the PDF tab's 自動で翻訳しない goes with every file and is still c
   await app.getByRole("group", { name: "インポートの種類" }).getByRole("button", { name: "Markdown" }).click();
   await expect(app.getByRole("checkbox", { name: "自動で翻訳しない" }), "the Markdown tab shares it").toBeChecked();
 });
+
+test("leaving the PDF tab mid-import and coming back shows the import still running, then its result", async ({ app }) => {
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const internals = (window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } }).__TAURI_INTERNALS__;
+    const invoke = internals.invoke;
+    internals.invoke = async (cmd, args, options) => {
+      if (cmd === "import_pdf_bytes") {
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      return invoke(cmd, args, options);
+    };
+  });
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), pdf("2 b.pdf")]);
+  const kinds = app.getByRole("group", { name: "インポートの種類" });
+  await kinds.getByRole("button", { name: "Markdown" }).click();
+  await kinds.getByRole("button", { name: "PDF" }).click();
+  await expect(app.getByRole("button", { name: /^取り込み中…/ }), "the run is still on, so no second one can start beside it").toBeDisabled();
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
+});
