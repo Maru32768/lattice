@@ -644,6 +644,8 @@ mod tests {
             let a = s.article_row(id).unwrap().unwrap();
             (a.title, a.auto_title)
         };
+        s.set_title(id, ENTRY).unwrap();
+        assert_eq!(titles(), (Some(ENTRY.into()), None), "the title it shows before the fetch is no name of its own");
         s.set_title(id, "Mine").unwrap();
         assert_eq!(titles(), (Some("Mine".into()), Some(ENTRY.into())), "renamed before the fetch: the entry's title is the found one");
         ingest::store_fetch_result(&s, id, Err("HTTP 403 Forbidden".into())).unwrap();

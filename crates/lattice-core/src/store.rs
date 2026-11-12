@@ -1033,7 +1033,8 @@ impl Store {
             c.execute(
                 "UPDATE articles SET title = ?2, auto_title = coalesce(auto_title, title,
                    (SELECT title FROM feed_items WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url), original_url)
-                 WHERE id = ?1 AND title IS NOT ?2",
+                 WHERE id = ?1 AND coalesce(title, (SELECT title FROM feed_items
+                   WHERE feed_id = articles.feed_id AND normalized_url = articles.normalized_url)) IS NOT ?2",
                 params![id, title],
             )?;
         }
