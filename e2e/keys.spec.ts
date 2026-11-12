@@ -410,5 +410,7 @@ test("with the prefix Ctrl+B, Ctrl+B twice in the Reader pages up, as tmux sends
   await expect.poll(screensDown).toBeCloseTo(2, 2);
   await press(page, "Control+b", "Control+b");
   await expect.poll(screensDown, "Ctrl+B's own page up").toBeCloseTo(1, 2);
+  // Past the hint's delay, so that a chord left waiting would show it.
+  await page.waitForTimeout(600);
   await expect(hint(page)).toHaveCount(0);
 });
