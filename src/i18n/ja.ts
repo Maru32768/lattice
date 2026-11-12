@@ -309,7 +309,7 @@ export const ja = {
   "shortcutSettings.prefix": "プレフィックス",
   "shortcutSettings.changePrefix": "変更",
   "shortcutSettings.prefixRefused": "{keyLabel}はプレフィックスにできません。Enter以外のキーを、CtrlかAltと組み合わせて押してください",
-  "shortcutSettings.prefixShadows": "{keyLabel}はプレフィックスなので、単独では「{labelOf}」が働きません",
+  "shortcutSettings.prefixShadows": "{keyLabel}はプレフィックスなので、「{labelOf}」は入力欄の外で2回続けて押すと働きます",
   "shortcutSettings.find": "操作の名前かキーで探す",
   "shortcutSettings.byKey": "キーを押して探す",
   "shortcutSettings.byKeyPrompt": "探すキーを押してください(Escで終了)",

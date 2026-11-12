@@ -316,7 +316,7 @@ export const en = {
   "shortcutSettings.prefix": "Prefix",
   "shortcutSettings.changePrefix": "Change",
   "shortcutSettings.prefixRefused": "{keyLabel} cannot be the prefix. Press a key other than Enter with Ctrl or Alt",
-  "shortcutSettings.prefixShadows": "{keyLabel} is the prefix, so alone it no longer runs “{labelOf}”",
+  "shortcutSettings.prefixShadows": "{keyLabel} is the prefix, so “{labelOf}” runs when you press it twice outside a text field",
   "shortcutSettings.find": "Find by action name or key",
   "shortcutSettings.byKey": "Press a key to find",
   "shortcutSettings.byKeyPrompt": "Press the key to find (Esc stops)",

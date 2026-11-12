@@ -300,6 +300,12 @@ export function useShortcuts({
     const { id } = step.action;
     // The key goes on to what has the focus, as tmux's send-prefix passes it. The page the hint took the keyboard from cannot get it: the action runs it there.
     if (passesOn(step) && !backTo) {
+      // Outside a field the key would reach only the app's own list or document, which do what the prefix does there alone (Ctrl+B pages up).
+      const own = inField ? undefined : actionFor(getBindings(), key, scope);
+      if (own) {
+        e.preventDefault();
+        run(own.id, 1, key);
+      }
       return;
     }
     // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first. A Vim editor keeps it for its modes.

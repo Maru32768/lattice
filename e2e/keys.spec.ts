@@ -399,3 +399,16 @@ test("moving into a pane that shows a page gives the page the keyboard", async (
   await expect.poll(() => callsOf(shell, "browser_focus")).toEqual([{ tab: "k1" }]);
   await expect(shell.locator(".app")).toHaveAttribute("data-kb-pane", "doc");
 });
+
+test("with the prefix Ctrl+B, Ctrl+B twice in the Reader pages up, as tmux sends its prefix to the pane", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+B" })));
+  await page.goto("/");
+  await intoReader(page);
+  const screen = await page.locator(".doc-scroll").evaluate((el) => (el.clientHeight * 7) / 8);
+  const screensDown = async () => (await scrollTop(page)) / screen;
+  await press(page, "Control+f", "Control+f");
+  await expect.poll(screensDown).toBeCloseTo(2, 2);
+  await press(page, "Control+b", "Control+b");
+  await expect.poll(screensDown, "Ctrl+B's own page up").toBeCloseTo(1, 2);
+  await expect(hint(page)).toHaveCount(0);
+});
