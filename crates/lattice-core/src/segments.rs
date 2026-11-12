@@ -336,7 +336,7 @@ async fn call<P: LlmProvider>(provider: &P, system: &str, input: &Value, expecte
 
 /// Translates snippets with one batch call and individual retries for anything missing.
 /// Never fails as a whole: unresolved snippets are `None`.
-pub async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String], to: &Target) -> Translated {
+pub(crate) async fn translate_snippets<P: LlmProvider>(provider: &P, snippets: &[String], to: &Target) -> Translated {
     let system = translation_prompt(to);
     let indexed = |idx: &[usize]| json!(idx.iter().map(|&i| json!({"i": i, "html": snippets[i]})).collect::<Vec<_>>());
     let all: Vec<usize> = (0..snippets.len()).collect();

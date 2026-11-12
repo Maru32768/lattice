@@ -88,7 +88,6 @@ impl Server {
 
     /// Like `segments::translate_snippets`: one entry per snippet, and never failing as a whole. A batch's
     /// blocks go one request at a time, so 並列実行数 batches keep that many requests on the server.
-    #[cfg_attr(not(test), allow(dead_code, reason = "translate.rs is its first caller"))]
     pub(crate) async fn translate(&self, snippets: &[String], to: &str) -> Translated {
         let mut out = Translated { results: vec![None; snippets.len()], error: None };
         // Also the connection check: with no server running, nothing is sent.

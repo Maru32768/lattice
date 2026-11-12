@@ -17,6 +17,8 @@ export type * from "./ChatThread";
 export type * from "./Citation";
 export type * from "./CustomInstructions";
 export type * from "./Effort";
+export type * from "./EngineKind";
+export type * from "./EngineSettings";
 export type * from "./FeedCandidate";
 export type * from "./FeedFilter";
 export type * from "./FeedRow";
