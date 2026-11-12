@@ -17,8 +17,8 @@ async function openPdfTab(app: Page) {
 test("a PDF picked on the import screen opens in the Reader, and Page shows the saved original", async ({ app }) => {
   await openPdfTab(app);
   await picker(app).setInputFiles(pdf("paper.pdf"));
-  expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(1);
   await expect(app.locator("h1.art-title")).toHaveText("Dropped Paper");
+  expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(1);
 
   await app.getByRole("button", { name: /^その他/ }).click();
   await expect(app.getByRole("menuitem", { name: "再抽出(保存済みのPDFから)" })).toBeVisible();
