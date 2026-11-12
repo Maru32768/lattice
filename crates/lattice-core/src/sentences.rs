@@ -49,7 +49,10 @@ struct Mark {
 
 pub(crate) fn split(html: &str) -> Sentences<'_> {
     let (text, marks) = visible(html);
-    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| text[..start].trim_end_matches(OPENING).len());
+    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| {
+        let start = text[..start].trim_end_matches(OPENING).len();
+        start + citations(&text[start..])
+    });
     let cuts = bounds.filter(|&start| !keeps_together(&text[..start], &text[start..])).filter_map(|start| {
         let mark = &marks[marks.binary_search_by_key(&start, |m| m.text_end).ok()?];
         mark.top.then_some((mark.text_end, mark.html_end))
@@ -67,6 +70,23 @@ pub(crate) fn split(html: &str) -> Sentences<'_> {
         }
     }
     Sentences { html, ends: ends.into_iter().map(|e| e.1).collect() }
+}
+
+/// The length of the citation marks `rest` starts with ("[1]", "[2][3]") and the space after them, which
+/// belong to the sentence before: UAX #29 cuts after their `[`.
+fn citations(rest: &str) -> usize {
+    let mut len = 0;
+    while let Some(digits) = rest[len..].strip_prefix('[').map(|r| r.bytes().take_while(u8::is_ascii_digit).count()) {
+        if digits == 0 || !rest[len + 1 + digits..].starts_with(']') {
+            break;
+        }
+        len += digits + 2;
+    }
+    if len == 0 {
+        0
+    } else {
+        rest.len() - rest[len..].trim_start().len()
+    }
 }
 
 /// Whether a UAX #29 bound is no sentence end: a Japanese quote the sentence goes on after
@@ -205,7 +225,10 @@ mod tests {
         ("次に進みます。（詳しくは後述します。）最後です。", &["次に進みます。", "（詳しくは後述します。）", "最後です。"]),
         ("「はい。」「いいえ。」", &["「はい。」", "「いいえ。」"]),
         ("開きます。<b>『入門』</b>を読みます。", &["開きます。", "<b>『入門』</b>を読みます。"]),
-        ("Done.[1] Next one.", &["Done.", "[1] Next one."]),
+        ("Done.[1] Next one.", &["Done.[1] ", "Next one."]),
+        ("It is true.<a href=\"#c\">[1]</a>", &["It is true.<a href=\"#c\">[1]</a>"]),
+        ("Done.<sup>[2]</sup><sup>[3]</sup> Next.", &["Done.<sup>[2]</sup><sup>[3]</sup> ", "Next."]),
+        ("終わり。<a href=\"#c\">[1]</a>次の文。", &["終わり。<a href=\"#c\">[1]</a>", "次の文。"]),
         ("Use a cache, e.g. the page cache. Done.", &["Use a cache, e.g. the page cache. ", "Done."]),
         ("Ask Dr. Smith or (Prof. Jones). They know.", &["Ask Dr. Smith or (Prof. Jones). ", "They know."]),
         ("See Fig. 3 and No. Five. Then go.", &["See Fig. 3 and No. Five. ", "Then go."]),
