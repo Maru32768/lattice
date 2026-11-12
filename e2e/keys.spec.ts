@@ -306,7 +306,7 @@ test("Ctrl+A Ctrl+A selects all in a field, as tmux's send-prefix passes the key
   await expect(input, "the second key was not typed").toHaveValue("w");
 });
 
-test("with the prefix Ctrl+B, Ctrl+A in a text field is the field's own select all, with no hint, and Ctrl+B twice goes on to the field", async ({ page }) => {
+test("with the prefix Ctrl+B, Ctrl+A in a text field is the field's own select all, with no hint, and Ctrl+B twice ends the sequence", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+B" })));
   await page.goto("/");
   await page.getByRole("button", { name: "対話" }).click();
