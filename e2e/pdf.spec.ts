@@ -58,6 +58,8 @@ test("several PDFs go in by file name, the screen stays, and one that fails is l
   );
   const names = (await callsOf(app, "import_pdf_bytes.headers")).map((h) => decodeURIComponent((h as Record<string, string>)["x-file-name"]));
   expect(names).toEqual(["1 Ch1", "2 scan", "10 Ch10"]);
+  const manual = (await callsOf(app, "import_pdf_bytes.headers")).map((h) => (h as Record<string, string>)["x-translate-manual"]);
+  expect(manual, "自動で翻訳しない is off by default, and every file says so").toEqual(["false", "false", "false"]);
   await expect(app.getByRole("region", { name: "PDF" })).toBeVisible();
   await expect(app.locator("h1.art-title")).toHaveCount(0);
 });
