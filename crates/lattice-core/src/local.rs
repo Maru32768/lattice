@@ -499,10 +499,31 @@ pub(crate) mod tests {
         let slots = IN_FLIGHT.acquire_many(3).await.unwrap();
         let (server, blocks) = (Server::new(&url).unwrap(), snippets(&["One."]));
         let mut t = std::pin::pin!(server.translate(&blocks, "ja"));
+        // The model list takes no slot; the window starts once it is answered, however slowly.
+        while seen.lock().unwrap().is_empty() {
+            assert!(tokio::time::timeout(Duration::from_millis(10), &mut t).await.is_err());
+        }
         assert!(tokio::time::timeout(Duration::from_millis(300), &mut t).await.is_err(), "a fourth request waits");
-        assert_eq!(seen.lock().unwrap().len(), 1, "only the model list, which takes no slot");
+        assert_eq!(seen.lock().unwrap().len(), 1);
         drop(slots);
         assert!(t.await.results[0].is_some());
+    }
+
+    #[tokio::test]
+    async fn every_request_holds_one_of_the_servers_three_slots_until_it_is_answered() {
+        let held = Arc::new(Mutex::new(Vec::new()));
+        let log = held.clone();
+        let (url, _) = serve(move |path, body| {
+            if path != "/v1/models" {
+                // Other tests' requests can hold slots too: fewer may be free, never all three.
+                log.lock().unwrap().push(IN_FLIGHT.available_permits() < 3);
+            }
+            plamo(path, body)
+        })
+        .await;
+        let blocks: Vec<String> = (0..4).map(|n| format!("Block {n}.")).collect();
+        Server::new(&url).unwrap().translate(&blocks, "ja").await;
+        assert_eq!(*held.lock().unwrap(), [true; 4]);
     }
 
     fn code(e: &LlmError) -> (String, Value) {
