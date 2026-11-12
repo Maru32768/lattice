@@ -871,8 +871,9 @@ mod tests {
         assert_eq!(set_engine(&s, EngineKind::Local, " http://192.168.1.5:8080/v1/ ").unwrap(), "http://192.168.1.5:8080");
         assert_eq!(engine_settings(&s).unwrap().local_url, "http://192.168.1.5:8080");
         assert_eq!(target(&s).unwrap().key(), "ja-x-translated-terms");
-        assert!(set_engine(&s, EngineKind::Local, "192.168.1.5:8080").unwrap_err().contains("translate.localUrlInvalid"));
-        assert_eq!(engine_settings(&s).unwrap().local_url, "http://192.168.1.5:8080", "a rejected URL changes nothing");
+        assert!(set_engine(&s, EngineKind::Llm, "192.168.1.5:8080").unwrap_err().contains("translate.localUrlInvalid"));
+        let kept = engine_settings(&s).unwrap();
+        assert_eq!((kept.engine, kept.local_url.as_str()), (EngineKind::Local, "http://192.168.1.5:8080"), "a rejected URL changes nothing");
 
         set_engine(&s, EngineKind::Llm, DEFAULT_LOCAL_URL).unwrap();
         assert_eq!(target(&s).unwrap().key(), ai, "the keep-terms and instructions settings apply again");

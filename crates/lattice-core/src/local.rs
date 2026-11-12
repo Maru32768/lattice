@@ -528,7 +528,7 @@ pub(crate) mod tests {
         ] {
             assert_eq!(Server::new(typed).unwrap().url(), url, "{typed}");
         }
-        for typed in ["", "localhost:8077", "127.0.0.1:8077", "ftp://x", "http://", "http://x:8077/?a=1", "file:///C:/x"] {
+        for typed in ["", "localhost:8077", "127.0.0.1:8077", "ftp://x", "http://", "http://x:8077/?a=1", "http://x:8077#a", "file:///C:/x"] {
             let e = Server::new(typed).err().unwrap();
             assert!(e.starts_with(r#"{"code":"translate.localUrlInvalid""#), "{typed}: {e}");
         }
