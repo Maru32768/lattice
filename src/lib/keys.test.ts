@@ -6,7 +6,7 @@ import { JSDOM } from "jsdom";
 const { window } = new JSDOM("", { url: "http://localhost/" });
 Object.assign(globalThis, { window, localStorage: window.localStorage });
 
-const { DEFAULT_BINDINGS } = await import("./keymap.ts");
+const { ACTIONS, DEFAULT_BINDINGS, PREFIX } = await import("./keymap.ts");
 const { fromStored, getBindings, getPrefix, isCustom, parseShortcutsFile, replaceKeys, resetKeys, setKeys, setPrefix, shortcutsFile } =
   await import("./keys.ts");
 
@@ -219,4 +219,80 @@ test("a stored key with <prefix> as its second key or alone keeps that form when
     getBindings().favorite.filter((k) => k !== "S"),
   );
   assert.deepEqual(stored(), { version: 4, favorite: ["G <prefix>", "<prefix>"] });
+});
+
+test("random edits in Settings never lose a stored key, and a prefix round trip, Undo, Load and a reload change nothing", () => {
+  const rows = ["paneNumbers", "favorite", "read", "closeTab"] as const;
+  const prefixes = ["Ctrl+A", "Ctrl+B", "Alt+A", "Ctrl+W"];
+  let seed = 0;
+  // mulberry32: a plain LCG's low bits cycle, and the steps came out correlated.
+  const rnd = (n: number) => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * n);
+  };
+  const pick = <T>(xs: readonly T[]) => xs[rnd(xs.length)];
+  const own = (id: string) => (stored() as Record<string, string[] | undefined>)[id] ?? ACTIONS.find((a) => a.id === id)!.keys;
+  // Compared as values: a stored value is the same whatever order its actions are written in.
+  const snap = () => structuredClone({ prefix: getPrefix(), stored: stored(), bindings: getBindings() });
+  for (let run = 0; run < 300; run++) {
+    seed = run + 1;
+    replaceKeys(DEFAULTS);
+    const steps: string[] = [];
+    for (let step = 0; step < 14; step++) {
+      const id = pick(rows);
+      const prefix = getPrefix();
+      const shown = getBindings()[id];
+      const had = own(id);
+      const before = snap();
+      const op = rnd(8);
+      const at = () => `${steps.join(" | ")} (run ${run})`;
+      if (op <= 2) {
+        // As Settings records a key: one not on the row yet, added to what the row shows.
+        const key = rnd(4) ? `${pick(prefixes)} ${pick(["Q", "S", "W", "Ctrl+A", "Ctrl+B"])}` : pick(["S", "M", "Ctrl+B", "G Ctrl+A"]);
+        steps.push(`record ${id} ${key}`);
+        if (!shown.includes(key)) {
+          setKeys(id, [...shown, key]);
+          assert.deepEqual(getBindings()[id], [...shown, key], at());
+          had.forEach((k) => assert.ok(own(id).includes(k), `${at()}: lost ${k}`));
+        }
+      } else if (op === 3 && shown.length) {
+        const key = pick(shown);
+        steps.push(`× ${id} ${key}`);
+        setKeys(
+          id,
+          shown.filter((k) => k !== key),
+        );
+        had.filter((k) => k.replaceAll(PREFIX, prefix) !== key).forEach((k) => assert.ok(own(id).includes(k), `${at()}: lost ${k}`));
+      } else if (op === 4) {
+        const next = pick(prefixes);
+        steps.push(`prefix ${next} and back`);
+        setPrefix(next);
+        setPrefix(prefix);
+        assert.deepEqual(snap(), before, at());
+        if (rnd(2)) {
+          setPrefix(next);
+        }
+      } else if (op === 5) {
+        steps.push("reset all, undo");
+        replaceKeys(replaceKeys(DEFAULTS));
+        assert.deepEqual(snap(), before, at());
+      } else if (op === 6) {
+        steps.push("export, load");
+        const file = shortcutsFile();
+        replaceKeys(DEFAULTS);
+        replaceKeys(parseShortcutsFile(file)!);
+        assert.deepEqual(snap(), before, at());
+      } else {
+        steps.push("reload");
+        storedElsewhere(stored());
+        assert.deepEqual(snap(), before, at());
+      }
+      for (const r of rows) {
+        assert.equal(isCustom(r), Object.hasOwn(stored() as object, r), `${at()}: changed mark of ${r}`);
+        assert.equal(new Set(getBindings()[r]).size, getBindings()[r].length, `${at()}: ${r} shows a key twice`);
+      }
+    }
+  }
 });
