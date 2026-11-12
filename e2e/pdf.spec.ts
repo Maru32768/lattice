@@ -51,15 +51,15 @@ test("a PDF picked on the import screen opens in the Reader, and Page shows the 
 
 test("several PDFs go in by file name, the screen stays, and one that fails is listed while the rest go in", async ({ app }) => {
   await openPdfTab(app);
-  await picker(app).setInputFiles([pdf("10 Ch10.pdf"), pdf("2 scan.pdf", "%no-text"), pdf("1 Ch1.pdf")]);
-  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  await picker(app).setInputFiles([pdf("10 Ch10.pdf"), pdf("2 scan.pdf", "%no-text"), pdf("1 Ch1.pdf"), pdf("3 第三章.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("3件のPDFを取り込みました");
   await expect(app.getByRole("alert")).toHaveText(
     "2 scan.pdfを取り込めませんでした: PDFから本文を取り出せませんでした(文字のない画像だけのPDFには対応していません)",
   );
   const names = (await callsOf(app, "import_pdf_bytes.headers")).map((h) => decodeURIComponent((h as Record<string, string>)["x-file-name"]));
-  expect(names).toEqual(["1 Ch1", "2 scan", "10 Ch10"]);
+  expect(names).toEqual(["1 Ch1", "2 scan", "3 第三章", "10 Ch10"]);
   const manual = (await callsOf(app, "import_pdf_bytes.headers")).map((h) => (h as Record<string, string>)["x-translate-manual"]);
-  expect(manual, "自動で翻訳しない is off by default, and every file says so").toEqual(["false", "false", "false"]);
+  expect(manual, "自動で翻訳しない is off by default, and every file says so").toEqual(["false", "false", "false", "false"]);
   await expect(app.getByRole("region", { name: "PDF" })).toBeVisible();
   await expect(app.locator("h1.art-title")).toHaveCount(0);
 });
