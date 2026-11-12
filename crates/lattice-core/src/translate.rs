@@ -824,6 +824,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_progress_of_an_ai_job_with_instructions_counts_the_key_it_writes() {
+        let s = Store::open_in_memory().unwrap();
+        let id = two_paragraphs(&s);
+        set_instructions(&s, "です・ます調で訳す").unwrap();
+        let queued = target(&s).unwrap();
+        enqueue(&s, id, &queued).unwrap();
+        run(&s, &Fake::new(), id, &queued, None, &|| {}).await.unwrap();
+        let p = &in_progress(&s).unwrap()[0];
+        assert_eq!((p.done, p.total), (2, 2), "under {}", queued.key());
+    }
+
+    #[tokio::test]
     async fn the_local_engine_translates_a_japanese_source_into_english_under_that_key() {
         let s = Store::open_in_memory().unwrap();
         let (url, seen) = crate::local::tests::serve(crate::local::tests::plamo).await;
