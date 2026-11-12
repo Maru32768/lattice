@@ -760,7 +760,6 @@ These are the default keys. Change them in **Settings › Shortcuts**.
 | Command palette | `Ctrl+P` |
 | Run a command | `:`, `;` |
 | Key list | `?` |
-| Select all | `Ctrl+A Ctrl+A` |
 | Search | `/` |
 | Next item | `j`, `↓` |
 | Previous item | `k`, `↑` |
@@ -817,6 +816,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 | Key | Where | Action |
 |---|---|---|
+| `Ctrl+A Ctrl+A` | Anywhere | Select all. As tmux's send-prefix does, the second `Ctrl+A` goes on to the field or page that has the focus |
 | `Enter` | A focused paragraph in the Reader | Switch between original and translation |
 | `1`–`4` | Quiz and review cards | Rate |
 | `Ctrl+Enter` | The chat box | Send the question. **Send key** in **Settings › Summaries & chat** can make `Enter` send too |
