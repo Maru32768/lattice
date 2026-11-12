@@ -842,7 +842,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 When you click a web page in the Page view, the keyboard goes to that page. Lattice's shortcuts still work under these conditions:
 
-- Shortcuts with `Ctrl`, such as `Ctrl+P` and `Ctrl+A`, work even inside the page's text fields.
+- Shortcuts with `Ctrl`, such as `Ctrl+P` and the prefix, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
 - `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. An unbound `Space` scrolls the page and presses its buttons, as in a browser. Outside text fields, a shortcut bound to `Space` works and the page does not scroll.
 - `Esc` leaves the page's text field, unless the page uses it itself.
