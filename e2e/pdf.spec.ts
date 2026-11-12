@@ -115,3 +115,13 @@ test("one PDF whose group could not be added to stays on the import screen with 
   await expect(app.getByRole("alert")).toHaveText("グループがありません(削除された可能性があります)");
   await expect(app.locator("h1.art-title")).toHaveCount(0);
 });
+
+test("a file of another kind picked with the PDFs is left out, and one alone is refused over the last result", async ({ app }) => {
+  await openPdfTab(app);
+  await picker(app).setInputFiles([pdf("1 a.pdf"), { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("x") }, pdf("2 b.pdf")]);
+  await expect(app.getByRole("status")).toHaveText("2件のPDFを取り込みました");
+  expect(await callsOf(app, "import_pdf_bytes")).toHaveLength(2);
+  await picker(app).setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("x") });
+  await expect(app.getByRole("alert")).toHaveText("このファイルは使えません");
+  await expect(app.getByRole("status"), "the last batch's count goes with the new error").toHaveCount(0);
+});

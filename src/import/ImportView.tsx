@@ -5,7 +5,7 @@ import { Icon } from "../ui/Icon";
 import "../ui/manage.css";
 import { useT, type PlainKey } from "../i18n";
 import { skippedLines } from "../lib/urlLines";
-import { fileStem, readUtf8 } from "../lib/files";
+import { acceptsFile, fileStem, readUtf8 } from "../lib/files";
 import { useFileDrop } from "../ui/useFileDrop";
 import { readPref, savePref, useSynced } from "../lib/prefs";
 
@@ -408,7 +408,7 @@ function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen:
   const { dragging, zone } = useFileDrop({
     accept: PDF_FILES,
     onFiles: importAll,
-    onReject: () => setPdfRun({ error: t("common.wrongFile") }),
+    onReject: () => setPdfRun({ error: t("common.wrongFile"), done: null }),
     disabled: busy,
   });
 
@@ -426,11 +426,15 @@ function PdfImport({ onOpen, onImported, fileInto, manual, onManual }: { onOpen:
         tabIndex={-1}
         aria-hidden
         onChange={(e) => {
-          const files = Array.from(e.target.files ?? []);
+          // The dialog's "All files" can bring other kinds: left out as a drop leaves them.
+          const picked = Array.from(e.target.files ?? []);
+          const files = picked.filter((f) => acceptsFile(f, PDF_FILES));
           // Cleared so that picking the same files again still counts as a change.
           e.target.value = "";
           if (files.length > 0) {
             importAll(files);
+          } else if (picked.length > 0) {
+            setPdfRun({ error: t("common.wrongFile"), done: null });
           }
         }}
       />
