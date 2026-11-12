@@ -7,14 +7,8 @@ export type SendKey = (typeof SEND_KEYS)[number];
 
 const STORAGE_KEY = "lattice.chatSendKey";
 
-/** Whether a plain Enter sends `text` in each mode. Ctrl+Enter sends in all of them. A newline counts, not a wrapped line. */
-const PLAIN_ENTER_SENDS: Record<SendKey, (text: string) => boolean> = {
-  ctrlEnter: () => false,
-  enter: () => true,
-  enterOneLine: (text) => !text.includes("\n"),
-};
-
-export const plainEnterSends = (mode: SendKey, text: string) => PLAIN_ENTER_SENDS[mode](text);
+/** Whether a plain Enter sends `text` in the mode. Ctrl+Enter sends in every mode. A newline counts, not a wrapped line. */
+export const plainEnterSends = (mode: SendKey, text: string) => mode === "enter" || (mode === "enterOneLine" && !text.includes("\n"));
 
 type Press = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "altKey" | "isComposing">;
 
