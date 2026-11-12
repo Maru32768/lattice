@@ -58,7 +58,7 @@ function FeedEditor({ feed: f, onSaved }: { feed: FeedRow; onSaved: () => void }
     }
     void setIcon(async () => Array.from(new Uint8Array(await file.arrayBuffer())));
   };
-  const { dragging, zone } = useFileDrop({ accept: ICON_TYPES, onFile: pick, onReject: () => setError(t("common.wrongFile")) });
+  const { dragging, zone } = useFileDrop({ accept: ICON_TYPES, onFiles: ([file]) => pick(file), onReject: () => setError(t("common.wrongFile")) });
 
   return (
     <form
@@ -251,7 +251,7 @@ export function FeedsView({
   const importOpml = (file: File) => run(async () => addAll(await api.importOpml(await file.text())));
   const { dragging, zone } = useFileDrop({
     accept: OPML_TYPES,
-    onFile: (file) => void importOpml(file),
+    onFiles: ([file]) => void importOpml(file),
     onReject: () => setError(t("common.wrongFile")),
     disabled: busy,
   });

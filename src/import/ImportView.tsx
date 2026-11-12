@@ -175,7 +175,7 @@ function UrlImport({ onImported, fileInto }: { onImported: () => void; fileInto:
   }
   const { dragging, zone } = useFileDrop({
     accept: URL_FILES,
-    onFile: (file) => void loadFile(file),
+    onFiles: ([file]) => void loadFile(file),
     onReject: () => setError(t("common.wrongFile")),
     disabled: busy,
   });
@@ -265,7 +265,7 @@ function MarkdownImport({ onOpen, fileInto, manual, onManual, pdfBusy }: { onOpe
   // No path comes with a dropped file, so relative images show their alt text, as in pasted text.
   const { dragging, zone } = useFileDrop({
     accept: MARKDOWN_FILES,
-    onFile: (file) =>
+    onFiles: ([file]) =>
       void run(async () => {
         if (tooLarge(file, MARKDOWN_MAX_MB)) {
           throw new Error(t("be.file.tooLarge", { max: MARKDOWN_MAX_MB }));

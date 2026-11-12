@@ -5,38 +5,34 @@ const ZONE = "data-file-drop";
 
 const zoneOf = (target: EventTarget | null) => (target instanceof Element ? (target.closest(`[${ZONE}]`)?.getAttribute(ZONE) ?? null) : null);
 
-/** `onFile` takes the first file that fits, like a picker of one; `onFiles` every file that fits, like a picker of several. */
-type Take = { onFile: (file: File) => void } | { onFiles: (files: File[]) => void };
-
 /**
  * A second way to give a file picker its files: dropped on the element given `zone`, or pasted. Only
  * the innermost zone under the pointer takes a drop, so one zone can sit inside another. A paste goes
  * to the zone holding the focus; with the focus in no zone or field, to whichever accepts the file.
- * Files of other kinds that come with fitting ones are left out; when none fits, `onReject`.
+ * `onFiles` gets every file that fits, at least one; a picker of one takes the first. Files of other
+ * kinds that come with fitting ones are left out; when none fits, `onReject`.
  */
-export function useFileDrop(
-  options: {
-    accept: string;
-    /** A file came to this zone that `accept` does not cover. */
-    onReject: () => void;
-    disabled?: boolean;
-  } & Take,
-) {
-  const { accept, onReject, disabled } = options;
+export function useFileDrop({
+  accept,
+  onFiles,
+  onReject,
+  disabled,
+}: {
+  accept: string;
+  onFiles: (files: [File, ...File[]]) => void;
+  /** A file came to this zone that `accept` does not cover. */
+  onReject: () => void;
+  disabled?: boolean;
+}) {
   const id = useId();
   const [dragging, setDragging] = useState(false);
   /** Hands over the files that fit; false when none does. */
   const take = (list: FileList) => {
-    const files = Array.from(list).filter((f) => acceptsFile(f, accept));
-    const [first] = files;
+    const [first, ...rest] = Array.from(list).filter((f) => acceptsFile(f, accept));
     if (!first) {
       return false;
     }
-    if ("onFiles" in options) {
-      options.onFiles(files);
-    } else {
-      options.onFile(first);
-    }
+    onFiles([first, ...rest]);
     return true;
   };
 
