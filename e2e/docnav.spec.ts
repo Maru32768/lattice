@@ -829,6 +829,20 @@ test("Ctrl+A Ctrl+A selects what was typed in the find bar, as Ctrl+A does in a 
   await reader.keyboard.press("Escape");
 });
 
+test("select all bound to Ctrl+A A selects the find bar's query, as the a has no select-all of its own to pass on", async ({ reader }) => {
+  await reader.evaluate(() => {
+    localStorage.setItem("lattice.shortcuts", JSON.stringify({ selectAll: ["Ctrl+A A"], version: 3 }));
+    window.dispatchEvent(new StorageEvent("storage", { key: "lattice.shortcuts" }));
+  });
+  await reader.keyboard.press("/");
+  await reader.keyboard.type("needle");
+  await press(reader, "Control+a", "a");
+  await expect.poll(async () => (await drawn(reader)).open, "the bar stays open").toBe(true);
+  await reader.keyboard.type("Three");
+  await expect.poll(async () => (await drawn(reader)).query, "no a was typed, and the query was selected").toBe("Three");
+  await reader.keyboard.press("Escape");
+});
+
 test("a click into a frame ends the labels and the mode, which that window never hears of", async ({ reader }) => {
   await reader.locator("#extra").evaluate((el) => {
     const frame = document.createElement("iframe");

@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { browser } from "../api";
 import { getBindings, useBindings } from "../lib/keys";
-import { IDLE, actionFor, chordFrom, keyOf, pageKeys, scopeOf, spacePages, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
+import { IDLE, actionFor, chordFrom, keyOf, pageKeys, passesOn, scopeOf, spacePages, stepKeys, type ActionId, type KeyScope, type KeySeq } from "../lib/keymap";
 import { focusPane, isPaneMove, paneAfter, paneOf, type PaneMove } from "../layout/panes";
 import { focus as focusLayout, pageByKey, tabById, unzoom, type Workspace } from "../layout/layout";
 import { openOverlays, pageClickable } from "../ui/Popover";
@@ -302,7 +302,7 @@ export function useShortcuts({
     }
     const { id } = step.action;
     // The key goes on to what has the focus, as tmux's send-prefix passes it. The page the hint took the keyboard from cannot get it: the action runs it there.
-    if (step.action.passThrough && !backTo) {
+    if (passesOn(step, key) && !backTo) {
       return;
     }
     // Esc in a field only leaves the field; panes that own an Esc (palette, search) handle it first. A Vim editor keeps it for its modes.

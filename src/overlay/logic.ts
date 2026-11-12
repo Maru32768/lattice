@@ -4,7 +4,7 @@
  *
  * Adapted from Mazelingo's content-logic (MIT License, Copyright (c) 2026 Yeq6X).
  */
-import { isModified, isSpace, type KeySeq, type KeyStep } from "../lib/keymap.ts";
+import { isModified, isSpace, passesOn, type KeySeq, type KeyStep } from "../lib/keymap.ts";
 import { isAtom, isIgnored } from "./dom.ts";
 
 const HTML_TAGS = /<[^>]*>/gu;
@@ -230,4 +230,4 @@ export const opensBrowserPrint = (key: string) => key === "Ctrl+P" || key === "C
  * A sequence that passes its last key on leaves that key to the page.
  */
 export const takesBeforePage = (seq: KeySeq, key: string, step: KeyStep) =>
-  !(step.kind === "run" && step.action.passThrough) && (seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat));
+  !passesOn(step, key) && (seq.first != null || isModified(key) || isSpace(key) || (step.kind === "run" && !!step.action.repeat));

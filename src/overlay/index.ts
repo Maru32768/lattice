@@ -32,7 +32,7 @@ import {
   unitsByBlock,
   withAtoms,
 } from "./logic.ts";
-import { IDLE, REPEAT_MS, keyOf, spacePages, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
+import { IDLE, REPEAT_MS, keyOf, passesOn, spacePages, stepKeys, type ActionId, type KeyStep, type PageKeys } from "../lib/keymap.ts";
 import { createDocNav, type DocHost } from "../docnav/controller.ts";
 import { pageScroller } from "../docnav/scroll.ts";
 import type { OverlayLabels } from "../api.ts";
@@ -831,7 +831,7 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault();
     e.stopImmediatePropagation();
     applyStep(step, hinted);
-  } else if (step.kind === "run" && step.action.passThrough) {
+  } else if (passesOn(step, key)) {
     // The page has the key; the app only drops the hint it would show, which takes the keyboard.
     tellApp("");
   } else {

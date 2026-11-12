@@ -15,6 +15,7 @@ import {
   keyOf,
   merge,
   pageKeys,
+  passesOn,
   scopeOf,
   spacePages,
   stepKeys,
@@ -235,9 +236,12 @@ test("stepKeys: the prefix twice selects all wherever the keyboard is, a field t
   for (const o of [{ scope: "list" as const }, { scope: "doc" as const }, { inField: true }]) {
     const s = press(["Ctrl+A", "Ctrl+A"], o);
     assert.deepEqual(ran(s), ["selectAll", 1, "Ctrl+A Ctrl+A"]);
-    assert.equal(s.kind === "run" && s.action.passThrough, true);
+    assert.equal(passesOn(s, "Ctrl+A"), true);
     assert.deepEqual(s.seq, IDLE, "the sequence is over");
   }
+  const rebound = press(["Ctrl+A", "A"], { b: merge({ selectAll: ["Ctrl+A A"] }) });
+  assert.deepEqual(ran(rebound), ["selectAll", 1, "Ctrl+A A"]);
+  assert.equal(passesOn(rebound, "A"), false, "an a has no select-all of its own: the action runs instead");
   const inPage = pageKeys(DEFAULT_BINDINGS).bindings;
   const first = stepKeys(inPage, IDLE, "Ctrl+A", { scope: "doc", inField: true, now: NOW });
   assert.deepEqual(
