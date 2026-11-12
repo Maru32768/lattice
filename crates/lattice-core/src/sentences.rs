@@ -121,7 +121,7 @@ fn visible(html: &str) -> (String, Vec<Mark>) {
 
 /// The length of the tag `rest` starts with, quoted attribute values included. One never closed runs to
 /// the end, as an HTML parser drops it; read as text, each later `<` would scan to the end again.
-fn tag_len(rest: &str) -> Option<usize> {
+pub(crate) fn tag_len(rest: &str) -> Option<usize> {
     let mut chars = rest.char_indices();
     let (_, '<') = chars.next()? else {
         return None;

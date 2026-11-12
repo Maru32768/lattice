@@ -221,7 +221,7 @@ fn reply(body: &Value) -> Result<Reply, LlmError> {
     let finish = choice["finish_reason"].as_str().unwrap_or("none");
     match (finish, choice["message"]["content"].as_str().filter(|c| !c.trim().is_empty())) {
         ("stop", Some(content)) => Ok(Reply {
-            content: content.to_string(),
+            content: tighten(content),
             model: body["model"].as_str().map(str::to_string),
             tokens: (body["usage"]["prompt_tokens"].as_u64().unwrap_or(0), body["usage"]["completion_tokens"].as_u64().unwrap_or(0)),
         }),
@@ -238,6 +238,29 @@ fn align(s: &Sentences<'_>, content: &str) -> Option<Vec<Unit>> {
         _ => return None,
     };
     Some(s.sources().zip(translations).map(|(source, translation)| Unit { source: source.to_string(), translation }).collect())
+}
+
+/// `html` without the spaces between Japanese text and a tag that has Japanese on its other side. PLaMo
+/// spaces every inline element of a reply once it spaces a `<code>` there (「前に <a>ドキュメント</a> を」);
+/// Japanese puts no space between Japanese words, and the one before `<code>git status</code>` stays.
+fn tighten(html: &str) -> String {
+    let mut pieces = Vec::new();
+    let mut rest = html;
+    while let Some(c) = rest.chars().next() {
+        let len = sentences::tag_len(rest).unwrap_or(c.len_utf8());
+        pieces.push(&rest[..len]);
+        rest = &rest[len..];
+    }
+    let tag = |p: &&str| p.len() > 1 && p.starts_with('<');
+    let japanese = |p: Option<&&str>| p.and_then(|p| p.chars().next()).is_some_and(crate::markdown::joins_without_space);
+    let dropped = |i: usize| {
+        let (before, after) = (&pieces[..i], &pieces[i + 1..]);
+        pieces[i] == " "
+            && (before.last().is_some_and(tag) || after.first().is_some_and(tag))
+            && japanese(before.iter().rev().find(|p| !tag(p)))
+            && japanese(after.iter().find(|p| !tag(p)))
+    };
+    (0..pieces.len()).filter(|&i| !dropped(i)).map(|i| pieces[i]).collect()
 }
 
 fn reply_lines(content: &str) -> Vec<&str> {
@@ -556,6 +579,17 @@ pub(crate) mod tests {
         let finished = |reason: &str, content: &str| reply(&json!({"choices": [{"finish_reason": reason, "message": {"content": content}}]})).is_ok();
         assert!(finished("stop", "訳") && !finished("length", "訳") && !finished("stop", " \n"));
         assert!(reply(&json!({"error": "x"})).is_err());
+    }
+
+    #[test]
+    fn a_space_with_japanese_on_both_sides_of_a_tag_goes() {
+        // As PLaMo answered a block whose first line spaced its <code>.
+        let spaced = "<code>git status</code> を実行します。\nコミットする前に <a href=\"https://x.dev/a b\">ドキュメント</a> を読みます。";
+        let tight = "<code>git status</code> を実行します。\nコミットする前に<a href=\"https://x.dev/a b\">ドキュメント</a>を読みます。";
+        assert_eq!((tighten(spaced).as_str(), reply(&completion(spaced)).unwrap().content.as_str()), (tight, tight));
+        for kept in ["<kbd>Ctrl</kbd> + <kbd>P</kbd> を押す", "東京 大学", "<em>A</em> <em>B</em>", "前に ⟦1⟧ を", "前に <br> 次に"] {
+            assert_eq!(tighten(kept), kept);
+        }
     }
 
     #[test]
