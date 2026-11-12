@@ -62,14 +62,21 @@ impl Calls {
 }
 
 impl Server {
-    /// `url` as the settings take it: http or https, with or without a trailing `/` or `/v1`.
+    /// `url` as the settings take it: http or https, with or without a trailing `/` or `/v1`. No user or
+    /// password: the URL is a plain setting that backups keep, and the errors and logs show it.
     pub fn new(url: &str) -> Result<Self, String> {
         let url = url.trim().trim_end_matches('/');
         let url = url.strip_suffix("/v1").unwrap_or(url).trim_end_matches('/');
+        let ok = |u: &url::Url| {
+            matches!(u.scheme(), "http" | "https")
+                && u.host_str().is_some_and(|h| !h.is_empty())
+                && u.username().is_empty()
+                && u.password().is_none()
+                && u.query().is_none()
+                && u.fragment().is_none()
+        };
         match url::Url::parse(url) {
-            Ok(u) if matches!(u.scheme(), "http" | "https") && u.host_str().is_some_and(|h| !h.is_empty()) && u.query().is_none() && u.fragment().is_none() => {
-                Ok(Self { url: url.to_string() })
-            }
+            Ok(u) if ok(&u) => Ok(Self { url: url.to_string() }),
             _ => Err(msg!("translate.localUrlInvalid")),
         }
     }
@@ -552,7 +559,18 @@ pub(crate) mod tests {
         ] {
             assert_eq!(Server::new(typed).unwrap().url(), url, "{typed}");
         }
-        for typed in ["", "localhost:8077", "127.0.0.1:8077", "ftp://x", "http://", "http://x:8077/?a=1", "http://x:8077#a", "file:///C:/x"] {
+        for typed in [
+            "",
+            "localhost:8077",
+            "127.0.0.1:8077",
+            "ftp://x",
+            "http://",
+            "http://x:8077/?a=1",
+            "http://x:8077#a",
+            "http://user:pass@gpu.lan:8077",
+            "http://user@x",
+            "file:///C:/x",
+        ] {
             let e = Server::new(typed).err().unwrap();
             assert!(e.starts_with(r#"{"code":"translate.localUrlInvalid""#), "{typed}: {e}");
         }
