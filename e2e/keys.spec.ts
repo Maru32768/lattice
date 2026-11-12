@@ -76,7 +76,8 @@ test("an unbound Space pages the Reader down a screen as a browser does, and Shi
   await intoReader(app);
   const height = await app.locator(".doc-scroll").evaluate((el) => el.clientHeight);
   await app.keyboard.press("Space");
-  await expect.poll(() => scrollTop(app)).toBeGreaterThanOrEqual(height / 2);
+  // More than half a screen tells a screen from Ctrl+D's half.
+  await expect.poll(() => scrollTop(app)).toBeGreaterThan(height * 0.75);
   // The browser's own scroll is smooth: let it end before reading how far it went.
   await app.waitForTimeout(300);
   expect(await scrollTop(app)).toBeLessThanOrEqual(height);

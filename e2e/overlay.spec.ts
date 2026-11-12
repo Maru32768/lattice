@@ -33,19 +33,19 @@ test("an unbound Space pages the page as a browser does, and a bound one goes to
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   const scrollY = () => page.evaluate(() => window.scrollY);
+  const sent = () => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_key").map((c) => c.args));
+  const screen = await page.evaluate(() => innerHeight);
   await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(DEFAULT_BINDINGS));
   await page.keyboard.press("Space");
-  await expect.poll(scrollY).toBeGreaterThanOrEqual(300);
+  await expect.poll(scrollY, "more than half a screen").toBeGreaterThan(screen * 0.75);
   // A browser's own smooth scroll would still be under way.
   await page.waitForTimeout(300);
-  expect(await scrollY(), "a screen, not more").toBeLessThanOrEqual(600);
+  expect(await scrollY(), "a screen, not more").toBeLessThanOrEqual(screen);
 
   await page.evaluate(() => scrollTo(0, 0));
   await page.evaluate((k) => window.__lattice!.setKeys(k), pageKeys(merge({ view: ["Space"] })));
   await page.keyboard.press("Space");
-  await expect
-    .poll(() => page.evaluate(() => window.__pageCalls.filter((c) => c.cmd === "overlay_key").map((c) => c.args)))
-    .toEqual([{ key: "Space", count: 1 }]);
+  await expect.poll(sent).toEqual([{ key: "Space", count: 1 }]);
   await page.waitForTimeout(300);
   expect(await scrollY()).toBe(0);
 });
