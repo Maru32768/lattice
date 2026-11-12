@@ -708,8 +708,11 @@ fn group_remove(app: State<'_, App>, id: i64, articles: Vec<i64>) -> Result<(), 
 
 /// The user's name for the article; blank goes back to the title the app found.
 #[tauri::command(async)]
-fn set_article_title(app: State<'_, App>, id: i64, title: String) -> Result<(), String> {
-    app.store.set_title(id, &title).map_err(err)
+fn set_article_title(handle: tauri::AppHandle, app: State<'_, App>, id: i64, title: String) -> Result<(), String> {
+    app.store.set_title(id, &title).map_err(err)?;
+    // The other windows show the title in their lists, tabs and window titles.
+    let _ = handle.emit("article-changed", id);
+    Ok(())
 }
 
 #[tauri::command(async)]
