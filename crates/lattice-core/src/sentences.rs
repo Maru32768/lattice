@@ -239,6 +239,7 @@ mod tests {
         ("終わり。<a href=\"#c\">[1]</a>次の文。", &["終わり。<a href=\"#c\">[1]</a>", "次の文。"]),
         ("Use a cache, e.g. the page cache. Done.", &["Use a cache, e.g. the page cache. ", "Done."]),
         ("Ask Dr. Smith or (Prof. Jones). They know.", &["Ask Dr. Smith or (Prof. Jones). ", "They know."]),
+        ("We tested LLMs. They work.", &["We tested LLMs. ", "They work."]),
         ("See Fig. 3 and No. Five. Then go.", &["See Fig. 3 and No. Five. ", "Then go."]),
         ("Apples, pears, etc. They grow.", &["Apples, pears, etc. ", "They grow."]),
         ("It works. (Mostly.) Done.", &["It works. ", "(Mostly.) ", "Done."]),
