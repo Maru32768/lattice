@@ -83,7 +83,8 @@ export function ShortcutSettings() {
   const [prefixRec, setPrefixRec] = useState<{ refused?: string } | null>(null);
   // Waiting for a second key, the prefix no longer runs an action it is bound to alone. It always waits: send-prefix's keys
   // are fixed at the prefix twice, in every scope.
-  const shadowed = ACTIONS.filter((a) => bindings[a.id].includes(prefix));
+  // Pressed twice, the prefix runs the one action the keyboard finds where it applies; the others it only shadows.
+  const shadowed = ACTIONS.filter((a) => bindings[a.id].includes(prefix) && actionFor(bindings, prefix, a.scope) === a);
   const undoable = undo?.after === bindings ? undo : null;
   const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
   const custom = prefix !== DEFAULT_PREFIX || ACTIONS.some((a) => isCustom(a.id, bindings));
@@ -134,12 +135,12 @@ export function ShortcutSettings() {
       .map((o) => {
         // Asked as `stepKeys` reads a key where both run: a two-key binding it starts waits for its second key, and then no action runs alone.
         const at = a.scope ?? o.scope;
-        const loses = !chordFrom(bindings, k, at) && actionFor(bindings, k, at) === o;
+        const loses = (k === prefix || !chordFrom(bindings, k, at)) && actionFor(bindings, k, at) === o;
         return t(loses ? "shortcutSettings.clashLoses" : "shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) });
       });
     // The prefix waits for its second key everywhere, and pressed twice runs this action: say that, not which binding it starts.
     if (k === prefix) {
-      return [...shared, prefixNote(a)];
+      return shadowed.includes(a) ? [...shared, prefixNote(a)] : shared;
     }
     const by = chordFrom(bindings, k, a.scope);
     return by ? [...shared, t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : shared;

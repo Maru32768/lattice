@@ -432,7 +432,7 @@ test("a note names the action that runs instead only when the key runs it, as th
   await page.addInitScript(() =>
     localStorage.setItem(
       "lattice.shortcuts",
-      JSON.stringify({ favorite: ["S", "G"], read: ["M", "G"], search: ["/", "J"], prev: ["K", "ArrowUp", "J"], version: 4 }),
+      JSON.stringify({ prefix: "Ctrl+B", favorite: ["S", "G", "Ctrl+B"], read: ["M", "G"], search: ["/", "J"], prev: ["K", "ArrowUp", "J"], version: 4 }),
     ),
   );
   await page.goto("/");
@@ -444,6 +444,12 @@ test("a note names the action that runs instead only when the key runs it, as th
   await tab(page, "一覧").click();
   await expect(row(page, "前の項目へ").getByRole("note"), "of three on j only the first runs").toHaveText(
     "jは「検索」にも割り当てられていて、そちらが働きます。jは「次の項目へ」にも割り当てられています",
+  );
+  await expect(row(page, "一覧を1画面上へ").getByRole("note"), "the prefix twice runs the first action bound to it, not this one").toHaveText(
+    "Ctrl Bは「お気に入り」にも割り当てられていて、そちらが働きます",
+  );
+  await expect(row(page, "プレフィックス").getByRole("note"), "and only that one is promised").toHaveText(
+    "Ctrl Bはプレフィックスなので、「お気に入り」は入力欄とWebページの外で2回続けて押すと働きます",
   );
 });
 
