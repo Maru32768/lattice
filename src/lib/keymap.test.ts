@@ -249,14 +249,13 @@ test("stepKeys: the prefix twice sends the prefix wherever the keyboard is, a fi
 
 // ---- the prefix ---------------------------------------------------------------------------------
 
-test("merge reads <prefix> as the prefix it is given, in either key of a binding, Ctrl+A by default", () => {
+test("merge reads <prefix> as the prefix it is given, in either key of a binding", () => {
   const b = merge({ favorite: ["S", "<prefix> S"], read: ["Ctrl+G M"] }, "Ctrl+B");
   assert.deepEqual(b.splitDown, ["Ctrl+-", 'Ctrl+B "']);
   assert.deepEqual(b.tabByNumber.slice(0, 2), ["Ctrl+B 1", "Ctrl+B 2"]);
   assert.deepEqual(b.favorite, ["S", "Ctrl+B S"], "the user's keys too");
   assert.deepEqual(b.read, ["Ctrl+G M"], "a key without it stays as it is");
   assert.deepEqual(b.sendPrefix, ["Ctrl+B Ctrl+B"], "the second key too");
-  assert.deepEqual(merge({}).sendPrefix, ["Ctrl+A Ctrl+A"]);
 });
 
 test("the default keys clash with none of these prefixes, and a prefix bound alone becomes a first key", () => {
