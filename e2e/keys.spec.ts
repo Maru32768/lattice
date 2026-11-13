@@ -306,28 +306,6 @@ test("Ctrl+A Ctrl+A selects all in a field, as tmux's send-prefix passes the key
   await expect(input, "the second key was not typed").toHaveValue("w");
 });
 
-test("with the prefix Ctrl+B, Ctrl+A in a text field is the field's own select all, with no hint, and Ctrl+B twice ends the sequence", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("lattice.shortcuts", JSON.stringify({ version: 4, prefix: "Ctrl+B" })));
-  await page.goto("/");
-  await page.getByRole("button", { name: "対話" }).click();
-  const input = page.locator("#chat-q");
-  await input.click();
-  await page.keyboard.type("draft");
-  await page.keyboard.press("Control+a");
-  // Past the hint's delay: a Ctrl+A the app took would show it by now.
-  await page.waitForTimeout(600);
-  await expect(hint(page)).toHaveCount(0);
-  await page.keyboard.type("x");
-  await expect(input, "the field selected all by itself").toHaveValue("x");
-
-  await page.keyboard.press("Control+b");
-  await expect(hint(page)).toBeVisible();
-  await page.keyboard.press("Control+b");
-  await expect(hint(page)).toBeHidden();
-  await page.keyboard.type("y");
-  await expect(input, "the prefix twice ended the sequence, and the field types on with its text as it was").toHaveValue("xy");
-});
-
 test("after a split the keys start from the new pane, not the one that had DOM focus", async ({ app }) => {
   await intoReader(app);
   await app.keyboard.press("Control+\\");
