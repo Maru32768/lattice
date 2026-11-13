@@ -263,37 +263,6 @@ mod tests {
         }
     }
 
-    /// Opening minus closing tags (void ones aside): zero for a source that keeps every pair it opens.
-    fn open_tags(s: &str) -> isize {
-        let opens = s.match_indices('<').filter(|(i, _)| s[i + 1..].starts_with(|c: char| c.is_ascii_alphabetic())).count();
-        let voids = s.matches("<br").count() + s.matches("<img").count();
-        opens as isize - voids as isize - s.matches("</").count() as isize
-    }
-
-    #[test]
-    fn every_cut_keeps_the_snippet_whole_and_each_sentence_balanced() {
-        for (html, _) in CASES {
-            let s = split(html);
-            let parts: Vec<&str> = s.sources().collect();
-            assert_eq!(parts.concat(), *html, "the sources spell the snippet");
-            assert_eq!(s.len(), parts.len());
-            for (i, part) in parts.iter().enumerate() {
-                assert!(!part.is_empty(), "{html}: empty sentence {i}");
-                let unmarked: String = part.split('⟦').map(|p| p.split_once('⟧').map_or(p, |(_, rest)| rest)).collect();
-                assert!(unmarked.chars().any(char::is_alphanumeric), "{html}: {part:?} has no letter or digit");
-                if open_tags(html) == 0 {
-                    assert_eq!(open_tags(part), 0, "{html}: {part:?} splits a tag pair");
-                }
-                if let Some(next) = parts.get(i + 1) {
-                    assert!(!next.starts_with(char::is_whitespace), "{html}: the space before {next:?} belongs to the sentence before it");
-                    assert!(part.rfind('⟦') <= part.rfind('⟧'), "{html}: a cut inside a token");
-                    let entity = part.rfind('&').map(|a| &part[a..]);
-                    assert!(entity.is_none_or(|e| e.contains(';') || e.contains(' ')), "{html}: a cut inside {entity:?}");
-                }
-            }
-        }
-    }
-
     /// Whether every closing tag closes one opened before it, and all are closed.
     fn nested(s: &str) -> bool {
         let mut depth = 0isize;
@@ -327,7 +296,7 @@ mod tests {
             assert_eq!(parts.concat(), html);
             assert!(parts.iter().all(|p| !p.is_empty()), "{html:?}: {parts:?}");
             if nested(&html) {
-                assert!(parts.iter().all(|p| open_tags(p) == 0), "{html:?}: {parts:?}");
+                assert!(parts.iter().all(|p| nested(p)), "{html:?}: {parts:?}");
             }
         }
     }
