@@ -60,10 +60,11 @@ pub(crate) fn split(html: &str) -> Sentences<'_> {
     });
     // A piece with no letter or digit (a lone ⟦1⟧, a stray ")") is no sentence: it joins the one before it,
     // or the next one when it comes first.
-    let mut ends: Vec<(usize, usize)> = Vec::new();
+    let (mut ends, mut from): (Vec<(usize, usize)>, usize) = (Vec::new(), 0);
     for (text_end, html_end) in cuts.chain([(text.len(), html.len())]) {
-        let from = ends.last().map_or(0, |e| e.0);
+        // Only what follows the last bound: a first piece left out had no letter to find again.
         let wordy = text[from..text_end].chars().any(char::is_alphanumeric);
+        from = text_end;
         match ends.last_mut() {
             Some(last) if !wordy => *last = (text_end, html_end),
             None if !wordy && html_end < html.len() => {}
@@ -96,8 +97,11 @@ fn keeps_together(before: &str, after: &str) -> bool {
     let before = before.trim_end();
     let next = after.chars().next();
     let quoted = before.ends_with(['」', '』']) && next.is_some_and(|c| ('\u{3041}'..='\u{309F}').contains(&c));
-    let word = before.rsplit(char::is_whitespace).next().unwrap_or_default().trim_start_matches(|c: char| !c.is_alphanumeric());
-    quoted || (TITLES.contains(&word) && next.is_some_and(char::is_uppercase))
+    // The word before, leading punctuation aside ("(Prof."), read from its end: with no space before it,
+    // reading the whole word at each bound would read all the text before it each time.
+    let titled =
+        || TITLES.iter().any(|t| before.strip_suffix(t).is_some_and(|head| !head.chars().rev().take_while(|c| !c.is_whitespace()).any(char::is_alphanumeric)));
+    quoted || (next.is_some_and(char::is_uppercase) && titled())
 }
 
 /// The text UAX #29 reads (tags left out, entities decoded, a ⟦n⟧ token as one char, `<br>` as a line
