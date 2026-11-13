@@ -14,7 +14,7 @@ export interface Shortcuts {
   prefix: string;
   overrides: Partial<Bindings>;
 }
-const NONE: Shortcuts = { prefix: DEFAULT_PREFIX, overrides: {} };
+export const DEFAULT_SHORTCUTS: Shortcuts = { prefix: DEFAULT_PREFIX, overrides: {} };
 
 // It reads imported files too: a key listed twice would repeat a React key in the row.
 const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => typeof k === "string") ? [...new Set(v.filter(Boolean))] : undefined);
@@ -25,7 +25,7 @@ const keysIn = (v: unknown) => (Array.isArray(v) && v.every((k): k is string => 
  */
 export function fromStored(raw: Record<string, unknown>): Shortcuts {
   if (raw.version !== STORAGE_VERSION) {
-    return NONE;
+    return DEFAULT_SHORTCUTS;
   }
   const overrides: Partial<Bindings> = {};
   for (const a of ACTIONS) {
@@ -43,7 +43,7 @@ function load(): Shortcuts {
   try {
     return fromStored(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as Record<string, unknown>);
   } catch {
-    return NONE;
+    return DEFAULT_SHORTCUTS;
   }
 }
 

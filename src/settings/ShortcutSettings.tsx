@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { api } from "../api";
 import { readUtf8 } from "../lib/files";
 import {
+  DEFAULT_SHORTCUTS,
   getBindings,
   isCustom,
   parseShortcutsFile,
@@ -291,7 +292,7 @@ export function ShortcutSettings() {
         {/* One button for both, so that the keyboard and the pointer are on the undo the moment it shows. */}
         <button
           className="btn swap"
-          onClick={undoable ? () => undoReplace(undoable.prev) : () => replace({ prefix: DEFAULT_PREFIX, overrides: {} }, "reset")}
+          onClick={undoable ? () => undoReplace(undoable.prev) : () => replace(DEFAULT_SHORTCUTS, "reset")}
           disabled={!undoable && !custom}
         >
           <span className={undoable ? "off" : undefined}>{t("shortcutSettings.resetAll")}</span>
