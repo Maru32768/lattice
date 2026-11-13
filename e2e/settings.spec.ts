@@ -77,13 +77,14 @@ test("翻訳しないサイト shows the stored patterns and saves the edited li
   await expect(save).toBeDisabled();
 });
 
+/** What the settings page shows for the mock's server at port 9999, which is not running. */
+const REFUSED = "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)";
+
 test("the local translation engine shows its server's model and turns off the settings it cannot follow", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
-  await app
-    .getByRole("navigation", { name: "設定カテゴリ" })
-    .locator(".ni")
-    .filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) })
-    .click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
+  await section("翻訳").click();
   const engine = app.getByRole("combobox", { name: "翻訳エンジン" });
   const keepTerms = app.getByRole("switch", { name: "専門用語を英語のまま残す" });
   const instructions = app.getByRole("textbox", { name: "追加の指示" });
@@ -101,20 +102,18 @@ test("the local translation engine shows its server's model and turns off the se
   await expect(app.getByText("組み込みのprompt(英語→日本語)を見る")).toHaveCount(0);
 
   const saveUrl = app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" });
-  const refused = "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)";
   await url.fill("http://127.0.0.1:9999/v1/");
   await saveUrl.click();
   await expect(url, "as stored").toHaveValue("http://127.0.0.1:9999");
-  await expect(connection).toHaveText(refused);
+  await expect(connection).toHaveText(REFUSED);
   await url.fill("127.0.0.1:8077");
   await saveUrl.click();
   await expect(app.getByRole("alert")).toHaveText("翻訳サーバーのURLが正しくありません(例: http://127.0.0.1:8077)");
 
-  const categories = app.getByRole("navigation", { name: "設定カテゴリ" }).locator(".ni");
-  await categories.filter({ has: app.locator(".label").getByText("表示言語", { exact: true }) }).click();
-  await categories.filter({ has: app.locator(".label").getByText("翻訳", { exact: true }) }).click();
+  await section("表示言語").click();
+  await section("翻訳").click();
   await expect(url, "the stored URL").toHaveValue("http://127.0.0.1:9999");
-  await expect(connection, "checked when the page opens").toHaveText(refused);
+  await expect(connection, "checked when the page opens").toHaveText(REFUSED);
 
   await engine.selectOption({ label: "AIプロバイダ" });
   await expect(keepTerms).toBeEnabled();
@@ -151,9 +150,8 @@ test("a connection check that answers after a later one leaves the later one's r
   const url = app.getByRole("textbox", { name: "翻訳サーバーのURL" });
   await url.fill("http://127.0.0.1:9999");
   await app.locator(".set.wide").filter({ has: url }).getByRole("button", { name: "保存" }).click();
-  const refused = "http://127.0.0.1:9999の翻訳サーバーに接続できません。サーバーを起動してから、もう一度試してください(connection refused)";
   const connection = app.getByRole("status");
-  await expect(connection).toHaveText(refused);
+  await expect(connection).toHaveText(REFUSED);
   await app.evaluate(async () => {
     const release: unknown = Reflect.get(window, "releaseCheck");
     if (typeof release !== "function") {
@@ -162,7 +160,7 @@ test("a connection check that answers after a later one leaves the later one's r
     await Reflect.apply(release, window, []);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
   });
-  await expect(connection, "not the default URL's 接続済み").toHaveText(refused);
+  await expect(connection, "not the default URL's 接続済み").toHaveText(REFUSED);
 });
 
 test("the data folder opens through the backend without a webview-supplied path", async ({ app }) => {
