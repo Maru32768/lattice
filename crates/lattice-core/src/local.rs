@@ -15,7 +15,7 @@ use crate::segments::{self, Origin, Translated, Unit};
 use crate::sentences::{self, Sentences};
 
 pub const PROMPT_VERSION: &str = "plamo-v1";
-pub const PROVIDER: &str = "local";
+const PROVIDER: &str = "local";
 /// shortcut: assumes the context and slots of plamo-server (16,384 tokens, 3 slots); read llama-server's /props when someone runs a smaller one.
 const CONTEXT_TOKENS: usize = 16_384;
 const SLOTS: usize = 3;
@@ -332,7 +332,7 @@ pub(crate) mod tests {
         (url, seen)
     }
 
-    pub(crate) fn completion(content: &str) -> Value {
+    fn completion(content: &str) -> Value {
         json!({
             "model": "plamo-3-translate-q4",
             "choices": [{"finish_reason": "stop", "message": {"role": "assistant", "content": content}}],
@@ -410,12 +410,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_lone_sentence_answered_on_several_lines_is_one_unit_and_not_sent_again() {
-        let (url, seen) = serve(|path, body| {
-            if path == "/v1/models" {
-                plamo(path, body)
-            } else {
-                (200, completion("最初の行\n\n次の行"))
-            }
+        let (url, seen) = serve(|path, body| match path {
+            "/v1/models" => plamo(path, body),
+            _ => (200, completion("最初の行\n\n次の行")),
         })
         .await;
         let t = Server::new(&url).unwrap().translate(&snippets(&["One long sentence."]), "ja").await;
@@ -481,12 +478,9 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn a_server_failing_every_request_gets_two_not_one_per_block() {
-        let (url, seen) = serve(|path, body| {
-            if path == "/v1/models" {
-                plamo(path, body)
-            } else {
-                (500, json!({}))
-            }
+        let (url, seen) = serve(|path, body| match path {
+            "/v1/models" => plamo(path, body),
+            _ => (500, json!({})),
         })
         .await;
         let blocks: Vec<String> = (0..12).map(|n| format!("Block {n} first. Block {n} second.")).collect();
