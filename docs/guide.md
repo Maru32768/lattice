@@ -402,9 +402,9 @@ For the rest, as in tmux, press the prefix (`Ctrl+A` by default) and then one of
 | `z` | [Focus mode](#focus-mode) |
 | `:` | Run a command |
 | `?` | Key list |
-| The prefix | Send the prefix. As tmux's send-prefix does, Lattice passes the key on to the field or page that has the focus. With `Ctrl+A`, that selects all. Elsewhere, if the prefix is also an action's single key, that action runs |
+| The prefix | Send the prefix. As tmux's send-prefix does, Lattice passes the key on to the field or page that has the focus. With `Ctrl+A`, that selects all. Outside text fields and web pages, if the prefix is also a single key of an action, that action runs |
 
-You can change these keys, except the one that sends the prefix, in **Settings › Shortcuts**. The prefix itself changes under **Prefix** there, and the default keys that start with it move to the new one, as do the keys you assigned with the prefix as their first key. On any action, click **+ Add key** and press two keys one after the other to give it a two-step key, whose first key does not have to be the prefix. For a single key, press `Enter` after the first key.
+You can change these keys, except the one that sends the prefix, in **Settings › Shortcuts**. Change the prefix itself under **Prefix** there. The default keys that start with it, and the keys you assigned with the prefix as their first key, then start with the new prefix. On any action, click **+ Add key** and press two keys one after the other to give it a two-step key, whose first key does not have to be the prefix. For a single key, press `Enter` after the first key.
 
 ### Open a tab in its own window
 
@@ -734,14 +734,14 @@ Choose Japanese or English for menus, buttons and messages. At first, Lattice fo
 
 Lists every shortcut in tabs by what it is for: **General**, **Lists**, **Articles**, **Documents**, **Tabs** and **Panes**. The number next to a tab's name is how many actions it holds. A dot marks a tab with an action whose keys you changed, and **!** a tab with an action whose key overlaps another's. Actions that work only in lists or in documents say **In lists** or **In documents**.
 
-- **Prefix** is the first key of the two-step keys, such as the pane actions, as tmux's prefix is. Click **Change** and press one key other than `Enter` and `Esc`, combined with `Ctrl` or `Alt`: the default keys that start with the prefix, and the keys you assigned with the prefix as their first key, move to the new key. A key you assigned with another first key keeps it, even once that key becomes the prefix. A single character cannot be the prefix, because it types that character in text fields, and neither can `Enter` or `Esc`, which a field reads first. `Esc` stops recording. If the new prefix is also an action's single key, as `Ctrl+B` is, press the prefix twice outside text fields and web pages to run that action, and the row says so. **Reset to default** brings back `Ctrl+A`.
+- **Prefix**, as in tmux, is the first key of two-step keys such as those of the pane actions. Click **Change** and press one key other than `Enter` and `Esc`, combined with `Ctrl` or `Alt`. A single-character key cannot be the prefix, because it types a character in text fields, and neither can `Enter` or `Esc`, which a field reads first. `Esc` stops recording. Once the prefix changes, the default keys that started with it, and the keys you assigned with it as their first key, start with the new prefix. A key you assigned with another first key keeps that first key, even once it becomes the prefix. If the new prefix is also a single key of an action, as `Ctrl+B` is, that action runs when you press the prefix twice outside text fields and web pages, and a note says so. **Reset to default** brings back `Ctrl+A`.
 - Type an action's name or a key (such as `ctrl b`) in the box above to find it in every tab, listed under its tab's name. `Esc` empties the box.
 - Click **Press a key to find** and press a key to find the actions it is assigned to. The first key of a two-step key also finds the keys that start with it. `Esc` clears the key found; pressing it again stops and turns the box back to finding by name.
 - **+ Add key** records the next key you press and assigns it. Keys combined with modifiers such as `Ctrl` work too. An action can have several keys. The key that sends the prefix (`Ctrl+A Ctrl+A` by default) is not listed and cannot be changed, because it passes its second prefix on unchanged.
 - When actions that work in the same place share a key, a warning appears and at most one of them runs. If one does, the warnings on the others name it.
-- **Reset to default** resets one action, and **Reset all to defaults** resets every action and the prefix, to the default keys. **Reset to default** appears only on actions whose keys you changed.
+- **Reset to default** resets one action to its default keys, and **Reset all to defaults** resets every action and the prefix to their defaults. **Reset to default** appears only on actions whose keys you changed.
 - After you reset every action or load a file, **Reset all to defaults** turns into **Undo** in the same place. **Undo** brings back the keys you had before the reset or the load. Once you change a key after that or go to another settings section or screen, it can no longer be undone.
-- **Export** writes the prefix and the keys you changed to the `exports` folder. **Load from file** replaces the prefix and your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys, and a file with no prefix sets `Ctrl+A`. Any other file changes nothing, and a message says it can't be loaded.
+- **Export** writes the prefix and the keys you changed to the `exports` folder. **Load from file** replaces the prefix and your keys with the ones in an exported file you choose. Actions the file leaves out go back to their default keys, and a file with no prefix sets the prefix to `Ctrl+A`. Any other file changes nothing, and a message says it can't be loaded.
 
 Shortcuts are saved in the database, so they are in backups and move with the data folder. Export and load let you keep a set of keys and go back to it later.
 
@@ -828,7 +828,7 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 | Key | Where | Action |
 |---|---|---|
-| The prefix twice (`Ctrl+A Ctrl+A` by default) | Anywhere | Send the prefix. As tmux's send-prefix does, Lattice passes the second prefix on to the field or page that has the focus. With the default `Ctrl+A`, that selects all. Elsewhere, if the prefix is also an action's single key, that action runs |
+| The prefix twice (`Ctrl+A Ctrl+A` by default) | Anywhere | Send the prefix. As tmux's send-prefix does, Lattice passes the second prefix on to the field or page that has the focus. With the default `Ctrl+A`, that selects all. Outside text fields and web pages, if the prefix is also a single key of an action, that action runs |
 | `Enter` | A focused paragraph in the Reader | Switch between original and translation |
 | `1`–`4` | Quiz and review cards | Rate |
 | `Ctrl+Enter` | The chat box | Send the question. **Send key** in **Settings › Summaries & chat** can make `Enter` send too |
@@ -842,11 +842,11 @@ These keys cannot be changed in **Settings › Shortcuts**.
 
 When you click a web page in the Page view, the keyboard goes to that page. Lattice's shortcuts still work under these conditions:
 
-- Shortcuts with `Ctrl`, such as `Ctrl+P` and the prefix, work even inside the page's text fields.
+- The prefix and shortcuts with `Ctrl`, such as `Ctrl+P`, work even inside the page's text fields.
 - Single-key shortcuts such as `j`, `s` and `v` work outside the page's text fields, and only when the page does not use that key itself.
 - `Enter` and the arrow keys belong to the page for scrolling and its own controls. They do not act as Lattice shortcuts. An unbound `Space` scrolls the page and presses its buttons, as in a browser. Outside text fields, a shortcut bound to `Space` works and the page does not scroll.
 - `Esc` leaves the page's text field, unless the page uses it itself.
-- When you press the prefix twice, Lattice passes the second press on to the page, as tmux's send-prefix does. With the default `Ctrl+A Ctrl+A`, that selects all in the page or in its text field. If you wait after the prefix until the guide to the keys shows, the app gets the second press and cannot pass it on: with `Ctrl+A`, the app selects all in the page itself, and with another prefix nothing happens.
+- When you press the prefix twice, Lattice passes the second press on to the page, as tmux's send-prefix does. With the default `Ctrl+A Ctrl+A`, the second press selects all in the page or in its text field. If you wait after the prefix until the guide to the keys shows, Lattice gets the second press and cannot pass it on. In that case, with `Ctrl+A`, Lattice selects all in the page itself, and with another prefix nothing happens.
 - `Alt+←`, `Alt+→` and the mouse's back and forward buttons move through the page's history.
 - `w` and `r` do not work on a page. Save words with the button that appears above the page.
 
@@ -856,10 +856,10 @@ Turn on **Vim key bindings in the chat input and notes** in **Settings › Vim**
 
 - It starts in insert mode with the cursor at the end of the text.
 - `Esc` switches to normal mode. It does not leave the box.
-- To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, the keys that follow the prefix, or `:q`.
-- In insert mode, the following keys work as in Vim, not as Lattice shortcuts, unless one is the prefix. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes back to the start of the line, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
+- To leave the box, use `Ctrl+H` `Ctrl+J` `Ctrl+K` `Ctrl+L`, `:q`, or the keys that follow the prefix.
+- In insert mode, the following keys work as in Vim, not as Lattice shortcuts, except any that is the prefix. `Ctrl+W` deletes the word before the cursor, `Ctrl+U` deletes back to the start of the line, `Ctrl+T` and `Ctrl+D` change the indent, `Ctrl+R` pastes a register, and `Ctrl+O` runs one normal-mode command. To close a tab or open a new one from the box, press `Esc` first, or use `Ctrl+A &` or `Ctrl+A c`.
 - `Ctrl+Enter` or `:w` sends the question in the chat, and saves the note. In the chat, `Enter` in normal mode sends too when **Send key** is set to an Enter option.
-- The prefix (`Ctrl+A` by default) is the first key of Lattice's two-step keys. To give that key to Vim, press it twice. With `Ctrl+A`, that is Vim's increment.
+- The prefix (`Ctrl+A` by default) is the first key of many of Lattice's two-step keys. To give that key to Vim, press it twice. With `Ctrl+A`, that is Vim's increment.
 - `:q` only leaves the chat box, and closes the note.
 - `:wincmd h` `:wincmd j` `:wincmd k` `:wincmd l` move between panes, and `:wincmd =` makes them the same size. `:split` `:vsplit` `:tabnew` `:tabnext` `:tabprev` `:close` `:zoom` `:only` `:tabclose` work too.
 
