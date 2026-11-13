@@ -68,12 +68,7 @@ impl Server {
         let url = url.trim().trim_end_matches('/');
         let url = url.strip_suffix("/v1").unwrap_or(url).trim_end_matches('/');
         let ok = |u: &url::Url| {
-            matches!(u.scheme(), "http" | "https")
-                && u.host_str().is_some_and(|h| !h.is_empty())
-                && u.username().is_empty()
-                && u.password().is_none()
-                && u.query().is_none()
-                && u.fragment().is_none()
+            matches!(u.scheme(), "http" | "https") && u.username().is_empty() && u.password().is_none() && u.query().is_none() && u.fragment().is_none()
         };
         match url::Url::parse(url) {
             Ok(u) if ok(&u) => Ok(Self { url: url.to_string() }),
