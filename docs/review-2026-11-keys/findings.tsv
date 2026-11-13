@@ -1,0 +1,82 @@
+id	milestone	round	reviewer	commit	severity	category	file	summary	outcome	resolution	caught_by	harness_idea
+1	M1	1	correctness	b5efdb1	medium	correctness	src/vim/vimrc.ts:296	Applying insert-mode <C-w> mappings let Neovim's inoremap <C-W> <C-G>u<C-W> type <C-g>u as text, since the engine has no <C-g>	fixed	dropped b5efdb1	e2e-probe	When a change widens which vimrc lines apply, run the common vimrcs (defaults.vim, Neovim's defaults, vim-sensible) through the engine
+2	M1	1	correctness	b5efdb1	low	correctness	src/vim/vimrc.ts:296	inoremap <C-w> <C-o><C-w> was listed as applied but did nothing	fixed	dropped b5efdb1	e2e-probe	
+3	M1	1	correctness	b5efdb1	low	docs	docs/design-review.md:892	The design record still said the editor gets only the keys the vimrc maps	fixed	94fe2e2	static-reading	When a key's owner changes, grep the design record for the old rule
+4	M1	1	correctness	b5efdb1	low	correctness	src/vim/VimEditor.tsx	Ctrl+W at the engine's Ex or search prompt closes the tab	skipped	The engine's prompt has no Ctrl+W to give it; same as a plain text field, as in Chrome	e2e-probe	
+5	M1	1	correctness	b5efdb1	low	correctness	src/vim/VimEditor.tsx	A pending engine Ctrl+R survives an app key in between, and the next letter reads as a register	skipped	Existing; Ctrl+R was never an app key	e2e-probe	
+6	M1	1	correctness	b5efdb1	low	correctness	src/vim/VimEditor.tsx:110	With CapsLock on, Ctrl+W may arrive as <C-W>, which is not in ENGINE_INSERT_KEYS	skipped	Unverified in WebView2; the engine itself does not match <C-W> either	none	
+7	M1	1	test-quality	b5efdb1	medium	test-coverage	e2e/overlay.spec.ts	No e2e checked Space in a web page, so re-stopping an unbound Space in the overlay passed every test	fixed	d43f754	mutation	A key handled in the overlay needs a case in e2e/overlay.spec.ts, which loads it in Chromium
+8	M1	1	test-quality	b5efdb1	low	test-coverage	e2e/vim.spec.ts	The Ctrl+U step reached the engine before the change too, so it told nothing	fixed	b8ff829	mutation	Pick keys for a test whose meaning the change alters (here inFields actions only)
+9	M1	1	test-quality	b5efdb1	low	test-coverage	src/app/useKeyboard.ts:314	No test bound Space alone in the Reader	skipped	The app's path is shared by every key; the overlay test binds Space alone	mutation	
+10	M1	1	test-quality	b5efdb1	low	test-coverage	src/vim/vimrc.ts:296	parseMap's mode boundary was tested on one side only	fixed	dropped b5efdb1	mutation	
+11	M1	1	test-quality	b5efdb1	low	test-coverage	src/vim/vimrc.test.ts	The derivation test reads only one-line keys entries	skipped	The engine has none other; a key dropped from the set still fails deepEqual	static-reading	
+12	M1	2	correctness	b8ff829	low	docs	CHANGELOG.md:26	The changelog said a bound Space no longer scrolls, which 0.3.0 already did in the app	fixed	c850897	static-reading	Compare a changelog claim with the last release's code
+13	M1	2	correctness	b8ff829	low	docs	docs/guide.md:848	The guide said Ctrl+T and Ctrl+D both indent	fixed	a5e2478	e2e	
+14	M1	2	correctness	b8ff829	low	docs	src/lib/keymap.ts:427	pageKeys still said Space is free in a page	fixed	835cd18	static-reading	
+15	M1	2	correctness	b8ff829	low	test-naming	e2e/overlay.spec.ts:32	The overlay test's title said a bound Space runs its action; it checks the key goes to the app	fixed	1077bf1	static-reading	
+16	M1	2	correctness	b8ff829	low	correctness	src/vim/vimrc.ts:295	Insert-mode maps using <C-w> (inoremap <C-BS> <C-w>) are skipped with a pane reason	deferred	Needs a check of the right-hand side against the keys the engine runs in insert mode	unit-probe	
+17	M1	2	correctness	b8ff829	low	docs	docs/roadmap.md:78	G50 said Space is the page's	fixed	94fe2e2	static-reading	
+18	M1	2	test-quality	b8ff829	low	test-coverage	e2e/keys.spec.ts:79	The paging tests took half a screen as enough	fixed	afb3cbc	mutation	Bound an amount from both sides, against the nearest wrong amount (half a screen here)
+19	M1	2	test-quality	b8ff829	low	process	ledger	The ledger said Ctrl+D tells the change apart; only Ctrl+T does	fixed	ledger	mutation	
+20	M1	2	test-quality	b8ff829	low	test-coverage	src/overlay/index.ts:821	No e2e for Space as the first key of a two-key binding in a page	fixed	93bc3c0	mutation	
+21	M1	3	fable	93bc3c0	low	docs	src/vim/vimrc.ts:12	FreedMode's comment said insert mode has no command to give up	fixed	24fadb6	static-reading	
+22	M1	3	fable	93bc3c0	low	docs	docs/guide.md:314	A bound Space is per scope: bound only to a list action, the Reader still pages	skipped	The section's context makes it read as a document action	static-reading	
+23	M1	4-1	ponytail	24fadb6	low	test-coverage	e2e/vim.spec.ts:204	The Ctrl+D step tested the engine, not Lattice	fixed	95aebf2	static-reading	
+24	M1	4-1	ponytail	24fadb6	low	test-coverage	e2e/overlay.spec.ts:45	The one-key Space binding block was called a duplicate of the first-key block	fixed, then reverted	bf1187c, reverted in 62a3673	static-reading	Before deleting a test as a duplicate, run one mutation that only it should kill
+25	M1	4-1	ponytail	24fadb6	low	test-coverage	e2e/keys.spec.ts:87	Space on a list row tested only Chromium's default after PRESSED_BY_SPACE went	fixed	069f2ea	static-reading	
+26	M1	5	final	7b47b3d	medium	test-coverage	e2e/overlay.spec.ts:45	Merging the one-key Space block lost the only check that a bound Space run does not scroll the page	fixed	62a3673	mutation	Same as row 24
+27	M1	5	final	7b47b3d	low	docs	src/lib/keymap.test.ts:320	An assertion message still said Space is free in a page	fixed	a91017b	static-reading	
+28	M2	1	correctness	47d9437	medium	correctness	src/vim/VimEditor.tsx:110	A prefix that is one of Vim's insert-mode keys (Ctrl+U, Ctrl+W) went to the engine in insert mode: no hint, and Ctrl+W & typed &	fixed	79a142a	e2e-probe	When a key becomes configurable, run its tests with it set to each key another owner claims
+29	M2	1	correctness	47d9437	low	process	ledger	The ledger's invariant that a prefix round trip restores every key did not hold	fixed	59a543e	unit-probe	Write each invariant as a test before claiming it
+30	M2	1	correctness	47d9437	low	correctness	src/lib/keys.ts:65	A key that a new prefix made equal to the default stayed an override	fixed, then dropped	516023b, dropped with the design change in 59a543e	unit-probe	
+31	M2	1	correctness	47d9437	low	test-naming	src/lib/keymap.test.ts:262	The clash test's title claimed no free prefix clashes, false for Ctrl+Arrow	fixed	27f4a7e	unit-probe	
+32	M2	1	correctness	47d9437	low	correctness	src/lib/keymap.ts:302	An earlier action bound to <prefix> <prefix> silently wins over send-prefix	skipped	Existing; the clash shows on the row	static-reading	
+33	M2	1	correctness	47d9437	low	correctness	src/lib/keymap.ts:382	AltGr characters (Ctrl+Alt+@) can become the prefix	skipped	Existing for single keys too; low priority	static-reading	
+34	M2	1	correctness	47d9437	low	ui-text	src/i18n/en.ts:415	"Send the prefix (Ctrl+A: select all)" read as if Ctrl+A were the key	fixed	603e25c	static-reading	
+35	M2	1	test-quality	47d9437	high	data-loss	src/lib/keys.ts:26	Re-tokenizing on every save moved a user's key on a prefix round trip and could lose one (["Ctrl+A S","Ctrl+B S"] became one key)	fixed	59a543e	unit-probe	Property-test the store: random edit sequences, check no key is lost and round trips change nothing
+36	M2	1	test-quality	47d9437	medium	test-coverage	src/lib/keys.ts:26	The tokenizing boundary (a single key equal to the prefix, Ctrl+ArrowLeft under Ctrl+A) was not pinned	fixed	7444ed1	mutation	
+37	M2	1	test-quality	47d9437	medium	test-coverage	src/settings/ShortcutSettings.tsx:344	The Prefix row's reset, Undo after Reset all, and Esc while recording had no test	fixed	233638c	mutation	
+38	M2	1	test-quality	47d9437	medium	test-coverage	e2e/keys.spec.ts:331	An assertion message claimed the prefix twice reached a field, which a field cannot show	fixed	ac1a427	mutation	Use a key with a visible default (Vim's Ctrl+A / Ctrl+X) to test that a key is passed on
+39	M2	1	test-quality	47d9437	low	simplification	src/settings/ShortcutSettings.tsx:84	A term in the shadowing check was always true	fixed	3092136	mutation	Flag a condition no mutation can make false
+40	M2	1	test-quality	47d9437	low	test-coverage	src/app/Palette.tsx:83	Nothing tested that send-prefix stays out of the palette	fixed	51b1124	mutation	
+41	M2	1	test-quality	47d9437	low	test-coverage	src/ui/manage.css:137	The note colours have no test	skipped	The parent checked computed colours once in the e2e app	none	
+42	M2	1	delegate	59a543e	medium	data-loss	src/lib/keys.ts:91	Editing a row read its other literal keys again, so one could move onto a default after a prefix round trip	fixed	8a2cc1d	unit-probe	
+43	M2	1	parent	47d9437	low	ui	src/ui/manage.css:135	The row's grey for its description outranked .warn-text and .error-text, so warnings looked like plain notes	fixed	47d9437	e2e-probe	Check computed colours of state classes in one e2e
+44	M2	2	correctness	8a2cc1d	medium	data-loss	src/lib/keys.ts:90	A row edit kept only one of two stored keys that show as one, and compared "back to defaults" on the shown keys, so a literal key could be cleared	fixed	516023b	unit-probe	Same as row 35
+45	M2	2	correctness	8a2cc1d	medium	correctness	src/vim/VimEditor.tsx:116	A user's two-step key starting with one of Vim's insert-mode keys took that key from Vim in insert mode	fixed	dff02fb	e2e-probe	
+46	M2	2	correctness	8a2cc1d	low	docs	docs/guide.md:733	The guide did not say that loading a file sets the prefix	fixed	f5cf2ec	static-reading	
+47	M2	2	test-quality	8a2cc1d	low	test-coverage	src/lib/keys.ts:93	Matching stored keys by their expansion had no test	fixed	916e9a1	mutation	
+48	M2	2	test-quality	8a2cc1d	low	test-naming	e2e/keys.spec.ts:305	A test title claimed the second Ctrl+B goes on to the field	fixed	589bf77	static-reading	
+49	M2	2	environment	8a2cc1d	low	environment	e2e	The worktree's node_modules lacked @fontsource, so Vite was asked for the main checkout's fonts and answered 403	fixed	npm ci	e2e	Make the e2e setup fail fast when node_modules does not match the lockfile
+50	M2	3	correctness	916e9a1	low	docs	docs/guide.md:849	The insert-mode line did not mention that the prefix stays Lattice's	fixed	4aa2059	e2e-probe	
+51	M2	3	correctness	916e9a1	low	docs	src/vim/VimEditor.tsx:114	A comment said normal mode only where visual mode reads the same way	fixed	0cae20f	e2e-probe	
+52	M2	3	test-quality	916e9a1	low	test-coverage	src/vim/VimEditor.tsx:112	No test that a vimrc mapping of the prefix key wins in its mode	fixed	fda8d27	mutation	
+53	M2	3	test-quality	916e9a1	low	test-coverage	e2e/vim.spec.ts:512	A no-hint check ran before the hint's delay	fixed	a028e94	static-reading	Lint: a toHaveCount(0) on the hint needs a wait past HINT_MS first
+54	M2	3	parent	916e9a1	low	process	src/lib/keys.test.ts	The property test was committed with lint errors, because the lint and the commit ran in one chain	fixed	05aa4d6 (amended)	lint	Never chain a check and a commit; read the exit code in its own step
+55	M2	3	codex	4aa2059	medium	correctness	src/lib/keymap.ts:386	Ctrl+Enter could be the prefix, and its first press sent the chat draft	fixed	794b587	e2e-probe	
+56	M2	3	fable	4aa2059	low	correctness	src/app/useKeyboard.ts:302	With Ctrl+B as the prefix, page up had no key left: the prefix twice went to the page	fixed	bb36fb5	static-reading	
+57	M2	3	fable	4aa2059	low	docs	docs/guide.md:834	The guide named Ctrl+A as a key that works in a page's fields	fixed	226c4b8	static-reading	
+58	M2	3	fable	4aa2059	low	correctness	src/lib/keymap.ts:383	A hand-written prefix such as "Ctrl+" loads without a message	skipped	Hand-written files only	static-reading	
+59	M2	3	fable	4aa2059	low	docs	CHANGELOG.md:24	The changelog does not say the storage version bump resets changed keys	skipped	No users yet; the last bump did not say so either	static-reading	
+60	M2	3	fix-review	226c4b8	medium	docs	src/i18n/ja.ts:301	The note said the prefix twice runs the action in a web page too, where the page gets the key	fixed	accc3b2	e2e-probe	
+61	M2	3	fix-review	226c4b8	low	correctness	src/app/useKeyboard.ts:307	The count before the prefix was dropped	fixed	400f115	e2e-probe	
+62	M2	3	fix-review	226c4b8	low	test-coverage	e2e/keys.spec.ts:399	The list scope and the preventDefault of the new path had no test	fixed	6369ac4	mutation	
+63	M2	3	fix-review	226c4b8	low	test-coverage	e2e/keys.spec.ts:409	A no-hint check ran before the hint's delay	fixed	a1e037d	static-reading	Same as row 53
+64	M2	3	fix-review	226c4b8	low	correctness	src/lib/keymap.ts:386	Esc with modifiers could be the prefix, though fields and Windows read it first	fixed	e0a42fb	static-reading	
+65	M2	3	fix-review	226c4b8	low	ui-text	src/settings/ShortcutSettings.tsx:138	A row whose key is the prefix named the first binding under it, not the prefix	fixed	d8cf2c9	e2e-probe	
+66	M2	4-1	ponytail	d8cf2c9	low	simplification	src/lib/keys.ts:57	setKeys wrapped the keys it keeps in a Set, which could not drop one: each shown key maps to its own stored forms	fixed	42dd08f	mutation	Before a dedupe is deleted, run the property test with an assertion that no stored list repeats a key
+67	M2	4-1	ponytail	d8cf2c9	low	test-coverage	src/lib/keys.test.ts:206	The test of a key recorded under another first key repeated two row tests and the property test	fixed	69c7e27	mutation	Before deleting a test, mutate the branch it names and check that another test fails
+68	M2	4-1	ponytail	d8cf2c9	low	test-coverage	src/lib/keys.test.ts:119	The stored shape after replaceKeys(DEFAULTS) is read again by the round-trip tests	fixed	3a34c92	mutation	Same as row 67
+69	M2	4-1	ponytail	d8cf2c9	low	test-coverage	src/lib/keymap.test.ts:238	merge's default send-prefix was read twice through the same fixed keys	fixed	8cd2182	mutation	Same as row 67
+70	M2	4-1	ponytail	d8cf2c9	low	test-coverage	src/lib/keymap.test.ts:268	Two chordFrom assertions repeated the stepKeys tests above them	fixed	971d505	mutation	Same as row 67
+71	M2	4-1	ponytail	d8cf2c9	low	test-coverage	e2e/keys.spec.ts:388	The e2e of Ctrl+A in a plain field under another prefix was held by the Vim editor's own test	fixed	87156f6	mutation	Same as row 67
+72	M2	4-1	ponytail	d8cf2c9	low	test-coverage	e2e/shortcuts.spec.ts:218	A split after the Prefix row's reset repeated the row's own display check	fixed	5aedfcb	mutation	Same as row 67
+73	M2	4-2	simplify	d8cf2c9	low	reuse	src/settings/ShortcutSettings.tsx:95	Reset all rebuilt the default prefix and empty overrides by hand	fixed	c42e82b	static-reading	
+74	M2	4-2	simplify	d8cf2c9	low	simplification	src/settings/ShortcutSettings.tsx:91	The prefix's note was built from two copies of the same call	fixed	88bde4f	static-reading	
+75	M2	4-3	prose	da8c1f3	low	docs	docs/guide.md:834	The line said shortcuts with Ctrl work in a page's text field, though the prefix can be an Alt key	fixed	4fb6c95	static-reading	Have the polisher name the code it read for each claim it keeps
+76	M2	4-3	prose	da8c1f3	low	docs	docs/guide.md:726	The note's place was named as the row, though it shows on the Prefix row and the action's row	fixed	4fb6c95	static-reading	
+77	M2	4-3	prose	da8c1f3	low	docs	docs/guide.md:851	The prefix was called the first key of the two-step keys, though g t and y y do not start with it	fixed	4fb6c95	static-reading	
+78	M2	5	final	4fb6c95	low	correctness	src/settings/ShortcutSettings.tsx:140	Every row bound to the prefix promised that a second press ran its action, but the keyboard runs the one actionFor finds for the scope	fixed	0f642b2	e2e-probe	A note that names what a key does belongs in the same test as the key press that proves it
+79	M2	5	final	4fb6c95	low	docs	docs/guide.md:834	Ctrl+D and the other scrolling keys do nothing in a text field, so shortcuts with Ctrl was still too wide	fixed	95500a5	static-reading	
+80	M2	5	final	4fb6c95	low	docs	docs/guide.md:726	The polish left the two languages saying different things at 726 and 848	fixed	863f606	static-reading	Diff the pair's changed lines for meaning, not only for shape
+81	M2	5	final	4fb6c95	low	docs	docs/design-review.md:895	§31 wrote the registry key as <prefix> h, where keyOf spells it <prefix> H	fixed	b732d1a	static-reading	
