@@ -591,6 +591,8 @@ pub(crate) mod tests {
             "127.0.0.1:8077",
             "ftp://x",
             "http://",
+            "http://:8077",
+            "http://user@",
             "http://x:8077/?a=1",
             "http://x:8077#a",
             "http://user:pass@gpu.lan:8077",
