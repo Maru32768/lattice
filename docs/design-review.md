@@ -1122,7 +1122,7 @@ UIがlocalStorageだけに置いていた7つの設定を、ライブラリのDB
 - **失敗はchainに回さない。** 接続できないとき、またはHTTP 401・403・404・503(モデルの読み込み中を含む)のときは、`LlmError::Unavailable(msg!("translate.localUnavailable", url, detail))`にする。batchは止まり、`run`はjobをこのコードで失敗させ、jobはこれまでと同じようにbackoffする。`Via::Local`はproviderを持たないので、AIに回る経路がない(「黙ってAPIやCLIを使わない」)。HTTP 500(文脈のあふれ)などは`Failed`で、そのblockは1文ずつ訳し直す。設定画面の状態とjobのエラーに出るので、これらのエラーもコード(`translate.localFailed`)にする。何も答えずに2回失敗したら、batchを止める(`segments::translate_snippets`と同じ規則)。`run`はjobのエラーを`e.to_string()`で作っていたので、前に`provider unavailable: `が付き、UIがコードとして読めなかった。`LlmError::message()`はコードのメッセージをそのまま返す。
 - **文字参照は戻さない。** 実機(2B)で、`<code>&lt;div&gt;</code>`・`&lt;template&gt;`・`<code>a &lt; b</code>`は文字参照のまま返り、`&quot;`と`&amp;`は自然な日本語(「」、と)になった。訳文はこれまでどおり信頼せず、sanitizerを通す。
 - **タグをはさんで和文が続く空白は詰める。** PLaMoは1つの応答の中で`<code>`の前後に空白を入れると、ほかのインライン要素の前後にも空白を入れる(実機で`<code>git status</code> を実行して…` + `…前に <a href="…">ドキュメント</a> を読んでください。`。この2行目だけを送ると空白は入らない)。和文の語の間に空白は入れないので、片側だけがタグに接する空白のうち、タグを越えた両側が和文のものだけを除く(`local::tighten`)。両側がタグに接する空白(`<code>はい</code> <code>いいえ</code>`)は、2つの要素を分けているので残す。`<code>git status</code> を`のように英数字との間の空白は、日本語の技術文書でよく使う書き方なので残す。
-- **`keep_scripts`は通さない。** 原文は断片の切り出しなので、`<sub>`と`<sup>`は原文に残る。
+- **`keep_scripts`は通さない。** `segments::keep_scripts`は、LLMが原文から`<sub>`・`<sup>`を落としたときに、単位を1つにまとめて添字を残す処理。ローカルのエンジンの原文は断片の切り出しなので、`<sub>`と`<sup>`はそのまま原文に残る。
 - **トークン数をログに出す。** 文字数からの見積もりをあとで実際の値と比べるため、batchごとに`local translate: …`のinfoログへ、リクエストの数、入力と出力のトークンの合計、1回のリクエストで使った最大を出す。
 
 ### 実測(2B Q4_K_M、GTX 1080、3並列)
@@ -1143,19 +1143,20 @@ Bを採った。行の対応が保て、空行でblockを区切らずに済み�
 - `translate.rs`のテストで、`local`のとき、「専門用語を英語のまま残す」がオンで「追加の指示」があっても、`target`のキーが`ja-x-translated-terms`になること、`ja-x-instr-…`で積んだjobが`ja-x-translated-terms`にだけ`provider`=`local`・`prompt_version`=`plamo-v1`で書き、chainを1回も呼ばないこと、進み具合をそのキーで数えること、閉じたポートではjobのエラーが`{"code":"translate.localUnavailable"`で始まり、何も保存せずchainも呼ばないこと、`llm`に戻すと設定どおりのキーに戻ること。
 - 実機のPLaMo(2B Q4_K_M、llama-serverを`-c 16384 -np 3 -kvu`で起動)で、`#[ignore]`のテスト`local::tests::live_plamo`を動かした。`/v1/models`のモデルは`plamo-3-translate`。川の文脈を付けた「The bank was muddy.」は「川岸はぬかるんでいた。」になった。`<code>`とリンクを含む3文の段落は3つの単位で返り、`<code>git status</code>`と`<a href="https://git-scm.com/docs">`は訳文に残った。
 - e2e(`e2e/settings.spec.ts`)で、「ローカルの翻訳サーバー」を選ぶとmockのモデル名が出て、「専門用語を英語のまま残す」と「追加の指示」が無効になり、URLが`/v1`を除いて保存され、接続できないURLではその理由が出ること。
+- dev版のアプリで、実機のサーバー(2B、llama-server)に対して確かめた。「設定 › 翻訳」の接続の確認(`/v1/`付きのURLは除いて保存し、接続できないURLと`ftp://`はコード付きのエラーになる)。10 blockの記事のjobが8秒で終わり、`ja-x-translated-terms`に`provider`=`local`・`model`=`plamo-3-translate`・`prompt_version`=`plamo-v1`で保存され、AIが訳した`ja`の行は残ること。サーバーを止めると、jobが`translate.localUnavailable`で再試行待ちになり、処理状況に日本語で出ること。
 
 ### 確かめていないこと
 
 - LM StudioとOllama。llama-serverでだけ確かめた。モデルを読み込んでいないときに、これらが404や503を返すのか、200でエラーを返すのかは確かめていない。
-- アプリを通した翻訳。実機のサーバーでは`lattice-core`の経路(`Server::translate`)だけを動かした。
+- Page表示とPDFのoverlayの経路を、実機のサーバーで動かすこと。記事の翻訳jobと設定画面は、dev版のアプリで確かめた(上の「確かめたこと」)。
 
 ### 分かっている制限
 
-- 文脈の枠は`plamo-server`の16,384トークン・3スロットを決め打ちしている(`shortcut:`)。サーバーを小さい文脈で動かすと、HTTP 500になったblockが1文ずつになる。llama-serverなら`/props`で分かるが、LM StudioとOllamaにはない。
+- 文脈の枠は`plamo-server`の16,384トークン・3スロットを決め打ちしている(`shortcut:`)。サーバーを小さい文脈で動かすと、入らなかったblockが1文ずつになる(llama-serverは、1つのリクエストが枠を超えるとHTTP 400(`exceed_context_size_error`)、同時のリクエストが合わせて超えるとHTTP 500を返す。400は実機で確かめた)。llama-serverなら`/props`で分かるが、LM StudioとOllamaにはない。
 - 分割がまちがって行の数が合わないと、1文ずつの訳し直しで節を単位として保存しうる(§3の「単位は文で、節に分けない」に反する)。実測で700 blockに1つで、その原因(`」と`)は分割の規則で除いた。
 - CLIは翻訳jobを実行しない(`save --run`が実行するのはNETとLOCALのjobだけ)ので、semaphoreはプロセスごとで足りる。
 - overlayは、chainのときと同じく、エラーをログに書くだけでページには出さない。接続できないことは、設定画面の状態と、処理状況のjobのエラーで分かる。
-- サーバーが止まっている間に失敗になったjobは、chainの障害のときと同じく、利用者が再実行する。
+- サーバーが止まっている間、jobはchainの障害のときと同じく間隔を空けて5回まで再試行し、それでも失敗になったjobは利用者が再実行する。
 - エンジンを切り替えても、開いているReaderは読み直さない。次に開いたときに新しいキーで表示する。
 - 1つのjobが2つのキーに書かないように、実行中のjobは始めたときのエンジンで最後まで訳す(`run`は`Translator`を1回だけ作る)。そのため、訳している途中で`local`に切り替えても、その記事の残りはAIが訳す。
 - 文字数からのトークンの見積もりは、英語では実際の5倍ほどになる。blockの大きさでは困らない(実測の最大は676トークン)。ただし、切れる位置がなく、タグと属性を含めて約2,380字を超える文(段落がまるごと`<em>`などの中にあるときを含む)は、枠に収まらないとみなして送らず、そのblockは訳せなかったことになる(`translate.missingBlocks`)。
