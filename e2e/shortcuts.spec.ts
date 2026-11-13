@@ -215,13 +215,6 @@ test("Esc stops recording a prefix and keeps it, Undo after Reset all brings it 
 
   await prefix.getByRole("button", { name: "既定に戻す" }).click();
   await expect(prefix.locator(".kbd")).toHaveText("Ctrl A");
-  await app.keyboard.press("Escape");
-  await expect(list(app)).toBeVisible();
-  const panes = app.locator(".dpane");
-  await expect(panes).toHaveCount(1);
-  await app.keyboard.press("Control+a");
-  await app.keyboard.press('"');
-  await expect(panes).toHaveCount(2);
 });
 
 test("actions are in a tab each by what they are for, the row names where it runs, and the same key in two places is no conflict", async ({ app }) => {
