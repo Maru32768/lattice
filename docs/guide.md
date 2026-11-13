@@ -284,7 +284,7 @@ Translations are stored separately for each combination of **Keep technical term
 
 **Translating with a local translation server.** PLaMo 3 Translate (Preferred Networks) is a model made only for translation. You can run it on your own PC and translate with it. Translation then uses no AI provider, so it costs no credits, and the text to translate goes only to that server.
 
-1. Start an OpenAI-compatible server (such as llama-server, LM Studio or Ollama) with PLaMo 3 Translate loaded. With llama.cpp's `llama-server`, for example, run `llama-server -m plamo-3-translate-2b-Q4_K_M.gguf -c 16384 -np 3 -kvu --port 8077 --no-prefill-assistant`. Lattice sizes each request to fit a server like this one, which has a context of 16,384 tokens shared by 3 requests at a time.
+1. Start an OpenAI-compatible server (such as llama-server, LM Studio or Ollama) with PLaMo 3 Translate loaded. With llama.cpp's `llama-server`, for example, run `llama-server -m plamo-3-translate-2b-Q4_K_M.gguf -c 16384 -np 3 -kvu --port 8077 --no-prefill-assistant` (the model card's command, with `-np 3 -kvu` so that 3 requests at a time share the context). Lattice sizes each request to fit a server like this one, which has a context of 16,384 tokens shared by 3 requests at a time.
 2. In **Settings › Translation**, set **Translation engine** to **Local translation server**.
 3. If the server is not at the default URL, change **Translation server URL** and press **Save**. A trailing `/v1` may be written or left out. Once Lattice connects, it shows the name of the loaded model. You can check again at any time with **Check connection**.
 
