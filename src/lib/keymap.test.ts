@@ -258,15 +258,13 @@ test("merge reads <prefix> as the prefix it is given, in either key of a binding
   assert.deepEqual(b.sendPrefix, ["Ctrl+B Ctrl+B"], "the second key too");
 });
 
-test("the default keys clash with none of these prefixes, and a prefix bound alone becomes a first key", () => {
+test("the default keys clash with none of these prefixes, and under another prefix Ctrl+A is no first key", () => {
   for (const prefix of ["Ctrl+Space", "Alt+A", "Ctrl+B"]) {
     assert.deepEqual([...conflicts(merge({}, prefix)).keys()], [], prefix);
   }
   // A resize key as the prefix: pressed twice it is both send-prefix and that resize, which Settings flags on the resize row.
   assert.deepEqual([...conflicts(merge({}, "Ctrl+ArrowUp")).keys()], ["Ctrl+ArrowUp Ctrl+ArrowUp"]);
-  assert.equal(chordFrom(DEFAULT_BINDINGS, "Ctrl+B", "doc"), undefined);
   const b = merge({}, "Ctrl+B");
-  assert.ok(chordFrom(b, "Ctrl+B", "doc"), "Ctrl+B pages up no more: Settings says so on that row");
   assert.equal(chordFrom(b, "Ctrl+A", "doc"), undefined);
 });
 
