@@ -86,7 +86,7 @@ fn citations(rest: &str) -> usize {
     if len == 0 {
         0
     } else {
-        rest.len() - rest[len..].trim_start_matches(' ').len()
+        rest.len() - rest[len..].trim_start_matches([' ', '\u{a0}']).len()
     }
 }
 
@@ -228,6 +228,7 @@ mod tests {
         ("続きます。『「入門」』を読む。", &["続きます。", "『「入門」』を読む。"]),
         ("開きます。<b>『入門』</b>を読みます。", &["開きます。", "<b>『入門』</b>を読みます。"]),
         ("Done.[1] Next one.", &["Done.[1] ", "Next one."]),
+        ("Done.[1]&nbsp;Next one.", &["Done.[1]&nbsp;", "Next one."]),
         ("Intro. [1] Open it. [2] Close it.", &["Intro. ", "[1] Open it. ", "[2] Close it."]),
         ("It is true.<a href=\"#c\">[1]</a>", &["It is true.<a href=\"#c\">[1]</a>"]),
         ("Done.<sup>[2]</sup><sup>[3]</sup> Next.", &["Done.<sup>[2]</sup><sup>[3]</sup> ", "Next."]),
