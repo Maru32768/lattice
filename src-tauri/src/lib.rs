@@ -504,6 +504,23 @@ fn set_translate_keep_terms(app: State<'_, App>, on: bool) -> Result<(), String>
 }
 
 #[tauri::command(async)]
+fn get_translate_engine(app: State<'_, App>) -> Result<translate::EngineSettings, String> {
+    translate::engine_settings(&app.store)
+}
+
+#[tauri::command(async)]
+fn set_translate_engine(app: State<'_, App>, engine: translate::EngineKind, local_url: String) -> Result<String, String> {
+    translate::set_engine(&app.store, engine, &local_url)
+}
+
+/// The model the translation server at `url` has loaded, or the coded reason it cannot be reached.
+/// It takes the URL so the field can be checked before it is saved.
+#[tauri::command]
+async fn check_translate_local(url: String) -> Result<String, String> {
+    lattice_core::local::Server::new(&url)?.model().await.map_err(|e| e.message())
+}
+
+#[tauri::command(async)]
 fn get_translate_instructions(app: State<'_, App>) -> Result<String, String> {
     translate::instructions(&app.store)
 }
@@ -1657,6 +1674,9 @@ pub fn run() {
             set_auto_relevance,
             set_relevance_threshold,
             rescore_relevance,
+            get_translate_engine,
+            set_translate_engine,
+            check_translate_local,
             get_translate_keep_terms,
             set_translate_keep_terms,
             get_auto_translate,

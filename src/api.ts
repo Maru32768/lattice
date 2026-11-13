@@ -16,6 +16,8 @@ import type {
   ChatScope,
   ChatThread,
   CustomInstructions,
+  EngineKind,
+  EngineSettings,
   FeedCandidate,
   FeedFilter,
   FeedRow,
@@ -201,6 +203,12 @@ export const api = {
   setArticleNote: (id: number, body: string) => invoke<void>("set_article_note", { id, body }),
   setDifficulty: (id: number, level: number | null) => invoke<void>("set_difficulty", { id, level }),
   setRelevance: (id: number, score: number | null) => invoke<void>("set_relevance", { id, score }),
+  /** 翻訳エンジン and the local translation server's URL. */
+  translateEngine: () => invoke<EngineSettings>("get_translate_engine"),
+  /** Resolves to the URL as stored, without a trailing / or /v1. */
+  setTranslateEngine: (engine: EngineKind, localUrl: string) => invoke<string>("set_translate_engine", { engine, localUrl }),
+  /** The model the translation server at `url` has loaded; rejects with why it cannot be reached. */
+  checkTranslateLocal: (url: string) => invoke<string>("check_translate_local", { url }),
   translateKeepTerms: () => invoke<boolean>("get_translate_keep_terms"),
   setTranslateKeepTerms: (on: boolean) => invoke<void>("set_translate_keep_terms", { on }),
   /** 保存した記事を自動で翻訳 (off by default). */
