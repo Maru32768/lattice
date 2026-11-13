@@ -540,11 +540,10 @@ fn set_custom_instructions(app: State<'_, App>, settings: instructions::Settings
     instructions::save(&app.store, &settings)
 }
 
-/// The built-in prompt the instructions extend (current term mode, English to Japanese).
+/// The built-in prompt the instructions extend: the AI engine's, in the current term mode, English to Japanese.
 #[tauri::command(async)]
 fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
-    let target = translate::target(&app.store)?;
-    Ok(segments::translation_prompt(&segments::Target { instructions: String::new(), ..target }))
+    Ok(segments::translation_prompt(&segments::Target { keep_terms: translate::keep_terms(&app.store)?, ..Default::default() }))
 }
 
 #[tauri::command(async)]

@@ -102,8 +102,6 @@ export function TranslationSettings() {
     setError(null);
     try {
       await api.setTranslateEngine(value, savedUrl);
-      // The built-in prompt follows the term mode, which the local engine fixes.
-      setPrompt(await api.translationPrompt().catch(() => prompt));
       if (value === "local") {
         checkServer(savedUrl, setConnection);
       }
