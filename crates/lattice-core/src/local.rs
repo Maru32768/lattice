@@ -437,7 +437,9 @@ pub(crate) mod tests {
         .await;
         let t = Server::new(&url).unwrap().translate(&snippets(&["One. Two."]), "ja").await;
         assert!(t.results[0].is_none());
-        assert!(matches!(t.error, Some(LlmError::Malformed(_))), "{:?}", t.error);
+        let e = t.error.unwrap();
+        assert!(matches!(e, LlmError::Malformed(_)), "{e:?}");
+        assert_eq!(code(&e).0, "translate.localFailed");
     }
 
     #[tokio::test]
@@ -453,6 +455,9 @@ pub(crate) mod tests {
         assert!(t.results[..4].iter().all(Option::is_none));
         assert_eq!(t.results[4].clone().unwrap().0, [unit("Fine one.", "訳:Fine one.")], "those blocks' text, not the server");
         assert_eq!(seen.lock().unwrap().len(), 1 + 5, "a lone sentence is not sent again");
+        let e = t.error.unwrap();
+        assert!(matches!(e, LlmError::Declined(_)), "{e:?}");
+        assert_eq!(code(&e).0, "translate.localFailed", "the last block's 400");
     }
 
     #[tokio::test]
