@@ -284,7 +284,7 @@ Reader表示のツールバーに、翻訳の進み具合が出ます(例: 「�
 
 **ローカルの翻訳サーバーで訳す。** 翻訳専用のモデルPLaMo 3 Translate(Preferred Networks)を自分のPCで動かして、翻訳に使えます。この場合はAIプロバイダを使わないので、その使用量はかからず、訳す本文はそのサーバーにだけ送ります。
 
-1. OpenAI互換のAPIを持つサーバー(llama-server、LM Studio、Ollamaなど)にPLaMo 3 Translateを読み込ませて起動します。llama.cppの`llama-server`なら、たとえば`llama-server -m plamo-3-translate-2b-Q4_K_M.gguf -c 16384 -np 3 -kvu --port 8077 --no-prefill-assistant`を実行します。Latticeは、この例のように、16,384トークンのコンテキスト長を同時の3つのリクエストで分け合うサーバーを前提に、1回に送る量を決めます。
+1. OpenAI互換のAPIを持つサーバー(llama-server、LM Studio、Ollamaなど)にPLaMo 3 Translateを読み込ませて起動します。llama.cppの`llama-server`なら、たとえば`llama-server -m plamo-3-translate-2b-Q4_K_M.gguf -c 16384 -np 3 -kvu --port 8077 --no-prefill-assistant`を実行します。Latticeは、この例のように、16,384トークンのコンテキスト長を同時に処理する3つのリクエストで分け合うサーバーを前提に、1回に送る量を決めます。
 2. 「設定 › 翻訳」の「翻訳エンジン」で「ローカルの翻訳サーバー」を選びます。
 3. サーバーのURLが既定と違うときは、「翻訳サーバーのURL」を変えて「保存」を押します。末尾の`/v1`は付けても付けなくてもかまいません。接続できると、読み込んだモデルの名前が出ます。「接続を確認」でいつでも確かめられます。
 
