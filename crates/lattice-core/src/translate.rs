@@ -498,7 +498,7 @@ pub async fn run<P: LlmProvider>(
             (false, _) => stopped.store(false, std::sync::atomic::Ordering::Relaxed),
             (true, Some(e)) => {
                 stopped.store(true, std::sync::atomic::Ordering::Relaxed);
-                failed.get_or_insert(e.to_string());
+                failed.get_or_insert(e.message());
             }
             (true, None) => {}
         }
