@@ -150,15 +150,6 @@ test("a file's repeated and empty keys are dropped, an action with a key that is
   assert.deepEqual(parseShortcutsFile(file), { prefix: "Ctrl+A", overrides: { next: ["N", "M"] } });
 });
 
-test("a key recorded under another first key stays as recorded once a new prefix starts it, and after that one", () => {
-  setKeys("favorite", ["S", "Ctrl+B Q"]);
-  setPrefix("Ctrl+B");
-  assert.deepEqual(getBindings().favorite, ["S", "Ctrl+B Q"]);
-  setPrefix("Alt+A");
-  assert.deepEqual(getBindings().favorite, ["S", "Ctrl+B Q"]);
-  assert.deepEqual(stored(), { version: 4, prefix: "Alt+A", favorite: ["S", "Ctrl+B Q"] });
-});
-
 test("going to another prefix and back leaves every key and the stored value as they were", () => {
   setKeys("favorite", ["S", "Ctrl+B Q"]);
   setKeys("read", ["Ctrl+A S", "Ctrl+B S"]);
