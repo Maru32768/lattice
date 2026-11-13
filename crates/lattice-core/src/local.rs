@@ -669,8 +669,8 @@ pub(crate) mod tests {
     #[ignore = "needs a running PLaMo server (PLAMO_URL)"]
     async fn live_plamo() {
         let server = Server::new(&std::env::var("PLAMO_URL").unwrap()).unwrap();
-        println!("model: {}", server.model().await.unwrap());
         let model = server.model().await.unwrap();
+        println!("model: {model}");
         let r = server.chat(&request(&model, "ja", Some("We walked along the river. The bank was muddy."), "The bank was muddy.").unwrap()).await.unwrap();
         println!("bank with river context: {}", r.content);
         let block = "Run <code>git status</code> to see what changed. Then read <a href=\"https://git-scm.com/docs\">the docs</a> before you commit. It takes a minute.";
