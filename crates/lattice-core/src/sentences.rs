@@ -60,18 +60,18 @@ pub(crate) fn split(html: &str) -> Sentences<'_> {
     });
     // A piece with no letter or digit (a lone ⟦1⟧, a stray ")") is no sentence: it joins the one before it,
     // or the next one when it comes first.
-    let (mut ends, mut from): (Vec<(usize, usize)>, usize) = (Vec::new(), 0);
+    let (mut ends, mut from) = (Vec::new(), 0);
     for (text_end, html_end) in cuts.chain([(text.len(), html.len())]) {
         // Only what follows the last bound: a first piece left out had no letter to find again.
         let wordy = text[from..text_end].chars().any(char::is_alphanumeric);
         from = text_end;
         match ends.last_mut() {
-            Some(last) if !wordy => *last = (text_end, html_end),
+            Some(last) if !wordy => *last = html_end,
             None if !wordy && html_end < html.len() => {}
-            _ => ends.push((text_end, html_end)),
+            _ => ends.push(html_end),
         }
     }
-    Sentences { html, ends: ends.into_iter().map(|e| e.1).collect() }
+    Sentences { html, ends }
 }
 
 /// The length of the citation marks `rest` starts with ("[1]", "[2][3]") and the spaces after them, up to
