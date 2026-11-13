@@ -171,7 +171,7 @@ impl Server {
     async fn chat(&self, body: &Value) -> Result<Reply, LlmError> {
         let _slot = IN_FLIGHT.acquire().await.map_err(|e| LlmError::Failed(e.to_string()))?;
         let req = CLIENT.post(format!("{}/v1/chat/completions", self.url)).header(reqwest::header::CONTENT_TYPE, "application/json").body(body.to_string());
-        reply(&self.send(req).await?)
+        reply(&self.send(req).await?).map_err(|e| LlmError::Malformed(self.failed(e)))
     }
 
     /// One request. No answer, or one that says there is no server to translate with here, is `Unavailable`.
@@ -182,25 +182,30 @@ impl Server {
             if e.is_connect() {
                 self.unavailable(cause)
             } else {
-                LlmError::Failed(format!("request failed: {e}: {cause}"))
+                LlmError::Failed(self.failed(format!("{e}: {cause}")))
             }
         })?;
         let status = resp.status();
-        let body = resp.text().await.map_err(|e| LlmError::Failed(e.to_string()))?;
+        let body = resp.text().await.map_err(|e| LlmError::Failed(self.failed(e)))?;
         let head = || body.chars().take(300).collect::<String>();
         if status.is_success() {
-            return serde_json::from_str(&body).map_err(|e| LlmError::Malformed(format!("{e}: {}", head())));
+            return serde_json::from_str(&body).map_err(|e| LlmError::Malformed(self.failed(format!("{e}: {}", head()))));
         }
         let detail = format!("HTTP {status}: {}", head());
         Err(match status.as_u16() {
             401 | 403 | 404 | 503 => self.unavailable(detail),
-            400 => LlmError::Declined(detail),
-            _ => LlmError::Failed(detail),
+            400 => LlmError::Declined(self.failed(detail)),
+            _ => LlmError::Failed(self.failed(detail)),
         })
     }
 
     fn unavailable(&self, detail: String) -> LlmError {
         LlmError::Unavailable(msg!("translate.localUnavailable", url = self.url.as_str(), detail = detail))
+    }
+
+    /// Any other failure, coded too: the settings status and a job's error show it.
+    fn failed(&self, detail: impl std::fmt::Display) -> String {
+        msg!("translate.localFailed", url = self.url.as_str(), detail = detail.to_string())
     }
 }
 
@@ -223,7 +228,7 @@ fn request(model: &str, to: &str, context: Option<&str>, text: &str) -> Option<V
 }
 
 /// The translation in a chat completion. One that did not end on its own (`length`: cut off) is none.
-fn reply(body: &Value) -> Result<Reply, LlmError> {
+fn reply(body: &Value) -> Result<Reply, String> {
     let choice = &body["choices"][0];
     let finish = choice["finish_reason"].as_str().unwrap_or("none");
     match (finish, choice["message"]["content"].as_str().filter(|c| !c.trim().is_empty())) {
@@ -232,7 +237,7 @@ fn reply(body: &Value) -> Result<Reply, LlmError> {
             model: body["model"].as_str().map(str::to_string),
             tokens: (body["usage"]["prompt_tokens"].as_u64().unwrap_or(0), body["usage"]["completion_tokens"].as_u64().unwrap_or(0)),
         }),
-        _ => Err(LlmError::Malformed(format!("finish_reason={finish}"))),
+        _ => Err(format!("finish_reason={finish}")),
     }
 }
 
@@ -487,7 +492,10 @@ pub(crate) mod tests {
         let blocks: Vec<String> = (0..12).map(|n| format!("Block {n} first. Block {n} second.")).collect();
         let t = Server::new(&url).unwrap().translate(&blocks, "ja").await;
         assert!(t.results.iter().all(Option::is_none));
-        assert!(matches!(&t.error, Some(LlmError::Failed(e)) if e.starts_with("HTTP 500")), "{:?}", t.error);
+        let e = t.error.unwrap();
+        assert!(matches!(e, LlmError::Failed(_)), "{e:?}");
+        let (name, params) = code(&e);
+        assert!(name == "translate.localFailed" && params["detail"].as_str().unwrap().starts_with("HTTP 500"), "{name} {params}");
         assert_eq!(seen.lock().unwrap().len(), 1 + 2);
     }
 
