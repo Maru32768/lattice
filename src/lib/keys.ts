@@ -89,14 +89,10 @@ export function setKeys(id: ActionId, keys: string[]) {
   const registry = ACTIONS.find((a) => a.id === id)!.keys;
   const had = state.overrides[id] ?? registry;
   // A key the row already had keeps its stored forms (two can show as one under this prefix); only one recorded now is read against the prefix.
-  const kept = [
-    ...new Set(
-      keys.flatMap((k) => {
-        const was = had.filter((s) => s.replaceAll(PREFIX, prefix) === k);
-        return was.length ? was : [k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k];
-      }),
-    ),
-  ];
+  const kept = keys.flatMap((k) => {
+    const was = had.filter((s) => s.replaceAll(PREFIX, prefix) === k);
+    return was.length ? was : [k.startsWith(`${prefix} `) ? PREFIX + k.slice(prefix.length) : k];
+  });
   // Back to the defaults as stored: a literal key that this prefix makes look like a default is still a change.
   const same = kept.length === registry.length && kept.every((k, i) => k === registry[i]);
   const { [id]: _, ...rest } = state.overrides;
