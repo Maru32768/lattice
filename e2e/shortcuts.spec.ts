@@ -133,7 +133,7 @@ test("the default keys after Ctrl+A can be removed, and a single key under a fir
   await app.keyboard.press("Control+a");
   await app.keyboard.press("Enter");
   await expect(fav.locator(".kbd.key")).toHaveText(["s×", "Ctrl A×"]);
-  await expect(fav.getByRole("note")).toHaveText("Ctrl Aは「コマンドを実行」の2段階キーの1打目なので、単独では働きません");
+  await expect(fav.getByRole("note")).toHaveText("Ctrl Aはプレフィックスなので、「お気に入り」は入力欄とWebページの外で2回続けて押すと働きます");
 
   await app.keyboard.press("Escape");
   await expect(list(app)).toBeVisible();
@@ -166,7 +166,9 @@ test("the prefix is one key for every two-step key under it: a new one moves the
   await expect(prefix.getByRole("button", { name: "既定に戻す" })).toBeVisible();
   await expect(app.getByRole("button", { name: "書き出す", exact: true }), "a changed prefix is a change to export").toBeEnabled();
   await tab(app, "本文").click();
-  await expect(row(app, "1画面上へスクロール").getByRole("note")).toHaveText("Ctrl Bは「コマンドを実行」の2段階キーの1打目なので、単独では働きません");
+  await expect(row(app, "1画面上へスクロール").getByRole("note")).toHaveText(
+    "Ctrl Bはプレフィックスなので、「1画面上へスクロール」は入力欄とWebページの外で2回続けて押すと働きます",
+  );
   await tab(app, "ペイン").click();
   const down = row(app, "ペインを下に分割");
   await expect(down.locator(".kbd.key")).toHaveText(["Ctrl -×", 'Ctrl B › "×']);

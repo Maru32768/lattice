@@ -135,6 +135,10 @@ export function ShortcutSettings() {
         const loses = !chordFrom(bindings, k, at) && actionFor(bindings, k, at) === o;
         return t(loses ? "shortcutSettings.clashLoses" : "shortcutSettings.clash", { keyLabel: keyLabel(k), labelOf: actionLabel(t, o.id) });
       });
+    // The prefix waits for its second key everywhere, and pressed twice runs this action: say that, not which binding it starts.
+    if (k === prefix) {
+      return [...shared, t("shortcutSettings.prefixShadows", { keyLabel: keyLabel(k), labelOf: actionLabel(t, a.id) })];
+    }
     const by = chordFrom(bindings, k, a.scope);
     return by ? [...shared, t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : shared;
   }
