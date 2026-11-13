@@ -108,6 +108,7 @@ export function TranslationSettings() {
         checkServer(savedUrl, setConnection);
       }
     } catch (e) {
+      setEngine(engine);
       setError(String(e));
     }
   }
