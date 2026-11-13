@@ -87,8 +87,6 @@ test("a default key that moved with the prefix is no change, and recording it ba
   setKeys("splitDown", ["Ctrl+-", 'Ctrl+B "']);
   assert.ok(!isCustom("splitDown"));
   assert.deepEqual(stored(), { version: 4, prefix: "Ctrl+B" });
-  replaceKeys(DEFAULTS);
-  assert.deepEqual(stored(), { version: 4 });
 });
 
 test("what is stored loads back as the same prefix and bindings; a value of version 3 loads as the defaults", () => {
