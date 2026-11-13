@@ -4,13 +4,14 @@
 
 use crate::ir::PROSE_KINDS;
 use crate::llm::LlmProvider;
+use crate::local;
 use crate::msg;
 use crate::pdf;
-use crate::segments::{self, PROMPT_VERSION, Target, Unit, snippet_from_inlines};
+use crate::segments::{self, PROMPT_VERSION, Target, Translated, Unit, snippet_from_inlines};
 use crate::store::{ArticleView, PendingBlock, SegmentRow, Store};
 use futures::{StreamExt, stream};
 use rusqlite::{OptionalExtension, params};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, hash_map::Entry};
 use ts_rs::TS;
 
@@ -43,6 +44,55 @@ pub const PAGE_SKIP_SETTING: &str = "page_translate_skip_sites";
 pub const DEFAULT_PAGE_SKIP_SITES: &[&str] =
     &["www.google.*", "bing.com", "duckduckgo.com", "search.brave.com", "kagi.com", "search.yahoo.co.jp", "search.yahoo.com"];
 const MAX_PAGE_SKIP_SITES: usize = 500;
+/// Which engine translates (設定 › 翻訳 › 翻訳エンジン); absent means the AI provider chain.
+pub const ENGINE_SETTING: &str = "translate_engine";
+/// The local translation server's URL; absent means `DEFAULT_LOCAL_URL`.
+pub const LOCAL_URL_SETTING: &str = "translate_local_url";
+pub const DEFAULT_LOCAL_URL: &str = "http://127.0.0.1:8077";
+
+/// Which engine translates: the AI provider chain, or PLaMo 3 Translate on a server the user runs (`local.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export)]
+pub enum EngineKind {
+    Llm,
+    Local,
+}
+
+impl EngineKind {
+    /// What this engine can deliver for `wanted`. PLaMo translates terms too and takes no instructions,
+    /// whatever the settings say, so that target's key is the only one it may read or write.
+    pub fn normalize(self, wanted: Target) -> Target {
+        match self {
+            Self::Llm => wanted,
+            Self::Local => Target { keep_terms: false, instructions: String::new(), ..wanted },
+        }
+    }
+}
+
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct EngineSettings {
+    pub engine: EngineKind,
+    pub local_url: String,
+}
+
+pub fn engine_settings(store: &Store) -> Result<EngineSettings, String> {
+    let setting = |key: &str| store.setting(key).map_err(|e| e.to_string());
+    let engine = match setting(ENGINE_SETTING)?.as_deref() {
+        Some("local") => EngineKind::Local,
+        _ => EngineKind::Llm,
+    };
+    Ok(EngineSettings { engine, local_url: setting(LOCAL_URL_SETTING)?.unwrap_or_else(|| DEFAULT_LOCAL_URL.to_string()) })
+}
+
+/// Stores the engine and the server's URL (checked, without a trailing `/` or `/v1`), returning the URL as stored.
+pub fn set_engine(store: &Store, engine: EngineKind, local_url: &str) -> Result<String, String> {
+    let url = local::Server::new(local_url)?.url().to_string();
+    store.set_setting(ENGINE_SETTING, (engine == EngineKind::Local).then_some("local")).map_err(|e| e.to_string())?;
+    store.set_setting(LOCAL_URL_SETTING, (url != DEFAULT_LOCAL_URL).then_some(url.as_str())).map_err(|e| e.to_string())?;
+    Ok(url)
+}
 
 pub fn keep_terms(store: &Store) -> Result<bool, String> {
     Ok(store.setting(KEEP_TERMS_SETTING).map_err(|e| e.to_string())?.as_deref() != Some("off"))
@@ -222,9 +272,54 @@ pub fn set_manual(store: &Store, article_id: i64, on: bool) -> Result<(), String
     Ok(())
 }
 
-/// The current settings' target for non-Japanese sources (`Target::for_source` adapts it).
+/// The current settings' target for non-Japanese sources (`Target::for_source` adapts it), as far as
+/// the engine can deliver it: what every reader of translations looks them up by.
 pub fn target(store: &Store) -> Result<Target, String> {
-    Ok(Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)?, instructions: instructions(store)? })
+    let wanted = Target { language: TARGET_LANGUAGE, keep_terms: keep_terms(store)?, instructions: instructions(store)? };
+    Ok(engine_settings(store)?.engine.normalize(wanted))
+}
+
+/// An engine bound to the target it can deliver. `translator` is the only way to make one, so a
+/// translation is always stored under a key whose promise its engine keeps.
+pub struct Translator<'a, P> {
+    via: Via<'a, P>,
+    target: Target,
+}
+
+enum Via<'a, P> {
+    Llm(&'a P),
+    Local(local::Server),
+}
+
+/// The engine the settings choose, for `wanted` as far as that engine can deliver it.
+pub fn translator<'a, P: LlmProvider>(store: &Store, llm: &'a P, wanted: Target) -> Result<Translator<'a, P>, String> {
+    let s = engine_settings(store)?;
+    let via = match s.engine {
+        EngineKind::Llm => Via::Llm(llm),
+        EngineKind::Local => Via::Local(local::Server::new(&s.local_url)?),
+    };
+    Ok(Translator { via, target: s.engine.normalize(wanted) })
+}
+
+impl<P: LlmProvider> Translator<'_, P> {
+    pub fn key(&self) -> String {
+        self.target.key()
+    }
+
+    pub fn prompt_version(&self) -> &'static str {
+        match self.via {
+            Via::Llm(_) => PROMPT_VERSION,
+            Via::Local(_) => local::PROMPT_VERSION,
+        }
+    }
+
+    /// One entry per snippet, and never failing as a whole.
+    pub async fn translate(&self, snippets: &[String]) -> Translated {
+        match &self.via {
+            Via::Llm(provider) => segments::translate_snippets(*provider, snippets, &self.target).await,
+            Via::Local(server) => server.translate(snippets, self.target.language).await,
+        }
+    }
 }
 
 /// The current settings' target for one article: English if the article is Japanese.
@@ -354,18 +449,19 @@ pub struct Progress {
 /// Every article being translated or waiting to be.
 pub fn in_progress(store: &Store) -> Result<Vec<Progress>, String> {
     let e = |e: rusqlite::Error| e.to_string();
+    let engine = engine_settings(store)?.engine;
     let mut out = Vec::new();
     for job in store.active_jobs(JOB_TYPE).map_err(e)? {
         let Some(article_id) = job.article_id else {
             continue;
         };
-        let key = job
-            .params
-            .as_deref()
-            .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
-            .and_then(|p| p["target_language"].as_str().map(str::to_string))
-            .map_or_else(|| article_target(store, article_id).map(|t| t.key()), Ok)?;
-        let target = Target::from_key(&key, "");
+        let params: serde_json::Value = job.params.as_deref().and_then(|p| serde_json::from_str(p).ok()).unwrap_or_default();
+        // The key the job will write: its target, as far as the engine can now deliver it (`run`).
+        let target = match params["target_language"].as_str() {
+            Some(key) => engine.normalize(Target::from_key(key, params["instructions"].as_str().unwrap_or_default())),
+            None => article_target(store, article_id)?,
+        };
+        let key = target.key();
         let done = store.translated_count(article_id, &key, PROSE_KINDS).map_err(e)?;
         let left = store.untranslated_texts(article_id, &key, PROSE_KINDS).map_err(e)?.iter().filter(|t| !target.is_written_in(t)).count();
         out.push(Progress { article_id, running: job.status == "running", done, total: done + left });
@@ -434,7 +530,8 @@ impl Drop for Pass<'_> {
 }
 
 /// \`gate\` shares 並列実行数 with the other articles being translated; \`None\` (the reserved slot for the
-/// article on screen, the CLI) sends up to that many of this article's batches regardless.
+/// article on screen, the CLI) sends up to that many of this article's batches regardless. The engine is
+/// the one set now, and `target` becomes what it can deliver (`translator`): the key it writes.
 pub async fn run<P: LlmProvider>(
     store: &Store,
     provider: &P,
@@ -443,7 +540,8 @@ pub async fn run<P: LlmProvider>(
     gate: Option<&Gate>,
     on_progress: &(dyn Fn() + Send + Sync),
 ) -> Result<(), String> {
-    let key = target.key();
+    let tr = translator(store, provider, target.clone())?;
+    let (key, target) = (tr.key(), &tr.target);
     let mut pending = store.untranslated_blocks(article_id, &key, PROSE_KINDS).map_err(|e| e.to_string())?;
     // Same paragraph twice translates once; a paragraph already in the target language needs none.
     let mut seen = std::collections::HashSet::new();
@@ -455,7 +553,7 @@ pub async fn run<P: LlmProvider>(
     // article goes on. Calls already made are saved either way: they are paid for.
     let stopped = std::sync::atomic::AtomicBool::new(false);
     let mut failed = None;
-    let stopped_ref = &stopped;
+    let (stopped_ref, tr) = (&stopped, &tr);
     // `buffered` keeps the article's order: the top of the article is saved (and shown) first.
     let mut done = stream::iter(batches(pending))
         .map(|batch| async move {
@@ -466,11 +564,11 @@ pub async fn run<P: LlmProvider>(
             };
             if stopped_ref.load(std::sync::atomic::Ordering::Relaxed) {
                 let results = vec![None; batch.len()];
-                return (batch, segments::Translated { results, error: None });
+                return (batch, Translated { results, error: None });
             }
             let (waited, sent) = (queued.elapsed(), std::time::Instant::now());
             let snippets: Vec<String> = batch.iter().map(|b| snippet_from_inlines(&b.text, &b.inlines)).collect();
-            let t = segments::translate_snippets(provider, &snippets, target).await;
+            let t = tr.translate(&snippets).await;
             // Per batch, for tuning 並列実行数 and the batch size from real timings.
             log::info!(
                 "translate article {article_id}: {} blocks, {} chars in {:.1?} (waited {:.1?} for a slot){}",
@@ -498,11 +596,11 @@ pub async fn run<P: LlmProvider>(
             (false, _) => stopped.store(false, std::sync::atomic::Ordering::Relaxed),
             (true, Some(e)) => {
                 stopped.store(true, std::sync::atomic::Ordering::Relaxed);
-                failed.get_or_insert(e.to_string());
+                failed.get_or_insert(e.message());
             }
             (true, None) => {}
         }
-        store.insert_segments(&key, PROMPT_VERSION, None, &rows).map_err(|e| e.to_string())?;
+        store.insert_segments(&key, tr.prompt_version(), None, &rows).map_err(|e| e.to_string())?;
         on_progress();
     }
     if let Some(e) = failed {
@@ -684,5 +782,106 @@ mod tests {
         b.unwrap();
         assert_eq!(slow.most.load(Ordering::SeqCst), 2, "two articles of three batches each share the limit of 2");
         assert_eq!(gate.in_flight(), 0, "every batch left");
+    }
+
+    /// An English article of two paragraphs, the first of two sentences.
+    fn two_paragraphs(s: &Store) -> i64 {
+        let (id, _) = s.upsert_pending("https://a.dev/river", "https://a.dev/river", "a.dev").unwrap();
+        let html = "<html><body><article><p>The bank was muddy. We walked on.</p><p>A second paragraph about rivers.</p></article></body></html>";
+        store_fetched(s, id, &Fetched { final_url: "https://a.dev/river".into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        id
+    }
+
+    /// Every saved translation's key, provider, model and prompt version.
+    fn saved_rows(s: &Store) -> Vec<(String, String, Option<String>, String)> {
+        let c = s.conn();
+        let mut st = c.prepare("SELECT target_language, provider, model, prompt_version FROM segment_translations").unwrap();
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap().map(Result::unwrap).collect()
+    }
+
+    /// The first active job's progress: blocks done, and in all.
+    fn progress(s: &Store) -> (usize, usize) {
+        let p = &in_progress(s).unwrap()[0];
+        (p.done, p.total)
+    }
+
+    #[tokio::test]
+    async fn the_local_engine_saves_only_under_the_key_whose_promise_it_keeps() {
+        let s = Store::open_in_memory().unwrap();
+        let id = two_paragraphs(&s);
+        let (url, _) = crate::local::tests::serve(crate::local::tests::plamo).await;
+        set_instructions(&s, "です・ます調で訳す").unwrap();
+        let queued = target(&s).unwrap();
+        assert!(queued.keep_terms && queued.key().starts_with("ja-x-instr-"), "queued under the AI engine");
+        enqueue(&s, id, &queued).unwrap();
+        set_engine(&s, EngineKind::Local, &url).unwrap();
+        assert_eq!(target(&s).unwrap().key(), "ja-x-translated-terms", "what the Reader now reads");
+        assert_eq!(progress(&s), (0, 2));
+
+        let fake = Fake::new();
+        run(&s, &fake, id, &queued, None, &|| {}).await.unwrap();
+        assert!(fake.calls.lock().unwrap().is_empty(), "the AI provider chain is not used");
+        let local = ("ja-x-translated-terms".to_string(), "local".to_string(), Some("plamo-3-translate-q4".to_string()), "plamo-v1".to_string());
+        assert_eq!(saved_rows(&s), [local.clone(), local]);
+        assert_eq!(progress(&s), (2, 2), "the progress counts the key the job wrote");
+        let view = article_view(&s, id).unwrap().unwrap();
+        let units: Vec<&str> = view.blocks[0].units.iter().map(|u| u.translation.as_str()).collect();
+        assert_eq!(units, ["訳:The bank was muddy.", "訳:We walked on."]);
+    }
+
+    #[tokio::test]
+    async fn the_progress_of_an_ai_job_with_instructions_counts_the_key_it_writes() {
+        let s = Store::open_in_memory().unwrap();
+        let id = two_paragraphs(&s);
+        set_instructions(&s, "です・ます調で訳す").unwrap();
+        let queued = target(&s).unwrap();
+        enqueue(&s, id, &queued).unwrap();
+        run(&s, &Fake::new(), id, &queued, None, &|| {}).await.unwrap();
+        assert_eq!(progress(&s), (2, 2), "under {}", queued.key());
+    }
+
+    #[tokio::test]
+    async fn the_local_engine_translates_a_japanese_source_into_english_under_that_key() {
+        let s = Store::open_in_memory().unwrap();
+        let (url, seen) = crate::local::tests::serve(crate::local::tests::plamo).await;
+        set_engine(&s, EngineKind::Local, &url).unwrap();
+        let fake = Fake::new();
+        // What overlay_translate builds for a Japanese page.
+        let tr = translator(&s, &fake, target(&s).unwrap().for_source(true)).unwrap();
+        assert_eq!((tr.key().as_str(), tr.prompt_version()), ("en-x-translated-terms", "plamo-v1"));
+        assert!(tr.translate(&["スナップショット分離です。".to_string()]).await.results[0].is_some());
+        assert_eq!(seen.lock().unwrap()[1].1["messages"][0]["content"], "[plamo-translate]\ntarget_lang=en");
+        assert!(fake.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_local_server_that_is_not_running_fails_the_job_with_its_code_and_spends_no_ai_usage() {
+        let s = Store::open_in_memory().unwrap();
+        let id = two_paragraphs(&s);
+        set_engine(&s, EngineKind::Local, &crate::local::tests::closed_port()).unwrap();
+        let fake = Fake::new();
+        let e = run(&s, &fake, id, &Target::default(), None, &|| {}).await.unwrap_err();
+        assert!(e.starts_with(r#"{"code":"translate.localUnavailable""#), "{e}");
+        assert!(fake.calls.lock().unwrap().is_empty(), "no fallback to the chain");
+        assert!(saved_rows(&s).is_empty());
+    }
+
+    #[test]
+    fn the_engine_and_its_url_are_stored_as_set_and_switching_back_restores_the_settings() {
+        let s = Store::open_in_memory().unwrap();
+        let first = engine_settings(&s).unwrap();
+        assert_eq!((first.engine, first.local_url.as_str()), (EngineKind::Llm, DEFAULT_LOCAL_URL));
+        set_instructions(&s, "polite").unwrap();
+        let ai = target(&s).unwrap().key();
+        assert_eq!(set_engine(&s, EngineKind::Local, " http://192.168.1.5:8080/v1/ ").unwrap(), "http://192.168.1.5:8080");
+        assert_eq!(engine_settings(&s).unwrap().local_url, "http://192.168.1.5:8080");
+        assert_eq!(target(&s).unwrap().key(), "ja-x-translated-terms");
+        assert!(set_engine(&s, EngineKind::Llm, "192.168.1.5:8080").unwrap_err().contains("translate.localUrlInvalid"));
+        let kept = engine_settings(&s).unwrap();
+        assert_eq!((kept.engine, kept.local_url.as_str()), (EngineKind::Local, "http://192.168.1.5:8080"), "a rejected URL changes nothing");
+
+        set_engine(&s, EngineKind::Llm, DEFAULT_LOCAL_URL).unwrap();
+        assert_eq!(target(&s).unwrap().key(), ai, "the keep-terms and instructions settings apply again");
+        assert_eq!((s.setting(ENGINE_SETTING).unwrap(), s.setting(LOCAL_URL_SETTING).unwrap()), (None, None), "defaults are stored as absent");
     }
 }

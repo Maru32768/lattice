@@ -11,6 +11,8 @@ import type {
   ChatMessage,
   ChatScope,
   CustomInstructions,
+  EngineKind,
+  EngineSettings,
   FeedCandidate,
   FeedFilter,
   FolderRow,
@@ -136,6 +138,8 @@ const store = {
   /** The library's UI preferences by key; a spec puts rows here before the app starts with `window.__uiPrefs`. */
   uiPrefs: { ...(globalThis as { __uiPrefs?: Record<string, string> }).__uiPrefs } as Record<string, string>,
   keepTerms: true,
+  translateEngine: "llm" as EngineKind,
+  translateLocalUrl: "http://127.0.0.1:8077",
   autoTranslate: false,
   translateParallel: 3,
   autoTranslateOwnLanguage: false,
@@ -740,6 +744,18 @@ export const handlers = {
     a.relevance_manual = score != null;
     a.relevance_stale = false;
   },
+  get_translate_engine: (): EngineSettings => ({ engine: store.translateEngine, local_url: store.translateLocalUrl }),
+  set_translate_engine: ({ engine, localUrl }: { engine: EngineKind; localUrl: string }): string => {
+    const url = localUrl.trim().replace(/\/+$/, "").replace(/\/v1$/, "");
+    if (!/^https?:\/\/[^/]/.test(url)) {
+      reject("translate.localUrlInvalid");
+    }
+    store.translateEngine = engine;
+    return (store.translateLocalUrl = url);
+  },
+  /** A server runs at the default URL only. */
+  check_translate_local: ({ url }: { url: string }): string =>
+    url === "http://127.0.0.1:8077" ? "plamo-3-translate" : reject("translate.localUnavailable", { url, detail: "connection refused" }),
   get_translate_keep_terms: (): boolean => store.keepTerms,
   set_translate_keep_terms: ({ on }: { on: boolean }) => void (store.keepTerms = on),
   get_auto_translate: (): boolean => store.autoTranslate,

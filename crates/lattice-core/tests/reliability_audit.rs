@@ -337,12 +337,12 @@ fn a_failed_backup_leaves_no_copy_with_api_keys() {
     assert!(left.is_empty(), "{left:?} left behind");
 }
 
-/// When the batch call fails, `translate_snippets` retries the batch's snippets alone. A provider that
+/// When the batch call fails, the AI engine retries the batch's snippets alone. A provider that
 /// is down or rate-limited must not get 1 + N calls per batch (13 for a full batch), each walking the
 /// whole fallback chain.
 #[tokio::test]
 async fn a_provider_outage_is_not_multiplied_by_the_batch_size() {
-    use lattice_core::segments::{Target, translate_snippets};
+    use lattice_core::segments::Target;
     struct Down(std::sync::atomic::AtomicUsize);
     impl LlmProvider for Down {
         fn name(&self) -> &str {
@@ -355,7 +355,8 @@ async fn a_provider_outage_is_not_multiplied_by_the_batch_size() {
     }
     let p = Down(Default::default());
     let snippets: Vec<String> = (0..12).map(|n| format!("Paragraph {n} on write skew.")).collect();
-    let t = translate_snippets(&p, &snippets, &Target::default()).await;
+    let store = Store::open_in_memory().unwrap();
+    let t = lattice_core::translate::translator(&store, &p, Target::default()).unwrap().translate(&snippets).await;
     let calls = p.0.load(std::sync::atomic::Ordering::SeqCst);
     assert!(t.error.is_some());
     assert!(calls <= 2, "{calls} calls for one batch of {} while the provider is down", snippets.len());

@@ -33,6 +33,16 @@ pub enum LlmError {
     RateLimited(std::time::Duration),
 }
 
+impl LlmError {
+    /// For a job's error and the UI: a coded message (`msg!`) as it is, so the UI can translate it.
+    pub fn message(&self) -> String {
+        match self {
+            Self::Unavailable(m) | Self::Failed(m) | Self::Malformed(m) | Self::Declined(m) if m.starts_with(r#"{"code":"#) => m.clone(),
+            other => other.to_string(),
+        }
+    }
+}
+
 /// Ends `child`, and what it starts, with this process however this process ends. `kill_on_drop` is
 /// not enough: it is a destructor, the app leaves through `std::process::exit`, and Windows lets a
 /// process's children outlive it, so a call in flight would go on using the user's quota with nowhere
@@ -168,5 +178,12 @@ mod tests {
         assert_eq!(s["additionalProperties"], false);
         assert_eq!(s["properties"]["blocks"]["items"]["properties"]["sentences"]["items"]["additionalProperties"], false);
         assert!(s["properties"]["blocks"].get("additionalProperties").is_none(), "arrays untouched");
+    }
+
+    #[test]
+    fn a_coded_message_reaches_the_ui_without_the_kind_before_it() {
+        let coded = crate::msg!("translate.localUnavailable", url = "http://127.0.0.1:8077", detail = "refused");
+        assert_eq!(LlmError::Unavailable(coded.clone()).message(), coded);
+        assert_eq!(LlmError::Failed("HTTP 500: full".into()).message(), "provider failed: HTTP 500: full");
     }
 }
