@@ -523,11 +523,10 @@ fn set_custom_instructions(app: State<'_, App>, settings: instructions::Settings
     instructions::save(&app.store, &settings)
 }
 
-/// The built-in prompt the instructions extend (current term mode, English to Japanese).
+/// The built-in prompt the instructions extend: the AI engine's, in the current term mode, English to Japanese.
 #[tauri::command(async)]
 fn get_translation_prompt(app: State<'_, App>) -> Result<String, String> {
-    let target = translate::target(&app.store)?;
-    Ok(segments::translation_prompt(&segments::Target { instructions: String::new(), ..target }))
+    Ok(segments::translation_prompt(&segments::Target { keep_terms: translate::keep_terms(&app.store)?, ..Default::default() }))
 }
 
 #[tauri::command(async)]
@@ -784,8 +783,9 @@ async fn overlay_translate(
     if snippets.len() > OVERLAY_MAX_SNIPPETS || snippets.iter().any(|s| s.len() > OVERLAY_MAX_SNIPPET_BYTES) {
         return Err("request too large".into());
     }
-    let to = translate::target(&app.store)?.for_source(target.as_deref() == Some("en"));
-    let target = &to.key();
+    // The engine and the key its translations go under, fixed for the whole call: the wait below can outlast a settings change.
+    let tr = translate::translator(&app.store, &app.providers.llm, translate::target(&app.store)?.for_source(target.as_deref() == Some("en")))?;
+    let target = &tr.key();
     let document = browser.document(webview.label());
     // The page within it: a route that pushState opens is another page in the same document.
     let page = browser::page_key(&webview);
@@ -831,8 +831,7 @@ async fn overlay_translate(
         }
         if !misses.is_empty() {
             let batch: Vec<String> = misses.iter().map(|&i| snippets[i].clone()).collect();
-            let llm = &app.providers.llm;
-            let t = segments::translate_snippets(llm, &batch, &to).await;
+            let t = tr.translate(&batch).await;
             let rows: Vec<SegmentRow> = misses
                 .iter()
                 .zip(&t.results)
@@ -844,7 +843,7 @@ async fn overlay_translate(
             } else {
                 owner
             };
-            app.store.insert_segments(target, segments::PROMPT_VERSION, owner, &rows).map_err(err)?;
+            app.store.insert_segments(target, tr.prompt_version(), owner, &rows).map_err(err)?;
             // A paragraph that is a whole block is the Reader's translation too, and the article's ⋯ offers 訳し直す by what it has.
             if let Some(id) = article.filter(|_| !rows.is_empty()) {
                 let _ = webview.app_handle().emit("article-changed", id);
