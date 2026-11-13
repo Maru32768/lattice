@@ -88,6 +88,7 @@ export function ShortcutSettings() {
   const status = note ? "exported" in note && t("shortcutSettings.exported", { path: note.exported }) : undoable && t(`shortcutSettings.done.${undoable.done}`);
   const custom = prefix !== DEFAULT_PREFIX || ACTIONS.some((a) => isCustom(a.id, bindings));
   const clash = conflicts(bindings);
+  const prefixNote = (a: ActionDef) => t("shortcutSettings.prefixShadows", { keyLabel: keyLabel(prefix), labelOf: actionLabel(t, a.id) });
 
   function replace(next: Shortcuts, done: "reset" | "import") {
     const prev = replaceKeys(next);
@@ -138,7 +139,7 @@ export function ShortcutSettings() {
       });
     // The prefix waits for its second key everywhere, and pressed twice runs this action: say that, not which binding it starts.
     if (k === prefix) {
-      return [...shared, t("shortcutSettings.prefixShadows", { keyLabel: keyLabel(k), labelOf: actionLabel(t, a.id) })];
+      return [...shared, prefixNote(a)];
     }
     const by = chordFrom(bindings, k, a.scope);
     return by ? [...shared, t("shortcutSettings.shadowed", { keyLabel: keyLabel(k), labelOf: actionLabel(t, by.id) })] : shared;
@@ -334,9 +335,7 @@ export function ShortcutSettings() {
           <span className="h">{t("shortcutSettings.prefix")}</span>
           {shadowed.length > 0 && (
             <span className="d warn-text" role="note">
-              {shadowed
-                .map((a) => t("shortcutSettings.prefixShadows", { keyLabel: keyLabel(prefix), labelOf: actionLabel(t, a.id) }))
-                .join(t("shortcutSettings.clashSeparator"))}
+              {shadowed.map(prefixNote).join(t("shortcutSettings.clashSeparator"))}
             </span>
           )}
           {prefixRec?.refused && (
