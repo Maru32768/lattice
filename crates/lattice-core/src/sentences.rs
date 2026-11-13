@@ -49,9 +49,10 @@ struct Mark {
 
 pub(crate) fn split(html: &str) -> Sentences<'_> {
     let (text, marks) = visible(html);
-    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| {
-        let start = text[..start].trim_end_matches(OPENING).len();
-        start + citations(&text[start..])
+    let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| match text[..start].trim_end_matches(OPENING).len() {
+        // A bound after a citation's `[` ("true.[1] Next"): the citation stays with the sentence it follows.
+        open if open < start => open + citations(&text[open..]),
+        _ => start,
     });
     let cuts = bounds.filter(|&start| !keeps_together(&text[..start], &text[start..])).filter_map(|start| {
         let mark = &marks[marks.binary_search_by_key(&start, |m| m.text_end).ok()?];
@@ -72,8 +73,8 @@ pub(crate) fn split(html: &str) -> Sentences<'_> {
     Sentences { html, ends: ends.into_iter().map(|e| e.1).collect() }
 }
 
-/// The length of the citation marks `rest` starts with ("[1]", "[2][3]") and the space after them, which
-/// belong to the sentence before: UAX #29 cuts after their `[`.
+/// The length of the citation marks `rest` starts with ("[1]", "[2][3]") and the spaces after them, up to
+/// a line break: UAX #29 cuts after one, so going past it would put a cut before the one already made.
 fn citations(rest: &str) -> usize {
     let mut len = 0;
     while let Some(digits) = rest[len..].strip_prefix('[').map(|r| r.bytes().take_while(u8::is_ascii_digit).count()) {
@@ -85,7 +86,7 @@ fn citations(rest: &str) -> usize {
     if len == 0 {
         0
     } else {
-        rest.len() - rest[len..].trim_start().len()
+        rest.len() - rest[len..].trim_start_matches(' ').len()
     }
 }
 
@@ -227,6 +228,7 @@ mod tests {
         ("続きます。『「入門」』を読む。", &["続きます。", "『「入門」』を読む。"]),
         ("開きます。<b>『入門』</b>を読みます。", &["開きます。", "<b>『入門』</b>を読みます。"]),
         ("Done.[1] Next one.", &["Done.[1] ", "Next one."]),
+        ("Intro. [1] Open it. [2] Close it.", &["Intro. ", "[1] Open it. ", "[2] Close it."]),
         ("It is true.<a href=\"#c\">[1]</a>", &["It is true.<a href=\"#c\">[1]</a>"]),
         ("Done.<sup>[2]</sup><sup>[3]</sup> Next.", &["Done.<sup>[2]</sup><sup>[3]</sup> ", "Next."]),
         ("終わり。<a href=\"#c\">[1]</a>次の文。", &["終わり。<a href=\"#c\">[1]</a>", "次の文。"]),
@@ -286,6 +288,44 @@ mod tests {
         }
     }
 
+    /// Whether every closing tag closes one opened before it, and all are closed.
+    fn nested(s: &str) -> bool {
+        let mut depth = 0isize;
+        for (i, _) in s.match_indices('<') {
+            match &s[i + 1..] {
+                r if r.starts_with('/') => depth -= 1,
+                r if r.starts_with("br") => {}
+                _ => depth += 1,
+            }
+            if depth < 0 {
+                return false;
+            }
+        }
+        depth == 0
+    }
+
+    #[test]
+    fn snippets_put_together_at_random_cut_into_whole_balanced_sentences() {
+        const PIECES: &[&str] =
+            &["One", "日本", ". ", ".", "。", " ", "「", "」", "[1]", "[", "<br>", "&nbsp;", "⟦1⟧", "<b>", "</b>", "<a href=\"x. Y\">", "</a>"];
+        let mut seed = 0x9e37_79b9_7f4a_7c15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            (seed >> 16) as usize
+        };
+        for _ in 0..20_000 {
+            let html: String = (0..1 + next() % 24).map(|_| PIECES[next() % PIECES.len()]).collect();
+            let parts = std::panic::catch_unwind(|| sources(&html)).unwrap_or_else(|_| panic!("{html:?} panicked"));
+            assert_eq!(parts.concat(), html);
+            assert!(parts.iter().all(|p| !p.is_empty()), "{html:?}: {parts:?}");
+            if nested(&html) {
+                assert!(parts.iter().all(|p| open_tags(p) == 0), "{html:?}: {parts:?}");
+            }
+        }
+    }
+
     #[test]
     fn a_line_is_one_sentence_with_its_whitespace_collapsed() {
         let lines: Vec<String> = split("Use <code>git\n  status</code>.\tThen <a href=\"x\">commit</a>. ").lines().collect();
@@ -294,7 +334,24 @@ mod tests {
 
     #[test]
     fn odd_input_is_one_sentence_at_worst() {
-        for html in ["", " ", "<", "<b>", "&", "&#xZZ;", "⟦", "⟦1⟧", "⟦1 日本。次", "</p></p>", "<!-- c. D -->x. Y", "a\u{1F600}. B"] {
+        for html in [
+            "",
+            " ",
+            "<",
+            "<b>",
+            "&",
+            "&#xZZ;",
+            "⟦",
+            "⟦1⟧",
+            "⟦1 日本。次",
+            "Done.[1]<br> Next.",
+            "Done.[1] <br>&nbsp;Next.",
+            "Done.[1",
+            "Done.[1日本",
+            "</p></p>",
+            "<!-- c. D -->x. Y",
+            "a\u{1F600}. B",
+        ] {
             let parts = sources(html);
             assert_eq!(parts.concat(), html);
             assert!(!parts.is_empty(), "{html:?}");
