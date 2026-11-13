@@ -268,7 +268,7 @@ pub fn reconcile(raw: &Value, expected: &[usize]) -> Vec<Option<Vec<Unit>>> {
 
 /// Whether a snippet's units are worth saving: some translation is not blank, and some unit kept its ⟦n⟧ tokens.
 pub(crate) fn acceptable(units: &[Unit]) -> bool {
-    units.iter().any(keeps_atoms) && !joined_translation(units).trim().is_empty()
+    units.iter().any(keeps_atoms) && units.iter().any(|u| !u.translation.trim().is_empty())
 }
 
 /// Whether the units' sources spell `snippet`, going by its letters and digits: a model may change the
