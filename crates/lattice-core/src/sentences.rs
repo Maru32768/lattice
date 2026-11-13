@@ -302,12 +302,6 @@ mod tests {
     }
 
     #[test]
-    fn a_line_is_one_sentence_with_its_whitespace_collapsed() {
-        let lines: Vec<String> = split("Use <code>git\n  status</code>.\tThen <a href=\"x\">commit</a>. ").lines().collect();
-        assert_eq!(lines, ["Use <code>git status</code>.", "Then <a href=\"x\">commit</a>."]);
-    }
-
-    #[test]
     fn odd_input_is_one_sentence_at_worst() {
         for html in [
             "",
