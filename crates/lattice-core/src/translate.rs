@@ -799,6 +799,12 @@ mod tests {
         st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))).unwrap().map(Result::unwrap).collect()
     }
 
+    /// The first active job's progress: blocks done, and in all.
+    fn progress(s: &Store) -> (usize, usize) {
+        let p = &in_progress(s).unwrap()[0];
+        (p.done, p.total)
+    }
+
     #[tokio::test]
     async fn the_local_engine_saves_only_under_the_key_whose_promise_it_keeps() {
         let s = Store::open_in_memory().unwrap();
@@ -810,14 +816,14 @@ mod tests {
         enqueue(&s, id, &queued).unwrap();
         set_engine(&s, EngineKind::Local, &url).unwrap();
         assert_eq!(target(&s).unwrap().key(), "ja-x-translated-terms", "what the Reader now reads");
-        assert_eq!((in_progress(&s).unwrap()[0].done, in_progress(&s).unwrap()[0].total), (0, 2));
+        assert_eq!(progress(&s), (0, 2));
 
         let fake = Fake::new();
         run(&s, &fake, id, &queued, None, &|| {}).await.unwrap();
         assert!(fake.calls.lock().unwrap().is_empty(), "the AI provider chain is not used");
         let local = ("ja-x-translated-terms".to_string(), "local".to_string(), Some("plamo-3-translate-q4".to_string()), "plamo-v1".to_string());
         assert_eq!(saved_rows(&s), [local.clone(), local]);
-        assert_eq!((in_progress(&s).unwrap()[0].done, in_progress(&s).unwrap()[0].total), (2, 2), "the progress counts the key the job wrote");
+        assert_eq!(progress(&s), (2, 2), "the progress counts the key the job wrote");
         let view = article_view(&s, id).unwrap().unwrap();
         let units: Vec<&str> = view.blocks[0].units.iter().map(|u| u.translation.as_str()).collect();
         assert_eq!(units, ["訳:The bank was muddy.", "訳:We walked on."]);
@@ -831,8 +837,7 @@ mod tests {
         let queued = target(&s).unwrap();
         enqueue(&s, id, &queued).unwrap();
         run(&s, &Fake::new(), id, &queued, None, &|| {}).await.unwrap();
-        let p = &in_progress(&s).unwrap()[0];
-        assert_eq!((p.done, p.total), (2, 2), "under {}", queued.key());
+        assert_eq!(progress(&s), (2, 2), "under {}", queued.key());
     }
 
     #[tokio::test]
