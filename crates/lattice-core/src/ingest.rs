@@ -324,35 +324,36 @@ mod tests {
         }
     }
 
+    fn titles(s: &Store, id: i64) -> (Option<String>, Option<String>) {
+        let a = s.article_row(id).unwrap().unwrap();
+        (a.title, a.auto_title)
+    }
+
     const BODY: &str = "<h2>Section</h2><p>Snapshot isolation prevents dirty reads but still permits write skew, which is why SSI exists. This sentence pads the paragraph so readability keeps it.</p>";
 
     #[test]
     fn a_renamed_article_keeps_its_name_through_refetches_and_a_blank_name_brings_back_the_found_one() {
         let s = Store::open_in_memory().unwrap();
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
-        let titles = |s: &Store| {
-            let a = s.article_row(id).unwrap().unwrap();
-            (a.title, a.auto_title)
-        };
         s.set_title(id, " Part 2 ").unwrap();
-        assert_eq!(titles(&s), (Some("Part 2".into()), Some("https://example.com/post".into())), "named before it has a title of its own");
+        assert_eq!(titles(&s, id), (Some("Part 2".into()), Some("https://example.com/post".into())), "named before it has a title of its own");
         store_fetched(&s, id, &page(BODY)).unwrap();
-        assert_eq!(titles(&s), (Some("Part 2".into()), Some("T".into())));
+        assert_eq!(titles(&s, id), (Some("Part 2".into()), Some("T".into())));
         let mut revised = page(BODY);
         revised.html = revised.html.replace("<title>T</title>", "<title>Revised</title>");
         store_fetched(&s, id, &revised).unwrap();
-        assert_eq!(titles(&s), (Some("Part 2".into()), Some("Revised".into())), "a refetch updates the found title, not the name");
+        assert_eq!(titles(&s, id), (Some("Part 2".into()), Some("Revised".into())), "a refetch updates the found title, not the name");
         s.set_title(id, "Part two").unwrap();
-        assert_eq!(titles(&s), (Some("Part two".into()), Some("Revised".into())), "renaming again keeps the found title");
+        assert_eq!(titles(&s, id), (Some("Part two".into()), Some("Revised".into())), "renaming again keeps the found title");
         s.set_title(id, "Revised").unwrap();
-        assert_eq!(titles(&s), (Some("Revised".into()), None), "naming it the found title is not a name of its own");
+        assert_eq!(titles(&s, id), (Some("Revised".into()), None), "naming it the found title is not a name of its own");
         s.set_title(id, "Revised").unwrap();
-        assert_eq!(titles(&s), (Some("Revised".into()), None), "nor is naming it what it is already called");
+        assert_eq!(titles(&s, id), (Some("Revised".into()), None), "nor is naming it what it is already called");
         s.set_title(id, "Part two").unwrap();
         s.set_title(id, "  ").unwrap();
-        assert_eq!(titles(&s), (Some("Revised".into()), None));
+        assert_eq!(titles(&s, id), (Some("Revised".into()), None));
         store_fetched(&s, id, &page(BODY)).unwrap();
-        assert_eq!(titles(&s), (Some("T".into()), None), "without a name a refetch titles it again");
+        assert_eq!(titles(&s, id), (Some("T".into()), None), "without a name a refetch titles it again");
     }
 
     #[test]
@@ -361,8 +362,7 @@ mod tests {
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
         s.set_title(id, "Part 2").unwrap();
         s.set_title(id, "").unwrap();
-        let a = s.article_row(id).unwrap().unwrap();
-        assert_eq!((a.title, a.auto_title), (None, None));
+        assert_eq!(titles(&s, id), (None, None));
     }
 
     #[test]
@@ -371,8 +371,7 @@ mod tests {
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
         store_fetched(&s, id, &page(BODY)).unwrap();
         s.set_title(id, "").unwrap();
-        let a = s.article_row(id).unwrap().unwrap();
-        assert_eq!((a.title.as_deref(), a.auto_title), (Some("T"), None));
+        assert_eq!(titles(&s, id), (Some("T".into()), None));
     }
 
     #[test]
@@ -412,8 +411,7 @@ mod tests {
         s.insert_segments("ja", "v", Some(other), &[(crate::store::sha256_hex("A sidebar").as_str(), &units[..], "p", None)]).unwrap();
         s.set_title(other, "My name").unwrap();
         assert_eq!(store_fetched(&s, other, &page(&format!("{long}<p>A related post sits at the end of this copy.</p>"))).unwrap(), id);
-        let a = s.article_row(id).unwrap().unwrap();
-        assert_eq!((a.title.as_deref(), a.auto_title.as_deref()), (Some("My name"), Some("T")), "the name given to the row goes with it");
+        assert_eq!(titles(&s, id), (Some("My name".into()), Some("T".into())), "the name given to the row goes with it");
         assert_eq!(s.unused_translations().unwrap(), 0, "its Page view's translations go with it");
         assert_eq!(s.list_articles(&crate::store::ArticleFilter::All).unwrap().len(), 1);
         assert_eq!(s.find_article_by_url("https://example.com/p?id=1").unwrap(), None, "the row is gone");
@@ -437,18 +435,14 @@ mod tests {
         let copy = page(&format!("{long}<p>A related post sits at the end of this copy.</p>"));
         let (id, _) = s.upsert_pending("https://example.com/post", "https://example.com/post", "example.com").unwrap();
         assert_eq!(store_fetched(&s, id, &page(&long)).unwrap(), id);
-        let titles = || {
-            let a = s.article_row(id).unwrap().unwrap();
-            (a.title, a.auto_title)
-        };
         let (row, _) = s.upsert_pending("https://example.com/p?id=1", "https://example.com/p?id=1", "example.com").unwrap();
         assert_eq!(store_fetched(&s, row, &copy).unwrap(), id);
-        assert_eq!(titles(), (Some("T".into()), None), "a row never renamed changes no title");
+        assert_eq!(titles(&s, id), (Some("T".into()), None), "a row never renamed changes no title");
         s.set_title(id, "Mine").unwrap();
         let (row, _) = s.upsert_pending("https://example.com/p?id=2", "https://example.com/p?id=2", "example.com").unwrap();
         s.set_title(row, "Row name").unwrap();
         assert_eq!(store_fetched(&s, row, &copy).unwrap(), id);
-        assert_eq!(titles(), (Some("Mine".into()), Some("T".into())), "the article keeps a name of its own");
+        assert_eq!(titles(&s, id), (Some("Mine".into()), Some("T".into())), "the article keeps a name of its own");
     }
 
     #[tokio::test]
