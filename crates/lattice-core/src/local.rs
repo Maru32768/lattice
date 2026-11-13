@@ -593,6 +593,7 @@ pub(crate) mod tests {
             "http://x:8077#a",
             "http://user:pass@gpu.lan:8077",
             "http://user@x",
+            "http://:pass@x",
             "file:///C:/x",
         ] {
             let e = Server::new(typed).err().unwrap();
