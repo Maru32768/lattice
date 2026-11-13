@@ -18,6 +18,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - **Choose the chat's send key.** In **Settings › Summaries & chat**, **Send key** makes `Enter` send a question, with `Shift+Enter` for a new line, or makes `Enter` send while the question is one line. `Ctrl+Enter` always sends. With Vim key bindings, `Enter` in normal mode follows this setting, and `Enter` in insert mode stays a new line.
 - **Import several PDFs at once.** On the import screen's PDF tab, choose or drop several PDFs, such as the chapters of a book, to import them together in file-name order. The **Don't translate automatically** checkbox keeps its setting for the next import, and the Markdown and PDF tabs share it.
 - **Rename articles.** **Rename…** in the right-click menu changes the title of an article, such as a PDF imported in parts. The new title stays when the article is imported again, and **Reset** brings back the title Lattice gave it.
+- **A local translation engine.** In **Settings › Translation**, set **Translation engine** to **Local translation server** to translate with PLaMo 3 Translate on an OpenAI-compatible server that you run yourself, such as llama-server. Local translation uses no AI provider credits. Articles, PDFs and pages in the Page view are all translated with this engine.
 
 ### Changed
 
