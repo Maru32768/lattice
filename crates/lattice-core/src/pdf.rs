@@ -1540,8 +1540,8 @@ pub(crate) mod tests {
 
     #[test]
     fn a_footer_naming_the_section_on_every_second_page_is_dropped_by_the_page_number_it_starts_with() {
-        // A chapter opens on a page with no footer, so fewer than half of its pages carry one.
-        let footers = [None, Some("197 | Leaders and Followers"), Some("198"), Some("199 | Multi-Leader Replication"), Some("200")];
+        // A chapter opens on a page with no footer, so fewer than half of its pages carry the section's name.
+        let footers = [None, Some("198 | Leaders and Followers"), Some("199"), Some("200 | Multi-Leader Replication"), Some("201")];
         let pages: Vec<Vec<Run>> = footers.into_iter().map(|f| SPREAD.into_iter().chain(f.map(|f| (L, 760., 9., f))).collect()).collect();
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
