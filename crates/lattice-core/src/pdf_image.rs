@@ -168,17 +168,14 @@ mod tests {
     }
 
     fn rgb(width: i64, height: i64, more: &[(&str, Object)]) -> Dictionary {
-        let mut d = dict(&[
+        let base = [
             ("Subtype", name("Image")),
             ("Width", Object::Integer(width)),
             ("Height", Object::Integer(height)),
             ("ColorSpace", name("DeviceRGB")),
             ("BitsPerComponent", Object::Integer(8)),
-        ]);
-        for (k, v) in more {
-            d.set(*k, v.clone());
-        }
-        d
+        ];
+        dict(&[&base[..], more].concat())
     }
 
     fn deflate(data: &[u8]) -> Vec<u8> {
