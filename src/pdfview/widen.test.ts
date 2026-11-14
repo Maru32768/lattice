@@ -13,6 +13,7 @@ test("a centred line grows evenly and stays centred", () => {
 
 test("a centred line stops at the nearer edge on both sides", () => {
   assert.deepEqual(widen(400, 100, 104), { left: 100, right: 100 });
+  assert.deepEqual(widen(400, 104, 100), { left: 100, right: 100 });
 });
 
 test("a line at the column's left keeps its left edge", () => {
