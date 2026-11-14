@@ -1569,7 +1569,7 @@ pub(crate) mod tests {
         let page: Vec<Run> = vec![
             (L, 100., 10.5, "A long line of body text that runs across the whole of the column and on to its end,"),
             (L, 112.6, 10.5, "with a second line that is nearly as long as the first one and then comes to a stop."),
-            (L, 138., 10.9, "Logical (row-based) log replication"),
+            (L, 138., 11.4, "Logical (row-based) log replication"),
             (L, 155., 10.5, "Another way is to use different log formats for replication and for the storage engine,"),
             (L, 167.6, 10.5, "which allows the log to be decoupled from the internals of the storage engine."),
         ];
