@@ -17,7 +17,7 @@ test("a centred line stops at the nearer edge on both sides", () => {
   assert.deepEqual(widen(400, 104, 100), { left: 100, right: 100 });
 });
 
-test("a line off centre by more than a tenth of its room keeps its left edge", () => {
+test("a line whose rooms differ by more than a tenth of their sum keeps its left edge", () => {
   assert.deepEqual(widen(60, 80, 100), { left: 0, right: 60 });
 });
 
