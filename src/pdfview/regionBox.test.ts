@@ -7,6 +7,7 @@ const region = { x0: 100, y0: 200, x1: 300, y1: 220, left: 0, top: 792, room_lef
 /** What pdf.js's PageViewport computes at scale 1, for a page whose view starts at (left, bottom) and ends at (right, top). */
 const upright = (left: number, top: number) => ({ convertToViewportPoint: (x: number, y: number) => [x - left, top - y] });
 const turned90 = (left: number, bottom: number) => ({ convertToViewportPoint: (x: number, y: number) => [y - bottom, x - left] });
+const turned180 = (right: number, bottom: number) => ({ convertToViewportPoint: (x: number, y: number) => [right - x, y - bottom] });
 
 const box = (r: typeof region) => [r.x0, r.y0, r.x1, r.y1];
 
@@ -20,6 +21,7 @@ test("a CropBox moves the box by what it cuts off", () => {
 
 test("a turned page turns the box", () => {
   assert.deepEqual(box(onViewport(region, turned90(0, 0))), [572, 100, 592, 300]);
+  assert.deepEqual(box(onViewport(region, turned180(612, 0))), [312, 572, 512, 592]);
 });
 
 test("the room around the box turns with it", () => {
@@ -27,6 +29,7 @@ test("the room around the box turns with it", () => {
   const room = (r: typeof region) => [r.room_left, r.room_up, r.room_right, r.room_down];
   assert.deepEqual(room(onViewport(roomy, upright(0, 792))), [10, 5, 40, 20]);
   assert.deepEqual(room(onViewport(roomy, turned90(0, 0))), [20, 10, 5, 40], "what lay below the line is now to its left");
+  assert.deepEqual(room(onViewport(roomy, turned180(612, 0))), [40, 20, 10, 5], "upside down, each room is on the other side");
 });
 
 test("a MediaBox away from the origin is measured from its corner", () => {
