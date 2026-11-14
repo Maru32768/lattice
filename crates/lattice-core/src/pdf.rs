@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pdf_extract::content::Content;
-use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Transform};
+use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
 use serde::Serialize;
 
 use crate::extract::collapse;
@@ -65,12 +65,12 @@ fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
 pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
-    let blocks = to_blocks(&lines, body);
-    if blocks.is_empty() {
+    let blocks = to_blocks(&lines, body, &figures(&doc), &sha256_hex(bytes)[..16]);
+    let Some(first) = blocks.iter().find(|b| b.kind != BlockKind::Image) else {
         return Err(msg!("pdf.noText"));
-    }
+    };
     let non_empty = |s: &str| Some(s.trim().to_string()).filter(|s| !s.is_empty());
-    let first_line = || blocks.first().map(|b| b.text.chars().take(80).collect::<String>());
+    let first_line = || Some(first.text.chars().take(80).collect::<String>());
     let title = front.title.or(doc.title.filter(|t| reads_like_title(t))).or_else(|| fallback.and_then(non_empty)).or_else(first_line);
     let author = front.author.or(doc.author.filter(|a| a.contains(' ')));
     Ok(ArticleIr { meta: ArticleMeta { title, author, published_at: doc.created, ..Default::default() }, blocks })
@@ -388,37 +388,93 @@ impl Face {
     }
 }
 
-/// The face of each string the page shows, in the order pdf-extract shows them. It reports glyphs without
-/// their fonts, but calls `begin_word` once per string, so these line up with what it reports.
-fn string_faces(doc: &Document, page: ObjectId) -> Vec<Face> {
+/// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images.
+#[derive(Default)]
+struct Walk {
+    /// The face of each string, in the order pdf-extract shows them: it calls `begin_word` once per string, so these
+    /// line up with what it reports.
+    faces: Vec<Face>,
+    /// The images, in the PDF's own coordinates.
+    drawn: Vec<Drawn>,
+}
+
+/// An image drawn on a page: the unit square through the CTM, in points from the page's top left like a `Glyph`.
+struct Drawn {
+    id: ObjectId,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+}
+
+/// Images inside forms, and inline images, are not followed.
+fn walk(doc: &Document, page: ObjectId) -> Walk {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
-        return Vec::new();
+        return Walk::default();
     };
     let fonts = doc.get_page_fonts(page).unwrap_or_default();
     let face_named = |name: &[u8]| {
         let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
-    let (mut face, mut saved, mut out) = (Face::Body, Vec::new(), Vec::new());
+    let images = page_images(doc, page);
+    let (mut face, mut ctm, mut saved, mut out) = (Face::Body, Transform::identity(), Vec::new(), Walk::default());
     for op in &content.operations {
         match op.operator.as_str() {
-            "q" => saved.push(face),
-            "Q" => face = saved.pop().unwrap_or(face),
+            "q" => saved.push((face, ctm)),
+            "Q" => (face, ctm) = saved.pop().unwrap_or((face, ctm)),
+            "cm" => {
+                if let [a, b, c, d, e, f] = op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>()[..] {
+                    ctm = ctm.pre_transform(&Transform::row_major(a, b, c, d, e, f));
+                }
+            }
+            "Do" => {
+                if let Some(&id) = op.operands.first().and_then(|o| o.as_name().ok()).and_then(|n| images.get(n)) {
+                    let corners =
+                        [(0., 0.), (1., 0.), (0., 1.), (1., 1.)].map(|(x, y)| (x * ctm.m11 + y * ctm.m21 + ctm.m31, x * ctm.m12 + y * ctm.m22 + ctm.m32));
+                    let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
+                    let (lo, hi) = (|v: [f64; 4]| v.into_iter().fold(f64::MAX, f64::min), |v: [f64; 4]| v.into_iter().fold(f64::MIN, f64::max));
+                    out.drawn.push(Drawn { id, x0: lo(xs), y0: lo(ys), x1: hi(xs), y1: hi(ys) });
+                }
+            }
             "Tf" => {
                 if let Some(name) = op.operands.first().and_then(|o| o.as_name().ok()) {
                     face = face_named(name);
                 }
             }
-            "Tj" => out.push(face),
+            "Tj" => out.faces.push(face),
             "TJ" => {
                 if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
-                    out.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
+                    out.faces.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
                 }
             }
             _ => {}
         }
     }
     out
+}
+
+/// The image XObjects a page's resources name, looked up as `get_page_fonts` looks up its fonts.
+fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
+    let (own, inherited) = doc.get_page_resources(page).unwrap_or_default();
+    let mut out = HashMap::new();
+    for resources in own.into_iter().chain(inherited.into_iter().filter_map(|id| doc.get_dictionary(id).ok())) {
+        let Some(xobjects) = resources.get(b"XObject").ok().and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_dict().ok()) else {
+            continue;
+        };
+        for (name, o) in xobjects.iter() {
+            if let Ok(id) = o.as_reference()
+                && doc.get_object(id).and_then(Object::as_stream).is_ok_and(is_image)
+            {
+                out.entry(name.clone()).or_insert(id);
+            }
+        }
+    }
+    out
+}
+
+fn is_image(s: &Stream) -> bool {
+    s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image")
 }
 
 #[derive(Default)]
@@ -429,6 +485,7 @@ struct Page {
     left: f64,
     top: f64,
     glyphs: Vec<Glyph>,
+    drawn: Vec<Drawn>,
 }
 
 struct Parsed {
@@ -475,9 +532,12 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             s.set_plain_content(Vec::new());
         }
     }
-    let faces = doc.get_pages().values().map(|&page| string_faces(&doc, page)).collect();
+    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).map(|w| (w.faces, w.drawn)).unzip();
     let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| fail(&e))?;
+    for (page, drawn) in out.pages.iter_mut().zip(drawn) {
+        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
+    }
     Ok((doc, out.pages))
 }
 
@@ -503,7 +563,7 @@ impl OutputDev for Glyphs {
         self.origin = (b.llx, b.lly);
         self.shown = 0;
         self.drawn.clear();
-        self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, glyphs: Vec::new() });
+        self.pages.push(Page { width: b.urx - b.llx, height: b.ury - b.lly, left: b.llx, top: b.ury, ..Default::default() });
         Ok(())
     }
 
@@ -984,9 +1044,59 @@ struct Draft<'a> {
     lines: Vec<&'a Line>,
 }
 
-fn to_blocks(lines: &[Line], body: f64) -> Vec<Block> {
+/// The drafts' blocks with the figures' among them, each before the draft `place` puts it at, in drawing order. `pdf` names
+/// the file in their `src`.
+fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], pdf: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
-    drafts(lines, body).into_iter().filter_map(|d| block(d, &vocab)).collect()
+    let drafts = drafts(lines, body);
+    let mut placed: Vec<(usize, Block)> = figures
+        .iter()
+        .map(|&(page, f)| {
+            let at = place(&drafts, page, f);
+            let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
+            let src = format!("{FIGURE_SRC}{pdf}/{}.{}", f.id.0, f.id.1);
+            let attrs = BlockAttrs { src: Some(src), ..Default::default() };
+            (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
+        })
+        .collect();
+    placed.sort_by_key(|(at, _)| *at);
+    let mut placed = placed.into_iter().peekable();
+    let mut out = Vec::new();
+    for (i, d) in drafts.into_iter().enumerate() {
+        out.extend(std::iter::from_fn(|| placed.next_if(|(at, _)| *at == i)).map(|(_, b)| b));
+        out.extend(block(d, &vocab));
+    }
+    out.extend(placed.map(|(_, b)| b));
+    out
+}
+
+const FIGURE_SRC: &str = "pdf-figure:";
+
+/// A raster figure the Reader shows: drawn at least a fifth of the page wide (not a margin icon), over less than 80% of
+/// the page (not a scan or a background), and on fewer than three pages (not a logo). In page and drawing order, once
+/// per page.
+fn figures(doc: &Parsed) -> Vec<(usize, &Drawn)> {
+    let all = || doc.pages.iter().enumerate().flat_map(|(i, p)| p.drawn.iter().map(move |d| (i, p, d)));
+    let mut pages: HashMap<ObjectId, HashSet<usize>> = HashMap::new();
+    for (i, _, d) in all() {
+        pages.entry(d.id).or_default().insert(i);
+    }
+    let mut seen = HashSet::new();
+    all()
+        .filter(|(_, p, d)| d.x1 - d.x0 >= p.width / 5. && (d.x1 - d.x0) * (d.y1 - d.y0) < 0.8 * p.width * p.height)
+        .filter(|(i, _, d)| pages.get(&d.id).is_some_and(|on| on.len() < 3) && seen.insert((*i, d.id)))
+        .map(|(i, _, d)| (i, d))
+        .collect()
+}
+
+/// The draft a figure goes before: the first that starts under it on its page and across from it (its caption, and in a
+/// right-hand column that column's next draft), else the first of a later page, else none.
+fn place(drafts: &[Draft], page: usize, f: &Drawn) -> usize {
+    let under = |d: &Draft| {
+        let l = d.lines[0];
+        l.page == page && l.y >= f.y1 && l.x0 < f.x1 && l.x1 > f.x0
+    };
+    drafts.iter().position(under).or_else(|| drafts.iter().position(|d| d.lines[0].page > page)).unwrap_or(drafts.len())
 }
 
 fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
@@ -1995,29 +2105,142 @@ pub(crate) mod tests {
         // pdf-extract reads an image XObject's data as a content stream, and an image in
         // Designing Data-Intensive Applications decodes to a `CS` with no operand, where it panicked.
         let body = vec![(L, 120., 10., "A paragraph next to a figure drawn as an image.")];
-        let mut doc = Document::load_mem(&pdf(&[body], None)).unwrap();
+        let bytes = draw(&pdf(&[body], None), image(1, 1, "DeviceGray", b"CS".to_vec()), &[(0, L, 200., 1., 1.)]);
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir), [("paragraph", "A paragraph next to a figure drawn as an image.")]);
+    }
+
+    /// An image XObject of `w` by `h` pixels, 8 bits a channel, with `data` as stored.
+    fn image(w: u32, h: u32, space: &str, data: Vec<u8>) -> Stream {
         let mut dict = Dictionary::new();
         dict.set("Type", name("XObject"));
         dict.set("Subtype", name("Image"));
-        dict.set("Width", Object::Integer(1));
-        dict.set("Height", Object::Integer(1));
-        dict.set("ColorSpace", name("DeviceGray"));
+        dict.set("Width", Object::Integer(w.into()));
+        dict.set("Height", Object::Integer(h.into()));
+        dict.set("ColorSpace", name(space));
         dict.set("BitsPerComponent", Object::Integer(8));
-        let image = doc.add_object(Stream::new(dict, b"CS".to_vec()));
-        let page = *doc.get_pages().values().next().unwrap();
-        let mut xobjects = Dictionary::new();
-        xobjects.set("Im0", Object::Reference(image));
-        let page_dict = doc.get_object_mut(page).and_then(Object::as_dict_mut).unwrap();
-        let content = page_dict.get(b"Contents").and_then(Object::as_reference).unwrap();
-        page_dict.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
-        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
-        let mut ops = stream.content.clone();
-        ops.extend_from_slice(b"\nq /Im0 Do Q\n");
-        stream.set_plain_content(ops);
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
+        Stream::new(dict, data)
+    }
+
+    /// FlateDecode DeviceRGB: `w` by `h` pixels of one colour.
+    fn rgb(w: u32, h: u32, colour: [u8; 3]) -> Stream {
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut z, &colour.repeat((w * h) as usize)).unwrap();
+        let mut s = image(w, h, "DeviceRGB", z.finish().unwrap());
+        s.dict.set("Filter", name("FlateDecode"));
+        s
+    }
+
+    /// `bytes` with `image` drawn at each (page, x and y of its top left, width, height): one object drawn on several pages
+    /// is what a logo is.
+    fn draw(bytes: &[u8], image: Stream, at: &[(usize, f64, f64, f64, f64)]) -> Vec<u8> {
+        let mut doc = Document::load_mem(bytes).unwrap();
+        let id = doc.add_object(image);
+        let name = format!("Im{}", id.0);
+        let pages: Vec<ObjectId> = doc.get_pages().into_values().collect();
+        for &(page, x, y, w, h) in at {
+            let page = doc.get_object_mut(pages[page]).and_then(Object::as_dict_mut).unwrap();
+            let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
+            let resources = page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
+            if !resources.has(b"XObject") {
+                resources.set("XObject", Dictionary::new());
+            }
+            resources.get_mut(b"XObject").and_then(Object::as_dict_mut).unwrap().set(name.as_str(), Object::Reference(id));
+            let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+            let mut ops = stream.content.clone();
+            ops.extend_from_slice(format!("\nq {w} 0 0 {h} {x} {} cm /{name} Do Q\n", 792. - y - h).as_bytes());
+            stream.set_plain_content(ops);
+        }
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        out
+    }
+
+    fn quorum_text() -> Vec<Run<'static>> {
+        vec![
+            (L, 100., 10., "With n replicas, every write must be confirmed by w nodes and every read by r nodes."),
+            (L, 315., 9., "Figure 6-13. If w + r > n, reads see the latest write."),
+            (L, 340., 10., "The parameters are usually configurable, and a common choice is an odd n."),
+            (L, 520., 10., "A paragraph under a second figure, which has no caption."),
+        ]
+    }
+
+    /// `quorum_text` with a figure from y 200 to 300 over its caption, and an uncaptioned one from y 400 to 500 over the
+    /// last paragraph.
+    fn quorum() -> Vec<u8> {
+        let bytes = draw(&pdf(&[quorum_text()], None), rgb(30, 10, [200, 0, 0]), &[(0, L, 200., 300., 100.)]);
+        draw(&bytes, rgb(30, 10, [0, 0, 200]), &[(0, L, 400., 300., 100.)])
+    }
+
+    #[test]
+    fn a_figure_goes_before_the_caption_under_it() {
+        let bytes = quorum();
         let ir = to_ir(&bytes, None).unwrap();
-        assert_eq!(kinds(&ir), [("paragraph", "A paragraph next to a figure drawn as an image.")]);
+        assert_eq!(
+            kinds(&ir),
+            [
+                ("paragraph", "With n replicas, every write must be confirmed by w nodes and every read by r nodes."),
+                ("image", "Figure 6-13"),
+                ("caption", "Figure 6-13. If w + r > n, reads see the latest write."),
+                ("paragraph", "The parameters are usually configurable, and a common choice is an odd n."),
+                ("image", ""),
+                ("paragraph", "A paragraph under a second figure, which has no caption."),
+            ]
+        );
+        let src = ir.blocks[1].attrs.src.as_deref().unwrap_or_default();
+        assert!(src.starts_with(&format!("pdf-figure:{}/", &sha256_hex(&bytes)[..16])), "named by the PDF it is in: {src}");
+        assert_ne!(ir.blocks[4].attrs.src.as_deref(), Some(src));
+    }
+
+    #[test]
+    fn figures_do_not_change_regions() {
+        let (with, without) = (quorum(), pdf(&[quorum_text()], None));
+        assert!(to_ir(&with, None).unwrap().blocks.iter().any(|b| b.kind == BlockKind::Image), "the figures are there");
+        let json = |bytes: &[u8]| serde_json::to_string(&regions(bytes).unwrap()).unwrap();
+        assert_eq!(json(&with), json(&without));
+    }
+
+    #[test]
+    fn a_right_column_figure_stays_in_its_column() {
+        let page: Vec<Run> = vec![
+            (L, 300., 10., "Prose of the left column runs on,"),
+            (L, 312., 10., "and comes to its end here."),
+            (L, 420., 10., "Another paragraph of the left one,"),
+            (L, 432., 10., "lower than the bottom of the figure."),
+            (R, 415., 9., "Figure 2: Reads in the right column."),
+            (R, 440., 10., "Prose of the right column goes on,"),
+            (R, 452., 10., "under the figure and its caption."),
+        ];
+        let ir = to_ir(&draw(&pdf(&[page], None), rgb(30, 10, [0, 0, 0]), &[(0, R, 300., 220., 100.)]), None).unwrap();
+        assert_eq!(
+            kinds(&ir),
+            [
+                ("paragraph", "Prose of the left column runs on, and comes to its end here."),
+                ("paragraph", "Another paragraph of the left one, lower than the bottom of the figure."),
+                ("image", "Figure 2"),
+                ("caption", "Figure 2: Reads in the right column."),
+                ("paragraph", "Prose of the right column goes on, under the figure and its caption."),
+            ]
+        );
+    }
+
+    #[test]
+    fn only_figures_are_kept() {
+        let text = |t| vec![(L, 100., 10., t)];
+        let pages = [text("The first page has a note icon and a logo."), text("The second page is scanned."), text("The third page has a figure.")];
+        let mut bytes = pdf(&pages, None);
+        for (image, at) in [
+            (rgb(4, 4, [0, 0, 0]), vec![(0, L, 120., 38., 50.)]),
+            (rgb(4, 4, [0, 0, 0]), (0..3).map(|p| (p, L, 600., 300., 40.)).collect()),
+            (rgb(4, 4, [0, 0, 0]), vec![(1, 0., 0., 612., 792.)]),
+            (rgb(4, 4, [9, 9, 9]), vec![(2, L, 200., 300., 100.), (2, L, 200., 300., 100.)]),
+        ] {
+            bytes = draw(&bytes, image, &at);
+        }
+        let ir = to_ir(&bytes, None).unwrap();
+        let kinds: Vec<&str> = ir.blocks.iter().map(|b| b.kind.as_str()).collect();
+        assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "drawn twice in one place, still one figure: {kinds:?}");
+        assert_eq!(kinds.last(), Some(&"image"), "the third page's figure, under all of the text: {kinds:?}");
     }
 
     #[test]
