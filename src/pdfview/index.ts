@@ -269,6 +269,7 @@ const FRAME_GAP = 3;
 
 /** A single line too long for its box takes the rest of its line first: above and below it a frame may be drawn, which the layout does not see. */
 function widenLine(el: HTMLElement, box: Box) {
+  // The width is measured from the region's own box, not from a widening an earlier text was given.
   span(el, box.left, box.width);
   const page = el.parentElement?.clientWidth;
   if (!page || !(box.roomLeft || box.roomRight)) {
