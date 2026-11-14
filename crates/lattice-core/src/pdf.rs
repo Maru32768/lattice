@@ -1589,6 +1589,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_body_line_ending_with_a_number_in_step_with_the_pages_is_kept() {
+        let ends = [Some("as the timings of the first run in Table 1"), Some("and those of the second run in Table 2"), None, None];
+        let pages: Vec<Vec<Run>> = ends.into_iter().map(|e| SPREAD.into_iter().chain(e.map(|e| (L, 124., 10., e))).collect()).collect();
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let text = ir.blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join(" ");
+        assert!(text.contains("run in Table 1") && text.contains("run in Table 2"), "only a margin line is a page number: {text}");
+    }
+
+    #[test]
     fn a_list_marker_drawn_again_for_each_line_of_its_item_is_read_once() {
         // The book places the repeats a few thousandths of a point apart.
         let page: Vec<Run> = vec![
