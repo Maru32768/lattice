@@ -142,25 +142,24 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
     if !s.save || pending.is_empty() {
         return Ok(());
     }
+    let cap = s.max_mb as usize * MB;
     // A PDF's figures come from its stored copy, parsed once for all of them, off the async runtime.
     let figures: Vec<String> = pending.iter().filter(|src| crate::pdf::is_figure(src)).cloned().collect();
-    let mut decoded: HashMap<String, Option<(&'static str, Vec<u8>)>> = HashMap::new();
+    let mut decoded: HashMap<String, Result<(&'static str, Vec<u8>), Fail>> = HashMap::new();
     if !figures.is_empty() {
         let pdf = store.latest_snapshot(article_id).map_err(err)?.map(|s| s.body).unwrap_or_default();
         decoded = tokio::task::spawn_blocking(move || {
             let read = crate::pdf::Figures::parse(&pdf);
-            figures
-                .into_iter()
-                .map(|src| {
-                    let image = read.image(&src);
-                    (src, image)
-                })
-                .collect()
+            let got = |src: &str| match read.image(src) {
+                Some((_, bytes)) if bytes.len() > cap => Err(Fail::Permanent(too_large(cap))),
+                Some(image) => Ok(image),
+                None => Err(Fail::Permanent(msg!("images.unsupported"))),
+            };
+            figures.iter().map(|src| (src.clone(), got(src))).collect()
         })
         .await
         .map_err(err)?;
     }
-    let cap = s.max_mb as usize * MB;
     let mut transient = None;
     for src in pending {
         // What is saved stays: the job's next try goes on from here, with the host free meanwhile.
@@ -173,9 +172,7 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
             continue;
         }
         let got = match decoded.remove(&src) {
-            Some(Some((_, bytes))) if bytes.len() > cap => Err(Fail::Permanent(too_large(cap))),
-            Some(Some(image)) => Ok(image),
-            Some(None) => Err(Fail::Permanent(msg!("images.unsupported"))),
+            Some(got) => got,
             None => download(client, &src, &page, cap).await,
         };
         match got {
