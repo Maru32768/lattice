@@ -9,6 +9,7 @@ test("text that fits leaves the box alone", () => {
 test("a centred line grows evenly and stays centred", () => {
   assert.deepEqual(widen(60, 105, 105), { left: 30, right: 30 });
   assert.deepEqual(widen(60, 100, 104), { left: 30, right: 30 });
+  assert.deepEqual(widen(60, 91, 109), { left: 30, right: 30 });
 });
 
 test("a centred line stops at the nearer edge on both sides", () => {
