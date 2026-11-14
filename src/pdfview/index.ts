@@ -251,10 +251,8 @@ async function addOutline(doc: PDFDocumentProxy, regions: Region[], labels: Labe
 // ---- pages --------------------------------------------------------------------------------------
 
 /** Each region's box as a share of its page's height and width, and the room beyond it. */
-const boxes = new WeakMap<
-  HTMLElement,
-  { top: number; height: number; up: number; down: number; left: number; width: number; roomLeft: number; roomRight: number }
->();
+type Box = { top: number; height: number; up: number; down: number; left: number; width: number; roomLeft: number; roomRight: number };
+const boxes = new WeakMap<HTMLElement, Box>();
 
 function place(el: HTMLElement, top: number, height: number) {
   el.style.top = `${top * 100}%`;
@@ -270,7 +268,7 @@ function span(el: HTMLElement, left: number, width: number) {
 const FRAME_GAP = 3;
 
 /** A single line too long for its box takes the rest of its line first: above and below it a frame may be drawn, which the layout does not see. */
-function widenLine(el: HTMLElement, box: { left: number; width: number; roomLeft: number; roomRight: number }) {
+function widenLine(el: HTMLElement, box: Box) {
   span(el, box.left, box.width);
   const page = el.parentElement?.clientWidth;
   if (!page || !(box.roomLeft || box.roomRight)) {
