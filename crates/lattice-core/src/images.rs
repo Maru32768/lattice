@@ -4,6 +4,7 @@
 //! bytes no mapping uses any more. The Reader gets them as `data:` URLs: the app webview never
 //! loads a remote URL. Raster formats only: SVG can carry script, so it stays a link.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use rusqlite::{OptionalExtension, params};
@@ -141,6 +142,25 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
     if !s.save || pending.is_empty() {
         return Ok(());
     }
+    // A PDF's figures come from its stored copy, parsed once for all of them, off the async runtime.
+    let figures: Vec<String> = pending.iter().filter(|src| crate::pdf::is_figure(src)).cloned().collect();
+    let mut decoded: HashMap<String, Option<(&'static str, Vec<u8>)>> = HashMap::new();
+    if !figures.is_empty() {
+        let pdf = store.latest_snapshot(article_id).map_err(err)?.map(|s| s.body).unwrap_or_default();
+        decoded = tokio::task::spawn_blocking(move || {
+            let read = crate::pdf::Figures::parse(&pdf);
+            figures
+                .into_iter()
+                .map(|src| {
+                    let image = read.image(&src);
+                    (src, image)
+                })
+                .collect()
+        })
+        .await
+        .map_err(err)?;
+    }
+    let cap = s.max_mb as usize * MB;
     let mut transient = None;
     for src in pending {
         // What is saved stays: the job's next try goes on from here, with the host free meanwhile.
@@ -152,7 +172,13 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
             record(store, article_id, &src, None, Some(over))?;
             continue;
         }
-        match download(client, &src, &page, s.max_mb as usize * MB).await {
+        let got = match decoded.remove(&src) {
+            Some(Some((_, bytes))) if bytes.len() > cap => Err(Fail::Permanent(too_large(cap))),
+            Some(Some(image)) => Ok(image),
+            Some(None) => Err(Fail::Permanent(msg!("images.unsupported"))),
+            None => download(client, &src, &page, cap).await,
+        };
+        match got {
             Ok((_, bytes)) if used + bytes.len() > ARTICLE_CAP => record(store, article_id, &src, None, Some(over))?,
             Ok((mime, bytes)) => {
                 used += bytes.len();

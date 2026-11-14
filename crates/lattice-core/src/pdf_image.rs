@@ -1,6 +1,5 @@
 //! A PDF image as a file the Reader shows: a DCT stream is a JPEG as stored, 8-bit gray or RGB becomes a PNG, written
 //! here over flate2. Anything else stays in the Page view.
-#![cfg_attr(not(test), expect(dead_code, reason = "the image job encodes with it from the next commit"))]
 
 use std::io::{Read, Write};
 

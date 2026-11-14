@@ -13,6 +13,7 @@ use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, 
 use serde::Serialize;
 
 use crate::extract::collapse;
+use crate::images;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
@@ -42,19 +43,24 @@ pub fn import(store: &Store, bytes: &[u8], name: Option<&str>) -> Result<i64, St
     let (id, needs_work) = store.upsert_pending(&url, &url, "").map_err(err)?;
     if needs_work {
         store.save_snapshot(id, Some(&snapshot(&url, bytes)), Ok(ir), None).map_err(err)?;
+        images::enqueue(store, id)?;
     }
     Ok(id)
 }
 
 /// A PDF fetched from a URL: like a page, a failed extraction is recorded on the article.
 pub fn store_fetched(store: &Store, id: i64, final_url: &str, bytes: &[u8]) -> Result<i64, String> {
-    store.save_snapshot(id, Some(&snapshot(final_url, bytes)), to_ir(bytes, None), None).map_err(err)
+    let id = store.save_snapshot(id, Some(&snapshot(final_url, bytes)), to_ir(bytes, None), None).map_err(err)?;
+    images::enqueue(store, id)?;
+    Ok(id)
 }
 
 /// Extracts the stored bytes again; the title the app found (not the user's name) is the fallback, as on import.
 pub fn reextract(store: &Store, id: i64, bytes: &[u8]) -> Result<i64, String> {
     let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
-    store.save_snapshot(id, None, to_ir(bytes, title.as_deref()), None).map_err(err)
+    let id = store.save_snapshot(id, None, to_ir(bytes, title.as_deref()), None).map_err(err)?;
+    images::enqueue(store, id)?;
+    Ok(id)
 }
 
 fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
@@ -520,11 +526,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// `skip_forms`: figures are form XObjects, whose labels are noise, and pdf-extract places text
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
-    let fail = |e: &dyn std::fmt::Debug| msg!("pdf.unreadable", error = format!("{e:?}"));
-    let mut doc = Document::load_mem(bytes).map_err(|e| fail(&e))?;
-    if doc.is_encrypted() {
-        doc.decrypt("").map_err(|e| fail(&e))?;
-    }
+    let mut doc = load(bytes)?;
     // Before the blanking below takes their filters.
     let showable: HashSet<ObjectId> =
         doc.objects.iter().filter(|(_, o)| matches!(o, Object::Stream(s) if is_image(s) && Format::of(&doc, &s.dict).is_some())).map(|(&id, _)| id).collect();
@@ -539,7 +541,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     }
     let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).map(|w| (w.faces, w.drawn)).unzip();
     let mut out = Glyphs { faces, ..Default::default() };
-    pdf_extract::output_doc(&doc, &mut out).map_err(|e| fail(&e))?;
+    pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
         page.drawn = drawn
             .into_iter()
@@ -548,6 +550,18 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             .collect();
     }
     Ok((doc, out.pages))
+}
+
+fn load(bytes: &[u8]) -> Result<Document, String> {
+    let mut doc = Document::load_mem(bytes).map_err(|e| unreadable(&e))?;
+    if doc.is_encrypted() {
+        doc.decrypt("").map_err(|e| unreadable(&e))?;
+    }
+    Ok(doc)
+}
+
+fn unreadable(e: &dyn std::fmt::Debug) -> String {
+    msg!("pdf.unreadable", error = format!("{e:?}"))
 }
 
 #[derive(Default)]
@@ -1079,7 +1093,42 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], pdf: &str) 
     out
 }
 
+/// `pdf-figure:<the start of the PDF's sha256>/<object>.<generation>`: re-extracting the same file keeps every `src` and
+/// with it the stored image, and a changed file renames them all, so the image job drops the old ones.
 const FIGURE_SRC: &str = "pdf-figure:";
+
+pub(crate) fn is_figure(src: &str) -> bool {
+    src.starts_with(FIGURE_SRC)
+}
+
+/// An article's stored PDF, read once for a run of the image job, which asks it for each figure.
+pub(crate) struct Figures {
+    doc: Option<Document>,
+    /// What the `src` of each of its figures names it by.
+    pdf: String,
+}
+
+impl Figures {
+    pub(crate) fn parse(pdf: &[u8]) -> Figures {
+        let doc = std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten();
+        Figures { doc, pdf: sha256_hex(pdf)[..16].to_string() }
+    }
+
+    /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
+    /// the data does not hold the image its dictionary describes.
+    pub(crate) fn image(&self, src: &str) -> Option<(&'static str, Vec<u8>)> {
+        let (pdf, id) = src.strip_prefix(FIGURE_SRC)?.split_once('/')?;
+        let (number, generation) = id.split_once('.')?;
+        let doc = self.doc.as_ref().filter(|_| pdf == self.pdf)?;
+        let id = (number.parse().ok()?, generation.parse().ok()?);
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let image = doc.get_object(id).ok()?.as_stream().ok()?;
+            Format::of(doc, &image.dict)?.encode(&image.content)
+        }))
+        .ok()
+        .flatten()
+    }
+}
 
 /// A raster figure the Reader shows: drawn at least a fifth of the page wide (not a margin icon), over less than 80% of
 /// the page (not a scan or a background), and on fewer than three pages (not a logo). In page and drawing order, once
@@ -2254,6 +2303,111 @@ pub(crate) mod tests {
         let kinds: Vec<&str> = ir.blocks.iter().map(|b| b.kind.as_str()).collect();
         assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "neither masked nor CMYK, and drawn twice still one: {kinds:?}");
         assert_eq!(kinds.last(), Some(&"image"), "the third page's figure, under all of the text: {kinds:?}");
+    }
+
+    #[test]
+    fn a_figure_is_read_from_the_pdf_its_src_names() {
+        let bytes = quorum();
+        let src = to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap_or_default();
+        let (mime, png) = Figures::parse(&bytes).image(&src).unwrap();
+        assert_eq!((mime, &png[12..24]), ("image/png", &b"IHDR\0\0\0\x1e\0\0\0\x0a"[..]), "30x10 as drawn into the PDF");
+        assert_eq!(
+            Figures::parse(
+                &[
+                    &bytes[..],
+                    b"
+"
+                ]
+                .concat()
+            )
+            .image(&src),
+            None,
+            "the same objects in another file"
+        );
+        assert_eq!(Figures::parse(b"%PDF-1.5 not really").image(&src), None);
+        assert_eq!(Figures::parse(&bytes).image("pdf-figure:12.0"), None);
+    }
+
+    /// The article's image blocks: id and `src`.
+    fn figure_blocks(s: &Store, id: i64) -> Vec<(i64, String)> {
+        let blocks = s.get_article(id, "ja").unwrap().unwrap().blocks;
+        blocks.into_iter().filter(|b| b.block.kind == BlockKind::Image).map(|b| (b.id, b.block.attrs.src.unwrap_or_default())).collect()
+    }
+
+    /// The article's `article_images` rows: `src`, and whether it holds an image.
+    fn mappings(s: &Store, id: i64) -> Vec<(String, bool)> {
+        let c = s.conn();
+        let mut st = c.prepare("SELECT src, hash IS NOT NULL FROM article_images WHERE article_id = ?1 ORDER BY src").unwrap();
+        st.query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect()
+    }
+
+    fn stored(srcs: &[(i64, String)]) -> Vec<(String, bool)> {
+        let mut out: Vec<(String, bool)> = srcs.iter().map(|(_, src)| (src.clone(), true)).collect();
+        out.sort();
+        out
+    }
+
+    async fn store_images(s: &Store, id: i64) {
+        images::run(s, &crate::fetch::client(), id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn figures_are_stored_once_and_follow_the_pdf() {
+        let s = Store::open_in_memory().unwrap();
+        let id = import(&s, &quorum(), None).unwrap();
+        store_images(&s, id).await;
+        let blocks = figure_blocks(&s, id);
+        assert_eq!(mappings(&s, id), stored(&blocks));
+        for (block, _) in &blocks {
+            let (mime, png) = images::stored(&s, *block).unwrap().unwrap();
+            assert_eq!((mime.as_str(), images::sniff(&png)), ("image/png", Some("image/png")), "what the Reader shows");
+        }
+        for _ in 0..2 {
+            crate::ingest::reextract(&s, id).unwrap();
+            store_images(&s, id).await;
+        }
+        assert_eq!((figure_blocks(&s, id), mappings(&s, id)), (blocks.clone(), stored(&blocks)), "re-extracting changes nothing");
+
+        let changed = draw(&pdf(&[quorum_text()], None), rgb(30, 10, [0, 200, 0]), &[(0, L, 200., 300., 100.)]);
+        store_fetched(&s, id, "https://example.com/quorum.pdf", &changed).unwrap();
+        store_images(&s, id).await;
+        let now = figure_blocks(&s, id);
+        assert_eq!(now.len(), 1);
+        assert!(!blocks.iter().any(|(_, src)| *src == now[0].1), "the changed file names its figure anew");
+        assert_eq!(mappings(&s, id), stored(&now), "and the old figures' images are dropped");
+    }
+
+    #[tokio::test]
+    async fn figures_are_stored_once_saving_is_switched_on() {
+        let s = Store::open_in_memory().unwrap();
+        images::set_settings(&s, images::ImageSettings { save: false, max_mb: 5 }).unwrap();
+        let id = import(&s, &quorum(), None).unwrap();
+        store_images(&s, id).await;
+        s.finish_job(s.claim_next_job(&[images::JOB_TYPE]).unwrap().unwrap().id, None).unwrap();
+        assert_eq!((figure_blocks(&s, id).len(), mappings(&s, id)), (2, vec![]), "the blocks, and nothing stored");
+        images::set_settings(&s, images::ImageSettings { save: true, max_mb: 5 }).unwrap();
+        assert_eq!(images::enqueue_missing(&s).unwrap(), 1);
+        store_images(&s, id).await;
+        assert_eq!(mappings(&s, id), stored(&figure_blocks(&s, id)));
+    }
+
+    #[tokio::test]
+    async fn a_figure_that_does_not_decode_fails_alone() {
+        let s = Store::open_in_memory().unwrap();
+        let mut broken = rgb(30, 10, [0, 0, 0]);
+        broken.set_content(b"not deflated".to_vec());
+        let id = import(&s, &draw(&quorum(), broken, &[(0, L, 600., 300., 100.)]), None).unwrap();
+        store_images(&s, id).await;
+        let blocks = figure_blocks(&s, id);
+        let failed: Vec<(String, String)> = {
+            let c = s.conn();
+            let mut st = c.prepare("SELECT src, error FROM article_images WHERE article_id = ?1 AND hash IS NULL").unwrap();
+            st.query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().map(Result::unwrap).collect()
+        };
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].0, blocks[2].1, "the broken one, last on the page");
+        assert!(failed[0].1.contains("images.unsupported"), "{}", failed[0].1);
+        assert_eq!(mappings(&s, id).iter().filter(|m| m.1).count(), 2, "the others are stored");
     }
 
     #[test]
