@@ -556,7 +556,7 @@ fn unreadable(e: &dyn std::fmt::Debug) -> String {
 struct Glyphs {
     pages: Vec<Page>,
     origin: (f64, f64),
-    /// `string_faces` of each page, and how many of the current page's strings have begun.
+    /// The faces `walk` found on each page, and how many of the current page's strings have begun.
     faces: Vec<Vec<Face>>,
     shown: usize,
     /// Where each text has been drawn on the current page.
@@ -579,7 +579,7 @@ impl OutputDev for Glyphs {
     }
 
     fn end_page(&mut self) -> Result<(), OutputError> {
-        // Strings inside forms, which `string_faces` does not follow: the faces would be off by those.
+        // Strings inside forms, which `walk` does not follow: the faces would be off by those.
         let index = self.pages.len().wrapping_sub(1);
         if self.faces.get(index).is_none_or(|f| f.len() != self.shown)
             && let Some(page) = self.pages.last_mut()
