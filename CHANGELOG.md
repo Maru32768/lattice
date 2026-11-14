@@ -66,6 +66,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Switching tabs while a web page was first opening could leave that page drawn over the tab you switched to.
 - With Codex CLI 0.164, the AI could still see a tool that starts other agents and a tool that waits, although Lattice turns Codex's tools off. Both are off now, and Lattice's tests check which tools the installed Codex shows the AI.
 - Some PDFs with images, such as the chapters of a book, failed to import with an error that the PDF could not be read. Lattice read the data of some images as if it were page content. Images are now skipped when the text is read.
+- In the PDF of a book, a list item was cut after its first line and a bullet stood alone, the footer of every other page stayed in the text and split the paragraph that ran across the page, and the smallest headings were read as paragraphs, so the Page view left these parts untranslated. In the Page view, the translation of a heading at the top of a boxed note also ran over the box's frame. Lists, footers and headings are now read as printed, and a one-line translation takes the rest of its line before it grows up or down.
 
 ## [0.3.0] - 2026-11-06
 
