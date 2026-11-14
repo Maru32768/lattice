@@ -1301,7 +1301,9 @@ pub(crate) mod tests {
                 } else {
                     ops.push(Operation::new("Td", vec![Object::Real(x as f32), Object::Real((792. - y) as f32)]));
                 }
-                ops.push(Operation::new("Tj", vec![Object::String(text.as_bytes().to_vec(), StringFormat::Literal)]));
+                // Helvetica's own encoding has the bullet at 0xB7.
+                let bytes = text.replace('•', "\u{b7}").chars().map(|c| c as u8).collect();
+                ops.push(Operation::new("Tj", vec![Object::String(bytes, StringFormat::Literal)]));
                 ops.push(Operation::new("ET", vec![]));
             }
             let content = doc.add_object(Stream::new(Dictionary::new(), Content { operations: ops }.encode().unwrap()));
@@ -1471,6 +1473,34 @@ pub(crate) mod tests {
         assert_eq!(at("reading order").x0, R, "and its right column");
         assert!(at("A paragraph that runs").y1 < at("figure before").y0, "the figure between the pieces stays uncovered");
         assert_eq!(at("figure before").page, 2);
+    }
+
+    #[test]
+    fn a_list_marker_drawn_again_for_each_line_of_its_item_is_read_once() {
+        // The book places the repeats a few thousandths of a point apart.
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "There are several reasons to copy the same data to many machines, including:"),
+            (80., 120., 10., "•"),
+            (90., 120., 10., "To keep the data close to the people who use it (and so reduce the"),
+            (80.005, 120., 10., "•"),
+            (90., 132., 10., "latency)"),
+            (80., 150., 10., "•"),
+            (90., 150., 10., "To serve more reads."),
+            (79.995, 150., 10., "•"),
+            (L, 170., 10., "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+        ];
+        let bytes = pdf(&[page], None);
+        assert_eq!(
+            kinds(&to_ir(&bytes, None).unwrap()),
+            [
+                ("paragraph", "There are several reasons to copy the same data to many machines, including:"),
+                ("list_item", "• To keep the data close to the people who use it (and so reduce the latency)"),
+                ("list_item", "• To serve more reads."),
+                ("paragraph", "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
+            ]
+        );
+        let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
+        assert!(texts.iter().any(|t| t.ends_with("reduce the latency)")), "the item's second line is translated with it: {texts:?}");
     }
 
     /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
