@@ -2298,19 +2298,7 @@ pub(crate) mod tests {
         let src = to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap_or_default();
         let (mime, png) = Figures::parse(&bytes).image(&src).unwrap();
         assert_eq!((mime, &png[12..24]), ("image/png", &b"IHDR\0\0\0\x1e\0\0\0\x0a"[..]), "30x10 as drawn into the PDF");
-        assert_eq!(
-            Figures::parse(
-                &[
-                    &bytes[..],
-                    b"
-"
-                ]
-                .concat()
-            )
-            .image(&src),
-            None,
-            "the same objects in another file"
-        );
+        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).image(&src), None, "the same objects in another file");
         assert_eq!(Figures::parse(b"%PDF-1.5 not really").image(&src), None);
         assert_eq!(Figures::parse(&bytes).image("pdf-figure:12.0"), None);
     }
