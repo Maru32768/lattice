@@ -207,10 +207,12 @@ fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
         r.room_down = (below.fold((1. - PAGE_EDGE) * page.height, f64::min) - r.y1).max(0.);
     }
     // Only a single line has room at its sides (`region`), so the box's bottom gives its baseline.
-    let base = r.y1 - 0.3 * r.size;
-    let beside = |g: &&Glyph| (g.y - base).abs() < 0.6 * r.size && !g.text.trim().is_empty();
-    r.room_left = page.glyphs.iter().filter(beside).filter(|g| g.end <= r.x0).map(|g| r.x0 - g.end).fold(r.room_left, f64::min);
-    r.room_right = page.glyphs.iter().filter(beside).filter(|g| g.x >= r.x1).map(|g| g.x - r.x1).fold(r.room_right, f64::min);
+    if r.room_left > 0. || r.room_right > 0. {
+        let base = r.y1 - 0.3 * r.size;
+        let beside = |g: &&Glyph| (g.y - base).abs() < 0.6 * r.size && !g.text.trim().is_empty();
+        r.room_left = page.glyphs.iter().filter(beside).filter(|g| g.end <= r.x0).map(|g| r.x0 - g.end).fold(r.room_left, f64::min);
+        r.room_right = page.glyphs.iter().filter(beside).filter(|g| g.x >= r.x1).map(|g| g.x - r.x1).fold(r.room_right, f64::min);
+    }
 }
 
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
