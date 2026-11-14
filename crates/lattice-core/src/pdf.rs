@@ -1540,11 +1540,12 @@ pub(crate) mod tests {
 
     #[test]
     fn a_footer_naming_the_section_on_every_second_page_is_dropped_by_the_page_number_it_starts_with() {
-        let footers = ["197 | Leaders and Followers", "198", "199 | Multi-Leader Replication", "200"];
-        let pages: Vec<Vec<Run>> = footers.iter().map(|f| vec![SPREAD[0], SPREAD[1], (L, 760., 9., *f)]).collect();
+        // A chapter opens on a page with no footer, so fewer than half of its pages carry one.
+        let footers = [None, Some("197 | Leaders and Followers"), Some("198"), Some("199 | Multi-Leader Replication"), Some("200")];
+        let pages: Vec<Vec<Run>> = footers.into_iter().map(|f| SPREAD.into_iter().chain(f.map(|f| (L, 760., 9., f))).collect()).collect();
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
-        assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 4].join(" ").as_str())], "half the pages carry it, more than a third");
+        assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 5].join(" ").as_str())], "two pages of five carry it, more than a third");
     }
 
     #[test]
