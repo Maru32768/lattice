@@ -1001,6 +1001,8 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
         }
         let cur = drafts.last().map(|d| (d.kind, *d.lines.last().expect("a draft has a line"), d.lines[0]));
         let flows = cur.is_some_and(|(_, prev, _)| flows(prev, l, pitch));
+        // "… as illustrated in" / "Figure 2-6. Even if …": a sentence broken before a reference, not a caption.
+        let wrapped = flows && cur.is_some_and(|(_, prev, _)| prev.x1 >= prev.right - 2. * prev.size && prev.text.ends_with(char::is_alphanumeric));
         let start = match (refs, cur) {
             (Some(style), _) => match style {
                 RefStyle::Numbered => ref_number(&l.text),
@@ -1008,7 +1010,7 @@ fn drafts(lines: &[Line], body: f64) -> Vec<Draft<'_>> {
                 RefStyle::Spaced => cur.is_none_or(|(_, prev, _)| prev.page == l.page && prev.side == l.side && !flows),
             }
             .then_some(Kind::Reference),
-            _ if is_caption(&l.text) => Some(Kind::Caption),
+            _ if caption_label(&l.text).is_some() && !wrapped => Some(Kind::Caption),
             _ if is_bullet(&l.text) => Some(Kind::Item),
             _ => None,
         };
@@ -1271,14 +1273,20 @@ fn ref_number(t: &str) -> bool {
     }
 }
 
-/// "Figure 3:", "Fig. 2.", "Table 1:" open a caption.
-fn is_caption(t: &str) -> bool {
-    let Some(rest) = ["Figure", "Fig.", "Table", "Algorithm"].iter().find_map(|p| t.strip_prefix(p)) else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let n = rest.chars().take_while(|c| c.is_ascii_digit() || matches!(c, 'I' | 'V' | 'X')).count();
-    n > 0 && rest[n..].starts_with(['.', ':'])
+/// "Figure 3:", "Fig. 2.", "Table IV:", "Figure 2.1:" and a book's "Figure 6-13." open a caption, labelled by what comes
+/// before the stop: "Figure 6-13".
+fn caption_label(t: &str) -> Option<&str> {
+    let rest = ["Figure", "Fig.", "Table", "Algorithm"].iter().find_map(|p| t.strip_prefix(p))?.trim_start();
+    let mut n = rest.chars().take_while(|c| c.is_ascii_digit() || matches!(c, 'I' | 'V' | 'X')).count();
+    if n == 0 {
+        return None;
+    }
+    while let [b'-' | b'.', d, ..] = rest.as_bytes()[n..]
+        && d.is_ascii_digit()
+    {
+        n += 1 + rest[n + 1..].chars().take_while(char::is_ascii_digit).count();
+    }
+    rest[n..].starts_with(['.', ':']).then(|| &t[..t.len() - rest.len() + n])
 }
 
 fn is_bullet(t: &str) -> bool {
@@ -2013,6 +2021,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_caption_numbered_within_its_chapter_is_a_caption() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "Quorum reads and writes keep the replicas in step as long as the sum is large,"),
+            (L, 112., 10., "and a read then sees at least one node with the latest value, as is illustrated in"),
+            (L, 124., 10., "Figure 6-12. A write that reaches only a few of the nodes is not lost either."),
+            (L, 154., 9., "Figure 6-13. If w + r > n, reads see the latest write."),
+            (L, 184., 10., "Figure 3 shows that a majority is not the only choice of quorum."),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "caption", "paragraph"], "a sentence wrapped before a reference");
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
@@ -2022,7 +2043,8 @@ pub(crate) mod tests {
         assert_eq!(section_number("IV."), Some(1));
         assert_eq!(section_number("2018"), None);
         assert!(ref_number("[12] X") && ref_number("3. Y") && !ref_number("2018. Z"));
-        assert!(is_caption("Fig. 2. A") && is_caption("Table IV: B") && !is_caption("Table 1 shows"));
+        let labels = ["Fig. 2. A", "Table IV: B", "Figure 2.1: C", "Figure 6-13. If w", "Figure 3.", "Table 1 shows", "Figure 3 shows", "Figure 1.5 shows"];
+        assert_eq!(labels.map(caption_label), [Some("Fig. 2"), Some("Table IV"), Some("Figure 2.1"), Some("Figure 6-13"), Some("Figure 3"), None, None, None]);
         assert_eq!(pdf_date("D:2019"), None);
     }
 
