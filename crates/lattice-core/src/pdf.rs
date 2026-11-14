@@ -1727,7 +1727,7 @@ pub(crate) mod tests {
     #[test]
     fn a_single_line_has_the_rest_of_its_line_as_room() {
         let page: Vec<Run> = vec![
-            (200., 80., 12., "Regions and Zones"),
+            (200., 80., 12., "Regions and Zones "),
             (L, 100., 10., "A paragraph under the heading runs across the whole of the column and ends."),
             (L, 112., 10., "It has a second line too."),
             (400., 150., 10., "(1)"),
@@ -1736,7 +1736,11 @@ pub(crate) mod tests {
         let r = regions(&pdf(&[page], None)).unwrap();
         let at = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}"));
         let (heading, paragraph, labelled) = (at("Regions"), at("A paragraph"), at("A line"));
-        assert_eq!((heading.x0 - heading.room_left, heading.x1 + heading.room_right), (paragraph.x0, paragraph.x1), "out to the column's edges");
+        assert_eq!(
+            (heading.x0 - heading.room_left, heading.x1 + heading.room_right),
+            (paragraph.x0, paragraph.x1),
+            "out to the column's edges, past the space it ends with"
+        );
         assert_eq!((paragraph.room_left, paragraph.room_right), (0., 0.), "lines above and below would be covered");
         assert_eq!((labelled.room_left, labelled.x1 + labelled.room_right), (0., 400.), "up to what is printed beside it");
     }
