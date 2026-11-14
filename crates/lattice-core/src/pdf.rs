@@ -489,8 +489,14 @@ struct Glyphs {
     faces: Vec<Vec<Face>>,
     shown: usize,
     /// Where each text has been drawn on the current page.
-    drawn: HashMap<String, Vec<(f64, f64)>>,
+    drawn: HashMap<String, Spots>,
 }
+
+/// Glyphs closer than this on both axes are drawn in the same place.
+const SAME_SPOT: f64 = 0.05;
+
+/// The places a text was drawn, by the `SAME_SPOT` square each lies in.
+type Spots = HashMap<(i64, i64), (f64, f64)>;
 
 impl OutputDev for Glyphs {
     fn begin_page(&mut self, _: u32, b: &MediaBox, _: Option<(f64, f64, f64, f64)>) -> Result<(), OutputError> {
@@ -523,11 +529,15 @@ impl OutputDev for Glyphs {
         let x = trm.m31 - self.origin.0;
         // A glyph drawn again where it already is adds no ink: a book draws an item's bullet once for each of the
         // item's lines, and the pen's return to it would start a line. The repeats lie within 0.01pt of each other.
+        // Looked up by square, not by scanning: a page can draw one glyph a million times.
         let places = self.drawn.entry(text.to_string()).or_default();
-        if places.iter().any(|&(px, py)| (px - x).abs() < 0.05 && (py - trm.m32).abs() < 0.05) {
+        let square = |v: f64| (v / SAME_SPOT).floor() as i64;
+        let (sx, sy) = (square(x), square(trm.m32));
+        let near = |&(px, py): &(f64, f64)| (px - x).abs() < SAME_SPOT && (py - trm.m32).abs() < SAME_SPOT;
+        if (-1..=1).any(|i| (-1..=1).any(|j| places.get(&(sx.saturating_add(i), sy.saturating_add(j))).is_some_and(near))) {
             return Ok(());
         }
-        places.push((x, trm.m32));
+        places.entry((sx, sy)).or_insert((x, trm.m32));
         let face = self.faces.get(index).and_then(|f| f.get(self.shown.wrapping_sub(1))).copied().unwrap_or_default();
         page.glyphs.push(Glyph { x, y: page.height - (trm.m32 - self.origin.1), end: x + width * size, size, text: text.to_string(), face });
         Ok(())
