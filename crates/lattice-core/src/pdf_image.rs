@@ -130,15 +130,13 @@ fn inflate(data: &[u8], size: usize) -> Option<Vec<u8>> {
 
 /// Signature, IHDR (8 bits, gray or RGB), IDAT, IEND.
 fn png(width: u32, height: u32, channels: u8, idat: &[u8]) -> Vec<u8> {
-    let mut ihdr = [0; 13];
-    ihdr[..4].copy_from_slice(&width.to_be_bytes());
-    ihdr[4..8].copy_from_slice(&height.to_be_bytes());
-    ihdr[8] = 8;
-    ihdr[9] = if channels == 1 {
+    let colour = if channels == 1 {
         0
     } else {
         2
     };
+    // Bit depth, colour type, then compression, filter and interlace methods 0.
+    let ihdr = [&width.to_be_bytes()[..], &height.to_be_bytes(), &[8, colour, 0, 0, 0]].concat();
     let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
     for (kind, data) in [(b"IHDR", &ihdr[..]), (b"IDAT", idat), (b"IEND", &[])] {
         let mut crc = flate2::Crc::new();
