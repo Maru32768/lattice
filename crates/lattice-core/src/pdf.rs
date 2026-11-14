@@ -97,6 +97,10 @@ pub struct Region {
     /// has the margin beyond it. A sentence moved here from another page needs more than the box holds.
     pub room_up: f64,
     pub room_down: f64,
+    /// How far a single line may run to its sides, in points: to the edges of its column, or to what else is
+    /// printed on the line. The viewer widens it before it goes up or down, where a frame may be drawn.
+    pub room_left: f64,
+    pub room_right: f64,
     /// The top left of the page's MediaBox in the PDF's own coordinates, which `x0`.. are measured from.
     /// The viewer's page is the CropBox, possibly turned, so it places a box by these.
     pub left: f64,
@@ -202,6 +206,11 @@ fn give_room(r: &mut Region, page: &Page, top: f64, bottom: f64) {
         let below = page.glyphs.iter().filter(across).filter(|g| g.y > r.y1).map(|g| g.y - g.size);
         r.room_down = (below.fold((1. - PAGE_EDGE) * page.height, f64::min) - r.y1).max(0.);
     }
+    // Only a single line has room at its sides (`region`), so the box's bottom gives its baseline.
+    let base = r.y1 - 0.3 * r.size;
+    let beside = |g: &&Glyph| (g.y - base).abs() < 0.6 * r.size && !g.text.trim().is_empty();
+    r.room_left = page.glyphs.iter().filter(beside).filter(|g| g.end <= r.x0).map(|g| r.x0 - g.end).fold(r.room_left, f64::min);
+    r.room_right = page.glyphs.iter().filter(beside).filter(|g| g.x >= r.x1).map(|g| g.x - r.x1).fold(r.room_right, f64::min);
 }
 
 /// Figure labels, table cells, axis ticks, code: the page draws them apart and a translation set over
@@ -290,6 +299,10 @@ fn word_break(text: &str, at: usize) -> usize {
 fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Option<Region> {
     let (first, last) = (piece.first()?, piece.last()?);
     let runs = text_runs(collapse(&text).trim());
+    let (room_left, room_right) = match piece {
+        [l] => ((l.x0 - l.left).max(0.), (l.right - l.x1).max(0.)),
+        _ => (0., 0.),
+    };
     Some(Region {
         page: first.page,
         block,
@@ -303,6 +316,8 @@ fn region(piece: &[&Line], text: String, level: Option<u8>, block: usize) -> Opt
         level,
         room_up: 0.,
         room_down: 0.,
+        room_left,
+        room_right,
         left: 0.,
         top: 0.,
     })
@@ -1704,6 +1719,23 @@ pub(crate) mod tests {
         let r = regions(&pdf(&[page(true), page(true), page(true)], None)).unwrap();
         assert!(r.iter().all(|x| !x.text.contains("Running")), "dropped as a header, though still printed");
         assert_eq!(at(&r, 0).0, (r[0].y0 - 53.).round(), "it stops at the header");
+    }
+
+    #[test]
+    fn a_single_line_has_the_rest_of_its_line_as_room() {
+        let page: Vec<Run> = vec![
+            (200., 80., 12., "Regions and Zones"),
+            (L, 100., 10., "A paragraph under the heading runs across the whole of the column and ends."),
+            (L, 112., 10., "It has a second line too."),
+            (400., 150., 10., "(1)"),
+            (L, 150., 10., "A line with a label beside it."),
+        ];
+        let r = regions(&pdf(&[page], None)).unwrap();
+        let at = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}"));
+        let (heading, paragraph, labelled) = (at("Regions"), at("A paragraph"), at("A line"));
+        assert_eq!((heading.x0 - heading.room_left, heading.x1 + heading.room_right), (paragraph.x0, paragraph.x1), "out to the column's edges");
+        assert_eq!((paragraph.room_left, paragraph.room_right), (0., 0.), "lines above and below would be covered");
+        assert_eq!((labelled.room_left, labelled.x1 + labelled.room_right), (0., 400.), "up to what is printed beside it");
     }
 
     #[test]
