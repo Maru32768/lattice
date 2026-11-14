@@ -49,10 +49,10 @@ impl Format {
             [b"FlateDecode"] => true,
             _ => return None,
         };
-        let int = |o: Option<&Object>| o.and_then(|o| o.as_i64().ok());
-        let (width, height) = (u32::try_from(int(get(b"Width"))?).ok()?, u32::try_from(int(get(b"Height"))?).ok()?);
+        let int = |key: &[u8]| get(key)?.as_i64().ok();
+        let (width, height) = (u32::try_from(int(b"Width")?).ok()?, u32::try_from(int(b"Height")?).ok()?);
         let row = u64::from(width) * u64::from(channels);
-        if int(get(b"BitsPerComponent")) != Some(8) || width == 0 || height == 0 || (row + 1) * u64::from(height) > MAX_ROWS_BYTES {
+        if int(b"BitsPerComponent") != Some(8) || width == 0 || height == 0 || (row + 1) * u64::from(height) > MAX_ROWS_BYTES {
             return None;
         }
         let parms = match get(b"DecodeParms") {
@@ -60,7 +60,7 @@ impl Format {
             Some(o) => o.as_dict().ok(),
             None => None,
         };
-        let parm = |key: &[u8], default: i64| parms.map_or(Some(default), |p| p.get(key).ok().map_or(Some(default), |o| o.as_i64().ok()));
+        let parm = |key: &[u8], default: i64| parms.and_then(|p| p.get(key).ok()).map_or(Some(default), |o| o.as_i64().ok());
         let rows = match parm(b"Predictor", 1)? {
             1 => Rows::Plain { flate },
             10..=15
