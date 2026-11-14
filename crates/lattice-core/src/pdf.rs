@@ -799,11 +799,16 @@ fn push_clean(out: &mut String, s: &str) {
 }
 
 /// Drops page numbers and the running headers and footers: lines in the top or bottom margin
-/// that repeat (digits aside) on at least a third of the pages.
+/// that repeat (digits aside) on at least a third of the pages. A footer that names the current
+/// section repeats on few, but its number goes up with the page: those are the lines whose number
+/// is as far from the page's index on at least a third of the pages.
 fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
-    let key = |l: &Line| {
+    let margin = |l: &Line| {
         let h = pages[l.page].height;
-        (l.y < h * 0.08 || l.y > h * 0.92).then(|| {
+        l.y < h * 0.08 || l.y > h * 0.92
+    };
+    let key = |l: &Line| {
+        margin(l).then(|| {
             let mut k = String::new();
             for c in l.text.to_lowercase().chars() {
                 match c {
@@ -821,14 +826,30 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
             seen.entry(k).or_default().insert(l.page);
         }
     }
+    // The number a margin line starts or ends with, less the page's index. A heading starts with its
+    // number too ("2 Related Work"), so at the start it counts only when no word follows it.
+    let folio = |l: &Line| {
+        let mut tokens = l.text.split_whitespace();
+        let (first, second) = (tokens.next()?, tokens.next()?);
+        let number = |t: &str| t.bytes().all(|b| b.is_ascii_digit()).then(|| t.parse::<i64>().ok()).flatten();
+        let start = number(first).filter(|_| !second.starts_with(char::is_alphabetic));
+        let n = start.or_else(|| number(tokens.next_back().unwrap_or(second))).filter(|_| margin(l))?;
+        Some(n - l.page as i64)
+    };
+    let mut numbered: HashMap<i64, HashSet<usize>> = HashMap::new();
+    for l in lines.iter().flatten() {
+        if let Some(offset) = folio(l) {
+            numbered.entry(offset).or_default().insert(l.page);
+        }
+    }
     let n = pages.len();
+    let often = |on: Option<&HashSet<usize>>| on.is_some_and(|p| p.len() >= 2 && p.len() * 3 >= n);
     let running = |k: &str| {
-        let pages = seen.get(k).map_or(0, HashSet::len);
         let number = k.chars().all(|c| c == '#' || !c.is_alphanumeric()) || (k.len() <= 6 && k.chars().all(|c| matches!(c, 'i' | 'v' | 'x')));
-        number || pages >= 2 && pages * 3 >= n
+        number || often(seen.get(k))
     };
     for page in lines.iter_mut() {
-        page.retain(|l| key(l).is_none_or(|k| !running(&k)));
+        page.retain(|l| key(l).is_none_or(|k| !running(&k)) && folio(l).is_none_or(|offset| !often(numbered.get(&offset))));
     }
 }
 
@@ -1497,6 +1518,18 @@ pub(crate) mod tests {
         let ir = to_ir(&pdf(&pages, None), None).unwrap();
         let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
         assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 4].join(" ").as_str())], "the paragraph runs on across each page break");
+    }
+
+    #[test]
+    fn section_headings_at_the_top_of_pages_are_not_page_numbers() {
+        // Numbered in step with the pages, on three of four: only the word after each number tells them from "198 | Chapter 6".
+        let pages: Vec<Vec<Run>> = [None, Some("2 Related Work"), Some("3 Method"), Some("4 Results")]
+            .into_iter()
+            .map(|h| h.map(|h| (L, 50., 12., h)).into_iter().chain(SPREAD).collect())
+            .collect();
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let headings: Vec<&str> = ir.blocks.iter().filter(|b| b.kind == BlockKind::Heading).map(|b| b.text.as_str()).collect();
+        assert_eq!(headings, ["2 Related Work", "3 Method", "4 Results"]);
     }
 
     #[test]
