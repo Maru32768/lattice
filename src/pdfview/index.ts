@@ -355,7 +355,7 @@ function regionEl(r: Region, width: number, height: number) {
   };
   boxes.set(el, box);
   span(el, box.left, box.width);
-  place(el, r.y0 / height, (r.y1 - r.y0) / height);
+  place(el, box.top, box.height);
   el.style.setProperty("--size", String(r.size / width));
   return el;
 }
