@@ -31,6 +31,7 @@ pub mod msg;
 pub mod network;
 pub mod openai;
 pub mod pdf;
+mod pdf_image;
 pub mod quiz;
 pub mod r2;
 pub mod relevance;

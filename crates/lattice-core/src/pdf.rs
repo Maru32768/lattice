@@ -16,6 +16,7 @@ use crate::extract::collapse;
 use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
+use crate::pdf_image::Format;
 use crate::store::{NewSnapshot, Store, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
@@ -485,6 +486,7 @@ struct Page {
     left: f64,
     top: f64,
     glyphs: Vec<Glyph>,
+    /// The images in a `Format` the Reader shows.
     drawn: Vec<Drawn>,
 }
 
@@ -523,6 +525,9 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     if doc.is_encrypted() {
         doc.decrypt("").map_err(|e| fail(&e))?;
     }
+    // Before the blanking below takes their filters.
+    let showable: HashSet<ObjectId> =
+        doc.objects.iter().filter(|(_, o)| matches!(o, Object::Stream(s) if is_image(s) && Format::of(&doc, &s.dict).is_some())).map(|(&id, _)| id).collect();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
@@ -536,7 +541,11 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| fail(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
-        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
+        page.drawn = drawn
+            .into_iter()
+            .filter(|d| showable.contains(&d.id))
+            .map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d })
+            .collect();
     }
     Ok((doc, out.pages))
 }
@@ -2229,17 +2238,21 @@ pub(crate) mod tests {
         let text = |t| vec![(L, 100., 10., t)];
         let pages = [text("The first page has a note icon and a logo."), text("The second page is scanned."), text("The third page has a figure.")];
         let mut bytes = pdf(&pages, None);
+        let mut masked = rgb(4, 4, [0, 0, 0]);
+        masked.dict.set("SMask", Object::Reference((1, 0)));
         for (image, at) in [
             (rgb(4, 4, [0, 0, 0]), vec![(0, L, 120., 38., 50.)]),
             (rgb(4, 4, [0, 0, 0]), (0..3).map(|p| (p, L, 600., 300., 40.)).collect()),
             (rgb(4, 4, [0, 0, 0]), vec![(1, 0., 0., 612., 792.)]),
             (rgb(4, 4, [9, 9, 9]), vec![(2, L, 200., 300., 100.), (2, L, 200., 300., 100.)]),
+            (masked, vec![(2, L, 350., 300., 100.)]),
+            (image(4, 4, "DeviceCMYK", vec![0; 64]), vec![(2, L, 500., 300., 100.)]),
         ] {
             bytes = draw(&bytes, image, &at);
         }
         let ir = to_ir(&bytes, None).unwrap();
         let kinds: Vec<&str> = ir.blocks.iter().map(|b| b.kind.as_str()).collect();
-        assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "drawn twice in one place, still one figure: {kinds:?}");
+        assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "neither masked nor CMYK, and drawn twice still one: {kinds:?}");
         assert_eq!(kinds.last(), Some(&"image"), "the third page's figure, under all of the text: {kinds:?}");
     }
 
