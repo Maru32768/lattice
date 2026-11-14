@@ -1162,7 +1162,7 @@ const NAMED_SECTIONS: &[&str] = &[
 fn heading_level(l: &Line, body: f64) -> Option<u8> {
     let t = l.text.as_str();
     let words = t.split_whitespace().count();
-    let big = l.size >= body * 1.15 && words <= 10 && l.x1 < l.right - 3. * l.size && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
+    let big = l.size >= body * 1.1 && words <= 10 && l.x1 < l.right - 3. * l.size && t.chars().filter(|c| c.is_alphabetic()).count() >= 3;
     section_level(l, body).or((big && !t.ends_with([',', '.']) && t.chars().next().is_some_and(|c| !c.is_lowercase())).then_some(2))
 }
 
