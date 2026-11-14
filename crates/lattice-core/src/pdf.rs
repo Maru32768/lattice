@@ -1612,8 +1612,11 @@ pub(crate) mod tests {
                 ("paragraph", "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
             ]
         );
-        let texts: Vec<String> = regions(&bytes).unwrap().into_iter().map(|r| r.text).collect();
-        assert!(texts.iter().any(|t| t.ends_with("reduce the latency)")), "the item's second line is translated with it: {texts:?}");
+        let r = regions(&bytes).unwrap();
+        let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
+        let item = r.iter().find(|x| x.text.ends_with("reduce the latency)"));
+        let item = item.unwrap_or_else(|| panic!("the item's second line is translated with it: {texts:?}"));
+        assert_eq!((item.room_left, item.room_right), (0., 0.), "an item of two lines gets no room beside it");
     }
 
     /// Glyphs as a line would have them, one per character, with `|` starting and ending a stretch in `face`.
