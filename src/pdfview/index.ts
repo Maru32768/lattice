@@ -9,6 +9,7 @@ import { GlobalWorkerOptions, getDocument, TextLayer, type PDFDocumentProxy, typ
 import { bookmarkTree, headingTree, topOf, webLink, type Entry, type Target } from "./outline.ts";
 import { pageAction } from "./pageAction.ts";
 import { onViewport } from "./regionBox.ts";
+import { widen } from "./widen.ts";
 import type { OverlayLabels } from "../api.ts";
 
 GlobalWorkerOptions.workerSrc = "/assets/pdf.worker.js";
@@ -30,6 +31,9 @@ interface Region {
   /** How far a translation may run past the box: the margin, at the edge of the page's text. */
   room_up: number;
   room_down: number;
+  /** How far a single line may run to its sides: to its column's edges, or to what else is on the line. */
+  room_left: number;
+  room_right: number;
   /** The top left of the page's MediaBox in the PDF's own coordinates, which the box is measured from. */
   left: number;
   top: number;
@@ -246,15 +250,42 @@ async function addOutline(doc: PDFDocumentProxy, regions: Region[], labels: Labe
 
 // ---- pages --------------------------------------------------------------------------------------
 
-/** Each region's box as a share of its page's height, and the room beyond it. */
-const boxes = new WeakMap<HTMLElement, { top: number; height: number; up: number; down: number }>();
+/** Each region's box as a share of its page's height and width, and the room beyond it. */
+const boxes = new WeakMap<
+  HTMLElement,
+  { top: number; height: number; up: number; down: number; left: number; width: number; roomLeft: number; roomRight: number }
+>();
 
 function place(el: HTMLElement, top: number, height: number) {
   el.style.top = `${top * 100}%`;
   el.style.height = `${height * 100}%`;
 }
 
-/** Sets the box and the text's size so the text shows whole: into the margin if there is room, then smaller. */
+function span(el: HTMLElement, left: number, width: number) {
+  el.style.left = `${left * 100}%`;
+  el.style.width = `${width * 100}%`;
+}
+
+/** A translated region's white shadow is 2px wide: a widened box stops this many px short of its column's edge, where a frame's line may be drawn. */
+const FRAME_GAP = 3;
+
+/** A single line too long for its box takes the rest of its line first: above and below it a frame may be drawn, which the layout does not see. */
+function widenLine(el: HTMLElement, box: { left: number; width: number; roomLeft: number; roomRight: number }) {
+  span(el, box.left, box.width);
+  const page = el.parentElement?.clientWidth;
+  if (!page || !(box.roomLeft || box.roomRight)) {
+    return;
+  }
+  el.style.whiteSpace = "nowrap";
+  // scrollWidth is rounded: a pixel more keeps the last character on the line.
+  const need = el.scrollWidth > el.clientWidth ? el.scrollWidth - el.clientWidth + 1 : 0;
+  el.style.whiteSpace = "";
+  const room = (share: number) => Math.max(0, share * page - FRAME_GAP);
+  const grow = widen(need, room(box.roomLeft), room(box.roomRight));
+  span(el, box.left - grow.left / page, box.width + (grow.left + grow.right) / page);
+}
+
+/** Sets the box and the text's size so the text shows whole: along its line or into the margin if there is room, then smaller. */
 function fit(el: HTMLElement) {
   const apply = ({ scale, leading }: (typeof FIT_STEPS)[number]) => {
     el.style.setProperty("--fit", String(scale));
@@ -264,6 +295,7 @@ function fit(el: HTMLElement) {
   const box = boxes.get(el);
   if (box) {
     place(el, box.top, box.height);
+    widenLine(el, box);
     const over = (el.scrollHeight - el.clientHeight) / (el.parentElement?.clientHeight || 1);
     if (over > 0) {
       const up = Math.min(over, box.up);
@@ -313,11 +345,18 @@ function regionEl(r: Region, width: number, height: number) {
     el.role = "heading";
     el.ariaLevel = String(r.level);
   }
-  boxes.set(el, { top: r.y0 / height, height: (r.y1 - r.y0) / height, up: r.room_up / height, down: r.room_down / height });
-  Object.assign(el.style, {
-    left: percent(r.x0, width),
-    width: percent(r.x1 - r.x0, width),
-  });
+  const box = {
+    top: r.y0 / height,
+    height: (r.y1 - r.y0) / height,
+    up: r.room_up / height,
+    down: r.room_down / height,
+    left: r.x0 / width,
+    width: (r.x1 - r.x0) / width,
+    roomLeft: r.room_left / width,
+    roomRight: r.room_right / width,
+  };
+  boxes.set(el, box);
+  span(el, box.left, box.width);
   place(el, r.y0 / height, (r.y1 - r.y0) / height);
   el.style.setProperty("--size", String(r.size / width));
   return el;
