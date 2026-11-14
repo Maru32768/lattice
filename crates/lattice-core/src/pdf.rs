@@ -395,16 +395,6 @@ impl Face {
     }
 }
 
-/// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images.
-#[derive(Default)]
-struct Walk {
-    /// The face of each string, in the order pdf-extract shows them: it calls `begin_word` once per string, so these
-    /// line up with what it reports.
-    faces: Vec<Face>,
-    /// The images, in the PDF's own coordinates.
-    drawn: Vec<Drawn>,
-}
-
 /// An image drawn on a page: the unit square through the CTM, in points from the page's top left like a `Glyph`.
 struct Drawn {
     id: ObjectId,
@@ -414,10 +404,13 @@ struct Drawn {
     y1: f64,
 }
 
-/// Images inside forms, and inline images, are not followed.
-fn walk(doc: &Document, page: ObjectId) -> Walk {
+/// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
+/// face of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
+/// calls `begin_word` once per string, so the faces line up with what it reports. Images inside forms, and inline
+/// images, are not followed.
+fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
-        return Walk::default();
+        return (Vec::new(), Vec::new());
     };
     let fonts = doc.get_page_fonts(page).unwrap_or_default();
     let face_named = |name: &[u8]| {
@@ -425,7 +418,7 @@ fn walk(doc: &Document, page: ObjectId) -> Walk {
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
     let images = page_images(doc, page);
-    let (mut face, mut ctm, mut saved, mut out) = (Face::Body, Transform::identity(), Vec::new(), Walk::default());
+    let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     for op in &content.operations {
         match op.operator.as_str() {
             "q" => saved.push((face, ctm)),
@@ -441,7 +434,7 @@ fn walk(doc: &Document, page: ObjectId) -> Walk {
                         [(0., 0.), (1., 0.), (0., 1.), (1., 1.)].map(|(x, y)| (x * ctm.m11 + y * ctm.m21 + ctm.m31, x * ctm.m12 + y * ctm.m22 + ctm.m32));
                     let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
                     let (lo, hi) = (|v: [f64; 4]| v.into_iter().fold(f64::MAX, f64::min), |v: [f64; 4]| v.into_iter().fold(f64::MIN, f64::max));
-                    out.drawn.push(Drawn { id, x0: lo(xs), y0: lo(ys), x1: hi(xs), y1: hi(ys) });
+                    drawn.push(Drawn { id, x0: lo(xs), y0: lo(ys), x1: hi(xs), y1: hi(ys) });
                 }
             }
             "Tf" => {
@@ -449,16 +442,16 @@ fn walk(doc: &Document, page: ObjectId) -> Walk {
                     face = face_named(name);
                 }
             }
-            "Tj" => out.faces.push(face),
+            "Tj" => faces.push(face),
             "TJ" => {
                 if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
-                    out.faces.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
+                    faces.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
                 }
             }
             _ => {}
         }
     }
-    out
+    (faces, drawn)
 }
 
 /// The image XObjects a page's resources name, looked up as `get_page_fonts` looks up its fonts, that are in a `Format`
@@ -529,7 +522,7 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
     // Before the blanking below takes the images' filters, which `Format::of` reads.
-    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).map(|w| (w.faces, w.drawn)).unzip();
+    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
