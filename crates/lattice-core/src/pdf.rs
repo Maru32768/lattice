@@ -461,7 +461,8 @@ fn walk(doc: &Document, page: ObjectId) -> Walk {
     out
 }
 
-/// The image XObjects a page's resources name, looked up as `get_page_fonts` looks up its fonts.
+/// The image XObjects a page's resources name, looked up as `get_page_fonts` looks up its fonts, that are in a `Format`
+/// the Reader shows.
 fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
     let (own, inherited) = doc.get_page_resources(page).unwrap_or_default();
     let mut out = HashMap::new();
@@ -471,7 +472,7 @@ fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
         };
         for (name, o) in xobjects.iter() {
             if let Ok(id) = o.as_reference()
-                && doc.get_object(id).and_then(Object::as_stream).is_ok_and(is_image)
+                && doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some())
             {
                 out.entry(name.clone()).or_insert(id);
             }
@@ -527,9 +528,8 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
-    // Before the blanking below takes their filters.
-    let showable: HashSet<ObjectId> =
-        doc.objects.iter().filter(|(_, o)| matches!(o, Object::Stream(s) if is_image(s) && Format::of(&doc, &s.dict).is_some())).map(|(&id, _)| id).collect();
+    // Before the blanking below takes the images' filters, which `Format::of` reads.
+    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).map(|w| (w.faces, w.drawn)).unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
@@ -539,15 +539,10 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             s.set_plain_content(Vec::new());
         }
     }
-    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).map(|w| (w.faces, w.drawn)).unzip();
     let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
-        page.drawn = drawn
-            .into_iter()
-            .filter(|d| showable.contains(&d.id))
-            .map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d })
-            .collect();
+        page.drawn = drawn.into_iter().map(|d| Drawn { x0: d.x0 - page.left, y0: page.top - d.y1, x1: d.x1 - page.left, y1: page.top - d.y0, ..d }).collect();
     }
     Ok((doc, out.pages))
 }
