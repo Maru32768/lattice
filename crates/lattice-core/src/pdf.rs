@@ -1485,6 +1485,20 @@ pub(crate) mod tests {
         assert_eq!(at("figure before").page, 2);
     }
 
+    const SPREAD: [Run; 2] = [
+        (L, 100., 10., "the leader sends every write to all of the replicas and then waits"),
+        (L, 112., 10., "until a majority of them has answered with the same stored value and"),
+    ];
+
+    #[test]
+    fn a_footer_naming_the_section_is_dropped_by_the_page_number_it_ends_with() {
+        let footers = ["Leaders and Followers | 197", "Replication Lag | 198", "Multi-Leader Replication | 199", "Summary | 200"];
+        let pages: Vec<Vec<Run>> = footers.iter().map(|f| vec![SPREAD[0], SPREAD[1], (330., 760., 9., *f)]).collect();
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let whole = [SPREAD[0].3, SPREAD[1].3].join(" ");
+        assert_eq!(kinds(&ir), [("paragraph", [whole.as_str(); 4].join(" ").as_str())], "the paragraph runs on across each page break");
+    }
+
     #[test]
     fn a_list_marker_drawn_again_for_each_line_of_its_item_is_read_once() {
         // The book places the repeats a few thousandths of a point apart.
