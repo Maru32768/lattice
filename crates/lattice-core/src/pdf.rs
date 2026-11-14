@@ -1564,6 +1564,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_line_set_a_little_larger_than_the_body_is_not_a_heading() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10.5, "A long line of body text that runs across the whole of the column and on to its end,"),
+            (L, 112.6, 10.5, "with a second line that is nearly as long as the first one and then comes to a stop."),
+            (L, 138., 10.9, "Logical (row-based) log replication"),
+            (L, 155., 10.5, "Another way is to use different log formats for replication and for the storage engine,"),
+            (L, 167.6, 10.5, "which allows the log to be decoupled from the internals of the storage engine."),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert!(kinds(&ir).iter().all(|k| k.0 != "heading"), "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn section_headings_at_the_top_of_pages_are_not_page_numbers() {
         // Numbered in step with the pages, on three of four: only the word after each number tells them from "198 | Chapter 6".
         let pages: Vec<Vec<Run>> = [None, Some("2 Related Work"), Some("3 Method"), Some("4 Results")]
