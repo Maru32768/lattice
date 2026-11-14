@@ -835,24 +835,25 @@ fn drop_running_lines(lines: &mut [Vec<Line>], pages: &[Page]) {
             k
         })
     };
+    // The number a margin line starts or ends with, less the page's index. A heading starts with its
+    // number too ("2 Related Work"), so at the start it counts only when no word follows it.
+    let folio = |l: &Line| {
+        if !margin(l) {
+            return None;
+        }
+        let mut tokens = l.text.split_whitespace();
+        let (first, second) = (tokens.next()?, tokens.next()?);
+        let number = |t: &str| t.parse::<i64>().ok().filter(|_| t.bytes().all(|b| b.is_ascii_digit()));
+        let start = number(first).filter(|_| !second.starts_with(char::is_alphabetic));
+        let n = start.or_else(|| number(tokens.next_back().unwrap_or(second)))?;
+        Some(n - l.page as i64)
+    };
     let mut seen: HashMap<String, HashSet<usize>> = HashMap::new();
+    let mut numbered: HashMap<i64, HashSet<usize>> = HashMap::new();
     for l in lines.iter().flatten() {
         if let Some(k) = key(l) {
             seen.entry(k).or_default().insert(l.page);
         }
-    }
-    // The number a margin line starts or ends with, less the page's index. A heading starts with its
-    // number too ("2 Related Work"), so at the start it counts only when no word follows it.
-    let folio = |l: &Line| {
-        let mut tokens = l.text.split_whitespace();
-        let (first, second) = (tokens.next()?, tokens.next()?);
-        let number = |t: &str| t.bytes().all(|b| b.is_ascii_digit()).then(|| t.parse::<i64>().ok()).flatten();
-        let start = number(first).filter(|_| !second.starts_with(char::is_alphabetic));
-        let n = start.or_else(|| number(tokens.next_back().unwrap_or(second))).filter(|_| margin(l))?;
-        Some(n - l.page as i64)
-    };
-    let mut numbered: HashMap<i64, HashSet<usize>> = HashMap::new();
-    for l in lines.iter().flatten() {
         if let Some(offset) = folio(l) {
             numbered.entry(offset).or_default().insert(l.page);
         }
