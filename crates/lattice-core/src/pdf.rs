@@ -1732,10 +1732,14 @@ pub(crate) mod tests {
             (L, 112., 10., "It has a second line too."),
             (400., 150., 10., "(1)"),
             (L, 150., 10., "A line with a label beside it."),
+            (110., 180., 10., "Another line, with a label before it."),
+            (L, 180., 10., "(2)"),
         ];
         let r = regions(&pdf(&[page], None)).unwrap();
         let at = |t: &str| r.iter().find(|x| x.text.starts_with(t)).unwrap_or_else(|| panic!("no region for {t}"));
         let (heading, paragraph, labelled) = (at("Regions"), at("A paragraph"), at("A line"));
+        let after = at("Another line");
+        assert_eq!((after.x0 - after.room_left).round(), (L + 12.2).round(), "back to what is printed before it: \"(2)\" is 12.2pt of Helvetica");
         assert_eq!(
             (heading.x0 - heading.room_left, heading.x1 + heading.room_right),
             (paragraph.x0, paragraph.x1),
