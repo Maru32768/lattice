@@ -460,7 +460,7 @@ fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
     let (own, inherited) = doc.get_page_resources(page).unwrap_or_default();
     let mut out = HashMap::new();
     for resources in own.into_iter().chain(inherited.into_iter().filter_map(|id| doc.get_dictionary(id).ok())) {
-        let Some(xobjects) = resources.get(b"XObject").ok().and_then(|o| doc.dereference(o).ok()).and_then(|(_, o)| o.as_dict().ok()) else {
+        let Ok(xobjects) = doc.get_dict_in_dict(resources, b"XObject") else {
             continue;
         };
         for (name, o) in xobjects.iter() {
