@@ -1619,16 +1619,16 @@ pub(crate) mod tests {
 
     #[test]
     fn a_list_marker_drawn_again_for_each_line_of_its_item_is_read_once() {
-        // The book places the repeats a few thousandths of a point apart.
+        // The book places the repeats a few thousandths of a point apart: here across the edges of the squares they are looked up by.
         let page: Vec<Run> = vec![
             (L, 100., 10., "There are several reasons to copy the same data to many machines, including:"),
-            (80., 120., 10., "•"),
+            (79.995, 120.005, 10., "•"),
             (90., 120., 10., "To keep the data close to the people who use it (and so reduce the"),
             (80.005, 120., 10., "•"),
             (90., 132., 10., "latency)"),
             (80., 150., 10., "•"),
             (90., 150., 10., "To serve more reads."),
-            (79.995, 150., 10., "•"),
+            (79.995, 150.005, 10., "•"),
             (L, 170., 10., "In this chapter each machine holds a copy of all of the data, and that is assumed below."),
         ];
         let bytes = pdf(&[page], None);
