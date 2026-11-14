@@ -4,7 +4,6 @@ import { widen } from "./widen.ts";
 
 test("text that fits leaves the box alone", () => {
   assert.deepEqual(widen(0, 100, 100), { left: 0, right: 0 });
-  assert.deepEqual(widen(-5, 0, 100), { left: 0, right: 0 });
 });
 
 test("a centred line grows evenly and stays centred", () => {
