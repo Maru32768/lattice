@@ -123,7 +123,7 @@ fn channels(doc: &Document, space: &Object) -> Option<u8> {
 
 /// Inflated no further than a byte past `size`: the dictionary, not the stream, says how large the image is.
 fn inflate(data: &[u8], size: usize) -> Option<Vec<u8>> {
-    let mut out = Vec::with_capacity(size + 1);
+    let mut out = Vec::new();
     ZlibDecoder::new(data).take(size as u64 + 1).read_to_end(&mut out).ok()?;
     Some(out)
 }
