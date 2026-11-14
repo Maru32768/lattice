@@ -72,7 +72,7 @@ fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
 pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
-    let blocks = to_blocks(&lines, body, &figures(&doc), &sha256_hex(bytes)[..16]);
+    let blocks = to_blocks(&lines, body, &figures(&doc), &figure_prefix(bytes));
     let Some(first) = blocks.iter().find(|b| b.kind != BlockKind::Image) else {
         return Err(msg!("pdf.noText"));
     };
@@ -1055,9 +1055,9 @@ struct Draft<'a> {
     lines: Vec<&'a Line>,
 }
 
-/// The drafts' blocks with the figures' among them, each before the draft `place` puts it at, in drawing order. `pdf` names
-/// the file in their `src`.
-fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], pdf: &str) -> Vec<Block> {
+/// The drafts' blocks with the figures' among them, each before the draft `place` puts it at, in drawing order. Their
+/// `src` starts with `prefix`.
+fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
     let drafts = drafts(lines, body);
     let mut placed: Vec<(usize, Block)> = figures
@@ -1065,7 +1065,7 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], pdf: &str) 
         .map(|&(page, f)| {
             let at = place(&drafts, page, f);
             let label = drafts.get(at).filter(|d| d.kind == Kind::Caption).and_then(|d| caption_label(&d.lines[0].text));
-            let src = format!("{FIGURE_SRC}{pdf}/{}.{}", f.id.0, f.id.1);
+            let src = format!("{prefix}{}.{}", f.id.0, f.id.1);
             let attrs = BlockAttrs { src: Some(src), ..Default::default() };
             (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
         })
@@ -1089,25 +1089,29 @@ pub(crate) fn is_figure(src: &str) -> bool {
     src.starts_with(FIGURE_SRC)
 }
 
+/// What the `src` of every figure in `pdf` starts with.
+fn figure_prefix(pdf: &[u8]) -> String {
+    format!("{FIGURE_SRC}{}/", &sha256_hex(pdf)[..16])
+}
+
 /// An article's stored PDF, read once for a run of the image job, which asks it for each figure.
 pub(crate) struct Figures {
     doc: Option<Document>,
-    /// What the `src` of each of its figures names it by.
-    pdf: String,
+    /// `figure_prefix` of the PDF.
+    prefix: String,
 }
 
 impl Figures {
     pub(crate) fn parse(pdf: &[u8]) -> Figures {
         let doc = std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten();
-        Figures { doc, pdf: sha256_hex(pdf)[..16].to_string() }
+        Figures { doc, prefix: figure_prefix(pdf) }
     }
 
     /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
     /// the data does not hold the image its dictionary describes.
     pub(crate) fn image(&self, src: &str) -> Option<(&'static str, Vec<u8>)> {
-        let (pdf, id) = src.strip_prefix(FIGURE_SRC)?.split_once('/')?;
-        let (number, generation) = id.split_once('.')?;
-        let doc = self.doc.as_ref().filter(|_| pdf == self.pdf)?;
+        let (number, generation) = src.strip_prefix(self.prefix.as_str())?.split_once('.')?;
+        let doc = self.doc.as_ref()?;
         let id = (number.parse().ok()?, generation.parse().ok()?);
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let image = doc.get_object(id).ok()?.as_stream().ok()?;
