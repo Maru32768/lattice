@@ -1599,6 +1599,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_margin_line_whose_number_follows_the_page_on_fewer_than_a_third_of_them_is_kept() {
+        let notes = [Some("1 The timings of the first run are in Table 1"), Some("2 Those of the second run are in Table 2")];
+        let pages: Vec<Vec<Run>> = (0..7).map(|i| SPREAD.into_iter().chain(notes.get(i).copied().flatten().map(|n| (L, 760., 8., n))).collect()).collect();
+        let ir = to_ir(&pdf(&pages, None), None).unwrap();
+        let text = ir.blocks.iter().map(|b| b.text.as_str()).collect::<Vec<_>>().join(" ");
+        assert!(text.contains("are in Table 1") && text.contains("are in Table 2"), "two pages of seven are not a third: {text}");
+    }
+
+    #[test]
     fn a_list_marker_drawn_again_for_each_line_of_its_item_is_read_once() {
         // The book places the repeats a few thousandths of a point apart.
         let page: Vec<Run> = vec![
