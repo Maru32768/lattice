@@ -1060,7 +1060,7 @@ struct Draft<'a> {
 fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], prefix: &str) -> Vec<Block> {
     let vocab = vocabulary(lines);
     let drafts = drafts(lines, body);
-    let mut placed: Vec<(usize, Block)> = figures
+    let mut out: Vec<(usize, Block)> = figures
         .iter()
         .map(|&(page, f)| {
             let at = place(&drafts, page, f);
@@ -1070,15 +1070,10 @@ fn to_blocks(lines: &[Line], body: f64, figures: &[(usize, &Drawn)], prefix: &st
             (at, Block { kind: BlockKind::Image, text: label.unwrap_or_default().to_string(), inlines: Vec::new(), attrs })
         })
         .collect();
-    placed.sort_by_key(|(at, _)| *at);
-    let mut placed = placed.into_iter().peekable();
-    let mut out = Vec::new();
-    for (i, d) in drafts.into_iter().enumerate() {
-        out.extend(std::iter::from_fn(|| placed.next_if(|(at, _)| *at == i)).map(|(_, b)| b));
-        out.extend(block(d, &vocab));
-    }
-    out.extend(placed.map(|(_, b)| b));
-    out
+    // After the figures: the stable sort keeps each figure before the draft it goes before.
+    out.extend(drafts.into_iter().enumerate().filter_map(|(i, d)| Some((i, block(d, &vocab)?))));
+    out.sort_by_key(|(at, _)| *at);
+    out.into_iter().map(|(_, b)| b).collect()
 }
 
 /// `pdf-figure:<the start of the PDF's sha256>/<object>.<generation>`: re-extracting the same file keeps every `src` and
