@@ -52,7 +52,7 @@ impl Format {
         let int = |key: &[u8]| get(key)?.as_i64().ok();
         let (width, height) = (u32::try_from(int(b"Width")?).ok()?, u32::try_from(int(b"Height")?).ok()?);
         let row = u64::from(width) * u64::from(channels);
-        if int(b"BitsPerComponent") != Some(8) || width == 0 || height == 0 || (row + 1) * u64::from(height) > MAX_ROWS_BYTES {
+        if int(b"BitsPerComponent") != Some(8) || width == 0 || height == 0 || (row + 1).saturating_mul(u64::from(height)) > MAX_ROWS_BYTES {
             return None;
         }
         let parms = match get(b"DecodeParms") {
@@ -296,6 +296,8 @@ mod tests {
             assert_eq!(Format::of(&doc, &rgb(2, 2, &more)), None, "{why}");
         }
         assert_eq!(Format::of(&doc, &rgb(20_000, 20_000, &[])), None, "larger than a figure");
+        // (3w+1)h is 2^64 + 196606: wrapped, it would pass for a small image.
+        assert_eq!(Format::of(&doc, &rgb(1_431_677_610, 4_294_901_762, &[])), None, "a size past u64");
         assert_eq!(Format::of(&doc, &rgb(0, 2, &[])), None);
     }
 }
