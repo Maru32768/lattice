@@ -32,7 +32,7 @@ impl Format {
     // view; add one when a user's PDF needs it (one DDIA chapter's figures are DCT CMYK with an SMask).
     /// How an image with this dictionary becomes a file, or `None` when the Reader cannot show it.
     pub(crate) fn of(doc: &Document, image: &Dictionary) -> Option<Format> {
-        let get = |key: &[u8]| image.get(key).ok().and_then(|o| doc.dereference(o).ok()).map(|(_, o)| o);
+        let get = |key: &[u8]| image.get_deref(key, doc).ok();
         if [&b"SMask"[..], b"Mask", b"ImageMask", b"Decode"].iter().any(|k| image.has(k)) {
             return None;
         }
