@@ -415,9 +415,10 @@ fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
-    let fonts = doc.get_page_fonts(page).unwrap_or_default();
+    let fonts = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
     let face_named = |name: &[u8]| {
-        let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
+        let font = fonts.and_then(|f| f.get_deref(name, doc).and_then(Object::as_dict).ok());
+        let base = font.and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
     let images = page_images(doc, resources);
@@ -2797,6 +2798,22 @@ pub(crate) mod tests {
             doc.save_to(&mut bytes).unwrap();
             assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key}");
         }
+    }
+
+    #[test]
+    fn faces_come_from_fonts_written_into_the_page_tree() {
+        let line: Vec<Run> = vec![(72., 100., 10., "An event"), (120., 100., 10., "/i e"), (130., 100., 10., "happens.")];
+        let mut doc = Document::load_mem(&pdf(&[line], None)).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        let resources = dict.remove(b"Resources").unwrap();
+        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        // Written in place, which lopdf's `get_page_fonts` does not look for up the tree.
+        doc.get_dictionary_mut(parent).unwrap().set("Resources", resources);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
+        assert_eq!(math, ["e"]);
     }
 
     #[test]
