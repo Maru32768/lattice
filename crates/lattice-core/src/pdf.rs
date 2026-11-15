@@ -422,12 +422,12 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
     };
     let images = page_images(doc, page);
     let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
-    let (mut clip, mut path, mut clipping) = (None, NOTHING, false);
+    let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
     for op in &content.operations {
         match op.operator.as_str() {
-            "q" => saved.push((face, ctm, clip)),
-            "Q" => (face, ctm, clip) = saved.pop().unwrap_or((face, ctm, clip)),
+            "q" => saved.push((face, ctm, clip, mode)),
+            "Q" => (face, ctm, clip, mode) = saved.pop().unwrap_or((face, ctm, clip, mode)),
             "cm" => {
                 if let [a, b, c, d, e, f] = numbers(op)[..] {
                     ctm = ctm.pre_transform(&Transform::row_major(a, b, c, d, e, f));
@@ -464,14 +464,23 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
                     face = face_named(name);
                 }
             }
-            "Tj" => faces.push(face),
+            "Tr" => mode = op.operands.first().and_then(|o| o.as_i64().ok()).unwrap_or(0),
+            "Tj" => {
+                faces.push(face);
+                invisible |= mode == 3;
+            }
             "TJ" => {
                 if let Some(Ok(items)) = op.operands.first().map(Object::as_array) {
                     faces.extend(items.iter().filter(|o| matches!(o, Object::String(..))).map(|_| face));
                 }
+                invisible |= mode == 3;
             }
             _ => {}
         }
+    }
+    // Text drawn invisibly is what OCR lays over a scanned page: its images are the page, not figures in it.
+    if invisible {
+        drawn.clear();
     }
     (faces, drawn)
 }
@@ -2497,6 +2506,17 @@ pub(crate) mod tests {
         assert_eq!(kinds(&ir)[1], ("image", "Figure 6-13"), "{:?}", kinds(&ir));
         let outside = "q 400 700 50 50 re W n 300 0 0 100 72 492 cm /Im0 Do Q";
         assert_eq!(image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", outside), None).unwrap()), 0, "clipped away");
+    }
+
+    #[test]
+    fn a_scan_under_invisible_text_is_not_a_figure() {
+        // A page scanned within its margins, its text recognised and drawn over it invisibly, as OCR writes it.
+        let scan = "q 500 0 0 700 56 46 cm /Im0 Do Q";
+        let visible = to_ir(&with_ops(&pdf(&[quorum_text()], None), scan, ""), None).unwrap();
+        assert_eq!(image_count(&visible), 1, "the same image under visible text is a figure, at 72% of the page");
+        let ocr = to_ir(&with_ops(&pdf(&[quorum_text()], None), &format!("{scan} 3 Tr"), ""), None).unwrap();
+        assert_eq!(image_count(&ocr), 0, "{:?}", kinds(&ocr));
+        assert_eq!(ocr.blocks.len(), visible.blocks.len() - 1, "the text still reads");
     }
 
     #[test]
