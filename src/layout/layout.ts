@@ -2,6 +2,7 @@
 // with an ordered tab list and an active tab. One pane is focused: that is where documents open.
 // Every operation is a pure function (Workspace, …) => Workspace.
 import type { Focus } from "../reader/Reader";
+import { isPdfPage } from "../api.ts";
 
 export type Id = number;
 export type Dir = "row" | "column";
@@ -30,7 +31,7 @@ export interface PageTab {
   title: string;
   /** Explicit navigations: bumped so the webview moves even to the URL it already shows. */
   seq: number;
-  /** The page its Reader kept, shown again in its webview without a load, wherever its URL has moved: it goes to where the Reader was. */
+  /** The page its Reader kept, shown again in its webview: when it is not loaded again, it goes to where the Reader was. */
   fromReader?: boolean;
   /** Text of a block to scroll to after load (search-result jumps). */
   focus?: string;
@@ -198,13 +199,14 @@ function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   const own = doc.key && prev?.kind !== "page" ? undefined : kept;
   const key = own?.key ?? doc.key ?? newKey();
   const seq = (own?.seq ?? 0) + 1;
-  // Only that page comes back as it was; another article loads in its webview.
-  const fromReader = prev?.kind === "reader" && own !== undefined && samePage(own, doc);
+  // That page comes back at the URL it had moved on to (a redirect, an anchor), which the webview shows unless the page moved
+  // again while hidden. Another article loads in its webview, as does a PDF's saved original in place of the PDF's own URL.
+  const fromReader = prev?.kind === "reader" && own !== undefined && samePage(own, doc) && isPdfPage(own.url) === isPdfPage(doc.url);
   return {
     kind: "page",
     id,
     key,
-    url: doc.url,
+    url: fromReader ? own.url : doc.url,
     title: doc.title ?? "",
     seq,
     fromReader,

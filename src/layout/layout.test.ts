@@ -111,7 +111,7 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
   assert.equal(theirs.kind === "page" && theirs.fromReader, false, "and it is not the Reader's page");
 });
 
-test("open: the page a Reader kept comes back as it was where its URL moved on; another article loads in its webview", () => {
+test("open: the page a Reader kept comes back at the URL it moved on to; another article loads in its webview", () => {
   let l = open(single(), { ...page("http://a.example/"), saved: 1 });
   const p = activeTab(focusedPane(l))!;
   assert.ok(p.kind === "page");
@@ -119,9 +119,19 @@ test("open: the page a Reader kept comes back as it was where its URL moved on; 
   l = navigated(l, p.id, { url: "https://a.example/#part", loading: false, canGoBack: false, canGoForward: false });
   l = open(l, reader(1));
   const again = activeTab(focusedPane(open(l, { ...page("http://a.example/"), saved: 1 })))!;
-  assert.deepEqual(again.kind === "page" && [again.key, again.fromReader], [p.key, true], "the same article");
+  assert.deepEqual(
+    again.kind === "page" && [again.key, again.fromReader, again.url],
+    [p.key, true, "https://a.example/#part"],
+    "the same article, at the URL the webview shows",
+  );
   const other = activeTab(focusedPane(open(open(l, reader(2)), { ...page("https://b.example/"), saved: 2 })))!;
-  assert.deepEqual(other.kind === "page" && [other.key, other.fromReader], [p.key, false], "another article");
+  assert.deepEqual(other.kind === "page" && [other.key, other.fromReader, other.url], [p.key, false, "https://b.example/"], "another article");
+
+  // A PDF article shown at its own URL comes back as its saved original.
+  let pdf = open(single(), { ...page("https://x.example/paper.pdf"), saved: 3 });
+  pdf = open(pdf, reader(3));
+  const original = activeTab(focusedPane(open(pdf, { ...page("http://lattice-pdf.localhost/3"), saved: 3 })))!;
+  assert.deepEqual(original.kind === "page" && [original.fromReader, original.url], [false, "http://lattice-pdf.localhost/3"]);
 });
 
 test("close: the neighbour becomes active; the last tab removes the pane, except the root", () => {
