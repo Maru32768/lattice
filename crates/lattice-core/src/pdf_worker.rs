@@ -487,6 +487,9 @@ mod tests {
         let figures = Figures::read_by(Some(&worker(SMALL, Duration::ZERO)), &bytes).unwrap();
         assert_eq!(figures.image(&src), Err(msg!("pdf.tooSlow", minutes = 0)), "not a figure the PDF lacks");
         assert_eq!(figures.image(&src), Err(msg!("pdf.parseFailed")), "nor are the ones after it");
+        // Gone by now, so the next figure cannot even be sent, as after a worker that its memory limit has ended.
+        std::thread::sleep(Duration::from_secs(1));
+        assert_eq!(figures.image(&src), Err(msg!("pdf.parseFailed")), "nor once it has gone");
     }
 
     /// A zlib stream of `n` spaces and then `tail`, compressed as they are read so the spaces are never held.
