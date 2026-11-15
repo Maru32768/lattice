@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use pdf_extract::content::{Content, Operation};
 use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::extract::collapse;
 use crate::images;
@@ -20,6 +20,7 @@ use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
 use crate::pdf_image::Format;
+use crate::pdf_worker::{self, Request, Session};
 use crate::store::{NewSnapshot, Store, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
@@ -72,6 +73,10 @@ fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
 /// Title: the first page's largest text, else the document's own (when it reads like one),
 /// else `fallback`, else the first line.
 pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
+    pdf_worker::ask(Request::Ir { fallback: fallback.map(str::to_owned) }, bytes, || ir(bytes, fallback))
+}
+
+fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
     let blocks = to_blocks(&lines, body, &figures(&doc), &figure_prefix(bytes));
@@ -87,7 +92,7 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 
 /// Where a run of body text sits on its page, in points from the page's top left, for the Page
 /// view to draw its translation over the original.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Region {
     pub page: usize,
     /// Which block it is a piece of: the same on all of a block's pieces, whatever columns and pages they are on.
@@ -123,15 +128,22 @@ impl Region {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TextRun {
     pub text: String,
-    /// The element that sets it: `sub` or `sup`.
-    pub script: Option<&'static str>,
+    /// The element that sets it.
+    pub script: Option<Script>,
     /// Part of a formula (`formula_glyphs`): shown as it stands, never sent to be translated.
     pub math: bool,
     /// Set in italics, inside a formula: elsewhere translation would not keep it.
     pub italic: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Script {
+    Sub,
+    Sup,
 }
 
 // Mark a line's scripts in the text that `piece_texts` cuts up. Noncharacters: no text holds them.
@@ -149,8 +161,8 @@ fn text_runs(marked: &str) -> Vec<TextRun> {
     let (mut script, mut math, mut italic) = (None, false, false);
     for c in marked.chars() {
         match c {
-            SUP => script = Some("sup"),
-            SUB => script = Some("sub"),
+            SUP => script = Some(Script::Sup),
+            SUB => script = Some(Script::Sub),
             SCRIPT_END => script = None,
             MATH => math = true,
             MATH_END => math = false,
@@ -170,7 +182,7 @@ fn text_runs(marked: &str) -> Vec<TextRun> {
 /// covers only the parse: one in the layout would otherwise fail the Page view, a retranslation, or the count of
 /// unused translations that first gives each PDF its old ones (`Store::own_pdf_regions`).
 pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
-    std::panic::catch_unwind(|| laid_out_regions(bytes)).unwrap_or_else(|_| Err(msg!("pdf.parseFailed")))
+    pdf_worker::ask(Request::Regions, bytes, || std::panic::catch_unwind(|| laid_out_regions(bytes)).unwrap_or_else(|_| Err(msg!("pdf.parseFailed"))))
 }
 
 fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
@@ -1254,23 +1266,46 @@ fn figure_prefix(pdf: &[u8]) -> String {
 
 /// An article's stored PDF, read once for a run of the image job, which asks it for each figure.
 pub(crate) struct Figures {
-    doc: Option<Document>,
+    source: Source,
     /// `figure_prefix` of the PDF.
     prefix: String,
 }
 
+enum Source {
+    Here(Option<Box<Document>>),
+    /// A worker that has been sent the PDF; it reads it once, and then each figure asked for.
+    Worker(std::sync::Mutex<Session>),
+}
+
 impl Figures {
     pub(crate) fn parse(pdf: &[u8]) -> Figures {
-        let doc = std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten();
-        Figures { doc, prefix: figure_prefix(pdf) }
+        Figures::read_by(pdf_worker::this(), pdf)
+    }
+
+    /// Read by `worker`, or here.
+    pub(crate) fn read_by(worker: Option<&pdf_worker::Worker>, pdf: &[u8]) -> Figures {
+        let source = match worker.map(|w| w.start(&Request::Figures, pdf)) {
+            Some(Ok(session)) => Source::Worker(std::sync::Mutex::new(session)),
+            Some(Err(_)) => Source::Here(None),
+            None => Source::Here(std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten().map(Box::new)),
+        };
+        Figures { source, prefix: figure_prefix(pdf) }
     }
 
     /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
     /// the data does not hold the image its dictionary describes.
     pub(crate) fn image(&self, src: &str) -> Option<(&'static str, Vec<u8>)> {
         let (number, generation) = src.strip_prefix(self.prefix.as_str())?.split_once('.')?;
-        let doc = self.doc.as_ref()?;
         let id = (number.parse().ok()?, generation.parse().ok()?);
+        let doc = match &self.source {
+            Source::Here(doc) => doc.as_deref()?,
+            Source::Worker(session) => {
+                let mut session = session.lock().ok()?;
+                session.send(src.as_bytes()).ok()?;
+                let bytes = pdf_worker::figure(session.reply().ok()?)?;
+                return Some((crate::images::sniff(&bytes)?, bytes));
+            }
+        };
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let image = doc.get_object(id).ok()?.as_stream().ok()?;
             Format::of(doc, &image.dict)?.encode(&image.content)
@@ -1652,7 +1687,7 @@ pub(crate) mod tests {
     /// One text run: x and baseline y from the top of a US Letter page, font size, text.
     pub(crate) type Run<'a> = (f64, f64, f64, &'a str);
 
-    fn name(s: &str) -> Object {
+    pub(crate) fn name(s: &str) -> Object {
         Object::Name(s.as_bytes().to_vec())
     }
 
@@ -2338,7 +2373,7 @@ pub(crate) mod tests {
         assert!(r[0].text.starts_with("Each replica") && r[0].text.contains(", after it receives"), "{}", r[0].text);
         assert_eq!((r[0].y0, r[0].y1), (90., 115.));
         let scripts: Vec<_> = r[0].runs.iter().filter_map(|run| run.script.map(|s| (s, run.text.as_str()))).collect();
-        assert_eq!(scripts, [("sup", "grant"), ("sub", "i,r")]);
+        assert_eq!(scripts, [(Script::Sup, "grant"), (Script::Sub, "i,r")]);
         assert_eq!(r[0].runs.iter().map(|run| run.text.as_str()).collect::<String>(), r[0].text, "the runs add up to the text");
         let ir = to_ir(&bytes, None).unwrap();
         assert!(ir.blocks[0].text.contains("granti,r"), "the Reader's text stays plain: {}", ir.blocks[0].text);
@@ -2452,7 +2487,7 @@ pub(crate) mod tests {
         out
     }
 
-    fn quorum_text() -> Vec<Run<'static>> {
+    pub(crate) fn quorum_text() -> Vec<Run<'static>> {
         vec![
             (L, 100., 10., "With n replicas, every write must be confirmed by w nodes and every read by r nodes."),
             (L, 315., 9., "Figure 6-13. If w + r > n, reads see the latest write."),
@@ -2463,7 +2498,7 @@ pub(crate) mod tests {
 
     /// `quorum_text` with a figure from y 200 to 300 over its caption, and an uncaptioned one from y 400 to 500 over the
     /// last paragraph.
-    fn quorum() -> Vec<u8> {
+    pub(crate) fn quorum() -> Vec<u8> {
         let bytes = draw(&pdf(&[quorum_text()], None), rgb(30, 10, [200, 0, 0]), &[(0, L, 200., 300., 100.)]);
         draw(&bytes, rgb(30, 10, [0, 0, 200]), &[(0, L, 400., 300., 100.)])
     }

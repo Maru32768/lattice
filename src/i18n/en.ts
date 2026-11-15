@@ -1157,6 +1157,7 @@ export const en = {
   "be.markdown.empty": "There is no text to import",
   "be.pdf.noText": "No text could be extracted from the PDF (PDFs that are only images are not supported)",
   "be.pdf.parseFailed": "Could not parse the PDF",
+  "be.pdf.tooSlow": "Reading the PDF took over {minutes} minutes, so it was stopped",
   "be.pdf.unreadable": "Cannot read the PDF: {error}",
   "be.quiz.dailyMax": "Daily limits go up to 9999 cards",
   "be.quiz.minRange": "The shortest interval is 1 minute to 30 days",
