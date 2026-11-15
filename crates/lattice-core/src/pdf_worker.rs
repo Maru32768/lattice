@@ -444,13 +444,22 @@ mod tests {
     const QUARTER_GIGABYTE: usize = 256 << 20;
     const MEGABYTE: usize = 1 << 20;
 
+    /// `bytes` end `worker` by its memory limit: not a reply that the PDF failed (a guard, a panic), but none, from a worker
+    /// that had committed close to the limit.
+    fn exhausts(worker: &Worker, bytes: &[u8]) {
+        let mut session = worker.start(&Request::Ir { fallback: None }, bytes).unwrap();
+        assert_eq!(session.reply::<Result<ArticleIr, String>>(), Err(msg!("pdf.parseFailed")));
+        #[cfg(windows)]
+        assert!(session.peak() > SMALL / 2, "{} MiB", session.peak() >> 20);
+    }
+
     #[test]
     fn a_flate_bomb_is_stopped_by_the_worker_s_memory_limit() {
         let worker = worker(SMALL, AMPLE);
         let bomb = spaces(QUARTER_GIGABYTE, b"");
         // In a page's content, which lopdf inflates for pdf-extract.
         let content = drawn_after(&quorum(), |doc, own| Object::Array(vec![Object::Reference(doc.add_object(flate(bomb.clone()))), own]));
-        assert_eq!(ir(&worker, &content), Err(msg!("pdf.parseFailed")));
+        exhausts(&worker, &content);
         // In an object stream, which lopdf inflates as it loads the PDF, for the text and for the figures. lopdf leaves object
         // streams out of what it saves, so this one is added after. std reports the memory the limit refuses as a failed
         // read, and lopdf goes on without the rest of the stream: the worker reads the PDF, in what this process would have
@@ -482,7 +491,7 @@ mod tests {
             let qs = doc.add_object(Stream::new(Dictionary::new(), format!("/C cs {}", "q ".repeat(300)).into_bytes()));
             Object::Array(vec![Object::Reference(qs), own])
         });
-        assert_eq!(ir(&worker(SMALL, AMPLE), &bytes), Err(msg!("pdf.parseFailed")));
+        exhausts(&worker(SMALL, AMPLE), &bytes);
     }
 
     #[test]
@@ -492,7 +501,7 @@ mod tests {
             let content = Object::Reference(doc.add_object(flate(spaces(MEGABYTE, b""))));
             Object::Array(std::iter::repeat_n(content, 300).chain([own]).collect())
         });
-        assert_eq!(ir(&worker(SMALL, AMPLE), &bytes), Err(msg!("pdf.parseFailed")));
+        exhausts(&worker(SMALL, AMPLE), &bytes);
     }
 
     #[test]
