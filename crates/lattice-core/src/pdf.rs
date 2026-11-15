@@ -2704,6 +2704,16 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_clip_lasts_until_its_q_ends_and_narrows_nothing_else() {
+        // A background filled before the clip, the figure it cuts down, a rule filled after its Q, and a second figure
+        // above the rule that no clip touches.
+        let clipped = "q 72 492 300 100 re W n 300 0 0 400 72 392 cm /Im0 Do Q 72 280 300 1 re f";
+        let bytes = with_ops(&pdf(&[quorum_text()], None), "0 0 612 792 re f", clipped);
+        let ir = to_ir(&draw(&bytes, rgb(30, 10, [0, 0, 200]), &[(0, L, 400., 300., 100.)]), None).unwrap();
+        assert_eq!(kinds(&ir), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
