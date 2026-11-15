@@ -454,25 +454,28 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
     (faces, drawn)
 }
 
-/// The image XObjects a page's resources name, looked up as `get_page_fonts` looks up its fonts, that are in a `Format`
-/// the Reader shows.
+/// The image XObjects in a `Format` the Reader shows, by the names a page draws them with. Those are the names of its
+/// nearest Resources, the page's own or the closest the page tree gives it, written in place or referred to: where
+/// pdf-extract resolves `Do`. (lopdf's `get_page_resources` skips resources written into the page tree.)
 fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
-    let (own, inherited) = doc.get_page_resources(page).unwrap_or_default();
-    let mut out = HashMap::new();
-    for resources in own.into_iter().chain(inherited.into_iter().filter_map(|id| doc.get_dictionary(id).ok())) {
-        let Ok(xobjects) = doc.get_dict_in_dict(resources, b"XObject") else {
-            continue;
+    let mut node = doc.get_dictionary(page).ok();
+    let mut resources = None;
+    // A page tree is a few levels deep; the bound only stops a cycle.
+    for _ in 0..32 {
+        let Some(n) = node else {
+            break;
         };
-        for (name, o) in xobjects.iter() {
-            if let Ok(id) = o.as_reference() {
-                out.entry(name.clone()).or_insert(id);
-            }
+        if let Ok(r) = n.get_deref(b"Resources", doc).and_then(Object::as_dict) {
+            resources = Some(r);
+            break;
         }
+        node = n.get(b"Parent").and_then(Object::as_reference).and_then(|id| doc.get_dictionary(id)).ok();
     }
-    // Kept only after the nearest resources have claimed each name, so one the Reader cannot show does not let an
-    // inherited image of that name stand in for it.
-    out.retain(|_, id| doc.get_object(*id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some()));
-    out
+    let Some(xobjects) = resources.and_then(|r| r.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()) else {
+        return HashMap::new();
+    };
+    let shown = |id: ObjectId| doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some());
+    xobjects.iter().filter_map(|(name, o)| o.as_reference().ok().filter(|&id| shown(id)).map(|id| (name.clone(), id))).collect()
 }
 
 fn is_image(s: &Stream) -> bool {
@@ -2555,11 +2558,14 @@ pub(crate) mod tests {
         let dict = doc.get_object_mut(page).and_then(Object::as_dict_mut).unwrap();
         let resources = dict.remove(b"Resources").unwrap();
         let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-        let shared = doc.add_object(resources);
-        doc.get_object_mut(parent).and_then(Object::as_dict_mut).unwrap().set("Resources", Object::Reference(shared));
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+        // Referred to from the page tree, or written into it.
+        let shared = Object::Reference(doc.add_object(resources.clone()));
+        for inherited in [shared, resources] {
+            doc.get_object_mut(parent).and_then(Object::as_dict_mut).unwrap().set("Resources", inherited);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+        }
     }
 
     #[test]
