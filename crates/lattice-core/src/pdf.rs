@@ -2097,6 +2097,33 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_sentence_across_a_page_goes_to_the_side_with_most_of_it() {
+        let texts = |pages: &[Vec<Run>]| regions(&pdf(pages, None)).unwrap().into_iter().map(|r| r.text).collect::<Vec<_>>();
+        let mostly_before: Vec<Vec<Run>> = vec![
+            vec![(L, 100., 10., "Here is one whole first sentence. The second one starts here and it goes on")],
+            vec![(L, 100., 10., "to an end. A third sentence is on the next page, and so is all of it.")],
+        ];
+        assert_eq!(
+            texts(&mostly_before),
+            [
+                "Here is one whole first sentence. The second one starts here and it goes on to an end.",
+                "A third sentence is on the next page, and so is all of it."
+            ]
+        );
+        let mostly_after: Vec<Vec<Run>> = vec![
+            vec![(L, 100., 10., "Here is one whole first sentence of the paragraph on its first page. The")],
+            vec![(L, 100., 10., "second one is all on the next page, but for a word. A third one ends it.")],
+        ];
+        assert_eq!(
+            texts(&mostly_after),
+            [
+                "Here is one whole first sentence of the paragraph on its first page.",
+                "The second one is all on the next page, but for a word. A third one ends it."
+            ]
+        );
+    }
+
+    #[test]
     fn a_sentence_too_long_for_the_short_side_is_cut_between_words() {
         // Moved whole, the sentence would fill a box of one word more than its smallest type can show.
         let first: Vec<Run> = vec![
