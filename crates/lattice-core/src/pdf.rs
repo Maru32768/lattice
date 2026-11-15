@@ -2714,6 +2714,19 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_named_in_xobjects_referred_to_is_kept() {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let resources = doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap();
+        let xobjects = resources.remove(b"XObject").unwrap();
+        let id = doc.add_object(xobjects);
+        doc.get_dictionary_mut(page).unwrap().get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Reference(id));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
