@@ -395,7 +395,9 @@ mod tests {
         }
         let here = crate::pdf::to_ir(&bytes, Some("Quorum"));
         assert_eq!(ir(&worker, b"not a pdf"), crate::pdf::to_ir(b"not a pdf", Some("Quorum")), "an error comes back as it is");
-        let srcs: Vec<String> = here.unwrap().blocks.into_iter().filter_map(|b| b.attrs.src).chain(["pdf-figure:12.0".to_owned()]).collect();
+        let mut srcs: Vec<String> = here.unwrap().blocks.into_iter().filter_map(|b| b.attrs.src).collect();
+        // Not figures of it: an object this PDF does not have, which only the worker can tell, and a src of no PDF.
+        srcs.extend([format!("{}/9999.0", srcs[0].rsplit_once('/').unwrap().0), "pdf-figure:12.0".to_owned()]);
         let (there, here) = (Figures::read_by(Some(&worker), &bytes).unwrap(), Figures::read_by(None, &bytes).unwrap());
         assert!(there.image(&srcs[0]).is_some());
         for src in &srcs {
