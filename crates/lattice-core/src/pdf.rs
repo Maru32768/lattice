@@ -2514,6 +2514,23 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_is_placed_on_a_page_whose_mediabox_is_off_the_origin() {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        for id in doc.get_pages().into_values().collect::<Vec<_>>() {
+            let page = doc.get_dictionary_mut(id).unwrap();
+            page.set("MediaBox", Object::Array([400, 0, 1012, 792].map(Object::Integer).to_vec()));
+            let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
+            let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+            // Everything moves with the box, so the page looks the same; a figure measured from 0 would sit 400pt right of its caption.
+            let ops = [&b"1 0 0 1 400 0 cm\n"[..], &stream.content].concat();
+            stream.set_plain_content(ops);
+        }
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
