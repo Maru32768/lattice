@@ -239,7 +239,7 @@ fn serve() -> io::Result<()> {
         Request::Ir { fallback } => write_reply(&mut output, &crate::pdf::to_ir(&pdf, fallback.as_deref())),
         Request::Regions => write_reply(&mut output, &crate::pdf::regions(&pdf)),
         Request::Figures => {
-            let figures = crate::pdf::Figures::parse(&pdf);
+            let figures = crate::pdf::Figures::parse(&pdf).map_err(io::Error::other)?;
             while let Ok(src) = read_frame(&mut input, usize::MAX) {
                 let (_, bytes) = figures.image(&String::from_utf8_lossy(&src)).unwrap_or_default();
                 write_frame(&mut output, &bytes)?;
@@ -359,11 +359,17 @@ mod tests {
         assert_eq!(json(regions.unwrap()), json(crate::pdf::regions(&bytes).unwrap()));
         assert_eq!(ir(&worker, b"not a pdf"), crate::pdf::to_ir(b"not a pdf", Some("Quorum")), "an error comes back as it is");
         let srcs: Vec<String> = here.unwrap().blocks.into_iter().filter_map(|b| b.attrs.src).chain(["pdf-figure:12.0".to_owned()]).collect();
-        let (there, here) = (Figures::read_by(Some(&worker), &bytes), Figures::read_by(None, &bytes));
+        let (there, here) = (Figures::read_by(Some(&worker), &bytes).unwrap(), Figures::read_by(None, &bytes).unwrap());
         assert!(there.image(&srcs[0]).is_some());
         for src in &srcs {
             assert_eq!(there.image(src), here.image(src), "{src}");
         }
+    }
+
+    #[test]
+    fn figures_wait_for_a_worker_that_does_not_start() {
+        let missing = Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE };
+        assert_eq!(Figures::read_by(Some(&missing), &quorum()).err(), Some(msg!("pdf.parseFailed")), "not a PDF without figures");
     }
 
     /// A zlib stream of `n` spaces and then `tail`, compressed as they are read so the spaces are never held.
@@ -436,7 +442,7 @@ mod tests {
         let text = |ir: &ArticleIr| ir.blocks.iter().map(|b| (b.kind.clone(), b.text.clone())).collect::<Vec<_>>();
         assert_eq!(text(&read), text(&crate::pdf::to_ir(&quorum(), None).unwrap()));
         let src = read.blocks[1].attrs.src.clone().unwrap();
-        assert!(Figures::read_by(Some(&worker), &loaded).image(&src).is_some());
+        assert!(Figures::read_by(Some(&worker), &loaded).unwrap().image(&src).is_some());
     }
 
     #[test]

@@ -1278,18 +1278,18 @@ enum Source {
 }
 
 impl Figures {
-    pub(crate) fn parse(pdf: &[u8]) -> Figures {
+    pub(crate) fn parse(pdf: &[u8]) -> Result<Figures, String> {
         Figures::read_by(pdf_worker::this(), pdf)
     }
 
-    /// Read by `worker`, or here.
-    pub(crate) fn read_by(worker: Option<&pdf_worker::Worker>, pdf: &[u8]) -> Figures {
-        let source = match worker.map(|w| w.start(&Request::Figures, pdf)) {
-            Some(Ok(session)) => Source::Worker(std::sync::Mutex::new(session)),
-            Some(Err(_)) => Source::Here(None),
+    /// Read by `worker`, or here. Fails only when the worker does not start, which says nothing about the PDF: the
+    /// figures are then for a later try, not unsupported.
+    pub(crate) fn read_by(worker: Option<&pdf_worker::Worker>, pdf: &[u8]) -> Result<Figures, String> {
+        let source = match worker {
+            Some(worker) => Source::Worker(std::sync::Mutex::new(worker.start(&Request::Figures, pdf)?)),
             None => Source::Here(std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten().map(Box::new)),
         };
-        Figures { source, prefix: figure_prefix(pdf) }
+        Ok(Figures { source, prefix: figure_prefix(pdf) })
     }
 
     /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
@@ -2598,11 +2598,11 @@ pub(crate) mod tests {
     fn a_figure_is_read_from_the_pdf_its_src_names() {
         let bytes = quorum();
         let src = to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap_or_default();
-        let (mime, png) = Figures::parse(&bytes).image(&src).unwrap();
+        let (mime, png) = Figures::parse(&bytes).unwrap().image(&src).unwrap();
         assert_eq!((mime, &png[12..24]), ("image/png", &b"IHDR\0\0\0\x1e\0\0\0\x0a"[..]), "30x10 as drawn into the PDF");
-        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).image(&src), None, "the same objects in another file");
-        assert_eq!(Figures::parse(b"%PDF-1.5 not really").image(&src), None);
-        assert_eq!(Figures::parse(&bytes).image("pdf-figure:12.0"), None);
+        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).unwrap().image(&src), None, "the same objects in another file");
+        assert_eq!(Figures::parse(b"%PDF-1.5 not really").unwrap().image(&src), None);
+        assert_eq!(Figures::parse(&bytes).unwrap().image("pdf-figure:12.0"), None);
     }
 
     /// The article's image blocks: id and `src`.

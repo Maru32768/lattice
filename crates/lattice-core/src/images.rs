@@ -162,8 +162,13 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
                 Some(read) => read.clone(),
                 None => {
                     let pdf = store.latest_snapshot(article_id).map_err(err)?.map(|s| s.body).unwrap_or_default();
-                    let read = Arc::new(tokio::task::spawn_blocking(move || crate::pdf::Figures::parse(&pdf)).await.map_err(err)?);
-                    parsed.insert(read).clone()
+                    match tokio::task::spawn_blocking(move || crate::pdf::Figures::parse(&pdf)).await.map_err(err)? {
+                        Ok(read) => parsed.insert(Arc::new(read)).clone(),
+                        Err(e) => {
+                            transient = Some(e);
+                            break;
+                        }
+                    }
                 }
             };
             let src = src.clone();
