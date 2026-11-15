@@ -344,8 +344,24 @@ mod tests {
     #[test]
     fn serves() {
         if std::env::var_os(WORKER).is_some() {
-            std::process::exit(i32::from(serve().is_err()));
+            init();
         }
+    }
+
+    /// Set in a test run started to stand for a binary that calls `init`.
+    const STARTS: &str = "LATTICE_PDF_WORKER_TEST_STARTS";
+
+    #[test]
+    fn init_has_this_program_read_pdfs_in_workers() {
+        if std::env::var_os(STARTS).is_none() {
+            let me = ["--exact", "pdf_worker::tests::init_has_this_program_read_pdfs_in_workers"];
+            let run = Command::new(std::env::current_exe().unwrap()).args(me).env(STARTS, "1").output().unwrap();
+            let out = String::from_utf8_lossy(&run.stdout);
+            assert!(out.contains("test result: ok. 1 passed"), "{out}");
+            return;
+        }
+        init();
+        assert_eq!(this().map(|w| &w.program), Some(&std::env::current_exe().unwrap()));
     }
 
     fn ir(worker: &Worker, bytes: &[u8]) -> Result<ArticleIr, String> {
