@@ -640,7 +640,9 @@ mod tests {
             |tool: &str, flag: &str| Command::new(tool).args([flag, "/FI", &format!("PID eq {pid}"), "/FI", &format!("IMAGENAME eq {name}")]).output().unwrap();
         let gone = (0..50).any(|_| {
             std::thread::sleep(Duration::from_millis(100));
-            !String::from_utf8_lossy(&only("tasklist", "/NH").stdout).contains(pid.as_str())
+            let list = only("tasklist", "/NH");
+            assert!(list.status.success(), "an empty list says nothing");
+            !String::from_utf8_lossy(&list.stdout).contains(pid.as_str())
         });
         if !gone {
             only("taskkill", "/F");
