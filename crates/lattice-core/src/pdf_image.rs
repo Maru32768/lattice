@@ -299,6 +299,25 @@ mod tests {
                 "other colours",
                 vec![flate.clone(), ("DecodeParms", Object::Dictionary(dict(&[("Predictor", Object::Integer(10)), ("Columns", Object::Integer(2))])))],
             ),
+            (
+                "no columns",
+                vec![flate.clone(), ("DecodeParms", Object::Dictionary(dict(&[("Predictor", Object::Integer(10)), ("Colors", Object::Integer(3))])))],
+            ),
+            (
+                "other depth in the parms",
+                vec![
+                    flate.clone(),
+                    (
+                        "DecodeParms",
+                        Object::Dictionary(dict(&[
+                            ("Predictor", Object::Integer(10)),
+                            ("Colors", Object::Integer(3)),
+                            ("Columns", Object::Integer(2)),
+                            ("BitsPerComponent", Object::Integer(16)),
+                        ])),
+                    ),
+                ],
+            ),
         ] {
             assert_eq!(Format::of(&doc, &rgb(2, 2, &more)), None, "{why}");
         }
