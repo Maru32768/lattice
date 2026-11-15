@@ -2688,6 +2688,22 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_clip_counts_however_its_path_is_written() {
+        // Each leaves the 100pt over the caption of an image drawn 400pt tall, as in the test above.
+        let image = "300 0 0 400 72 392 cm /Im0 Do";
+        for (clip, how) in [
+            (format!("0 0 612 792 re W n 72 492 300 100 re W n {image}"), "inside the page's clip"),
+            (format!("72 492 300 100 re W n 0 0 612 792 re W n {image}"), "with a wider clip inside it"),
+            (format!("72 492 300 100 re W* n {image}"), "even-odd"),
+            (format!("72 492 m 372 492 l 372 592 l 72 592 l h W n {image}"), "drawn with lines"),
+            ("0.5 0 0 0.5 0 0 cm 144 984 600 200 re W n 600 0 0 800 144 784 cm /Im0 Do".to_owned(), "under a transform"),
+        ] {
+            let ir = to_ir(&with_ops(&pdf(&[quorum_text()], None), "", &format!("q {clip} Q")), None).unwrap();
+            assert_eq!(kinds(&ir)[1], ("image", "Figure 6-13"), "{how}: {:?}", kinds(&ir));
+        }
+    }
+
+    #[test]
     fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
