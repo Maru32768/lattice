@@ -1017,6 +1017,7 @@ export const en = {
   "reader.confirmRetranslateDesc":
     "Drops this article's {done} translated blocks and translates it again with the current provider and settings. Other articles and pages sharing the same paragraphs get the new translation too.",
   "reader.image": "Image: {name}",
+  "reader.pdfFigure": "PDF figure",
   "reader.translate": "Translate",
   "reader.translateRest": "Translate the rest",
   "reader.translateIntoEn": "This article is in Japanese, so it is translated into English",

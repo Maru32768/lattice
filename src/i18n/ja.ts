@@ -1004,6 +1004,7 @@ export const ja = {
   "reader.confirmRetranslateDesc":
     "この記事の訳文{done} blockを捨てて、今のプロバイダと設定で訳し直します。同じ段落を含むほかの記事やページ表示も新しい訳になります。",
   "reader.image": "画像: {name}",
+  "reader.pdfFigure": "PDFの図",
   "reader.translate": "翻訳する",
   "reader.translateRest": "残りを翻訳",
   "reader.translateIntoEn": "日本語の記事なので英語に訳します",

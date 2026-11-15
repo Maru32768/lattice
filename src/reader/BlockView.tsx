@@ -192,9 +192,7 @@ export function listMarkers(blocks: Block[]): (string | undefined)[] {
 export function ImageFallback({ block }: { block: Block }) {
   const t = useT();
   const src = block.attrs.src;
-  return src && /^https?:/i.test(src) ? (
-    <Link href={src}>{t("reader.image", { name: block.text || src })}</Link>
-  ) : (
-    <span className="muted">{t("reader.image", { name: block.text || src || "" })}</span>
-  );
+  // A PDF figure's src names an image inside the saved PDF, which tells a reader nothing.
+  const name = block.text || (src?.startsWith("pdf-figure:") ? t("reader.pdfFigure") : src) || "";
+  return src && /^https?:/i.test(src) ? <Link href={src}>{t("reader.image", { name })}</Link> : <span className="muted">{t("reader.image", { name })}</span>;
 }

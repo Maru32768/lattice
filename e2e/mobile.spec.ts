@@ -386,6 +386,15 @@ test("an image the PC stored shows in the text, fetched with the token; one it h
   await expect(page.getByRole("link", { name: "画像: A figure" }), "an image that does not render").toBeVisible();
 });
 
+test("a PDF figure the PC has not stored is named without its internal src", async ({ page }) => {
+  await start(page);
+  const figure = { id: 14, ordinal: 0, kind: "image", text: "", attrs: { src: "pdf-figure:0123456789abcdef/12.0" }, translation: null };
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks: [figure] } }));
+  await page.getByRole("link", { name: /First article/ }).click();
+  await expect(page.getByText("画像: PDFの図")).toBeVisible();
+  await expect(page.getByText(/pdf-figure:/)).toHaveCount(0);
+});
+
 test("the icons are fetched once a page, and a refresh while they come keeps them", async ({ page }) => {
   const dot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
   let asked = 0;
