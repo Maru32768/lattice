@@ -2245,6 +2245,7 @@ pub(crate) mod tests {
         let object = |b: &Block| b.attrs.src.as_deref()?.rsplit_once('/')?.1.split_once('.')?.0.parse::<u32>().ok();
         let objects: Vec<u32> = ir.blocks.iter().filter_map(object).collect();
         assert!(objects.len() == 2 && objects[0] < objects[1], "the left one, drawn first, comes first: {objects:?}");
+        assert_eq!(kinds(&ir)[1..4].iter().map(|k| k.0).collect::<Vec<_>>(), ["image", "image", "caption"], "both before the one caption");
     }
 
     #[test]
