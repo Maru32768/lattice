@@ -2832,8 +2832,9 @@ pub(crate) mod tests {
 
     #[test]
     fn a_mediabox_on_the_last_node_the_walk_reaches_is_read() {
-        // The page, the links and the top make PAGE_TREE_DEPTH nodes.
-        assert_eq!(kinds(&to_ir(&chained(PAGE_TREE_DEPTH - 2), None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+        // The page, 254 links and the top: 256 nodes, as many as the walk reaches. A number of its own, so that a lower
+        // PAGE_TREE_DEPTH fails here instead of shrinking the tree along with it.
+        assert_eq!(kinds(&to_ir(&chained(254), None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
     }
 
     #[test]
