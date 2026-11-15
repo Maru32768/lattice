@@ -2399,6 +2399,14 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_on_a_later_page_stays_on_its_page() {
+        let first: Vec<Run> = vec![(L, 100., 10., "The first page opens with this paragraph."), (L, 500., 10., "And it ends with this one, low on the page.")];
+        let second: Vec<Run> = vec![(L, 315., 9., "Figure 2. Drawn at the top of the second page."), (L, 340., 10., "Text under the figure and its caption.")];
+        let ir = to_ir(&draw(&pdf(&[first, second], None), rgb(30, 10, [0, 0, 0]), &[(1, L, 200., 300., 100.)]), None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "paragraph", "image", "caption", "paragraph"]);
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
