@@ -366,62 +366,11 @@ mod tests {
         }
     }
 
-    /// A zlib stream of `258 * copies + 1` spaces and then `tail`. A space and then each copy of the last 258 bytes take
-    /// deflate's fixed codes 13 bits, so a quarter gigabyte comes from 1.7 MB.
-    fn spaces(copies: usize, tail: &[u8]) -> Vec<u8> {
-        let mut bits = Bits { out: vec![0x78, 0x01], acc: 0, len: 0 };
-        bits.put(0b011, 3); // the last block, in fixed codes
-        bits.code(0x30 + u32::from(b' '), 8);
-        for _ in 0..copies {
-            bits.code(0xc5, 8); // length 258
-            bits.code(0, 5); // distance 1
-        }
-        for &b in tail {
-            assert!(b < 144);
-            bits.code(0x30 + u32::from(b), 8);
-        }
-        bits.code(0, 7); // end of block
-        bits.put(0, 7);
-        let mut out = bits.out;
-        // Adler-32 of the spaces, as sums over the run, then of the tail.
-        let (n, m) = ((258 * copies + 1) as u64, 65521);
-        let (mut a, mut b) = ((1 + 32 * n) % m, (n + 32 * (n * (n + 1) / 2 % m)) % m);
-        for &c in tail {
-            a = (a + u64::from(c)) % m;
-            b = (b + a) % m;
-        }
-        out.extend(((b << 16 | a) as u32).to_be_bytes());
-        out
-    }
-
-    struct Bits {
-        out: Vec<u8>,
-        acc: u32,
-        len: u32,
-    }
-
-    impl Bits {
-        /// `n` bits of `value`, lowest first.
-        fn put(&mut self, value: u32, n: u32) {
-            self.acc |= value << self.len;
-            self.len += n;
-            while self.len >= 8 {
-                self.out.push(self.acc as u8);
-                (self.acc, self.len) = (self.acc >> 8, self.len - 8);
-            }
-        }
-
-        /// A Huffman code of `n` bits, highest first.
-        fn code(&mut self, code: u32, n: u32) {
-            self.put(code.reverse_bits() >> (32 - n), n);
-        }
-    }
-
-    #[test]
-    fn spaces_inflate_to_what_they_say() {
-        let mut out = Vec::new();
-        flate2::read::ZlibDecoder::new(&spaces(3, b"Tj")[..]).read_to_end(&mut out).unwrap();
-        assert_eq!(out, [" ".repeat(258 * 3 + 1).as_bytes(), b"Tj"].concat());
+    /// A zlib stream of `n` spaces and then `tail`, compressed as they are read so the spaces are never held.
+    fn spaces(n: usize, tail: &[u8]) -> Vec<u8> {
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+        io::copy(&mut io::repeat(b' ').take(n as u64).chain(tail), &mut z).unwrap();
+        z.finish().unwrap()
     }
 
     fn flate(content: Vec<u8>) -> Stream {
@@ -463,10 +412,9 @@ mod tests {
     }
 
     /// The PDFs below are sized so that a worker without its limits would get through them, and read the PDF: a few
-    /// hundred megabytes of memory, a minute or two. A quarter gigabyte of spaces.
-    const QUARTER_GIGABYTE: usize = (256 << 20) / 258;
-    /// A megabyte of spaces.
-    const MEGABYTE: usize = (1 << 20) / 258;
+    /// hundred megabytes of memory, a minute or two.
+    const QUARTER_GIGABYTE: usize = 256 << 20;
+    const MEGABYTE: usize = 1 << 20;
 
     #[test]
     fn a_flate_bomb_is_stopped_by_the_worker_s_memory_limit() {
