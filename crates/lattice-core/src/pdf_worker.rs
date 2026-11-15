@@ -148,6 +148,8 @@ impl Session {
             Ok(frame) => Ok(frame),
             Err(RecvTimeoutError::Timeout) => {
                 let _ = self.child.kill();
+                // A reply that came meanwhile is for this question; the next one would take it as its own.
+                self.replies = mpsc::channel().1;
                 Err(msg!("pdf.tooSlow", minutes = self.time.as_secs().div_ceil(60)))
             }
             // Ended by its memory limit, by a crash, or by an earlier `frame`.
