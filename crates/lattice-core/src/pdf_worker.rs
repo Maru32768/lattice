@@ -352,6 +352,16 @@ mod tests {
     }
 
     #[test]
+    fn a_frame_is_taken_only_whole_and_within_its_limit() {
+        let frame = |len: u64, body: &[u8]| [&len.to_le_bytes()[..], body].concat();
+        let read = |bytes: Vec<u8>, max| read_frame(&mut &bytes[..], max).map_err(|e| e.kind());
+        assert_eq!(read(frame(3, b"abc"), 3), Ok(b"abc".to_vec()));
+        assert_eq!(read(frame(3, b"ab"), 3), Err(io::ErrorKind::UnexpectedEof), "cut short, as by a worker that was ended");
+        assert_eq!(read(frame(4, b"abcd"), 3), Err(io::ErrorKind::InvalidData), "longer than the reader takes");
+        assert_eq!(read(frame(u64::MAX, b"abc"), usize::MAX), Err(io::ErrorKind::UnexpectedEof), "not allocated by what the length says");
+    }
+
+    #[test]
     fn a_pdf_reads_in_a_worker_as_it_does_here() {
         let (worker, bytes) = (worker(SMALL, AMPLE), quorum());
         let here = crate::pdf::to_ir(&bytes, Some("Quorum"));
