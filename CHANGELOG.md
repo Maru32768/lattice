@@ -71,7 +71,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - In a PDF's Page view, a paragraph that a page or column break left with only part of one sentence on one side showed no saved translation on either side, though the Reader had one. That sentence now goes whole to the other side when its box can hold it.
 - Importing some malformed PDFs never finished and kept a processor core busy, and a PDF saved from a URL did the same again after every start. Such a PDF now fails to import with an error.
 - Importing some other malformed PDFs closed the app, and a PDF saved from a URL closed it again on the next few starts. Others took hours to import. Such a PDF now imports without its broken part, or fails to import with an error.
-- A PDF made to use up memory, or to take hours to read, could still close the app or keep it busy. Lattice now reads each PDF in a separate process with a limit of 2 GB of memory and 5 minutes, so such a PDF fails to import with an error and the app keeps running.
+- A PDF made to use up memory, or to take hours to read, could still close the app or keep it busy. Lattice now reads each PDF in a separate process limited to 2 GB of memory and 5 minutes, so such a PDF fails to import with an error and the app keeps running.
 - In PDFs that give the fonts of several pages in one place, italics and formulas were read as plain text, and the Page view translated the formulas. They are now kept as printed.
 
 ## [0.3.0] - 2026-11-06
