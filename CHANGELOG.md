@@ -68,7 +68,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - With Codex CLI 0.164, the AI could still see a tool that starts other agents and a tool that waits, although Lattice turns Codex's tools off. Both are off now, and Lattice's tests check which tools the installed Codex shows the AI.
 - Some PDFs with images, such as the chapters of a book, failed to import with an error that the PDF could not be read. Lattice read the data of some images as if it were page content. Images are now skipped when the text is read.
 - In a book's PDF, a list item was cut after its first line and a bullet was left on its own. The footer on every second page was mixed into the body text and split paragraphs that continued onto the next page. The smallest headings were read as paragraphs. As a result, the Page view left these parts untranslated. It also drew the translation of a heading at the top of a boxed note over the box's frame. Lists, footers and headings are now read as printed, and a one-line translation uses the space left on its line before it grows up or down.
-- In a PDF's Page view, a paragraph that ran onto the next page with only part of its last sentence showed no saved translation on either page, though the Reader had one. The paragraph was cut in the middle of that sentence. The sentence now goes whole to the next page.
+- In a PDF's Page view, a paragraph that a page or column break left with only part of one sentence on one side showed no saved translation on either side, though the Reader had one. That sentence now goes whole to the other side when its box can hold it.
 
 ## [0.3.0] - 2026-11-06
 
