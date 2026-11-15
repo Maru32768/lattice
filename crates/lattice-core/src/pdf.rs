@@ -252,7 +252,7 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
     let ends = sentence_ends(&whole);
     let mut texts = Vec::with_capacity(pieces.len());
     let mut start = 0;
-    for at in breaks {
+    for (i, &at) in breaks.iter().enumerate() {
         let before = ends.iter().rev().find(|&&e| e <= at).copied().unwrap_or(0);
         let after = ends.iter().find(|&&e| e > at).copied().unwrap_or(whole.len());
         let (most, rest) = if at - before > after - at {
@@ -260,7 +260,9 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
         } else {
             (before, after)
         };
-        let cut = [most, rest].into_iter().find(|&c| c > start && c < whole.len()).unwrap_or_else(|| word_break(&whole, at).max(start));
+        // Short of the next piece's end, or the piece after this one is left empty.
+        let next = breaks.get(i + 1).copied().unwrap_or(whole.len());
+        let cut = [most, rest].into_iter().find(|&c| c > start && c < next).unwrap_or_else(|| word_break(&whole, at).max(start));
         texts.push(whole[start..cut].to_string());
         start = cut;
     }
@@ -2087,6 +2089,25 @@ pub(crate) mod tests {
             [
                 "The leader sends every write to all of the replicas and then waits",
                 "until a majority of them has answered with the same stored value and only then replies."
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sentence_across_three_pages_leaves_no_piece_empty() {
+        let pages: Vec<Vec<Run>> = vec![
+            vec![(L, 100., 10., "This one sentence starts at the bottom of the first page and then runs")],
+            vec![(L, 100., 10., "across the whole of the second page, which holds nothing but this part")],
+            vec![(L, 100., 10., "of it, and ends on the third. Another sentence follows it there."), (L, 112., 10., "And a last one.")],
+        ];
+        let r = regions(&pdf(&pages, None)).unwrap();
+        let texts: Vec<&str> = r.iter().map(|x| x.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            [
+                "This one sentence starts at the bottom of the first page and then runs",
+                "across the whole of the second page, which holds nothing but this part of it, and ends on the third.",
+                "Another sentence follows it there. And a last one."
             ]
         );
     }
