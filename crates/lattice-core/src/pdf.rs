@@ -2750,6 +2750,21 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_page_tree_whose_parents_loop_is_walked_to_an_end() {
+        // Nothing on the way up has Resources, so only the bound ends the walk; pdf-extract then fails on the page's
+        // dangling ones.
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        dict.set("Resources", Object::Reference((999, 0)));
+        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
+    }
+
+    #[test]
     fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
