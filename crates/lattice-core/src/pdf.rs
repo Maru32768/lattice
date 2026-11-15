@@ -2842,14 +2842,20 @@ pub(crate) mod tests {
         let mut doc = Document::load_mem(&pdf(&[line], None)).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
         let dict = doc.get_dictionary_mut(page).unwrap();
-        let resources = dict.remove(b"Resources").unwrap();
+        let mut resources = dict.remove(b"Resources").unwrap().as_dict().unwrap().clone();
         let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-        // Written in place, which lopdf's `get_page_fonts` does not look for up the tree.
-        doc.get_dictionary_mut(parent).unwrap().set("Resources", resources);
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
-        assert_eq!(math, ["e"]);
+        // The Font dictionary written in the Resources, or referred to from them.
+        let fonts = resources.remove(b"Font").unwrap();
+        let referred = Object::Reference(doc.add_object(fonts.clone()));
+        for fonts in [fonts, referred] {
+            resources.set("Font", fonts);
+            // The Resources written in place, which lopdf's `get_page_fonts` does not look for up the tree.
+            doc.get_dictionary_mut(parent).unwrap().set("Resources", resources.clone());
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
+            assert_eq!(math, ["e"], "{:?}", resources.get(b"Font"));
+        }
     }
 
     #[test]
