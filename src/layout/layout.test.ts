@@ -100,6 +100,8 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
     "the same webview, told to open again as the Reader's page",
   );
   assert.equal(p.fromReader, false, "a page that replaced no Reader");
+  const restored = activeTab(focusedPane(parse(serialize(l))!))!;
+  assert.ok(restored.kind === "page" && !restored.fromReader, "not stored: after a reload of the UI the page keeps its scroll");
   const next = activeTab(focusedPane(open(l, page("https://b.example/"))))!;
   assert.equal(next.kind === "page" && next.fromReader, false, "a page replacing that page");
   assert.deepEqual(webviewKeys(close(open(l, reader(1)), p.id)), [], "the tab closing takes it");
