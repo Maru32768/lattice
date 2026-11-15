@@ -2445,6 +2445,28 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_caption_under_a_figure_label_is_a_caption() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "A paragraph before the figure runs on to the edge of the column and then ends"),
+            (L, 112., 10., "with a full stop in its second line."),
+            (L + 100., 300., 9., "Throughput"),
+            (L, 312., 9., "Figure 3: Reads per second as nodes are added."),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "caption"], "{:?}", kinds(&ir));
+    }
+
+    #[test]
+    fn a_caption_right_under_a_full_line_ending_a_sentence_is_a_caption() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "A paragraph whose last line runs to the edge of the column, ending a sentence."),
+            (L, 112., 10., "Table 1: Reads per second as nodes are added."),
+        ];
+        let ir = to_ir(&pdf(&[page], None), None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "caption"], "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
