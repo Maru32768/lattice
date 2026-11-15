@@ -608,7 +608,7 @@ pub async fn browser_open(
         browser.with_tab(&label, |t| t.pdfs.insert(id));
     }
     let focus_text = focus_text.filter(|t| !t.trim().is_empty());
-    // A search result is worth loading the page again for; a place only matters to a page that loads anyway.
+    // A search result is worth loading the page again for; a place is not.
     let searching = focus_text.is_some();
     let jump = focus_text.map(Jump::Text).or_else(|| place.and_then(Place::checked).map(Jump::Place));
     let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
@@ -621,9 +621,13 @@ pub async fn browser_open(
     };
     if let Some(wv) = app.get_webview(&label) {
         // Already showing this page, or the tab's own page come from another window (its URL may have
-        // moved on in the page since the tab last saw it): no reload, its history and scroll stay.
+        // moved on in the page since the tab last saw it): no reload, its history stays.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
         if !searching && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
+            // Back from the tab's Reader, the page goes to where the Reader was, before it shows; one from another window stays put.
+            if !moved && let Some(jump) = &jump {
+                let _ = wv.eval(jump.script());
+            }
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
@@ -671,12 +675,7 @@ pub async fn browser_open(
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
             if !loading && let Some(jump) = browser.with_tab(wv.label(), |t| t.jump.take()) {
-                let args = match jump {
-                    Jump::Text(text) => serde_json::to_string(&text),
-                    Jump::Place(p) => serde_json::to_string(&p.text).map(|text| format!("{text},{}", p.at)),
-                }
-                .expect("string serializes");
-                let _ = wv.eval(format!("window.__lattice&&window.__lattice.scrollToText({args})"));
+                let _ = wv.eval(jump.script());
             }
         })
         .on_document_title_changed(|wv, title| {
@@ -733,7 +732,7 @@ pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String) ->
     }
 }
 
-/// The tab was closed (or shows a Reader now): its webview goes with it.
+/// The tab was closed: its webview goes with it.
 #[tauri::command]
 pub async fn browser_close(app: AppHandle, browser: State<'_, Browser>, tab: String) -> Result<(), String> {
     let label = label(&tab)?;
@@ -910,6 +909,18 @@ enum Jump {
     Text(String),
     /// Where the reader left the article.
     Place(Place),
+}
+
+impl Jump {
+    /// The overlay call that scrolls there.
+    fn script(&self) -> String {
+        let args = match self {
+            Jump::Text(text) => serde_json::to_string(text),
+            Jump::Place(p) => serde_json::to_string(&p.text).map(|text| format!("{text},{}", p.at)),
+        }
+        .expect("string serializes");
+        format!("window.__lattice&&window.__lattice.scrollToText({args})")
+    }
 }
 
 #[derive(Clone, Serialize)]

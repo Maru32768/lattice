@@ -286,7 +286,7 @@ export const api = {
  * element in whichever window calls. `tab` is the tab's webview key (`PageTab.key`).
  */
 export const browser = {
-  /** `focusText`: a passage to centre once loaded, which loads the page again; else `place`, where its article was left, if it loads. */
+  /** `focusText`: a passage to centre once loaded, which loads the page again; else `place`, where its article was left. */
   open: (tab: string, url: string, bounds: Bounds, focusText?: string, place?: { text: string; at: number }) =>
     invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null, place: place ?? null }),
   /** Also shows the webview, in the calling window. False when the tab has none (evicted or restored): open it again. */
