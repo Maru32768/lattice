@@ -173,9 +173,10 @@ async fn run_until(store: &Store, client: &HttpClient, article_id: i64, deadline
             };
             let src = src.clone();
             tokio::task::spawn_blocking(move || match read.image(&src) {
-                Some((_, bytes)) if bytes.len() > cap => Err(Fail::Permanent(too_large(cap))),
-                Some(image) => Ok(image),
-                None => Err(Fail::Permanent(msg!("images.unsupported"))),
+                Ok(Some((_, bytes))) if bytes.len() > cap => Err(Fail::Permanent(too_large(cap))),
+                Ok(Some(image)) => Ok(image),
+                Ok(None) => Err(Fail::Permanent(msg!("images.unsupported"))),
+                Err(e) => Err(Fail::Transient(e)),
             })
             .await
             .map_err(err)?

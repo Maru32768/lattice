@@ -1293,26 +1293,35 @@ impl Figures {
     }
 
     /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
-    /// the data does not hold the image its dictionary describes.
-    pub(crate) fn image(&self, src: &str) -> Option<(&'static str, Vec<u8>)> {
-        let (number, generation) = src.strip_prefix(self.prefix.as_str())?.split_once('.')?;
-        let id = (number.parse().ok()?, generation.parse().ok()?);
+    /// the data does not hold the image its dictionary describes. An error when the worker has ended (by a limit, a crash or
+    /// the time), which says nothing about this figure or the ones after it.
+    pub(crate) fn image(&self, src: &str) -> Result<Option<(&'static str, Vec<u8>)>, String> {
+        let Some(id) = src.strip_prefix(self.prefix.as_str()).and_then(object_id) else {
+            return Ok(None);
+        };
         let doc = match &self.source {
-            Source::Here(doc) => doc.as_deref()?,
+            Source::Here(None) => return Ok(None),
+            Source::Here(Some(doc)) => doc,
             Source::Worker(session) => {
-                let mut session = session.lock().ok()?;
-                session.send(src.as_bytes()).ok()?;
-                let bytes = session.frame().ok()?;
-                return Some((crate::images::sniff(&bytes)?, bytes));
+                let mut session = session.lock().map_err(|_| msg!("pdf.parseFailed"))?;
+                session.send(src.as_bytes())?;
+                let bytes = session.frame()?;
+                return Ok(crate::images::sniff(&bytes).map(|mime| (mime, bytes)));
             }
         };
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Ok(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let image = doc.get_object(id).ok()?.as_stream().ok()?;
             Format::of(doc, &image.dict)?.encode(&image.content)
         }))
         .ok()
-        .flatten()
+        .flatten())
     }
+}
+
+/// `12.0` as an object id.
+fn object_id(text: &str) -> Option<ObjectId> {
+    let (number, generation) = text.split_once('.')?;
+    Some((number.parse().ok()?, generation.parse().ok()?))
 }
 
 /// A raster figure the Reader shows: drawn at least a fifth of the page wide (not a margin icon), over less than 80% of
@@ -2598,11 +2607,11 @@ pub(crate) mod tests {
     fn a_figure_is_read_from_the_pdf_its_src_names() {
         let bytes = quorum();
         let src = to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap_or_default();
-        let (mime, png) = Figures::parse(&bytes).unwrap().image(&src).unwrap();
+        let (mime, png) = Figures::parse(&bytes).unwrap().image(&src).unwrap().unwrap();
         assert_eq!((mime, &png[12..24]), ("image/png", &b"IHDR\0\0\0\x1e\0\0\0\x0a"[..]), "30x10 as drawn into the PDF");
-        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).unwrap().image(&src), None, "the same objects in another file");
-        assert_eq!(Figures::parse(b"%PDF-1.5 not really").unwrap().image(&src), None);
-        assert_eq!(Figures::parse(&bytes).unwrap().image("pdf-figure:12.0"), None);
+        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).unwrap().image(&src), Ok(None), "the same objects in another file");
+        assert_eq!(Figures::parse(b"%PDF-1.5 not really").unwrap().image(&src), Ok(None));
+        assert_eq!(Figures::parse(&bytes).unwrap().image("pdf-figure:12.0"), Ok(None));
     }
 
     /// The article's image blocks: id and `src`.
