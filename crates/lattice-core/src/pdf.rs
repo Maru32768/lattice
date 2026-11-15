@@ -440,9 +440,9 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
             }
             "m" | "l" | "c" | "v" | "y" => path = union(path, bounds(&ctm, &numbers(op).as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect::<Vec<_>>())),
             "W" | "W*" => clipping = true,
-            // The path ends here, and a clip it was marked for starts.
+            // The path ends here, and a clip it was marked for starts. pdf.js clips nothing for an empty path.
             "n" | "f" | "F" | "f*" | "S" | "s" | "B" | "B*" | "b" | "b*" => {
-                if clipping {
+                if clipping && path != NOTHING {
                     clip = Some(clip.map_or(path, |c| intersect(c, path)));
                 }
                 (path, clipping) = (NOTHING, false);
@@ -2506,6 +2506,9 @@ pub(crate) mod tests {
         assert_eq!(kinds(&ir)[1], ("image", "Figure 6-13"), "{:?}", kinds(&ir));
         let outside = "q 400 700 50 50 re W n 300 0 0 100 72 492 cm /Im0 Do Q";
         assert_eq!(image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", outside), None).unwrap()), 0, "clipped away");
+        // pdf.js, which draws the Page view, clips nothing for a clip without a path.
+        let pathless = "q W n 300 0 0 100 72 492 cm /Im0 Do Q";
+        assert_eq!(image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", pathless), None).unwrap()), 1, "a clip without a path");
     }
 
     #[test]
