@@ -2505,7 +2505,8 @@ pub(crate) mod tests {
         let ops = "q 72 492 300 100 re W n 300 0 0 400 72 392 cm /Im0 Do Q";
         let ir = to_ir(&with_ops(&pdf(&[quorum_text()], None), "", ops), None).unwrap();
         assert_eq!(kinds(&ir)[1], ("image", "Figure 6-13"), "{:?}", kinds(&ir));
-        let outside = "q 400 700 50 50 re W n 300 0 0 100 72 492 cm /Im0 Do Q";
+        // Across from the image and above it, so what drops it is the clip and not the width rule.
+        let outside = "q 72 700 300 50 re W n 300 0 0 100 72 492 cm /Im0 Do Q";
         assert_eq!(image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", outside), None).unwrap()), 0, "clipped away");
         // pdf.js, which draws the Page view, clips nothing for a clip without a path.
         let pathless = "q W n 300 0 0 100 72 492 cm /Im0 Do Q";
