@@ -2485,6 +2485,28 @@ pub(crate) mod tests {
         assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count(), 4, "{:?}", kinds(&ir));
     }
 
+    #[tokio::test]
+    async fn a_figure_over_the_size_limit_is_not_stored() {
+        let s = Store::open_in_memory().unwrap();
+        images::set_settings(&s, images::ImageSettings { save: true, max_mb: 1 }).unwrap();
+        let (w, h) = (700u32, 500u32);
+        let mut x = 1u32;
+        let noise: Vec<u8> = (0..w * h * 3)
+            .map(|_| {
+                x = x.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (x >> 24) as u8
+            })
+            .collect();
+        let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut z, &noise).unwrap();
+        let mut big = image(w, h, "DeviceRGB", z.finish().unwrap());
+        big.dict.set("Filter", name("FlateDecode"));
+        let id = import(&s, &draw(&pdf(&[quorum_text()], None), big, &[(0, L, 200., 300., 100.)]), None).unwrap();
+        store_images(&s, id).await;
+        let error: String = s.conn().query_row("SELECT error FROM article_images WHERE article_id = ?1", [id], |r| r.get(0)).unwrap();
+        assert!(error.contains("images.tooLarge"), "{error}");
+    }
+
     #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
