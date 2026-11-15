@@ -2277,6 +2277,9 @@ pub(crate) mod tests {
         let mut bytes = pdf(&pages, None);
         let mut masked = rgb(4, 4, [0, 0, 0]);
         masked.dict.set("SMask", Object::Reference((1, 0)));
+        // Its filter is read before the reading of text blanks every image's data and filters.
+        let mut lzw = image(4, 4, "DeviceRGB", vec![0; 8]);
+        lzw.dict.set("Filter", name("LZWDecode"));
         for (image, at) in [
             (rgb(4, 4, [0, 0, 0]), vec![(0, L, 120., 38., 50.)]),
             (rgb(4, 4, [0, 0, 0]), (0..3).map(|p| (p, L, 600., 300., 40.)).collect()),
@@ -2284,12 +2287,13 @@ pub(crate) mod tests {
             (rgb(4, 4, [9, 9, 9]), vec![(2, L, 200., 300., 100.), (2, L, 200., 300., 100.)]),
             (masked, vec![(2, L, 350., 300., 100.)]),
             (image(4, 4, "DeviceCMYK", vec![0; 64]), vec![(2, L, 500., 300., 100.)]),
+            (lzw, vec![(2, L, 650., 300., 100.)]),
         ] {
             bytes = draw(&bytes, image, &at);
         }
         let ir = to_ir(&bytes, None).unwrap();
         let kinds: Vec<&str> = ir.blocks.iter().map(|b| b.kind.as_str()).collect();
-        assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "neither masked nor CMYK, and drawn twice still one: {kinds:?}");
+        assert_eq!(kinds.iter().filter(|k| **k == "image").count(), 1, "neither masked, CMYK nor LZW, and drawn twice still one: {kinds:?}");
         assert_eq!(kinds.last(), Some(&"image"), "the third page's figure, under all of the text: {kinds:?}");
     }
 
