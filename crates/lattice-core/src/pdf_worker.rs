@@ -465,6 +465,21 @@ mod tests {
     }
 
     #[test]
+    fn a_reply_after_the_time_is_up_answers_nothing() {
+        let mut session = worker(SMALL, Duration::from_millis(100)).start(&Request::Figures, &quorum()).unwrap();
+        // The reply the worker might write between the timeout and the kill.
+        let (reply, replies) = mpsc::channel();
+        session.replies = replies;
+        let late = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(1));
+            let _ = reply.send(b"late".to_vec());
+        });
+        assert_eq!(session.frame(), Err(msg!("pdf.tooSlow", minutes = 0)));
+        late.join().unwrap();
+        assert_eq!(session.frame(), Err(msg!("pdf.parseFailed")), "not the late reply, for the next figure");
+    }
+
+    #[test]
     fn figures_wait_for_a_worker_that_has_ended() {
         let bytes = quorum();
         let src = crate::pdf::to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap();
