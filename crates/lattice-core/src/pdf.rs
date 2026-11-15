@@ -2825,6 +2825,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_page_with_its_own_resources_and_mediabox_is_read_whatever_lies_above_it() {
+        // pdf-extract looks no further than the page for them, so a loop above is no reason to refuse the PDF.
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let parent = doc.get_dictionary(page).and_then(|d| d.get(b"Parent")).and_then(Object::as_reference).unwrap();
+        doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn faces_come_from_fonts_written_into_the_page_tree() {
         let line: Vec<Run> = vec![(72., 100., 10., "An event"), (120., 100., 10., "/i e"), (130., 100., 10., "happens.")];
         let mut doc = Document::load_mem(&pdf(&[line], None)).unwrap();
