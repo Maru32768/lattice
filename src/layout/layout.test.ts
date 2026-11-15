@@ -142,6 +142,12 @@ test("open: the page a Reader kept comes back at the URL it moved on to; another
   pdf = open(pdf, reader(3));
   const original = activeTab(focusedPane(open(pdf, { ...page("http://lattice-pdf.localhost/3"), saved: 3 })))!;
   assert.deepEqual(original.kind === "page" && [original.fromReader, original.url], [false, "http://lattice-pdf.localhost/3"]);
+
+  // Pages not in the library (the app passes `saved: null`) are told apart by URL alone.
+  const x = open(single(), { ...page("https://x.example/"), saved: null });
+  assert.notEqual(open(x, { ...page("https://y.example/"), saved: null }), x, "another such page opens");
+  const y = activeTab(focusedPane(open(open(x, reader(1)), { ...page("https://y.example/"), saved: null })))!;
+  assert.deepEqual(y.kind === "page" && [y.fromReader, y.url], [false, "https://y.example/"], "and is not the Reader's page");
 });
 
 test("close: the neighbour becomes active; the last tab removes the pane, except the root", () => {
