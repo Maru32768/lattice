@@ -389,9 +389,11 @@ test("an image the PC stored shows in the text, fetched with the token; one it h
 test("a PDF figure the PC has not stored is named without its internal src", async ({ page }) => {
   await start(page);
   const figure = { id: 14, ordinal: 0, kind: "image", text: "", attrs: { src: "pdf-figure:0123456789abcdef/12.0" }, translation: null };
-  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks: [figure] } }));
+  const captioned = { ...figure, id: 15, ordinal: 1, text: "Figure 6-13", attrs: { src: "pdf-figure:0123456789abcdef/13.0" } };
+  await page.route("**/api/articles/1", (route) => route.fulfill({ json: { ...ARTICLE, blocks: [figure, captioned] } }));
   await page.getByRole("link", { name: /First article/ }).click();
   await expect(page.getByText("画像: PDFの図")).toBeVisible();
+  await expect(page.getByText("画像: Figure 6-13"), "one before its caption keeps the caption's label").toBeVisible();
   await expect(page.getByText(/pdf-figure:/)).toHaveCount(0);
 });
 
