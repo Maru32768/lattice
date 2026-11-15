@@ -72,7 +72,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Importing some malformed PDFs never finished and kept a processor core busy, and a PDF saved from a URL did the same again after every start. Such a PDF now fails to import with an error.
 - Importing some other malformed PDFs closed the app, and a PDF saved from a URL closed it again on the next few starts. Others took hours to import. Such a PDF now imports without its broken part, or fails to import with an error.
 - A PDF made to use up memory, or to take hours to read, could still close the app or keep it busy. Lattice now reads each PDF in a separate process limited to 2 GB of memory and 5 minutes, so such a PDF imports without the part over the limit, or fails to import with an error, and the app keeps running.
-- In PDFs that give the fonts of several pages in one place, italics and formulas were read as plain text, and the Page view translated the formulas. They are now kept as printed.
+- In some PDFs that give their fonts for a group of pages rather than for each page, the Page view did not recognize formulas and translated them. They are now shown as printed.
 
 ## [0.3.0] - 2026-11-06
 
