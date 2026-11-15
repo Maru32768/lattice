@@ -624,9 +624,12 @@ pub async fn browser_open(
         // moved on in the page since the tab last saw it): no reload, its history stays.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
         if !searching && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
-            // Back from the tab's Reader, the page goes to where the Reader was, before it shows; one from another window stays put.
-            if !moved && let Some(jump) = &jump {
-                let _ = wv.eval(jump.script());
+            // Back from the tab's Reader, the page goes to where the Reader was before it shows, and with no place (the article
+            // read back to its top) to its top; one from another window stays put.
+            // shortcut: a page with no article goes to its top too, as does every page shown again after a reload of the app's
+            // UI, which only a developer does; tell "no place known" from "the top" in `browser_open` if that changes.
+            if !moved {
+                let _ = wv.eval(jump.as_ref().map_or_else(|| "window.__lattice&&window.__lattice.runDoc(\"docTop\",1)".to_owned(), Jump::script));
             }
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
             emit_page(&wv, &browser, url.to_string());
