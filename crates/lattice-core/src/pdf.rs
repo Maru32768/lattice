@@ -2522,6 +2522,15 @@ pub(crate) mod tests {
         let ocr = to_ir(&with_ops(&pdf(&[quorum_text()], None), &format!("{scan} 3 Tr"), ""), None).unwrap();
         assert_eq!(image_count(&ocr), 0, "{:?}", kinds(&ocr));
         assert_eq!(ocr.blocks.len(), visible.blocks.len() - 1, "the text still reads");
+        let text = |ops: &str| format!("BT /F1 9 Tf 72 30 Td {ops} ET");
+        for (before, after, how) in [
+            (scan.to_owned(), text("3 Tr [(Recognised) -250 (words)] TJ"), "written as an array"),
+            (format!("{scan} 3 Tr"), text("0 Tr (Stamped on later) Tj"), "with visible text after it"),
+            ("3 Tr".to_owned(), scan.to_owned(), "drawn before the scan"),
+        ] {
+            let ir = to_ir(&with_ops(&pdf(&[quorum_text()], None), &before, &after), None).unwrap();
+            assert_eq!(image_count(&ir), 0, "{how}: {:?}", kinds(&ir));
+        }
     }
 
     #[test]
