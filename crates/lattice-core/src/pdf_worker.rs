@@ -449,8 +449,7 @@ mod tests {
             assert_eq!(crate::pdf::to_ir(&bytes, None), Err(failed.clone()));
             assert_eq!(crate::pdf::regions(&bytes).err(), Some(failed.clone()));
             assert!(Figures::parse(&bytes).is_err());
-            // Not recorded on the article as a PDF that failed to read: the job that tried tries again.
-            assert_eq!(crate::pdf::store_fetched(&store, id, "https://example.com/paper.pdf", &bytes), Err(failed.clone()));
+            // Re-extraction, which the user asks for and nothing retries, leaves the article as it is.
             assert_eq!(crate::pdf::reextract(&store, id, &bytes), Err(failed.clone()));
             assert_eq!(store.article_row(id).unwrap().unwrap().extraction_status, "ok");
             failed
@@ -466,6 +465,15 @@ mod tests {
         assert_eq!(run, Err(msg!("images.someFailed", error = last)), "the job fails for the figures");
         let recorded: i64 = store.conn().query_row("SELECT count(*) FROM article_images WHERE article_id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(recorded, 0);
+        if how == "does not start" {
+            // A PDF fetched from a URL is recorded as failed with what was fetched, and its job fails to try again.
+            let url = "https://example.com/paper.pdf";
+            assert_eq!(crate::pdf::store_fetched(&store, id, url, &bytes), Err(last.clone()));
+            let article = store.article_row(id).unwrap().unwrap();
+            assert_eq!((article.extraction_status.as_str(), article.last_error), ("failed", Some(last)));
+            let kept = store.latest_snapshot(id).unwrap().unwrap();
+            assert_eq!((kept.final_url.as_str(), kept.body), (url, bytes));
+        }
     }
 
     #[test]
