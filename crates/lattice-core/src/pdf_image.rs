@@ -295,6 +295,10 @@ mod tests {
             ("two filters", vec![("Filter", Object::Array(vec![name("ASCII85Decode"), name("FlateDecode")]))]),
             ("TIFF predictor", vec![flate.clone(), ("DecodeParms", Object::Dictionary(dict(&[("Predictor", Object::Integer(2))])))]),
             ("other columns", vec![flate.clone(), parms(Object::Integer(3))]),
+            (
+                "other colours",
+                vec![flate.clone(), ("DecodeParms", Object::Dictionary(dict(&[("Predictor", Object::Integer(10)), ("Columns", Object::Integer(2))])))],
+            ),
         ] {
             assert_eq!(Format::of(&doc, &rgb(2, 2, &more)), None, "{why}");
         }
