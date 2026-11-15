@@ -15,8 +15,6 @@ use std::sync::OnceLock;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
@@ -41,9 +39,9 @@ const TIME: Duration = Duration::from_secs(if cfg!(debug_assertions) {
     5 * 60
 });
 
-/// The largest reply this process takes in. A figure has at most 64 MiB of rows (`MAX_ROWS_BYTES`), 86 MiB in base64, and
-/// a worker reads a character of text for about 130 bytes of memory, so it has room for some 16 million: an article of 100
-/// MiB or so in JSON.
+/// The largest reply this process takes in. A figure has at most 64 MiB of rows (`MAX_ROWS_BYTES`), and a worker reads a
+/// character of text for about 130 bytes of memory, so it has room for some 16 million: an article of 100 MiB or so in
+/// JSON.
 const REPLY: usize = 256 << 20;
 
 /// A program that reads PDFs when started with `WORKER` set.
@@ -117,7 +115,7 @@ impl Worker {
         };
         let mut session = Session {
             child,
-            stdin: Some(stdin),
+            stdin,
             replies: replies(stdout),
             time: self.time,
             #[cfg(windows)]
@@ -132,7 +130,7 @@ impl Worker {
 /// A worker that has been sent a request. Ended when dropped.
 pub(crate) struct Session {
     child: Child,
-    stdin: Option<ChildStdin>,
+    stdin: ChildStdin,
     replies: Receiver<Vec<u8>>,
     time: Duration,
     #[cfg(windows)]
@@ -141,23 +139,25 @@ pub(crate) struct Session {
 
 impl Session {
     pub(crate) fn send(&mut self, frame: &[u8]) -> Result<(), String> {
-        // A worker that has ended takes nothing more, and has no reply either.
-        let stdin = self.stdin.as_mut().ok_or_else(|| msg!("pdf.parseFailed"))?;
-        write_frame(stdin, frame).map_err(|_| msg!("pdf.parseFailed"))
+        write_frame(&mut self.stdin, frame).map_err(|_| msg!("pdf.parseFailed"))
     }
 
-    /// The worker's next reply. One that comes too late ends the worker.
-    pub(crate) fn reply<T: DeserializeOwned>(&mut self) -> Result<T, String> {
+    /// The worker's next frame. One that comes too late ends the worker.
+    pub(crate) fn frame(&mut self) -> Result<Vec<u8>, String> {
         match self.replies.recv_timeout(self.time) {
-            Ok(frame) => serde_json::from_slice(&frame).map_err(|_| msg!("pdf.parseFailed")),
+            Ok(frame) => Ok(frame),
             Err(RecvTimeoutError::Timeout) => {
-                self.stdin = None;
                 let _ = self.child.kill();
                 Err(msg!("pdf.tooSlow", minutes = self.time.as_secs().div_ceil(60)))
             }
-            // Ended by its memory limit, by a crash, or by an earlier `reply`.
+            // Ended by its memory limit, by a crash, or by an earlier `frame`.
             Err(RecvTimeoutError::Disconnected) => Err(msg!("pdf.parseFailed")),
         }
+    }
+
+    /// The worker's next frame, read as JSON.
+    pub(crate) fn reply<T: DeserializeOwned>(&mut self) -> Result<T, String> {
+        serde_json::from_slice(&self.frame()?).map_err(|_| msg!("pdf.parseFailed"))
     }
 
     /// The most memory the worker has committed. Fails when it has no limit.
@@ -240,21 +240,13 @@ fn serve() -> io::Result<()> {
         Request::Regions => write_reply(&mut output, &crate::pdf::regions(&pdf)),
         Request::Figures => {
             let figures = crate::pdf::Figures::parse(&pdf);
-            loop {
-                let src = match read_frame(&mut input, usize::MAX) {
-                    Ok(src) => String::from_utf8_lossy(&src).into_owned(),
-                    Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
-                    Err(e) => return Err(e),
-                };
-                write_reply(&mut output, &figures.image(&src).map(|(_, bytes)| BASE64.encode(bytes)))?;
+            while let Ok(src) = read_frame(&mut input, usize::MAX) {
+                let (_, bytes) = figures.image(&String::from_utf8_lossy(&src)).unwrap_or_default();
+                write_frame(&mut output, &bytes)?;
             }
+            Ok(())
         }
     }
-}
-
-/// A figure's bytes, as `serve` sends them.
-pub(crate) fn figure(reply: Option<String>) -> Option<Vec<u8>> {
-    BASE64.decode(reply?).ok()
 }
 
 fn write_reply(output: &mut impl Write, value: &impl Serialize) -> io::Result<()> {

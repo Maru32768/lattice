@@ -1302,7 +1302,7 @@ impl Figures {
             Source::Worker(session) => {
                 let mut session = session.lock().ok()?;
                 session.send(src.as_bytes()).ok()?;
-                let bytes = pdf_worker::figure(session.reply().ok()?)?;
+                let bytes = session.frame().ok()?;
                 return Some((crate::images::sniff(&bytes)?, bytes));
             }
         };
