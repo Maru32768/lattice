@@ -30,6 +30,8 @@ export interface PageTab {
   title: string;
   /** Explicit navigations: bumped so the webview moves even to the URL it already shows. */
   seq: number;
+  /** Opened in the webview its Reader kept: shown again without a load, the page goes to where the Reader was. */
+  fromReader?: boolean;
   /** Text of a block to scroll to after load (search-result jumps). */
   focus?: string;
   /** A new tab (the + button): its URL bar starts in edit, the URL selected, so a pasted one replaces it. */
@@ -196,7 +198,20 @@ function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   const own = doc.key && prev?.kind !== "page" ? undefined : kept;
   const key = own?.key ?? doc.key ?? newKey();
   const seq = (own?.seq ?? 0) + 1;
-  return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, edit: doc.edit, loading: true, saved: doc.saved ?? null };
+  const fromReader = prev?.kind === "reader" && own !== undefined;
+  return {
+    kind: "page",
+    id,
+    key,
+    url: doc.url,
+    title: doc.title ?? "",
+    seq,
+    fromReader,
+    focus: doc.focus,
+    edit: doc.edit,
+    loading: true,
+    saved: doc.saved ?? null,
+  };
 }
 
 /** True when `t` already shows `doc` and nothing asks to jump inside it. */

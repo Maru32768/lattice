@@ -132,7 +132,12 @@ test("a Reader in place of a Page hides its webview, the Page comes back in it, 
   await expect(app.locator(".art-title")).toHaveText(a.title!);
   await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab });
   await app.getByRole("button", { name: "Page", exact: true }).click();
-  await expect.poll(async () => ((await callsOf(app, "browser_open")) as { tab: string }[]).map((o) => o.tab)).toEqual([tab, tab]);
+  await expect
+    .poll(async () => ((await callsOf(app, "browser_open")) as { tab: string; fromReader: boolean }[]).map((o) => [o.tab, o.fromReader]))
+    .toEqual([
+      [tab, false],
+      [tab, true],
+    ]);
   expect(await callsOf(app, "browser_close"), "hidden while the Reader showed, not closed").toEqual([]);
 
   await app.getByRole("button", { name: "Reader", exact: true }).click();

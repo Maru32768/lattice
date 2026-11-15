@@ -94,7 +94,14 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
   assert.deepEqual(webviewKeys(l), [p.key], "kept while the Reader moves to another article");
   l = open(l, { ...page("https://a.example/"), saved: 1 });
   const back = activeTab(focusedPane(l))!;
-  assert.deepEqual(back.kind === "page" && [back.id, back.key, back.seq], [p.id, p.key, p.seq + 1], "the same webview, told to open again");
+  assert.deepEqual(
+    back.kind === "page" && [back.id, back.key, back.seq, back.fromReader],
+    [p.id, p.key, p.seq + 1, true],
+    "the same webview, told to open again as the Reader's page",
+  );
+  assert.equal(p.fromReader, false, "a page that replaced no Reader");
+  const next = activeTab(focusedPane(open(l, page("https://b.example/"))))!;
+  assert.equal(next.kind === "page" && next.fromReader, false, "a page replacing that page");
   assert.deepEqual(webviewKeys(close(open(l, reader(1)), p.id)), [], "the tab closing takes it");
   const arrived = open(open(open(single(), page("https://a.example/")), reader(1)), { ...page("https://b.example/"), key: "theirs" });
   assert.deepEqual(webviewKeys(arrived), ["theirs"], "a page from another window brings its own, and the hidden one goes");

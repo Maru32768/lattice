@@ -286,9 +286,12 @@ export const api = {
  * element in whichever window calls. `tab` is the tab's webview key (`PageTab.key`).
  */
 export const browser = {
-  /** `focusText`: a passage to centre once loaded, which loads the page again; else `place`, where its article was left. */
-  open: (tab: string, url: string, bounds: Bounds, focusText?: string, place?: { text: string; at: number }) =>
-    invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null, place: place ?? null }),
+  /**
+   * `focusText`: a passage to centre once loaded, which loads the page again; else `place`, where its article was left, once
+   * loaded. `fromReader`: the page comes back in the webview its Reader kept, which goes to `place` (or its top) with no load.
+   */
+  open: (tab: string, url: string, bounds: Bounds, focusText?: string, place?: { text: string; at: number }, fromReader = false) =>
+    invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null, place: place ?? null, fromReader }),
   /** Also shows the webview, in the calling window. False when the tab has none (evicted or restored): open it again. */
   setBounds: (tab: string, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
   hide: (tab: string) => invoke<void>("browser_hide", { tab }),
