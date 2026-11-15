@@ -2808,13 +2808,18 @@ pub(crate) mod tests {
             doc.save_to(&mut bytes).unwrap();
             assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key} {entry:?}, back to the page: {back_to_page}");
         }
-        // No loop, but the MediaBox lies so far up a chain outside the page tree that the recursion would overflow.
+        // No loop, but the MediaBox lies so far up that the recursion would overflow.
+        assert_eq!(to_ir(&chained(100_000), None).unwrap_err(), msg!("pdf.parseFailed"), "a chain");
+    }
+
+    /// The page hung from a chain of `links` nodes outside the page tree, with its MediaBox moved to one more on top.
+    fn chained(links: usize) -> Vec<u8> {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
         let mut top = Dictionary::new();
         top.set("MediaBox", doc.get_dictionary_mut(page).unwrap().remove(b"MediaBox").unwrap());
         let mut up = doc.add_object(top);
-        for _ in 0..100_000 {
+        for _ in 0..links {
             let mut node = Dictionary::new();
             node.set("Parent", Object::Reference(up));
             up = doc.add_object(node);
@@ -2822,7 +2827,13 @@ pub(crate) mod tests {
         doc.get_dictionary_mut(page).unwrap().set("Parent", Object::Reference(up));
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
-        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "a chain");
+        bytes
+    }
+
+    #[test]
+    fn a_mediabox_on_the_last_node_the_walk_reaches_is_read() {
+        // The page, the links and the top make PAGE_TREE_DEPTH nodes.
+        assert_eq!(kinds(&to_ir(&chained(PAGE_TREE_DEPTH - 2), None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
     }
 
     #[test]
