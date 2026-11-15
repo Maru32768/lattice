@@ -448,8 +448,8 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
                 (path, clipping) = (NOTHING, false);
             }
             "Do" => {
-                // The Reader shows the pixels as stored, so an image the page mirrors, turns over or turns past 45
-                // degrees would show the wrong way round there: it stays in the Page view.
+                // The Reader shows the pixels as stored, so an image the page mirrors, turns over or turns 45 degrees
+                // or more would show the wrong way round there: it stays in the Page view.
                 let upright = ctm.m11 > ctm.m12.abs() && ctm.m22 > ctm.m21.abs();
                 if upright && let Some(&id) = op.operands.first().and_then(|o| o.as_name().ok()).and_then(|n| images.get(n)) {
                     let unit = bounds(&ctm, &[(0., 0.), (1., 0.), (0., 1.), (1., 1.)]);
