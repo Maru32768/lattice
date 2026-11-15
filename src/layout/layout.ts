@@ -15,7 +15,7 @@ export interface ReaderTab {
   articleId: number;
   focus?: Focus;
   /** The webview of the Page this Reader replaced, hidden meanwhile: the tab's Page comes back in it without being created and loaded again. */
-  page?: Pick<PageTab, "key" | "seq">;
+  page?: Pick<PageTab, "key" | "seq" | "url" | "saved">;
   /** The tab this one was opened behind (`openBehind`): its later ones go after this, in click order. */
   opener?: Id;
 }
@@ -30,7 +30,7 @@ export interface PageTab {
   title: string;
   /** Explicit navigations: bumped so the webview moves even to the URL it already shows. */
   seq: number;
-  /** Opened in the webview its Reader kept: shown again without a load, the page goes to where the Reader was. */
+  /** The page its Reader kept, shown again in its webview without a load, wherever its URL has moved: it goes to where the Reader was. */
   fromReader?: boolean;
   /** Text of a block to scroll to after load (search-result jumps). */
   focus?: string;
@@ -189,7 +189,7 @@ export const toggleZoom = (l: Workspace): Workspace => ({ ...l, zoomed: l.zoomed
 export const unzoom = (l: Workspace): Workspace => (l.zoomed == null ? l : { ...l, zoomed: undefined });
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
-  const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq } : prev?.page;
+  const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq, url: prev.url, saved: prev.saved } : prev?.page;
   if (doc.kind === "reader") {
     const seq = (prev?.kind === "reader" ? (prev.focus?.seq ?? 0) : 0) + 1;
     return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq }, page: kept };
@@ -198,7 +198,8 @@ function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
   const own = doc.key && prev?.kind !== "page" ? undefined : kept;
   const key = own?.key ?? doc.key ?? newKey();
   const seq = (own?.seq ?? 0) + 1;
-  const fromReader = prev?.kind === "reader" && own !== undefined;
+  // Only that page comes back as it was; another article loads in its webview.
+  const fromReader = prev?.kind === "reader" && own !== undefined && samePage(own, doc);
   return {
     kind: "page",
     id,
@@ -222,9 +223,11 @@ function shows(t: Tab, doc: Doc): boolean {
   if (t.kind === "reader") {
     return doc.kind === "reader" && t.articleId === doc.articleId;
   }
-  // Also after a redirect, by the saved article the page turned out to be.
-  return doc.kind === "page" && (t.url === doc.url || (doc.saved != null && t.saved === doc.saved));
+  return doc.kind === "page" && samePage(t, doc);
 }
+
+/** `p` shows the page of `doc`: also after a redirect, by the saved article the page turned out to be. */
+const samePage = (p: Pick<PageTab, "url" | "saved">, doc: Extract<Doc, { kind: "page" }>) => p.url === doc.url || (doc.saved != null && p.saved === doc.saved);
 
 /**
  * Opens `doc` in the focused pane: in its active tab (or a new one when `where` is "new" or the

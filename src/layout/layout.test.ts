@@ -111,6 +111,19 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
   assert.equal(theirs.kind === "page" && theirs.fromReader, false, "and it is not the Reader's page");
 });
 
+test("open: the page a Reader kept comes back as it was where its URL moved on; another article loads in its webview", () => {
+  let l = open(single(), { ...page("http://a.example/"), saved: 1 });
+  const p = activeTab(focusedPane(l))!;
+  assert.ok(p.kind === "page");
+  // Redirected, then a link to a section of the page.
+  l = navigated(l, p.id, { url: "https://a.example/#part", loading: false, canGoBack: false, canGoForward: false });
+  l = open(l, reader(1));
+  const again = activeTab(focusedPane(open(l, { ...page("http://a.example/"), saved: 1 })))!;
+  assert.deepEqual(again.kind === "page" && [again.key, again.fromReader], [p.key, true], "the same article");
+  const other = activeTab(focusedPane(open(open(l, reader(2)), { ...page("https://b.example/"), saved: 2 })))!;
+  assert.deepEqual(other.kind === "page" && [other.key, other.fromReader], [p.key, false], "another article");
+});
+
 test("close: the neighbour becomes active; the last tab removes the pane, except the root", () => {
   let l = open(open(open(single(), reader(1)), reader(2), "new"), reader(3), "new");
   l = activate(l, 3);

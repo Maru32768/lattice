@@ -621,17 +621,17 @@ pub async fn browser_open(
         None => false,
     };
     if let Some(wv) = app.get_webview(&label) {
-        // Already showing this page, or the tab's own page come from another window (its URL may have
-        // moved on in the page since the tab last saw it): no reload, its history and scroll stay.
+        // Already showing this page, the tab's own page come from another window, or the page its Reader kept (the URL of
+        // either may have moved on in the page since the tab last saw it): no reload, its history stays.
         let loading = browser.with_tab(&label, |t| t.visibility.loading);
-        if !searching && !loading && (moved || wv.url().is_ok_and(|u| u == url)) {
+        if !searching && !loading && (moved || from_reader || wv.url().is_ok_and(|u| u == url)) {
             // Back from the tab's Reader, the page goes to where the Reader was before it shows, or to its top, as a load
             // would, when no place came (the Reader read it back there, or the tab does not know the page's article).
             if from_reader {
                 let _ = wv.eval(jump.as_ref().map_or_else(|| "window.__lattice&&window.__lattice.runDoc(\"docTop\",1)".to_owned(), Jump::script));
             }
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
-            emit_page(&wv, &browser, url.to_string());
+            emit_page(&wv, &browser, wv.url().map_or_else(|_| url.to_string(), |u| u.to_string()));
             return Ok(());
         }
         browser.with_tab(&label, |t| t.jump = jump);
