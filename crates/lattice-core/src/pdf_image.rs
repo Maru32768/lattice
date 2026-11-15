@@ -302,6 +302,18 @@ mod tests {
     }
 
     #[test]
+    fn one_filter_in_an_array_is_read_with_its_parms() {
+        let doc = Document::with_version("1.5");
+        let parms = Object::Array(vec![Object::Dictionary(dict(&[
+            ("Predictor", Object::Integer(15)),
+            ("Colors", Object::Integer(3)),
+            ("Columns", Object::Integer(2)),
+        ]))]);
+        let image = rgb(2, 2, &[("Filter", Object::Array(vec![name("FlateDecode")])), ("DecodeParms", parms)]);
+        assert_eq!(Format::of(&doc, &image), Some(Format::Png { width: 2, height: 2, channels: 3, rows: Rows::Filtered }));
+    }
+
+    #[test]
     fn inflating_stops_a_byte_past_the_size() {
         assert_eq!(inflate(&deflate(&[7; 1000]), 12).map(|v| v.len()), Some(13));
     }
