@@ -153,7 +153,7 @@ test("the Page view opens where the Reader was, and the Reader where the Page vi
   await expect(doc.getByText(para(79))).toBeAttached();
   await shell.waitForTimeout(300);
   expect(await doc.evaluate((el) => el.scrollTop)).toBe(0);
-  // The page comes back in its webview with no place: there it goes to its top.
+  // The page comes back in its webview with no place, which `browser_open` takes for its top.
   await shell.getByRole("button", { name: "Page", exact: true }).click();
   await expect.poll(async () => (await callsOf(shell, "browser_open")).at(-1)).toMatchObject({ tab: again, place: null, fromReader: true });
 });
