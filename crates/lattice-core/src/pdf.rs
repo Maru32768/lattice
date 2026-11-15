@@ -2727,6 +2727,29 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_named_in_resources_two_levels_up_is_kept() {
+        // The page, a Pages node between, and the root that holds the resources.
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        let resources = dict.remove(b"Resources").unwrap();
+        let root = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        let mut between = Dictionary::new();
+        between.set("Type", name("Pages"));
+        between.set("Parent", Object::Reference(root));
+        between.set("Kids", Object::Array(vec![Object::Reference(page)]));
+        between.set("Count", Object::Integer(1));
+        let between = doc.add_object(between);
+        doc.get_dictionary_mut(page).unwrap().set("Parent", Object::Reference(between));
+        let tree = doc.get_dictionary_mut(root).unwrap();
+        tree.set("Kids", Object::Array(vec![Object::Reference(between)]));
+        tree.set("Resources", resources);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
