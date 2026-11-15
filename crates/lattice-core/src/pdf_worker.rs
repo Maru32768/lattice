@@ -411,19 +411,35 @@ mod tests {
 
     #[test]
     fn a_process_that_called_init_reads_no_pdf_itself() {
-        if std::env::var_os(INITIALISED).is_none() {
-            let me = ["--exact", "pdf_worker::tests::a_process_that_called_init_reads_no_pdf_itself"];
-            let run = Command::new(std::env::current_exe().unwrap()).args(me).env(INITIALISED, "1").output().unwrap();
-            let out = String::from_utf8_lossy(&run.stdout);
-            assert!(out.contains("test result: ok. 1 passed"), "{out}");
+        let Some(how) = std::env::var_os(INITIALISED) else {
+            for how in ["does not start", "is ended"] {
+                let me = ["--exact", "pdf_worker::tests::a_process_that_called_init_reads_no_pdf_itself"];
+                let run = Command::new(std::env::current_exe().unwrap()).args(me).env(INITIALISED, how).output().unwrap();
+                let out = String::from_utf8_lossy(&run.stdout);
+                assert!(out.contains("test result: ok. 1 passed"), "a worker that {how}: {out}");
+            }
             return;
-        }
-        // A worker that does not start, so that what reads the PDF here would read it.
-        assert!(THIS.set(Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE }).is_ok());
+        };
+        // Imported while this process still reads PDFs itself.
         let bytes = quorum();
-        assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.parseFailed")));
-        assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.parseFailed")));
-        assert!(Figures::parse(&bytes).is_err());
+        let store = crate::store::Store::open_in_memory().unwrap();
+        let id = crate::pdf::import(&store, &bytes, None).unwrap();
+        // A worker that does not start, or one that is ended at its first answer: what reads the PDF here would read it.
+        if how == "does not start" {
+            assert!(THIS.set(Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE }).is_ok());
+            assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.parseFailed")));
+            assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.parseFailed")));
+            assert!(Figures::parse(&bytes).is_err());
+        } else {
+            assert!(THIS.set(worker(SMALL, Duration::ZERO)).is_ok());
+            assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.tooSlow", minutes = 0)));
+            assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.tooSlow", minutes = 0)));
+        }
+        // The figures are left for a later try, not recorded as ones the PDF lacks.
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        assert!(runtime.block_on(crate::images::run(&store, &crate::fetch::client(), id)).is_err());
+        let recorded: i64 = store.conn().query_row("SELECT count(*) FROM article_images WHERE article_id = ?1", [id], |r| r.get(0)).unwrap();
+        assert_eq!(recorded, 0);
     }
 
     #[test]
