@@ -236,7 +236,9 @@ fn laid_out_text(d: &Draft) -> bool {
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
 /// translated as two fragments, so a sentence goes whole to the piece that holds most of it; the
 /// other piece's box still covers its end of it. A sentence that would leave a piece empty, whose box
-/// would then keep showing the original, is cut between words instead.
+/// would then keep showing the original, goes whole to the other piece: cut through, neither piece would be whole
+/// sentences, which are all the block's saved translation can show (`translate::saved_units`). Only a sentence with
+/// nothing else on either side is cut between words.
 fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
     let mut whole = String::new();
     let mut breaks = Vec::new();
@@ -253,14 +255,12 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
     for at in breaks {
         let before = ends.iter().rev().find(|&&e| e <= at).copied().unwrap_or(0);
         let after = ends.iter().find(|&&e| e > at).copied().unwrap_or(whole.len());
-        let mut cut = if at - before > after - at {
-            after
+        let (most, rest) = if at - before > after - at {
+            (after, before)
         } else {
-            before
+            (before, after)
         };
-        if cut <= start || cut >= whole.len() {
-            cut = word_break(&whole, at).max(start);
-        }
+        let cut = [most, rest].into_iter().find(|&c| c > start && c < whole.len()).unwrap_or_else(|| word_break(&whole, at).max(start));
         texts.push(whole[start..cut].to_string());
         start = cut;
     }
@@ -2058,6 +2058,37 @@ pub(crate) mod tests {
         );
         assert_eq!((r[0].x0, r[1].x0), (L, R), "each box stays over its own column");
         assert_eq!(r[0].y1, 124. + 3., "and the first still covers the word's start");
+    }
+
+    #[test]
+    fn a_sentence_that_would_leave_a_piece_empty_goes_whole_to_the_other() {
+        // DDIA's p199: the paragraph's last sentence holds all that runs on to the next page. Cut between words, neither
+        // piece is whole sentences, so neither can show the block's saved translation.
+        let first: Vec<Run> = vec![
+            (L, 100., 10., "Single-leader replication is very widely used. Many consensus algorithms"),
+            (L, 112., 10., "such as Raft are also based on a single leader and every one of them will"),
+        ];
+        let second: Vec<Run> =
+            vec![(L, 100., 10., "automatically elect a new leader when the old one fails, as we will see"), (L, 112., 10., "in a later chapter.")];
+        let texts = |bytes: &[u8]| regions(bytes).unwrap().into_iter().map(|r| r.text).collect::<Vec<_>>();
+        assert_eq!(
+            texts(&pdf(&[first, second], None)),
+            [
+                "Single-leader replication is very widely used.",
+                "Many consensus algorithms such as Raft are also based on a single leader and every one of them will automatically elect a new leader when the old one fails, as we will see in a later chapter."
+            ]
+        );
+        // One sentence leaves no other piece to give it to.
+        let first: Vec<Run> = vec![(L, 100., 10., "The leader sends every write to all of the replicas and then waits")];
+        let second: Vec<Run> =
+            vec![(L, 100., 10., "until a majority of them has answered with the same stored value and"), (L, 112., 10., "only then replies.")];
+        assert_eq!(
+            texts(&pdf(&[first, second], None)),
+            [
+                "The leader sends every write to all of the replicas and then waits",
+                "until a majority of them has answered with the same stored value and only then replies."
+            ]
+        );
     }
 
     #[test]
