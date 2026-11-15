@@ -591,7 +591,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let mut doc = load(bytes)?;
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
-        // Only for the loop: pdf-extract reads the MediaBox itself.
+        // Only to refuse a tree pdf-extract cannot climb: it reads the MediaBox itself.
         inherited(&doc, page, b"MediaBox", Object::as_array)?;
         // Before the blanking below takes the images' filters, which `Format::of` reads.
         walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
