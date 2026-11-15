@@ -1282,8 +1282,8 @@ impl Figures {
         Figures::read_by(pdf_worker::this(), pdf)
     }
 
-    /// Read by `worker`, or here. Fails only when the worker does not start, which says nothing about the PDF: the
-    /// figures are then for a later try, not unsupported.
+    /// Read by `worker`, or here. Fails only when the worker does not start or ends before it has the PDF, which says
+    /// nothing about the PDF: the figures are then for a later try, not unsupported.
     pub(crate) fn read_by(worker: Option<&pdf_worker::Worker>, pdf: &[u8]) -> Result<Figures, String> {
         let source = match worker {
             Some(worker) => Source::Worker(std::sync::Mutex::new(worker.start(&Request::Figures, pdf)?)),
