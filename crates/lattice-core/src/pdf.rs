@@ -2579,11 +2579,15 @@ pub(crate) mod tests {
         }
         let shared = doc.add_object(inherited);
         doc.get_dictionary_mut(parent).unwrap().set("Resources", Object::Reference(shared));
-        doc.get_dictionary_mut(page).unwrap().set("Resources", Object::Dictionary(own));
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        let ir = to_ir(&bytes, None).unwrap();
-        assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count(), 0, "{:?}", kinds(&ir));
+        // Written in the page or, as most producers write them, referred to: lopdf then lists them with the inherited ones.
+        let referred = Object::Reference(doc.add_object(own.clone()));
+        for resources in [Object::Dictionary(own), referred] {
+            doc.get_dictionary_mut(page).unwrap().set("Resources", resources);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            let ir = to_ir(&bytes, None).unwrap();
+            assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count(), 0, "{:?}", kinds(&ir));
+        }
     }
 
     #[test]
