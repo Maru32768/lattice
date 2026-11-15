@@ -2787,6 +2787,7 @@ pub(crate) mod tests {
             ("MediaBox", None, false),
             ("MediaBox", None, true),
             ("Resources", Some(Object::Integer(0)), false),
+            ("MediaBox", Some(Object::Integer(0)), false),
             ("Resources", Some(Object::Reference((999, 0))), false),
         ] {
             let mut doc = Document::load_mem(&quorum()).unwrap();
