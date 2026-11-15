@@ -239,7 +239,8 @@ mod tests {
         let doc = Document::with_version("1.5");
         let parms = Object::Dictionary(dict(&[("Predictor", Object::Integer(15)), ("Colors", Object::Integer(3)), ("Columns", Object::Integer(2))]));
         let image = rgb(2, 2, &[("Filter", name("FlateDecode")), ("DecodeParms", parms)]);
-        let stored = deflate(&[1, 9, 9, 9, 8, 8, 8, 2, 7, 7, 7, 6, 6, 6]);
+        // Filter 4, Paeth, is the last PNG has.
+        let stored = deflate(&[1, 9, 9, 9, 8, 8, 8, 4, 7, 7, 7, 6, 6, 6]);
         let (_, png) = Format::of(&doc, &image).unwrap().encode(&stored).unwrap();
         assert_eq!(chunks(&png)[1].1, stored);
         assert_eq!(Format::of(&doc, &image).unwrap().encode(&deflate(&[1, 9, 9, 9])), None, "fewer rows than the image has");
