@@ -90,6 +90,21 @@ test("closing a document window closes its tabs with it: none go back to the mai
   expect(await stored(shell, DOC), "not restored at the next start").toBeNull();
 });
 
+test("closing a document window also closes the webview its Reader keeps for the tab's Page", async ({ shell }) => {
+  await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }], active: 2 }, focused: 1 }) });
+  await shell.goto("/?window=doc-1");
+  await shell.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBe(1);
+  const [{ tab }] = (await callsOf(shell, "browser_open")) as { tab: string }[];
+  await shell.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect.poll(() => callsOf(shell, "browser_hide")).toContainEqual({ tab });
+  expect(await callsOf(shell, "browser_close")).toEqual([]);
+
+  await shell.evaluate(() => window.__e2e.emit("tauri://close-requested"));
+  await expect.poll(() => callsOf(shell, "close_window")).toHaveLength(1);
+  expect(await callsOf(shell, "browser_close"), "closed, not parked in main").toEqual([{ tab }]);
+});
+
 test("the main window restores pop-outs at startup, keeps the chat in its window, and opens what comes back", async ({ shell }) => {
   await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [], active: null }, focused: 1 }), [CHAT]: "1" });
   await shell.goto("/");
