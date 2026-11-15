@@ -2531,6 +2531,20 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_named_in_resources_the_page_inherits_is_kept() {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_object_mut(page).and_then(Object::as_dict_mut).unwrap();
+        let resources = dict.remove(b"Resources").unwrap();
+        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        let shared = doc.add_object(resources);
+        doc.get_object_mut(parent).and_then(Object::as_dict_mut).unwrap().set("Resources", Object::Reference(shared));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
