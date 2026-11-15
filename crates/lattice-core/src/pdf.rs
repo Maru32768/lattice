@@ -2508,6 +2508,12 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_pdf_of_figures_without_text_has_no_text() {
+        let bytes = draw(&pdf(&[vec![]], None), rgb(30, 10, [0, 0, 0]), &[(0, L, 200., 300., 100.)]);
+        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.noText"));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
