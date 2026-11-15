@@ -1,8 +1,9 @@
 //! PDFs are read in a worker: this program started again, under a memory and a time limit. lopdf and pdf-extract do
 //! whatever a PDF asks: a flate stream inflates without bound, pdf-extract copies its colour state, profile and all, on
 //! every `q`, and reads a content, and each font a page uses, again for every page that draws it. In the app that ends
-//! it or stalls it, and an ingest job brings the same PDF back after every start. A limit ends only the worker, and the
-//! PDF fails with an error; so does a crash that the guards in `pdf` miss.
+//! it or stalls it, and an ingest job brings the same PDF back after every start. In a worker a limit costs only the
+//! PDF: it fails with an error or, when lopdf meets the memory limit as it inflates an object stream, reads without the
+//! rest of that stream. A crash that the guards in `pdf` miss fails the PDF the same way.
 //!
 //! A binary calls `init` before anything else: the app, and `lattice-cli` for its commands, its MCP server and `serve`.
 //! A process that does not (a test run) reads PDFs itself, and so does the worker.
