@@ -522,9 +522,9 @@ const PAGE_TREE_DEPTH: usize = 256;
 /// A page's own `key`, or else the nearest the page tree gives it, written in place or referred to: the entry pdf-extract
 /// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses; it also
 /// passes over a reference to nothing, where pdf-extract panics. (lopdf's `get_page_resources` skips resources written
-/// into the page tree.) Fails past `PAGE_TREE_DEPTH` levels, which only a loop or a chain made that long reaches:
-/// pdf-extract climbs by recursion with no end, which a release build spins in forever and a debug build overflows the
-/// stack in, past any `catch_unwind`.
+/// into the page tree.) Fails past `PAGE_TREE_DEPTH` levels, which only a loop or a chain made that long reaches.
+/// pdf-extract climbs by recursion with no bound: round a loop a release build spins forever and a debug build overflows
+/// the stack, past any `catch_unwind`, and a long enough chain overflows a debug build too.
 fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl Fn(&'a Object) -> Result<T, pdf_extract::Error>) -> Result<Option<T>, String> {
     let mut id = page;
     for _ in 0..PAGE_TREE_DEPTH {
@@ -591,7 +591,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
     let mut doc = load(bytes)?;
     let mut walked = Vec::new();
     for &page in doc.get_pages().values() {
-        // Only to refuse a tree pdf-extract cannot climb: it reads the MediaBox itself.
+        // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
         inherited(&doc, page, b"MediaBox", Object::as_array)?;
         // Before the blanking below takes the images' filters, which `Format::of` reads.
         walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
