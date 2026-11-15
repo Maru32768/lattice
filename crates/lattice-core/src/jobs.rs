@@ -302,7 +302,8 @@ async fn run_job<L: LlmProvider, E: EmbeddingProvider>(
         relevance::JOB_TYPE => relevance::run(store, &p.llm, article_id, job.attempt_count).await,
         embed::JOB_TYPE => embed::run(store, &p.embedder, article_id).await,
         ingest::JOB_TYPE => {
-            // Fetch failures are recorded on the article (visible, retryable); only storage errors fail the job.
+            // Fetch failures are recorded on the article (visible, retryable); only storage errors and a PDF worker that did
+            // not start fail the job.
             let id = ingest::process(store, &p.http, article_id).await?;
             classify::enqueue_if_auto(store, id)?;
             relevance::enqueue_if_auto(store, id)?;

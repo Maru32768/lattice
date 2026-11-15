@@ -30,6 +30,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## lopdf
+
+`vendor/lopdf` is [lopdf](https://github.com/J-F-Liu/lopdf) 0.42.0, changed where its comments start with `Lattice:`. Its MIT license is in `vendor/lopdf/LICENSE` and in THIRD_PARTY_LICENSES.
+
 ## Bundled fonts
 
 The app bundles these fonts (through the Fontsource npm packages). Each is licensed under the SIL Open Font License, Version 1.1, reproduced below.

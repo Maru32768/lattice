@@ -2,5 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
+    lattice_core::pdf_worker::init();
     lattice_lib::run()
 }

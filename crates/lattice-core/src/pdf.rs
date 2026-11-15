@@ -6,11 +6,13 @@
 //! lines, two-column reading order, running headers and page numbers, title, headings,
 //! paragraphs (with hyphenated line breaks joined), captions and the reference list.
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use pdf_extract::content::{Content, Operation};
-use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
-use serde::Serialize;
+use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
+use serde::{Deserialize, Serialize};
 
 use crate::extract::collapse;
 use crate::images;
@@ -18,6 +20,7 @@ use crate::ir::{ArticleIr, ArticleMeta, Block, BlockAttrs, BlockKind, Inline};
 use crate::markdown::joins_without_space;
 use crate::msg;
 use crate::pdf_image::Format;
+use crate::pdf_worker::{self, Request, Session};
 use crate::store::{NewSnapshot, Store, sha256_hex};
 
 /// `original_url` and `normalized_url` of every PDF imported from a file.
@@ -48,19 +51,32 @@ pub fn import(store: &Store, bytes: &[u8], name: Option<&str>) -> Result<i64, St
     Ok(id)
 }
 
-/// A PDF fetched from a URL: like a page, a failed extraction is recorded on the article.
+/// A PDF fetched from a URL: like a page, a failed extraction is recorded on the article. A worker that did not start
+/// fails the job as well, which fetches the PDF again on its next try.
 pub fn store_fetched(store: &Store, id: i64, final_url: &str, bytes: &[u8]) -> Result<i64, String> {
-    let id = store.save_snapshot(id, Some(&snapshot(final_url, bytes)), to_ir(bytes, None), None).map_err(err)?;
+    let read = to_ir(bytes, None);
+    let unstarted = worker_failed(&read);
+    let id = store.save_snapshot(id, Some(&snapshot(final_url, bytes)), read, None).map_err(err)?;
+    images::enqueue(store, id)?;
+    unstarted.map_or(Ok(id), Err)
+}
+
+/// Extracts the stored bytes again; the title the app found (not the user's name) is the fallback, as on import. A
+/// worker that did not start leaves the article as it is.
+pub fn reextract(store: &Store, id: i64, bytes: &[u8]) -> Result<i64, String> {
+    let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
+    let read = to_ir(bytes, title.as_deref());
+    if let Some(e) = worker_failed(&read) {
+        return Err(e);
+    }
+    let id = store.save_snapshot(id, None, read, None).map_err(err)?;
     images::enqueue(store, id)?;
     Ok(id)
 }
 
-/// Extracts the stored bytes again; the title the app found (not the user's name) is the fallback, as on import.
-pub fn reextract(store: &Store, id: i64, bytes: &[u8]) -> Result<i64, String> {
-    let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
-    let id = store.save_snapshot(id, None, to_ir(bytes, title.as_deref()), None).map_err(err)?;
-    images::enqueue(store, id)?;
-    Ok(id)
+/// The error of a worker that did not start, which says nothing about the PDF.
+fn worker_failed(read: &Result<ArticleIr, String>) -> Option<String> {
+    read.as_ref().err().filter(|e| **e == msg!("pdf.workerFailed")).cloned()
 }
 
 fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
@@ -70,6 +86,10 @@ fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {
 /// Title: the first page's largest text, else the document's own (when it reads like one),
 /// else `fallback`, else the first line.
 pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
+    pdf_worker::ask(Request::Ir { fallback: fallback.map(str::to_owned) }, bytes, || ir(bytes, fallback))
+}
+
+fn ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> {
     let doc = read(bytes)?;
     let (lines, body, front) = lay_out(&doc);
     let blocks = to_blocks(&lines, body, &figures(&doc), &figure_prefix(bytes));
@@ -85,7 +105,7 @@ pub fn to_ir(bytes: &[u8], fallback: Option<&str>) -> Result<ArticleIr, String> 
 
 /// Where a run of body text sits on its page, in points from the page's top left, for the Page
 /// view to draw its translation over the original.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Region {
     pub page: usize,
     /// Which block it is a piece of: the same on all of a block's pieces, whatever columns and pages they are on.
@@ -121,15 +141,22 @@ impl Region {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TextRun {
     pub text: String,
-    /// The element that sets it: `sub` or `sup`.
-    pub script: Option<&'static str>,
+    /// The element that sets it.
+    pub script: Option<Script>,
     /// Part of a formula (`formula_glyphs`): shown as it stands, never sent to be translated.
     pub math: bool,
     /// Set in italics, inside a formula: elsewhere translation would not keep it.
     pub italic: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Script {
+    Sub,
+    Sup,
 }
 
 // Mark a line's scripts in the text that `piece_texts` cuts up. Noncharacters: no text holds them.
@@ -147,8 +174,8 @@ fn text_runs(marked: &str) -> Vec<TextRun> {
     let (mut script, mut math, mut italic) = (None, false, false);
     for c in marked.chars() {
         match c {
-            SUP => script = Some("sup"),
-            SUB => script = Some("sub"),
+            SUP => script = Some(Script::Sup),
+            SUB => script = Some(Script::Sub),
             SCRIPT_END => script = None,
             MATH => math = true,
             MATH_END => math = false,
@@ -168,7 +195,7 @@ fn text_runs(marked: &str) -> Vec<TextRun> {
 /// covers only the parse: one in the layout would otherwise fail the Page view, a retranslation, or the count of
 /// unused translations that first gives each PDF its old ones (`Store::own_pdf_regions`).
 pub fn regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
-    std::panic::catch_unwind(|| laid_out_regions(bytes)).unwrap_or_else(|_| Err(msg!("pdf.parseFailed")))
+    pdf_worker::ask(Request::Regions, bytes, || std::panic::catch_unwind(|| laid_out_regions(bytes)).unwrap_or_else(|_| Err(msg!("pdf.parseFailed"))))
 }
 
 fn laid_out_regions(bytes: &[u8]) -> Result<Vec<Region>, String> {
@@ -418,16 +445,17 @@ struct Drawn {
 /// images, are not followed. A clip counts by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
-fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
+fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<Face>, Vec<Drawn>) {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
-    let fonts = doc.get_page_fonts(page).unwrap_or_default();
+    let fonts = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
     let face_named = |name: &[u8]| {
-        let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
+        let font = fonts.and_then(|f| f.get_deref(name, doc).and_then(Object::as_dict).ok());
+        let base = font.and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
-    let images = page_images(doc, page);
+    let images = page_images(doc, resources);
     let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
@@ -512,28 +540,118 @@ fn intersect(a: Bounds, b: Bounds) -> Bounds {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
-/// The image XObjects in a `Format` the Reader shows, by the names a page draws them with. Those are the names of its
-/// nearest Resources, the page's own or the closest the page tree gives it, written in place or referred to: where
-/// pdf-extract resolves `Do`. (lopdf's `get_page_resources` skips resources written into the page tree.)
-fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
-    let mut node = doc.get_dictionary(page).ok();
-    let mut resources = None;
-    // A page tree is a few levels deep; the bound only stops a cycle.
-    for _ in 0..32 {
-        let Some(n) = node else {
-            break;
-        };
-        if let Ok(r) = n.get_deref(b"Resources", doc).and_then(Object::as_dict) {
-            resources = Some(r);
-            break;
-        }
-        node = n.get(b"Parent").and_then(Object::as_reference).and_then(|id| doc.get_dictionary(id)).ok();
-    }
+/// The image XObjects in a `Format` the Reader shows, by the names a page with these resources draws them with.
+fn page_images(doc: &Document, resources: Option<&Dictionary>) -> HashMap<Vec<u8>, ObjectId> {
     let Some(xobjects) = resources.and_then(|r| r.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()) else {
         return HashMap::new();
     };
     let shown = |id: ObjectId| doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some());
     xobjects.iter().filter_map(|(name, o)| o.as_reference().ok().filter(|&id| shown(id)).map(|id| (name.clone(), id))).collect()
+}
+
+/// More levels than a page tree has: writers balance it, so even a million pages two to a node are 20 deep. Few enough
+/// that pdf-extract's recursion up them stays well inside the stack.
+const PAGE_TREE_DEPTH: usize = 256;
+
+/// A page's own `key`, or else the nearest the page tree gives it, written in place or referred to: the entry pdf-extract
+/// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses; it also
+/// passes over a reference to nothing, where pdf-extract panics. (lopdf's `get_page_resources` skips resources written
+/// into the page tree.) Fails past `PAGE_TREE_DEPTH` levels, which only a loop or a chain made that long reaches.
+/// pdf-extract climbs by recursion with no bound: round a loop a release build spins forever and a debug build overflows
+/// the stack, past any `catch_unwind`, and a long enough chain overflows a debug build too.
+fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl Fn(&'a Object) -> Result<T, pdf_extract::Error>) -> Result<Option<T>, String> {
+    let mut id = page;
+    for _ in 0..PAGE_TREE_DEPTH {
+        let Ok(node) = doc.get_dictionary(id) else {
+            return Ok(None);
+        };
+        if let Ok(t) = node.get_deref(key, doc).and_then(&found) {
+            return Ok(Some(t));
+        }
+        let Ok(parent) = node.get(b"Parent").and_then(Object::as_reference) else {
+            return Ok(None);
+        };
+        id = parent;
+    }
+    Err(msg!("pdf.parseFailed"))
+}
+
+/// Deeper than forms nest in a PDF: a page included from another PDF, a figure in it, a group in that. pdf-extract draws
+/// each by recursion, at about 8 KB of stack a level in a debug build.
+const FORM_DEPTH: usize = 32;
+
+/// How much pdf-extract may read of the forms it draws again, in bytes, each draw counting 64 more for what any draw
+/// costs it. A plot draws its markers thousands of times, and a page its header; forms that each draw the next twice
+/// would take twice as long with every level. A release build reads this much in about 10 seconds.
+const REDRAWN: usize = 64 << 20;
+
+/// Refuses a document whose forms pdf-extract would draw more than `FORM_DEPTH` deep, or again past `REDRAWN`.
+/// pdf-extract follows `Do` by recursion with no bound, so a form that draws itself, directly or through others,
+/// overflows the stack in every build, past any `catch_unwind`. Follows what pdf-extract draws: the content of each page,
+/// and in it the streams that `Do` names in the XObjects of a stream's own Resources, else of those it was drawn with.
+/// A name they give no stream for makes pdf-extract panic, and is refused here. A stream the blanking in `glyphs`
+/// emptied draws nothing. A stream that draws another many times is followed once, counting the times.
+fn drawable(doc: &Document) -> Result<(), String> {
+    // Each stream drawn so far: its length and what it draws.
+    let mut streams: HashMap<ObjectId, (usize, Draws)> = HashMap::new();
+    let mut redrawn = 0usize;
+    for &page in doc.get_pages().values() {
+        let resources = inherited(doc, page, b"Resources", Object::as_dict)?;
+        let content = doc.get_page_content(page).unwrap_or_default();
+        // What a content draws, the Resources it draws them from, how deep it is, and how many times it is drawn.
+        let mut todo = vec![(draws(doc, &content, resources)?, resources, 0, 1usize)];
+        while let Some((draws_here, resources, depth, times)) = todo.pop() {
+            for (name, count) in draws_here.iter() {
+                let (id, stream) = xobject(doc, resources, name).ok_or_else(|| msg!("pdf.parseFailed"))?;
+                if stream.content.is_empty() {
+                    continue;
+                }
+                if depth == FORM_DEPTH {
+                    return Err(msg!("pdf.parseFailed"));
+                }
+                let own = stream.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok().or(resources);
+                let times = times.saturating_mul(*count);
+                let (len, inner, again) = match streams.entry(id) {
+                    Entry::Occupied(seen) => (seen.get().0, seen.get().1.clone(), times),
+                    Entry::Vacant(first) => {
+                        let content = stream.decompressed_content().unwrap_or_else(|_| stream.content.clone());
+                        let (len, inner) = &*first.insert((content.len(), draws(doc, &content, own)?));
+                        (*len, inner.clone(), times - 1)
+                    }
+                };
+                redrawn = again.saturating_mul(len + 64).saturating_add(redrawn);
+                if redrawn > REDRAWN {
+                    return Err(msg!("pdf.parseFailed"));
+                }
+                todo.push((inner, own, depth + 1, times));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The names a content draws with `Do`, each with how many times: none if pdf-extract cannot decode it either.
+type Draws = Rc<[(Vec<u8>, usize)]>;
+
+/// What `content` draws, refused at a name that `resources` give no stream for. So only names the document has are kept.
+fn draws(doc: &Document, content: &[u8], resources: Option<&Dictionary>) -> Result<Draws, String> {
+    let ops = Content::decode(content).map(|c| c.operations).unwrap_or_default();
+    let mut counts: HashMap<&[u8], usize> = HashMap::new();
+    for op in ops.iter().filter(|op| op.operator == "Do") {
+        let name = op.operands.first().and_then(|o| o.as_name().ok());
+        let name = name.filter(|&n| counts.contains_key(n) || xobject(doc, resources, n).is_some()).ok_or_else(|| msg!("pdf.parseFailed"))?;
+        *counts.entry(name).or_default() += 1;
+    }
+    Ok(counts.into_iter().map(|(name, count)| (name.to_vec(), count)).collect())
+}
+
+/// The stream `name` draws, found where pdf-extract finds it: in the XObjects of `resources`.
+fn xobject<'a>(doc: &'a Document, resources: Option<&'a Dictionary>, name: &[u8]) -> Option<(ObjectId, &'a Stream)> {
+    let xobjects = resources?.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()?;
+    match xobjects.get(name).and_then(|o| doc.dereference(o)).ok()? {
+        (Some(id), Object::Stream(stream)) => Some((id, stream)),
+        _ => None,
+    }
 }
 
 fn is_image(s: &Stream) -> bool {
@@ -564,9 +682,10 @@ struct Parsed {
 fn read(bytes: &[u8]) -> Result<Parsed, String> {
     std::panic::catch_unwind(|| {
         let (doc, mut pages) = glyphs(bytes, true)?;
-        // A page drawn entirely inside forms (an included PDF) is read with them after all.
-        if pages.iter().any(|p| p.glyphs.is_empty()) {
-            let (_, all) = glyphs(bytes, false)?;
+        // A page drawn entirely inside forms (an included PDF) is read with them after all, unless they cannot be drawn.
+        if pages.iter().any(|p| p.glyphs.is_empty())
+            && let Ok((_, all)) = glyphs(bytes, false)
+        {
             for (p, a) in pages.iter_mut().zip(all) {
                 if p.glyphs.is_empty() {
                     *p = a;
@@ -583,8 +702,14 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
-    // Before the blanking below takes the images' filters, which `Format::of` reads.
-    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).unzip();
+    let mut walked = Vec::new();
+    for &page in doc.get_pages().values() {
+        // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
+        inherited(&doc, page, b"MediaBox", Object::as_array)?;
+        // Before the blanking below takes the images' filters, which `Format::of` reads.
+        walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
+    }
+    let (faces, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
@@ -594,6 +719,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             s.set_plain_content(Vec::new());
         }
     }
+    drawable(&doc)?;
     let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
@@ -1153,30 +1279,62 @@ fn figure_prefix(pdf: &[u8]) -> String {
 
 /// An article's stored PDF, read once for a run of the image job, which asks it for each figure.
 pub(crate) struct Figures {
-    doc: Option<Document>,
+    source: Source,
     /// `figure_prefix` of the PDF.
     prefix: String,
 }
 
+enum Source {
+    Here(Option<Box<Document>>),
+    /// A worker that has been sent the PDF; it reads it once, and then each figure asked for.
+    Worker(std::sync::Mutex<Session>),
+}
+
 impl Figures {
-    pub(crate) fn parse(pdf: &[u8]) -> Figures {
-        let doc = std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten();
-        Figures { doc, prefix: figure_prefix(pdf) }
+    pub(crate) fn parse(pdf: &[u8]) -> Result<Figures, String> {
+        Figures::read_by(pdf_worker::this(), pdf)
+    }
+
+    /// Read by `worker`, or here. Fails only when the worker does not start or ends before it has the PDF, which says
+    /// nothing about the PDF: the figures are then for a later try, not unsupported.
+    pub(crate) fn read_by(worker: Option<&pdf_worker::Worker>, pdf: &[u8]) -> Result<Figures, String> {
+        let source = match worker {
+            Some(worker) => Source::Worker(std::sync::Mutex::new(worker.start(&Request::Figures, pdf)?)),
+            None => Source::Here(std::panic::catch_unwind(|| load(pdf).ok()).ok().flatten().map(Box::new)),
+        };
+        Ok(Figures { source, prefix: figure_prefix(pdf) })
     }
 
     /// The figure's PNG or JPEG. `None` when `src` names another PDF (the article's changed since its blocks were read), or
-    /// the data does not hold the image its dictionary describes.
-    pub(crate) fn image(&self, src: &str) -> Option<(&'static str, Vec<u8>)> {
-        let (number, generation) = src.strip_prefix(self.prefix.as_str())?.split_once('.')?;
-        let doc = self.doc.as_ref()?;
-        let id = (number.parse().ok()?, generation.parse().ok()?);
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    /// the data does not hold the image its dictionary describes. An error when the worker has ended (by a limit, a crash or
+    /// the time), which says nothing about this figure or the ones after it.
+    pub(crate) fn image(&self, src: &str) -> Result<Option<(&'static str, Vec<u8>)>, String> {
+        let Some(id) = src.strip_prefix(self.prefix.as_str()).and_then(object_id) else {
+            return Ok(None);
+        };
+        let doc = match &self.source {
+            Source::Here(None) => return Ok(None),
+            Source::Here(Some(doc)) => doc,
+            Source::Worker(session) => {
+                let mut session = session.lock().map_err(|_| msg!("pdf.parseFailed"))?;
+                session.send(src.as_bytes())?;
+                let bytes = session.frame()?;
+                return Ok(crate::images::sniff(&bytes).map(|mime| (mime, bytes)));
+            }
+        };
+        Ok(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let image = doc.get_object(id).ok()?.as_stream().ok()?;
             Format::of(doc, &image.dict)?.encode(&image.content)
         }))
         .ok()
-        .flatten()
+        .flatten())
     }
+}
+
+/// `12.0` as an object id.
+fn object_id(text: &str) -> Option<ObjectId> {
+    let (number, generation) = text.split_once('.')?;
+    Some((number.parse().ok()?, generation.parse().ok()?))
 }
 
 /// A raster figure the Reader shows: drawn at least a fifth of the page wide (not a margin icon), over less than 80% of
@@ -1551,7 +1709,7 @@ pub(crate) mod tests {
     /// One text run: x and baseline y from the top of a US Letter page, font size, text.
     pub(crate) type Run<'a> = (f64, f64, f64, &'a str);
 
-    fn name(s: &str) -> Object {
+    pub(crate) fn name(s: &str) -> Object {
         Object::Name(s.as_bytes().to_vec())
     }
 
@@ -2237,7 +2395,7 @@ pub(crate) mod tests {
         assert!(r[0].text.starts_with("Each replica") && r[0].text.contains(", after it receives"), "{}", r[0].text);
         assert_eq!((r[0].y0, r[0].y1), (90., 115.));
         let scripts: Vec<_> = r[0].runs.iter().filter_map(|run| run.script.map(|s| (s, run.text.as_str()))).collect();
-        assert_eq!(scripts, [("sup", "grant"), ("sub", "i,r")]);
+        assert_eq!(scripts, [(Script::Sup, "grant"), (Script::Sub, "i,r")]);
         assert_eq!(r[0].runs.iter().map(|run| run.text.as_str()).collect::<String>(), r[0].text, "the runs add up to the text");
         let ir = to_ir(&bytes, None).unwrap();
         assert!(ir.blocks[0].text.contains("granti,r"), "the Reader's text stays plain: {}", ir.blocks[0].text);
@@ -2362,7 +2520,7 @@ pub(crate) mod tests {
 
     /// `quorum_text` with a figure from y 200 to 300 over its caption, and an uncaptioned one from y 400 to 500 over the
     /// last paragraph.
-    fn quorum() -> Vec<u8> {
+    pub(crate) fn quorum() -> Vec<u8> {
         let bytes = draw(&pdf(&[quorum_text()], None), rgb(30, 10, [200, 0, 0]), &[(0, L, 200., 300., 100.)]);
         draw(&bytes, rgb(30, 10, [0, 0, 200]), &[(0, L, 400., 300., 100.)])
     }
@@ -2462,11 +2620,11 @@ pub(crate) mod tests {
     fn a_figure_is_read_from_the_pdf_its_src_names() {
         let bytes = quorum();
         let src = to_ir(&bytes, None).unwrap().blocks[1].attrs.src.clone().unwrap_or_default();
-        let (mime, png) = Figures::parse(&bytes).image(&src).unwrap();
+        let (mime, png) = Figures::parse(&bytes).unwrap().image(&src).unwrap().unwrap();
         assert_eq!((mime, &png[12..24]), ("image/png", &b"IHDR\0\0\0\x1e\0\0\0\x0a"[..]), "30x10 as drawn into the PDF");
-        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).image(&src), None, "the same objects in another file");
-        assert_eq!(Figures::parse(b"%PDF-1.5 not really").image(&src), None);
-        assert_eq!(Figures::parse(&bytes).image("pdf-figure:12.0"), None);
+        assert_eq!(Figures::parse(&[&bytes[..], b"\n"].concat()).unwrap().image(&src), Ok(None), "the same objects in another file");
+        assert_eq!(Figures::parse(b"%PDF-1.5 not really").unwrap().image(&src), Ok(None));
+        assert_eq!(Figures::parse(&bytes).unwrap().image("pdf-figure:12.0"), Ok(None));
     }
 
     /// The article's image blocks: id and `src`.
@@ -2845,19 +3003,297 @@ pub(crate) mod tests {
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
     }
 
+    /// Whether this is a child running only the test `name`, which goes on with the test. The test run itself starts that
+    /// child, checks that the test passed there, and returns. A stack overflow ends the process past any `catch_unwind`, so
+    /// a test that would overflow if it failed runs apart, and fails instead of ending the whole run.
+    fn in_child(name: &str) -> bool {
+        const CHILD: &str = "LATTICE_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
+        false
+    }
+
     #[test]
-    fn a_page_tree_whose_parents_loop_is_walked_to_an_end() {
-        // Nothing on the way up has Resources, so only the bound ends the walk; pdf-extract then fails on the page's
-        // dangling ones.
+    fn a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused() {
+        // pdf-extract would climb until the stack overflowed.
+        if !in_child("pdf::tests::a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused") {
+            return;
+        }
+        // In place of its own entry the page has none, one of the wrong kind (pdf-extract passes it over and looks further
+        // up), or one that refers to nothing (pdf-extract stops there only by panicking). Above it the parent is its own
+        // Parent, or the page is.
+        for (key, entry, back_to_page) in [
+            ("Resources", None, false),
+            ("MediaBox", None, false),
+            ("MediaBox", None, true),
+            ("Resources", Some(Object::Integer(0)), false),
+            ("MediaBox", Some(Object::Integer(0)), false),
+            ("Resources", Some(Object::Reference((999, 0))), false),
+        ] {
+            let mut doc = Document::load_mem(&quorum()).unwrap();
+            let page = *doc.get_pages().values().next().unwrap();
+            let dict = doc.get_dictionary_mut(page).unwrap();
+            dict.remove(key.as_bytes()).unwrap();
+            if let Some(entry) = &entry {
+                dict.set(key, entry.clone());
+            }
+            let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+            let up = if back_to_page {
+                page
+            } else {
+                parent
+            };
+            doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(up));
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key} {entry:?}, back to the page: {back_to_page}");
+        }
+        // No loop, but the MediaBox lies so far up that the recursion would overflow.
+        assert_eq!(to_ir(&chained(100_000), None).unwrap_err(), msg!("pdf.parseFailed"), "a chain");
+    }
+
+    /// The page hung from a chain of `links` nodes outside the page tree, with its MediaBox moved to one more on top.
+    fn chained(links: usize) -> Vec<u8> {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let mut top = Dictionary::new();
+        top.set("MediaBox", doc.get_dictionary_mut(page).unwrap().remove(b"MediaBox").unwrap());
+        let mut up = doc.add_object(top);
+        for _ in 0..links {
+            let mut node = Dictionary::new();
+            node.set("Parent", Object::Reference(up));
+            up = doc.add_object(node);
+        }
+        doc.get_dictionary_mut(page).unwrap().set("Parent", Object::Reference(up));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_mediabox_on_the_last_node_the_walk_reaches_is_read() {
+        // The page, 254 links and the top: 256 nodes, as many as the walk reaches. A number of its own, so that a lower
+        // PAGE_TREE_DEPTH fails here instead of shrinking the tree along with it.
+        assert_eq!(kinds(&to_ir(&chained(254), None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn entries_found_below_a_loop_in_the_page_tree_are_read() {
+        // pdf-extract climbs no further than where it finds them, so a loop above is no reason to refuse the PDF. The page
+        // has its own MediaBox, and takes its Resources from its parent, whose Parent is itself.
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
         let dict = doc.get_dictionary_mut(page).unwrap();
-        dict.set("Resources", Object::Reference((999, 0)));
+        let resources = dict.remove(b"Resources").unwrap();
         let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-        doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+        let tree = doc.get_dictionary_mut(parent).unwrap();
+        tree.set("Resources", resources);
+        tree.set("Parent", Object::Reference(parent));
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
-        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn faces_come_from_fonts_written_into_the_page_tree() {
+        let line: Vec<Run> = vec![(72., 100., 10., "An event"), (120., 100., 10., "/i e"), (130., 100., 10., "happens.")];
+        let mut doc = Document::load_mem(&pdf(&[line], None)).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        let mut resources = dict.remove(b"Resources").unwrap().as_dict().unwrap().clone();
+        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        // The Font dictionary written in the Resources, or referred to from them.
+        let fonts = resources.remove(b"Font").unwrap();
+        let referred = Object::Reference(doc.add_object(fonts.clone()));
+        for fonts in [fonts, referred] {
+            resources.set("Font", fonts);
+            // The Resources written in place, which lopdf's `get_page_fonts` does not look for up the tree.
+            doc.get_dictionary_mut(parent).unwrap().set("Resources", resources.clone());
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
+            assert_eq!(math, ["e"], "{:?}", resources.get(b"Font"));
+        }
+    }
+
+    /// A PDF of `objects`, numbered from 1, listed in a cross-reference stream: each written out, or as `Err(container)`
+    /// the first object of that object stream.
+    fn cross_referenced(objects: &[Result<&[u8], u32>]) -> Vec<u8> {
+        let mut pdf = b"%PDF-1.5\n".to_vec();
+        let mut entries = vec![(0u8, 0u32, 0xffffu16)];
+        for (i, object) in objects.iter().enumerate() {
+            entries.push(match object {
+                Ok(body) => {
+                    let at = pdf.len();
+                    pdf.extend([format!("{} 0 obj\n", i + 1).as_bytes(), *body, b"\nendobj\n"].concat());
+                    (1, at as u32, 0)
+                }
+                Err(container) => (2, *container, 0),
+            });
+        }
+        let at = pdf.len();
+        entries.push((1, at as u32, 0));
+        let data: Vec<u8> = entries.iter().flat_map(|&(kind, field, index)| [&[kind][..], &field.to_be_bytes(), &index.to_be_bytes()].concat()).collect();
+        let size = entries.len();
+        pdf.extend(format!("{} 0 obj\n<</Type /XRef /Size {size} /W [1 4 2] /Length {}>>\nstream\n", size - 1, data.len()).as_bytes());
+        pdf.extend(data);
+        pdf.extend(format!("\nendstream\nendobj\nstartxref\n{at}\n%%EOF\n").as_bytes());
+        pdf
+    }
+
+    #[test]
+    fn stream_lengths_that_lead_round_or_far_fail_the_import() {
+        // lopdf 0.42.0 resolved a stream's /Length by recursion until the stack overflowed.
+        if !in_child("pdf::tests::stream_lengths_that_lead_round_or_far_fail_the_import") {
+            return;
+        }
+        // Object 2 lies in object stream 2, which it would have to be read from first.
+        let round = cross_referenced(&[Ok(b"<</Length 2 0 R>>\nstream\nx\nendstream"), Err(2)]);
+        // The /Length of each stream is the next stream, far more of them than the stack holds.
+        let bodies: Vec<String> = (2..10_000).map(|next| format!("<</Length {next} 0 R>>\nstream\nx\nendstream")).collect();
+        let far = cross_referenced(&bodies.iter().map(|b| Ok(b.as_bytes())).collect::<Vec<_>>());
+        for (bytes, how) in [(round, "round"), (far, "far")] {
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.noText"), "{how}");
+        }
+    }
+
+    #[test]
+    fn a_stream_length_kept_in_an_object_stream_is_read() {
+        // Object 2, the length, lies in object stream 3, whose own /Length is object 4.
+        let objects: [Result<&[u8], u32>; 4] =
+            [Ok(b"<</Length 2 0 R>>\nstream\nx\nendstream"), Err(3), Ok(b"<</Type /ObjStm /N 1 /First 4 /Length 4 0 R>>\nstream\n2 0 1\nendstream"), Ok(b"5")];
+        let doc = Document::load_mem(&cross_referenced(&objects)).unwrap();
+        assert_eq!(doc.get_object((1, 0)).and_then(Object::as_stream).unwrap().content, b"x");
+    }
+
+    /// Two pages: one of `text`, and one of `ops`, which draw streams named `/X0`, `/X1`.. in the page's XObjects, as the
+    /// streams may too. Each stream: whether its Subtype is Form (pdf-extract draws a stream without one as if it were), its
+    /// content, and whether it has Resources of its own, a copy of the page's, or takes those it is drawn with.
+    fn drawing(text: Vec<Run>, ops: &str, streams: &[(bool, String, bool)]) -> Vec<u8> {
+        let mut doc = Document::load_mem(&pdf(&[text, vec![]], None)).unwrap();
+        let page = *doc.get_pages().values().nth(1).unwrap();
+        let xobjects = doc.new_object_id();
+        let mut resources = doc.get_dictionary(page).unwrap().get(b"Resources").and_then(Object::as_dict).unwrap().clone();
+        resources.set("XObject", Object::Reference(xobjects));
+        let mut named = Dictionary::new();
+        for (i, (form, content, own)) in streams.iter().enumerate() {
+            let mut dict = Dictionary::new();
+            if *form {
+                dict.set("Subtype", name("Form"));
+            }
+            if *own {
+                dict.set("Resources", resources.clone());
+            }
+            named.set(format!("X{i}"), Object::Reference(doc.add_object(Stream::new(dict, content.clone().into_bytes()))));
+        }
+        doc.objects.insert(xobjects, Object::Dictionary(named));
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        dict.set("Resources", resources);
+        let content = dict.get(b"Contents").and_then(Object::as_reference).unwrap();
+        doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.as_bytes().to_vec());
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn showing(text: &str) -> String {
+        format!("BT /F1 10 Tf 72 100 Td ({text}) Tj ET")
+    }
+
+    /// `depth` forms, each drawing the next, the last showing `text`.
+    fn nested(depth: usize, text: &str) -> Vec<(bool, String, bool)> {
+        (0..depth)
+            .map(|i| {
+                (
+                    true,
+                    if i + 1 < depth {
+                        format!("/X{} Do", i + 1)
+                    } else {
+                        showing(text)
+                    },
+                    true,
+                )
+            })
+            .collect()
+    }
+
+    /// Whether the PDF reads with `text` in it.
+    fn reads(bytes: &[u8], text: &str) -> bool {
+        to_ir(bytes, None).unwrap().blocks.iter().any(|b| b.text.contains(text))
+    }
+
+    #[test]
+    fn forms_that_draw_themselves_are_left_out() {
+        // pdf-extract would draw them until the stack overflowed.
+        if !in_child("pdf::tests::forms_that_draw_themselves_are_left_out") {
+            return;
+        }
+        let me = |i: usize| format!("/X{i} Do");
+        let without = to_ir(&drawing(quorum_text(), "", &[]), None).unwrap();
+        for (streams, how) in [
+            (vec![(true, me(0), true)], "a form"),
+            (vec![(true, me(1), true), (true, me(0), false)], "two forms that draw each other"),
+            (
+                (0..10_000)
+                    .map(|i| {
+                        (
+                            true,
+                            if i < 9_999 {
+                                me(i + 1)
+                            } else {
+                                String::new()
+                            },
+                            false,
+                        )
+                    })
+                    .collect(),
+                "a chain of forms",
+            ),
+        ] {
+            // Forms are drawn only for a page without text of its own, which then stays without.
+            assert_eq!(kinds(&to_ir(&drawing(quorum_text(), "/X0 Do", &streams), None).unwrap()), kinds(&without), "{how}");
+        }
+        // A stream without a Subtype is drawn along with the text, so the PDF is refused.
+        assert_eq!(to_ir(&drawing(quorum_text(), "/X0 Do", &[(false, me(0), false)]), None).unwrap_err(), msg!("pdf.parseFailed"));
+    }
+
+    #[test]
+    fn forms_are_read_as_deep_as_they_nest_in_a_pdf() {
+        // Text inside an included page, and so on: deeper than any PDF nests them.
+        let deep = |depth| reads(&drawing(quorum_text(), "/X0 Do", &nested(depth, "Deep inside")), "Deep inside");
+        assert!(deep(32));
+        assert!(!deep(33), "one deeper, the page is read without its forms");
+    }
+
+    #[test]
+    fn forms_drawn_over_and_over_are_left_out() {
+        // Forms that each draw the next twice: pdf-extract would draw the last 2^21 times, which takes it minutes.
+        let twice = |depth: usize, padding: usize| -> Vec<(bool, String, bool)> {
+            let next = |i: usize| format!("{}/X{} Do /X{1} Do", " ".repeat(padding), i + 1);
+            (0..depth)
+                .map(|i| {
+                    (
+                        true,
+                        if i + 1 < depth {
+                            next(i)
+                        } else {
+                            showing("Over and over")
+                        },
+                        true,
+                    )
+                })
+                .collect()
+        };
+        assert!(!reads(&drawing(quorum_text(), "/X0 Do", &twice(22, 0)), "Over and over"), "small forms");
+        // Fewer times, but each time a quarter megabyte to read.
+        assert!(!reads(&drawing(quorum_text(), "/X0 Do", &twice(10, 256 << 10)), "Over and over"), "large forms");
+        // A form drawn in many places on a page is read.
+        let shown = format!("{}/X0 Do", "q 1 0 0 1 0 -10 cm /X0 Do Q ".repeat(1000));
+        assert!(reads(&drawing(quorum_text(), &shown, &nested(1, "Every time")), "Every time"));
     }
 
     #[test]

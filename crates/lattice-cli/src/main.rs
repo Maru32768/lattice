@@ -171,6 +171,7 @@ impl log::Log for StderrLogger {
 }
 
 fn main() -> ExitCode {
+    lattice_core::pdf_worker::init();
     let cli = Cli::parse();
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime");
     let ctx = match open(&cli) {

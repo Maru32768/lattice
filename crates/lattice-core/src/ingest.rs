@@ -1,5 +1,6 @@
 //! URL -> fetch -> extract -> store. Failures are recorded on the article, not raised:
-//! a failed article stays visible and saving the same URL again retries it.
+//! a failed article stays visible and saving the same URL again retries it. A PDF worker
+//! that did not start is raised as well, so that the job tries again.
 
 use crate::extract::{EXTRACTION_VERSION, extract};
 use crate::fetch::{Fetched, HttpClient, Resource, fetch_resource};
