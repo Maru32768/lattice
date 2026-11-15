@@ -2,7 +2,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { browser, tabDrag, windows } from "../api";
-import { allTabs, close, docOf, open, serialize, single, tabById, type Doc, type Id, type Workspace, type Tab } from "../layout/layout";
+import { allTabs, close, docOf, open, serialize, single, tabById, webviewKeys, type Doc, type Id, type Workspace, type Tab } from "../layout/layout";
 import type { DropTarget } from "../layout/TabStrip";
 import { TAB_DRAG_END, TAB_DRAG_TAKE, type Take } from "../layout/tabDrag";
 import { HOST, IS_MAIN, STORAGE } from "./host";
@@ -114,8 +114,7 @@ export function useWindows({
   async function closeRequested() {
     if (HOST.kind === "doc") {
       // Closed before close_window, which would otherwise park them in main with no tab to show them.
-      const pages = allTabs(layout).flatMap((t) => (t.kind === "page" ? [browser.close(t.key).catch(() => {})] : []));
-      await Promise.all(pages);
+      await Promise.all(webviewKeys(layout).map((k) => browser.close(k).catch(() => {})));
     } else if (HOST.kind === "chat") {
       void toMain({ kind: "chatClosed" });
     }

@@ -14,6 +14,8 @@ export interface ReaderTab {
   id: Id;
   articleId: number;
   focus?: Focus;
+  /** The webview of the Page this Reader replaced, hidden meanwhile: the tab's Page comes back in it without being created and loaded again. */
+  page?: Pick<PageTab, "key" | "seq">;
   /** The tab this one was opened behind (`openBehind`): its later ones go after this, in click order. */
   opener?: Id;
 }
@@ -136,6 +138,8 @@ export function tabById(l: Workspace, id: Id): { pane: Pane; tab: Tab } | undefi
 export const allTabs = (l: Workspace) => panes(l.root).flatMap((p) => p.tabs);
 /** The page tab whose webview is `key` (how the backend's events name a tab). */
 export const pageByKey = (l: Workspace, key: string) => allTabs(l).find((t): t is PageTab => t.kind === "page" && t.key === key);
+/** The webviews the tabs hold: each Page tab's, and the hidden one of a Reader that replaced a Page. */
+export const webviewKeys = (l: Workspace) => allTabs(l).flatMap((t) => (t.kind === "page" ? [t.key] : t.page ? [t.page.key] : []));
 
 // ---- tree edits ---------------------------------------------------------------------------------
 
@@ -183,13 +187,15 @@ export const toggleZoom = (l: Workspace): Workspace => ({ ...l, zoomed: l.zoomed
 export const unzoom = (l: Workspace): Workspace => (l.zoomed == null ? l : { ...l, zoomed: undefined });
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
+  const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq } : prev?.page;
   if (doc.kind === "reader") {
     const seq = (prev?.kind === "reader" ? (prev.focus?.seq ?? 0) : 0) + 1;
-    return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq } };
+    return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq }, page: kept };
   }
-  const seq = (prev?.kind === "page" ? prev.seq : 0) + 1;
-  // A page replacing a page keeps the webview; one arriving from another window brings its own.
-  const key = prev?.kind === "page" ? prev.key : (doc.key ?? newKey());
+  // A page replacing a page, or a Reader that replaced one, keeps the webview; one arriving from another window brings its own.
+  const own = doc.key && prev?.kind !== "page" ? undefined : kept;
+  const key = own?.key ?? doc.key ?? newKey();
+  const seq = (own?.seq ?? 0) + 1;
   return { kind: "page", id, key, url: doc.url, title: doc.title ?? "", seq, focus: doc.focus, edit: doc.edit, loading: true, saved: doc.saved ?? null };
 }
 

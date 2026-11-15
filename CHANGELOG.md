@@ -69,6 +69,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Some PDFs with images, such as the chapters of a book, failed to import with an error that the PDF could not be read. Lattice read the data of some images as if it were page content. Images are now skipped when the text is read.
 - In a book's PDF, a list item was cut after its first line and a bullet was left on its own. The footer on every second page was mixed into the body text and split paragraphs that continued onto the next page. The smallest headings were read as paragraphs. As a result, the Page view left these parts untranslated. It also drew the translation of a heading at the top of a boxed note over the box's frame. Lists, footers and headings are now read as printed, and a one-line translation uses the space left on its line before it grows up or down.
 - In a PDF's Page view, a paragraph that a page or column break left with only part of one sentence on one side showed no saved translation on either side, though the Reader had one. That sentence now goes whole to the other side when its box can hold it.
+- Each switch of a tab from the Reader to the Page view opened the page anew and loaded it again from the network, so the page took a while to show. Switching back now shows the page opened before without loading it again, at the paragraph you were reading in the Reader.
 
 ## [0.3.0] - 2026-11-06
 

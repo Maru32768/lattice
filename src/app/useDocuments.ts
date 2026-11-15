@@ -13,6 +13,7 @@ import {
   panes,
   save as saveLayout,
   update,
+  webviewKeys,
   type Id,
   type Workspace,
   type PageTab,
@@ -172,14 +173,8 @@ export function useDocuments(fail: (e: unknown) => void) {
     api.setArticlesOnScreen(onScreenKey ? onScreenKey.split(",").map(Number) : []).catch(() => {});
   }, [onScreenKey]);
 
-  // Page tabs that closed (or show a Reader now) give up their webview.
-  const pageKey = useMemo(
-    () =>
-      allTabs(layout)
-        .filter((t) => t.kind === "page")
-        .map((t) => t.key),
-    [layout],
-  ).join(",");
+  // Tabs that closed give up their webview.
+  const pageKey = useMemo(() => webviewKeys(layout), [layout]).join(",");
   const prevPages = useRef<string[]>([]);
   useEffect(() => {
     const ids = pageKey ? pageKey.split(",") : [];

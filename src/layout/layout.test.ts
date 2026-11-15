@@ -30,6 +30,7 @@ import {
   tabById,
   toggleZoom,
   unzoom,
+  webviewKeys,
   type Workspace,
 } from "./layout.ts";
 
@@ -83,6 +84,20 @@ test("open: a page in its own tab keeps the webview (same id) and bumps seq; the
   assert.deepEqual(t2.kind === "page" && [t2.seq, t2.title, t2.saved, t2.loading], [2, "B", 7, true]);
   assert.equal(open(l, { ...page("https://b.example/x"), saved: 7 }), l, "redirected: the saved article is the one already shown");
   assert.notEqual(open(l, { ...page("https://b.example/"), focus: "jump" }), l, "a jump inside the page navigates again");
+});
+
+test("open: a Reader in place of a page keeps its webview, and the tab's next page opens in it", () => {
+  let l = open(single(), page("https://a.example/"));
+  const p = activeTab(focusedPane(l))!;
+  assert.ok(p.kind === "page");
+  l = open(open(l, reader(1)), reader(2));
+  assert.deepEqual(webviewKeys(l), [p.key], "kept while the Reader moves to another article");
+  l = open(l, { ...page("https://a.example/"), saved: 1 });
+  const back = activeTab(focusedPane(l))!;
+  assert.deepEqual(back.kind === "page" && [back.id, back.key, back.seq], [p.id, p.key, p.seq + 1], "the same webview, told to open again");
+  assert.deepEqual(webviewKeys(close(open(l, reader(1)), p.id)), [], "the tab closing takes it");
+  const arrived = open(open(open(single(), page("https://a.example/")), reader(1)), { ...page("https://b.example/"), key: "theirs" });
+  assert.deepEqual(webviewKeys(arrived), ["theirs"], "a page from another window brings its own, and the hidden one goes");
 });
 
 test("close: the neighbour becomes active; the last tab removes the pane, except the root", () => {

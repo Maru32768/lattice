@@ -123,6 +123,24 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab: keys[1] }]);
 });
 
+test("a Reader in place of a Page hides its webview, the Page comes back in it, and closing the tab closes it", async ({ app }) => {
+  await (await listRow(app, a.title!)).click();
+  await app.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBe(1);
+  const [{ tab }] = (await callsOf(app, "browser_open")) as { tab: string }[];
+  await app.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
+  await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab });
+  await app.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => ((await callsOf(app, "browser_open")) as { tab: string }[]).map((o) => o.tab)).toEqual([tab, tab]);
+  expect(await callsOf(app, "browser_close"), "hidden while the Reader showed, not closed").toEqual([]);
+
+  await app.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
+  await app.keyboard.press("Control+w");
+  await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab }]);
+});
+
 test("a chat citation and a palette article open in a new tab on Ctrl / middle click", async ({ app }) => {
   await (await listRow(app, a.title!)).click();
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
