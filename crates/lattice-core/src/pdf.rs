@@ -236,9 +236,9 @@ fn laid_out_text(d: &Draft) -> bool {
 /// The text of each piece of a block. Cut at the line break, "To-" / "day these changes" would be
 /// translated as two fragments, so a sentence goes whole to the piece that holds most of it; the
 /// other piece's box still covers its end of it. A sentence that would leave a piece empty, whose box
-/// would then keep showing the original, goes whole to the other piece: cut through, neither piece would be whole
-/// sentences, which are all the block's saved translation can show (`translate::saved_units`). Only a sentence with
-/// nothing else on either side is cut between words.
+/// would then keep showing the original, goes whole to the other piece if that holds a third of it: cut through,
+/// neither piece would be whole sentences, which are all the block's saved translation can show
+/// (`translate::saved_units`). Otherwise it is cut between words.
 fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
     let mut whole = String::new();
     let mut breaks = Vec::new();
@@ -260,9 +260,12 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
         } else {
             (before, after)
         };
+        // The side with less of the sentence takes it only if it has a third: the viewer's smallest type gives a letter
+        // about a quarter of the area (`FIT_STEPS`), so its box then still shows the sentence.
+        let rest = (3 * (at - before).min(after - at) >= after - before).then_some(rest);
         // Short of the next piece's end, or the piece after this one is left empty.
         let next = breaks.get(i + 1).copied().unwrap_or(whole.len());
-        let cut = [most, rest].into_iter().find(|&c| c > start && c < next).unwrap_or_else(|| word_break(&whole, at).max(start));
+        let cut = [Some(most), rest].into_iter().flatten().find(|&c| c > start && c < next).unwrap_or_else(|| word_break(&whole, at).max(start));
         texts.push(whole[start..cut].to_string());
         start = cut;
     }
@@ -2091,6 +2094,18 @@ pub(crate) mod tests {
                 "until a majority of them has answered with the same stored value and only then replies."
             ]
         );
+    }
+
+    #[test]
+    fn a_sentence_too_long_for_the_short_side_is_cut_between_words() {
+        // Moved whole, the sentence would fill a box of one word more than its smallest type can show.
+        let first: Vec<Run> = vec![
+            (L, 100., 10., "A short one. Then a long sentence that runs across this whole line and"),
+            (L, 112., 10., "the whole of the next one too, before it stops on the following page"),
+        ];
+        let second: Vec<Run> = vec![(L, 100., 10., "at last.")];
+        let r = regions(&pdf(&[first, second], None)).unwrap();
+        assert_eq!(r.iter().map(|x| x.text.as_str()).collect::<Vec<_>>()[1], "at last.");
     }
 
     #[test]
