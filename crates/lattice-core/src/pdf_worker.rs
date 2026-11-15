@@ -364,11 +364,36 @@ mod tests {
     #[test]
     fn a_pdf_reads_in_a_worker_as_it_does_here() {
         let (worker, bytes) = (worker(SMALL, AMPLE), quorum());
-        let here = crate::pdf::to_ir(&bytes, Some("Quorum"));
-        assert_eq!(ir(&worker, &bytes), here);
-        let regions: Result<Vec<Region>, String> = worker.ask(&Request::Regions, &bytes);
+        // Raised and lowered runs, and a heading: what quorum's regions leave empty. The viewer reads the script by name.
+        let scripts = pdf(
+            &[vec![
+                (72., 100., 10., "Each replica grants a lease at lease e"),
+                (236., 96.4, 7., "grant"),
+                (236., 103., 7., "i,r"),
+                (254., 100., 10., ", after it"),
+                (72., 112., 10., "receives a lease request from the leader of it."),
+            ]],
+            None,
+        );
+        let heading = pdf(
+            &[vec![
+                (72., 100., 10.5, "A long line of body text that runs across the whole of the column and on to its end,"),
+                (72., 112.6, 10.5, "with a second line that is nearly as long as the first one and then comes to a stop."),
+                (72., 138., 11.6, "Logical (row-based) log replication"),
+                (72., 155., 10.5, "Another way is to use different log formats for replication and for the storage engine,"),
+                (72., 167.6, 10.5, "which allows the log to be decoupled from the internals of the storage engine."),
+            ]],
+            None,
+        );
         let json = |r: Vec<Region>| serde_json::to_value(r).unwrap();
-        assert_eq!(json(regions.unwrap()), json(crate::pdf::regions(&bytes).unwrap()));
+        for (file, holds) in [(&bytes, r#""runs":"#), (&scripts, r#""script":"sup""#), (&heading, r#""level":2"#)] {
+            assert_eq!(ir(&worker, file), crate::pdf::to_ir(file, Some("Quorum")));
+            let here = json(crate::pdf::regions(file).unwrap());
+            assert!(here.to_string().contains(holds), "{here}");
+            let there: Result<Vec<Region>, String> = worker.ask(&Request::Regions, file);
+            assert_eq!(json(there.unwrap()), here);
+        }
+        let here = crate::pdf::to_ir(&bytes, Some("Quorum"));
         assert_eq!(ir(&worker, b"not a pdf"), crate::pdf::to_ir(b"not a pdf", Some("Quorum")), "an error comes back as it is");
         let srcs: Vec<String> = here.unwrap().blocks.into_iter().filter_map(|b| b.attrs.src).chain(["pdf-figure:12.0".to_owned()]).collect();
         let (there, here) = (Figures::read_by(Some(&worker), &bytes).unwrap(), Figures::read_by(None, &bytes).unwrap());
