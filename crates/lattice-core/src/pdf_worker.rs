@@ -587,16 +587,16 @@ mod tests {
         assert!(parent.unwrap().success());
         let pid = std::fs::read_to_string(&file).unwrap();
         let _ = std::fs::remove_file(&file);
-        let running = || {
-            let list = Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().unwrap();
-            String::from_utf8_lossy(&list.stdout).contains(pid.as_str())
-        };
+        // By its name as well: once the worker has ended, its id may be another process's.
+        let name = std::env::current_exe().unwrap().file_name().unwrap().to_string_lossy().into_owned();
+        let only =
+            |tool: &str, flag: &str| Command::new(tool).args([flag, "/FI", &format!("PID eq {pid}"), "/FI", &format!("IMAGENAME eq {name}")]).output().unwrap();
         let gone = (0..50).any(|_| {
             std::thread::sleep(Duration::from_millis(100));
-            !running()
+            !String::from_utf8_lossy(&only("tasklist", "/NH").stdout).contains(pid.as_str())
         });
         if !gone {
-            let _ = Command::new("taskkill").args(["/F", "/PID", &pid]).output();
+            only("taskkill", "/F");
         }
         assert!(gone, "worker {pid} is still running");
     }
