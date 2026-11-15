@@ -78,7 +78,7 @@ test("a document window shows only its tabs, hands one back to the main window, 
   ]);
   await expect(titles(shell)).toHaveText(["P"]);
   // The page's webview is attached here, not reloaded: the window asked to open it by its key.
-  // Not as the Reader's page: one from another window keeps its scroll.
+  // A tab restored from storage is no Reader's page: its webview, if still there, keeps its scroll.
   expect(await callsOf(shell, "browser_open")).toEqual([expect.objectContaining({ tab: "k1", url: "https://example.com/p", fromReader: false })]);
 
   await shell.keyboard.press("Control+w");

@@ -105,6 +105,8 @@ test("open: a Reader in place of a page keeps its webview, and the tab's next pa
   assert.deepEqual(webviewKeys(close(open(l, reader(1)), p.id)), [], "the tab closing takes it");
   const arrived = open(open(open(single(), page("https://a.example/")), reader(1)), { ...page("https://b.example/"), key: "theirs" });
   assert.deepEqual(webviewKeys(arrived), ["theirs"], "a page from another window brings its own, and the hidden one goes");
+  const theirs = activeTab(focusedPane(arrived))!;
+  assert.equal(theirs.kind === "page" && theirs.fromReader, false, "and it is not the Reader's page");
 });
 
 test("close: the neighbour becomes active; the last tab removes the pane, except the root", () => {
@@ -400,6 +402,7 @@ test("a page keeps its webview key when replaced in place, and docOf carries it 
   const moved = open(single(), docOf(c), "new");
   const m = activeTab(focusedPane(moved))!;
   assert.equal(m.kind === "page" && m.key, c.kind === "page" && c.key, "the doc of a page names its webview");
+  assert.equal(m.kind === "page" && m.fromReader, false, "not a Reader's page: the webview it brings keeps its scroll");
   assert.equal(pageByKey(moved, (c as { key: string }).key)?.id, m.id);
   assert.deepEqual(docOf(tabById(open(single(), reader(4)), 2)!.tab), { kind: "reader", articleId: 4 });
 });
