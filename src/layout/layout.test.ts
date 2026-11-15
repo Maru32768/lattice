@@ -119,12 +119,16 @@ test("open: the page a Reader kept comes back at the URL it moved on to; another
   l = navigated(l, p.id, { url: "https://a.example/#part", loading: false, canGoBack: false, canGoForward: false });
   const atPage = l;
   l = open(l, reader(1));
-  const again = activeTab(focusedPane(open(l, { ...page("http://a.example/"), saved: 1 })))!;
+  const back = open(l, { ...page("http://a.example/"), title: "Article A", saved: 1 });
+  const again = activeTab(focusedPane(back))!;
   assert.deepEqual(
     again.kind === "page" && [again.key, again.fromReader, again.url],
     [p.key, true, "https://a.example/#part"],
     "the same article, at the URL the webview shows",
   );
+  // Not loaded, so no title comes: the webview's report of its URL keeps the article's.
+  const shown = tabById(navigated(back, again.id, { url: "https://a.example/#part", loading: false, canGoBack: false, canGoForward: false }), again.id)!.tab;
+  assert.equal(shown.kind === "page" && shown.title, "Article A");
   const other = activeTab(focusedPane(open(open(l, reader(2)), { ...page("https://b.example/"), saved: 2 })))!;
   assert.deepEqual(other.kind === "page" && [other.key, other.fromReader, other.url], [p.key, false, "https://b.example/"], "another article");
 
