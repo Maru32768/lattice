@@ -318,5 +318,8 @@ mod tests {
     #[test]
     fn inflating_stops_a_byte_past_the_size() {
         assert_eq!(inflate(&deflate(&[7; 1000]), 12).map(|v| v.len()), Some(13));
+        // The size is a bound, not a reservation: a stream of a few bytes does not take 64 MiB.
+        let few = inflate(&deflate(&[7; 10]), 64 * 1024 * 1024).unwrap();
+        assert!(few.capacity() < 1024 * 1024, "{} bytes reserved for 10", few.capacity());
     }
 }
