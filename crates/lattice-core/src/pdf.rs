@@ -264,6 +264,8 @@ fn piece_texts(pieces: &[&[&Line]], vocab: &HashSet<String>) -> Vec<String> {
         // about a quarter of the area (`FIT_STEPS`), so its box then still shows the sentence.
         let rest = (3 * (at - before).min(after - at) >= after - before).then_some(rest);
         // Short of the next piece's end, or the piece after this one is left empty.
+        // shortcut: each break is decided alone, so in a block of three or more pieces a move can leave the next break
+        // no whole-sentence cut; look one break ahead if such blocks turn up in real PDFs.
         let next = breaks.get(i + 1).copied().unwrap_or(whole.len());
         let cut = [Some(most), rest].into_iter().flatten().find(|&c| c > start && c < next).unwrap_or_else(|| word_break(&whole, at).max(start));
         texts.push(whole[start..cut].to_string());
