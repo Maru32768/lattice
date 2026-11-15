@@ -300,4 +300,9 @@ mod tests {
         assert_eq!(Format::of(&doc, &rgb(1_431_677_610, 4_294_901_762, &[])), None, "a size past u64");
         assert_eq!(Format::of(&doc, &rgb(0, 2, &[])), None);
     }
+
+    #[test]
+    fn inflating_stops_a_byte_past_the_size() {
+        assert_eq!(inflate(&deflate(&[7; 1000]), 12).map(|v| v.len()), Some(13));
+    }
 }
