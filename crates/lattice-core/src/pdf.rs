@@ -2433,6 +2433,18 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn re_extracting_and_fetching_queue_the_figures() {
+        let s = Store::open_in_memory().unwrap();
+        let id = import(&s, &quorum(), None).unwrap();
+        let take = |s: &Store| s.claim_next_job(&[images::JOB_TYPE]).unwrap().map(|j| s.finish_job(j.id, None).unwrap()).is_some();
+        assert!(take(&s));
+        crate::ingest::reextract(&s, id).unwrap();
+        assert!(take(&s), "re-extracting queues the images job");
+        store_fetched(&s, id, "https://example.com/quorum.pdf", &quorum()).unwrap();
+        assert!(take(&s), "saving a fetched PDF queues it");
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
