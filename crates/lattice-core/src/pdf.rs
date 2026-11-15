@@ -6,7 +6,9 @@
 //! lines, two-column reading order, running headers and page numbers, title, headings,
 //! paragraphs (with hyphenated line breaks joined), captions and the reference list.
 
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 use pdf_extract::content::{Content, Operation};
 use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
@@ -549,6 +551,84 @@ fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl F
     Err(msg!("pdf.parseFailed"))
 }
 
+/// Deeper than forms nest in a PDF: a page included from another PDF, a figure in it, a group in that. pdf-extract draws
+/// each by recursion, at about 8 KB of stack a level in a debug build.
+const FORM_DEPTH: usize = 32;
+
+/// How much pdf-extract may read of the forms it draws again, in bytes, each draw counting 64 more for what any draw
+/// costs it. A plot draws its markers thousands of times, and a page its header; forms that each draw the next twice
+/// would take twice as long with every level. A release build reads this much in about 10 seconds.
+const REDRAWN: usize = 64 << 20;
+
+/// Refuses a document whose forms pdf-extract would draw more than `FORM_DEPTH` deep, or again past `REDRAWN`.
+/// pdf-extract follows `Do` by recursion with no bound, so a form that draws itself, directly or through others,
+/// overflows the stack in every build, past any `catch_unwind`. Follows what pdf-extract draws: the content of each page,
+/// and in it the streams that `Do` names in the XObjects of a stream's own Resources, else of those it was drawn with.
+/// A name they give no stream for makes pdf-extract panic, and is refused here. A stream the blanking in `glyphs`
+/// emptied draws nothing. A stream that draws another many times is followed once, counting the times.
+fn drawable(doc: &Document) -> Result<(), String> {
+    // Each stream drawn so far: its length and what it draws.
+    let mut streams: HashMap<ObjectId, (usize, Draws)> = HashMap::new();
+    let mut redrawn = 0usize;
+    for &page in doc.get_pages().values() {
+        let resources = inherited(doc, page, b"Resources", Object::as_dict)?;
+        let content = doc.get_page_content(page).unwrap_or_default();
+        // What a content draws, the Resources it draws them from, how deep it is, and how many times it is drawn.
+        let mut todo = vec![(draws(doc, &content, resources)?, resources, 0, 1usize)];
+        while let Some((draws_here, resources, depth, times)) = todo.pop() {
+            for (name, count) in draws_here.iter() {
+                let (id, stream) = xobject(doc, resources, name).ok_or_else(|| msg!("pdf.parseFailed"))?;
+                if stream.content.is_empty() {
+                    continue;
+                }
+                if depth == FORM_DEPTH {
+                    return Err(msg!("pdf.parseFailed"));
+                }
+                let own = stream.dict.get_deref(b"Resources", doc).and_then(Object::as_dict).ok().or(resources);
+                let times = times.saturating_mul(*count);
+                let (len, inner, again) = match streams.entry(id) {
+                    Entry::Occupied(seen) => (seen.get().0, seen.get().1.clone(), times),
+                    Entry::Vacant(first) => {
+                        let content = stream.decompressed_content().unwrap_or_else(|_| stream.content.clone());
+                        let (len, inner) = &*first.insert((content.len(), draws(doc, &content, own)?));
+                        (*len, inner.clone(), times - 1)
+                    }
+                };
+                redrawn = again.saturating_mul(len + 64).saturating_add(redrawn);
+                if redrawn > REDRAWN {
+                    return Err(msg!("pdf.parseFailed"));
+                }
+                todo.push((inner, own, depth + 1, times));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The names a content draws with `Do`, each with how many times: none if pdf-extract cannot decode it either.
+type Draws = Rc<[(Vec<u8>, usize)]>;
+
+/// What `content` draws, refused at a name that `resources` give no stream for. So only names the document has are kept.
+fn draws(doc: &Document, content: &[u8], resources: Option<&Dictionary>) -> Result<Draws, String> {
+    let ops = Content::decode(content).map(|c| c.operations).unwrap_or_default();
+    let mut counts: HashMap<&[u8], usize> = HashMap::new();
+    for op in ops.iter().filter(|op| op.operator == "Do") {
+        let name = op.operands.first().and_then(|o| o.as_name().ok());
+        let name = name.filter(|&n| counts.contains_key(n) || xobject(doc, resources, n).is_some()).ok_or_else(|| msg!("pdf.parseFailed"))?;
+        *counts.entry(name).or_default() += 1;
+    }
+    Ok(counts.into_iter().map(|(name, count)| (name.to_vec(), count)).collect())
+}
+
+/// The stream `name` draws, found where pdf-extract finds it: in the XObjects of `resources`.
+fn xobject<'a>(doc: &'a Document, resources: Option<&'a Dictionary>, name: &[u8]) -> Option<(ObjectId, &'a Stream)> {
+    let xobjects = resources?.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()?;
+    match xobjects.get(name).and_then(|o| doc.dereference(o)).ok()? {
+        (Some(id), Object::Stream(stream)) => Some((id, stream)),
+        _ => None,
+    }
+}
+
 fn is_image(s: &Stream) -> bool {
     s.dict.get(b"Subtype").and_then(Object::as_name).is_ok_and(|n| n == b"Image")
 }
@@ -577,9 +657,10 @@ struct Parsed {
 fn read(bytes: &[u8]) -> Result<Parsed, String> {
     std::panic::catch_unwind(|| {
         let (doc, mut pages) = glyphs(bytes, true)?;
-        // A page drawn entirely inside forms (an included PDF) is read with them after all.
-        if pages.iter().any(|p| p.glyphs.is_empty()) {
-            let (_, all) = glyphs(bytes, false)?;
+        // A page drawn entirely inside forms (an included PDF) is read with them after all, unless they cannot be drawn.
+        if pages.iter().any(|p| p.glyphs.is_empty())
+            && let Ok((_, all)) = glyphs(bytes, false)
+        {
             for (p, a) in pages.iter_mut().zip(all) {
                 if p.glyphs.is_empty() {
                     *p = a;
@@ -613,6 +694,7 @@ fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), Strin
             s.set_plain_content(Vec::new());
         }
     }
+    drawable(&doc)?;
     let mut out = Glyphs { faces, ..Default::default() };
     pdf_extract::output_doc(&doc, &mut out).map_err(|e| unreadable(&e))?;
     for (page, drawn) in out.pages.iter_mut().zip(drawn) {
@@ -3029,6 +3111,132 @@ pub(crate) mod tests {
             [Ok(b"<</Length 2 0 R>>\nstream\nx\nendstream"), Err(3), Ok(b"<</Type /ObjStm /N 1 /First 4 /Length 4 0 R>>\nstream\n2 0 1\nendstream"), Ok(b"5")];
         let doc = Document::load_mem(&cross_referenced(&objects)).unwrap();
         assert_eq!(doc.get_object((1, 0)).and_then(Object::as_stream).unwrap().content, b"x");
+    }
+
+    /// Two pages: one of `text`, and one of `ops`, which draw streams named `/X0`, `/X1`.. in the page's XObjects, as the
+    /// streams may too. Each stream: whether its Subtype is Form (pdf-extract draws a stream without one as if it were), its
+    /// content, and whether it has Resources of its own, a copy of the page's, or takes those it is drawn with.
+    fn drawing(text: Vec<Run>, ops: &str, streams: &[(bool, String, bool)]) -> Vec<u8> {
+        let mut doc = Document::load_mem(&pdf(&[text, vec![]], None)).unwrap();
+        let page = *doc.get_pages().values().nth(1).unwrap();
+        let xobjects = doc.new_object_id();
+        let mut resources = doc.get_dictionary(page).unwrap().get(b"Resources").and_then(Object::as_dict).unwrap().clone();
+        resources.set("XObject", Object::Reference(xobjects));
+        let mut named = Dictionary::new();
+        for (i, (form, content, own)) in streams.iter().enumerate() {
+            let mut dict = Dictionary::new();
+            if *form {
+                dict.set("Subtype", name("Form"));
+            }
+            if *own {
+                dict.set("Resources", resources.clone());
+            }
+            named.set(format!("X{i}"), Object::Reference(doc.add_object(Stream::new(dict, content.clone().into_bytes()))));
+        }
+        doc.objects.insert(xobjects, Object::Dictionary(named));
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        dict.set("Resources", resources);
+        let content = dict.get(b"Contents").and_then(Object::as_reference).unwrap();
+        doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap().set_plain_content(ops.as_bytes().to_vec());
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    fn showing(text: &str) -> String {
+        format!("BT /F1 10 Tf 72 100 Td ({text}) Tj ET")
+    }
+
+    /// `depth` forms, each drawing the next, the last showing `text`.
+    fn nested(depth: usize, text: &str) -> Vec<(bool, String, bool)> {
+        (0..depth)
+            .map(|i| {
+                (
+                    true,
+                    if i + 1 < depth {
+                        format!("/X{} Do", i + 1)
+                    } else {
+                        showing(text)
+                    },
+                    true,
+                )
+            })
+            .collect()
+    }
+
+    /// Whether the PDF reads with `text` in it.
+    fn reads(bytes: &[u8], text: &str) -> bool {
+        to_ir(bytes, None).unwrap().blocks.iter().any(|b| b.text.contains(text))
+    }
+
+    #[test]
+    fn forms_that_draw_themselves_are_left_out() {
+        // pdf-extract would draw them until the stack overflowed.
+        if !in_child("pdf::tests::forms_that_draw_themselves_are_left_out") {
+            return;
+        }
+        let me = |i: usize| format!("/X{i} Do");
+        let without = to_ir(&drawing(quorum_text(), "", &[]), None).unwrap();
+        for (streams, how) in [
+            (vec![(true, me(0), true)], "a form"),
+            (vec![(true, me(1), true), (true, me(0), false)], "two forms that draw each other"),
+            (
+                (0..10_000)
+                    .map(|i| {
+                        (
+                            true,
+                            if i < 9_999 {
+                                me(i + 1)
+                            } else {
+                                String::new()
+                            },
+                            false,
+                        )
+                    })
+                    .collect(),
+                "a chain of forms",
+            ),
+        ] {
+            // Forms are drawn only for a page without text of its own, which then stays without.
+            assert_eq!(kinds(&to_ir(&drawing(quorum_text(), "/X0 Do", &streams), None).unwrap()), kinds(&without), "{how}");
+        }
+        // A stream without a Subtype is drawn along with the text, so the PDF is refused.
+        assert_eq!(to_ir(&drawing(quorum_text(), "/X0 Do", &[(false, me(0), false)]), None).unwrap_err(), msg!("pdf.parseFailed"));
+    }
+
+    #[test]
+    fn forms_are_read_as_deep_as_they_nest_in_a_pdf() {
+        // Text inside an included page, and so on: deeper than any PDF nests them.
+        let deep = |depth| reads(&drawing(quorum_text(), "/X0 Do", &nested(depth, "Deep inside")), "Deep inside");
+        assert!(deep(32));
+        assert!(!deep(33), "one deeper, the page is read without its forms");
+    }
+
+    #[test]
+    fn forms_drawn_over_and_over_are_left_out() {
+        // Forms that each draw the next twice: pdf-extract would draw the last 2^21 times, which takes it minutes.
+        let twice = |depth: usize, padding: usize| -> Vec<(bool, String, bool)> {
+            let next = |i: usize| format!("{}/X{} Do /X{1} Do", " ".repeat(padding), i + 1);
+            (0..depth)
+                .map(|i| {
+                    (
+                        true,
+                        if i + 1 < depth {
+                            next(i)
+                        } else {
+                            showing("Over and over")
+                        },
+                        true,
+                    )
+                })
+                .collect()
+        };
+        assert!(!reads(&drawing(quorum_text(), "/X0 Do", &twice(22, 0)), "Over and over"), "small forms");
+        // Fewer times, but each time a quarter megabyte to read.
+        assert!(!reads(&drawing(quorum_text(), "/X0 Do", &twice(10, 256 << 10)), "Over and over"), "large forms");
+        // A form drawn in many places on a page is read.
+        let shown = format!("{}/X0 Do", "q 1 0 0 1 0 -10 cm /X0 Do Q ".repeat(1000));
+        assert!(reads(&drawing(quorum_text(), &shown, &nested(1, "Every time")), "Every time"));
     }
 
     #[test]
