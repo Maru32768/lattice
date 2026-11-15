@@ -53,7 +53,7 @@ pub fn import(store: &Store, bytes: &[u8], name: Option<&str>) -> Result<i64, St
 
 /// A PDF fetched from a URL: like a page, a failed extraction is recorded on the article.
 pub fn store_fetched(store: &Store, id: i64, final_url: &str, bytes: &[u8]) -> Result<i64, String> {
-    let id = store.save_snapshot(id, Some(&snapshot(final_url, bytes)), to_ir(bytes, None), None).map_err(err)?;
+    let id = store.save_snapshot(id, Some(&snapshot(final_url, bytes)), read_by_job(bytes, None)?, None).map_err(err)?;
     images::enqueue(store, id)?;
     Ok(id)
 }
@@ -61,9 +61,18 @@ pub fn store_fetched(store: &Store, id: i64, final_url: &str, bytes: &[u8]) -> R
 /// Extracts the stored bytes again; the title the app found (not the user's name) is the fallback, as on import.
 pub fn reextract(store: &Store, id: i64, bytes: &[u8]) -> Result<i64, String> {
     let title = store.article_row(id).map_err(err)?.and_then(|a| a.auto_title.or(a.title));
-    let id = store.save_snapshot(id, None, to_ir(bytes, title.as_deref()), None).map_err(err)?;
+    let id = store.save_snapshot(id, None, read_by_job(bytes, title.as_deref())?, None).map_err(err)?;
     images::enqueue(store, id)?;
     Ok(id)
+}
+
+/// `to_ir` for a job to record, but a worker that did not start fails the job, which tries again: it says nothing about
+/// the PDF.
+fn read_by_job(bytes: &[u8], fallback: Option<&str>) -> Result<Result<ArticleIr, String>, String> {
+    match to_ir(bytes, fallback) {
+        Err(e) if e == msg!("pdf.workerFailed") => Err(e),
+        read => Ok(read),
+    }
 }
 
 fn snapshot<'a>(url: &'a str, bytes: &'a [u8]) -> NewSnapshot<'a> {

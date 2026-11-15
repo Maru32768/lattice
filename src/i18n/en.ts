@@ -1159,6 +1159,7 @@ export const en = {
   "be.pdf.parseFailed": "Could not parse the PDF",
   "be.pdf.tooSlow": "Reading the PDF took over {minutes} minutes, so it was stopped",
   "be.pdf.unreadable": "Cannot read the PDF: {error}",
+  "be.pdf.workerFailed": "Could not start the process that reads the PDF",
   "be.quiz.dailyMax": "Daily limits go up to 9999 cards",
   "be.quiz.minRange": "The shortest interval is 1 minute to 30 days",
   "be.quiz.maxRange": "The longest interval must be at least the shortest one and at most 100 years",

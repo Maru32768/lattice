@@ -97,7 +97,8 @@ impl Worker {
         self.start(request, pdf)?.reply::<Result<T, String>>()?
     }
 
-    /// A worker that has been sent `request` and `pdf`.
+    /// A worker that has been sent `request` and `pdf`. `pdf.workerFailed` when it does not start or ends before it has
+    /// the PDF (the machine out of memory, say), which says nothing about the PDF.
     pub(crate) fn start(&self, request: &Request, pdf: &[u8]) -> Result<Session, String> {
         let mut command = Command::new(&self.program);
         command.args(&self.args).env(WORKER, "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
@@ -105,14 +106,14 @@ impl Worker {
         std::os::windows::process::CommandExt::creation_flags(&mut command, 0x0800_0000); // CREATE_NO_WINDOW
         let mut child = command.spawn().map_err(|e| {
             log::warn!("starting a PDF worker: {e}");
-            msg!("pdf.parseFailed")
+            msg!("pdf.workerFailed")
         })?;
         // Before the request: until it has one, the worker only waits.
         #[cfg(windows)]
         let job = job::limit(&child, self.memory);
         let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
             let _ = child.kill();
-            return Err(msg!("pdf.parseFailed"));
+            return Err(msg!("pdf.workerFailed"));
         };
         let mut session = Session {
             child,
@@ -122,8 +123,9 @@ impl Worker {
             #[cfg(windows)]
             _job: job,
         };
-        session.send(&serde_json::to_vec(request).map_err(|_| msg!("pdf.parseFailed"))?)?;
-        session.send(pdf)?;
+        let ended = |_: String| msg!("pdf.workerFailed");
+        session.send(&serde_json::to_vec(request).map_err(|_| msg!("pdf.parseFailed"))?).map_err(ended)?;
+        session.send(pdf).map_err(ended)?;
         Ok(session)
     }
 }
@@ -441,20 +443,27 @@ mod tests {
         let store = crate::store::Store::open_in_memory().unwrap();
         let id = crate::pdf::import(&store, &bytes, None).unwrap();
         // A worker that does not start, or one that is ended at its first answer: what reads the PDF here would read it.
-        if how == "does not start" {
+        let last = if how == "does not start" {
             assert!(THIS.set(Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE }).is_ok());
-            assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.parseFailed")));
-            assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.parseFailed")));
+            let failed = msg!("pdf.workerFailed");
+            assert_eq!(crate::pdf::to_ir(&bytes, None), Err(failed.clone()));
+            assert_eq!(crate::pdf::regions(&bytes).err(), Some(failed.clone()));
             assert!(Figures::parse(&bytes).is_err());
+            // Not recorded on the article as a PDF that failed to read: the job that tried tries again.
+            assert_eq!(crate::pdf::store_fetched(&store, id, "https://example.com/paper.pdf", &bytes), Err(failed.clone()));
+            assert_eq!(crate::pdf::reextract(&store, id, &bytes), Err(failed.clone()));
+            assert_eq!(store.article_row(id).unwrap().unwrap().extraction_status, "ok");
+            failed
         } else {
             assert!(THIS.set(worker(SMALL, Duration::ZERO)).is_ok());
             assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.tooSlow", minutes = 0)));
             assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.tooSlow", minutes = 0)));
-        }
+            msg!("pdf.parseFailed")
+        };
         // The figures are left for a later try, not recorded as ones the PDF lacks.
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let run = runtime.block_on(crate::images::run(&store, &crate::fetch::client(), id));
-        assert_eq!(run, Err(msg!("images.someFailed", error = msg!("pdf.parseFailed"))), "the job fails for the figures");
+        assert_eq!(run, Err(msg!("images.someFailed", error = last)), "the job fails for the figures");
         let recorded: i64 = store.conn().query_row("SELECT count(*) FROM article_images WHERE article_id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(recorded, 0);
     }
@@ -462,7 +471,7 @@ mod tests {
     #[test]
     fn figures_wait_for_a_worker_that_does_not_start() {
         let missing = Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE };
-        assert_eq!(Figures::read_by(Some(&missing), &quorum()).err(), Some(msg!("pdf.parseFailed")), "not a PDF without figures");
+        assert_eq!(Figures::read_by(Some(&missing), &quorum()).err(), Some(msg!("pdf.workerFailed")), "not a PDF without figures");
     }
 
     #[test]

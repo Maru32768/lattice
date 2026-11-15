@@ -1145,6 +1145,7 @@ export const ja = {
   "be.pdf.parseFailed": "PDFの解析に失敗しました",
   "be.pdf.tooSlow": "PDFの読み込みが{minutes}分を超えたので中止しました",
   "be.pdf.unreadable": "PDFを読み込めません: {error}",
+  "be.pdf.workerFailed": "PDFを読むプロセスを起動できませんでした",
   "be.quiz.dailyMax": "1日の上限は9999枚までです",
   "be.quiz.minRange": "最短間隔は1分〜30日です",
   "be.quiz.maxRange": "最長間隔は最短間隔以上、100年以下にしてください",
