@@ -464,13 +464,14 @@ fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
             continue;
         };
         for (name, o) in xobjects.iter() {
-            if let Ok(id) = o.as_reference()
-                && doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some())
-            {
+            if let Ok(id) = o.as_reference() {
                 out.entry(name.clone()).or_insert(id);
             }
         }
     }
+    // Kept only after the nearest resources have claimed each name, so one the Reader cannot show does not let an
+    // inherited image of that name stand in for it.
+    out.retain(|_, id| doc.get_object(*id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some()));
     out
 }
 
@@ -2542,6 +2543,31 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn a_page_s_own_image_hides_the_one_its_parent_names_alike() {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary(page).unwrap();
+        let (inherited, parent) =
+            (dict.get(b"Resources").and_then(Object::as_dict).unwrap().clone(), dict.get(b"Parent").and_then(Object::as_reference).unwrap());
+        let mut masked = rgb(30, 10, [0, 0, 0]);
+        masked.dict.set("SMask", Object::Reference((1, 0)));
+        let masked = doc.add_object(masked);
+        // The page names its own masked image by each name its parent gives a figure.
+        let mut own = inherited.clone();
+        let xobjects = own.get_mut(b"XObject").and_then(Object::as_dict_mut).unwrap();
+        for (_, o) in xobjects.iter_mut() {
+            *o = Object::Reference(masked);
+        }
+        let shared = doc.add_object(inherited);
+        doc.get_dictionary_mut(parent).unwrap().set("Resources", Object::Reference(shared));
+        doc.get_dictionary_mut(page).unwrap().set("Resources", Object::Dictionary(own));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count(), 0, "{:?}", kinds(&ir));
     }
 
     #[test]
