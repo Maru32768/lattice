@@ -2864,15 +2864,24 @@ pub(crate) mod tests {
         assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
     }
 
+    /// Whether this is a child running only the test `name`, which goes on with the test. The test run itself starts that
+    /// child, checks that the test passed there, and returns. A stack overflow ends the process past any `catch_unwind`, so
+    /// a test that would overflow if it failed runs apart, and fails instead of ending the whole run.
+    fn in_child(name: &str) -> bool {
+        const CHILD: &str = "LATTICE_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            return true;
+        }
+        let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
+        false
+    }
+
     #[test]
     fn a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused() {
-        // pdf-extract would climb until the stack overflowed, which ends the whole test run: a child runs it.
-        const CHILD: &str = "LATTICE_TEST_DEEP_PAGE_TREE";
-        let name = "pdf::tests::a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused";
-        if std::env::var_os(CHILD).is_none() {
-            let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
+        // pdf-extract would climb until the stack overflowed.
+        if !in_child("pdf::tests::a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused") {
             return;
         }
         // In place of its own entry the page has none, one of the wrong kind (pdf-extract passes it over and looks further
@@ -2970,6 +2979,56 @@ pub(crate) mod tests {
             let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
             assert_eq!(math, ["e"], "{:?}", resources.get(b"Font"));
         }
+    }
+
+    /// A PDF of `objects`, numbered from 1, listed in a cross-reference stream: each written out, or as `Err(container)`
+    /// the first object of that object stream.
+    fn cross_referenced(objects: &[Result<&[u8], u32>]) -> Vec<u8> {
+        let mut pdf = b"%PDF-1.5\n".to_vec();
+        let mut entries = vec![(0u8, 0u32, 0xffffu16)];
+        for (i, object) in objects.iter().enumerate() {
+            entries.push(match object {
+                Ok(body) => {
+                    let at = pdf.len();
+                    pdf.extend([format!("{} 0 obj\n", i + 1).as_bytes(), *body, b"\nendobj\n"].concat());
+                    (1, at as u32, 0)
+                }
+                Err(container) => (2, *container, 0),
+            });
+        }
+        let at = pdf.len();
+        entries.push((1, at as u32, 0));
+        let data: Vec<u8> = entries.iter().flat_map(|&(kind, field, index)| [&[kind][..], &field.to_be_bytes(), &index.to_be_bytes()].concat()).collect();
+        let size = entries.len();
+        pdf.extend(format!("{} 0 obj\n<</Type /XRef /Size {size} /W [1 4 2] /Length {}>>\nstream\n", size - 1, data.len()).as_bytes());
+        pdf.extend(data);
+        pdf.extend(format!("\nendstream\nendobj\nstartxref\n{at}\n%%EOF\n").as_bytes());
+        pdf
+    }
+
+    #[test]
+    fn stream_lengths_that_lead_round_or_far_fail_the_import() {
+        // lopdf 0.42.0 resolved a stream's /Length by recursion until the stack overflowed.
+        if !in_child("pdf::tests::stream_lengths_that_lead_round_or_far_fail_the_import") {
+            return;
+        }
+        // Object 2 lies in object stream 2, which it would have to be read from first.
+        let round = cross_referenced(&[Ok(b"<</Length 2 0 R>>\nstream\nx\nendstream"), Err(2)]);
+        // The /Length of each stream is the next stream, far more of them than the stack holds.
+        let bodies: Vec<String> = (2..10_000).map(|next| format!("<</Length {next} 0 R>>\nstream\nx\nendstream")).collect();
+        let far = cross_referenced(&bodies.iter().map(|b| Ok(b.as_bytes())).collect::<Vec<_>>());
+        for (bytes, how) in [(round, "round"), (far, "far")] {
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.noText"), "{how}");
+        }
+    }
+
+    #[test]
+    fn a_stream_length_kept_in_an_object_stream_is_read() {
+        // Object 2, the length, lies in object stream 3, whose own /Length is object 4.
+        let objects: [Result<&[u8], u32>; 4] =
+            [Ok(b"<</Length 2 0 R>>\nstream\nx\nendstream"), Err(3), Ok(b"<</Type /ObjStm /N 1 /First 4 /Length 4 0 R>>\nstream\n2 0 1\nendstream"), Ok(b"5")];
+        let doc = Document::load_mem(&cross_referenced(&objects)).unwrap();
+        assert_eq!(doc.get_object((1, 0)).and_then(Object::as_stream).unwrap().content, b"x");
     }
 
     #[test]

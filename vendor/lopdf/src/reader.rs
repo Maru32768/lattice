@@ -455,6 +455,11 @@ pub const MAX_BRACKET: usize = 100;
 
 pub const MAX_NESTING_DEPTH: usize = 100;
 
+/// Lattice: how many objects `get_object` resolves inside one another, each found on the way to the /Length of a stream
+/// it parses, or holding the one before in its object stream. Each nests the parser once more, about 7 KB of stack in a
+/// debug build. A file needs three at most: the length, its object stream, and that stream's own length.
+const MAX_RESOLUTION_DEPTH: usize = 16;
+
 /// PDF metadata extracted without loading the entire document.
 /// This is useful for quickly getting basic information about large PDFs.
 #[derive(Debug, Clone)]
@@ -1080,7 +1085,7 @@ impl Reader<'_> {
     }
 
     /// Load a compressed object from an object stream (for lightweight metadata extraction)
-    fn get_compressed_object(&self, id: ObjectId) -> Result<Object> {
+    fn get_compressed_object(&self, id: ObjectId, already_seen: &mut HashSet<ObjectId>) -> Result<Object> {
         let entry = self.document.reference_table.get(id.0).ok_or(Error::MissingXrefEntry)?;
 
         let container_id = match entry {
@@ -1089,8 +1094,8 @@ impl Reader<'_> {
         };
 
         let container_id = (container_id, 0);
-        let mut already_seen = HashSet::new();
-        let container_obj = self.get_object(container_id, &mut already_seen)?;
+        // Lattice: the caller's set, not a new one, so that a container that leads back to itself is a cycle.
+        let container_obj = self.get_object(container_id, already_seen)?;
         let mut container_stream = container_obj.as_stream()?.clone();
         let object_stream = ObjectStream::new(&mut container_stream)?;
         object_stream.objects.get(&id).cloned().ok_or(Error::MissingXrefEntry)
@@ -1101,11 +1106,18 @@ impl Reader<'_> {
             warn!("reference cycle detected resolving object {} {}", id.0, id.1);
             return Err(Error::ReferenceCycle(id));
         }
+        // Lattice: a long chain has no cycle, but would overflow the stack all the same. The set holds the objects being
+        // resolved, one inside the other. Like a cycle, this leaves the length unresolved, for `load_objects_raw` to read
+        // once every object is loaded.
+        if already_seen.len() >= MAX_RESOLUTION_DEPTH {
+            warn!("too many objects resolved inside one another at object {} {}", id.0, id.1);
+            return Err(Error::ReferenceLimit);
+        }
         already_seen.insert(id);
 
         if let Some(entry) = self.document.reference_table.get(id.0) {
             if matches!(entry, XrefEntry::Compressed { .. }) {
-                return self.get_compressed_object(id);
+                return self.get_compressed_object(id, already_seen);
             }
         }
 

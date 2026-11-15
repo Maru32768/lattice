@@ -3,7 +3,10 @@ resolver = "3"
 members = ["crates/lattice-core", "crates/lattice-server", "crates/lattice-cli", "src-tauri"]
 exclude = ["vendor/lopdf"]
 
-# lopdf 0.42.0, the version pdf-extract 0.12.1 takes: its source as published, without the examples.
+# lopdf 0.42.0, the version pdf-extract 0.12.1 takes: its source as published, without the examples, and patched where
+# "Lattice:" comments say. It resolved the /Length of a stream by recursion that a crafted PDF could keep going until the
+# stack overflowed, which no `catch_unwind` stops. lopdf 0.46 ends a loop the same way, but follows a long chain as far
+# as it goes. Drop this once pdf-extract takes a lopdf that ends both.
 [patch.crates-io]
 lopdf = { path = "vendor/lopdf" }
 

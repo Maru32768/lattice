@@ -70,6 +70,10 @@ wasm_js = ["getrandom/wasm_js"]
 name = "lopdf"
 path = "src/lib.rs"
 
+# Lattice: a path dependency shows its warnings, where cargo silences those of a crate from the registry.
+[lints.rust]
+warnings = "allow"
+
 [dependencies.aes]
 version = "0.8.4"
 
