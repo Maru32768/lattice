@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pdf_extract::content::{Content, Operation};
-use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
+use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
 use serde::Serialize;
 
 use crate::extract::collapse;
@@ -418,16 +418,17 @@ struct Drawn {
 /// images, are not followed. A clip counts by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
-fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
+fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<Face>, Vec<Drawn>) {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
-    let fonts = doc.get_page_fonts(page).unwrap_or_default();
+    let fonts = resources.and_then(|r| r.get_deref(b"Font", doc).and_then(Object::as_dict).ok());
     let face_named = |name: &[u8]| {
-        let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
+        let font = fonts.and_then(|f| f.get_deref(name, doc).and_then(Object::as_dict).ok());
+        let base = font.and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
-    let images = page_images(doc, page);
+    let images = page_images(doc, resources);
     let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
@@ -512,28 +513,40 @@ fn intersect(a: Bounds, b: Bounds) -> Bounds {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
-/// The image XObjects in a `Format` the Reader shows, by the names a page draws them with. Those are the names of its
-/// nearest Resources, the page's own or the closest the page tree gives it, written in place or referred to: where
-/// pdf-extract resolves `Do`. (lopdf's `get_page_resources` skips resources written into the page tree.)
-fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
-    let mut node = doc.get_dictionary(page).ok();
-    let mut resources = None;
-    // A page tree is a few levels deep; the bound only stops a cycle.
-    for _ in 0..32 {
-        let Some(n) = node else {
-            break;
-        };
-        if let Ok(r) = n.get_deref(b"Resources", doc).and_then(Object::as_dict) {
-            resources = Some(r);
-            break;
-        }
-        node = n.get(b"Parent").and_then(Object::as_reference).and_then(|id| doc.get_dictionary(id)).ok();
-    }
+/// The image XObjects in a `Format` the Reader shows, by the names a page with these resources draws them with.
+fn page_images(doc: &Document, resources: Option<&Dictionary>) -> HashMap<Vec<u8>, ObjectId> {
     let Some(xobjects) = resources.and_then(|r| r.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()) else {
         return HashMap::new();
     };
     let shown = |id: ObjectId| doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some());
     xobjects.iter().filter_map(|(name, o)| o.as_reference().ok().filter(|&id| shown(id)).map(|id| (name.clone(), id))).collect()
+}
+
+/// More levels than a page tree has: writers balance it, so even a million pages two to a node are 20 deep. Few enough
+/// that pdf-extract's recursion up them stays well inside the stack.
+const PAGE_TREE_DEPTH: usize = 256;
+
+/// A page's own `key`, or else the nearest the page tree gives it, written in place or referred to: the entry pdf-extract
+/// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses; it also
+/// passes over a reference to nothing, where pdf-extract panics. (lopdf's `get_page_resources` skips resources written
+/// into the page tree.) Fails past `PAGE_TREE_DEPTH` levels, which only a loop or a chain made that long reaches.
+/// pdf-extract climbs by recursion with no bound: round a loop a release build spins forever and a debug build overflows
+/// the stack, past any `catch_unwind`, and a long enough chain overflows a debug build too.
+fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl Fn(&'a Object) -> Result<T, pdf_extract::Error>) -> Result<Option<T>, String> {
+    let mut id = page;
+    for _ in 0..PAGE_TREE_DEPTH {
+        let Ok(node) = doc.get_dictionary(id) else {
+            return Ok(None);
+        };
+        if let Ok(t) = node.get_deref(key, doc).and_then(&found) {
+            return Ok(Some(t));
+        }
+        let Ok(parent) = node.get(b"Parent").and_then(Object::as_reference) else {
+            return Ok(None);
+        };
+        id = parent;
+    }
+    Err(msg!("pdf.parseFailed"))
 }
 
 fn is_image(s: &Stream) -> bool {
@@ -583,8 +596,14 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
-    // Before the blanking below takes the images' filters, which `Format::of` reads.
-    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).unzip();
+    let mut walked = Vec::new();
+    for &page in doc.get_pages().values() {
+        // Only to refuse a tree too deep to trust pdf-extract with: it reads the MediaBox itself.
+        inherited(&doc, page, b"MediaBox", Object::as_array)?;
+        // Before the blanking below takes the images' filters, which `Format::of` reads.
+        walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
+    }
+    let (faces, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
@@ -2846,18 +2865,111 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_page_tree_whose_parents_loop_is_walked_to_an_end() {
-        // Nothing on the way up has Resources, so only the bound ends the walk; pdf-extract then fails on the page's
-        // dangling ones.
+    fn a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused() {
+        // pdf-extract would climb until the stack overflowed, which ends the whole test run: a child runs it.
+        const CHILD: &str = "LATTICE_TEST_DEEP_PAGE_TREE";
+        let name = "pdf::tests::a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused";
+        if std::env::var_os(CHILD).is_none() {
+            let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
+            return;
+        }
+        // In place of its own entry the page has none, one of the wrong kind (pdf-extract passes it over and looks further
+        // up), or one that refers to nothing (pdf-extract stops there only by panicking). Above it the parent is its own
+        // Parent, or the page is.
+        for (key, entry, back_to_page) in [
+            ("Resources", None, false),
+            ("MediaBox", None, false),
+            ("MediaBox", None, true),
+            ("Resources", Some(Object::Integer(0)), false),
+            ("MediaBox", Some(Object::Integer(0)), false),
+            ("Resources", Some(Object::Reference((999, 0))), false),
+        ] {
+            let mut doc = Document::load_mem(&quorum()).unwrap();
+            let page = *doc.get_pages().values().next().unwrap();
+            let dict = doc.get_dictionary_mut(page).unwrap();
+            dict.remove(key.as_bytes()).unwrap();
+            if let Some(entry) = &entry {
+                dict.set(key, entry.clone());
+            }
+            let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+            let up = if back_to_page {
+                page
+            } else {
+                parent
+            };
+            doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(up));
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key} {entry:?}, back to the page: {back_to_page}");
+        }
+        // No loop, but the MediaBox lies so far up that the recursion would overflow.
+        assert_eq!(to_ir(&chained(100_000), None).unwrap_err(), msg!("pdf.parseFailed"), "a chain");
+    }
+
+    /// The page hung from a chain of `links` nodes outside the page tree, with its MediaBox moved to one more on top.
+    fn chained(links: usize) -> Vec<u8> {
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let mut top = Dictionary::new();
+        top.set("MediaBox", doc.get_dictionary_mut(page).unwrap().remove(b"MediaBox").unwrap());
+        let mut up = doc.add_object(top);
+        for _ in 0..links {
+            let mut node = Dictionary::new();
+            node.set("Parent", Object::Reference(up));
+            up = doc.add_object(node);
+        }
+        doc.get_dictionary_mut(page).unwrap().set("Parent", Object::Reference(up));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        bytes
+    }
+
+    #[test]
+    fn a_mediabox_on_the_last_node_the_walk_reaches_is_read() {
+        // The page, 254 links and the top: 256 nodes, as many as the walk reaches. A number of its own, so that a lower
+        // PAGE_TREE_DEPTH fails here instead of shrinking the tree along with it.
+        assert_eq!(kinds(&to_ir(&chained(254), None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn entries_found_below_a_loop_in_the_page_tree_are_read() {
+        // pdf-extract climbs no further than where it finds them, so a loop above is no reason to refuse the PDF. The page
+        // has its own MediaBox, and takes its Resources from its parent, whose Parent is itself.
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
         let dict = doc.get_dictionary_mut(page).unwrap();
-        dict.set("Resources", Object::Reference((999, 0)));
+        let resources = dict.remove(b"Resources").unwrap();
         let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-        doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+        let tree = doc.get_dictionary_mut(parent).unwrap();
+        tree.set("Resources", resources);
+        tree.set("Parent", Object::Reference(parent));
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
-        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
+        assert_eq!(kinds(&to_ir(&bytes, None).unwrap()), kinds(&to_ir(&quorum(), None).unwrap()));
+    }
+
+    #[test]
+    fn faces_come_from_fonts_written_into_the_page_tree() {
+        let line: Vec<Run> = vec![(72., 100., 10., "An event"), (120., 100., 10., "/i e"), (130., 100., 10., "happens.")];
+        let mut doc = Document::load_mem(&pdf(&[line], None)).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let dict = doc.get_dictionary_mut(page).unwrap();
+        let mut resources = dict.remove(b"Resources").unwrap().as_dict().unwrap().clone();
+        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+        // The Font dictionary written in the Resources, or referred to from them.
+        let fonts = resources.remove(b"Font").unwrap();
+        let referred = Object::Reference(doc.add_object(fonts.clone()));
+        for fonts in [fonts, referred] {
+            resources.set("Font", fonts);
+            // The Resources written in place, which lopdf's `get_page_fonts` does not look for up the tree.
+            doc.get_dictionary_mut(parent).unwrap().set("Resources", resources.clone());
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            let math: Vec<String> = regions(&bytes).unwrap()[0].runs.iter().filter(|r| r.math).map(|r| r.text.clone()).collect();
+            assert_eq!(math, ["e"], "{:?}", resources.get(b"Font"));
+        }
     }
 
     #[test]
