@@ -82,6 +82,7 @@ test("open: a page in its own tab keeps the webview (same id) and bumps seq; the
   const t2 = activeTab(focusedPane(l))!;
   assert.equal(t2.id, t.id);
   assert.deepEqual(t2.kind === "page" && [t2.seq, t2.title, t2.saved, t2.loading], [2, "B", 7, true]);
+  assert.equal(open(l, page("https://b.example/")), l, "the same URL");
   assert.equal(open(l, { ...page("https://b.example/x"), saved: 7 }), l, "redirected: the saved article is the one already shown");
   assert.notEqual(open(l, { ...page("https://b.example/"), focus: "jump" }), l, "a jump inside the page navigates again");
 });
