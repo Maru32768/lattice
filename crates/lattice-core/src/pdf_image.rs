@@ -82,8 +82,9 @@ impl Format {
         let size = row * height as usize;
         let idat = match rows {
             Rows::Filtered => {
-                // Inflated only to see that it holds every row and nothing more, as an IDAT must.
-                inflate(data, size + height as usize).filter(|rows| rows.len() == size + height as usize)?;
+                // Inflated only to see that it holds every row and nothing more, each with one of PNG's five filters, as an
+                // IDAT must.
+                inflate(data, size + height as usize).filter(|rows| rows.len() == size + height as usize && rows.chunks_exact(row + 1).all(|r| r[0] <= 4))?;
                 data.to_vec()
             }
             Rows::Plain { flate } => {
@@ -242,6 +243,7 @@ mod tests {
         let (_, png) = Format::of(&doc, &image).unwrap().encode(&stored).unwrap();
         assert_eq!(chunks(&png)[1].1, stored);
         assert_eq!(Format::of(&doc, &image).unwrap().encode(&deflate(&[1, 9, 9, 9])), None, "fewer rows than the image has");
+        assert_eq!(Format::of(&doc, &image).unwrap().encode(&deflate(&[1, 9, 9, 9, 8, 8, 8, 5, 7, 7, 7, 6, 6, 6])), None, "a row filter PNG does not have");
         assert_eq!(Format::of(&doc, &image).unwrap().encode(&deflate(&[0; 15])), None, "more rows than the image has");
     }
 
