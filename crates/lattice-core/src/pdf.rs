@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use pdf_extract::content::Content;
+use pdf_extract::content::{Content, Operation};
 use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
 use serde::Serialize;
 
@@ -395,7 +395,8 @@ impl Face {
     }
 }
 
-/// An image drawn on a page: the unit square through the CTM, in points from the page's top left like a `Glyph`.
+/// An image drawn on a page: what the clip leaves of the unit square through the CTM, in points from the page's top left
+/// like a `Glyph`.
 struct Drawn {
     id: ObjectId,
     x0: f64,
@@ -407,7 +408,9 @@ struct Drawn {
 /// What a page's content shows beside what pdf-extract reports, which is glyphs without their fonts and no images: the
 /// face of each string, in the order pdf-extract shows them, and the images, in the PDF's own coordinates. pdf-extract
 /// calls `begin_word` once per string, so the faces line up with what it reports. Images inside forms, and inline
-/// images, are not followed.
+/// images, are not followed. A clip counts by the box around its path.
+// shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
+// pixels when a figure's hidden part turns out to matter.
 fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
@@ -419,25 +422,41 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
     };
     let images = page_images(doc, page);
     let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
+    let (mut clip, mut path, mut clipping) = (None, NOTHING, false);
+    let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
     for op in &content.operations {
         match op.operator.as_str() {
-            "q" => saved.push((face, ctm)),
-            "Q" => (face, ctm) = saved.pop().unwrap_or((face, ctm)),
+            "q" => saved.push((face, ctm, clip)),
+            "Q" => (face, ctm, clip) = saved.pop().unwrap_or((face, ctm, clip)),
             "cm" => {
-                if let [a, b, c, d, e, f] = op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>()[..] {
+                if let [a, b, c, d, e, f] = numbers(op)[..] {
                     ctm = ctm.pre_transform(&Transform::row_major(a, b, c, d, e, f));
                 }
+            }
+            "re" => {
+                if let [x, y, w, h] = numbers(op)[..] {
+                    path = union(path, bounds(&ctm, &[(x, y), (x + w, y), (x, y + h), (x + w, y + h)]));
+                }
+            }
+            "m" | "l" | "c" | "v" | "y" => path = union(path, bounds(&ctm, &numbers(op).as_chunks::<2>().0.iter().map(|&[x, y]| (x, y)).collect::<Vec<_>>())),
+            "W" | "W*" => clipping = true,
+            // The path ends here, and a clip it was marked for starts.
+            "n" | "f" | "F" | "f*" | "S" | "s" | "B" | "B*" | "b" | "b*" => {
+                if clipping {
+                    clip = Some(clip.map_or(path, |c| intersect(c, path)));
+                }
+                (path, clipping) = (NOTHING, false);
             }
             "Do" => {
                 // The Reader shows the pixels as stored, so an image the page mirrors, turns over or turns past 45
                 // degrees would show the wrong way round there: it stays in the Page view.
                 let upright = ctm.m11 > ctm.m12.abs() && ctm.m22 > ctm.m21.abs();
                 if upright && let Some(&id) = op.operands.first().and_then(|o| o.as_name().ok()).and_then(|n| images.get(n)) {
-                    let corners =
-                        [(0., 0.), (1., 0.), (0., 1.), (1., 1.)].map(|(x, y)| (x * ctm.m11 + y * ctm.m21 + ctm.m31, x * ctm.m12 + y * ctm.m22 + ctm.m32));
-                    let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
-                    let (lo, hi) = (|v: [f64; 4]| v.into_iter().fold(f64::MAX, f64::min), |v: [f64; 4]| v.into_iter().fold(f64::MIN, f64::max));
-                    drawn.push(Drawn { id, x0: lo(xs), y0: lo(ys), x1: hi(xs), y1: hi(ys) });
+                    let unit = bounds(&ctm, &[(0., 0.), (1., 0.), (0., 1.), (1., 1.)]);
+                    let [x0, y0, x1, y1] = clip.map_or(unit, |c| intersect(unit, c));
+                    if x0 < x1 && y0 < y1 {
+                        drawn.push(Drawn { id, x0, y0, x1, y1 });
+                    }
                 }
             }
             "Tf" => {
@@ -455,6 +474,25 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
         }
     }
     (faces, drawn)
+}
+
+/// A box as x0, y0, x1 and y1, in the PDF's own coordinates.
+type Bounds = [f64; 4];
+
+/// The box around no points, which every union widens and every intersection keeps empty.
+const NOTHING: Bounds = [f64::MAX, f64::MAX, f64::MIN, f64::MIN];
+
+fn bounds(t: &Transform, points: &[(f64, f64)]) -> Bounds {
+    let at = |&(x, y): &(f64, f64)| (x * t.m11 + y * t.m21 + t.m31, x * t.m12 + y * t.m22 + t.m32);
+    points.iter().map(at).fold(NOTHING, |b, (x, y)| [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)])
+}
+
+fn union(a: Bounds, b: Bounds) -> Bounds {
+    [a[0].min(b[0]), a[1].min(b[1]), a[2].max(b[2]), a[3].max(b[3])]
+}
+
+fn intersect(a: Bounds, b: Bounds) -> Bounds {
+    [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
 /// The image XObjects in a `Format` the Reader shows, by the names a page draws them with. Those are the names of its
@@ -1491,7 +1529,6 @@ fn pdf_date(d: &str) -> Option<String> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use pdf_extract::content::Operation;
     use pdf_extract::{Dictionary, Stream, StringFormat};
 
     /// One text run: x and baseline y from the top of a US Letter page, font size, text.
@@ -2429,24 +2466,42 @@ pub(crate) mod tests {
         assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "paragraph", "image", "caption", "paragraph"]);
     }
 
+    /// `bytes` with an image named `Im0` on its first page, `before` written ahead of the page's own content and `after`
+    /// behind it.
+    fn with_ops(bytes: &[u8], before: &str, after: &str) -> Vec<u8> {
+        let mut doc = Document::load_mem(bytes).unwrap();
+        let id = doc.add_object(rgb(30, 10, [0, 0, 0]));
+        let p = *doc.get_pages().values().next().unwrap();
+        let page = doc.get_object_mut(p).and_then(Object::as_dict_mut).unwrap();
+        let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
+        let mut xobjects = Dictionary::new();
+        xobjects.set("Im0", Object::Reference(id));
+        page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+        let ops = [before.as_bytes(), b"\n", &stream.content[..], b"\n", after.as_bytes(), b"\n"].concat();
+        stream.set_plain_content(ops);
+        let mut out = Vec::new();
+        doc.save_to(&mut out).unwrap();
+        out
+    }
+
+    fn image_count(ir: &ArticleIr) -> usize {
+        ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count()
+    }
+
+    #[test]
+    fn a_figure_cut_down_by_a_clip_is_placed_by_what_shows() {
+        // 400pt tall from the top of the page, clipped to the 100pt over the caption.
+        let ops = "q 72 492 300 100 re W n 300 0 0 400 72 392 cm /Im0 Do Q";
+        let ir = to_ir(&with_ops(&pdf(&[quorum_text()], None), "", ops), None).unwrap();
+        assert_eq!(kinds(&ir)[1], ("image", "Figure 6-13"), "{:?}", kinds(&ir));
+        let outside = "q 400 700 50 50 re W n 300 0 0 100 72 492 cm /Im0 Do Q";
+        assert_eq!(image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", outside), None).unwrap()), 0, "clipped away");
+    }
+
     #[test]
     fn a_figure_is_kept_only_when_drawn_its_own_way_up() {
-        let figures = |cm: &str| {
-            let mut doc = Document::load_mem(&pdf(&[quorum_text()], None)).unwrap();
-            let id = doc.add_object(rgb(30, 10, [0, 0, 0]));
-            let p = *doc.get_pages().values().next().unwrap();
-            let page = doc.get_object_mut(p).and_then(Object::as_dict_mut).unwrap();
-            let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
-            let mut xobjects = Dictionary::new();
-            xobjects.set("Im0", Object::Reference(id));
-            page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
-            let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
-            let ops = [&stream.content[..], format!("\nq {cm} cm /Im0 Do Q\n").as_bytes()].concat();
-            stream.set_plain_content(ops);
-            let mut bytes = Vec::new();
-            doc.save_to(&mut bytes).unwrap();
-            to_ir(&bytes, None).unwrap().blocks.iter().filter(|b| b.kind == BlockKind::Image).count()
-        };
+        let figures = |cm: &str| image_count(&to_ir(&with_ops(&pdf(&[quorum_text()], None), "", &format!("q {cm} cm /Im0 Do Q")), None).unwrap());
         // The Reader shows the pixels as stored, straightening a slight tilt.
         assert_eq!(figures("300 0 0 100 72 500"), 1, "upright");
         assert_eq!(figures("260 150 -50 87 72 500"), 1, "tilted by 30 degrees");
