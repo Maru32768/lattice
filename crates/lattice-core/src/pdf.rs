@@ -429,7 +429,10 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
                 }
             }
             "Do" => {
-                if let Some(&id) = op.operands.first().and_then(|o| o.as_name().ok()).and_then(|n| images.get(n)) {
+                // The Reader shows the pixels as stored, so an image the page mirrors, turns over or turns past 45
+                // degrees would show the wrong way round there: it stays in the Page view.
+                let upright = ctm.m11 > ctm.m12.abs() && ctm.m22 > ctm.m21.abs();
+                if upright && let Some(&id) = op.operands.first().and_then(|o| o.as_name().ok()).and_then(|n| images.get(n)) {
                     let corners =
                         [(0., 0.), (1., 0.), (0., 1.), (1., 1.)].map(|(x, y)| (x * ctm.m11 + y * ctm.m21 + ctm.m31, x * ctm.m12 + y * ctm.m22 + ctm.m32));
                     let (xs, ys) = (corners.map(|c| c.0), corners.map(|c| c.1));
@@ -2297,7 +2300,7 @@ pub(crate) mod tests {
             (rgb(4, 4, [0, 0, 0]), vec![(0, L, 120., 38., 50.)]),
             (rgb(4, 4, [0, 0, 0]), (0..3).map(|p| (p, L, 600., 300., 40.)).collect()),
             (rgb(4, 4, [0, 0, 0]), vec![(1, 0., 0., 612., 792.)]),
-            // A scan drawn upside down, as some producers draw every image.
+            // A scan drawn upside down: not upright, and over the whole page.
             (rgb(4, 4, [1, 1, 1]), vec![(1, 0., 792., 612., -792.)]),
             (rgb(4, 4, [9, 9, 9]), vec![(2, L, 200., 300., 100.), (2, L, 200., 300., 100.)]),
             (masked, vec![(2, L, 350., 300., 100.)]),
@@ -2424,6 +2427,33 @@ pub(crate) mod tests {
         let second: Vec<Run> = vec![(L, 315., 9., "Figure 2. Drawn at the top of the second page."), (L, 340., 10., "Text under the figure and its caption.")];
         let ir = to_ir(&draw(&pdf(&[first, second], None), rgb(30, 10, [0, 0, 0]), &[(1, L, 200., 300., 100.)]), None).unwrap();
         assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "paragraph", "image", "caption", "paragraph"]);
+    }
+
+    #[test]
+    fn a_figure_is_kept_only_when_drawn_its_own_way_up() {
+        let figures = |cm: &str| {
+            let mut doc = Document::load_mem(&pdf(&[quorum_text()], None)).unwrap();
+            let id = doc.add_object(rgb(30, 10, [0, 0, 0]));
+            let p = *doc.get_pages().values().next().unwrap();
+            let page = doc.get_object_mut(p).and_then(Object::as_dict_mut).unwrap();
+            let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
+            let mut xobjects = Dictionary::new();
+            xobjects.set("Im0", Object::Reference(id));
+            page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+            let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+            let ops = [&stream.content[..], format!("\nq {cm} cm /Im0 Do Q\n").as_bytes()].concat();
+            stream.set_plain_content(ops);
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            to_ir(&bytes, None).unwrap().blocks.iter().filter(|b| b.kind == BlockKind::Image).count()
+        };
+        // The Reader shows the pixels as stored, straightening a slight tilt.
+        assert_eq!(figures("300 0 0 100 72 500"), 1, "upright");
+        assert_eq!(figures("260 150 -50 87 72 500"), 1, "tilted by 30 degrees");
+        assert_eq!(figures("300 0 0 -100 72 600"), 0, "upside down");
+        assert_eq!(figures("-300 0 0 100 372 500"), 0, "mirrored");
+        assert_eq!(figures("0 300 -300 0 372 400"), 0, "on its side");
+        assert_eq!(figures("150 260 -87 50 72 500"), 0, "tilted by 60 degrees");
     }
 
     #[test]
