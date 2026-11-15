@@ -453,7 +453,8 @@ mod tests {
         }
         // The figures are left for a later try, not recorded as ones the PDF lacks.
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        assert!(runtime.block_on(crate::images::run(&store, &crate::fetch::client(), id)).is_err());
+        let run = runtime.block_on(crate::images::run(&store, &crate::fetch::client(), id));
+        assert_eq!(run, Err(msg!("images.someFailed", error = msg!("pdf.parseFailed"))), "the job fails for the figures");
         let recorded: i64 = store.conn().query_row("SELECT count(*) FROM article_images WHERE article_id = ?1", [id], |r| r.get(0)).unwrap();
         assert_eq!(recorded, 0);
     }
