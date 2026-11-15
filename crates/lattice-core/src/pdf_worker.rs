@@ -368,6 +368,26 @@ mod tests {
         }
     }
 
+    /// Set in a test run started to stand for a binary that has called `init`.
+    const INITIALISED: &str = "LATTICE_PDF_WORKER_TEST_INIT";
+
+    #[test]
+    fn a_process_that_called_init_reads_no_pdf_itself() {
+        if std::env::var_os(INITIALISED).is_none() {
+            let me = ["--exact", "pdf_worker::tests::a_process_that_called_init_reads_no_pdf_itself"];
+            let run = Command::new(std::env::current_exe().unwrap()).args(me).env(INITIALISED, "1").output().unwrap();
+            let out = String::from_utf8_lossy(&run.stdout);
+            assert!(out.contains("test result: ok. 1 passed"), "{out}");
+            return;
+        }
+        // A worker that does not start, so that what reads the PDF here would read it.
+        assert!(THIS.set(Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE }).is_ok());
+        let bytes = quorum();
+        assert_eq!(crate::pdf::to_ir(&bytes, None), Err(msg!("pdf.parseFailed")));
+        assert_eq!(crate::pdf::regions(&bytes).err(), Some(msg!("pdf.parseFailed")));
+        assert!(Figures::parse(&bytes).is_err());
+    }
+
     #[test]
     fn figures_wait_for_a_worker_that_does_not_start() {
         let missing = Worker { program: "no such program".into(), args: Vec::new(), memory: SMALL, time: AMPLE };
