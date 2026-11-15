@@ -117,6 +117,7 @@ test("open: the page a Reader kept comes back at the URL it moved on to; another
   assert.ok(p.kind === "page");
   // Redirected, then a link to a section of the page.
   l = navigated(l, p.id, { url: "https://a.example/#part", loading: false, canGoBack: false, canGoForward: false });
+  const atPage = l;
   l = open(l, reader(1));
   const again = activeTab(focusedPane(open(l, { ...page("http://a.example/"), saved: 1 })))!;
   assert.deepEqual(
@@ -126,6 +127,11 @@ test("open: the page a Reader kept comes back at the URL it moved on to; another
   );
   const other = activeTab(focusedPane(open(open(l, reader(2)), { ...page("https://b.example/"), saved: 2 })))!;
   assert.deepEqual(other.kind === "page" && [other.key, other.fromReader, other.url], [p.key, false, "https://b.example/"], "another article");
+
+  // A link clicked just before the Reader: the article is the one the page was leaving.
+  const leaving = navigated(atPage, p.id, { url: "https://c.example/", loading: true, canGoBack: true, canGoForward: false });
+  const left = activeTab(focusedPane(open(open(leaving, reader(1)), { ...page("http://a.example/"), saved: 1 })))!;
+  assert.deepEqual(left.kind === "page" && [left.fromReader, left.url], [false, "http://a.example/"], "the article's page loads again");
 
   // A PDF article shown at its own URL comes back as its saved original.
   let pdf = open(single(), { ...page("https://x.example/paper.pdf"), saved: 3 });

@@ -190,7 +190,8 @@ export const toggleZoom = (l: Workspace): Workspace => ({ ...l, zoomed: l.zoomed
 export const unzoom = (l: Workspace): Workspace => (l.zoomed == null ? l : { ...l, zoomed: undefined });
 
 function tabFor(doc: Doc, id: Id, prev?: Tab): Tab {
-  const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq, url: prev.url, saved: prev.saved } : prev?.page;
+  // A page still loading is not yet known to be the tab's article: its `saved` is the one it is leaving.
+  const kept = prev?.kind === "page" ? { key: prev.key, seq: prev.seq, url: prev.url, saved: prev.loading ? null : prev.saved } : prev?.page;
   if (doc.kind === "reader") {
     const seq = (prev?.kind === "reader" ? (prev.focus?.seq ?? 0) : 0) + 1;
     return { kind: "reader", id, articleId: doc.articleId, focus: doc.focus && { ...doc.focus, seq }, page: kept };
