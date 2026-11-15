@@ -2407,6 +2407,32 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_figure_under_an_outer_transform_is_placed_where_it_shows() {
+        let page: Vec<Run> = vec![
+            (L, 100., 10., "A paragraph above the figure, which ends here."),
+            (L, 420., 10., "A paragraph above where the figure shows."),
+            (L, 605., 9., "Figure 1. The figure, drawn at half its size."),
+        ];
+        let mut doc = Document::load_mem(&pdf(&[page], None)).unwrap();
+        let id = doc.add_object(rgb(30, 10, [0, 0, 0]));
+        let p = *doc.get_pages().values().next().unwrap();
+        let page = doc.get_object_mut(p).and_then(Object::as_dict_mut).unwrap();
+        let content = page.get(b"Contents").and_then(Object::as_reference).unwrap();
+        let mut xobjects = Dictionary::new();
+        xobjects.set("Im0", Object::Reference(id));
+        page.get_mut(b"Resources").and_then(Object::as_dict_mut).unwrap().set("XObject", Object::Dictionary(xobjects));
+        let stream = doc.get_object_mut(content).and_then(Object::as_stream_mut).unwrap();
+        let mut ops = stream.content.clone();
+        // Shows at x 72 to 372 and y 492 to 592 from the top; composed the other way round, at 144 to 444 and 292 to 392.
+        ops.extend_from_slice(b"\nq 0.5 0 0 0.5 0 0 cm q 600 0 0 200 144 400 cm /Im0 Do Q Q\n");
+        stream.set_plain_content(ops);
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        let ir = to_ir(&bytes, None).unwrap();
+        assert_eq!(kinds(&ir).iter().map(|k| k.0).collect::<Vec<_>>(), ["paragraph", "paragraph", "image", "caption"]);
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
