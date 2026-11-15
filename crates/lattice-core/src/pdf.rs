@@ -2769,20 +2769,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_page_tree_whose_parents_loop_is_walked_to_an_end() {
-        // The page's Resources refer to nothing and nothing on the way up has any, so the walk comes back to the parent.
-        let mut doc = Document::load_mem(&quorum()).unwrap();
-        let page = *doc.get_pages().values().next().unwrap();
-        let dict = doc.get_dictionary_mut(page).unwrap();
-        dict.set("Resources", Object::Reference((999, 0)));
-        let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-        doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
-        let mut bytes = Vec::new();
-        doc.save_to(&mut bytes).unwrap();
-        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
-    }
-
-    #[test]
     fn a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused() {
         // pdf-extract would climb until the stack overflowed, which ends the whole test run: a child runs it.
         const CHILD: &str = "LATTICE_TEST_DEEP_PAGE_TREE";
@@ -2793,16 +2779,33 @@ pub(crate) mod tests {
             assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
             return;
         }
-        for key in ["Resources", "MediaBox"] {
+        // In place of its own entry the page has none, one of the wrong kind (pdf-extract passes it over and looks further
+        // up), or one that refers to nothing (pdf-extract stops there only by panicking). Above it the parent is its own
+        // Parent, or the page is.
+        for (key, entry, back_to_page) in [
+            ("Resources", None, false),
+            ("MediaBox", None, false),
+            ("MediaBox", None, true),
+            ("Resources", Some(Object::Integer(0)), false),
+            ("Resources", Some(Object::Reference((999, 0))), false),
+        ] {
             let mut doc = Document::load_mem(&quorum()).unwrap();
             let page = *doc.get_pages().values().next().unwrap();
             let dict = doc.get_dictionary_mut(page).unwrap();
             dict.remove(key.as_bytes()).unwrap();
+            if let Some(entry) = &entry {
+                dict.set(key, entry.clone());
+            }
             let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
-            doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+            let up = if back_to_page {
+                page
+            } else {
+                parent
+            };
+            doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(up));
             let mut bytes = Vec::new();
             doc.save_to(&mut bytes).unwrap();
-            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key}");
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key} {entry:?}, back to the page: {back_to_page}");
         }
         // No loop, but the MediaBox lies so far up a chain outside the page tree that the recursion would overflow.
         let mut doc = Document::load_mem(&quorum()).unwrap();
