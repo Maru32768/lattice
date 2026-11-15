@@ -9,7 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use pdf_extract::content::{Content, Operation};
-use pdf_extract::{Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
+use pdf_extract::{Dictionary, Document, MediaBox, Object, ObjectId, OutputDev, OutputError, Stream, Transform};
 use serde::Serialize;
 
 use crate::extract::collapse;
@@ -411,7 +411,7 @@ struct Drawn {
 /// images, are not followed. A clip counts by the box around its path.
 // shortcut: the Reader shows a clipped image whole (cropping a JPEG or predicted rows means decoding them); crop the
 // pixels when a figure's hidden part turns out to matter.
-fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
+fn walk(doc: &Document, page: ObjectId, resources: Option<&Dictionary>) -> (Vec<Face>, Vec<Drawn>) {
     let Ok(content) = doc.get_page_content(page).and_then(|bytes| Content::decode(&bytes)) else {
         return (Vec::new(), Vec::new());
     };
@@ -420,7 +420,7 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
         let base = fonts.get(name).and_then(|f| f.get(b"BaseFont").ok()).and_then(|b| b.as_name().ok());
         base.map_or(Face::Body, |b| Face::of(&String::from_utf8_lossy(b)))
     };
-    let images = page_images(doc, page);
+    let images = page_images(doc, resources);
     let (mut face, mut ctm, mut saved, mut faces, mut drawn) = (Face::Body, Transform::identity(), Vec::new(), Vec::new(), Vec::new());
     let (mut clip, mut path, mut clipping, mut mode, mut invisible) = (None, NOTHING, false, 0, false);
     let numbers = |op: &Operation| op.operands.iter().filter_map(|o| o.as_float().ok()).map(f64::from).collect::<Vec<_>>();
@@ -505,28 +505,34 @@ fn intersect(a: Bounds, b: Bounds) -> Bounds {
     [a[0].max(b[0]), a[1].max(b[1]), a[2].min(b[2]), a[3].min(b[3])]
 }
 
-/// The image XObjects in a `Format` the Reader shows, by the names a page draws them with. Those are the names of its
-/// nearest Resources, the page's own or the closest the page tree gives it, written in place or referred to: where
-/// pdf-extract resolves `Do`. (lopdf's `get_page_resources` skips resources written into the page tree.)
-fn page_images(doc: &Document, page: ObjectId) -> HashMap<Vec<u8>, ObjectId> {
-    let mut node = doc.get_dictionary(page).ok();
-    let mut resources = None;
-    // A page tree is a few levels deep; the bound only stops a cycle.
-    for _ in 0..32 {
-        let Some(n) = node else {
-            break;
-        };
-        if let Ok(r) = n.get_deref(b"Resources", doc).and_then(Object::as_dict) {
-            resources = Some(r);
-            break;
-        }
-        node = n.get(b"Parent").and_then(Object::as_reference).and_then(|id| doc.get_dictionary(id)).ok();
-    }
+/// The image XObjects in a `Format` the Reader shows, by the names a page with these resources draws them with.
+fn page_images(doc: &Document, resources: Option<&Dictionary>) -> HashMap<Vec<u8>, ObjectId> {
     let Some(xobjects) = resources.and_then(|r| r.get_deref(b"XObject", doc).and_then(Object::as_dict).ok()) else {
         return HashMap::new();
     };
     let shown = |id: ObjectId| doc.get_object(id).and_then(Object::as_stream).is_ok_and(|s| is_image(s) && Format::of(doc, &s.dict).is_some());
     xobjects.iter().filter_map(|(name, o)| o.as_reference().ok().filter(|&id| shown(id)).map(|id| (name.clone(), id))).collect()
+}
+
+/// A page's own `key`, or else the nearest the page tree gives it, written in place or referred to: the entry pdf-extract
+/// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses. (lopdf's
+/// `get_page_resources` skips resources written into the page tree.) Fails when the walk comes back to a node it has
+/// passed: pdf-extract would follow that loop until the stack overflowed, which no `catch_unwind` stops.
+fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl Fn(&'a Object) -> Result<T, pdf_extract::Error>) -> Result<Option<T>, String> {
+    let (mut id, mut passed) = (page, HashSet::new());
+    while passed.insert(id) {
+        let Ok(node) = doc.get_dictionary(id) else {
+            return Ok(None);
+        };
+        if let Ok(t) = node.get_deref(key, doc).and_then(&found) {
+            return Ok(Some(t));
+        }
+        let Ok(parent) = node.get(b"Parent").and_then(Object::as_reference) else {
+            return Ok(None);
+        };
+        id = parent;
+    }
+    Err(msg!("pdf.parseFailed"))
 }
 
 fn is_image(s: &Stream) -> bool {
@@ -576,8 +582,14 @@ fn read(bytes: &[u8]) -> Result<Parsed, String> {
 /// inside a form without the transform that positions it on the page.
 fn glyphs(bytes: &[u8], skip_forms: bool) -> Result<(Document, Vec<Page>), String> {
     let mut doc = load(bytes)?;
-    // Before the blanking below takes the images' filters, which `Format::of` reads.
-    let (faces, drawn): (Vec<_>, Vec<_>) = doc.get_pages().values().map(|&page| walk(&doc, page)).unzip();
+    let mut walked = Vec::new();
+    for &page in doc.get_pages().values() {
+        // Only for the loop: pdf-extract reads the MediaBox itself.
+        inherited(&doc, page, b"MediaBox", Object::as_array)?;
+        // Before the blanking below takes the images' filters, which `Format::of` reads.
+        walked.push(walk(&doc, page, inherited(&doc, page, b"Resources", Object::as_dict)?));
+    }
+    let (faces, drawn): (Vec<_>, Vec<_>) = walked.into_iter().unzip();
     // pdf-extract draws an image as if it were a form, parsing its pixels as operators, and
     // panics on some of them; an image holds no text.
     for o in doc.objects.values_mut() {
@@ -2751,8 +2763,7 @@ pub(crate) mod tests {
 
     #[test]
     fn a_page_tree_whose_parents_loop_is_walked_to_an_end() {
-        // Nothing on the way up has Resources, so only the bound ends the walk; pdf-extract then fails on the page's
-        // dangling ones.
+        // The page's Resources refer to nothing and nothing on the way up has any, so the walk comes back to the parent.
         let mut doc = Document::load_mem(&quorum()).unwrap();
         let page = *doc.get_pages().values().next().unwrap();
         let dict = doc.get_dictionary_mut(page).unwrap();
@@ -2762,6 +2773,30 @@ pub(crate) mod tests {
         let mut bytes = Vec::new();
         doc.save_to(&mut bytes).unwrap();
         assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"));
+    }
+
+    #[test]
+    fn a_page_that_would_look_for_its_resources_or_mediabox_around_a_loop_is_refused() {
+        // pdf-extract would follow the loop until the stack overflowed, which ends the whole test run: a child runs it.
+        const CHILD: &str = "LATTICE_TEST_LOOPING_PAGE_TREE";
+        let name = "pdf::tests::a_page_that_would_look_for_its_resources_or_mediabox_around_a_loop_is_refused";
+        if std::env::var_os(CHILD).is_none() {
+            let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            assert!(out.status.success() && stdout.contains("1 passed"), "{:?}\n{stdout}", out.status);
+            return;
+        }
+        for key in ["Resources", "MediaBox"] {
+            let mut doc = Document::load_mem(&quorum()).unwrap();
+            let page = *doc.get_pages().values().next().unwrap();
+            let dict = doc.get_dictionary_mut(page).unwrap();
+            dict.remove(key.as_bytes()).unwrap();
+            let parent = dict.get(b"Parent").and_then(Object::as_reference).unwrap();
+            doc.get_dictionary_mut(parent).unwrap().set("Parent", Object::Reference(parent));
+            let mut bytes = Vec::new();
+            doc.save_to(&mut bytes).unwrap();
+            assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key}");
+        }
     }
 
     #[test]
