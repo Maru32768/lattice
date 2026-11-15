@@ -36,6 +36,19 @@ test("別ウィンドウで開く moves the tab to a new document window whose l
   expect((await callsOf(app, "open_window")).map((c) => (c as { label: string }).label)).toEqual(["doc-1", "doc-2"]);
 });
 
+test("a Reader moved to another window closes the webview it kept for the tab's Page", async ({ app }) => {
+  await row(app, a.title!).click();
+  await app.getByRole("button", { name: "Page", exact: true }).click();
+  await expect.poll(async () => (await callsOf(app, "browser_open")).length).toBe(1);
+  const [{ tab }] = (await callsOf(app, "browser_open")) as { tab: string }[];
+  await app.getByRole("button", { name: "Reader", exact: true }).click();
+  await expect(app.locator(".art-title")).toHaveText(a.title!);
+  await app.getByRole("button", { name: "別ウィンドウで開く" }).click();
+  // The new window opens the Reader alone; no window would ever show that webview again.
+  expect(JSON.parse((await stored(app, DOC))!)).toMatchObject({ root: { kind: "pane", tabs: [{ kind: "reader", articleId: a.id }] } });
+  await expect.poll(() => callsOf(app, "browser_close")).toEqual([{ tab }]);
+});
+
 test("a document window shows only its tabs, hands one back to the main window, and closes when empty", async ({ shell }) => {
   const layout = {
     root: {
