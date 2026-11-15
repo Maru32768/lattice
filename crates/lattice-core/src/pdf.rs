@@ -2487,7 +2487,7 @@ pub(crate) mod tests {
         out
     }
 
-    pub(crate) fn quorum_text() -> Vec<Run<'static>> {
+    fn quorum_text() -> Vec<Run<'static>> {
         vec![
             (L, 100., 10., "With n replicas, every write must be confirmed by w nodes and every read by r nodes."),
             (L, 315., 9., "Figure 6-13. If w + r > n, reads see the latest write."),
