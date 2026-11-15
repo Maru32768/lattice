@@ -515,13 +515,19 @@ fn page_images(doc: &Document, resources: Option<&Dictionary>) -> HashMap<Vec<u8
     xobjects.iter().filter_map(|(name, o)| o.as_reference().ok().filter(|&id| shown(id)).map(|id| (name.clone(), id))).collect()
 }
 
+/// More levels than a page tree has: writers balance it, so even a million pages two to a node are 20 deep. Few enough
+/// that pdf-extract's recursion up them stays well inside the stack.
+const PAGE_TREE_DEPTH: usize = 256;
+
 /// A page's own `key`, or else the nearest the page tree gives it, written in place or referred to: the entry pdf-extract
-/// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses. (lopdf's
-/// `get_page_resources` skips resources written into the page tree.) Fails when the walk comes back to a node it has
-/// passed: pdf-extract would follow that loop until the stack overflowed, which no `catch_unwind` stops.
+/// takes for a page's Resources and MediaBox. Like pdf-extract, the walk passes over an entry `found` refuses; it also
+/// passes over a reference to nothing, where pdf-extract panics. (lopdf's `get_page_resources` skips resources written
+/// into the page tree.) Fails past `PAGE_TREE_DEPTH` levels, which only a loop or a chain made that long reaches:
+/// pdf-extract climbs by recursion with no end, which a release build spins in forever and a debug build overflows the
+/// stack in, past any `catch_unwind`.
 fn inherited<'a, T>(doc: &'a Document, page: ObjectId, key: &[u8], found: impl Fn(&'a Object) -> Result<T, pdf_extract::Error>) -> Result<Option<T>, String> {
-    let (mut id, mut passed) = (page, HashSet::new());
-    while passed.insert(id) {
+    let mut id = page;
+    for _ in 0..PAGE_TREE_DEPTH {
         let Ok(node) = doc.get_dictionary(id) else {
             return Ok(None);
         };
@@ -2777,10 +2783,10 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_page_that_would_look_for_its_resources_or_mediabox_around_a_loop_is_refused() {
-        // pdf-extract would follow the loop until the stack overflowed, which ends the whole test run: a child runs it.
-        const CHILD: &str = "LATTICE_TEST_LOOPING_PAGE_TREE";
-        let name = "pdf::tests::a_page_that_would_look_for_its_resources_or_mediabox_around_a_loop_is_refused";
+    fn a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused() {
+        // pdf-extract would climb until the stack overflowed, which ends the whole test run: a child runs it.
+        const CHILD: &str = "LATTICE_TEST_DEEP_PAGE_TREE";
+        let name = "pdf::tests::a_page_tree_too_deep_for_pdf_extract_to_climb_is_refused";
         if std::env::var_os(CHILD).is_none() {
             let out = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", name]).env(CHILD, "1").output().unwrap();
             let stdout = String::from_utf8_lossy(&out.stdout);
@@ -2798,6 +2804,21 @@ pub(crate) mod tests {
             doc.save_to(&mut bytes).unwrap();
             assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "{key}");
         }
+        // No loop, but the MediaBox lies so far up a chain outside the page tree that the recursion would overflow.
+        let mut doc = Document::load_mem(&quorum()).unwrap();
+        let page = *doc.get_pages().values().next().unwrap();
+        let mut top = Dictionary::new();
+        top.set("MediaBox", doc.get_dictionary_mut(page).unwrap().remove(b"MediaBox").unwrap());
+        let mut up = doc.add_object(top);
+        for _ in 0..100_000 {
+            let mut node = Dictionary::new();
+            node.set("Parent", Object::Reference(up));
+            up = doc.add_object(node);
+        }
+        doc.get_dictionary_mut(page).unwrap().set("Parent", Object::Reference(up));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut bytes).unwrap();
+        assert_eq!(to_ir(&bytes, None).unwrap_err(), msg!("pdf.parseFailed"), "a chain");
     }
 
     #[test]
