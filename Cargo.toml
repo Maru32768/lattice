@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/lattice-core", "crates/lattice-server", "crates/lattice-cli", "src-tauri"]
+exclude = ["vendor/lopdf"]
+
+# lopdf 0.42.0, the version pdf-extract 0.12.1 takes: its source as published, without the examples.
+[patch.crates-io]
+lopdf = { path = "vendor/lopdf" }
 
 # The app version for both crates; `npm run bump -- <x.y.z>` keeps it in sync with package.json.
 [workspace.package]
