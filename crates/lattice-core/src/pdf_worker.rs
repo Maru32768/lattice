@@ -97,8 +97,8 @@ impl Worker {
         self.start(request, pdf)?.reply::<Result<T, String>>()?
     }
 
-    /// A worker that has been sent `request` and `pdf`. `pdf.workerFailed` when it does not start or ends before it has
-    /// the PDF (the machine out of memory, say), which says nothing about the PDF.
+    /// A worker that has been sent `request` and `pdf`. `pdf.workerFailed`, here or as its first reply, when it does not
+    /// start or ends before it has the PDF (the machine out of memory, say), which says nothing about the PDF.
     pub(crate) fn start(&self, request: &Request, pdf: &[u8]) -> Result<Session, String> {
         let mut command = Command::new(&self.program);
         command.args(&self.args).env(WORKER, "1").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
@@ -134,7 +134,7 @@ impl Worker {
 pub(crate) struct Session {
     child: Child,
     stdin: ChildStdin,
-    replies: Receiver<Vec<u8>>,
+    replies: Receiver<Result<Vec<u8>, String>>,
     time: Duration,
     #[cfg(windows)]
     _job: Option<job::Job>,
@@ -148,7 +148,7 @@ impl Session {
     /// The worker's next frame. One that comes too late ends the worker.
     pub(crate) fn frame(&mut self) -> Result<Vec<u8>, String> {
         match self.replies.recv_timeout(self.time) {
-            Ok(frame) => Ok(frame),
+            Ok(frame) => frame,
             Err(RecvTimeoutError::Timeout) => {
                 let _ = self.child.kill();
                 // A reply that came meanwhile is for this question; the next one would take it as its own.
@@ -179,16 +179,18 @@ impl Drop for Session {
     }
 }
 
-/// The frames the worker writes, none larger than `REPLY`, until it ends or writes something else.
-fn replies(stdout: ChildStdout) -> Receiver<Vec<u8>> {
+/// The frames the worker writes, none larger than `REPLY`, until it ends or writes something else. `pdf.workerFailed`
+/// when it ends before its marker: it has read nothing, though a small PDF fits in the pipe and so was sent.
+fn replies(stdout: ChildStdout) -> Receiver<Result<Vec<u8>, String>> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let mut out = BufReader::new(stdout);
         if skip_to_marker(&mut out).is_err() {
+            let _ = tx.send(Err(msg!("pdf.workerFailed")));
             return;
         }
         while let Ok(frame) = read_frame(&mut out, REPLY) {
-            if tx.send(frame).is_err() {
+            if tx.send(Ok(frame)).is_err() {
                 return;
             }
         }
@@ -449,6 +451,7 @@ mod tests {
             assert_eq!(crate::pdf::to_ir(&bytes, None), Err(failed.clone()));
             assert_eq!(crate::pdf::regions(&bytes).err(), Some(failed.clone()));
             assert!(Figures::parse(&bytes).is_err());
+            assert_eq!(crate::pdf::import(&store, &bytes, None), Err(failed.clone()), "not an article that failed to read");
             // Re-extraction, which the user asks for and nothing retries, leaves the article as it is.
             assert_eq!(crate::pdf::reextract(&store, id, &bytes), Err(failed.clone()));
             assert_eq!(store.article_row(id).unwrap().unwrap().extraction_status, "ok");
@@ -468,7 +471,8 @@ mod tests {
         if how == "does not start" {
             // A PDF fetched from a URL is recorded as failed with what was fetched, and its job fails to try again.
             let url = "https://example.com/paper.pdf";
-            assert_eq!(crate::pdf::store_fetched(&store, id, url, &bytes), Err(last.clone()));
+            let fetched = crate::fetch::Resource::Pdf { final_url: url.into(), bytes: bytes.clone() };
+            assert_eq!(crate::ingest::store_fetch_result(&store, id, Ok(fetched)), Err(last.clone()));
             let article = store.article_row(id).unwrap().unwrap();
             assert_eq!((article.extraction_status.as_str(), article.last_error), ("failed", Some(last)));
             let kept = store.latest_snapshot(id).unwrap().unwrap();
@@ -483,6 +487,18 @@ mod tests {
     }
 
     #[test]
+    fn a_worker_that_ends_before_it_has_the_pdf_says_nothing_about_it() {
+        // This test run with no test to run ends without reading what it is sent, as a worker that cannot set itself up.
+        let ending =
+            Worker { program: std::env::current_exe().unwrap(), args: ["--exact", "no such test"].map(OsString::from).to_vec(), memory: SMALL, time: AMPLE };
+        // One that fits in the pipe, so is sent whole, and one that does not, so cannot be.
+        for pdf in [quorum(), vec![b' '; 1 << 20]] {
+            let read = ending.ask::<serde_json::Value>(&Request::Ir { fallback: None }, &pdf);
+            assert_eq!(read, Err(msg!("pdf.workerFailed")), "a PDF of {} bytes", pdf.len());
+        }
+    }
+
+    #[test]
     fn a_reply_after_the_time_is_up_answers_nothing() {
         let mut session = worker(SMALL, Duration::from_millis(100)).start(&Request::Figures, &quorum()).unwrap();
         // The reply the worker might write between the timeout and the kill.
@@ -490,7 +506,7 @@ mod tests {
         session.replies = replies;
         let late = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(1));
-            let _ = reply.send(b"late".to_vec());
+            let _ = reply.send(Ok(b"late".to_vec()));
         });
         assert_eq!(session.frame(), Err(msg!("pdf.tooSlow", minutes = 0)));
         late.join().unwrap();
