@@ -541,15 +541,52 @@ mod tests {
         exhausts(&worker(SMALL, AMPLE), &bytes);
     }
 
-    #[test]
-    fn many_pages_drawing_one_content_take_too_long_in_the_worker() {
-        // A megabyte of content that 1,000 pages draw: a gigabyte to read, for each pass over the pages.
-        let bytes = edited(&pdf(&vec![vec![]; 1000], None), |doc| {
+    /// A megabyte of content that 1,000 pages draw: a gigabyte to read, for each pass over the pages.
+    fn many_pages() -> Vec<u8> {
+        edited(&pdf(&vec![vec![]; 1000], None), |doc| {
             let content = Object::Reference(doc.add_object(flate(spaces(MEGABYTE, b"BT /F1 10 Tf 72 100 Td (Over and over) Tj ET"))));
             for page in doc.get_pages().into_values().collect::<Vec<_>>() {
                 doc.get_dictionary_mut(page).unwrap().set("Contents", content.clone());
             }
+        })
+    }
+
+    #[test]
+    fn many_pages_drawing_one_content_take_too_long_in_the_worker() {
+        assert_eq!(ir(&worker(SMALL, Duration::from_secs(5)), &many_pages()), Err(msg!("pdf.tooSlow", minutes = 1)));
+    }
+
+    /// Set, to a file for the worker's id, in a test run started to stand for an app that ends while its worker reads.
+    const PARENT: &str = "LATTICE_PDF_WORKER_TEST_PARENT";
+
+    #[cfg(windows)]
+    #[test]
+    fn a_worker_ends_with_the_process_that_started_it() {
+        if let Some(file) = std::env::var_os(PARENT) {
+            let session = worker(SMALL, AMPLE).start(&Request::Ir { fallback: None }, &many_pages()).unwrap();
+            std::fs::write(file, session.child.id().to_string()).unwrap();
+            // Without dropping the session, as an app that crashes.
+            std::process::exit(0);
+        }
+        let file = std::env::temp_dir().join(format!("lattice-pdf-worker-{}", std::process::id()));
+        // Its output goes nowhere: the worker would be handed a pipe from it as well, and waiting for that pipe to close
+        // would wait for the worker.
+        let me = ["--exact", "pdf_worker::tests::a_worker_ends_with_the_process_that_started_it"];
+        let parent = Command::new(std::env::current_exe().unwrap()).args(me).env(PARENT, &file).stdout(Stdio::null()).stderr(Stdio::null()).status();
+        assert!(parent.unwrap().success());
+        let pid = std::fs::read_to_string(&file).unwrap();
+        let _ = std::fs::remove_file(&file);
+        let running = || {
+            let list = Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH"]).output().unwrap();
+            String::from_utf8_lossy(&list.stdout).contains(pid.as_str())
+        };
+        let gone = (0..50).any(|_| {
+            std::thread::sleep(Duration::from_millis(100));
+            !running()
         });
-        assert_eq!(ir(&worker(SMALL, Duration::from_secs(5)), &bytes), Err(msg!("pdf.tooSlow", minutes = 1)));
+        if !gone {
+            let _ = Command::new("taskkill").args(["/F", "/PID", &pid]).output();
+        }
+        assert!(gone, "worker {pid} is still running");
     }
 }
