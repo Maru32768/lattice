@@ -2284,6 +2284,8 @@ pub(crate) mod tests {
             (rgb(4, 4, [0, 0, 0]), vec![(0, L, 120., 38., 50.)]),
             (rgb(4, 4, [0, 0, 0]), (0..3).map(|p| (p, L, 600., 300., 40.)).collect()),
             (rgb(4, 4, [0, 0, 0]), vec![(1, 0., 0., 612., 792.)]),
+            // A scan drawn upside down, as some producers draw every image.
+            (rgb(4, 4, [1, 1, 1]), vec![(1, 0., 792., 612., -792.)]),
             (rgb(4, 4, [9, 9, 9]), vec![(2, L, 200., 300., 100.), (2, L, 200., 300., 100.)]),
             (masked, vec![(2, L, 350., 300., 100.)]),
             (image(4, 4, "DeviceCMYK", vec![0; 64]), vec![(2, L, 500., 300., 100.)]),
