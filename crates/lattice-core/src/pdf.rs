@@ -478,7 +478,8 @@ fn walk(doc: &Document, page: ObjectId) -> (Vec<Face>, Vec<Drawn>) {
             _ => {}
         }
     }
-    // Text drawn invisibly is what OCR lays over a scanned page: its images are the page, not figures in it.
+    // Text drawn invisibly is what OCR lays over a scanned page: its images are the page, not figures in it. Text a
+    // form draws is not read, so OCR text put inside a form does not count.
     if invisible {
         drawn.clear();
     }
