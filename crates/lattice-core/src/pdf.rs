@@ -2467,6 +2467,25 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn figures_next_to_each_threshold() {
+        let text = |t| vec![(L, 100., 10., t)];
+        let pages = [text("Narrow images."), text("Large images."), text("An image on two pages."), text("The second page of it.")];
+        let mut bytes = pdf(&pages, None);
+        for (image, at) in [
+            (rgb(4, 4, [1, 1, 1]), vec![(0, L, 200., 130., 100.)]),
+            (rgb(4, 4, [2, 2, 2]), vec![(0, L, 400., 120., 100.)]),
+            (rgb(4, 4, [3, 3, 3]), vec![(1, 0., 150., 612., 600.)]),
+            (rgb(4, 4, [4, 4, 4]), vec![(1, 0., 50., 612., 700.)]),
+            (rgb(4, 4, [5, 5, 5]), vec![(2, L, 200., 300., 100.), (3, L, 200., 300., 100.)]),
+        ] {
+            bytes = draw(&bytes, image, &at);
+        }
+        let ir = to_ir(&bytes, None).unwrap();
+        // 130 of 612 wide is kept and 120 is not; 76% of the page is kept and 88% is not; two pages are kept, once on each.
+        assert_eq!(ir.blocks.iter().filter(|b| b.kind == BlockKind::Image).count(), 4, "{:?}", kinds(&ir));
+    }
+
+    #[test]
     fn helpers() {
         assert!(is_pdf(Some("application/pdf; qs=0.001"), b""));
         assert!(is_pdf(Some("application/octet-stream"), b"%PDF-1.7\n"));
