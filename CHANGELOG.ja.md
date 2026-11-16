@@ -4,6 +4,8 @@ Latticeの主な変更をここに記録します。書式は[Keep a Changelog](
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
 ### 追加
 
 - **スマホで読む。** PCの起動中は、スマホのブラウザで記事一覧と記事の原文・混在・訳文を読み、既読やお気に入りの変更、URLの保存、単語帳への登録もできます。一覧はPCと同じ条件で絞り込めます。「設定 › スマホで読む」でオンにしてQRコードを読み取ります。外出先ではTailscaleなどのトンネル越しに使えます。Cloudflare R2にスナップショットを置くと、PCが止まっていても読めます。`lattice-cli serve`は同じサーバーをアプリなしで動かします。
@@ -195,7 +197,8 @@ Latticeの主な変更をここに記録します。書式は[Keep a Changelog](
 - **通信先。** Latticeが直接行うダウンロードは、既定でプライベートネットワークのアドレスを拒否します。許可・拒否のルールには、ホスト名、ワイルドカードのサブドメイン、IPアドレス、CIDRの範囲を書けます。許可リストにあるものだけを許すモードと、すべてを許すモードもあります。ルールは記事・PDF・フィード・画像・ファビコンのダウンロードと、そのリダイレクト先に適用されます。アプリ内ブラウザ、JavaScriptの描画、AIプロバイダ、バックアップは別の経路で通信するので、ルールの対象外です。
 - **プロジェクト。** MITライセンス、サードパーティのライセンス表示、英語と日本語のREADME、miseで固定したツールチェーン。
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Maru32768/lattice/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maru32768/lattice/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maru32768/lattice/releases/tag/v0.1.0

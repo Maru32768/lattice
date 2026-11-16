@@ -4,6 +4,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-17
+
 ### Added
 
 - **Read on a phone.** While the PC is on, a phone's browser can read the article list and each article's original, mixed or translated text, mark articles read, add favorites, save URLs and send words to the word book, with the same list filters as the PC. Turn it on and scan the QR code in **Settings › Read on a phone**. Away from home, it works behind a tunnel such as Tailscale, and a snapshot in Cloudflare R2 lets the phone read while the PC is off. `lattice-cli serve` runs the same server without the app.
@@ -195,7 +197,8 @@ The first public release. Everything below is new.
 - **Network destinations.** Direct downloads reject private networks by default. Allow and deny rules support hostnames, wildcard subdomains, IP addresses and CIDR ranges, with allowlist-only and allow-all modes. The rules cover article, PDF, feed, image and favicon downloads, including redirects. The built-in browser, JavaScript rendering, AI providers and backups use separate network paths.
 - **Project.** MIT license, third-party notices, English and Japanese READMEs, and toolchains pinned with mise.
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Maru32768/lattice/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maru32768/lattice/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Maru32768/lattice/releases/tag/v0.1.0
