@@ -9,7 +9,7 @@ test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-fea
     .filter((f) => f.endsWith(".rs"))
     .map((f) => readFileSync(new URL(f, dir), "utf8"))
     .join("\n");
-  const builders = src.match(/Webview(Window)?Builder::(new|from_config)\(/g) ?? [];
+  const builders = src.match(/Webview(Window)?(Builder::(new|from_config)|::builder)\(/g) ?? [];
   const passing = src.match(/\.additional_browser_args\((crate::)?WEBVIEW_ARGS\)/g) ?? [];
   assert.ok(builders.length > 0);
   assert.equal(passing.length, builders.length);
