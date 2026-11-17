@@ -41,6 +41,7 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
 
   await app.evaluate(() => (window as unknown as { release: () => void }).release());
   await expect.poll(() => opacity(menu)).toBe("1");
+  expect(await callsOf(app, "browser_hide"), "the page under the menu stays heard").toEqual([expect.objectContaining({ covered: true })]);
   await menu.getByRole("menuitem", { name: "URLをコピー" }).click();
   await expect(menu).toHaveCount(0);
 });

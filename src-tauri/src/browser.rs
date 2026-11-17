@@ -194,6 +194,9 @@ impl Snapshots {
 #[derive(Default)]
 struct Visibility {
     wanted: bool,
+    /// Hidden only because an app overlay lies over the tab, which shows a still of the page meanwhile:
+    /// the page is still heard. Read only while the tab is not wanted.
+    covered: bool,
     loading: bool,
     /// Where the UI's placeholder is.
     bounds: Option<Bounds>,
@@ -336,7 +339,7 @@ fn to_evict(tabs: &HashMap<String, TabState>) -> Vec<String> {
 }
 
 fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
-    let (wanted, loading, bounds) = browser.with_tab(wv.label(), |t| {
+    let (wanted, covered, loading, bounds) = browser.with_tab(wv.label(), |t| {
         f(&mut t.visibility);
         let v = &t.visibility;
         t.parked = if v.wanted {
@@ -344,7 +347,7 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
         } else {
             t.parked.or_else(|| Some(Instant::now()))
         };
-        (v.wanted, v.loading, v.bounds)
+        (v.wanted, v.covered, v.loading, v.bounds)
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
     match bounds.filter(|_| wanted) {
@@ -357,11 +360,35 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
             // One message: set_position then set_size each read the webview's current rect and
             // write it back whole, so the second could put back a position the first had not applied yet.
             wv.set_bounds(Rect { position: LogicalPosition::new(x, y).into(), size: LogicalSize::new(b.width.max(1.0), b.height.max(1.0)).into() })?;
+            set_muted(wv, false);
             wv.show()
         }
-        None => wv.hide(),
+        None => {
+            set_muted(wv, !covered);
+            wv.hide()
+        }
     }
 }
+
+/// A hidden WebView2 keeps playing its page's media, which the user then hears with nothing on screen to stop it.
+#[cfg(windows)]
+pub(crate) fn set_muted(wv: &Webview, muted: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2_8;
+    use windows::core::Interface;
+    let r = wv.with_webview(move |pw| {
+        // SAFETY: with_webview runs this on the main thread with wry's live controller.
+        let set = unsafe { pw.controller().CoreWebView2().and_then(|c| c.cast::<ICoreWebView2_8>()).and_then(|c| c.SetIsMuted(muted)) };
+        if let Err(e) = set {
+            log::warn!("SetIsMuted({muted}): {e}");
+        }
+    });
+    if let Err(e) = r {
+        log::warn!("muting {}: {e}", wv.label());
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn set_muted(_: &Webview, _: bool) {}
 
 #[derive(Debug, Clone, Copy, Deserialize, TS)]
 #[ts(export)]
@@ -563,7 +590,10 @@ pub async fn park_all(app: &AppHandle, from: &Window, to: &Window) {
     // After a move `browser_open` has begun, or before it: never in between.
     let _opening = browser.opening.lock().await;
     for wv in from.webviews().into_iter().filter(|wv| is_browser(wv.label())) {
-        if let Err(e) = update_visibility(&wv, &browser, |v| v.wanted = false) {
+        if let Err(e) = update_visibility(&wv, &browser, |v| {
+            v.wanted = false;
+            v.covered = false;
+        }) {
             log::warn!("hiding {}: {e}", wv.label());
         }
         if let Err(e) = attach(app, wv, to).await {
@@ -612,7 +642,7 @@ pub async fn browser_open(
     // A search result is worth loading the page again for; a place is not.
     let searching = focus_text.is_some();
     let jump = focus_text.map(Jump::Text).or_else(|| place.and_then(Place::checked).map(Jump::Place));
-    let opened = Visibility { wanted: true, loading: true, bounds: Some(bounds) };
+    let opened = Visibility { wanted: true, covered: false, loading: true, bounds: Some(bounds) };
     let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
         Some(wv) => {
             attach(&app, wv, &window).await?;
@@ -719,10 +749,14 @@ pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: 
 }
 
 #[tauri::command]
-pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String) -> Result<(), String> {
+pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String, covered: bool) -> Result<(), String> {
     let label = label(&tab)?;
     match app.get_webview(&label) {
-        Some(wv) => update_visibility(&wv, &browser, |v| v.wanted = false).map_err(|e| e.to_string()),
+        Some(wv) => update_visibility(&wv, &browser, |v| {
+            v.wanted = false;
+            v.covered = covered;
+        })
+        .map_err(|e| e.to_string()),
         // Creating a webview pumps the main thread, so this can run in the middle of `browser_open`, which
         // would then show the page over whatever the user has switched to.
         None => {

@@ -365,7 +365,7 @@ Each pane in the document area has a row of tabs. A tab holds an article in the 
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
 - Drag tabs to reorder them. A dragged tab moves along the tab row with the pointer, and swaps with the next tab once its edge passes that tab's middle.
 
-Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab.
+Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab. A hidden tab's page makes no sound, and its video or other audio is heard again when you show the tab.
 
 ### Split the document area
 
