@@ -575,6 +575,8 @@ Open the chat pane with **Chat** in the navigation, type a question and send it 
 
 Choose the limit per question in **Context per question** in **Settings › Summaries & chat**: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More context lets the answer draw on more articles, but each question costs more and takes longer.
 
+**The AI that answers.** **AI** chooses the provider, model and effort that answer in this chat. **Default (AI providers in Settings)** uses the fallback chain in **Settings › AI providers**. Any other choice makes only that AI answer (a failure does not go to another AI). The chat keeps the choice when you send a question, and opening the chat again brings it back. A new chat starts on the default.
+
 **Conversations.**
 
 - Follow-up questions are answered with the last three exchanges in mind.

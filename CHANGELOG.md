@@ -4,6 +4,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Choose the AI for each chat.** **AI** in the chat pane picks the provider, model and effort for each chat. Only the chosen AI answers, and the chat keeps the choice. By default it uses the fallback chain in **Settings › AI providers**.
+
 ### Fixed
 
 - Updating Lattice installed the Microsoft Visual C++ runtime again whenever Microsoft had released a newer one, which could take several minutes while other apps were open. It is now installed only when the one on the computer is older than Lattice needs.
