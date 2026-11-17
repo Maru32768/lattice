@@ -160,14 +160,18 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// Records how many texts each call got.
-    struct Counting(Mutex<Vec<usize>>);
+    /// Records how many texts each call got; fails the second call when `.1` is set.
+    struct Counting(Mutex<Vec<usize>>, bool);
     impl EmbeddingProvider for Counting {
         fn model_id(&self) -> &str {
             "counting"
         }
         async fn embed(&self, texts: Vec<String>, _: Purpose) -> Result<Vec<Vec<f32>>, String> {
-            self.0.lock().unwrap().push(texts.len());
+            let mut calls = self.0.lock().unwrap();
+            calls.push(texts.len());
+            if self.1 && calls.len() == 2 {
+                return Err("interrupted".into());
+            }
             Ok(texts.iter().map(|_| vec![1.0]).collect())
         }
     }
@@ -180,9 +184,14 @@ mod tests {
         let html = format!("<html><head><title>Tuning</title></head><body><article>{body}</article></body></html>");
         let fetched = crate::fetch::Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html };
         crate::ingest::store_fetched(&s, id, &fetched).unwrap();
-        let e = Counting(Mutex::new(Vec::new()));
-        run(&s, &e, id).await.unwrap();
+        // A run that fails on its second call keeps the first batch, and the retry embeds only the rest.
+        let e = Counting(Mutex::new(Vec::new()), true);
+        run(&s, &e, id).await.unwrap_err();
         assert_eq!(*e.0.lock().unwrap(), [BATCH, 1]);
+        assert_eq!(s.unembedded_blocks(id, "counting", PROSE_KINDS).unwrap().len(), 1);
+        let e = Counting(Mutex::new(Vec::new()), false);
+        run(&s, &e, id).await.unwrap();
+        assert_eq!(*e.0.lock().unwrap(), [1]);
         assert!(s.unembedded_blocks(id, "counting", PROSE_KINDS).unwrap().is_empty());
     }
 }
