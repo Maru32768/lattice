@@ -202,6 +202,21 @@ struct Visibility {
     bounds: Option<Bounds>,
 }
 
+impl Visibility {
+    fn opened(bounds: Bounds) -> Self {
+        Self { wanted: true, covered: false, loading: true, bounds: Some(bounds) }
+    }
+
+    fn hide(&mut self, covered: bool) {
+        self.wanted = false;
+        self.covered = covered;
+    }
+
+    fn muted(&self) -> bool {
+        !(self.wanted && self.bounds.is_some()) && !self.covered
+    }
+}
+
 /// Off the window's client area, as the renderer's webview (`renderer.rs`).
 const PARKED: (f64, f64) = (-20000.0, -20000.0);
 
@@ -339,7 +354,7 @@ fn to_evict(tabs: &HashMap<String, TabState>) -> Vec<String> {
 }
 
 fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
-    let (wanted, covered, loading, bounds) = browser.with_tab(wv.label(), |t| {
+    let (wanted, loading, bounds, muted) = browser.with_tab(wv.label(), |t| {
         f(&mut t.visibility);
         let v = &t.visibility;
         t.parked = if v.wanted {
@@ -347,9 +362,10 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
         } else {
             t.parked.or_else(|| Some(Instant::now()))
         };
-        (v.wanted, v.covered, v.loading, v.bounds)
+        (v.wanted, v.loading, v.bounds, v.muted())
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
+    set_muted(wv, muted);
     match bounds.filter(|_| wanted) {
         Some(b) => {
             let (x, y) = if loading {
@@ -360,13 +376,9 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
             // One message: set_position then set_size each read the webview's current rect and
             // write it back whole, so the second could put back a position the first had not applied yet.
             wv.set_bounds(Rect { position: LogicalPosition::new(x, y).into(), size: LogicalSize::new(b.width.max(1.0), b.height.max(1.0)).into() })?;
-            set_muted(wv, false);
             wv.show()
         }
-        None => {
-            set_muted(wv, !covered);
-            wv.hide()
-        }
+        None => wv.hide(),
     }
 }
 
@@ -590,10 +602,7 @@ pub async fn park_all(app: &AppHandle, from: &Window, to: &Window) {
     // After a move `browser_open` has begun, or before it: never in between.
     let _opening = browser.opening.lock().await;
     for wv in from.webviews().into_iter().filter(|wv| is_browser(wv.label())) {
-        if let Err(e) = update_visibility(&wv, &browser, |v| {
-            v.wanted = false;
-            v.covered = false;
-        }) {
+        if let Err(e) = update_visibility(&wv, &browser, |v| v.hide(false)) {
             log::warn!("hiding {}: {e}", wv.label());
         }
         if let Err(e) = attach(app, wv, to).await {
@@ -642,7 +651,7 @@ pub async fn browser_open(
     // A search result is worth loading the page again for; a place is not.
     let searching = focus_text.is_some();
     let jump = focus_text.map(Jump::Text).or_else(|| place.and_then(Place::checked).map(Jump::Place));
-    let opened = Visibility { wanted: true, covered: false, loading: true, bounds: Some(bounds) };
+    let opened = Visibility::opened(bounds);
     let moved = match app.get_webview(&label).filter(|wv| !in_window(wv, &window)) {
         Some(wv) => {
             attach(&app, wv, &window).await?;
@@ -752,11 +761,7 @@ pub fn browser_set_bounds(app: AppHandle, browser: State<'_, Browser>, webview: 
 pub fn browser_hide(app: AppHandle, browser: State<'_, Browser>, tab: String, covered: bool) -> Result<(), String> {
     let label = label(&tab)?;
     match app.get_webview(&label) {
-        Some(wv) => update_visibility(&wv, &browser, |v| {
-            v.wanted = false;
-            v.covered = covered;
-        })
-        .map_err(|e| e.to_string()),
+        Some(wv) => update_visibility(&wv, &browser, |v| v.hide(covered)).map_err(|e| e.to_string()),
         // Creating a webview pumps the main thread, so this can run in the middle of `browser_open`, which
         // would then show the page over whatever the user has switched to.
         None => {
@@ -1324,6 +1329,26 @@ mod tests {
         let v = serde_json::to_value(TabEvent { tab: "k4".into(), body: Title { title: "t".into() } }).unwrap();
         assert_eq!(v, serde_json::json!({ "tab": "k4", "title": "t" }));
         assert_eq!(serde_json::to_value(TabEvent { tab: "k4".into(), body: Empty {} }).unwrap(), serde_json::json!({ "tab": "k4" }));
+    }
+
+    #[test]
+    fn a_page_is_heard_only_on_screen_or_under_an_app_overlay() {
+        let bounds = Bounds { x: 0.0, y: 0.0, width: 800.0, height: 600.0 };
+        let mut v = Visibility::opened(bounds);
+        assert!(!v.muted(), "loading in the tab on screen");
+        v.loading = false;
+        assert!(!v.muted(), "on screen");
+        v.hide(true);
+        assert!(!v.muted(), "under a menu, which shows a still of the page");
+        v.wanted = true;
+        assert!(!v.muted(), "back on screen");
+        v.hide(true);
+        v.hide(false);
+        assert!(v.muted(), "hidden after the menu closed");
+        v.loading = true;
+        assert!(v.muted(), "reloading while hidden");
+        assert!(Visibility { wanted: false, ..Visibility::opened(bounds) }.muted(), "opened after the user switched away");
+        assert!(Visibility::default().muted(), "never placed");
     }
 
     #[test]
