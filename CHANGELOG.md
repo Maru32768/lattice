@@ -4,6 +4,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- **Each list keeps its filters.** Choosing a list in the navigation shows the filters you last used in it, also after a restart. It used to clear them. Back and forward no longer step through filter changes, and `Esc` still clears the filters.
+
 ### Fixed
 
 - Updating Lattice installed the Microsoft Visual C++ runtime again whenever Microsoft had released a newer one, which could take several minutes while other apps were open. It is now installed only when the one on the computer is older than Lattice needs.
