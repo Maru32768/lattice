@@ -6,7 +6,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Added
 
-- **Choose the AI for each chat.** **AI** in the chat pane picks the provider, model and effort for each chat. Only the chosen AI answers, and the chat keeps the choice. By default it uses the fallback chain in **Settings › AI providers**.
+- **Choose the AI for each chat.** **AI** in the chat pane picks the provider, model and effort for the chat. Only the chosen AI answers, and the chat keeps the choice. By default, a chat uses the fallback chain in **Settings › AI providers**.
 
 ### Fixed
 
