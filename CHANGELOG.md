@@ -6,7 +6,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- **Each list keeps its filters.** Choosing a list in the navigation shows the filters you last used in it, also after a restart. It used to clear them. Back and forward no longer step through filter changes, and `Esc` still clears the filters.
+- **Each list keeps its filters.** Choosing a list in the navigation brings back the filters you last used in that list, even after a restart. Before, choosing a list cleared them. Back and forward no longer step through filter changes. `Esc` still clears the filters.
 
 ### Fixed
 

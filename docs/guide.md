@@ -313,7 +313,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Back and forward
 
-Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list and the document in the focused tab. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
+Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list and the focused tab's document. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
 
 When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history. ‹ › in the Page view's toolbar always move through the page's history.
 
@@ -490,7 +490,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
 - The counts next to the values are counts within the current list.
 
-Each list keeps its own filters on this device. When you choose a list in the navigation, it shows the filters you last used in it, also after you start Lattice again. `Esc` clears that list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
+Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
 **Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
 
