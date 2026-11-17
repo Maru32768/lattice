@@ -206,7 +206,7 @@ Use OPML to move feeds between Lattice and other feed readers.
 
 Some pages have almost no text in the HTML that is first downloaded and show their text only after JavaScript runs. When such a page is saved, its text is empty or under 300 characters, and the article list shows **Extraction failed** or **Little text**.
 
-**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. The hidden browser makes no sound, even on a page whose video plays by itself. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before.
+**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before. The hidden browser is muted, so even a page that autoplays video makes no sound.
 
 **Import again by hand.** **Render and import again** in the article's ⋯ menu does the same on demand. In the Page view, **Import again from the page as shown** is also available. It imports from the page as it is on screen, so content you see after logging in is included.
 
@@ -365,7 +365,7 @@ Each pane in the document area has a row of tabs. A tab holds an article in the 
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
 - Drag tabs to reorder them. A dragged tab moves along the tab row with the pointer, and swaps with the next tab once its edge passes that tab's middle.
 
-Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab. A hidden tab's page makes no sound, and its video or other audio is heard again when you show the tab.
+Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab. A hidden tab's page is muted until the tab is shown.
 
 ### Split the document area
 
