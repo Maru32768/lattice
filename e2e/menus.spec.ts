@@ -59,6 +59,7 @@ test("a menu over a page whose still could not be taken mutes the page while it 
   await expect(app.getByRole("menu")).toBeAttached();
   await expect.poll(() => callsOf(app, "browser_hide"), "nothing of the page is on screen").toEqual([expect.objectContaining({ covered: false })]);
   await expect(app.locator(".page-still")).toHaveCount(0);
+  await expect.poll(() => opacity(app.getByRole("menu")), "the menu shows without a still").toBe("1");
 });
 
 test("a still that arrives after its menu closed neither hides the page nor keeps it heard", async ({ app }) => {
