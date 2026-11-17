@@ -11,7 +11,13 @@ use crate::ir::PROSE_KINDS;
 use crate::store::Store;
 
 pub const JOB_TYPE: &str = "embed";
+/// Passages per embed call, and so per write to the store.
 const BATCH: usize = 64;
+/// Passages per ONNX run. fastembed pads a run to its longest passage, and ONNX Runtime keeps the memory of its largest
+/// run for as long as the model is loaded. At 64, long paragraphs kept 3.3 GB committed (real articles up to 3 GB), and
+/// Lattice crashed when Windows ran out of commit. At 4 it stays near 1 GB, and real articles embed faster, as fewer
+/// short passages are padded to a long one's length.
+const RUN: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Purpose {
@@ -80,7 +86,7 @@ impl EmbeddingProvider for LocalE5 {
                 let opts = TextInitOptions::new(EmbeddingModel::MultilingualE5Small).with_cache_dir(cache_dir).with_show_download_progress(false);
                 *guard = Some(TextEmbedding::try_new(opts).map_err(|e| format!("loading embedding model: {e}"))?);
             }
-            let vecs = guard.as_mut().expect("initialized above").embed(&texts, Some(BATCH)).map_err(|e| e.to_string())?;
+            let vecs = guard.as_mut().expect("initialized above").embed(&texts, Some(RUN)).map_err(|e| e.to_string())?;
             Ok(vecs.into_iter().map(normalize).collect())
         })
         .await
