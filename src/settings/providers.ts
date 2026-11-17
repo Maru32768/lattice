@@ -1,4 +1,4 @@
-import type { Effort, ProviderKind } from "../api";
+import type { ChainEntry, Effort, ProviderKind } from "../api";
 import { translatorFor, type PlainKey, type T } from "../i18n";
 
 export const PROVIDERS: { value: ProviderKind; label: string }[] = [
@@ -40,7 +40,25 @@ export const presets = (t: T): Record<ProviderKind, { value: string; label: stri
 });
 
 /** A model ID typed in rather than picked from `presets`. Only the preset values are read, which are the same in every language. */
-export const isCustomModel = (kind: ProviderKind, model: string) => !presets(translatorFor("ja"))[kind].some((p) => p.value === model);
+const isCustomModel = (kind: ProviderKind, model: string) => !presets(translatorFor("ja"))[kind].some((p) => p.value === model);
+
+/** A chain entry as its selects show it. */
+export interface EntryChoice {
+  kind: ProviderKind;
+  model: string;
+  /** Free-text model ID; kept separately so choosing "その他" shows the input (F2). */
+  custom: boolean;
+  /** "" = the provider's default. */
+  effort: Effort | "";
+}
+
+export const toChoice = ({ kind, model, effort }: ChainEntry): EntryChoice => ({
+  kind,
+  model: model ?? "",
+  custom: isCustomModel(kind, model ?? ""),
+  effort: effort ?? "",
+});
+export const toEntry = (c: EntryChoice): ChainEntry => ({ kind: c.kind, model: c.model.trim() || null, effort: c.effort || null });
 
 // Mirrors ProviderKind::efforts in chain.rs. Codex runs at low unless set (codex.rs DEFAULT_EFFORT).
 const ALL_EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];

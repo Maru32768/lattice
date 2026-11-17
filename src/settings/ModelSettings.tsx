@@ -5,30 +5,22 @@ import { CSS } from "@dnd-kit/utilities";
 import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderHealth, type ProviderKind } from "../api";
 import { SetRow } from "../ui/SetRow";
 import { ProviderHealthNotice } from "./ProviderHealth";
-import { CUSTOM, EFFORTS, PROVIDERS, isCustomModel, presets } from "./providers";
+import { CUSTOM, EFFORTS, PROVIDERS, type EntryChoice, presets, toChoice, toEntry } from "./providers";
 import { useT, type T } from "../i18n";
 
 const KEYS = { openai: ["OpenAI", "OPENAI_API_KEY"], gemini: ["Gemini", "GEMINI_API_KEY"], anthropic: ["Anthropic", "ANTHROPIC_API_KEY"] } as const;
 
-interface Slot {
+interface Slot extends Omit<EntryChoice, "kind"> {
   /** Stable key for drag and drop. */
   id: number;
   kind: ProviderKind | "";
-  model: string;
-  /** Free-text model ID; kept separately so choosing "その他" shows the input (F2). */
-  custom: boolean;
-  /** "" = the provider's default. */
-  effort: Effort | "";
 }
 
 let nextId = 0;
 const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false, effort: "" });
 
 function toSlots(chain: ChainEntry[]): Slot[] {
-  const slots = chain.slice(0, 3).map(({ kind, model, effort }): Slot => {
-    const m = model ?? "";
-    return { id: nextId++, kind, model: m, custom: isCustomModel(kind, m), effort: effort ?? "" };
-  });
+  const slots = chain.slice(0, 3).map((e): Slot => ({ id: nextId++, ...toChoice(e) }));
   while (slots.length < 3) {
     slots.push(empty());
   }
@@ -149,7 +141,7 @@ export function ModelSettings() {
     }
   }
 
-  const chain: ChainEntry[] = slots.flatMap((s) => (s.kind ? [{ kind: s.kind, model: s.model.trim() || null, effort: s.effort || null }] : []));
+  const chain: ChainEntry[] = slots.flatMap((s) => (s.kind ? [toEntry({ ...s, kind: s.kind })] : []));
 
   return (
     <>

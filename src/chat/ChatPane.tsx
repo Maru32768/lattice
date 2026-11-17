@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { api, type ChainEntry, type ChatMessage, type ChatThread, type Citation, type Effort, type ProviderKind } from "../api";
-import { CUSTOM, EFFORTS, PROVIDERS, isCustomModel, presets } from "../settings/providers";
+import { api, type ChatMessage, type ChatThread, type Citation, type Effort, type ProviderKind } from "../api";
+import { CUSTOM, EFFORTS, PROVIDERS, type EntryChoice, presets, toChoice, toEntry } from "../settings/providers";
 import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations, withQuote } from "./chat";
 import { type FilterGroup, parseFilterKey } from "../library/scopes";
 import { FilterOptgroups } from "../library/FilterOptgroups";
@@ -17,12 +17,8 @@ const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetriev
 /** `newTab`: Ctrl / middle click. */
 type OnCite = (c: Citation, newTab: boolean) => void;
 
-/** The model a conversation asks, as its selects show it; null is the AI provider chain in Settings. */
-type Choice = { kind: ProviderKind; model: string; custom: boolean; effort: Effort | "" } | null;
-
-const toChoice = (e: ChainEntry | null): Choice =>
-  e && { kind: e.kind, model: e.model ?? "", custom: isCustomModel(e.kind, e.model ?? ""), effort: e.effort ?? "" };
-const toEntry = (c: Choice): ChainEntry | null => c && { kind: c.kind, model: c.model.trim() || null, effort: c.effort || null };
+/** The model a conversation asks; null is the AI provider chain in Settings. */
+type Choice = EntryChoice | null;
 
 /** Click props for a citation: Ctrl / middle click opens it in a new tab, as in the list. */
 const citeClick = (c: Citation, onCite: OnCite) => ({
@@ -172,7 +168,8 @@ export function ChatPane({
     setError(null);
     setUnsent(null);
     setThreadId(id);
-    setChoice(toChoice(threads.find((t) => t.id === id)?.llm ?? null));
+    const llm = threads.find((t) => t.id === id)?.llm;
+    setChoice(llm ? toChoice(llm) : null);
     const ms =
       id == null
         ? []
@@ -210,8 +207,9 @@ export function ChatPane({
     setEditor((e) => ({ seq: e.seq + 1, focus: true }));
     setError(null);
     setUnsent(null);
+    const llm = choice && toEntry(choice);
     try {
-      const m = await api.chatAsk(threadId, q, s, toEntry(choice));
+      const m = await api.chatAsk(threadId, q, s, llm);
       setThreadId(m.thread_id);
       setMessages((ms) => [...ms, m]);
       void loadThreads();
