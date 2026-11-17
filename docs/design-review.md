@@ -386,7 +386,7 @@ feed単位の取り込み件数・間隔の設定、表示モードと並び順�
 - **classifyのbatchでも動く。** jobは記事単位なので、再実行したjobは通常どおりpendingになり、次のclassify実行が最大20件をまとめてclaimする(testで確認)。
 - **取り消しはjobの削除。** pendingとfailedだけ消せる(runningは終わるのを待つ)。dedup keyごと消えるので、後で同じ処理を頼めば新しいjobができる。ingest jobを取り消すと記事は「取得中」のまま残る。
 - **画面の更新。** `article-changed`(runnerがjobごとに送る)を1秒にまとめて読み直し、さらに表示中は10秒ごとに読み直す(backoffの期限切れはイベントにならないため)。
-- **エクスポートの形式。** `app_data/exports/lattice-export-<UTC>.jsonl.gz`。1行1 JSONのgzipで、1行目が`{"format": "lattice-export/1", "exported_at"}`、続いて`feed`、`article`、`chat_thread`の行。記事はメタデータ(`ArticleRow`と同じ項目: タグ・ジャンル・`feed_id`を含む)、blocks(kind・text・inlines・attrs、blockごとにtarget languageごとの最新の訳をprovider / model / prompt_version付きで)、要約(履歴すべて、`stale`付き)。対話はthreadごとにmessages(引用・scope・providerを含む)。記事を1件ずつ読んで書くので、10^5件でもメモリに載せない。書き終えてからrenameするので、途中で失敗しても壊れたファイルは残らない。
+- **エクスポートの形式。** `app_data/exports/lattice-export-<UTC>.jsonl.gz`。1行1 JSONのgzipで、1行目が`{"format": "lattice-export/1", "exported_at"}`、続いて`feed`、`article`、`chat_thread`の行。記事はメタデータ(`ArticleRow`と同じ項目: タグ・ジャンル・`feed_id`を含む)、blocks(kind・text・inlines・attrs、blockごとにtarget languageごとの最新の訳をprovider / model / prompt_version付きで)、要約(履歴すべて、`stale`付き)。対話はthreadごとに、回答するAIの選択(`llm`)とmessages(引用・scope・providerを含む)。記事を1件ずつ読んで書くので、10^5件でもメモリに載せない。書き終えてからrenameするので、途中で失敗しても壊れたファイルは残らない。
 - **含めないもの。** settings全体(APIキー・R2のsecretのほか、LLMの設定も)、取得したHTMLのsnapshot、embedding、jobs、分類の履歴。snapshotとembeddingはDBのバックアップにある。
 - **一貫性。** storeのlockは記事ごとに取り直す(エクスポート中もUIとjobが止まらない)。そのためエクスポート中に変わったデータは半端に入りうる。
 
