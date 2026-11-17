@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn an_entry_builds_its_provider_with_its_model_and_effort() {
+    fn an_entry_builds_its_provider_with_its_key_model_and_effort() {
         let s = Store::open_in_memory().unwrap();
         let entry = ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(Effort::High) };
         let (llm, model) = build(&s, &entry).unwrap();
@@ -482,6 +482,19 @@ mod tests {
             panic!("a Claude CLI entry builds the Claude CLI");
         };
         assert_eq!((c.model(), c.effort, model), (Some("opus".into()), Some(Effort::High), Some("opus".into())));
+
+        let entry = ChainEntry { kind: ProviderKind::CodexCli, model: Some("gpt-6-astra".into()), effort: Some(Effort::Max) };
+        let AnyLlm::Codex(c) = build(&s, &entry).unwrap().0 else {
+            panic!("a Codex CLI entry builds the Codex CLI");
+        };
+        assert_eq!((c.model, c.effort), (Some("gpt-6-astra".into()), Some(Effort::Max)));
+
+        set_api_key(&s, ProviderKind::Openai, Some("sk-stored")).unwrap();
+        let entry = ChainEntry { kind: ProviderKind::Openai, model: None, effort: Some(Effort::Low) };
+        let AnyLlm::OpenAi(o) = build(&s, &entry).unwrap().0 else {
+            panic!("an OpenAI entry builds the OpenAI API");
+        };
+        assert_eq!((o.key.as_deref(), o.model, o.effort), (Some("sk-stored"), None, Some(Effort::Low)), "the key itself, not where it was found");
     }
 
     #[test]
