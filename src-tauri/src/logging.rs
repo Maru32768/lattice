@@ -17,7 +17,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 const KEEP_DAYS: usize = 14;
 const TIME: &str = "%Y-%m-%d %H:%M:%S%.3f";
-/// Lines one run may add to `out-of-memory.log`. A failed `try_reserve` is written too, and the process goes on, so a
+/// Failure lines one run may add to `out-of-memory.log`. A failed `try_reserve` is written too, and the process goes on, so a
 /// run of them would otherwise grow the file without end.
 const MAX_FAILURES: usize = 100;
 
