@@ -126,7 +126,7 @@ pub struct ChatThread {
     pub id: i64,
     pub title: String,
     pub updated_at: String,
-    /// The model its last question chose; None is the AI provider chain in Settings.
+    /// The model chosen for its last answered question; None is the AI provider chain in Settings.
     pub llm: Option<ChainEntry>,
 }
 
@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_thread_keeps_the_model_its_last_question_chose() {
+    async fn a_thread_keeps_the_model_of_its_last_answered_question() {
         let (s, a, _, _) = library().await;
         let llm = Fake::default();
         let entry = |model: &str| ChainEntry { kind: crate::chain::ProviderKind::ClaudeCli, model: Some(model.into()), effort: Some(crate::llm::Effort::High) };

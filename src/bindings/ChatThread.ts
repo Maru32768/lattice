@@ -3,6 +3,6 @@ import type { ChainEntry } from "./ChainEntry";
 
 export type ChatThread = { id: number, title: string, updated_at: string, 
 /**
- * The model its last question chose; None is the AI provider chain in Settings.
+ * The model chosen for its last answered question; None is the AI provider chain in Settings.
  */
 llm: ChainEntry | null, };
