@@ -197,6 +197,17 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await expect(modelId).toHaveValue("claude-opus-5-5");
   await expect(effort).toHaveValue("max");
 
+  // Another provider starts on its own defaults and offers only the efforts it takes.
+  await provider.selectOption({ label: "Gemini API" });
+  await expect(model).toHaveValue("");
+  await expect(effort).toHaveValue("");
+  await expect(effort.locator("option")).toHaveCount(4);
+  // A conversation saved on the default opens on it; a change that was never sent is gone.
+  await pickThread("MVCCとVACUUMの関係");
+  await expect(provider).toHaveValue("");
+  await pickThread("WALとは？");
+  await expect(provider).toHaveValue("claude_cli");
+
   await provider.selectOption({ label: "既定(設定のAIプロバイダ)" });
   await expect(model).toHaveCount(0);
   await q.fill("続き");
