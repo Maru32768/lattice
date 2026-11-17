@@ -647,7 +647,12 @@ mod tests {
         let (choice, one) = chosen(&s, ChainEntry { kind: ProviderKind::ClaudeCli, model: Some(" opus ".into()), effort: Some(Effort::High) }).unwrap();
         assert_eq!(choice, ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(Effort::High) });
         let entries: Vec<_> = one.health().into_iter().map(|h| (h.provider, h.model)).collect();
-        assert_eq!(entries, [("claude-cli".to_string(), Some("opus".to_string()))], "the chain in Settings does not follow it");
+        assert_eq!(entries, [("claude-cli".to_string(), Some("opus".to_string()))], "the chosen entry alone, not the chain in Settings");
+        let built = one.each(|p| match p {
+            chain::AnyLlm::Claude(c) => Some((c.model(), c.effort)),
+            _ => None,
+        });
+        assert_eq!(built, [Some((Some("opus".to_string()), Some(Effort::High)))], "the Claude CLI runs with the chosen model and effort");
     }
 
     #[tokio::test]

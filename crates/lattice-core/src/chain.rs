@@ -240,6 +240,12 @@ impl<P> LlmChain<P> {
         let slots = entries.into_iter().map(|(llm, model)| Slot { llm, model, failed: Mutex::new(None) }).collect();
         *self.slots.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(slots);
     }
+
+    /// `f` of each provider, for tests of what was built: `health` shows no effort.
+    #[cfg(test)]
+    pub(crate) fn each<R>(&self, f: impl Fn(&P) -> R) -> Vec<R> {
+        self.slots.read().unwrap_or_else(|e| e.into_inner()).iter().map(|s| f(&s.llm)).collect()
+    }
 }
 
 impl<P: LlmProvider> LlmChain<P> {
