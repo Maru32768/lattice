@@ -602,10 +602,11 @@ mod tests {
     async fn a_thread_keeps_the_model_of_its_last_answered_question() {
         let (s, a, _, _) = library().await;
         let llm = Fake::default();
-        let entry = |model: &str| ChainEntry { kind: crate::chain::ProviderKind::ClaudeCli, model: Some(model.into()), effort: Some(crate::llm::Effort::High) };
-        let (opus, sonnet) = (entry("opus"), entry("sonnet"));
+        use crate::chain::ProviderKind;
+        let opus = ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(crate::llm::Effort::High) };
+        let gemini = ChainEntry { kind: ProviderKind::Gemini, model: None, effort: None };
         let thread = ask(&s, &llm, Some(&opus), &Letters, None, "WAL とは？", Scope::Article { id: a }).await.unwrap().thread_id;
-        let other = ask(&s, &llm, Some(&sonnet), &Letters, None, "MVCC とは？", Scope::Article { id: a }).await.unwrap().thread_id;
+        let other = ask(&s, &llm, Some(&gemini), &Letters, None, "MVCC とは？", Scope::Article { id: a }).await.unwrap().thread_id;
         let llm_of = |id| s.chat_threads().unwrap().into_iter().find(|t| t.id == id).expect("listed").llm;
         assert_eq!(llm_of(thread), Some(opus.clone()));
         ask(&s, &llm, None, &Letters, Some(thread), "fsync は？", Scope::Article { id: a }).await.unwrap();
@@ -615,7 +616,7 @@ mod tests {
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
         assert_eq!(ask(&s, &llm, Some(&opus), &Letters, Some(thread), "WAL は？", none).await.unwrap().mode, "none");
         assert_eq!(llm_of(thread), Some(opus.clone()));
-        assert_eq!(llm_of(other), Some(sonnet.clone()), "each thread keeps its own choice");
+        assert_eq!(llm_of(other), Some(gemini.clone()), "each thread keeps its own choice, a provider's defaults too");
 
         struct Down;
         impl LlmProvider for Down {
@@ -626,7 +627,7 @@ mod tests {
                 Err(LlmError::Unavailable("down".into()))
             }
         }
-        assert!(ask(&s, &Down, Some(&sonnet), &Letters, Some(thread), "WAL は？", Scope::Article { id: a }).await.is_err());
+        assert!(ask(&s, &Down, Some(&gemini), &Letters, Some(thread), "WAL は？", Scope::Article { id: a }).await.is_err());
         assert_eq!(llm_of(thread), Some(opus), "a question that got no answer saves nothing");
 
         s.exec_for_test(&format!(r#"UPDATE chat_threads SET llm = '{{"kind":"gone","model":null}}' WHERE id = {thread}"#));
