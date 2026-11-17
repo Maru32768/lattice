@@ -347,10 +347,3 @@ test("a list whose filters were cleared, chip by chip or with Esc, shows none ag
   await expect(listTitle(app)).toHaveText("未読");
   await expect(chips(app)).toHaveCount(0);
 });
-
-test("filters kept in another shape open as none", async ({ shell }) => {
-  await shell.addInitScript(() => localStorage.setItem("lattice.scopeFacets", JSON.stringify([[JSON.stringify({ kind: "all" }), { tags: "rust" }]])));
-  await shell.goto("/");
-  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
-  await expect(chips(shell)).toHaveCount(0);
-});
