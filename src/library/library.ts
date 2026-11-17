@@ -45,6 +45,12 @@ export const DIM_LABELS: Record<Dim, PlainKey> = {
 };
 export const NO_FACETS: Facets = { genres: [], tags: [], tagMode: "all", feeds: [], groups: [], difficulty: [], relevance: [], state: [] };
 
+/** Facets read back from storage: each dimension a list, and a tag mode. */
+export const isFacets = (v: unknown): v is Facets => {
+  const f = v as Record<string, unknown> | null | undefined;
+  return DIMS.every((d) => Array.isArray(f?.[d])) && (f?.tagMode === "all" || f?.tagMode === "any");
+};
+
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
 export const DIFFICULTY_LABELS: PlainKey[] = [
   "library.difficulty1",

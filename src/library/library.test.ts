@@ -8,6 +8,7 @@ import {
   countBy,
   facetBase,
   inScope,
+  isFacets,
   keep,
   listed,
   matches,
@@ -174,4 +175,13 @@ test("a feed folder scope holds its feeds' articles and is named after the folde
   assert.equal(scopeLabel({ kind: "folder", id: 3 }, rows, [], ja, [{ id: 3, name: "TechFeed", feeds: 1 }]), "TechFeed");
   assert.equal(scopeLabel({ kind: "folder", id: 9 }, rows, [], en), "Folder", "a folder deleted meanwhile");
   assert.deepEqual(toFilter({ kind: "folder", id: 3 }), { kind: "folder", id: 3 });
+});
+
+test("stored facets: the shape of facets passes, anything else does not", () => {
+  assert.ok(isFacets(JSON.parse(JSON.stringify(NO_FACETS))));
+  assert.ok(isFacets(JSON.parse(JSON.stringify(f({ tags: ["rust"], tagMode: "any", feeds: [null] })))));
+  const { state: _, ...noState } = NO_FACETS;
+  for (const bad of [null, undefined, 3, "facets", [], {}, noState, f({ tags: "rust" as unknown as string[] }), { ...NO_FACETS, tagMode: "some" }]) {
+    assert.equal(isFacets(bad), false, JSON.stringify(bad));
+  }
 });
