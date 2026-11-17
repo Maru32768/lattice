@@ -1041,15 +1041,10 @@ async fn search_blocks(app: State<'_, App>, query: String, filter: Option<Articl
 #[tauri::command]
 async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope, llm: Option<ChainEntry>) -> Result<ChatMessage, String> {
     let _permit = app.chat_llm.acquire().await.map_err(err)?;
-    let (store, embedder) = (&app.store, &app.providers.embedder);
-    match llm.map(ChainEntry::normalized).transpose().map_err(|x| msg!("chat.effortUnsupported", effort = x.as_str()))? {
-        // Only the model the user chose: an answer from another one would pass for its answer.
-        Some(choice) => {
-            let one = LlmChain::new(vec![chain::build(store, &choice)?]);
-            chat::ask(store, &one, Some(&choice), embedder, thread_id, &question, scope).await
-        }
-        None => chat::ask(store, &app.providers.llm, None, embedder, thread_id, &question, scope).await,
-    }
+    let choice = llm.map(ChainEntry::normalized).transpose().map_err(|x| msg!("chat.effortUnsupported", effort = x.as_str()))?;
+    // Only the model the user chose: an answer from another one would pass for its answer.
+    let one = choice.as_ref().map(|c| chain::build(&app.store, c)).transpose()?.map(|b| LlmChain::new(vec![b]));
+    chat::ask(&app.store, one.as_ref().unwrap_or(&app.providers.llm), choice.as_ref(), &app.providers.embedder, thread_id, &question, scope).await
 }
 
 #[tauri::command(async)]
