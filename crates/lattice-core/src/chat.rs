@@ -8,7 +8,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::chain::ChainEntry;
+use crate::chain::{self, ChainEntry, LlmChain};
 use crate::embed::EmbeddingProvider;
 use crate::instructions;
 use crate::ir::PROSE_KINDS;
@@ -299,6 +299,13 @@ impl Store {
             created_at,
         })
     }
+}
+
+/// `choice` checked, and in a chain of its own for `ask`: an answer from another model would pass for its answer.
+pub fn chosen(store: &Store, choice: ChainEntry) -> std::result::Result<(ChainEntry, LlmChain), String> {
+    let choice = choice.normalized().map_err(|x| msg!("chat.effortUnsupported", effort = x.as_str()))?;
+    let one = LlmChain::new(vec![chain::build(store, &choice)?]);
+    Ok((choice, one))
 }
 
 /// Answers `question` from the articles in `scope` and stores the turn in `thread_id`
@@ -624,6 +631,23 @@ mod tests {
 
         s.exec_for_test(&format!(r#"UPDATE chat_threads SET llm = '{{"kind":"gone","model":null}}' WHERE id = {thread}"#));
         assert_eq!(llm_of(thread), None, "an unreadable choice falls back to the chain");
+    }
+
+    #[test]
+    fn a_chosen_model_is_checked_and_asked_alone() {
+        use crate::chain::ProviderKind;
+        use crate::llm::Effort;
+        let s = Store::open_in_memory().unwrap();
+        chain::save_config(&s, vec![ChainEntry { kind: ProviderKind::CodexCli, model: None, effort: None }]).unwrap();
+        let Err(e) = chosen(&s, ChainEntry { kind: ProviderKind::Gemini, model: None, effort: Some(Effort::Xhigh) }) else {
+            panic!("Gemini has no xhigh");
+        };
+        assert_eq!(e, msg!("chat.effortUnsupported", effort = "xhigh"));
+
+        let (choice, one) = chosen(&s, ChainEntry { kind: ProviderKind::ClaudeCli, model: Some(" opus ".into()), effort: Some(Effort::High) }).unwrap();
+        assert_eq!(choice, ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(Effort::High) });
+        let entries: Vec<_> = one.health().into_iter().map(|h| (h.provider, h.model)).collect();
+        assert_eq!(entries, [("claude-cli".to_string(), Some("opus".to_string()))], "the chain in Settings does not follow it");
     }
 
     #[tokio::test]
