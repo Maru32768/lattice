@@ -4,6 +4,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Fixed
+
+- Updating Lattice installed the Microsoft Visual C++ runtime again whenever Microsoft had released a newer one, which could take several minutes while other apps were open. It is now installed only when the one on the computer is older than Lattice needs.
+
 ## [0.4.0] - 2026-11-17
 
 ### Added

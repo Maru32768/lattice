@@ -14,7 +14,7 @@
     ${If} $2 == "v"
       StrCpy $1 $1 "" 1
     ${EndIf}
-    ${VersionCompare} "$1" "${LATTICE_VC_RUNTIME_VERSION}" $2
+    ${VersionCompare} "$1" "${LATTICE_VC_RUNTIME_MINIMUM}" $2
     ${If} $2 == "0"
     ${OrIf} $2 == "1"
       Goto ${READY_LABEL}
@@ -31,7 +31,7 @@
     ${If} $2 == "v"
       StrCpy $1 $1 "" 1
     ${EndIf}
-    ${VersionCompare} "$1" "${LATTICE_VC_RUNTIME_VERSION}" $2
+    ${VersionCompare} "$1" "${LATTICE_VC_RUNTIME_MINIMUM}" $2
     ${If} $2 == "0"
     ${OrIf} $2 == "1"
       Goto ${READY_LABEL}
@@ -67,7 +67,7 @@ lattice_runtime_reboot:
 lattice_runtime_verify:
   !insertmacro LATTICE_CHECK_VC_RUNTIME lattice_runtime_ready
 lattice_runtime_failed:
-  MessageBox MB_OK|MB_ICONSTOP "Lattice requires Microsoft Visual C++ x64 runtime ${LATTICE_VC_RUNTIME_VERSION} or newer. Installation failed or was cancelled. Setup will stop."
+  MessageBox MB_OK|MB_ICONSTOP "Lattice requires Microsoft Visual C++ x64 runtime ${LATTICE_VC_RUNTIME_MINIMUM} or newer. Installation failed or was cancelled. Setup will stop."
   Pop $3
   Pop $2
   Pop $1

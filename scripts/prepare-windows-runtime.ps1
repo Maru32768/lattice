@@ -37,6 +37,7 @@ try {
     $include = @"
 !define LATTICE_VC_REDIST "$installerPath"
 !define LATTICE_VC_RUNTIME_VERSION "$version"
+!define LATTICE_VC_RUNTIME_MINIMUM "$minimumVersion"
 !define LATTICE_VC_INSTALL_SCRIPT "$scriptPath"
 "@
     [IO.File]::WriteAllText((Join-Path $runtimeDir 'runtime.nsh'), $include + "`n", [Text.UTF8Encoding]::new($true))
