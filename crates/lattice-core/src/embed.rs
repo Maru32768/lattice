@@ -13,10 +13,10 @@ use crate::store::Store;
 pub const JOB_TYPE: &str = "embed";
 /// Passages per embed call, and so per write to the store.
 const BATCH: usize = 64;
-/// Passages per ONNX run. fastembed pads a run to its longest passage, and ONNX Runtime keeps the memory of its largest
-/// run for as long as the model is loaded. At 64, long paragraphs kept 3.3 GB committed (real articles up to 3 GB), and
-/// Lattice crashed when Windows ran out of commit. At 4 it stays near 1 GB, and real articles embed faster, as fewer
-/// short passages are padded to a long one's length.
+/// Passages per ONNX run. fastembed pads a run to its longest passage, and ONNX Runtime does not give back what it takes
+/// for runs while the model is loaded. At 64, one call of long paragraphs left 3.3 GB committed and a second call 5.5 GB,
+/// and Lattice crashed when Windows ran out of commit. At 4 two such calls leave 1.1 GB, and real articles embed faster,
+/// as fewer short passages are padded to a long one's length.
 const RUN: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
