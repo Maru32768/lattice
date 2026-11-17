@@ -1,5 +1,5 @@
 // Where lists and articles were left: kept on this device, and found again after a remount or a restart.
-import { test, expect, callsOf, list, listRow, navItem } from "./harness.ts";
+import { test, expect, callsOf, chips, filterByTag, list, listRow, listTitle, navItem } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -303,19 +303,6 @@ test("a Page view place the Reader lacks gives way once the reader moves, also b
   await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
   await expect.poll(() => stored(shell, "lattice.readingPlaces"), "back where it opened is the reader's place too").toContain(para(20));
 });
-
-const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
-const listTitle = (page: Page) => list(page).locator(".list-title h1");
-
-async function filterByTag(page: Page, tag: string) {
-  await list(page).getByRole("button", { name: "タグ", exact: true }).click();
-  const pv = page.getByRole("dialog", { name: "タグで絞り込む" });
-  await pv.getByRole("textbox").fill(tag);
-  await page.keyboard.press("Enter");
-  await page.keyboard.press("Escape");
-  await expect(pv).toBeHidden();
-  await expect(chips(page)).toHaveText(`タグ${tag}`);
-}
 
 test("each list shows the filters last used in it: after the settings, another list, and a restart", async ({ app }) => {
   await navItem(app, "未読").click();
