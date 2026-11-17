@@ -151,7 +151,7 @@ test("closing a document window also closes the webview its Reader keeps for the
   await expect.poll(async () => (await callsOf(shell, "browser_open")).length).toBe(1);
   const [{ tab }] = (await callsOf(shell, "browser_open")) as { tab: string }[];
   await shell.getByRole("button", { name: "Reader", exact: true }).click();
-  await expect.poll(() => callsOf(shell, "browser_hide")).toContainEqual({ tab });
+  await expect.poll(() => callsOf(shell, "browser_hide"), "muted too").toContainEqual({ tab, covered: false });
   expect(await callsOf(shell, "browser_close")).toEqual([]);
 
   await shell.evaluate(() => window.__e2e.emit("tauri://close-requested"));

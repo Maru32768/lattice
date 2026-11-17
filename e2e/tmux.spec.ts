@@ -184,7 +184,7 @@ test("the zoom hides the webviews of the panes out of sight at once, grows the o
   const half = await width();
 
   await press(shell, "Control+a", "z");
-  await expect.poll(() => callsOf(shell, "browser_hide")).toEqual([{ tab: "k2" }]);
+  await expect.poll(() => callsOf(shell, "browser_hide")).toEqual([{ tab: "k2", covered: false }]);
   await expect.poll(width, "the page in view fills the window").toBeGreaterThan(1400);
   expect(await callsOf(shell, "browser_capture"), "no still stands in for a page out of sight").toEqual([]);
   await shell.waitForTimeout(300);
@@ -201,7 +201,7 @@ test("the zoom hides the webviews of the panes out of sight at once, grows the o
 test("the focus a hidden page reports does not end the zoom", async ({ shell }) => {
   await twoPages(shell);
   await press(shell, "Control+a", "z");
-  await expect.poll(() => callsOf(shell, "browser_hide")).toEqual([{ tab: "k2" }]);
+  await expect.poll(() => callsOf(shell, "browser_hide")).toEqual([{ tab: "k2", covered: false }]);
   await shell.evaluate(() => window.__e2e.emit("browser-focus", { tab: "k2" }));
   await shell.waitForTimeout(100);
   await expect(panes(shell).nth(1)).toBeHidden();

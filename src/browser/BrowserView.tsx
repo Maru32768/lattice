@@ -345,7 +345,7 @@ export function BrowserView({
       if (!live) {
         return;
       }
-      await browser.hide(id).catch(() => {});
+      await browser.hide(id, png !== null).catch(() => {});
       // Overlays over the page wait for this before they show (H22).
       if (live) {
         pageDrawn(id, null);
