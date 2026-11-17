@@ -78,3 +78,31 @@ test("articles opened in the focused tab come back in order; a tab switch is und
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
   await expect(title).toHaveText(b.title!);
 });
+
+test("filters are no step of their own: back and forward show each list with the filters last used in it", async ({ app }) => {
+  const chips = list(app).locator(".chip.on .chip-body");
+  const filterByTag = async (tag: string) => {
+    await list(app).getByRole("button", { name: "タグ", exact: true }).click();
+    const pv = app.getByRole("dialog", { name: "タグで絞り込む" });
+    await pv.getByRole("textbox").fill(tag);
+    await app.keyboard.press("Enter");
+    await app.keyboard.press("Escape");
+    await expect(chips).toHaveText(`タグ${tag}`);
+  };
+  await navItem(app, "未読").click();
+  await filterByTag("rust");
+  await navItem(app, "お気に入り").click();
+  await filterByTag("postgres");
+
+  await back(app).click();
+  await expect(listTitle(app)).toHaveText("未読");
+  await expect(chips).toHaveText("タグrust");
+  await forward(app).click();
+  await expect(listTitle(app)).toHaveText("お気に入り");
+  await expect(chips).toHaveText("タグpostgres");
+  await back(app).click();
+  await back(app).click();
+  await expect(listTitle(app)).toHaveText("すべての記事");
+  await expect(chips).toHaveCount(0);
+  await expect(back(app)).toBeDisabled();
+});

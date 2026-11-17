@@ -303,3 +303,67 @@ test("a Page view place the Reader lacks gives way once the reader moves, also b
   await doc.getByText(para(20)).evaluate((el) => el.scrollIntoView({ block: "start" }));
   await expect.poll(() => stored(shell, "lattice.readingPlaces"), "back where it opened is the reader's place too").toContain(para(20));
 });
+
+const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
+const listTitle = (page: Page) => list(page).locator(".list-title h1");
+
+async function filterByTag(page: Page, tag: string) {
+  await list(page).getByRole("button", { name: "タグ", exact: true }).click();
+  const pv = page.getByRole("dialog", { name: "タグで絞り込む" });
+  await pv.getByRole("textbox").fill(tag);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(pv).toBeHidden();
+  await expect(chips(page)).toHaveText(`タグ${tag}`);
+}
+
+test("each list shows the filters last used in it: after the settings, another list, and a restart", async ({ app }) => {
+  await navItem(app, "未読").click();
+  await filterByTag(app, "rust");
+
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.keyboard.press("Escape");
+  await navItem(app, "未読").click();
+  await expect(listTitle(app)).toHaveText("未読");
+  await expect(chips(app)).toHaveText("タグrust");
+
+  await navItem(app, "お気に入り").click();
+  await expect(listTitle(app)).toHaveText("お気に入り");
+  await expect(chips(app), "nothing kept for this list").toHaveCount(0);
+  await navItem(app, "未読").click();
+  await expect(chips(app)).toHaveText("タグrust");
+
+  await navItem(app, "すべての記事").click();
+  await filterByTag(app, "postgres");
+  await app.reload();
+  await expect(listTitle(app), "the list the app starts in").toHaveText("すべての記事", { timeout: 30_000 });
+  await expect(chips(app)).toHaveText("タグpostgres");
+  await navItem(app, "未読").click();
+  await expect(chips(app)).toHaveText("タグrust");
+});
+
+test("a list whose filters were cleared, chip by chip or with Esc, shows none again", async ({ app }) => {
+  await navItem(app, "未読").click();
+  await filterByTag(app, "rust");
+  await list(app).getByRole("button", { name: "タグの絞り込みを解除" }).click();
+  await expect(chips(app)).toHaveCount(0);
+  await navItem(app, "お気に入り").click();
+  await navItem(app, "未読").click();
+  await expect(listTitle(app)).toHaveText("未読");
+  await expect(chips(app)).toHaveCount(0);
+
+  await filterByTag(app, "rust");
+  await app.keyboard.press("Escape");
+  await expect(chips(app)).toHaveCount(0);
+  await navItem(app, "お気に入り").click();
+  await navItem(app, "未読").click();
+  await expect(listTitle(app)).toHaveText("未読");
+  await expect(chips(app)).toHaveCount(0);
+});
+
+test("filters kept in another shape open as none", async ({ shell }) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.scopeFacets", JSON.stringify([[JSON.stringify({ kind: "all" }), { tags: "rust" }]])));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await expect(chips(shell)).toHaveCount(0);
+});

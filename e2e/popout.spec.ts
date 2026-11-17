@@ -88,6 +88,13 @@ test("a document window shows only its tabs, hands one back to the main window, 
   expect(await reported()).toEqual({ kind: "openDocs", label: "doc-1", docs: [] });
 });
 
+test("a document window writes none of the filters kept for each list", async ({ shell }) => {
+  await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }], active: 2 }, focused: 1 }) });
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  expect(await stored(shell, "lattice.scopeFacets")).toBeNull();
+});
+
 test("closing a document window closes its tabs with it: none go back to the main window", async ({ shell }) => {
   const tabs = [
     { kind: "reader", id: 2, articleId: a.id },

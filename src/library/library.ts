@@ -51,6 +51,9 @@ export const isFacets = (v: unknown): v is Facets => {
   return DIMS.every((d) => Array.isArray(f?.[d])) && (f?.tagMode === "all" || f?.tagMode === "any");
 };
 
+/** What the facets used in a scope are kept under: 重要 is one list whatever its minimum. */
+export const scopeKey = (s: Scope) => JSON.stringify(s.kind === "important" ? { kind: s.kind } : s);
+
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
 export const DIFFICULTY_LABELS: PlainKey[] = [
   "library.difficulty1",
