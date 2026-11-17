@@ -182,7 +182,8 @@ mod tests {
         let failures = [0, 1, 2].map(|less| format!("memory allocation of {} bytes failed\n", isize::MAX as usize - less)).concat();
         let expected = |pid: u32| format!(" started, pid {pid} (0x{pid:X})\n{failures}");
 
-        let (pid, file, _) = run(&|_| ());
+        // A first run, before even the log folder exists.
+        let (pid, file, _) = run(&|dir| std::fs::remove_dir(dir).unwrap());
         assert!(file.ends_with(&expected(pid)) && file.lines().count() == 4, "{file}");
 
         // An earlier run's lines stay, as a crash is followed by a restart.
