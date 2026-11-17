@@ -166,7 +166,8 @@ mod tests {
             std::fs::create_dir_all(&dir).unwrap();
             prepare(&dir);
             let mut child = std::process::Command::new(std::env::current_exe().unwrap());
-            child.args(["--exact", NAME]).env(DIR, &dir).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            // The child's filter must not drop the warning.
+            child.args(["--exact", NAME]).env(DIR, &dir).env_remove("RUST_LOG").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
             let mut child = child.spawn().unwrap();
             let pid = child.id();
             let status = child.wait().unwrap();
