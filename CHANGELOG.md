@@ -9,6 +9,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Updating Lattice installed the Microsoft Visual C++ runtime again whenever Microsoft had released a newer one, which could take several minutes while other apps were open. It is now installed only when the one on the computer is older than Lattice needs.
 - Sound, such as a video's, could come from pages you could not see: a page Lattice rendered in its hidden browser during an import, a page you had switched to the Reader, and a page in a hidden tab. These pages are now silent.
 - When the computer ran out of memory, Lattice could close without leaving a reason anywhere. `out-of-memory.log` in the log folder now records the size of the memory request that failed.
+- Preparing articles for search could keep more than 3 GB of memory in use until you closed Lattice. It now keeps about 1 GB and is faster.
 
 ## [0.4.0] - 2026-11-17
 
