@@ -146,8 +146,8 @@ mod tests {
     /// Rust ends the process after a failed allocation, so each case runs in a child of this test binary.
     #[cfg(windows)]
     #[test]
-    fn a_failed_allocation_is_added_to_out_of_memory_log() {
-        const NAME: &str = "logging::tests::a_failed_allocation_is_added_to_out_of_memory_log";
+    fn a_failed_allocation_is_added_to_out_of_memory_log_and_without_that_file_the_app_still_starts() {
+        const NAME: &str = "logging::tests::a_failed_allocation_is_added_to_out_of_memory_log_and_without_that_file_the_app_still_starts";
         const DIR: &str = "LATTICE_TEST_LOG_DIR";
         // How Rust's abort ends a process on Windows. A panic in the child, as from `init` failing, ends it with 101.
         const ABORTED: i32 = 0xC000_0409_u32 as i32;
@@ -175,9 +175,13 @@ mod tests {
             (pid, file, daily)
         };
 
-        let (pid, file, _) = run(&|_| ());
+        // An earlier run's lines stay, as a crash is followed by a restart.
+        let (pid, file, _) = run(&|dir| std::fs::write(dir.join("out-of-memory.log"), "earlier run\n").unwrap());
         let expected = format!(" started, pid {pid} (0x{pid:X})\nmemory allocation of {} bytes failed\n", isize::MAX);
-        assert!(file.ends_with(&expected), "{file}");
+        assert!(file.starts_with("earlier run\n") && file.ends_with(&expected), "{file}");
+
+        let (_, _, daily) = run(&|dir| std::fs::create_dir(dir.join("out-of-memory.log")).unwrap());
+        assert!(daily.contains("no out-of-memory.log"), "{daily}");
     }
 
     #[test]
