@@ -121,16 +121,21 @@ async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     summarize::enqueue(&s, id).unwrap();
     let lock_db = db.clone();
     let (released_tx, released) = std::sync::mpsc::channel();
+    let (release, hold) = std::sync::mpsc::channel::<()>();
+    let hold = std::sync::Mutex::new(Some(hold));
     // A CLI/MCP write transaction that starts while the model answers and outlasts the summary's
     // write (5 s busy timeout) and the three `finish_job` tries (3 x 5 s + 2 x 250 ms).
     let llm = Summarizer(move || {
-        let (db, released_tx) = (lock_db.clone(), released_tx.clone());
+        let (db, released_tx, hold) = (lock_db.clone(), released_tx.clone(), hold.lock().unwrap().take().unwrap());
         let (locked_tx, locked) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let c = rusqlite::Connection::open(&db).unwrap();
             c.execute_batch("BEGIN IMMEDIATE").unwrap();
             locked_tx.send(()).unwrap();
-            std::thread::sleep(Duration::from_secs(22));
+            // Held until `run_next` returns, not for a fixed time: SQLite counts a busy timeout in the
+            // sleeps it asks for, and on a loaded CI runner the four timeouts outran a fixed 22 s.
+            // The bound only keeps a `finish` that never gives up from hanging the test.
+            let _ = hold.recv_timeout(Duration::from_secs(120));
             c.execute_batch("COMMIT").unwrap();
             released_tx.send(()).unwrap();
         });
@@ -138,6 +143,7 @@ async fn a_job_whose_finish_cannot_be_written_does_not_stay_running() {
     });
     let p = Providers { llm, embedder: NoEmbed, http: fetch::client() };
     let ran = jobs::run_next(&s, &p, &[summarize::JOB_TYPE], &|_| {}).await;
+    let _ = release.send(());
     assert!(ran.is_err(), "finish_job gave up: {ran:?}");
     released.recv().unwrap();
 
