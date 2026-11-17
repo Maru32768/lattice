@@ -688,6 +688,7 @@ pub async fn browser_open(
     browser.evict(&app);
     let (popup_target, popup_label) = (app.clone(), label.clone());
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(url))
+        .additional_browser_args(crate::WEBVIEW_ARGS)
         .initialization_script(OVERLAY_JS)
         // Never leave the web: no file:, custom schemes or app-internal URLs in this webview.
         .on_navigation(is_http)

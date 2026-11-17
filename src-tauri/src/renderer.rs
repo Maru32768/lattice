@@ -75,6 +75,7 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
     let (tx, loaded) = oneshot::channel();
     let tx = Mutex::new(Some(tx));
     let builder = WebviewBuilder::new(RENDER_LABEL, WebviewUrl::External(url))
+        .additional_browser_args(crate::WEBVIEW_ARGS)
         .initialization_script(OVERLAY_JS)
         // No user is watching this webview: keep its page navigations (redirects, JS) off private hosts.
         // shortcut: only literal IPs and localhost are refused, and subresource requests are not filtered.

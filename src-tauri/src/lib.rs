@@ -1441,6 +1441,12 @@ fn translation_changed(handle: &tauri::AppHandle, job: &JobRow) {
     }
 }
 
+/// Every webview's WebView2 arguments, in place of wry's defaults: their `--disable-features` (no mini menu, no
+/// SmartScreen) without their `--autoplay-policy=no-user-gesture-required`, under which a page played a video's
+/// sound as soon as it opened. The webviews share one profile, and webviews with different arguments need different
+/// data directories (Tauri's `additional_browser_args`), so every builder passes these.
+pub(crate) const WEBVIEW_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=document-user-activation-required";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 /// Opens the library and starts everything that works on it.
 fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -1451,7 +1457,7 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // WebView2 profile folder (tauri.conf.json has `create: false`).
     let conf = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("no main window in tauri.conf.json")?;
     // Hidden until it is moved to where it last was (`restore_main`, once the store is open).
-    let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.visible(false);
+    let mut main = tauri::WebviewWindowBuilder::from_config(app.handle(), &conf)?.visible(false).additional_browser_args(WEBVIEW_ARGS);
     if let Some(d) = loc.webview_dir() {
         main = main.data_directory(d);
     }
