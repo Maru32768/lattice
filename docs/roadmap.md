@@ -153,7 +153,7 @@ UI全面改修(4層モデル: scope・facet・一覧・文書)のあとで出た
 | J4 | フィードの記事がIndex済みなのに「Indexに追加」が出る | 済 | フィードが`http://`でリンクする記事(brooker.co.za)をhttpの正規化URLで保存し、アプリ内ブラウザはhttpsに着くので一致しなかった。`url_norm`がhttpをhttpsに畳み(独自のポートを持つURLは除く。取得は元のURLのまま)、migrationで保存済みのURLを正規化し直す(`RENORMALIZE_AT`)。httpとhttpsで二重に保存されていた記事は、httpsの方がPageと一致する。 |
 | J5 | Windows Authenticode署名 | 後 | SignPath Foundation (OSS向けに無料)を検討し、公開からの期間が短いことと、今は警告で困っていないことから見送った(2026-10-27)。選択肢・SignPathの条件・release workflowの設計(`tauri bundle --no-binary-patching`が要ることなど)・artifact configuration・未確認の点は`docs/authenticode.md`。`lattice-cli.exe`のバージョン情報(`build.rs`)とguideの「通信する相手」は先に入れた。 |
 | J6 | Vimキーバインドの強化 | 済 | 対話の入力欄とメモで`@replit/codemirror-vim`を使い、別チャンクで読み込む。`.vimrc`のテキスト(マッピングと一部の`set`)を 設定 › Vimに書くか読み込む。適用しない行は理由を添えて出す。プラグイン互換(surroundなど)は作らない。design-review §31。 |
-| J7 | 処理ごとのAIプロバイダ | 後 | 翻訳・要約・分類・対話などで求めるモデルとエフォートの水準が違う。今は1つのfallback chainをすべての処理が使う。処理ごとにchainを選べるようにし、未設定の処理は既定のchainを使う。 |
+| J7 | 処理ごとのAIプロバイダ | 後 | 翻訳・要約・分類・対話などで求めるモデルとエフォートの水準が違う。今は1つのfallback chainをすべての処理が使う(対話は会話ごとに1組を選べる、J8)。処理ごとにchainを選べるようにし、未設定の処理は既定のchainを使う。 |
 | J8 | 対話ごとのモデル選択 | 済 | 対話ペインの「AI」で会話ごとにprovider・モデル・エフォートの1組を選ぶ。既定は設定のchain(J7を入れた後は対話用のchain)。選んだ1組だけが答え、chainに回さない。選択は回答と一緒に`chat_threads.llm`へ保存し、会話を開くと戻る(design-review §37)。 |
 | J9 | 取り込み時点で翻訳を始める | 済 | 既存の 設定 › 翻訳「保存した記事を自動で翻訳」(H1、既定オフ)。フィードの記事もingest jobの後に翻訳を積むので対象。日本語の記事は訳さない。 |
 | J10 | 翻訳の並列化 | 済 | 記事のbatch (12段落か6000文字まで)を1つずつ待っていた。同時に送り、記事の順に保存する。数は 設定 › 翻訳 の「並列実行数」(1〜8、既定3。design-reviewの翻訳の節)。jobのrunnerは1つのままなので、別の記事や要約などのjobとは並行しない。 |
