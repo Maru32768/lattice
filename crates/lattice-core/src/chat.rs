@@ -607,8 +607,20 @@ mod tests {
         // An empty scope never reaches the model, and still records the choice.
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
         assert_eq!(ask(&s, &llm, Some(&opus), &Letters, Some(thread), "WAL は？", none).await.unwrap().mode, "none");
-        assert_eq!(llm_of(thread), Some(opus));
-        assert_eq!(llm_of(other), Some(sonnet), "each thread keeps its own choice");
+        assert_eq!(llm_of(thread), Some(opus.clone()));
+        assert_eq!(llm_of(other), Some(sonnet.clone()), "each thread keeps its own choice");
+
+        struct Down;
+        impl LlmProvider for Down {
+            fn name(&self) -> &str {
+                "down"
+            }
+            async fn complete_json(&self, _: &str, _: &str, _: &Value) -> std::result::Result<Completion, LlmError> {
+                Err(LlmError::Unavailable("down".into()))
+            }
+        }
+        assert!(ask(&s, &Down, Some(&sonnet), &Letters, Some(thread), "WAL は？", Scope::Article { id: a }).await.is_err());
+        assert_eq!(llm_of(thread), Some(opus), "a question that got no answer saves nothing");
 
         s.exec_for_test(&format!(r#"UPDATE chat_threads SET llm = '{{"kind":"gone","model":null}}' WHERE id = {thread}"#));
         assert_eq!(llm_of(thread), None, "an unreadable choice falls back to the chain");
