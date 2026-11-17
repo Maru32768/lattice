@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 // WebView2 never runs under test: this reads the builders in the Rust source instead.
-test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-features and asks for a user's input before sound, on any site", () => {
+test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-features and asks for a user's input before sound, even on a site the user often played sound on", () => {
   const dir = new URL("../src-tauri/src/", import.meta.url);
   const src = readdirSync(dir)
     .filter((f) => f.endsWith(".rs"))
