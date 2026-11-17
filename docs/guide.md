@@ -219,7 +219,7 @@ Some pages have almost no text in the HTML that is first downloaded and show the
 A saved article can be read in two views. Switch with **Reader** and **Page** at the left end of the toolbar, or press `g v`.
 
 - The **Reader** shows the text extracted from the page, with headings, lists, code, tables and saved images. It never loads anything from the web to show it.
-- The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader. A page makes sound only after you click it or press a key in it.
+- The **Page view** shows the original web page in the built-in browser. Translation and saving words work as in the Reader. A page makes sound only after you click it or press a key in it. But if you then go from it to another page on the same site in the same tab, that page can make sound right away.
 
 An article opens where you last read it, in either view, also after Lattice starts again. Switching between the Reader and the Page view keeps the paragraph you were reading. A search result or a chat citation still opens at its passage. The Page view finds the place by the paragraph's text, so it works on a page that has the same paragraph as the Reader.
 
