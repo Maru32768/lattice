@@ -153,8 +153,11 @@ mod tests {
         const ABORTED: i32 = 0xC000_0409_u32 as i32;
         if let Some(dir) = std::env::var_os(DIR) {
             init(Path::new(&dir)).unwrap();
-            // More than any computer has: the system allocator returns null, and Rust ends the process.
-            std::hint::black_box(Vec::<u8>::with_capacity(isize::MAX as usize));
+            // More than any computer has, so the system allocator returns null: through `alloc`, `realloc` and
+            // `alloc_zeroed` in turn, at sizes that tell them apart. The last one ends the process, as Rust does.
+            let _ = Vec::<u8>::new().try_reserve(isize::MAX as usize);
+            let _ = vec![0u8; 1].try_reserve_exact(isize::MAX as usize - 2);
+            std::hint::black_box(vec![0u8; isize::MAX as usize - 2]);
             return;
         }
         let run = |prepare: &dyn Fn(&Path)| {
@@ -175,10 +178,15 @@ mod tests {
             (pid, file, daily)
         };
 
+        let failures = [0, 1, 2].map(|less| format!("memory allocation of {} bytes failed\n", isize::MAX as usize - less)).concat();
+        let expected = |pid: u32| format!(" started, pid {pid} (0x{pid:X})\n{failures}");
+
+        let (pid, file, _) = run(&|_| ());
+        assert!(file.ends_with(&expected(pid)) && file.lines().count() == 4, "{file}");
+
         // An earlier run's lines stay, as a crash is followed by a restart.
         let (pid, file, _) = run(&|dir| std::fs::write(dir.join("out-of-memory.log"), "earlier run\n").unwrap());
-        let expected = format!(" started, pid {pid} (0x{pid:X})\nmemory allocation of {} bytes failed\n", isize::MAX);
-        assert!(file.starts_with("earlier run\n") && file.ends_with(&expected), "{file}");
+        assert!(file.starts_with("earlier run\n") && file.ends_with(&expected(pid)), "{file}");
 
         let (_, _, daily) = run(&|dir| std::fs::create_dir(dir.join("out-of-memory.log")).unwrap());
         assert!(daily.contains("no out-of-memory.log"), "{daily}");
