@@ -370,13 +370,20 @@ test("重要 keeps one set of filters, also across a threshold changed while ano
   await expect(chips(app)).toHaveText("タグpostgres");
 });
 
+/** What each list keeps when the app starts. */
+const keepFacets = (shell: Page, kept: unknown) => shell.addInitScript((v) => localStorage.setItem("lattice.scopeFacets", v), JSON.stringify(kept));
+const openFeeds = async (shell: Page) => {
+  await shell.locator(".nav").getByRole("button", { name: "ソースを管理" }).click();
+  await expect(shell.locator("main.manage h1")).toHaveText("フィードを管理");
+};
+
 test("a deleted group leaves no filters behind, in its own list, in the others, or in a group made with its id", async ({ shell }) => {
   const kept = [
     [scopeKey({ kind: "group", id: 2 }), { ...NO_FACETS, tags: ["rust"] }],
     [scopeKey({ kind: "unread" }), { ...NO_FACETS, groups: [2] }],
     [scopeKey({ kind: "all" }), { ...NO_FACETS, groups: [2] }],
   ];
-  await shell.addInitScript((v) => localStorage.setItem("lattice.scopeFacets", v), JSON.stringify(kept));
+  await keepFacets(shell, kept);
   await shell.goto("/");
   await expect(chips(shell)).toHaveText("グループRust勉強会");
   const remove = async (name: string) => {
@@ -405,6 +412,52 @@ test("a deleted group leaves no filters behind, in its own list, in the others, 
   await shell.getByRole("textbox", { name: "グループを作成" }).press("Enter");
   await navItem(shell, "新規").click();
   await expect(listTitle(shell)).toHaveText("新規");
+  await expect(chips(shell)).toHaveCount(0);
+  expect(await stored(shell, "lattice.scopeFacets")).toBe("[]");
+});
+
+test("a feed removed on the feeds screen leaves the shown list's filters and the kept ones", async ({ shell }) => {
+  await keepFacets(shell, [
+    [scopeKey({ kind: "feed", id: 1 }), { ...NO_FACETS, tags: ["postgres"] }],
+    [scopeKey({ kind: "all" }), { ...NO_FACETS, feeds: [1] }],
+  ]);
+  await shell.goto("/");
+  await expect(chips(shell)).toHaveText("ソースPostgres Weekly");
+  await openFeeds(shell);
+  await shell.getByRole("button", { name: "Postgres Weeklyを削除" }).click();
+  await shell.getByRole("button", { name: "フィードを削除" }).click();
+  await expect(navItem(shell, "Postgres Weekly")).toHaveCount(0);
+  // Esc goes back without choosing a list, so the chips shown are the ones held, not ones read again.
+  await shell.keyboard.press("Escape");
+  await expect(listTitle(shell)).toHaveText("すべての記事");
+  await expect(chips(shell)).toHaveCount(0);
+  await expect.poll(() => stored(shell, "lattice.scopeFacets")).toBe("[]");
+});
+
+test("a deleted folder's filters do not open a folder made with its id", async ({ shell }) => {
+  await keepFacets(shell, [[scopeKey({ kind: "folder", id: 1 }), { ...NO_FACETS, tags: ["rust"] }]]);
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible();
+  const folders = shell.getByRole("region", { name: "フォルダ" });
+  const make = async (name: string) => {
+    await folders.getByRole("textbox", { name: "フォルダ名" }).fill(name);
+    await folders.getByRole("button", { name: "作成" }).click();
+    await expect(folders.getByRole("textbox", { name: `フォルダ「${name}」の名前` })).toHaveValue(name);
+    await shell.getByLabel("Postgres Weeklyのフォルダ").selectOption({ label: name });
+    await expect(navItem(shell, name)).toBeVisible();
+  };
+  await openFeeds(shell);
+  await make("A");
+  await navItem(shell, "A").click();
+  await expect(chips(shell), "the kept filters belong to the first folder").toHaveText("タグrust");
+  await navItem(shell, "A").click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "削除" }).click();
+  await shell.getByRole("alertdialog", { name: "フォルダ「A」を削除しますか？" }).getByRole("button", { name: "削除", exact: true }).click();
+  await expect(navItem(shell, "A")).toHaveCount(0);
+  await openFeeds(shell);
+  await make("B");
+  await navItem(shell, "B").click();
+  await expect(listTitle(shell)).toHaveText("B");
   await expect(chips(shell)).toHaveCount(0);
   expect(await stored(shell, "lattice.scopeFacets")).toBe("[]");
 });
