@@ -34,14 +34,13 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
 /// (`memory allocation of … bytes failed`) only on stderr and then aborts, past any panic hook, so a crash from low memory
 /// left nothing behind. Each run starts with a line naming its pid, which the crash's Windows Error Reporting event names too.
 #[cfg(windows)]
-#[allow(unsafe_code, reason = "reads and sets the process's stderr handle")]
+#[allow(unsafe_code, reason = "sets the process's stderr handle")]
 fn stderr_to_file(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
-    use std::os::windows::io::IntoRawHandle;
+    use std::os::windows::io::{AsRawHandle, IntoRawHandle};
     use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, SetStdHandle};
-    // SAFETY: reads a process-wide setting, no pointers.
-    if unsafe { GetStdHandle(STD_ERROR_HANDLE) }.is_ok() {
+    use windows::Win32::System::Console::{STD_ERROR_HANDLE, SetStdHandle};
+    if !std::io::stderr().as_raw_handle().is_null() {
         return Ok(());
     }
     let mut file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("stderr.log"))?;
