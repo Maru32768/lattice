@@ -514,7 +514,9 @@ mod tests {
         assert_eq!(load_config(&s).unwrap(), saved);
         let json = s.setting(CHAIN_SETTING).unwrap().unwrap();
         assert!(json.contains(r#""effort":"max""#) && json.matches("effort").count() == 1, "default effort is not stored: {json}");
-        assert!(save_config(&s, vec![ChainEntry { kind: ProviderKind::Gemini, model: None, effort: Some(Effort::Xhigh) }]).is_err(), "Gemini has no xhigh");
+        let gemini = |effort| ChainEntry { kind: ProviderKind::Gemini, model: None, effort };
+        let unsupported = save_config(&s, vec![gemini(None), gemini(Some(Effort::Xhigh))]);
+        assert_eq!(unsupported, Err(msg!("chain.effortUnsupported", step = 2, effort = "xhigh")), "Gemini has no xhigh");
 
         // Chains saved before efforts existed still load, with the default effort.
         s.set_setting(CHAIN_SETTING, Some(r#"[{"kind":"openai","model":null}]"#)).unwrap();
