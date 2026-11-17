@@ -98,14 +98,33 @@ test("a document window writes none of the filters kept for each list", async ({
 test("a document window's palette narrows by none of the filters the main window keeps", async ({ shell }) => {
   const kept = { genres: [], tags: ["postgres"], tagMode: "all", feeds: [], groups: [], difficulty: [], relevance: [], state: [] };
   await seed(shell, {
-    [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }], active: 2 }, focused: 1 }),
+    [DOC]: JSON.stringify({
+      root: {
+        kind: "pane",
+        id: 1,
+        tabs: [
+          { kind: "reader", id: 2, articleId: a.id },
+          { kind: "reader", id: 3, articleId: b.id },
+        ],
+        active: 2,
+      },
+      focused: 1,
+    }),
     "lattice.scopeFacets": JSON.stringify([[JSON.stringify({ kind: "all" }), kept]]),
   });
   await shell.goto("/?window=doc-1");
   await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  const where = shell.locator(".pal-where");
   await shell.keyboard.press("Control+p");
-  await expect(shell.locator(".pal-where")).toContainText("すべての記事");
-  await expect(shell.locator(".pal-where")).not.toContainText("postgres");
+  await expect(where).toContainText("すべての記事");
+  await expect(where).not.toContainText("postgres");
+  await shell.keyboard.press("Escape");
+  await titles(shell).nth(1).click();
+  await expect(shell.locator(".art-title")).toHaveText(b.title!);
+  await shell.keyboard.press("Alt+ArrowLeft");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  await shell.keyboard.press("Control+p");
+  await expect(where, "nor after going back").not.toContainText("postgres");
 });
 
 test("closing a document window closes its tabs with it: none go back to the main window", async ({ shell }) => {

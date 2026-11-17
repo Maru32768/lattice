@@ -144,7 +144,8 @@ const GROW_PX = 32;
 
 /** The facets last used in each scope on this device: choosing a scope shows them again, also after a restart. */
 const scopeFacets = placeStore<Facets>("lattice.scopeFacets", 100, isFacets);
-const facetsOf = (s: Scope) => scopeFacets.get(scopeKey(s)) ?? NO_FACETS;
+/** A pop-out shows no list: the main window's filters would narrow its palette and Shift+J unseen. */
+const facetsOf = (s: Scope) => (IS_MAIN ? (scopeFacets.get(scopeKey(s)) ?? NO_FACETS) : NO_FACETS);
 
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
@@ -184,11 +185,10 @@ export default function App() {
   // 重要 always uses the current threshold, also when it was picked under an earlier one.
   const scope: Scope =
     scopeState.kind === "important" && importantMin != null && scopeState.min !== importantMin ? { kind: "important", min: importantMin } : scopeState;
-  // A pop-out shows no list: the main window's filters would narrow its palette unseen, and what it holds would
-  // overwrite what the main window keeps.
-  const [facets, setFacets] = useState(() => (IS_MAIN ? facetsOf(scopeState) : NO_FACETS));
+  const [facets, setFacets] = useState(() => facetsOf(scopeState));
   const facetsKey = scopeKey(scope);
   useEffect(() => {
+    // What a pop-out holds would overwrite what the main window keeps.
     if (IS_MAIN) {
       scopeFacets.set(facetsKey, activeDims(facets).length > 0 ? facets : null);
     }
