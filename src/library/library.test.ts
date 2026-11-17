@@ -7,6 +7,7 @@ import {
   NO_KEPT,
   countBy,
   facetBase,
+  goneKeys,
   inScope,
   isFacets,
   keep,
@@ -18,6 +19,7 @@ import {
   toggle,
   valueLabel,
   viewKey,
+  withoutGone,
   type Facets,
 } from "./library.ts";
 
@@ -190,4 +192,15 @@ test("stored facets: the shape of facets passes, anything else does not", () => 
   for (const bad of [null, undefined, 3, "facets", [], {}, noState, f({ tags: "rust" as unknown as string[] }), { ...NO_FACETS, tagMode: "some" }]) {
     assert.equal(isFacets(bad), false, JSON.stringify(bad));
   }
+});
+
+test("deleted groups and feeds leave the facets; 手動追加 and facets naming none stay as they are", () => {
+  const gone = { group: new Set([2]), feed: new Set([5]), folder: new Set([7]) };
+  assert.deepEqual(withoutGone(f({ groups: [1, 2], feeds: [5, null, 6], tags: ["rust"] }), gone), f({ groups: [1], feeds: [null, 6], tags: ["rust"] }));
+  const untouched = f({ groups: [1], feeds: [null] });
+  assert.equal(withoutGone(untouched, gone), untouched);
+  assert.deepEqual(
+    [...goneKeys(gone)].sort(),
+    [scopeKey({ kind: "feed", id: 5 }), scopeKey({ kind: "folder", id: 7 }), scopeKey({ kind: "group", id: 2 })].sort(),
+  );
 });

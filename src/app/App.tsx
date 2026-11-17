@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -28,6 +28,7 @@ import {
   NO_FACETS,
   NO_KEPT,
   activeDims,
+  goneKeys,
   groupName,
   isFacets,
   keep,
@@ -35,7 +36,9 @@ import {
   scopeLabel,
   toFilter,
   viewKey,
+  withoutGone,
   type Facets,
+  type Gone,
   type Kept,
   type Scope,
 } from "../library/library";
@@ -193,6 +196,28 @@ export default function App() {
       scopeFacets.set(facetsKey, activeDims(facets).length > 0 ? facets : null);
     }
   }, [facetsKey, facets]);
+  // A deletion (from the sidebar, the feeds screen or the CLI) shows as an id gone from the next lists. Its list and its
+  // filter values leave what is kept: SQLite gives the highest id to the next group, feed or folder made.
+  const listedIds = useRef<Gone | null>(null);
+  useEffect(() => {
+    const ids: Gone = { group: new Set(groupRows.map((g) => g.id)), feed: new Set(feeds.map((f) => f.id)), folder: new Set(folders.map((f) => f.id)) };
+    const before = listedIds.current;
+    listedIds.current = ids;
+    if (!IS_MAIN || !before) {
+      return;
+    }
+    const minus = (a: ReadonlySet<number>, b: ReadonlySet<number>) => new Set([...a].filter((id) => !b.has(id)));
+    const gone: Gone = { group: minus(before.group, ids.group), feed: minus(before.feed, ids.feed), folder: minus(before.folder, ids.folder) };
+    if (gone.group.size + gone.feed.size + gone.folder.size === 0) {
+      return;
+    }
+    const lists = goneKeys(gone);
+    scopeFacets.update((key, f) => {
+      const next = withoutGone(f, gone);
+      return lists.has(key) || activeDims(next).length === 0 ? null : next;
+    });
+    setFacets((f) => withoutGone(f, gone));
+  }, [groupRows, feeds, folders]);
   const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreenState] = useState<Screen>("library");
   /** The screens (settings, feeds, import, …) live in the main window; a pop-out asks it. */
@@ -547,7 +572,6 @@ export default function App() {
     if (scope.kind === "group" && scope.id === id) {
       setScope({ kind: "all" });
     }
-    setFacets((f) => ({ ...f, groups: f.groups.filter((g) => g !== id) }));
   }
 
   // ---- feed folders (H25) --------------------------------------------------------------------

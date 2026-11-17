@@ -47,6 +47,21 @@ test("a place store skips what an older version or a broken write left", () => {
   );
 });
 
+test("a place store rewrites every place at once, in order, and forgets those rewritten to null", () => {
+  const s = placeStore("k", 5, isNum);
+  s.set("a", 1);
+  s.set("b", 2);
+  s.set("c", 3);
+  s.update((k, v) => (k === "b" ? null : v * 10));
+  assert.equal(
+    stored.get("k"),
+    JSON.stringify([
+      ["a", 10],
+      ["c", 30],
+    ]),
+  );
+});
+
 test("a place store over blocked storage holds nothing and throws nothing", (t) => {
   const blocked = () => {
     throw new DOMException("The operation is insecure.", "SecurityError");

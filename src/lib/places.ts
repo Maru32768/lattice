@@ -12,6 +12,13 @@ export function placeStore<T>(storageKey: string, cap: number, valid: (v: unknow
       return []; // blocked storage, or a value an older version wrote
     }
   };
+  const save = (kept: [string, T][]) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(kept.slice(-cap)));
+    } catch {
+      // Blocked or full storage: the place lasts until the view goes away.
+    }
+  };
   return {
     get: (key: string): T | undefined => read().find(([k]) => k === key)?.[1],
     /** `null` forgets the place: the list or article opens at its top. */
@@ -20,11 +27,16 @@ export function placeStore<T>(storageKey: string, cap: number, valid: (v: unknow
       if (value) {
         kept.push([key, value]);
       }
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(kept.slice(-cap)));
-      } catch {
-        // Blocked or full storage: the place lasts until the view goes away.
-      }
+      save(kept);
+    },
+    /** Rewrites every place in one write, keeping their order; `null` forgets one. */
+    update(f: (key: string, value: T) => T | null) {
+      save(
+        read().flatMap(([k, v]): [string, T][] => {
+          const next = f(k, v);
+          return next ? [[k, next]] : [];
+        }),
+      );
     },
     clear() {
       try {

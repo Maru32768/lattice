@@ -1,6 +1,7 @@
 // Where lists and articles were left: kept on this device, and found again after a remount or a restart.
 import { test, expect, callsOf, chips, filterByTag, list, listRow, listTitle, navItem } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
+import { NO_FACETS, scopeKey } from "../src/library/library.ts";
 import type { Locator, Page } from "@playwright/test";
 
 // The first article is the snapshot fixture, with blocks of its own.
@@ -367,4 +368,43 @@ test("重要 keeps one set of filters, also across a threshold changed while ano
   await navItem(app, "重要").click();
   await expect(listTitle(app)).toHaveText("重要");
   await expect(chips(app)).toHaveText("タグpostgres");
+});
+
+test("a deleted group leaves no filters behind, in its own list, in the others, or in a group made with its id", async ({ shell }) => {
+  const kept = [
+    [scopeKey({ kind: "group", id: 2 }), { ...NO_FACETS, tags: ["rust"] }],
+    [scopeKey({ kind: "unread" }), { ...NO_FACETS, groups: [2] }],
+    [scopeKey({ kind: "all" }), { ...NO_FACETS, groups: [2] }],
+  ];
+  await shell.addInitScript((v) => localStorage.setItem("lattice.scopeFacets", v), JSON.stringify(kept));
+  await shell.goto("/");
+  await expect(chips(shell)).toHaveText("グループRust勉強会");
+  const remove = async (name: string) => {
+    await navItem(shell, name).click();
+    await shell
+      .locator(".nav")
+      .getByRole("button", { name: `${name}の操作` })
+      .click();
+    await shell.getByRole("menuitem", { name: "削除" }).click();
+    await shell
+      .getByRole("alertdialog", { name: `グループ「${name}」を削除しますか？` })
+      .getByRole("button", { name: "削除", exact: true })
+      .click();
+    await expect(navItem(shell, name)).toHaveCount(0);
+  };
+  await remove("Rust勉強会");
+  await expect(listTitle(shell)).toHaveText("すべての記事");
+  await expect(chips(shell)).toHaveCount(0);
+  await navItem(shell, "未読").click();
+  await expect(chips(shell)).toHaveCount(0);
+
+  // With 空のグループ gone too, the next group gets Rust勉強会's id, as SQLite gives out the highest one again.
+  await remove("空のグループ");
+  await shell.locator(".nav").getByRole("button", { name: "グループを管理" }).click();
+  await shell.getByRole("textbox", { name: "グループを作成" }).fill("新規");
+  await shell.getByRole("textbox", { name: "グループを作成" }).press("Enter");
+  await navItem(shell, "新規").click();
+  await expect(listTitle(shell)).toHaveText("新規");
+  await expect(chips(shell)).toHaveCount(0);
+  expect(await stored(shell, "lattice.scopeFacets")).toBe("[]");
 });

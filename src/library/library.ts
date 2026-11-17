@@ -54,6 +54,24 @@ export const isFacets = (v: unknown): v is Facets => {
 /** What the facets used in a scope are kept under: 重要 is one list whatever its minimum. */
 export const scopeKey = (s: Scope) => JSON.stringify(s.kind === "important" ? { kind: s.kind } : s);
 
+/** Ids of groups, feeds and folders that were deleted. */
+export type Gone = Record<"group" | "feed" | "folder", ReadonlySet<number>>;
+
+/** The facets without the deleted groups and feeds; the same object when they name none. */
+export function withoutGone(f: Facets, gone: Gone): Facets {
+  const groups = f.groups.filter((g) => !gone.group.has(g));
+  const feeds = f.feeds.filter((x) => x == null || !gone.feed.has(x));
+  return groups.length === f.groups.length && feeds.length === f.feeds.length ? f : { ...f, groups, feeds };
+}
+
+/** The keys of the deleted lists among the scopes. */
+export const goneKeys = (gone: Gone) =>
+  new Set([
+    ...[...gone.group].map((id) => scopeKey({ kind: "group", id })),
+    ...[...gone.feed].map((id) => scopeKey({ kind: "feed", id })),
+    ...[...gone.folder].map((id) => scopeKey({ kind: "folder", id })),
+  ]);
+
 /** Mirrors classify.rs DIFFICULTIES (1-5), judged for a working software engineer. */
 export const DIFFICULTY_LABELS: PlainKey[] = [
   "library.difficulty1",
