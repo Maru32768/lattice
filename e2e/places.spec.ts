@@ -347,3 +347,24 @@ test("a list whose filters were cleared, chip by chip or with Esc, shows none ag
   await expect(listTitle(app)).toHaveText("未読");
   await expect(chips(app)).toHaveCount(0);
 });
+
+test("重要 keeps one set of filters, also across a threshold changed while another list is shown", async ({ app }) => {
+  await navItem(app, "重要").click();
+  await filterByTag(app, "postgres");
+  await navItem(app, "すべての記事").click();
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app
+    .getByRole("navigation", { name: "設定カテゴリ" })
+    .locator(".ni")
+    .filter({ has: app.locator(".label").getByText("重要度", { exact: true }) })
+    .click();
+  const threshold = app.locator("#relevance-threshold");
+  await threshold.selectOption("5");
+  await threshold.evaluate((e) => (e as HTMLElement).blur());
+  await app.keyboard.press("Escape");
+  await expect(listTitle(app)).toHaveText("すべての記事");
+  await expect(navItem(app, "重要").locator(".n"), "the new threshold took effect").toHaveText("1");
+  await navItem(app, "重要").click();
+  await expect(listTitle(app)).toHaveText("重要");
+  await expect(chips(app)).toHaveText("タグpostgres");
+});
