@@ -46,6 +46,20 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
   await expect(menu).toHaveCount(0);
 });
 
+test("a menu over a page whose still could not be taken mutes the page while it is hidden", async ({ app }) => {
+  await openPage(app);
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) => (cmd === "browser_capture" ? Promise.resolve(null) : invoke(cmd, args, options));
+  });
+  await app.locator(".docbar [aria-haspopup=menu]").last().click();
+  await expect(app.getByRole("menu")).toBeAttached();
+  await expect.poll(() => callsOf(app, "browser_hide"), "nothing of the page is on screen").toEqual([expect.objectContaining({ covered: false })]);
+  await expect(app.locator(".page-still")).toHaveCount(0);
+});
+
 test("a dialog's backdrop over the page webview waits for it too, so the page darkens with the rest", async ({ app }) => {
   await openPage(app);
   await app.evaluate(() => {
