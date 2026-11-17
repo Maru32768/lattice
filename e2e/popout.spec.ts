@@ -2,6 +2,7 @@
 // crosses windows (the window commands, `emit_to` requests, storage keys) is read from the calls.
 import { test, expect, list, callsOf } from "./harness.ts";
 import { ARTICLES, CHAT_MESSAGES } from "./fixtures.ts";
+import { NO_FACETS, scopeKey } from "../src/library/library.ts";
 import type { Page } from "@playwright/test";
 
 const [a, b] = ARTICLES;
@@ -96,7 +97,7 @@ test("a document window writes none of the filters kept for each list", async ({
 });
 
 test("a document window's palette narrows by none of the filters the main window keeps", async ({ shell }) => {
-  const kept = { genres: [], tags: ["postgres"], tagMode: "all", feeds: [], groups: [], difficulty: [], relevance: [], state: [] };
+  const kept = { ...NO_FACETS, tags: ["postgres"] };
   await seed(shell, {
     [DOC]: JSON.stringify({
       root: {
@@ -110,7 +111,7 @@ test("a document window's palette narrows by none of the filters the main window
       },
       focused: 1,
     }),
-    "lattice.scopeFacets": JSON.stringify([[JSON.stringify({ kind: "all" }), kept]]),
+    "lattice.scopeFacets": JSON.stringify([[scopeKey({ kind: "all" }), kept]]),
   });
   await shell.goto("/?window=doc-1");
   await expect(shell.locator(".art-title")).toHaveText(a.title!);
