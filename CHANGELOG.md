@@ -7,6 +7,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 ### Fixed
 
 - Updating Lattice installed the Microsoft Visual C++ runtime again whenever Microsoft had released a newer one, which could take several minutes while other apps were open. It is now installed only when the one on the computer is older than Lattice needs.
+- When the computer ran out of memory, Lattice could close without leaving a reason anywhere. The log folder's `stderr.log` now records the allocation that failed.
 
 ## [0.4.0] - 2026-11-17
 

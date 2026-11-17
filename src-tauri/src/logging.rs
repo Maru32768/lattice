@@ -11,10 +11,15 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
 
 const KEEP_DAYS: usize = 14;
+const TIME: &str = "%Y-%m-%d %H:%M:%S%.3f";
 
 /// `RUST_LOG` overrides the level (`RUST_LOG=lattice_core=debug,info`) for a one-off investigation.
 pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     subscribe(dir, EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))?;
+    #[cfg(windows)]
+    if let Err(e) = stderr_to_file(dir) {
+        log::warn!("stderr goes nowhere, so a crash from low memory leaves no reason: {e}");
+    }
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         // A release build has no console, so a panic outside a job (which records it as its error)
@@ -25,12 +30,33 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Without a console (a release build), stderr goes to `stderr.log` in the log folder. Rust reports a failed allocation
+/// (`memory allocation of … bytes failed`) only on stderr and then aborts, past any panic hook, so a crash from low memory
+/// left nothing behind. Each run starts with a line naming its pid, which the crash's Windows Error Reporting event names too.
+#[cfg(windows)]
+#[allow(unsafe_code, reason = "reads and sets the process's stderr handle")]
+fn stderr_to_file(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    use std::os::windows::io::IntoRawHandle;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, SetStdHandle};
+    // SAFETY: reads a process-wide setting, no pointers.
+    if unsafe { GetStdHandle(STD_ERROR_HANDLE) }.is_ok() {
+        return Ok(());
+    }
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("stderr.log"))?;
+    writeln!(file, "{} started, pid {}", chrono::Local::now().format(TIME), std::process::id())?;
+    // SAFETY: `into_raw_handle` gives up the open file's handle, so it stays open for the rest of the process.
+    unsafe { SetStdHandle(STD_ERROR_HANDLE, HANDLE(file.into_raw_handle())) }?;
+    Ok(())
+}
+
 fn subscribe(dir: &Path, filter: EnvFilter) -> Result<(), Box<dyn std::error::Error>> {
     // Written synchronously, not through tracing-appender's background thread: the lines just before a
     // crash are the ones worth having.
     let file =
         RollingFileAppender::builder().rotation(Rotation::DAILY).filename_prefix("lattice").filename_suffix("log").max_log_files(KEEP_DAYS).build(dir)?;
-    let time = ChronoLocal::new("%Y-%m-%d %H:%M:%S%.3f".to_string());
+    let time = ChronoLocal::new(TIME.to_string());
     tracing_subscriber::registry()
         .with(filter)
         .with(fmt::layer().with_writer(file).with_ansi(false).with_timer(time.clone()))
@@ -69,6 +95,48 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         let text = text.unwrap();
         assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
+    }
+
+    /// Rust reports a failed allocation only on stderr and then aborts, so the test runs in a child of this test binary.
+    #[cfg(windows)]
+    #[allow(unsafe_code, reason = "takes away the child's stderr handle")]
+    #[test]
+    fn an_allocation_failure_reaches_stderr_or_without_a_console_the_log_folder() {
+        const NAME: &str = "logging::tests::an_allocation_failure_reaches_stderr_or_without_a_console_the_log_folder";
+        const DIR: &str = "LATTICE_TEST_LOG_DIR";
+        const NO_CONSOLE: &str = "LATTICE_TEST_NO_CONSOLE";
+        if let Some(dir) = std::env::var_os(DIR) {
+            if std::env::var_os(NO_CONSOLE).is_some() {
+                use windows::Win32::System::Console::{STD_ERROR_HANDLE, SetStdHandle};
+                // SAFETY: sets a process-wide setting to null, as a release build starts without a console.
+                unsafe { SetStdHandle(STD_ERROR_HANDLE, windows::Win32::Foundation::HANDLE::default()) }.unwrap();
+            }
+            init(Path::new(&dir)).unwrap();
+            std::alloc::handle_alloc_error(std::alloc::Layout::from_size_align(12345, 8).unwrap());
+        }
+        let failure = "memory allocation of 12345 bytes failed";
+        for no_console in [false, true] {
+            let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+            let dir = std::env::temp_dir().join(format!("lattice-stderr-{}-{nanos}", std::process::id()));
+            let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+            child.args(["--exact", NAME]).env(DIR, &dir).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
+            if no_console {
+                child.env(NO_CONSOLE, "1");
+            }
+            let child = child.spawn().unwrap();
+            let pid = child.id();
+            let out = child.wait_with_output().unwrap();
+            let file = std::fs::read_to_string(dir.join("stderr.log"));
+            std::fs::remove_dir_all(&dir).unwrap();
+            assert!(!out.status.success(), "the child should have aborted");
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            if no_console {
+                let file = file.unwrap();
+                assert!(file.contains(&format!("started, pid {pid}\n")) && file.contains(failure), "{file}");
+            } else {
+                assert!(stderr.contains(failure) && file.is_err(), "{stderr}");
+            }
+        }
     }
 
     #[test]

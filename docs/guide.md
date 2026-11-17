@@ -1186,4 +1186,4 @@ If **Settings › Updates** says automatic updates are not configured, that buil
 
 ### Where are the logs?
 
-Logs are in `%LOCALAPPDATA%\Lattice\logs\` (`data\logs` in a portable copy). **Settings › Logs & storage** shows the actual location. The logs record failed jobs, backup results and the time each AI job took.
+Logs are in `%LOCALAPPDATA%\Lattice\logs\` (`data\logs` in a portable copy). **Settings › Logs & storage** shows the actual location. The logs record failed jobs, backup results and the time each AI job took. If Lattice closes because your computer ran out of memory, `stderr.log` in the same folder records the allocation that failed.
