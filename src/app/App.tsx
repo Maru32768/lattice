@@ -184,10 +184,11 @@ export default function App() {
   // 重要 always uses the current threshold, also when it was picked under an earlier one.
   const scope: Scope =
     scopeState.kind === "important" && importantMin != null && scopeState.min !== importantMin ? { kind: "important", min: importantMin } : scopeState;
-  const [facets, setFacets] = useState(() => facetsOf(scopeState));
+  // A pop-out shows no list: the main window's filters would narrow its palette unseen, and what it holds would
+  // overwrite what the main window keeps.
+  const [facets, setFacets] = useState(() => (IS_MAIN ? facetsOf(scopeState) : NO_FACETS));
   const facetsKey = scopeKey(scope);
   useEffect(() => {
-    // A pop-out shows no list: what it holds would overwrite what the main window keeps.
     if (IS_MAIN) {
       scopeFacets.set(facetsKey, activeDims(facets).length > 0 ? facets : null);
     }

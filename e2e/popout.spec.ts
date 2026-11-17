@@ -95,6 +95,19 @@ test("a document window writes none of the filters kept for each list", async ({
   expect(await stored(shell, "lattice.scopeFacets")).toBeNull();
 });
 
+test("a document window's palette narrows by none of the filters the main window keeps", async ({ shell }) => {
+  const kept = { genres: [], tags: ["postgres"], tagMode: "all", feeds: [], groups: [], difficulty: [], relevance: [], state: [] };
+  await seed(shell, {
+    [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }], active: 2 }, focused: 1 }),
+    "lattice.scopeFacets": JSON.stringify([[JSON.stringify({ kind: "all" }), kept]]),
+  });
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  await shell.keyboard.press("Control+p");
+  await expect(shell.locator(".pal-where")).toContainText("すべての記事");
+  await expect(shell.locator(".pal-where")).not.toContainText("postgres");
+});
+
 test("closing a document window closes its tabs with it: none go back to the main window", async ({ shell }) => {
   const tabs = [
     { kind: "reader", id: 2, articleId: a.id },
