@@ -196,7 +196,7 @@ export default function App() {
       scopeFacets.set(facetsKey, activeDims(facets).length > 0 ? facets : null);
     }
   }, [facetsKey, facets]);
-  // A deletion (from the sidebar, the feeds screen or the CLI) shows as an id gone from the next lists. Its list and its
+  // A deletion (from the sidebar or the feeds screen) shows as an id gone from the next lists. Its list and its
   // filter values leave what is kept: SQLite gives the highest id to the next group, feed or folder made.
   const listedIds = useRef<Gone | null>(null);
   useEffect(() => {
