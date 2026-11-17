@@ -161,6 +161,49 @@ test("the chat scope offers each open article and all of them, and follows the t
   await expect(opened).toHaveText([a.title!]);
 });
 
+test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const provider = app.getByLabel("回答するAI", { exact: true });
+  const model = app.getByLabel("回答するモデル", { exact: true });
+  const modelId = app.getByLabel("回答するモデルのID");
+  const effort = app.getByLabel("回答するAIのeffort");
+  const asked = async () => (await callsOf(app, "chat_ask")).map((x) => (x as { llm: unknown }).llm);
+  const q = app.locator("#chat-q");
+  const pickThread = async (title: string) => {
+    await app.getByRole("button", { name: "会話を選ぶ" }).click();
+    await app.getByRole("menuitemradio", { name: title }).click();
+  };
+  await expect(provider).toHaveValue("");
+  await expect(model).toHaveCount(0);
+
+  await provider.selectOption({ label: "Claude CLI" });
+  await model.selectOption({ label: "その他(モデルIDを入力)" });
+  await modelId.fill(" claude-opus-5-5 ");
+  await effort.selectOption("max");
+  await q.fill("WALとは？");
+  await q.press("Control+Enter");
+  const opus = { kind: "claude_cli", model: "claude-opus-5-5", effort: "max" };
+  await expect.poll(asked).toEqual([opus]);
+  await expect(app.locator(".chat .answer-meta")).toContainText("claude-opus-5-5");
+
+  // A new conversation starts on the default; a saved one brings back what it chose.
+  await app.getByRole("button", { name: "新しい会話" }).click();
+  await expect(provider).toHaveValue("");
+  await pickThread("Kafkaのexactly-once");
+  await expect(provider).toHaveValue("anthropic");
+  await expect(model).toHaveValue("claude-haiku-5-5");
+  await expect(effort).toHaveValue("low");
+  await pickThread("WALとは？");
+  await expect(modelId).toHaveValue("claude-opus-5-5");
+  await expect(effort).toHaveValue("max");
+
+  await provider.selectOption({ label: "既定(設定のAIプロバイダ)" });
+  await expect(model).toHaveCount(0);
+  await q.fill("続き");
+  await q.press("Control+Enter");
+  await expect.poll(asked).toEqual([opus, null]);
+});
+
 /** `chat_ask` waits for `failSend()`, so what the user does while a send is under way can be tried. */
 const holdSends = (page: Page) =>
   page.evaluate(() => {

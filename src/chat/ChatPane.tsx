@@ -1,5 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from "react";
-import { api, type ChatMessage, type ChatThread, type Citation } from "../api";
+import { api, type ChainEntry, type ChatMessage, type ChatThread, type Citation, type Effort, type ProviderKind } from "../api";
+import { CUSTOM, EFFORTS, PROVIDERS, isCustomModel, presets } from "../settings/providers";
 import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations, withQuote } from "./chat";
 import { type FilterGroup, parseFilterKey } from "../library/scopes";
 import { FilterOptgroups } from "../library/FilterOptgroups";
@@ -15,6 +16,13 @@ const MODE_LABEL = { full: "chatPane.modeFull", retrieval: "chatPane.modeRetriev
 
 /** `newTab`: Ctrl / middle click. */
 type OnCite = (c: Citation, newTab: boolean) => void;
+
+/** The model a conversation asks, as its selects show it; null is the AI provider chain in Settings. */
+type Choice = { kind: ProviderKind; model: string; custom: boolean; effort: Effort | "" } | null;
+
+const toChoice = (e: ChainEntry | null): Choice =>
+  e && { kind: e.kind, model: e.model ?? "", custom: isCustomModel(e.kind, e.model ?? ""), effort: e.effort ?? "" };
+const toEntry = (c: Choice): ChainEntry | null => c && { kind: c.kind, model: c.model.trim() || null, effort: c.effort || null };
 
 /** Click props for a citation: Ctrl / middle click opens it in a new tab, as in the list. */
 const citeClick = (c: Citation, onCite: OnCite) => ({
@@ -100,6 +108,7 @@ export function ChatPane({
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [choice, setChoice] = useState<Choice>(null);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
   const [picked, setPicked] = useState(request != null);
   const [question, setQuestion] = useState(request?.quote ? withQuote("", request.quote) : "");
@@ -163,6 +172,7 @@ export function ChatPane({
     setError(null);
     setUnsent(null);
     setThreadId(id);
+    setChoice(toChoice(threads.find((t) => t.id === id)?.llm ?? null));
     const ms =
       id == null
         ? []
@@ -201,7 +211,7 @@ export function ChatPane({
     setError(null);
     setUnsent(null);
     try {
-      const m = await api.chatAsk(threadId, q, s);
+      const m = await api.chatAsk(threadId, q, s, toEntry(choice));
       setThreadId(m.thread_id);
       setMessages((ms) => [...ms, m]);
       void loadThreads();
@@ -309,6 +319,72 @@ export function ChatPane({
             <Icon name="down" size="sm" />
           </label>
           {last && MODE_LABEL[last.mode] && <span className="push">{t(MODE_LABEL[last.mode]!)}</span>}
+        </div>
+        <div className="chat-scope chat-llm">
+          {t("chatPane.llm")}
+          <label className="chip scope-chip">
+            <select
+              value={choice?.kind ?? ""}
+              onChange={(e) => {
+                const kind = e.target.value as ProviderKind | "";
+                setChoice(kind ? { kind, model: "", custom: false, effort: "" } : null);
+              }}
+              aria-label={t("chatPane.llmLabel")}
+            >
+              <option value="">{t("chatPane.llmDefault")}</option>
+              {PROVIDERS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <Icon name="down" size="sm" />
+          </label>
+          {choice && (
+            <>
+              <label className="chip scope-chip">
+                <select
+                  value={choice.custom ? CUSTOM : choice.model}
+                  onChange={(e) => setChoice({ ...choice, ...(e.target.value === CUSTOM ? { custom: true } : { model: e.target.value, custom: false }) })}
+                  aria-label={t("chatPane.llmModel")}
+                >
+                  {presets(t)[choice.kind].map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value={CUSTOM}>{t("modelSettings.other")}</option>
+                </select>
+                <Icon name="down" size="sm" />
+              </label>
+              {choice.custom && (
+                <input
+                  className="input sm mono"
+                  value={choice.model}
+                  onChange={(e) => setChoice({ ...choice, model: e.target.value })}
+                  placeholder={t("modelSettings.modelId")}
+                  aria-label={t("chatPane.llmModelId")}
+                  spellCheck={false}
+                />
+              )}
+              <label className="chip scope-chip">
+                <select
+                  value={choice.effort}
+                  onChange={(e) => setChoice({ ...choice, effort: e.target.value as Effort | "" })}
+                  aria-label={t("chatPane.llmEffort")}
+                  title={t("modelSettings.effortHint")}
+                >
+                  <option value="">effort: {t(EFFORTS[choice.kind].label)}</option>
+                  {EFFORTS[choice.kind].values.map((v) => (
+                    <option key={v} value={v}>
+                      effort: {v}
+                    </option>
+                  ))}
+                </select>
+                <Icon name="down" size="sm" />
+              </label>
+            </>
+          )}
         </div>
         <div className="chat-log" ref={log}>
           {messages.length === 0 && !pending && !unsent && <p className="muted chat-hint">{t("chatPane.intro")}</p>}

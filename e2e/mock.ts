@@ -614,10 +614,12 @@ export const handlers = {
   export_vocab_csv: (): string => "C:\\Users\\e2e\\AppData\\Roaming\\Lattice\\exports\\lattice-vocab-20261020T030000Z.csv",
   search_blocks: ({ query, filter, articles }: { query: string; filter: ArticleFilter | null; articles?: number[] | null }): SearchResult =>
     search(query, filter, articles ?? null),
-  chat_ask: ({ threadId, question, scope }: { threadId: number | null; question: string; scope: ChatScope }): ChatMessage => {
+  chat_ask: ({ threadId, question, scope, llm }: { threadId: number | null; question: string; scope: ChatScope; llm: ChainEntry | null }): ChatMessage => {
     const thread = threadId ?? Math.max(0, ...threads.map((t) => t.id)) + 1;
     if (threadId == null) {
-      threads.unshift({ id: thread, title: question, updated_at: new Date(NOW).toISOString() });
+      threads.unshift({ id: thread, title: question, updated_at: new Date(NOW).toISOString(), llm });
+    } else {
+      threads.find((t) => t.id === thread)!.llm = llm;
     }
     const m: ChatMessage = {
       id: messages.length + 1,
@@ -627,8 +629,8 @@ export const handlers = {
       citations: [],
       scope,
       mode: "retrieval",
-      provider: "claude_cli",
-      model: null,
+      provider: llm?.kind ?? "claude_cli",
+      model: llm?.model ?? null,
       created_at: new Date(NOW).toISOString(),
     };
     messages.push(m);

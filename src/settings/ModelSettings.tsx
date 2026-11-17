@@ -5,59 +5,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { api, type ChainEntry, type Effort, type KeySource, type LlmSettings, type ProviderHealth, type ProviderKind } from "../api";
 import { SetRow } from "../ui/SetRow";
 import { ProviderHealthNotice } from "./ProviderHealth";
-import { translatorFor, useT, type PlainKey, type T } from "../i18n";
-
-const PROVIDERS: { value: ProviderKind; label: string }[] = [
-  { value: "claude_cli", label: "Claude CLI" },
-  { value: "codex_cli", label: "Codex CLI" },
-  { value: "openai", label: "OpenAI API" },
-  { value: "gemini", label: "Gemini API" },
-  { value: "anthropic", label: "Anthropic API" },
-];
-
-// "" = the provider's default. API defaults mirror DEFAULT_MODEL in openai.rs / gemini.rs / anthropic.rs.
-const presets = (t: T): Record<ProviderKind, { value: string; label: string }[]> => ({
-  claude_cli: [
-    { value: "", label: t("modelSettings.cliDefault") },
-    { value: "haiku", label: t("modelSettings.haiku") },
-    { value: "sonnet", label: t("modelSettings.sonnet") },
-    { value: "opus", label: t("modelSettings.opus") },
-  ],
-  codex_cli: [
-    { value: "", label: t("modelSettings.cliDefault") },
-    { value: "gpt-6-luna", label: t("modelSettings.luna") },
-    { value: "gpt-6.1-sol", label: t("modelSettings.sol") },
-    { value: "gpt-6-astra", label: t("modelSettings.astra") },
-  ],
-  openai: [
-    { value: "", label: t("modelSettings.defaultOpenai") },
-    { value: "gpt-6.1-sol", label: "gpt-6.1-sol" },
-    { value: "gpt-6-astra", label: "gpt-6-astra" },
-  ],
-  gemini: [
-    { value: "", label: t("modelSettings.defaultGemini") },
-    { value: "gemini-pro-latest", label: "gemini-pro-latest" },
-  ],
-  anthropic: [
-    { value: "", label: t("modelSettings.defaultAnthropic") },
-    { value: "claude-sonnet-5-5", label: "claude-sonnet-5-5" },
-    { value: "claude-haiku-5-5", label: t("modelSettings.claudeHaiku") },
-  ],
-});
-
-// Mirrors ProviderKind::efforts in chain.rs. Codex runs at low unless set (codex.rs DEFAULT_EFFORT).
-const ALL_EFFORTS: Effort[] = ["low", "medium", "high", "xhigh", "max"];
-const EFFORTS: Record<ProviderKind, { label: PlainKey; values: Effort[] }> = {
-  claude_cli: { label: "modelSettings.cliDefault", values: ALL_EFFORTS },
-  codex_cli: { label: "modelSettings.defaultLow", values: ALL_EFFORTS },
-  openai: { label: "modelSettings.modelDefault", values: ALL_EFFORTS },
-  gemini: { label: "modelSettings.modelDefault", values: ["low", "medium", "high"] },
-  anthropic: { label: "modelSettings.modelDefault", values: ALL_EFFORTS },
-};
+import { CUSTOM, EFFORTS, PROVIDERS, isCustomModel, presets } from "./providers";
+import { useT, type T } from "../i18n";
 
 const KEYS = { openai: ["OpenAI", "OPENAI_API_KEY"], gemini: ["Gemini", "GEMINI_API_KEY"], anthropic: ["Anthropic", "ANTHROPIC_API_KEY"] } as const;
-
-const CUSTOM = "__custom";
 
 interface Slot {
   /** Stable key for drag and drop. */
@@ -76,8 +27,7 @@ const empty = (): Slot => ({ id: nextId++, kind: "", model: "", custom: false, e
 function toSlots(chain: ChainEntry[]): Slot[] {
   const slots = chain.slice(0, 3).map(({ kind, model, effort }): Slot => {
     const m = model ?? "";
-    // Only the preset values are read, which are the same in every language.
-    return { id: nextId++, kind, model: m, custom: !presets(translatorFor("ja"))[kind].some((p) => p.value === m), effort: effort ?? "" };
+    return { id: nextId++, kind, model: m, custom: isCustomModel(kind, m), effort: effort ?? "" };
   });
   while (slots.length < 3) {
     slots.push(empty());

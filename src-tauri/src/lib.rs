@@ -1039,9 +1039,17 @@ async fn search_blocks(app: State<'_, App>, query: String, filter: Option<Articl
 }
 
 #[tauri::command]
-async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope) -> Result<ChatMessage, String> {
+async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope, llm: Option<ChainEntry>) -> Result<ChatMessage, String> {
     let _permit = app.chat_llm.acquire().await.map_err(err)?;
-    chat::ask(&app.store, &app.providers.llm, &app.providers.embedder, thread_id, &question, scope).await
+    let (store, embedder) = (&app.store, &app.providers.embedder);
+    match llm.map(ChainEntry::normalized).transpose().map_err(|x| msg!("chat.effortUnsupported", effort = x.as_str()))? {
+        // Only the model the user chose: an answer from another one would pass for its answer.
+        Some(choice) => {
+            let one = LlmChain::new(vec![chain::build(store, &choice)?]);
+            chat::ask(store, &one, Some(&choice), embedder, thread_id, &question, scope).await
+        }
+        None => chat::ask(store, &app.providers.llm, None, embedder, thread_id, &question, scope).await,
+    }
 }
 
 #[tauri::command(async)]

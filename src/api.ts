@@ -144,7 +144,8 @@ export const api = {
   /** Writes an Anki-importable CSV into the exports folder; returns its path. */
   exportVocabCsv: () => invoke<string>("export_vocab_csv"),
   search: (query: string, articles: number[]) => invoke<SearchResult>("search_blocks", { query, articles }),
-  chatAsk: (threadId: number | null, question: string, scope: ChatScope) => invoke<ChatMessage>("chat_ask", { threadId, question, scope }),
+  chatAsk: (threadId: number | null, question: string, scope: ChatScope, llm: ChainEntry | null) =>
+    invoke<ChatMessage>("chat_ask", { threadId, question, scope, llm }),
   chatThreads: () => invoke<ChatThread[]>("chat_threads"),
   chatMessages: (threadId: number) => invoke<ChatMessage[]>("chat_messages", { threadId }),
   chatDeleteThread: (threadId: number) => invoke<void>("chat_delete_thread", { threadId }),

@@ -158,7 +158,7 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
     }
     for t in store.chat_threads().map_err(err)? {
         let messages = store.chat_messages(t.id).map_err(err)?;
-        line(out, &json!({"type": "chat_thread", "id": t.id, "title": t.title, "updated_at": t.updated_at, "messages": messages}))?;
+        line(out, &json!({"type": "chat_thread", "id": t.id, "title": t.title, "updated_at": t.updated_at, "llm": t.llm, "messages": messages}))?;
     }
     Ok(n)
 }

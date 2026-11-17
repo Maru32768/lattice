@@ -8,6 +8,7 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::chain::ChainEntry;
 use crate::embed::EmbeddingProvider;
 use crate::instructions;
 use crate::ir::PROSE_KINDS;
@@ -125,6 +126,8 @@ pub struct ChatThread {
     pub id: i64,
     pub title: String,
     pub updated_at: String,
+    /// The model its last question chose; None is the AI provider chain in Settings.
+    pub llm: Option<ChainEntry>,
 }
 
 /// A block as sent to the model.
@@ -208,8 +211,13 @@ impl Store {
 
     pub fn chat_threads(&self) -> Result<Vec<ChatThread>> {
         let c = self.conn();
-        let mut st = c.prepare("SELECT id, title, updated_at FROM chat_threads ORDER BY updated_at DESC, id DESC")?;
-        st.query_map([], |r| Ok(ChatThread { id: r.get(0)?, title: r.get(1)?, updated_at: r.get(2)? }))?.collect()
+        let mut st = c.prepare("SELECT id, title, updated_at, llm FROM chat_threads ORDER BY updated_at DESC, id DESC")?;
+        st.query_map([], |r| {
+            // One that no longer parses (a provider since removed) falls back to the chain instead of hiding every thread.
+            let llm = r.get::<_, Option<String>>(3)?.and_then(|s| serde_json::from_str(&s).ok());
+            Ok(ChatThread { id: r.get(0)?, title: r.get(1)?, updated_at: r.get(2)?, llm })
+        })?
+        .collect()
     }
 
     pub fn chat_messages(&self, thread_id: i64) -> Result<Vec<ChatMessage>> {
@@ -243,11 +251,13 @@ impl Store {
         Ok(())
     }
 
-    /// Appends a turn, creating the thread (titled by the question) when `thread_id` is None.
+    /// Appends a turn, creating the thread (titled by the question) when `thread_id` is None, and
+    /// records `llm` as the thread's model.
     #[allow(clippy::too_many_arguments, reason = "the parts of one request, each used once")]
     fn save_chat_message(
         &self,
         thread_id: Option<i64>,
+        llm: Option<&ChainEntry>,
         question: &str,
         answer: &str,
         citations: Vec<Citation>,
@@ -258,13 +268,14 @@ impl Store {
     ) -> Result<ChatMessage> {
         let mut c = self.conn();
         let tx = c.transaction()?;
+        let llm = llm.map(to_json);
         let thread_id = match thread_id {
             Some(id) => {
-                tx.execute("UPDATE chat_threads SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?1", [id])?;
+                tx.execute("UPDATE chat_threads SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now'), llm = ?2 WHERE id = ?1", params![id, llm])?;
                 id
             }
             None => {
-                tx.execute("INSERT INTO chat_threads (title) VALUES (?1)", [cut(question, 40)])?;
+                tx.execute("INSERT INTO chat_threads (title, llm) VALUES (?1, ?2)", params![cut(question, 40), llm])?;
                 tx.last_insert_rowid()
             }
         };
@@ -291,10 +302,12 @@ impl Store {
 }
 
 /// Answers `question` from the articles in `scope` and stores the turn in `thread_id`
-/// (a new thread when None).
+/// (a new thread when None). `llm` is built from `choice`, which the thread records (None: the chain).
+#[allow(clippy::too_many_arguments, reason = "the parts of one request, each used once")]
 pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
     store: &Store,
     llm: &L,
+    choice: Option<&ChainEntry>,
     embedder: &E,
     thread_id: Option<i64>,
     question: &str,
@@ -320,14 +333,14 @@ pub async fn ask<L: LlmProvider, E: EmbeddingProvider>(
     };
     if sources.is_empty() {
         // Mode "none" answers are the app's own message, translated by the UI.
-        return store.save_chat_message(thread_id, question, &msg!("chat.noSources"), Vec::new(), scope, "none", None, None).map_err(e);
+        return store.save_chat_message(thread_id, choice, question, &msg!("chat.noSources"), Vec::new(), scope, "none", None, None).map_err(e);
     }
     let (input, sent) = input_text(&history, &sources, question, limits.context_chars);
     let system = instructions::load(store)?.for_chat().system(RULES, UNTRUSTED);
     let c = llm.complete_json(&system, &input, &schema()).await.map_err(|e| e.to_string())?;
     let answer = c.value["answer"].as_str().map(str::trim).filter(|a| !a.is_empty()).ok_or("malformed chat answer")?;
     let citations = citations(store, &c.value, answer, &sources[..sent]).map_err(e)?;
-    store.save_chat_message(thread_id, question, answer, citations, scope, mode, Some(&c.provider), c.model).map_err(e)
+    store.save_chat_message(thread_id, choice, question, answer, citations, scope, mode, Some(&c.provider), c.model).map_err(e)
 }
 
 async fn retrieve<E: EmbeddingProvider>(
@@ -544,7 +557,7 @@ mod tests {
     async fn article_scope_sends_full_text_validates_citations_and_persists() {
         let (s, a, _, _) = library().await;
         let llm = Fake::default();
-        let m = ask(&s, &llm, &Letters, None, " WAL とは？ ", Scope::Article { id: a }).await.unwrap();
+        let m = ask(&s, &llm, None, &Letters, None, " WAL とは？ ", Scope::Article { id: a }).await.unwrap();
         assert_eq!(m.mode, "full");
         let input = llm.inputs.lock().unwrap()[0].clone();
         assert!(input.contains("# 記事: WAL basics") && input.contains("[1] ## Durability") && input.contains("alphaword"));
@@ -556,7 +569,7 @@ mod tests {
         assert_eq!(m.citations[1].heading.as_deref(), Some("Durability"));
 
         // Follow-up in the same thread carries the conversation; everything survives a reload.
-        let m2 = ask(&s, &llm, &Letters, Some(m.thread_id), "fsync は？", Scope::Article { id: a }).await.unwrap();
+        let m2 = ask(&s, &llm, None, &Letters, Some(m.thread_id), "fsync は？", Scope::Article { id: a }).await.unwrap();
         assert!(llm.inputs.lock().unwrap()[1].contains("<conversation>\nQ: WAL とは？"));
         let threads = s.chat_threads().unwrap();
         assert_eq!((threads.len(), threads[0].title.as_str()), (1, "WAL とは？"));
@@ -572,10 +585,30 @@ mod tests {
         let custom =
             instructions::Settings { profile: "Postgres の運用担当".into(), summary: "要約だけの指示".into(), chat: "結論から書く".into() };
         instructions::save(&s, &custom).unwrap();
-        ask(&s, &llm, &Letters, None, "WAL とは？", Scope::Article { id: a }).await.unwrap();
+        ask(&s, &llm, None, &Letters, None, "WAL とは？", Scope::Article { id: a }).await.unwrap();
         let system = llm.systems.lock().unwrap().last().unwrap().clone();
         assert!(system.contains("Postgres の運用担当") && system.contains("結論から書く") && !system.contains("要約だけの指示"), "{system}");
         assert!(system.ends_with(UNTRUSTED));
+    }
+
+    #[tokio::test]
+    async fn a_thread_keeps_the_model_its_last_question_chose() {
+        let (s, a, _, _) = library().await;
+        let llm = Fake::default();
+        let opus = ChainEntry { kind: crate::chain::ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(crate::llm::Effort::High) };
+        let thread = ask(&s, &llm, Some(&opus), &Letters, None, "WAL とは？", Scope::Article { id: a }).await.unwrap().thread_id;
+        let llm_of = || s.chat_threads().unwrap()[0].llm.clone();
+        assert_eq!(llm_of(), Some(opus.clone()));
+        ask(&s, &llm, None, &Letters, Some(thread), "fsync は？", Scope::Article { id: a }).await.unwrap();
+        assert_eq!(llm_of(), None, "back to the chain");
+
+        // An empty scope never reaches the model, and still records the choice.
+        let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
+        assert_eq!(ask(&s, &llm, Some(&opus), &Letters, Some(thread), "WAL は？", none).await.unwrap().mode, "none");
+        assert_eq!(llm_of(), Some(opus));
+
+        s.exec_for_test(&format!(r#"UPDATE chat_threads SET llm = '{{"kind":"gone","model":null}}' WHERE id = {thread}"#));
+        assert_eq!(llm_of(), None, "an unreadable choice falls back to the chain");
     }
 
     #[tokio::test]
@@ -584,7 +617,7 @@ mod tests {
         let llm = Fake::default();
         let tag = Scope::Filter { filter: ArticleFilter::Tag { name: "db".into() } };
         assert_eq!(s.scope_articles(&tag).unwrap(), Some(vec![b]));
-        let m = ask(&s, &llm, &Letters, None, "checkpoints", tag).await.unwrap();
+        let m = ask(&s, &llm, None, &Letters, None, "checkpoints", tag).await.unwrap();
         assert_eq!(m.mode, "retrieval");
         let input = llm.inputs.lock().unwrap()[0].clone();
         assert!(input.contains("# 記事: Tuning") && !input.contains("alphaword") && !input.contains("gammaword"));
@@ -594,13 +627,13 @@ mod tests {
 
         // All articles: too big for full text, so retrieval over everything.
         let all = Scope::Filter { filter: ArticleFilter::All };
-        assert_eq!(ask(&s, &llm, &Letters, None, "gammaword", all).await.unwrap().mode, "retrieval");
+        assert_eq!(ask(&s, &llm, None, &Letters, None, "gammaword", all).await.unwrap().mode, "retrieval");
         assert!(llm.inputs.lock().unwrap()[1].contains("gammaword"));
 
         // A set of articles: their text only.
         let two = Scope::Articles { ids: vec![b, a] };
         assert_eq!(s.scope_articles(&two).unwrap(), Some(vec![b, a]));
-        let m = ask(&s, &llm, &Letters, None, "checkpoints", two.clone()).await.unwrap();
+        let m = ask(&s, &llm, None, &Letters, None, "checkpoints", two.clone()).await.unwrap();
         let input = llm.inputs.lock().unwrap()[2].clone();
         assert!(input.contains("# 記事: Tuning") && input.contains("alphaword") && !input.contains("gammaword"), "{input}");
         assert!(m.citations.iter().all(|c| c.article_id == a || c.article_id == b));
@@ -608,7 +641,7 @@ mod tests {
 
         // An empty scope answers without calling the model.
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
-        let m = ask(&s, &llm, &Letters, None, "checkpoints", none).await.unwrap();
+        let m = ask(&s, &llm, None, &Letters, None, "checkpoints", none).await.unwrap();
         assert_eq!((m.mode.as_str(), m.answer.as_str(), m.citations.len()), ("none", msg!("chat.noSources").as_str(), 0));
         assert_eq!(llm.inputs.lock().unwrap().len(), 3);
     }
@@ -622,7 +655,7 @@ mod tests {
         for (i, level) in levels.into_iter().enumerate() {
             set_budget(&s, level).unwrap();
             assert_eq!(budget(&s).unwrap(), level);
-            let m = ask(&s, &llm, &Letters, None, "checkpoints", Scope::Article { id: b }).await.unwrap();
+            let m = ask(&s, &llm, None, &Letters, None, "checkpoints", Scope::Article { id: b }).await.unwrap();
             assert_eq!(m.mode, "retrieval");
             let input = llm.inputs.lock().unwrap()[i].clone();
             assert_eq!(numbered(&input), level.limits().top_k, "{level:?}");
