@@ -259,6 +259,22 @@ test("in a narrow window the provider chain wraps instead of squeezing its selec
   }
 });
 
+test("saving the provider chain sends each step's model and effort, the untouched ones as they were loaded", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIプロバイダ", { exact: true }).click();
+  await app.getByLabel("1番目のモデル", { exact: true }).selectOption("opus");
+  await app.getByLabel("1番目のeffort", { exact: true }).selectOption("high");
+  await app.locator(".btn-row").filter({ hasText: "各CLIのログインを使います" }).getByRole("button", { name: "保存", exact: true }).click();
+  expect(await callsOf(app, "set_llm_chain")).toEqual([
+    {
+      chain: [
+        { kind: "claude_cli", model: "opus", effort: "high" },
+        { kind: "openai", model: "gpt-5-mini", effort: "low" },
+      ],
+    },
+  ]);
+});
+
 test("自分について and 要約・対話 each save their own instructions without clearing the other's", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
