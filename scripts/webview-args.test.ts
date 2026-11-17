@@ -13,6 +13,7 @@ test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-fea
   const passing = src.match(/\.additional_browser_args\((crate::)?WEBVIEW_ARGS\)/g) ?? [];
   assert.ok(builders.length > 0);
   assert.equal(passing.length, builders.length);
+  assert.equal((src.match(/\.additional_browser_args\(/g) ?? []).length, passing.length);
   const args = (/const WEBVIEW_ARGS: &str =\s*"([^"]*)"/.exec(src)?.[1] ?? "").split(" ");
   assert.ok(args.includes("--autoplay-policy=document-user-activation-required"));
   const disabled =
