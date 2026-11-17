@@ -212,8 +212,12 @@ impl Visibility {
         self.covered = covered;
     }
 
+    fn on_screen(&self) -> Option<Bounds> {
+        self.bounds.filter(|_| self.wanted)
+    }
+
     fn muted(&self) -> bool {
-        !(self.wanted && self.bounds.is_some()) && !self.covered
+        self.on_screen().is_none() && !self.covered
     }
 }
 
@@ -354,7 +358,7 @@ fn to_evict(tabs: &HashMap<String, TabState>) -> Vec<String> {
 }
 
 fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibility)) -> tauri::Result<()> {
-    let (wanted, loading, bounds, muted) = browser.with_tab(wv.label(), |t| {
+    let (on_screen, loading, muted) = browser.with_tab(wv.label(), |t| {
         f(&mut t.visibility);
         let v = &t.visibility;
         t.parked = if v.wanted {
@@ -362,11 +366,11 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
         } else {
             t.parked.or_else(|| Some(Instant::now()))
         };
-        (v.wanted, v.loading, v.bounds, v.muted())
+        (v.on_screen(), v.loading, v.muted())
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
     set_muted(wv, muted);
-    match bounds.filter(|_| wanted) {
+    match on_screen {
         Some(b) => {
             let (x, y) = if loading {
                 PARKED
