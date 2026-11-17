@@ -159,4 +159,30 @@ mod tests {
         assert!(e5.is_downloaded());
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    /// Records how many texts each call got.
+    struct Counting(Mutex<Vec<usize>>);
+    impl EmbeddingProvider for Counting {
+        fn model_id(&self) -> &str {
+            "counting"
+        }
+        async fn embed(&self, texts: Vec<String>, _: Purpose) -> Result<Vec<Vec<f32>>, String> {
+            self.0.lock().unwrap().push(texts.len());
+            Ok(texts.iter().map(|_| vec![1.0]).collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_long_article_is_embedded_and_stored_a_batch_at_a_time() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let body: String = (0..=BATCH).map(|i| format!("<p>Paragraph {i} on checkpoints and background writer tuning in production databases.</p>")).collect();
+        let html = format!("<html><head><title>Tuning</title></head><body><article>{body}</article></body></html>");
+        let fetched = crate::fetch::Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html };
+        crate::ingest::store_fetched(&s, id, &fetched).unwrap();
+        let e = Counting(Mutex::new(Vec::new()));
+        run(&s, &e, id).await.unwrap();
+        assert_eq!(*e.0.lock().unwrap(), [BATCH, 1]);
+        assert!(s.unembedded_blocks(id, "counting", PROSE_KINDS).unwrap().is_empty());
+    }
 }
