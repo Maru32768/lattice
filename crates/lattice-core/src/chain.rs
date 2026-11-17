@@ -468,6 +468,17 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_builds_its_provider_with_its_model_and_effort() {
+        let s = Store::open_in_memory().unwrap();
+        let entry = ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(Effort::High) };
+        let (llm, model) = build(&s, &entry).unwrap();
+        let AnyLlm::Claude(c) = llm else {
+            panic!("a Claude CLI entry builds the Claude CLI");
+        };
+        assert_eq!((c.model(), c.effort, model), (Some("opus".into()), Some(Effort::High), Some("opus".into())));
+    }
+
+    #[test]
     fn config_migrates_legacy_model_and_keys() {
         let s = Store::open_in_memory().unwrap();
         s.set_setting(LEGACY_MODEL_SETTING, Some("sonnet")).unwrap();
