@@ -3,7 +3,12 @@
 //! `log::` calls (ours and our dependencies') reach it through tracing-log, so a line written while
 //! a job runs carries that job's span (`job{id=… kind=… article=…}`).
 
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::fs::File;
+use std::io::Write;
 use std::path::Path;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::time::ChronoLocal;
@@ -12,13 +17,18 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 const KEEP_DAYS: usize = 14;
 const TIME: &str = "%Y-%m-%d %H:%M:%S%.3f";
+/// Lines one run may add to `out-of-memory.log`: a failed `try_reserve` is written too, and a page could set off one
+/// after another.
+const MAX_FAILURES: usize = 100;
+
+static OUT_OF_MEMORY: OnceLock<File> = OnceLock::new();
+static FAILURES: AtomicUsize = AtomicUsize::new(0);
 
 /// `RUST_LOG` overrides the level (`RUST_LOG=lattice_core=debug,info`) for a one-off investigation.
 pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     subscribe(dir, EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))?;
-    #[cfg(windows)]
-    if let Err(e) = stderr_to_file(dir) {
-        log::warn!("stderr goes nowhere, so a crash from low memory leaves no reason: {e}");
+    if let Err(e) = open_out_of_memory_log(dir) {
+        log::warn!("no out-of-memory.log, so a crash from low memory leaves no reason: {e}");
     }
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -30,24 +40,61 @@ pub fn init(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Without a console (a release build), stderr goes to `stderr.log` in the log folder. Rust reports a failed allocation
-/// (`memory allocation of … bytes failed`) only on stderr and then aborts, past any panic hook, so a crash from low memory
-/// left nothing behind. Each run starts with a line naming its pid, which the crash's Windows Error Reporting event names too.
-#[cfg(windows)]
-#[allow(unsafe_code, reason = "sets the process's stderr handle")]
-fn stderr_to_file(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Write;
-    use std::os::windows::io::{AsRawHandle, IntoRawHandle};
-    use windows::Win32::Foundation::HANDLE;
-    use windows::Win32::System::Console::{STD_ERROR_HANDLE, SetStdHandle};
-    if !std::io::stderr().as_raw_handle().is_null() {
-        return Ok(());
-    }
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("stderr.log"))?;
-    writeln!(file, "{} started, pid {}", chrono::Local::now().format(TIME), std::process::id())?;
-    // SAFETY: `into_raw_handle` gives up the open file's handle, so it stays open for the rest of the process.
-    unsafe { SetStdHandle(STD_ERROR_HANDLE, HANDLE(file.into_raw_handle())) }?;
+/// Each run starts with a line naming its pid, in hex as well: Windows Error Reporting's crash event gives it that way.
+fn open_out_of_memory_log(dir: &Path) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("out-of-memory.log"))?;
+    let pid = std::process::id();
+    writeln!(file, "{} started, pid {pid} (0x{pid:X})", chrono::Local::now().format(TIME))?;
+    let _ = OUT_OF_MEMORY.set(file);
     Ok(())
+}
+
+/// The system allocator, writing a line to `out-of-memory.log` when an allocation fails. Rust reports that only on
+/// stderr before it aborts, past any panic hook, and a release build has no console, so a crash from low memory left
+/// nothing behind. Sending stderr itself to the file would not do: Tauri prints there whatever a page sends with a wrong
+/// invoke key, as much as the page likes, beside the real key.
+struct Allocator;
+
+#[global_allocator]
+static ALLOCATOR: Allocator = Allocator;
+
+// SAFETY: every call goes to the system allocator unchanged; only its result is looked at.
+#[allow(unsafe_code, reason = "a global allocator")]
+unsafe impl GlobalAlloc for Allocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: the caller's contract, passed on as it is.
+        failed_if_null(unsafe { System.alloc(layout) }, layout.size())
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: the caller's contract, passed on as it is.
+        failed_if_null(unsafe { System.alloc_zeroed(layout) }, layout.size())
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        // SAFETY: the caller's contract, passed on as it is.
+        failed_if_null(unsafe { System.realloc(ptr, layout, new_size) }, new_size)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: the caller's contract, passed on as it is.
+        unsafe { System.dealloc(ptr, layout) }
+    }
+}
+
+/// Writes without allocating: the line is formatted into a buffer on the stack.
+fn failed_if_null(ptr: *mut u8, size: usize) -> *mut u8 {
+    if ptr.is_null()
+        && let Some(mut file) = OUT_OF_MEMORY.get()
+        && FAILURES.fetch_add(1, Ordering::Relaxed) < MAX_FAILURES
+    {
+        let mut line = [0u8; 64];
+        let mut rest = &mut line[..];
+        let _ = writeln!(rest, "memory allocation of {size} bytes failed");
+        let written = 64 - rest.len();
+        let _ = file.write_all(&line[..written]);
+    }
+    ptr
 }
 
 fn subscribe(dir: &Path, filter: EnvFilter) -> Result<(), Box<dyn std::error::Error>> {
@@ -96,46 +143,41 @@ mod tests {
         assert!(text.contains("job{id=7 kind=translate}") && text.contains("provider failed"), "{text}");
     }
 
-    /// Rust reports a failed allocation only on stderr and then aborts, so the test runs in a child of this test binary.
+    /// Rust ends the process after a failed allocation, so each case runs in a child of this test binary.
     #[cfg(windows)]
-    #[allow(unsafe_code, reason = "takes away the child's stderr handle")]
     #[test]
-    fn an_allocation_failure_reaches_stderr_or_without_a_console_the_log_folder() {
-        const NAME: &str = "logging::tests::an_allocation_failure_reaches_stderr_or_without_a_console_the_log_folder";
+    fn a_failed_allocation_is_added_to_out_of_memory_log() {
+        const NAME: &str = "logging::tests::a_failed_allocation_is_added_to_out_of_memory_log";
         const DIR: &str = "LATTICE_TEST_LOG_DIR";
-        const NO_CONSOLE: &str = "LATTICE_TEST_NO_CONSOLE";
+        // How Rust's abort ends a process on Windows. A panic in the child, as from `init` failing, ends it with 101.
+        const ABORTED: i32 = 0xC000_0409_u32 as i32;
         if let Some(dir) = std::env::var_os(DIR) {
-            if std::env::var_os(NO_CONSOLE).is_some() {
-                use windows::Win32::System::Console::{STD_ERROR_HANDLE, SetStdHandle};
-                // SAFETY: sets a process-wide setting to null, as a release build starts without a console.
-                unsafe { SetStdHandle(STD_ERROR_HANDLE, windows::Win32::Foundation::HANDLE::default()) }.unwrap();
-            }
             init(Path::new(&dir)).unwrap();
-            std::alloc::handle_alloc_error(std::alloc::Layout::from_size_align(12345, 8).unwrap());
+            // More than any computer has: the system allocator returns null, and Rust ends the process.
+            std::hint::black_box(Vec::<u8>::with_capacity(isize::MAX as usize));
+            return;
         }
-        let failure = "memory allocation of 12345 bytes failed";
-        for no_console in [false, true] {
+        let run = |prepare: &dyn Fn(&Path)| {
             let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-            let dir = std::env::temp_dir().join(format!("lattice-stderr-{}-{nanos}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("lattice-oom-{}-{nanos}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            prepare(&dir);
             let mut child = std::process::Command::new(std::env::current_exe().unwrap());
-            child.args(["--exact", NAME]).env(DIR, &dir).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped());
-            if no_console {
-                child.env(NO_CONSOLE, "1");
-            }
-            let child = child.spawn().unwrap();
+            child.args(["--exact", NAME]).env(DIR, &dir).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
+            let mut child = child.spawn().unwrap();
             let pid = child.id();
-            let out = child.wait_with_output().unwrap();
-            let file = std::fs::read_to_string(dir.join("stderr.log"));
-            std::fs::remove_dir_all(&dir).unwrap();
-            assert!(!out.status.success(), "the child should have aborted");
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if no_console {
-                let file = file.unwrap();
-                assert!(file.contains(&format!("started, pid {pid}\n")) && file.contains(failure), "{file}");
-            } else {
-                assert!(stderr.contains(failure) && file.is_err(), "{stderr}");
-            }
-        }
+            let status = child.wait().unwrap();
+            let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+            let daily = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.starts_with("lattice."));
+            let (file, daily) = (read("out-of-memory.log"), daily.map(|n| read(&n)).unwrap_or_default());
+            let _ = std::fs::remove_dir_all(&dir);
+            assert_eq!(status.code(), Some(ABORTED), "the child should have got as far as the allocation\n{file}\n{daily}");
+            (pid, file, daily)
+        };
+
+        let (pid, file, _) = run(&|_| ());
+        let expected = format!(" started, pid {pid} (0x{pid:X})\nmemory allocation of {} bytes failed\n", isize::MAX);
+        assert!(file.ends_with(&expected), "{file}");
     }
 
     #[test]
