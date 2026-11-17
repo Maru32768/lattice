@@ -595,20 +595,23 @@ mod tests {
     async fn a_thread_keeps_the_model_its_last_question_chose() {
         let (s, a, _, _) = library().await;
         let llm = Fake::default();
-        let opus = ChainEntry { kind: crate::chain::ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(crate::llm::Effort::High) };
+        let entry = |model: &str| ChainEntry { kind: crate::chain::ProviderKind::ClaudeCli, model: Some(model.into()), effort: Some(crate::llm::Effort::High) };
+        let (opus, sonnet) = (entry("opus"), entry("sonnet"));
         let thread = ask(&s, &llm, Some(&opus), &Letters, None, "WAL とは？", Scope::Article { id: a }).await.unwrap().thread_id;
-        let llm_of = || s.chat_threads().unwrap()[0].llm.clone();
-        assert_eq!(llm_of(), Some(opus.clone()));
+        let other = ask(&s, &llm, Some(&sonnet), &Letters, None, "MVCC とは？", Scope::Article { id: a }).await.unwrap().thread_id;
+        let llm_of = |id| s.chat_threads().unwrap().into_iter().find(|t| t.id == id).expect("listed").llm;
+        assert_eq!(llm_of(thread), Some(opus.clone()));
         ask(&s, &llm, None, &Letters, Some(thread), "fsync は？", Scope::Article { id: a }).await.unwrap();
-        assert_eq!(llm_of(), None, "back to the chain");
+        assert_eq!(llm_of(thread), None, "back to the chain");
 
         // An empty scope never reaches the model, and still records the choice.
         let none = Scope::Filter { filter: ArticleFilter::Tag { name: "nothing".into() } };
         assert_eq!(ask(&s, &llm, Some(&opus), &Letters, Some(thread), "WAL は？", none).await.unwrap().mode, "none");
-        assert_eq!(llm_of(), Some(opus));
+        assert_eq!(llm_of(thread), Some(opus));
+        assert_eq!(llm_of(other), Some(sonnet), "each thread keeps its own choice");
 
         s.exec_for_test(&format!(r#"UPDATE chat_threads SET llm = '{{"kind":"gone","model":null}}' WHERE id = {thread}"#));
-        assert_eq!(llm_of(), None, "an unreadable choice falls back to the chain");
+        assert_eq!(llm_of(thread), None, "an unreadable choice falls back to the chain");
     }
 
     #[tokio::test]
