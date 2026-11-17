@@ -206,7 +206,7 @@ Use OPML to move feeds between Lattice and other feed readers.
 
 Some pages have almost no text in the HTML that is first downloaded and show their text only after JavaScript runs. When such a page is saved, its text is empty or under 300 characters, and the article list shows **Extraction failed** or **Little text**.
 
-**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before.
+**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. The hidden browser makes no sound, even on a page whose video plays by itself. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before.
 
 **Import again by hand.** **Render and import again** in the article's ⋯ menu does the same on demand. In the Page view, **Import again from the page as shown** is also available. It imports from the page as it is on screen, so content you see after logging in is included.
 

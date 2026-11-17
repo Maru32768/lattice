@@ -451,14 +451,14 @@ feed単位の取り込み件数・間隔の設定、表示モードと並び順�
 
 - **いつ描画するか。** ingest job(bulk importとRSS)と`save_url`の後で、取得に成功し、抽出に失敗したか300文字未満の記事に`render` jobを1件積む(dedup keyは`render:{id}`)。設定「JSページを自動で描画」(`settings.auto_render`、既定はon)で止められる。Readerの「描画して取り込み直す」は設定に関係なくjobを積む。
 - **ループしない。** 自動投入は、記事の最新snapshotがサーバーから取得したものである場合に限る。描画結果を保存すると最新snapshotが`source=webview`になるので、描画結果がまだ短くても次のjobは積まれない。描画の後に投入を判定する箇所もない。描画の試行は取得1回につき最大1回で、もう一度試すには再取得するか手動で操作する。
-- **runner。** render jobは専用のrunnerが1件ずつ処理する(他のrunnerのjob typeには含めないので、取得・LLM・embedを止めない)。jobごとにmain windowの子webview(label `renderer`)を新しく作り、終わったら閉じる。`on_navigation`はhttp(s)以外を拒否するので、about:blankに戻すことはできない。作り直す方式にしたのはそのためで、前のページのDOMやスクリプトが次のjobに残ることもない。webviewはウィンドウのクライアント領域の外(-20000, -20000)に1280×900で置く。`hide()`を使わないのは、非表示のページでタイマーや描画が止まらないようにするため。webviewの作成・eval・closeはtokioのthreadから行う(§9のdeadlockはmain threadでwebviewを作る場合に起きる)。
+- **runner。** render jobは専用のrunnerが1件ずつ処理する(他のrunnerのjob typeには含めないので、取得・LLM・embedを止めない)。jobごとにmain windowの子webview(label `renderer`)を新しく作り、終わったら閉じる。`on_navigation`はhttp(s)以外を拒否するので、about:blankに戻すことはできない。作り直す方式にしたのはそのためで、前のページのDOMやスクリプトが次のjobに残ることもない。webviewはウィンドウのクライアント領域の外(-20000, -20000)に1280×900で置き、作った直後にミュートする(`ICoreWebView2_8::SetIsMuted`)。誰も見ていないページの動画が自動で再生されると、どこからともなく音が鳴るため。`hide()`を使わないのは、非表示のページでタイマーや描画が止まらないようにするため。webviewの作成・eval・closeはtokioのthreadから行う(§9のdeadlockはmain threadでwebviewを作る場合に起きる)。
 - **待ち方。** 読み込み完了(`PageLoadEvent::Finished`)を最大12秒待つ。その後`window.__lattice.snapshot(nonce, {quietMs: 1500, maxMs: 6000})`をevalする。overlayはMutationObserverでDOMの変更が1.5秒止まるまで待ち(最大6秒)、`outerHTML`を返す。Rust側の待ち時間は最大8秒で、1件あたりの合計は約20秒に収まる。
 - **保存。** `render::finish`は、描画結果を通常の経路(`store_fetched`、`content_type = 'text/html; source=webview'`、block IDの再利用、canonicalによる統合)で保存し、embedと自動分類を積む。保存の前に一度抽出し、抽出に失敗した場合と、本文が現在より長くならない場合(cookie同意画面だけ、など)は保存しない。そのため描画で記事が悪くなることはない。理由は記事の`last_error`に記録し(取得・抽出の状態は変えない)、Readerの案内に表示する。jobは成功として終える(ストレージのエラーだけがjobの失敗になり、再試行される)。
 - **セキュリティ。** `renderer`にはbrowserと同じ`browser-overlay` capabilityだけを与える(overlay_config / overlay_translate / overlay_snapshot)。pop-upは拒否する。`overlay_config`はbrowser以外には常に`enabled: false`を返し、`overlay_translate`は従来どおりbrowser webview以外を拒否するので、裏のページから翻訳のLLM呼び出しは起きない。snapshotの要求はwebviewのlabelごとに1件まで(`Snapshots`)。応答を受け付けるのは、呼び出し元のlabelの未処理の要求で、nonceが一致する場合だけ。ユーザーがbrowserで行う「Indexに追加」と裏の描画は互いの要求を上書きしない。cookieはbrowserと共有するので、ログインが必要なページはユーザーのセッションで描画される。
 
 ### 未実装(意図的)
 
-裏で描画するページの音声のミュート(WebView2のCOM APIが必要)、クライアント側リダイレクト(`location.href = …`)で読み込みが2回起きるページへの対応(最初の読み込み完了で待ち始めるので、DOMを取れずに失敗することがある)、描画の並列化。
+クライアント側リダイレクト(`location.href = …`)で読み込みが2回起きるページへの対応(最初の読み込み完了で待ち始めるので、DOMを取れずに失敗することがある)、描画の並列化。
 
 ## 14. 画像の保存(旧要件 §6・§1・§2.2・§26-10)
 

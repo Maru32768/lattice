@@ -1,7 +1,7 @@
 //! Background renderer for JS-built pages (core `render` jobs). One job at a time, each in a
 //! fresh child webview of the main window that is closed afterwards, so no page or script
 //! outlives its job and no blank page is ever needed (`on_navigation` allows only http(s)).
-//! It sits outside the window's client area: never seen, but laid out like a real viewport.
+//! It sits outside the window's client area, muted: never seen or heard, but laid out like a real viewport.
 //! Same trust boundary as the visible browser: overlay script only, `browser-overlay`
 //! capability, no pop-ups, and `overlay_config` keeps translation off here.
 
@@ -74,7 +74,6 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
     let window = app.get_window("main").ok_or("main window missing")?;
     let (tx, loaded) = oneshot::channel();
     let tx = Mutex::new(Some(tx));
-    // shortcut: pages may still play audio while hidden; mute through the WebView2 COM API if that bothers.
     let builder = WebviewBuilder::new(RENDER_LABEL, WebviewUrl::External(url))
         .initialization_script(OVERLAY_JS)
         // No user is watching this webview: keep its page navigations (redirects, JS) off private hosts.
@@ -94,6 +93,7 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
         None => builder,
     };
     let wv = window.add_child(builder, LogicalPosition::new(OFFSCREEN.0, OFFSCREEN.1), LogicalSize::new(VIEWPORT.0, VIEWPORT.1)).map_err(err)?;
+    browser::set_muted(&wv, true);
     let result = async {
         match tokio::time::timeout(LOAD_TIMEOUT, loaded).await {
             Ok(Ok(())) => {}
