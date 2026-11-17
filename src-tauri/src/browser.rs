@@ -1083,7 +1083,7 @@ pub fn overlay_config(browser: State<'_, Browser>, webview: Webview) -> OverlayB
     }
 }
 
-/// The user's shortcuts changed (or the app started): the overlays forward these from now on.
+/// Every window's UI sends the user's shortcuts when it mounts and when they change; the overlays forward them from now on.
 #[tauri::command]
 pub async fn browser_set_keys(app: AppHandle, browser: State<'_, Browser>, keys: PageKeys) -> Result<(), String> {
     let arg = serde_json::to_string(&keys).expect("keys serialize");
