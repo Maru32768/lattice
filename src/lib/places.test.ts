@@ -47,6 +47,19 @@ test("a place store skips what an older version or a broken write left", () => {
   );
 });
 
+test("a place store over blocked storage holds nothing and throws nothing", (t) => {
+  const blocked = () => {
+    throw new DOMException("The operation is insecure.", "SecurityError");
+  };
+  t.mock.method(globalThis.localStorage, "getItem", blocked);
+  t.mock.method(globalThis.localStorage, "setItem", blocked);
+  t.mock.method(globalThis.localStorage, "removeItem", blocked);
+  const s = placeStore("k", 5, isNum);
+  s.set("a", 1);
+  assert.equal(s.get("a"), undefined);
+  s.clear();
+});
+
 const place = (p: Partial<ReadingPlace>): ReadingPlace => ({ text: "", at: 0, t: 0, ...p });
 
 test("a place finds its block by id while it has the same text, else by the text", () => {
