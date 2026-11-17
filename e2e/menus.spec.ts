@@ -52,7 +52,8 @@ test("a menu over a page whose still could not be taken mutes the page while it 
     type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
     const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } };
     const invoke = w.__TAURI_INTERNALS__.invoke;
-    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) => (cmd === "browser_capture" ? Promise.resolve(null) : invoke(cmd, args, options));
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "browser_capture" ? Promise.reject(new Error("capture timed out")) : invoke(cmd, args, options);
   });
   await app.locator(".docbar [aria-haspopup=menu]").last().click();
   await expect(app.getByRole("menu")).toBeAttached();
