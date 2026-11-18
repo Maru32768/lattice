@@ -20,7 +20,7 @@
 //! case, so running it again fills the gaps. The eval dir holds article text, which is copyrighted:
 //! it must be outside the repository.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -774,6 +774,23 @@ struct Row {
     scores: [Option<f64>; 4],
     chars: Option<usize>,
     errors: Vec<String>,
+    summarizer: Option<String>,
+    judge: String,
+}
+
+/// `provider/model`, or the provider alone when it reported no model.
+fn maker(provider: &str, model: Option<&str>) -> String {
+    model.map_or(provider.into(), |m| format!("{provider}/{m}"))
+}
+
+/// Each distinct maker once, sorted, so that a label made or judged by more than one model shows it.
+fn makers<'a>(makers: impl Iterator<Item = &'a str>) -> String {
+    let makers: BTreeSet<&str> = makers.collect();
+    if makers.is_empty() {
+        "-".into()
+    } else {
+        makers.into_iter().collect::<Vec<_>>().join(", ")
+    }
 }
 
 /// The judged cases of `label`.
@@ -784,12 +801,22 @@ fn rows(dir: &Path, cases: &Cases, label: &str) -> Result<BTreeMap<i64, Row>, St
         let Some(Outcome::Ok(j)) = judgments.get(&case.id) else {
             return None;
         };
-        let chars = match runs.get(&case.id) {
-            Some(Outcome::Ok(r)) => Some(r.formatted.chars().count()),
+        let run = match runs.get(&case.id) {
+            Some(Outcome::Ok(r)) => Some(r),
             _ => None,
         };
         let errors = j.items.iter().filter(|i| !i.error.is_empty()).map(|i| i.error.clone()).collect();
-        Some((case.id, Row { stratum: case.stratum, scores: score(&j.items, &j.facts).values(), chars, errors }))
+        Some((
+            case.id,
+            Row {
+                stratum: case.stratum,
+                scores: score(&j.items, &j.facts).values(),
+                chars: run.map(|r| r.formatted.chars().count()),
+                errors,
+                summarizer: run.map(|r| maker(&r.provider, r.model.as_deref())),
+                judge: maker(&j.provider, j.model.as_deref()),
+            },
+        ))
     };
     Ok(cases.cases.iter().filter_map(row).collect())
 }
@@ -824,7 +851,12 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<Vec<String>, String>
     let mut all = BTreeMap::new();
     for label in &labels {
         let rows = rows(dir, &cases, label)?;
-        out.push(format!("{label}: {} cases judged", rows.len()));
+        out.push(format!(
+            "{label}: {} cases judged; summaries by {}; judged by {}",
+            rows.len(),
+            makers(rows.values().filter_map(|r| r.summarizer.as_deref())),
+            makers(rows.values().map(|r| r.judge.as_str()))
+        ));
         out.push(header.clone());
         out.push(line("all", rows.values()));
         for stratum in Stratum::ALL {
@@ -1101,54 +1133,56 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn compare_puts_each_summary_first_once_and_the_report_shows_b_minus_a_and_the_win_for_a() {
+    async fn compare_puts_each_summary_first_once_and_the_report_shows_b_minus_a_the_win_for_a_and_who_made_each_label() {
         let dir = temp("compare");
-        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
-        let run = |formatted: &str| Run {
+        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1), case(2)] }).unwrap();
+        let run = |formatted: &str, provider: &str, model: Option<&str>| Run {
             summary: String::new(),
             key_points: vec![],
             formatted: formatted.into(),
-            provider: String::new(),
-            model: None,
+            provider: provider.into(),
+            model: model.map(String::from),
             prompt_version: String::new(),
         };
-        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, Outcome::Ok(run("summary of a")))])).unwrap();
-        write(&label_path(&dir, "runs", "b"), &BTreeMap::from([(1, Outcome::Ok(run("summary of b")))])).unwrap();
+        let luna = |formatted: &str| Outcome::Ok(run(formatted, "codex-cli", Some("gpt-6-luna")));
+        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, luna("summary of a")), (2, Outcome::Ok(run("summary of a", "gemini", None)))])).unwrap();
+        write(&label_path(&dir, "runs", "b"), &BTreeMap::from([(1, luna("summary of b")), (2, luna("summary of b"))])).unwrap();
         let judge = Prefers { text: "summary of a", inputs: Default::default() };
         compare(&dir, "a", "b", &judge, usize::MAX).await.unwrap();
         let inputs = judge.inputs.into_inner().unwrap();
-        assert_eq!(inputs.len(), 2);
+        assert_eq!(inputs.len(), 4, "two orders of two cases");
         assert!(inputs[0].contains("<summary_1>\nsummary of a\n") && inputs[1].contains("<summary_1>\nsummary of b\n"), "{inputs:?}");
         let comparisons: Results<Comparison> = read(&compare_path(&dir, "a", "b")).unwrap().unwrap();
-        assert_eq!(tally(&comparisons), (1, 0, 0, 0));
+        assert_eq!(tally(&comparisons), (2, 0, 0, 0));
 
         let judgment = |errors: &[&str], covered_by: [Vec<usize>; 3]| {
             let items = errors.iter().map(|&e| ItemVerdict { text: "x".into(), supported: e.is_empty(), error: e.into() }).collect();
             let facts = covered_by.into_iter().zip([true, true, false]).map(|(covered_by, must)| FactVerdict { text: "f".into(), must, covered_by }).collect();
-            BTreeMap::from([(1, Outcome::Ok(Judgment { provider: String::new(), model: None, items, facts }))])
+            Outcome::Ok(Judgment { provider: "claude-cli".into(), model: Some("claude-opus-5-5".into()), items, facts })
         };
-        let a = judgment(&["", "wrong_number", "overclaim", "overclaim", "other"], [vec![1], vec![], vec![1, 2]]);
-        write(&label_path(&dir, "judgments", "a"), &a).unwrap();
-        write(&label_path(&dir, "judgments", "b"), &judgment(&[""], [vec![1], vec![1], vec![1]])).unwrap();
+        let a = || judgment(&["", "wrong_number", "overclaim", "overclaim", "other"], [vec![1], vec![], vec![1, 2]]);
+        write(&label_path(&dir, "judgments", "a"), &BTreeMap::from([(1, a()), (2, a())])).unwrap();
+        let b = || judgment(&[""], [vec![1], vec![1], vec![1]]);
+        write(&label_path(&dir, "judgments", "b"), &BTreeMap::from([(1, b()), (2, b())])).unwrap();
         let out = report(&dir, Some(("a", "b"))).unwrap();
         assert_eq!(
             out,
             [
-                "a: 1 cases judged",
+                "a: 2 cases judged; summaries by codex-cli/gpt-6-luna, gemini; judged by claude-cli/claude-opus-5-5",
                 "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
-                "  all          1              0.200              0.500              0.667              0.400      12",
-                "  short        1              0.200              0.500              0.667              0.400      12",
+                "  all          2              0.200              0.500              0.667              0.400      12",
+                "  short        2              0.200              0.500              0.667              0.400      12",
                 "  medium       0                  -                  -                  -                  -       -",
                 "  long         0                  -                  -                  -                  -       -",
                 "  over_cap     0                  -                  -                  -                  -       -",
                 "  japanese     0                  -                  -                  -                  -       -",
                 "  code_heavy   0                  -                  -                  -                  -       -",
-                "  unsupported items: other 1, overclaim 2, wrong_number 1",
+                "  unsupported items: other 2, overclaim 4, wrong_number 2",
                 "",
-                "b: 1 cases judged",
+                "b: 2 cases judged; summaries by codex-cli/gpt-6-luna; judged by claude-cli/claude-opus-5-5",
                 "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
-                "  all          1              1.000              1.000              1.000              1.000      12",
-                "  short        1              1.000              1.000              1.000              1.000      12",
+                "  all          2              1.000              1.000              1.000              1.000      12",
+                "  short        2              1.000              1.000              1.000              1.000      12",
                 "  medium       0                  -                  -                  -                  -       -",
                 "  long         0                  -                  -                  -                  -       -",
                 "  over_cap     0                  -                  -                  -                  -       -",
@@ -1157,13 +1191,14 @@ mod tests {
                 "  unsupported items: none",
                 "",
                 "b - a, paired over the cases both have:",
-                "  faithfulness       n=1    +0.800  95% CI [+0.800, +0.800]",
-                "  completeness_must  n=1    +0.500  95% CI [+0.500, +0.500]",
-                "  completeness_all   n=1    +0.333  95% CI [+0.333, +0.333]",
-                "  conciseness        n=1    +0.600  95% CI [+0.600, +0.600]",
-                "compare a vs b: a 1, b 0, tie 0, failed 0",
+                "  faithfulness       n=2    +0.800  95% CI [+0.800, +0.800]",
+                "  completeness_must  n=2    +0.500  95% CI [+0.500, +0.500]",
+                "  completeness_all   n=2    +0.333  95% CI [+0.333, +0.333]",
+                "  conciseness        n=2    +0.600  95% CI [+0.600, +0.600]",
+                "compare a vs b: a 2, b 0, tie 0, failed 0",
             ],
-            "the one case is short; a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; b scores 1 on each"
+            "both cases are short and judged alike: a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; \
+            b scores 1 on each; a's second summary comes from another model"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1180,7 +1215,8 @@ mod tests {
     #[test]
     fn paired_differences_are_b_minus_a_over_the_cases_both_have() {
         let rows = |scores: &[(i64, Option<f64>)]| -> BTreeMap<i64, Row> {
-            scores.iter().map(|&(id, s)| (id, Row { stratum: Stratum::Short, scores: [s, None, None, None], chars: None, errors: vec![] })).collect()
+            let row = |s| Row { stratum: Stratum::Short, scores: [s, None, None, None], chars: None, errors: vec![], summarizer: None, judge: String::new() };
+            scores.iter().map(|&(id, s)| (id, row(s))).collect()
         };
         let a = rows(&[(1, Some(0.5)), (2, Some(0.5)), (3, None)]);
         let b = rows(&[(1, Some(0.75)), (3, Some(1.0)), (4, Some(1.0))]);
