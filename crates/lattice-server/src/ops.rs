@@ -812,13 +812,12 @@ mod tests {
         let ctx = ctx();
         let id = saved(&ctx.store, "https://example.com/a", "Found title");
         let before = library(&ctx.store);
-        let a = |ctx: &Ctx| article(&ctx.store, id).unwrap();
         run(&ctx, Op::Tag { id, name: "later".into() }).await.unwrap();
         run(&ctx, Op::Read { id }).await.unwrap();
         run(&ctx, Op::Favorite { id }).await.unwrap();
         run(&ctx, Op::RenameArticle { id, title: "Mine".into() }).await.unwrap();
         run(&ctx, Op::SetGenre { id, name: "Databases".into() }).await.unwrap();
-        let changed = a(&ctx);
+        let changed = article(&ctx.store, id).unwrap();
         assert_eq!(
             (changed.tags.clone(), changed.read_status.as_str(), changed.favorite, changed.title.as_deref(), changed.genre.as_deref(), changed.genre_manual),
             (vec!["later".to_string()], "read", true, Some("Mine"), Some("Databases"), true)
@@ -883,24 +882,24 @@ mod tests {
         assert!(run(&ctx, Op::AddFeed { url: "http://127.0.0.1:9/feed.xml".into(), folder: Some("Tech".into()) }).await.is_err());
         assert!(feeds::list(s).unwrap().is_empty() && feed_folders::list(s).unwrap().is_empty(), "a feed that does not load is not kept");
         let (f, _) = feeds::add(s, "https://example.com/feed.xml", None).unwrap();
-        let shown = |s: &Store| {
+        let shown = || {
             let row = feeds::list(s).unwrap().remove(0);
             (row.custom_title, row.folder)
         };
         run(&ctx, Op::RenameFeed { id: f, name: Some("Mine".into()) }).await.unwrap();
         run(&ctx, Op::MoveFeed { id: f, folder: Some("Tech".into()) }).await.unwrap();
-        assert_eq!(shown(s), (Some("Mine".into()), Some("Tech".into())), "the folder was made");
+        assert_eq!(shown(), (Some("Mine".into()), Some("Tech".into())), "the folder was made");
         let folder = feed_folders::list(s).unwrap()[0].id;
         run(&ctx, Op::RenameFolder { id: folder, name: "News".into() }).await.unwrap();
         run(&ctx, Op::RenameFeed { id: f, name: None }).await.unwrap();
-        assert_eq!(shown(s), (None, Some("News".into())));
+        assert_eq!(shown(), (None, Some("News".into())));
         run(&ctx, Op::MoveFeed { id: f, folder: None }).await.unwrap();
-        assert_eq!(shown(s), (None, None));
+        assert_eq!(shown(), (None, None));
         assert!(run(&ctx, Op::MoveFeed { id: f + 1, folder: None }).await.is_err(), "no such feed");
         run(&ctx, Op::MoveFeed { id: f, folder: Some("news".into()) }).await.unwrap();
         assert_eq!(feed_folders::list(s).unwrap().len(), 1, "an existing folder, found without regard to case");
         run(&ctx, Op::DeleteFolder { id: folder }).await.unwrap();
-        assert_eq!(shown(s), (None, None), "the feed stays, in no folder");
+        assert_eq!(shown(), (None, None), "the feed stays, in no folder");
         run(&ctx, Op::RemoveFeed { id: f }).await.unwrap();
         assert!(feeds::list(s).unwrap().is_empty());
         assert!(run(&ctx, Op::RemoveFeed { id: f }).await.is_err(), "already gone");
