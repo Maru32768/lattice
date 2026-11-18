@@ -208,6 +208,10 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await search.fill("no such scope");
   await expect(options).toHaveCount(0);
   await expect(picker.getByText("該当なし")).toBeVisible();
+  await picker.getByText("該当なし").click();
+  await picker.locator(".pv-head").click({ position: { x: 3, y: 3 } });
+  await app.keyboard.type("!");
+  await expect(search, "a click on the popover itself leaves the keyboard in the search").toHaveValue("no such scope!");
 
   await app.keyboard.press("Escape");
   await expect(picker).toBeHidden();
