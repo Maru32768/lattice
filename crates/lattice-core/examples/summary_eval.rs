@@ -904,6 +904,23 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_step_saves_the_file_after_each_case_not_only_at_the_end() {
+        let dir = temp("saves");
+        let path = dir.join("out.json");
+        let cases: Vec<Case> = (1..=PARALLEL as i64 + 1).map(case).collect();
+        let saved = RefCell::new(Vec::new());
+        let call = async |c: &Case| {
+            let n = read::<Results<String>>(&path)?.map_or(0, |r| r.len());
+            saved.borrow_mut().push(n);
+            Ok(c.id.to_string())
+        };
+        each_case(&path, &cases, usize::MAX, call).await.unwrap();
+        let saved = saved.into_inner();
+        assert!(saved[PARALLEL] > 0, "a case past the first {PARALLEL} starts after one has finished; saved when each started: {saved:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn a_sampled_case_makes_the_request_the_app_sends_and_the_library_stays_read_only() {
         let dir = temp("sample");
