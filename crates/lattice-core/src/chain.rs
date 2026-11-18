@@ -489,12 +489,18 @@ mod tests {
         };
         assert_eq!((c.model, c.effort), (Some("gpt-6-astra".into()), Some(Effort::Max)));
 
-        set_api_key(&s, ProviderKind::Openai, Some("sk-stored")).unwrap();
-        let entry = ChainEntry { kind: ProviderKind::Openai, model: None, effort: Some(Effort::Low) };
-        let AnyLlm::OpenAi(o) = build(&s, &entry).unwrap().0 else {
-            panic!("an OpenAI entry builds the OpenAI API");
-        };
-        assert_eq!((o.key.as_deref(), o.model, o.effort), (Some("sk-stored"), None, Some(Effort::Low)), "the key itself, not where it was found");
+        for kind in [ProviderKind::Openai, ProviderKind::Gemini, ProviderKind::Anthropic] {
+            let key = format!("key-{kind:?}");
+            set_api_key(&s, kind, Some(&key)).unwrap();
+            let entry = ChainEntry { kind, model: Some("m-1".into()), effort: Some(Effort::Low) };
+            let built = match (kind, build(&s, &entry).unwrap().0) {
+                (ProviderKind::Openai, AnyLlm::OpenAi(p)) => (p.key, p.model, p.effort),
+                (ProviderKind::Gemini, AnyLlm::Gemini(p)) => (p.key, p.model, p.effort),
+                (ProviderKind::Anthropic, AnyLlm::Anthropic(p)) => (p.key, p.model, p.effort),
+                _ => panic!("a {kind:?} entry builds its own API"),
+            };
+            assert_eq!(built, (Some(key), Some("m-1".into()), Some(Effort::Low)), "{kind:?}: its own key itself, not where it was found");
+        }
     }
 
     #[test]
