@@ -86,7 +86,7 @@ fn all_tools() -> Vec<(Role, Value)> {
         tool(
             Edit,
             "set_genre",
-            "Put an article in a genre, kept there when classification runs again. An empty name takes it out of any genre. A new name adds the genre.",
+            "Put an article in a genre, which auto-classification does not overwrite. An empty name takes it out of any genre. A new name adds the genre.",
             json!({ "id": article, "name": text("Genre name, or empty") }),
             &["id", "name"],
         ),

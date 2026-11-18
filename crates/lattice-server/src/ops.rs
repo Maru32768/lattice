@@ -107,7 +107,7 @@ pub enum Op {
     Unfavorite { id: i64 },
     /// Give an article your own title; an empty one goes back to the title Lattice found (needs --allow-write)
     RenameArticle { id: i64, title: String },
-    /// Put an article in a genre, kept there when classification runs again; an empty name takes it out (needs --allow-write)
+    /// Put an article in a genre, which auto-classification does not overwrite; an empty name takes it out (needs --allow-write)
     SetGenre { id: i64, name: String },
     /// Add a genre that classification may choose (needs --allow-write)
     AddGenre { name: String },

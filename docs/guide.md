@@ -951,7 +951,7 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `favorite ID` | Marks an article as a favorite. Needs write permission. |
 | `untag ID NAME`, `unread ID`, `unfavorite ID` | Undo `tag`, `read` and `favorite`. Need write permission. |
 | `rename-article ID TITLE` | Gives an article your own title. An empty title goes back to the one Lattice found. Needs write permission. |
-| `set-genre ID NAME` | Puts an article in a genre, where it stays when classification runs again. An empty name takes it out. Needs write permission. |
+| `set-genre ID NAME` | Puts an article in a genre, which auto-classification does not overwrite. An empty name takes it out. Needs write permission. |
 | `add-genre NAME`, `rename-genre FROM TO`, `delete-genre NAME` | Add, rename and delete genres. A genre cannot be renamed to one that exists, and only a genre with no articles can be deleted. Need write permission. |
 | `create-collection NAME`, `rename-collection ID NAME` | Create and rename collections. Need write permission. |
 | `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
