@@ -27,6 +27,9 @@ fn all_tools() -> Vec<(Role, Value)> {
     let text = |d: &str| json!({ "type": "string", "description": d });
     let limit = json!({ "type": "integer", "minimum": 1 });
     let article = int("Article id");
+    let collection = int("Collection id (from the collections tool)");
+    let feed = int("Feed id (from the feeds tool)");
+    let folder = int("Folder id (folder_id in the feeds tool)");
     vec![
         tool(
             Read,
@@ -94,25 +97,13 @@ fn all_tools() -> Vec<(Role, Value)> {
         ),
         tool(Edit, "delete_genre", "Delete a genre that no article is in.", json!({ "name": text("Genre name") }), &["name"]),
         tool(Edit, "create_collection", "Create a collection. Returns its id.", json!({ "name": text("Collection name") }), &["name"]),
-        tool(
-            Edit,
-            "rename_collection",
-            "Rename a collection.",
-            json!({ "id": int("Collection id (from the collections tool)"), "name": text("New name") }),
-            &["id", "name"],
-        ),
-        tool(
-            Edit,
-            "collect",
-            "Add an article to a collection.",
-            json!({ "collection": int("Collection id (from the collections tool)"), "article": article }),
-            &["collection", "article"],
-        ),
+        tool(Edit, "rename_collection", "Rename a collection.", json!({ "id": collection, "name": text("New name") }), &["id", "name"]),
+        tool(Edit, "collect", "Add an article to a collection.", json!({ "collection": collection, "article": article }), &["collection", "article"]),
         tool(
             Edit,
             "uncollect",
             "Take an article out of a collection. The article stays in the library.",
-            json!({ "collection": int("Collection id (from the collections tool)"), "article": article }),
+            json!({ "collection": collection, "article": article }),
             &["collection", "article"],
         ),
         tool(
@@ -126,23 +117,17 @@ fn all_tools() -> Vec<(Role, Value)> {
             Edit,
             "rename_feed",
             "Give a feed the user's own name. Without a name it goes back to the feed's own title.",
-            json!({ "id": int("Feed id (from the feeds tool)"), "name": text("Optional: the new name") }),
+            json!({ "id": feed, "name": text("Optional: the new name") }),
             &["id"],
         ),
         tool(
             Edit,
             "move_feed",
             "Move a feed into a folder, by name (created if missing). Without a folder it moves out of any folder.",
-            json!({ "id": int("Feed id (from the feeds tool)"), "folder": text("Optional: folder name") }),
+            json!({ "id": feed, "folder": text("Optional: folder name") }),
             &["id"],
         ),
-        tool(
-            Edit,
-            "rename_folder",
-            "Rename a feed folder.",
-            json!({ "id": int("Folder id (folder_id in the feeds tool)"), "name": text("New name") }),
-            &["id", "name"],
-        ),
+        tool(Edit, "rename_folder", "Rename a feed folder.", json!({ "id": folder, "name": text("New name") }), &["id", "name"]),
         tool(
             Delete,
             "delete_article",
@@ -150,27 +135,15 @@ fn all_tools() -> Vec<(Role, Value)> {
             json!({ "id": article }),
             &["id"],
         ),
-        tool(
-            Delete,
-            "delete_collection",
-            "Delete a collection. Its articles stay in the library.",
-            json!({ "id": int("Collection id (from the collections tool)") }),
-            &["id"],
-        ),
+        tool(Delete, "delete_collection", "Delete a collection. Its articles stay in the library.", json!({ "id": collection }), &["id"]),
         tool(
             Delete,
             "remove_feed",
             "Unsubscribe from a feed. Its articles stay in the library; its name, icon, folder and filter are lost.",
-            json!({ "id": int("Feed id (from the feeds tool)") }),
+            json!({ "id": feed }),
             &["id"],
         ),
-        tool(
-            Delete,
-            "delete_folder",
-            "Delete a feed folder. Its feeds stay, in no folder.",
-            json!({ "id": int("Folder id (folder_id in the feeds tool)") }),
-            &["id"],
-        ),
+        tool(Delete, "delete_folder", "Delete a feed folder. Its feeds stay, in no folder.", json!({ "id": folder }), &["id"]),
         tool(
             Delete,
             "merge_genre",
