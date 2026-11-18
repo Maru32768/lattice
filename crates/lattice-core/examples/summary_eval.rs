@@ -10,7 +10,7 @@
 //!   facts --judge <spec> [--limit N]                          facts.json: the key facts of each case
 //!   summarize --label <name> --with <spec> [--limit N]        runs/<name>.json
 //!   judge --label <name> --judge <spec> [--limit N]           judgments/<name>.json
-//!   compare <labelA> <labelB> --judge <spec> [--limit N]      compare/<A>-vs-<B>.json
+//!   compare <labelA> <labelB> --judge <spec> [--limit N]      compare/<A>+<B>.json
 //!   report [labelA labelB]
 //! ```
 //!
@@ -710,8 +710,9 @@ struct Comparison {
     b_first: Verdict,
 }
 
+/// Joined by a character `label` refuses, so that no two pairs of labels share a file.
 fn compare_path(dir: &Path, a: &str, b: &str) -> PathBuf {
-    label_path(dir, "compare", &format!("{a}-vs-{b}"))
+    label_path(dir, "compare", &format!("{a}+{b}"))
 }
 
 async fn compare(dir: &Path, a: &str, b: &str, judge: &impl LlmProvider, limit: usize) -> Result<(), String> {
@@ -1160,6 +1161,15 @@ mod tests {
             "the one case is short; a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; b scores 1 on each"
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn two_pairs_of_labels_never_share_a_comparison_file() {
+        let dir = Path::new("eval");
+        for [(a1, b1), (a2, b2)] in [[("baseline", "new-vs-final"), ("baseline-vs-new", "final")], [("x", "vs-y"), ("x-vs", "y")]] {
+            assert_ne!(compare_path(dir, a1, b1), compare_path(dir, a2, b2), "({a1}, {b1}) and ({a2}, {b2})");
+        }
+        assert!(label("x+y").is_err(), "the separator cannot be inside a label");
     }
 
     #[test]
