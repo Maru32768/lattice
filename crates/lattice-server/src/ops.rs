@@ -468,6 +468,37 @@ mod tests {
         assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false }).await.unwrap().text.contains("[block "));
     }
 
+    #[tokio::test]
+    async fn the_read_role_runs_every_read_and_refuses_every_change() {
+        let ctx = Ctx { role: Role::Read, ..ctx() };
+        let (id, _) = ctx.store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let changes =
+            [Op::Save { url: "https://example.com/b".into(), run: false }, Op::Tag { id, name: "later".into() }, Op::Read { id }, Op::Favorite { id }];
+        for op in changes {
+            let name = format!("{op:?}");
+            assert!(run(&ctx, op).await.is_err_and(|e| e.contains("--allow-write")), "{name}");
+        }
+        let a = article(&ctx.store, id).unwrap();
+        assert_eq!((a.read_status.as_str(), a.favorite, a.tags.len()), ("unread", false, 0), "nothing changed");
+        assert_eq!(ctx.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1, "nothing saved");
+        let reads = [
+            Op::Search { query: "wal".into(), scope: None, limit: 1 },
+            Op::Get { id, blocks: false, translation: false },
+            Op::List { scope: None, limit: 10 },
+            Op::Summary { id },
+            Op::Tags {},
+            Op::Genres {},
+            Op::Feeds {},
+            Op::Collections {},
+            Op::Jobs {},
+            Op::Ask { question: "What is MVCC?".into(), scope: Some("tag:nothing".into()) },
+        ];
+        for op in reads {
+            let name = format!("{op:?}");
+            run(&ctx, op).await.unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+    }
+
     #[test]
     fn mcp_calls_and_arguments_parse_into_the_same_ops() {
         let op: Op = serde_json::from_value(json!({ "name": "search", "arguments": { "query": "wal" } })).unwrap();
