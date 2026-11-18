@@ -477,6 +477,15 @@ test("trying a place again goes on in one chain, not one more for each try", asy
   expect(await tries(3), "not three chains").toBeLessThanOrEqual(one + 2);
 });
 
+/** In the page: translation on, every snippet shown as its translation, `訳:` and the snippet. */
+const translateAll = () => {
+  const internals = window.__TAURI_INTERNALS__!;
+  const ipc = internals.invoke;
+  internals.invoke = (cmd, args) =>
+    cmd === "overlay_translate" ? Promise.resolve((args!.snippets as string[]).map((s) => [{ source: s, translation: `訳:${s}` }])) : ipc(cmd, args);
+  window.__lattice!.configure({ enabled: true, percent: null });
+};
+
 test("a table is translated cell by cell, also a theme's inline-block table, while a sentence keeps its inline flex or table box", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
@@ -495,12 +504,8 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
       '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
     const numbers = '<table><tr><td id="number">12.3</td></tr></table>';
     document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + numbers);
-    const internals = window.__TAURI_INTERNALS__!;
-    const ipc = internals.invoke;
-    internals.invoke = (cmd, args) =>
-      cmd === "overlay_translate" ? Promise.resolve((args!.snippets as string[]).map((s) => [{ source: s, translation: `訳:${s}` }])) : ipc(cmd, args);
-    window.__lattice!.configure({ enabled: true, percent: null });
   });
+  await page.evaluate(translateAll);
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
   await expect(page.locator("th, td:not(#number)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
   await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
@@ -511,13 +516,25 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
 test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
-  // No space between the cells, as on a minified page.
+  // No space between the cells, as on a minified page, and in a table that lays out the page.
   await page.evaluate(() =>
     document
       .querySelectorAll("p")[40]
-      .insertAdjacentHTML("afterend", "<table><tr><th>Year</th><th>Event</th></tr><tr><td>1991</td><td>Linus announces Linux</td></tr></table>"),
+      .insertAdjacentHTML(
+        "afterend",
+        '<table id="layout"><tr><td><p>A paragraph of the layout.</p>' +
+          '<table id="data"><tr><th>Year</th><th>Event</th></tr><tr><td>1991</td><td>Linus announces Linux</td></tr></table></td></tr></table>',
+      ),
   );
-  // As the Reader keeps a table's text: its cells joined by tabs, its rows by lines.
-  expect(await page.evaluate(() => window.__lattice!.scrollToText("Year\tEvent\n1991\tLinus announces Linux"))).toBe(true);
-  await expect(page.locator("table")).toBeInViewport();
+  await page.evaluate(translateAll);
+  await page.locator("#data").scrollIntoViewIfNeeded();
+  await expect(page.locator("#data td").last()).toHaveText("訳:Linus announces Linux");
+  await page.evaluate(() => scrollTo(0, 0));
+  // As the Reader keeps a table's text: its cells joined by tabs, its rows by lines. Found by its original, though translated.
+  const flashed = await page.evaluate(() => [
+    window.__lattice!.scrollToText("Year\tEvent\n1991\tLinus announces Linux"),
+    ...["#data", "#layout"].map((s) => document.querySelector(s)!.classList.contains("lattice-flash")),
+  ]);
+  expect(flashed, "found, the table itself, not the one around it").toEqual([true, true, false]);
+  await expect(page.locator("#data")).toBeInViewport();
 });
