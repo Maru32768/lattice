@@ -7,6 +7,7 @@ const section = (app: Page, title: string) =>
     .getByRole("navigation", { name: "設定カテゴリ" })
     .locator(".ni")
     .filter({ has: app.locator(".label").getByText(title, { exact: true }) });
+const askedScopes = async (app: Page) => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope);
 
 test("the chat budget sends the setting and keeps it when the section is reopened", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
@@ -155,9 +156,7 @@ test("the chat scope offers each open article and all of them, and follows the t
   const q = app.locator("#chat-q");
   await q.fill("共通点は？");
   await q.press("Control+Enter");
-  await expect
-    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
-    .toEqual([{ kind: "articles", ids: [a.id, b.id, c.id] }]);
+  await expect.poll(() => askedScopes(app)).toEqual([{ kind: "articles", ids: [a.id, b.id, c.id] }]);
 
   // One of them, until its tab closes: then the scope widens to what is still open.
   await pickScope(app, b.title!);
@@ -239,9 +238,7 @@ test("a scope chosen from outside shows on the chip, and one the list no longer 
   const q = app.locator("#chat-q");
   await q.fill("未読の要点は？");
   await q.press("Control+Enter");
-  await expect
-    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
-    .toEqual([{ kind: "filter", filter: { kind: "unread" } }]);
+  await expect.poll(() => askedScopes(app)).toEqual([{ kind: "filter", filter: { kind: "unread" } }]);
 });
 
 test("the chat scope lists thousands of tags while drawing only the ones in view, and reaches the last by search", async ({ app }) => {
@@ -282,9 +279,7 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   const q = app.locator("#chat-q");
   await q.fill("これは？");
   await q.press("Control+Enter");
-  await expect
-    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
-    .toEqual([{ kind: "filter", filter: { kind: "tag", name: last } }]);
+  await expect.poll(() => askedScopes(app)).toEqual([{ kind: "filter", filter: { kind: "tag", name: last } }]);
 });
 
 test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {
