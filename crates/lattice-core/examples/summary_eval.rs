@@ -6,7 +6,7 @@
 //! ```text
 //! cargo run -p lattice-core --example summary_eval -- <command> --dir <eval dir> [options]
 //!
-//!   sample --db <lattice.db> [--n 24] [--seed 1] [--force]  cases.json, read from the library read-only
+//!   sample --db <lattice.db> [--n 24] [--seed 1]            cases.json, read from the library read-only
 //!   facts --judge <spec> [--limit N]                          facts.json: the key facts of each case
 //!   summarize --label <name> --with <spec> [--limit N]        runs/<name>.json
 //!   judge --label <name> --judge <spec> [--limit N]           judgments/<name>.json
@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use futures::stream::{self, StreamExt};
-use lattice_core::chain::{self, AnyLlm, ChainEntry, ProviderKind};
+use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
 use lattice_core::instructions::{self, Settings};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::llm::{Completion, Effort, LlmProvider};
@@ -55,36 +55,35 @@ async fn run(raw: Vec<String>) -> Result<(), String> {
     let mut args = Args::parse(raw)?;
     let dir = PathBuf::from(args.need("dir")?);
     outside_repo(&dir)?;
-    let limit = args.take("limit").map(|n| n.parse::<usize>().map_err(|_| format!("--limit takes a number, not {n:?}"))).transpose()?;
+    let limit = args.number("limit", usize::MAX)?;
     let positional = std::mem::take(&mut args.positional);
     match positional.iter().map(String::as_str).collect::<Vec<_>>()[..] {
         ["sample"] => {
             let db = PathBuf::from(args.need("db")?);
             let n = args.number("n", 24)?;
             let seed = args.number("seed", 1)?;
-            let force = args.take("force").is_some();
             args.done()?;
-            sample(&dir, &db, n as usize, seed, force)
+            sample(&dir, &db, n, seed)
         }
         ["facts"] => {
-            let llm = Llm::new(&args.need("judge")?)?;
+            let llm = llm(&args.need("judge")?)?;
             args.done()?;
             facts(&dir, &llm, limit).await
         }
         ["summarize"] => {
             let name = label(&args.need("label")?)?;
-            let llm = Llm::new(&args.need("with")?)?;
+            let llm = llm(&args.need("with")?)?;
             args.done()?;
             summarize(&dir, &name, &llm, limit).await
         }
         ["judge"] => {
             let name = label(&args.need("label")?)?;
-            let llm = Llm::new(&args.need("judge")?)?;
+            let llm = llm(&args.need("judge")?)?;
             args.done()?;
             judge(&dir, &name, &llm, limit).await
         }
         ["compare", a, b] => {
-            let llm = Llm::new(&args.need("judge")?)?;
+            let llm = llm(&args.need("judge")?)?;
             args.done()?;
             compare(&dir, &label(a)?, &label(b)?, &llm, limit).await
         }
@@ -100,8 +99,8 @@ async fn run(raw: Vec<String>) -> Result<(), String> {
     }
 }
 
-/// `--name value` options (`--force` alone) and positionals, taken out one by one so that what is
-/// left over is a typo, which must not silently run every case.
+/// `--name value` options and positionals, taken out one by one so that what is left over is a
+/// typo, which must not silently run every case.
 struct Args {
     positional: Vec<String>,
     options: HashMap<String, String>,
@@ -113,9 +112,6 @@ impl Args {
         let mut it = raw.into_iter();
         while let Some(a) = it.next() {
             match a.strip_prefix("--") {
-                Some("force") => {
-                    args.options.insert("force".into(), String::new());
-                }
                 Some(name) => {
                     let value = it.next().ok_or_else(|| format!("--{name} needs a value"))?;
                     args.options.insert(name.into(), value);
@@ -134,7 +130,7 @@ impl Args {
         self.take(name).ok_or_else(|| format!("--{name} is required. {USAGE}"))
     }
 
-    fn number(&mut self, name: &str, default: u64) -> Result<u64, String> {
+    fn number<T: std::str::FromStr>(&mut self, name: &str, default: T) -> Result<T, String> {
         self.take(name).map_or(Ok(default), |v| v.parse().map_err(|_| format!("--{name} takes a number, not {v:?}")))
     }
 
@@ -176,27 +172,15 @@ fn parse_spec(spec: &str) -> Result<ChainEntry, String> {
     ChainEntry { kind, model, effort }.normalized().map_err(|x| format!("{spec:?}: the provider does not take effort {}", x.as_str()))
 }
 
-struct Llm {
-    provider: AnyLlm,
-    model: Option<String>,
+/// A chain of one entry, called as the app calls its chain: the configured model is recorded when the provider
+/// reports none, and a rate limit is waited out.
+fn llm(spec: &str) -> Result<LlmChain, String> {
+    let entry = parse_spec(spec)?;
+    let key = entry.kind.key_names().and_then(|(_, env)| std::env::var(env).ok());
+    Ok(LlmChain::new(vec![(chain::provider(&entry, key), entry.model)]))
 }
 
-impl Llm {
-    fn new(spec: &str) -> Result<Self, String> {
-        let entry = parse_spec(spec)?;
-        let key = entry.kind.key_names().and_then(|(_, env)| std::env::var(env).ok());
-        Ok(Self { provider: chain::provider(&entry, key), model: entry.model })
-    }
-
-    /// As the app's chain calls it: the configured model is recorded when the provider reports none.
-    async fn json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, String> {
-        let mut c = self.provider.complete_json(system, input, schema).await.map_err(|e| e.to_string())?;
-        c.model = c.model.or_else(|| self.model.clone());
-        Ok(c)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum Stratum {
     Short,
@@ -215,11 +199,13 @@ impl Stratum {
     fn of(language: Option<&str>, s: &Stats) -> Option<Self> {
         let lang = |prefix| language.is_some_and(|l| l.starts_with(prefix));
         let prose = s.prose_chars;
+        // The app's cap when the strata were set; fixed so a later cap does not move cases between strata.
+        let cap = 40_000;
         let fits = |st: Self| match st {
             Self::Japanese => lang("ja") && prose <= 200_000,
             Self::CodeHeavy => (2_000..=200_000).contains(&prose) && s.code_table_chars * 10 >= (prose + s.code_table_chars) * 3,
-            Self::OverCap => (40_000..=200_000).contains(&prose),
-            Self::Long => (25_000..40_000).contains(&prose),
+            Self::OverCap => (cap..=200_000).contains(&prose),
+            Self::Long => (25_000..cap).contains(&prose),
             Self::Medium => lang("en") && (8_000..25_000).contains(&prose),
             Self::Short => lang("en") && prose < 8_000,
         };
@@ -227,7 +213,7 @@ impl Stratum {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default)]
 struct Stats {
     prose_chars: usize,
     code_table_chars: usize,
@@ -238,9 +224,6 @@ struct Case {
     id: i64,
     stratum: Stratum,
     title: String,
-    language: Option<String>,
-    content_hash: Option<String>,
-    stats: Stats,
     /// (kind, text) in order, images left out, as the app reads them for a summary.
     blocks: Vec<(String, String)>,
 }
@@ -265,10 +248,10 @@ fn splitmix64(state: &mut u64) -> u64 {
     z ^ (z >> 31)
 }
 
-fn sample(dir: &Path, db: &Path, n: usize, seed: u64, force: bool) -> Result<(), String> {
+fn sample(dir: &Path, db: &Path, n: usize, seed: u64) -> Result<(), String> {
     let path = dir.join("cases.json");
-    if path.exists() && !force {
-        return Err(format!("{} exists; --force replaces it", path.display()));
+    if path.exists() {
+        return Err(format!("{} exists; delete it to sample again", path.display()));
     }
     let per = n / Stratum::ALL.len();
     if per == 0 {
@@ -305,14 +288,10 @@ fn sample(dir: &Path, db: &Path, n: usize, seed: u64, force: bool) -> Result<(),
             eprintln!("{stratum:?}: only {} articles", ids.len());
         }
         for &(_, id) in ids.iter().take(per) {
-            let (title, language, content_hash) = c
-                .query_row("SELECT coalesce(title, original_url), language, content_hash FROM articles WHERE id = ?1", [id], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?))
-                })
-                .map_err(sql)?;
+            let title = c.query_row("SELECT coalesce(title, original_url) FROM articles WHERE id = ?1", [id], |r| r.get(0)).map_err(sql)?;
             let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal").map_err(sql)?;
             let blocks = st.query_map([id], |r| Ok((r.get(0)?, r.get(1)?))).map_err(sql)?.collect::<Result<_, _>>().map_err(sql)?;
-            cases.push(Case { id, stratum, title, language, content_hash, stats: stats.get(&id).copied().unwrap_or_default(), blocks });
+            cases.push(Case { id, stratum, title, blocks });
         }
     }
     let setting = |key: &str| {
@@ -364,11 +343,11 @@ fn label_path(dir: &Path, step: &str, label: &str) -> PathBuf {
 async fn each_case<T: Serialize + DeserializeOwned>(
     path: &Path,
     cases: &[Case],
-    limit: Option<usize>,
+    limit: usize,
     call: impl AsyncFn(&Case) -> Result<T, String>,
 ) -> Result<(), String> {
     let mut out: Results<T> = read(path)?.unwrap_or_default();
-    let todo: Vec<&Case> = cases.iter().take(limit.unwrap_or(usize::MAX)).filter(|c| !matches!(out.get(&c.id), Some(Outcome::Ok(_)))).collect();
+    let todo: Vec<&Case> = cases.iter().take(limit).filter(|c| !matches!(out.get(&c.id), Some(Outcome::Ok(_)))).collect();
     let total = todo.len();
     let call = &call;
     let mut results = stream::iter(todo).map(|c| async move { (c.id, call(c).await) }).buffer_unordered(PARALLEL);
@@ -427,7 +406,7 @@ in English, most important first. Each fact is one atomic claim (a finding, mech
 entities that can be checked on its own. Set \"must\" to true for a fact that a reader who missed it would misunderstand the article, and to false \
 for one that is useful but not essential. Use only what the article states.";
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize)]
 struct Fact {
     text: String,
     must: bool,
@@ -454,14 +433,14 @@ fn facts_schema() -> Value {
     })
 }
 
-async fn facts(dir: &Path, judge: &Llm, limit: Option<usize>) -> Result<(), String> {
+async fn facts(dir: &Path, judge: &LlmChain, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     each_case(&dir.join("facts.json"), &cases.cases, limit, async |case: &Case| {
         #[derive(Deserialize)]
         struct Reply {
             facts: Vec<Fact>,
         }
-        let c = judge.json(&system(FACTS_RULES), &article(case), &facts_schema()).await?;
+        let c = judge.complete_json(&system(FACTS_RULES), &article(case), &facts_schema()).await.map_err(|e| e.to_string())?;
         let reply: Reply = serde_json::from_value(c.value).map_err(|e| format!("malformed facts: {e}"))?;
         let facts: Vec<Fact> = reply.facts.into_iter().map(|f| Fact { text: f.text.trim().into(), ..f }).filter(|f| !f.text.is_empty()).collect();
         if facts.is_empty() {
@@ -478,27 +457,27 @@ struct Run {
     key_points: Vec<String>,
     /// As the app stores and shows it.
     formatted: String,
-    input_chars: usize,
-    truncated: bool,
     provider: String,
     model: Option<String>,
     prompt_version: String,
 }
 
-async fn summarize(dir: &Path, label: &str, with: &Llm, limit: Option<usize>) -> Result<(), String> {
+fn load_runs(dir: &Path, label: &str) -> Result<Results<Run>, String> {
+    read(&label_path(dir, "runs", label))?.ok_or_else(|| format!("no runs/{label}.json: run summarize --label {label} first"))
+}
+
+async fn summarize(dir: &Path, label: &str, with: &LlmChain, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let applied = Settings { profile: cases.user_profile.clone(), summary: cases.summary_instructions.clone(), chat: String::new() }.for_summary();
     let prompt_version = applied.version(summarize::PROMPT_VERSION);
     each_case(&label_path(dir, "runs", label), &cases.cases, limit, async |case: &Case| {
         let (system, input) = summarize::request(&applied, &case.title, &case.blocks);
-        let c = with.json(&system, &input, &summarize::schema()).await?;
+        let c = with.complete_json(&system, &input, &summarize::schema()).await.map_err(|e| e.to_string())?;
         let formatted = summarize::format_summary(&c.value).ok_or("malformed summary")?;
         Ok(Run {
             summary: c.value["summary"].as_str().unwrap_or_default().into(),
             key_points: c.value["key_points"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect(),
             formatted,
-            input_chars: input.chars().count(),
-            truncated: input.ends_with(summarize::TRUNCATED),
             provider: c.provider,
             model: c.model,
             prompt_version: prompt_version.clone(),
@@ -529,7 +508,7 @@ List every item and every key fact exactly once.";
 
 const ERRORS: [&str; 7] = ["wrong_number", "wrong_entity", "wrong_relation", "overclaim", "not_in_source", "mistranslation", "other"];
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 struct ItemVerdict {
     text: String,
     supported: bool,
@@ -537,7 +516,7 @@ struct ItemVerdict {
     error: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Serialize, Deserialize)]
 struct FactVerdict {
     text: String,
     must: bool,
@@ -546,7 +525,7 @@ struct FactVerdict {
 }
 
 /// `None` where there is nothing to divide by (a judge may mark no fact as a must).
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq)]
 struct Scores {
     faithfulness: Option<f64>,
     completeness_must: Option<f64>,
@@ -568,7 +547,6 @@ struct Judgment {
     model: Option<String>,
     items: Vec<ItemVerdict>,
     facts: Vec<FactVerdict>,
-    scores: Scores,
 }
 
 fn judge_schema() -> Value {
@@ -648,10 +626,10 @@ fn score(items: &[ItemVerdict], facts: &[FactVerdict]) -> Scores {
     }
 }
 
-async fn judge(dir: &Path, label: &str, judge: &Llm, limit: Option<usize>) -> Result<(), String> {
+async fn judge(dir: &Path, label: &str, judge: &LlmChain, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let facts: Results<Facts> = read(&dir.join("facts.json"))?.ok_or("no facts.json: run facts first")?;
-    let runs: Results<Run> = read(&label_path(dir, "runs", label))?.ok_or_else(|| format!("no runs/{label}.json: run summarize first"))?;
+    let runs = load_runs(dir, label)?;
     each_case(&label_path(dir, "judgments", label), &cases.cases, limit, async |case: &Case| {
         let Some(Outcome::Ok(facts)) = facts.get(&case.id) else {
             return Err("no key facts for this case: run facts again".into());
@@ -663,9 +641,9 @@ async fn judge(dir: &Path, label: &str, judge: &Llm, limit: Option<usize>) -> Re
         let input =
             [article(case), numbered("key_facts", facts.facts.iter().map(|f| f.text.as_str())), numbered("summary_items", items.iter().map(String::as_str))]
                 .join("\n\n");
-        let c = judge.json(&system(JUDGE_RULES), &input, &judge_schema()).await?;
+        let c = judge.complete_json(&system(JUDGE_RULES), &input, &judge_schema()).await.map_err(|e| e.to_string())?;
         let (items, facts) = parse_judgment(c.value, &items, &facts.facts)?;
-        Ok(Judgment { provider: c.provider, model: c.model, scores: score(&items, &facts), items, facts })
+        Ok(Judgment { provider: c.provider, model: c.model, items, facts })
     })
     .await
 }
@@ -675,8 +653,7 @@ learn what the article says and to decide whether to read it in full. Prefer the
 what matters. An unsupported or wrong claim is worse than an omission. Length is not a merit. Return \"better\": 1 or 2 for the better summary, or 0 \
 when neither is better; and \"reason\": one or two sentences on why.";
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Winner {
     A,
     B,
@@ -704,25 +681,27 @@ struct Comparison {
     model: Option<String>,
     a_first: Verdict,
     b_first: Verdict,
-    winner: Winner,
 }
 
-async fn compare(dir: &Path, a: &str, b: &str, judge: &Llm, limit: Option<usize>) -> Result<(), String> {
+fn compare_path(dir: &Path, a: &str, b: &str) -> PathBuf {
+    label_path(dir, "compare", &format!("{a}-vs-{b}"))
+}
+
+async fn compare(dir: &Path, a: &str, b: &str, judge: &LlmChain, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
-    let runs = |label: &str| -> Result<Results<Run>, String> { read(&label_path(dir, "runs", label))?.ok_or_else(|| format!("no runs/{label}.json")) };
-    let (runs_a, runs_b) = (runs(a)?, runs(b)?);
+    let (runs_a, runs_b) = (load_runs(dir, a)?, load_runs(dir, b)?);
     let schema = json!({
         "type": "object",
         "properties": {"better": {"type": "integer"}, "reason": {"type": "string"}},
         "required": ["better", "reason"]
     });
-    each_case(&dir.join("compare").join(format!("{a}-vs-{b}.json")), &cases.cases, limit, async |case: &Case| {
+    each_case(&compare_path(dir, a, b), &cases.cases, limit, async |case: &Case| {
         let (Some(Outcome::Ok(ra)), Some(Outcome::Ok(rb))) = (runs_a.get(&case.id), runs_b.get(&case.id)) else {
             return Err(format!("no summary of this case in {a} or {b}"));
         };
         let ask = async |first: &Run, second: &Run| -> Result<(Verdict, Completion), String> {
             let input = format!("{}\n\n<summary_1>\n{}\n</summary_1>\n\n<summary_2>\n{}\n</summary_2>", article(case), first.formatted, second.formatted);
-            let c = judge.json(&system(COMPARE_RULES), &input, &schema).await?;
+            let c = judge.complete_json(&system(COMPARE_RULES), &input, &schema).await.map_err(|e| e.to_string())?;
             let v: Verdict = serde_json::from_value(c.value.clone()).map_err(|e| format!("malformed comparison: {e}"))?;
             if v.better > 2 {
                 return Err(format!("better must be 0, 1 or 2, not {}", v.better));
@@ -731,17 +710,17 @@ async fn compare(dir: &Path, a: &str, b: &str, judge: &Llm, limit: Option<usize>
         };
         let (a_first, _) = ask(ra, rb).await?;
         let (b_first, c) = ask(rb, ra).await?;
-        Ok(Comparison { provider: c.provider, model: c.model, winner: winner(a_first.better, b_first.better), a_first, b_first })
+        Ok(Comparison { provider: c.provider, model: c.model, a_first, b_first })
     })
     .await
 }
 
 /// 95% percentile bootstrap interval of the mean, from a fixed seed so a report reads the same each time.
-fn bootstrap_ci(xs: &[f64], seed: u64) -> Option<(f64, f64)> {
+fn bootstrap_ci(xs: &[f64]) -> Option<(f64, f64)> {
     if xs.is_empty() {
         return None;
     }
-    let mut state = seed;
+    let mut state = 1;
     let mut means: Vec<f64> =
         (0..RESAMPLES).map(|_| (0..xs.len()).map(|_| xs[(splitmix64(&mut state) % xs.len() as u64) as usize]).sum::<f64>() / xs.len() as f64).collect();
     means.sort_by(f64::total_cmp);
@@ -773,7 +752,7 @@ fn rows(dir: &Path, cases: &Cases, label: &str) -> Result<BTreeMap<i64, Row>, St
             _ => None,
         };
         let errors = j.items.iter().filter(|i| !i.error.is_empty()).map(|i| i.error.clone()).collect();
-        Some((case.id, Row { stratum: case.stratum, scores: j.scores.values(), chars, errors }))
+        Some((case.id, Row { stratum: case.stratum, scores: score(&j.items, &j.facts).values(), chars, errors }))
     };
     Ok(cases.cases.iter().filter_map(row).collect())
 }
@@ -830,14 +809,13 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
     println!("{b} - {a}, paired over the cases both have:");
     for (k, name) in SCORES.iter().enumerate() {
         let diffs: Vec<f64> = all[a].iter().filter_map(|(id, ra)| Some(all[b].get(id)?.scores[k]? - ra.scores[k]?)).collect();
-        match (mean(diffs.iter().copied()), bootstrap_ci(&diffs, 1)) {
+        match (mean(diffs.iter().copied()), bootstrap_ci(&diffs)) {
             (Some(m), Some((lo, hi))) => println!("  {name:<18} n={:<4} {m:+.3}  95% CI [{lo:+.3}, {hi:+.3}]", diffs.len()),
             _ => println!("  {name:<18} n=0"),
         }
     }
-    let path = dir.join("compare").join(format!("{a}-vs-{b}.json"));
-    if let Some(comparisons) = read::<Results<Comparison>>(&path)? {
-        let won = |w: Winner| comparisons.values().filter(|c| matches!(c, Outcome::Ok(c) if c.winner == w)).count();
+    if let Some(comparisons) = read::<Results<Comparison>>(&compare_path(dir, a, b))? {
+        let won = |w: Winner| comparisons.values().filter(|c| matches!(c, Outcome::Ok(c) if winner(c.a_first.better, c.b_first.better) == w)).count();
         let failed = comparisons.values().filter(|c| matches!(c, Outcome::Error(_))).count();
         println!("compare {a} vs {b}: {a} {}, {b} {}, tie {}, failed {failed}", won(Winner::A), won(Winner::B), won(Winner::Tie));
     }
@@ -892,8 +870,6 @@ mod tests {
             summary: "PostgreSQL 17.2のWALを解説する。fsyncは減るのか？ 減る！結論は明快".into(),
             key_points: vec![" 先行書き込み ".into(), " ".into()],
             formatted: String::new(),
-            input_chars: 0,
-            truncated: false,
             provider: String::new(),
             model: None,
             prompt_version: String::new(),
@@ -911,14 +887,14 @@ mod tests {
     }
 
     #[test]
-    fn bootstrap_interval_is_the_constant_for_constant_differences_and_repeats_for_a_seed() {
-        assert_eq!(bootstrap_ci(&[0.25; 9], 7), Some((0.25, 0.25)));
+    fn bootstrap_interval_is_the_constant_for_constant_differences_and_the_same_for_the_same_input() {
+        assert_eq!(bootstrap_ci(&[0.25; 9]), Some((0.25, 0.25)));
         let xs = [0.0, 0.1, -0.2, 0.5, 0.3, 0.0, 0.25, -0.1];
-        let (lo, hi) = bootstrap_ci(&xs, 1).unwrap();
+        let (lo, hi) = bootstrap_ci(&xs).unwrap();
         let m = mean(xs.iter().copied()).unwrap();
         assert!(lo < m && m < hi, "{lo} < {m} < {hi}");
-        assert_eq!(bootstrap_ci(&xs, 1), Some((lo, hi)));
-        assert_eq!(bootstrap_ci(&[], 1), None);
+        assert_eq!(bootstrap_ci(&xs), Some((lo, hi)));
+        assert_eq!(bootstrap_ci(&[]), None);
     }
 
     #[test]

@@ -18,8 +18,6 @@ pub const PROMPT_VERSION: &str = "summary-v1";
 pub const SUMMARY_TYPE: &str = "normal";
 /// Upper bound on article text sent; long articles are cut at a block boundary.
 const MAX_INPUT_CHARS: usize = 40_000;
-/// Ends the input text of an article cut at `MAX_INPUT_CHARS`.
-pub const TRUNCATED: &str = "\n[…truncated]\n";
 const AUTO_SETTING: &str = "auto_summarize";
 
 /// Which saved articles get a summary without a click (Settings › 要約・対話). Off by default:
@@ -121,7 +119,7 @@ fn input_text(title: &str, blocks: &[(String, String)]) -> String {
         };
         len += line.chars().count();
         if len > MAX_INPUT_CHARS {
-            out.push_str(TRUNCATED);
+            out.push_str("\n[…truncated]\n");
             break;
         }
         out.push_str(&line);
