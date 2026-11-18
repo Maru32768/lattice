@@ -374,6 +374,10 @@ pub fn in_tray() -> bool {
 
 /// Hides the shown windows into the tray, where the app goes on running; their places are saved as a quit saves them.
 fn put_away(app: &AppHandle) {
+    // A second close (a double click on ×, `taskkill`) finds nothing shown, and would forget the pop-outs held.
+    if in_tray() {
+        return;
+    }
     let (shown, places) = shown_windows(app);
     *lock(&TRAYED) = Some(shown.iter().map(|w| w.label().to_string()).filter(|l| l != MAIN).collect());
     for w in &shown {
