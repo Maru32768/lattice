@@ -391,4 +391,16 @@ mod tests {
         let two = format!("{}\n{}", "あ".repeat(1_500), "い".repeat(1_500));
         assert_eq!(input(two), fenced(&"あ".repeat(1_500), "\n[… 1501 characters omitted …]\n"));
     }
+
+    #[test]
+    fn seventy_percent_from_the_start_then_the_marker_then_the_end() {
+        let texts: Vec<String> = (0..2000).map(|i| format!("{i:04} {}", "x".repeat(94))).collect();
+        let input = input_text("T", &texts.iter().map(para).collect::<Vec<_>>());
+        let lines: Vec<&str> = input.lines().filter(|l| !l.is_empty()).collect();
+        let at = lines.iter().position(|l| l.starts_with("[… ")).expect("a marker");
+        // "<article>" and "# T" come first; the closing tag and the request come last.
+        let (head, tail) = (at - 2, lines.len() - at - 3);
+        // 99,934 chars for the blocks: 70% is 69,953, so 699 blocks of 100, then 300 from the end.
+        assert_eq!((head, tail), (699, 300));
+    }
 }
