@@ -1088,6 +1088,7 @@ mod tests {
             panic!("no summary of case 1");
         };
         assert_eq!(Some(run.formatted.clone()), summarize::format_summary(&reply));
+        assert_eq!(items(run), ["WALを解説する。", "fsyncが減る"], "the judge grades the summary's sentences, then its key points");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
