@@ -504,15 +504,19 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     const boxes =
       '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
       '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
-    const numbers = '<table><tr><td id="number">12.3</td></tr></table>';
-    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + numbers);
+    const letters = '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td></tr></table>';
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters);
   });
   await page.evaluate(translateAll);
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
-  await expect(page.locator("th, td:not(#number)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("table:not(#letters) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
   await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
   await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
-  await expect(page.locator("#number"), "a cell of figures alone has nothing to translate").toHaveAttribute("data-lattice-block", "skip");
+  // Figures alone have nothing to translate, also in a link; letters of any script have.
+  for (const cell of ["#number", "#linked"]) {
+    await expect(page.locator(cell)).toHaveAttribute("data-lattice-block", "skip");
+  }
+  await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
 });
 
 test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {
