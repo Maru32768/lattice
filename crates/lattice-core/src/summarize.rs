@@ -1,6 +1,10 @@
 //! Article summary job (§4.4, type "normal"): a short Japanese overview plus key points,
 //! generated from the extracted blocks and stored with the article's content hash.
 
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+use regex::Regex;
 use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -193,19 +197,9 @@ fn first_chars(s: &str, n: usize) -> &str {
 }
 
 /// `text` with every `</article` (any case) broken up, so the page cannot close the tag its text sits in.
-fn unclosable(text: &str) -> String {
-    const TAG: &str = "</article";
-    // ASCII lowercasing keeps every byte offset, so a match in `lower` is the same span in `text`.
-    let lower = text.to_ascii_lowercase();
-    let mut out = String::with_capacity(text.len());
-    let mut from = 0;
-    for (i, _) in lower.match_indices(TAG) {
-        out.push_str(&text[from..=i]);
-        out.push('\\');
-        from = i + 1;
-    }
-    out.push_str(&text[from..]);
-    out
+fn unclosable(text: &str) -> Cow<'_, str> {
+    static CLOSE_TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)<(/article)").expect("static regex"));
+    CLOSE_TAG.replace_all(text, r"<\$1")
 }
 
 pub fn format_summary(v: &Value) -> Option<String> {
