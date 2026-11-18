@@ -189,7 +189,8 @@ impl TabState {
         }
     }
 
-    /// A document begins loading: one soon after a jump first ran is that page moving on by script, and gets it too.
+    /// A document begins loading: one soon after a jump first ran is taken for that page moving on by script, and gets it
+    /// too, as does one a link in the page led to.
     /// Measured from the first run, so a page that keeps reloading itself is not scrolled back for good.
     fn started(&mut self, now: Instant) {
         self.begun = true;
@@ -1465,7 +1466,7 @@ mod tests {
     }
 
     #[test]
-    fn a_jump_follows_the_page_moving_on_by_script_as_it_loads_and_no_other_page() {
+    fn a_jump_reaches_each_document_begun_soon_after_it_first_ran_until_the_app_or_the_toolbar_moves_on() {
         let t0 = Instant::now();
         let at = |ms: u64| t0 + Duration::from_millis(ms);
         let zebra = || Some(Jump::Text("Zebra".into()));
