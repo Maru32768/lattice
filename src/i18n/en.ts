@@ -648,6 +648,7 @@ export const en = {
   "facetPopover.hintToggle": " toggle",
   "facetPopover.hintRemoveLast": " remove the last",
   "facetPopover.searchPlaceholder": (p) => `Search ${plural(p.n, "tag", "tags")}…`,
+  "pickList.none": "No matches",
   "listPane.savedDesc": "Date added, newest first",
   "listPane.savedAsc": "Date added, oldest first",
   "listPane.publishedDesc": "Date published, newest first",
