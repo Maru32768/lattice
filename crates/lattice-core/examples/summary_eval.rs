@@ -1109,8 +1109,17 @@ mod tests {
 
         async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, lattice_core::llm::LlmError> {
             self.requests.lock().unwrap().push((system.into(), input.into(), schema.clone()));
-            Ok(Completion { value: self.reply.clone(), model: None, provider: "fake".into() })
+            // Not the fake's own name, so a step that saves `name()` instead of who answered fails.
+            Ok(Completion { value: self.reply.clone(), model: Some("gpt-6-luna".into()), provider: "codex-cli".into() })
         }
+    }
+
+    fn maker(provider: &str, model: &Option<String>) -> (String, Option<String>) {
+        (provider.into(), model.clone())
+    }
+
+    fn luna() -> (String, Option<String>) {
+        ("codex-cli".into(), Some("gpt-6-luna".into()))
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -1130,6 +1139,7 @@ mod tests {
         };
         assert_eq!(Some(run.formatted.clone()), summarize::format_summary(&reply));
         assert_eq!(items(run), ["WALを解説する。", "fsyncが減る"], "the judge grades the summary's sentences, then its key points");
+        assert_eq!(maker(&run.provider, &run.model), luna(), "who answered, for the report's makers");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1158,6 +1168,7 @@ mod tests {
             panic!("no key facts for case 1");
         };
         assert_eq!(f.facts.iter().map(|f| (f.text.as_str(), f.must)).collect::<Vec<_>>(), [("uses WAL", true), ("aside", false)]);
+        assert_eq!(maker(&f.provider, &f.model), luna(), "who answered");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1200,6 +1211,7 @@ mod tests {
             Scores { faithfulness: Some(2.0 / 3.0), completeness_must: Some(1.0), completeness_all: Some(0.5), conciseness: Some(1.0 / 3.0) },
             "2 of 3 items supported, the one must fact covered, 1 of 2 facts covered, by 1 of 3 items"
         );
+        assert_eq!(maker(&j.provider, &j.model), luna(), "who answered, for the report's makers");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
