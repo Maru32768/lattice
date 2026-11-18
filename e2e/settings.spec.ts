@@ -55,13 +55,20 @@ test("the launch-at-sign-in and tray switches keep what was chosen", async ({ ap
   const tray = app.getByRole("switch", { name: "ウィンドウを閉じてもタスクトレイに残す" });
   await expect(autostart).not.toBeChecked();
   await expect(tray).not.toBeChecked();
-  await autostart.click();
+  // One at a time, so a switch wired to the other's setting shows up. The checked one is awaited first: an unchecked
+  // switch passes before its setting has loaded.
   await tray.click();
+  await section("ブラウザ").click();
+  await section("起動・タスクバー").click();
+  await expect(tray).toBeChecked();
+  await expect(autostart).not.toBeChecked();
+  await autostart.click();
   await section("ブラウザ").click();
   await section("起動・タスクバー").click();
   await expect(autostart).toBeChecked();
   await expect(tray).toBeChecked();
   expect(await callsOf(app, "set_close_to_tray")).toEqual([{ on: true }]);
+  expect(await callsOf(app, "set_autostart")).toEqual([{ on: true }]);
 });
 
 test("翻訳しないサイト shows the stored patterns and saves the edited list", async ({ app }) => {
