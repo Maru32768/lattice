@@ -129,7 +129,7 @@ fn place(app: &AppHandle, state: &App, w: &WebviewWindow) -> Result<(), String> 
 }
 
 /// Shows the (hidden) main window where it last was; at tauri.conf.json's size until it has been closed once. A launch
-/// at sign-in with the tray on leaves it hidden, in the tray.
+/// at sign-in with the tray icon there leaves it hidden, in the tray.
 pub fn restore_main(app: &AppHandle, state: &App) {
     let Some(w) = app.get_webview_window(MAIN) else {
         return;
@@ -139,7 +139,7 @@ pub fn restore_main(app: &AppHandle, state: &App) {
     {
         log::warn!("restoring the main window's position: {e}");
     }
-    if tray::launched_at_sign_in() && matches!(tray::enabled(state), Ok(true)) {
+    if tray::launched_at_sign_in() && tray::shown(app) {
         *lock(&TRAYED) = Some(Vec::new());
     } else if let Err(e) = w.show() {
         log::warn!("showing the main window: {e}");

@@ -127,11 +127,15 @@ fn get_ui_language(app: State<'_, App>) -> Result<Option<String>, String> {
 }
 
 #[tauri::command(async)]
-fn set_ui_language(app: State<'_, App>, lang: String) -> Result<(), String> {
+fn set_ui_language(app: State<'_, App>, handle: tauri::AppHandle, lang: String) -> Result<(), String> {
     if !matches!(lang.as_str(), "ja" | "en") {
         return Err(format!("unknown language {lang:?}"));
     }
-    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)
+    app.store.set_setting(UI_LANGUAGE, Some(&lang)).map_err(err)?;
+    if let Err(e) = tray::refresh(&handle, &app) {
+        log::warn!("relabeling the tray menu: {e}");
+    }
+    Ok(())
 }
 
 /// The settings row of a UI preference (`src/lib/prefs.ts`): `ui.` and its localStorage key. Only `lattice.` keys of
@@ -165,7 +169,7 @@ fn set_ui_prefs(app: State<'_, App>, prefs: HashMap<String, String>) -> Result<(
     Ok(())
 }
 
-/// A native dialog's title in the display language.
+/// Native text, such as a dialog's title or the tray menu, in the display language.
 fn ui_text(app: &App, ja: &'static str, en: &'static str) -> &'static str {
     if app.store.setting(UI_LANGUAGE).ok().flatten().as_deref() == Some("en") {
         en
@@ -1604,6 +1608,8 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // Before the main window would show: a launch at sign-in starts hidden only with the icon there.
+    tray::start(app.handle(), &app.state::<App>());
     popout::restore_main(app.handle(), &app.state::<App>());
     Ok(())
 }
@@ -1622,7 +1628,6 @@ pub fn run() {
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
         .manage(mobile::MobileServer::default())
-        .manage(tray::TrayMenu::default())
         .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
             let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
@@ -1807,7 +1812,6 @@ pub fn run() {
             badge::set_taskbar_badge,
             tray::get_close_to_tray,
             tray::set_close_to_tray,
-            tray::set_tray_menu,
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,

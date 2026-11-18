@@ -166,7 +166,6 @@ const COMMANDS: &[&str] = &[
     "set_autostart",
     "get_close_to_tray",
     "set_close_to_tray",
-    "set_tray_menu",
     "browser_open",
     "browser_set_bounds",
     "browser_hide",

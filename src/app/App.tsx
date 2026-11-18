@@ -165,12 +165,6 @@ export default function App() {
       syncPrefs().catch(() => {});
     }
   }, []);
-  useEffect(() => {
-    // The tray menu is native, so its text comes from the catalog through the backend.
-    if (IS_MAIN) {
-      api.setTrayMenu(t("tray.open"), t("tray.quit")).catch(() => {});
-    }
-  }, [t]);
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(String(e));
 

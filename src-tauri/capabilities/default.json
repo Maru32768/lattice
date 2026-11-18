@@ -41,7 +41,6 @@
     "allow-set-autostart",
     "allow-get-close-to-tray",
     "allow-set-close-to-tray",
-    "allow-set-tray-menu",
     "allow-get-ui-language",
     "allow-set-ui-language",
     "allow-get-ui-prefs",

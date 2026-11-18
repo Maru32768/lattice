@@ -187,8 +187,6 @@ export const ja = {
     "メインウィンドウを閉じても終了せず、通知領域にアイコンを残します。翻訳などの処理、フィードの取得、スマホで読むためのサーバーは動き続けます。アイコンをクリックするとウィンドウが戻り、右クリックのメニューから終了できます。オンのときは、Windowsの起動時にもウィンドウを開かずにトレイで起動します。",
   "taskbarSettings.badge": "未読数をタスクバーに表示",
   "taskbarSettings.badgeDesc": "タスクバーのアプリのボタンに未読の記事数を重ねて表示します(100件以上は99+、0件のときは表示しません)。",
-  "tray.open": "Latticeを開く",
-  "tray.quit": "Latticeを終了",
   "translationSettings.engine": "翻訳エンジン",
   "translationSettings.engineDesc":
     "「AIプロバイダ」は、「設定 › AIプロバイダ」のモデルで訳します。「ローカルの翻訳サーバー」は、自分で起動したOpenAI互換のサーバー(llama-serverなど)のPLaMo 3 Translateで訳し、AIの使用量はかかりません。",

@@ -190,8 +190,6 @@ export const api = {
   /** Whether closing the main window leaves Lattice running in the tray. */
   closeToTray: () => invoke<boolean>("get_close_to_tray"),
   setCloseToTray: (on: boolean) => invoke<void>("set_close_to_tray", { on }),
-  /** The tray menu's text in the display language; the icon appears once it has come. */
-  setTrayMenu: (open: string, quit: string) => invoke<void>("set_tray_menu", { open, quit }),
   /** The display language; null until the UI first stores the one it detected. */
   uiLanguage: () => invoke<Lang | null>("get_ui_language"),
   setUiLanguage: (lang: Lang) => invoke<void>("set_ui_language", { lang }),

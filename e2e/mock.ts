@@ -703,7 +703,6 @@ export const handlers = {
   set_autostart: ({ on }: { on: boolean }) => void (store.autostart = on),
   get_close_to_tray: (): boolean => store.closeToTray,
   set_close_to_tray: ({ on }: { on: boolean }) => void (store.closeToTray = on),
-  set_tray_menu: none,
   get_ui_language: (): string | null => store.uiLanguage,
   set_ui_language: ({ lang }: { lang: string }) => void (store.uiLanguage = lang),
   get_ui_prefs: ({ keys }: { keys: string[] }): Record<string, string> =>

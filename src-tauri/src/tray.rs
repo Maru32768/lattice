@@ -1,7 +1,7 @@
 //! The icon in the notification area that keeps Lattice running with its windows closed: the job runners, the feed
-//! updates and the server for the phone go on. It is there while the setting is on and the main window's UI has sent
-//! the menu's text, and closing the main window keeps the app only while it is there (`popout::on_window_event`), so
-//! the app never runs with nothing on screen to bring it back.
+//! updates and the server for the phone go on. It is there while the setting is on, and closing the main window keeps
+//! the app only while it is there (`popout::on_window_event`), so the app never runs with nothing on screen to bring
+//! it back.
 
 use std::sync::Mutex;
 
@@ -10,7 +10,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, State};
 
 use crate::browser::lock;
-use crate::{App, err, popout};
+use crate::{App, err, popout, ui_text};
 
 /// "on" keeps Lattice in the tray when the main window closes; absent means off.
 const SETTING: &str = "close_to_tray";
@@ -20,11 +20,12 @@ const QUIT: &str = "tray-quit";
 /// What the sign-in registration passes, so that launch can start in the tray.
 pub const AUTOSTART_ARG: &str = "--autostart";
 
-/// The menu's text in the display language (open, quit), from the main window's UI; none until it sends it.
-#[derive(Default)]
-pub struct TrayMenu(Mutex<Option<(String, String)>>);
+/// Held from reading the setting and the display language until the icon shows them, so two updates cannot land in
+/// the other order. It is held while waiting for the main thread, which is safe only because no code on the main
+/// thread takes it.
+static UPDATING: Mutex<()> = Mutex::new(());
 
-pub fn enabled(app: &App) -> Result<bool, String> {
+fn enabled(app: &App) -> Result<bool, String> {
     Ok(app.store.setting(SETTING).map_err(err)?.as_deref() == Some("on"))
 }
 
@@ -46,9 +47,23 @@ pub fn on_menu_event(handle: &AppHandle, e: MenuEvent) {
     }
 }
 
-/// Puts the icon there with `menu` as its menu's text, or removes it for none. The callers hold the `TrayMenu` lock
-/// while this waits for the main thread, which is safe only because no code on the main thread takes that lock.
-fn apply(handle: &AppHandle, menu: Option<(String, String)>) -> Result<(), String> {
+/// The menu's text in the display language while the setting is on; none while it is off.
+fn menu(app: &App) -> Result<Option<(&'static str, &'static str)>, String> {
+    Ok(enabled(app)?.then(|| (ui_text(app, "Latticeを開く", "Open Lattice"), ui_text(app, "Latticeを終了", "Quit Lattice"))))
+}
+
+/// Puts the icon there at startup when the setting is on. Setup runs on the main thread, so this updates it directly,
+/// without `UPDATING`.
+pub fn start(handle: &AppHandle, app: &App) {
+    if let Err(e) = menu(app).and_then(|menu| update(handle, menu).map_err(err)) {
+        log::warn!("creating the tray icon: {e}");
+    }
+}
+
+/// Puts the icon there with its menu in the display language while the setting is on, or removes it while off.
+pub fn refresh(handle: &AppHandle, app: &App) -> Result<(), String> {
+    let _updating = lock(&UPDATING);
+    let menu = menu(app)?;
     let (tx, rx) = std::sync::mpsc::channel();
     let on_main = handle.clone();
     // The icon's reference count is not atomic, and its hidden window can be destroyed only by the thread that made it.
@@ -60,7 +75,7 @@ fn apply(handle: &AppHandle, menu: Option<(String, String)>) -> Result<(), Strin
     rx.recv().map_err(err)?.map_err(err)
 }
 
-fn update(handle: &AppHandle, menu: Option<(String, String)>) -> tauri::Result<()> {
+fn update(handle: &AppHandle, menu: Option<(&str, &str)>) -> tauri::Result<()> {
     let Some((open, quit)) = menu else {
         handle.remove_tray_by_id(ID);
         return Ok(());
@@ -88,17 +103,7 @@ pub fn get_close_to_tray(app: State<'_, App>) -> Result<bool, String> {
 }
 
 #[tauri::command(async)]
-pub fn set_close_to_tray(app: State<'_, App>, menu: State<'_, TrayMenu>, handle: AppHandle, on: bool) -> Result<(), String> {
-    let text = lock(&menu.0);
+pub fn set_close_to_tray(app: State<'_, App>, handle: AppHandle, on: bool) -> Result<(), String> {
     app.store.set_setting(SETTING, on.then_some("on")).map_err(err)?;
-    apply(&handle, text.clone().filter(|_| on))
-}
-
-/// The main window's UI sends the menu's text at startup and whenever the display language changes: the menu is native.
-#[tauri::command(async)]
-pub fn set_tray_menu(app: State<'_, App>, menu: State<'_, TrayMenu>, handle: AppHandle, open: String, quit: String) -> Result<(), String> {
-    let mut text = lock(&menu.0);
-    *text = Some((open, quit));
-    let on = enabled(&app)?;
-    apply(&handle, text.clone().filter(|_| on))
+    refresh(&handle, &app)
 }
