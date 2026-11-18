@@ -1080,7 +1080,12 @@ mod tests {
         let of = |lang, s| Stratum::of(Some(lang), &s);
         assert_eq!(of("ja", stats(50_000, 40_000)), Some(Stratum::Japanese), "Japanese before code-heavy and over the cap");
         assert_eq!(of("en", stats(50_000, 30_000)), Some(Stratum::CodeHeavy), "code-heavy before over the cap");
+        assert_eq!(of("en", stats(10_000, 5_000)), Some(Stratum::CodeHeavy), "code-heavy before medium");
         assert_eq!(of("en", stats(50_000, 1_000)), Some(Stratum::OverCap));
+        assert_eq!(of("en", stats(39_999, 0)), Some(Stratum::Long));
+        assert_eq!(of("en", stats(40_000, 0)), Some(Stratum::OverCap));
+        assert_eq!(of("en", stats(200_000, 0)), Some(Stratum::OverCap));
+        assert_eq!(of("en", stats(200_001, 0)), None);
         assert_eq!(of("de", stats(30_000, 0)), Some(Stratum::Long), "long articles of any language");
         assert_eq!(of("en-US", stats(10_000, 0)), Some(Stratum::Medium));
         assert_eq!(of("en", stats(5_000, 0)), Some(Stratum::Short));
