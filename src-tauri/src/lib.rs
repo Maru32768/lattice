@@ -350,7 +350,7 @@ fn list_genres(app: State<'_, App>) -> Result<Vec<TagCount>, String> {
 /// Renaming to an existing genre merges into it.
 #[tauri::command(async)]
 fn rename_genre(app: State<'_, App>, from: String, to: String) -> Result<(), String> {
-    classify::rename_genre(&app.store, &from, &to)
+    classify::rename_genre(&app.store, &from, &to, true)
 }
 
 /// The articles shown in this window's panes (Reader tabs and saved Page tabs in front): the

@@ -1113,6 +1113,7 @@ export const ja = {
   "be.classify.noResult": "モデルがこの記事の分類を返しませんでした",
   "be.classify.emptyName": "ジャンル名が空です",
   "be.classify.noGenre": "ジャンル「{name}」がありません",
+  "be.classify.exists": "ジャンル「{name}」はすでにあります",
   "be.classify.notDeletable": "ジャンル「{name}」は削除できません(記事があるか、ジャンルがありません)",
   "be.groups.emptyName": "グループ名が空です",
   "be.groups.nameTooLong": "グループ名は{max}文字までです",
