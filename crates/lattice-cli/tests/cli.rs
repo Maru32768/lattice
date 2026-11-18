@@ -178,14 +178,14 @@ fn serve_takes_the_phones_changes_only_with_the_opt_in() {
         }
     }
     let (dir, _) = library("serve");
-    for (flags, read_only) in [(&[][..], true), (&["--allow-write"][..], false)] {
+    for (flags, env, read_only) in [(&[][..], "", true), (&["--allow-write"][..], "", false), (&[][..], "1", false)] {
         let mut server = Server(
             Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
                 .arg("--data-dir")
                 .arg(&*dir)
                 .args(flags)
                 .args(["serve", "--port", "0"])
-                .env_remove("LATTICE_ALLOW_WRITE")
+                .env("LATTICE_ALLOW_WRITE", env)
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap(),
@@ -199,7 +199,7 @@ fn serve_takes_the_phones_changes_only_with_the_opt_in() {
         let mut response = String::new();
         conn.read_to_string(&mut response).unwrap();
         let body: Value = serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
-        assert_eq!(body["read_only"], read_only, "{flags:?}");
+        assert_eq!(body["read_only"], read_only, "{flags:?} LATTICE_ALLOW_WRITE={env:?}");
     }
 }
 
