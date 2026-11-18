@@ -191,7 +191,7 @@ export const en = {
   "taskbarSettings.autostartDesc": "Opens Lattice automatically when you sign in. Turning it off in Task Manager's Startup apps turns it off here too.",
   "taskbarSettings.tray": "Keep running in the tray when the window closes",
   "taskbarSettings.trayDesc":
-    "Closing the main window leaves Lattice running with an icon in the notification area, so translations and other jobs, feed updates and the server for reading on a phone keep going. Click the icon to bring the window back, or right-click it to quit. When this is on, Lattice also starts in the tray, without a window, when Windows starts.",
+    "Closing the main window leaves Lattice running with an icon in the notification area, so translations and other jobs, feed updates and the server for reading on a phone keep going. Click the icon to bring the windows back, or right-click it to quit. When this is on, Lattice also starts in the tray, without a window, when Windows starts.",
   "taskbarSettings.badge": "Show the unread count on the taskbar",
   "taskbarSettings.badgeDesc": "Overlays the number of unread articles on the app's taskbar button (99+ from 100 on, nothing at 0).",
   "translationSettings.engine": "Translation engine",
