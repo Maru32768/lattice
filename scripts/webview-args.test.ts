@@ -4,10 +4,11 @@ import { test } from "node:test";
 
 // WebView2 never runs under test: these read the Rust source instead.
 const dir = new URL("../src-tauri/src/", import.meta.url);
-const src = readdirSync(dir)
-  .filter((f) => f.endsWith(".rs"))
-  .map((f) => readFileSync(new URL(f, dir), "utf8"))
-  .join("\n");
+const files = readdirSync(dir).filter((f) => f.endsWith(".rs"));
+const read = (names: string[]) => names.map((f) => readFileSync(new URL(f, dir), "utf8")).join("\n");
+const src = read(files);
+// The renderer's webview is muted and never shown, so the input its eval counts as does not matter (renderer.rs).
+const pages = read(files.filter((f) => f !== "renderer.rs"));
 
 test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-features and asks for a user's input before sound, even on a site the user often played sound on", () => {
   const builders = src.match(/Webview(Window)?(Builder::(new|from_config)|::builder)\(/g) ?? [];
@@ -28,7 +29,7 @@ test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-fea
 });
 
 test("the app runs its scripts in a page through run_script, as eval would count as the user's input and let the page play sound", () => {
-  assert.equal((src.match(/\.eval(_with_callback)?\(/g) ?? []).length, 1, "only run_script's fallback off Windows may call eval");
-  assert.match(src, /#\[cfg\(not\(windows\)\)\]\s*pub\(crate\) fn run_script\([^)]*\)[^{]*\{\s*wv\.eval\(js\)/, "run_script may call eval only off Windows");
+  assert.equal((pages.match(/\.eval(_with_callback)?\(/g) ?? []).length, 1, "only run_script's fallback off Windows may call eval");
+  assert.match(pages, /#\[cfg\(not\(windows\)\)\]\s*pub\(crate\) fn run_script\([^)]*\)[^{]*\{\s*wv\.eval\(js\)/, "run_script may call eval only off Windows");
   assert.ok(!src.includes("userGesture"), "Runtime.evaluate's userGesture would count as the user's input");
 });

@@ -35,6 +35,9 @@ const MAX_KEY: usize = 32;
 /// Hidden tabs keep their webview (instant switching, history and scroll kept) up to this many;
 /// creating one more closes the one hidden longest, and the UI reopens it when shown again.
 const MAX_PARKED: usize = 3;
+
+/// How soon after a page has loaded a new document is taken for the page moving on by script, which its jump follows.
+const MOVES_ON_WITHIN: Duration = Duration::from_secs(5);
 /// Of a page not in the library, how many translated texts its save can give the article it becomes.
 const MAX_UNOWNED: usize = 20_000;
 
@@ -120,6 +123,9 @@ struct TabState {
     hidden_while_opening: bool,
     /// Where to scroll once the next page finishes loading.
     jump: Option<Jump>,
+    /// The jump the last page got as it loaded. A page that moves on by script as it loads still gets its `Finished`,
+    /// and `run_script` reaches that page rather than the one it moves to, so a document soon after gets it again.
+    jumped: Option<(Jump, Instant)>,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
     history: (bool, bool),
@@ -144,6 +150,7 @@ impl Default for TabState {
         Self {
             hidden_while_opening: false,
             jump: None,
+            jumped: None,
             visibility: Visibility::default(),
             history: (true, true),
             parked: None,
@@ -708,12 +715,16 @@ pub async fn browser_open(
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
         }
-        browser.with_tab(&label, |t| t.jump = jump);
+        browser.with_tab(&label, |t| {
+            t.jump = jump;
+            t.jumped = None;
+        });
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
     browser.with_tab(&label, |t| {
         t.jump = jump;
+        t.jumped = None;
         t.hidden_while_opening = false;
     });
     browser.evict(&app);
@@ -746,6 +757,11 @@ pub async fn browser_open(
                     t.history = (true, true); // until the new page's overlay reports
                     t.documents += 1;
                     t.unowned.clear();
+                    if let Some((jump, at)) = t.jumped.take()
+                        && at.elapsed() < MOVES_ON_WITHIN
+                    {
+                        t.jump = Some(jump);
+                    }
                 });
             }
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
@@ -753,6 +769,7 @@ pub async fn browser_open(
             emit_page(&wv, &browser, p.url().to_string());
             if !loading && let Some(jump) = browser.with_tab(wv.label(), |t| t.jump.take()) {
                 let _ = run_script(&wv, &jump.script());
+                browser.with_tab(wv.label(), |t| t.jumped = Some((jump, Instant::now())));
             }
         })
         .on_document_title_changed(|wv, title| {
@@ -916,15 +933,22 @@ const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 /// The rendered DOM of tab's page and the webview's own URL, from the overlay.
 /// None if the page does not answer in time (overlay missing, page busy or hostile).
 pub async fn snapshot(app: &AppHandle, browser: &Browser, tab: &str) -> Option<(String, String)> {
-    snapshot_of(&app.get_webview(&label(tab).ok()?)?, browser, None, SNAPSHOT_TIMEOUT).await
+    snapshot_of(&app.get_webview(&label(tab).ok()?)?, browser, run_script, None, SNAPSHOT_TIMEOUT).await
 }
 
-/// `settle`: (quiet ms, max ms) the overlay waits for DOM mutations to stop before snapshotting.
-pub(crate) async fn snapshot_of(wv: &Webview, browser: &Browser, settle: Option<(u32, u32)>, timeout: Duration) -> Option<(String, String)> {
+/// `run` sends the request to the page. `settle`: (quiet ms, max ms) the overlay waits for DOM mutations to stop before
+/// snapshotting.
+pub(crate) async fn snapshot_of(
+    wv: &Webview,
+    browser: &Browser,
+    run: fn(&Webview, &str) -> Result<(), String>,
+    settle: Option<(u32, u32)>,
+    timeout: Duration,
+) -> Option<(String, String)> {
     let (nonce, rx) = browser.snapshots.begin(wv.label());
     let arg = serde_json::to_string(&nonce).expect("string serializes");
     let settle = settle.map_or("null".into(), |(quiet, max)| format!("{{quietMs:{quiet},maxMs:{max}}}"));
-    let reply = match run_script(wv, &format!("window.__lattice&&window.__lattice.snapshot({arg},{settle})")) {
+    let reply = match run(wv, &format!("window.__lattice&&window.__lattice.snapshot({arg},{settle})")) {
         Ok(()) => tokio::time::timeout(timeout, rx).await.ok().and_then(Result::ok),
         Err(_) => None,
     };

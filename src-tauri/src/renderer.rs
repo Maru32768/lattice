@@ -11,7 +11,7 @@ use std::time::Duration;
 use lattice_core::store::Store;
 use lattice_core::{jobs, render};
 use tauri::webview::{NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, WebviewBuilder, WebviewUrl};
+use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager, Webview, WebviewBuilder, WebviewUrl};
 use tokio::sync::{Notify, oneshot};
 
 use crate::browser::{self, Browser, OVERLAY_JS, RENDER_LABEL, http_url, is_http, lock};
@@ -65,6 +65,14 @@ async fn run_next(app: &AppHandle, store: &Store, embed_model: &str, on_change: 
     Ok(true)
 }
 
+/// `eval` (WebView2's `ExecuteScript`), called once the next navigation has begun, runs in the page that navigation
+/// loads, so a page that moves on by script as it loads is snapshotted where it lands; `browser::run_script` would
+/// snapshot the page it leaves. That `eval` counts as the user's input does not matter here: the renderer is muted,
+/// never shown, and closed after its job.
+fn eval(wv: &Webview, js: &str) -> Result<(), String> {
+    wv.eval(js).map_err(|e| e.to_string())
+}
+
 /// Loads `url` in the hidden webview and returns its rendered DOM as (final URL, html).
 async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), String> {
     let url = http_url(url)?;
@@ -101,7 +109,7 @@ async fn render_page(app: &AppHandle, url: &str) -> Result<(String, String), Str
             _ => return Err(msg!("render.loadTimeout")),
         }
         let browser = app.state::<Browser>();
-        browser::snapshot_of(&wv, &browser, Some(SETTLE_MS), SNAPSHOT_TIMEOUT).await.ok_or_else(|| msg!("render.noDom"))
+        browser::snapshot_of(&wv, &browser, eval, Some(SETTLE_MS), SNAPSHOT_TIMEOUT).await.ok_or_else(|| msg!("render.noDom"))
     }
     .await;
     if let Err(e) = wv.close() {
