@@ -59,6 +59,21 @@ test("the launch-at-sign-in switch keeps what was chosen", async ({ app }) => {
   await expect(autostart).toBeChecked();
 });
 
+test("the tray switch keeps what was chosen, and the main window gives the tray menu its text", async ({ app }) => {
+  await expect.poll(() => callsOf(app, "set_tray_menu")).toContainEqual({ open: "Latticeを開く", quit: "Latticeを終了" });
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  const nav = app.getByRole("navigation", { name: "設定カテゴリ" });
+  const section = (title: string) => nav.locator(".ni").filter({ has: app.locator(".label").getByText(title, { exact: true }) });
+  await section("起動・タスクバー").click();
+  const tray = app.getByRole("switch", { name: "ウィンドウを閉じてもタスクトレイに残す" });
+  await expect(tray).not.toBeChecked();
+  await tray.click();
+  await section("ブラウザ").click();
+  await section("起動・タスクバー").click();
+  await expect(tray).toBeChecked();
+  expect(await callsOf(app, "set_close_to_tray")).toEqual([{ on: true }]);
+});
+
 test("翻訳しないサイト shows the stored patterns and saves the edited list", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   const nav = app.getByRole("navigation", { name: "設定カテゴリ" });

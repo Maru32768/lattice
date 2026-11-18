@@ -13,6 +13,7 @@ test("the display language switches live in Settings and sends the backend setti
   await expect(navEn).toContainText("Back to library");
   await expect(app.locator("html")).toHaveAttribute("lang", "en");
   expect((await callsOf(app, "set_ui_language")).at(-1)).toEqual({ lang: "en" });
+  await expect.poll(async () => (await callsOf(app, "set_tray_menu")).at(-1)).toEqual({ open: "Open Lattice", quit: "Quit Lattice" });
   await navEn.getByRole("button", { name: "Translation" }).click();
   await expect(app.getByText("Keep technical terms in English")).toBeVisible();
   await navEn.getByRole("button", { name: "Review" }).click();

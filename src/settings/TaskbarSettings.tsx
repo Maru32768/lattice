@@ -15,6 +15,14 @@ export function TaskbarSettings() {
         save={api.setAutostart}
       />
       <Toggle
+        id="close-to-tray"
+        title="taskbarSettings.tray"
+        desc="taskbarSettings.trayDesc"
+        initial={false}
+        load={api.closeToTray}
+        save={api.setCloseToTray}
+      />
+      <Toggle
         id="taskbar-badge"
         title="taskbarSettings.badge"
         desc="taskbarSettings.badgeDesc"
