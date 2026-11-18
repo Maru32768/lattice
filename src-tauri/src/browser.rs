@@ -127,8 +127,9 @@ struct TabState {
     /// gets its `Finished`, and `run_script` reaches that page rather than the one it moves to, so a document soon after
     /// gets it again.
     jumped: Option<(Jump, Instant)>,
-    /// Whether the page the app last opened has begun loading. A load that ends before it is the navigation it cancelled,
-    /// whose `Finished` (with no `Started`) must leave the jump to it.
+    /// Whether the page the app last opened has begun loading. A `Finished` (with no `Started`) before then is the end of
+    /// the navigation it cancelled, which must leave the jump to it, or of its own when it makes no document (a 204, a
+    /// download): then the jump waits for the next document.
     begun: bool,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
@@ -178,7 +179,7 @@ impl TabState {
     }
 
     /// The user moved the page on with the toolbar: where it lands gets no jump. Back and Forward do nothing in WebView2
-    /// while the page the app opened has not begun loading, so that page keeps its jump; a reload replaces it.
+    /// while the page the app opened waits for its response, so that page keeps its jump; a reload replaces it.
     /// A link in the page is not told apart: WebView2's `IsUserInitiated` is also true for the app's own `navigate`, which
     /// must keep the jump, and for the page's own move soon after a click anywhere in it.
     fn moved_by_toolbar(&mut self, reload: bool) {
