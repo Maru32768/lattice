@@ -357,6 +357,9 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   await expect(active).toBeInViewport();
   expect(Number(await active.getAttribute("aria-posinset"))).toBeGreaterThan(200);
   expect(await options.count()).toBeLessThan(60);
+  const down = Number(await active.getAttribute("aria-posinset"));
+  await app.keyboard.press("PageUp");
+  await expect.poll(async () => Number(await active.getAttribute("aria-posinset")), "PageUp goes back a page").toBeLessThan(down - 6);
 
   // A new search, many matches, from far down the list: its first match is in view, and Enter would pick what is shown.
   await picker.getByRole("combobox", { name: "範囲を検索" }).fill("zz-");
