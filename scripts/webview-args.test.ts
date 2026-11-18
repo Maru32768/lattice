@@ -28,5 +28,6 @@ test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-fea
 });
 
 test("the app runs its scripts in a page through run_script, as eval would count as the user's input and let the page play sound", () => {
-  assert.equal((src.match(/\.eval\(/g) ?? []).length, 1, "only run_script's fallback off Windows may call eval");
+  assert.equal((src.match(/\.eval(_with_callback)?\(/g) ?? []).length, 1, "only run_script's fallback off Windows may call eval");
+  assert.match(src, /#\[cfg\(not\(windows\)\)\]\s*pub\(crate\) fn run_script\([^)]*\)[^{]*\{\s*wv\.eval\(js\)/, "run_script may call eval only off Windows");
 });
