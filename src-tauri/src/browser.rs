@@ -427,7 +427,7 @@ fn update_visibility(wv: &Webview, browser: &Browser, f: impl FnOnce(&mut Visibi
         (v.on_screen(), v.loading, v.muted())
     });
     // Lock released first: show/hide may wait on the main thread, which may want this lock.
-    set_muted(wv, muted);
+    set_muted(wv, muted || crate::popout::in_tray());
     match on_screen {
         Some(b) => {
             let (x, y) = if loading {
@@ -463,6 +463,17 @@ pub(crate) fn set_muted(wv: &Webview, muted: bool) {
 
 #[cfg(not(windows))]
 pub(crate) fn set_muted(_: &Webview, _: bool) {}
+
+/// Every page is muted while Lattice is in the tray, with no window to stop it from, and hears as its tab says again
+/// when the windows come back.
+pub(crate) fn sound(app: &AppHandle) {
+    let browser = app.state::<Browser>();
+    let away = crate::popout::in_tray();
+    for (label, wv) in browser.webviews(app) {
+        let muted = lock(&browser.tabs).get(&label).is_none_or(|t| t.visibility.muted());
+        set_muted(&wv, muted || away);
+    }
+}
 
 /// Runs `js` in the page as DevTools' `Runtime.evaluate`. `eval` (WebView2's `ExecuteScript`) counts as the user's
 /// input, after which the page may play sound: a page the app only scrolled, or every page when a window opened,

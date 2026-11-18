@@ -6,6 +6,7 @@ mod mobile;
 mod popout;
 mod renderer;
 mod tabdrag;
+mod tray;
 mod update;
 
 use std::collections::HashMap;
@@ -1612,28 +1613,22 @@ pub fn run() {
     context.config_mut().identifier = location::APP_IDENTIFIER.into();
     tauri::Builder::default()
         // First, so a second launch exits before it opens the store: it would start a second set of job runners and schedulers.
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            // Still hidden while starting up: `restore_main` shows it.
-            if let Some(w) = app.get_webview_window(popout::MAIN)
-                && w.is_visible().unwrap_or(false)
-                && let Err(e) = w.unminimize().and_then(|()| w.set_focus())
-            {
-                log::warn!("focusing the main window for a second launch: {e}");
-            }
-        }))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| popout::bring_back(app)))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_autostart::Builder::new().arg(tray::AUTOSTART_ARG).build())
         .manage(Browser::default())
         .manage(badge::Badge::default())
         .manage(tabdrag::TabDrag::default())
         .manage(popout::Spare::default())
         .manage(mobile::MobileServer::default())
+        .manage(tray::TrayMenu::default())
         .register_asynchronous_uri_scheme_protocol(browser::PDF_SCHEME, |ctx, request, responder| {
             let (handle, label) = (ctx.app_handle().clone(), ctx.webview_label().to_string());
             tauri::async_runtime::spawn_blocking(move || responder.respond(saved_pdf(&handle, &label, request.uri().path())));
         })
         .on_window_event(popout::on_window_event)
+        .on_menu_event(tray::on_menu_event)
         .setup(|app| {
             if let Err(e) = start(app) {
                 // Returned from here it would be Tauri's panic, with no console to show it in a release build: the app would just never appear, at every launch.
@@ -1810,6 +1805,9 @@ pub fn run() {
             badge::set_unread_badge,
             badge::get_taskbar_badge,
             badge::set_taskbar_badge,
+            tray::get_close_to_tray,
+            tray::set_close_to_tray,
+            tray::set_tray_menu,
             browser::browser_open,
             browser::browser_set_bounds,
             browser::browser_hide,
