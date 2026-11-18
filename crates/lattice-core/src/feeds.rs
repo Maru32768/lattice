@@ -817,6 +817,7 @@ mod tests {
         assert!(list(&s).unwrap().is_empty());
         let (id, _) = add(&s, url, None).unwrap();
         assert_eq!(subscribe(&s, &client, url, None).await, Ok(id));
+        assert_eq!(list(&s).unwrap().len(), 1, "the subscription stays though it did not load");
     }
 
     #[test]
