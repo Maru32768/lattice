@@ -1113,28 +1113,26 @@ mod tests {
         let comparisons: Results<Comparison> = read(&compare_path(&dir, "a", "b")).unwrap().unwrap();
         assert_eq!(tally(&comparisons), (1, 0, 0, 0));
 
-        let judgment = |supported| {
-            Outcome::Ok(Judgment {
-                provider: String::new(),
-                model: None,
-                items: vec![ItemVerdict { text: "x".into(), supported, error: String::new() }],
-                facts: vec![FactVerdict { text: "f".into(), must: true, covered_by: vec![1] }],
-            })
+        let judgment = |errors: &[&str], covered_by: [Vec<usize>; 3]| {
+            let items = errors.iter().map(|&e| ItemVerdict { text: "x".into(), supported: e.is_empty(), error: e.into() }).collect();
+            let facts = covered_by.into_iter().zip([true, true, false]).map(|(covered_by, must)| FactVerdict { text: "f".into(), must, covered_by }).collect();
+            BTreeMap::from([(1, Outcome::Ok(Judgment { provider: String::new(), model: None, items, facts }))])
         };
-        write(&label_path(&dir, "judgments", "a"), &BTreeMap::from([(1, judgment(false))])).unwrap();
-        write(&label_path(&dir, "judgments", "b"), &BTreeMap::from([(1, judgment(true))])).unwrap();
+        let a = judgment(&["", "wrong_number", "overclaim", "overclaim", "other"], [vec![1], vec![], vec![1, 2]]);
+        write(&label_path(&dir, "judgments", "a"), &a).unwrap();
+        write(&label_path(&dir, "judgments", "b"), &judgment(&[""], [vec![1], vec![1], vec![1]])).unwrap();
         let out = report(&dir, Some(("a", "b"))).unwrap();
         assert_eq!(
             out[out.len() - 6..],
             [
                 "b - a, paired over the cases both have:",
-                "  faithfulness       n=1    +1.000  95% CI [+1.000, +1.000]",
-                "  completeness_must  n=1    +0.000  95% CI [+0.000, +0.000]",
-                "  completeness_all   n=1    +0.000  95% CI [+0.000, +0.000]",
-                "  conciseness        n=1    +0.000  95% CI [+0.000, +0.000]",
+                "  faithfulness       n=1    +0.800  95% CI [+0.800, +0.800]",
+                "  completeness_must  n=1    +0.500  95% CI [+0.500, +0.500]",
+                "  completeness_all   n=1    +0.333  95% CI [+0.333, +0.333]",
+                "  conciseness        n=1    +0.600  95% CI [+0.600, +0.600]",
                 "compare a vs b: a 1, b 0, tie 0, failed 0",
             ],
-            "only b's one item is supported, both cover the one fact with it"
+            "a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; b scores 1 on each"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
