@@ -66,6 +66,27 @@ export function stepRow(rows: readonly PickRow[], from: number, by: number): num
   return from;
 }
 
+/**
+ * Where the enabled option that was at row `at.i` with key `at.key` is now that the rows may have changed: that row while
+ * it still holds the key, else the nearest enabled row with the key (a key can be listed twice); -1 when none is left.
+ */
+export function follow(rows: readonly PickRow[], at: { i: number; key: string }): number {
+  const holds = (i: number) => {
+    const r = rows[i];
+    return enabled(r) && r.o.key === at.key;
+  };
+  if (holds(at.i)) {
+    return at.i;
+  }
+  let near = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (holds(i) && (near < 0 || Math.abs(i - at.i) < Math.abs(near - at.i))) {
+      near = i;
+    }
+  }
+  return near;
+}
+
 /** With no query, the selected option when it is enabled; otherwise the first enabled option; -1 when none is. */
 export function defaultRow(rows: readonly PickRow[], query: string, selected: string): number {
   const at = query.trim() ? -1 : rows.findIndex((r) => enabled(r) && r.o.key === selected);

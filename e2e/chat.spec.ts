@@ -221,6 +221,32 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await expect(search, "each opening starts a new search").toHaveValue("");
 });
 
+test("the highlighted scope stays the one Enter picks when options are added above it while the list is open", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const picker = scopeDialog(app);
+  const active = picker.locator("[role=option].act");
+  await chatScope(app).click();
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill("#");
+  await app.keyboard.press("ArrowDown");
+  await app.keyboard.press("ArrowDown");
+  const chosen = (await active.textContent())!;
+  // A tag on every article lists first: the mock sorts tags by count.
+  await app.evaluate(
+    async (ids) => {
+      const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+      for (const id of ids) {
+        await invoke("add_tag", { id, name: "everywhere" });
+      }
+      await window.__e2e.emit("article-changed", ids[0]);
+    },
+    ARTICLES.map((a) => a.id),
+  );
+  await expect(picker.getByRole("option", { name: /^#everywhere/ })).toHaveCount(1);
+  await expect(active).toHaveText(chosen);
+  await app.keyboard.press("Enter");
+  await expect(chatScope(app)).toHaveText(chosen);
+});
+
 test("a scope chosen from outside shows on the chip, and one the list no longer offers keeps its name", async ({ app }) => {
   await app.keyboard.press("Control+p");
   await app.keyboard.type("kafka");

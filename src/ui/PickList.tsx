@@ -3,7 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
 import { Icon } from "./Icon";
-import { defaultRow, enabled, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
+import { defaultRow, enabled, follow, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
 
 /** The height of `.opt` and `.pick-list .ph` in App.css: Virtuoso takes it on trust and measures no row. */
 const ROW_H = 30;
@@ -52,14 +52,22 @@ export function PickList<O extends PickOption>({
   const rows = pickRows(sections);
   const size = sections.reduce((n, s) => n + s.options.length, 0);
   const start = defaultRow(rows, query, selected);
-  const [active, setActive] = useState<number | null>(null);
+  // By key as well as row: rows can come and go above it while the list is open (a tag added, a tab opened).
+  const [active, setActive] = useState<{ i: number; key: string } | null>(null);
   const [seen, setSeen] = useState(query);
   if (query !== seen) {
     setSeen(query);
     setActive(null);
   }
-  const at = Math.min(active ?? start, rows.length - 1);
+  const followed = active ? follow(rows, active) : -1;
+  const at = followed >= 0 ? followed : start;
   const current = rows[at];
+  const activate = (i: number) => {
+    const r = rows[i];
+    if (enabled(r)) {
+      setActive({ i, key: r.o.key });
+    }
+  };
   /** The first row in view on opening, with the start in the middle. */
   const top = Math.max(0, Math.min(start - MAX_ROWS / 2, rows.length - MAX_ROWS));
 
@@ -71,7 +79,7 @@ export function PickList<O extends PickOption>({
     if (by) {
       e.preventDefault();
       const i = stepRow(rows, at, by);
-      setActive(i);
+      activate(i);
       // Up onto a section's first option: its head comes into view with it.
       list.current?.scrollIntoView({ index: by < 0 && rows[i - 1]?.kind === "head" ? i - 1 : i });
     } else if (e.key === "Enter") {
@@ -99,11 +107,7 @@ export function PickList<O extends PickOption>({
         className={`opt${i === at ? " act" : ""}${r.o.disabled ? " zero" : ""}`}
         onMouseDown={(e) => e.preventDefault()}
         // Not on enter: a row the list scrolls under a still mouse does not take the keyboard's place.
-        onMouseMove={() => {
-          if (!r.o.disabled) {
-            setActive(i);
-          }
-        }}
+        onMouseMove={() => activate(i)}
         onClick={() => {
           if (!r.o.disabled) {
             onPick(r.o);
