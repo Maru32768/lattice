@@ -86,10 +86,15 @@ export function PickList<O extends PickOption>({
     const by = listStep(e, true) || (e.key === "PageDown" ? MAX_ROWS : e.key === "PageUp" ? -MAX_ROWS : 0);
     if (by) {
       e.preventDefault();
-      const i = stepRow(rows, at, by);
-      activate(i);
-      // Up onto a section's first option: its head comes into view with it.
-      list.current?.scrollIntoView({ index: by < 0 && rows[i - 1]?.kind === "head" ? i - 1 : i });
+      // The highlighted option went or was disabled: go on from the gap it left, down onto what now fills it.
+      const from = at >= 0 || !active ? at : Math.min(by > 0 ? active.i - 1 : active.i, rows.length);
+      const i = stepRow(rows, from, by);
+      const next = pin(i);
+      if (next) {
+        setActive(next);
+        // Up onto a section's first option: its head comes into view with it.
+        list.current?.scrollIntoView({ index: by < 0 && rows[i - 1]?.kind === "head" ? i - 1 : i });
+      }
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (enabled(current)) {

@@ -329,6 +329,45 @@ test("the scope in use going away while the list is open leaves nothing for Ente
   await expect(chatScope(app)).toHaveText("#solo(1件)");
 });
 
+test("after the highlighted scope goes, the arrows go on from where it was", async ({ app }) => {
+  const id = ARTICLES.at(-1)!.id;
+  const tags = (cmd: "add_tag" | "remove_tag", names: string[]) =>
+    app.evaluate(
+      async ({ cmd, id, names }) => {
+        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+        await Promise.all(names.map((name) => invoke(cmd, { id, name })));
+        await window.__e2e.emit("article-changed", id);
+      },
+      { cmd, id, names },
+    );
+  await tags(
+    "add_tag",
+    Array.from({ length: 200 }, (_, i) => `zz-${String(i).padStart(4, "0")}`),
+  );
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await chatScope(app).click();
+  const picker = scopeDialog(app);
+  const active = picker.locator("[role=option].act");
+  await expect.poll(async () => Number(await picker.getByRole("option").first().getAttribute("aria-setsize"))).toBeGreaterThan(200);
+  for (let i = 0; i < 8; i++) {
+    await app.keyboard.press("PageDown");
+  }
+  const pos = Number(await active.getAttribute("aria-posinset"));
+  const gone = (await active.textContent())!.replace(/^#/, "").replace(/\(.*$/, "");
+  await tags("remove_tag", [gone]);
+  await expect(active).toHaveCount(0);
+  await app.keyboard.press("ArrowDown");
+  await expect(active, "the option after it, now in its place").toHaveAttribute("aria-posinset", String(pos));
+  await expect(active).toBeInViewport();
+
+  const next = (await active.textContent())!.replace(/^#/, "").replace(/\(.*$/, "");
+  await tags("remove_tag", [next]);
+  await expect(active).toHaveCount(0);
+  await app.keyboard.press("ArrowUp");
+  await expect(active, "the option before it").toHaveAttribute("aria-posinset", String(pos - 1));
+  await expect(active).toBeInViewport();
+});
+
 test("a scope the user picked stays when an article opens", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   await pickScope(app, "全記事");
