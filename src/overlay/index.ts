@@ -224,7 +224,8 @@ function partsOf(el: HTMLElement): string[] | null {
     return null;
   }
   const { parts } = splitByLineBreaks(snippetHtml(el));
-  if (parts.length === 0 || !parts.some((p) => normalizeText(plainText(p).replace(/⟦\d+⟧/gu, "")))) {
+  // Figures alone have nothing to translate, and a table of them would send each cell on its own.
+  if (!parts.some((p) => /\p{L}/u.test(plainText(p)))) {
     el.dataset.latticeBlock = "skip";
     return null;
   }

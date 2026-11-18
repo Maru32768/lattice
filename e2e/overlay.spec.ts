@@ -490,7 +490,8 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     const boxes =
       '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
       '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
-    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes);
+    const numbers = '<table><tr><td id="number">12.3</td></tr></table>';
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + numbers);
     const internals = window.__TAURI_INTERNALS__!;
     const ipc = internals.invoke;
     internals.invoke = (cmd, args) =>
@@ -498,7 +499,8 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     window.__lattice!.configure({ enabled: true, percent: null });
   });
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
-  await expect(page.locator("th, td")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("th, td:not(#number)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
   await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
   await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
+  await expect(page.locator("#number"), "a cell of figures alone has nothing to translate").toHaveAttribute("data-lattice-block", "skip");
 });
