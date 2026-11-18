@@ -449,7 +449,7 @@ fn facts_schema() -> Value {
     })
 }
 
-async fn facts(dir: &Path, judge: &LlmChain, limit: usize) -> Result<(), String> {
+async fn facts(dir: &Path, judge: &impl LlmProvider, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     each_case(&dir.join("facts.json"), &cases.cases, limit, async |case: &Case| {
         #[derive(Deserialize)]
@@ -655,7 +655,7 @@ fn score(items: &[ItemVerdict], facts: &[FactVerdict]) -> Scores {
     }
 }
 
-async fn judge(dir: &Path, label: &str, judge: &LlmChain, limit: usize) -> Result<(), String> {
+async fn judge(dir: &Path, label: &str, judge: &impl LlmProvider, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let facts: Results<Facts> = read(&dir.join("facts.json"))?.ok_or("no facts.json: run facts first")?;
     let runs = load_runs(dir, label)?;
@@ -1129,6 +1129,76 @@ mod tests {
         };
         assert_eq!(Some(run.formatted.clone()), summarize::format_summary(&reply));
         assert_eq!(items(run), ["WALを解説する。", "fsyncが減る"], "the judge grades the summary's sentences, then its key points");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn facts_sends_the_whole_article_with_its_code_and_tables_and_records_a_reply_without_facts_as_an_error() {
+        let dir = temp("facts");
+        let long = "Snapshot isolation permits write skew. ".repeat(1_200);
+        let blocks =
+            [("heading", "Intro"), ("paragraph", &long), ("code", "SELECT 1;"), ("table", "level\tskew\nserializable\tno"), ("list_item", "abort one")];
+        let case = Case { id: 1, stratum: Stratum::OverCap, title: "Write skew".into(), blocks: blocks.map(|(k, t)| (k.into(), t.into())).to_vec() };
+        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case] }).unwrap();
+        let saved = || read::<Results<Facts>>(&dir.join("facts.json")).unwrap().unwrap();
+
+        let blank = Answers { reply: json!({"facts": [{"text": " ", "must": true}]}), requests: Default::default() };
+        assert!(facts(&dir, &blank, usize::MAX).await.is_err());
+        assert!(matches!(saved().get(&1), Some(Outcome::Error(_))), "a reply with only a blank fact gives the case no key facts");
+
+        let grader =
+            Answers { reply: json!({"facts": [{"text": " uses WAL ", "must": true}, {"text": "aside", "must": false}]}), requests: Default::default() };
+        facts(&dir, &grader, usize::MAX).await.unwrap();
+        let article = format!("<article>\n# Write skew\n\n## Intro\n{long}\n```\nSELECT 1;\n```\nlevel\tskew\nserializable\tno\nabort one\n</article>");
+        assert!(article.chars().count() > 40_000, "longer than the summary input may be");
+        assert_eq!(grader.requests.into_inner().unwrap(), [(system(FACTS_RULES), article, facts_schema())]);
+        let saved = saved();
+        let Some(Outcome::Ok(f)) = saved.get(&1) else {
+            panic!("no key facts for case 1");
+        };
+        assert_eq!(f.facts.iter().map(|f| (f.text.as_str(), f.must)).collect::<Vec<_>>(), [("uses WAL", true), ("aside", false)]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn judge_sends_the_article_the_numbered_key_facts_and_the_numbered_items_of_its_own_labels_summary() {
+        let dir = temp("judge");
+        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
+        let key_facts = vec![Fact { text: "uses WAL".into(), must: true }, Fact { text: "fewer fsyncs".into(), must: false }];
+        write(&dir.join("facts.json"), &BTreeMap::from([(1, Outcome::Ok(Facts { provider: "fake".into(), model: None, facts: key_facts }))])).unwrap();
+        let run = |summary: &str, key_point: &str| Run {
+            summary: summary.into(),
+            key_points: vec![key_point.into()],
+            formatted: String::new(),
+            provider: String::new(),
+            model: None,
+            prompt_version: String::new(),
+        };
+        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, Outcome::Ok(run("aの要約。", "aの要点")))])).unwrap();
+        write(&label_path(&dir, "runs", "b"), &BTreeMap::from([(1, Outcome::Ok(run("WALを使う。fsyncを減らす。", "MVCCを採る")))])).unwrap();
+        let reply = json!({
+            "items": [{"n": 1, "supported": true, "error": ""}, {"n": 2, "supported": false, "error": "wrong_number"}, {"n": 3, "supported": true, "error": ""}],
+            "facts": [{"n": 1, "covered_by": [1]}, {"n": 2, "covered_by": []}]
+        });
+        let grader = Answers { reply, requests: Default::default() };
+        judge(&dir, "b", &grader, usize::MAX).await.unwrap();
+        let input = "<article>\n# T1\ntext 1\n</article>\n\n\
+            <key_facts>\n1. uses WAL\n2. fewer fsyncs\n</key_facts>\n\n\
+            <summary_items>\n1. WALを使う。\n2. fsyncを減らす。\n3. MVCCを採る\n</summary_items>";
+        assert_eq!(grader.requests.into_inner().unwrap(), [(system(JUDGE_RULES), input.to_string(), judge_schema())]);
+        let judgments: Results<Judgment> = read(&label_path(&dir, "judgments", "b")).unwrap().unwrap();
+        let Some(Outcome::Ok(j)) = judgments.get(&1) else {
+            panic!("no judgment of case 1");
+        };
+        assert_eq!(
+            j.items.iter().map(|i| (i.text.as_str(), i.error.as_str())).collect::<Vec<_>>(),
+            [("WALを使う。", ""), ("fsyncを減らす。", "wrong_number"), ("MVCCを採る", "")]
+        );
+        assert_eq!(
+            score(&j.items, &j.facts),
+            Scores { faithfulness: Some(2.0 / 3.0), completeness_must: Some(1.0), completeness_all: Some(0.5), conciseness: Some(1.0 / 3.0) },
+            "2 of 3 items supported, the one must fact covered, 1 of 2 facts covered, by 1 of 3 items"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
