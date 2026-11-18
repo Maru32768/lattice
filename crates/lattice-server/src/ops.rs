@@ -555,14 +555,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             collections_out(store)
         }
         Op::AddFeed { url, folder } => {
-            let (id, created) = feeds::add(store, url.trim(), None)?;
-            // As the app's Add feed does: a URL that is not a feed is not kept.
-            if let Err(e) = feeds::refresh(store, &ctx.providers.http, id).await
-                && created
-            {
-                feeds::remove(store, id)?;
-                return Err(e);
-            }
+            let id = feeds::subscribe(store, &ctx.providers.http, &url, None).await?;
             if let Some(name) = folder {
                 feed_folders::move_feeds(store, &[id], Some(feed_folders::find_or_create(store, &name)?))?;
             }

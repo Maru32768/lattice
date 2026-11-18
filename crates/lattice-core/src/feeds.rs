@@ -216,6 +216,18 @@ pub fn remove(store: &Store, id: i64) -> Result<(), String> {
     store.conn().execute("DELETE FROM feeds WHERE id = ?1", [id]).map(drop).map_err(err)
 }
 
+/// `add`, then fetches right away; a new URL that is not a readable feed is not kept.
+pub async fn subscribe(store: &Store, client: &HttpClient, url: &str, folder: Option<i64>) -> Result<i64, String> {
+    let (id, created) = add(store, url, folder)?;
+    match refresh(store, client, id).await {
+        Err(e) if created => {
+            remove(store, id)?;
+            Err(e)
+        }
+        _ => Ok(id),
+    }
+}
+
 pub fn list(store: &Store) -> Result<Vec<FeedRow>, String> {
     let c = store.conn();
     let mut st = c
@@ -794,6 +806,17 @@ mod tests {
         assert!(set_icon(&s, id, Some(&[PNG, &vec![0; MAX_ICON_BYTES]].concat())).is_err());
         set_icon(&s, id, None).unwrap();
         assert_eq!((icon(&s, id).unwrap(), list(&s).unwrap()[0].has_icon), (None, false));
+    }
+
+    #[tokio::test]
+    async fn a_new_feed_that_does_not_load_is_not_kept_but_a_subscribed_one_stays() {
+        let s = Store::open_in_memory().unwrap();
+        let client = crate::fetch::client();
+        let url = "http://127.0.0.1:9/feed";
+        assert!(subscribe(&s, &client, url, None).await.is_err());
+        assert!(list(&s).unwrap().is_empty());
+        let (id, _) = add(&s, url, None).unwrap();
+        assert_eq!(subscribe(&s, &client, url, None).await, Ok(id));
     }
 
     #[test]

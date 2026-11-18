@@ -561,17 +561,9 @@ async fn discover_feeds(app: State<'_, App>, url: String) -> Result<Vec<feeds::C
 /// `folder` puts the feed in that folder, new or already subscribed.
 #[tauri::command]
 async fn add_feed(app: State<'_, App>, url: String, folder: Option<i64>) -> Result<i64, String> {
-    let (id, created) = feeds::add(&app.store, &url, folder)?;
-    match feeds::refresh(&app.store, &app.providers.http, id).await {
-        Err(e) if created => {
-            feeds::remove(&app.store, id)?;
-            Err(e)
-        }
-        _ => {
-            app.wake_net.iter().for_each(|w| w.notify_one());
-            Ok(id)
-        }
-    }
+    let id = feeds::subscribe(&app.store, &app.providers.http, &url, folder).await?;
+    app.wake_net.iter().for_each(|w| w.notify_one());
+    Ok(id)
 }
 
 #[tauri::command(async)]
