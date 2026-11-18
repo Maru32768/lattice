@@ -505,11 +505,14 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
       '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
       '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
     const letters = '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td></tr></table>';
-    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters);
+    // Responsive CSS that lines a row's cells up as inline blocks.
+    const responsive =
+      '<table id="responsive"><tr><td style="display: inline-block">Alpha one</td><td style="display: inline-block">Beta two</td></tr></table>';
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters + responsive);
   });
   await page.evaluate(translateAll);
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
-  await expect(page.locator("table:not(#letters) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("table:not(#letters, #responsive) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
   await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
   await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
   // Figures alone have nothing to translate, also in a link; letters of any script have.
@@ -517,6 +520,7 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     await expect(page.locator(cell)).toHaveAttribute("data-lattice-block", "skip");
   }
   await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
+  await expect(page.locator("#responsive td")).toHaveText(["訳:Alpha one", "訳:Beta two"]);
 });
 
 test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {

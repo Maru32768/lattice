@@ -146,11 +146,13 @@ const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAU
 
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
 /**
- * A table is a block however it is shown, and so is a box that holds one (a theme's inline-block table and its box):
- * taken as one leaf, a sentence would be wrapped across its cells. Not any inline box that holds blocks: a flex
- * item is a block by its display, and KaTeX lays out a formula in table rows, both inside a sentence.
+ * A table and its cells are blocks however they are shown (a theme's inline-block table, a responsive one's
+ * inline-block cells), and so is a box that holds a table: taken as one leaf, a sentence would be wrapped across the
+ * cells. Not any inline box that holds blocks: a flex item is a block by its display, and KaTeX lays out a formula in
+ * table rows, both inside a sentence.
  */
-const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display) || el.localName === "table" || el.querySelector("table") !== null;
+const isBlock = (el: Element) =>
+  BLOCK_DISPLAY.has(getComputedStyle(el).display) || ["table", "td", "th"].includes(el.localName) || el.querySelector("table") !== null;
 
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
