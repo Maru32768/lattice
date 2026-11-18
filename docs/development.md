@@ -96,21 +96,15 @@ CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on W
 
 ### Summary quality
 
-Measure a change to the summary prompt or its input before it lands. `crates/lattice-core/examples/summary_eval.rs` sends exactly what the app sends and grades the result:
+Measure a change to the summary prompt or its input before it lands. `crates/lattice-core/examples/summary_eval.rs` sends the summary model exactly what the app sends and grades the summaries that come back. Its module doc lists the commands and options. The first command copies a sample of a library's articles into an eval dir, reading the library read-only:
 
 ```bash
 mise exec -- cargo run -p lattice-core --example summary_eval -- sample --dir <eval dir> --db <lattice.db>
 ```
 
-`sample` copies a stratified sample of articles from a library, opened read-only, into `<eval dir>`. Keep that directory outside the repository: it holds article text, which is copyrighted. The other commands call an LLM and take the same `--dir`:
+Keep the eval dir outside the repository, because the article text it holds is copyrighted.
 
-1. `facts --judge <spec>` writes the key facts of each article once.
-2. `summarize --label <name> --with <spec>` summarizes every article with the code you built. Build each version you compare and give each its own label.
-3. `judge --label <name> --judge <spec>` grades each summary against the whole article: whether every sentence is supported, and which key facts it covers. Use a judge from another model family than the summarizer.
-4. `compare <a> <b> --judge <spec>` asks which of two summaries is better, in both orders.
-5. `report <a> <b>` prints the scores per stratum and the paired difference `b - a` with a 95% bootstrap interval.
-
-Summarize the same version twice under two labels to see the noise. The measurement of the current prompt is in [design-review.md](design-review.md) §38.
+Build each version you compare, and summarize it under its own label. Use a judge from a different model family than the summarizer. To see the noise, summarize the same version twice under two labels. For the measurement of the current prompt, see [design-review.md](design-review.md) §38.
 
 ## Conventions
 
