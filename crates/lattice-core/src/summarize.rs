@@ -381,4 +381,14 @@ mod tests {
         let many: Vec<_> = (0..5000).map(|i| b("code", &format!("let x{i} = {};", "y".repeat(20)))).collect();
         assert_eq!(read_back(&input_text("T", &many)).1.len(), 1, "code counts toward the cap");
     }
+
+    #[test]
+    fn a_code_block_is_capped_in_chars_and_a_long_line_is_cut_at_the_cap() {
+        let input = |text: String| input_text("T", &[("code".to_string(), text)]);
+        let fenced = |kept: &str, rest: &str| format!("<article>\n# T\n```\n{kept}\n```\n{rest}</article>\n\nSummarize the article above in Japanese.");
+        assert_eq!(input("あ".repeat(2_000)), fenced(&"あ".repeat(2_000), ""), "2,000 chars go whole");
+        assert_eq!(input("あ".repeat(2_001)), fenced(&"あ".repeat(2_000), "\n[… 1 characters omitted …]\n"), "a line longer than the cap");
+        let two = format!("{}\n{}", "あ".repeat(1_500), "い".repeat(1_500));
+        assert_eq!(input(two), fenced(&"あ".repeat(1_500), "\n[… 1501 characters omitted …]\n"));
+    }
 }
