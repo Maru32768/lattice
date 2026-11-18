@@ -107,7 +107,12 @@ pub fn redraw(handle: &AppHandle) {
         return;
     };
     let count = *badge.0.lock().unwrap_or_else(|e| e.into_inner());
-    if let Err(e) = enabled(&app).and_then(|on| show(handle, if on { count } else { 0 })) {
+    let drawn = match enabled(&app) {
+        Ok(true) => show(handle, count),
+        Ok(false) => show(handle, 0),
+        Err(e) => Err(e),
+    };
+    if let Err(e) = drawn {
         log::warn!("redrawing the unread badge: {e}");
     }
 }
