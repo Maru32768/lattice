@@ -484,8 +484,11 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     const rows =
       "<thead><tr><th>Event</th><th>Kernel impact</th></tr></thead>" +
       "<tbody><tr><td>Linus announces Linux</td><td>Monolithic kernel</td></tr><tr><td>GPL adoption</td><td>Contributions begin</td></tr></tbody>";
-    // The second as MkDocs Material wraps one, to scroll it sideways.
-    const tables = `<table>${rows}</table><div><div style="display: inline-block"><table style="display: inline-block">${rows}</table></div></div>`;
+    // The first as HTML written by hand has it, all its rows in the tbody the parser adds; the second as MkDocs Material
+    // wraps one, to scroll it sideways.
+    const tables =
+      `<table>${rows.replace(/<\/?t(?:head|body)>/gu, "")}</table>` +
+      `<div><div style="display: inline-block"><table style="display: inline-block">${rows}</table></div></div>`;
     // A flex item is a block by its computed display, and KaTeX lays out a formula in table rows.
     const boxes =
       '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
