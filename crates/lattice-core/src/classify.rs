@@ -114,17 +114,38 @@ pub fn rename_genre(store: &Store, from: &str, to: &str, merge: bool) -> Result<
     }
     let mut c = store.conn();
     let tx = c.transaction().map_err(err)?;
-    let id_of = |name: &str| tx.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get::<_, i64>(0)).optional();
-    let from_id = id_of(from).map_err(err)?.ok_or_else(|| msg!("classify.noGenre", name = from))?;
-    match id_of(&to).map_err(err)? {
+    let from_id = existing_genre(&tx, from)?;
+    match genre_id(&tx, &to)? {
         Some(to_id) if to_id != from_id && !merge => return Err(msg!("classify.exists", name = to)),
-        Some(to_id) if to_id != from_id => {
-            tx.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
-            tx.execute("DELETE FROM genres WHERE id = ?1", [from_id]).map_err(err)?;
-        }
+        Some(to_id) if to_id != from_id => move_genre(&tx, from_id, to_id)?,
         _ => drop(tx.execute("UPDATE genres SET name = ?2 WHERE id = ?1", params![from_id, to]).map_err(err)?),
     }
     tx.commit().map_err(err)
+}
+
+/// Moves `from`'s articles into `into` and deletes `from`. Unlike `rename_genre`, `into` must exist.
+pub fn merge_genre(store: &Store, from: &str, into: &str) -> Result<(), String> {
+    let mut c = store.conn();
+    let tx = c.transaction().map_err(err)?;
+    let from_id = existing_genre(&tx, from)?;
+    let into_id = existing_genre(&tx, &clean(into))?;
+    if from_id != into_id {
+        move_genre(&tx, from_id, into_id)?;
+    }
+    tx.commit().map_err(err)
+}
+
+fn genre_id(c: &rusqlite::Connection, name: &str) -> Result<Option<i64>, String> {
+    c.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get(0)).optional().map_err(err)
+}
+
+fn existing_genre(c: &rusqlite::Connection, name: &str) -> Result<i64, String> {
+    genre_id(c, name)?.ok_or_else(|| msg!("classify.noGenre", name = name))
+}
+
+fn move_genre(c: &rusqlite::Connection, from_id: i64, to_id: i64) -> Result<(), String> {
+    c.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
+    c.execute("DELETE FROM genres WHERE id = ?1", [from_id]).map(drop).map_err(err)
 }
 
 /// A genre the user adds ahead of any article: classification offers it from then on. Adding an

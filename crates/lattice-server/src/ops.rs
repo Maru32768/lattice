@@ -596,11 +596,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             folders_out(store)
         }
         Op::MergeGenre { from, into } => {
-            // A missing `into` would only rename `from`, which rename-genre does.
-            if !classify::list_genres(store)?.iter().any(|g| g.name.eq_ignore_ascii_case(into.trim())) {
-                return Err(msg!("classify.noGenre", name = into));
-            }
-            classify::rename_genre(store, &from, &into, true)?;
+            classify::merge_genre(store, &from, &into)?;
             genres_out(store)
         }
     }
@@ -846,8 +842,13 @@ mod tests {
         assert!(run(&ctx, Op::DeleteGenre { name: "Databases".into() }).await.is_err(), "an article is in it");
         assert!(run(&ctx, Op::MergeGenre { from: "Databases".into(), into: "Storage".into() }).await.is_err(), "no genre to merge into");
         assert_eq!((count("Databases"), count("Net"), count("Storage")), (Some(1), Some(0), None), "nothing moved");
-        run(&ctx, Op::MergeGenre { from: "Databases".into(), into: "net".into() }).await.unwrap();
-        assert_eq!((count("Databases"), count("Net")), (None, Some(1)));
+        run(&ctx, Op::AddGenre { name: "Storage Engines".into() }).await.unwrap();
+        run(&ctx, Op::MergeGenre { from: "Databases".into(), into: " storage   engines ".into() }).await.unwrap();
+        assert_eq!((count("Databases"), count("Storage Engines")), (None, Some(1)), "the name is read as rename_genre reads it");
+        run(&ctx, Op::MergeGenre { from: "Storage Engines".into(), into: "net".into() }).await.unwrap();
+        assert_eq!((count("Storage Engines"), count("Net")), (None, Some(1)));
+        run(&ctx, Op::MergeGenre { from: "Net".into(), into: "net".into() }).await.unwrap();
+        assert_eq!(count("Net"), Some(1), "merged into itself, it stays");
         assert_eq!(article(s, id).unwrap().genre.as_deref(), Some("Net"));
         run(&ctx, Op::SetGenre { id, name: String::new() }).await.unwrap();
         run(&ctx, Op::DeleteGenre { name: "Net".into() }).await.unwrap();
