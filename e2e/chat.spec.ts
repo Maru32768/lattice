@@ -193,6 +193,7 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await app.keyboard.press("ArrowUp");
   await expect(active).toHaveAccessibleName("全記事");
   await picker.getByRole("option", { name: "この記事(記事を開いていません)" }).click({ force: true });
+  await expect(search, "a click on an option leaves the keyboard in the search").toBeFocused();
   await search.dispatchEvent("keydown", { key: "Enter", isComposing: true });
   await expect(picker, "neither a disabled option nor the Enter that ends a conversion picks").toBeVisible();
 
