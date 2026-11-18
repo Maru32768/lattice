@@ -217,7 +217,7 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await expect(search, "each opening starts a new search").toHaveValue("");
 });
 
-test("in the chat scope the mouse moves the highlight but never the list", async ({ app }) => {
+test("in the chat scope the mouse moves the highlight but never the list, nor takes it from the keys", async ({ app }) => {
   const id = ARTICLES.at(-1)!.id;
   await app.evaluate(async (id) => {
     const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
@@ -245,6 +245,17 @@ test("in the chat scope the mouse moves the highlight but never the list", async
   await expect(active).toHaveText(cut!);
   await app.waitForTimeout(300);
   expect(await listbox.evaluate((e) => e.scrollTop)).toBe(135);
+
+  // Rows the keys scroll under a still pointer do not take the highlight back.
+  await listbox.evaluate((e) => (e.scrollTop = 0));
+  await picker.getByRole("option", { name: "全記事", exact: true }).hover();
+  await expect(active).toHaveAccessibleName("全記事");
+  for (let i = 0; i < 20; i++) {
+    await app.keyboard.press("ArrowDown");
+    await app.waitForTimeout(50);
+  }
+  await app.waitForTimeout(300);
+  expect(await active.getAttribute("aria-posinset"), "20 options on from 全記事, the 3rd").toBe("23");
 });
 
 test("the highlighted scope stays the one Enter picks when options are added above it while the list is open", async ({ app }) => {
