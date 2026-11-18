@@ -112,7 +112,7 @@ fn all_tools() -> Vec<(Role, Value)> {
         tool(
             Edit,
             "add_feed",
-            "Subscribe to an RSS or Atom feed by its URL. The feed is fetched once to check it; a URL that is not a feed is refused.",
+            "Subscribe to an RSS or Atom feed by its URL. A new URL is fetched once and refused when it does not load as a feed.",
             json!({ "url": text("The feed's http(s) URL"), "folder": text("Optional: the folder to put it in, by name (created if missing)") }),
             &["url"],
         ),
