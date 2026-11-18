@@ -272,6 +272,7 @@ test("the highlighted scope stays the one Enter picks when options are added abo
   await app.keyboard.press("ArrowDown");
   await app.keyboard.press("ArrowDown");
   const chosen = (await active.textContent())!;
+  const at = Number(await active.getAttribute("aria-posinset"));
   // A tag on every article lists first: the mock sorts tags by count.
   await app.evaluate(
     async (ids) => {
@@ -285,6 +286,7 @@ test("the highlighted scope stays the one Enter picks when options are added abo
   );
   await expect(picker.getByRole("option", { name: /^#everywhere/ })).toHaveCount(1);
   await expect(active).toHaveText(chosen);
+  await expect(active, "the new tag listed above it").toHaveAttribute("aria-posinset", String(at + 1));
   await app.keyboard.press("Enter");
   await expect(chatScope(app)).toHaveText(chosen);
 });
