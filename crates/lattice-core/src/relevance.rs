@@ -647,7 +647,7 @@ mod tests {
         assert_eq!(queued(&s), [ids[2]], "only the article rated 5 (the fake rates them 4, invalid, 5)");
 
         summarize::set_auto(&s, Auto::All).unwrap();
-        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "v").unwrap();
+        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "summary-v1").unwrap();
         after_ingest(&s);
         assert_eq!(queued(&s), [ids[1], ids[2]], "every article without a summary; a stale one is left alone");
     }
