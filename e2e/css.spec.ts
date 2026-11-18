@@ -23,3 +23,20 @@ test("a disabled button shows not-allowed and keeps its tooltip", async ({ app }
   expect(await style(forward, "cursor")).toBe("not-allowed");
   await expect(forward).toHaveAttribute("title", /進む/);
 });
+
+test("a select in a chip shows one focus ring, the chip's", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const provider = app.getByLabel("回答するAI", { exact: true });
+  await provider.focus();
+  await app.keyboard.press("Shift+Tab");
+  await app.keyboard.press("Tab");
+  await expect(provider).toBeFocused();
+  const rings = await provider.evaluate((e) => ({
+    keyboard: e.matches(":focus-visible"),
+    own: getComputedStyle(e).outlineStyle,
+    chip: getComputedStyle(e.closest(".chip")!).boxShadow,
+  }));
+  expect(rings.keyboard, "focused from the keyboard").toBe(true);
+  expect(rings.own).toBe("none");
+  expect(rings.chip).not.toBe("none");
+});
