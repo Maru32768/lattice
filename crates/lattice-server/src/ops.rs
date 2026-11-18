@@ -300,14 +300,12 @@ fn tags_out(store: &Store, id: i64) -> Result<Out, String> {
 }
 
 fn read_out(store: &Store, id: i64, read: bool) -> Result<Out, String> {
-    article(store, id)?;
     store.set_read_status(id, read).map_err(err)?;
     let a = article(store, id)?;
     Ok(Out { text: row_line(&a), json: json!({ "article_id": id, "read_status": a.read_status }) })
 }
 
 fn favorite_out(store: &Store, id: i64, favorite: bool) -> Result<Out, String> {
-    article(store, id)?;
     store.set_favorite(id, favorite).map_err(err)?;
     let a = article(store, id)?;
     let mark = if a.favorite {
@@ -504,7 +502,6 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             tags_out(store, id)
         }
         Op::Untag { id, name } => {
-            article(store, id)?;
             store.remove_tag(id, &name).map_err(err)?;
             tags_out(store, id)
         }
@@ -513,7 +510,6 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
         Op::Favorite { id } => favorite_out(store, id, true),
         Op::Unfavorite { id } => favorite_out(store, id, false),
         Op::RenameArticle { id, title } => {
-            article(store, id)?;
             store.set_title(id, &title).map_err(err)?;
             let a = article(store, id)?;
             Ok(Out { text: row_line(&a), json: json!({ "article_id": id, "title": a.title, "auto_title": a.auto_title }) })
