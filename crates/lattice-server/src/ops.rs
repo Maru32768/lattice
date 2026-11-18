@@ -864,6 +864,8 @@ mod tests {
     async fn collections_are_managed_by_id() {
         let ctx = Ctx { role: Role::Delete, ..ctx() };
         let s = &ctx.store;
+        // Saved first so that the article and collection ids differ: a swap of the two would not show otherwise.
+        saved(s, "https://example.com/first", "First");
         let id = saved(s, "https://example.com/a", "A");
         let g = run(&ctx, Op::CreateCollection { name: "Reading".into() }).await.unwrap().json["id"].as_i64().unwrap();
         run(&ctx, Op::RenameCollection { id: g, name: "Later".into() }).await.unwrap();
