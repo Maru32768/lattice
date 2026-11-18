@@ -1,10 +1,10 @@
 import type { ArticleRow } from "../bindings/index.ts";
 import {
-  DIMS,
   NO_FACETS,
   NO_KEPT,
   countBy,
   facetBase,
+  isFacets,
   listed,
   universe,
   type Dim,
@@ -38,17 +38,11 @@ const VIEW_KEY = "lattice.mobile.view";
 type Stored = Omit<ListView, "kept">;
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
 function isStored(v: unknown): v is Stored {
-  if (!isObj(v) || !isObj(v.scope) || !isObj(v.facets)) {
+  if (!isObj(v) || !isObj(v.scope)) {
     return false;
   }
-  const { scope, facets } = v;
-  return (
-    SCOPES.some((s) => s.kind === scope.kind) &&
-    DIMS.every((d) => Array.isArray(facets[d])) &&
-    (facets.tagMode === "all" || facets.tagMode === "any") &&
-    typeof v.query === "string" &&
-    Number.isInteger(v.shown)
-  );
+  const { scope } = v;
+  return SCOPES.some((s) => s.kind === scope.kind) && isFacets(v.facets) && typeof v.query === "string" && Number.isInteger(v.shown);
 }
 
 /** The list last shown on this phone, which a phone that dropped the page in the background shows again; else the first. */

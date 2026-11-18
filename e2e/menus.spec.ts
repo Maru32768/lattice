@@ -41,8 +41,46 @@ test("a menu over the page webview stays invisible until the webview is hidden, 
 
   await app.evaluate(() => (window as unknown as { release: () => void }).release());
   await expect.poll(() => opacity(menu)).toBe("1");
+  expect(await callsOf(app, "browser_hide"), "the page under the menu stays heard").toEqual([expect.objectContaining({ covered: true })]);
   await menu.getByRole("menuitem", { name: "URLをコピー" }).click();
   await expect(menu).toHaveCount(0);
+});
+
+test("a menu over a page whose still could not be taken mutes the page while it is hidden", async ({ app }) => {
+  await openPage(app);
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke } };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "browser_capture" ? Promise.reject(new Error("capture timed out")) : invoke(cmd, args, options);
+  });
+  await app.locator(".docbar [aria-haspopup=menu]").last().click();
+  await expect(app.getByRole("menu")).toBeAttached();
+  await expect.poll(() => callsOf(app, "browser_hide"), "nothing of the page is on screen").toEqual([expect.objectContaining({ covered: false })]);
+  await expect(app.locator(".page-still")).toHaveCount(0);
+  await expect.poll(() => opacity(app.getByRole("menu")), "the menu shows without a still").toBe("1");
+});
+
+test("a still that arrives after its menu closed neither hides the page nor keeps it heard", async ({ app }) => {
+  await openPage(app);
+  await app.evaluate(() => {
+    type Invoke = (cmd: string, args?: unknown, options?: unknown) => Promise<unknown>;
+    const w = window as unknown as { __TAURI_INTERNALS__: { invoke: Invoke }; release: () => void };
+    const invoke = w.__TAURI_INTERNALS__.invoke;
+    const held = new Promise<void>((r) => (w.release = r));
+    w.__TAURI_INTERNALS__.invoke = (cmd, args, options) =>
+      cmd === "browser_capture" ? held.then(() => invoke(cmd, args, options)) : invoke(cmd, args, options);
+  });
+  const menu = app.getByRole("menu");
+  await app.locator(".docbar [aria-haspopup=menu]").last().click();
+  await expect(menu).toBeAttached();
+  await app.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await app.evaluate(() => (window as unknown as { release: () => void }).release());
+  await expect.poll(async () => (await callsOf(app, "browser_capture")).length).toBeGreaterThan(0);
+  await app.waitForTimeout(300);
+  expect(await callsOf(app, "browser_hide"), "the page stays on screen, and heard").toEqual([]);
 });
 
 test("a dialog's backdrop over the page webview waits for it too, so the page darkens with the rest", async ({ app }) => {

@@ -7,15 +7,19 @@ import {
   NO_KEPT,
   countBy,
   facetBase,
+  goneKeys,
   inScope,
+  isFacets,
   keep,
   listed,
   matches,
+  scopeKey,
   scopeLabel,
   toFilter,
   toggle,
   valueLabel,
   viewKey,
+  withoutGone,
   type Facets,
 } from "./library.ts";
 
@@ -174,4 +178,29 @@ test("a feed folder scope holds its feeds' articles and is named after the folde
   assert.equal(scopeLabel({ kind: "folder", id: 3 }, rows, [], ja, [{ id: 3, name: "TechFeed", feeds: 1 }]), "TechFeed");
   assert.equal(scopeLabel({ kind: "folder", id: 9 }, rows, [], en), "Folder", "a folder deleted meanwhile");
   assert.deepEqual(toFilter({ kind: "folder", id: 3 }), { kind: "folder", id: 3 });
+});
+
+test("each scope keeps its facets under a key of its own; 重要 under one whatever its minimum", () => {
+  assert.equal(scopeKey({ kind: "important", min: 4 }), scopeKey({ kind: "important", min: 2 }));
+  assert.notEqual(scopeKey({ kind: "feed", id: 1 }), scopeKey({ kind: "feed", id: 2 }));
+});
+
+test("stored facets: the shape of facets passes, anything else does not", () => {
+  assert.ok(isFacets(JSON.parse(JSON.stringify(NO_FACETS))));
+  assert.ok(isFacets(JSON.parse(JSON.stringify(f({ tags: ["rust"], tagMode: "any", feeds: [null] })))));
+  const { state: _, ...noState } = NO_FACETS;
+  for (const bad of [null, undefined, 3, "facets", [], {}, noState, f({ tags: "rust" as unknown as string[] }), { ...NO_FACETS, tagMode: "some" }]) {
+    assert.equal(isFacets(bad), false, JSON.stringify(bad));
+  }
+});
+
+test("deleted groups and feeds leave the facets; 手動追加 and facets naming none stay as they are", () => {
+  const gone = { group: new Set([2]), feed: new Set([5]), folder: new Set([7]) };
+  assert.deepEqual(withoutGone(f({ groups: [1, 2], feeds: [5, null, 6], tags: ["rust"] }), gone), f({ groups: [1], feeds: [null, 6], tags: ["rust"] }));
+  const untouched = f({ groups: [1], feeds: [null] });
+  assert.equal(withoutGone(untouched, gone), untouched);
+  assert.deepEqual(
+    [...goneKeys(gone)].sort(),
+    [scopeKey({ kind: "feed", id: 5 }), scopeKey({ kind: "folder", id: 7 }), scopeKey({ kind: "group", id: 2 })].sort(),
+  );
 });

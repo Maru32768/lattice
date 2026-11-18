@@ -295,7 +295,8 @@ export const browser = {
     invoke<void>("browser_open", { tab, url, bounds, focusText: focusText ?? null, place: place ?? null, fromReader }),
   /** Also shows the webview, in the calling window. False when the tab has none (evicted or restored): open it again. */
   setBounds: (tab: string, bounds: Bounds) => invoke<boolean>("browser_set_bounds", { tab, bounds }),
-  hide: (tab: string) => invoke<void>("browser_hide", { tab }),
+  /** Mutes the page too, unless `covered`: an app overlay lies over the tab, which shows a still of the page meanwhile. */
+  hide: (tab: string, covered = false) => invoke<void>("browser_hide", { tab, covered }),
   close: (tab: string) => invoke<void>("browser_close", { tab }),
   /** The calling window's UI has started with these Page tabs: its webviews of any other tab close. */
   retain: (keep: string[]) => invoke<void>("browser_retain", { keep }),

@@ -11,7 +11,13 @@ use crate::ir::PROSE_KINDS;
 use crate::store::Store;
 
 pub const JOB_TYPE: &str = "embed";
+/// Passages per embed call, and so per write to the store.
 const BATCH: usize = 64;
+/// Passages per ONNX run. fastembed pads a run to its longest passage, and ONNX Runtime does not give back what it takes
+/// for runs while the model is loaded. At 64, one call of long paragraphs left 3.3 GB committed and a second call 5.5 GB,
+/// and Lattice crashed when Windows ran out of commit. At 4 two such calls leave 1.1 GB, and real articles embed faster,
+/// as fewer short passages are padded to a long one's length.
+const RUN: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Purpose {
@@ -80,7 +86,7 @@ impl EmbeddingProvider for LocalE5 {
                 let opts = TextInitOptions::new(EmbeddingModel::MultilingualE5Small).with_cache_dir(cache_dir).with_show_download_progress(false);
                 *guard = Some(TextEmbedding::try_new(opts).map_err(|e| format!("loading embedding model: {e}"))?);
             }
-            let vecs = guard.as_mut().expect("initialized above").embed(&texts, Some(BATCH)).map_err(|e| e.to_string())?;
+            let vecs = guard.as_mut().expect("initialized above").embed(&texts, Some(RUN)).map_err(|e| e.to_string())?;
             Ok(vecs.into_iter().map(normalize).collect())
         })
         .await
@@ -152,5 +158,40 @@ mod tests {
         std::fs::write(onnx.join("model.onnx"), "weights").unwrap();
         assert!(e5.is_downloaded());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Records how many texts each call got; fails the second call when `.1` is set.
+    struct Counting(Mutex<Vec<usize>>, bool);
+    impl EmbeddingProvider for Counting {
+        fn model_id(&self) -> &str {
+            "counting"
+        }
+        async fn embed(&self, texts: Vec<String>, _: Purpose) -> Result<Vec<Vec<f32>>, String> {
+            let mut calls = self.0.lock().unwrap();
+            calls.push(texts.len());
+            if self.1 && calls.len() == 2 {
+                return Err("interrupted".into());
+            }
+            Ok(texts.iter().map(|_| vec![1.0]).collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn a_long_article_is_embedded_and_stored_a_batch_at_a_time() {
+        let s = Store::open_in_memory().unwrap();
+        let (id, _) = s.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let body: String = (0..=BATCH).map(|i| format!("<p>Paragraph {i} on checkpoints and background writer tuning in production databases.</p>")).collect();
+        let html = format!("<html><head><title>Tuning</title></head><body><article>{body}</article></body></html>");
+        let fetched = crate::fetch::Fetched { final_url: "https://example.com/a".into(), status: 200, content_type: None, html };
+        crate::ingest::store_fetched(&s, id, &fetched).unwrap();
+        // A run that fails on its second call keeps the first batch, and the retry embeds only the rest.
+        let e = Counting(Mutex::new(Vec::new()), true);
+        run(&s, &e, id).await.unwrap_err();
+        assert_eq!(*e.0.lock().unwrap(), [BATCH, 1]);
+        assert_eq!(s.unembedded_blocks(id, "counting", PROSE_KINDS).unwrap().len(), 1);
+        let e = Counting(Mutex::new(Vec::new()), false);
+        run(&s, &e, id).await.unwrap();
+        assert_eq!(*e.0.lock().unwrap(), [1]);
+        assert!(s.unembedded_blocks(id, "counting", PROSE_KINDS).unwrap().is_empty());
     }
 }

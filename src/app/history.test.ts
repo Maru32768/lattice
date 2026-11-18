@@ -1,9 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HISTORY_LIMIT, NO_HISTORY, arrived, canGo, go, placeDoc, placeKey, visit, type Place } from "./history.ts";
-import { NO_FACETS } from "../library/library.ts";
 
-const at = (screen: Place["screen"], extra: Partial<Place> = {}): Place => ({ screen, scope: { kind: "all" }, facets: NO_FACETS, ...extra });
+const at = (screen: Place["screen"], extra: Partial<Place> = {}): Place => ({ screen, scope: { kind: "all" }, ...extra });
 
 test("visits stack up; the same place twice is one entry", () => {
   let h = visit(NO_HISTORY, at("library"));

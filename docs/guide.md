@@ -206,7 +206,7 @@ Use OPML to move feeds between Lattice and other feed readers.
 
 Some pages have almost no text in the HTML that is first downloaded and show their text only after JavaScript runs. When such a page is saved, its text is empty or under 300 characters, and the article list shows **Extraction failed** or **Little text**.
 
-**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before.
+**Render automatically.** With **Render JS pages automatically** on in **Settings › Import & JS rendering**, Lattice opens the page in a hidden browser, renders it and imports the text again. This takes up to about 20 seconds per article. Lattice tries the same when a site refuses the fetch with an error that a browser might get past, such as 403 or 429. The rendered result replaces the article only when it has more text than before. The hidden browser is muted, so even a page that autoplays video makes no sound.
 
 **Import again by hand.** **Render and import again** in the article's ⋯ menu does the same on demand. In the Page view, **Import again from the page as shown** is also available. It imports from the page as it is on screen, so content you see after logging in is included.
 
@@ -313,7 +313,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Back and forward
 
-Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list, the filters and the document in the focused tab. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
+Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list and the focused tab's document. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
 
 When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history. ‹ › in the Page view's toolbar always move through the page's history.
 
@@ -365,7 +365,7 @@ Each pane in the document area has a row of tabs. A tab holds an article in the 
 - `Ctrl+Tab` and `Ctrl+Shift+Tab` switch to the next and previous tab.
 - Drag tabs to reorder them. A dragged tab moves along the tab row with the pointer, and swaps with the next tab once its edge passes that tab's middle.
 
-Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab.
+Tabs and panes come back the next time Lattice starts. The web pages of the 3 most recent hidden tabs stay loaded, so switching to them is instant and keeps the scroll position. Older pages reload when you return to their tab. A hidden tab's page is muted until the tab is shown, and so is a page while another screen, such as the settings screen, is open.
 
 ### Split the document area
 
@@ -490,7 +490,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
 - The counts next to the values are counts within the current list.
 
-`Esc` clears the filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
+Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
 **Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
 
@@ -1023,7 +1023,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, including shortcuts and Vim, are saved in the database.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, each list's filters, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, including shortcuts and Vim, are saved in the database.
 
 ### Unused translations
 

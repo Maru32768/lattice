@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { emit, emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -24,7 +24,24 @@ import { replayWord } from "../vocab/speech";
 import { ChatPane } from "../chat/ChatPane";
 import { openDocs } from "../chat/chat";
 import { filterGroups, filterKey } from "../library/scopes";
-import { NO_FACETS, NO_KEPT, activeDims, groupName, keep, scopeLabel, toFilter, viewKey, type Facets, type Kept, type Scope } from "../library/library";
+import {
+  NO_FACETS,
+  NO_KEPT,
+  activeDims,
+  goneKeys,
+  groupName,
+  isFacets,
+  keep,
+  scopeKey,
+  scopeLabel,
+  toFilter,
+  viewKey,
+  withoutGone,
+  type Facets,
+  type Gone,
+  type Kept,
+  type Scope,
+} from "../library/library";
 import { terms } from "../search/search";
 import { MATCH_LABEL, SearchPane } from "../search/SearchPane";
 import { Reader, WordMarksContext, type DocActions, type Focus } from "../reader/Reader";
@@ -79,6 +96,7 @@ import { placeDoc, type Place } from "./history";
 import { DEFAULT_PREFIX, type DocActionId } from "../lib/keymap";
 import { getPrefix } from "../lib/keys";
 import { syncPrefs } from "../lib/prefs";
+import { placeStore } from "../lib/places";
 
 // Screens opened now and then are split out: the reading path (and every pop-out) parses less at start.
 const chunkImport = () => import("../import/ImportView");
@@ -127,6 +145,11 @@ const clampIndex = (i: number, n: number) => Math.max(0, Math.min(n - 1, i));
 const GROW_SHARE = 0.04;
 const GROW_PX = 32;
 
+/** The facets last used in each scope on this device: choosing a scope shows them again, also after a restart. */
+const scopeFacets = placeStore<Facets>("lattice.scopeFacets", 100, isFacets);
+/** A pop-out shows no list: the main window's filters would narrow its palette and Shift+J unseen. */
+const facetsOf = (s: Scope) => (IS_MAIN ? (scopeFacets.get(scopeKey(s)) ?? NO_FACETS) : NO_FACETS);
+
 export default function App() {
   // Also subscribes the whole tree to the display language: a switch re-renders everything below.
   const t = useT();
@@ -165,7 +188,36 @@ export default function App() {
   // 重要 always uses the current threshold, also when it was picked under an earlier one.
   const scope: Scope =
     scopeState.kind === "important" && importantMin != null && scopeState.min !== importantMin ? { kind: "important", min: importantMin } : scopeState;
-  const [facets, setFacets] = useState<Facets>(NO_FACETS);
+  const [facets, setFacets] = useState(() => facetsOf(scopeState));
+  const facetsKey = scopeKey(scope);
+  useEffect(() => {
+    // What a pop-out holds would overwrite what the main window keeps.
+    if (IS_MAIN) {
+      scopeFacets.set(facetsKey, activeDims(facets).length > 0 ? facets : null);
+    }
+  }, [facetsKey, facets]);
+  // A deletion (from the sidebar or the feeds screen) shows as an id gone from the next lists. Its list and its
+  // filter values leave what is kept: SQLite gives the highest id to the next group, feed or folder made.
+  const listedIds = useRef<Gone | null>(null);
+  useEffect(() => {
+    const ids: Gone = { group: new Set(groupRows.map((g) => g.id)), feed: new Set(feeds.map((f) => f.id)), folder: new Set(folders.map((f) => f.id)) };
+    const before = listedIds.current;
+    listedIds.current = ids;
+    if (!IS_MAIN || !before) {
+      return;
+    }
+    const minus = (a: ReadonlySet<number>, b: ReadonlySet<number>) => new Set([...a].filter((id) => !b.has(id)));
+    const gone: Gone = { group: minus(before.group, ids.group), feed: minus(before.feed, ids.feed), folder: minus(before.folder, ids.folder) };
+    if (gone.group.size + gone.feed.size + gone.folder.size === 0) {
+      return;
+    }
+    const lists = goneKeys(gone);
+    scopeFacets.update((key, f) => {
+      const next = withoutGone(f, gone);
+      return lists.has(key) || activeDims(next).length === 0 ? null : next;
+    });
+    setFacets((f) => withoutGone(f, gone));
+  }, [groupRows, feeds, folders]);
   const [kept, setKept] = useState<Kept>(NO_KEPT);
   const [screen, setScreenState] = useState<Screen>("library");
   /** The screens (settings, feeds, import, …) live in the main window; a pop-out asks it. */
@@ -284,7 +336,7 @@ export default function App() {
       return void toMain({ kind: "scope", scope: s });
     }
     setScopeState(s);
-    setFacets(NO_FACETS);
+    setFacets(facetsOf(s));
     setScreen("library");
     setLayout(unzoom);
     if (search?.query) {
@@ -520,7 +572,6 @@ export default function App() {
     if (scope.kind === "group" && scope.id === id) {
       setScope({ kind: "all" });
     }
-    setFacets((f) => ({ ...f, groups: f.groups.filter((g) => g !== id) }));
   }
 
   // ---- feed folders (H25) --------------------------------------------------------------------
@@ -776,9 +827,9 @@ export default function App() {
   };
 
   // ---- in-app history (H4) ------------------------------------------------------------------
-  // Every change of screen, settings section, scope, facets or the focused tab's document is a
-  // visit; back / forward restore one. The chat window has nothing to go back to.
-  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, facets, doc: cur && placeDoc(cur) };
+  // Every change of screen, settings section, scope or the focused tab's document is a visit; back /
+  // forward restore one. The chat window has nothing to go back to.
+  const place: Place = { screen, section: screen === "settings" ? settingsSection : undefined, scope, doc: cur && placeDoc(cur) };
   const history = useHistory(
     place,
     (p) => {
@@ -787,7 +838,7 @@ export default function App() {
         setSettingsSection(p.section);
       }
       setScopeState(p.scope);
-      setFacets(p.facets);
+      setFacets(facetsOf(p.scope));
       const doc = p.doc;
       // Back to the tab that showed it if it still does, else the document opens in the focused tab.
       if (doc) {

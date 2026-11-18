@@ -116,7 +116,7 @@ test("a Page tab gets its own webview, titled by its host until the page names i
   expect(keys).toHaveLength(2);
   expect(keys[0]).toBe(first);
   expect(keys[1], "its own webview").not.toBe(first);
-  await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab: first });
+  await expect.poll(() => callsOf(app, "browser_hide"), "muted too").toContainEqual({ tab: first, covered: false });
 
   await app.keyboard.press("Control+w");
   await expect(titles(app)).toHaveText(["The page's own title"]);
@@ -130,7 +130,7 @@ test("a Reader in place of a Page hides its webview, the Page comes back in it, 
   const [{ tab }] = (await callsOf(app, "browser_open")) as { tab: string }[];
   await app.getByRole("button", { name: "Reader", exact: true }).click();
   await expect(app.locator(".art-title")).toHaveText(a.title!);
-  await expect.poll(() => callsOf(app, "browser_hide")).toContainEqual({ tab });
+  await expect.poll(() => callsOf(app, "browser_hide"), "muted too").toContainEqual({ tab, covered: false });
   await app.getByRole("button", { name: "Page", exact: true }).click();
   await expect
     .poll(async () => ((await callsOf(app, "browser_open")) as { tab: string; fromReader: boolean }[]).map((o) => [o.tab, o.fromReader]))
