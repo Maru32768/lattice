@@ -49,6 +49,7 @@ export function PickList<O extends PickOption>({
   const t = useT();
   const id = useId();
   const list = useRef<VirtuosoHandle>(null);
+  const input = useRef<HTMLInputElement>(null);
   const rows = pickRows(sections);
   const size = sections.reduce((n, s) => n + s.options.length, 0);
   const start = defaultRow(rows, query, selected);
@@ -130,6 +131,7 @@ export function PickList<O extends PickOption>({
           <Icon name="search" />
           <span className="vh">{search}</span>
           <input
+            ref={input}
             role="combobox"
             aria-expanded="true"
             aria-autocomplete="list"
@@ -150,6 +152,8 @@ export function PickList<O extends PickOption>({
           role="listbox"
           aria-label={label}
           tabIndex={-1}
+          // A click on a heading or the scrollbar focuses the list itself, where typing reaches nothing.
+          onFocus={() => input.current?.focus()}
           className="pick-list"
           style={{ height: Math.min(rows.length, MAX_ROWS) * ROW_H }}
           data={rows}

@@ -203,6 +203,8 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await low.hover();
   await expect(active).toHaveAccessibleName((await low.textContent())!.replace("✓", ""));
   expect(await listbox.evaluate((e) => e.scrollTop)).toBe(top);
+  await picker.getByText("グループ", { exact: true }).click();
+  await expect(search, "a click on a heading leaves the keyboard in the search").toBeFocused();
 
   await search.fill("KAF");
   await expect(options).toHaveText([`#kafka(${ARTICLES.filter((x) => x.tags.includes("kafka")).length}件)`]);
