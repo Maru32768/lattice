@@ -304,7 +304,7 @@ impl Browser {
     pub fn reconfigure(&self, app: &AppHandle) -> Result<(), String> {
         for (_, wv) in self.webviews(app) {
             let arg = serde_json::to_string(&self.config_for(&wv)).expect("config serializes");
-            wv.eval(format!("window.__lattice&&window.__lattice.configure({arg})")).map_err(|e| e.to_string())?;
+            run_script(&wv, &format!("window.__lattice&&window.__lattice.configure({arg})"))?;
         }
         Ok(())
     }
@@ -315,7 +315,7 @@ impl Browser {
         for (label, wv) in self.webviews(app) {
             if page_article(&wv) == Some(article)
                 && page_is_manual(&wv)
-                && let Err(e) = wv.eval("window.__lattice&&window.__lattice.showSavedIdle()")
+                && let Err(e) = run_script(&wv, "window.__lattice&&window.__lattice.showSavedIdle()")
             {
                 log::warn!("telling {label} of saved translations: {e}");
             }
@@ -405,6 +405,37 @@ pub(crate) fn set_muted(wv: &Webview, muted: bool) {
 
 #[cfg(not(windows))]
 pub(crate) fn set_muted(_: &Webview, _: bool) {}
+
+/// Runs `js` in the page as DevTools' `Runtime.evaluate`. `eval` (WebView2's `ExecuteScript`) counts as the user's
+/// input, after which the page may play sound: a page the app only scrolled, or every page when a window opened,
+/// played a video's sound before anyone touched it.
+#[cfg(windows)]
+pub(crate) fn run_script(wv: &Webview, js: &str) -> Result<(), String> {
+    use webview2_com::CallDevToolsProtocolMethodCompletedHandler;
+    use windows::core::{HSTRING, w};
+    let params = HSTRING::from(serde_json::json!({ "expression": js }).to_string());
+    let label = wv.label().to_owned();
+    wv.with_webview(move |pw| {
+        let failed = label.clone();
+        let done = CallDevToolsProtocolMethodCompletedHandler::create(Box::new(move |r, _| {
+            if let Err(e) = r {
+                log::warn!("running a script in {failed}: {e}");
+            }
+            Ok(())
+        }));
+        // SAFETY: with_webview runs this on the main thread with wry's live controller.
+        let called = unsafe { pw.controller().CoreWebView2().and_then(|c| c.CallDevToolsProtocolMethod(w!("Runtime.evaluate"), &params, &done)) };
+        if let Err(e) = called {
+            log::warn!("running a script in {label}: {e}");
+        }
+    })
+    .map_err(|e| e.to_string())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn run_script(wv: &Webview, js: &str) -> Result<(), String> {
+    wv.eval(js).map_err(|e| e.to_string())
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, TS)]
 #[ts(export)]
@@ -671,7 +702,7 @@ pub async fn browser_open(
             // Back from the tab's Reader, the page goes to where the Reader was before it shows, or to its top, as a load
             // would, when no place came (the Reader read it back there, or the tab does not know the page's article).
             if from_reader {
-                let _ = wv.eval(jump.as_ref().map_or_else(|| "window.__lattice&&window.__lattice.runDoc(\"docTop\",1)".to_owned(), Jump::script));
+                let _ = run_script(&wv, &jump.as_ref().map_or_else(|| "window.__lattice&&window.__lattice.runDoc(\"docTop\",1)".to_owned(), Jump::script));
             }
             update_visibility(&wv, &browser, |v| *v = Visibility { loading: false, ..opened }).map_err(|e| e.to_string())?;
             emit_page(&wv, &browser, url.to_string());
@@ -721,7 +752,7 @@ pub async fn browser_open(
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
             if !loading && let Some(jump) = browser.with_tab(wv.label(), |t| t.jump.take()) {
-                let _ = wv.eval(jump.script());
+                let _ = run_script(&wv, &jump.script());
             }
         })
         .on_document_title_changed(|wv, title| {
@@ -893,7 +924,7 @@ pub(crate) async fn snapshot_of(wv: &Webview, browser: &Browser, settle: Option<
     let (nonce, rx) = browser.snapshots.begin(wv.label());
     let arg = serde_json::to_string(&nonce).expect("string serializes");
     let settle = settle.map_or("null".into(), |(quiet, max)| format!("{{quietMs:{quiet},maxMs:{max}}}"));
-    let reply = match wv.eval(format!("window.__lattice&&window.__lattice.snapshot({arg},{settle})")) {
+    let reply = match run_script(wv, &format!("window.__lattice&&window.__lattice.snapshot({arg},{settle})")) {
         Ok(()) => tokio::time::timeout(timeout, rx).await.ok().and_then(Result::ok),
         Err(_) => None,
     };
@@ -1012,12 +1043,11 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
         return Ok(());
     };
     match action.as_str() {
-        "back" => wv.eval("history.back()"),
-        "forward" => wv.eval("history.forward()"),
-        "reload" => wv.reload(),
-        other => return Err(format!("unknown action: {other}")),
+        "back" => run_script(&wv, "history.back()"),
+        "forward" => run_script(&wv, "history.forward()"),
+        "reload" => wv.reload().map_err(|e| e.to_string()),
+        other => Err(format!("unknown action: {other}")),
     }
-    .map_err(|e| e.to_string())
 }
 
 /// Runs a document action in the tab's page (`docNav.run` in the overlay): for the palette, and for
@@ -1029,7 +1059,7 @@ pub async fn browser_run_doc(app: AppHandle, key: String, action: String, count:
         return Ok(());
     };
     let arg = serde_json::to_string(&action).expect("string serializes");
-    wv.eval(format!("window.__lattice&&window.__lattice.runDoc({arg},{count})")).map_err(|e| e.to_string())
+    run_script(&wv, &format!("window.__lattice&&window.__lattice.runDoc({arg},{count})"))
 }
 
 /// Opens the repeat window of a chord beginning with `first` in the tab's page: the app read that chord's
@@ -1041,7 +1071,7 @@ pub async fn browser_repeat_keys(app: AppHandle, key: String, first: String) -> 
         return Ok(());
     };
     let arg = serde_json::to_string(&first).expect("string serializes");
-    wv.eval(format!("window.__lattice&&window.__lattice.repeatKeys({arg})")).map_err(|e| e.to_string())
+    run_script(&wv, &format!("window.__lattice&&window.__lattice.repeatKeys({arg})"))
 }
 
 /// The keyboard goes to the tab's page, so its keys work right after a move into its pane.
@@ -1089,7 +1119,7 @@ pub async fn browser_set_keys(app: AppHandle, browser: State<'_, Browser>, keys:
     let arg = serde_json::to_string(&keys).expect("keys serialize");
     *lock(&browser.keys) = Some(keys);
     for (_, wv) in browser.webviews(&app) {
-        wv.eval(format!("window.__lattice&&window.__lattice.setKeys({arg})")).map_err(|e| e.to_string())?;
+        run_script(&wv, &format!("window.__lattice&&window.__lattice.setKeys({arg})"))?;
     }
     Ok(())
 }

@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
-// WebView2 never runs under test: this reads the builders in the Rust source instead.
+// WebView2 never runs under test: these read the Rust source instead.
+const dir = new URL("../src-tauri/src/", import.meta.url);
+const src = readdirSync(dir)
+  .filter((f) => f.endsWith(".rs"))
+  .map((f) => readFileSync(new URL(f, dir), "utf8"))
+  .join("\n");
+
 test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-features and asks for a user's input before sound, even on a site the user often played sound on", () => {
-  const dir = new URL("../src-tauri/src/", import.meta.url);
-  const src = readdirSync(dir)
-    .filter((f) => f.endsWith(".rs"))
-    .map((f) => readFileSync(new URL(f, dir), "utf8"))
-    .join("\n");
   const builders = src.match(/Webview(Window)?(Builder::(new|from_config)|::builder)\(/g) ?? [];
   const passing = src.match(/\.additional_browser_args\((crate::)?WEBVIEW_ARGS\)/g) ?? [];
   assert.ok(builders.length > 0);
@@ -24,4 +25,8 @@ test("every webview builder passes WEBVIEW_ARGS, which keeps wry's --disable-fea
   for (const feature of ["msWebOOUI", "msPdfOOUI", "msSmartScreenProtection", "MediaEngagementBypassAutoplayPolicies"]) {
     assert.ok(disabled.includes(feature), feature);
   }
+});
+
+test("the app runs its scripts in a page through run_script, as eval would count as the user's input and let the page play sound", () => {
+  assert.equal((src.match(/\.eval\(/g) ?? []).length, 1, "only run_script's fallback off Windows may call eval");
 });
