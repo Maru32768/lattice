@@ -845,6 +845,7 @@ mod tests {
         assert!(run(&ctx, Op::RenameGenre { from: "Databases".into(), to: "net".into() }).await.is_err(), "rename does not merge");
         assert!(run(&ctx, Op::DeleteGenre { name: "Databases".into() }).await.is_err(), "an article is in it");
         assert!(run(&ctx, Op::MergeGenre { from: "Databases".into(), into: "Storage".into() }).await.is_err(), "no genre to merge into");
+        assert!(run(&ctx, Op::MergeGenre { from: "Nope".into(), into: "Net".into() }).await.is_err(), "no genre to merge away");
         assert_eq!((count("Databases"), count("Net"), count("Storage")), (Some(1), Some(0), None), "nothing moved");
         run(&ctx, Op::AddGenre { name: "Storage Engines".into() }).await.unwrap();
         run(&ctx, Op::MergeGenre { from: "Databases".into(), into: " storage   engines ".into() }).await.unwrap();
