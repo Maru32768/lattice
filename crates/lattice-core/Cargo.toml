@@ -39,6 +39,10 @@ ts-rs = "12"
 unicode-segmentation = "1.13.3"
 url = "2.5.8"
 
+[[example]]
+name = "summary_eval"
+test = true
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] }
 
