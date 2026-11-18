@@ -1159,6 +1159,7 @@ mod tests {
     #[test]
     fn refuses_an_eval_dir_inside_the_repository() {
         assert!(outside_repo(Path::new(env!("CARGO_MANIFEST_DIR"))).is_err());
+        assert!(outside_repo(Path::new("eval")).is_err(), "relative to the package root, where cargo runs the tests");
         assert_eq!(outside_repo(&std::env::temp_dir()), Ok(()));
     }
 
