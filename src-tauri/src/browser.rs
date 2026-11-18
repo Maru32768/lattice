@@ -127,6 +127,9 @@ struct TabState {
     /// gets its `Finished`, and `run_script` reaches that page rather than the one it moves to, so a document soon after
     /// gets it again.
     jumped: Option<(Jump, Instant)>,
+    /// Whether the page the app last opened has begun loading. A load that ends before it is the navigation it cancelled,
+    /// whose `Finished` (with no `Started`) must leave the jump to it.
+    begun: bool,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
     history: (bool, bool),
@@ -152,6 +155,7 @@ impl Default for TabState {
             hidden_while_opening: false,
             jump: None,
             jumped: None,
+            begun: false,
             visibility: Visibility::default(),
             history: (true, true),
             parked: None,
@@ -166,10 +170,12 @@ impl Default for TabState {
 }
 
 impl TabState {
-    /// The app opens a page in the tab, which scrolls to `jump` once it has loaded.
-    fn open(&mut self, jump: Option<Jump>) {
+    /// The app opens a page in the tab, which scrolls to `jump` once it has loaded. A move within the page shown (its
+    /// `same_document`) begins no document.
+    fn open(&mut self, jump: Option<Jump>, same_document: bool) {
         self.jump = jump;
         self.jumped = None;
+        self.begun = same_document;
     }
 
     /// The user moved the page on with the toolbar (Back, Forward, Reload): where it lands is no page moving on by script.
@@ -182,6 +188,7 @@ impl TabState {
     /// A document begins loading: one soon after a jump first ran is that page moving on by script, and gets it too.
     /// Measured from the first run, so a page that keeps reloading itself is not scrolled back for good.
     fn started(&mut self, now: Instant) {
+        self.begun = true;
         if let Some((jump, at)) = &self.jumped
             && now.duration_since(*at) < MOVES_ON_WITHIN
         {
@@ -191,6 +198,9 @@ impl TabState {
 
     /// A page has loaded: the script that scrolls it to its jump, if it has one.
     fn finished(&mut self, now: Instant) -> Option<String> {
+        if !self.begun {
+            return None;
+        }
         let jump = self.jump.take()?;
         let script = jump.script();
         if self.jumped.is_none() {
@@ -573,6 +583,16 @@ fn watch_focus(wv: &Webview) {
     }
 }
 
+/// Whether a navigation from `from` to `to` stays in that document, as a move to a part of the page does.
+fn same_document(from: &Url, to: &Url) -> bool {
+    let whole = |u: &Url| {
+        let mut u = u.clone();
+        u.set_fragment(None);
+        u
+    };
+    to.fragment().is_some() && whole(from) == whole(to)
+}
+
 pub(crate) fn http_url(s: &str) -> Result<Url, String> {
     let u = Url::parse(s.trim()).map_err(|e| format!("invalid URL: {e}"))?;
     matches!(u.scheme(), "http" | "https").then_some(u).ok_or_else(|| "only http(s) pages can be opened".into())
@@ -751,12 +771,13 @@ pub async fn browser_open(
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
         }
-        browser.with_tab(&label, |t| t.open(jump));
+        let same_document = wv.url().is_ok_and(|u| same_document(&u, &url));
+        browser.with_tab(&label, |t| t.open(jump, same_document));
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
     browser.with_tab(&label, |t| {
-        t.open(jump);
+        t.open(jump, false);
         t.hidden_while_opening = false;
     });
     browser.evict(&app);
@@ -1446,7 +1467,7 @@ mod tests {
         let zebra = || Some(Jump::Text("Zebra".into()));
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
-        t.open(zebra());
+        t.open(zebra(), false);
         t.started(at(0));
         assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
         t.started(at(2_000));
@@ -1455,20 +1476,40 @@ mod tests {
         assert_eq!(t.finished(at(4_500)), scroll, "and the one after");
         t.started(at(1_000) + MOVES_ON_WITHIN);
         assert_eq!(t.finished(at(7_000)), None, "a page reached later than that after the first, though soon after the last");
-        t.open(zebra());
+        t.open(zebra(), false);
         t.started(at(10_000));
         assert_eq!(t.finished(at(10_000)), scroll);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), scroll, "the page a later opened one moved on to by script");
-        t.open(None);
+        t.open(None, false);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), None, "another page the app opened soon after");
-        t.open(zebra());
+        t.open(zebra(), false);
         t.started(at(12_000));
         assert_eq!(t.finished(at(12_000)), scroll);
         t.moved_by_user();
         t.started(at(13_000));
         assert_eq!(t.finished(at(13_000)), None, "a page the toolbar moved to soon after");
+    }
+
+    #[test]
+    fn a_jump_waits_for_the_page_the_app_opened_through_the_load_it_cancelled() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let zebra = || Some(Jump::Text("Zebra".into()));
+        let scroll = zebra().map(|j| j.script());
+        let mut t = TabState::default();
+        t.open(zebra(), false);
+        assert_eq!(t.finished(at(0)), None, "the load the app's navigation cancelled");
+        t.started(at(6_000));
+        assert_eq!(t.finished(at(7_000)), scroll, "the page the app opened, however late it began");
+        t.open(zebra(), true);
+        assert_eq!(t.finished(at(8_000)), scroll, "a part of the page shown, where no document begins");
+        let u = |s: &str| Url::parse(s).unwrap();
+        assert!(same_document(&u("https://a.test/p"), &u("https://a.test/p#s")));
+        assert!(same_document(&u("https://a.test/p#r"), &u("https://a.test/p#s")));
+        assert!(!same_document(&u("https://a.test/p#r"), &u("https://a.test/p")), "leaving the part reloads");
+        assert!(!same_document(&u("https://a.test/p"), &u("https://a.test/q#s")));
     }
 
     #[test]
