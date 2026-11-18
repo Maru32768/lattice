@@ -1477,6 +1477,8 @@ mod tests {
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
         t.open(zebra());
+        // WebView2 takes a navigation through its API, as `browser_open`'s, for the user's.
+        t.moved_by_user();
         t.started(at(0));
         assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
         t.started(at(2_000));
