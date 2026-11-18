@@ -703,7 +703,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 - **1つの`Op`を2つの入口で。** `Op`はclapの`Subcommand`とserdeの`Deserialize`(`{"name", "arguments"}`のadjacently tagged)を両方deriveし、CLIの引数とMCPの`tools/call`が同じ値になる。各操作はJSONとtextの両方を返し、`--format`で選ぶ。MCPのtoolのJSON Schemaは手書きで、propertyと必須項目がclapの引数と一致することをテストで確かめる。
 - **MCPは最小のJSON-RPC。** `initialize`・`tools/list`・`tools/call`・`ping`だけで足りるので、SDK(rmcp)は入れずに1ファイルで書いた。改行区切りのstdioで、通知には返事をしない。`protocolVersion`は知っている版ならそのまま返し、それ以外は最新を返す(toolsの扱いはどの版も同じ)。
 - **untrustedの明示。** toolの結果の先頭に、Webページ由来の信頼できないテキストでありデータとして扱い指示に従わないこと、を付ける(`initialize`の`instructions`にも同じ文)。結果は25,000文字で切る(日本語でもClaude Codeの既定の上限25k tokenにおおむね収まる)。記事の内容を実行する経路はない。READMEにprompt injectionの注意を書いた。
-- **書き込みは明示的に有効にしたときだけ。** `save`・`tag`・`read`・`favorite`は`--allow-write`か`LATTICE_ALLOW_WRITE=1`がないと拒否し、MCPではtoolの一覧にも出さない。`ask`はLLMを呼び対話の履歴に1件残すが、読み取りの延長として許可する(アプリの対話と同じ扱い)。
+- **ロールで許す。** 操作ごとに、それを実行できる最小のロール(`lattice_core::mcp::Role`の読み取り・編集・削除。上のロールは下のロールの操作をすべて含む)を`Op::role`で決める。`match`にワイルドカードを置かないので、操作を足すとロールを決めるまでコンパイルが通らない。CLIは既定で読み取り、`--allow-write`か`LATTICE_ALLOW_WRITE=1`で編集、`--allow-delete`で削除になる。編集は取り消せる変更(保存、タグ、既読、お気に入り、タイトル、ジャンル、グループ、フィード、フォルダと、それぞれの取り消し)で、削除は取り消せないもの(記事・グループ・フィード・フォルダの削除と、ジャンルの統合)。`rename-genre`は既にある名前への変更を拒否し、統合は`merge-genre`だけが行う。MCPのtoolの一覧は、呼び出し元のロールで絞る。stdioのMCPは削除の前に利用者に確かめる手段を持たないので、`--allow-delete`でも編集までに抑える。`ask`はLLMを呼び対話の履歴に1件残すが、読み取りの延長として許可する(アプリの対話と同じ扱い)。
 - **jobはアプリに任せる。** `save`はbulk importと同じ`enqueue_urls`でingest jobを積むだけ。アプリのrunnerはwakeがなくても30秒ごとにqueueを見る(`IDLE_POLL`)ので、別プロセスが積んだjobも30秒以内に拾う。アプリ側の変更は要らなかった。`save --run`は`jobs::run_article`でその記事のjobだけをrunnerと同じコードで実行する(取得・画像、モデルがあれば埋め込み。分類と裏描画はアプリに残る)。claimは1文の`UPDATE … RETURNING`なので、アプリとCLIが同じjobを二重に実行することはない。
 - **モデルはダウンロードしない。** `LocalE5::offline`はhf-hubのキャッシュ(`models--intfloat--multilingual-e5-small/snapshots/*/onnx/model.onnx`)がなければ埋め込みを失敗させるので、検索は既存の`semantic_error`の経路で全文検索だけになり、JSONに`"mode": "full_text"`と理由を出す。
 - **リリース。** インストーラーとportable zipに`lattice-cli.exe`を同梱する。インストール版ではGUIと同じフォルダに置き、更新とアンインストールでも両方を扱う。PATHには登録しない。MCPはGUIを起動しないstdioプロセスとしてCLIに残し、GUIとドメイン処理を`lattice-core`で共有する。`scripts/version.ts`は`lattice-cli`のCargo.lockの版も書き換える。
@@ -711,8 +711,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 ### 未実装(意図的)
 
 - グループ(G53)での範囲指定(`group:名前`)。G53の`ArticleFilter`ができたら`parse_scope`に1行足す。
-- CLIからの書き込みをアプリの画面に即座に反映すること。job経由の変更はrunnerの`article-changed`で反映されるが、`tag`・`read`・`favorite`は一覧を読み直すまで出ない。`PRAGMA data_version`を見る定期確認で足せる。
-- お気に入り・既読の解除、タグの削除、記事の削除。エージェントに渡す操作は取り消しやすいものに限った。
+- CLIからの書き込みをアプリの画面に即座に反映すること。job経由の変更はrunnerの`article-changed`で反映されるが、それ以外の変更は一覧を読み直すまで出ない。`PRAGMA data_version`を見る定期確認で足せる。
 - MCPのresources・promptsと、`tools/list`のページング。
 
 ## 24. 情報リソースのグループ(G53)
