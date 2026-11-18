@@ -422,7 +422,7 @@ When a tab moves to another window, its web page moves with it: it does not relo
 
 The chat pane also has **Open in a new window**. **Move back to the main window** returns it to its place. Closing the chat window closes the chat without returning it to the main window.
 
-Window positions and sizes are saved, and the windows that were open when you quit open again at the next start. Closing the main window quits Lattice.
+Window positions and sizes are saved, and the windows that were open when you quit open again at the next start. Closing the main window quits Lattice, unless **Keep running in the tray when the window closes** is on ([Startup and taskbar](#startup-and-taskbar)).
 
 ## Organize your library
 
@@ -754,6 +754,7 @@ Shortcuts are saved in the database, so they are in backups and move with the da
 ### Startup and taskbar
 
 - **Start Lattice when Windows starts**: opens Lattice when you sign in to Windows. Off by default. Turning Lattice off in Task Manager's Startup apps also turns this setting off.
+- **Keep running in the tray when the window closes**: closing the main window does not quit Lattice. It hides its windows and leaves an icon in the notification area, so translations and other jobs, feed updates and the server for [reading on a phone](#read-on-a-phone) keep running. Click the icon to bring the windows back, or right-click it and choose **Quit Lattice**. Off by default. While it is on, **Start Lattice when Windows starts** starts Lattice in the tray, without a window.
 - **Show the unread count on the taskbar**: shows the number of unread articles on Lattice's taskbar button. It shows 99+ from 100 up, and nothing at zero.
 
 ### Updates

@@ -4,6 +4,10 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Added
+
+- **Keep Lattice running in the tray.** With **Settings › Startup & taskbar › Keep running in the tray when the window closes** on, closing the main window leaves Lattice in the notification area, where jobs, feed updates and the server for reading on a phone keep running. Click the icon to bring the windows back, or quit from its menu. If Lattice starts when Windows starts, it then starts in the tray, without a window.
+
 ## [0.5.0] - 2026-11-18
 
 ### Added
