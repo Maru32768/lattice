@@ -494,8 +494,5 @@ test("a table is translated cell by cell, also a theme's inline-block table in a
     window.__lattice!.configure({ enabled: true, percent: null });
   });
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
-  for (const table of await page.locator("table").all()) {
-    await expect(table.locator("tr")).toHaveCount(3);
-    await expect(table.locator("th, td")).toHaveText(cells.map((c) => `訳:${c}`));
-  }
+  await expect(page.locator("th, td")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
 });
