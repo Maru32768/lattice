@@ -267,6 +267,14 @@ test("Enter picks nothing once the highlighted scope can no longer be picked", a
   await expect(chatScope(app)).toHaveText("全記事");
 });
 
+test("a scope the user picked stays when an article opens", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await pickScope(app, "全記事");
+  await list(app).locator(".row", { hasText: ARTICLES[0].title! }).click();
+  await expect(app.getByRole("button", { name: `${ARTICLES[0].title}を閉じる` })).toBeVisible();
+  await expect(chatScope(app)).toHaveText("全記事");
+});
+
 test("a scope chosen from outside shows on the chip, and one the list no longer offers keeps its name", async ({ app }) => {
   await app.keyboard.press("Control+p");
   await app.keyboard.type("kafka");
