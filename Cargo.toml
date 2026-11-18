@@ -12,7 +12,7 @@ lopdf = { path = "vendor/lopdf" }
 
 # The app version for both crates; `npm run bump -- <x.y.z>` keeps it in sync with package.json.
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 
 # Safety lints beyond clippy's defaults; CI denies warnings. Tests may unwrap, index and panic (clippy.toml).
 [workspace.lints.rust]

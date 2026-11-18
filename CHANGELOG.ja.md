@@ -4,6 +4,8 @@ Latticeの主な変更をここに記録します。書式は[Keep a Changelog](
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-18
+
 ### 追加
 
 - **回答するAIを会話ごとに選ぶ。** 対話ペインの「AI」で、会話ごとにプロバイダ・モデル・effortを選べます。選んだAIだけが答え、選択は会話に保存されます。既定では「設定 › AIプロバイダ」の候補の並びを使います。
@@ -213,7 +215,8 @@ Latticeの主な変更をここに記録します。書式は[Keep a Changelog](
 - **通信先。** Latticeが直接行うダウンロードは、既定でプライベートネットワークのアドレスを拒否します。許可・拒否のルールには、ホスト名、ワイルドカードのサブドメイン、IPアドレス、CIDRの範囲を書けます。許可リストにあるものだけを許すモードと、すべてを許すモードもあります。ルールは記事・PDF・フィード・画像・ファビコンのダウンロードと、そのリダイレクト先に適用されます。アプリ内ブラウザ、JavaScriptの描画、AIプロバイダ、バックアップは別の経路で通信するので、ルールの対象外です。
 - **プロジェクト。** MITライセンス、サードパーティのライセンス表示、英語と日本語のREADME、miseで固定したツールチェーン。
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Maru32768/lattice/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Maru32768/lattice/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maru32768/lattice/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0

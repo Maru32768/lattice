@@ -4,6 +4,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-18
+
 ### Added
 
 - **Choose the AI for each chat.** **AI** in the chat pane picks the provider, model and effort for the chat. Only the chosen AI answers, and the chat keeps the choice. By default, a chat uses the fallback chain in **Settings › AI providers**.
@@ -213,7 +215,8 @@ The first public release. Everything below is new.
 - **Network destinations.** Direct downloads reject private networks by default. Allow and deny rules support hostnames, wildcard subdomains, IP addresses and CIDR ranges, with allowlist-only and allow-all modes. The rules cover article, PDF, feed, image and favicon downloads, including redirects. The built-in browser, JavaScript rendering, AI providers and backups use separate network paths.
 - **Project.** MIT license, third-party notices, English and Japanese READMEs, and toolchains pinned with mise.
 
-[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Maru32768/lattice/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Maru32768/lattice/releases/tag/v0.5.0
 [0.4.0]: https://github.com/Maru32768/lattice/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Maru32768/lattice/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Maru32768/lattice/releases/tag/v0.2.0

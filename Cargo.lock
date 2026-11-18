@@ -2752,7 +2752,7 @@ dependencies = [
 
 [[package]]
 name = "lattice"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "lattice-core",
@@ -2779,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "lattice-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "lattice-core",
@@ -2793,7 +2793,7 @@ dependencies = [
 
 [[package]]
 name = "lattice-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64 0.22.1",
  "dirs 7.0.0",
@@ -2830,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "lattice-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "lattice-core",
