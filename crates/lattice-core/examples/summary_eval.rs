@@ -687,7 +687,7 @@ fn compare_path(dir: &Path, a: &str, b: &str) -> PathBuf {
     label_path(dir, "compare", &format!("{a}-vs-{b}"))
 }
 
-async fn compare(dir: &Path, a: &str, b: &str, judge: &LlmChain, limit: usize) -> Result<(), String> {
+async fn compare(dir: &Path, a: &str, b: &str, judge: &impl LlmProvider, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let (runs_a, runs_b) = (load_runs(dir, a)?, load_runs(dir, b)?);
     let schema = json!({
@@ -713,6 +713,13 @@ async fn compare(dir: &Path, a: &str, b: &str, judge: &LlmChain, limit: usize) -
         Ok(Comparison { provider: c.provider, model: c.model, a_first, b_first })
     })
     .await
+}
+
+/// The comparisons A won, B won, tied, and failed.
+fn tally(comparisons: &Results<Comparison>) -> (usize, usize, usize, usize) {
+    let won = |w: Winner| comparisons.values().filter(|c| matches!(c, Outcome::Ok(c) if winner(c.a_first.better, c.b_first.better) == w)).count();
+    let failed = comparisons.values().filter(|c| matches!(c, Outcome::Error(_))).count();
+    (won(Winner::A), won(Winner::B), won(Winner::Tie), failed)
 }
 
 /// 95% percentile bootstrap interval of the mean, from a fixed seed so a report reads the same each time.
@@ -764,6 +771,11 @@ fn line<'a>(name: &str, rows: impl Iterator<Item = &'a Row> + Clone) -> String {
     format!("  {name:<10}{:>4}{scores}{chars:>8}", rows.count())
 }
 
+/// Score `k` of `b` minus that of `a`, for each case both have it for.
+fn paired(a: &BTreeMap<i64, Row>, b: &BTreeMap<i64, Row>, k: usize) -> Vec<f64> {
+    a.iter().filter_map(|(id, ra)| Some(b.get(id)?.scores[k]? - ra.scores[k]?)).collect()
+}
+
 fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let labels: Vec<String> = match pair {
@@ -808,16 +820,15 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
     };
     println!("{b} - {a}, paired over the cases both have:");
     for (k, name) in SCORES.iter().enumerate() {
-        let diffs: Vec<f64> = all[a].iter().filter_map(|(id, ra)| Some(all[b].get(id)?.scores[k]? - ra.scores[k]?)).collect();
+        let diffs = paired(&all[a], &all[b], k);
         match (mean(diffs.iter().copied()), bootstrap_ci(&diffs)) {
             (Some(m), Some((lo, hi))) => println!("  {name:<18} n={:<4} {m:+.3}  95% CI [{lo:+.3}, {hi:+.3}]", diffs.len()),
             _ => println!("  {name:<18} n=0"),
         }
     }
     if let Some(comparisons) = read::<Results<Comparison>>(&compare_path(dir, a, b))? {
-        let won = |w: Winner| comparisons.values().filter(|c| matches!(c, Outcome::Ok(c) if winner(c.a_first.better, c.b_first.better) == w)).count();
-        let failed = comparisons.values().filter(|c| matches!(c, Outcome::Error(_))).count();
-        println!("compare {a} vs {b}: {a} {}, {b} {}, tie {}, failed {failed}", won(Winner::A), won(Winner::B), won(Winner::Tie));
+        let (won_a, won_b, tie, failed) = tally(&comparisons);
+        println!("compare {a} vs {b}: {a} {won_a}, {b} {won_b}, tie {tie}, failed {failed}");
     }
     Ok(())
 }
@@ -918,6 +929,70 @@ mod tests {
         assert_eq!(winner(1, 1), Winner::Tie, "the first position both times");
         assert_eq!(winner(1, 0), Winner::Tie);
         assert_eq!(winner(0, 0), Winner::Tie);
+    }
+
+    #[test]
+    fn the_tally_counts_a_win_for_the_side_picked_in_both_orders() {
+        let verdict = |better| Verdict { better, reason: String::new() };
+        let c = |a, b| Outcome::Ok(Comparison { provider: String::new(), model: None, a_first: verdict(a), b_first: verdict(b) });
+        let comparisons = BTreeMap::from([(1, c(1, 2)), (2, c(1, 2)), (3, c(2, 1)), (4, c(1, 1)), (5, Outcome::Error("down".into()))]);
+        assert_eq!(tally(&comparisons), (2, 1, 1, 1));
+    }
+
+    /// Prefers the summary that reads `text`, in whichever position it is.
+    struct Prefers {
+        text: &'static str,
+        inputs: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl LlmProvider for Prefers {
+        fn name(&self) -> &str {
+            "fake"
+        }
+
+        async fn complete_json(&self, _: &str, input: &str, _: &Value) -> Result<Completion, lattice_core::llm::LlmError> {
+            self.inputs.lock().unwrap().push(input.into());
+            let better = if input.contains(&format!("<summary_1>\n{}\n", self.text)) {
+                1
+            } else {
+                2
+            };
+            Ok(Completion { value: json!({"better": better, "reason": ""}), model: None, provider: "fake".into() })
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn compare_puts_each_summary_first_once_and_a_judge_preferring_a_makes_a_win_for_a() {
+        let dir = temp("compare");
+        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
+        let run = |formatted: &str| Run {
+            summary: String::new(),
+            key_points: vec![],
+            formatted: formatted.into(),
+            provider: String::new(),
+            model: None,
+            prompt_version: String::new(),
+        };
+        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, Outcome::Ok(run("summary of a")))])).unwrap();
+        write(&label_path(&dir, "runs", "b"), &BTreeMap::from([(1, Outcome::Ok(run("summary of b")))])).unwrap();
+        let judge = Prefers { text: "summary of a", inputs: Default::default() };
+        compare(&dir, "a", "b", &judge, usize::MAX).await.unwrap();
+        let inputs = judge.inputs.into_inner().unwrap();
+        assert_eq!(inputs.len(), 2);
+        assert!(inputs[0].contains("<summary_1>\nsummary of a\n") && inputs[1].contains("<summary_1>\nsummary of b\n"), "{inputs:?}");
+        let comparisons: Results<Comparison> = read(&compare_path(&dir, "a", "b")).unwrap().unwrap();
+        assert_eq!(tally(&comparisons), (1, 0, 0, 0));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn paired_differences_are_b_minus_a_over_the_cases_both_have() {
+        let rows = |scores: &[(i64, Option<f64>)]| -> BTreeMap<i64, Row> {
+            scores.iter().map(|&(id, s)| (id, Row { stratum: Stratum::Short, scores: [s, None, None, None], chars: None, errors: vec![] })).collect()
+        };
+        let a = rows(&[(1, Some(0.5)), (2, Some(0.5)), (3, None)]);
+        let b = rows(&[(1, Some(0.75)), (3, Some(1.0)), (4, Some(1.0))]);
+        assert_eq!(paired(&a, &b, 0), [0.25], "B scoring higher is positive under the header B - A");
     }
 
     #[test]
