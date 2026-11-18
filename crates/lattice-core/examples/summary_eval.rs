@@ -824,7 +824,41 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use super::*;
+
+    fn temp(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("summary_eval-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn case(id: i64) -> Case {
+        Case { id, stratum: Stratum::Short, title: format!("T{id}"), blocks: vec![("paragraph".into(), format!("text {id}"))] }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_step_run_again_redoes_only_the_failed_and_missing_cases_within_the_limit() {
+        let dir = temp("each_case");
+        let path = dir.join("out.json");
+        write(&path, &json!({"1": {"ok": "old"}, "2": {"error": "down"}})).unwrap();
+        let cases: Vec<Case> = (1..=3).map(case).collect();
+        let called = RefCell::new(Vec::new());
+        let ok = async |c: &Case| {
+            called.borrow_mut().push(c.id);
+            Ok(format!("new {}", c.id))
+        };
+        each_case(&path, &cases, 2, ok).await.unwrap();
+        assert_eq!(*called.borrow(), [2], "case 1 is done and case 3 is past the limit");
+        assert_eq!(read::<Value>(&path).unwrap(), Some(json!({"1": {"ok": "old"}, "2": {"ok": "new 2"}})));
+
+        let fails = async |_: &Case| Err::<String, _>("still down".to_string());
+        assert!(each_case(&path, &cases, 3, fails).await.is_err());
+        assert_eq!(read::<Value>(&path).unwrap(), Some(json!({"1": {"ok": "old"}, "2": {"ok": "new 2"}, "3": {"error": "still down"}})));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn scores_a_judgment_and_refuses_one_that_skips_an_item() {
