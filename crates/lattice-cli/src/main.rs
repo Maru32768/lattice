@@ -32,9 +32,12 @@ struct Cli {
     data_dir: Option<PathBuf>,
     #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
     format: Format,
-    /// Allow saving, tagging and marking articles (or set LATTICE_ALLOW_WRITE=1)
+    /// Allow saving, tagging, renaming and other changes that can be undone (or set LATTICE_ALLOW_WRITE=1)
     #[arg(long, global = true)]
     allow_write: bool,
+    /// Also allow deleting articles, collections, feeds and folders, and merging genres
+    #[arg(long, global = true)]
+    allow_delete: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -82,7 +85,9 @@ fn open(cli: &Cli) -> Result<(Ctx, Option<PathBuf>), String> {
     let llm = LlmChain::new(chain::load(&store)?);
     let http = HttpClient::configured(&network::settings(&store)?)?;
     let providers = Providers { llm, embedder: LocalE5::offline(dir.join("models")), http };
-    let role = if cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1") {
+    let role = if cli.allow_delete {
+        Role::Delete
+    } else if cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1") {
         Role::Edit
     } else {
         Role::Read
@@ -183,10 +188,13 @@ fn main() -> ExitCode {
         Err(e) => return fail(cli.format, &e),
     };
     match cli.cmd {
-        Cmd::Mcp => match mcp::serve(&ctx, detected_dir.as_deref(), &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
-            Ok(()) => ExitCode::SUCCESS,
-            Err(e) => fail(cli.format, &e.to_string()),
-        },
+        // An agent reads untrusted pages, and nothing here can ask the user before it deletes.
+        Cmd::Mcp => {
+            match mcp::serve(&Ctx { role: ctx.role.min(Role::Edit), ..ctx }, detected_dir.as_deref(), &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => fail(cli.format, &e.to_string()),
+            }
+        }
         Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, detected_dir, ctx.role >= Role::Edit, lan, port)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e),
