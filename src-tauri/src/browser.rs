@@ -1487,7 +1487,7 @@ mod tests {
     }
 
     #[test]
-    fn a_jump_waits_for_the_page_the_app_opened_through_the_load_it_cancelled() {
+    fn a_jump_waits_for_the_page_the_app_opened_and_never_reaches_one_the_toolbar_moves_to() {
         let t0 = Instant::now();
         let at = |ms: u64| t0 + Duration::from_millis(ms);
         let zebra = || Some(Jump::Text("Zebra".into()));
@@ -1507,7 +1507,7 @@ mod tests {
         t.open(zebra());
         t.moved_by_toolbar(false);
         t.started(at(11_000));
-        assert_eq!(t.finished(at(11_000)), scroll, "the page the app opened, which Back pressed before it began leaves alone");
+        assert_eq!(t.finished(at(11_000)), scroll, "the page the app opened, still awaiting its response when Back was pressed");
         t.open(zebra());
         t.moved_by_toolbar(true);
         t.started(at(12_000));
