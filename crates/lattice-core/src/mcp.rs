@@ -1,5 +1,5 @@
 //! How much of the library a caller may change: `lattice-cli` and its MCP server check each operation against it, and
-//! `lattice-cli serve` the phone's changes (design-review §23, §32).
+//! `lattice-cli serve` checks the phone's changes against it (design-review §23, §32).
 
 /// Ordered: each role allows everything the roles before it allow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
