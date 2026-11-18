@@ -201,13 +201,15 @@ impl Stratum {
         let prose = s.prose_chars;
         // The app's cap when the strata were set; fixed so a later cap does not move cases between strata.
         let cap = 40_000;
+        // The summary input is prose only: with less, the summarizer has little more than the title to go on.
+        let floor = 500;
         let fits = |st: Self| match st {
-            Self::Japanese => lang("ja") && prose <= 200_000,
+            Self::Japanese => lang("ja") && (floor..=200_000).contains(&prose),
             Self::CodeHeavy => (2_000..=200_000).contains(&prose) && s.code_table_chars * 10 >= (prose + s.code_table_chars) * 3,
             Self::OverCap => (cap..=200_000).contains(&prose),
             Self::Long => (25_000..cap).contains(&prose),
             Self::Medium => lang("en") && (8_000..25_000).contains(&prose),
-            Self::Short => lang("en") && prose < 8_000,
+            Self::Short => lang("en") && (floor..8_000).contains(&prose),
         };
         Self::ASSIGN.into_iter().find(|&st| fits(st))
     }
@@ -931,6 +933,9 @@ mod tests {
         let (id, _) = store.upsert_pending(url, url, "example.com").unwrap();
         let html = r#"<html lang="en"><head><title>Write skew</title></head><body><article><h2>Intro</h2>
             <p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.</p>
+            <p>Two doctors on call each check that the other is still on call, and each then takes the night off. Every transaction
+            read a consistent snapshot and wrote a row the other did not touch, so neither saw a conflict, yet together they broke
+            the rule that one doctor stays on call. Row locks do not help, because the rows they read are not the rows they write.</p>
             <pre><code>SELECT 1;</code></pre><img src="https://example.com/skew.png" alt="Two transactions">
             <h2>Fix</h2><p>Serializable isolation aborts one of the two transactions before either commits.</p></article></body></html>"#;
         let id = ingest::store_fetched(&store, id, &Fetched { final_url: url.into(), status: 200, content_type: None, html: html.into() }).unwrap();
@@ -1226,6 +1231,10 @@ mod tests {
         assert_eq!(of("en", stats(5_000, 0)), Some(Stratum::Short));
         assert_eq!(of("de", stats(5_000, 0)), None, "short and medium are English only");
         assert_eq!(of("en", stats(1_000, 9_000)), Some(Stratum::Short), "too little prose to be code-heavy");
+        assert_eq!(of("en", stats(499, 0)), None, "too little prose to summarize");
+        assert_eq!(of("en", stats(500, 0)), Some(Stratum::Short));
+        assert_eq!(of("ja", stats(499, 0)), None, "too little prose to summarize");
+        assert_eq!(of("ja", stats(500, 0)), Some(Stratum::Japanese));
         assert_eq!(of("ja", stats(250_000, 0)), None);
         assert_eq!(Stratum::of(None, &stats(30_000, 0)), Some(Stratum::Long));
     }
