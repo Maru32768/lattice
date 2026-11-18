@@ -6,19 +6,18 @@ export interface PickOption {
 
 export interface PickSection<O extends PickOption = PickOption> {
   label: string;
-  note?: string;
   options: readonly O[];
 }
 
 /** One line of the list. A section with a label gets a head row; an unlabeled one does not. `n` is the option's 1-based position among the options. */
-export type PickRow<O extends PickOption = PickOption> = { kind: "head"; s: PickSection<O> } | { kind: "opt"; o: O; n: number };
+export type PickRow<O extends PickOption = PickOption> = { kind: "head"; label: string } | { kind: "opt"; o: O; n: number };
 
 export function pickRows<O extends PickOption>(sections: readonly PickSection<O>[]): PickRow<O>[] {
   const rows: PickRow<O>[] = [];
   let n = 0;
   for (const s of sections) {
     if (s.label) {
-      rows.push({ kind: "head", s });
+      rows.push({ kind: "head", label: s.label });
     }
     for (const o of s.options) {
       rows.push({ kind: "opt", o, n: ++n });

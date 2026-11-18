@@ -21,7 +21,7 @@ const SECTIONS: PickSection[] = [
   },
 ];
 const ROWS = pickRows(SECTIONS);
-const shape = (rows: typeof ROWS) => rows.map((r) => (r.kind === "head" ? `[${r.s.label}]` : `${r.o.key}#${r.n}`));
+const shape = (rows: typeof ROWS) => rows.map((r) => (r.kind === "head" ? `[${r.label}]` : `${r.o.key}#${r.n}`));
 
 test("rows: a labeled section opens with its head, an unlabeled one does not; options count from 1 past the heads", () => {
   assert.deepEqual(shape(ROWS), ["article#1", "all#2", "[グループ]", "g1#3", "[タグ]", "t1#4", "t2#5", "t3#6"]);

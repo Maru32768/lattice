@@ -85,8 +85,7 @@ export function PickList<O extends PickOption>({
   const row = (i: number, r: PickRow<O>) =>
     r.kind === "head" ? (
       <div className="ph" role="presentation">
-        {r.s.label}
-        {r.s.note && <span>{r.s.note}</span>}
+        {r.label}
       </div>
     ) : (
       <button
