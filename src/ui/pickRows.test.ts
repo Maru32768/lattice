@@ -34,6 +34,24 @@ test("filtering keeps the options whose label holds the query, in either case, a
   assert.equal(filterSections(SECTIONS, " "), SECTIONS, "a blank query filters nothing");
 });
 
+test("within a section, an option where the query comes earlier comes first, so Enter on a typed name picks that name", () => {
+  const tags: PickSection[] = [
+    {
+      label: "タグ",
+      options: [
+        { key: "a", label: "#adaptive-agents(1件)" },
+        { key: "b", label: "#agent(3件)" },
+        { key: "c", label: "#agent memory(6件)" },
+        { key: "d", label: "#llm-agent(2件)" },
+      ],
+    },
+  ];
+  assert.deepEqual(
+    filterSections(tags, "agent")[0].options.map((o) => o.key),
+    ["b", "c", "d", "a"],
+  );
+});
+
 test("a step passes over heads and disabled options and stops at either end", () => {
   assert.equal(stepRow(ROWS, 1, 1), 3, "全記事 → MVCC, past the グループ head");
   assert.equal(stepRow(ROWS, 3, 1), 5, "MVCC → #Rust, past the タグ head");

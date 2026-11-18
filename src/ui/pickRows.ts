@@ -27,13 +27,22 @@ export function pickRows<O extends PickOption>(sections: readonly PickSection<O>
   return rows;
 }
 
-/** The options whose label holds `q`, ignoring case; sections left empty are dropped, and a blank query returns `sections` itself. */
+/**
+ * The options whose label holds `q`, ignoring case, those where it comes earlier first within each section; sections
+ * left empty are dropped, and a blank query returns `sections` itself.
+ */
 export function filterSections<O extends PickOption>(sections: readonly PickSection<O>[], q: string): readonly PickSection<O>[] {
   const ql = q.trim().toLowerCase();
   if (!ql) {
     return sections;
   }
-  return sections.map((s) => ({ ...s, options: s.options.filter((o) => o.label.toLowerCase().includes(ql)) })).filter((s) => s.options.length > 0);
+  const hits = (options: readonly O[]) =>
+    options
+      .map((o) => ({ o, at: o.label.toLowerCase().indexOf(ql) }))
+      .filter((h) => h.at >= 0)
+      .sort((a, b) => a.at - b.at)
+      .map((h) => h.o);
+  return sections.map((s) => ({ ...s, options: hits(s.options) })).filter((s) => s.options.length > 0);
 }
 
 const enabled = <O extends PickOption>(r: PickRow<O> | undefined): r is { kind: "opt"; o: O; n: number } => r?.kind === "opt" && !r.o.disabled;
