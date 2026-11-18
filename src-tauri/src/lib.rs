@@ -1215,9 +1215,14 @@ async fn set_data_dir(app: State<'_, App>, copy: bool) -> Result<String, String>
     Ok(target.display().to_string())
 }
 
+/// What `AppHandle::restart` does on the main thread, where a sync command runs, but without `--autostart`: a restart
+/// passes the arguments on, and a process started at sign-in would come back hidden in the tray.
 #[tauri::command]
 fn restart_app(handle: tauri::AppHandle) {
-    handle.restart()
+    let mut env = handle.env();
+    env.args_os.retain(|a| a != tray::AUTOSTART_ARG);
+    handle.cleanup_before_exit();
+    tauri::process::restart(&env)
 }
 
 /// Launch at sign-in. The OS registration is the only record, so turning it off in Task
