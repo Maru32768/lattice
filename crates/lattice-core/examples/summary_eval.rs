@@ -236,6 +236,12 @@ struct Cases {
     cases: Vec<Case>,
 }
 
+impl Cases {
+    fn applied(&self) -> instructions::Applied {
+        Settings { profile: self.user_profile.clone(), summary: self.summary_instructions.clone(), chat: String::new() }.for_summary()
+    }
+}
+
 fn load_cases(dir: &Path) -> Result<Cases, String> {
     read(&dir.join("cases.json"))?.ok_or_else(|| format!("no cases.json in {}: run sample first", dir.display()))
 }
@@ -257,8 +263,19 @@ fn sample(dir: &Path, db: &Path, n: usize, seed: u64) -> Result<(), String> {
     if per == 0 {
         return Err(format!("--n {n}: at least one case per stratum, {} in all", Stratum::ALL.len()));
     }
-    // Never `Store::open`: it migrates, and this is the user's real library.
-    let c = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("{}: {e}", db.display()))?;
+    let cases = read_library(&open_library(db)?, per, seed)?;
+    write(&path, &cases)?;
+    eprintln!("{}: {} cases", path.display(), cases.cases.len());
+    Ok(())
+}
+
+/// Never `Store::open`: it migrates, and this is the user's real library.
+fn open_library(db: &Path) -> Result<Connection, String> {
+    Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| format!("{}: {e}", db.display()))
+}
+
+/// `per` articles of each stratum, picked by `seed`, and the summary settings.
+fn read_library(c: &Connection, per: usize, seed: u64) -> Result<Cases, String> {
     let sql = |e: rusqlite::Error| e.to_string();
     let mut stats: HashMap<i64, Stats> = HashMap::new();
     let mut st = c.prepare("SELECT article_id, kind, sum(length(text)) FROM blocks WHERE kind != 'image' GROUP BY article_id, kind").map_err(sql)?;
@@ -297,10 +314,7 @@ fn sample(dir: &Path, db: &Path, n: usize, seed: u64) -> Result<(), String> {
     let setting = |key: &str| {
         c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get::<_, String>(0)).optional().map(Option::unwrap_or_default).map_err(sql)
     };
-    let cases = Cases { user_profile: setting(instructions::PROFILE_SETTING)?, summary_instructions: setting(instructions::SUMMARY_SETTING)?, cases };
-    write(&path, &cases)?;
-    eprintln!("{}: {} cases", path.display(), cases.cases.len());
-    Ok(())
+    Ok(Cases { user_profile: setting(instructions::PROFILE_SETTING)?, summary_instructions: setting(instructions::SUMMARY_SETTING)?, cases })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -468,7 +482,7 @@ fn load_runs(dir: &Path, label: &str) -> Result<Results<Run>, String> {
 
 async fn summarize(dir: &Path, label: &str, with: &LlmChain, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
-    let applied = Settings { profile: cases.user_profile.clone(), summary: cases.summary_instructions.clone(), chat: String::new() }.for_summary();
+    let applied = cases.applied();
     let prompt_version = applied.version(summarize::PROMPT_VERSION);
     each_case(&label_path(dir, "runs", label), &cases.cases, limit, async |case: &Case| {
         let (system, input) = summarize::request(&applied, &case.title, &case.blocks);
@@ -837,6 +851,10 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
 mod tests {
     use std::cell::RefCell;
 
+    use lattice_core::fetch::Fetched;
+    use lattice_core::ingest;
+    use lattice_core::store::Store;
+
     use super::*;
 
     fn temp(name: &str) -> PathBuf {
@@ -868,6 +886,38 @@ mod tests {
         let fails = async |_: &Case| Err::<String, _>("still down".to_string());
         assert!(each_case(&path, &cases, 3, fails).await.is_err());
         assert_eq!(read::<Value>(&path).unwrap(), Some(json!({"1": {"ok": "old"}, "2": {"ok": "new 2"}, "3": {"error": "still down"}})));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_sampled_case_makes_the_request_the_app_sends_and_the_library_stays_read_only() {
+        let dir = temp("sample");
+        let db = dir.join("lattice.db");
+        let store = Store::open(&db).unwrap();
+        let url = "https://example.com/write-skew";
+        let (id, _) = store.upsert_pending(url, url, "example.com").unwrap();
+        let html = r#"<html lang="en"><head><title>Write skew</title></head><body><article><h2>Intro</h2>
+            <p>Snapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.</p>
+            <pre><code>SELECT 1;</code></pre><img src="https://example.com/skew.png" alt="Two transactions">
+            <h2>Fix</h2><p>Serializable isolation aborts one of the two transactions before either commits.</p></article></body></html>"#;
+        let id = ingest::store_fetched(&store, id, &Fetched { final_url: url.into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        instructions::save(&store, &Settings { profile: "Rustを書く".into(), summary: "数値を残す".into(), chat: "短く".into() }).unwrap();
+
+        let c = open_library(&db).unwrap();
+        assert!(c.execute("DELETE FROM settings", []).is_err(), "the library is opened read-only");
+        let images: i64 = c.query_row("SELECT count(*) FROM blocks WHERE article_id = ?1 AND kind = 'image'", [id], |r| r.get(0)).unwrap();
+        assert_eq!(images, 1, "an image for the sample to leave out");
+        let cases = read_library(&c, 1, 1).unwrap();
+        let [case] = &cases.cases[..] else {
+            panic!("one case, not {}", cases.cases.len());
+        };
+        let src = store.summary_source(id).unwrap().unwrap();
+        assert_eq!(case.blocks, src.blocks, "the judge reads the blocks the app has");
+        assert_eq!(
+            summarize::request(&cases.applied(), &case.title, &case.blocks),
+            summarize::request(&instructions::load(&store).unwrap().for_summary(), &src.title, &src.blocks)
+        );
+        drop((c, store));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
