@@ -544,3 +544,14 @@ test("a search result's table, one block in the Reader, is found though each cel
   expect(flashed, "found, the table itself, not the one around it").toEqual([true, true, false]);
   await expect(page.locator("#data")).toBeInViewport();
 });
+
+test("on a Japanese page, a cell of one ideograph is a word and is translated", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    document.documentElement.lang = "ja";
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", '<table id="ja"><tr><th>年</th><th>出来事</th></tr></table>');
+  });
+  await page.evaluate(translateAll);
+  await expect(page.locator("#ja th")).toHaveText(["訳:年", "訳:出来事"]);
+});

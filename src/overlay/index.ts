@@ -161,7 +161,8 @@ function findLeafBlocks(root: Element): HTMLElement[] {
     const kids = Array.from(el.children);
     if (kids.some(isBlock)) {
       kids.forEach(walk);
-    } else if (el instanceof HTMLElement && (el.textContent ?? "").trim().length >= 2) {
+    } else if (el instanceof HTMLElement && ((el.textContent ?? "").trim().length >= 2 || /\p{Script=Han}/u.test(el.textContent ?? ""))) {
+      // One ideograph is a word (a table's 年), one letter or mark is not.
       out.push(el);
     }
   };
