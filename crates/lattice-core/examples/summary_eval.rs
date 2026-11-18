@@ -142,12 +142,13 @@ impl Args {
     }
 }
 
-/// A label names files, so it is kept to characters that are safe in a file name.
+/// A label names files, so it is kept to characters that are safe in a file name, and to lowercase because
+/// Windows file names ignore case (`v1` and `V1` would share every file).
 fn label(s: &str) -> Result<String, String> {
-    if !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c)) {
+    if !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "-_.".contains(c)) {
         Ok(s.into())
     } else {
-        Err(format!("label {s:?}: use letters, digits, '-', '_' and '.'"))
+        Err(format!("label {s:?}: use lowercase letters, digits, '-', '_' and '.'"))
     }
 }
 
@@ -1280,6 +1281,7 @@ mod tests {
             assert_ne!(compare_path(dir, a1, b1), compare_path(dir, a2, b2), "({a1}, {b1}) and ({a2}, {b2})");
         }
         assert!(label("x+y").is_err(), "the separator cannot be inside a label");
+        assert!(label("V1").is_err(), "labels differing only in case would share a file on Windows");
     }
 
     #[test]
