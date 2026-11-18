@@ -30,7 +30,7 @@ fn list_limit() -> usize {
 }
 
 #[derive(Debug, Subcommand, Deserialize)]
-#[serde(tag = "name", content = "arguments", rename_all = "snake_case")]
+#[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Op {
     /// Hybrid search (full text and meaning) over the blocks of saved articles
     Search {

@@ -12,7 +12,10 @@ const SCOPE: &str = "Optional: all, unread, favorites, tag:NAME, genre:NAME, gen
 folder:ID, collection:ID (ids from the collections tool), important[:MIN] (default: the app's importance threshold) or article:ID[,ID...]";
 
 fn tool(role: Role, name: &str, description: &str, properties: Value, required: &[&str]) -> (Role, Value) {
-    (role, json!({ "name": name, "description": description, "inputSchema": { "type": "object", "properties": properties, "required": required } }))
+    (
+        role,
+        json!({ "name": name, "description": description, "inputSchema": { "type": "object", "properties": properties, "required": required, "additionalProperties": false } }),
+    )
 }
 
 /// The tools `role` may call. Tests keep each tool's properties and role in step with `Op`.
@@ -204,6 +207,13 @@ mod tests {
         names.dedup();
         assert_eq!(names.len(), cli.get_subcommands().count(), "one tool per op");
         assert_eq!((tools(Role::Read).len(), tools(Role::Edit).len(), tools(Role::Delete).len()), (10, 30, 35));
+    }
+
+    #[test]
+    fn a_misspelled_argument_is_refused_rather_than_read_as_left_out() {
+        let parse = |arguments: Value| serde_json::from_value::<Op>(json!({ "name": "move_feed", "arguments": arguments }));
+        assert!(parse(json!({ "id": 1, "folder_name": "News" })).is_err(), "would move the feed out of its folder");
+        assert!(matches!(parse(json!({ "id": 1, "folder": "News" })), Ok(Op::MoveFeed { folder: Some(_), .. })));
     }
 
     #[test]
