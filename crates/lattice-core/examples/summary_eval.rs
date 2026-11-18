@@ -916,8 +916,8 @@ mod tests {
             Ok(c.id.to_string())
         };
         each_case(&path, &cases, usize::MAX, call).await.unwrap();
-        let saved = saved.into_inner();
-        assert!(saved[PARALLEL] > 0, "a case past the first {PARALLEL} starts after one has finished; saved when each started: {saved:?}");
+        // Exact although unordered: a call that never waits finishes on its first poll, and the step saves before polling the next.
+        assert_eq!(saved.into_inner(), (0..=PARALLEL).collect::<Vec<_>>(), "the cases saved when each call started");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
