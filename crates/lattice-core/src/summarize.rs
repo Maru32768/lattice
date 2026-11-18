@@ -19,6 +19,7 @@ pub const SUMMARY_TYPE: &str = "normal";
 /// Upper bound on the input sent, in chars: above the 99th percentile of article length in a real
 /// library, so nearly every article goes whole.
 const MAX_INPUT_CHARS: usize = 100_000;
+const MAX_BLOCK_CHARS: usize = 2_000;
 const AUTO_SETTING: &str = "auto_summarize";
 
 /// Which saved articles get a summary without a click (Settings › 要約・対話). Off by default:
@@ -117,20 +118,27 @@ pub fn request(applied: &instructions::Applied, title: &str, blocks: &[(String, 
     (applied.system(RULES, UNTRUSTED), input_text(title, blocks))
 }
 
-/// Article text as sent to the model: title, then the prose blocks with headings marked with '#',
-/// inside `<article>` and capped in size.
+/// Article text as sent to the model: title, then the prose, code and table blocks with headings
+/// marked with '#' and code fenced, inside `<article>` and capped in size.
 fn input_text(title: &str, blocks: &[(String, String)]) -> String {
     let open = format!("<article>\n# {}\n", unclosable(title));
     let pieces: Vec<String> = blocks
         .iter()
-        .filter(|(kind, _)| ir::PROSE_KINDS.contains(&kind.as_str()))
-        .map(|(kind, text)| {
+        .filter_map(|(kind, text)| {
             let text = unclosable(text);
-            if kind == "heading" {
-                format!("\n## {text}\n")
-            } else {
-                format!("{text}\n")
-            }
+            Some(match kind.as_str() {
+                "heading" => format!("\n## {text}\n"),
+                "code" => {
+                    let (kept, rest) = capped(&text);
+                    format!("```\n{kept}\n```\n{rest}")
+                }
+                "table" => {
+                    let (kept, rest) = capped(&text);
+                    format!("{kept}\n{rest}")
+                }
+                k if ir::PROSE_KINDS.contains(&k) => format!("{text}\n"),
+                _ => return None,
+            })
         })
         .collect();
     let budget = MAX_INPUT_CHARS.saturating_sub(open.chars().count() + CLOSE.chars().count());
@@ -164,6 +172,17 @@ fn head_and_tail(pieces: &[String], budget: usize) -> String {
         tail -= 1;
     }
     format!("{out}{}{}", omitted(total - used), pieces[tail..].concat())
+}
+
+/// A code or table block's first lines up to `MAX_BLOCK_CHARS`, and the marker for the rest (empty
+/// when it fits): a long listing would take the room of the prose that explains it.
+fn capped(text: &str) -> (&str, String) {
+    let start = first_chars(text, MAX_BLOCK_CHARS);
+    if start.len() == text.len() {
+        return (text, String::new());
+    }
+    let kept = start.rfind('\n').map_or(start, |i| &start[..i]);
+    (kept, omitted(text.chars().count() - kept.chars().count()))
 }
 
 fn omitted(chars: usize) -> String {
@@ -332,12 +351,34 @@ mod tests {
     }
 
     #[test]
-    fn sends_prose_only_and_code_does_not_use_up_the_cap() {
+    fn sends_code_fenced_and_tables_and_caps_a_long_one_at_a_line_end() {
         let b = |kind: &str, text: &str| (kind.to_string(), text.to_string());
-        let mut blocks: Vec<_> = (0..5000).map(|i| b("code", &format!("let x{i} = {};", "y".repeat(20)))).collect();
-        blocks.extend([b("heading", "H"), b("table", "a\tb"), b("paragraph", "keep"), b("list_item", "point"), b("image", "alt")]);
+        // 1,000 lines of 10 chars with their newline: 10,000 in all.
+        let lines: Vec<String> = (0..1000).map(|i| format!("v{i:03} = 0;")).collect();
+        let long: String = lines.iter().map(|l| format!("{l}\n")).collect();
+        let blocks = [
+            b("heading", "H"),
+            b("code", "SELECT 1;"),
+            b("table", "a\tb\nc\td"),
+            b("paragraph", "keep"),
+            b("code", &long),
+            b("table", &long),
+            b("list_item", "point"),
+            b("image", "alt"),
+        ];
         let (system, input) = request(&instructions::Applied::default(), "T", &blocks);
-        assert_eq!(input, "<article>\n# T\n\n## H\nkeep\npoint\n</article>\n\nSummarize the article above.");
+        // The first 2,000 chars end with the newline of line 200, so 1,999 are kept.
+        let first = lines[..200].join("\n");
+        let rest = "\n[… 8001 characters omitted …]\n";
+        assert_eq!(
+            input,
+            format!(
+                "<article>\n# T\n\n## H\n```\nSELECT 1;\n```\na\tb\nc\td\nkeep\n```\n{first}\n```\n{rest}{first}\n{rest}point\n</article>\n\nSummarize the article above."
+            )
+        );
         assert!(system.starts_with(RULES) && system.ends_with(UNTRUSTED), "{system}");
+
+        let many: Vec<_> = (0..5000).map(|i| b("code", &format!("let x{i} = {};", "y".repeat(20)))).collect();
+        assert_eq!(read_back(&input_text("T", &many)).1.len(), 1, "code counts toward the cap");
     }
 }

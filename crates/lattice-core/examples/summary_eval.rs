@@ -202,7 +202,7 @@ impl Stratum {
         let prose = s.prose_chars;
         // The app's cap when the strata were set; fixed so a later cap does not move cases between strata.
         let cap = 40_000;
-        // The summary input is prose only: with less, the summarizer has little more than the title to go on.
+        // With less prose, the summarizer has little to go on.
         let floor = 500;
         let fits = |st: Self| match st {
             Self::Japanese => lang("ja") && (floor..=200_000).contains(&prose),
@@ -398,7 +398,7 @@ fn system(rules: &str) -> String {
     format!("{rules}\n\n{UNTRUSTED}")
 }
 
-/// The whole article for a judge: unlike the summary input, code and tables too, and no cap.
+/// The whole article for a judge: unlike the summary input, no cap on the article or on its code and tables.
 fn article(case: &Case) -> String {
     let mut out = format!("<article>\n# {}\n", case.title);
     for (kind, text) in &case.blocks {

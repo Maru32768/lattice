@@ -679,8 +679,8 @@ mod tests {
         let input = p.llm.calls.lock().unwrap()[0].clone();
         assert_eq!(
             input,
-            "<article>\n# https://example.com/a\n\n## Intro\nSnapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.\nスナップショット分離について日本語で書かれた段落です。\n</article>\n\nSummarize the article above.",
-            "the prose blocks in their order, without the code"
+            "<article>\n# https://example.com/a\n\n## Intro\nSnapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.\nスナップショット分離について日本語で書かれた段落です。\n```\nSELECT 1;\n```\n</article>\n\nSummarize the article above.",
+            "the blocks in their order, the code fenced"
         );
         let v = s.get_article(id, "ja").unwrap().unwrap();
         let sum = v.summary.unwrap();
