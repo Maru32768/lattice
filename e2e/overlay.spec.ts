@@ -477,7 +477,7 @@ test("trying a place again goes on in one chain, not one more for each try", asy
   expect(await tries(3), "not three chains").toBeLessThanOrEqual(one + 2);
 });
 
-test("a table is translated cell by cell, also a theme's inline-block table in an inline-block box", async ({ page }) => {
+test("a table is translated cell by cell, also a theme's inline-block table, while a sentence keeps its inline flex or table box", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
@@ -486,7 +486,11 @@ test("a table is translated cell by cell, also a theme's inline-block table in a
       "<tbody><tr><td>Linus announces Linux</td><td>Monolithic kernel</td></tr><tr><td>GPL adoption</td><td>Contributions begin</td></tr></tbody>";
     // The second as MkDocs Material wraps one, to scroll it sideways.
     const tables = `<table>${rows}</table><div><div style="display: inline-block"><table style="display: inline-block">${rows}</table></div></div>`;
-    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables);
+    // A flex item is a block by its computed display, and KaTeX lays out a formula in table rows.
+    const boxes =
+      '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
+      '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes);
     const internals = window.__TAURI_INTERNALS__!;
     const ipc = internals.invoke;
     internals.invoke = (cmd, args) =>
@@ -495,4 +499,6 @@ test("a table is translated cell by cell, also a theme's inline-block table in a
   });
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
   await expect(page.locator("th, td")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
+  await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
 });

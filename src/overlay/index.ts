@@ -88,7 +88,20 @@ const SKIP =
   "script,style,textarea,input,code,pre,noscript,svg,math,select,option,button,nav,header,footer," +
   "[role='navigation'],[role='banner'],[role='contentinfo'],[contenteditable=''],[contenteditable='true']," +
   "[translate='no'],.notranslate,[data-lattice-ui]";
-const BLOCK_DISPLAY = new Set(["block", "flex", "grid", "list-item", "table", "table-row", "table-cell", "table-caption", "flow-root"]);
+const BLOCK_DISPLAY = new Set([
+  "block",
+  "flex",
+  "grid",
+  "list-item",
+  "table",
+  "table-header-group",
+  "table-row-group",
+  "table-footer-group",
+  "table-row",
+  "table-cell",
+  "table-caption",
+  "flow-root",
+]);
 const SENTENCE = "lattice-sentence";
 const HOVER_MS = 300;
 const BATCH_PARTS = 12;
@@ -132,11 +145,12 @@ const state = {
 const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC")));
 
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
-/** Also a box of another display that holds blocks (a table's rows, a theme's inline-block table): taken as one leaf, a sentence would be wrapped across them. */
-const isBlock = (el: Element): boolean => {
-  const display = getComputedStyle(el).display;
-  return BLOCK_DISPLAY.has(display) || (display !== "none" && !el.matches(SKIP) && Array.from(el.children).some(isBlock));
-};
+/**
+ * A table is a block however it is shown, and so is a box that holds one (a theme's inline-block table and its box):
+ * taken as one leaf, a sentence would be wrapped across its cells. Not any inline box that holds blocks: a flex
+ * item is a block by its display, and KaTeX lays out a formula in table rows, both inside a sentence.
+ */
+const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display) || el.localName === "table" || el.querySelector("table") !== null;
 
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
