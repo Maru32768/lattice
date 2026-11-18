@@ -44,7 +44,7 @@ export function filterSections<O extends PickOption>(sections: readonly PickSect
   return sections.map((s) => ({ ...s, options: hits(s.options) })).filter((s) => s.options.length > 0);
 }
 
-const enabled = <O extends PickOption>(r: PickRow<O> | undefined): r is { kind: "opt"; o: O; n: number } => r?.kind === "opt" && !r.o.disabled;
+export const enabled = <O extends PickOption>(r: PickRow<O> | undefined): r is { kind: "opt"; o: O; n: number } => r?.kind === "opt" && !r.o.disabled;
 
 /**
  * The enabled option `by` rows away from `from`: the first one from there on in that direction, else the nearest one

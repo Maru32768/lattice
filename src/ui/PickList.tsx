@@ -3,7 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
 import { Icon } from "./Icon";
-import { defaultRow, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
+import { defaultRow, enabled, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
 
 /** The height of `.opt` and `.pick-list .ph` in App.css: Virtuoso takes it on trust and measures no row. */
 const ROW_H = 30;
@@ -76,7 +76,7 @@ export function PickList<O extends PickOption>({
       list.current?.scrollIntoView({ index: by < 0 && rows[i - 1]?.kind === "head" ? i - 1 : i });
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (current?.kind === "opt" && !current.o.disabled) {
+      if (enabled(current)) {
         onPick(current.o);
       }
     }
