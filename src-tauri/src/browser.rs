@@ -1493,6 +1493,7 @@ mod tests {
         let zebra = || Some(Jump::Text("Zebra".into()));
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
+        t.started(at(0));
         t.open(zebra());
         assert_eq!(t.finished(at(0)), None, "the load the app's navigation cancelled");
         t.started(at(6_000));
