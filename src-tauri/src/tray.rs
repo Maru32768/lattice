@@ -35,7 +35,7 @@ pub fn shown(handle: &AppHandle) -> bool {
 }
 
 pub fn launched_at_sign_in() -> bool {
-    std::env::args().any(|a| a == AUTOSTART_ARG)
+    std::env::args_os().any(|a| a == AUTOSTART_ARG)
 }
 
 /// Registered once on the app: a menu handler given to each new icon stays after the icon is removed.
