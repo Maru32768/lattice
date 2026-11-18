@@ -22,6 +22,8 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+pub mod ops;
+
 /// A built file of the page (`src/mobile`, built by `npm run build:overlay`).
 pub struct Asset {
     pub path: &'static str,
