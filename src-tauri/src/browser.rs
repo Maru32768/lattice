@@ -164,6 +164,31 @@ impl Default for TabState {
     }
 }
 
+impl TabState {
+    /// The app opens a page in the tab, which scrolls to `jump` once it has loaded.
+    fn open(&mut self, jump: Option<Jump>) {
+        self.jump = jump;
+        self.jumped = None;
+    }
+
+    /// A document begins loading: one soon after a jump ran is that page moving on by script, and gets it too.
+    fn started(&mut self, now: Instant) {
+        if let Some((jump, at)) = self.jumped.take()
+            && now.duration_since(at) < MOVES_ON_WITHIN
+        {
+            self.jump = Some(jump);
+        }
+    }
+
+    /// A page has loaded: the script that scrolls it to its jump, if it has one.
+    fn finished(&mut self, now: Instant) -> Option<String> {
+        let jump = self.jump.take()?;
+        let script = jump.script();
+        self.jumped = Some((jump, now));
+        Some(script)
+    }
+}
+
 type SnapshotReply = oneshot::Sender<(String, String)>;
 
 /// Outstanding DOM snapshot requests, at most one per webview label: (nonce, reply channel for (url, html)).
@@ -715,16 +740,12 @@ pub async fn browser_open(
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
         }
-        browser.with_tab(&label, |t| {
-            t.jump = jump;
-            t.jumped = None;
-        });
+        browser.with_tab(&label, |t| t.open(jump));
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
     browser.with_tab(&label, |t| {
-        t.jump = jump;
-        t.jumped = None;
+        t.open(jump);
         t.hidden_while_opening = false;
     });
     browser.evict(&app);
@@ -757,19 +778,14 @@ pub async fn browser_open(
                     t.history = (true, true); // until the new page's overlay reports
                     t.documents += 1;
                     t.unowned.clear();
-                    if let Some((jump, at)) = t.jumped.take()
-                        && at.elapsed() < MOVES_ON_WITHIN
-                    {
-                        t.jump = Some(jump);
-                    }
+                    t.started(Instant::now());
                 });
             }
             // Every navigation, in-page links and back/forward too, keeps the page off-screen until it has loaded.
             let _ = update_visibility(&wv, &browser, |v| v.loading = loading);
             emit_page(&wv, &browser, p.url().to_string());
-            if !loading && let Some(jump) = browser.with_tab(wv.label(), |t| t.jump.take()) {
-                let _ = run_script(&wv, &jump.script());
-                browser.with_tab(wv.label(), |t| t.jumped = Some((jump, Instant::now())));
+            if !loading && let Some(script) = browser.with_tab(wv.label(), |t| t.finished(Instant::now())) {
+                let _ = run_script(&wv, &script);
             }
         })
         .on_document_title_changed(|wv, title| {
@@ -1408,6 +1424,28 @@ mod tests {
         assert!(v.muted(), "reloading while hidden");
         assert!(Visibility { wanted: false, ..Visibility::opened(bounds) }.muted(), "opened after the user switched away");
         assert!(Visibility::default().muted(), "never placed");
+    }
+
+    #[test]
+    fn a_jump_follows_the_page_moving_on_by_script_as_it_loads_and_no_other_page() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + Duration::from_millis(ms);
+        let zebra = || Some(Jump::Text("Zebra".into()));
+        let scroll = zebra().map(|j| j.script());
+        let mut t = TabState::default();
+        t.open(zebra());
+        t.started(at(0));
+        assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
+        t.started(at(2_000));
+        assert_eq!(t.finished(at(3_000)), scroll, "the page it moved on to by script");
+        t.started(at(3_000) + MOVES_ON_WITHIN);
+        assert_eq!(t.finished(at(9_000)), None, "a page reached later");
+        t.open(zebra());
+        t.started(at(10_000));
+        assert_eq!(t.finished(at(10_000)), scroll);
+        t.open(None);
+        t.started(at(11_000));
+        assert_eq!(t.finished(at(11_000)), None, "another page the app opened soon after");
     }
 
     #[test]
