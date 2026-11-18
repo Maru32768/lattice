@@ -1014,6 +1014,7 @@ mod tests {
             ["Rustの`?`演算子と`a != b`で比べる。", "詳しくはhttps://example.com/?q=1を参照。"]
         );
         assert_eq!(sentences("速いのか? 速い!"), ["速いのか?", "速い!"]);
+        assert_eq!(sentences("速い?\n速い"), ["速い?", "速い"], "a newline is whitespace too");
     }
 
     #[test]
