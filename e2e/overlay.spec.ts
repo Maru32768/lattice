@@ -507,7 +507,8 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     const letters = '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td></tr></table>';
     // Responsive CSS that lines a row's cells up as inline blocks.
     const responsive =
-      '<table id="responsive"><tr><td style="display: inline-block">Alpha one</td><td style="display: inline-block">Beta two</td></tr></table>';
+      '<table id="responsive"><tr><th style="display: inline-block">Head one</th><th style="display: inline-block">Head two</th></tr>' +
+      '<tr><td style="display: inline-block">Alpha one</td><td style="display: inline-block">Beta two</td></tr></table>';
     // A table laid out as a grid, its row groups and rows boxes of none of their own.
     const grid =
       '<table id="grid" style="display: grid; grid-template-columns: 1fr 1fr"><tbody style="display: contents"><tr style="display: contents">' +
@@ -524,7 +525,7 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     await expect(page.locator(cell)).toHaveAttribute("data-lattice-block", "skip");
   }
   await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
-  await expect(page.locator("#responsive td")).toHaveText(["訳:Alpha one", "訳:Beta two"]);
+  await expect(page.locator("#responsive :is(th, td)")).toHaveText(["訳:Head one", "訳:Head two", "訳:Alpha one", "訳:Beta two"]);
   await expect(page.locator("#grid td")).toHaveText(["訳:Gamma three", "訳:Delta four"]);
 });
 
