@@ -89,11 +89,11 @@ async fn run(raw: Vec<String>) -> Result<(), String> {
         }
         ["report"] => {
             args.done()?;
-            report(&dir, None)
+            report(&dir, None).map(|lines| println!("{}", lines.join("\n")))
         }
         ["report", a, b] => {
             args.done()?;
-            report(&dir, Some((&label(a)?, &label(b)?)))
+            report(&dir, Some((&label(a)?, &label(b)?))).map(|lines| println!("{}", lines.join("\n")))
         }
         _ => Err(USAGE.into()),
     }
@@ -803,7 +803,7 @@ fn paired(a: &BTreeMap<i64, Row>, b: &BTreeMap<i64, Row>, k: usize) -> Vec<f64> 
     a.iter().filter_map(|(id, ra)| Some(b.get(id)?.scores[k]? - ra.scores[k]?)).collect()
 }
 
-fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
+fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<Vec<String>, String> {
     let cases = load_cases(dir)?;
     let labels: Vec<String> = match pair {
         Some((a, b)) => vec![a.into(), b.into()],
@@ -817,47 +817,49 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<(), String> {
         }
     };
     let header = format!("  {:<10}{:>4}{}{:>8}", "", "n", SCORES.map(|s| format!("{s:>19}")).concat(), "chars");
+    let mut out = Vec::new();
     let mut all = BTreeMap::new();
     for label in &labels {
         let rows = rows(dir, &cases, label)?;
-        println!("{label}: {} cases judged", rows.len());
-        println!("{header}");
-        println!("{}", line("all", rows.values()));
+        out.push(format!("{label}: {} cases judged", rows.len()));
+        out.push(header.clone());
+        out.push(line("all", rows.values()));
         for stratum in Stratum::ALL {
             let name = serde_json::to_value(stratum).map_err(|e| e.to_string())?;
-            println!("{}", line(name.as_str().unwrap_or_default(), rows.values().filter(|r| r.stratum == stratum)));
+            out.push(line(name.as_str().unwrap_or_default(), rows.values().filter(|r| r.stratum == stratum)));
         }
         let mut errors: BTreeMap<&str, usize> = BTreeMap::new();
         for e in rows.values().flat_map(|r| &r.errors) {
             *errors.entry(e).or_default() += 1;
         }
         let errors: Vec<String> = errors.iter().map(|(e, n)| format!("{e} {n}")).collect();
-        println!(
-            "  unsupported items: {}\n",
+        out.push(format!(
+            "  unsupported items: {}",
             if errors.is_empty() {
                 "none".into()
             } else {
                 errors.join(", ")
             }
-        );
+        ));
+        out.push(String::new());
         all.insert(label.clone(), rows);
     }
     let Some((a, b)) = pair else {
-        return Ok(());
+        return Ok(out);
     };
-    println!("{b} - {a}, paired over the cases both have:");
+    out.push(format!("{b} - {a}, paired over the cases both have:"));
     for (k, name) in SCORES.iter().enumerate() {
         let diffs = paired(&all[a], &all[b], k);
-        match (mean(diffs.iter().copied()), bootstrap_ci(&diffs)) {
-            (Some(m), Some((lo, hi))) => println!("  {name:<18} n={:<4} {m:+.3}  95% CI [{lo:+.3}, {hi:+.3}]", diffs.len()),
-            _ => println!("  {name:<18} n=0"),
-        }
+        out.push(match (mean(diffs.iter().copied()), bootstrap_ci(&diffs)) {
+            (Some(m), Some((lo, hi))) => format!("  {name:<18} n={:<4} {m:+.3}  95% CI [{lo:+.3}, {hi:+.3}]", diffs.len()),
+            _ => format!("  {name:<18} n=0"),
+        });
     }
     if let Some(comparisons) = read::<Results<Comparison>>(&compare_path(dir, a, b))? {
         let (won_a, won_b, tie, failed) = tally(&comparisons);
-        println!("compare {a} vs {b}: {a} {won_a}, {b} {won_b}, tie {tie}, failed {failed}");
+        out.push(format!("compare {a} vs {b}: {a} {won_a}, {b} {won_b}, tie {tie}, failed {failed}"));
     }
-    Ok(())
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -1037,7 +1039,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn compare_puts_each_summary_first_once_and_a_judge_preferring_a_makes_a_win_for_a() {
+    async fn compare_puts_each_summary_first_once_and_the_report_shows_b_minus_a_and_the_win_for_a() {
         let dir = temp("compare");
         write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
         let run = |formatted: &str| Run {
@@ -1057,6 +1059,30 @@ mod tests {
         assert!(inputs[0].contains("<summary_1>\nsummary of a\n") && inputs[1].contains("<summary_1>\nsummary of b\n"), "{inputs:?}");
         let comparisons: Results<Comparison> = read(&compare_path(&dir, "a", "b")).unwrap().unwrap();
         assert_eq!(tally(&comparisons), (1, 0, 0, 0));
+
+        let judgment = |supported| {
+            Outcome::Ok(Judgment {
+                provider: String::new(),
+                model: None,
+                items: vec![ItemVerdict { text: "x".into(), supported, error: String::new() }],
+                facts: vec![FactVerdict { text: "f".into(), must: true, covered_by: vec![1] }],
+            })
+        };
+        write(&label_path(&dir, "judgments", "a"), &BTreeMap::from([(1, judgment(false))])).unwrap();
+        write(&label_path(&dir, "judgments", "b"), &BTreeMap::from([(1, judgment(true))])).unwrap();
+        let out = report(&dir, Some(("a", "b"))).unwrap();
+        assert_eq!(
+            out[out.len() - 6..],
+            [
+                "b - a, paired over the cases both have:",
+                "  faithfulness       n=1    +1.000  95% CI [+1.000, +1.000]",
+                "  completeness_must  n=1    +0.000  95% CI [+0.000, +0.000]",
+                "  completeness_all   n=1    +0.000  95% CI [+0.000, +0.000]",
+                "  conciseness        n=1    +0.000  95% CI [+0.000, +0.000]",
+                "compare a vs b: a 1, b 0, tie 0, failed 0",
+            ],
+            "only b's one item is supported, both cover the one fact with it"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
