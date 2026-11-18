@@ -551,6 +551,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
         }
         Op::Uncollect { collection: id, article: a } => {
             collection(store, id)?;
+            article(store, a)?;
             groups::remove(store, id, &[a])?;
             collections_out(store)
         }
@@ -870,6 +871,7 @@ mod tests {
         assert!(run(&ctx, Op::Collect { collection: g, article: id + 1 }).await.is_err(), "no such article");
         assert!(run(&ctx, Op::Collect { collection: g + 1, article: id }).await.is_err(), "no such collection");
         assert!(run(&ctx, Op::Uncollect { collection: g + 1, article: id }).await.is_err(), "no such collection");
+        assert!(run(&ctx, Op::Uncollect { collection: g, article: id + 1 }).await.is_err(), "no such article");
         run(&ctx, Op::Uncollect { collection: g, article: id }).await.unwrap();
         assert_eq!(groups::list(s).unwrap()[0].count, 0);
         run(&ctx, Op::DeleteCollection { id: g }).await.unwrap();
