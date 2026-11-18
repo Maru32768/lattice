@@ -311,43 +311,54 @@ pub async fn close_window(app: AppHandle, state: State<'_, App>, webview: Webvie
     Ok(())
 }
 
-/// Set once the main window's close began saving positions.
+/// Set once the quit began saving positions.
 static CLOSING: AtomicBool = AtomicBool::new(false);
 
-/// The main window's close quits the app, as before pop-outs existed; its position and the
-/// pop-outs' are saved first, since they go down with it (their contents are saved by the UI as they change).
+/// The Lattice windows on screen, with their places as settings rows. Not the spare: it never showed, and the place
+/// saved under its label is another window's.
+fn shown_windows(app: &AppHandle) -> (Vec<Window>, Vec<(String, String)>) {
+    let shown: Vec<Window> = app.windows().into_values().filter(|w| (w.label() == MAIN || is_popout(w.label())) && w.is_visible().unwrap_or(false)).collect();
+    let places = shown.iter().filter_map(|w| geometry_json(w).map(|json| (setting_key(w.label()), json))).collect();
+    (shown, places)
+}
+
+/// Begins quitting the app, as closing the main window did before pop-outs existed: the places of the shown
+/// windows are saved first, since they go down with it (their contents are saved by the UI as they change). False
+/// when it cannot begin: a quit already waits on its saves, or the store never opened.
+fn begin_quit(app: &AppHandle) -> bool {
+    // The saves wait for the store, which a job may hold for a while: not on the event loop, which would freeze the window.
+    if CLOSING.swap(true, Ordering::SeqCst) || app.try_state::<App>().is_none() {
+        return false;
+    }
+    let (_, places) = shown_windows(app);
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<App>();
+        for (key, json) in &places {
+            save_setting(&state, key, json);
+        }
+        if let Err(e) = state.store.release_running_jobs() {
+            log::warn!("putting running jobs back in the queue: {e}");
+        }
+        // destroy() raises no second CloseRequested; Destroyed then exits the app.
+        if let Some(main) = app.get_window(MAIN) {
+            let _ = main.destroy();
+        }
+    });
+    true
+}
+
 pub fn on_window_event(w: &Window, e: &WindowEvent) {
     if w.label() != MAIN {
         return;
     }
     let app = w.app_handle();
     match e {
+        // A second close request while the saves wait closes at once (the saves are then lost).
         WindowEvent::CloseRequested { api, .. } => {
-            // The saves wait for the store, which a job may hold for a while: not on the event loop, which would
-            // freeze the window. A second close request while they wait closes at once (the saves are then lost).
-            if CLOSING.swap(true, Ordering::SeqCst) || app.try_state::<App>().is_none() {
-                return;
+            if begin_quit(app) {
+                api.prevent_close();
             }
-            api.prevent_close();
-            let mut places = Vec::new();
-            for (label, win) in app.windows() {
-                // Not the spare: it never showed, and the place saved under its label is another window's.
-                if (label == MAIN || is_popout(&label)) && win.is_visible().unwrap_or(false) {
-                    places.extend(geometry_json(&win).map(|json| (setting_key(&label), json)));
-                }
-            }
-            let (app, main) = (app.clone(), w.clone());
-            tauri::async_runtime::spawn_blocking(move || {
-                let state = app.state::<App>();
-                for (key, json) in &places {
-                    save_setting(&state, key, json);
-                }
-                if let Err(e) = state.store.release_running_jobs() {
-                    log::warn!("putting running jobs back in the queue: {e}");
-                }
-                // destroy() raises no second CloseRequested; Destroyed then exits the app.
-                let _ = main.destroy();
-            });
         }
         WindowEvent::Destroyed => app.exit(0),
         _ => {}
