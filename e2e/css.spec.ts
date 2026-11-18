@@ -24,6 +24,22 @@ test("a disabled button shows not-allowed and keeps its tooltip", async ({ app }
   await expect(forward).toHaveAttribute("title", /進む/);
 });
 
+/** A control focused from the keyboard draws one ring: its own outline or box-shadow, or its chip's box-shadow. */
+async function expectOneRing(control: Locator) {
+  await expect(control).toBeFocused();
+  const rings = await control.evaluate((e) => {
+    const chip = e.closest(".chip")!;
+    const drawn = [
+      getComputedStyle(e).outlineStyle !== "none",
+      getComputedStyle(e).boxShadow !== "none",
+      chip !== e && getComputedStyle(chip).boxShadow !== "none",
+    ];
+    return { keyboard: e.matches(":focus-visible"), count: drawn.filter(Boolean).length };
+  });
+  expect(rings.keyboard, "focused from the keyboard").toBe(true);
+  expect(rings.count, `${await control.getAttribute("aria-label")}: one ring`).toBe(1);
+}
+
 test("each control in the chat's scope and AI rows shows one focus ring: a select the chip's, the 範囲 button its own", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const provider = app.getByLabel("回答するAI", { exact: true });
@@ -33,18 +49,16 @@ test("each control in the chat's scope and AI rows shows one focus ring: a selec
   await app.keyboard.press("Shift+Tab");
   await app.keyboard.press("Tab");
   for (const control of [scope, provider, app.getByLabel("回答するモデル", { exact: true }), app.getByLabel("回答するAIのeffort", { exact: true })]) {
-    await expect(control).toBeFocused();
-    const rings = await control.evaluate((e) => {
-      const chip = e.closest(".chip")!;
-      const drawn = [
-        getComputedStyle(e).outlineStyle !== "none",
-        getComputedStyle(e).boxShadow !== "none",
-        chip !== e && getComputedStyle(chip).boxShadow !== "none",
-      ];
-      return { keyboard: e.matches(":focus-visible"), count: drawn.filter(Boolean).length };
-    });
-    expect(rings.keyboard, "focused from the keyboard").toBe(true);
-    expect(rings.count, `${await control.getAttribute("aria-label")}: one ring`).toBe(1);
+    await expectOneRing(control);
     await app.keyboard.press("Tab");
   }
+});
+
+test("the search pane's scope select shows one focus ring, its chip's", async ({ app }) => {
+  await app.keyboard.press("/");
+  const scope = app.getByLabel("検索範囲");
+  await scope.focus();
+  await app.keyboard.press("Shift+Tab");
+  await app.keyboard.press("Tab");
+  await expectOneRing(scope);
 });
