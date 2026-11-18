@@ -977,7 +977,7 @@ export const en = {
   "reader.summarizing": "Summarizing…",
   "reader.summarize": "Summarize",
   "reader.summaryStale":
-    "The article or the summary settings (Settings › Summaries & chat) have changed, or an app update changed how summaries are made. Regenerate to apply them",
+    "The article or the summary settings (Settings › Summaries & chat) have changed, or an app update has changed how summaries are made. Regenerate to apply them",
   "reader.summaryFailed": "Summary failed: {last_error}",
   "reader.markUnread": "Mark as unread",
   "reader.markRead": "Mark as read",
