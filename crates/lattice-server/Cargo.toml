@@ -1,7 +1,7 @@
 [package]
 name = "lattice-server"
 version.workspace = true
-description = "Serves the library to a phone's browser"
+description = "Serves the library to a phone's browser, and holds the operations the CLI and MCP run"
 license = "MIT"
 authors = ["Maru32768"]
 edition = "2024"
