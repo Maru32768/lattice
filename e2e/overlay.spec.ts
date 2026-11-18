@@ -361,13 +361,15 @@ test("under the PDF viewer's text layer, the paragraph on the line beats one tra
   await expect.poll(async () => (await reported(page))?.text).toMatch(/^Page paragraph 12\./);
 });
 
-test("a short place begins a block only when no word follows: a cell's No is not Note nor No such", async ({ page }) => {
+test("a short place begins a block only when no word follows: a cell's No is not Note nor No such, nor a table's Notes", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
   await page.evaluate(() => {
     const ps = document.querySelectorAll("p");
     ps[20].textContent = "Note that this paragraph is not the cell.";
     ps[25].textContent = "No such file or directory, the shell said.";
+    // A search result looks for its text in the tables too, a place not.
+    ps[28].insertAdjacentHTML("afterend", "<table><tr><td>Notes</td><td>None of these</td></tr></table>");
     ps[30].textContent = "Installation is quick: one command.";
     ps[45].textContent = "Installation¶";
   });
