@@ -178,11 +178,15 @@ impl TabState {
         self.begun = same_document;
     }
 
-    /// The user moved the page on with the toolbar (Back, Forward, Reload): where it lands is no page moving on by script.
+    /// The user moved the page on with the toolbar: where it lands gets no jump. Back and Forward do nothing in WebView2
+    /// while the page the app opened has not begun loading, so that page keeps its jump; a reload replaces it.
     /// A link in the page is not told apart: WebView2's `IsUserInitiated` is also true for the app's own `navigate`, which
     /// must keep the jump, and for the page's own move soon after a click anywhere in it.
-    fn moved_by_user(&mut self) {
+    fn moved_by_toolbar(&mut self, reload: bool) {
         self.jumped = None;
+        if reload || self.begun {
+            self.jump = None;
+        }
     }
 
     /// A document begins loading: one soon after a jump first ran is that page moving on by script, and gets it too.
@@ -1115,7 +1119,7 @@ pub async fn browser_go(app: AppHandle, tab: String, action: String) -> Result<(
     let Some(wv) = app.get_webview(&label(&tab)?) else {
         return Ok(());
     };
-    app.state::<Browser>().with_tab(wv.label(), TabState::moved_by_user);
+    app.state::<Browser>().with_tab(wv.label(), |t| t.moved_by_toolbar(action == "reload"));
     match action.as_str() {
         "back" => run_script(&wv, "history.back()"),
         "forward" => run_script(&wv, "history.forward()"),
@@ -1487,7 +1491,7 @@ mod tests {
         t.open(zebra(), false);
         t.started(at(12_000));
         assert_eq!(t.finished(at(12_000)), scroll);
-        t.moved_by_user();
+        t.moved_by_toolbar(false);
         t.started(at(13_000));
         assert_eq!(t.finished(at(13_000)), None, "a page the toolbar moved to soon after");
     }
@@ -1505,6 +1509,20 @@ mod tests {
         assert_eq!(t.finished(at(7_000)), scroll, "the page the app opened, however late it began");
         t.open(zebra(), true);
         assert_eq!(t.finished(at(8_000)), scroll, "a part of the page shown, where no document begins");
+        t.open(zebra(), false);
+        t.started(at(9_000));
+        t.moved_by_toolbar(false);
+        assert_eq!(t.finished(at(9_500)), None, "the load Back cancelled");
+        t.started(at(9_600));
+        assert_eq!(t.finished(at(10_000)), None, "the page Back went to while the opened one loaded");
+        t.open(zebra(), false);
+        t.moved_by_toolbar(false);
+        t.started(at(11_000));
+        assert_eq!(t.finished(at(11_000)), scroll, "the page the app opened, which Back pressed before it began leaves alone");
+        t.open(zebra(), false);
+        t.moved_by_toolbar(true);
+        t.started(at(12_000));
+        assert_eq!(t.finished(at(12_000)), None, "the page reloaded in place of the one the app opened");
         let u = |s: &str| Url::parse(s).unwrap();
         assert!(same_document(&u("https://a.test/p"), &u("https://a.test/p#s")));
         assert!(same_document(&u("https://a.test/p#r"), &u("https://a.test/p#s")));
