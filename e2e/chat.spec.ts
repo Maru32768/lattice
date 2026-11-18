@@ -225,10 +225,16 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await q.fill("VACUUMは？");
   await q.press("Control+Enter");
   await expect.poll(asked).toEqual([opus, null, gemini, gemini]);
+  // Picking a model keeps the effort picked before it, and a follow-up asks that pair again, not the defaults.
+  await effort.selectOption("high");
   await model.selectOption({ label: "gemini-pro-latest" });
   await q.fill("続き");
   await q.press("Control+Enter");
-  await expect.poll(asked).toEqual([opus, null, gemini, gemini, { ...gemini, model: "gemini-pro-latest" }]);
+  const pro = { kind: "gemini", model: "gemini-pro-latest", effort: "high" };
+  await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro]);
+  await q.fill("もう一度");
+  await q.press("Control+Enter");
+  await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro, pro]);
 });
 
 /** `chat_ask` waits for `failSend()`, so what the user does while a send is under way can be tried. */
