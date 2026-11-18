@@ -358,6 +358,11 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   expect(Number(await active.getAttribute("aria-posinset"))).toBeGreaterThan(200);
   expect(await options.count()).toBeLessThan(60);
 
+  // A new search, many matches, from far down the list: its first match is in view, and Enter would pick what is shown.
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill("zz-");
+  await expect(active).toHaveAccessibleName("#zz-0000(1件)");
+  await expect(active).toBeInViewport();
+
   await picker.getByRole("combobox", { name: "範囲を検索" }).fill(last);
   await app.keyboard.press("Enter");
   await expect(scope).toHaveText(`#${last}(1件)`);
