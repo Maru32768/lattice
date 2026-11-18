@@ -827,6 +827,7 @@ mod tests {
         run(&ctx, Op::RenameArticle { id, title: String::new() }).await.unwrap();
         run(&ctx, Op::SetGenre { id, name: String::new() }).await.unwrap();
         run(&ctx, Op::DeleteGenre { name: "Databases".into() }).await.unwrap();
+        assert!(run(&ctx, Op::SetGenre { id: id + 1, name: "Ghost".into() }).await.is_err(), "no such article, and no genre made for it");
         assert_eq!(library(&ctx.store), before, "back as it was");
         assert!(run(&ctx, Op::Unread { id: id + 1 }).await.is_err(), "no such article");
     }
