@@ -197,13 +197,6 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await search.dispatchEvent("keydown", { key: "Enter", isComposing: true });
   await expect(picker, "neither a disabled option nor the Enter that ends a conversion picks").toBeVisible();
 
-  // The mouse moves the highlight but never the list.
-  const listbox = picker.getByRole("listbox", { name: "質問の範囲" });
-  const top = await listbox.evaluate((e) => e.scrollTop);
-  const low = options.nth(8);
-  await low.hover();
-  await expect(active).toHaveAccessibleName((await low.textContent())!.replace("✓", ""));
-  expect(await listbox.evaluate((e) => e.scrollTop)).toBe(top);
   await picker.getByText("グループ", { exact: true }).click();
   await expect(search, "a click on a heading leaves the keyboard in the search").toBeFocused();
 
@@ -222,6 +215,36 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await expect(scope).toHaveText("全記事");
   await app.keyboard.press("Enter");
   await expect(search, "each opening starts a new search").toHaveValue("");
+});
+
+test("in the chat scope the mouse moves the highlight but never the list", async ({ app }) => {
+  const id = ARTICLES.at(-1)!.id;
+  await app.evaluate(async (id) => {
+    const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    await Promise.all(Array.from({ length: 200 }, (_, i) => invoke("add_tag", { id, name: `zz-${String(i).padStart(4, "0")}` })));
+    await window.__e2e.emit("article-changed", id);
+  }, id);
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await chatScope(app).click();
+  const picker = scopeDialog(app);
+  const listbox = picker.getByRole("listbox", { name: "質問の範囲" });
+  const active = picker.locator("[role=option].act");
+  await expect.poll(async () => Number(await picker.getByRole("option").first().getAttribute("aria-setsize"))).toBeGreaterThan(200);
+
+  // A row cut by the top edge: scrolling it into view would move the list.
+  const box = (await listbox.boundingBox())!;
+  await app.mouse.move(box.x + 60, box.y + 200);
+  await app.mouse.wheel(0, 135);
+  await expect.poll(() => listbox.evaluate((e) => e.scrollTop)).toBe(135);
+  const cut = await app.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[role=option]:not([aria-disabled])")?.textContent ?? null, {
+    x: box.x + 60,
+    y: box.y + 3,
+  });
+  expect(cut, "an enabled option cut by the top edge").not.toBeNull();
+  await app.mouse.move(box.x + 60, box.y + 3, { steps: 3 });
+  await expect(active).toHaveText(cut!);
+  await app.waitForTimeout(300);
+  expect(await listbox.evaluate((e) => e.scrollTop)).toBe(135);
 });
 
 test("the highlighted scope stays the one Enter picks when options are added above it while the list is open", async ({ app }) => {
