@@ -1277,7 +1277,16 @@ mod tests {
     #[test]
     fn two_pairs_of_labels_never_share_a_comparison_file() {
         let dir = Path::new("eval");
-        for [(a1, b1), (a2, b2)] in [[("baseline", "new-vs-final"), ("baseline-vs-new", "final")], [("x", "vs-y"), ("x-vs", "y")]] {
+        assert_eq!(compare_path(dir, "a", "b"), dir.join("compare").join("a+b.json"));
+        let pairs = [
+            [("baseline", "new-vs-final"), ("baseline-vs-new", "final")],
+            [("x", "vs-y"), ("x-vs", "y")],
+            [("ab", "c"), ("a", "bc")],
+            [("a_b", "c"), ("a", "b_c")],
+            [("a.b", "c"), ("a", "b.c")],
+            [("a-b", "c"), ("a", "b-c")],
+        ];
+        for [(a1, b1), (a2, b2)] in pairs {
             assert_ne!(compare_path(dir, a1, b1), compare_path(dir, a2, b2), "({a1}, {b1}) and ({a2}, {b2})");
         }
         assert!(label("x+y").is_err(), "the separator cannot be inside a label");
