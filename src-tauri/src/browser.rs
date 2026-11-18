@@ -170,12 +170,11 @@ impl Default for TabState {
 }
 
 impl TabState {
-    /// The app opens a page in the tab, which scrolls to `jump` once it has loaded. A move within the page shown (its
-    /// `same_document`) begins no document.
-    fn open(&mut self, jump: Option<Jump>, same_document: bool) {
+    /// The app opens a page in the tab, which scrolls to `jump` once it has loaded.
+    fn open(&mut self, jump: Option<Jump>) {
         self.jump = jump;
         self.jumped = None;
-        self.begun = same_document;
+        self.begun = false;
     }
 
     /// The user moved the page on with the toolbar: where it lands gets no jump. Back and Forward do nothing in WebView2
@@ -588,16 +587,6 @@ fn watch_focus(wv: &Webview) {
     }
 }
 
-/// Whether a navigation from `from` to `to` stays in that document, as a move to a part of the page does.
-fn same_document(from: &Url, to: &Url) -> bool {
-    let whole = |u: &Url| {
-        let mut u = u.clone();
-        u.set_fragment(None);
-        u
-    };
-    to.fragment().is_some() && whole(from) == whole(to)
-}
-
 pub(crate) fn http_url(s: &str) -> Result<Url, String> {
     let u = Url::parse(s.trim()).map_err(|e| format!("invalid URL: {e}"))?;
     matches!(u.scheme(), "http" | "https").then_some(u).ok_or_else(|| "only http(s) pages can be opened".into())
@@ -776,13 +765,12 @@ pub async fn browser_open(
             emit_page(&wv, &browser, url.to_string());
             return Ok(());
         }
-        let same_document = wv.url().is_ok_and(|u| same_document(&u, &url));
-        browser.with_tab(&label, |t| t.open(jump, same_document));
+        browser.with_tab(&label, |t| t.open(jump));
         update_visibility(&wv, &browser, |v| *v = opened).map_err(|e| e.to_string())?;
         return wv.navigate(url).map_err(|e| e.to_string());
     }
     browser.with_tab(&label, |t| {
-        t.open(jump, false);
+        t.open(jump);
         t.hidden_while_opening = false;
     });
     browser.evict(&app);
@@ -1472,7 +1460,7 @@ mod tests {
         let zebra = || Some(Jump::Text("Zebra".into()));
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
-        t.open(zebra(), false);
+        t.open(zebra());
         t.started(at(0));
         assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
         t.started(at(2_000));
@@ -1481,15 +1469,15 @@ mod tests {
         assert_eq!(t.finished(at(4_500)), scroll, "and the one after");
         t.started(at(1_000) + MOVES_ON_WITHIN);
         assert_eq!(t.finished(at(7_000)), None, "a page reached later than that after the first, though soon after the last");
-        t.open(zebra(), false);
+        t.open(zebra());
         t.started(at(10_000));
         assert_eq!(t.finished(at(10_000)), scroll);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), scroll, "the page a later opened one moved on to by script");
-        t.open(None, false);
+        t.open(None);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), None, "another page the app opened soon after");
-        t.open(zebra(), false);
+        t.open(zebra());
         t.started(at(12_000));
         assert_eq!(t.finished(at(12_000)), scroll);
         t.moved_by_toolbar(false);
@@ -1504,31 +1492,24 @@ mod tests {
         let zebra = || Some(Jump::Text("Zebra".into()));
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
-        t.open(zebra(), false);
+        t.open(zebra());
         assert_eq!(t.finished(at(0)), None, "the load the app's navigation cancelled");
         t.started(at(6_000));
         assert_eq!(t.finished(at(7_000)), scroll, "the page the app opened, however late it began");
-        t.open(zebra(), true);
-        assert_eq!(t.finished(at(8_000)), scroll, "a part of the page shown, where no document begins");
-        t.open(zebra(), false);
+        t.open(zebra());
         t.started(at(9_000));
         t.moved_by_toolbar(false);
         assert_eq!(t.finished(at(9_500)), None, "the load Back cancelled");
         t.started(at(9_600));
         assert_eq!(t.finished(at(10_000)), None, "the page Back went to while the opened one loaded");
-        t.open(zebra(), false);
+        t.open(zebra());
         t.moved_by_toolbar(false);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), scroll, "the page the app opened, which Back pressed before it began leaves alone");
-        t.open(zebra(), false);
+        t.open(zebra());
         t.moved_by_toolbar(true);
         t.started(at(12_000));
         assert_eq!(t.finished(at(12_000)), None, "the page reloaded in place of the one the app opened");
-        let u = |s: &str| Url::parse(s).unwrap();
-        assert!(same_document(&u("https://a.test/p"), &u("https://a.test/p#s")));
-        assert!(same_document(&u("https://a.test/p#r"), &u("https://a.test/p#s")));
-        assert!(!same_document(&u("https://a.test/p#r"), &u("https://a.test/p")), "leaving the part reloads");
-        assert!(!same_document(&u("https://a.test/p"), &u("https://a.test/q#s")));
     }
 
     #[test]
