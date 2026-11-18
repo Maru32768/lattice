@@ -62,8 +62,8 @@ export function PickList<O extends PickOption>({
     setSeen(query);
     setActive(null);
   }
-  const followed = active ? follow(rows, active) : -1;
-  const at = followed >= 0 ? followed : start;
+  // Gone or disabled: nothing is highlighted, rather than an option the user did not move to.
+  const at = active ? follow(rows, active) : start;
   const current = rows[at];
   const activate = (i: number) => {
     const r = rows[i];

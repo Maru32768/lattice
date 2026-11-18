@@ -249,6 +249,24 @@ test("the highlighted scope stays the one Enter picks when options are added abo
   await expect(chatScope(app)).toHaveText(chosen);
 });
 
+test("Enter picks nothing once the highlighted scope can no longer be picked", async ({ app }) => {
+  const c = ARTICLES[2];
+  await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await chatScope(app).click();
+  const picker = scopeDialog(app);
+  const active = picker.locator("[role=option].act");
+  await expect(active).toHaveAccessibleName("全記事");
+  await app.keyboard.press("ArrowUp");
+  await expect(active).toHaveAccessibleName("開いている記事すべて(1件)");
+  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
+  await expect(picker.getByRole("option", { name: "開いている記事すべて(0件)" })).toBeDisabled();
+  await expect(active, "no other scope takes its place").toHaveCount(0);
+  await app.keyboard.press("Enter");
+  await expect(picker).toBeVisible();
+  await expect(chatScope(app)).toHaveText("全記事");
+});
+
 test("a scope chosen from outside shows on the chip, and one the list no longer offers keeps its name", async ({ app }) => {
   await app.keyboard.press("Control+p");
   await app.keyboard.type("kafka");
