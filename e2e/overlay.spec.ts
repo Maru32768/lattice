@@ -476,3 +476,26 @@ test("trying a place again goes on in one chain, not one more for each try", asy
   const one = await tries(1);
   expect(await tries(3), "not three chains").toBeLessThanOrEqual(one + 2);
 });
+
+test("a table is translated cell by cell, also a theme's inline-block table in an inline-block box", async ({ page }) => {
+  await page.goto("/page.html");
+  await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  await page.evaluate(() => {
+    const rows =
+      "<thead><tr><th>Event</th><th>Kernel impact</th></tr></thead>" +
+      "<tbody><tr><td>Linus announces Linux</td><td>Monolithic kernel</td></tr><tr><td>GPL adoption</td><td>Contributions begin</td></tr></tbody>";
+    // The second as MkDocs Material wraps one, to scroll it sideways.
+    const tables = `<table>${rows}</table><div><div style="display: inline-block"><table style="display: inline-block">${rows}</table></div></div>`;
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables);
+    const internals = window.__TAURI_INTERNALS__!;
+    const ipc = internals.invoke;
+    internals.invoke = (cmd, args) =>
+      cmd === "overlay_translate" ? Promise.resolve((args!.snippets as string[]).map((s) => [{ source: s, translation: `訳:${s}` }])) : ipc(cmd, args);
+    window.__lattice!.configure({ enabled: true, percent: null });
+  });
+  const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
+  for (const table of await page.locator("table").all()) {
+    await expect(table.locator("tr")).toHaveCount(3);
+    await expect(table.locator("th, td")).toHaveText(cells.map((c) => `訳:${c}`));
+  }
+});

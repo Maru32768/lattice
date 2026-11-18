@@ -132,7 +132,11 @@ const state = {
 const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC")));
 
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
-const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display);
+/** Also a box of another display that holds blocks (a table's rows, a theme's inline-block table): taken as one leaf, a sentence would be wrapped across them. */
+const isBlock = (el: Element): boolean => {
+  const display = getComputedStyle(el).display;
+  return BLOCK_DISPLAY.has(display) || (display !== "none" && !el.matches(SKIP) && Array.from(el.children).some(isBlock));
+};
 
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
