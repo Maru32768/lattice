@@ -1057,6 +1057,12 @@ mod tests {
     }
 
     #[test]
+    fn refuses_an_eval_dir_inside_the_repository() {
+        assert!(outside_repo(Path::new(env!("CARGO_MANIFEST_DIR"))).is_err());
+        assert_eq!(outside_repo(&std::env::temp_dir()), Ok(()));
+    }
+
+    #[test]
     fn parses_provider_specs() {
         let entry = |kind, model: Option<&str>, effort| ChainEntry { kind, model: model.map(String::from), effort };
         assert_eq!(parse_spec("codex_cli:gpt-6-luna:medium"), Ok(entry(ProviderKind::CodexCli, Some("gpt-6-luna"), Some(Effort::Medium))));
