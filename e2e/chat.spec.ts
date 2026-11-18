@@ -1,4 +1,4 @@
-import { test, expect, callsOf, list } from "./harness.ts";
+import { test, expect, callsOf, chatScope, list, navItem, pickScope, scopeDialog } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 import type { Locator, Page } from "@playwright/test";
 
@@ -136,15 +136,22 @@ test("the chat scope offers each open article and all of them, and follows the t
     .locator(".row", { hasText: b.title! })
     .click({ modifiers: ["Control"] });
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  const scope = app.getByLabel("質問の範囲");
-  const opened = scope.locator("optgroup[label='開いている記事'] option");
-  await expect(opened).toHaveText([a.title!, b.title!]);
-  await expect(scope.locator("option", { hasText: "開いている記事すべて(2件)" })).toBeEnabled();
+  const scope = chatScope(app);
+  const picker = scopeDialog(app);
+  const options = picker.getByRole("option");
+  const named = (title: string) => picker.getByRole("option", { name: title, exact: true });
+  await scope.click();
+  await expect(options).toContainText(["この記事(", "開いている記事すべて(2件)", "全記事", a.title!, b.title!]);
+  await expect(named("開いている記事すべて(2件)")).toBeEnabled();
 
   // A document window reports its tabs to the main window.
   await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
-  await expect(opened).toHaveText([a.title!, b.title!, c.title!]);
-  await scope.selectOption({ label: "開いている記事すべて(3件)" });
+  await expect(options).toContainText(["開いている記事すべて(3件)", "全記事", a.title!, b.title!, c.title!]);
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill("すべて(3");
+  await app.keyboard.press("Enter");
+  await expect(picker).toBeHidden();
+  await expect(scope).toHaveText("開いている記事すべて(3件)");
+  await expect(scope, "the keyboard is back on the chip").toBeFocused();
   const q = app.locator("#chat-q");
   await q.fill("共通点は？");
   await q.press("Control+Enter");
@@ -153,12 +160,131 @@ test("the chat scope offers each open article and all of them, and follows the t
     .toEqual([{ kind: "articles", ids: [a.id, b.id, c.id] }]);
 
   // One of them, until its tab closes: then the scope widens to what is still open.
-  await scope.selectOption({ label: b.title! });
+  await pickScope(app, b.title!);
+  await expect(scope).toHaveText(b.title!);
   await app.getByRole("button", { name: `${b.title}を閉じる` }).click();
-  await expect(opened).toHaveText([a.title!, c.title!]);
-  await expect(scope).toHaveValue("open");
+  await expect(scope).toHaveText("開いている記事すべて(2件)");
+  await scope.click();
+  await expect(options).toContainText(["全記事", a.title!, c.title!]);
+  await expect(named(b.title!)).toHaveCount(0);
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
-  await expect(opened).toHaveText([a.title!]);
+  await expect(named(c.title!)).toHaveCount(0);
+  await expect(named(a.title!)).toHaveCount(1);
+});
+
+test("in the chat scope the arrows pass over headings and disabled options, a search narrows and marks, and Esc closes", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const scope = chatScope(app);
+  const picker = scopeDialog(app);
+  const search = picker.getByRole("combobox", { name: "範囲を検索" });
+  const options = picker.getByRole("option");
+  const active = picker.locator("[role=option].act");
+  await scope.focus();
+  await app.keyboard.press("ArrowDown");
+  await expect(search, "the search takes the keyboard").toBeFocused();
+  await expect(picker.getByRole("option", { name: "この記事(記事を開いていません)" }), "listed, as the select did").toBeDisabled();
+  await expect(picker.getByRole("option", { name: "開いている記事すべて(0件)" })).toBeDisabled();
+  await expect(active, "it opens on the scope in use").toHaveAccessibleName("全記事");
+  await expect(search).toHaveAttribute("aria-activedescendant", (await active.getAttribute("id"))!);
+
+  await app.keyboard.press("ArrowUp");
+  await expect(active, "nothing above it can be picked").toHaveAccessibleName("全記事");
+  await app.keyboard.press("ArrowDown");
+  await expect(active, "past the グループ heading").toHaveAccessibleName(/^MVCC調査\(/);
+  await app.keyboard.press("ArrowUp");
+  await expect(active).toHaveAccessibleName("全記事");
+  await picker.getByRole("option", { name: "この記事(記事を開いていません)" }).click({ force: true });
+  await search.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await expect(picker, "neither a disabled option nor the Enter that ends a conversion picks").toBeVisible();
+
+  // The mouse moves the highlight but never the list.
+  const listbox = picker.getByRole("listbox", { name: "質問の範囲" });
+  const top = await listbox.evaluate((e) => e.scrollTop);
+  const low = options.nth(8);
+  await low.hover();
+  await expect(active).toHaveAccessibleName((await low.textContent())!.replace("✓", ""));
+  expect(await listbox.evaluate((e) => e.scrollTop)).toBe(top);
+
+  await search.fill("KAF");
+  await expect(options).toHaveText([`#kafka(${ARTICLES.filter((x) => x.tags.includes("kafka")).length}件)`]);
+  await expect(picker.locator("mark")).toHaveText("kaf");
+  await expect(picker.getByText("タグ", { exact: true })).toBeVisible();
+  await expect(picker.getByText("グループ", { exact: true }), "a section with no match goes").toHaveCount(0);
+  await search.fill("no such scope");
+  await expect(options).toHaveCount(0);
+  await expect(picker.getByText("該当なし")).toBeVisible();
+
+  await app.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(scope).toBeFocused();
+  await expect(scope).toHaveText("全記事");
+  await app.keyboard.press("Enter");
+  await expect(search, "each opening starts a new search").toHaveValue("");
+});
+
+test("a scope chosen from outside shows on the chip, and one the list no longer offers keeps its name", async ({ app }) => {
+  await app.keyboard.press("Control+p");
+  await app.keyboard.type("kafka");
+  await app.getByRole("dialog", { name: "コマンドパレット" }).getByRole("option", { name: "タグkafkaを範囲に対話を始める" }).click();
+  const scope = chatScope(app);
+  await expect(scope).toHaveText(`#kafka(${ARTICLES.filter((x) => x.tags.includes("kafka")).length}件)`);
+
+  await navItem(app, "未読").click();
+  await pickScope(app, "現在の一覧: 未読");
+  await navItem(app, "すべての記事").click();
+  await expect(scope).toHaveText("現在の一覧: 未読");
+  await scope.click();
+  await expect(scopeDialog(app).getByRole("option", { name: "現在の一覧: 未読" }), "no longer offered").toHaveCount(0);
+  await app.keyboard.press("Escape");
+  const q = app.locator("#chat-q");
+  await q.fill("未読の要点は？");
+  await q.press("Control+Enter");
+  await expect
+    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
+    .toEqual([{ kind: "filter", filter: { kind: "unread" } }]);
+});
+
+test("the chat scope lists thousands of tags while drawing only the ones in view, and reaches the last by search", async ({ app }) => {
+  const id = ARTICLES.at(-1)!.id;
+  const last = await app.evaluate(async (id) => {
+    const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    await Promise.all(Array.from({ length: 2000 }, (_, i) => invoke("add_tag", { id, name: `zz-${String(i).padStart(4, "0")}` })));
+    await window.__e2e.emit("article-changed", id);
+    return ((await invoke("list_tags")) as { name: string }[]).at(-1)!.name;
+  }, id);
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const scope = chatScope(app);
+  const picker = scopeDialog(app);
+  const options = picker.getByRole("option");
+  const active = picker.locator("[role=option].act");
+  await scope.click();
+  await expect.poll(async () => Number(await options.first().getAttribute("aria-setsize")), "every tag is an option").toBeGreaterThan(2000);
+  expect(await options.count()).toBeLessThan(60);
+
+  for (let i = 0; i < 15; i++) {
+    await app.keyboard.press("ArrowDown");
+  }
+  await expect(active).toBeInViewport();
+  for (let i = 0; i < 20; i++) {
+    await app.keyboard.press("PageDown");
+  }
+  await expect(active).toBeInViewport();
+  expect(Number(await active.getAttribute("aria-posinset"))).toBeGreaterThan(200);
+  expect(await options.count()).toBeLessThan(60);
+
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill(last);
+  await app.keyboard.press("Enter");
+  await expect(scope).toHaveText(`#${last}(1件)`);
+  await scope.click();
+  await expect(active, "it opens on the scope in use, far down the list").toHaveAccessibleName(`#${last}(1件)`);
+  await expect(active).toBeInViewport();
+  await app.keyboard.press("Escape");
+  const q = app.locator("#chat-q");
+  await q.fill("これは？");
+  await q.press("Control+Enter");
+  await expect
+    .poll(async () => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope))
+    .toEqual([{ kind: "filter", filter: { kind: "tag", name: last } }]);
 });
 
 test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {

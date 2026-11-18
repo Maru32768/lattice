@@ -1,5 +1,5 @@
 // Pointer feedback and text selection (H6).
-import { test, expect, list } from "./harness.ts";
+import { test, expect, chatScope, list } from "./harness.ts";
 import type { Locator } from "@playwright/test";
 
 const style = (l: Locator, prop: "cursor" | "userSelect") => l.evaluate((e, p) => getComputedStyle(e)[p], prop);
@@ -24,19 +24,27 @@ test("a disabled button shows not-allowed and keeps its tooltip", async ({ app }
   await expect(forward).toHaveAttribute("title", /進む/);
 });
 
-test("a select in a chip shows one focus ring, the chip's", async ({ app }) => {
+test("each control in the chat's scope and AI rows shows one focus ring: a select the chip's, the 範囲 button its own", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const provider = app.getByLabel("回答するAI", { exact: true });
-  await provider.focus();
+  await provider.selectOption({ label: "Claude CLI" });
+  const scope = chatScope(app);
+  await scope.focus();
   await app.keyboard.press("Shift+Tab");
   await app.keyboard.press("Tab");
-  await expect(provider).toBeFocused();
-  const rings = await provider.evaluate((e) => ({
-    keyboard: e.matches(":focus-visible"),
-    own: getComputedStyle(e).outlineStyle,
-    chip: getComputedStyle(e.closest(".chip")!).boxShadow,
-  }));
-  expect(rings.keyboard, "focused from the keyboard").toBe(true);
-  expect(rings.own).toBe("none");
-  expect(rings.chip).not.toBe("none");
+  for (const control of [scope, provider, app.getByLabel("回答するモデル", { exact: true }), app.getByLabel("回答するAIのeffort", { exact: true })]) {
+    await expect(control).toBeFocused();
+    const rings = await control.evaluate((e) => {
+      const chip = e.closest(".chip")!;
+      const drawn = [
+        getComputedStyle(e).outlineStyle !== "none",
+        getComputedStyle(e).boxShadow !== "none",
+        chip !== e && getComputedStyle(chip).boxShadow !== "none",
+      ];
+      return { keyboard: e.matches(":focus-visible"), count: drawn.filter(Boolean).length };
+    });
+    expect(rings.keyboard, "focused from the keyboard").toBe(true);
+    expect(rings.count, `${await control.getAttribute("aria-label")}: one ring`).toBe(1);
+    await app.keyboard.press("Tab");
+  }
 });

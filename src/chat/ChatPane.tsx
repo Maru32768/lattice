@@ -1,9 +1,9 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { api, type ChatMessage, type ChatThread, type Citation, type Effort, type ProviderKind } from "../api";
 import { CUSTOM, EFFORTS, PROVIDERS, type EntryChoice, presets, toChoice, toEntry } from "../settings/providers";
-import { OPEN_ALL, type OpenDoc, openKey, scopeOf, splitCitations, withQuote } from "./chat";
-import { type FilterGroup, parseFilterKey } from "../library/scopes";
-import { FilterOptgroups } from "../library/FilterOptgroups";
+import { OPEN_ALL, type OpenDoc, openKey, scopeOf, scopeSections, splitCitations, withQuote } from "./chat";
+import { ScopePicker } from "./ScopePicker";
+import type { FilterGroup } from "../library/scopes";
 import { Menu } from "../ui/Popover";
 import { Icon, Kbd } from "../ui/Icon";
 import { VimEditor, VimMode, useVimEnabled } from "../vim/vim";
@@ -279,43 +279,14 @@ export function ChatPane({
         </header>
         <div className="chat-scope">
           {t("chatPane.scope")}
-          <label className="chip scope-chip">
-            <select
-              value={scopeKey}
-              onChange={(e) => {
-                setPicked(true);
-                setScopeKey(e.target.value);
-              }}
-              aria-label={t("chatPane.scopeLabel")}
-            >
-              <option value="article" disabled={!article}>
-                {t("chatPane.thisArticle")}
-                {article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")}
-              </option>
-              <option value={OPEN_ALL} disabled={open.length === 0}>
-                {t("chatPane.allOpen", { n: open.length })}
-              </option>
-              <option value="all">{t("chatPane.allArticles")}</option>
-              {current && (
-                <option value={current.key}>
-                  {parseFilterKey(current.key).kind === "group"
-                    ? t("chatPane.thisGroup", { label: current.label })
-                    : t("chatPane.currentList", { label: current.label })}
-                </option>
-              )}
-              {open.length > 0 && (
-                <optgroup label={t("chatPane.openGroup")}>
-                  {open.map((d) => (
-                    <option key={d.id} value={openKey(d.id)}>
-                      {d.title}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <FilterOptgroups groups={groups} />
-            </select>
-            <Icon name="down" size="sm" />
-          </label>
+          <ScopePicker
+            value={scopeKey}
+            sections={scopeSections(t, article, open, current, groups)}
+            onChange={(key) => {
+              setPicked(true);
+              setScopeKey(key);
+            }}
+          />
           {last && MODE_LABEL[last.mode] && <span className="push">{t(MODE_LABEL[last.mode]!)}</span>}
         </div>
         <div className="chat-scope chat-llm">

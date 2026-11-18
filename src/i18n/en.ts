@@ -898,6 +898,7 @@ export const en = {
   "chatPane.popIn": "Move back to the main window",
   "chatPane.scope": "Scope",
   "chatPane.scopeLabel": "Scope of the question",
+  "chatPane.findScope": "Find a scope",
   "chatPane.thisArticle": "This article",
   "chatPane.articleTitle": " ({title})",
   "chatPane.noArticle": " (no article open)",

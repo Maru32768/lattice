@@ -409,6 +409,7 @@ input.url-pill { border: 0; outline: none; color: var(--ink); box-shadow: 0 0 0 
 .menu.threads > button { white-space: normal; text-align: left; }
 .chat-scope { display: flex; align-items: center; gap: 8px; flex: none; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink3); }
 .chat-scope .scope-chip select { color: var(--ink); max-width: 230px; }
+.scope-btn { max-width: 230px; color: var(--ink); }
 .chat-llm { flex-wrap: wrap; row-gap: 6px; }
 .chat-llm .input { height: 24px; width: 12em; font-size: 12px; }
 .chat-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; padding: 16px 16px 8px; }

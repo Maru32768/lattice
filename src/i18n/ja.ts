@@ -887,6 +887,7 @@ export const ja = {
   "chatPane.popIn": "メインウィンドウに戻す",
   "chatPane.scope": "範囲",
   "chatPane.scopeLabel": "質問の範囲",
+  "chatPane.findScope": "範囲を検索",
   "chatPane.thisArticle": "この記事",
   "chatPane.articleTitle": "({title})",
   "chatPane.noArticle": "(記事を開いていません)",
