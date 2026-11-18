@@ -302,6 +302,33 @@ test("Enter picks nothing once the highlighted scope can no longer be picked", a
   await expect(chatScope(app)).toHaveText("全記事");
 });
 
+test("the scope in use going away while the list is open leaves nothing for Enter to pick", async ({ app }) => {
+  const id = ARTICLES[0].id;
+  const solo = (cmd: "add_tag" | "remove_tag") =>
+    app.evaluate(
+      async ({ cmd, id }) => {
+        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+        await invoke(cmd, { id, name: "solo" });
+        await window.__e2e.emit("article-changed", id);
+      },
+      { cmd, id },
+    );
+  await solo("add_tag");
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await pickScope(app, "#solo(1件)");
+  await chatScope(app).click();
+  const picker = scopeDialog(app);
+  const active = picker.locator("[role=option].act");
+  await expect(active).toHaveAccessibleName("#solo(1件)");
+  await solo("remove_tag");
+  await expect(picker.getByRole("option", { name: "#solo(1件)" })).toHaveCount(0);
+  await expect(active, "not 全記事, which the user did not move to").toHaveCount(0);
+  await expect(picker.getByRole("combobox", { name: "範囲を検索" })).not.toHaveAttribute("aria-activedescendant");
+  await app.keyboard.press("Enter");
+  await expect(picker).toBeVisible();
+  await expect(chatScope(app)).toHaveText("#solo(1件)");
+});
+
 test("a scope the user picked stays when an article opens", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   await pickScope(app, "全記事");

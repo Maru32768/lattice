@@ -55,20 +55,25 @@ export function PickList<O extends PickOption>({
   const start = defaultRow(rows, query, selected);
   // A key can be listed twice (the list's scope, and the same filter in its section): mark one, as a select does.
   const mine = rows.findIndex((r) => r.kind === "opt" && r.o.key === selected);
-  // By key as well as row: rows can come and go above it while the list is open (a tag added, a tab opened).
-  const [active, setActive] = useState<{ i: number; key: string } | null>(null);
+  const pin = (i: number) => {
+    const r = rows[i];
+    return enabled(r) ? { i, key: r.o.key } : null;
+  };
+  // Pinned by key as well as row, the opening one too: rows can come and go while the list is open (a tag added, a tab
+  // opened), and a highlight worked out again from them would move what Enter picks.
+  const [active, setActive] = useState(() => pin(start));
   const [seen, setSeen] = useState(query);
   if (query !== seen) {
     setSeen(query);
-    setActive(null);
+    setActive(pin(start));
   }
   // Gone or disabled: nothing is highlighted, rather than an option the user did not move to.
-  const at = active ? follow(rows, active) : start;
+  const at = active ? follow(rows, active) : -1;
   const current = rows[at];
   const activate = (i: number) => {
-    const r = rows[i];
-    if (enabled(r)) {
-      setActive({ i, key: r.o.key });
+    const a = pin(i);
+    if (a) {
+      setActive(a);
     }
   };
   /** The first row in view on opening, with the start in the middle. */
