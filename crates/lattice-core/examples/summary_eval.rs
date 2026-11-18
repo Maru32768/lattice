@@ -500,8 +500,9 @@ async fn summarize(dir: &Path, label: &str, with: &LlmChain, limit: usize) -> Re
     .await
 }
 
-/// After each 。！？ and each !? that whitespace or the end follows (kept), trimmed, so `a != b`, `println!` and a URL's
-/// query stay inside their sentence; not after '.', which also sits inside numbers like 1.5.
+/// After each 。！？ and each !? that whitespace or the end follows (kept), trimmed, so a mark inside code or a URL
+/// (`a != b`, `println!(`, `?q=1`) stays inside its sentence, and so does a half-width mark with Japanese right after
+/// it; not after '.', which also sits inside numbers like 1.5.
 fn sentences(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut start = 0;
