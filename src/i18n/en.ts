@@ -641,7 +641,6 @@ export const en = {
   "facetPopover.selected": "Selected",
   "facetPopover.unselect": "Remove {tag}",
   "facetPopover.showMore": "Show {hidden} more",
-  "facetPopover.none": "No matches",
   "facetPopover.hintAdd": " add and continue",
   "facetPopover.hintComplete": " complete",
   "common.hintApply": " apply",

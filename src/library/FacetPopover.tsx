@@ -210,7 +210,7 @@ export function FacetPopover({
                   {t("facetPopover.showMore", { hidden: s.hidden! })}
                 </button>
               )}
-              {s.opts.length === 0 && <div className="pv-empty">{t("facetPopover.none")}</div>}
+              {s.opts.length === 0 && <div className="pv-empty">{t("pickList.none")}</div>}
             </div>
           ))}
         </div>

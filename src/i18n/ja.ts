@@ -632,7 +632,6 @@ export const ja = {
   "facetPopover.selected": "選択中",
   "facetPopover.unselect": "{tag}を解除",
   "facetPopover.showMore": "他{hidden}件を表示",
-  "facetPopover.none": "該当なし",
   "facetPopover.hintAdd": " 追加して続ける",
   "facetPopover.hintComplete": " 補完",
   "common.hintApply": " 適用",
