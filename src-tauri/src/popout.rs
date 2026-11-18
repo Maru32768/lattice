@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 
 use crate::browser::lock;
 use crate::location::Location;
-use crate::{App, browser, err, tabdrag, tray};
+use crate::{App, badge, browser, err, tabdrag, tray};
 
 pub const MAIN: &str = "main";
 const DEFAULT_SIZE: (f64, f64) = (960.0, 720.0);
@@ -401,6 +401,9 @@ pub fn bring_back(app: &AppHandle) {
             show(app, label);
         }
         browser::sound(app);
+        // The badge setting is in the store, which a job may hold; this runs on the main thread.
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || badge::redraw(&app));
     }
     if let Some(main) = app.get_window(MAIN)
         && main.is_visible().unwrap_or(false)

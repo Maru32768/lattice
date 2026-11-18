@@ -101,6 +101,17 @@ fn show(handle: &AppHandle, count: i64) -> Result<(), String> {
     }
 }
 
+/// Draws the last count again. Hiding the main window removes its taskbar button, and the overlay goes with it.
+pub fn redraw(handle: &AppHandle) {
+    let (Some(app), Some(badge)) = (handle.try_state::<App>(), handle.try_state::<Badge>()) else {
+        return;
+    };
+    let count = *badge.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Err(e) = enabled(&app).and_then(|on| show(handle, if on { count } else { 0 })) {
+        log::warn!("redrawing the unread badge: {e}");
+    }
+}
+
 /// The UI reports the unread count whenever it changes (debounced).
 #[tauri::command(async)]
 pub fn set_unread_badge(app: State<'_, App>, badge: State<'_, Badge>, handle: AppHandle, count: i64) -> Result<(), String> {
