@@ -500,9 +500,21 @@ async fn summarize(dir: &Path, label: &str, with: &LlmChain, limit: usize) -> Re
     .await
 }
 
-/// After each 。！？!? (kept), trimmed; not after '.', which also sits inside numbers like 1.5.
+/// After each 。！？ and each !? that whitespace or the end follows (kept), trimmed, so `a != b`, `println!` and a URL's
+/// query stay inside their sentence; not after '.', which also sits inside numbers like 1.5.
 fn sentences(text: &str) -> Vec<String> {
-    text.split_inclusive(['。', '！', '？', '!', '?']).map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
+    let mut out = Vec::new();
+    let mut start = 0;
+    for (i, c) in text.char_indices() {
+        let end = i + c.len_utf8();
+        let ascii_end = matches!(c, '!' | '?') && text[end..].chars().next().is_none_or(char::is_whitespace);
+        if matches!(c, '。' | '！' | '？') || ascii_end {
+            out.push(&text[start..end]);
+            start = end;
+        }
+    }
+    out.push(&text[start..]);
+    out.into_iter().map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect()
 }
 
 /// What the judge checks one by one: the summary's sentences, then its key points.
@@ -973,6 +985,15 @@ mod tests {
             prompt_version: String::new(),
         };
         assert_eq!(items(&run), ["PostgreSQL 17.2のWALを解説する。", "fsyncは減るのか？", "減る！", "結論は明快", "先行書き込み"]);
+    }
+
+    #[test]
+    fn an_ascii_question_or_exclamation_mark_ends_a_sentence_only_before_whitespace_or_the_end() {
+        assert_eq!(
+            sentences("Rustの`?`演算子と`a != b`で比べる。詳しくはhttps://example.com/?q=1を参照。"),
+            ["Rustの`?`演算子と`a != b`で比べる。", "詳しくはhttps://example.com/?q=1を参照。"]
+        );
+        assert_eq!(sentences("速いのか? 速い!"), ["速いのか?", "速い!"]);
     }
 
     #[test]
