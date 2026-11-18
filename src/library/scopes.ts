@@ -1,17 +1,15 @@
 import type { ArticleFilter, FeedRow, FolderRow, GroupRow, TagCount } from "../api";
 import { feedName } from "./groups.ts";
 import type { T } from "../i18n/index.ts";
+import type { PickSection } from "../ui/pickRows.ts";
 
-export interface FilterGroup {
-  label: string;
-  options: { key: string; label: string }[];
-}
+export type FilterGroup = PickSection;
 
-/** `<select>` values for filters; `parseFilterKey` gives the filter back. */
+/** Scope option keys for filters; `parseFilterKey` gives the filter back. */
 export const filterKey = (f: ArticleFilter) => JSON.stringify(f);
 export const parseFilterKey = (k: string) => JSON.parse(k) as ArticleFilter;
 
-/** Group / genre / feed (and feed folder) / tag filters as `<optgroup>`s for the search and chat scope pickers. Empty genres are left out. */
+/** Group / genre / feed (and feed folder) / tag filters as sections of the search and chat scope pickers. Empty genres are left out. */
 export function filterGroups(groups: GroupRow[], genres: TagCount[], feeds: FeedRow[], tags: TagCount[], t: T, folders: FolderRow[] = []): FilterGroup[] {
   const opt = (f: ArticleFilter, label: string) => ({ key: filterKey(f), label });
   return [
