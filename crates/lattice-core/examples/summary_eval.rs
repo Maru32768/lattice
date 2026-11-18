@@ -1123,8 +1123,30 @@ mod tests {
         write(&label_path(&dir, "judgments", "b"), &judgment(&[""], [vec![1], vec![1], vec![1]])).unwrap();
         let out = report(&dir, Some(("a", "b"))).unwrap();
         assert_eq!(
-            out[out.len() - 6..],
+            out,
             [
+                "a: 1 cases judged",
+                "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
+                "  all          1              0.200              0.500              0.667              0.400      12",
+                "  short        1              0.200              0.500              0.667              0.400      12",
+                "  medium       0                  -                  -                  -                  -       -",
+                "  long         0                  -                  -                  -                  -       -",
+                "  over_cap     0                  -                  -                  -                  -       -",
+                "  japanese     0                  -                  -                  -                  -       -",
+                "  code_heavy   0                  -                  -                  -                  -       -",
+                "  unsupported items: other 1, overclaim 2, wrong_number 1",
+                "",
+                "b: 1 cases judged",
+                "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
+                "  all          1              1.000              1.000              1.000              1.000      12",
+                "  short        1              1.000              1.000              1.000              1.000      12",
+                "  medium       0                  -                  -                  -                  -       -",
+                "  long         0                  -                  -                  -                  -       -",
+                "  over_cap     0                  -                  -                  -                  -       -",
+                "  japanese     0                  -                  -                  -                  -       -",
+                "  code_heavy   0                  -                  -                  -                  -       -",
+                "  unsupported items: none",
+                "",
                 "b - a, paired over the cases both have:",
                 "  faithfulness       n=1    +0.800  95% CI [+0.800, +0.800]",
                 "  completeness_must  n=1    +0.500  95% CI [+0.500, +0.500]",
@@ -1132,7 +1154,7 @@ mod tests {
                 "  conciseness        n=1    +0.600  95% CI [+0.600, +0.600]",
                 "compare a vs b: a 1, b 0, tie 0, failed 0",
             ],
-            "a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; b scores 1 on each"
+            "the one case is short; a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; b scores 1 on each"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
