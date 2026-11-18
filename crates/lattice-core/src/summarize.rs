@@ -177,8 +177,9 @@ fn head_and_tail(pieces: &[String], budget: usize) -> String {
     format!("{out}{}{}", omitted(total - used), pieces[tail..].concat())
 }
 
-/// A code or table block's first lines up to `MAX_BLOCK_CHARS`, and the marker for the rest (empty
-/// when it fits): a long listing would take the room of the prose that explains it.
+/// A code or table block's first lines up to `MAX_BLOCK_CHARS` (its first `MAX_BLOCK_CHARS` chars when
+/// they hold no line break), and the marker for the rest (empty when it fits): a long listing would take
+/// the room of the prose that explains it.
 fn capped(text: &str) -> (&str, String) {
     let start = first_chars(text, MAX_BLOCK_CHARS);
     if start.len() == text.len() {
