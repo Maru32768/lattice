@@ -919,7 +919,7 @@ mod tests {
         assert_eq!(shown(), (None, Some("News".into())));
         run(&ctx, Op::MoveFeed { id: f, folder: None }).await.unwrap();
         assert_eq!(shown(), (None, None));
-        assert!(run(&ctx, Op::MoveFeed { id: f + 1, folder: None }).await.is_err(), "no such feed");
+        assert!(run(&ctx, Op::MoveFeed { id: f + 1, folder: Some("Ghost".into()) }).await.is_err(), "no such feed, and no folder made for it");
         run(&ctx, Op::MoveFeed { id: f, folder: Some("news".into()) }).await.unwrap();
         assert_eq!(feed_folders::list(s).unwrap().len(), 1, "an existing folder, found without regard to case");
         run(&ctx, Op::DeleteFolder { id: folder }).await.unwrap();
