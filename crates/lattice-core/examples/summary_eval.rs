@@ -1052,10 +1052,7 @@ mod tests {
     fn bootstrap_interval_is_the_constant_for_constant_differences_and_the_same_for_the_same_input() {
         assert_eq!(bootstrap_ci(&[0.25; 9]), Some((0.25, 0.25)));
         let xs = [0.0, 0.1, -0.2, 0.5, 0.3, 0.0, 0.25, -0.1];
-        let (lo, hi) = bootstrap_ci(&xs).unwrap();
-        let m = mean(xs.iter().copied()).unwrap();
-        assert!(lo < m && m < hi, "{lo} < {m} < {hi}");
-        assert_eq!(bootstrap_ci(&xs), Some((lo, hi)));
+        assert_eq!(bootstrap_ci(&xs), Some((-0.037500000000000006, 0.2625)), "the 2.5th and 97.5th percentiles from the fixed seed, around the mean 0.10625");
         assert_eq!(bootstrap_ci(&[]), None);
     }
 
