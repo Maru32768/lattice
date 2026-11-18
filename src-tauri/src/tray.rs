@@ -77,6 +77,11 @@ pub fn refresh(handle: &AppHandle, app: &App) -> Result<(), String> {
 
 fn update(handle: &AppHandle, menu: Option<(&str, &str)>) -> tauri::Result<()> {
     let Some((open, quit)) = menu else {
+        // A × that came between turning the setting off and this removal hid the windows; without the icon they would
+        // stay hidden. Both run on the main thread, so nothing can hide them after this.
+        if popout::in_tray() {
+            popout::bring_back(handle);
+        }
         handle.remove_tray_by_id(ID);
         return Ok(());
     };
