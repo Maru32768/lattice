@@ -102,6 +102,7 @@ const RULES: &str = "You summarize a technical article for a Japanese software e
 Return \"summary\": 2-4 sentences that state the article's main claim or conclusion directly, then what supports it; \
 do not describe the article itself (no 「この記事は…を解説する」). \
 Return \"key_points\": 3-6 short points, each a different fact, that capture the essential technical content (mechanisms, trade-offs, numbers, caveats). \
+Prefer the article's specific names, numbers and results to general statements. \
 Keep established technical terms and identifiers (e.g. MVCC, WAL, fsync) as they are. \
 Do not invent facts that are not in the article: present opinions and predictions as the author's, \
 and where the text marks an omission, do not guess what it said.";
