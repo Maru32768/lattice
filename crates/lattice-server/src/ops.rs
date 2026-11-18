@@ -711,7 +711,7 @@ mod tests {
         ]
     }
 
-    /// Every change that can be undone, aimed at article `id` and at collection, feed and folder 1.
+    /// Every edit-role change, aimed at article `id` and at collection, feed and folder 1.
     fn edits(id: i64) -> Vec<Op> {
         vec![
             Op::Save { url: "https://example.com/b".into(), run: false },

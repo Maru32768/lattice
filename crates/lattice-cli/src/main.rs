@@ -1,5 +1,5 @@
 //! `lattice-cli`: the Lattice library from a terminal or an agent, over the database the app
-//! uses (WAL, so the app may be running). Reads by default; changes need `--allow-write`.
+//! uses (WAL, so the app may be running). Reads by default; changes need `--allow-write`, deletions `--allow-delete`.
 //! `serve` also creates the phone's token if the library has none: nothing else can read with it.
 //! Not named `lattice` because the app's own binary is `lattice.exe` (and Windows file names
 //! ignore case, so `Lattice.exe` in the portable zip would clash too).
@@ -32,7 +32,7 @@ struct Cli {
     data_dir: Option<PathBuf>,
     #[arg(long, global = true, value_enum, default_value_t = Format::Json)]
     format: Format,
-    /// Allow saving, tagging, renaming and other changes that can be undone (or set LATTICE_ALLOW_WRITE=1)
+    /// Allow saving, tagging, renaming and other changes that delete no article, collection, feed or folder (or set LATTICE_ALLOW_WRITE=1)
     #[arg(long, global = true)]
     allow_write: bool,
     /// Also allow deleting articles, collections, feeds and folders, and merging genres
