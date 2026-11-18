@@ -120,6 +120,12 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
     .getByRole("option", { name: `このグループ: ${mvcc.name}` })
     .click();
   await expect(chatScope(app)).toHaveText(`このグループ: ${mvcc.name}`);
+  await chatScope(app).click();
+  const selected = scopeDialog(app).locator("[role=option][aria-selected=true]");
+  await expect(selected, "listed twice, selected once").toHaveCount(1);
+  await expect(selected).toHaveAccessibleName(`このグループ: ${mvcc.name}`);
+  await expect(scopeDialog(app).locator(".check", { hasText: "✓" })).toHaveCount(1);
+  await app.keyboard.press("Escape");
   await app.getByLabel("質問", { exact: true }).fill("MVCCとは？");
   await app.getByRole("button", { name: "送信" }).click();
   await expect

@@ -53,6 +53,8 @@ export function PickList<O extends PickOption>({
   const rows = pickRows(sections);
   const size = sections.reduce((n, s) => n + s.options.length, 0);
   const start = defaultRow(rows, query, selected);
+  // A key can be listed twice (the list's scope, and the same filter in its section): mark one, as a select does.
+  const mine = rows.findIndex((r) => r.kind === "opt" && r.o.key === selected);
   // By key as well as row: rows can come and go above it while the list is open (a tag added, a tab opened).
   const [active, setActive] = useState<{ i: number; key: string } | null>(null);
   const [seen, setSeen] = useState(query);
@@ -101,7 +103,7 @@ export function PickList<O extends PickOption>({
         role="option"
         tabIndex={-1}
         id={`${id}-${i}`}
-        aria-selected={r.o.key === selected}
+        aria-selected={i === mine}
         aria-disabled={r.o.disabled || undefined}
         aria-setsize={size}
         aria-posinset={r.n}
@@ -116,7 +118,7 @@ export function PickList<O extends PickOption>({
         }}
       >
         <span className="check" aria-hidden="true">
-          {r.o.key === selected ? "✓" : ""}
+          {i === mine ? "✓" : ""}
         </span>
         <span className="opt-l">
           <Marked text={r.o.label} q={query.trim()} />
