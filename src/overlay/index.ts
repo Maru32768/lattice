@@ -935,7 +935,10 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   const begins = (t: string) => t.startsWith(want) && (inside || !/[\p{L}\p{N}]/u.test(t.slice(want.length)));
   const exactly = place ? texts.findIndex((t, k) => t.startsWith(want) && needle(t) === want && shown(k)) : -1;
   const i = exactly >= 0 ? exactly : place ? texts.findIndex((t, k) => begins(t) && shown(k)) : -1;
-  const el = blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1];
+  const el =
+    blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1] ??
+    // A search result's table is one block in the Reader, its cells joined, and each cell one here. The innermost, as a page may be laid out in tables.
+    (place ? undefined : Array.from(document.querySelectorAll("table")).findLast((t) => normalizeText(originalText(t)).includes(want)));
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };
