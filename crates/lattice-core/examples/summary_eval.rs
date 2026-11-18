@@ -1228,7 +1228,7 @@ mod tests {
             prompt_version: String::new(),
         };
         let luna = |formatted: &str| Outcome::Ok(run(formatted, "codex-cli", Some("gpt-6-luna")));
-        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, luna("summary of a")), (2, Outcome::Ok(run("summary of a", "gemini", None)))])).unwrap();
+        write(&label_path(&dir, "runs", "a"), &BTreeMap::from([(1, Outcome::Ok(run("summary of a", "gemini", None))), (2, luna("summary of a"))])).unwrap();
         write(&label_path(&dir, "runs", "b"), &BTreeMap::from([(1, luna("summary of b")), (2, luna("summary of b"))])).unwrap();
         let judge = Prefers { text: "summary of a", inputs: Default::default() };
         compare(&dir, "a", "b", &judge, usize::MAX).await.unwrap();
@@ -1238,20 +1238,20 @@ mod tests {
         let comparisons: Results<Comparison> = read(&compare_path(&dir, "a", "b")).unwrap().unwrap();
         assert_eq!(tally(&comparisons), (2, 0, 0, 0));
 
-        let judgment = |errors: &[&str], covered_by: [Vec<usize>; 3]| {
+        let judgment = |model: &str, errors: &[&str], covered_by: [Vec<usize>; 3]| {
             let items = errors.iter().map(|&e| ItemVerdict { text: "x".into(), supported: e.is_empty(), error: e.into() }).collect();
             let facts = covered_by.into_iter().zip([true, true, false]).map(|(covered_by, must)| FactVerdict { text: "f".into(), must, covered_by }).collect();
-            Outcome::Ok(Judgment { provider: "claude-cli".into(), model: Some("claude-opus-5-5".into()), items, facts })
+            Outcome::Ok(Judgment { provider: "claude-cli".into(), model: Some(model.into()), items, facts })
         };
-        let a = || judgment(&["", "wrong_number", "overclaim", "overclaim", "other"], [vec![1], vec![], vec![1, 2]]);
-        write(&label_path(&dir, "judgments", "a"), &BTreeMap::from([(1, a()), (2, a())])).unwrap();
-        let b = || judgment(&[""], [vec![1], vec![1], vec![1]]);
+        let a = |model| judgment(model, &["", "wrong_number", "overclaim", "overclaim", "other"], [vec![1], vec![], vec![1, 2]]);
+        write(&label_path(&dir, "judgments", "a"), &BTreeMap::from([(1, a("claude-opus-5-5")), (2, a("claude-fable-5-2"))])).unwrap();
+        let b = || judgment("claude-opus-5-5", &[""], [vec![1], vec![1], vec![1]]);
         write(&label_path(&dir, "judgments", "b"), &BTreeMap::from([(1, b()), (2, b())])).unwrap();
         let out = report(&dir, Some(("a", "b"))).unwrap();
         assert_eq!(
             out,
             [
-                "a: 2 cases judged; summaries by codex-cli/gpt-6-luna, gemini; judged by claude-cli/claude-opus-5-5",
+                "a: 2 cases judged; summaries by codex-cli/gpt-6-luna, gemini; judged by claude-cli/claude-fable-5-2, claude-cli/claude-opus-5-5",
                 "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
                 "  all          2              0.200              0.500              0.667              0.400      12",
                 "  short        2              0.200              0.500              0.667              0.400      12",
@@ -1281,7 +1281,7 @@ mod tests {
                 "compare a vs b: a 2, b 0, tie 0, failed 0",
             ],
             "both cases are short and judged alike: a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; \
-            b scores 1 on each; a's second summary comes from another model"
+            b scores 1 on each; a's cases were summarized and judged by two models each, listed in sorted order"
         );
         std::fs::remove_dir_all(&dir).unwrap();
     }
