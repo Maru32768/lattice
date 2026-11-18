@@ -469,7 +469,8 @@ test("trying a place again goes on in one chain, not one more for each try", asy
         window.__lattice!.scrollToUnfoundText();
       }
     }, calls);
-    await page.waitForTimeout(2000);
+    // The chain starts an observer every 400 ms: 2200 sits between its 2000 ms step and the next, so a slow run counts the same steps.
+    await page.waitForTimeout(2200);
     return page.evaluate(() => (window as unknown as { __observers: number }).__observers);
   };
   const one = await tries(1);
