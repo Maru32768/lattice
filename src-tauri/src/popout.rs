@@ -402,6 +402,9 @@ pub fn bring_back(app: &AppHandle) {
         }
         browser::sound(app);
         // The badge setting is in the store, which a job may hold; this runs on the main thread.
+        // shortcut: draws without waiting for TaskbarButtonCreated, which tao does not pass on and whose loss it does not
+        // report; the spawn and the store read have been enough for the button to exist. Redraw on that message if a
+        // badge goes missing after coming back.
         let app = app.clone();
         tauri::async_runtime::spawn_blocking(move || badge::redraw(&app));
     }
