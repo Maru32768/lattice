@@ -474,13 +474,6 @@ mod tests {
         let (id, _) = ctx.store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
         let changes =
             [Op::Save { url: "https://example.com/b".into(), run: false }, Op::Tag { id, name: "later".into() }, Op::Read { id }, Op::Favorite { id }];
-        for op in changes {
-            let name = format!("{op:?}");
-            assert!(run(&ctx, op).await.is_err_and(|e| e.contains("--allow-write")), "{name}");
-        }
-        let a = article(&ctx.store, id).unwrap();
-        assert_eq!((a.read_status.as_str(), a.favorite, a.tags.len()), ("unread", false, 0), "nothing changed");
-        assert_eq!(ctx.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1, "nothing saved");
         let reads = [
             Op::Search { query: "wal".into(), scope: None, limit: 1 },
             Op::Get { id, blocks: false, translation: false },
@@ -493,6 +486,15 @@ mod tests {
             Op::Jobs {},
             Op::Ask { question: "What is MVCC?".into(), scope: Some("tag:nothing".into()) },
         ];
+        let ops = Op::augment_subcommands(clap::Command::new("lattice-cli")).get_subcommands().count();
+        assert_eq!(changes.len() + reads.len(), ops, "every op is tried once");
+        for op in changes {
+            let name = format!("{op:?}");
+            assert!(run(&ctx, op).await.is_err_and(|e| e.contains("--allow-write")), "{name}");
+        }
+        let a = article(&ctx.store, id).unwrap();
+        assert_eq!((a.read_status.as_str(), a.favorite, a.tags.len()), ("unread", false, 0), "nothing changed");
+        assert_eq!(ctx.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1, "nothing saved");
         for op in reads {
             let name = format!("{op:?}");
             run(&ctx, op).await.unwrap_or_else(|e| panic!("{name}: {e}"));
