@@ -648,8 +648,9 @@ mod tests {
 
         summarize::set_auto(&s, Auto::All).unwrap();
         s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "summary-v1").unwrap();
+        s.insert_summary(ids[1], "normal", "要約", "h", "fake", None, "summary-v1-x-instr-0123456789ab").unwrap();
         after_ingest(&s);
-        assert_eq!(queued(&s), [ids[1], ids[2]], "every article without a summary; a stale one is left alone");
+        assert_eq!(queued(&s), [ids[2]], "every article without a summary; stale ones, with the user's instructions or without, are left alone");
     }
 
     #[tokio::test]
