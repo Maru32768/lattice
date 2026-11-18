@@ -36,7 +36,7 @@ const MAX_KEY: usize = 32;
 /// creating one more closes the one hidden longest, and the UI reopens it when shown again.
 const MAX_PARKED: usize = 3;
 
-/// How soon after a page has loaded a new document is taken for the page moving on by script, which its jump follows.
+/// How soon after a jump first ran a new document is taken for the page moving on by script, which the jump follows.
 const MOVES_ON_WITHIN: Duration = Duration::from_secs(5);
 /// Of a page not in the library, how many translated texts its save can give the article it becomes.
 const MAX_UNOWNED: usize = 20_000;
@@ -123,8 +123,9 @@ struct TabState {
     hidden_while_opening: bool,
     /// Where to scroll once the next page finishes loading.
     jump: Option<Jump>,
-    /// The jump the last page got as it loaded. A page that moves on by script as it loads still gets its `Finished`,
-    /// and `run_script` reaches that page rather than the one it moves to, so a document soon after gets it again.
+    /// The jump the last page got as it loaded, and when it first ran. A page that moves on by script as it loads still
+    /// gets its `Finished`, and `run_script` reaches that page rather than the one it moves to, so a document soon after
+    /// gets it again.
     jumped: Option<(Jump, Instant)>,
     visibility: Visibility,
     /// (can go back, can go forward) of the current page, as the overlay last reported it.
@@ -176,12 +177,13 @@ impl TabState {
         self.jumped = None;
     }
 
-    /// A document begins loading: one soon after a jump ran is that page moving on by script, and gets it too.
+    /// A document begins loading: one soon after a jump first ran is that page moving on by script, and gets it too.
+    /// Measured from the first run, so a page that keeps reloading itself is not scrolled back for good.
     fn started(&mut self, now: Instant) {
-        if let Some((jump, at)) = self.jumped.take()
-            && now.duration_since(at) < MOVES_ON_WITHIN
+        if let Some((jump, at)) = &self.jumped
+            && now.duration_since(*at) < MOVES_ON_WITHIN
         {
-            self.jump = Some(jump);
+            self.jump = Some(jump.clone());
         }
     }
 
@@ -189,7 +191,9 @@ impl TabState {
     fn finished(&mut self, now: Instant) -> Option<String> {
         let jump = self.jump.take()?;
         let script = jump.script();
-        self.jumped = Some((jump, now));
+        if self.jumped.is_none() {
+            self.jumped = Some((jump, now));
+        }
         Some(script)
     }
 }
@@ -1058,6 +1062,7 @@ impl Place {
 }
 
 /// Where to scroll once a page has loaded.
+#[derive(Clone)]
 enum Jump {
     /// A search result's or citation's passage: centred and flashed.
     Text(String),
@@ -1476,8 +1481,10 @@ mod tests {
         assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
         t.started(at(2_000));
         assert_eq!(t.finished(at(3_000)), scroll, "the page it moved on to by script");
-        t.started(at(3_000) + MOVES_ON_WITHIN);
-        assert_eq!(t.finished(at(9_000)), None, "a page reached later");
+        t.started(at(4_000));
+        assert_eq!(t.finished(at(4_500)), scroll, "and the one after");
+        t.started(at(1_000) + MOVES_ON_WITHIN);
+        assert_eq!(t.finished(at(7_000)), None, "a page reached later than that after the first, though soon after the last");
         t.open(zebra());
         t.started(at(10_000));
         assert_eq!(t.finished(at(10_000)), scroll);
