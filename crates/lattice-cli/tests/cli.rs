@@ -299,6 +299,14 @@ fn deleting_needs_its_own_opt_in() {
     let (dir, id) = library("delete");
     let id_s = id.to_string();
     assert!(refused(&dir, &["--allow-write", "delete-article", &id_s])["error"].as_str().unwrap().contains("--allow-delete"));
+    let by_env = Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
+        .arg("--data-dir")
+        .arg(&*dir)
+        .args(["delete-article", &id_s])
+        .env("LATTICE_ALLOW_WRITE", "1")
+        .output()
+        .unwrap();
+    assert!(!by_env.status.success(), "the environment opts in to edits only");
     assert_eq!(ok(&dir, &["--allow-delete", "rename-article", &id_s, "Mine"])["title"], "Mine", "delete includes the edits");
     assert_eq!(ok(&dir, &["--allow-delete", "delete-article", &id_s])["deleted"], true);
     assert_eq!(ok(&dir, &["list"])["total"], 1);
