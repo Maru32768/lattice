@@ -929,7 +929,7 @@ mod tests {
         let reply = json!({
             "items": [
                 {"n": 2, "supported": false, "error": "wrong_number"},
-                {"n": 1, "supported": true, "error": ""},
+                {"n": 1, "supported": true, "error": "overclaim"},
                 {"n": 3, "supported": false, "error": "made_up"}
             ],
             "facts": [{"n": 1, "covered_by": [1]}, {"n": 2, "covered_by": []}, {"n": 3, "covered_by": [1, 2]}]
@@ -937,7 +937,8 @@ mod tests {
         let (iv, fv) = parse_judgment(reply, &items, &facts).unwrap();
         assert_eq!(
             iv.iter().map(|i| (i.text.as_str(), i.error.as_str())).collect::<Vec<_>>(),
-            [("WALを使う。", ""), ("fsyncを減らす。", "wrong_number"), ("MVCCを採る", "other")]
+            [("WALを使う。", ""), ("fsyncを減らす。", "wrong_number"), ("MVCCを採る", "other")],
+            "a supported item keeps no error"
         );
         let s = score(&iv, &fv);
         assert_eq!(s, Scores { faithfulness: Some(1.0 / 3.0), completeness_must: Some(0.5), completeness_all: Some(2.0 / 3.0), conciseness: Some(2.0 / 3.0) });
@@ -946,8 +947,10 @@ mod tests {
         assert!(parse_judgment(missing, &items, &facts).is_err(), "item 2 has no verdict");
         let twice = json!({"items": [{"n": 1, "supported": true, "error": ""}, {"n": 2, "supported": true, "error": ""}, {"n": 3, "supported": true, "error": ""}], "facts": [{"n": 1, "covered_by": []}, {"n": 1, "covered_by": []}, {"n": 3, "covered_by": []}]});
         assert!(parse_judgment(twice, &items, &facts).is_err(), "fact 1 twice and fact 2 never");
-        let no_such_item = json!({"items": [{"n": 1, "supported": true, "error": ""}, {"n": 2, "supported": true, "error": ""}, {"n": 3, "supported": true, "error": ""}], "facts": [{"n": 1, "covered_by": [4]}, {"n": 2, "covered_by": []}, {"n": 3, "covered_by": []}]});
-        assert!(parse_judgment(no_such_item, &items, &facts).is_err());
+        let covered_by = |n: usize| json!({"items": [{"n": 1, "supported": true, "error": ""}, {"n": 2, "supported": true, "error": ""}, {"n": 3, "supported": true, "error": ""}], "facts": [{"n": 1, "covered_by": [n]}, {"n": 2, "covered_by": []}, {"n": 3, "covered_by": []}]});
+        assert!(parse_judgment(covered_by(0), &items, &facts).is_err(), "items are numbered from 1");
+        assert!(parse_judgment(covered_by(3), &items, &facts).is_ok(), "the last item");
+        assert!(parse_judgment(covered_by(4), &items, &facts).is_err(), "no item 4");
     }
 
     #[test]
