@@ -1458,6 +1458,8 @@ mod tests {
         t.open(zebra());
         t.started(at(10_000));
         assert_eq!(t.finished(at(10_000)), scroll);
+        t.started(at(11_000));
+        assert_eq!(t.finished(at(11_000)), scroll, "the page a later opened one moved on to by script");
         t.open(None);
         t.started(at(11_000));
         assert_eq!(t.finished(at(11_000)), None, "another page the app opened soon after");
