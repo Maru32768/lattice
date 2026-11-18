@@ -67,7 +67,12 @@ test("the launch-at-sign-in and tray switches keep what was chosen", async ({ ap
   await section("起動・タスクバー").click();
   await expect(autostart).toBeChecked();
   await expect(tray).toBeChecked();
-  expect(await callsOf(app, "set_close_to_tray")).toEqual([{ on: true }]);
+  await tray.click();
+  await section("ブラウザ").click();
+  await section("起動・タスクバー").click();
+  await expect(autostart).toBeChecked();
+  await expect(tray).not.toBeChecked();
+  expect(await callsOf(app, "set_close_to_tray")).toEqual([{ on: true }, { on: false }]);
   expect(await callsOf(app, "set_autostart")).toEqual([{ on: true }]);
 });
 
