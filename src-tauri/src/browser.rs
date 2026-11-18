@@ -172,7 +172,9 @@ impl TabState {
         self.jumped = None;
     }
 
-    /// The user moved the page on (a link, Back or Forward, a reload): where it lands is no page moving on by script.
+    /// The user moved the page on with the toolbar (Back, Forward, Reload): where it lands is no page moving on by script.
+    /// A link in the page is not told apart: WebView2's `IsUserInitiated` is also true for the app's own `navigate`, which
+    /// must keep the jump, and for the page's own move soon after a click anywhere in it.
     fn moved_by_user(&mut self) {
         self.jumped = None;
     }
@@ -571,35 +573,6 @@ fn watch_focus(wv: &Webview) {
     }
 }
 
-/// Tells the tab when the user moves its page on. `on_navigation` cannot tell that from a page moving on by script;
-/// WebView2's `IsUserInitiated` can.
-#[cfg(windows)]
-fn watch_navigation(wv: &Webview) {
-    use webview2_com::NavigationStartingEventHandler;
-    let webview = wv.clone();
-    if let Err(e) = wv.with_webview(move |pw| {
-        let handler = NavigationStartingEventHandler::create(Box::new(move |_, args| {
-            let mut by_user = windows::core::BOOL::default();
-            if let Some(args) = args {
-                // SAFETY: WebView2's live arguments, during its call.
-                unsafe { args.IsUserInitiated(&mut by_user)? };
-            }
-            if by_user.as_bool() {
-                webview.state::<Browser>().with_tab(webview.label(), TabState::moved_by_user);
-            }
-            Ok(())
-        }));
-        let mut token = 0i64;
-        // SAFETY: on the main thread with wry's live controller; `token` outlives the call.
-        let added = unsafe { pw.controller().CoreWebView2().and_then(|c| c.add_NavigationStarting(&handler, &mut token)) };
-        if let Err(e) = added {
-            log::warn!("NavigationStarting: {e}");
-        }
-    }) {
-        log::warn!("watching the page's navigations: {e}");
-    }
-}
-
 pub(crate) fn http_url(s: &str) -> Result<Url, String> {
     let u = Url::parse(s.trim()).map_err(|e| format!("invalid URL: {e}"))?;
     matches!(u.scheme(), "http" | "https").then_some(u).ok_or_else(|| "only http(s) pages can be opened".into())
@@ -841,10 +814,7 @@ pub async fn browser_open(
         .add_child(builder, LogicalPosition::new(PARKED.0, PARKED.1), LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)))
         .map_err(|e| e.to_string())?;
     #[cfg(windows)]
-    {
-        watch_focus(&wv);
-        watch_navigation(&wv);
-    }
+    watch_focus(&wv);
     let wanted = !browser.with_tab(&label, |t| t.hidden_while_opening);
     update_visibility(&wv, &browser, |v| *v = Visibility { wanted, ..opened }).map_err(|e| e.to_string())
 }
@@ -1477,8 +1447,6 @@ mod tests {
         let scroll = zebra().map(|j| j.script());
         let mut t = TabState::default();
         t.open(zebra());
-        // WebView2 takes a navigation through its API, as `browser_open`'s, for the user's.
-        t.moved_by_user();
         t.started(at(0));
         assert_eq!(t.finished(at(1_000)), scroll, "the page the app opened");
         t.started(at(2_000));
@@ -1498,7 +1466,7 @@ mod tests {
         assert_eq!(t.finished(at(12_000)), scroll);
         t.moved_by_user();
         t.started(at(13_000));
-        assert_eq!(t.finished(at(13_000)), None, "a page the user moved to soon after");
+        assert_eq!(t.finished(at(13_000)), None, "a page the toolbar moved to soon after");
     }
 
     #[test]
