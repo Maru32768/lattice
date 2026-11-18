@@ -231,17 +231,16 @@ struct Case {
     blocks: Vec<(String, String)>,
 }
 
-/// The library's summary settings go into the summary system prompt, so they are part of the input.
+/// The library's summary instructions go into the summary system prompt, so they are part of the input.
 #[derive(Serialize, Deserialize)]
 struct Cases {
-    user_profile: String,
     summary_instructions: String,
     cases: Vec<Case>,
 }
 
 impl Cases {
     fn applied(&self) -> instructions::Applied {
-        Settings { profile: self.user_profile.clone(), summary: self.summary_instructions.clone(), chat: String::new() }.for_summary()
+        Settings { summary: self.summary_instructions.clone(), ..Settings::default() }.for_summary()
     }
 }
 
@@ -317,7 +316,7 @@ fn read_library(c: &Connection, per: usize, seed: u64) -> Result<Cases, String> 
     let setting = |key: &str| {
         c.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get::<_, String>(0)).optional().map(Option::unwrap_or_default).map_err(sql)
     };
-    Ok(Cases { user_profile: setting(instructions::PROFILE_SETTING)?, summary_instructions: setting(instructions::SUMMARY_SETTING)?, cases })
+    Ok(Cases { summary_instructions: setting(instructions::SUMMARY_SETTING)?, cases })
 }
 
 #[derive(Serialize, Deserialize)]
@@ -958,6 +957,14 @@ mod tests {
     }
 
     #[test]
+    fn a_cases_file_with_a_user_profile_loads_and_the_profile_applies_nothing() {
+        let dir = temp("profile");
+        std::fs::write(dir.join("cases.json"), r#"{"user_profile": "Rustを書く", "summary_instructions": "数値を残す", "cases": []}"#).unwrap();
+        assert_eq!(load_cases(&dir).unwrap().applied(), instructions::Applied { profile: String::new(), extra: "数値を残す".into() });
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn a_sampled_case_makes_the_request_the_app_sends_and_the_library_stays_read_only() {
         let dir = temp("sample");
         let db = dir.join("lattice.db");
@@ -1125,7 +1132,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn summarize_sends_the_apps_request_with_the_library_settings_and_saves_the_summary_as_the_app_shows_it() {
         let dir = temp("summarize");
-        let cases = Cases { user_profile: "Rustを書く".into(), summary_instructions: "数値を残す".into(), cases: vec![case(1)] };
+        let cases = Cases { summary_instructions: "数値を残す".into(), cases: vec![case(1)] };
         write(&dir.join("cases.json"), &cases).unwrap();
         let reply = json!({"summary": "WALを解説する。", "key_points": ["fsyncが減る"]});
         let with = Answers { reply: reply.clone(), requests: Default::default() };
@@ -1146,11 +1153,11 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn facts_sends_the_whole_article_with_its_code_and_tables_and_records_a_reply_without_facts_as_an_error() {
         let dir = temp("facts");
-        let long = "Snapshot isolation permits write skew. ".repeat(1_200);
+        let long = "Snapshot isolation permits write skew. ".repeat(3_000);
         let blocks =
             [("heading", "Intro"), ("paragraph", &long), ("code", "SELECT 1;"), ("table", "level\tskew\nserializable\tno"), ("list_item", "abort one")];
         let case = Case { id: 1, stratum: Stratum::OverCap, title: "Write skew".into(), blocks: blocks.map(|(k, t)| (k.into(), t.into())).to_vec() };
-        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case] }).unwrap();
+        write(&dir.join("cases.json"), &Cases { summary_instructions: String::new(), cases: vec![case] }).unwrap();
         let saved = || read::<Results<Facts>>(&dir.join("facts.json")).unwrap().unwrap();
 
         let blank = Answers { reply: json!({"facts": [{"text": " ", "must": true}]}), requests: Default::default() };
@@ -1161,7 +1168,7 @@ mod tests {
             Answers { reply: json!({"facts": [{"text": " uses WAL ", "must": true}, {"text": "aside", "must": false}]}), requests: Default::default() };
         facts(&dir, &grader, usize::MAX).await.unwrap();
         let article = format!("<article>\n# Write skew\n\n## Intro\n{long}\n```\nSELECT 1;\n```\nlevel\tskew\nserializable\tno\nabort one\n</article>");
-        assert!(article.chars().count() > 40_000, "longer than the summary input may be");
+        assert!(article.chars().count() > 100_000, "longer than the summary input may be");
         assert_eq!(grader.requests.into_inner().unwrap(), [(system(FACTS_RULES), article, facts_schema())]);
         let saved = saved();
         let Some(Outcome::Ok(f)) = saved.get(&1) else {
@@ -1175,7 +1182,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn judge_sends_the_article_the_numbered_key_facts_and_the_numbered_items_of_its_own_labels_summary() {
         let dir = temp("judge");
-        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
+        write(&dir.join("cases.json"), &Cases { summary_instructions: String::new(), cases: vec![case(1)] }).unwrap();
         let key_facts = vec![Fact { text: "uses WAL".into(), must: true }, Fact { text: "fewer fsyncs".into(), must: false }];
         write(&dir.join("facts.json"), &BTreeMap::from([(1, Outcome::Ok(Facts { provider: "fake".into(), model: None, facts: key_facts }))])).unwrap();
         let run = |summary: &str, key_point: &str| Run {
@@ -1218,7 +1225,7 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn compare_puts_each_summary_first_once_and_the_report_shows_b_minus_a_the_win_for_a_and_who_made_each_label() {
         let dir = temp("compare");
-        write(&dir.join("cases.json"), &Cases { user_profile: String::new(), summary_instructions: String::new(), cases: vec![case(1), case(2)] }).unwrap();
+        write(&dir.join("cases.json"), &Cases { summary_instructions: String::new(), cases: vec![case(1), case(2)] }).unwrap();
         let run = |formatted: &str, provider: &str, model: Option<&str>| Run {
             summary: String::new(),
             key_points: vec![],

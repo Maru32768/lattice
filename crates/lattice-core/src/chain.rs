@@ -377,7 +377,7 @@ mod tests {
         let e = all_fail.complete_json("translate", input, &schema).await.unwrap_err().to_string();
         assert_eq!(e.matches("usage limit").count(), 2, "{e}");
         // Summary Fake reports no model: the configured one is recorded.
-        let c = LlmChain::new(vec![(Fake::new(), Some("cfg".into()))]).complete_json("You summarize technical articles", "", &schema).await.unwrap();
+        let c = LlmChain::new(vec![(Fake::new(), Some("cfg".into()))]).complete_json("You summarize a technical article", "", &schema).await.unwrap();
         assert_eq!((c.model.as_deref(), c.provider.as_str()), (Some("cfg"), "fake"));
     }
 
