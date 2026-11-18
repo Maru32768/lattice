@@ -555,6 +555,8 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             collections_out(store)
         }
         Op::AddFeed { url, folder } => {
+            // Checked first: refused after subscribing, the call would fail with the feed added.
+            folder.as_deref().map(feed_folders::clean).transpose()?;
             let id = feeds::subscribe(store, &ctx.providers.http, &url, None).await?;
             if let Some(name) = folder {
                 feed_folders::move_feeds(store, &[id], Some(feed_folders::find_or_create(store, &name)?))?;
@@ -874,6 +876,24 @@ mod tests {
         assert!(groups::list(s).unwrap().is_empty());
         assert!(article(s, id).is_ok(), "the article stays");
         assert!(run(&ctx, Op::DeleteCollection { id: g }).await.is_err(), "already gone");
+    }
+
+    #[tokio::test]
+    async fn a_feed_goes_into_a_folder_by_name_and_a_refused_name_adds_nothing() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://localhost:{}/feed.xml", listener.local_addr().unwrap().port());
+        let feed = r#"<?xml version="1.0"?><rss version="2.0"><channel><title>Local</title><link>https://example.com/</link></channel></rss>"#;
+        let app = axum::Router::new().route("/feed.xml", axum::routing::get(move || async move { ([("content-type", "application/rss+xml")], feed) }));
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        let mut ctx = ctx();
+        let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
+        ctx.providers.http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
+        let s = &ctx.store;
+        assert!(run(&ctx, Op::AddFeed { url: url.clone(), folder: Some(" ".into()) }).await.is_err(), "no folder has an empty name");
+        assert!(feeds::list(s).unwrap().is_empty(), "the refused call subscribed to nothing");
+        run(&ctx, Op::AddFeed { url, folder: Some("Tech".into()) }).await.unwrap();
+        let row = feeds::list(s).unwrap().remove(0);
+        assert_eq!((row.title.as_deref(), row.folder.as_deref()), (Some("Local"), Some("Tech")));
     }
 
     #[tokio::test]
