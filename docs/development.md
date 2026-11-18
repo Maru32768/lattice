@@ -127,7 +127,7 @@ mise exec -- node scripts/icons.ts
 | Path | Contents |
 |---|---|
 | `crates/lattice-core` | Domain logic without Tauri: fetching, extraction, storage, jobs, translation, search, chat, backup. |
-| `crates/lattice-server` | The HTTP server for the phone page, started by the app and by `lattice-cli serve`. |
+| `crates/lattice-server` | The HTTP server for the phone page, started by the app and by `lattice-cli serve`, and the operations `lattice-cli` and its MCP server run (`ops.rs`). |
 | `crates/lattice-cli` | The `lattice-cli` command and its MCP server, on `lattice-core` and `lattice-server`. |
 | `src-tauri` | The Tauri app: commands, background runners, the in-app browser, pop-out windows. |
 | `src` | The React frontend, one folder per feature (`library`, `reader`, `browser`, `chat`, `search`, `feeds`, `import`, `quiz`, `vocab`, `jobs`, `settings`), the app shell (`app`) and pane layout (`layout`), with shared UI parts in `ui` and helpers in `lib`. `api.ts` (the IPC client) and `main.tsx` stay at the top. |

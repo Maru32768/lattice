@@ -692,7 +692,7 @@ pollとingest jobの競合: entryの本文はjobを積んだ後に保存する�
 
 | 対象 | ファイル |
 |---|---|
-| コマンド(`Op`)と実行 | `crates/lattice-cli/src/ops.rs` |
+| コマンド(`Op`)と実行 | `crates/lattice-server/src/ops.rs` |
 | MCPサーバー(stdioのJSON-RPC) | `crates/lattice-cli/src/mcp.rs` |
 | 引数・データフォルダ・出力 | `crates/lattice-cli/src/main.rs`(テスト`crates/lattice-cli/tests/cli.rs`) |
 | 保存場所の解決(アプリと共通) | `crates/lattice-core/src/location.rs` |

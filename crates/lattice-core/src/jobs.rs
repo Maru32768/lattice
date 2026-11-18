@@ -677,7 +677,11 @@ mod tests {
         let p = with(Fake::new());
         run_next(&s, &p, LLM_JOBS, &|_| {}).await.unwrap();
         let input = p.llm.calls.lock().unwrap()[0].clone();
-        assert!(input.contains("## Intro") && input.contains("write skew") && !input.contains("SELECT 1"), "{input}");
+        assert_eq!(
+            input,
+            "# https://example.com/a\n\n## Intro\nSnapshot isolation permits write skew, which serializable snapshot isolation prevents at commit time.\nスナップショット分離について日本語で書かれた段落です。\n",
+            "the prose blocks in their order, without the code"
+        );
         let v = s.get_article(id, "ja").unwrap().unwrap();
         let sum = v.summary.unwrap();
         assert_eq!((sum.text.as_str(), sum.stale), ("要約です。\n\n・要点", false));

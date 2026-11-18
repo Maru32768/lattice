@@ -2,14 +2,13 @@
 //! (clap) and from MCP tool calls (serde, `{"name": ..., "arguments": {...}}`) alike, and every
 //! operation answers with JSON plus a plain-text rendering of the same result.
 
-use std::path::PathBuf;
-
 use clap::Subcommand;
 use lattice_core::chain::LlmChain;
 use lattice_core::chat::{self, Scope};
 use lattice_core::embed::LocalE5;
 use lattice_core::ir::BlockKind;
 use lattice_core::jobs::{self, LOCAL_JOBS, NET_JOBS, Providers};
+use lattice_core::mcp::Role;
 use lattice_core::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock};
 use lattice_core::url_norm::normalize;
 use lattice_core::{classify, feeds, groups, ingest, job_status, relevance, search, summarize, translate};
@@ -102,17 +101,28 @@ pub enum Op {
 }
 
 impl Op {
-    pub fn is_write(&self) -> bool {
-        matches!(self, Op::Save { .. } | Op::Tag { .. } | Op::Read { .. } | Op::Favorite { .. })
+    /// The least role that may run this operation.
+    pub fn role(&self) -> Role {
+        match self {
+            Op::Search { .. }
+            | Op::Get { .. }
+            | Op::List { .. }
+            | Op::Summary { .. }
+            | Op::Tags {}
+            | Op::Genres {}
+            | Op::Feeds {}
+            | Op::Collections {}
+            | Op::Jobs {}
+            | Op::Ask { .. } => Role::Read,
+            Op::Save { .. } | Op::Tag { .. } | Op::Read { .. } | Op::Favorite { .. } => Role::Edit,
+        }
     }
 }
 
 pub struct Ctx {
     pub store: Store,
     pub providers: Providers<LlmChain, LocalE5>,
-    pub allow_write: bool,
-    /// The folder `location::detect` found at the start; `None` with `--data-dir`.
-    pub detected_dir: Option<PathBuf>,
+    pub role: Role,
 }
 
 /// One result in both output formats.
@@ -208,7 +218,7 @@ fn lines<T>(items: &[T], f: impl Fn(&T) -> String) -> String {
 }
 
 pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
-    if op.is_write() && !ctx.allow_write {
+    if op.role() > ctx.role {
         return Err("this command changes the library: pass --allow-write or set LATTICE_ALLOW_WRITE=1".into());
     }
     let store = &ctx.store;
@@ -378,15 +388,15 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 }
 
 #[cfg(test)]
-pub(crate) mod tests {
+mod tests {
     use super::*;
 
     /// An empty in-memory library with no LLM or embedding model behind it.
-    pub(crate) fn ctx() -> Ctx {
+    fn ctx() -> Ctx {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));
-        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, allow_write: true, detected_dir: None }
+        Ctx { store, providers: Providers { llm, embedder, http: lattice_core::fetch::client() }, role: Role::Edit }
     }
 
     #[test]
@@ -458,14 +468,47 @@ pub(crate) mod tests {
         assert!(!run(&ctx, Op::Get { id, blocks: false, translation: false }).await.unwrap().text.contains("[block "));
     }
 
+    #[tokio::test]
+    async fn the_read_role_runs_every_read_and_refuses_every_change() {
+        let ctx = Ctx { role: Role::Read, ..ctx() };
+        let (id, _) = ctx.store.upsert_pending("https://example.com/a", "https://example.com/a", "example.com").unwrap();
+        let changes =
+            [Op::Save { url: "https://example.com/b".into(), run: false }, Op::Tag { id, name: "later".into() }, Op::Read { id }, Op::Favorite { id }];
+        let reads = [
+            Op::Search { query: "wal".into(), scope: None, limit: 1 },
+            Op::Get { id, blocks: false, translation: false },
+            Op::List { scope: None, limit: 10 },
+            Op::Summary { id },
+            Op::Tags {},
+            Op::Genres {},
+            Op::Feeds {},
+            Op::Collections {},
+            Op::Jobs {},
+            Op::Ask { question: "What is MVCC?".into(), scope: Some("tag:nothing".into()) },
+        ];
+        let ops = Op::augment_subcommands(clap::Command::new("lattice-cli")).get_subcommands().count();
+        assert_eq!(changes.len() + reads.len(), ops, "every op is tried once");
+        for op in changes {
+            let name = format!("{op:?}");
+            assert!(run(&ctx, op).await.is_err_and(|e| e.contains("--allow-write")), "{name}");
+        }
+        let a = article(&ctx.store, id).unwrap();
+        assert_eq!((a.read_status.as_str(), a.favorite, a.tags.len()), ("unread", false, 0), "nothing changed");
+        assert_eq!(ctx.store.list_articles_sorted(&ArticleFilter::All, ArticleSort::SavedDesc).unwrap().len(), 1, "nothing saved");
+        for op in reads {
+            let name = format!("{op:?}");
+            run(&ctx, op).await.unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+    }
+
     #[test]
     fn mcp_calls_and_arguments_parse_into_the_same_ops() {
         let op: Op = serde_json::from_value(json!({ "name": "search", "arguments": { "query": "wal" } })).unwrap();
         assert!(matches!(op, Op::Search { ref query, scope: None, limit: SEARCH_LIMIT } if query == "wal"));
         let op: Op = serde_json::from_value(json!({ "name": "tags", "arguments": {} })).unwrap();
-        assert!(matches!(op, Op::Tags {}) && !op.is_write());
+        assert!(matches!(op, Op::Tags {}) && op.role() == Role::Read);
         let op: Op = serde_json::from_value(json!({ "name": "save", "arguments": { "url": "https://example.com" } })).unwrap();
-        assert!(op.is_write());
+        assert_eq!(op.role(), Role::Edit);
         assert!(serde_json::from_value::<Op>(json!({ "name": "get", "arguments": {} })).is_err(), "id is required");
         assert!(serde_json::from_value::<Op>(json!({ "name": "delete", "arguments": { "id": 1 } })).is_err());
     }

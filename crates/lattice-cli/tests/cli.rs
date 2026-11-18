@@ -1,7 +1,8 @@
 //! The built `lattice-cli` binary against a temporary data folder.
 #![allow(clippy::unwrap_used, reason = "a failed step fails the test")]
 
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -163,6 +164,43 @@ fn writes_need_the_opt_in() {
     let ran = ok(&dir, &["--allow-write", "save", "https://example.invalid/other", "--run"]);
     assert_eq!((ran["jobs_run"].clone(), ran["article"]["fetch_status"].clone()), (json!(1), json!("failed")), "{ran}");
     assert!(refused(&dir, &["--allow-write", "save", "not a url"])["error"].as_str().unwrap().starts_with("not a URL"));
+}
+
+/// `serve` takes what the phone sends only with the opt-in (design-review §32): `/api/index` tells the page whether it may.
+#[test]
+fn serve_takes_the_phones_changes_only_with_the_opt_in() {
+    /// Stopped when dropped, so a failed step leaves no server running.
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let (dir, _) = library("serve");
+    for (flags, env, read_only) in [(&[][..], "", true), (&["--allow-write"][..], "", false), (&[][..], "1", false)] {
+        let mut server = Server(
+            Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
+                .arg("--data-dir")
+                .arg(&*dir)
+                .args(flags)
+                .args(["serve", "--port", "0"])
+                .env("LATTICE_ALLOW_WRITE", env)
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+        let mut url = String::new();
+        BufReader::new(server.0.stdout.take().unwrap()).read_line(&mut url).unwrap();
+        let (host, token) = url.trim().strip_prefix("http://").and_then(|u| u.split_once("/#t=")).unwrap();
+        let token = token.split('&').next().unwrap();
+        let mut conn = TcpStream::connect(host).unwrap();
+        write!(conn, "GET /api/index HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n").unwrap();
+        let mut response = String::new();
+        conn.read_to_string(&mut response).unwrap();
+        let body: Value = serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["read_only"], read_only, "{flags:?} LATTICE_ALLOW_WRITE={env:?}");
+    }
 }
 
 #[test]

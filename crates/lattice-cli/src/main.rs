@@ -5,7 +5,6 @@
 //! ignore case, so `Lattice.exe` in the portable zip would clash too).
 
 mod mcp;
-mod ops;
 
 use std::net::Ipv4Addr;
 use std::path::PathBuf;
@@ -17,13 +16,13 @@ use lattice_core::embed::LocalE5;
 use lattice_core::fetch::HttpClient;
 use lattice_core::jobs::Providers;
 use lattice_core::location::{self, DB_FILE};
+use lattice_core::mcp::Role;
 use lattice_core::mobile;
 use lattice_core::msg;
 use lattice_core::network;
 use lattice_core::store::Store;
+use lattice_server::ops::{self, Ctx, Op};
 use serde_json::{Value, json};
-
-use ops::{Ctx, Op};
 
 #[derive(Parser)]
 #[command(name = "lattice-cli", version, about = "Search, read and save to your Lattice library; `mcp` serves it to agents")]
@@ -62,7 +61,8 @@ enum Cmd {
     },
 }
 
-fn open(cli: &Cli) -> Result<Ctx, String> {
+/// The library, and the folder `location::detect` found at the start (`None` with `--data-dir`).
+fn open(cli: &Cli) -> Result<(Ctx, Option<PathBuf>), String> {
     let detected_dir = match &cli.data_dir {
         Some(_) => None,
         None => {
@@ -82,8 +82,12 @@ fn open(cli: &Cli) -> Result<Ctx, String> {
     let llm = LlmChain::new(chain::load(&store)?);
     let http = HttpClient::configured(&network::settings(&store)?)?;
     let providers = Providers { llm, embedder: LocalE5::offline(dir.join("models")), http };
-    let allow_write = cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1");
-    Ok(Ctx { store, providers, allow_write, detected_dir })
+    let role = if cli.allow_write || std::env::var("LATTICE_ALLOW_WRITE").is_ok_and(|v| v == "1") {
+        Role::Edit
+    } else {
+        Role::Read
+    };
+    Ok((Ctx { store, providers, role }, detected_dir))
 }
 
 /// A `warning` or `error` line. Backend messages are coded JSON (`msg!`, `{"code","params"}`):
@@ -174,16 +178,16 @@ fn main() -> ExitCode {
     lattice_core::pdf_worker::init();
     let cli = Cli::parse();
     let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("a tokio runtime");
-    let ctx = match open(&cli) {
-        Ok(ctx) => ctx,
+    let (ctx, detected_dir) = match open(&cli) {
+        Ok(opened) => opened,
         Err(e) => return fail(cli.format, &e),
     };
     match cli.cmd {
-        Cmd::Mcp => match mcp::serve(&ctx, &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
+        Cmd::Mcp => match mcp::serve(&ctx, detected_dir.as_deref(), &rt, std::io::stdin().lock(), std::io::stdout().lock()) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e.to_string()),
         },
-        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, ctx.detected_dir, ctx.allow_write, lan, port)) {
+        Cmd::Serve { lan, port } => match rt.block_on(serve(ctx.store, detected_dir, ctx.role >= Role::Edit, lan, port)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => fail(cli.format, &e),
         },

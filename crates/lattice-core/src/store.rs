@@ -344,7 +344,7 @@ pub struct ArticleView {
 pub struct SummarySource {
     pub title: String,
     pub content_hash: String,
-    /// (kind, text) of headings and prose blocks in order.
+    /// (kind, text) of every block but images, in order; `summarize` picks what it sends.
     pub blocks: Vec<(String, String)>,
 }
 
@@ -670,8 +670,8 @@ impl Store {
         else {
             return Ok(None);
         };
-        let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind IN (SELECT value FROM json_each(?2)) ORDER BY ordinal")?;
-        let blocks = st.query_map(params![article_id, json(&crate::ir::PROSE_KINDS)], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
+        let mut st = c.prepare("SELECT kind, text FROM blocks WHERE article_id = ?1 AND kind != 'image' ORDER BY ordinal")?;
+        let blocks = st.query_map([article_id], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_>>()?;
         Ok(Some(SummarySource { title, content_hash, blocks }))
     }
 
