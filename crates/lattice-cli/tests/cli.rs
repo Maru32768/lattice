@@ -178,7 +178,7 @@ fn serve_takes_the_phones_changes_only_with_the_opt_in() {
         }
     }
     let (dir, _) = library("serve");
-    for (flags, env, read_only) in [(&[][..], "", true), (&["--allow-write"][..], "", false), (&[][..], "1", false)] {
+    for (flags, env, read_only) in [(&[][..], "", true), (&["--allow-write"][..], "", false), (&["--allow-delete"][..], "", false), (&[][..], "1", false)] {
         let mut server = Server(
             Command::new(env!("CARGO_BIN_EXE_lattice-cli"))
                 .arg("--data-dir")
