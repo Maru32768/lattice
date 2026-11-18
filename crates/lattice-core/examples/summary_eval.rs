@@ -480,7 +480,7 @@ fn load_runs(dir: &Path, label: &str) -> Result<Results<Run>, String> {
     read(&label_path(dir, "runs", label))?.ok_or_else(|| format!("no runs/{label}.json: run summarize --label {label} first"))
 }
 
-async fn summarize(dir: &Path, label: &str, with: &LlmChain, limit: usize) -> Result<(), String> {
+async fn summarize(dir: &Path, label: &str, with: &impl LlmProvider, limit: usize) -> Result<(), String> {
     let cases = load_cases(dir)?;
     let applied = cases.applied();
     let prompt_version = applied.version(summarize::PROMPT_VERSION);
@@ -1036,6 +1036,41 @@ mod tests {
             };
             Ok(Completion { value: json!({"better": better, "reason": ""}), model: None, provider: "fake".into() })
         }
+    }
+
+    /// Answers `reply`, recording the system prompt and input of each request.
+    struct Answers {
+        reply: Value,
+        requests: std::sync::Mutex<Vec<(String, String)>>,
+    }
+
+    impl LlmProvider for Answers {
+        fn name(&self) -> &str {
+            "fake"
+        }
+
+        async fn complete_json(&self, system: &str, input: &str, _: &Value) -> Result<Completion, lattice_core::llm::LlmError> {
+            self.requests.lock().unwrap().push((system.into(), input.into()));
+            Ok(Completion { value: self.reply.clone(), model: None, provider: "fake".into() })
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn summarize_sends_the_apps_request_with_the_library_settings_and_saves_the_summary_as_the_app_shows_it() {
+        let dir = temp("summarize");
+        let cases = Cases { user_profile: "Rustを書く".into(), summary_instructions: "数値を残す".into(), cases: vec![case(1)] };
+        write(&dir.join("cases.json"), &cases).unwrap();
+        let reply = json!({"summary": "WALを解説する。", "key_points": ["fsyncが減る"]});
+        let with = Answers { reply: reply.clone(), requests: Default::default() };
+        summarize(&dir, "a", &with, usize::MAX).await.unwrap();
+        let case = &cases.cases[0];
+        assert_eq!(with.requests.into_inner().unwrap(), [summarize::request(&cases.applied(), &case.title, &case.blocks)]);
+        let runs = load_runs(&dir, "a").unwrap();
+        let Some(Outcome::Ok(run)) = runs.get(&1) else {
+            panic!("no summary of case 1");
+        };
+        assert_eq!(Some(run.formatted.clone()), summarize::format_summary(&reply));
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[tokio::test(flavor = "current_thread")]
