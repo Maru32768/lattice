@@ -45,9 +45,10 @@ export const en = {
   "settingsView.translation": "Translation",
   "settingsView.translationLead": "Applies both to article translation and to translated pages.",
   "settingsView.instructions": "Summaries & chat",
-  "settingsView.instructionsLead": "Instructions added to summaries or to chat answers only. Your interests and background go in About you.",
+  "settingsView.instructionsLead":
+    "Instructions added to summaries or to chat answers only. Your interests and background go in About you (used for chat answers, not for summaries).",
   "settingsView.profileLead":
-    "Tailors summaries, chat answers, quiz questions, importance and the feeds’ LLM filter to your interests and background. Article text is treated as untrusted input: instructions inside it are never followed.",
+    "Tailors chat answers, quiz questions, importance and the feeds’ LLM filter to your interests and background. Article text is treated as untrusted input: instructions inside it are never followed.",
   "settingsView.classify": "Auto-classification",
   "settingsView.render": "Import & JS rendering",
   "settingsView.images": "Images",
@@ -975,7 +976,8 @@ export const en = {
   "reader.summary": "Summary",
   "reader.summarizing": "Summarizing…",
   "reader.summarize": "Summarize",
-  "reader.summaryStale": "The article or the summary settings (Settings › Summaries & chat) have changed. Regenerate to apply them",
+  "reader.summaryStale":
+    "The article or the summary settings (Settings › Summaries & chat) have changed, or an app update changed how summaries are made. Regenerate to apply them",
   "reader.summaryFailed": "Summary failed: {last_error}",
   "reader.markUnread": "Mark as unread",
   "reader.markRead": "Mark as read",
