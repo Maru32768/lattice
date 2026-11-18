@@ -6,7 +6,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Changed
 
-- **Summaries are written differently.** The first sentence of a summary states the article's main claim or conclusion. Before, many summaries started by describing the article. The key points keep the article's specific names, numbers and results. Lattice sends the AI a whole article of up to 100,000 characters, and the start and the end of a longer one (before, articles were cut at 40,000). It sends tables and code too. A long article in English or Korean sometimes got its summary in that language; Lattice now asks for Japanese after the article as well.
+- **Summaries are written differently.** The first sentence of a summary states the article's main claim or conclusion. Before, many summaries started by describing the article. The key points keep the article's specific names, numbers and results. Lattice sends the AI a whole article of up to 100,000 characters, and the start and the end of a longer one (before, articles were cut at 40,000). It sends tables and code too, up to 2,000 characters each. A long article in English or Korean sometimes got its summary in that language; Lattice now asks for Japanese after the article as well.
 - Summaries no longer use **About you**. Your extra instructions for summaries still apply.
 - Summaries made before this change show a note that regenerating them applies the change. Lattice does not regenerate them automatically.
 
