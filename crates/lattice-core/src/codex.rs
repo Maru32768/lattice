@@ -340,7 +340,7 @@ mod tests {
 
     /// The Codex models Settings offers, "" being the CLI's default.
     fn settings_models() -> Vec<String> {
-        let presets = include_str!("../../../src/settings/ModelSettings.tsx");
+        let presets = include_str!("../../../src/settings/providers.ts");
         let codex = presets.split("codex_cli: [").nth(1).and_then(|s| s.split(']').next()).unwrap_or("");
         codex.split("value: \"").skip(1).filter_map(|s| s.split('"').next()).map(String::from).collect()
     }
@@ -356,7 +356,7 @@ mod tests {
     fn the_installed_codex_shows_the_model_only_harmless_tools() {
         // shortcut: a model ID typed into Settings is not checked, loop over the catalog's models if people use those.
         let models = settings_models();
-        assert!(models.len() > 1 && models.contains(&String::new()), "Codex models not found in ModelSettings.tsx: {models:?}");
+        assert!(models.len() > 1 && models.contains(&String::new()), "Codex models not found in providers.ts: {models:?}");
         let dir = std::env::temp_dir().join(format!("lattice-codex-tools-{}", std::process::id()));
         let (home, cwd) = (dir.join("home"), dir.join("cwd"));
         std::fs::create_dir_all(&home).unwrap();

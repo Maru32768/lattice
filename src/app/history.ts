@@ -1,6 +1,6 @@
-// In-app back / forward (H4): where the user was in the shell (screen, settings section, scope and
-// facets, the focused tab's document), as a bounded stack with a cursor, like a browser's history.
-import type { Facets, Scope } from "../library/library";
+// In-app back / forward (H4): where the user was in the shell (screen, settings section, scope, the
+// focused tab's document), as a bounded stack with a cursor, like a browser's history.
+import type { Scope } from "../library/library";
 import type { Doc, Id, Tab } from "../layout/layout";
 import type { Screen } from "../library/Nav";
 import type { SettingsSection } from "../settings/sections";
@@ -17,7 +17,6 @@ export interface Place {
   /** Only on the settings screen. */
   section?: SettingsSection;
   scope: Scope;
-  facets: Facets;
   doc?: PlaceDoc;
 }
 
@@ -36,7 +35,7 @@ export const placeDoc = (t: Tab): PlaceDoc =>
     : { tab: t.id, key: `p${t.id}.${t.seq}`, doc: { kind: "page", url: t.url, title: t.title, saved: t.saved } };
 
 /** Two places are the same visit when this is equal. */
-export const placeKey = (p: Place) => JSON.stringify([p.screen, p.section ?? null, p.scope, p.facets, p.doc?.key ?? null]);
+export const placeKey = (p: Place) => JSON.stringify([p.screen, p.section ?? null, p.scope, p.doc?.key ?? null]);
 
 /** A new place: the forward entries go, the oldest beyond the limit too; the same place again is no new entry. */
 export function visit(h: History, p: Place): History {

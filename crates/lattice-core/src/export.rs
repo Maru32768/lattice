@@ -158,7 +158,7 @@ pub fn export_to(store: &Store, out: &mut impl Write, group: Option<i64>) -> Res
     }
     for t in store.chat_threads().map_err(err)? {
         let messages = store.chat_messages(t.id).map_err(err)?;
-        line(out, &json!({"type": "chat_thread", "id": t.id, "title": t.title, "updated_at": t.updated_at, "messages": messages}))?;
+        line(out, &json!({"type": "chat_thread", "id": t.id, "title": t.title, "updated_at": t.updated_at, "llm": t.llm, "messages": messages}))?;
     }
     Ok(n)
 }
@@ -229,7 +229,7 @@ mod tests {
         assert_eq!(s.get_article(id, "ja").unwrap().unwrap().note.as_deref(), Some("SSI と比べる"));
         s.set_setting(&format!("{SECRET_PREFIX}openai"), Some("sk-TOPSECRET")).unwrap();
         s.exec_for_test(&format!(
-            "INSERT INTO chat_threads (id, title) VALUES (1, 'q');
+            "INSERT INTO chat_threads (id, title, llm) VALUES (1, 'q', '{{\"kind\":\"gemini\",\"model\":null}}');
              INSERT INTO chat_messages (thread_id, question, answer, citations, scope, mode, prompt_version)
              VALUES (1, 'what?', 'answer [1]', '[]', '{{\"kind\":\"article\",\"id\":{id}}}', 'full', 'c1');"
         ));
@@ -274,6 +274,7 @@ mod tests {
         assert_eq!(quiz["questions"][1]["review"], Value::Null, "not in review");
         let chat = &lines[2];
         assert_eq!((chat["type"].as_str(), chat["messages"][0]["answer"].as_str()), (Some("chat_thread"), Some("answer [1]")));
+        assert_eq!(chat["llm"], json!({"kind": "gemini", "model": null}));
         assert_eq!(lines.len(), 3);
     }
 

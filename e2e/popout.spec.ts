@@ -2,6 +2,7 @@
 // crosses windows (the window commands, `emit_to` requests, storage keys) is read from the calls.
 import { test, expect, list, callsOf } from "./harness.ts";
 import { ARTICLES, CHAT_MESSAGES } from "./fixtures.ts";
+import { NO_FACETS, scopeKey } from "../src/library/library.ts";
 import type { Page } from "@playwright/test";
 
 const [a, b] = ARTICLES;
@@ -86,6 +87,45 @@ test("a document window shows only its tabs, hands one back to the main window, 
   expect(await stored(shell, DOC), "not restored at the next start").toBeNull();
   expect(await callsOf(shell, "browser_close"), "a closed tab's webview goes with it").toEqual([{ tab: "k1" }]);
   expect(await reported()).toEqual({ kind: "openDocs", label: "doc-1", docs: [] });
+});
+
+test("a document window writes none of the filters kept for each list", async ({ shell }) => {
+  await seed(shell, { [DOC]: JSON.stringify({ root: { kind: "pane", id: 1, tabs: [{ kind: "reader", id: 2, articleId: a.id }], active: 2 }, focused: 1 }) });
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  expect(await stored(shell, "lattice.scopeFacets")).toBeNull();
+});
+
+test("a document window's palette narrows by none of the filters the main window keeps", async ({ shell }) => {
+  const kept = { ...NO_FACETS, tags: ["postgres"] };
+  await seed(shell, {
+    [DOC]: JSON.stringify({
+      root: {
+        kind: "pane",
+        id: 1,
+        tabs: [
+          { kind: "reader", id: 2, articleId: a.id },
+          { kind: "reader", id: 3, articleId: b.id },
+        ],
+        active: 2,
+      },
+      focused: 1,
+    }),
+    "lattice.scopeFacets": JSON.stringify([[scopeKey({ kind: "all" }), kept]]),
+  });
+  await shell.goto("/?window=doc-1");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  const where = shell.locator(".pal-where");
+  await shell.keyboard.press("Control+p");
+  await expect(where).toContainText("すべての記事");
+  await expect(where).not.toContainText("postgres");
+  await shell.keyboard.press("Escape");
+  await titles(shell).nth(1).click();
+  await expect(shell.locator(".art-title")).toHaveText(b.title!);
+  await shell.keyboard.press("Alt+ArrowLeft");
+  await expect(shell.locator(".art-title")).toHaveText(a.title!);
+  await shell.keyboard.press("Control+p");
+  await expect(where, "nor after going back").not.toContainText("postgres");
 });
 
 test("closing a document window closes its tabs with it: none go back to the main window", async ({ shell }) => {

@@ -60,6 +60,7 @@ const MIGRATIONS: &[&str] = &[
     include_str!("../db/migrations/00039_content_hash_of_the_words.sql"),
     include_str!("../db/migrations/00040_translation_page_article.sql"),
     include_str!("../db/migrations/00041_article_auto_title.sql"),
+    include_str!("../db/migrations/00042_chat_thread_llm.sql"),
 ];
 /// After this migration every article's `content_hash` is recomputed (`rehash_content`). Not after 38, whose definition
 /// (words joined with spaces) 39 replaced: a library at 37 recomputes once, one that ran 38 recomputes again. The file of

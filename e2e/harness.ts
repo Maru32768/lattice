@@ -39,6 +39,18 @@ export const navItem = (page: Page, label: string) => page.locator(".nav .ni").f
 /** The article list, in either display language. */
 export const list = (page: Page) => page.getByRole("region", { name: /^(記事一覧|Articles)$/ });
 export const listCount = (page: Page) => list(page).locator(".count");
+export const listTitle = (page: Page) => list(page).locator(".list-title h1");
+export const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
+
+export async function filterByTag(page: Page, tag: string) {
+  await list(page).getByRole("button", { name: "タグ", exact: true }).click();
+  const pv = page.getByRole("dialog", { name: "タグで絞り込む" });
+  await pv.getByRole("textbox").fill(tag);
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(pv).toBeHidden();
+  await expect(chips(page)).toHaveText(`タグ${tag}`);
+}
 
 /**
  * The list row of the article titled `title`, scrolled into view first: the list is virtualized, so a row

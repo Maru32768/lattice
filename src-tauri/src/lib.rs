@@ -1039,9 +1039,11 @@ async fn search_blocks(app: State<'_, App>, query: String, filter: Option<Articl
 }
 
 #[tauri::command]
-async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope) -> Result<ChatMessage, String> {
+async fn chat_ask(app: State<'_, App>, thread_id: Option<i64>, question: String, scope: Scope, llm: Option<ChainEntry>) -> Result<ChatMessage, String> {
     let _permit = app.chat_llm.acquire().await.map_err(err)?;
-    chat::ask(&app.store, &app.providers.llm, &app.providers.embedder, thread_id, &question, scope).await
+    let chosen = llm.map(|c| chat::chosen(&app.store, c)).transpose()?;
+    let (llm, choice) = chosen.as_ref().map_or((&app.providers.llm, None), |(c, one)| (one, Some(c)));
+    chat::ask(&app.store, llm, choice, &app.providers.embedder, thread_id, &question, scope).await
 }
 
 #[tauri::command(async)]

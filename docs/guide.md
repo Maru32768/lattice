@@ -313,7 +313,7 @@ When you open an article from search results, the Reader shows a counter such as
 
 ### Back and forward
 
-Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list, the filters and the document in the focused tab. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
+Lattice keeps a history of the places you visit in the app: the screen, the settings section, the list and the focused tab's document. Move through it with ‹ › in the title bar, `Alt+←` and `Alt+→`, or the mouse's back and forward buttons. The history keeps the last 50 entries.
 
 When a web page has the keyboard focus, `Alt+←`, `Alt+→` and the mouse buttons move through that page's history. ‹ › in the Page view's toolbar always move through the page's history.
 
@@ -490,7 +490,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
 - The counts next to the values are counts within the current list.
 
-`Esc` clears the filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
+Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
 
 **Sorting and grouping.** **Sort and group** above the list sorts by **Date added, newest first**, **Date added, oldest first**, **Date published, newest first**, **Difficulty, easiest first** or **Most important first**. The same menu can divide the list into sections by source or by genre.
 
@@ -574,6 +574,8 @@ Open the chat pane with **Chat** in the navigation, type a question and send it 
 **How much is sent.** When the full text of the articles in scope fits, all of it goes to the AI. When it does not fit, Lattice uses search to pick the passages most related to the question. It first takes up to 4 passages per article, from as many articles as possible, and then adds more passages from the same articles while there is room. The answer shows whether it was based on the full text or on excerpts.
 
 Choose the limit per question in **Context per question** in **Settings › Summaries & chat**: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More context lets the answer draw on more articles, but each question costs more and takes longer.
+
+**The AI that answers.** **AI** chooses the provider, model and effort for answers in this chat. **Default (AI providers in Settings)** uses the steps in **Settings › AI providers**. With any other choice, only that AI answers. If it fails, Lattice does not move on to another AI. Lattice saves the choice with the chat when an answer comes back, and brings it back when you open the chat again. A new chat starts on the default.
 
 **Conversations.**
 
@@ -1021,7 +1023,7 @@ All of Lattice's data is in one SQLite database file: articles, the fetched HTML
 - **Logs** stay in `%LOCALAPPDATA%\Lattice\logs` even when you move the data folder (a portable copy uses `data\logs`).
 - **Development builds** (built from source) use a separate `Lattice Dev` folder. Their data, logs and built-in browser logins are not shared with release builds. Data in folders used by older test builds is not moved automatically.
 
-**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, including shortcuts and Vim, are saved in the database.
+**Settings stored on this computer only.** These settings are kept outside the database, so they are not in backups and do not carry over to another computer: recent searches, the Page view's summary button, which folders are expanded, whether a PDF's **Contents** is open, each list's filters, where you left each list and article, and each window's tabs and panes. **Start Lattice when Windows starts** and the location of the data folder are also recorded on this computer. The other settings in Settings, including shortcuts and Vim, are saved in the database.
 
 ### Unused translations
 

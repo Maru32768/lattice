@@ -318,7 +318,7 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
             Ok(Out { json: json!(o), text })
         }
         Op::Ask { question, scope } => {
-            let mut m = chat::ask(store, &ctx.providers.llm, &ctx.providers.embedder, None, &question, parse_scope(store, scope.as_deref())?).await?;
+            let mut m = chat::ask(store, &ctx.providers.llm, None, &ctx.providers.embedder, None, &question, parse_scope(store, scope.as_deref())?).await?;
             if m.mode == "none" {
                 m.answer = NO_SOURCES.into();
             }

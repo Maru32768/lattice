@@ -1,5 +1,5 @@
 // In-app back / forward (H4): mouse side buttons, Alt+← / Alt+→ and the title bar's buttons.
-import { test, expect, list, navItem } from "./harness.ts";
+import { test, expect, chips, filterByTag, list, listTitle, navItem } from "./harness.ts";
 import { ARTICLES } from "./fixtures.ts";
 import type { Page } from "@playwright/test";
 
@@ -12,7 +12,6 @@ const side = (page: Page, button: 3 | 4) =>
   }, button);
 const back = (page: Page) => page.getByRole("banner").getByRole("button", { name: "戻る" });
 const forward = (page: Page) => page.getByRole("banner").getByRole("button", { name: "進む" });
-const listTitle = (page: Page) => list(page).locator(".list-title h1");
 
 test("screens and scopes: the side buttons, Alt+arrows and the title bar go back and forward", async ({ app }) => {
   await expect(back(app)).toBeDisabled();
@@ -77,4 +76,23 @@ test("articles opened in the focused tab come back in order; a tab switch is und
   await expect(tabs, "back to the first tab, not a reload of it").toHaveCount(2);
   await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
   await expect(title).toHaveText(b.title!);
+});
+
+test("filters are no step of their own: back and forward show each list with the filters last used in it", async ({ app }) => {
+  await navItem(app, "未読").click();
+  await filterByTag(app, "rust");
+  await navItem(app, "お気に入り").click();
+  await filterByTag(app, "postgres");
+
+  await back(app).click();
+  await expect(listTitle(app)).toHaveText("未読");
+  await expect(chips(app)).toHaveText("タグrust");
+  await forward(app).click();
+  await expect(listTitle(app)).toHaveText("お気に入り");
+  await expect(chips(app)).toHaveText("タグpostgres");
+  await back(app).click();
+  await back(app).click();
+  await expect(listTitle(app)).toHaveText("すべての記事");
+  await expect(chips(app)).toHaveCount(0);
+  await expect(back(app)).toBeDisabled();
 });

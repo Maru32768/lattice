@@ -68,6 +68,16 @@ pub struct ChainEntry {
     pub effort: Option<Effort>,
 }
 
+impl ChainEntry {
+    /// Trimmed model, empty meaning the default; `Err` is an effort the provider does not take.
+    pub fn normalized(self) -> Result<Self, Effort> {
+        if let Some(x) = self.effort.filter(|x| !self.kind.efforts().contains(x)) {
+            return Err(x);
+        }
+        Ok(Self { model: self.model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()), ..self })
+    }
+}
+
 pub fn load_config(store: &Store) -> Result<Vec<ChainEntry>, String> {
     let saved = store.setting(CHAIN_SETTING).map_err(|e| e.to_string())?;
     let parsed = saved.and_then(|s| match serde_json::from_str::<Vec<ChainEntry>>(&s) {
@@ -89,13 +99,11 @@ pub fn save_config(store: &Store, entries: Vec<ChainEntry>) -> Result<Vec<ChainE
     if entries.is_empty() || entries.len() > MAX_ENTRIES {
         return Err(msg!("chain.entries", max = MAX_ENTRIES));
     }
-    for (i, e) in entries.iter().enumerate() {
-        if let Some(x) = e.effort.filter(|x| !e.kind.efforts().contains(x)) {
-            return Err(msg!("chain.effortUnsupported", step = i + 1, effort = x.as_str()));
-        }
-    }
-    let entries: Vec<ChainEntry> =
-        entries.into_iter().map(|e| ChainEntry { model: e.model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty()), ..e }).collect();
+    let entries = entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, e)| e.normalized().map_err(|x| msg!("chain.effortUnsupported", step = i + 1, effort = x.as_str())))
+        .collect::<Result<Vec<_>, _>>()?;
     let json = serde_json::to_string(&entries).map_err(|e| e.to_string())?;
     store.set_setting(CHAIN_SETTING, Some(&json)).map_err(|e| e.to_string())?;
     Ok(entries)
@@ -157,26 +165,26 @@ impl LlmProvider for AnyLlm {
 
 /// Builds the providers for the stored chain, with API keys resolved now.
 pub fn load(store: &Store) -> Result<Vec<(AnyLlm, Option<String>)>, String> {
-    load_config(store)?
-        .into_iter()
-        .map(|e| {
-            let key = api_key(store, e.kind)?.map(|(k, _)| k);
-            let (model, effort) = (e.model.clone(), e.effort);
-            let llm = match e.kind {
-                ProviderKind::ClaudeCli => {
-                    let mut c = ClaudeCli::default();
-                    c.effort = effort;
-                    c.set_model(model.clone());
-                    AnyLlm::Claude(c)
-                }
-                ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), effort, ..CodexCli::default() }),
-                ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone(), effort)),
-                ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone(), effort)),
-                ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone(), effort)),
-            };
-            Ok((llm, model))
-        })
-        .collect()
+    load_config(store)?.iter().map(|e| build(store, e)).collect()
+}
+
+/// The provider for one entry, with its API key resolved now, and the model to record when it reports none.
+pub fn build(store: &Store, e: &ChainEntry) -> Result<(AnyLlm, Option<String>), String> {
+    let key = api_key(store, e.kind)?.map(|(k, _)| k);
+    let (model, effort) = (e.model.clone(), e.effort);
+    let llm = match e.kind {
+        ProviderKind::ClaudeCli => {
+            let mut c = ClaudeCli::default();
+            c.effort = effort;
+            c.set_model(model.clone());
+            AnyLlm::Claude(c)
+        }
+        ProviderKind::CodexCli => AnyLlm::Codex(CodexCli { model: model.clone(), effort, ..CodexCli::default() }),
+        ProviderKind::Openai => AnyLlm::OpenAi(OpenAi::new(key, model.clone(), effort)),
+        ProviderKind::Gemini => AnyLlm::Gemini(Gemini::new(key, model.clone(), effort)),
+        ProviderKind::Anthropic => AnyLlm::Anthropic(Anthropic::new(key, model.clone(), effort)),
+    };
+    Ok((llm, model))
 }
 
 #[derive(Clone)]
@@ -231,6 +239,12 @@ impl<P> LlmChain<P> {
     pub fn set(&self, entries: Vec<(P, Option<String>)>) {
         let slots = entries.into_iter().map(|(llm, model)| Slot { llm, model, failed: Mutex::new(None) }).collect();
         *self.slots.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(slots);
+    }
+
+    /// `f` of each provider, for tests of what was built: `health` shows no effort.
+    #[cfg(test)]
+    pub(crate) fn each<R>(&self, f: impl Fn(&P) -> R) -> Vec<R> {
+        self.slots.read().unwrap_or_else(|e| e.into_inner()).iter().map(|s| f(&s.llm)).collect()
     }
 }
 
@@ -460,6 +474,36 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_builds_its_provider_with_its_key_model_and_effort() {
+        let s = Store::open_in_memory().unwrap();
+        let entry = ChainEntry { kind: ProviderKind::ClaudeCli, model: Some("opus".into()), effort: Some(Effort::High) };
+        let (llm, model) = build(&s, &entry).unwrap();
+        let AnyLlm::Claude(c) = llm else {
+            panic!("a Claude CLI entry builds the Claude CLI");
+        };
+        assert_eq!((c.model(), c.effort, model), (Some("opus".into()), Some(Effort::High), Some("opus".into())));
+
+        let entry = ChainEntry { kind: ProviderKind::CodexCli, model: Some("gpt-6-astra".into()), effort: Some(Effort::Max) };
+        let AnyLlm::Codex(c) = build(&s, &entry).unwrap().0 else {
+            panic!("a Codex CLI entry builds the Codex CLI");
+        };
+        assert_eq!((c.model, c.effort), (Some("gpt-6-astra".into()), Some(Effort::Max)));
+
+        for kind in [ProviderKind::Openai, ProviderKind::Gemini, ProviderKind::Anthropic] {
+            let key = format!("key-{kind:?}");
+            set_api_key(&s, kind, Some(&key)).unwrap();
+            let entry = ChainEntry { kind, model: Some("m-1".into()), effort: Some(Effort::Low) };
+            let built = match (kind, build(&s, &entry).unwrap().0) {
+                (ProviderKind::Openai, AnyLlm::OpenAi(p)) => (p.key, p.model, p.effort),
+                (ProviderKind::Gemini, AnyLlm::Gemini(p)) => (p.key, p.model, p.effort),
+                (ProviderKind::Anthropic, AnyLlm::Anthropic(p)) => (p.key, p.model, p.effort),
+                _ => panic!("a {kind:?} entry builds its own API"),
+            };
+            assert_eq!(built, (Some(key), Some("m-1".into()), Some(Effort::Low)), "{kind:?}: its own key itself, not where it was found");
+        }
+    }
+
+    #[test]
     fn config_migrates_legacy_model_and_keys() {
         let s = Store::open_in_memory().unwrap();
         s.set_setting(LEGACY_MODEL_SETTING, Some("sonnet")).unwrap();
@@ -476,7 +520,9 @@ mod tests {
         assert_eq!(load_config(&s).unwrap(), saved);
         let json = s.setting(CHAIN_SETTING).unwrap().unwrap();
         assert!(json.contains(r#""effort":"max""#) && json.matches("effort").count() == 1, "default effort is not stored: {json}");
-        assert!(save_config(&s, vec![ChainEntry { kind: ProviderKind::Gemini, model: None, effort: Some(Effort::Xhigh) }]).is_err(), "Gemini has no xhigh");
+        let gemini = |effort| ChainEntry { kind: ProviderKind::Gemini, model: None, effort };
+        let unsupported = save_config(&s, vec![gemini(None), gemini(Some(Effort::Xhigh))]);
+        assert_eq!(unsupported, Err(msg!("chain.effortUnsupported", step = 2, effort = "xhigh")), "Gemini has no xhigh");
 
         // Chains saved before efforts existed still load, with the default effort.
         s.set_setting(CHAIN_SETTING, Some(r#"[{"kind":"openai","model":null}]"#)).unwrap();

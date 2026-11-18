@@ -445,8 +445,8 @@ export const JOBS: JobOverview = {
 };
 
 export const CHAT_THREADS: ChatThread[] = [
-  { id: 1, title: "MVCCとVACUUMの関係", updated_at: daysAgo(1) },
-  { id: 2, title: "Kafkaのexactly-once", updated_at: daysAgo(4) },
+  { id: 1, title: "MVCCとVACUUMの関係", updated_at: daysAgo(1), llm: null },
+  { id: 2, title: "Kafkaのexactly-once", updated_at: daysAgo(4), llm: { kind: "anthropic", model: "claude-haiku-5-5", effort: "low" } },
 ];
 
 export const CHAT_MESSAGES: ChatMessage[] = [
