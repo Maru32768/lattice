@@ -1056,10 +1056,10 @@ mod tests {
         }
     }
 
-    /// Answers `reply`, recording the system prompt and input of each request.
+    /// Answers `reply`, recording the system prompt, input and schema of each request.
     struct Answers {
         reply: Value,
-        requests: std::sync::Mutex<Vec<(String, String)>>,
+        requests: std::sync::Mutex<Vec<(String, String, Value)>>,
     }
 
     impl LlmProvider for Answers {
@@ -1067,8 +1067,8 @@ mod tests {
             "fake"
         }
 
-        async fn complete_json(&self, system: &str, input: &str, _: &Value) -> Result<Completion, lattice_core::llm::LlmError> {
-            self.requests.lock().unwrap().push((system.into(), input.into()));
+        async fn complete_json(&self, system: &str, input: &str, schema: &Value) -> Result<Completion, lattice_core::llm::LlmError> {
+            self.requests.lock().unwrap().push((system.into(), input.into(), schema.clone()));
             Ok(Completion { value: self.reply.clone(), model: None, provider: "fake".into() })
         }
     }
@@ -1082,7 +1082,8 @@ mod tests {
         let with = Answers { reply: reply.clone(), requests: Default::default() };
         summarize(&dir, "a", &with, usize::MAX).await.unwrap();
         let case = &cases.cases[0];
-        assert_eq!(with.requests.into_inner().unwrap(), [summarize::request(&cases.applied(), &case.title, &case.blocks)]);
+        let (system, input) = summarize::request(&cases.applied(), &case.title, &case.blocks);
+        assert_eq!(with.requests.into_inner().unwrap(), [(system, input, summarize::schema())]);
         let runs = load_runs(&dir, "a").unwrap();
         let Some(Outcome::Ok(run)) = runs.get(&1) else {
             panic!("no summary of case 1");
