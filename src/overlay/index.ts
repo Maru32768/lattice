@@ -914,6 +914,10 @@ function originalText(n: Node): string {
   return n.nodeType === Node.TEXT_NODE ? (n.nodeValue ?? "") : Array.from(n.childNodes, originalText).join("");
 }
 
+/** A table's text as the Reader keeps it: its cells apart, also where the page's markup has no space between them. */
+const tableText = (table: Element) =>
+  Array.from(table.querySelectorAll("tr"), (row) => Array.from(row.querySelectorAll("th, td"), originalText).join(" ")).join(" ");
+
 function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): boolean {
   unfound?.reader?.stop();
   unfound = null;
@@ -938,7 +942,7 @@ function scrollToText(text: string, at?: number, until = Date.now() + LOOK_MS): 
   const el =
     blocks[i >= 0 ? i : inside ? texts.findIndex((t, k) => t.includes(want) && shown(k)) : -1] ??
     // A search result's table is one block in the Reader, its cells joined, and each cell one here. The innermost, as a page may be laid out in tables.
-    (place ? undefined : Array.from(document.querySelectorAll("table")).findLast((t) => normalizeText(originalText(t)).includes(want)));
+    (place ? undefined : Array.from(document.querySelectorAll("table")).findLast((t) => normalizeText(tableText(t)).includes(want)));
   if (!el) {
     // A place waits only until the reader moves the page: from then on, where they are is the place.
     unfound = { text, at, reader: place ? watchReader() : undefined };

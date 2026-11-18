@@ -511,13 +511,11 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
 test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {
   await page.goto("/page.html");
   await expect.poll(() => page.evaluate(() => window.__lattice != null)).toBe(true);
+  // No space between the cells, as on a minified page.
   await page.evaluate(() =>
     document
       .querySelectorAll("p")[40]
-      .insertAdjacentHTML(
-        "afterend",
-        "<table>\n<tr>\n<th>Year</th>\n<th>Event</th>\n</tr>\n<tr>\n<td>1991</td>\n<td>Linus announces Linux</td>\n</tr>\n</table>",
-      ),
+      .insertAdjacentHTML("afterend", "<table><tr><th>Year</th><th>Event</th></tr><tr><td>1991</td><td>Linus announces Linux</td></tr></table>"),
   );
   // As the Reader keeps a table's text: its cells joined by tabs, its rows by lines.
   expect(await page.evaluate(() => window.__lattice!.scrollToText("Year\tEvent\n1991\tLinus announces Linux"))).toBe(true);
