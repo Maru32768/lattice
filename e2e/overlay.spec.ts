@@ -508,11 +508,15 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     // Responsive CSS that lines a row's cells up as inline blocks.
     const responsive =
       '<table id="responsive"><tr><td style="display: inline-block">Alpha one</td><td style="display: inline-block">Beta two</td></tr></table>';
-    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters + responsive);
+    // A table laid out as a grid, its row groups and rows boxes of none of their own.
+    const grid =
+      '<table id="grid" style="display: grid; grid-template-columns: 1fr 1fr"><tbody style="display: contents"><tr style="display: contents">' +
+      "<td>Gamma three</td><td>Delta four</td></tr></tbody></table>";
+    document.getElementById("main")!.insertAdjacentHTML("afterbegin", tables + boxes + letters + responsive + grid);
   });
   await page.evaluate(translateAll);
   const cells = ["Event", "Kernel impact", "Linus announces Linux", "Monolithic kernel", "GPL adoption", "Contributions begin"];
-  await expect(page.locator("table:not(#letters, #responsive) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
+  await expect(page.locator("table:not(#letters, #responsive, #grid) :is(th, td)")).toHaveText([...cells, ...cells].map((c) => `訳:${c}`));
   await expect(page.locator("#flex")).toHaveText("訳:Press Save to keep the page.");
   await expect(page.locator("#katex")).toHaveText("訳:Energy is mc2 in total.");
   // Figures alone have nothing to translate, also in a link; letters of any script have.
@@ -521,6 +525,7 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
   }
   await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
   await expect(page.locator("#responsive td")).toHaveText(["訳:Alpha one", "訳:Beta two"]);
+  await expect(page.locator("#grid td")).toHaveText(["訳:Gamma three", "訳:Delta four"]);
 });
 
 test("a search result's table, one block in the Reader, is found though each cell is a block here", async ({ page }) => {

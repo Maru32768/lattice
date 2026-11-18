@@ -144,15 +144,15 @@ const state = {
 
 const invoke: Invoke = (cmd, args) => (window.__TAURI_INTERNALS__ ? window.__TAURI_INTERNALS__.invoke(cmd, args) : Promise.reject(new Error("no IPC")));
 
+const TABLE_TAGS = new Set(["table", "thead", "tbody", "tfoot", "tr", "th", "td"]);
 const isSentence = (n: Node): n is SentenceSpan => n instanceof HTMLElement && n.classList.contains(SENTENCE);
 /**
- * A table and its cells are blocks however they are shown (a theme's inline-block table, a responsive one's
- * inline-block cells), and so is a box that holds a table: taken as one leaf, a sentence would be wrapped across the
- * cells. Not any inline box that holds blocks: a flex item is a block by its display, and KaTeX lays out a formula in
- * table rows, both inside a sentence.
+ * A table and its parts are blocks however they are shown (a theme's inline-block table, a grid table's rows of
+ * `display: contents`, a responsive one's inline-block cells), and so is a box that holds a table: taken as one leaf,
+ * a sentence would be wrapped across the cells. Not any inline box that holds blocks: a flex item is a block by its
+ * display, and KaTeX lays out a formula in table rows, both inside a sentence.
  */
-const isBlock = (el: Element) =>
-  BLOCK_DISPLAY.has(getComputedStyle(el).display) || ["table", "td", "th"].includes(el.localName) || el.querySelector("table") !== null;
+const isBlock = (el: Element) => BLOCK_DISPLAY.has(getComputedStyle(el).display) || TABLE_TAGS.has(el.localName) || el.querySelector("table") !== null;
 
 function findLeafBlocks(root: Element): HTMLElement[] {
   const out: HTMLElement[] = [];
