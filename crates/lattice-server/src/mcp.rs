@@ -202,6 +202,7 @@ mod tests {
                 .collect();
             let op: Op = serde_json::from_value(json!({ "name": name, "arguments": sample })).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert_eq!(op.role(), role, "{name}");
+            assert_eq!(t["inputSchema"]["additionalProperties"], false, "{name}: clients learn that other arguments are refused");
         }
         names.sort();
         names.dedup();
