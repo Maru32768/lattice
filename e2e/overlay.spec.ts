@@ -504,7 +504,8 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     const boxes =
       '<p id="flex">Press <a href="#" style="display: inline-flex"><span>Save</span></a> to keep the page.</p>' +
       '<p id="katex">Energy is <span style="display: inline-table"><span style="display: table-row"><span style="display: table-cell">mc2</span></span></span> in total.</p>';
-    const letters = '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td></tr></table>';
+    const letters =
+      '<table id="letters"><tr><td id="number">12.3</td><td id="linked"><a href="#">4.5</a></td><td id="cyrillic">Ядро</td><td id="letter">x</td><td id="mark">–</td></tr></table>';
     // Responsive CSS that lines a row's cells up as inline blocks.
     const responsive =
       '<table id="responsive"><tr><th style="display: inline-block">Head one</th><th style="display: inline-block">Head two</th></tr>' +
@@ -525,6 +526,10 @@ test("a table is translated cell by cell, also a theme's inline-block table, whi
     await expect(page.locator(cell)).toHaveAttribute("data-lattice-block", "skip");
   }
   await expect(page.locator("#cyrillic")).toHaveText("訳:Ядро");
+  // Leaves are taken at once when translation starts: one letter or mark is none.
+  for (const cell of ["#letter", "#mark"]) {
+    await expect(page.locator(cell)).not.toHaveAttribute("data-lattice-block");
+  }
   await expect(page.locator("#responsive :is(th, td)")).toHaveText(["訳:Head one", "訳:Head two", "訳:Alpha one", "訳:Beta two"]);
   await expect(page.locator("#grid td")).toHaveText(["訳:Gamma three", "訳:Delta four"]);
 });
