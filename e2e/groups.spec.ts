@@ -142,6 +142,14 @@ test("the palette's この記事をグループに追加… opens the picker in 
   await app.keyboard.type("この記事をグループに追加");
   await app.getByRole("option", { name: "この記事をグループに追加…" }).click();
   await expect(picker(app)).toBeInViewport();
+  const add = app.locator(".art-chips").getByRole("button", { name: "＋ グループ" });
+  await expect
+    .poll(async () => {
+      const c = (await add.boundingBox())!;
+      const p = (await picker(app).boundingBox())!;
+      return { gap: Math.round(p.y - c.y - c.height), overlaps: p.x < c.x + c.width && c.x < p.x + p.width };
+    }, "under its chip")
+    .toEqual({ gap: 4, overlaps: true });
   await expect(picker(app).getByRole("combobox")).toBeFocused();
   await app.keyboard.press("Escape");
   await expect(picker(app)).toBeHidden();
