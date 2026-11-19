@@ -514,7 +514,8 @@ mod tests {
         assert_eq!(check("2019～20年に", "2019年から20年にかけて"), Vec::<String>::new(), "a year cut short may be the year or the number");
         assert_eq!(check("2024-11-19に", "on November 19, 2024"), Vec::<String>::new());
         assert_eq!(check("1946～53年分", "for 1946-1952"), ["53"], "neither 1953 nor 53");
-        assert_eq!(check("2020-2021年", "from 2020 to 2021"), Vec::<String>::new(), "only two digits are a year cut short");
+        assert_eq!(check("2020-2021年", "from 2020 to 2021"), Vec::<String>::new());
+        assert_eq!(check("4021件", "2020-2021"), ["4021"], "only two digits are a year cut short");
     }
 
     #[test]
