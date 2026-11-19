@@ -189,7 +189,7 @@ export function McpSettings() {
                 <ul className="mcp-log" aria-labelledby={`mcp-sessions-${reg.id}`}>
                   {reg.sessions.map((s, i) => (
                     <li key={i}>
-                      <span>{s.client ?? t("mcpSettings.unknownClient")}</span>{" "}
+                      <bdi>{s.client ?? t("mcpSettings.unknownClient")}</bdi>{" "}
                       <span className="muted">{t("mcpSettings.sessionTimes", { started: when(s.started_ms, t.lang), last: when(s.last_ms, t.lang) })}</span>
                     </li>
                   ))}
@@ -201,7 +201,11 @@ export function McpSettings() {
                 <ul className="mcp-log" aria-labelledby={`mcp-calls-${reg.id}`}>
                   {reg.calls.map((c, i) => (
                     <li key={i}>
-                      <span className="muted">{when(c.at_ms, t.lang)}</span> <code>{c.tool}</code> <span className={c.outcome}>{t(OUTCOMES[c.outcome])}</span>
+                      <span className="muted">{when(c.at_ms, t.lang)}</span>{" "}
+                      <code>
+                        <bdi>{c.tool}</bdi>
+                      </code>{" "}
+                      <span className={c.outcome}>{t(OUTCOMES[c.outcome])}</span>
                     </li>
                   ))}
                   {reg.calls.length === 0 && <li className="muted">{t("mcpSettings.noCalls")}</li>}
