@@ -342,7 +342,8 @@ fn fractions<'a>(cs: &'a [char], mentions: &'a [Mention]) -> impl Iterator<Item 
     })
 }
 
-/// Other ways an article writes digits: `.05` for 0.05 and `10^6` for a power.
+/// Other ways an article writes digits: `.05` for 0.05, `10^6` for a power, and thousands grouped by dots or spaces
+/// (`1.000.000`, `1 000 000`).
 fn digit_readings(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
     let mut out = Vec::new();
     for m in mentions {
@@ -354,6 +355,19 @@ fn digit_readings(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
             && let (Num::Dec(base), (_, Some(power))) = (&m.value, token_at(cs, m.end + 1))
         {
             out.extend(base.whole().zip(power.whole()).and_then(|(b, p)| b.checked_pow(u32::try_from(p).ok()?)).map(Dec::int));
+        }
+        let mut groups = token.split('.');
+        if groups.next().is_some_and(|g| g.len() <= 3 && !g.starts_with('0')) && groups.all(|g| g.len() == 3) {
+            out.extend(Dec::parse(&token.replace('.', "")));
+        }
+        let first = digit_run(cs, m.start);
+        let (mut digits, mut end): (String, _) = (cs[m.start..first].iter().collect(), first);
+        while first - m.start <= 3 && cs.get(end) == Some(&' ') && digit_run(cs, end + 1) == end + 4 {
+            digits.extend(&cs[end + 1..end + 4]);
+            end += 4;
+        }
+        if end > first {
+            out.extend(Dec::parse(&digits));
         }
     }
     out
@@ -908,6 +922,30 @@ mod tests {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
         assert_eq!(check("99", "10^99"), Vec::<String>::new(), "a power too large for a value is left out");
+    }
+
+    #[test]
+    fn thousands_grouped_by_dots_or_spaces_count() {
+        for (summary, article) in [
+            ("100万ユーロ", "1.000.000 euros"),
+            ("1500ユーロ", "1.500 euros"),
+            ("1.5ユーロ", "1.500 euros"),
+            ("100万件", "1 000 000 rows"),
+            ("1万2345件", "12 345 rows"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        for (summary, article, why) in [
+            ("1234567", "1234.567", "a first group of at most three digits"),
+            ("500", "0.500", "a first group not starting with 0"),
+            ("3121", "3.12.1", "groups of three digits"),
+            ("1234567", "1234 567", "a first group of at most three digits"),
+            ("1234", "1 2345", "groups of three digits"),
+            ("1234", "1-234", "groups after a space"),
+            ("1", "1.5", "a number with no group is read as written"),
+        ] {
+            assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
+        }
     }
 
     #[test]
