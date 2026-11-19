@@ -381,7 +381,10 @@ mod tests {
         let r = f.register("Claude Code", Role::Read);
         let id = f.saved("https://example.com/a");
         let session = f.initialize(&r.token).await;
-        assert_eq!(f.call(&r.token, &session, "tag", json!({ "id": id, "name": "later" })).await["isError"], true);
+        let refused = f.call(&r.token, &session, "tag", json!({ "id": id, "name": "later" })).await;
+        assert_eq!(refused["isError"], true);
+        assert!(refused["content"][0]["text"].as_str().unwrap().contains("Settings › AI agents (MCP)"), "where the user changes it: {refused}");
+        assert!(f.applied.lock().unwrap().is_empty(), "a refused call changes nothing to show");
 
         mcp::edit(&f.store, &Edit::SetRole { id: r.id.clone(), role: Role::Edit }).unwrap();
         assert_eq!(f.call(&r.token, &session, "tag", json!({ "id": id, "name": "later" })).await["isError"], false, "the same session");
