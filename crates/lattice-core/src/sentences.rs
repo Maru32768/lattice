@@ -52,6 +52,9 @@ pub(crate) fn split(html: &str) -> Sentences<'_> {
     let bounds = text.split_sentence_bound_indices().skip(1).map(|(start, _)| match text[..start].trim_end_matches(OPENING).len() {
         // A bound after a citation's `[` ("true.[1] Next"): the citation stays with the sentence it follows.
         open if open < start => open + citations(&text[open..]),
+        // A bound right after a sentence's end, before a footnote's number in superscript ("true.¹ Next", as `extract` writes
+        // `<sup>1</sup>`): the same. After a space it starts the next sentence ("Done. ¹⁴C dating").
+        _ if !text[..start].ends_with(char::is_whitespace) => start + footnotes(&text[start..]),
         _ => start,
     });
     let cuts = bounds.filter(|&start| !keeps_together(&text[..start], &text[start..])).filter_map(|start| {
@@ -89,6 +92,16 @@ fn citations(rest: &str) -> usize {
     } else {
         rest.len() - rest[len..].trim_start_matches([' ', '\u{a0}']).len()
     }
+}
+
+/// The length of the superscript footnote numbers `rest` starts with ("¹", "³, ⁴", "¹⁻³") and the spaces after them, up
+/// to a line break, as in `citations`.
+fn footnotes(rest: &str) -> usize {
+    let raised = |c: char| crate::extract::RAISED.contains(c);
+    if !rest.starts_with(raised) {
+        return 0;
+    }
+    rest.len() - rest.trim_start_matches(|c: char| raised(c) || matches!(c, ',' | '\u{2013}' | ' ' | '\u{a0}')).len()
 }
 
 /// Whether a UAX #29 bound is no sentence end: a Japanese quote the sentence goes on after
@@ -236,6 +249,15 @@ mod tests {
         ("Intro. [1] Open it. [2] Close it.", &["Intro. ", "[1] Open it. ", "[2] Close it."]),
         ("It is true.<a href=\"#c\">[1]</a>", &["It is true.<a href=\"#c\">[1]</a>"]),
         ("Done.<sup>[2]</sup><sup>[3]</sup> Next.", &["Done.<sup>[2]</sup><sup>[3]</sup> ", "Next."]),
+        ("Done in 2019.¹ Next one.", &["Done in 2019.¹ ", "Next one."]),
+        ("Two notes.³, ⁴ Next.", &["Two notes.³, ⁴ ", "Next."]),
+        ("A range.¹⁻³ Next.", &["A range.¹⁻³ ", "Next."]),
+        ("In brackets.⁽¹⁾ Next.", &["In brackets.⁽¹⁾ ", "Next."]),
+        ("It decayed. ¹⁴C dating works.", &["It decayed. ", "¹⁴C dating works."]),
+        ("¹ Smith 2019. ² Jones 2020.", &["¹ Smith 2019. ", "² Jones 2020."]),
+        ("A link.<a href=\"#fn1\">¹</a> Next.", &["A link.<a href=\"#fn1\">¹</a> ", "Next."]),
+        ("参加した。¹次の文。", &["参加した。¹", "次の文。"]),
+        ("About 10⁶ requests. Then.", &["About 10⁶ requests. ", "Then."]),
         ("終わり。<a href=\"#c\">[1]</a>次の文。", &["終わり。<a href=\"#c\">[1]</a>", "次の文。"]),
         ("Use a cache, e.g. the page cache. Done.", &["Use a cache, e.g. the page cache. ", "Done."]),
         ("Ask Dr. Smith or (Prof. Jones). They know.", &["Ask Dr. Smith or (Prof. Jones). ", "They know."]),
@@ -282,7 +304,7 @@ mod tests {
     #[test]
     fn snippets_put_together_at_random_cut_into_whole_balanced_sentences() {
         const PIECES: &[&str] =
-            &["One", "日本", ". ", ".", "。", " ", "「", "」", "[1]", "[", "<br>", "&nbsp;", "⟦1⟧", "<b>", "</b>", "<a href=\"x. Y\">", "</a>"];
+            &["One", "日本", ". ", ".", "。", " ", "「", "」", "[1]", "[", "¹", ",", "<br>", "&nbsp;", "⟦1⟧", "<b>", "</b>", "<a href=\"x. Y\">", "</a>"];
         let mut seed = 0x9e37_79b9_7f4a_7c15u64;
         let mut next = move || {
             seed ^= seed << 13;
