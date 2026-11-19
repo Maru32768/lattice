@@ -3,7 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
 import { Icon } from "./Icon";
-import { defaultRow, enabled, follow, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
+import { defaultRow, enabled, pickRows, stepRow, type PickOption, type PickRow, type PickSection } from "./pickRows";
 
 /** The height of `.opt` and `.pick-list .ph` in App.css: Virtuoso takes it on trust and measures no row. */
 const ROW_H = 30;
@@ -25,7 +25,8 @@ export function Marked({ text, q }: { text: string; q: string }) {
 
 /**
  * A search field over a virtualized listbox of every option. The field keeps the focus and names the active option
- * (`aria-activedescendant`), as a row may be unmounted by the time the keys reach it.
+ * (`aria-activedescendant`), as a row may be unmounted by the time the keys reach it. The highlight is a row: the options
+ * must hold still while the list is open, but for the query.
  */
 export function PickList<O extends PickOption>({
   label,
@@ -42,7 +43,8 @@ export function PickList<O extends PickOption>({
   search: string;
   query: string;
   onQuery: (q: string) => void;
-  sections: readonly PickSection<O>[];
+  /** The options matching `query`; null while they load. */
+  sections: readonly PickSection<O>[] | null;
   selected: string;
   onPick: (o: O) => void;
 }) {
@@ -50,30 +52,23 @@ export function PickList<O extends PickOption>({
   const id = useId();
   const list = useRef<VirtuosoHandle>(null);
   const input = useRef<HTMLInputElement>(null);
-  const rows = pickRows(sections);
-  const size = sections.reduce((n, s) => n + s.options.length, 0);
+  const rows = pickRows(sections ?? []);
+  const size = (sections ?? []).reduce((n, s) => n + s.options.length, 0);
   const start = defaultRow(rows, query, selected);
   // A key can be listed twice (the list's scope, and the same filter in its section): mark one, as a select does.
   const mine = rows.findIndex((r) => r.kind === "opt" && r.o.key === selected);
-  const pin = (i: number) => {
-    const r = rows[i];
-    return enabled(r) ? { i, key: r.o.key } : null;
-  };
-  // Pinned by key as well as row, the opening one too: rows can come and go while the list is open (a tag added, a tab
-  // opened), and a highlight worked out again from them would move what Enter picks.
-  const [active, setActive] = useState(() => pin(start));
+  /** Where the keys or the pointer moved the highlight; until they do, and from each new search, it is on `start`. */
+  const [moved, setMoved] = useState<number | null>(null);
   const [seen, setSeen] = useState(query);
   if (query !== seen) {
     setSeen(query);
-    setActive(pin(start));
+    setMoved(null);
   }
-  // Gone or disabled: nothing is highlighted, rather than an option the user did not move to.
-  const at = active ? follow(rows, active) : -1;
+  const at = moved ?? start;
   const current = rows[at];
   const activate = (i: number) => {
-    const a = pin(i);
-    if (a) {
-      setActive(a);
+    if (enabled(rows[i])) {
+      setMoved(i);
     }
   };
   /** The first row in view on opening, with the start in the middle. */
@@ -86,12 +81,9 @@ export function PickList<O extends PickOption>({
     const by = listStep(e, true) || (e.key === "PageDown" ? MAX_ROWS : e.key === "PageUp" ? -MAX_ROWS : 0);
     if (by) {
       e.preventDefault();
-      // The highlighted option went or was disabled: go on from the gap it left, down onto what now fills it.
-      const from = at >= 0 || !active ? at : Math.min(by > 0 ? active.i - 1 : active.i, rows.length);
-      const i = stepRow(rows, from, by);
-      const next = pin(i);
-      if (next) {
-        setActive(next);
+      const i = stepRow(rows, at, by);
+      if (enabled(rows[i])) {
+        setMoved(i);
         // Up onto a section's first option: its head comes into view with it.
         list.current?.scrollIntoView({ index: by < 0 && rows[i - 1]?.kind === "head" ? i - 1 : i });
       }
@@ -183,7 +175,7 @@ export function PickList<O extends PickOption>({
           itemContent={row}
         />
       ) : (
-        <div className="pv-empty">{t("pickList.none")}</div>
+        <div className="pv-empty">{t(sections ? "pickList.none" : "pickList.loading")}</div>
       )}
     </div>
   );

@@ -288,7 +288,10 @@ export default function App() {
     hitGroups,
     flatHits,
   } = useSearch(shown, fail);
-  const chatGroups = useMemo(() => filterGroups(groupRows, genres, feeds, tags, t, folders), [groupRows, genres, feeds, tags, t, folders]);
+  const chatGroups = useMemo(
+    () => (loaded ? filterGroups(groupRows, genres, feeds, tags, t, folders) : null),
+    [loaded, groupRows, genres, feeds, tags, t, folders],
+  );
   const searchGroups = useMemo(() => filterGroups(groupRows, genres, feeds, [], t, folders), [groupRows, genres, feeds, t, folders]);
 
   // The focused pane's active tab is what shortcuts, the chat and the list selection refer to.

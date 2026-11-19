@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defaultRow, filterSections, follow, labelOf, pickRows, stepRow, type PickSection } from "./pickRows.ts";
+import { defaultRow, filterSections, labelOf, pickRows, stepRow, type PickSection } from "./pickRows.ts";
 
 const SECTIONS: PickSection[] = [
   {
@@ -95,30 +95,4 @@ test("a key's label is its first option's, disabled or not", () => {
   assert.equal(labelOf(twice, "g1"), "このグループ: MVCC");
   assert.equal(labelOf(SECTIONS, "article"), "この記事(記事を開いていません)");
   assert.equal(labelOf(SECTIONS, "gone"), undefined);
-});
-
-test("the active option is followed when rows come or go before it, and the copy of a repeated key stays the one it was", () => {
-  assert.equal(follow(ROWS, { i: 5, key: "t1" }), 5, "nothing moved");
-  const grown = pickRows([SECTIONS[0], { label: "グループ", options: [{ key: "g0", label: "Kafka(1件)" }, ...SECTIONS[1].options] }, SECTIONS[2]]);
-  assert.equal(follow(grown, { i: 5, key: "t1" }), 6, "a group added above: #Rust is one row down");
-  assert.equal(follow(pickRows([SECTIONS[2]]), { i: 5, key: "t1" }), 1, "the sections above it gone");
-  assert.equal(follow(pickRows([SECTIONS[0], SECTIONS[1]]), { i: 5, key: "t1" }), -1, "the option itself gone");
-  const twice = pickRows([
-    {
-      label: "",
-      options: [
-        { key: "all", label: "全記事" },
-        { key: "g1", label: "このグループ: MVCC" },
-      ],
-    },
-    {
-      label: "グループ",
-      options: [
-        { key: "g0", label: "Kafka(1件)" },
-        { key: "g1", label: "MVCC(2件)" },
-      ],
-    },
-  ]);
-  assert.equal(follow(twice, { i: 4, key: "g1" }), 4, "on the second copy, still the second");
-  assert.equal(follow(twice, { i: 3, key: "g1" }), 4, "shifted by one: the nearer copy, not the first");
 });

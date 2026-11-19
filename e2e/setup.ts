@@ -6,7 +6,17 @@ import { api } from "../src/api.ts";
 
 declare global {
   interface Window {
-    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; fromPage: typeof emit; deleteArticle: typeof api.deleteArticle };
+    __e2e: {
+      calls: { cmd: string; args: unknown }[];
+      unmocked: string[];
+      emit: typeof emit;
+      fromPage: typeof emit;
+      deleteArticle: typeof api.deleteArticle;
+      /** Lets the held answers of `cmd` through. */
+      release: (cmd: string) => void;
+    };
+    /** Set by an init script: commands whose answers wait for `__e2e.release`, as a slow read would. */
+    __e2eHold?: string[];
   }
 }
 
@@ -16,13 +26,18 @@ const fromPage: typeof emit = async (event, payload) => {
   await emit(event, payload);
   delete (document as Partial<Document>).hasFocus;
 };
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle };
+const held = new Map((window.__e2eHold ?? []).map((cmd) => [cmd, Promise.withResolvers<void>()]));
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle, release: (cmd) => held.get(cmd)?.resolve() };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");
 mockIPC(
   (cmd, args) => {
     e2e.calls.push({ cmd, args });
+    const hold = held.get(cmd);
+    if (hold) {
+      return hold.promise.then(() => handle(cmd, args));
+    }
     try {
       return handle(cmd, args);
     } catch (e) {

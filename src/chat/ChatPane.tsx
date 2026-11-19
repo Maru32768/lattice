@@ -88,7 +88,8 @@ export function ChatPane({
   article: { id: number; title: string } | null;
   /** The saved articles open in tabs, in this window and the document windows. */
   open: OpenDoc[];
-  groups: FilterGroup[];
+  /** Null until the library has loaded. */
+  groups: FilterGroup[] | null;
   /** The list's current scope as a chat scope option (filterKey + label); null when it is 全記事. */
   current: { key: string; label: string } | null;
   /** A scope chosen from outside (Reader 質問, palette); `seq` re-applies the same key. `quote` goes into the input, for the user to ask about. */
@@ -281,7 +282,8 @@ export function ChatPane({
           {t("chatPane.scope")}
           <ScopePicker
             value={scopeKey}
-            sections={scopeSections(t, article, open, current, groups)}
+            sections={scopeSections(t, article, open, current, groups ?? [])}
+            loading={!groups}
             onChange={(key) => {
               setPicked(true);
               setScopeKey(key);

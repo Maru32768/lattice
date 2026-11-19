@@ -8,6 +8,16 @@ const section = (app: Page, title: string) =>
     .locator(".ni")
     .filter({ has: app.locator(".label").getByText(title, { exact: true }) });
 const askedScopes = async (app: Page) => (await callsOf(app, "chat_ask")).map((x) => (x as { scope: unknown }).scope);
+/** Opens the chat scope again until `check` passes: an open list holds the scopes it opened with. */
+const openScopeUntil = (app: Page, check: () => Promise<void>) =>
+  expect(async () => {
+    if (await scopeDialog(app).isVisible()) {
+      await app.keyboard.press("Escape");
+    }
+    await chatScope(app).click();
+    await check();
+  }).toPass();
+const setSize = async (app: Page) => Number(await scopeDialog(app).getByRole("option").first().getAttribute("aria-setsize"));
 
 test("the chat budget sends the setting and keeps it when the section is reopened", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
@@ -147,7 +157,7 @@ test("the chat scope offers each open article and all of them, and follows the t
 
   // A document window reports its tabs to the main window.
   await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
-  await expect(options).toContainText(["開いている記事すべて(3件)", "全記事", a.title!, b.title!, c.title!]);
+  await openScopeUntil(app, () => expect(options).toContainText(["開いている記事すべて(3件)", "全記事", a.title!, b.title!, c.title!], { timeout: 1000 }));
   await picker.getByRole("combobox", { name: "範囲を検索" }).fill("すべて(3");
   await app.keyboard.press("Enter");
   await expect(picker).toBeHidden();
@@ -167,8 +177,10 @@ test("the chat scope offers each open article and all of them, and follows the t
   await expect(options).toContainText(["全記事", a.title!, c.title!]);
   await expect(named(b.title!)).toHaveCount(0);
   await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
-  await expect(named(c.title!)).toHaveCount(0);
-  await expect(named(a.title!)).toHaveCount(1);
+  await openScopeUntil(app, async () => {
+    await expect(named(a.title!)).toHaveCount(1, { timeout: 1000 });
+    await expect(named(c.title!)).toHaveCount(0, { timeout: 1000 });
+  });
 });
 
 test("in the chat scope the arrows pass over headings and disabled options, a search narrows and marks, and Esc closes", async ({ app }) => {
@@ -230,11 +242,10 @@ test("in the chat scope the mouse moves the highlight but never the list, nor ta
     await window.__e2e.emit("article-changed", id);
   }, id);
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  await chatScope(app).click();
+  await openScopeUntil(app, async () => expect(await setSize(app)).toBeGreaterThan(200));
   const picker = scopeDialog(app);
   const listbox = picker.getByRole("listbox", { name: "質問の範囲" });
   const active = picker.locator("[role=option].act");
-  await expect.poll(async () => Number(await picker.getByRole("option").first().getAttribute("aria-setsize"))).toBeGreaterThan(200);
 
   // A row cut by the top edge: scrolling it into view would move the list.
   const box = (await listbox.boundingBox())!;
@@ -263,116 +274,76 @@ test("in the chat scope the mouse moves the highlight but never the list, nor ta
   expect(await active.getAttribute("aria-posinset"), "20 options on from 全記事, the 3rd").toBe("23");
 });
 
-test("the highlighted scope stays the one Enter picks when options are added above it while the list is open", async ({ app }) => {
+test("an open scope list holds still while the library changes, and lists the change from its next opening", async ({ app }) => {
+  const tag = (ids: number[], name: string) =>
+    app.evaluate(
+      async ({ ids, name }) => {
+        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+        for (const id of ids) {
+          await invoke("add_tag", { id, name });
+        }
+        await window.__e2e.emit("article-changed", ids[0]);
+      },
+      { ids, name },
+    );
+  await tag([ARTICLES[0].id], "solo");
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const picker = scopeDialog(app);
+  await openScopeUntil(app, async () => {
+    await picker.getByRole("combobox", { name: "範囲を検索" }).fill("solo");
+    await expect(picker.getByRole("option", { name: "#solo(1件)" })).toHaveCount(1, { timeout: 1000 });
+  });
+  await app.keyboard.press("Escape");
+  await pickScope(app, "#solo(1件)");
   const active = picker.locator("[role=option].act");
   await chatScope(app).click();
   await picker.getByRole("combobox", { name: "範囲を検索" }).fill("#");
   await app.keyboard.press("ArrowDown");
   await app.keyboard.press("ArrowDown");
   const chosen = (await active.textContent())!;
-  const at = Number(await active.getAttribute("aria-posinset"));
-  // A tag on every article lists first: the mock sorts tags by count.
-  await app.evaluate(
-    async (ids) => {
-      const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-      for (const id of ids) {
-        await invoke("add_tag", { id, name: "everywhere" });
-      }
-      await window.__e2e.emit("article-changed", ids[0]);
-    },
+  const at = await active.getAttribute("aria-posinset");
+  const size = await setSize(app);
+
+  // A tag on every article would list first (the mock sorts tags by count), and #solo gains an article.
+  await tag(
     ARTICLES.map((a) => a.id),
+    "everywhere",
   );
-  await expect(picker.getByRole("option", { name: /^#everywhere/ })).toHaveCount(1);
+  await tag([ARTICLES[1].id], "solo");
+  await expect(chatScope(app), "the chip shows the change").toHaveText("#solo(2件)");
+  await expect(picker.getByRole("option", { name: /^#everywhere/ })).toHaveCount(0);
+  expect(await setSize(app)).toBe(size);
   await expect(active).toHaveText(chosen);
-  await expect(active, "the new tag listed above it").toHaveAttribute("aria-posinset", String(at + 1));
+  await expect(active).toHaveAttribute("aria-posinset", at!);
   await app.keyboard.press("Enter");
   await expect(chatScope(app)).toHaveText(chosen);
+
+  await chatScope(app).click();
+  await expect(picker.getByRole("option", { name: /^#everywhere/ })).toHaveCount(1);
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill("solo");
+  await expect(picker.getByRole("option", { name: "#solo(2件)" })).toHaveCount(1);
 });
 
-test("Enter picks nothing once the highlighted scope can no longer be picked", async ({ app }) => {
-  const c = ARTICLES[2];
-  await app.evaluate((d) => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [d] }), { id: c.id, title: c.title! });
-  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  await chatScope(app).click();
-  const picker = scopeDialog(app);
+test("the chat scope says it is loading until the library has, with the search taking what is typed", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["list_tags"];
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await expect(chatScope(shell), "the chip names the scope meanwhile").toHaveText("全記事");
+  await chatScope(shell).click();
+  const picker = scopeDialog(shell);
+  const search = picker.getByRole("combobox", { name: "範囲を検索" });
+  await expect(picker.getByText("読み込み中…")).toBeVisible();
+  await expect(picker.getByRole("option")).toHaveCount(0);
+  await expect(search).toBeFocused();
+  await shell.keyboard.type("kaf");
+  await shell.evaluate(() => window.__e2e.release("list_tags"));
   const active = picker.locator("[role=option].act");
-  await expect(active).toHaveAccessibleName("全記事");
-  await app.keyboard.press("ArrowUp");
-  await expect(active).toHaveAccessibleName("開いている記事すべて(1件)");
-  await app.evaluate(() => window.__e2e.emit("main-request", { kind: "openDocs", label: "doc-1", docs: [] }));
-  await expect(picker.getByRole("option", { name: "開いている記事すべて(0件)" })).toBeDisabled();
-  await expect(active, "no other scope takes its place").toHaveCount(0);
-  await app.keyboard.press("Enter");
-  await expect(picker).toBeVisible();
-  await expect(chatScope(app)).toHaveText("全記事");
-});
-
-test("the scope in use going away while the list is open leaves nothing for Enter to pick", async ({ app }) => {
-  const id = ARTICLES[0].id;
-  const solo = (cmd: "add_tag" | "remove_tag") =>
-    app.evaluate(
-      async ({ cmd, id }) => {
-        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-        await invoke(cmd, { id, name: "solo" });
-        await window.__e2e.emit("article-changed", id);
-      },
-      { cmd, id },
-    );
-  await solo("add_tag");
-  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  await pickScope(app, "#solo(1件)");
-  await chatScope(app).click();
-  const picker = scopeDialog(app);
-  const active = picker.locator("[role=option].act");
-  await expect(active).toHaveAccessibleName("#solo(1件)");
-  await solo("remove_tag");
-  await expect(picker.getByRole("option", { name: "#solo(1件)" })).toHaveCount(0);
-  await expect(active, "not 全記事, which the user did not move to").toHaveCount(0);
-  await expect(picker.getByRole("combobox", { name: "範囲を検索" })).not.toHaveAttribute("aria-activedescendant");
-  await app.keyboard.press("Enter");
-  await expect(picker).toBeVisible();
-  await expect(chatScope(app)).toHaveText("#solo(1件)");
-});
-
-test("after the highlighted scope goes, the arrows go on from where it was", async ({ app }) => {
-  const id = ARTICLES.at(-1)!.id;
-  const tags = (cmd: "add_tag" | "remove_tag", names: string[]) =>
-    app.evaluate(
-      async ({ cmd, id, names }) => {
-        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
-        await Promise.all(names.map((name) => invoke(cmd, { id, name })));
-        await window.__e2e.emit("article-changed", id);
-      },
-      { cmd, id, names },
-    );
-  await tags(
-    "add_tag",
-    Array.from({ length: 200 }, (_, i) => `zz-${String(i).padStart(4, "0")}`),
-  );
-  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  await chatScope(app).click();
-  const picker = scopeDialog(app);
-  const active = picker.locator("[role=option].act");
-  await expect.poll(async () => Number(await picker.getByRole("option").first().getAttribute("aria-setsize"))).toBeGreaterThan(200);
-  for (let i = 0; i < 8; i++) {
-    await app.keyboard.press("PageDown");
-  }
-  const pos = Number(await active.getAttribute("aria-posinset"));
-  const gone = (await active.textContent())!.replace(/^#/, "").replace(/\(.*$/, "");
-  await tags("remove_tag", [gone]);
-  await expect(active).toHaveCount(0);
-  await app.keyboard.press("ArrowDown");
-  await expect(active, "the option after it, now in its place").toHaveAttribute("aria-posinset", String(pos));
-  await expect(active).toBeInViewport();
-
-  const next = (await active.textContent())!.replace(/^#/, "").replace(/\(.*$/, "");
-  await tags("remove_tag", [next]);
-  await expect(active).toHaveCount(0);
-  await app.keyboard.press("ArrowUp");
-  await expect(active, "the option before it").toHaveAttribute("aria-posinset", String(pos - 1));
-  await expect(active).toBeInViewport();
+  await expect(active).toHaveAccessibleName(/kafka/i);
+  await shell.keyboard.press("Enter");
+  await expect(chatScope(shell)).toHaveText(/kafka/i);
 });
 
 test("a scope the user picked stays when an article opens", async ({ app }) => {
@@ -416,8 +387,7 @@ test("the chat scope lists thousands of tags while drawing only the ones in view
   const picker = scopeDialog(app);
   const options = picker.getByRole("option");
   const active = picker.locator("[role=option].act");
-  await scope.click();
-  await expect.poll(async () => Number(await options.first().getAttribute("aria-setsize")), "every tag is an option").toBeGreaterThan(2000);
+  await openScopeUntil(app, async () => expect(await setSize(app), "every tag is an option").toBeGreaterThan(2000));
   expect(await options.count()).toBeLessThan(60);
 
   for (let i = 0; i < 15; i++) {

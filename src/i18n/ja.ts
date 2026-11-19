@@ -639,6 +639,7 @@ export const ja = {
   "facetPopover.hintRemoveLast": " 最後を解除",
   "facetPopover.searchPlaceholder": "{n}タグを検索…",
   "pickList.none": "該当なし",
+  "pickList.loading": "読み込み中…",
   "listPane.savedDesc": "追加日・新しい順",
   "listPane.savedAsc": "追加日・古い順",
   "listPane.publishedDesc": "公開日・新しい順",

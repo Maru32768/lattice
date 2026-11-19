@@ -10,6 +10,7 @@ type Count = { name: string; count: number };
  */
 export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
+  /** Every read of a refresh has landed, or one failed. */
   const [loaded, setLoaded] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   /** Feed folders (H25), in the user's order. */
@@ -36,7 +37,6 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
         }
         setNow(Date.now());
         setArticles(a);
-        setLoaded(true);
       }),
       api.listFeeds().then(setFeeds),
       api.listFeedFolders().then(setFolders),
@@ -44,7 +44,9 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
       api.listGenres().then(setGenres),
       api.listGroups().then(setGroupRows),
       api.relevanceStatus().then(setRelevance),
-    ]).catch(fail);
+    ])
+      .catch(fail)
+      .finally(() => setLoaded(true));
   };
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
