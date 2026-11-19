@@ -72,14 +72,18 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await app.keyboard.press("ArrowDown");
   await expect(opts.nth(1)).toHaveClass(/\bact\b/);
   const second = (await opts.nth(1).locator(".opt-l").textContent())!;
-  const labels = await opts.locator(".opt-l").allTextContents();
 
   await app.keyboard.press("Space");
   await expect(listCount(app)).toHaveText(`${tagged(second).length} / ${all}`);
-  const together = labels.map((l) => tagged(second).filter((a) => a.tags.includes(l)).length);
-  await expect(opts.locator(".c"), "every count is now the articles that also have the picked tag").toHaveText(together.map(String));
-  expect(together).toContain(0);
-  await expect(opts.nth(together.indexOf(0)), "a tag no such article has is faint").toHaveClass(/\bzero\b/);
+  const together = (l: string) => String(tagged(second).filter((a) => a.tags.includes(l)).length);
+  // Labels and counts read at once: Virtuoso may still be drawing more rows.
+  await expect(async () => {
+    const labels = await opts.locator(".opt-l").allTextContents();
+    expect(await opts.locator(".c").allTextContents(), "every count is now the articles that also have the picked tag").toEqual(labels.map(together));
+  }).toPass({ timeout: 15_000 });
+  const none = (await opts.locator(".opt-l").allTextContents()).findIndex((l) => together(l) === "0");
+  expect(none).toBeGreaterThanOrEqual(0);
+  await expect(opts.nth(none), "a tag no such article has is faint").toHaveClass(/\bzero\b/);
   await expect(opts.nth(1), "a picked tag stays in its row, checked").toHaveAttribute("aria-selected", "true");
   await expect(opts.nth(1).locator(".opt-l")).toHaveText(second);
   await expect(opts.nth(1)).toHaveClass(/\bact\b/);
