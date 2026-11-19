@@ -322,7 +322,9 @@ const UNITS: [&str; 20] = [
     "nineteen",
 ];
 const TENS: [&str; 8] = ["twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-const ORDINALS: [&str; 12] = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth", "eleventh", "twelfth"];
+/// The ordinals that are not their cardinal with `th` (`fourth`) or with `y` for `ieth` (`twentieth`).
+const ORDINALS: [(&str, &str); 7] =
+    [("first", "one"), ("second", "two"), ("third", "three"), ("fifth", "five"), ("eighth", "eight"), ("ninth", "nine"), ("twelfth", "twelve")];
 const MONTHS: [&str; 12] = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 /// Words that stand for a number on their own: `a day` for 1日, `twice` for 2倍.
 const SINGLES: [(&str, u128); 11] =
@@ -334,45 +336,78 @@ fn cardinal(w: &str) -> Option<u128> {
     at(&UNITS).or_else(|| at(&TENS).map(|i| 20 + 10 * i))
 }
 
-/// The value of a word alone: a number word, an ordinal, a month or its abbreviation, or one of `SINGLES`.
+fn scale(w: &str) -> Option<i32> {
+    SCALES.iter().find(|(s, _)| *s == w).map(|(_, p)| *p)
+}
+
+/// The value of a word alone: a number word, a month or its abbreviation, or one of `SINGLES`.
 fn word_value(w: &str) -> Option<u128> {
     let at = |list: &[&str]| list.iter().position(|x| *x == w);
     let short = |list: &[&str]| (w.len() == 3).then(|| list.iter().position(|x| x.starts_with(w))).flatten();
-    cardinal(w)
-        .or_else(|| at(&ORDINALS).or_else(|| at(&MONTHS)).or_else(|| short(&MONTHS)).map(|i| i as u128 + 1))
-        .or_else(|| SINGLES.iter().find(|(s, _)| *s == w).map(|(_, v)| *v))
+    cardinal(w).or_else(|| at(&MONTHS).or_else(|| short(&MONTHS)).map(|i| i as u128 + 1)).or_else(|| SINGLES.iter().find(|(s, _)| *s == w).map(|(_, v)| *v))
 }
 
-/// The values of English number words: each word alone, and runs read whole (`twenty-seven`, `three hundred`,
-/// `four million`, `three hundred and five`, `three and a half`). A run ends at anything but one space or hyphen
-/// between its words, and at `and` unless a scale word comes before it.
-fn words(cs: &[char]) -> Vec<Dec> {
-    let mut words: Vec<(usize, String)> = Vec::new();
+/// A word of `cs`: where it starts and ends, and its text in lowercase.
+type Word = (usize, usize, String);
+
+fn word_list(cs: &[char]) -> Vec<Word> {
+    let mut words = Vec::new();
     let mut i = 0;
     while i < cs.len() {
         if cs[i].is_ascii_alphabetic() && (i == 0 || !cs[i - 1].is_ascii_alphabetic()) {
             let w = word_at(cs, i);
-            let len = w.len();
-            words.push((i, w.to_ascii_lowercase()));
-            i += len;
+            let end = i + w.len();
+            words.push((i, end, w.to_ascii_lowercase()));
+            i = end;
         } else {
             i += 1;
         }
     }
+    words
+}
+
+/// Whether word `k` follows word `k - 1` after one space or hyphen, so that both may be one number.
+fn joined(cs: &[char], words: &[Word], k: usize) -> bool {
+    k > 0 && words[k].0 == words[k - 1].1 + 1 && matches!(cs[words[k].0 - 1], ' ' | '-')
+}
+
+/// `words` with ordinals and `Xfold` as their cardinal (`twenty-first` as twenty-one, `tenfold` as ten) and `a` before a
+/// scale word as `one` (`a hundred thousand`). Each word keeps its place, so the runs join as written.
+fn respelled(words: &[Word]) -> Vec<Word> {
+    let respell = |k: usize, w: &str| {
+        if let Some((_, c)) = ORDINALS.iter().find(|(o, _)| *o == w) {
+            return Some((*c).to_string());
+        }
+        if w == "a" && words.get(k + 1).is_some_and(|next| scale(&next.2).is_some()) {
+            return Some("one".into());
+        }
+        // Any other word loses its `th` or `fold` too: a stem that is no number word (`mon` of `month`) reads as nothing, as
+        // the word did.
+        w.strip_suffix("ieth").map(|stem| format!("{stem}y")).or_else(|| w.strip_suffix("th").or_else(|| w.strip_suffix("fold")).map(str::to_string))
+    };
+    words.iter().enumerate().map(|(k, (start, end, w))| (*start, *end, respell(k, w).unwrap_or_else(|| w.clone()))).collect()
+}
+
+/// The values of English number words, read as written and respelled: each word alone, and runs read whole
+/// (`twenty-seven`, `three hundred`, `four million`, `three hundred and five`, `three and a half`).
+fn words(cs: &[char]) -> Vec<Dec> {
+    let list = word_list(cs);
+    let respelled = respelled(&list);
+    [list, respelled].iter().flat_map(|list| read_words(cs, list)).collect()
+}
+
+/// The values of `words`. A run ends at anything but one space or hyphen between its words, and at `and` unless a scale
+/// word comes before it.
+fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
     let mut out = Vec::new();
     // The run's total up to its last scale word, the part since, and that scale word's power.
     let mut run: Option<(Dec, Dec, i32)> = None;
-    for (k, (at, w)) in words.iter().enumerate() {
-        let joined = k > 0 && {
-            let (prev_at, prev) = &words[k - 1];
-            *at == prev_at + prev.len() + 1 && matches!(cs[at - 1], ' ' | '-')
-        };
-        if !joined {
+    for (k, (_, _, w)) in words.iter().enumerate() {
+        if !joined(cs, words, k) {
             out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur)));
         }
         let unit = cardinal(w);
-        let scale = SCALES.iter().find(|(s, _)| s == w).map(|(_, p)| *p);
-        match (unit, scale, run) {
+        match (unit, scale(w), run) {
             (Some(n), _, _) => {
                 let (total, cur, last) = run.unwrap_or((Dec::ZERO, Dec::ZERO, i32::MAX));
                 // A word goes on the number only where one can (after hundreds or a scale word, a unit after a ten);
@@ -400,11 +435,11 @@ fn words(cs: &[char]) -> Vec<Dec> {
             (_, Some(p), Some((total, cur, _))) => run = total.plus(cur.shifted(p)).map(|t| (t, Dec::ZERO, p)),
             (_, Some(p), None) => out.push(Dec::int(1).shifted(p)),
             (None, None, Some((total, cur, _))) if w == "and" => {
-                let half = words.get(k + 1).zip(words.get(k + 2)).is_some_and(|((_, a), (_, h))| a == "a" && h == "half");
+                let half = words.get(k + 1).zip(words.get(k + 2)).is_some_and(|((_, _, a), (_, _, h))| a == "a" && h == "half");
                 if half {
                     out.extend(total.plus(cur).and_then(|v| v.plus(Dec::new(5, -1))));
                 }
-                if !SCALES.iter().any(|(s, _)| *s == words[k - 1].1) {
+                if scale(&words[k - 1].2).is_none() {
                     out.extend(total.plus(cur));
                     run = None;
                 }
@@ -561,6 +596,35 @@ mod tests {
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
         assert_eq!(check("0.25ポイント", "a quarter percentage point"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn ordinals_xfold_and_a_before_a_scale_word_read_as_their_cardinals() {
+        for (summary, article) in [
+            ("1位", "in first place"),
+            ("2位", "came second"),
+            ("3位", "came third"),
+            ("4番目", "the fourth"),
+            ("5番目", "the fifth"),
+            ("8番目", "the eighth"),
+            ("9番目", "the ninth"),
+            ("12番目", "the twelfth"),
+            ("13位", "the thirteenth place"),
+            ("20回目", "the twentieth time"),
+            ("21世紀", "the twenty-first century"),
+            ("121番目", "the one hundred twenty-first entry"),
+            ("100周年", "its hundredth anniversary"),
+            ("1000人目", "the thousandth user"),
+            ("100万人目", "the millionth user"),
+            ("10倍", "a tenfold rise"),
+            ("3倍", "grew threefold"),
+            ("100倍", "a hundredfold"),
+            ("10万人", "a hundred thousand users"),
+            ("1,500件", "a thousand five hundred rows"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("21件", "twenty a day"), ["21"], "a is one only before a scale word");
     }
 
     #[test]
