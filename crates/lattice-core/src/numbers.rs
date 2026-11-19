@@ -536,7 +536,7 @@ fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
         if cardinal(left[0]).is_none() || !left.iter().all(|w| cardinal(w).is_some() || scale(w) == Some(2)) {
             continue;
         }
-        let between = l > 0 && words[l - 1].2 == "between";
+        let between = l > 0 && words[l - 1].2 == "between" && joined(cs, words, l);
         for r in [k + 1, k + 2] {
             let Some(start) = words.get(r).map(|w| w.0) else {
                 continue;
@@ -954,6 +954,7 @@ mod tests {
             ("5億", "500-1 million users", "no larger than the right end"),
             ("300万", "three, four million users", "a comma is no range"),
             ("300万", "three and four million users", "and only after between"),
+            ("200万", "in between. Two and three million users", "and only right after between"),
             ("2000万", "twenty-one million users", "no larger than the right end"),
             ("0", "five hundred thousand to one million users", "no thousand in the left end"),
             ("1000", "a hundred to two hundred thousand users", "the left end starts with a number word"),
