@@ -103,7 +103,10 @@ impl Article {
         let mut values = HashSet::new();
         for text in texts {
             let cs = folded(text);
-            let mentions = mentions(&cs);
+            let mut mentions = mentions(&cs);
+            for m in &mut mentions {
+                m.others.extend(any_case_suffix(&cs, m.start).map(Num::Dec));
+            }
             values.extend(fractions(&cs, &mentions).map(Num::Dec));
             values.extend(mentions.into_iter().flat_map(|m| std::iter::once(m.value).chain(m.others)));
             // An en dash writes a range, never one number: five hundred–one thousand is not 501,000.
@@ -282,6 +285,29 @@ fn scale_after(cs: &[char], end: usize) -> Option<(i32, usize)> {
         w => SCALES.iter().find(|(s, _)| s.eq_ignore_ascii_case(w))?.1,
     };
     Some((places, at + word.len()))
+}
+
+/// The value of the digits from `start`, without what follows them, and where they end.
+fn token_at(cs: &[char], start: usize) -> (usize, Option<Dec>) {
+    let (end, token) = digits_at(cs, start);
+    let value = match read(&token).0 {
+        Num::Dec(d) => Some(d),
+        Num::Text(_) => None,
+    };
+    (end, value)
+}
+
+/// The digits from `start` with an `m`, `mn`, `b` or `bn` suffix in any case (`$5m`, `1.2Bn`). Only the article reads
+/// these: a summary's `5m` may be five metres.
+fn any_case_suffix(cs: &[char], start: usize) -> Option<Dec> {
+    let (end, value) = token_at(cs, start);
+    let at = end + usize::from(cs.get(end) == Some(&' '));
+    let places = match word_at(cs, at).to_ascii_lowercase().as_str() {
+        "m" | "mn" => 6,
+        "b" | "bn" => 9,
+        _ => return None,
+    };
+    Some(value?.shifted(places))
 }
 
 /// `a/b` and `n a/b` (`1/2`, `3 1/2`) among `mentions`.
@@ -572,6 +598,16 @@ mod tests {
         assert_eq!(check("16GBと10MB", "16 GB and 10 MB"), Vec::<String>::new(), "a unit's letters are not a suffix");
         assert_eq!(check("1.5M件", "took 1.5 seconds"), ["1.5M"], "the suffix is part of the value");
         assert_eq!(check("1万3千行", "13 thousand lines"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_articles_m_and_b_suffixes_count_in_any_case() {
+        for (summary, article) in
+            [("500万ドル", "$5m"), ("500万ドル", "$5 m"), ("500万ドル", "$5Mn"), ("12億ドル", "$1.2b"), ("12億ドル", "$1.2Bn"), ("12億ドル", "$1.2BN")]
+        {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("5mの距離", "5000000 users"), ["5"], "a summary's 5m stays five metres");
     }
 
     #[test]
