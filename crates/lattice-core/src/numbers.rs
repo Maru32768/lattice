@@ -1031,6 +1031,7 @@ mod tests {
             ("300万～400万人", "三四百万人"),
             ("12～13人", "十二三人"),
             ("20～30人", "二三十人"),
+            ("1万2000～1万3000人", "一万二三千人"),
             ("1999年", "一九九九年"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
