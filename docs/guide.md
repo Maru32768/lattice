@@ -488,6 +488,7 @@ The article list shows the list chosen in the navigation, narrowed by the filter
 - **Status** has the values **Unread**, **Read**, **Favorites** and **Needs attention**. **Needs attention** covers articles whose fetch or text extraction failed and articles with little text.
 - Choosing several values in one filter shows articles that match any of them (OR). Different filters show articles that match all of them (AND).
 - Only for tags can you choose **All of them** (AND) or **Any of them** (OR).
+- **Tags** lists every tag in the current list, most used first. Type to search; tags outside the list come after the others. A tag you choose stays where it is, checked.
 - The counts next to the values are counts within the current list.
 
 Each list keeps its own filters on this computer. When you choose a list in the navigation, the filters you last used in that list come back, even after you start Lattice again. `Esc` clears the current list's filters. You can also add filters from the palette (see [The command palette](#the-command-palette)).
