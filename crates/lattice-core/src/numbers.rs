@@ -368,7 +368,14 @@ fn words(cs: &[char]) -> Vec<Dec> {
         match (unit, scale, run) {
             (Some(n), _, _) => {
                 let (total, cur) = run.unwrap_or((Dec::ZERO, Dec::ZERO));
-                run = cur.plus(Dec::int(n)).map(|cur| (total, cur));
+                // A word goes on the number only where one can (after hundreds or a scale word, a unit after a ten);
+                // elsewhere it starts a new one, so three-four million is 3 and 4 million, not 7 million.
+                if cur.whole().is_some_and(|c| c % 100 == 0 || (c % 100 >= 20 && c % 10 == 0 && n < 10)) {
+                    run = cur.plus(Dec::int(n)).map(|cur| (total, cur));
+                } else {
+                    out.extend(total.plus(cur));
+                    run = Some((Dec::ZERO, Dec::int(n)));
+                }
             }
             (_, Some(2), Some((total, cur))) => run = Some((total, cur.shifted(2))),
             (_, Some(p), Some((total, cur))) => run = total.plus(cur.shifted(p)).map(|t| (t, Dec::ZERO)),
@@ -493,6 +500,13 @@ mod tests {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("7百万人", "three, four million customers"), ["7百万"], "three, four million is not seven million");
+        for (summary, article) in
+            [("3〜4百万人", "three\u{2013}four million customers"), ("400万人", "three-four million customers"), ("300人", "two three hundred people")]
+        {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("7百万人", "three\u{2013}four million customers"), ["7百万"], "a range of words is not their sum");
+        assert_eq!(check("123人と1,200件", "one hundred twenty-three people, one thousand two hundred rows"), Vec::<String>::new());
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
         assert_eq!(check("0.25ポイント", "a quarter percentage point"), Vec::<String>::new());
