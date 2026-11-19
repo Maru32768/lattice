@@ -577,7 +577,7 @@ Open the chat pane with **Chat** in the navigation, type a question and send it 
 
 Choose the limit per question in **Context per question** in **Settings › Summaries & chat**: **Small (about 40,000 characters)**, **Standard (about 80,000 characters)** or **Large (about 150,000 characters)**. More context lets the answer draw on more articles, but each question costs more and takes longer.
 
-**The AI that answers.** The button left of **Send** shows the AI that answers in this chat. Click it to choose the provider, model and effort. For a model that is not listed, choose **Custom model ID** under the provider and type its ID in the box that appears beside the button. **Default (AI providers in Settings)** uses the steps in **Settings › AI providers**. With any other choice, only that AI answers. If it fails, Lattice does not move on to another AI. Lattice saves the choice with the chat when an answer comes back, and brings it back when you open the chat again. A new chat starts on the default.
+**The AI that answers.** The button to the left of **Send** shows which AI answers in this chat. Click it to choose the provider, model and effort. For a model that is not listed, choose **Custom model ID** under the provider and type its ID in the box that appears beside the button. **Default (AI providers in Settings)** uses the steps in **Settings › AI providers**. With any other choice, only that AI answers. If that AI fails, Lattice does not move on to another AI. Lattice saves the choice with the chat when an answer comes back, and restores it when you reopen the chat. A new chat starts on the default.
 
 **Conversations.**
 
