@@ -324,6 +324,38 @@ test("an open scope list holds still while the library changes, and lists the ch
   await expect(picker.getByRole("option", { name: "#solo(2件)" })).toHaveCount(1);
 });
 
+test("a scope picked from the open list after it left the library is the one the chip names and the question asks over", async ({ app }) => {
+  const id = ARTICLES[0].id;
+  const solo = (cmd: "add_tag" | "remove_tag") =>
+    app.evaluate(
+      async ({ cmd, id }) => {
+        const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args?: unknown) => Promise<unknown> } }).__TAURI_INTERNALS__;
+        await invoke(cmd, { id, name: "solo" });
+        await window.__e2e.emit("article-changed", id);
+      },
+      { cmd, id },
+    );
+  await solo("add_tag");
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const picker = scopeDialog(app);
+  const option = picker.getByRole("option", { name: "#solo(1件)" });
+  await openScopeUntil(app, async () => {
+    await picker.getByRole("combobox", { name: "範囲を検索" }).fill("solo");
+    await expect(option).toHaveCount(1, { timeout: 1000 });
+  });
+  const reads = (await callsOf(app, "list_tags")).length;
+  await solo("remove_tag");
+  await expect.poll(async () => (await callsOf(app, "list_tags")).length).toBeGreaterThan(reads);
+  await app.waitForTimeout(300);
+  await expect(option, "still listed while open").toHaveCount(1);
+  await app.keyboard.press("Enter");
+  await expect(chatScope(app)).toHaveText("#solo(1件)");
+  const q = app.locator("#chat-q");
+  await q.fill("これは？");
+  await q.press("Control+Enter");
+  await expect.poll(() => askedScopes(app)).toEqual([{ kind: "filter", filter: { kind: "tag", name: "solo" } }]);
+});
+
 test("the chat scope says it is loading until the library has, with the search taking what is typed", async ({ shell }) => {
   await shell.addInitScript(() => {
     window.__e2eHold = ["list_tags"];

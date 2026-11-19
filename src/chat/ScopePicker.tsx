@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Popover } from "../ui/Popover";
 import { PickList } from "../ui/PickList";
-import { filterSections, labelOf, type PickSection } from "../ui/pickRows";
+import { filterSections, labelOf, type PickOption, type PickSection } from "../ui/pickRows";
 import { Icon } from "../ui/Icon";
 import { useT } from "../i18n";
 
@@ -54,9 +54,11 @@ export function ScopePicker({
           sections={loading ? null : sections}
           value={value}
           onClose={() => setAnchor(null)}
-          onPick={(key) => {
+          onPick={(o) => {
             setAnchor(null);
-            onChange(key);
+            // Picked from the held options: it may have left the live ones, which then cannot name it.
+            setKept(o.label);
+            onChange(o.key);
           }}
         />
       )}
@@ -76,7 +78,7 @@ function ScopeList({
   /** Null while they load. */
   sections: PickSection[] | null;
   value: string;
-  onPick: (key: string) => void;
+  onPick: (o: PickOption) => void;
   onClose: () => void;
 }) {
   const t = useT();
@@ -95,7 +97,7 @@ function ScopeList({
         onQuery={setQ}
         sections={held && filterSections(held, q)}
         selected={value}
-        onPick={(o) => onPick(o.key)}
+        onPick={onPick}
       />
     </Popover>
   );
