@@ -120,6 +120,7 @@ test("a click on a tag leaves every row and the popover where they were, down th
   // Placed: Radix parks a popover above the window until it has measured it.
   await expect(pv).toBeInViewport();
   const { x, y } = (await pv.boundingBox())!;
+  const chip = (await list(app).getByRole("button", { name: "タグ", exact: true }).boundingBox())!;
   // Off the top, where a list drawn anew would scroll back.
   await app.keyboard.press("PageDown");
   for (let i = 0; i < 6; i++) {
@@ -133,6 +134,8 @@ test("a click on a tag leaves every row and the popover where they were, down th
     expect((await pv.boundingBox())!, "the popover stays where it opened").toMatchObject({ x, y });
     await app.keyboard.press("ArrowDown");
   }
+  const moved = (await list(app).locator(".chip.on", { hasText: "タグ" }).boundingBox())!;
+  expect(moved, "the picks moved the tag chip").not.toMatchObject({ x: chip.x, y: chip.y });
   const lines = await pv.locator(".pv-chips .chip").evaluateAll((cs) => new Set(cs.map((c) => c.getBoundingClientRect().top)).size);
   expect(lines, "the chosen tags took a second line").toBeGreaterThan(1);
 });
