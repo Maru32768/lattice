@@ -387,8 +387,9 @@ fn separates(gap: &str, between: bool) -> bool {
     }
 }
 
-/// A range's left end with the scale its right end writes: 3,000,000 in `3-4 million`, `3～4万`, `$3-$4M` and
-/// `between 3 and 4 billion`. The right end has a scale where its value is its own digits shifted.
+/// A range's left end with the scale its right end writes: 3 as 3,000,000 in `3-4 million` and `$3-$4M`, as 30,000 in
+/// `3～4万`, as 3,000,000,000 in `between 3 and 4 billion`. The right end has a scale where its value is its own digits
+/// shifted.
 fn ranges(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
     let mut out = Vec::new();
     for w in mentions.windows(2) {
