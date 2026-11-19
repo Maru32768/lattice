@@ -497,7 +497,7 @@ test("at the pane's narrowest, the send row fits Vim's mode, a long model ID and
   const row = shell.locator(".chat-f-row");
   expect(await row.evaluate((e) => e.scrollWidth - e.clientWidth)).toBe(0);
   const send = (await row.getByRole("button", { name: "送信" }).boundingBox())!;
-  const box = (await row.boundingBox())!;
+  const box = (await shell.locator(".chat").boundingBox())!;
   expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
 });
 
