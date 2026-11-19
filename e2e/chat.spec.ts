@@ -585,6 +585,7 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   // Another provider starts on its own defaults and offers only the efforts it takes.
   await choose(["Gemini API"], "その他(モデルIDを入力)");
   await expect(modelId, "the ID typed for Claude CLI stays with it").toHaveValue("");
+  await expect(modelId, "the new provider's ID can be typed right away").toBeFocused();
   await expect(ai).toHaveText("Gemini API");
   await ai.click();
   await app.getByRole("menuitem", { name: "Gemini API", exact: true }).click();

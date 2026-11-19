@@ -368,6 +368,8 @@ export function ChatPane({
             {vimOn && <VimMode mode={vimMode} />}
             {choice?.custom && (
               <input
+                // Mounted again for another provider, so its emptied box takes the keyboard as the first pick's did.
+                key={choice.kind}
                 className="input sm mono"
                 value={choice.model}
                 onChange={(e) => setChoice({ ...choice, model: e.target.value })}
