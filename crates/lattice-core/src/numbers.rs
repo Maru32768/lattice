@@ -1045,7 +1045,7 @@ mod tests {
     #[test]
     fn long_runs_of_number_words_groups_and_kanji_pairs_read_in_linear_time() {
         // Read again from each word, group or pair, each of these took from 24 s to a minute in a debug build.
-        for (unit, times) in [("one-", 3_000), ("one ", 16_000), (" 000", 16_000), ("一二十", 3_000)] {
+        for (unit, times) in [("one-", 3_000), ("one ", 16_000), (" 000", 16_000), ("一二十", 6_000)] {
             let text = format!("1{}", unit.repeat(times));
             let started = std::time::Instant::now();
             Article::new([text.as_str()]);
