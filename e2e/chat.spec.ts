@@ -218,6 +218,12 @@ test("in the chat scope the arrows pass over headings and disabled options, a se
   await expect(picker.locator("mark")).toHaveText("kaf");
   await expect(picker.getByText("タグ", { exact: true })).toBeVisible();
   await expect(picker.getByText("グループ", { exact: true }), "a section with no match goes").toHaveCount(0);
+  const box = (await search.boundingBox())!;
+  await search.click({ position: { x: 1, y: box.height / 2 } });
+  await app.keyboard.type("#");
+  await expect(search, "a click in the search puts the caret where it lands").toHaveValue("#KAF");
+  await search.dblclick();
+  expect(await search.evaluate((e: HTMLInputElement) => [e.selectionStart, e.selectionEnd]), "a double click selects a word").toEqual([1, 4]);
   await search.fill("no such scope");
   await expect(options).toHaveCount(0);
   await expect(picker.getByText("該当なし")).toBeVisible();
