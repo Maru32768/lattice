@@ -464,6 +464,10 @@ mod tests {
         assert_eq!(block("About").text, "About 10⁶ requests, 2⁻¹⁰ of them slow, at 9.8 m/s², from Na⁺.");
         assert_eq!(block("On the").text, "On the 1st try, as Wikipedia says.[3] 約2千¹人が参加した。", "letters and brackets stay as written");
         assert_eq!(block("Year").text, "Year\tUsers\n2019\t1,129²");
+
+        let article = crate::numbers::Article::new(ir.blocks.iter().map(|b| b.text.as_str()));
+        let flagged = crate::numbers::unverified("2019年に始まり、利用者は1,129人、約2千人が参加した", &article);
+        assert!(flagged.is_empty(), "a summary that copies the numbers the footnotes follow: {flagged:?}");
     }
 
     #[test]
