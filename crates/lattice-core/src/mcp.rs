@@ -166,6 +166,22 @@ mod tests {
     }
 
     #[test]
+    fn edits_at_the_same_time_lose_none() {
+        let s = store();
+        std::thread::scope(|scope| {
+            for t in 0..8 {
+                let s = &s;
+                scope.spawn(move || {
+                    for i in 0..10 {
+                        edit(s, &Edit::Create { name: format!("{t}-{i}"), role: Role::Read }).unwrap();
+                    }
+                });
+            }
+        });
+        assert_eq!(registrations(&s).unwrap().len(), 80);
+    }
+
+    #[test]
     fn the_server_is_off_until_switched_on() {
         let s = store();
         assert!(!enabled(&s).unwrap());
