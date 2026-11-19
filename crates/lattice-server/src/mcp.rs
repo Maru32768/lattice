@@ -172,13 +172,19 @@ pub struct Message {
 }
 
 impl Message {
-    /// `Err` is the reply to send instead: -32700 for what is not JSON, -32600 for a batch or a bare value.
+    /// `Err` is the reply to send instead: -32700 for what is not JSON, -32600 for a batch, a bare value, or a message
+    /// that is neither a request nor a client's answer (which alone comes without a method).
     pub fn parse(bytes: &[u8]) -> Result<Message, Value> {
         let value: Value = serde_json::from_slice(bytes).map_err(|e| error(Value::Null, -32700, &e.to_string()))?;
         let Value::Object(mut m) = value else {
             return Err(error(Value::Null, -32600, "invalid request"));
         };
-        let method = m.remove("method").and_then(|v| v.as_str().map(str::to_owned));
+        let answer = m.contains_key("result") || m.contains_key("error");
+        let method = match m.remove("method") {
+            Some(Value::String(method)) => Some(method),
+            None if answer => None,
+            _ => return Err(error(m.remove("id").unwrap_or(Value::Null), -32600, "invalid request")),
+        };
         Ok(Message { id: m.remove("id"), method, params: m.remove("params").unwrap_or(Value::Null) })
     }
 
@@ -335,6 +341,10 @@ mod tests {
             assert_eq!((r["error"]["code"].clone(), r["id"].clone()), (json!(-32600), Value::Null), "{line}");
         }
         assert_eq!(reply("{", Role::Read).unwrap()["error"]["code"], -32700);
+        for (line, id) in [(r#"{"jsonrpc":"2.0","id":1,"method":5}"#, json!(1)), (r#"{"jsonrpc":"2.0","id":2}"#, json!(2))] {
+            let r = reply(line, Role::Read).unwrap_or_else(|| panic!("{line} left its client waiting"));
+            assert_eq!((r["error"]["code"].clone(), r["id"].clone()), (json!(-32600), id), "{line}");
+        }
     }
 
     #[test]
