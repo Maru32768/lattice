@@ -118,8 +118,10 @@ test("the Reader's group picker opens under its chip, and moves with it when the
     .toBeGreaterThan(0);
   await expect.poll(under, "the article scrolls it with the chip").toEqual(right);
 
+  const wide = (await chip.boundingBox())!.x;
   await app.setViewportSize({ width: 1100, height: 600 });
-  await expect.poll(under, "a narrower window moves it with the chip").toEqual(right);
+  await expect.poll(async () => (await chip.boundingBox())!.x, "the narrower window moves the chip").not.toBe(wide);
+  await expect.poll(under, "and the picker with it").toEqual(right);
 });
 
 test("the palette's この記事をグループに追加… opens the picker in view far down the article, and closing it puts the article back", async ({ app }) => {
