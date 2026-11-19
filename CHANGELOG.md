@@ -15,10 +15,11 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Summaries no longer use **About you**. Your extra instructions for summaries still apply.
 - Summaries made before this change show a note that regenerating them applies the change. Lattice does not regenerate them automatically.
 - **Find a chat scope by typing.** **Scope** in the chat pane opens a list with a search field, so you can type part of a name to narrow it. The list has every scope, even in a library with thousands of tags, and the chat pane no longer slows down to show them.
+- **The chat's AI sits beside Send.** The button left of **Send** shows the AI that answers the chat. Click it to choose the provider, model and effort from a menu. The send-key hint below the question box is gone. **Send key** in **Settings › Summaries & chat** still sets the key.
 
 ### Fixed
 
-- A focused drop-down in a chip, such as **AI** in the chat pane or **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
+- A focused drop-down in a chip, such as **Search scope** in the search pane, showed two focus rings, one inside the other. It now shows one.
 
 ## [0.5.0] - 2026-11-18
 
