@@ -1058,6 +1058,8 @@ mod tests {
         assert_eq!(Dec::ratio(1, 3), None);
         assert_eq!(Dec::ratio(7, 4), Dec::parse("1.75"));
         assert_eq!(Dec::parse(&"9".repeat(31)), None);
+        assert!(Dec::new(1, -30).at_most(Dec::new(1, 29)), "the one too wide for u128 is the larger");
+        assert!(!Dec::new(1, 29).at_most(Dec::new(1, -30)));
         assert_eq!(check(&"9".repeat(40), &"9".repeat(40)), Vec::<String>::new(), "too long for a value, compared by its digits");
     }
 
