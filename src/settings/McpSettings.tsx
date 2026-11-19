@@ -51,12 +51,6 @@ export function McpSettings() {
     );
   }
 
-  function confirm() {
-    const { kind, reg } = confirming!;
-    setConfirming(null);
-    void edit({ kind, id: reg.id });
-  }
-
   const failure = error && (
     <p role="alert" className="msg error-text">
       {t.msg(error)}
@@ -126,7 +120,10 @@ export function McpSettings() {
         <ConfirmDialog
           title={t(confirming.kind === "delete" ? "mcpSettings.confirmDelete" : "mcpSettings.confirmRegenerate", { name: confirming.reg.name })}
           confirm={t(confirming.kind === "delete" ? "common.delete" : "mcpSettings.regenerateConfirm")}
-          onConfirm={confirm}
+          onConfirm={() => {
+            setConfirming(null);
+            void edit({ kind: confirming.kind, id: confirming.reg.id });
+          }}
           onCancel={() => setConfirming(null)}
         >
           <p>{t(confirming.kind === "delete" ? "mcpSettings.deleteDesc" : "mcpSettings.regenerateDesc")}</p>
