@@ -127,7 +127,7 @@ pub struct Request {
     pub system: String,
     pub input: String,
     /// The blocks the input labels, as indices into the blocks: label `[n]` is block `n - 1`.
-    pub sent: Vec<usize>,
+    sent: Vec<usize>,
     /// Every number in the title and the blocks, sent or not.
     article: numbers::Article,
 }
@@ -139,7 +139,7 @@ pub fn request(applied: &instructions::Applied, title: &str, blocks: &[(String, 
 }
 
 /// A summary as stored: its sentences, then its key points.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, rename = "SummaryItems")]
 pub struct Items {
     pub summary: Vec<Item>,
