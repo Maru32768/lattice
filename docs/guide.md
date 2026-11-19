@@ -911,7 +911,7 @@ Opened from the Worker's address, the page opens without a connection too, with 
 
 The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
 
-`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write`.
+`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write` or `--allow-delete`.
 
 ## CLI and MCP
 
@@ -949,13 +949,25 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `tag ID NAME` | Adds a tag to an article. Needs write permission. |
 | `read ID` | Marks an article as read. Needs write permission. |
 | `favorite ID` | Marks an article as a favorite. Needs write permission. |
+| `untag ID NAME`, `unread ID`, `unfavorite ID` | Undo `tag`, `read` and `favorite`. Need write permission. |
+| `rename-article ID TITLE` | Gives an article your own title. An empty title goes back to the one Lattice found. Needs write permission. |
+| `set-genre ID NAME` | Puts an article in a genre, which auto-classification does not overwrite. An empty name takes it out. Needs write permission. |
+| `add-genre NAME`, `rename-genre FROM TO`, `delete-genre NAME` | Add, rename and delete genres. A genre cannot be renamed to one that exists, and only a genre with no articles can be deleted. Need write permission. |
+| `create-collection NAME`, `rename-collection ID NAME` | Create and rename collections. Need write permission. |
+| `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
+| `add-feed URL` | Subscribes to an RSS or Atom feed, fetching it once to check it. `--folder NAME` puts it in that folder, made if missing. Needs write permission. |
+| `rename-feed ID [NAME]`, `move-feed ID [FOLDER]`, `rename-folder ID NAME` | Rename a feed (without a name, back to its own title), move it into a folder by name (without one, out of any folder) and rename a folder. Need write permission. |
+| `delete-article ID` | Deletes an article with its summary, translation, note and quiz. Needs delete permission. |
+| `delete-collection ID`, `remove-feed ID`, `delete-folder ID` | Delete a collection, unsubscribe from a feed and delete a folder. Their articles and feeds stay. Need delete permission. |
+| `merge-genre FROM INTO` | Moves a genre's articles into another genre and deletes it. Needs delete permission. |
 | `mcp` | Serves these commands to agents as an MCP server over stdio. |
 
 Options for every command:
 
 - `--format json` (the default) or `--format text` (easier for people to read)
 - `--data-dir PATH`: use another data folder.
-- `--allow-write`: allow `save`, `tag`, `read` and `favorite`. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-write`: allow the commands that need write permission. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-delete`: also allow the commands that need delete permission.
 
 `lattice-cli --help` also lists the commands.
 
@@ -983,8 +995,8 @@ Options for every command:
 - Search gives the same results as the app. If the app has not downloaded the semantic search model yet, the CLI does not download it and answers with full-text search only. The JSON output says so.
 - Questions asked with `ask` also appear in the app's chat history.
 - `save` only adds a fetch job; a running app does the fetch within 30 seconds. With `--run`, the CLI itself fetches the page and its images, and makes the search vectors if the model is present. In both cases, classification, importance, automatic translation and rendering are left to the app.
-- Changes made with `tag`, `read` and `favorite` show in the app the next time it reloads the list.
-- The CLI cannot remove favorites, mark articles unread, remove tags or delete articles. Agents are limited to actions that are easy to undo.
+- Changes made with the CLI show in the app the next time it reloads the list.
+- `mcp` never offers the commands that need delete permission, even with `--allow-delete`, because nothing there can ask you first.
 
 ### Use Lattice from Claude Code
 
@@ -992,7 +1004,7 @@ Options for every command:
 claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
-With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
+With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it the commands that need write permission, add `--allow-write` after `mcp`.
 
 ### Watch out for prompt injection
 

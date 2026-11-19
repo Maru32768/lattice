@@ -1129,6 +1129,7 @@ export const en = {
   "be.classify.noResult": "The model returned no classification for this article",
   "be.classify.emptyName": "The genre name is empty",
   "be.classify.noGenre": "There is no genre “{name}”",
+  "be.classify.exists": "The genre “{name}” already exists",
   "be.classify.notDeletable": "The genre “{name}” cannot be deleted (it has articles or does not exist)",
   "be.groups.emptyName": "The collection name is empty",
   "be.groups.nameTooLong": "Collection names can be {max} characters at most",
