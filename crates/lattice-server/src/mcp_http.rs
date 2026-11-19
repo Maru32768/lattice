@@ -343,27 +343,13 @@ impl McpState {
     /// Runs a tool call, then tells the app what may have changed: after a failure too, since one can stop halfway,
     /// and a reload that finds nothing new costs little.
     async fn call(&self, role: Role, op: Op, registration: &str, tool: &str) -> Result<Out, String> {
-        let role = match permit(role, &op) {
-            Ok(role) => role,
-            Err(why) => {
-                self.activity.record(registration, tool, Outcome::Refused);
-                return Err(why);
-            }
-        };
+        let role = permit(role, &op).inspect_err(|_| self.activity.record(registration, tool, Outcome::Refused))?;
         let effects = op.effects();
         let outcome = ops::run(&Ctx { store: self.store.clone(), providers: self.providers.clone(), role }, op).await;
         if effects != Effects::default() {
             (self.on_applied)(&effects);
         }
-        self.activity.record(
-            registration,
-            tool,
-            if outcome.is_ok() {
-                Outcome::Succeeded
-            } else {
-                Outcome::Failed
-            },
-        );
+        self.activity.record(registration, tool, outcome.as_ref().map_or(Outcome::Failed, |_| Outcome::Succeeded));
         outcome
     }
 }
