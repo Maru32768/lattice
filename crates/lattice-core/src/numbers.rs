@@ -448,7 +448,7 @@ mod tests {
         assert_eq!(check("6プロジェクトの1,129テストは約3.9秒で完了する。", "All 1129 tests in 6 projects ran in 3.9 s."), Vec::<String>::new());
         assert_eq!(check("Art Nouveauは1880年代末〜1900年代に広がった。", "It spread around 1900, after the 19th century."), ["1880"]);
         assert_eq!(check("400エラーと400応答を返す。", "It returns an error."), ["400", "400"], "each place it is written");
-        assert_eq!(check("1880年と400件", "It returns an error."), ["1880", "400"], "in the order written");
+        assert_eq!(check("400件と1880年と52個", "It returns an error."), ["400", "1880", "52"], "in the order written, not by text or value");
         assert_eq!(unverified("😀は2倍と2万", &Article::new(["20,000"])), [(3, 4)], "UTF-16 offsets, the 2 of 2万 not among them");
         assert_eq!(check("\u{ff11}\u{ff12}\u{ff18}MBを使う。", "uses 128MB"), Vec::<String>::new(), "full-width digits");
         assert_eq!(check("\u{ff11}\u{ff12}\u{ff19}MBを使う。", "uses 128MB"), ["\u{ff11}\u{ff12}\u{ff19}"], "read as digits, returned as written");
