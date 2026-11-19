@@ -114,9 +114,7 @@ struct Session {
     used: u64,
     /// The clock when it opened: sessions opened in the same millisecond still keep their order on the screen.
     opened: u64,
-    client: Option<String>,
-    started_ms: u64,
-    last_ms: u64,
+    info: SessionInfo,
 }
 
 /// `/mcp` for the registrations in `store`. Writes report what they changed through `on_applied`, as the phone's do;
@@ -265,7 +263,7 @@ impl Activity {
             let table = lock(&self.sessions);
             let mut held: Vec<&Session> = table.by_id.values().filter(|s| s.key == key).collect();
             held.sort_by_key(|s| s.opened);
-            held.into_iter().map(|s| SessionInfo { client: s.client.clone(), started_ms: s.started_ms, last_ms: s.last_ms }).collect()
+            held.into_iter().map(|s| s.info.clone()).collect()
         };
         let calls = lock(&self.calls).get(&registration.id).map(|log| log.iter().rev().cloned().collect()).unwrap_or_default();
         (sessions, calls)
@@ -316,7 +314,7 @@ impl Sessions {
         }
         self.clock += 1;
         let now = now_ms();
-        let session = Session { key: key.to_string(), used: self.clock, opened: self.clock, client, started_ms: now, last_ms: now };
+        let session = Session { key: key.to_string(), used: self.clock, opened: self.clock, info: SessionInfo { client, started_ms: now, last_ms: now } };
         self.by_id.insert(id.clone(), session);
         Ok(id)
     }
@@ -327,7 +325,7 @@ impl Sessions {
         match self.by_id.get_mut(id) {
             Some(session) if session.key == key => {
                 session.used = self.clock;
-                session.last_ms = now_ms();
+                session.info.last_ms = now_ms();
                 true
             }
             _ => false,
