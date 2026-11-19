@@ -10,7 +10,7 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 - Summaries no longer use **About you**. Your extra instructions for summaries still apply.
 - Summaries made before this change show a note that regenerating them applies the change. Lattice does not regenerate them automatically.
 - **Find a chat scope by typing.** **Scope** in the chat pane opens a list with a search field, so you can type part of a name to narrow it. The list has every scope, even in a library with thousands of tags, and the chat pane no longer slows down to show them.
-- **Every tag in the Tags filter and in Edit tags….** The **Tags** filter lists every tag in the list, where it showed the eight most common and two from outside the list. A tag you choose keeps its place, checked, and only the counts change; the order changes when you search again or reopen the filter. **Edit tags…** and the collection picker draw only the rows in view, so thousands of tags no longer slow them down.
+- **The Tag filter lists every tag in the current list.** Before, it showed only the eight most common when nothing was typed. A tag you choose is checked; no row moves, and only the counts change. The order changes when you search again or reopen the filter. **Edit tags…** draws only the rows in view, so thousands of tags no longer slow it down.
 
 ### Fixed
 
