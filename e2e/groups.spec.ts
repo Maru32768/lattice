@@ -151,6 +151,26 @@ test("the palette's この記事をグループに追加… opens the picker in 
   expect(await place(), "and its reading place kept").toEqual(kept);
 });
 
+test("a pick that takes the row out of the list, scrolled to its end, leaves the group picker where it was", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 420 });
+  await navItem(app, mvcc.name).click();
+  const body = list(app).locator(".list-body");
+  await body.evaluate((e) => (e.scrollTop = e.scrollHeight));
+  const last = list(app).locator(".row").last();
+  const title = (await last.locator(".t").textContent())!;
+  await last.click({ button: "right" });
+  await app.getByRole("menu", { name: "記事のメニュー" }).getByRole("menuitem", { name: "グループに追加…" }).click();
+  await expect(picker(app)).toBeInViewport();
+  const { x, y } = (await picker(app).boundingBox())!;
+  const top = await body.evaluate((e) => e.scrollTop);
+  await picker(app)
+    .getByRole("option", { name: new RegExp(mvcc.name) })
+    .click();
+  await expect(list(app).locator(".row", { hasText: title })).toHaveCount(0);
+  await expect.poll(() => body.evaluate((e) => e.scrollTop), "the shorter list pulls its scroll back").toBeLessThan(top);
+  expect((await picker(app).boundingBox())!, "that is the pick's doing, not the reader's: the picker stays").toMatchObject({ x, y });
+});
+
 test("an empty scope shows no filters, sort or Select", async ({ app }) => {
   await navItem(app, empty.name).click();
   await expect(list(app).locator(".empty")).toBeVisible();

@@ -159,6 +159,9 @@ function anchorPlace(anchor: HTMLElement, pane: Element | null) {
       y: a.top - (b?.top ?? 0) + (box?.scrollTop ?? 0),
       w: a.width,
       h: a.height,
+      /** The scroller's content height and scroll when last read. */
+      tall: box?.scrollHeight ?? 0,
+      top: box?.scrollTop ?? 0,
     };
   };
   let at = take(anchor);
@@ -169,8 +172,18 @@ function anchorPlace(anchor: HTMLElement, pane: Element | null) {
       if (at.sizes !== sizes() && live.isConnected) {
         at = take(live);
       }
-      const b = at.box?.getBoundingClientRect();
-      return new DOMRect((b?.left ?? 0) + at.x - (at.box?.scrollLeft ?? 0), (b?.top ?? 0) + at.y - (at.box?.scrollTop ?? 0), at.w, at.h);
+      const box = at.box;
+      if (box) {
+        // A pick that shortens the content (a row leaves the list) pulls a scroll at its end back with it: the reader did
+        // not scroll, so the popover stays.
+        if (box.scrollHeight < at.tall && box.scrollTop < at.top && box.scrollTop >= box.scrollHeight - box.clientHeight - 1) {
+          at.y += box.scrollTop - at.top;
+        }
+        at.tall = box.scrollHeight;
+        at.top = box.scrollTop;
+      }
+      const b = box?.getBoundingClientRect();
+      return new DOMRect((b?.left ?? 0) + at.x - (box?.scrollLeft ?? 0), (b?.top ?? 0) + at.y - (box?.scrollTop ?? 0), at.w, at.h);
     },
     /** The anchor now: a pick can replace it. */
     follow: (el: HTMLElement) => {
