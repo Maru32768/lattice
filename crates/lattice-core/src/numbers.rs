@@ -883,6 +883,9 @@ mod tests {
         assert_eq!(check("50万人", "half the million users"), ["50万"], "half a, not half the");
         assert_eq!(check("50万人", "Cut it in half. A million users"), ["50万"], "half and a scale word in two sentences");
         assert_eq!(check("150万人", "one and a half. Million users"), ["150万"], "and a half and a scale word in two sentences");
+        assert_eq!(check("150万人", "one and, a half million users"), ["150万"], "and joined to a");
+        assert_eq!(check("150万人", "one and a, half million users"), ["150万"], "a joined to half");
+        assert_eq!(check("50万人", "half a, million users"), ["50万"], "a joined to the scale word");
         assert_eq!(check("24日", "two days"), ["24"], "only dozen counts twelve times");
     }
 
