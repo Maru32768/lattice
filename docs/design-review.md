@@ -401,11 +401,11 @@ feed単位の取り込み件数・間隔の設定、表示モードと並び順�
 | ジャンル・フィードの絞り込み、記事IDだけのquery | `store::ArticleFilter`(`Genre` / `Feed`)、`filter_cond`、`Store::article_ids` |
 | 対話の範囲 | `chat::Store::scope_articles`、`src/chat/ChatPane.tsx` |
 | 検索の範囲 | `search_blocks`(`filter`)、`src/app/App.tsx` |
-| 範囲の選択肢 | `src/library/scopes.ts`、`src/library/FilterOptgroups.tsx` |
+| 範囲の選択肢 | `src/library/scopes.ts`、`src/chat/chat.ts`(`scopeSections`)、`src/library/FilterOptgroups.tsx` |
 
 - **絞り込みの種類。** `ArticleFilter`に`Genre { name }`(`null`は未分類)と`Feed { id }`(`null`は手動追加)を追加した。条件は`filter_cond`の1か所で組み立て、一覧(`list_articles_sorted`)と`article_ids`が共有する。ジャンル名は`genres.name`の`COLLATE NOCASE`で照合する。
 - **範囲は記事IDの集合。** `article_ids`は`All`なら`None`(制限なし)を返すので、絞り込まない検索・対話は従来どおりの速い経路を通る。それ以外は`SELECT id`だけを取る(以前の対話は一覧と同じ全列を読んでいた)。集合が空なら、検索は0件、対話はモデルを呼ばずに「見つかりませんでした」と答える。
-- **選択肢。** 対話はこの記事／全記事／ジャンル／フィード／タグ、検索は全記事／未読／お気に入り／ジャンル／フィード／タグ。ジャンル・フィード・タグは`<optgroup>`に分ける。記事が0件のジャンル(初期ジャンル)は出さない。未分類と手動追加は件数を数えずに常に出す。`<select>`の値はfilterのJSON。検索結果を表示中に範囲を変えると、同じ語で検索し直す。
+- **選択肢。** 対話はこの記事／開いている記事すべて／全記事／一覧の今の範囲(現在の一覧かこのグループ)／開いている記事それぞれ／グループ／ジャンル／ソース／タグ、検索は全記事／最近追加／未読／お気に入り／重要(関連度のプロファイルか採点済みの記事があるとき)／グループ／ジャンル／ソース。記事が0件のジャンル(初期ジャンル)は出さない。未分類と手動追加は件数を数えずに常に出す。対話の選択肢の値は、この記事(`article`)、開いている記事(`open`、`open:<id>`)、全記事(`all`)を除いてfilterのJSON、検索の値は一覧の範囲(`Scope`)のJSON(最近追加は`{"kind":"recent"}`)。対話は`<select>`ではなく、検索欄のあるポップオーバーで選ぶ(`src/chat/ScopePicker.tsx`)。ポップオーバーでは区分を見出しにし、タグが数千件あってもすべて選べるように、見えている行だけを描く(`src/ui/PickList.tsx`)。ライブラリの読み込みが終わるまでは選択肢の代わりに「読み込み中…」を出し、選択肢を出した後は、閉じるまでその選択肢のままにする。開いている間に行が動くと、矢印キーやEnterが、利用者の選んでいない範囲を選ぶため。検索はグループ、ジャンル、ソースを`<optgroup>`に分ける。検索結果を表示中に範囲を変えると、同じ語で検索し直す。
 
 ### 未実装(意図的)
 

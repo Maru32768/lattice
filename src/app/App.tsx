@@ -168,10 +168,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const fail = (e: unknown) => setError(String(e));
 
-  const { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } = useLibrary(
-    fail,
-    HOST.kind !== "chat",
-  );
+  const { articles, loaded, settled, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon } =
+    useLibrary(fail, HOST.kind !== "chat");
   const { jobFailures, reviewDue, loadReview } = useActivity(IS_MAIN);
   const translations = useTranslations(IS_MAIN);
   const { vocab, marksOn, setMarks, marks, loadVocab, saveWordSeq, saveWord } = useVocab(() => void loadReview());
@@ -1312,6 +1310,7 @@ export default function App() {
               article={chat.article}
               open={chat.docs}
               groups={chatGroups}
+              loading={!settled}
               request={chat.chatScope}
               onCite={openCitation}
               onClose={win.closeRequested}
@@ -1591,6 +1590,7 @@ export default function App() {
                 article={chat.article}
                 open={chat.docs}
                 groups={chatGroups}
+                loading={!settled}
                 request={chat.chatScope}
                 onCite={openCitation}
                 onClose={() => win.setChatOpen(false)}

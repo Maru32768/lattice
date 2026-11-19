@@ -11,6 +11,8 @@ type Count = { name: string; count: number };
 export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const [articles, setArticles] = useState<ArticleRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  /** Every read of a refresh has settled: the chat's scopes wait for the tags, genres, groups, feeds and folders. */
+  const [settled, setSettled] = useState(false);
   const [feeds, setFeeds] = useState<FeedRow[]>([]);
   /** Feed folders (H25), in the user's order. */
   const [folders, setFolders] = useState<FolderRow[]>([]);
@@ -29,7 +31,7 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const refresh = () => {
     const seq = ++listSeq.current;
     const list = withArticles ? api.listArticles({ kind: "all" }, sortRef.current) : Promise.resolve([]);
-    return Promise.all([
+    const reads = [
       list.then((a) => {
         if (seq !== listSeq.current) {
           return;
@@ -44,7 +46,10 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
       api.listGenres().then(setGenres),
       api.listGroups().then(setGroupRows),
       api.relevanceStatus().then(setRelevance),
-    ]).catch(fail);
+    ];
+    // Promise.all gives up at the first failure, with the other reads still out.
+    void Promise.allSettled(reads).then(() => setSettled(true));
+    return Promise.all(reads).catch(fail);
   };
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
@@ -72,5 +77,5 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
     return () => void sub.then((f) => f());
   }, []);
 
-  return { articles, loaded, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon };
+  return { articles, loaded, settled, feeds, setFeeds, folders, setFolders, tags, genres, groupRows, relevance, sort, setSort, now, refresh, refreshSoon };
 }

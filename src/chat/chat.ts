@@ -1,5 +1,7 @@
 import type { ChatScope } from "../api";
-import { parseFilterKey } from "../library/scopes.ts";
+import { type FilterGroup, parseFilterKey } from "../library/scopes.ts";
+import type { T } from "../i18n/index.ts";
+import type { PickOption, PickSection } from "../ui/pickRows.ts";
 
 /** Splits an answer into text and `[n]` markers; only numbers in `cited` become markers. */
 export function splitCitations(answer: string, cited: Set<number>): ({ n: number } | string)[] {
@@ -59,4 +61,32 @@ export function scopeOf(key: string, article: { id: number } | null, open: OpenD
     return { kind: "article", id: Number(key.slice(5)) };
   }
   return { kind: "filter", filter: key === "all" ? { kind: "all" } : parseFilterKey(key) };
+}
+
+/** The scope options: この記事, 開いている記事すべて, 全記事 and the list's scope, then the open articles one by one, then `groups`. */
+export function scopeSections(
+  t: T,
+  article: { title: string } | null,
+  open: OpenDoc[],
+  current: { key: string; label: string } | null,
+  groups: FilterGroup[],
+): PickSection[] {
+  const first: PickOption[] = [
+    {
+      key: "article",
+      label: t("chatPane.thisArticle") + (article ? t("chatPane.articleTitle", { title: article.title }) : t("chatPane.noArticle")),
+      disabled: !article,
+    },
+    { key: OPEN_ALL, label: t("chatPane.allOpen", { n: open.length }), disabled: open.length === 0 },
+    { key: "all", label: t("chatPane.allArticles") },
+  ];
+  if (current) {
+    const group = parseFilterKey(current.key).kind === "group";
+    first.push({ key: current.key, label: group ? t("chatPane.thisGroup", { label: current.label }) : t("chatPane.currentList", { label: current.label }) });
+  }
+  return [
+    { label: "", options: first },
+    ...(open.length ? [{ label: t("chatPane.openGroup"), options: open.map((d) => ({ key: openKey(d.id), label: d.title })) }] : []),
+    ...groups,
+  ];
 }
