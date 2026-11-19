@@ -165,7 +165,7 @@ function Picker<K extends number | string>({
   );
 }
 
-/** An article's groups as removable chips, and a dashed chip that opens the picker (also when `request` grows: the palette). */
+/** An article's groups as removable chips, and a dashed chip that opens the picker (`request` growing opens it at `pin`). */
 export function GroupChips({
   groups,
   ids,

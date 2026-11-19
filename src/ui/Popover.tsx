@@ -130,7 +130,7 @@ function keepFocus(e: Event) {
 }
 
 /** The nearest ancestor of `el` that scrolls its content, or null. */
-export function scroller(el: Element) {
+function scroller(el: Element) {
   for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
     const s = getComputedStyle(p);
     if (/auto|scroll|overlay/.test(s.overflowX + s.overflowY)) {
