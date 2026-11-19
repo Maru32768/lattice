@@ -69,10 +69,13 @@ test("tag popover keyboard: arrows move, Space toggles and the tag keeps its row
   await expect(opts.nth(1)).toHaveClass(/\bact\b/);
   await expect(opts.nth(0)).toHaveAttribute("aria-selected", "false");
 
-  await pv.getByRole("combobox").fill("x");
+  const first = (await opts.nth(0).locator(".opt-l").textContent())!;
+  await pv.getByRole("combobox").fill(first);
+  await expect(pv.locator("[role=option].act .opt-l")).toHaveText(first);
   await app.keyboard.press("Control+Enter");
   await expect(pv).toBeHidden();
-  await expect(list(app).locator(".chip.on .chip-body")).toHaveText(`タグ${second}`);
+  await expect(list(app).locator(".chip.on .chip-body"), "Ctrl+Enter closes without picking the highlighted tag").toHaveText(`タグ${second}`);
+  await expect(listCount(app)).toHaveText(`${tagged(second).length} / ${all}`);
 });
 
 test("a click on a tag leaves every row where it was, also when the chosen tags first show", async ({ app }) => {
