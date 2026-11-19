@@ -267,7 +267,7 @@ fn serves_mcp_over_stdio() {
     assert!(text(&replies[4]).contains("--allow-write"));
     assert!(text(&replies[4]).starts_with(UNTRUSTED_START), "errors are marked too: {}", text(&replies[4]));
     assert_eq!(replies[5]["error"]["code"], -32601);
-    assert_eq!(replies[6]["error"]["code"], -32602, "a missing argument is invalid params, not a tool error: {}", replies[6]);
+    assert_eq!(replies[6]["result"]["isError"], true, "a missing argument is a tool error the model can correct: {}", replies[6]);
     assert!(ok(&dir, &["tags"]).to_string().contains("\"db\"") && !ok(&dir, &["tags"]).to_string().contains("\"x\""));
 }
 
