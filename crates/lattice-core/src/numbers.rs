@@ -675,8 +675,8 @@ fn kanji(cs: &[char]) -> Vec<Dec> {
         let numeral = &cs[i..end];
         out.extend(kanji_value(numeral));
         let digit = |k: usize| numeral.get(k).copied().and_then(kanji_digit);
-        // The longest numeral (九千九百九十九兆…九十九) is 31 kanji. A longer run is no number, and copying it for each pair
-        // would take quadratic time.
+        // The longest numeral (九千九百九十九兆…九十九) is 31 kanji. Pairs in a longer run are left unread: copying the run
+        // for each pair would take quadratic time.
         let pairs = if numeral.len() <= 31 {
             1..numeral.len()
         } else {
@@ -1035,6 +1035,7 @@ mod tests {
             ("20～30人", "二三十人"),
             ("1万2000～1万3000人", "一万二三千人"),
             ("1億2000万～1億3000万人", "一億二三千万人"),
+            ("9999兆9999億9999万9912～9999兆9999億9999万9913", "九千九百九十九兆九千九百九十九億九千九百九十九万九千九百十二三"),
             ("1999年", "一九九九年"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
