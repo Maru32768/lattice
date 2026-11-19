@@ -472,7 +472,7 @@ test("each registration shows its open sessions and latest calls, and the screen
     void window.__e2e.emit("mcp-activity");
   });
   const research = activity.getByRole("group", { name: "Research" });
-  await expect(research.getByRole("list", { name: "セッション" })).toHaveText("つながっているセッションはありません");
+  await expect(research.getByRole("list", { name: "セッション" })).toHaveText("セッションはありません");
   await expect(research.getByRole("list", { name: "最近の呼び出し" })).toContainText("search 成功");
 
   await server.uncheck();

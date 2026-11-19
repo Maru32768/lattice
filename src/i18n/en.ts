@@ -1430,10 +1430,10 @@ export const en = {
     "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}. After that, the project uses the registration for all of Claude Code, if there is one.",
   "mcpSettings.activity": "Activity",
   "mcpSettings.activityDesc":
-    "Open sessions and each registration's latest 20 calls. Turning the MCP server off or quitting the app clears them. A new token also clears the old token's sessions from here.",
+    "Sessions agents have started, and each registration's latest 20 calls. Some agents never close their sessions when they quit, and those sessions stay too, so tell whether one is in use by its last request. Turning the MCP server off or quitting the app clears both. A new token also clears the old token's sessions from here.",
   "mcpSettings.noActivity": "Not used yet",
   "mcpSettings.sessions": "Sessions",
-  "mcpSettings.noSessions": "No open sessions",
+  "mcpSettings.noSessions": "No sessions",
   "mcpSettings.unknownClient": "Unnamed client",
   "mcpSettings.sessionTimes": "Started {started} · last request {last}",
   "mcpSettings.calls": "Recent calls",

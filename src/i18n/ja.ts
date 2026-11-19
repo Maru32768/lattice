@@ -1411,10 +1411,10 @@ export const ja = {
     "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で登録も消してください。消した後は、「Claude Code全体」の登録があれば、そのプロジェクトでもそちらが使われます。",
   "mcpSettings.activity": "利用状況",
   "mcpSettings.activityDesc":
-    "つながっているセッションと、登録ごとに最近の20件の呼び出しです。MCPサーバーを止めるか、アプリを終了すると消えます。トークンを作り直すと、前のトークンのセッションもここから消えます。",
+    "エージェントが始めたセッションと、登録ごとに最近の20件の呼び出しです。終わってもセッションを閉じないエージェントもあり、そのセッションも残るので、使われているかは最後のリクエストの時刻で見分けます。どちらも、MCPサーバーを止めるか、アプリを終了すると消えます。トークンを作り直すと、前のトークンのセッションもここから消えます。",
   "mcpSettings.noActivity": "まだ使われていません",
   "mcpSettings.sessions": "セッション",
-  "mcpSettings.noSessions": "つながっているセッションはありません",
+  "mcpSettings.noSessions": "セッションはありません",
   "mcpSettings.unknownClient": "名前のないクライアント",
   "mcpSettings.sessionTimes": "開始: {started} · 最後のリクエスト: {last}",
   "mcpSettings.calls": "最近の呼び出し",
