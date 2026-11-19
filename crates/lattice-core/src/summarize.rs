@@ -107,7 +107,7 @@ pub fn schema() -> Value {
 }
 
 const RULES: &str = "You summarize a technical article for a Japanese software engineer. Write in Japanese. \
-Return \"summary\": 2-4 sentences, one per item, that state the article's main claim or conclusion directly, then what supports it; \
+Return \"summary\": 2-4 items, each a single sentence, that state the article's main claim or conclusion directly, then what supports it; \
 do not describe the article itself (no 「この記事は…を解説する」). \
 Return \"key_points\": 3-6 short points, each a different fact, that capture the essential technical content (mechanisms, trade-offs, numbers, caveats). \
 Prefer the article's specific names, numbers and results to general statements. \
