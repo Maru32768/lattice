@@ -181,6 +181,8 @@ export function GroupChips({
   const seen = useRef(request);
   useEffect(() => {
     if (request > seen.current) {
+      // The palette asks wherever the article is read: a picker hung from a chip scrolled out of view opens out of it.
+      add.current?.scrollIntoView({ block: "nearest" });
       setAnchor(add.current);
     }
     seen.current = request;

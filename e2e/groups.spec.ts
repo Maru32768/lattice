@@ -118,6 +118,23 @@ test("the Reader's group picker opens under its chip, and moves with it when the
   await expect.poll(under, "a narrower window moves it with the chip").toEqual(right);
 });
 
+test("the palette's この記事をグループに追加… opens the picker in view, also far down the article", async ({ app }) => {
+  await app.setViewportSize({ width: 1440, height: 400 });
+  await list(app)
+    .locator(".row", { hasText: members(mvcc.id)[0].title! })
+    .click();
+  await app
+    .locator(".doc-scroll")
+    .first()
+    .evaluate((e) => (e.scrollTop = e.scrollHeight));
+  await expect(app.locator(".art-chips")).not.toBeInViewport();
+  await app.keyboard.press("Control+p");
+  await app.keyboard.type("この記事をグループに追加");
+  await app.getByRole("option", { name: "この記事をグループに追加…" }).click();
+  await expect(picker(app)).toBeInViewport();
+  await expect(picker(app).getByRole("combobox")).toBeFocused();
+});
+
 test("an empty scope shows no filters, sort or Select", async ({ app }) => {
   await navItem(app, empty.name).click();
   await expect(list(app).locator(".empty")).toBeVisible();
