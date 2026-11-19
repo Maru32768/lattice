@@ -895,6 +895,8 @@ mod tests {
         let local = lattice_core::network::NetworkSettings { allow: vec!["localhost".into()], ..Default::default() };
         ctx.providers.http = lattice_core::fetch::HttpClient::configured(&local).unwrap();
         let s = &ctx.store;
+        // Made first so that the feed and folder ids differ: a swap of the two would not show otherwise.
+        feed_folders::create(s, "Other").unwrap();
         assert!(run(&ctx, Op::AddFeed { url: url.clone(), folder: Some(" ".into()) }).await.is_err(), "no folder has an empty name");
         assert!(feeds::list(s).unwrap().is_empty(), "the refused call subscribed to nothing");
         run(&ctx, Op::AddFeed { url, folder: Some("Tech".into()) }).await.unwrap();
@@ -908,6 +910,8 @@ mod tests {
         let s = &ctx.store;
         assert!(run(&ctx, Op::AddFeed { url: "http://127.0.0.1:9/feed.xml".into(), folder: Some("Tech".into()) }).await.is_err());
         assert!(feeds::list(s).unwrap().is_empty() && feed_folders::list(s).unwrap().is_empty(), "a feed that does not load is not kept");
+        // Made first so that the feed and folder ids differ: a swap of the two would not show otherwise.
+        feed_folders::create(s, "Other").unwrap();
         let (f, _) = feeds::add(s, "https://example.com/feed.xml", None).unwrap();
         let shown = || {
             let row = feeds::list(s).unwrap().remove(0);
@@ -916,7 +920,7 @@ mod tests {
         run(&ctx, Op::RenameFeed { id: f, name: Some("Mine".into()) }).await.unwrap();
         run(&ctx, Op::MoveFeed { id: f, folder: Some("Tech".into()) }).await.unwrap();
         assert_eq!(shown(), (Some("Mine".into()), Some("Tech".into())), "the folder was made");
-        let folder = feed_folders::list(s).unwrap()[0].id;
+        let folder = feed_folders::list(s).unwrap().into_iter().find(|d| d.name == "Tech").unwrap().id;
         run(&ctx, Op::RenameFolder { id: folder, name: "News".into() }).await.unwrap();
         run(&ctx, Op::RenameFeed { id: f, name: None }).await.unwrap();
         assert_eq!(shown(), (None, Some("News".into())));
@@ -924,7 +928,7 @@ mod tests {
         assert_eq!(shown(), (None, None));
         assert!(run(&ctx, Op::MoveFeed { id: f + 1, folder: Some("Ghost".into()) }).await.is_err(), "no such feed, and no folder made for it");
         run(&ctx, Op::MoveFeed { id: f, folder: Some("news".into()) }).await.unwrap();
-        assert_eq!(feed_folders::list(s).unwrap().len(), 1, "an existing folder, found without regard to case");
+        assert_eq!(feed_folders::list(s).unwrap().len(), 2, "an existing folder, found without regard to case");
         run(&ctx, Op::DeleteFolder { id: folder }).await.unwrap();
         assert_eq!(shown(), (None, None), "the feed stays, in no folder");
         run(&ctx, Op::RemoveFeed { id: f }).await.unwrap();
