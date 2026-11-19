@@ -84,11 +84,6 @@ function ScopeList({
 }) {
   const t = useT();
   const [q, setQ] = useState("");
-  // Held while open: a refresh (a tag added, a tab opened) would move the options under the pointer and the keys.
-  const [held, setHeld] = useState(sections);
-  if (!held && sections) {
-    setHeld(sections);
-  }
   return (
     <Popover anchor={anchor} label={t("chatPane.scopeLabel")} width={340} onClose={onClose}>
       <PickList
@@ -96,7 +91,7 @@ function ScopeList({
         search={t("chatPane.findScope")}
         query={q}
         onQuery={setQ}
-        sections={held && filterSections(held, q)}
+        arrange={(query) => sections && filterSections(sections, query)}
         selected={value}
         onPick={onPick}
       />

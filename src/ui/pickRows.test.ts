@@ -27,6 +27,21 @@ test("rows: a labeled section opens with its head, an unlabeled one does not; op
   assert.deepEqual(shape(ROWS), ["article#1", "all#2", "[グループ]", "g1#3", "[タグ]", "t1#4", "t2#5", "t3#6"]);
 });
 
+test("an option names its section itself, as its head may be scrolled out; a section with no option gets no head", () => {
+  assert.deepEqual(
+    ROWS.map((r) => (r.kind === "opt" ? r.section : null)),
+    ["", "", null, "グループ", null, "タグ", "タグ", "タグ"],
+  );
+  const rows = pickRows([
+    { label: "この集合に含まれる", note: "前方一致", options: [] },
+    { label: "集合外", note: "1", options: [{ key: "x", label: "x" }] },
+  ]);
+  assert.deepEqual(rows, [
+    { kind: "head", label: "集合外", note: "1" },
+    { kind: "opt", o: { key: "x", label: "x" }, n: 1, section: "集合外" },
+  ]);
+});
+
 test("filtering keeps the options whose label holds the query, in either case, and drops the sections left empty", () => {
   const rust = filterSections(SECTIONS, "  RUST ");
   assert.deepEqual(shape(pickRows(rust)), ["[タグ]", "t1#1", "t2#2"]);
@@ -85,6 +100,7 @@ test("the list opens on the selected option, or on the first enabled one when se
   assert.equal(defaultRow(ROWS, "", "article"), 1, "a disabled selection");
   assert.equal(defaultRow(ROWS, "wal", "t3"), 1, "a query starts at the first match");
   assert.equal(defaultRow(pickRows([{ label: "", options: [{ key: "a", label: "a", disabled: true }] }]), "", "a"), -1);
+  assert.equal(defaultRow(ROWS, "", undefined), 1, "a multiple choice opens at the top");
 });
 
 test("a key's label is its first option's, disabled or not", () => {

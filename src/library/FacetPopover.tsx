@@ -154,7 +154,7 @@ export function FacetPopover({
                 }}
                 placeholder={t("facetPopover.searchPlaceholder", { n: opts.length })}
               />
-              {q.trim() && <span className="pv-count">{t("facetPopover.matches", { matchCount })}</span>}
+              {q.trim() && <span className="pv-count">{t("pickList.matches", { matchCount })}</span>}
             </label>
             {!q.trim() && (
               <div className="pv-mode">

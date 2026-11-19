@@ -1,26 +1,36 @@
+import type { IconName } from "./Icon";
+
+/** What a row is while the list is open. Whether it is chosen and its count are read live, beside it. */
 export interface PickOption {
   key: string;
   label: string;
   disabled?: boolean;
+  /** An action rather than a choice (a picker's add row): the icon stands where the check would, with no count. */
+  icon?: IconName;
 }
 
 export interface PickSection<O extends PickOption = PickOption> {
   label: string;
+  /** At the end of the section's head. */
+  note?: string;
   options: readonly O[];
 }
 
-/** One line of the list. A section with a label gets a head row; an unlabeled one does not. `n` is the option's 1-based position among the options. */
-export type PickRow<O extends PickOption = PickOption> = { kind: "head"; label: string } | { kind: "opt"; o: O; n: number };
+/**
+ * One line of the list. A section with a label and options gets a head row. `n` is the option's 1-based position among
+ * the options; it and `section` are on the option itself, as its head may be scrolled out and unmounted.
+ */
+export type PickRow<O extends PickOption = PickOption> = { kind: "head"; label: string; note?: string } | { kind: "opt"; o: O; n: number; section: string };
 
 export function pickRows<O extends PickOption>(sections: readonly PickSection<O>[]): PickRow<O>[] {
   const rows: PickRow<O>[] = [];
   let n = 0;
   for (const s of sections) {
-    if (s.label) {
-      rows.push({ kind: "head", label: s.label });
+    if (s.label && s.options.length > 0) {
+      rows.push({ kind: "head", label: s.label, note: s.note });
     }
     for (const o of s.options) {
-      rows.push({ kind: "opt", o, n: ++n });
+      rows.push({ kind: "opt", o, n: ++n, section: s.label });
     }
   }
   return rows;
@@ -44,7 +54,7 @@ export function filterSections<O extends PickOption>(sections: readonly PickSect
   return sections.map((s) => ({ ...s, options: hits(s.options) })).filter((s) => s.options.length > 0);
 }
 
-export const enabled = <O extends PickOption>(r: PickRow<O> | undefined): r is { kind: "opt"; o: O; n: number } => r?.kind === "opt" && !r.o.disabled;
+export const enabled = <O extends PickOption>(r: PickRow<O> | undefined): r is Extract<PickRow<O>, { kind: "opt" }> => r?.kind === "opt" && !r.o.disabled;
 
 /**
  * The enabled option `by` rows away from `from`: the first one from there on in that direction, else the nearest one
@@ -66,9 +76,12 @@ export function stepRow(rows: readonly PickRow[], from: number, by: number): num
   return from;
 }
 
-/** With no query, the selected option when it is enabled; otherwise the first enabled option; -1 when none is. */
-export function defaultRow(rows: readonly PickRow[], query: string, selected: string): number {
-  const at = query.trim() ? -1 : rows.findIndex((r) => enabled(r) && r.o.key === selected);
+/**
+ * With no query, the option of a single choice's `selected` when it is enabled; otherwise the first enabled option; -1
+ * when none is.
+ */
+export function defaultRow(rows: readonly PickRow[], query: string, selected: string | undefined): number {
+  const at = query.trim() || selected === undefined ? -1 : rows.findIndex((r) => enabled(r) && r.o.key === selected);
   return at >= 0 ? at : rows.findIndex((r) => enabled(r));
 }
 
