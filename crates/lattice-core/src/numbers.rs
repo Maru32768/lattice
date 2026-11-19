@@ -519,6 +519,8 @@ mod tests {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("7百万人", "three\u{2013}four million customers"), ["7百万"], "a range of words is not their sum");
+        assert_eq!(check("23件", "twenty-three five-star reviews"), Vec::<String>::new(), "a unit after twenty-three starts a number");
+        assert_eq!(check("3000万人", "twenty\u{2013}thirty million users"), Vec::<String>::new(), "a ten after a ten starts a number");
         assert_eq!(check("123人と1,200件", "one hundred twenty-three people, one thousand two hundred rows"), Vec::<String>::new());
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
