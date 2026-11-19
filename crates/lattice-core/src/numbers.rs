@@ -47,6 +47,10 @@ impl Dec {
         Self::new(self.m, self.e + places)
     }
 
+    fn times(self, n: u128) -> Option<Self> {
+        Some(Self::new(self.m.checked_mul(n)?, self.e))
+    }
+
     fn plus(self, o: Self) -> Option<Self> {
         if self.m == 0 || o.m == 0 {
             return Some(if self.m == 0 {
@@ -389,7 +393,8 @@ fn respelled(words: &[Word]) -> Vec<Word> {
 }
 
 /// The values of English number words, read as written and respelled: each word alone, and runs read whole
-/// (`twenty-seven`, `three hundred`, `four million`, `three hundred and five`, `three and a half`).
+/// (`twenty-seven`, `three hundred`, `four million`, `three hundred and five`, `three and a half`, `one and a half
+/// million`, `half a million`, `two dozen`).
 fn words(cs: &[char]) -> Vec<Dec> {
     let list = word_list(cs);
     let respelled = respelled(&list);
@@ -405,6 +410,9 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
     for (k, (_, _, w)) in words.iter().enumerate() {
         if !joined(cs, words, k) {
             out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur)));
+        }
+        if w == "dozen" {
+            out.extend(run.and_then(|(total, cur, _)| total.plus(cur)?.times(12)));
         }
         let unit = cardinal(w);
         match (unit, scale(w), run) {
@@ -437,7 +445,9 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
             (None, None, Some((total, cur, _))) if w == "and" => {
                 let half = words.get(k + 1).zip(words.get(k + 2)).is_some_and(|((_, _, a), (_, _, h))| a == "a" && h == "half");
                 if half {
-                    out.extend(total.plus(cur).and_then(|v| v.plus(Dec::new(5, -1))));
+                    let value = total.plus(cur).and_then(|v| v.plus(Dec::new(5, -1)));
+                    let places = words.get(k + 3).and_then(|(_, _, s)| scale(s));
+                    out.extend(value.into_iter().chain(value.zip(places).map(|(v, p)| v.shifted(p))));
                 }
                 if scale(&words[k - 1].2).is_none() {
                     out.extend(total.plus(cur));
@@ -447,7 +457,12 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
             (None, None, _) => out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur))),
         }
         match w.as_str() {
-            "half" => out.push(Dec::new(5, -1)),
+            "half" => {
+                out.push(Dec::new(5, -1));
+                if words.get(k + 1).is_some_and(|(_, _, a)| a == "a") {
+                    out.extend(words.get(k + 2).and_then(|(_, _, s)| scale(s)).map(|p| Dec::new(5, p - 1)));
+                }
+            }
             "quarter" => out.push(Dec::new(25, -2)),
             _ => {}
         }
@@ -625,6 +640,23 @@ mod tests {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("21件", "twenty a day"), ["21"], "a is one only before a scale word");
+    }
+
+    #[test]
+    fn halves_of_a_scale_and_dozens_count() {
+        for (summary, article) in [
+            ("150万人", "one and a half million users"),
+            ("250万件", "two and a half million rows"),
+            ("1,500件", "one and a half thousand rows"),
+            ("50万人", "half a million users"),
+            ("5億ドル", "half a billion dollars"),
+            ("24個", "two dozen eggs"),
+            ("36個", "three dozen eggs"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("50万人", "half the million users"), ["50万"], "half a, not half the");
+        assert_eq!(check("24日", "two days"), ["24"], "only dozen counts twelve times");
     }
 
     #[test]
