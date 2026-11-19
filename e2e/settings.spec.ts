@@ -511,6 +511,38 @@ test("a status read that answers after a new token does not bring back the old c
   await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).toContain("Bearer t2");
 });
 
+test("a status read that answers after a newer one does not put older activity back", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eLate = ["mcp_status"];
+  });
+  const app = shell;
+  await app.goto("/");
+  await app.locator(".nav").getByRole("button", { name: "設定" }).click();
+  await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
+  const reads = () => callsOf(app, "mcp_status").then((c) => c.length);
+  await expect.poll(reads).toBeGreaterThan(0);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.getByLabel("MCPサーバーを動かす").check();
+  await app.getByLabel("新しい登録").fill("Claude Code");
+  await app.getByRole("button", { name: "登録する" }).click();
+  await expect(app.getByLabel("新しい登録")).toHaveValue("");
+
+  for (const tools of [["get"], ["search", "get"]]) {
+    const before = await reads();
+    await app.evaluate((tools) => {
+      window.__e2e.mcpActivity("r1", { sessions: [], calls: tools.map((tool) => ({ at_ms: Date.now(), tool, outcome: "succeeded" as const })) });
+      void window.__e2e.emit("mcp-activity");
+    }, tools);
+    await expect.poll(reads).toBe(before + 1);
+  }
+  const calls = app.getByRole("region", { name: "利用状況" }).getByRole("list", { name: "最近の呼び出し" }).getByRole("listitem");
+  await app.evaluate(() => window.__e2e.release("mcp_status", -1));
+  await expect(calls).toHaveCount(2);
+  await app.evaluate(() => window.__e2e.release("mcp_status"));
+  await app.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
+  await expect(calls, "the older read came back last").toHaveCount(2);
+});
+
 test("serving to a phone shows the QR code, warns about the open network, and a new token changes the address", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("スマホで読む", { exact: true }).click();

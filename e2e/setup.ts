@@ -13,7 +13,7 @@ declare global {
       fromPage: typeof emit;
       deleteArticle: typeof api.deleteArticle;
       mcpActivity: typeof mcpActivity;
-      /** Lets the oldest `n` waiting calls of `cmd` through, all of them by default; later calls wait again. */
+      /** Lets the oldest `n` waiting calls of `cmd` through (the newest `-n` when below 0), all of them by default; later calls wait again. */
       release: (cmd: string, n?: number) => void;
     };
     /** Set by an init script: commands whose calls wait for `__e2e.release`, as slow reads would. */
@@ -34,7 +34,8 @@ const fromPage: typeof emit = async (event, payload) => {
 const late = window.__e2eLate ?? [];
 const held = new Map([...(window.__e2eHold ?? []), ...late].map((cmd) => [cmd, [] as (() => void)[]]));
 function release(cmd: string, n = Infinity) {
-  for (const go of held.get(cmd)?.splice(0, n) ?? []) {
+  const waiting = held.get(cmd) ?? [];
+  for (const go of n < 0 ? waiting.splice(n) : waiting.splice(0, n)) {
     go();
   }
 }
