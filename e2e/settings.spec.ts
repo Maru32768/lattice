@@ -326,6 +326,7 @@ test("agent registrations copy commands for all of Claude Code or one project, k
   await expect.poll(() => callsOf(app, "mcp_edit")).toEqual([{ edit: { kind: "enable", on: true } }]);
   await expect(app.getByText("登録はまだありません")).toBeVisible();
   await expect(app.getByText("「対話」に会話として残ります"), "what each role may do, before one is picked").toBeVisible();
+  await expect(app.getByText("どちらのロールでも、記事、グループ、フィード、フォルダは削除できません。")).toBeVisible();
 
   const row = (name: string) => app.locator(".set").filter({ has: app.locator(".h").getByText(name, { exact: true }) });
   const role = (name: string) => app.getByLabel(`「${name}」のロール`);
