@@ -398,17 +398,14 @@ fn ranges(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
         let gap: String = cs[a.end..b.start].iter().collect();
         let before: String = cs[..a.start].iter().rev().skip_while(|c| **c == ' ' || CURRENCIES.contains(c)).take_while(|c| c.is_ascii_alphabetic()).collect();
         let between = before.to_ascii_lowercase().chars().rev().eq("between".chars());
-        if a_end != a.end || !separates(gap.trim_end_matches(CURRENCIES), between) {
+        if a_end != a.end || !separates(gap.trim_end_matches(CURRENCIES), between) || !left.at_most(right) {
             continue;
         }
         for v in std::iter::once(&b.value).chain(&b.others) {
             if let Num::Dec(v) = v
                 && v.m == right.m
             {
-                let scaled = left.shifted(v.e - right.e);
-                if scaled.at_most(*v) {
-                    out.push(scaled);
-                }
+                out.push(left.shifted(v.e - right.e));
             }
         }
     }
