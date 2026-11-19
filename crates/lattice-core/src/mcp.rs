@@ -163,6 +163,8 @@ mod tests {
         assert!(edit(&s, &Edit::Create { name: " ".into(), role: Role::Edit }).is_err_and(|e| e.contains("mcp.badName")));
         assert!(edit(&s, &Edit::Create { name: "x".repeat(MAX_NAME_CHARS + 1), role: Role::Edit }).is_err_and(|e| e.contains("mcp.badName")));
         assert_eq!(registrations(&s).unwrap().len(), 1);
+        let longest = "あ".repeat(MAX_NAME_CHARS);
+        assert_eq!(create(&s, &longest, Role::Read).name, longest, "counted in characters, the limit itself allowed");
     }
 
     #[test]
