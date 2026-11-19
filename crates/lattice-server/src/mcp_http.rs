@@ -335,6 +335,8 @@ mod tests {
             let from_a_page = f.send(method, Some(&r.token), None, &[("origin", "http://127.0.0.1:8788")], init.clone()).await;
             assert_eq!(from_a_page.status(), StatusCode::FORBIDDEN, "{method}");
         }
+        let anonymous = f.send("POST", None, None, &[("origin", "http://127.0.0.1:8788")], init.clone()).await;
+        assert_eq!(anonymous.status(), StatusCode::FORBIDDEN, "before the token is looked at");
         let rebound = f.send("POST", Some(&r.token), None, &[("host", "evil.example:8788")], init.clone()).await;
         assert_eq!(rebound.status(), StatusCode::FORBIDDEN, "a page's own name pointed at this PC, with no Origin sent");
         for host in [format!("127.0.0.1:{}", ADDR.port()), format!("LocalHost:{}", ADDR.port())] {
