@@ -1054,8 +1054,7 @@ export const handlers = {
     const regs = store.mcp.registrations;
     switch (edit.kind) {
       case "enable":
-        // The app starts each server with nothing recorded.
-        store.mcp = { ...store.mcp, enabled: edit.on, registrations: regs.map((r) => ({ ...r, sessions: [], calls: [] })) };
+        store.mcp = { ...store.mcp, enabled: edit.on };
         break;
       case "create": {
         const name = edit.name.trim();
@@ -1081,7 +1080,7 @@ export const handlers = {
         break;
       }
       case "regenerate":
-        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope), sessions: [] } : r)) };
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };
