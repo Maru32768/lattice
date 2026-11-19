@@ -659,7 +659,8 @@ fn kanji_digit(c: char) -> Option<u128> {
     "〇一二三四五六七八九".chars().position(|d| d == c).map(|d| d as u128)
 }
 
-/// The values of kanji numerals: `三` in `三つ`, `二十三`, `一万`. Two digits one apart, alone, also read as either:
+/// The values of kanji numerals: `三` in `三つ`, `二十三`, `一万`. A digit and the next one up, with no other digit beside
+/// them, also read as either:
 /// `二三日` is two or three days and `三四百万` three or four million, besides 23 and 3,400万 by position (`一九九九`).
 fn kanji(cs: &[char]) -> Vec<Dec> {
     let is_kanji = |c: char| kanji_digit(c).is_some() || ja_small(c).is_some() || ja_large(c).is_some();
