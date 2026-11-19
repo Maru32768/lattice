@@ -437,6 +437,9 @@ mod tests {
             <img src=\"https://example.com/a.png\" alt=\"chart\"><p>Serializable isolation aborts one of the two transactions.</p></article></body></html>";
         let id =
             crate::ingest::store_fetched(&s, id, &crate::fetch::Fetched { final_url: url.into(), status: 200, content_type: None, html: html.into() }).unwrap();
+        let no_sentence = json!({"summary": [{"text": " ", "sources": [2]}], "key_points": [{"text": "4回に1回", "sources": [2]}]});
+        assert_eq!(run(&s, &Fake(no_sentence), id).await, Err(msg!("summarize.malformed")));
+        assert!(s.get_article(id, "ja").unwrap().unwrap().summary.is_none(), "nothing stored");
         let reply = json!({
             "summary": [{"text": "SIは3回に2回write skewを許す。", "sources": [2]}, {"text": "SSIは片方を中断する。", "sources": [3]}],
             "key_points": [{"text": "4回に1回", "sources": [2, 3]}]
