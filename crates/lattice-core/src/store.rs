@@ -1898,7 +1898,7 @@ mod tests {
                  (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then 2');
              INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
                  (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'), (1, 3, 'code', 'let x = 1;', 'h5'),
-                 (2, 0, 'paragraph', 'Some words', 'h4');
+                 (1, 4, 'table', 'p99\t12 ms', 'h6'), (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
                  (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
                  (2, 'summary', 'Current then.', 'of then 2', 't', 'v');
@@ -1911,8 +1911,8 @@ mod tests {
             s.conn().prepare("SELECT content_hash FROM articles ORDER BY id").unwrap().query_map([], |r| r.get(0)).unwrap().map(Result::unwrap).collect();
         assert_eq!(
             hashes,
-            [text_hash(["説明文続き", "let x = 1;"].into_iter()), text_hash(["Some", "words"].into_iter())],
-            "a Japanese paragraph broken at the image hashes as one, and the code is what a summary reads too"
+            [text_hash(["説明文続き", "let x = 1;", "p99 12 ms"].into_iter()), text_hash(["Some", "words"].into_iter())],
+            "a Japanese paragraph broken at the image hashes as one, and the code and the table are what a summary reads too"
         );
         let current: Vec<bool> = s
             .conn()
