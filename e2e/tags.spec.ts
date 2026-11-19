@@ -221,6 +221,12 @@ test("a filter with no search keeps its keys: j moves, Enter picks, Backspace dr
   await app.keyboard.press("Enter");
   await expect(chip).toContainText(genre);
   await expect(opts.nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(opts.nth(0), "Enter puts the highlight back on the first").toHaveClass(/\bact\b/);
+  await app.keyboard.press("Space");
+  await expect(opts.nth(0)).toHaveAttribute("aria-pressed", "true");
+  await app.keyboard.press("Backspace");
+  await expect(opts.nth(0), "Backspace drops the last pick").toHaveAttribute("aria-pressed", "false");
+  await expect(opts.nth(1), "and keeps the one before").toHaveAttribute("aria-pressed", "true");
   await app.keyboard.press("Backspace");
   await expect(chip).toHaveCount(0);
   await app.keyboard.press("Control+Enter");
