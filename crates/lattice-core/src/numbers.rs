@@ -1283,9 +1283,11 @@ mod tests {
         }
         for &(low, high) in &ends {
             for (p, digit_scales, word_scale) in RANGE_SCALES {
-                // In words, a scale with hundred goes with one-digit ends only: twenty to thirty hundred thousand is not
-                // English, and the ends written whole would meet between five hundred and one thousand, read as 501,000.
-                let in_words = p % 3 != 2 || high < 10;
+                // A scale word with hundred goes with one-digit ends only: twenty to thirty hundred thousand is not English.
+                let scale_words = p % 3 != 2 || high < 10;
+                // Written whole at hundreds, between and its and would meet as in between five hundred and one thousand,
+                // read as 501,000.
+                let between_whole = p != 2 || high < 10;
                 let (lo, hi) = (low * 10u128.pow(p), high * 10u128.pow(p));
                 let summaries = [
                     format!("{}～{}", sections(lo, |s| s.to_string()), sections(hi, |s| s.to_string())),
@@ -1301,16 +1303,17 @@ mod tests {
                 // A one-digit left end against a right end with hundred (two to three hundred fifty thousand) reads as two
                 // hundred thousand. The ends are American: and ends a range's end (one hundred and twenty to one hundred
                 // and fifty thousand).
-                if let Some(scale) = word_scale.filter(|_| in_words && (low >= 10 || high < 100)) {
+                if let Some(scale) = word_scale.filter(|_| scale_words && (low >= 10 || high < 100)) {
                     let (l, h) = (english(low, false), english(high, false));
                     for separator in [" to ", "-", "\u{2013}", "\u{2014}", " \u{2013} ", "~"] {
                         articles.push(format!("{l}{separator}{h} {scale}"));
                     }
                     articles.push(format!("between {l} and {h} {scale}"));
                 }
-                if in_words {
-                    let (l, h) = (english(lo, false), english(hi, false));
-                    articles.extend([format!("{l} to {h}"), format!("{l}\u{2013}{h}"), format!("between {l} and {h}")]);
+                let (l, h) = (english(lo, false), english(hi, false));
+                articles.extend([format!("{l} to {h}"), format!("{l}\u{2013}{h}")]);
+                if between_whole {
+                    articles.push(format!("between {l} and {h}"));
                 }
                 cases.extend(articles.into_iter().map(|a| (a, summaries.to_vec())));
             }
