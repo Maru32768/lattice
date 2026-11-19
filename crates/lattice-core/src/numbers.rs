@@ -206,6 +206,8 @@ fn ja_large(c: char) -> Option<i32> {
 }
 
 const SCALES: [(&str, i32); 5] = [("hundred", 2), ("thousand", 3), ("million", 6), ("billion", 9), ("trillion", 12)];
+/// The most words an English number below a quadrillion takes (nine hundred ninety-nine trillion … ninety-nine).
+const NUMBER_WORDS: usize = 24;
 
 /// The ASCII letters from `i`.
 fn word_at(cs: &[char], i: usize) -> String {
@@ -362,7 +364,8 @@ fn digit_readings(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
         }
         let first = digit_run(cs, m.start);
         let (mut digits, mut end): (String, _) = (cs[m.start..first].iter().collect(), first);
-        while first - m.start <= 3 && cs.get(end) == Some(&' ') && digit_run(cs, end + 1) == end + 4 {
+        // Past 30 digits `Dec::parse` reads no value, and stopping there keeps a page of groups linear.
+        while first - m.start <= 3 && digits.len() <= 30 && cs.get(end) == Some(&' ') && digit_run(cs, end + 1) == end + 4 {
             digits.extend(&cs[end + 1..end + 4]);
             end += 4;
         }
@@ -512,7 +515,8 @@ fn words(cs: &[char]) -> Vec<Dec> {
 /// A range's left end with the scale words its right end writes, and its right end: 3,000,000 and 4,000,000 in
 /// `three to four million`, 200,000 in `two hundred to three hundred thousand`. The left end gets the right end's scale
 /// words above its own, and counts only when it stays no larger than the right end: `twenty-one million` is no range,
-/// as 20 million is more than 1.
+/// as 20 million is more than 1. Each end is at most `NUMBER_WORDS` long, so a page of joined number words is read in
+/// linear time.
 fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
     let number = |w: &str| cardinal(w).is_some() || scale(w).is_some();
     let read = |list: &[&str]| {
@@ -522,7 +526,7 @@ fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
     let mut out = Vec::new();
     for k in 0..words.len() {
         let mut l = k;
-        while l > 0 && joined(cs, words, l) && number(&words[l - 1].2) {
+        while l > 0 && k - l + 1 < NUMBER_WORDS && joined(cs, words, l) && number(&words[l - 1].2) {
             l -= 1;
         }
         let left: Vec<&str> = words[l..=k].iter().map(|w| w.2.as_str()).collect();
@@ -539,8 +543,11 @@ fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
             if !separates(&cs[words[k].1..start].iter().collect::<String>(), between) {
                 continue;
             }
-            let right: Vec<&str> =
-                (r..words.len()).take_while(|&j| number(&words[j].2) && (j == r || joined(cs, words, j))).map(|j| words[j].2.as_str()).collect();
+            let right: Vec<&str> = (r..words.len())
+                .take_while(|&j| number(&words[j].2) && (j == r || joined(cs, words, j)))
+                .take(NUMBER_WORDS)
+                .map(|j| words[j].2.as_str())
+                .collect();
             let Some(end) = read(&right) else {
                 continue;
             };
@@ -666,7 +673,14 @@ fn kanji(cs: &[char]) -> Vec<Dec> {
         let numeral = &cs[i..end];
         out.extend(kanji_value(numeral));
         let digit = |k: usize| numeral.get(k).copied().and_then(kanji_digit);
-        for k in 1..numeral.len() {
+        // The longest numeral (九千九百九十九兆…九十九) is 31 kanji. A longer run is no number, and copying it for each pair
+        // would take quadratic time.
+        let pairs = if numeral.len() <= 31 {
+            1..numeral.len()
+        } else {
+            0..0
+        };
+        for k in pairs {
             let pair = digit(k - 1).zip(digit(k)).is_some_and(|(a, b)| a + 1 == b);
             if pair && (k < 2 || digit(k - 2).is_none()) && digit(k + 1).is_none() {
                 for skip in [k - 1, k] {
