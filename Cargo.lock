@@ -2785,7 +2785,6 @@ dependencies = [
  "lattice-core",
  "lattice-server",
  "log",
- "serde",
  "serde_json",
  "tauri-winres",
  "tokio",
@@ -2833,8 +2832,10 @@ name = "lattice-server"
 version = "0.5.0"
 dependencies = [
  "axum",
+ "clap",
  "lattice-core",
  "log",
+ "serde",
  "serde_json",
  "tokio",
  "tower",

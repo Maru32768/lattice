@@ -1,6 +1,7 @@
-//! The user's own context for summaries and chat (G49): one 「自分について」 profile shared by
-//! both, plus optional extra instructions for each. Both go into the system prompt after the
-//! built-in rules and before the untrusted-input rule, which stays last.
+//! The user's own context for LLM requests (G49): one 「自分について」 profile, read by chat,
+//! quizzes, importance rating and feed filtering, plus optional extra instructions for summaries
+//! and for chat. What a request applies goes into its system prompt after the built-in rules and
+//! before the untrusted-input rule, which stays last.
 
 use serde::{Deserialize, Serialize};
 
@@ -9,8 +10,8 @@ use crate::store::{Store, sha256_hex};
 use ts_rs::TS;
 
 pub const MAX_CHARS: usize = 2000;
-pub(crate) const PROFILE_SETTING: &str = "user_profile";
-const SUMMARY_SETTING: &str = "summary_instructions";
+pub const PROFILE_SETTING: &str = "user_profile";
+pub const SUMMARY_SETTING: &str = "summary_instructions";
 const CHAT_SETTING: &str = "chat_instructions";
 /// Hash of the current profile, so SQL can tell a relevance score judged against another one.
 pub const PROFILE_HASH_SETTING: &str = "user_profile_hash";
@@ -61,8 +62,10 @@ pub struct Applied {
 }
 
 impl Settings {
+    /// Without the profile, so a summary covers what the article says rather than what the reader
+    /// is interested in.
     pub fn for_summary(&self) -> Applied {
-        Applied { profile: self.profile.trim().into(), extra: self.summary.trim().into() }
+        Applied { profile: String::new(), extra: self.summary.trim().into() }
     }
 
     pub fn for_chat(&self) -> Applied {
@@ -125,15 +128,19 @@ mod tests {
         assert_eq!(none.system("RULES", "UNTRUSTED"), "RULES\n\nUNTRUSTED");
         assert_eq!(none.version("v1"), "v1", "summaries made before G49 stay fresh");
 
-        let a = Settings { profile: "Rust を書く".into(), summary: "数字を残す".into(), chat: "短く".into() };
+        let a = Settings { profile: "Rustを書く".into(), summary: "数字を残す".into(), chat: "短く".into() };
+        let chat = a.for_chat().system("RULES", "UNTRUSTED");
+        let (p, x, u) = (chat.find("Rustを書く").unwrap(), chat.find("短く").unwrap(), chat.find("UNTRUSTED").unwrap());
+        assert!(chat.starts_with("RULES") && p < x && x < u && chat.ends_with("UNTRUSTED"), "{chat}");
         let sys = a.for_summary().system("RULES", "UNTRUSTED");
-        let (p, x, u) = (sys.find("Rust を書く").unwrap(), sys.find("数字を残す").unwrap(), sys.find("UNTRUSTED").unwrap());
-        assert!(sys.starts_with("RULES") && p < x && x < u && sys.ends_with("UNTRUSTED"), "{sys}");
-        assert!(!sys.contains("短く"), "chat instructions stay out of summaries");
-        assert!(a.for_chat().system("R", "U").contains("短く"));
+        let (x, u) = (sys.find("数字を残す").unwrap(), sys.find("UNTRUSTED").unwrap());
+        assert!(sys.starts_with("RULES") && x < u && sys.ends_with("UNTRUSTED"), "{sys}");
+        assert!(!sys.contains("Rustを書く") && !sys.contains("短く"), "neither the profile nor the chat instructions go into summaries");
 
         let v = a.for_summary().version("v1");
         assert!(v.starts_with("v1-x-instr-") && v != a.for_chat().version("v1"));
-        assert_ne!(v, Settings { profile: "Go を書く".into(), ..a.clone() }.for_summary().version("v1"));
+        assert_eq!(v, Settings { profile: "Goを書く".into(), ..a.clone() }.for_summary().version("v1"), "the profile does not make summaries stale");
+        assert_ne!(v, Settings { summary: "単位を残す".into(), ..a.clone() }.for_summary().version("v1"));
+        assert_eq!(Settings { summary: String::new(), ..a.clone() }.for_summary().version("v1"), "v1", "a profile alone applies nothing to summaries");
     }
 }

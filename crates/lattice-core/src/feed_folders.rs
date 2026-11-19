@@ -25,7 +25,8 @@ fn err(e: impl ToString) -> String {
     e.to_string()
 }
 
-fn clean(name: &str) -> Result<&str, String> {
+/// The name a folder would get, or why no folder can have it.
+pub fn clean(name: &str) -> Result<&str, String> {
     let name = name.trim();
     if name.is_empty() {
         return Err(msg!("feedFolders.emptyName"));

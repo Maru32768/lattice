@@ -1,0 +1,2 @@
+-- articles.content_hash now covers code and tables too: every block but images, as a summary reads them since summary-v2.
+-- store::rehash_content recomputes it after this migration; nothing changes in the schema.

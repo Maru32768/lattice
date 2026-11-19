@@ -647,9 +647,16 @@ mod tests {
         assert_eq!(queued(&s), [ids[2]], "only the article rated 5 (the fake rates them 4, invalid, 5)");
 
         summarize::set_auto(&s, Auto::All).unwrap();
-        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "v").unwrap();
+        s.exec_for_test("DELETE FROM processing_jobs WHERE type = 'summarize'");
+        s.insert_summary(ids[0], "normal", "要約", "h", "fake", None, "summary-v1").unwrap();
+        s.insert_summary(ids[2], "normal", "要約", "h", "fake", None, "summary-v1-x-instr-0123456789ab").unwrap();
         after_ingest(&s);
-        assert_eq!(queued(&s), [ids[1], ids[2]], "every article without a summary; a stale one is left alone");
+        assert_eq!(queued(&s), [ids[1]], "every article without a summary, rated or not; stale ones, with the user's instructions or without, are left alone");
+
+        s.exec_for_test("DELETE FROM processing_jobs WHERE type = 'summarize'");
+        s.insert_summary(ids[1], "normal", "要約", "h", "fake", None, summarize::PROMPT_VERSION).unwrap();
+        after_ingest(&s);
+        assert!(queued(&s).is_empty(), "nor is a current one");
     }
 
     #[tokio::test]

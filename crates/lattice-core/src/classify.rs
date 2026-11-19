@@ -104,26 +104,48 @@ pub fn list_genres(store: &Store) -> Result<Vec<TagCount>, String> {
     st.query_map([], |r| Ok(TagCount { name: r.get(0)?, count: r.get(1)? })).map_err(err)?.collect::<Result<_, _>>().map_err(err)
 }
 
-/// Renames a genre; renaming to another existing genre (case-insensitive) merges into it,
-/// moving its articles. Articles keep their manual/auto flag: a manual pick stays pinned.
-/// Future classification runs see the new name through `list_genres`.
-pub fn rename_genre(store: &Store, from: &str, to: &str) -> Result<(), String> {
+/// Renames a genre; renaming to another existing genre (case-insensitive) merges into it when
+/// `merge` allows, moving its articles, and fails otherwise. Articles keep their manual/auto flag:
+/// a manual pick stays pinned. Future classification runs see the new name through `list_genres`.
+pub fn rename_genre(store: &Store, from: &str, to: &str, merge: bool) -> Result<(), String> {
     let to = clean(to);
     if to.is_empty() {
         return Err(msg!("classify.emptyName"));
     }
     let mut c = store.conn();
     let tx = c.transaction().map_err(err)?;
-    let id_of = |name: &str| tx.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get::<_, i64>(0)).optional();
-    let from_id = id_of(from).map_err(err)?.ok_or_else(|| msg!("classify.noGenre", name = from))?;
-    match id_of(&to).map_err(err)? {
-        Some(to_id) if to_id != from_id => {
-            tx.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
-            tx.execute("DELETE FROM genres WHERE id = ?1", [from_id]).map_err(err)?;
-        }
+    let from_id = existing_genre(&tx, from)?;
+    match genre_id(&tx, &to)? {
+        Some(to_id) if to_id != from_id && !merge => return Err(msg!("classify.exists", name = to)),
+        Some(to_id) if to_id != from_id => move_genre(&tx, from_id, to_id)?,
         _ => drop(tx.execute("UPDATE genres SET name = ?2 WHERE id = ?1", params![from_id, to]).map_err(err)?),
     }
     tx.commit().map_err(err)
+}
+
+/// Moves `from`'s articles into `into` and deletes `from`. Unlike `rename_genre`, `into` must exist.
+pub fn merge_genre(store: &Store, from: &str, into: &str) -> Result<(), String> {
+    let mut c = store.conn();
+    let tx = c.transaction().map_err(err)?;
+    let from_id = existing_genre(&tx, from)?;
+    let into_id = existing_genre(&tx, &clean(into))?;
+    if from_id != into_id {
+        move_genre(&tx, from_id, into_id)?;
+    }
+    tx.commit().map_err(err)
+}
+
+fn genre_id(c: &rusqlite::Connection, name: &str) -> Result<Option<i64>, String> {
+    c.query_row("SELECT id FROM genres WHERE name = ?1", [name], |r| r.get(0)).optional().map_err(err)
+}
+
+fn existing_genre(c: &rusqlite::Connection, name: &str) -> Result<i64, String> {
+    genre_id(c, name)?.ok_or_else(|| msg!("classify.noGenre", name = name))
+}
+
+fn move_genre(c: &rusqlite::Connection, from_id: i64, to_id: i64) -> Result<(), String> {
+    c.execute("UPDATE articles SET genre_id = ?2 WHERE genre_id = ?1", params![from_id, to_id]).map_err(err)?;
+    c.execute("DELETE FROM genres WHERE id = ?1", [from_id]).map(drop).map_err(err)
 }
 
 /// A genre the user adds ahead of any article: classification offers it from then on. Adding an
@@ -398,19 +420,21 @@ mod tests {
         apply(&s, ids[2], "Databases", &[], None, "fake", None).unwrap();
         let count = |name: &str| list_genres(&s).unwrap().into_iter().find(|g| g.name == name).map(|g| g.count);
 
-        rename_genre(&s, "databases", "Storage  Engines").unwrap();
+        rename_genre(&s, "databases", "Storage  Engines", true).unwrap();
         assert_eq!((count("Databases"), count("Storage Engines")), (None, Some(2)));
-        rename_genre(&s, "storage engines", "storage engines").unwrap();
+        rename_genre(&s, "storage engines", "storage engines", false).unwrap();
         assert_eq!(count("storage engines"), Some(2), "case-only rename");
 
-        rename_genre(&s, "DB", "Database").unwrap();
-        rename_genre(&s, "storage engines", "DATABASE").unwrap();
+        rename_genre(&s, "DB", "Database", true).unwrap();
+        assert!(rename_genre(&s, "storage engines", "DATABASE", false).is_err(), "no merge unless asked");
+        assert_eq!((count("storage engines"), count("Database")), (Some(2), Some(1)), "the refused merge moved nothing");
+        rename_genre(&s, "storage engines", "DATABASE", true).unwrap();
         assert_eq!((count("DB"), count("storage engines"), count("Database")), (None, None, Some(3)), "merged into the existing genre");
         let row = |id: i64| s.article_row(id).unwrap().unwrap();
         assert_eq!((row(ids[0]).genre.as_deref(), row(ids[0]).genre_manual), (Some("Database"), true));
         assert_eq!((row(ids[2]).genre.as_deref(), row(ids[2]).genre_manual), (Some("Database"), false), "auto stays auto");
-        assert!(rename_genre(&s, "Nope", "X").is_err());
-        assert!(rename_genre(&s, "Database", " ").is_err());
+        assert!(rename_genre(&s, "Nope", "X", true).is_err());
+        assert!(rename_genre(&s, "Database", " ", true).is_err());
 
         let fake = Fake::new();
         enqueue(&s, ids[1]).unwrap();

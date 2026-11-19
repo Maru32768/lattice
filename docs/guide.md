@@ -71,7 +71,7 @@ These providers are supported:
 
 Write your job, interests and the knowledge you can take for granted in **Settings › About you**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
 
-- Summaries and chat answers
+- Chat answers
 - Quiz questions
 - Article [importance](#importance) (articles are not rated while **About you** is empty)
 - The LLM feed filter
@@ -296,10 +296,10 @@ When the server is not running (or is still loading the model), translation fail
 
 Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
 
-- Summaries reflect **About you**.
+- For an article over 100,000 characters, Lattice sends the start and the end to the AI and leaves out the middle.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
-- If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
+- If the article's text or the summary settings change after a summary is made, or an app update changes how summaries are made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
 In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `g y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
 
@@ -911,7 +911,7 @@ Opened from the Worker's address, the page opens without a connection too, with 
 
 The bucket and Cloudflare can read what is in it. The articles and the list are not encrypted there, as with a [cloud backup](#cloud-backup-r2).
 
-`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write`.
+`lattice-cli serve` runs the same server without the app, on this PC only. Add `--lan` to serve to the network and `--port` to change the port. It prints the address to open. It only reads unless you add `--allow-write` or `--allow-delete`.
 
 ## CLI and MCP
 
@@ -949,13 +949,25 @@ The bucket and Cloudflare can read what is in it. The articles and the list are 
 | `tag ID NAME` | Adds a tag to an article. Needs write permission. |
 | `read ID` | Marks an article as read. Needs write permission. |
 | `favorite ID` | Marks an article as a favorite. Needs write permission. |
+| `untag ID NAME`, `unread ID`, `unfavorite ID` | Undo `tag`, `read` and `favorite`. Need write permission. |
+| `rename-article ID TITLE` | Gives an article your own title. An empty title goes back to the one Lattice found. Needs write permission. |
+| `set-genre ID NAME` | Puts an article in a genre, which auto-classification does not overwrite. An empty name takes it out. Needs write permission. |
+| `add-genre NAME`, `rename-genre FROM TO`, `delete-genre NAME` | Add, rename and delete genres. A genre cannot be renamed to one that exists, and only a genre with no articles can be deleted. Need write permission. |
+| `create-collection NAME`, `rename-collection ID NAME` | Create and rename collections. Need write permission. |
+| `collect COLLECTION ARTICLE`, `uncollect COLLECTION ARTICLE` | Add an article to a collection, or take it out. Need write permission. |
+| `add-feed URL` | Subscribes to an RSS or Atom feed, fetching it once to check it. `--folder NAME` puts it in that folder, made if missing. Needs write permission. |
+| `rename-feed ID [NAME]`, `move-feed ID [FOLDER]`, `rename-folder ID NAME` | Rename a feed (without a name, back to its own title), move it into a folder by name (without one, out of any folder) and rename a folder. Need write permission. |
+| `delete-article ID` | Deletes an article with its summary, translation, note and quiz. Needs delete permission. |
+| `delete-collection ID`, `remove-feed ID`, `delete-folder ID` | Delete a collection, unsubscribe from a feed and delete a folder. Their articles and feeds stay. Need delete permission. |
+| `merge-genre FROM INTO` | Moves a genre's articles into another genre and deletes it. Needs delete permission. |
 | `mcp` | Serves these commands to agents as an MCP server over stdio. |
 
 Options for every command:
 
 - `--format json` (the default) or `--format text` (easier for people to read)
 - `--data-dir PATH`: use another data folder.
-- `--allow-write`: allow `save`, `tag`, `read` and `favorite`. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-write`: allow the commands that need write permission. Setting the environment variable `LATTICE_ALLOW_WRITE=1` does the same.
+- `--allow-delete`: also allow the commands that need delete permission.
 
 `lattice-cli --help` also lists the commands.
 
@@ -983,8 +995,8 @@ Options for every command:
 - Search gives the same results as the app. If the app has not downloaded the semantic search model yet, the CLI does not download it and answers with full-text search only. The JSON output says so.
 - Questions asked with `ask` also appear in the app's chat history.
 - `save` only adds a fetch job; a running app does the fetch within 30 seconds. With `--run`, the CLI itself fetches the page and its images, and makes the search vectors if the model is present. In both cases, classification, importance, automatic translation and rendering are left to the app.
-- Changes made with `tag`, `read` and `favorite` show in the app the next time it reloads the list.
-- The CLI cannot remove favorites, mark articles unread, remove tags or delete articles. Agents are limited to actions that are easy to undo.
+- Changes made with the CLI show in the app the next time it reloads the list.
+- `mcp` never offers the commands that need delete permission, even with `--allow-delete`, because nothing there can ask you first.
 
 ### Use Lattice from Claude Code
 
@@ -992,7 +1004,7 @@ Options for every command:
 claude mcp add lattice -- "$env:LOCALAPPDATA\Lattice\lattice-cli.exe" mcp
 ```
 
-With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it `save`, `tag`, `read` and `favorite`, add `--allow-write` after `mcp`.
+With this, the agent can use `search`, `get`, `list`, `summary`, `tags`, `genres`, `feeds`, `collections`, `jobs` and `ask` as tools. To also give it the commands that need write permission, add `--allow-write` after `mcp`.
 
 ### Watch out for prompt injection
 
@@ -1110,7 +1122,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 |---|---|
 | Translation | The paragraphs to translate, and your translation **Extra instructions** |
 | Translation in the Page view | The paragraphs of the page you are viewing (only while **Mixed** or **Translated** is chosen) |
-| Summaries | The article text, **About you** and your summary instructions |
+| Summaries | The article's title and text, and your summary instructions |
 | Classification | The title, the domain, and the summary or the start of the text |
 | Importance | The title, the domain, the summary, the headings, excerpts from the beginning, middle and end of the text, and **About you** |
 | Quizzes | The article text and **About you** |
