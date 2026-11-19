@@ -175,7 +175,7 @@ export function McpSettings() {
           </SetRow>
         </div>
       </section>
-      {status.enabled && status.registrations.length > 0 && (
+      {status.enabled && !status.error && status.registrations.length > 0 && (
         <section aria-labelledby="mcp-activity">
           <h2 id="mcp-activity">{t("mcpSettings.activity")}</h2>
           <p className="sec-d">{t("mcpSettings.activityDesc")}</p>
