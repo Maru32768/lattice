@@ -455,9 +455,8 @@ fn scale(w: &str) -> Option<i32> {
 
 /// The value of a word alone: a number word, a month or its abbreviation, or one of `SINGLES`.
 fn word_value(w: &str) -> Option<u128> {
-    let at = |list: &[&str]| list.iter().position(|x| *x == w);
-    let short = |list: &[&str]| (w.len() == 3).then(|| list.iter().position(|x| x.starts_with(w))).flatten();
-    cardinal(w).or_else(|| at(&MONTHS).or_else(|| short(&MONTHS)).map(|i| i as u128 + 1)).or_else(|| SINGLES.iter().find(|(s, _)| *s == w).map(|(_, v)| *v))
+    let month = MONTHS.iter().position(|x| *x == w || (w.len() == 3 && x.starts_with(w))).map(|i| i as u128 + 1);
+    cardinal(w).or(month).or_else(|| SINGLES.iter().find(|(s, _)| *s == w).map(|(_, v)| *v))
 }
 
 /// A word of `cs`: where it starts and ends, and its text in lowercase.
