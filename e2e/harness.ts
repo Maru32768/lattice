@@ -42,6 +42,18 @@ export const listCount = (page: Page) => list(page).locator(".count");
 export const listTitle = (page: Page) => list(page).locator(".list-title h1");
 export const chips = (page: Page) => list(page).locator(".chip.on .chip-body");
 
+/** The chat's 範囲: the button that shows the scope, and the dialog it opens. */
+export const chatScope = (page: Page) => page.getByRole("combobox", { name: "質問の範囲", exact: true });
+export const scopeDialog = (page: Page) => page.getByRole("dialog", { name: "質問の範囲" });
+
+/** Picks the chat scope named `name`, searching for it: the list draws only the options in view. */
+export async function pickScope(page: Page, name: string) {
+  await chatScope(page).click();
+  await scopeDialog(page).getByRole("combobox", { name: "範囲を検索" }).fill(name);
+  await scopeDialog(page).getByRole("option", { name, exact: true }).click();
+  await expect(scopeDialog(page)).toBeHidden();
+}
+
 export async function filterByTag(page: Page, tag: string) {
   await list(page).getByRole("button", { name: "タグ", exact: true }).click();
   const pv = page.getByRole("dialog", { name: "タグで絞り込む" });

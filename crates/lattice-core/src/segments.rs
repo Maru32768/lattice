@@ -468,7 +468,7 @@ pub(crate) mod tests {
             if self.fail {
                 return Err(LlmError::Failed("usage limit reached".into()));
             }
-            if system.contains("You summarize technical articles") {
+            if system.contains("You summarize a technical article") {
                 return Ok(Completion { value: json!({"summary": "要約です。", "key_points": ["要点"]}), model: None, provider: "fake".into() });
             }
             if system.contains("You classify technical articles") {

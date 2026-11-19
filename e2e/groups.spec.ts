@@ -1,4 +1,4 @@
-import { test, expect, navItem, list, listCount, callsOf } from "./harness.ts";
+import { test, expect, navItem, list, listCount, callsOf, chatScope, scopeDialog } from "./harness.ts";
 import type { Page } from "@playwright/test";
 import { ARTICLES, GROUPS } from "./fixtures.ts";
 
@@ -113,11 +113,19 @@ test("a group is a facet, a search scope and a chat scope (このグループ)",
 
   await navItem(app, mvcc.name).click();
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  const scope = app.getByLabel("質問の範囲");
-  const key = JSON.stringify({ kind: "group", id: mvcc.id });
-  await expect(scope.locator("option", { hasText: `このグループ: ${mvcc.name}` })).toHaveAttribute("value", key);
-  await expect(scope.locator(`optgroup[label="グループ"] option`)).toHaveText(GROUPS.map((g) => `${g.name}(${members(g.id).length}件)`));
-  await scope.selectOption({ label: `このグループ: ${mvcc.name}` });
+  await chatScope(app).click();
+  const scopes = scopeDialog(app).getByRole("option");
+  await expect(scopes).toContainText([`このグループ: ${mvcc.name}`, ...GROUPS.map((g) => `${g.name}(${members(g.id).length}件)`)]);
+  await scopeDialog(app)
+    .getByRole("option", { name: `このグループ: ${mvcc.name}` })
+    .click();
+  await expect(chatScope(app)).toHaveText(`このグループ: ${mvcc.name}`);
+  await chatScope(app).click();
+  const selected = scopeDialog(app).locator("[role=option][aria-selected=true]");
+  await expect(selected, "listed twice, selected once").toHaveCount(1);
+  await expect(selected).toHaveAccessibleName(`このグループ: ${mvcc.name}`);
+  await expect(scopeDialog(app).locator(".check", { hasText: "✓" })).toHaveCount(1);
+  await app.keyboard.press("Escape");
   await app.getByLabel("質問", { exact: true }).fill("MVCCとは？");
   await app.getByRole("button", { name: "送信" }).click();
   await expect

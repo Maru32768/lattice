@@ -94,6 +94,18 @@ mise run e2e
 
 CI (`.github/workflows/ci.yml`) runs the lints, all tests and the e2e suite on Windows for every push and pull request to `master`.
 
+### Summary quality
+
+Measure a change to the summary prompt or its input before it lands. `crates/lattice-core/examples/summary_eval.rs` sends the summary model exactly what the app sends and grades the summaries that come back. Its module doc lists the commands and options. The first command copies a sample of a library's articles into an eval dir, reading the library read-only:
+
+```bash
+mise exec -- cargo run -p lattice-core --example summary_eval -- sample --dir <eval dir> --db <lattice.db>
+```
+
+Keep the eval dir outside the repository, because the article text it holds is copyrighted.
+
+Build each version you compare, and summarize it under its own label. Use a judge from a different model family than the summarizer. To see the noise, summarize the same version twice under two labels. For the measurement of the current prompt, see [design-review.md](design-review.md) §38.
+
 ## Conventions
 
 - **UI text** lives in `src/i18n/ja.ts` (the key source) and `src/i18n/en.ts` (must match it). A Japanese literal in UI code fails `src/i18n/literals.test.ts`.

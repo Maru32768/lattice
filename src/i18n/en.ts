@@ -45,9 +45,10 @@ export const en = {
   "settingsView.translation": "Translation",
   "settingsView.translationLead": "Applies both to article translation and to translated pages.",
   "settingsView.instructions": "Summaries & chat",
-  "settingsView.instructionsLead": "Instructions added to summaries or to chat answers only. Your interests and background go in About you.",
+  "settingsView.instructionsLead":
+    "Instructions added to summaries or to chat answers only. Your interests and background go in About you (used for chat answers, not for summaries).",
   "settingsView.profileLead":
-    "Tailors summaries, chat answers, quiz questions, importance and the feeds’ LLM filter to your interests and background. Article text is treated as untrusted input: instructions inside it are never followed.",
+    "Tailors chat answers, quiz questions, importance and the feeds’ LLM filter to your interests and background. Article text is treated as untrusted input: instructions inside it are never followed.",
   "settingsView.classify": "Auto-classification",
   "settingsView.render": "Import & JS rendering",
   "settingsView.images": "Images",
@@ -641,13 +642,14 @@ export const en = {
   "facetPopover.selected": "Selected",
   "facetPopover.unselect": "Remove {tag}",
   "facetPopover.showMore": "Show {hidden} more",
-  "facetPopover.none": "No matches",
   "facetPopover.hintAdd": " add and continue",
   "facetPopover.hintComplete": " complete",
   "common.hintApply": " apply",
   "facetPopover.hintToggle": " toggle",
   "facetPopover.hintRemoveLast": " remove the last",
   "facetPopover.searchPlaceholder": (p) => `Search ${plural(p.n, "tag", "tags")}…`,
+  "pickList.none": "No matches",
+  "pickList.loading": "Loading…",
   "listPane.savedDesc": "Date added, newest first",
   "listPane.savedAsc": "Date added, oldest first",
   "listPane.publishedDesc": "Date published, newest first",
@@ -897,6 +899,7 @@ export const en = {
   "chatPane.popIn": "Move back to the main window",
   "chatPane.scope": "Scope",
   "chatPane.scopeLabel": "Scope of the question",
+  "chatPane.findScope": "Find a scope",
   "chatPane.thisArticle": "This article",
   "chatPane.articleTitle": " ({title})",
   "chatPane.noArticle": " (no article open)",
@@ -975,7 +978,8 @@ export const en = {
   "reader.summary": "Summary",
   "reader.summarizing": "Summarizing…",
   "reader.summarize": "Summarize",
-  "reader.summaryStale": "The article or the summary settings (Settings › Summaries & chat) have changed. Regenerate to apply them",
+  "reader.summaryStale":
+    "The article or the summary settings (Settings › Summaries & chat) have changed, or an app update has changed how summaries are made. Regenerate to apply them",
   "reader.summaryFailed": "Summary failed: {last_error}",
   "reader.markUnread": "Mark as unread",
   "reader.markRead": "Mark as read",
@@ -1283,9 +1287,8 @@ export const en = {
   // @i18n-append
   "settingsView.relevance": "Importance",
   "settingsView.relevanceLead":
-    "The LLM rates each article from 1 to 5 against “About you” (Summaries & chat), with a one-line reason. Used by the “Most important first” sort, the Importance filter and Important in the sidebar. Ratings weigh both how close an article is to your interests and what you would gain from reading it. After you edit your profile, or when an update changes how articles are rated, earlier ratings are marked as rated by earlier criteria.",
-  "relevanceSettings.noProfile":
-    "“About you” is empty, so articles are not rated. Describe your work and interests in Settings › Summaries & chat to start rating.",
+    "The LLM rates each article from 1 to 5 against “About you”, with a one-line reason. Used by the “Most important first” sort, the Importance filter and Important in the sidebar. Ratings weigh both how close an article is to your interests and what you would gain from reading it. After you edit your profile, or when an update changes how articles are rated, earlier ratings are marked as rated by earlier criteria.",
+  "relevanceSettings.noProfile": "“About you” is empty, so articles are not rated. Describe your work and interests in Settings › About you to start rating.",
   "relevanceSettings.auto": "Rate newly saved articles",
   "relevanceSettings.autoDesc": "Runs only while “About you” is filled in. Rates up to 20 articles per LLM call.",
   "relevanceSettings.threshold": "Lowest importance in Important",

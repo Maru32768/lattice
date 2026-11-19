@@ -6,7 +6,19 @@ import { api } from "../src/api.ts";
 
 declare global {
   interface Window {
-    __e2e: { calls: { cmd: string; args: unknown }[]; unmocked: string[]; emit: typeof emit; fromPage: typeof emit; deleteArticle: typeof api.deleteArticle };
+    __e2e: {
+      calls: { cmd: string; args: unknown }[];
+      unmocked: string[];
+      emit: typeof emit;
+      fromPage: typeof emit;
+      deleteArticle: typeof api.deleteArticle;
+      /** Lets the oldest `n` waiting calls of `cmd` through, all of them by default; later calls wait again. */
+      release: (cmd: string, n?: number) => void;
+    };
+    /** Set by an init script: commands whose calls wait for `__e2e.release`, as slow reads would. */
+    __e2eHold?: string[];
+    /** Set by an init script: commands that fail, as a broken read would. */
+    __e2eFail?: string[];
   }
 }
 
@@ -16,21 +28,34 @@ const fromPage: typeof emit = async (event, payload) => {
   await emit(event, payload);
   delete (document as Partial<Document>).hasFocus;
 };
-const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle };
+const held = new Map((window.__e2eHold ?? []).map((cmd) => [cmd, [] as (() => void)[]]));
+function release(cmd: string, n = Infinity) {
+  for (const go of held.get(cmd)?.splice(0, n) ?? []) {
+    go();
+  }
+}
+const e2e: Window["__e2e"] = { calls: [], unmocked: [], emit, fromPage, deleteArticle: api.deleteArticle, release };
 window.__e2e = e2e;
 // `?window=<label>` starts the page as that window (a pop-out, G52); the app reads its label.
 mockWindows(new URLSearchParams(location.search).get("window") ?? "main");
 mockIPC(
   (cmd, args) => {
     e2e.calls.push({ cmd, args });
-    try {
-      return handle(cmd, args);
-    } catch (e) {
-      if (String(e).includes("unmocked")) {
-        e2e.unmocked.push(cmd);
+    const run = () => {
+      try {
+        if (window.__e2eFail?.includes(cmd)) {
+          throw new Error(`${cmd} failed`);
+        }
+        return handle(cmd, args);
+      } catch (e) {
+        if (String(e).includes("unmocked")) {
+          e2e.unmocked.push(cmd);
+        }
+        throw e;
       }
-      throw e;
-    }
+    };
+    const waiting = held.get(cmd);
+    return waiting ? new Promise<void>((go) => waiting.push(go)).then(run) : run();
   },
   { shouldMockEvents: true },
 );

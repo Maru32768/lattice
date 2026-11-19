@@ -71,7 +71,7 @@ These providers are supported:
 
 Write your job, interests and the knowledge you can take for granted in **Settings › About you**, and the AI tailors its output to it. It holds up to 2,000 characters. These features use it:
 
-- Summaries and chat answers
+- Chat answers
 - Quiz questions
 - Article [importance](#importance) (articles are not rated while **About you** is empty)
 - The LLM feed filter
@@ -296,10 +296,10 @@ When the server is not running (or is still loading the model), translation fail
 
 Click **Summarize** under **Summary** at the top of the Reader, and the AI summarizes the article. The summary shows only its first line; click it to read all of it.
 
-- Summaries reflect **About you**.
+- For an article over 100,000 characters, Lattice sends the start and the end to the AI and leaves out the middle.
 - **Extra instructions for summaries** in **Settings › Summaries & chat** adds instructions for summaries only.
 - **Summarize automatically** in **Settings › Summaries & chat** writes a summary for each newly saved article, for **All articles** or only for those rated at or above an importance, such as **Importance 4 or higher** (the summary then waits for the rating, so it needs **About you** and **Rate newly saved articles**). It is **Off** by default, because each summary is an LLM call.
-- If the article's text or the summary settings change after a summary is made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
+- If the article's text or the summary settings change after a summary is made, or an app update changes how summaries are made, the summary says so. To update it, click **Regenerate** in the open summary, or **Regenerate the summary** in the ⋯ menu. Summaries are never regenerated on their own.
 
 In the Page view of a saved article, **Summary** in the toolbar shows the same summary above the page. Press `g y` to open or close the summary: in the Page view it shows the whole summary above the page, and pressing it again closes it.
 
@@ -565,7 +565,7 @@ Besides switching lists, the commands include:
 
 Open the chat pane with **Chat** in the navigation, type a question and send it with `Ctrl+Enter`. **Send key** in **Settings › Summaries & chat** can make `Enter` send too. The AI answers only from your saved articles. The numbers in the answer are citations. Click one to open the passage it relies on. If the articles in scope say nothing about the question, the AI says it found nothing instead of guessing. With [Vim key bindings](#vim-key-bindings) on, the box takes Vim keys.
 
-**Scope.** **Scope** chooses which articles the answer is based on.
+**Scope.** **Scope** chooses which articles the answer is based on. In the list it opens, type in the field at the top to narrow it by name.
 
 - **This article**: the article in the focused tab
 - **All open articles**: the saved articles open in tabs in every window (you can also pick them one by one under it)
@@ -1123,7 +1123,7 @@ Lattice sends text to the AI provider you set up only when you use these feature
 |---|---|
 | Translation | The paragraphs to translate, and your translation **Extra instructions** |
 | Translation in the Page view | The paragraphs of the page you are viewing (only while **Mixed** or **Translated** is chosen) |
-| Summaries | The article text, **About you** and your summary instructions |
+| Summaries | The article's title and text, and your summary instructions |
 | Classification | The title, the domain, and the summary or the start of the text |
 | Importance | The title, the domain, the summary, the headings, excerpts from the beginning, middle and end of the text, and **About you** |
 | Quizzes | The article text and **About you** |

@@ -644,9 +644,11 @@ mod tests {
         store_fetched(&s, id, &page(&breaks(true))).unwrap();
         assert_eq!(texts(&s), whole + 1);
         assert!(summary_current(&s, id), "a paragraph broken in two");
-        store_fetched(&s, id, &page(&format!("{}<pre><code>let x = 2;</code></pre>", breaks(true)))).unwrap();
-        assert!(summary_current(&s, id), "code, which a summary does not read");
-        store_fetched(&s, id, &page(&BODY.replace("dirty reads", "dirty writes"))).unwrap();
+        let coded = |text: &str| page(&format!("{text}<pre><code>let x = 2;</code></pre>"));
+        store_fetched(&s, id, &coded(&breaks(true))).unwrap();
+        assert!(!summary_current(&s, id), "code, which a summary reads too");
+        s.conn().execute("UPDATE summaries SET source_hash = (SELECT content_hash FROM articles WHERE id = ?1)", [id]).unwrap();
+        store_fetched(&s, id, &coded(&breaks(true).replace("dirty reads", "dirty writes"))).unwrap();
         assert!(!summary_current(&s, id), "other words");
     }
 

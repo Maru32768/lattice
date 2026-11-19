@@ -2,26 +2,13 @@ import { useMemo, useState } from "react";
 import type { ArticleRow, GroupRow } from "../api";
 import { DIM_LABELS, countBy, toggle, universe, valueLabel, type Dim, type DimValue, type Facets } from "./library";
 import { Popover } from "../ui/Popover";
+import { Marked } from "../ui/PickList";
 import { ActionKey, Icon, Kbd } from "../ui/Icon";
 import { listStep } from "../lib/keys";
 import { useT } from "../i18n";
 import { withStarts } from "../lib/runs";
 
 type Opt = { v: DimValue<Dim>; label: string; count: number };
-
-function Marked({ text, q }: { text: string; q: string }) {
-  const i = q ? text.toLowerCase().indexOf(q.toLowerCase()) : -1;
-  if (i < 0) {
-    return <>{text}</>;
-  }
-  return (
-    <>
-      {text.slice(0, i)}
-      <mark>{text.slice(i, i + q.length)}</mark>
-      {text.slice(i + q.length)}
-    </>
-  );
-}
 
 /** Facet picker for one dimension; tags get search, AND/OR and the in-set / out-of-set split (Filter board). */
 export function FacetPopover({
@@ -223,7 +210,7 @@ export function FacetPopover({
                   {t("facetPopover.showMore", { hidden: s.hidden! })}
                 </button>
               )}
-              {s.opts.length === 0 && <div className="pv-empty">{t("facetPopover.none")}</div>}
+              {s.opts.length === 0 && <div className="pv-empty">{t("pickList.none")}</div>}
             </div>
           ))}
         </div>
