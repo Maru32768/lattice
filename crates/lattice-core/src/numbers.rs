@@ -1039,7 +1039,9 @@ mod tests {
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
-        for (summary, article, why) in [("2", "二四日", "one apart"), ("12", "一二三件", "a pair alone"), ("23", "一二三件", "a pair alone")] {
+        for (summary, article, why) in
+            [("2", "二四日", "one apart"), ("3", "三二日", "the next one up"), ("12", "一二三件", "a pair alone"), ("23", "一二三件", "a pair alone")]
+        {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
     }
