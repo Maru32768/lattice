@@ -20,6 +20,8 @@ test("tag popover: every tag in the set, search, AND / any, Backspace drops the 
   await expect(search).toBeFocused();
   await expect(options.first(), "no top few: every tag in the set is an option").toHaveAttribute("aria-setsize", String(tagsInSet));
   await expect(options.first()).toHaveAttribute("aria-description", "この集合に含まれる");
+  await app.keyboard.press("Tab");
+  await expect(search, "Tab with nothing typed completes nothing").toHaveValue("");
 
   await search.fill("postg");
   await expect(options.first()).toContainText("postgres");
