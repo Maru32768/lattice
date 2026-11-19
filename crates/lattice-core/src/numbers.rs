@@ -513,9 +513,10 @@ fn words(cs: &[char]) -> Vec<Dec> {
     [list, respelled].iter().flat_map(|list| [read_words(cs, list), years(cs, list), word_ranges(cs, list)]).flatten().collect()
 }
 
-/// A range's left end with the scale words its right end writes: 3,000,000 in `three to four million`, 200,000 in
-/// `two hundred to three hundred thousand`. The left end gets the right end's scale words above its own, and counts
-/// only when it stays no larger than the right end: `twenty-one million` is no range, as 20 million is more than 1.
+/// A range's left end with the scale words its right end writes, and its right end: 3,000,000 and 4,000,000 in
+/// `three to four million`, 200,000 in `two hundred to three hundred thousand`. The left end gets the right end's scale
+/// words above its own, and counts only when it stays no larger than the right end: `twenty-one million` is no range,
+/// as 20 million is more than 1.
 fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
     let number = |w: &str| cardinal(w).is_some() || scale(w).is_some();
     let read = |list: &[&str]| {
@@ -549,7 +550,9 @@ fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
             if let (Some(scaled), Some(end)) = (scaled, read(&right))
                 && scaled.at_most(end)
             {
-                out.push(scaled);
+                // A hyphen joins the right end to the left one when a ten meets a unit (one hundred twenty-one hundred
+                // fifty thousand), so the right end is read alone here.
+                out.extend([scaled, end]);
             }
         }
     }
@@ -910,6 +913,7 @@ mod tests {
             ("10万～20万人", "a hundred to two hundred thousand users"),
             ("300万～420万人", "three to four million two hundred thousand users"),
             ("300万人", "twenty, three to four million users"),
+            ("12万～15万人", "one hundred twenty-one hundred fifty thousand users"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
