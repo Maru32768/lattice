@@ -629,7 +629,6 @@ export const ja = {
   "facetPopover.countNote": "件数は現在の集合内",
   "facetPopover.selected": "選択中",
   "facetPopover.unselect": "{tag}を解除",
-  "facetPopover.hintAdd": " 追加して続ける",
   "facetPopover.hintComplete": " 補完",
   "common.hintApply": " 適用",
   "facetPopover.hintToggle": " 切替",

@@ -115,7 +115,7 @@ function TagFilter({ facets, onFacets, base, all, anchor, onClose }: Props) {
             <>
               <span>
                 <Kbd>Enter</Kbd>
-                {t("facetPopover.hintAdd")}
+                {t("facetPopover.hintToggle")}
               </span>
               <span>
                 <Kbd>Tab</Kbd>

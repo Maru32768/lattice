@@ -639,7 +639,6 @@ export const en = {
   "facetPopover.countNote": "Counts are within the current set",
   "facetPopover.selected": "Selected",
   "facetPopover.unselect": "Remove {tag}",
-  "facetPopover.hintAdd": " add and continue",
   "facetPopover.hintComplete": " complete",
   "common.hintApply": " apply",
   "facetPopover.hintToggle": " toggle",
