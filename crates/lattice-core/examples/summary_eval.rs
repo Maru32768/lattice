@@ -1,7 +1,8 @@
 //! Measures the quality of article summaries, so a change to the summary prompt can be compared
 //! with the current one. It sends exactly what the app sends (`summarize::request`) and judges each
 //! summary against the whole article, FineSurE style: is every sentence supported, which key facts
-//! does it cover.
+//! does it cover. It also checks the summary's numbers against the article as the app does, and
+//! whether the blocks each item cites support it.
 //!
 //! ```text
 //! cargo run -p lattice-core --example summary_eval -- <command> --dir <eval dir> [options]
@@ -10,6 +11,7 @@
 //!   facts --judge <spec> [--limit N]                          facts.json: the key facts of each case
 //!   summarize --label <name> --with <spec> [--limit N]        runs/<name>.json
 //!   judge --label <name> --judge <spec> [--limit N]           judgments/<name>.json
+//!   cites --label <name> --judge <spec> [--limit N]           cites/<name>.json: do the cited blocks support each item
 //!   compare <labelA> <labelB> --judge <spec> [--limit N]      compare/<A>+<B>.json
 //!   report [labelA labelB]
 //! ```
@@ -29,13 +31,14 @@ use lattice_core::chain::{self, ChainEntry, LlmChain, ProviderKind};
 use lattice_core::instructions::{self, Settings};
 use lattice_core::ir::PROSE_KINDS;
 use lattice_core::llm::{Completion, Effort, LlmProvider};
-use lattice_core::summarize;
+use lattice_core::{numbers, summarize};
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-const USAGE: &str = "usage: summary_eval <sample|facts|summarize|judge|compare|report> --dir <eval dir> [options] (see the top of examples/summary_eval.rs)";
+const USAGE: &str =
+    "usage: summary_eval <sample|facts|summarize|judge|cites|compare|report> --dir <eval dir> [options] (see the top of examples/summary_eval.rs)";
 const PARALLEL: usize = 4;
 const RESAMPLES: usize = 10_000;
 
@@ -81,6 +84,12 @@ async fn run(raw: Vec<String>) -> Result<(), String> {
             let llm = llm(&args.need("judge")?)?;
             args.done()?;
             judge(&dir, &name, &llm, limit).await
+        }
+        ["cites"] => {
+            let name = label(&args.need("label")?)?;
+            let llm = llm(&args.need("judge")?)?;
+            args.done()?;
+            cites(&dir, &name, &llm, limit).await
         }
         ["compare", a, b] => {
             let llm = llm(&args.need("judge")?)?;
@@ -473,6 +482,9 @@ struct Run {
     key_points: Vec<String>,
     /// As the app stores and shows it.
     formatted: String,
+    /// The sentences and points with what they cite, from `summary-v3`; `block_ids` are indices into the case's blocks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    items: Option<summarize::Items>,
     provider: String,
     model: Option<String>,
     prompt_version: String,
@@ -487,13 +499,15 @@ async fn summarize(dir: &Path, label: &str, with: &impl LlmProvider, limit: usiz
     let applied = cases.applied();
     let prompt_version = applied.version(summarize::PROMPT_VERSION);
     each_case(&label_path(dir, "runs", label), &cases.cases, limit, async |case: &Case| {
-        let (system, input) = summarize::request(&applied, &case.title, &case.blocks);
-        let c = with.complete_json(&system, &input, &summarize::schema()).await.map_err(|e| e.to_string())?;
-        let formatted = summarize::format_summary(&c.value).ok_or("malformed summary")?;
+        let req = summarize::request(&applied, &case.title, &case.blocks);
+        let c = with.complete_json(&req.system, &req.input, &summarize::schema()).await.map_err(|e| e.to_string())?;
+        let indices: Vec<i64> = (0..case.blocks.len() as i64).collect();
+        let items = req.parse(&c.value, &indices).ok_or("malformed summary")?;
         Ok(Run {
-            summary: c.value["summary"].as_str().unwrap_or_default().into(),
-            key_points: c.value["key_points"].as_array().into_iter().flatten().filter_map(Value::as_str).map(String::from).collect(),
-            formatted,
+            summary: summarize::format_summary(&summarize::Items { key_points: Vec::new(), ..items.clone() }),
+            key_points: items.key_points.iter().map(|p| p.text.clone()).collect(),
+            formatted: summarize::format_summary(&items),
+            items: Some(items),
             provider: c.provider,
             model: c.model,
             prompt_version: prompt_version.clone(),
@@ -677,6 +691,98 @@ async fn judge(dir: &Path, label: &str, judge: &impl LlmProvider, limit: usize) 
     .await
 }
 
+const CITES_RULES: &str = "You check the citations of a Japanese summary of a technical article. The input gives some blocks of the article, \
+each with its number, and the numbered items of the summary, each followed by the numbers of the blocks it cites. For every item, return \"n\" (its \
+number) and \"supported\": true only if the blocks it cites, read together, state or directly imply every claim in the item; false if any claim needs \
+something those blocks do not say, even when another part of the article says it. List every item exactly once.";
+
+#[derive(Serialize, Deserialize)]
+struct CiteVerdict {
+    text: String,
+    /// Indices into the case's blocks.
+    blocks: Vec<usize>,
+    supported: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CiteCheck {
+    provider: String,
+    model: Option<String>,
+    /// The items that cite a block.
+    items: Vec<CiteVerdict>,
+}
+
+fn cites_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "items": {"type": "array", "items": {
+                "type": "object",
+                "properties": {"n": {"type": "integer"}, "supported": {"type": "boolean"}},
+                "required": ["n", "supported"]
+            }}
+        },
+        "required": ["items"]
+    })
+}
+
+/// The input for checking `items` (each citing a block): the blocks they cite, once each in the article's order, then
+/// the items.
+fn cites_input(case: &Case, items: &[&summarize::Item]) -> String {
+    let cited: BTreeSet<usize> = items.iter().flat_map(|i| &i.block_ids).map(|&b| b as usize).collect();
+    let blocks: String = cited.iter().map(|&b| format!("[{}] {}\n", b + 1, case.blocks[b].1)).collect();
+    let lines = items.iter().map(|i| {
+        let labels: Vec<String> = i.block_ids.iter().map(|b| (b + 1).to_string()).collect();
+        format!("{} (cites {})", i.text, labels.join(", "))
+    });
+    format!("<article>\n{blocks}</article>\n\n{}", numbered("summary_items", lines.collect::<Vec<_>>().iter().map(String::as_str)))
+}
+
+/// The judge's verdict on each of `count` items, refused unless it numbers each exactly once.
+fn parse_cites(v: Value, count: usize) -> Result<Vec<bool>, String> {
+    #[derive(Deserialize)]
+    struct Item {
+        n: usize,
+        supported: bool,
+    }
+    #[derive(Deserialize)]
+    struct Reply {
+        items: Vec<Item>,
+    }
+    let mut reply: Reply = serde_json::from_value(v).map_err(|e| format!("malformed citation check: {e}"))?;
+    reply.items.sort_by_key(|i| i.n);
+    if !reply.items.iter().map(|i| i.n).eq(1..=count) {
+        return Err(format!("the citation check does not number the {count} items exactly once each"));
+    }
+    Ok(reply.items.into_iter().map(|i| i.supported).collect())
+}
+
+async fn cites(dir: &Path, label: &str, judge: &impl LlmProvider, limit: usize) -> Result<(), String> {
+    let cases = load_cases(dir)?;
+    let runs = load_runs(dir, label)?;
+    each_case(&label_path(dir, "cites", label), &cases.cases, limit, async |case: &Case| {
+        let Some(Outcome::Ok(run)) = runs.get(&case.id) else {
+            return Err(format!("no summary for this case: run summarize --label {label} again"));
+        };
+        let Some(items) = &run.items else {
+            return Err(format!("the summaries of {label} cite nothing: they were made before summary-v3"));
+        };
+        let citing: Vec<&summarize::Item> = items.summary.iter().chain(&items.key_points).filter(|i| !i.block_ids.is_empty()).collect();
+        if citing.is_empty() {
+            return Ok(CiteCheck { provider: String::new(), model: None, items: Vec::new() });
+        }
+        let c = judge.complete_json(&system(CITES_RULES), &cites_input(case, &citing), &cites_schema()).await.map_err(|e| e.to_string())?;
+        let verdicts = parse_cites(c.value, citing.len())?;
+        let items = citing
+            .iter()
+            .zip(verdicts)
+            .map(|(i, supported)| CiteVerdict { text: i.text.clone(), blocks: i.block_ids.iter().map(|&b| b as usize).collect(), supported })
+            .collect();
+        Ok(CiteCheck { provider: c.provider, model: c.model, items })
+    })
+    .await
+}
+
 const COMPARE_RULES: &str = "You compare two Japanese summaries of the same technical article. A Japanese software engineer reads such a summary to \
 learn what the article says and to decide whether to read it in full. Prefer the summary that is faithful to the article, specific, and complete about \
 what matters. An unsupported or wrong claim is worse than an omission. Length is not a merit. Return \"better\": 1 or 2 for the better summary, or 0 \
@@ -776,6 +882,17 @@ struct Row {
     errors: Vec<String>,
     summarizer: Option<String>,
     judge: String,
+    /// Judged items, and those with a number the article lacks (`numbers::unverified`).
+    numbers: (usize, usize),
+    /// Items, and those that cite a block, for a summary that records its citations.
+    cited: Option<(usize, usize)>,
+    /// Items checked by `cites`, and those their cited blocks support.
+    support: Option<(usize, usize)>,
+}
+
+/// The sums of the pairs present, or `None` when none is.
+fn total<'a>(pairs: impl Iterator<Item = Option<&'a (usize, usize)>>) -> Option<(usize, usize)> {
+    pairs.flatten().fold(None, |acc, (a, b)| Some(acc.map_or((*a, *b), |(x, y): (usize, usize)| (x + a, y + b))))
 }
 
 /// `provider/model`, or the provider alone when it reported no model.
@@ -797,6 +914,7 @@ fn makers<'a>(makers: impl Iterator<Item = &'a str>) -> String {
 fn rows(dir: &Path, cases: &Cases, label: &str) -> Result<BTreeMap<i64, Row>, String> {
     let judgments: Results<Judgment> = read(&label_path(dir, "judgments", label))?.unwrap_or_default();
     let runs: Results<Run> = read(&label_path(dir, "runs", label))?.unwrap_or_default();
+    let checks: Results<CiteCheck> = read(&label_path(dir, "cites", label))?.unwrap_or_default();
     let row = |case: &Case| {
         let Some(Outcome::Ok(j)) = judgments.get(&case.id) else {
             return None;
@@ -806,6 +924,16 @@ fn rows(dir: &Path, cases: &Cases, label: &str) -> Result<BTreeMap<i64, Row>, St
             _ => None,
         };
         let errors = j.items.iter().filter(|i| !i.error.is_empty()).map(|i| i.error.clone()).collect();
+        let article = numbers::Article::new(std::iter::once(case.title.as_str()).chain(case.blocks.iter().map(|(_, t)| t.as_str())));
+        let unverified = j.items.iter().filter(|i| !numbers::unverified(&i.text, &article).is_empty()).count();
+        let cited = run.and_then(|r| r.items.as_ref()).map(|items| {
+            let all: Vec<&summarize::Item> = items.summary.iter().chain(&items.key_points).collect();
+            (all.len(), all.iter().filter(|i| !i.block_ids.is_empty()).count())
+        });
+        let support = match checks.get(&case.id) {
+            Some(Outcome::Ok(c)) => Some((c.items.len(), c.items.iter().filter(|i| i.supported).count())),
+            _ => None,
+        };
         Some((
             case.id,
             Row {
@@ -815,6 +943,9 @@ fn rows(dir: &Path, cases: &Cases, label: &str) -> Result<BTreeMap<i64, Row>, St
                 errors,
                 summarizer: run.map(|r| maker(&r.provider, r.model.as_deref())),
                 judge: maker(&j.provider, j.model.as_deref()),
+                numbers: (j.items.len(), unverified),
+                cited,
+                support,
             },
         ))
     };
@@ -876,6 +1007,14 @@ fn report(dir: &Path, pair: Option<(&str, &str)>) -> Result<Vec<String>, String>
                 errors.join(", ")
             }
         ));
+        if let Some((items, flagged)) = total(rows.values().map(|r| Some(&r.numbers))) {
+            out.push(format!("  items with a number the article lacks: {flagged} of {items}"));
+        }
+        if let Some((items, citing)) = total(rows.values().map(|r| r.cited.as_ref())) {
+            let support = total(rows.values().map(|r| r.support.as_ref()))
+                .map_or("not checked: run cites".into(), |(checked, supported)| format!("their blocks support {supported} of {checked}"));
+            out.push(format!("  citations: {citing} of {items} items cite a block; {support}"));
+        }
         out.push(String::new());
         all.insert(label.clone(), rows);
     }
@@ -1046,6 +1185,7 @@ mod tests {
             summary: "PostgreSQL 17.2のWALを解説する。fsyncは減るのか？ 減る！結論は明快".into(),
             key_points: vec![" 先行書き込み ".into(), " ".into()],
             formatted: String::new(),
+            items: None,
             provider: String::new(),
             model: None,
             prompt_version: String::new(),
@@ -1134,18 +1274,23 @@ mod tests {
         let dir = temp("summarize");
         let cases = Cases { summary_instructions: "数値を残す".into(), cases: vec![case(1)] };
         write(&dir.join("cases.json"), &cases).unwrap();
-        let reply = json!({"summary": "WALを解説する。", "key_points": ["fsyncが減る"]});
+        let reply = json!({
+            "summary": [{"text": "WALを解説する。", "sources": [1]}, {"text": "速い。", "sources": []}],
+            "key_points": [{"text": "fsyncが減る", "sources": [1, 5]}]
+        });
         let with = Answers { reply: reply.clone(), requests: Default::default() };
         summarize(&dir, "a", &with, usize::MAX).await.unwrap();
         let case = &cases.cases[0];
-        let (system, input) = summarize::request(&cases.applied(), &case.title, &case.blocks);
-        assert_eq!(with.requests.into_inner().unwrap(), [(system, input, summarize::schema())]);
+        let req = summarize::request(&cases.applied(), &case.title, &case.blocks);
+        assert_eq!(with.requests.into_inner().unwrap(), [(req.system.clone(), req.input.clone(), summarize::schema())]);
         let runs = load_runs(&dir, "a").unwrap();
         let Some(Outcome::Ok(run)) = runs.get(&1) else {
             panic!("no summary of case 1");
         };
-        assert_eq!(Some(run.formatted.clone()), summarize::format_summary(&reply));
-        assert_eq!(items(run), ["WALを解説する。", "fsyncが減る"], "the judge grades the summary's sentences, then its key points");
+        let stored = req.parse(&reply, &[0]).unwrap();
+        assert_eq!((run.formatted.clone(), run.items.clone()), (summarize::format_summary(&stored), Some(stored)), "as the app stores it");
+        assert_eq!(run.items.as_ref().unwrap().key_points[0].block_ids, [0], "cites block 0 of the case; label 5 was never sent");
+        assert_eq!(items(run), ["WALを解説する。", "速い。", "fsyncが減る"], "the judge grades the summary's sentences, then its key points");
         assert_eq!(maker(&run.provider, &run.model), luna(), "who answered, for the report's makers");
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -1189,6 +1334,7 @@ mod tests {
             summary: summary.into(),
             key_points: vec![key_point.into()],
             formatted: String::new(),
+            items: None,
             provider: String::new(),
             model: None,
             prompt_version: String::new(),
@@ -1230,6 +1376,7 @@ mod tests {
             summary: String::new(),
             key_points: vec![],
             formatted: formatted.into(),
+            items: None,
             provider: provider.into(),
             model: model.map(String::from),
             prompt_version: String::new(),
@@ -1268,6 +1415,7 @@ mod tests {
                 "  japanese     0                  -                  -                  -                  -       -",
                 "  code_heavy   0                  -                  -                  -                  -       -",
                 "  unsupported items: other 2, overclaim 4, wrong_number 2",
+                "  items with a number the article lacks: 0 of 10",
                 "",
                 "b: 2 cases judged; summaries by codex-cli/gpt-6-luna; judged by claude-cli/claude-opus-5-5",
                 "               n       faithfulness  completeness_must   completeness_all        conciseness   chars",
@@ -1279,6 +1427,7 @@ mod tests {
                 "  japanese     0                  -                  -                  -                  -       -",
                 "  code_heavy   0                  -                  -                  -                  -       -",
                 "  unsupported items: none",
+                "  items with a number the article lacks: 0 of 2",
                 "",
                 "b - a, paired over the cases both have:",
                 "  faithfulness       n=2    +0.800  95% CI [+0.800, +0.800]",
@@ -1290,6 +1439,46 @@ mod tests {
             "both cases are short and judged alike: a supports 1 of 5 items, covers 1 of 2 must facts and 2 of 3 facts, and uses 2 of 5 items; \
             b scores 1 on each; a's cases were summarized and judged by two models each, listed in sorted order"
         );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cites_sends_each_cited_block_once_with_the_items_that_cite_one_and_the_report_counts_them() {
+        let dir = temp("cites");
+        let blocks = ["Intro", "WAL appends before it writes.", "fsync runs once per commit."].map(|t| ("paragraph".to_string(), t.to_string()));
+        let case = Case { id: 1, stratum: Stratum::Short, title: "WAL".into(), blocks: blocks.to_vec() };
+        write(&dir.join("cases.json"), &Cases { summary_instructions: String::new(), cases: vec![case] }).unwrap();
+        let item = |text: &str, block_ids: &[i64]| summarize::Item { text: text.into(), block_ids: block_ids.to_vec(), unverified: vec![] };
+        let items = summarize::Items {
+            summary: vec![item("WALは先に追記する。", &[1]), item("速い。", &[])], key_points: vec![item("fsyncは2回", &[2, 1])]
+        };
+        let run = Run {
+            summary: "WALは先に追記する。速い。".into(),
+            key_points: vec!["fsyncは2回".into()],
+            formatted: String::new(),
+            items: Some(items),
+            provider: "codex-cli".into(),
+            model: None,
+            prompt_version: String::new(),
+        };
+        write(&label_path(&dir, "runs", "c"), &BTreeMap::from([(1, Outcome::Ok(run))])).unwrap();
+        let grader = Answers { reply: json!({"items": [{"n": 2, "supported": false}, {"n": 1, "supported": true}]}), requests: Default::default() };
+        cites(&dir, "c", &grader, usize::MAX).await.unwrap();
+        let input = "<article>\n[2] WAL appends before it writes.\n[3] fsync runs once per commit.\n</article>\n\n\
+            <summary_items>\n1. WALは先に追記する。 (cites 2)\n2. fsyncは2回 (cites 3, 2)\n</summary_items>";
+        assert_eq!(grader.requests.into_inner().unwrap(), [(system(CITES_RULES), input.to_string(), cites_schema())]);
+
+        let verdict = |text: &str, error: &str| ItemVerdict { text: text.into(), supported: error.is_empty(), error: error.into() };
+        let items = vec![verdict("WALは先に追記する。", ""), verdict("速い。", ""), verdict("fsyncは2回", "wrong_number")];
+        let judgment = Judgment { provider: "claude-cli".into(), model: None, items, facts: vec![] };
+        write(&label_path(&dir, "judgments", "c"), &BTreeMap::from([(1, Outcome::Ok(judgment))])).unwrap();
+        let out = report(&dir, None).unwrap();
+        assert_eq!(
+            out[out.len() - 3..],
+            ["  items with a number the article lacks: 1 of 3", "  citations: 2 of 3 items cite a block; their blocks support 1 of 2", ""],
+            "2 is not in the article; two items cite blocks, and the judge finds the first supported"
+        );
+        assert!(parse_cites(json!({"items": [{"n": 1, "supported": true}]}), 2).is_err(), "item 2 has no verdict");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -1315,7 +1504,17 @@ mod tests {
     #[test]
     fn paired_differences_are_b_minus_a_over_the_cases_both_have() {
         let rows = |scores: &[(i64, Option<f64>)]| -> BTreeMap<i64, Row> {
-            let row = |s| Row { stratum: Stratum::Short, scores: [s, None, None, None], chars: None, errors: vec![], summarizer: None, judge: String::new() };
+            let row = |s| Row {
+                stratum: Stratum::Short,
+                scores: [s, None, None, None],
+                chars: None,
+                errors: vec![],
+                summarizer: None,
+                judge: String::new(),
+                numbers: (0, 0),
+                cited: None,
+                support: None,
+            };
             scores.iter().map(|&(id, s)| (id, row(s))).collect()
         };
         let a = rows(&[(1, Some(0.5)), (2, Some(0.5)), (3, None)]);
