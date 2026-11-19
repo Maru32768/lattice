@@ -28,11 +28,11 @@ test("a disabled button shows not-allowed and keeps its tooltip", async ({ app }
 async function expectOneRing(control: Locator) {
   await expect(control).toBeFocused();
   const rings = await control.evaluate((e) => {
-    const chip = e.closest(".chip")!;
+    const chip = e.closest(".chip");
     const drawn = [
       getComputedStyle(e).outlineStyle !== "none" && getComputedStyle(e).outlineColor !== "rgba(0, 0, 0, 0)",
       getComputedStyle(e).boxShadow !== "none",
-      chip !== e && getComputedStyle(chip).boxShadow !== "none",
+      !!chip && chip !== e && getComputedStyle(chip).boxShadow !== "none",
     ];
     return { keyboard: e.matches(":focus-visible"), count: drawn.filter(Boolean).length };
   });
@@ -40,28 +40,27 @@ async function expectOneRing(control: Locator) {
   expect(rings.count, `${await control.getAttribute("aria-label")}: one ring`).toBe(1);
 }
 
-test("each control in the chat's scope and AI rows shows one focus ring: a select the chip's, the 範囲 button its own", async ({ app }) => {
+test("the chat's 範囲 button and AI button each show one focus ring", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  const provider = app.getByLabel("回答するAI", { exact: true });
-  await provider.selectOption({ label: "Claude CLI" });
   const scope = chatScope(app);
   await scope.focus();
   await app.keyboard.press("Shift+Tab");
   await app.keyboard.press("Tab");
-  for (const control of [scope, provider, app.getByLabel("回答するモデル", { exact: true }), app.getByLabel("回答するAIのeffort", { exact: true })]) {
-    await expectOneRing(control);
-    await app.keyboard.press("Tab");
-  }
+  await expectOneRing(scope);
+  await app.locator("#chat-q").focus();
+  await app.keyboard.press("Tab");
+  await expectOneRing(app.getByRole("button", { name: "回答するAI" }));
 });
 
-test("in forced colors, where the chip's ring is not drawn, a chat select draws its own", async ({ app }) => {
+test("in forced colors, where the chip's ring is not drawn, a chip's select draws its own", async ({ app }) => {
   await app.emulateMedia({ forcedColors: "active" });
-  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
-  const provider = app.getByLabel("回答するAI", { exact: true });
-  await chatScope(app).focus();
+  await app.keyboard.press("/");
+  const scope = app.getByLabel("検索範囲");
+  await scope.focus();
+  await app.keyboard.press("Shift+Tab");
   await app.keyboard.press("Tab");
-  await expect(provider).toBeFocused();
-  const outline = await provider.evaluate((e) => [getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor]);
+  await expect(scope).toBeFocused();
+  const outline = await scope.evaluate((e) => [getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor]);
   expect(outline[0]).not.toBe("none");
   expect(outline[1]).not.toBe("rgba(0, 0, 0, 0)");
 });

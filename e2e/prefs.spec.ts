@@ -65,9 +65,12 @@ test("the library's settings win over the ones cached on this PC", async ({ shel
 
   await shell.keyboard.press("Escape");
   await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
-  await expect(shell.getByLabel("質問", { exact: true }), "an empty row turns Vim off").toHaveJSProperty("tagName", "TEXTAREA");
+  const q = shell.getByLabel("質問", { exact: true });
+  await expect(q, "an empty row turns Vim off").toHaveJSProperty("tagName", "TEXTAREA");
   expect(await shell.evaluate(() => localStorage.getItem("lattice.chatVim")), "pop-outs see it off too").toBeNull();
-  await expect(shell.locator(".chat-f-row .kbd"), "the chat box sends on the library's key").toHaveText(["Enter"]);
+  await q.fill("one line");
+  await q.press("Enter");
+  await expect.poll(async () => (await callsOf(shell, "chat_ask")).length, "the chat box sends on the library's key").toBe(1);
 });
 
 test("the first start copies the settings cached on this PC into the library", async ({ shell }) => {
