@@ -707,7 +707,9 @@ mod tests {
         changed("a session opened");
         f.post(&r.token, Some(&session), ping.clone()).await;
         changed("its last request");
+        let before_call = changes();
         f.call(&r.token, &session, "get", json!({ "id": id })).await;
+        assert_eq!(changes(), before_call + 2, "its request, then how it ended: a slow call's outcome does not wait for the next request");
         changed("a call");
         f.send("DELETE", Some(&r.token), Some(&session), &[], Value::Null).await;
         changed("the session ended");
