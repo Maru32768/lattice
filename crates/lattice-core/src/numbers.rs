@@ -487,14 +487,14 @@ fn joined(cs: &[char], words: &[Word], k: usize) -> bool {
     k > 0 && words[k].0 == words[k - 1].1 + 1 && matches!(cs[words[k].0 - 1], ' ' | '-')
 }
 
-/// `words` with ordinals and `Xfold` as their cardinal (`twenty-first` as twenty-one, `tenfold` as ten) and `a` before a
-/// scale word as `one` (`a hundred thousand`). Each word keeps its place, so the runs join as written.
-fn respelled(words: &[Word]) -> Vec<Word> {
+/// `words` with ordinals and `Xfold` as their cardinal (`twenty-first` as twenty-one, `tenfold` as ten) and `a` joined to
+/// a scale word as `one` (`a hundred thousand`). Each word keeps its place, so the runs join as written.
+fn respelled(cs: &[char], words: &[Word]) -> Vec<Word> {
     let respell = |k: usize, w: &str| {
         if let Some((_, c)) = ORDINALS.iter().find(|(o, _)| *o == w) {
             return Some((*c).to_string());
         }
-        if w == "a" && words.get(k + 1).is_some_and(|next| scale(&next.2).is_some()) {
+        if w == "a" && words.get(k + 1).is_some_and(|next| scale(&next.2).is_some()) && joined(cs, words, k + 1) {
             return Some("one".into());
         }
         // Any other word loses its `th` or `fold` too: a stem that is no number word (`mon` of `month`) reads as nothing, as
@@ -509,7 +509,7 @@ fn respelled(words: &[Word]) -> Vec<Word> {
 /// million`, `half a million`, `two dozen`).
 fn words(cs: &[char]) -> Vec<Dec> {
     let list = word_list(cs);
-    let respelled = respelled(&list);
+    let respelled = respelled(cs, &list);
     [list, respelled].iter().flat_map(|list| [read_words(cs, list), years(cs, list), word_ranges(cs, list)]).flatten().collect()
 }
 
@@ -590,6 +590,7 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
     let mut out = Vec::new();
     // The run's total up to its last scale word, the part since, and that scale word's power.
     let mut run: Option<(Dec, Dec, i32)> = None;
+    let joined_word = |j: usize| words.get(j).filter(|_| joined(cs, words, j)).map(|w| w.2.as_str());
     for (k, (_, _, w)) in words.iter().enumerate() {
         if !joined(cs, words, k) {
             out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur)));
@@ -629,7 +630,7 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
                 let half = words.get(k + 1).zip(words.get(k + 2)).is_some_and(|((_, _, a), (_, _, h))| a == "a" && h == "half");
                 if half {
                     let value = total.plus(cur).and_then(|v| v.plus(Dec::new(5, -1)));
-                    let places = words.get(k + 3).and_then(|(_, _, s)| scale(s));
+                    let places = joined_word(k + 3).and_then(scale).filter(|_| joined(cs, words, k + 1) && joined(cs, words, k + 2));
                     out.extend(value.into_iter().chain(value.zip(places).map(|(v, p)| v.shifted(p))));
                 }
                 if scale(&words[k - 1].2).is_none() {
@@ -642,8 +643,8 @@ fn read_words(cs: &[char], words: &[Word]) -> Vec<Dec> {
         match w.as_str() {
             "half" => {
                 out.push(Dec::new(5, -1));
-                if words.get(k + 1).is_some_and(|(_, _, a)| a == "a") {
-                    out.extend(words.get(k + 2).and_then(|(_, _, s)| scale(s)).map(|p| Dec::new(5, p - 1)));
+                if joined_word(k + 1) == Some("a") {
+                    out.extend(joined_word(k + 2).and_then(scale).map(|p| Dec::new(5, p - 1)));
                 }
             }
             "quarter" => out.push(Dec::new(25, -2)),
@@ -863,6 +864,7 @@ mod tests {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("21件", "twenty a day"), ["21"], "a is one only before a scale word");
+        assert_eq!(check("21件", "twenty a, million"), ["21"], "a is one only joined to a scale word");
     }
 
     #[test]
@@ -879,6 +881,8 @@ mod tests {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
         assert_eq!(check("50万人", "half the million users"), ["50万"], "half a, not half the");
+        assert_eq!(check("50万人", "Cut it in half. A million users"), ["50万"], "half and a scale word in two sentences");
+        assert_eq!(check("150万人", "one and a half. Million users"), ["150万"], "and a half and a scale word in two sentences");
         assert_eq!(check("24日", "two days"), ["24"], "only dozen counts twelve times");
     }
 
