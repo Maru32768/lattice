@@ -38,6 +38,11 @@ impl Dec {
         Some(Self::new(format!("{int}{frac}").parse().ok()?, -(frac.len() as i32)))
     }
 
+    /// The value when it is a whole number.
+    fn whole(self) -> Option<u128> {
+        self.m.checked_mul(10u128.checked_pow(u32::try_from(self.e).ok()?)?)
+    }
+
     fn shifted(self, places: i32) -> Self {
         Self::new(self.m, self.e + places)
     }
@@ -197,12 +202,28 @@ fn mentions(cs: &[char]) -> Vec<Mention> {
             } else if let Some((places, at)) = scale_after(cs, end) {
                 others.push(value);
                 (value, end) = (Num::Dec(first.shifted(places)), at);
+            } else if let Some(year) = out.last().and_then(|prev| year_after(cs, prev, i, &token)) {
+                others.push(value);
+                value = Num::Dec(year);
             }
         }
         out.push(Mention { start: i, end, value, others });
         i = end;
     }
     out
+}
+
+/// The year a two-digit `token` at `start` stands for after a year and a dash: 52 in `1946-52` and `1946～52`.
+fn year_after(cs: &[char], prev: &Mention, start: usize, token: &str) -> Option<Dec> {
+    let dash = prev.end + 1 == start && matches!(cs[prev.end], '-' | '—' | '~' | '～' | '〜');
+    let Num::Dec(prev) = prev.value else {
+        return None;
+    };
+    let year = prev.whole().filter(|y| (1000..10_000).contains(y))?;
+    if !dash || token.len() != 2 {
+        return None;
+    }
+    Dec::int(year / 100 * 100).plus(Dec::parse(token)?)
 }
 
 /// `first` (ending at `end`) with the Japanese units after it, and where they end: `4百万`, `2億1,100万`, `3万3,500`.
@@ -253,8 +274,8 @@ fn scale_after(cs: &[char], end: usize) -> Option<(i32, usize)> {
 /// `a/b` and `n a/b` (`1/2`, `3 1/2`) among `mentions`.
 fn fractions<'a>(cs: &'a [char], mentions: &'a [Mention]) -> impl Iterator<Item = Dec> + 'a {
     let int = |m: &Mention| match m.value {
-        Num::Dec(d) if d.e >= 0 => d.m.checked_mul(10u128.checked_pow(d.e as u32)?),
-        _ => None,
+        Num::Dec(d) => d.whole(),
+        Num::Text(_) => None,
     };
     mentions.windows(2).enumerate().filter_map(move |(k, w)| {
         let [a, b] = w else {
@@ -361,8 +382,10 @@ fn words(cs: &[char]) -> Vec<Dec> {
                 }
             }
         }
-        if w == "half" {
-            out.push(Dec::new(5, -1));
+        match w.as_str() {
+            "half" => out.push(Dec::new(5, -1)),
+            "quarter" => out.push(Dec::new(25, -2)),
+            _ => {}
         }
         out.extend(word_value(w).map(Dec::int));
     }
@@ -448,6 +471,7 @@ mod tests {
         assert_eq!(check("7百万人", article), ["7百万"], "three, four million is not seven million");
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
+        assert_eq!(check("0.25ポイント", "a quarter percentage point"), Vec::<String>::new());
     }
 
     #[test]
@@ -456,6 +480,8 @@ mod tests {
         assert_eq!(check("1〜100文字", "'^[a-zA-Z0-9 ]{1,100}$'"), Vec::<String>::new(), "a comma in a pattern, not a thousands separator");
         assert_eq!(check("Python 3.12.1で", "Python 3.12.1"), Vec::<String>::new());
         assert_eq!(check("Python 3.12.2で", "Python 3.12.1 and 2"), ["3.12.2"], "a version by its text");
+        assert_eq!(check("1946～52年分と1990-99年", "for 1946-1952 and 1990 to 1999"), Vec::<String>::new(), "a year cut short after a dash");
+        assert_eq!(check("1946～53年分", "for 1946-1952, 53 times"), ["53"], "53 there is the year 1953");
     }
 
     #[test]
