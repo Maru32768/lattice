@@ -4,6 +4,14 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+### Changed
+
+- **Find a chat scope by typing.** **Scope** in the chat pane opens a list with a search field, so you can type part of a name to narrow it. The list has every scope, even in a library with thousands of tags, and the chat pane no longer slows down to show them.
+
+### Fixed
+
+- A focused drop-down in the chat pane, such as **AI**, showed two focus rings, one inside the other. It now shows one.
+
 ## [0.5.0] - 2026-11-18
 
 ### Added
