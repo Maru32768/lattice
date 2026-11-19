@@ -104,7 +104,7 @@ mise exec -- cargo run -p lattice-core --example summary_eval -- sample --dir <e
 
 Keep the eval dir outside the repository, because the article text it holds is copyrighted.
 
-Build each version you compare, and summarize it under its own label. Use a judge from a different model family than the summarizer. To see the noise, summarize the same version twice under two labels. `report` also counts the summary items with a number the article lacks, checked as the app checks them. For summaries that cite blocks, run `cites` too, and `report` shows how many items their cited blocks support. For the measurement of the current prompt, see [design-review.md](design-review.md) §38 and §39.
+Build each version you compare, and summarize it under its own label. Use a judge from a different model family than the summarizer. To see the noise, summarize the same version twice under two labels. `report` also counts the summary items with a number the article lacks. It checks the numbers the same way the app does. For summaries that cite blocks, run `cites` too. `report` then counts the items whose cited blocks support them. For the measurement of the current prompt, see [design-review.md](design-review.md) §38 and §39.
 
 ## Conventions
 

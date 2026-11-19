@@ -6,8 +6,8 @@ All notable changes to Lattice are recorded here. The format follows [Keep a Cha
 
 ### Added
 
-- **Sources for summaries.** Each sentence and key point of a summary ends with the numbers of the passages it comes from. Click one to go to that passage in the Reader.
-- **A check of the numbers in summaries.** A number in a summary that the article does not contain gets a wavy underline, and the summary lists such numbers below it.
+- **Sources for summaries.** Each sentence and key point of a summary ends with numbers that point to the passages it comes from. Click a number to go to that passage in the Reader.
+- **A check of the numbers in summaries.** Numbers in a summary that are not in the article get a wavy underline and are listed below the summary.
 
 ### Changed
 
