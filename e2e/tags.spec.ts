@@ -23,6 +23,10 @@ test("tag popover: every tag in the set, search, AND / any, Backspace drops the 
   await search.fill("postg");
   await expect(options.first()).toContainText("postgres");
   await expect(pv.getByText(/^\d+件一致$/)).toBeVisible();
+  await search.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  await search.dispatchEvent("keydown", { key: " ", isComposing: true });
+  await expect(search, "the Enter and Space that end a conversion neither clear the search").toHaveValue("postg");
+  await expect(list(app).locator(".chip.on"), "nor pick").toHaveCount(0);
   await app.keyboard.press("Enter");
   await expect(search).toHaveValue("");
   await expect(listCount(app)).toHaveText(`${postgres} / ${all}`);
