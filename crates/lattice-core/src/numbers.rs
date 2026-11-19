@@ -102,7 +102,12 @@ impl Article {
             let mentions = mentions(&cs);
             values.extend(fractions(&cs, &mentions).map(Num::Dec));
             values.extend(mentions.into_iter().flat_map(|m| std::iter::once(m.value).chain(m.others)));
-            values.extend(words(&cs).into_iter().chain(kanji(&cs)).map(Num::Dec));
+            // An en dash writes a range, never one number: five hundred–one thousand is not 501,000.
+            let mut spelled = cs.clone();
+            for (s, c) in spelled.iter_mut().zip(text.chars()).filter(|(_, c)| *c == '\u{2013}') {
+                *s = c;
+            }
+            values.extend(words(&spelled).into_iter().chain(kanji(&cs)).map(Num::Dec));
         }
         Self(values)
     }
@@ -542,6 +547,10 @@ mod tests {
             ("100〜200人", "between one hundred and two hundred people"),
             ("2,000〜3,000件", "between two thousand and three thousand rows"),
             ("1,200,000件", "one million two hundred thousand rows"),
+            ("500～1,000人", "five hundred\u{2013}one thousand users"),
+            ("1,500～2,000件", "one thousand five hundred\u{2013}two thousand rows"),
+            ("20～100人", "twenty\u{2013}one hundred people"),
+            ("2,100人", "twenty-one hundred people"),
         ] {
             assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
         }
