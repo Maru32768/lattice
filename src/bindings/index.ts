@@ -44,6 +44,7 @@ export type * from "./MatchSource";
 export type * from "./McpEdit";
 export type * from "./McpRegistration";
 export type * from "./McpRole";
+export type * from "./McpScope";
 export type * from "./McpStatus";
 export type * from "./MobileIcons";
 export type * from "./MobileIndex";

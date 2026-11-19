@@ -316,60 +316,91 @@ test("the palette opens a settings section by name", async ({ app }) => {
   await expect(app.locator(".stg main h1")).toHaveText("翻訳");
 });
 
-test("an agent registration copies its command and changes role, and a new token or a deletion asks first", async ({ app }) => {
+test("agent registrations copy commands for all of Claude Code or one project, keep their own roles, and a new token or a deletion asks first", async ({
+  app,
+}) => {
   await app.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await app.locator(".nav").getByRole("button", { name: "設定" }).click();
   await app.getByRole("navigation", { name: "設定カテゴリ" }).getByText("AIエージェント(MCP)", { exact: true }).click();
   await app.getByLabel("MCPサーバーを動かす").check();
   await expect.poll(() => callsOf(app, "mcp_edit")).toEqual([{ edit: { kind: "enable", on: true } }]);
   await expect(app.getByText("登録はまだありません")).toBeVisible();
-  await expect(
-    app.getByText("どちらのロールでも、記事、グループ、フィード、フォルダは削除できません。"),
-    "what each role may do, before one is picked",
-  ).toBeVisible();
+  await expect(app.getByText("「対話」に会話として残ります"), "what each role may do, before one is picked").toBeVisible();
 
+  const row = (name: string) => app.locator(".set").filter({ has: app.locator(".h").getByText(name, { exact: true }) });
+  const role = (name: string) => app.getByLabel(`「${name}」のロール`);
+  const kinds = async () => (await callsOf(app, "mcp_edit")).map((c) => (c as { edit: { kind: string } }).edit.kind);
+  const clipboard = () => app.evaluate(() => navigator.clipboard.readText());
   const register = app.getByRole("button", { name: "登録する" });
+  const scope = app.getByLabel("使う範囲");
   await expect(register, "a name is needed").toBeDisabled();
+  await expect(scope, "the first one is for all of Claude Code").toHaveValue("user");
   await app.getByLabel("新しい登録").fill("Claude Code");
   await app.getByLabel("ロール", { exact: true }).selectOption("edit");
   await register.click();
   await expect(app.getByLabel("新しい登録")).toHaveValue("");
-  const role = app.getByLabel("「Claude Code」のロール");
-  await expect(role).toHaveValue("edit");
+  await expect(row("Claude Code")).toContainText("Claude Code全体");
+  await expect(scope, "Claude Code's user config holds one").toHaveValue("local");
+  await expect(scope.locator("option[value=user]")).toBeDisabled();
+  await app.getByLabel("新しい登録").fill("Research");
+  await app.getByLabel("ロール", { exact: true }).selectOption("read");
+  await register.click();
+  await expect(row("Research")).toContainText("1つのプロジェクト");
+  await expect(role("Claude Code")).toHaveValue("edit");
+  await expect(role("Research")).toHaveValue("read");
 
-  await app.getByRole("button", { name: "コマンドをコピー" }).click();
-  await expect(app.getByRole("button", { name: "コピーしました" })).toBeVisible();
-  const first = await app.evaluate(() => navigator.clipboard.readText());
-  expect(first).toMatch(/^claude mcp add --transport http .* --header "Authorization: Bearer \w+"$/);
+  await row("Research").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(clipboard).toMatch(/^claude mcp add --transport http --scope local lattice .* --header "Authorization: Bearer \w+"$/);
+  await row("Claude Code").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect(row("Claude Code").getByRole("button", { name: "コピーしました" })).toBeVisible();
+  const first = await clipboard();
+  expect(first).toMatch(/^claude mcp add --transport http --scope user lattice .* --header "Authorization: Bearer \w+"$/);
 
-  await role.selectOption("read");
-  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toMatchObject({ edit: { kind: "set_role", role: "read" } });
-  await expect(role, "the row shows its own registration's saved role").toHaveValue("read");
+  await role("Research").selectOption("edit");
+  await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "set_role", id: "r2", role: "edit" } });
+  await expect(role("Research"), "the row shows its own registration's saved role").toHaveValue("edit");
+  await role("Claude Code").selectOption("read");
+  await expect(role("Claude Code")).toHaveValue("read");
+  await expect(role("Research"), "the other row keeps its role").toHaveValue("edit");
 
-  await app.getByRole("button", { name: "トークンを作り直す" }).click();
+  await row("Claude Code").getByRole("button", { name: "トークンを作り直す" }).click();
   const regenerate = app.getByRole("alertdialog", { name: "「Claude Code」のトークンを作り直しますか？" });
   await regenerate.getByRole("button", { name: "キャンセル" }).click();
-  expect(
-    (await callsOf(app, "mcp_edit")).map((c) => (c as { edit: { kind: string } }).edit.kind),
-    "nothing before the answer",
-  ).not.toContain("regenerate");
-  await app.getByRole("button", { name: "トークンを作り直す" }).click();
-  await expect(regenerate, "Claude Code keeps the old token until its registration is removed").toContainText("claude mcp remove lattice -s user");
+  expect(await kinds(), "nothing before the answer").not.toContain("regenerate");
+  await row("Claude Code").getByRole("button", { name: "トークンを作り直す" }).click();
+  await expect(regenerate, "Claude Code refuses a second add under one name").toContainText(
+    "Claude Codeでは、claude mcp remove lattice -s userで前の登録を消してから、新しいコマンドを実行してください。",
+  );
   await regenerate.getByRole("button", { name: "作り直す", exact: true }).click();
-  await expect(app.getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
-  await app.getByRole("button", { name: "コマンドをコピー" }).click();
-  await expect.poll(() => app.evaluate(() => navigator.clipboard.readText())).not.toBe(first);
+  await expect(row("Claude Code").getByRole("button", { name: "コマンドをコピー" }), "the new token makes a new command").toBeVisible();
+  await row("Claude Code").getByRole("button", { name: "コマンドをコピー" }).click();
+  await expect.poll(clipboard).not.toBe(first);
 
   await app.getByLabel("新しい登録").fill("claude code");
   await register.click();
   await expect(app.getByRole("alert")).toHaveText("「claude code」という登録はもうあります");
   await expect(app.getByLabel("新しい登録"), "the name stays to be changed").toHaveValue("claude code");
 
-  await app.getByRole("button", { name: "削除", exact: true }).click();
-  const remove = app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" });
-  await expect(remove, "a new registration's command would meet the old one in Claude Code").toContainText("claude mcp remove lattice -s user");
-  await remove.getByRole("button", { name: "削除", exact: true }).click();
+  await row("Research").getByRole("button", { name: "削除", exact: true }).click();
+  const removeProject = app.getByRole("alertdialog", { name: "登録「Research」を削除しますか？" });
+  await removeProject.getByRole("button", { name: "キャンセル" }).click();
+  expect(await kinds(), "nothing before the answer").not.toContain("delete");
+  await row("Research").getByRole("button", { name: "削除", exact: true }).click();
+  await expect(removeProject, "a project's own is removed where it was added").toContainText(
+    "そのプロジェクトのフォルダで、claude mcp remove lattice -s localで登録も消してください。",
+  );
+  await removeProject.getByRole("button", { name: "削除", exact: true }).click();
+  await expect(row("Research")).toHaveCount(0);
+  await expect(role("Claude Code"), "the other registration stays").toHaveValue("read");
+
+  await row("Claude Code").getByRole("button", { name: "削除", exact: true }).click();
+  const removeAll = app.getByRole("alertdialog", { name: "登録「Claude Code」を削除しますか？" });
+  await expect(removeAll, "a new registration's command would meet the old one in Claude Code").toContainText(
+    "Claude Codeでは、claude mcp remove lattice -s userで登録も消してください。",
+  );
+  await removeAll.getByRole("button", { name: "削除", exact: true }).click();
   await expect(app.getByText("登録はまだありません")).toBeVisible();
+  await expect(scope, "free for all of Claude Code again").toHaveValue("user");
 
   await app.getByLabel("MCPサーバーを動かす").uncheck();
   await expect.poll(() => callsOf(app, "mcp_edit").then((c) => c.at(-1))).toEqual({ edit: { kind: "enable", on: false } });

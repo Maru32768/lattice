@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
-import { mcp, type McpEdit, type McpRegistration, type McpRole, type McpStatus } from "../api";
+import { mcp, type McpEdit, type McpRegistration, type McpRole, type McpScope, type McpStatus } from "../api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { SetRow, Switch } from "../ui/SetRow";
-import { useT, type PlainKey } from "../i18n";
+import { useT, type Key, type PlainKey } from "../i18n";
 
 // shortcut: no delete role here until the app can ask the user before each deletion an agent makes.
 const ROLES = { read: "mcpSettings.roleRead", edit: "mcpSettings.roleEdit" } as const satisfies Partial<Record<McpRole, PlainKey>>;
 type Offered = keyof typeof ROLES;
+const SCOPES = { user: "mcpSettings.scopeUser", local: "mcpSettings.scopeLocal" } as const satisfies Record<McpScope, PlainKey>;
+const CONFIRM_DESCS = {
+  regenerate: { user: "mcpSettings.regenerateDescUser", local: "mcpSettings.regenerateDescLocal" },
+  delete: { user: "mcpSettings.deleteDescUser", local: "mcpSettings.deleteDescLocal" },
+} as const satisfies Record<"regenerate" | "delete", Record<McpScope, Key>>;
 
 /** Settings section for AI agents reaching the library over MCP (design-review §23). */
 export function McpSettings() {
@@ -15,6 +20,8 @@ export function McpSettings() {
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [role, setRole] = useState<Offered>("read");
+  /** Until one is picked, the new registration is for all of Claude Code unless another one already is. */
+  const [scope, setScope] = useState<McpScope | null>(null);
   /** The command last copied: a regenerated token makes a new one, so the button offers to copy again. */
   const [copied, setCopied] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ kind: "regenerate" | "delete"; reg: McpRegistration } | null>(null);
@@ -38,9 +45,10 @@ export function McpSettings() {
     return s !== null;
   }
 
-  async function create() {
-    if (await edit({ kind: "create", name, role })) {
+  async function create(scope: McpScope) {
+    if (await edit({ kind: "create", name, role, scope })) {
       setName("");
+      setScope(null);
     }
   }
 
@@ -60,6 +68,8 @@ export function McpSettings() {
     return failure;
   }
   const off = status.fell_back;
+  const userTaken = status.registrations.some((r) => r.scope === "user");
+  const newScope = scope ?? (userTaken ? "local" : "user");
   const roleOptions = (Object.keys(ROLES) as Offered[]).map((r) => (
     <option key={r} value={r}>
       {t(ROLES[r])}
@@ -83,9 +93,9 @@ export function McpSettings() {
         <p className="sec-d">{t("mcpSettings.rolesDesc")}</p>
         <div className="grp">
           {status.registrations.map((reg) => (
-            <SetRow key={reg.id} title={reg.name}>
+            <SetRow key={reg.id} title={reg.name} desc={t(SCOPES[reg.scope])}>
               <select
-                className="input sm"
+                className="input sm fit"
                 aria-label={t("mcpSettings.roleOf", { name: reg.name })}
                 value={reg.role}
                 disabled={off}
@@ -106,11 +116,30 @@ export function McpSettings() {
           ))}
           {status.registrations.length === 0 && <SetRow title={t("mcpSettings.none")} />}
           <SetRow title={t("mcpSettings.new")} htmlFor="mcp-new-name">
-            <input id="mcp-new-name" className="input sm" value={name} onChange={(e) => setName(e.target.value)} placeholder="Claude Code" disabled={off} />
-            <select className="input sm" aria-label={t("mcpSettings.role")} value={role} onChange={(e) => setRole(e.target.value as Offered)} disabled={off}>
+            <input id="mcp-new-name" className="input sm fit" value={name} onChange={(e) => setName(e.target.value)} placeholder="Claude Code" disabled={off} />
+            <select
+              className="input sm fit"
+              aria-label={t("mcpSettings.role")}
+              value={role}
+              onChange={(e) => setRole(e.target.value as Offered)}
+              disabled={off}
+            >
               {roleOptions}
             </select>
-            <button className="btn sm pri" onClick={() => void create()} disabled={off || !name.trim()}>
+            <select
+              className="input sm fit"
+              aria-label={t("mcpSettings.scope")}
+              value={newScope}
+              onChange={(e) => setScope(e.target.value as McpScope)}
+              disabled={off}
+            >
+              {(Object.keys(SCOPES) as McpScope[]).map((s) => (
+                <option key={s} value={s} disabled={s === "user" && userTaken}>
+                  {t(SCOPES[s])}
+                </option>
+              ))}
+            </select>
+            <button className="btn sm pri" onClick={() => void create(newScope)} disabled={off || !name.trim()}>
               {t("mcpSettings.create")}
             </button>
           </SetRow>
@@ -127,11 +156,7 @@ export function McpSettings() {
           }}
           onCancel={() => setConfirming(null)}
         >
-          <p>
-            {t.rich(confirming.kind === "delete" ? "mcpSettings.deleteDesc" : "mcpSettings.regenerateDesc", {
-              remove: <code>claude mcp remove lattice -s user</code>,
-            })}
-          </p>
+          <p>{t.rich(CONFIRM_DESCS[confirming.kind][confirming.reg.scope], { remove: <code>{confirming.reg.remove}</code> })}</p>
         </ConfirmDialog>
       )}
     </>

@@ -1393,7 +1393,7 @@ export const en = {
   "mcpSettings.enabledDesc": "Only this PC can connect. Other PCs and phones cannot.",
   "mcpSettings.registrations": "Registrations",
   "mcpSettings.registrationsDesc":
-    "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
+    "Make a registration for each agent, press Copy command, and run the copied Claude Code command in a terminal. Only one registration can be for all of Claude Code, and every project uses it. Run the command of a registration for one project in that project's folder; that project then uses it instead. A role change holds from the next call, but the tools an agent sees change only when it reconnects.",
   "mcpSettings.rolesDesc":
     "Read lets an agent read articles and feeds and ask the AI about them; each question uses AI credits and stays in Chat as a conversation. Edit also lets it save URLs, subscribe to feeds, tag, mark read and favorite, and change titles, collections, genres and feeds. The articles it saves, and those from feeds it subscribes to, use AI credits too, for auto-classification and the like. Neither role can delete articles, collections, feeds or folders.",
   "mcpSettings.none": "No registrations yet",
@@ -1402,16 +1402,24 @@ export const en = {
   "mcpSettings.roleOf": "Role of “{name}”",
   "mcpSettings.roleRead": "Read",
   "mcpSettings.roleEdit": "Edit",
+  "mcpSettings.scope": "Scope",
+  "mcpSettings.scopeUser": "All of Claude Code",
+  "mcpSettings.scopeLocal": "One project",
   "mcpSettings.create": "Register",
   "mcpSettings.copy": "Copy command",
   "mcpSettings.copied": "Copied",
   "mcpSettings.regenerate": "Regenerate token",
   "mcpSettings.confirmRegenerate": "Regenerate the token of “{name}”?",
-  "mcpSettings.regenerateDesc": "The current token stops working at once. In Claude Code, remove the old registration with {remove}, then run the new command.",
+  "mcpSettings.regenerateDescUser":
+    "The current token stops working from the next call, for agents already connected too. In Claude Code, remove the old registration with {remove}, then run the new command.",
+  "mcpSettings.regenerateDescLocal":
+    "The current token stops working from the next call, for agents already connected too. In that project's folder, remove the old registration with {remove}, then run the new command.",
   "mcpSettings.regenerateConfirm": "Regenerate",
   "mcpSettings.confirmDelete": "Delete the registration “{name}”?",
-  "mcpSettings.deleteDesc":
-    "Its token stops working at once, and agents connected with it are cut off. In Claude Code, also remove the registration with {remove}.",
+  "mcpSettings.deleteDescUser":
+    "Its token stops working from the next call, for agents already connected too. In Claude Code, also remove the registration with {remove}.",
+  "mcpSettings.deleteDescLocal":
+    "Its token stops working from the next call, for agents already connected too. In that project's folder, also remove the registration with {remove}.",
   "mobileSettings.mode": "Serve from this PC",
   "mobileSettings.modeDesc": "While this PC is on, a phone can read the library.",
   "mobileSettings.off": "Off",
@@ -1517,4 +1525,5 @@ export const en = {
   "be.mcp.fellBack": "The original library could not be opened, so the MCP server is off",
   "be.mcp.badName": "Registration names are 1 to {max} characters",
   "be.mcp.nameTaken": "There is already a registration named “{name}”",
+  "be.mcp.userTaken": "“{name}” is already the registration for all of Claude Code",
 } satisfies Messages;

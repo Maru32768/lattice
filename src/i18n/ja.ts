@@ -1375,7 +1375,7 @@ export const ja = {
   "mcpSettings.enabledDesc": "このPCからだけつながります。ほかのPCやスマホからはつながりません。",
   "mcpSettings.registrations": "登録",
   "mcpSettings.registrationsDesc":
-    "エージェントごとに登録を作り、「コマンドをコピー」で写したClaude Codeのコマンドをターミナルで実行します。ロールの変更は次の呼び出しから効きますが、エージェントに見えるツールの一覧は、つなぎ直すまで変わりません。",
+    "エージェントごとに登録を作り、「コマンドをコピー」で写したClaude Codeのコマンドをターミナルで実行します。「Claude Code全体」の登録は1つだけ作れ、どのプロジェクトでも使われます。「1つのプロジェクト」の登録は、そのプロジェクトのフォルダでコマンドを実行します。そのプロジェクトでは、全体の登録の代わりにこちらが使われます。ロールの変更は次の呼び出しから効きますが、エージェントに見えるツールの一覧は、つなぎ直すまで変わりません。",
   "mcpSettings.rolesDesc":
     "読み取りでは、記事やフィードを読み、記事についてAIに質問します。質問はAIの使用量がかかり、「対話」に会話として残ります。編集では、URLの保存、フィードの登録、タグ、既読とお気に入り、タイトル、グループ、ジャンル、フィードの変更もできます。保存した記事や登録したフィードの記事にも、自動分類などでAIの使用量がかかります。どちらのロールでも、記事、グループ、フィード、フォルダは削除できません。",
   "mcpSettings.none": "登録はまだありません",
@@ -1384,15 +1384,24 @@ export const ja = {
   "mcpSettings.roleOf": "「{name}」のロール",
   "mcpSettings.roleRead": "読み取り",
   "mcpSettings.roleEdit": "編集",
+  "mcpSettings.scope": "使う範囲",
+  "mcpSettings.scopeUser": "Claude Code全体",
+  "mcpSettings.scopeLocal": "1つのプロジェクト",
   "mcpSettings.create": "登録する",
   "mcpSettings.copy": "コマンドをコピー",
   "mcpSettings.copied": "コピーしました",
   "mcpSettings.regenerate": "トークンを作り直す",
   "mcpSettings.confirmRegenerate": "「{name}」のトークンを作り直しますか？",
-  "mcpSettings.regenerateDesc": "今のトークンはすぐに使えなくなります。Claude Codeでは、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
+  "mcpSettings.regenerateDescUser":
+    "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。Claude Codeでは、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
+  "mcpSettings.regenerateDescLocal":
+    "今のトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で前の登録を消してから、新しいコマンドを実行してください。",
   "mcpSettings.regenerateConfirm": "作り直す",
   "mcpSettings.confirmDelete": "登録「{name}」を削除しますか？",
-  "mcpSettings.deleteDesc": "このトークンはすぐに使えなくなり、つながっているエージェントも切れます。Claude Codeでは、{remove}で登録も消してください。",
+  "mcpSettings.deleteDescUser":
+    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。Claude Codeでは、{remove}で登録も消してください。",
+  "mcpSettings.deleteDescLocal":
+    "このトークンは、つながっているエージェントでも次の呼び出しから使えなくなります。そのプロジェクトのフォルダで、{remove}で登録も消してください。",
   "mobileSettings.mode": "このPCから配信",
   "mobileSettings.modeDesc": "PCの起動中だけ、スマホからライブラリを読めます。",
   "mobileSettings.off": "オフ",
@@ -1498,4 +1507,5 @@ export const ja = {
   "be.mcp.fellBack": "元のライブラリを開けなかったので、MCPサーバーは止めています",
   "be.mcp.badName": "登録の名前は1〜{max}文字にしてください",
   "be.mcp.nameTaken": "「{name}」という登録はもうあります",
+  "be.mcp.userTaken": "Claude Code全体の登録は、もう「{name}」があります",
 } as const satisfies Record<string, string>;

@@ -16,7 +16,7 @@ use axum::routing::post;
 use lattice_core::chain::LlmChain;
 use lattice_core::embed::LocalE5;
 use lattice_core::jobs::Providers;
-use lattice_core::mcp::{self, Registration, Role};
+use lattice_core::mcp::{self, Registration, Role, Scope};
 use lattice_core::mobile::{Effects, blocking};
 use lattice_core::store::{Store, random_hex, sha256_hex};
 
@@ -34,9 +34,16 @@ const MAX_SESSIONS: usize = 64;
 const READ_ONLY: &str = "This tool changes the library, and this connection may only read it. The user can change that in Lattice: Settings › AI agents (MCP).";
 const NO_DELETING: &str = "Deleting over MCP needs the user's approval in Lattice, which this version cannot ask for. Nothing was deleted.";
 
-/// What the settings screen copies for a registration. User scope: the library is the user's, not one project's.
-pub fn add_command(token: &str) -> String {
-    format!("claude mcp add --transport http --scope user lattice http://{ADDR}{ENDPOINT} --header \"Authorization: Bearer {token}\"")
+/// What the settings screen copies for a registration. One name in every scope, so a project's own takes the place of the
+/// user-wide one there, and an agent's tools are `mcp__lattice__*` whichever it holds.
+pub fn add_command(token: &str, scope: Scope) -> String {
+    let scope = scope.as_str();
+    format!("claude mcp add --transport http --scope {scope} lattice http://{ADDR}{ENDPOINT} --header \"Authorization: Bearer {token}\"")
+}
+
+/// What takes a registration out of Claude Code again: Claude Code refuses a second `add` under the same name.
+pub fn remove_command(scope: Scope) -> String {
+    format!("claude mcp remove lattice -s {}", scope.as_str())
 }
 
 #[derive(Clone)]
@@ -250,7 +257,7 @@ mod tests {
 
     impl Fixture {
         fn register(&self, name: &str, role: Role) -> Registration {
-            mcp::edit(&self.store, &Edit::Create { name: name.into(), role }).unwrap();
+            mcp::edit(&self.store, &Edit::Create { name: name.into(), role, scope: Scope::Local }).unwrap();
             self.reread(name)
         }
 
@@ -319,9 +326,15 @@ mod tests {
     fn it_listens_on_this_pc_only() {
         assert!(ADDR.ip().is_loopback() && ADDR.port() == 8788);
         assert_eq!(
-            add_command("t0k"),
+            add_command("t0k", Scope::User),
             r#"claude mcp add --transport http --scope user lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
         );
+        assert_eq!(
+            add_command("t0k", Scope::Local),
+            r#"claude mcp add --transport http --scope local lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t0k""#
+        );
+        assert_eq!(remove_command(Scope::User), "claude mcp remove lattice -s user");
+        assert_eq!(remove_command(Scope::Local), "claude mcp remove lattice -s local");
     }
 
     #[tokio::test]

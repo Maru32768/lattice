@@ -20,6 +20,25 @@ pub enum Role {
     Delete,
 }
 
+/// Where the copied command puts a registration in Claude Code, by its `--scope` name. A project's own (`Local`) is used
+/// there in place of the user-wide one, since both go under one name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, rename = "McpScope")]
+pub enum Scope {
+    User,
+    Local,
+}
+
+impl Scope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scope::User => "user",
+            Scope::Local => "local",
+        }
+    }
+}
+
 /// Not a secret: a restored backup keeps the switch, and without registrations nobody gets in.
 const ENABLED: &str = "mcp.enabled";
 /// Every registration, token included, as one list: a backup drops it whole rather than keeping names whose tokens are gone.
@@ -37,6 +56,8 @@ pub struct Registration {
     pub id: String,
     pub name: String,
     pub role: Role,
+    /// Fixed once made: moving it means removing it from Claude Code first, which only the user can do there.
+    pub scope: Scope,
     /// In the clear: the settings screen copies it again at any time, as the phone's QR code shows its token.
     pub token: String,
 }
@@ -47,7 +68,7 @@ pub struct Registration {
 #[ts(export, rename = "McpEdit")]
 pub enum Edit {
     Enable { on: bool },
-    Create { name: String, role: Role },
+    Create { name: String, role: Role, scope: Scope },
     Regenerate { id: String },
     SetRole { id: String, role: Role },
     Delete { id: String },
@@ -73,7 +94,7 @@ pub fn registrations(store: &Store) -> Result<Vec<Registration>, String> {
 pub fn edit(store: &Store, edit: &Edit) -> Result<(), String> {
     match edit {
         Edit::Enable { on } => store.set_setting(ENABLED, on.then_some("1")).map_err(err),
-        Edit::Create { name, role } => {
+        Edit::Create { name, role, scope } => {
             let name = name.trim();
             if name.is_empty() || name.chars().count() > MAX_NAME_CHARS {
                 return Err(msg!("mcp.badName", max = MAX_NAME_CHARS.to_string()));
@@ -83,7 +104,14 @@ pub fn edit(store: &Store, edit: &Edit) -> Result<(), String> {
                 if list.iter().any(|r| r.name.to_lowercase() == name.to_lowercase()) {
                     return Err(msg!("mcp.nameTaken", name = name));
                 }
-                list.push(Registration { id: random_hex()?, name: name.to_string(), role: *role, token: random_hex()? });
+                // Claude Code's user config holds one `lattice`: a second command would be refused, and following one's
+                // remove step would take out the other.
+                if *scope == Scope::User
+                    && let Some(r) = list.iter().find(|r| r.scope == Scope::User)
+                {
+                    return Err(msg!("mcp.userTaken", name = r.name));
+                }
+                list.push(Registration { id: random_hex()?, name: name.to_string(), role: *role, scope: *scope, token: random_hex()? });
                 Ok(())
             })
         }
@@ -129,15 +157,19 @@ mod tests {
     }
 
     fn create(s: &Store, name: &str, role: Role) -> Registration {
-        edit(s, &Edit::Create { name: name.into(), role }).unwrap();
+        create_in(s, name, role, Scope::Local)
+    }
+
+    fn create_in(s: &Store, name: &str, role: Role, scope: Scope) -> Registration {
+        edit(s, &Edit::Create { name: name.into(), role, scope }).unwrap();
         registrations(s).unwrap().into_iter().find(|r| r.name == name.trim()).unwrap()
     }
 
     #[test]
     fn a_token_finds_its_registration_until_it_is_regenerated_or_deleted() {
         let s = store();
-        let a = create(&s, "Claude Code", Role::Read);
-        let b = create(&s, "Codex", Role::Edit);
+        let a = create_in(&s, "Claude Code", Role::Read, Scope::User);
+        let b = create(&s, "Research", Role::Edit);
         assert_eq!(a.token.len(), 64);
         assert_ne!(a.token, b.token);
         assert_eq!(authenticate(&s, &a.token).unwrap(), Some(a.clone()));
@@ -159,9 +191,10 @@ mod tests {
     fn a_name_is_trimmed_and_must_be_new() {
         let s = store();
         assert_eq!(create(&s, "  Claude Code ", Role::Read).name, "Claude Code");
-        assert!(edit(&s, &Edit::Create { name: "claude code".into(), role: Role::Edit }).is_err_and(|e| e.contains("mcp.nameTaken")));
-        assert!(edit(&s, &Edit::Create { name: " ".into(), role: Role::Edit }).is_err_and(|e| e.contains("mcp.badName")));
-        assert!(edit(&s, &Edit::Create { name: "x".repeat(MAX_NAME_CHARS + 1), role: Role::Edit }).is_err_and(|e| e.contains("mcp.badName")));
+        let refused = |name: String| edit(&s, &Edit::Create { name, role: Role::Edit, scope: Scope::Local }).unwrap_err();
+        assert!(refused("claude code".into()).contains("mcp.nameTaken"));
+        assert!(refused(" ".into()).contains("mcp.badName"));
+        assert!(refused("x".repeat(MAX_NAME_CHARS + 1)).contains("mcp.badName"));
         assert_eq!(registrations(&s).unwrap().len(), 1);
         let longest = "あ".repeat(MAX_NAME_CHARS);
         assert_eq!(create(&s, &longest, Role::Read).name, longest, "counted in characters, the limit itself allowed");
@@ -175,7 +208,7 @@ mod tests {
                 let s = &s;
                 scope.spawn(move || {
                     for i in 0..10 {
-                        edit(s, &Edit::Create { name: format!("{t}-{i}"), role: Role::Read }).unwrap();
+                        edit(s, &Edit::Create { name: format!("{t}-{i}"), role: Role::Read, scope: Scope::Local }).unwrap();
                     }
                 });
             }
@@ -184,19 +217,34 @@ mod tests {
     }
 
     #[test]
-    fn a_name_is_taken_once_when_agents_register_it_at_the_same_time() {
+    fn a_name_and_all_of_claude_code_are_taken_once_when_registered_at_the_same_time() {
         let s = store();
         std::thread::scope(|scope| {
-            for _ in 0..8 {
+            for t in 0..8 {
                 let s = &s;
                 scope.spawn(move || {
+                    let _ = edit(s, &Edit::Create { name: format!("all {t}"), role: Role::Read, scope: Scope::User });
                     for i in 0..30 {
-                        let _ = edit(s, &Edit::Create { name: format!("agent {i}"), role: Role::Read });
+                        let _ = edit(s, &Edit::Create { name: format!("agent {i}"), role: Role::Read, scope: Scope::Local });
                     }
                 });
             }
         });
-        assert_eq!(registrations(&s).unwrap().len(), 30);
+        let list = registrations(&s).unwrap();
+        assert_eq!(list.len(), 31);
+        assert_eq!(list.iter().filter(|r| r.scope == Scope::User).count(), 1);
+    }
+
+    #[test]
+    fn one_registration_is_for_all_of_claude_code() {
+        let s = store();
+        let all = create_in(&s, "Claude Code", Role::Read, Scope::User);
+        let refused = edit(&s, &Edit::Create { name: "Codex".into(), role: Role::Edit, scope: Scope::User }).unwrap_err();
+        assert!(refused.contains("mcp.userTaken") && refused.contains("Claude Code"), "{refused}");
+        assert_eq!(create(&s, "Research", Role::Edit).scope, Scope::Local, "a project's own is another entry in Claude Code");
+        edit(&s, &Edit::Delete { id: all.id }).unwrap();
+        assert_eq!(create_in(&s, "Codex", Role::Edit, Scope::User).scope, Scope::User, "free again once that one is gone");
+        assert_eq!(registrations(&s).unwrap().len(), 2);
     }
 
     #[test]

@@ -1048,8 +1048,8 @@ export const handlers = {
   },
   mcp_status: (): McpStatus => store.mcp,
   mcp_edit: ({ edit }: { edit: McpEdit }): McpStatus => {
-    const command = () =>
-      `claude mcp add --transport http --scope user lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
+    const command = (scope: string) =>
+      `claude mcp add --transport http --scope ${scope} lattice http://127.0.0.1:8788/mcp --header "Authorization: Bearer t${++store.mcpTokens}"`;
     const regs = store.mcp.registrations;
     switch (edit.kind) {
       case "enable":
@@ -1060,12 +1060,24 @@ export const handlers = {
         if (regs.some((r) => r.name.toLowerCase() === name.toLowerCase())) {
           throw JSON.stringify({ code: "mcp.nameTaken", params: { name } });
         }
-        const made = command();
-        store.mcp = { ...store.mcp, registrations: [...regs, { id: `r${store.mcpTokens}`, name, role: edit.role, command: made }] };
+        const all = regs.find((r) => r.scope === "user");
+        if (edit.scope === "user" && all) {
+          throw JSON.stringify({ code: "mcp.userTaken", params: { name: all.name } });
+        }
+        const made = command(edit.scope);
+        const reg = {
+          id: `r${store.mcpTokens}`,
+          name,
+          role: edit.role,
+          scope: edit.scope,
+          command: made,
+          remove: `claude mcp remove lattice -s ${edit.scope}`,
+        };
+        store.mcp = { ...store.mcp, registrations: [...regs, reg] };
         break;
       }
       case "regenerate":
-        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command() } : r)) };
+        store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, command: command(r.scope) } : r)) };
         break;
       case "set_role":
         store.mcp = { ...store.mcp, registrations: regs.map((r) => (r.id === edit.id ? { ...r, role: edit.role } : r)) };

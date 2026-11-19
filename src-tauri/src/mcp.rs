@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use lattice_core::mcp::{self, Edit, Role};
+use lattice_core::mcp::{self, Edit, Role, Scope};
 use lattice_core::msg;
 use lattice_server::Server;
 use lattice_server::mcp_http::{self, ADDR};
@@ -43,8 +43,11 @@ pub struct McpRegistration {
     id: String,
     name: String,
     role: Role,
+    scope: Scope,
     /// `claude mcp add ...` with the token.
     command: String,
+    /// `claude mcp remove ...`, which the confirmations ask for before a new command or after a deletion.
+    remove: String,
 }
 
 /// Ends the running server, if any, and starts it again when it is on.
@@ -78,7 +81,14 @@ async fn status(mcp_server: &McpServer, app: &App, loc: &Location) -> Result<Mcp
     let error = mcp_server.running.lock().await.error.clone();
     let registrations = mcp::registrations(&app.store)?
         .into_iter()
-        .map(|r| McpRegistration { command: mcp_http::add_command(&r.token), id: r.id, name: r.name, role: r.role })
+        .map(|r| McpRegistration {
+            command: mcp_http::add_command(&r.token, r.scope),
+            remove: mcp_http::remove_command(r.scope),
+            id: r.id,
+            name: r.name,
+            role: r.role,
+            scope: r.scope,
+        })
         .collect();
     Ok(McpStatus { enabled: mcp::enabled(&app.store)?, error, fell_back: loc.warning.is_some(), registrations })
 }
