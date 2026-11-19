@@ -1,7 +1,7 @@
-import { memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, isLocal, siteOf, type ArticleView, type Block, type GroupRow, type JobRow, type SummaryItem, type VocabCapture } from "../api";
-import { citeNumbers, markNumbers, unverifiedNumbers } from "./summary";
+import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary";
 import { translatedShare } from "../overlay/logic";
 import { type LanguageMode, type Piece, TRANSLATABLE, blockPieces, nothingToTranslate, translatedSentences, translationProgress } from "./mixed";
 import { DIFFICULTY_LABELS, RELEVANCE_LABELS, genreSwatch } from "../library/library";
@@ -745,7 +745,10 @@ export function Summary({
             <>
               <p>
                 {items.summary.map((item, i) => (
-                  <SummaryText key={i} item={item} cites={cites} view={view} onSource={onSource} />
+                  <Fragment key={i}>
+                    {gapAfter(items.summary[i - 1]?.text)}
+                    <SummaryText item={item} cites={cites} view={view} onSource={onSource} />
+                  </Fragment>
                 ))}
               </p>
               {items.key_points.length > 0 && (

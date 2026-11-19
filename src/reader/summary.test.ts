@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Block, SummaryItem } from "../api";
-import { citeNumbers, markNumbers, unverifiedNumbers } from "./summary.ts";
+import { citeNumbers, gapAfter, markNumbers, unverifiedNumbers } from "./summary.ts";
 
 const item = (text: string, unverified: [number, number][] = [], block_ids: number[] = []): SummaryItem => ({ text, block_ids, unverified });
 const marked = (text: string, unverified: [number, number][]) => markNumbers(item(text, unverified)).map((p) => (p.mark ? `[${p.text}]` : p.text));
@@ -19,6 +19,10 @@ test("marks the ranges the check stored and nothing else", () => {
     ["[2]", "と", "[3]"],
   );
   assert.deepEqual(marked("1880年代", []), ["1880年代"]);
+});
+
+test("a space follows a sentence unless it ends in Japanese punctuation", () => {
+  assert.deepEqual([undefined, "WALを使う。", "速い！", "本当？", "It is fast.", "fsyncが減る"].map(gapAfter), ["", "", "", "", " ", " "]);
 });
 
 test("lists each number the article lacks once, as written", () => {

@@ -12,6 +12,14 @@ export function markNumbers(item: SummaryItem): { text: string; mark: boolean }[
   return parts.filter((p) => p.text !== "");
 }
 
+/**
+ * What goes before a summary sentence that follows `prev` (`undefined` for the first): a space unless `prev` ends in
+ * 。！？, as `format_summary` joins them.
+ */
+export function gapAfter(prev: string | undefined): string {
+  return prev === undefined || /[。！？]$/.test(prev) ? "" : " ";
+}
+
 /** The numbers the article lacks, as the items write them, each once. */
 export function unverifiedNumbers(items: SummaryItems): string[] {
   return [...new Set([...items.summary, ...items.key_points].flatMap((i) => i.unverified.map(([start, end]) => i.text.slice(start, end))))];
