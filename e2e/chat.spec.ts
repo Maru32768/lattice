@@ -546,6 +546,17 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await expect(modelId).toHaveCount(0);
   await pickThread("Kafkaのexactly-once");
   await expect(ai).toHaveText("Anthropic API · claude-haiku-5-5 · low");
+  await ai.click();
+  await app.getByRole("menuitem", { name: "Anthropic API", exact: true }).click();
+  await expect(radio("claude-haiku-5-5(速い・安い)"), "the menu marks the model").toHaveAttribute("aria-checked", "true");
+  await expect(radio("既定(claude-opus-5-5)")).toHaveAttribute("aria-checked", "false");
+  await expect(radio("その他(モデルIDを入力)")).toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
+  await ai.click();
+  await app.getByRole("menuitem", { name: /^effort/ }).click();
+  await expect(radio("low"), "and the effort").toHaveAttribute("aria-checked", "true");
+  await expect(radio("モデルの既定")).toHaveAttribute("aria-checked", "false");
+  await app.keyboard.press("Escape");
   await pickThread("WALとは？");
   await expect(modelId).toHaveValue("claude-opus-5-5");
   await expect(ai).toHaveText("Claude CLI · claude-opus-5-5 · max");
@@ -556,6 +567,9 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await app.keyboard.press("Escape");
 
   // Another provider starts on its own defaults and offers only the efforts it takes.
+  await choose(["Gemini API"], "その他(モデルIDを入力)");
+  await expect(modelId, "the ID typed for Claude CLI stays with it").toHaveValue("");
+  await expect(ai).toHaveText("Gemini API");
   await choose(["Gemini API"], "既定(gemini-flash-latest)");
   await expect(ai).toHaveText("Gemini API");
   await expect(modelId).toHaveCount(0);
@@ -598,6 +612,11 @@ test("each conversation asks the AI chosen for it, and opening it again brings t
   await q.fill("もう一度");
   await q.press("Control+Enter");
   await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro, pro]);
+  await choose([/^effort/], "モデルの既定");
+  await expect(ai).toHaveText("Gemini API · gemini-pro-latest");
+  await q.fill("既定で");
+  await q.press("Control+Enter");
+  await expect.poll(asked).toEqual([opus, null, gemini, gemini, pro, pro, { ...pro, effort: null }]);
 });
 
 /** `chat_ask` waits for `failSend()`, so what the user does while a send is under way can be tried. */
