@@ -13,7 +13,7 @@ use crate::favicons;
 use crate::groups::{self, GroupRow};
 use crate::ingest;
 use crate::msg;
-use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, sha256_hex};
+use crate::store::{ArticleFilter, ArticleRow, ArticleSort, Store, StoredBlock, SummaryView, hex, random_hex, sha256_hex};
 use crate::translate;
 use crate::url_norm::normalize;
 use crate::vocab::{self, Capture};
@@ -335,9 +335,7 @@ pub fn token(store: &Store) -> Result<String, String> {
 
 /// A new token: whoever holds the old one can no longer read or send anything.
 pub fn regenerate_token(store: &Store) -> Result<String, String> {
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(err)?;
-    let token = hex(&bytes);
+    let token = random_hex()?;
     store.set_setting(TOKEN, Some(&token)).map_err(err)?;
     Ok(token)
 }

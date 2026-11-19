@@ -588,6 +588,13 @@ pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// 32 random bytes as 64 hex characters: bearer tokens, MCP registration and session ids.
+pub fn random_hex() -> std::result::Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(|e| e.to_string())?;
+    Ok(hex(&bytes))
+}
+
 /// `?1` article, `?2` target language, `?3` block kinds as a JSON array.
 const UNTRANSLATED: &str = "b.article_id = ?1 AND b.kind IN (SELECT value FROM json_each(?3))
     AND NOT EXISTS (SELECT 1 FROM segment_translations st WHERE st.source_hash = b.text_hash AND st.target_language = ?2)";

@@ -19,7 +19,7 @@ use lattice_core::mobile::{self, Effects, MobileOp, Outcome, blocking};
 use lattice_core::mobile_publish;
 use lattice_core::msg;
 use lattice_core::store::Store;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -160,7 +160,7 @@ async fn submit(State(ctx): State<Ctx>, body: Bytes) -> Response {
 }
 
 fn applied() -> Response {
-    (StatusCode::OK, [(header::CONTENT_TYPE, "application/json")], json!({ "status": "applied" }).to_string()).into_response()
+    json(StatusCode::OK, &json!({ "status": "applied" }))
 }
 
 fn bearer(headers: &HeaderMap) -> Option<String> {
@@ -178,8 +178,12 @@ async fn require_token(State(store): State<Arc<Store>>, request: Request, next: 
     }
 }
 
+fn json(status: StatusCode, body: &Value) -> Response {
+    (status, [(header::CONTENT_TYPE, "application/json")], body.to_string()).into_response()
+}
+
 fn error(status: StatusCode, message: &str) -> Response {
-    (status, [(header::CONTENT_TYPE, "application/json")], json!({ "error": message }).to_string()).into_response()
+    json(status, &json!({ "error": message }))
 }
 
 /// The details stay in the log: a phone or an agent can do nothing with them.

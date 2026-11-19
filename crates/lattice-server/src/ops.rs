@@ -651,11 +651,11 @@ pub async fn run(ctx: &Ctx, op: Op) -> Result<Out, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// An empty in-memory library with no LLM or embedding model behind it.
-    fn ctx() -> Ctx {
+    pub(crate) fn ctx() -> Ctx {
         let store = Store::open_in_memory().unwrap();
         let llm = LlmChain::new(lattice_core::chain::load(&store).unwrap());
         let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-cli-test-models"));

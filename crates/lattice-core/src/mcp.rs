@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::msg;
-use crate::store::{Store, hex, sha256_hex};
+use crate::store::{Store, random_hex, sha256_hex};
 
 /// Ordered: each role allows everything the roles before it allow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, TS)]
@@ -116,13 +116,6 @@ fn change(store: &Store, f: impl FnOnce(&mut Vec<Registration>) -> Result<(), St
 pub fn authenticate(store: &Store, token: &str) -> Result<Option<Registration>, String> {
     let presented = sha256_hex(token);
     Ok(registrations(store)?.into_iter().find(|r| sha256_hex(&r.token) == presented))
-}
-
-/// 32 random bytes as 64 hex characters: registration ids, tokens and session ids.
-pub fn random_hex() -> Result<String, String> {
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(err)?;
-    Ok(hex(&bytes))
 }
 
 #[cfg(test)]

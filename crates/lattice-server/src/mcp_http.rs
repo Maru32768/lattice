@@ -18,12 +18,11 @@ use lattice_core::embed::LocalE5;
 use lattice_core::jobs::Providers;
 use lattice_core::mcp::{self, Registration, Role};
 use lattice_core::mobile::{Effects, blocking};
-use lattice_core::store::{Store, sha256_hex};
-use serde_json::Value;
+use lattice_core::store::{Store, random_hex, sha256_hex};
 
 use crate::mcp::{Message, PROTOCOL_VERSIONS, Step, step, tool_reply};
 use crate::ops::{self, Ctx, Op, Out};
-use crate::{OnApplied, bearer, error, internal_error};
+use crate::{OnApplied, bearer, error, internal_error, json};
 
 /// Loopback only: another machine on the network cannot even connect.
 pub const ADDR: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 8788));
@@ -114,14 +113,14 @@ async fn post_message(State(st): State<McpState>, headers: HeaderMap, body: Byte
         Err(reply) => return json(StatusCode::BAD_REQUEST, &reply),
     };
     let opened = if message.is_initialize() {
-        match st.open(&key) {
+        match st.sessions().open(&key) {
             Ok(id) => Some(id),
             Err(e) => return internal_error(&e),
         }
     } else {
         match session_id(&headers) {
             None => return error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id: initialize first"),
-            Some(id) if !st.holds(id, &key) => return error(StatusCode::NOT_FOUND, "no such session: initialize again"),
+            Some(id) if !st.sessions().holds(id, &key) => return error(StatusCode::NOT_FOUND, "no such session: initialize again"),
             Some(_) => None,
         }
     };
@@ -144,13 +143,9 @@ async fn end_session(State(st): State<McpState>, headers: HeaderMap) -> Response
     };
     match session_id(&headers) {
         None => error(StatusCode::BAD_REQUEST, "no Mcp-Session-Id"),
-        Some(id) if st.close(id, &key) => StatusCode::NO_CONTENT.into_response(),
+        Some(id) if st.sessions().close(id, &key) => StatusCode::NO_CONTENT.into_response(),
         Some(_) => error(StatusCode::NOT_FOUND, "no such session"),
     }
-}
-
-fn json(status: StatusCode, body: &Value) -> Response {
-    (status, [(header::CONTENT_TYPE, "application/json")], body.to_string()).into_response()
 }
 
 /// The role a call runs with, or why it may not run, in words an agent can pass on.
@@ -164,42 +159,39 @@ fn permit(role: Role, op: &Op) -> Result<Role, String> {
     }
 }
 
-impl McpState {
-    fn sessions(&self) -> MutexGuard<'_, Sessions> {
-        self.sessions.lock().unwrap_or_else(|e| e.into_inner())
-    }
-
-    fn open(&self, key: &str) -> Result<String, String> {
-        let id = mcp::random_hex()?;
-        let mut s = self.sessions();
-        if s.by_id.len() >= MAX_SESSIONS
-            && let Some(idle) = s.by_id.iter().min_by_key(|(_, session)| session.used).map(|(id, _)| id.clone())
+impl Sessions {
+    fn open(&mut self, key: &str) -> Result<String, String> {
+        let id = random_hex()?;
+        if self.by_id.len() >= MAX_SESSIONS
+            && let Some(idle) = self.by_id.iter().min_by_key(|(_, session)| session.used).map(|(id, _)| id.clone())
         {
-            s.by_id.remove(&idle);
+            self.by_id.remove(&idle);
         }
-        s.clock += 1;
-        let used = s.clock;
-        s.by_id.insert(id.clone(), Session { key: key.to_string(), used });
+        self.clock += 1;
+        self.by_id.insert(id.clone(), Session { key: key.to_string(), used: self.clock });
         Ok(id)
     }
 
     /// Whether `id` is a live session opened with this token; another token's session is as unknown as a made-up id.
-    fn holds(&self, id: &str, key: &str) -> bool {
-        let mut s = self.sessions();
-        let now = s.clock + 1;
-        match s.by_id.get_mut(id) {
+    fn holds(&mut self, id: &str, key: &str) -> bool {
+        self.clock += 1;
+        match self.by_id.get_mut(id) {
             Some(session) if session.key == key => {
-                session.used = now;
-                s.clock = now;
+                session.used = self.clock;
                 true
             }
             _ => false,
         }
     }
 
-    fn close(&self, id: &str, key: &str) -> bool {
-        let mut s = self.sessions();
-        s.by_id.get(id).is_some_and(|session| session.key == key) && s.by_id.remove(id).is_some()
+    fn close(&mut self, id: &str, key: &str) -> bool {
+        self.by_id.get(id).is_some_and(|session| session.key == key) && self.by_id.remove(id).is_some()
+    }
+}
+
+impl McpState {
+    fn sessions(&self) -> MutexGuard<'_, Sessions> {
+        self.sessions.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Runs a tool call, then tells the app what may have changed: after a failure too, since one can stop halfway,
@@ -222,7 +214,7 @@ mod tests {
     use axum::http::Request as HttpRequest;
     use lattice_core::mcp::Edit;
     use lattice_core::store::{ArticleFilter, ArticleSort};
-    use serde_json::json;
+    use serde_json::{Value, json};
     use tower::ServiceExt;
 
     struct Fixture {
@@ -231,17 +223,11 @@ mod tests {
         applied: Arc<Mutex<Vec<Option<i64>>>>,
     }
 
-    fn providers(store: &Store) -> Arc<Providers<LlmChain, LocalE5>> {
-        let llm = LlmChain::new(lattice_core::chain::load(store).unwrap());
-        let embedder = LocalE5::offline(std::env::temp_dir().join("lattice-server-test-models"));
-        Arc::new(Providers { llm, embedder, http: lattice_core::fetch::client() })
-    }
-
     fn fixture() -> Fixture {
-        let store = Arc::new(Store::open_in_memory().unwrap());
+        let Ctx { store, providers, .. } = crate::ops::tests::ctx();
         let applied = Arc::new(Mutex::new(Vec::new()));
         let log = applied.clone();
-        let app = router(store.clone(), providers(&store), Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)));
+        let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)));
         Fixture { app, store, applied }
     }
 
@@ -423,14 +409,13 @@ mod tests {
 
     #[test]
     fn the_session_idle_longest_makes_room() {
-        let store = Arc::new(Store::open_in_memory().unwrap());
-        let st = McpState { providers: providers(&store), store, on_applied: Arc::new(|_| {}), sessions: Arc::default() };
-        let first = st.open("k").unwrap();
-        let rest: Vec<String> = (1..MAX_SESSIONS).map(|_| st.open("k").unwrap()).collect();
-        assert!(st.holds(&first, "k"), "used again, so no longer the idlest");
-        let newest = st.open("k").unwrap();
-        assert_eq!(st.sessions().by_id.len(), MAX_SESSIONS);
-        assert!(st.holds(&first, "k") && st.holds(&newest, "k"));
-        assert!(!st.holds(&rest[0], "k"), "the one idle longest went");
+        let mut s = Sessions::default();
+        let first = s.open("k").unwrap();
+        let rest: Vec<String> = (1..MAX_SESSIONS).map(|_| s.open("k").unwrap()).collect();
+        assert!(s.holds(&first, "k"), "used again, so no longer the idlest");
+        let newest = s.open("k").unwrap();
+        assert_eq!(s.by_id.len(), MAX_SESSIONS);
+        assert!(s.holds(&first, "k") && s.holds(&newest, "k"));
+        assert!(!s.holds(&rest[0], "k"), "the one idle longest went");
     }
 }
