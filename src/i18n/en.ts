@@ -1486,6 +1486,8 @@ export const en = {
     "Not saved: the token could not be taken out of the bucket left behind. Put the old Account ID and bucket back with a key that reaches them, save, then change them again. If nothing reaches that bucket, you can give it up below: {error}",
   "mobileSettings.abandon": "Save, giving up the old bucket",
   "mobileSettings.abandonDesc": "Only if the old bucket can no longer be reached. Its Worker accepts the current token until you remove it.",
+  "be.mcp.bind": "Could not start the MCP server on port {port}: {error}",
+  "be.mcp.fellBack": "The original library could not be opened, so the MCP server is off",
   "be.mcp.badName": "Registration names are 1 to {max} characters",
   "be.mcp.nameTaken": 'There is already a registration named "{name}"',
 } satisfies Messages;

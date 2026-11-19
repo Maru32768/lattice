@@ -173,6 +173,8 @@
     "allow-mobile-publish-now",
     "allow-mobile-tailscale",
     "allow-mobile-tailscale-serve",
+    "allow-mcp-status",
+    "allow-mcp-edit",
     "allow-job-overview",
     "allow-retry-job",
     "allow-retry-failed-jobs",

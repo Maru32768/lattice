@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-mcp-edit"
+description = "Enables the mcp_edit command without any pre-configured scope."
+commands.allow = ["mcp_edit"]
+
+[[permission]]
+identifier = "deny-mcp-edit"
+description = "Denies the mcp_edit command without any pre-configured scope."
+commands.deny = ["mcp_edit"]
