@@ -167,6 +167,13 @@ test("both tag popovers list thousands of tags, draw only those in view, and nam
   const active = pv.locator("[role=option].act");
   await expect(active).toBeInViewport();
   await expect(search).toHaveAttribute("aria-activedescendant", (await active.getAttribute("id"))!);
+  for (let i = 0; i < 4; i++) {
+    await app.keyboard.press("PageDown");
+  }
+  await expect(active).toBeInViewport();
+  await app.mouse.wheel(0, -30 * 400);
+  await expect(options.first()).toBeInViewport();
+  await expect(search, "also one that scrolled out below").not.toHaveAttribute("aria-activedescendant");
   await app.keyboard.press("Escape");
 
   await list(app).locator(".row", { hasText: a.title! }).click({ button: "right" });
