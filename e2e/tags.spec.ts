@@ -140,6 +140,25 @@ test("a click on a tag leaves every row and the popover where they were, down th
   expect(lines, "the chosen tags took a second line").toBeGreaterThan(1);
 });
 
+test("after the first pick replaced the tag chip, a narrower window puts the filter under the chip of now", async ({ shell: app }) => {
+  await app.addInitScript(() => localStorage.setItem("lattice.paneWidths", JSON.stringify({ list: 640 })));
+  await app.goto("/");
+  await expect(list(app).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await openFilter(app);
+  const pv = filter(app);
+  await expect(pv).toBeInViewport();
+  await pv.getByRole("option").nth(2).click();
+  const chip = list(app).locator(".chip.on", { hasText: "タグ" });
+  await expect(chip).toBeVisible();
+  await app.setViewportSize({ width: 1300, height: 880 });
+  const under = async () => {
+    const c = (await chip.boundingBox())!;
+    const p = (await pv.boundingBox())!;
+    return { gap: Math.round(p.y - c.y - c.height), dx: Math.round(p.x - c.x) };
+  };
+  await expect.poll(under).toEqual({ gap: 4, dx: 0 });
+});
+
 test("Tab completes the search to the highlighted tag, and Enter then toggles that tag, also one outside the set", async ({ app }) => {
   const other = ARTICLES.find((a) => !a.tags.includes("kafka"))!;
   await app.evaluate(async (id) => {
