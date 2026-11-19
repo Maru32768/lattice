@@ -165,8 +165,6 @@ test("the tag filter lists every tag in the set by count, and a search the tags 
     ],
     "those starting so first, by count, then the rest",
   );
-  assert.deepEqual(shape("wal"), [["この集合に含まれる", "前方一致 → 部分一致", ["wal"]]], "a section with no tag is left out");
-  assert.deepEqual(shape("none of these"), []);
 });
 
 test("labels and backend filters", () => {

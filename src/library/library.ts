@@ -235,17 +235,16 @@ export function tagSections(tags: readonly string[], counts: ReadonlyMap<string,
   const ql = q.trim().toLowerCase();
   if (!ql) {
     const inSet = tags.filter((x) => n(x) > 0).sort((a, b) => n(b) - n(a));
-    return inSet.length ? [{ label: t("facetPopover.inSet"), note: t("facetPopover.count"), options: inSet.map(opt) }] : [];
+    return [{ label: t("facetPopover.inSet"), note: t("facetPopover.count"), options: inSet.map(opt) }];
   }
   const rank = (x: string) => (x.toLowerCase().startsWith(ql) ? 0 : 1);
   const hit = tags.filter((x) => x.toLowerCase().includes(ql));
   const inSet = hit.filter((x) => n(x) > 0).sort((a, b) => rank(a) - rank(b) || n(b) - n(a));
   const outSet = hit.filter((x) => n(x) === 0).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  const sections: PickSection[] = [
+  return [
     { label: t("facetPopover.inSet"), note: t("facetPopover.matchOrder"), options: inSet.map(opt) },
     { label: t("facetPopover.outSet"), note: String(outSet.length), options: outSet.map(opt) },
   ];
-  return sections.filter((s) => s.options.length > 0);
 }
 
 export const groupName = (id: number, groups: GroupRow[], t: T) => groups.find((g) => g.id === id)?.name ?? t("common.group");
