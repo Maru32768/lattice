@@ -1887,23 +1887,25 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         let before = MIGRATIONS.iter().position(|m| m.contains("covers code and tables too")).unwrap();
         assert_eq!(before + 1, REHASH_AT, "the recompute runs after the migration that says so");
-        for sql in &MIGRATIONS[..before] {
+        let start = MIGRATIONS.iter().position(|m| m.contains("now of the text alone")).unwrap() + 1;
+        for sql in &MIGRATIONS[..start] {
             conn.execute_batch(sql).unwrap();
         }
-        conn.pragma_update(None, "user_version", before as i64).unwrap();
+        conn.pragma_update(None, "user_version", start as i64).unwrap();
         // One article extracted, one whose later extraction failed: both keep blocks, a hash of then and a summary of it.
+        // The two hashes of then are the same, as they were for every article without prose: each article moves its own.
         conn.execute_batch(
             "INSERT INTO articles (id, original_url, normalized_url, domain, extraction_status, content_hash) VALUES
-                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then 1'),
-                 (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then 2');
+                 (1, 'https://a.dev/1', 'https://a.dev/1', 'a.dev', 'ok', 'of then'),
+                 (2, 'https://a.dev/2', 'https://a.dev/2', 'a.dev', 'failed', 'of then');
              INSERT INTO blocks (article_id, ordinal, kind, text, text_hash) VALUES
                  (1, 0, 'paragraph', '説明文', 'h1'), (1, 1, 'image', 'Fig', 'h2'), (1, 2, 'paragraph', '続き', 'h3'), (1, 3, 'code', 'let x = 1;', 'h5'),
                  (1, 4, 'table', 'p99\t12 ms', 'h6'), (2, 0, 'paragraph', 'Some words', 'h4');
              INSERT INTO summaries (article_id, type, text, source_hash, provider, prompt_version) VALUES
-                 (1, 'summary', 'Current then.', 'of then 1', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
-                 (2, 'summary', 'Current then.', 'of then 2', 't', 'v');
+                 (1, 'summary', 'Current then.', 'of then', 't', 'v'), (1, 'summary', 'Stale then.', 'older', 't', 'v'),
+                 (2, 'summary', 'Current then.', 'of then', 't', 'v');
              INSERT INTO quizzes (article_id, source_hash, provider, prompt_version) VALUES
-                 (1, 'of then 1', 't', 'v'), (1, 'older', 't', 'v');",
+                 (1, 'of then', 't', 'v'), (1, 'older', 't', 'v');",
         )
         .unwrap();
         let s = Store::init(conn).unwrap();
