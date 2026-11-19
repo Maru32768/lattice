@@ -401,6 +401,18 @@ mod tests {
         assert_eq!(req.parse(&json!({"summary": "WALを使う。", "key_points": []}), &ids), None, "the old shape is malformed");
     }
 
+    #[test]
+    fn the_number_check_reads_the_title_and_the_blocks_left_out_too() {
+        let mut blocks: Vec<_> = (0..2000).map(|_| para(format!("Some text. {}", "x".repeat(90)))).collect();
+        blocks[1000] = para(format!("It took 42 minutes. {}", "x".repeat(80)));
+        let req = request(&instructions::Applied::default(), "Top 7 tips", &blocks);
+        assert!(!req.sent.contains(&1000), "block 1000 is left out");
+        let text = "7個のコツで42分、99回かかった。";
+        let ids: Vec<i64> = (0..2000).collect();
+        let items = req.parse(&json!({"summary": [{"text": text, "sources": []}], "key_points": []}), &ids).unwrap();
+        assert_eq!(items.summary[0], item(text, &[], &["99"]), "7 is in the title and 42 in a block not sent");
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn a_summary_is_stored_with_its_text_and_the_blocks_each_item_cites() {
         struct Fake(Value);
