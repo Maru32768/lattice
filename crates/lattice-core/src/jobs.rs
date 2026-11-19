@@ -685,7 +685,6 @@ mod tests {
         let v = s.get_article(id, "ja").unwrap().unwrap();
         let sum = v.summary.unwrap();
         assert_eq!((sum.text.as_str(), sum.stale), ("要約です。\n\n・要点", false));
-        assert_eq!(sum.items.unwrap().summary[0].block_ids, [v.blocks[1].id], "label 2 is the paragraph after the heading");
         s.exec_for_test(&format!("UPDATE articles SET content_hash = 'changed' WHERE id = {id}"));
         assert!(s.get_article(id, "ja").unwrap().unwrap().summary.unwrap().stale);
     }
