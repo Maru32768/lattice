@@ -20,8 +20,9 @@ pub enum Role {
     Delete,
 }
 
-/// Where the copied command puts a registration in Claude Code, by its `--scope` name. A project's own (`Local`) is used
-/// there in place of the user-wide one, since both go under one name.
+/// Where the copied command puts a registration in Claude Code, by its `--scope` name. A project's own (`Local`), which
+/// Claude Code ties to the Git repository the command runs in or else to that folder, is used there in place of the
+/// user-wide one, since both go under one name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export, rename = "McpScope")]
