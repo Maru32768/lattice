@@ -391,7 +391,10 @@ export function jobsOf(a: ArticleRow): JobRow[] {
     : [];
 }
 
-/** Each cites blocks of `SNAPSHOT_BLOCKS` by id, and one block (199) the article no longer has. */
+/**
+ * The snapshot's cites blocks of `SNAPSHOT_BLOCKS` by id, and one block (199) the article no longer has; the Markdown
+ * article's was made before summaries had items.
+ */
 export const SUMMARIES: Record<number, Pick<SummaryView, "text" | "items">> = {
   [SNAPSHOT_ID]: {
     text: "スナップショット分離は、トランザクション開始時点のスナップショットから読む。\n\n・PostgreSQL 9.1以降はMVCCで実装する。\n・write skewは防げない。",
@@ -403,6 +406,7 @@ export const SUMMARIES: Record<number, Pick<SummaryView, "text" | "items">> = {
       ],
     },
   },
+  [MARKDOWN_ID]: { text: "Markdownから取り込んだ記事の要約です。\n\n・要約は平文のまま表示する", items: null },
 };
 
 export const JOBS: JobOverview = {

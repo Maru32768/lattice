@@ -50,6 +50,10 @@ test("the summary expands, and imported Markdown has no Page view", async ({ app
   await open(app, md.title!);
   await expect(app.getByRole("group", { name: "表示" }).getByRole("button", { name: /Page/ })).toBeDisabled();
   await expect(app.locator(".art-meta")).toContainText("ローカル");
+  // A summary made before summaries had items shows as its plain text.
+  await app.getByRole("region", { name: "要約" }).getByRole("button").click();
+  await expect(app.locator(".summary-body")).toContainText("要約は平文のまま表示する");
+  await expect(app.locator(".summary-body .cite")).toHaveCount(0);
 });
 
 test("a summary's sentences and points go to the blocks they cite, and a number the article lacks is marked", async ({ app }) => {
