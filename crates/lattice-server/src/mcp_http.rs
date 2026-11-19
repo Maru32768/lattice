@@ -726,7 +726,9 @@ mod tests {
         changed("the session ended");
 
         let before = changes();
-        assert_eq!(f.post("wrong", Some(&session), ping.clone()).await.status(), StatusCode::UNAUTHORIZED);
+        let init = json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize" });
+        assert_eq!(f.post("wrong", None, init.clone()).await.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(f.send("POST", Some(&r.token), None, &[("origin", "http://127.0.0.1:8788")], init).await.status(), StatusCode::FORBIDDEN);
         assert_eq!(f.post(&r.token, Some(&session), ping).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(f.send("DELETE", Some(&r.token), Some(&session), &[], Value::Null).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(changes(), before, "refused before reaching a session");
