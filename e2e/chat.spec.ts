@@ -485,6 +485,22 @@ async function chooseAI(app: Page, path: (string | RegExp)[], pick: string) {
   await radio.click();
 }
 
+test("at the pane's narrowest, the send row fits Vim's mode, a long model ID and the AI with its effort", async ({ shell }) => {
+  await shell.addInitScript(() => localStorage.setItem("lattice.chatVim", "on"));
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await shell.locator(".chat").evaluate((e) => (e.style.width = "320px"));
+  await chooseAI(shell, ["Anthropic API"], "その他(モデルIDを入力)");
+  await shell.getByLabel("回答するモデルのID").fill("claude-a-very-long-model-id-that-does-not-fit");
+  await chooseAI(shell, [/^effort/], "max");
+  const row = shell.locator(".chat-f-row");
+  expect(await row.evaluate((e) => e.scrollWidth - e.clientWidth)).toBe(0);
+  const send = (await row.getByRole("button", { name: "送信" }).boundingBox())!;
+  const box = (await row.boundingBox())!;
+  expect(send.x + send.width).toBeLessThanOrEqual(box.x + box.width);
+});
+
 test("Enter in the model ID box keeps the drafted question", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const q = app.locator("#chat-q");
