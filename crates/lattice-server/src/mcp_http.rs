@@ -360,7 +360,8 @@ mod tests {
     use lattice_core::mcp::Edit;
     use lattice_core::store::{ArticleFilter, ArticleSort};
     use serde_json::{Value, json};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{OnceLock, Weak};
     use tower::ServiceExt;
 
     struct Fixture {
@@ -369,6 +370,8 @@ mod tests {
         applied: Arc<Mutex<Vec<Option<i64>>>>,
         activity: Arc<Activity>,
         changes: Arc<AtomicUsize>,
+        /// Set when `changed` ran with a lock of the activity held.
+        locked: Arc<AtomicBool>,
     }
 
     fn fixture() -> Fixture {
@@ -379,12 +382,20 @@ mod tests {
         let applied = Arc::new(Mutex::new(Vec::new()));
         let log = applied.clone();
         let changes = Arc::new(AtomicUsize::new(0));
-        let counted = changes.clone();
+        let locked = Arc::new(AtomicBool::new(false));
+        let me: Arc<OnceLock<Weak<Activity>>> = Arc::default();
+        let (counted, seen, this) = (changes.clone(), locked.clone(), me.clone());
         let activity = Activity::new(move || {
             counted.fetch_add(1, Ordering::SeqCst);
+            if let Some(a) = this.get().and_then(Weak::upgrade)
+                && (a.sessions.try_lock().is_err() || a.calls.try_lock().is_err())
+            {
+                seen.store(true, Ordering::SeqCst);
+            }
         });
+        me.set(Arc::downgrade(&activity)).ok();
         let app = router(store.clone(), providers, Arc::new(move |e: &Effects| log.lock().unwrap().push(e.article)), activity.clone());
-        Fixture { app, store, applied, activity, changes }
+        Fixture { app, store, applied, activity, changes, locked }
     }
 
     impl Fixture {
@@ -719,6 +730,7 @@ mod tests {
         assert_eq!(f.post(&r.token, Some(&session), ping).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(f.send("DELETE", Some(&r.token), Some(&session), &[], Value::Null).await.status(), StatusCode::NOT_FOUND);
         assert_eq!(changes(), before, "refused before reaching a session");
+        assert!(!f.locked.load(Ordering::SeqCst), "changed ran with a lock held, so reading the activity from it would deadlock");
     }
 
     #[test]
