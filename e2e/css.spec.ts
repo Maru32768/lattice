@@ -30,7 +30,7 @@ async function expectOneRing(control: Locator) {
   const rings = await control.evaluate((e) => {
     const chip = e.closest(".chip")!;
     const drawn = [
-      getComputedStyle(e).outlineStyle !== "none",
+      getComputedStyle(e).outlineStyle !== "none" && getComputedStyle(e).outlineColor !== "rgba(0, 0, 0, 0)",
       getComputedStyle(e).boxShadow !== "none",
       chip !== e && getComputedStyle(chip).boxShadow !== "none",
     ];
@@ -52,6 +52,18 @@ test("each control in the chat's scope and AI rows shows one focus ring: a selec
     await expectOneRing(control);
     await app.keyboard.press("Tab");
   }
+});
+
+test("in forced colors, where the chip's ring is not drawn, a chat select draws its own", async ({ app }) => {
+  await app.emulateMedia({ forcedColors: "active" });
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const provider = app.getByLabel("回答するAI", { exact: true });
+  await chatScope(app).focus();
+  await app.keyboard.press("Tab");
+  await expect(provider).toBeFocused();
+  const outline = await provider.evaluate((e) => [getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineColor]);
+  expect(outline[0]).not.toBe("none");
+  expect(outline[1]).not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("the search pane's scope select shows one focus ring, its chip's", async ({ app }) => {
