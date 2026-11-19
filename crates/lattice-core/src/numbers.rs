@@ -355,33 +355,46 @@ fn words(cs: &[char]) -> Vec<Dec> {
         }
     }
     let mut out = Vec::new();
-    let mut run: Option<(Dec, Dec)> = None;
+    // The run's total up to its last scale word, the part since, and that scale word's power.
+    let mut run: Option<(Dec, Dec, i32)> = None;
     for (k, (at, w)) in words.iter().enumerate() {
         let joined = k > 0 && {
             let (prev_at, prev) = &words[k - 1];
             *at == prev_at + prev.len() + 1 && matches!(cs[at - 1], ' ' | '-')
         };
         if !joined {
-            out.extend(run.take().and_then(|(total, cur)| total.plus(cur)));
+            out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur)));
         }
         let unit = cardinal(w);
         let scale = SCALES.iter().find(|(s, _)| s == w).map(|(_, p)| *p);
         match (unit, scale, run) {
             (Some(n), _, _) => {
-                let (total, cur) = run.unwrap_or((Dec::ZERO, Dec::ZERO));
+                let (total, cur, last) = run.unwrap_or((Dec::ZERO, Dec::ZERO, i32::MAX));
                 // A word goes on the number only where one can (after hundreds or a scale word, a unit after a ten);
                 // elsewhere it starts a new one, so three-four million is 3 and 4 million, not 7 million.
                 if cur.whole().is_some_and(|c| c % 100 == 0 || (c % 100 >= 20 && c % 10 == 0 && n < 10)) {
-                    run = cur.plus(Dec::int(n)).map(|cur| (total, cur));
+                    run = cur.plus(Dec::int(n)).map(|cur| (total, cur, last));
                 } else {
                     out.extend(total.plus(cur));
-                    run = Some((Dec::ZERO, Dec::int(n)));
+                    run = Some((Dec::ZERO, Dec::int(n), i32::MAX));
                 }
             }
-            (_, Some(2), Some((total, cur))) => run = Some((total, cur.shifted(2))),
-            (_, Some(p), Some((total, cur))) => run = total.plus(cur.shifted(p)).map(|t| (t, Dec::ZERO)),
+            // A number's hundreds come once and its scale words get smaller (one million two hundred thousand), so
+            // two hundred three hundred and three million four million are two numbers each.
+            (_, Some(2), Some((total, cur, last))) => match cur.whole() {
+                Some(c) if c >= 100 => {
+                    out.extend(total.plus(Dec::int(c - c % 100)));
+                    run = Some((Dec::ZERO, Dec::int(c % 100).shifted(2), i32::MAX));
+                }
+                _ => run = Some((total, cur.shifted(2), last)),
+            },
+            (_, Some(p), Some((total, cur, last))) if p >= last => {
+                out.push(total);
+                run = Some((cur.shifted(p), Dec::ZERO, p));
+            }
+            (_, Some(p), Some((total, cur, _))) => run = total.plus(cur.shifted(p)).map(|t| (t, Dec::ZERO, p)),
             (_, Some(p), None) => out.push(Dec::int(1).shifted(p)),
-            (None, None, Some((total, cur))) if w == "and" => {
+            (None, None, Some((total, cur, _))) if w == "and" => {
                 let half = words.get(k + 1).zip(words.get(k + 2)).is_some_and(|((_, a), (_, h))| a == "a" && h == "half");
                 if half {
                     out.extend(total.plus(cur).and_then(|v| v.plus(Dec::new(5, -1))));
@@ -391,7 +404,7 @@ fn words(cs: &[char]) -> Vec<Dec> {
                     run = None;
                 }
             }
-            (None, None, _) => out.extend(run.take().and_then(|(total, cur)| total.plus(cur))),
+            (None, None, _) => out.extend(run.take().and_then(|(total, cur, _)| total.plus(cur))),
         }
         match w.as_str() {
             "half" => out.push(Dec::new(5, -1)),
@@ -400,7 +413,7 @@ fn words(cs: &[char]) -> Vec<Dec> {
         }
         out.extend(word_value(w).map(Dec::int));
     }
-    out.extend(run.and_then(|(total, cur)| total.plus(cur)));
+    out.extend(run.and_then(|(total, cur, _)| total.plus(cur)));
     out
 }
 
@@ -521,6 +534,18 @@ mod tests {
         assert_eq!(check("7百万人", "three\u{2013}four million customers"), ["7百万"], "a range of words is not their sum");
         assert_eq!(check("23件", "twenty-three five-star reviews"), Vec::<String>::new(), "a unit after twenty-three starts a number");
         assert_eq!(check("3000万人", "twenty\u{2013}thirty million users"), Vec::<String>::new(), "a ten after a ten starts a number");
+        for (summary, article) in [
+            ("300万～400万人", "three million\u{2013}four million customers"),
+            ("1000～2000件", "one thousand\u{2013}two thousand rows"),
+            ("200～300人", "two hundred\u{2013}three hundred people"),
+            ("50万～100万人", "five hundred thousand\u{2013}one million users"),
+            ("100〜200人", "between one hundred and two hundred people"),
+            ("2,000〜3,000件", "between two thousand and three thousand rows"),
+            ("1,200,000件", "one million two hundred thousand rows"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        assert_eq!(check("700万人", "three million\u{2013}four million customers"), ["700万"], "a range of scaled words is not their sum");
         assert_eq!(check("123人と1,200件", "one hundred twenty-three people, one thousand two hundred rows"), Vec::<String>::new());
         assert_eq!(check("305人と7人", "three hundred and five people, three and four"), ["7"], "and joins only after a scale word");
         assert_eq!(check("2倍", "It doubled."), ["2"], "only the words listed");
