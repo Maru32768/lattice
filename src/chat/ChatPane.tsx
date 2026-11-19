@@ -106,6 +106,8 @@ export function ChatPane({
   const [threadId, setThreadId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [choice, setChoice] = useState<Choice>(null);
+  /** The AI came from the menu, not with a conversation opened: a model ID box it shows takes the keyboard. */
+  const [aiPicked, setAiPicked] = useState(false);
   const [scopeKey, setScopeKey] = useState(request?.key ?? (article ? "article" : "all"));
   const [picked, setPicked] = useState(request != null);
   const [question, setQuestion] = useState(request?.quote ? withQuote("", request.quote) : "");
@@ -171,6 +173,7 @@ export function ChatPane({
     setThreadId(id);
     const llm = threads.find((t) => t.id === id)?.llm;
     setChoice(llm ? toChoice(llm) : null);
+    setAiPicked(false);
     const ms =
       id == null
         ? []
@@ -371,7 +374,7 @@ export function ChatPane({
                 placeholder={t("modelSettings.modelId")}
                 aria-label={t("chatPane.llmModelId")}
                 spellCheck={false}
-                autoFocus
+                autoFocus={aiPicked}
                 // In the form, Enter would submit it and send the question; only the send key sends.
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -381,7 +384,13 @@ export function ChatPane({
               />
             )}
             <span className="push" />
-            <ModelMenu choice={choice} onChange={setChoice} />
+            <ModelMenu
+              choice={choice}
+              onChange={(c) => {
+                setChoice(c);
+                setAiPicked(true);
+              }}
+            />
             <button type="submit" className="btn sm pri" disabled={!question.trim() || !!pending || !scope()}>
               {pending ? t("chatPane.sending") : t("chatPane.send")}
             </button>

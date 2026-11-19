@@ -497,6 +497,22 @@ test("Enter in the model ID box keeps the drafted question", async ({ app }) => 
   expect(await callsOf(app, "chat_ask")).toEqual([]);
 });
 
+test("opening a conversation on a custom model leaves the keyboard where it was", async ({ app }) => {
+  await app.locator(".nav").getByRole("button", { name: "対話" }).click();
+  const q = app.locator("#chat-q");
+  await chooseAI(app, ["Claude CLI"], "その他(モデルIDを入力)");
+  await app.getByLabel("回答するモデルのID").fill("my-model");
+  await q.fill("WALとは？");
+  await q.press("Control+Enter");
+  await expect.poll(async () => (await callsOf(app, "chat_ask")).length).toBe(1);
+  await app.getByRole("button", { name: "新しい会話" }).click();
+  const pick = app.getByRole("button", { name: "会話を選ぶ" });
+  await pick.click();
+  await app.getByRole("menuitemradio", { name: "WALとは？" }).click();
+  await expect(app.getByLabel("回答するモデルのID")).toHaveValue("my-model");
+  await expect(pick, "focus goes back to the menu's button").toBeFocused();
+});
+
 test("each conversation asks the AI chosen for it, and opening it again brings the choice back", async ({ app }) => {
   await app.locator(".nav").getByRole("button", { name: "対話" }).click();
   const ai = app.getByRole("button", { name: "回答するAI" });
