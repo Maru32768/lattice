@@ -330,6 +330,22 @@ test("an open scope list holds still while the library changes, and lists the ch
   await expect(picker.getByRole("option", { name: "#solo(2件)" })).toHaveCount(1);
 });
 
+test("a failed library read leaves the chat scope loading until the other reads are in", async ({ shell }) => {
+  await shell.addInitScript(() => {
+    window.__e2eHold = ["list_tags"];
+    window.__e2eFail = ["list_genres"];
+  });
+  await shell.goto("/");
+  await expect(list(shell).locator(".row").first()).toBeVisible({ timeout: 30_000 });
+  await shell.locator(".nav").getByRole("button", { name: "対話" }).click();
+  await chatScope(shell).click();
+  const picker = scopeDialog(shell);
+  await expect(picker.getByText("読み込み中…")).toBeVisible();
+  await shell.evaluate(() => window.__e2e.release("list_tags"));
+  await picker.getByRole("combobox", { name: "範囲を検索" }).fill("kafka");
+  await expect(picker.getByRole("option", { name: /^#kafka/ }), "the tags that came in after the failure").toHaveCount(1);
+});
+
 test("a scope picked from the open list after it left the library is the one the chip names and the question asks over", async ({ app }) => {
   const id = ARTICLES[0].id;
   const solo = (cmd: "add_tag" | "remove_tag") =>

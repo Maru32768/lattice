@@ -17,6 +17,8 @@ declare global {
     };
     /** Set by an init script: commands whose calls wait for `__e2e.release`, as slow reads would. */
     __e2eHold?: string[];
+    /** Set by an init script: commands that fail, as a broken read would. */
+    __e2eFail?: string[];
   }
 }
 
@@ -41,6 +43,9 @@ mockIPC(
     e2e.calls.push({ cmd, args });
     const run = () => {
       try {
+        if (window.__e2eFail?.includes(cmd)) {
+          throw new Error(`${cmd} failed`);
+        }
         return handle(cmd, args);
       } catch (e) {
         if (String(e).includes("unmocked")) {

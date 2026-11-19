@@ -31,7 +31,7 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
   const refresh = () => {
     const seq = ++listSeq.current;
     const list = withArticles ? api.listArticles({ kind: "all" }, sortRef.current) : Promise.resolve([]);
-    return Promise.all([
+    const reads = [
       list.then((a) => {
         if (seq !== listSeq.current) {
           return;
@@ -46,9 +46,10 @@ export function useLibrary(fail: (e: unknown) => void, withArticles = true) {
       api.listGenres().then(setGenres),
       api.listGroups().then(setGroupRows),
       api.relevanceStatus().then(setRelevance),
-    ])
-      .catch(fail)
-      .finally(() => setSettled(true));
+    ];
+    // Promise.all gives up at the first failure, with the other reads still out.
+    void Promise.allSettled(reads).then(() => setSettled(true));
+    return Promise.all(reads).catch(fail);
   };
   const setSort = (s: ArticleSort) => {
     sortRef.current = s;
