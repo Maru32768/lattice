@@ -54,15 +54,24 @@ test("the Reader's group chips: pick a group, create one, remove one", async ({ 
 
   await chips.getByRole("button", { name: "＋ グループ" }).click();
   await picker(app)
-    .getByRole("button", { name: new RegExp(rust.name) })
+    .getByRole("option", { name: new RegExp(rust.name) })
     .click();
   await expect(chips.locator(".chip", { hasText: rust.name })).toBeVisible();
   await expect(navItem(app, rust.name).locator(".n")).toHaveText(String(members(rust.id).length + 1));
+  await expect(picker(app).getByRole("option", { name: new RegExp(rust.name) }), "a picked group stays listed, checked").toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 
-  await picker(app).getByRole("textbox").fill("卒論");
+  await picker(app).getByRole("combobox").fill("卒論");
   await app.keyboard.press("Enter");
   await expect(chips.locator(".chip", { hasText: "卒論" })).toBeVisible();
   await expect(navItem(app, "卒論").locator(".n")).toHaveText("1");
+  await expect(picker(app).getByRole("combobox")).toHaveValue("");
+  await expect(picker(app).getByRole("option", { name: /卒論/ }), "the group just made is listed, checked, once the search clears").toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await app.keyboard.press("Escape");
   await expect(picker(app)).toBeHidden();
 
@@ -89,7 +98,7 @@ test("list rows picked with 選択 and Shift+click go into a group together", as
 
   await list(app).getByRole("button", { name: "グループに追加" }).click();
   await picker(app)
-    .getByRole("button", { name: new RegExp(empty.name) })
+    .getByRole("option", { name: new RegExp(empty.name) })
     .click();
   await expect.poll(() => callsOf(app, "group_add")).toEqual([{ id: empty.id, articles: [ids[0], ids[2]] }]);
   await expect(navItem(app, empty.name).locator(".n")).toHaveText("2");
@@ -154,10 +163,10 @@ test("imports land in the chosen groups; the list's group is chosen first", asyn
   await expect(field.getByRole("button")).toHaveText(rust.name);
   await field.getByRole("button").click();
   await picker(app)
-    .getByRole("button", { name: new RegExp(rust.name) })
+    .getByRole("option", { name: new RegExp(rust.name) })
     .click();
   await picker(app)
-    .getByRole("button", { name: new RegExp(empty.name) })
+    .getByRole("option", { name: new RegExp(empty.name) })
     .click();
   await app.keyboard.press("Escape");
   await expect(field.getByRole("button")).toHaveText(empty.name);
