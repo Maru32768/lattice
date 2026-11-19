@@ -176,11 +176,13 @@ test("closing the Reader's group picker gives the article its scroll anchoring b
       return { block: el.id, into: top - el.getBoundingClientRect().top };
     });
   const was = await read();
+  const first = doc.locator("[id^='b-']").first();
+  expect(
+    await first.evaluate((el, view) => el.getBoundingClientRect().bottom <= view.getBoundingClientRect().top, await doc.elementHandle()),
+    "the block made taller is wholly above the view",
+  ).toBe(true);
   // A translation arriving above the place read makes a block there taller.
-  await doc
-    .locator("[id^='b-']")
-    .first()
-    .evaluate((el) => (el.style.paddingBottom = "150px"));
+  await first.evaluate((el) => (el.style.paddingBottom = "150px"));
   await frames(app);
   const now = await read();
   expect({ block: now.block, near: Math.abs(now.into - was.into) <= 1 }, "the text stays where it was read").toEqual({ block: was.block, near: true });
