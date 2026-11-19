@@ -60,8 +60,21 @@ impl Dec {
             });
         }
         let e = self.e.min(o.e);
-        let widen = |d: Self| d.m.checked_mul(10u128.checked_pow((d.e - e) as u32)?);
-        Some(Self::new(widen(self)?.checked_add(widen(o)?)?, e))
+        Some(Self::new(self.widened(e)?.checked_add(o.widened(e)?)?, e))
+    }
+
+    /// The mantissa for exponent `e`, at most `self.e`.
+    fn widened(self, e: i32) -> Option<u128> {
+        self.m.checked_mul(10u128.checked_pow((self.e - e) as u32)?)
+    }
+
+    fn at_most(self, o: Self) -> bool {
+        let e = self.e.min(o.e);
+        match (self.widened(e), o.widened(e)) {
+            (Some(a), Some(b)) => a <= b,
+            // The one too wide for u128 is the larger.
+            (a, _) => a.is_some(),
+        }
     }
 
     /// `a / b` when it ends within six decimal places (`1/2`, `3/4`), not `1/3`.
@@ -93,8 +106,8 @@ struct Mention {
     either: bool,
 }
 
-/// Every value `texts` write: numbers in digits, also read the other ways an article may mean them; fractions;
-/// English number words, ordinals and months; kanji numerals.
+/// Every value `texts` write: numbers in digits, also read the other ways an article may mean them; fractions; a
+/// range's left end with its right end's scale; English number words, ordinals and months; kanji numerals.
 #[derive(Debug, PartialEq)]
 pub struct Article(HashSet<Num>);
 
@@ -107,7 +120,7 @@ impl Article {
             for m in &mut mentions {
                 m.others.extend(any_case_suffix(&cs, m.start).map(Num::Dec));
             }
-            values.extend(fractions(&cs, &mentions).map(Num::Dec));
+            values.extend(fractions(&cs, &mentions).chain(ranges(&cs, &mentions)).map(Num::Dec));
             values.extend(mentions.into_iter().flat_map(|m| std::iter::once(m.value).chain(m.others)));
             // An en dash writes a range, never one number: five hundred–one thousand is not 501,000.
             let mut spelled = cs.clone();
@@ -329,6 +342,48 @@ fn fractions<'a>(cs: &'a [char], mentions: &'a [Mention]) -> impl Iterator<Item 
     })
 }
 
+const CURRENCIES: [char; 5] = ['$', '€', '£', '¥', '￥'];
+
+/// Whether `gap`, between a range's two ends, separates them: a dash or a tilde, `to`, or `and` after `between`.
+fn separates(gap: &str, between: bool) -> bool {
+    match gap.trim_matches(' ') {
+        "-" | "\u{2013}" | "\u{2014}" | "~" | "～" | "〜" | "to" => true,
+        "and" => between,
+        _ => false,
+    }
+}
+
+/// A range's left end with the scale its right end writes: 3,000,000 in `3-4 million`, `3～4万`, `$3-$4M` and
+/// `between 3 and 4 billion`. The right end has a scale where its value is its own digits shifted.
+fn ranges(cs: &[char], mentions: &[Mention]) -> Vec<Dec> {
+    let mut out = Vec::new();
+    for w in mentions.windows(2) {
+        let [a, b] = w else {
+            continue;
+        };
+        let ((a_end, Some(left)), (_, Some(right))) = (token_at(cs, a.start), token_at(cs, b.start)) else {
+            continue;
+        };
+        let gap: String = cs[a.end..b.start].iter().collect();
+        let before: String = cs[..a.start].iter().rev().skip_while(|c| **c == ' ' || CURRENCIES.contains(c)).take_while(|c| c.is_ascii_alphabetic()).collect();
+        let between = before.to_ascii_lowercase().chars().rev().eq("between".chars());
+        if a_end != a.end || !separates(gap.trim_end_matches(CURRENCIES), between) {
+            continue;
+        }
+        for v in std::iter::once(&b.value).chain(&b.others) {
+            if let Num::Dec(v) = v
+                && v.m == right.m
+            {
+                let scaled = left.shifted(v.e - right.e);
+                if scaled.at_most(*v) {
+                    out.push(scaled);
+                }
+            }
+        }
+    }
+    out
+}
+
 const UNITS: [&str; 20] = [
     "zero",
     "one",
@@ -424,7 +479,50 @@ fn respelled(words: &[Word]) -> Vec<Word> {
 fn words(cs: &[char]) -> Vec<Dec> {
     let list = word_list(cs);
     let respelled = respelled(&list);
-    [list, respelled].iter().flat_map(|list| [read_words(cs, list), years(cs, list)]).flatten().collect()
+    [list, respelled].iter().flat_map(|list| [read_words(cs, list), years(cs, list), word_ranges(cs, list)]).flatten().collect()
+}
+
+/// A range's left end with the scale words its right end writes: 3,000,000 in `three to four million`, 200,000 in
+/// `two hundred to three hundred thousand`. The left end gets the right end's scale words above its own, and counts
+/// only when it stays no larger than the right end: `twenty-one million` is no range, as 20 million is more than 1.
+fn word_ranges(cs: &[char], words: &[Word]) -> Vec<Dec> {
+    let number = |w: &str| cardinal(w).is_some() || scale(w).is_some();
+    let read = |list: &[&str]| {
+        let text: Vec<char> = list.join(" ").chars().collect();
+        read_words(&text, &word_list(&text)).last().copied()
+    };
+    let mut out = Vec::new();
+    for k in 0..words.len() {
+        let mut l = k;
+        while l > 0 && joined(cs, words, l) && number(&words[l - 1].2) {
+            l -= 1;
+        }
+        let left: Vec<&str> = words[l..=k].iter().map(|w| w.2.as_str()).collect();
+        // Thousand or more in the left end would end the number at the scale words it gets (five hundred thousand
+        // million).
+        if cardinal(left[0]).is_none() || !left.iter().all(|w| cardinal(w).is_some() || scale(w) == Some(2)) {
+            continue;
+        }
+        let between = l > 0 && words[l - 1].2 == "between";
+        for r in [k + 1, k + 2] {
+            let Some(start) = words.get(r).map(|w| w.0) else {
+                continue;
+            };
+            if !separates(&cs[words[k].1..start].iter().collect::<String>(), between) {
+                continue;
+            }
+            let right: Vec<&str> =
+                (r..words.len()).take_while(|&j| number(&words[j].2) && (j == r || joined(cs, words, j))).map(|j| words[j].2.as_str()).collect();
+            let own = left.iter().rev().find_map(|w| scale(w));
+            let scaled = read(&left.iter().copied().chain(right.iter().copied().filter(|w| scale(w) > own)).collect::<Vec<_>>());
+            if let (Some(scaled), Some(end)) = (scaled, read(&right))
+                && scaled.at_most(end)
+            {
+                out.push(scaled);
+            }
+        }
+    }
+    out
 }
 
 /// Years said in two parts: `nineteen eighty-four` (1984), `twenty twenty` (2020).
@@ -726,6 +824,57 @@ mod tests {
             ("1920", "nineteen fifteen five", "a unit only after a ten"),
             ("1992", "nineteen eighty twelve", "a unit is below ten"),
             ("1984", "nineteen eighty, four", "the unit is joined"),
+        ] {
+            assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
+        }
+    }
+
+    #[test]
+    fn a_ranges_left_end_takes_the_scale_of_its_right_end() {
+        for (summary, article) in [
+            ("300万～400万人", "about 3-4 million users"),
+            ("300万～400万人", "about 3 to 4 million users"),
+            ("300万～400万人", "about 3 - 4 million users"),
+            ("300万～400万人", "about 3\u{2014}4 million users"),
+            ("300万～400万人", "about 3~4 million users"),
+            ("300万～400万人", "about 3-4M users"),
+            ("300万～400万人", "about 3-4m users"),
+            ("300万～400万人", "約3〜4百万人"),
+            ("3万～4万人", "約3～4万人"),
+            ("200万～300万人", "between 2 and 3 million users"),
+            ("200万～300万ドル", "between $2 and $3 million"),
+            ("300万～400万ドル", "$3-$4 million"),
+            ("3,000～4,000件", "3-4k rows"),
+            ("5,000～10,000件", "5-10k rows"),
+            ("100万～150万人", "1-1.5 million users"),
+            ("300万～400万人", "about three to four million users"),
+            ("300万～400万人", "about three-four million users"),
+            ("300万～400万人", "about three\u{2013}four million users"),
+            ("300万～400万人", "about three \u{2014} four million users"),
+            ("200万～300万人", "between two and three million users"),
+            ("2,500万～3,000万人", "twenty-five to thirty million users"),
+            ("20万～30万人", "two to three hundred thousand users"),
+            ("20万～30万人", "two hundred to three hundred thousand users"),
+            ("25万～35万件", "two hundred fifty to three hundred fifty thousand rows"),
+            ("10万～20万人", "a hundred to two hundred thousand users"),
+            ("300万～420万人", "three to four million two hundred thousand users"),
+            ("300万人", "twenty, three to four million users"),
+        ] {
+            assert_eq!(check(summary, article), Vec::<String>::new(), "{summary} against {article:?}");
+        }
+        for (summary, article, why) in [
+            ("300万", "3k-4 million users", "the left end has a scale of its own"),
+            ("300万", "3, 4 million users", "a comma is no range"),
+            ("300万", "3 and 4 million users", "and only after between"),
+            ("7000", "7～8万5千人", "8万5千 is not 8 with a scale"),
+            ("5億", "500-1 million users", "no larger than the right end"),
+            ("300万", "three, four million users", "a comma is no range"),
+            ("300万", "three and four million users", "and only after between"),
+            ("2000万", "twenty-one million users", "no larger than the right end"),
+            ("0", "five hundred thousand to one million users", "no thousand in the left end"),
+            ("1000", "a hundred to two hundred thousand users", "the left end starts with a number word"),
+            ("300万", "three to four, million users", "the right end is joined"),
+            ("0", "three to four million users and five billion", "the right end is number words"),
         ] {
             assert_eq!(check(summary, article), [summary], "{article:?}: {why}");
         }
