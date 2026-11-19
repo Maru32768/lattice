@@ -106,6 +106,8 @@ test("the list opens on the selected option, or on the first enabled one when se
   assert.equal(defaultRow(cased, "ärger", undefined), 1, "named in case too: a tag differing in a non-ASCII letter's case is another tag");
   const ascii = pickRows([{ label: "", options: ["kafka-streams", "kafka"].map((x) => ({ key: x, label: x })) }]);
   assert.equal(defaultRow(ascii, "Kafka", undefined), 1, "but in ASCII case, as tag names compare, it is the same tag");
+  const capitals = pickRows([{ label: "", options: ["postgres", "PostgreSQL"].map((x) => ({ key: x, label: x })) }]);
+  assert.equal(defaultRow(capitals, "postgresql", undefined), 1, "every capital of the name, typed in lower case");
   assert.equal(defaultRow(ROWS, "#rustls(1件)", undefined), 1, "but not on a disabled one");
 });
 
